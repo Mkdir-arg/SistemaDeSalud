@@ -33,6 +33,30 @@ class ErrorMotor(Exception):
     """Error de negocio del motor (estado inválido, datos faltantes, etc.)."""
 
 
+# --- Responsabilidad: quién puede ejecutar el paso actual de un caso ---------
+
+def grupos_responsables_ids(caso):
+    """IDs de los grupos responsables del paso actual. Vacío = abierto a todos."""
+    if not caso.nodo_actual_id:
+        return []
+    return list(caso.nodo_actual.grupos.values_list("id", flat=True))
+
+
+def usuario_puede_tomar(usuario, caso):
+    """
+    ¿`usuario` puede tomar/ejecutar el paso actual del `caso`?
+
+    True si el nodo no declara grupos responsables (paso abierto), si el usuario
+    integra alguno de esos grupos, o si es super admin de plataforma.
+    """
+    if getattr(usuario, "is_superuser", False):
+        return True
+    gids = grupos_responsables_ids(caso)
+    if not gids:
+        return True
+    return usuario.grupos.filter(id__in=gids).exists()
+
+
 # Nodos que el motor atraviesa solos, sin intervención.
 TIPOS_AUTOMATICOS = {
     Nodo.Tipo.INICIO,
@@ -141,7 +165,8 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
         destino = caso.area_actual.nombre if caso.area_actual else nodo.titulo
         _registrar(caso, f"Derivado a {destino}", detalle="regla del flujo", autor=autor, nodo=nodo)
 
-        # Derivación a otro flujo: instanciar y arrancar un caso nuevo allí.
+        # Derivación a otro flujo: instanciar y arrancar un caso nuevo allí,
+        # vinculado al caso origen para poder trazar el recorrido completo.
         flujo_destino_id = cfg.get("flujo_destino_id")
         if flujo_destino_id:
             ver_destino = (
@@ -156,9 +181,13 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
                     version=ver_destino,
                     ciudadano=caso.ciudadano,
                     prioridad=caso.prioridad,
+                    origen=caso,
+                    area_actual=ver_destino.flujo.area,
                 )
                 _registrar(caso, "Derivado a otro flujo",
                            detalle=f"Caso #{nuevo.pk} en «{ver_destino.flujo.titulo}»", autor=autor, nodo=nodo)
+                _registrar(nuevo, "Originado por derivación",
+                           detalle=f"Desde el caso #{caso.pk} · {caso.version.flujo.titulo}", autor=autor)
                 iniciar(nuevo, autor=autor)
 
     elif nodo.tipo == Nodo.Tipo.ACCION:
@@ -261,6 +290,7 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         _registrar(caso, f"Formulario «{nodo.titulo}» completado", detalle=f"{len(valores)} campos cargados", autor=autor, nodo=nodo)
 
     elif nodo.tipo == Nodo.Tipo.ATENCION:
+        _exigir_medico(caso, autor)
         _registrar_atencion(caso, nodo, datos, autor=autor)
 
     elif nodo.tipo == Nodo.Tipo.ESPERA_FILA:
@@ -281,6 +311,27 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         return caso
     caso.nodo_actual = siguiente
     return _correr_automaticos(caso, autor=autor)
+
+
+def _exigir_medico(caso: Caso, autor):
+    """
+    Solo un médico (rol `medico`) puede registrar una atención. Si el caso está en
+    un área, el médico debe tener esa área asignada en su membresía. El super admin
+    puede firmar siempre.
+    """
+    from apps.accounts.models import Membresia
+
+    if autor is None:
+        raise ErrorMotor("Se requiere un profesional autenticado para registrar la atención.")
+    if getattr(autor, "is_superuser", False):
+        return
+    medicas = Membresia.objects.filter(
+        usuario=autor, institucion=caso.institucion, rol=Membresia.Rol.MEDICO, activo=True
+    )
+    if not medicas.exists():
+        raise ErrorMotor("Solo un médico puede registrar una atención.")
+    if caso.area_actual_id and not medicas.filter(areas=caso.area_actual_id).exists():
+        raise ErrorMotor(f"El médico no está asignado al área «{caso.area_actual}».")
 
 
 def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):

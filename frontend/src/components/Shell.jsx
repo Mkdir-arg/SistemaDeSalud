@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "./Logo";
 import { Avatar } from "./ui";
 import { Icon } from "./icons";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useInstitucion } from "../auth/InstitutionContext";
 import { color } from "../theme";
@@ -65,36 +67,32 @@ function TopBar() {
 
 const ITEM_INICIO = { to: "/inicio", label: "Inicio", icon: "home" };
 
-// Grupos del menú (fiel al prototipo). Cada grupo se muestra según el rol.
+// Grupos del menú. Orden: configuración primero (SISTEMA), luego operación.
+// Cada ítem se muestra según su capacidad (cap) y el rol del usuario.
 const GRUPOS = [
+  {
+    label: "SISTEMA",
+    items: [
+      { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config" },
+      { to: "/administracion", label: "Administración", icon: "users", cap: "config" },
+      { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno" },
+      { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno" },
+      { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno" },
+    ],
+  },
   {
     label: "TRABAJO",
     items: [
-      { to: "/bandeja", label: "Bandeja de tareas", icon: "inbox" },
-      { to: "/filas", label: "Filas de espera", icon: "list" },
-      { to: "/casos", label: "Casos", icon: "fileText" },
+      { to: "/bandeja", label: "Bandeja de tareas", icon: "inbox", cap: "trabajo" },
+      { to: "/filas", label: "Filas de espera", icon: "list", cap: "trabajo" },
+      { to: "/casos", label: "Casos", icon: "fileText", cap: "trabajo" },
     ],
   },
   {
     label: "REGISTROS",
     items: [
-      { to: "/historia", label: "Historia clínica", icon: "clipboard" },
-      { to: "/legajo", label: "Legajo profesional", icon: "idCard" },
-    ],
-  },
-  {
-    label: "DISEÑO",
-    items: [
-      { to: "/flujos", label: "Flujos", icon: "workflow" },
-      { to: "/mapa", label: "Mapa de flujos", icon: "map" },
-      { to: "/formularios", label: "Formularios", icon: "form" },
-    ],
-  },
-  {
-    label: "SISTEMA",
-    items: [
-      { to: "/estructura", label: "Estructura organizativa", icon: "cube" },
-      { to: "/administracion", label: "Administración", icon: "users" },
+      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "registros" },
+      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
     ],
   },
 ];
@@ -103,6 +101,7 @@ const ROL_LABEL = {
   admin: "Admin de institución",
   configurador: "Configurador",
   administrativo: "Administrativo",
+  medico: "Médico / profesional",
 };
 
 const itemStyle = ({ isActive }) => ({
@@ -122,6 +121,22 @@ export function Shell({ children }) {
   const { institucion, setInstitucion, roles, puedeVer } = useInstitucion();
   const navigate = useNavigate();
 
+  // Instituciones del usuario (no-super): habilitan el selector si hay más de una.
+  const [misInst, setMisInst] = useState([]);
+  const [menuInst, setMenuInst] = useState(false);
+  useEffect(() => {
+    if (!user || user.is_superuser) return;
+    api.get("/instituciones/").then((d) => setMisInst(d.results || d)).catch(() => {});
+  }, [user]);
+  const puedeCambiar = !user?.is_superuser && misInst.length > 1;
+
+  function cambiarInstitucion(inst) {
+    setMenuInst(false);
+    if (inst.id === institucion?.id) return;
+    setInstitucion(inst);
+    navigate("/inicio");
+  }
+
   const rolLabel = user?.is_superuser
     ? "Super admin"
     : roles.map((r) => ROL_LABEL[r] || r).join(" · ") || "Usuario";
@@ -129,18 +144,51 @@ export function Shell({ children }) {
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: color.canvas }}>
       <aside style={{ width: 244, background: "#fff", borderRight: `1px solid ${color.border}`, display: "flex", flexDirection: "column", flex: "none", height: "100vh", position: "sticky", top: 0 }}>
-        {/* Cabecera: institución actual */}
-        <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "16px 16px 12px", flex: "none" }}>
-          <Logo size={34} />
-          <div style={{ lineHeight: 1.15, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {institucion?.nombre || "Cauce"}
+        {/* Cabecera: institución actual (con selector si el usuario tiene varias) */}
+        <div style={{ position: "relative", flex: "none" }}>
+          <button
+            onClick={() => puedeCambiar && setMenuInst((v) => !v)}
+            style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "16px 16px 12px", background: "none", border: "none", textAlign: "left", cursor: puedeCambiar ? "pointer" : "default" }}
+          >
+            <Logo size={34} />
+            <div style={{ lineHeight: 1.15, minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {institucion?.nombre || "Cauce"}
+              </div>
+              <div style={{ fontSize: 11, color: color.slate400, fontWeight: 500 }}>{institucion?.tipo || "Institución"}</div>
             </div>
-            <div style={{ fontSize: 11, color: color.slate400, fontWeight: 500 }}>{institucion?.tipo || "Institución"}</div>
-          </div>
+            {puedeCambiar && <Icon name="back" size={13} style={{ transform: menuInst ? "rotate(90deg)" : "rotate(-90deg)", color: color.slate400 }} />}
+          </button>
+
+          {/* Menú desplegable de instituciones */}
+          {menuInst && (
+            <>
+              <div onClick={() => setMenuInst(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
+              <div style={{ position: "absolute", top: 60, left: 14, right: 14, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, padding: "6px 8px 4px" }}>CAMBIAR DE INSTITUCIÓN</div>
+                {misInst.map((inst) => {
+                  const activa = inst.id === institucion?.id;
+                  return (
+                    <button
+                      key={inst.id}
+                      onClick={() => cambiarInstitucion(inst)}
+                      style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 8px", borderRadius: 7, border: "none", background: activa ? color.accent50 : "transparent", cursor: "pointer", textAlign: "left" }}
+                    >
+                      <div style={{ width: 26, height: 26, borderRadius: 7, background: color.subtle, color: color.slate500, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="building" size={14} /></div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: activa ? color.accent : color.slate700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inst.nombre}</div>
+                        <div style={{ fontSize: 11, color: color.slate400 }}>{inst.tipo || "Institución"}</div>
+                      </div>
+                      {activa && <Icon name="enter" size={14} style={{ color: color.accent }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Volver al directorio (super admin) / acceso fijo (admin institución) */}
+        {/* Volver al directorio (super admin) / rol del usuario (no-super) */}
         <div style={{ flex: "none", padding: "0 14px 10px", borderBottom: `1px solid ${color.divider}` }}>
           {user?.is_superuser ? (
             <button
@@ -151,7 +199,7 @@ export function Shell({ children }) {
             </button>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: color.slate400, padding: "4px 2px" }}>
-              <Icon name="power" size={12} /> {rolLabel} · acceso fijo
+              <Icon name="power" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
             </div>
           )}
         </div>
@@ -163,19 +211,23 @@ export function Shell({ children }) {
             {ITEM_INICIO.label}
           </NavLink>
 
-          {GRUPOS.filter((g) => puedeVer(g.label)).map((g) => (
-            <div key={g.label}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: color.slate400, padding: "12px 12px 6px" }}>{g.label}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {g.items.map((n) => (
-                  <NavLink key={n.to} to={n.to} style={itemStyle} end={n.to === "/flujos"}>
-                    <Icon name={n.icon} size={17} />
-                    {n.label}
-                  </NavLink>
-                ))}
+          {GRUPOS.map((g) => {
+            const items = g.items.filter((n) => puedeVer(n.cap));
+            if (!items.length) return null;
+            return (
+              <div key={g.label}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: color.slate400, padding: "12px 12px 6px" }}>{g.label}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {items.map((n) => (
+                    <NavLink key={n.to} to={n.to} style={itemStyle} end={n.to === "/flujos"}>
+                      <Icon name={n.icon} size={17} />
+                      {n.label}
+                    </NavLink>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* Usuario */}

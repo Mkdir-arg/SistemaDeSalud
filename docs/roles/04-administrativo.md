@@ -1,9 +1,12 @@
-# Rol: Administrativo / profesional
+# Rol: Administrativo
 
 > El que **opera el día a día**. Vive en el mundo **Ejecución** (software de gestión,
 > no lienzo): toma casos, completa formularios, atiende, deriva y deja todo
 > registrado. Es quien hace correr los flujos que diseñó el configurador.
 > Técnicamente: usuario con una **membresía de rol `administrativo`**.
+>
+> El rol **médico** comparte exactamente este mundo y agrega la **firma de
+> atenciones** — ver [`05-medico.md`](05-medico.md).
 
 **Usuario de demo:** `operador@cauce.local` / `demo1234` (Carla Ibáñez, Hospital Central · Admisión)
 
@@ -83,6 +86,7 @@ Entra directo a su institución (acceso fijo, sin directorio). Su menú muestra
 | Crear casos a partir de flujos publicados | ✅ |
 | Crear pacientes y cargar historia clínica | ✅ |
 | Ver su legajo profesional | ✅ |
+| **Registrar / firmar una Atención** | ❌ *(solo el [médico](05-medico.md))* |
 | Diseñar / publicar flujos o formularios | ❌ |
 | Gestionar estructura organizativa / usuarios | ❌ |
 | Ver otras instituciones | ❌ |
@@ -95,9 +99,10 @@ Entra directo a su institución (acceso fijo, sin directorio). Su menú muestra
 
 ## 5. Decisiones y notas
 
-- "Administrativo" y "profesional" son **el mismo rol** en el modelo (`administrativo`).
-  La diferencia (p. ej. quién puede firmar una atención) podría refinarse a futuro
-  con permisos más finos o usando el **Legajo profesional** (matrícula) como llave.
+- **Administrativo y médico son roles separados** en el modelo (`administrativo` /
+  `medico`). Comparten menú y capacidades; lo que los distingue es que **solo el
+  médico firma atenciones** (regla `_exigir_medico` del motor). Ver
+  [`05-medico.md`](05-medico.md).
 - El menú sale de su **membresía de rol `administrativo`** → habilita **TRABAJO** y
   **REGISTROS** (+ Inicio).
 - 💡 *Idea a futuro:* el acceso a Historia clínica podría gatillarse por el legajo

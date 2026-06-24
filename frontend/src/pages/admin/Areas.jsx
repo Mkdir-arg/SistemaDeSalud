@@ -1,30 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { useInstitucion } from "../../auth/InstitutionContext";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Select, Spinner, Textarea } from "../../components/ui";
+import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select, Spinner, Table, Textarea } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { color } from "../../theme";
 
-const ROL_LABEL = { admin: "Admin de institución", configurador: "Configurador", administrativo: "Administrativo" };
+const ROL_LABEL = { admin: "Admin de institución", configurador: "Configurador", administrativo: "Administrativo", medico: "Médico / profesional" };
 
-// Estructura organizativa: árbol de áreas (izq) + ficha con pestañas (der).
+// Estructura organizativa: tabla de áreas + ficha en panel lateral (drawer).
 export default function Areas() {
   const { institucion } = useInstitucion();
   const [areas, setAreas] = useState([]);
-  const [sel, setSel] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [nuevoArea, setNuevoArea] = useState(false);
+  const [sel, setSel] = useState(null);     // área abierta en el panel lateral
   const [editar, setEditar] = useState(false);
+  const [borrar, setBorrar] = useState(null);
 
-  async function cargar(seleccionar) {
+  async function cargar() {
     if (!institucion) return;
     setCargando(true);
     try {
       const d = await api.get(`/areas/?institucion=${institucion.id}`);
       const lista = d.results || d;
       setAreas(lista);
-      setSel((prev) => lista.find((a) => a.id === (seleccionar ?? prev?.id)) || lista[0] || null);
+      setSel((prev) => (prev ? lista.find((a) => a.id === prev.id) || null : null));
     } finally {
       setCargando(false);
     }
@@ -34,78 +34,66 @@ export default function Areas() {
   }, [institucion]);
 
   return (
-    <div style={{ height: "100%", display: "flex", minHeight: 0 }}>
-      {/* Árbol de áreas */}
-      <div style={{ width: 320, borderRight: `1px solid ${color.border}`, background: "#fff", display: "flex", flexDirection: "column", flex: "none" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 10px" }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: color.slate400 }}>ÁRBOL DE ÁREAS</span>
-          <button onClick={() => setNuevoArea(true)} title="Nueva área" style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${color.inputBorder}`, background: "#fff", color: color.accent, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon name="plus" size={15} />
-          </button>
+    <div style={{ padding: "26px 30px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: "-.5px" }}>Áreas</div>
+          <div style={{ fontSize: 13, color: color.slate500, marginTop: 2 }}>{areas.length} áreas · {institucion?.nombre}</div>
         </div>
-        <div style={{ overflow: "auto", flex: 1, padding: "0 10px 10px" }}>
-          {cargando ? (
-            <Spinner />
-          ) : (
-            <>
-              {/* Raíz: institución */}
-              <Nodo icon="building" label={institucion?.nombre} meta={`${areas.length} áreas`} nivel={0} />
-              {areas.map((a) => (
-                <div key={a.id}>
-                  <Nodo
-                    icon="building"
-                    label={a.nombre}
-                    meta={a.subareas?.length ? `${a.subareas.length} sub` : `${a.staff} staff`}
-                    nivel={1}
-                    activo={sel?.id === a.id}
-                    onClick={() => setSel(a)}
-                  />
-                  {a.subareas?.map((s) => (
-                    <Nodo key={s.id} icon="layers" label={s.nombre} meta="" nivel={2} />
-                  ))}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
+        <Button onClick={() => setNuevoArea(true)} style={{ display: "flex", alignItems: "center", gap: 8 }}><Icon name="plus" size={15} /> Nueva área</Button>
       </div>
 
-      {/* Ficha del área */}
-      <div style={{ flex: 1, overflow: "auto", padding: 30 }}>
-        {!sel ? (
-          <div style={{ color: color.slate400, fontSize: 14 }}>Elegí un área del árbol.</div>
+      <Card style={{ overflow: "hidden", padding: 0 }}>
+        {cargando ? (
+          <Spinner />
         ) : (
-          <FichaArea
-            key={sel.id}
-            area={sel}
-            institucionNombre={institucion?.nombre}
-            onEditar={() => setEditar(true)}
-            onChange={() => cargar(sel.id)}
+          <Table
+            rows={areas}
+            onRowClick={(a) => setSel(a)}
+            vacio="No hay áreas. Creá la primera."
+            columns={[
+              {
+                key: "nombre", label: "Área",
+                render: (a) => (
+                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="cube" size={17} /></div>
+                    <span style={{ fontWeight: 600 }}>{a.nombre}</span>
+                  </div>
+                ),
+              },
+              { key: "responsable", label: "Responsable", render: (a) => <span style={{ color: a.responsable ? color.slate700 : color.slate400 }}>{a.responsable || "—"}</span> },
+              { key: "staff", label: "Staff", render: (a) => <Mono>{a.staff}</Mono> },
+              { key: "sub", label: "Sub-áreas", render: (a) => <Mono>{a.subareas?.length || 0}</Mono> },
+              {
+                key: "acc", label: "",
+                render: (a) => (
+                  <div style={{ textAlign: "right" }}>
+                    <button onClick={(e) => { e.stopPropagation(); setBorrar({ tipo: "area", item: a }); }} title="Eliminar" style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", display: "inline-flex" }}><Icon name="trash" size={15} /></button>
+                  </div>
+                ),
+              },
+            ]}
           />
         )}
-      </div>
+      </Card>
 
-      {nuevoArea && <AreaModal institucionId={institucion?.id} onClose={() => setNuevoArea(false)} onSaved={(id) => { setNuevoArea(false); cargar(id); }} />}
-      {editar && sel && <AreaModal area={sel} institucionId={institucion?.id} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); cargar(sel.id); }} />}
-    </div>
-  );
-}
+      {/* Panel lateral con la ficha del área */}
+      {sel && (
+        <div onMouseDown={() => setSel(null)} style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,.35)", zIndex: 40, display: "flex", justifyContent: "flex-end" }}>
+          <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 600, maxWidth: "100%", height: "100%", background: "#fff", boxShadow: "-8px 0 30px rgba(16,24,40,.18)", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 18px 0" }}>
+              <button onClick={() => setSel(null)} style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex" }}><Icon name="x" size={18} /></button>
+            </div>
+            <div style={{ padding: "0 28px 28px" }}>
+              <FichaArea key={sel.id} area={sel} institucionNombre={institucion?.nombre} onEditar={() => setEditar(true)} onChange={cargar} />
+            </div>
+          </div>
+        </div>
+      )}
 
-function Nodo({ icon, label, meta, nivel, activo, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        display: "flex", alignItems: "center", gap: 9,
-        padding: "9px 10px", marginLeft: nivel * 18, borderRadius: 9,
-        cursor: onClick ? "pointer" : "default",
-        background: activo ? color.accent50 : "transparent",
-        color: activo ? color.accent : color.slate700,
-      }}
-    >
-      <Icon name={icon} size={16} />
-      <span style={{ flex: 1, fontSize: 13.5, fontWeight: activo ? 700 : nivel === 0 ? 600 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-      {meta && <span style={{ fontSize: 11.5, color: color.slate400 }}>{meta}</span>}
+      {nuevoArea && <AreaModal institucionId={institucion?.id} onClose={() => setNuevoArea(false)} onSaved={() => { setNuevoArea(false); cargar(); }} />}
+      {editar && sel && <AreaModal area={sel} institucionId={institucion?.id} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); cargar(); }} />}
+      {borrar && <EliminarModal {...borrar} onClose={() => setBorrar(null)} onDeleted={() => { setBorrar(null); setSel(null); cargar(); }} />}
     </div>
   );
 }
@@ -113,14 +101,24 @@ function Nodo({ icon, label, meta, nivel, activo, onClick }) {
 function FichaArea({ area, institucionNombre, onEditar, onChange }) {
   const [tab, setTab] = useState("datos");
   const [asignar, setAsignar] = useState(false);
+  const [crearSub, setCrearSub] = useState(false);
+  const [crearGrupo, setCrearGrupo] = useState(false);
+  const [recargaGrupos, setRecargaGrupos] = useState(0);
   const tabs = [
     { k: "datos", l: "Datos" },
     { k: "staff", l: "Staff" },
-    { k: "procesos", l: "Procesos" },
+    { k: "grupos", l: "Grupos" },
     { k: "subareas", l: "Sub-áreas" },
   ];
+  // Botón de acción contextual: cambia según la solapa activa.
+  const accion = {
+    staff: { label: "Asignar profesional", on: () => setAsignar(true) },
+    grupos: { label: "Crear grupo", on: () => setCrearGrupo(true) },
+    subareas: { label: "Crear sub-área", on: () => setCrearSub(true) },
+  }[tab];
+
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>{area.nombre}</span>
         <Badge tone="info">Área</Badge>
@@ -130,7 +128,11 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
       </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
         <Button variant="secondary" onClick={onEditar}>Editar</Button>
-        <Button onClick={() => setAsignar(true)} style={{ display: "flex", alignItems: "center", gap: 7 }}><Icon name="plus" size={15} /> Asignar profesional</Button>
+        {accion && (
+          <Button onClick={accion.on} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <Icon name="plus" size={15} /> {accion.label}
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -152,10 +154,12 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
         </Card>
       )}
       {tab === "staff" && <StaffTab area={area} />}
-      {tab === "procesos" && <ProcesosTab area={area} />}
+      {tab === "grupos" && <GruposTab area={area} recarga={recargaGrupos} />}
       {tab === "subareas" && <SubareasTab area={area} onChange={onChange} />}
 
       {asignar && <AsignarModal area={area} onClose={() => setAsignar(false)} onSaved={() => { setAsignar(false); onChange(); }} />}
+      {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={() => { setCrearSub(false); onChange(); }} />}
+      {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} onSaved={() => { setCrearGrupo(false); setRecargaGrupos((n) => n + 1); }} />}
     </div>
   );
 }
@@ -171,6 +175,88 @@ function Campo({ k, v }) {
 
 function StaffTab({ area }) {
   const [filas, setFilas] = useState(null);
+  const [quitando, setQuitando] = useState(null);
+  // usuario_id → nombres de los grupos del área que integra.
+  const [gruposPorUsuario, setGruposPorUsuario] = useState({});
+
+  async function cargar() {
+    const [membs, usuarios, grupos] = await Promise.all([
+      api.get(`/membresias/?institucion=${area.institucion}`),
+      api.get("/usuarios/"),
+      api.get(`/grupos/?area=${area.id}`),
+    ]);
+    const usuMap = Object.fromEntries((usuarios.results || usuarios).map((u) => [u.id, u]));
+    const porUsuario = {};
+    (grupos.results || grupos).forEach((g) => {
+      (g.integrantes || []).forEach((p) => {
+        (porUsuario[p.id] = porUsuario[p.id] || []).push(g.nombre);
+      });
+    });
+    setGruposPorUsuario(porUsuario);
+    const lista = (membs.results || membs)
+      .filter((m) => (m.areas || []).includes(area.id))
+      .map((m) => ({ id: m.id, u: usuMap[m.usuario], rol: ROL_LABEL[m.rol] || m.rol, areas: m.areas || [] }));
+    setFilas(lista);
+  }
+  useEffect(() => {
+    cargar(); // eslint-disable-next-line
+  }, [area.id]);
+
+  // Quitar a una persona de esta área: si la membresía cubre otras áreas, solo
+  // se le saca esta; si era la única, se elimina la membresía completa.
+  async function quitar(f) {
+    setQuitando(f.id);
+    try {
+      const resto = f.areas.filter((a) => a !== area.id);
+      if (resto.length) await api.patch(`/membresias/${f.id}/`, { areas: resto });
+      else await api.del(`/membresias/${f.id}/`);
+      await cargar();
+    } finally {
+      setQuitando(null);
+    }
+  }
+
+  if (filas === null) return <Spinner />;
+  if (!filas.length) return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin profesionales asignados a esta área.</Card>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {filas.map((f) => {
+        const grupos = gruposPorUsuario[f.u?.id] || [];
+        return (
+        <Card key={f.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+          <Avatar nombre={f.u?.nombre_completo || f.u?.email} i={f.id} size={32} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{f.u?.nombre_completo || "—"}</div>
+            <div style={{ fontSize: 12, color: color.slate500 }}>{f.u?.email}</div>
+          </div>
+          {grupos.length > 0 && (
+            <Badge tone="info">
+              <span title={`En ${grupos.length === 1 ? "el grupo" : "los grupos"}: ${grupos.join(", ")}`} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Icon name="users" size={12} />
+                {grupos.length === 1 ? grupos[0] : `${grupos.length} grupos`}
+              </span>
+            </Badge>
+          )}
+          <Badge tone="neutral">{f.rol}</Badge>
+          <button
+            onClick={() => quitar(f)}
+            disabled={quitando === f.id}
+            title="Quitar de esta área"
+            style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", fontSize: 12, padding: "4px 6px" }}
+          >
+            {quitando === f.id ? "…" : "quitar"}
+          </button>
+        </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+// Personas asignadas al área (elegibles para integrar grupos): una entrada por
+// usuario, derivada de las membresías cuya lista de áreas incluye esta área.
+function useStaffDeArea(area) {
+  const [staff, setStaff] = useState(null);
   useEffect(() => {
     (async () => {
       const [membs, usuarios] = await Promise.all([
@@ -178,80 +264,314 @@ function StaffTab({ area }) {
         api.get("/usuarios/"),
       ]);
       const usuMap = Object.fromEntries((usuarios.results || usuarios).map((u) => [u.id, u]));
-      const lista = (membs.results || membs)
+      const vistos = new Set();
+      const lista = [];
+      (membs.results || membs)
         .filter((m) => (m.areas || []).includes(area.id))
-        .map((m) => ({ id: m.id, u: usuMap[m.usuario], rol: ROL_LABEL[m.rol] || m.rol }));
-      setFilas(lista);
+        .forEach((m) => {
+          if (vistos.has(m.usuario)) return;
+          vistos.add(m.usuario);
+          if (usuMap[m.usuario]) lista.push(usuMap[m.usuario]);
+        });
+      setStaff(lista);
     })();
-  }, [area.id]);
-  if (filas === null) return <Spinner />;
-  if (!filas.length) return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin profesionales asignados a esta área.</Card>;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {filas.map((f) => (
-        <Card key={f.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar nombre={f.u?.nombre_completo || f.u?.email} i={f.id} size={32} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{f.u?.nombre_completo || "—"}</div>
-            <div style={{ fontSize: 12, color: color.slate500 }}>{f.u?.email}</div>
-          </div>
-          <Badge tone="neutral">{f.rol}</Badge>
-        </Card>
-      ))}
-    </div>
-  );
+  }, [area.id]); // eslint-disable-line
+  return staff;
 }
 
-function ProcesosTab({ area }) {
-  const navigate = useNavigate();
-  const [flujos, setFlujos] = useState(null);
+function GruposTab({ area, recarga }) {
+  const [grupos, setGrupos] = useState(null);
+  const [gestion, setGestion] = useState(null); // grupo cuyos miembros se editan
+  const [borrar, setBorrar] = useState(null);
+  const staff = useStaffDeArea(area);
+
+  async function cargar() {
+    const d = await api.get(`/grupos/?area=${area.id}`);
+    setGrupos(d.results || d);
+  }
   useEffect(() => {
-    api.get(`/flujos/?area=${area.id}`).then((d) => setFlujos(d.results || d));
-  }, [area.id]);
-  if (flujos === null) return <Spinner />;
-  if (!flujos.length) return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>No hay flujos en esta área.</Card>;
+    cargar(); // eslint-disable-next-line
+  }, [area.id, recarga]);
+
+  if (grupos === null) return <Spinner />;
+  if (!grupos.length)
+    return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin grupos. Usá «Crear grupo» para armar equipos con personas del área; luego se usan en los flujos.</Card>;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {flujos.map((f) => (
-        <Card key={f.id} onClick={() => navigate(`/flujos/${f.id}`)} style={{ padding: "13px 16px", display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="workflow" size={16} /></div>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{f.titulo}</span>
+      {grupos.map((g) => (
+        <Card key={g.id} style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="users" size={17} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{g.nombre}</div>
+              {g.descripcion && <div style={{ fontSize: 12, color: color.slate500 }}>{g.descripcion}</div>}
+            </div>
+            <span style={{ fontSize: 12.5, color: color.slate500 }}>{g.integrantes.length === 1 ? "1 integrante" : `${g.integrantes.length} integrantes`}</span>
+            <Button variant="secondary" onClick={() => setGestion(g)}>Gestionar</Button>
+            <button onClick={() => setBorrar(g)} title="Eliminar grupo" style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", display: "inline-flex" }}><Icon name="trash" size={15} /></button>
+          </div>
+          {g.integrantes.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+              {g.integrantes.map((p) => (
+                <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 20, padding: "3px 11px 3px 3px" }}>
+                  <Avatar nombre={p.nombre || p.email} i={p.id} size={22} /> {p.nombre || p.email}
+                </span>
+              ))}
+            </div>
+          )}
         </Card>
       ))}
+
+      {gestion && <MiembrosModal grupo={gestion} staff={staff} grupos={grupos} onClose={() => setGestion(null)} onSaved={() => { setGestion(null); cargar(); }} />}
+      {borrar && <EliminarGrupoModal grupo={borrar} onClose={() => setBorrar(null)} onDeleted={() => { setBorrar(null); cargar(); }} />}
     </div>
   );
 }
 
-function SubareasTab({ area, onChange }) {
-  const [nueva, setNueva] = useState("");
+function GrupoModal({ area, onClose, onSaved }) {
+  const [f, setF] = useState({ nombre: "", descripcion: "" });
   const [guardando, setGuardando] = useState(false);
-  async function agregar() {
-    if (!nueva.trim()) return;
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  async function crear() {
     setGuardando(true);
     try {
-      await api.post("/subareas/", { area: area.id, nombre: nueva.trim() });
-      setNueva("");
-      onChange();
+      await api.post("/grupos/", { area: area.id, nombre: f.nombre.trim(), descripcion: f.descripcion });
+      onSaved();
     } finally {
       setGuardando(false);
     }
   }
   return (
+    <Modal title={`Nuevo grupo · ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !f.nombre.trim()} onClick={crear}>{guardando ? "…" : "Crear"}</Button></>}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Field label="Nombre del grupo *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus placeholder="Guardia mañana" /></Field>
+        <Field label="Descripción"><Textarea value={f.descripcion} onChange={(e) => set("descripcion", e.target.value)} placeholder="Para qué se usa este grupo…" /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+function MiembrosModal({ grupo, staff, grupos = [], onClose, onSaved }) {
+  const [sel, setSel] = useState(() => new Set(grupo.integrantes.map((p) => p.id)));
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  // usuario_id → nombres de OTROS grupos del área que ya integra.
+  const otrosGrupos = useMemo(() => {
+    const m = {};
+    grupos.filter((g) => g.id !== grupo.id).forEach((g) => {
+      (g.integrantes || []).forEach((p) => {
+        (m[p.id] = m[p.id] || []).push(g.nombre);
+      });
+    });
+    return m;
+  }, [grupos, grupo.id]);
+  function toggle(id) {
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+  async function guardar() {
+    setGuardando(true);
+    setError(null);
+    try {
+      await api.patch(`/grupos/${grupo.id}/`, { miembros: [...sel] });
+      onSaved();
+    } catch (e) {
+      setError(e?.data?.miembros || "No se pudieron guardar los cambios.");
+      setGuardando(false);
+    }
+  }
+  return (
+    <Modal title={`Integrantes · ${grupo.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando} onClick={guardar}>{guardando ? "…" : "Guardar"}</Button></>}>
+      {staff === null ? (
+        <Spinner />
+      ) : staff.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: color.slate500 }}>No hay personas asignadas al área. Primero asigná profesionales en la pestaña «Staff».</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflow: "auto" }}>
+          {staff.map((u) => {
+            const checked = sel.has(u.id);
+            const enOtros = otrosGrupos[u.id] || [];
+            return (
+              <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "8px 10px", borderRadius: 9, cursor: "pointer", background: checked ? color.accent50 : "transparent" }}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(u.id)} />
+                <Avatar nombre={u.nombre_completo || u.email} i={u.id} size={30} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{u.nombre_completo || "—"}</div>
+                  <div style={{ fontSize: 12, color: color.slate500 }}>{u.email}</div>
+                </div>
+                {enOtros.length > 0 && (
+                  <Badge tone="amber">
+                    <span title={`Ya está en: ${enOtros.join(", ")}`} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <Icon name="users" size={12} />
+                      {enOtros.length === 1 ? "En otro grupo" : `En ${enOtros.length} grupos`}
+                    </span>
+                  </Badge>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      )}
+      {error && <div style={{ marginTop: 12, fontSize: 13, color: color.danger }}>{String(error)}</div>}
+    </Modal>
+  );
+}
+
+function EliminarGrupoModal({ grupo, onClose, onDeleted }) {
+  const [borrando, setBorrando] = useState(false);
+  async function eliminar() {
+    setBorrando(true);
+    try {
+      await api.del(`/grupos/${grupo.id}/`);
+      onDeleted();
+    } finally {
+      setBorrando(false);
+    }
+  }
+  return (
+    <Modal title="Eliminar grupo" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}>
+      <div style={{ fontSize: 14, color: color.slate700 }}>¿Seguro que querés eliminar el grupo <strong>{grupo.nombre}</strong>? Esta acción no se puede deshacer.</div>
+    </Modal>
+  );
+}
+
+function SubareasTab({ area, onChange }) {
+  const [sel, setSel] = useState(null);
+  const [flujos, setFlujos] = useState([]);
+  useEffect(() => {
+    api.get(`/flujos/?institucion=${area.institucion}`).then((d) => setFlujos(d.results || d));
+  }, [area.institucion]);
+
+  // Ficha de una sub-área seleccionada.
+  if (sel) {
+    const sub = (area.subareas || []).find((s) => s.id === sel.id) || sel;
+    const vinculados = flujos.filter((f) => f.subarea === sub.id);
+    return <SubareaFicha sub={sub} flujos={vinculados} onBack={() => setSel(null)} onChange={onChange} />;
+  }
+
+  if (!area.subareas?.length)
+    return <div style={{ fontSize: 13.5, color: color.slate400 }}>Sin sub-áreas. Usá «Crear sub-área». (Una sub-área no contiene sub-áreas.)</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {area.subareas.map((s) => {
+        const n = flujos.filter((f) => f.subarea === s.id).length;
+        return (
+          <Card
+            key={s.id}
+            onClick={() => setSel(s)}
+            style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+          >
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: color.subtle, color: color.slate500, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="cube" size={15} /></div>
+            <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{s.nombre}</div>
+            <span style={{ fontSize: 12.5, color: color.slate500 }}>{n === 1 ? "1 flujo" : `${n} flujos`}</span>
+            <Icon name="back" size={14} style={{ transform: "rotate(180deg)", color: color.slate400 }} />
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function SubareaFicha({ sub, flujos, onBack, onChange }) {
+  const [editando, setEditando] = useState(false);
+  const [nombre, setNombre] = useState(sub.nombre);
+  const [confirmar, setConfirmar] = useState(false);
+  const [trabajando, setTrabajando] = useState(false);
+
+  async function renombrar() {
+    if (!nombre.trim() || nombre.trim() === sub.nombre) { setEditando(false); return; }
+    setTrabajando(true);
+    try {
+      await api.patch(`/subareas/${sub.id}/`, { nombre: nombre.trim() });
+      setEditando(false);
+      onChange();
+    } finally {
+      setTrabajando(false);
+    }
+  }
+  async function eliminar() {
+    setTrabajando(true);
+    try {
+      await api.del(`/subareas/${sub.id}/`);
+      onBack();
+      onChange();
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  return (
     <div>
-      {area.subareas?.length ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-          {area.subareas.map((s) => (
-            <span key={s.id} style={{ fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "6px 12px" }}>{s.nombre}</span>
+      <button onClick={onBack} style={{ border: "none", background: "none", color: color.slate500, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 14, padding: 0 }}>
+        <Icon name="back" size={14} /> Sub-áreas
+      </button>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        {editando ? (
+          <>
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus style={{ maxWidth: 280 }} />
+            <Button disabled={trabajando} onClick={renombrar}>Guardar</Button>
+            <Button variant="secondary" onClick={() => { setNombre(sub.nombre); setEditando(false); }}>Cancelar</Button>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-.3px" }}>{sub.nombre}</span>
+            <Badge tone="neutral">Sub-área</Badge>
+            <button onClick={() => setEditando(true)} style={{ border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: 13 }}>Renombrar</button>
+          </>
+        )}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 700, color: color.slate600, marginBottom: 10 }}>Flujos vinculados <span style={{ color: color.slate400, fontWeight: 500 }}>· {flujos.length}</span></div>
+      {flujos.length === 0 ? (
+        <Card style={{ padding: 18, fontSize: 13, color: color.slate400 }}>Ningún flujo usa esta sub-área todavía.</Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {flujos.map((f) => (
+            <Card key={f.id} style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="workflow" size={15} style={{ color: color.accent }} />
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.titulo}</span>
+            </Card>
           ))}
         </div>
-      ) : (
-        <div style={{ fontSize: 13.5, color: color.slate400, marginBottom: 16 }}>Sin sub-áreas. (Una sub-área no contiene sub-áreas.)</div>
       )}
-      <div style={{ display: "flex", gap: 10, maxWidth: 420 }}>
-        <Input placeholder="Nueva sub-área…" value={nueva} onChange={(e) => setNueva(e.target.value)} onKeyDown={(e) => e.key === "Enter" && agregar()} />
-        <Button variant="secondary" disabled={guardando || !nueva.trim()} onClick={agregar}>Agregar</Button>
+
+      <div style={{ marginTop: 22, borderTop: `1px solid ${color.border}`, paddingTop: 16 }}>
+        {confirmar ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 13, color: color.slate700 }}>¿Eliminar «{sub.nombre}»?</span>
+            <Button variant="danger" disabled={trabajando} onClick={eliminar}>{trabajando ? "…" : "Sí, eliminar"}</Button>
+            <Button variant="secondary" onClick={() => setConfirmar(false)}>No</Button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmar(true)} style={{ border: "none", background: "none", color: color.danger, cursor: "pointer", fontSize: 13, padding: 0 }}>Eliminar sub-área</button>
+        )}
       </div>
     </div>
+  );
+}
+
+function NuevaSubareaModal({ area, onClose, onSaved }) {
+  const [nombre, setNombre] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  async function crear() {
+    setGuardando(true);
+    try {
+      await api.post("/subareas/", { area: area.id, nombre: nombre.trim() });
+      onSaved();
+    } finally {
+      setGuardando(false);
+    }
+  }
+  return (
+    <Modal title={`Nueva sub-área · ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !nombre.trim()} onClick={crear}>{guardando ? "…" : "Crear"}</Button></>}>
+      <Field label="Nombre de la sub-área *"><Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Hemodinamia" /></Field>
+    </Modal>
   );
 }
 
@@ -285,45 +605,96 @@ function AreaModal({ area, institucionId, onClose, onSaved }) {
   );
 }
 
+function EliminarModal({ tipo, item, onClose, onDeleted }) {
+  const [borrando, setBorrando] = useState(false);
+  const [error, setError] = useState(null);
+  const esArea = tipo === "area";
+  async function eliminar() {
+    setBorrando(true);
+    setError(null);
+    try {
+      await api.del(`/${esArea ? "areas" : "subareas"}/${item.id}/`);
+      onDeleted();
+    } catch (e) {
+      setError(e?.data?.detail || "No se pudo eliminar. Puede tener elementos asociados.");
+      setBorrando(false);
+    }
+  }
+  return (
+    <Modal
+      title={esArea ? "Eliminar área" : "Eliminar sub-área"}
+      onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}
+    >
+      <div style={{ fontSize: 14, color: color.slate700 }}>
+        ¿Seguro que querés eliminar <strong>{item.nombre}</strong>?
+        {esArea && <> Se eliminarán también sus sub-áreas.</>} Esta acción no se puede deshacer.
+      </div>
+      {error && <div style={{ marginTop: 12, fontSize: 13, color: color.danger }}>{error}</div>}
+    </Modal>
+  );
+}
+
+// Funciones operativas que se pueden asignar a un área.
+const FUNCIONES = [
+  { value: "administrativo", label: "Administrativo" },
+  { value: "medico", label: "Médico / profesional" },
+];
+
 function AsignarModal({ area, onClose, onSaved }) {
-  const [membs, setMembs] = useState([]);
-  const [sel, setSel] = useState("");
+  const [usuarios, setUsuarios] = useState([]);
+  const [usuarioId, setUsuarioId] = useState("");
+  const [funcion, setFuncion] = useState("administrativo");
   const [guardando, setGuardando] = useState(false);
+
   useEffect(() => {
-    (async () => {
-      const [m, usuarios] = await Promise.all([
-        api.get(`/membresias/?institucion=${area.institucion}`),
-        api.get("/usuarios/"),
-      ]);
-      const usuMap = Object.fromEntries((usuarios.results || usuarios).map((u) => [u.id, u]));
-      const lista = (m.results || m)
-        .filter((x) => !(x.areas || []).includes(area.id))
-        .map((x) => ({ id: x.id, areas: x.areas || [], nombre: usuMap[x.usuario]?.nombre_completo || usuMap[x.usuario]?.email, rol: ROL_LABEL[x.rol] || x.rol }));
-      setMembs(lista);
-      if (lista[0]) setSel(String(lista[0].id));
-    })();
-  }, [area.id]);
+    api.get("/usuarios/").then((d) => {
+      const lista = (d.results || d).filter((u) => !u.is_superuser);
+      setUsuarios(lista);
+      if (lista[0]) setUsuarioId(String(lista[0].id));
+    });
+  }, []);
+
   async function asignar() {
-    const m = membs.find((x) => String(x.id) === String(sel));
-    if (!m) return;
+    if (!usuarioId) return;
     setGuardando(true);
     try {
-      await api.patch(`/membresias/${m.id}/`, { areas: [...m.areas, area.id] });
+      // ¿Ya tiene una membresía con esa función en la institución?
+      const ms = await api.get(`/membresias/?usuario=${usuarioId}&institucion=${area.institucion}&rol=${funcion}`);
+      const existente = (ms.results || ms)[0];
+      if (existente) {
+        if (!(existente.areas || []).includes(area.id)) {
+          await api.patch(`/membresias/${existente.id}/`, { areas: [...(existente.areas || []), area.id] });
+        }
+      } else {
+        await api.post("/membresias/", { usuario: Number(usuarioId), institucion: area.institucion, rol: funcion, areas: [area.id] });
+      }
       onSaved();
     } finally {
       setGuardando(false);
     }
   }
+
   return (
-    <Modal title={`Asignar profesional a ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !sel} onClick={asignar}>{guardando ? "…" : "Asignar"}</Button></>}>
-      {membs.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: color.slate500 }}>No hay profesionales disponibles para asignar.</div>
+    <Modal title={`Asignar profesional a ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !usuarioId} onClick={asignar}>{guardando ? "…" : "Asignar"}</Button></>}>
+      {usuarios.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: color.slate500 }}>No hay usuarios para asignar. Creá usuarios desde el directorio (Usuarios).</div>
       ) : (
-        <Field label="Profesional">
-          <Select value={sel} onChange={(e) => setSel(e.target.value)}>
-            {membs.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {m.rol}</option>)}
-          </Select>
-        </Field>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Persona">
+            <Select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)}>
+              {usuarios.map((u) => <option key={u.id} value={u.id}>{u.nombre_completo || u.email}</option>)}
+            </Select>
+          </Field>
+          <Field label="Función en esta área">
+            <Select value={funcion} onChange={(e) => setFuncion(e.target.value)}>
+              {FUNCIONES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </Select>
+          </Field>
+          <div style={{ fontSize: 12, color: color.slate400 }}>
+            El médico podrá registrar atenciones (firmar en la historia clínica); el administrativo opera el resto del proceso.
+          </div>
+        </div>
       )}
     </Modal>
   );

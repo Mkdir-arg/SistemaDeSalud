@@ -39,3 +39,4 @@ class NodoAdmin(admin.ModelAdmin):
     list_display = ("titulo", "tipo", "version")
     list_filter = ("tipo",)
     search_fields = ("titulo",)
+    filter_horizontal = ("grupos",)

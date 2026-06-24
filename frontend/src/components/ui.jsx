@@ -18,6 +18,7 @@ export function Button({ variant = "primary", children, style, disabled, ...prop
     primary: { background: color.accent, color: "#fff" },
     secondary: { background: "#fff", border: "1px solid #D8DBE2", color: color.slate700 },
     dashed: { background: "none", border: "1.5px dashed #C7CDF2", color: color.accent },
+    danger: { background: color.danger, color: "#fff" },
     disabled: { background: "#EEF0F3", color: color.slate400 },
   };
   const v = disabled ? variants.disabled : variants[variant] || variants.primary;

@@ -15,13 +15,48 @@ from .serializers import (
 
 
 class FlujoViewSet(BaseModelViewSet):
-    queryset = Flujo.objects.select_related("institucion", "area").prefetch_related("versiones")
+    queryset = Flujo.objects.select_related("institucion", "area", "subarea").prefetch_related("versiones")
     serializer_class = FlujoSerializer
     institucion_path = "institucion"
-    filter_fields = ("institucion", "area")
+    filter_fields = ("institucion", "area", "subarea")
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["titulo"]
     ordering_fields = ["titulo", "creado"]
+
+    @action(detail=False, methods=["get"])
+    def mapa(self, request):
+        """Grafo de derivaciones entre flujos (para el Mapa de flujos).
+
+        Devuelve `nodos` (un flujo por bloque, con su estado vigente) y `aristas`
+        (cada nodo de tipo «derivar» con `flujo_destino_id` es una flecha
+        origen → destino). Una arista a un flujo fuera del conjunto se marca como
+        externa para poder dibujarla distinto.
+        """
+        flujos = list(self.get_queryset())
+        ids = {f.id for f in flujos}
+        nodos, aristas = [], []
+        for f in flujos:
+            vigente = f.version_publicada or f.versiones.order_by("-numero").first()
+            nodos.append({
+                "id": f.id,
+                "titulo": f.titulo,
+                "area_nombre": f.area.nombre if f.area_id else "Institución",
+                "ambito": f.ambito,
+                "estado": vigente.estado if vigente else "borrador",
+                "versiones": f.versiones.count(),
+            })
+            if not vigente:
+                continue
+            for nodo in vigente.nodos.filter(tipo=Nodo.Tipo.DERIVAR):
+                destino = (nodo.config or {}).get("flujo_destino_id")
+                if destino:
+                    aristas.append({
+                        "origen": f.id,
+                        "destino": destino,
+                        "etiqueta": nodo.titulo or "Derivar",
+                        "externo": destino not in ids,
+                    })
+        return Response({"nodos": nodos, "aristas": aristas})
 
 
 class VersionFlujoViewSet(BaseModelViewSet):
@@ -64,7 +99,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
 
 
 class NodoViewSet(BaseModelViewSet):
-    queryset = Nodo.objects.select_related("version", "formulario")
+    queryset = Nodo.objects.select_related("version", "formulario").prefetch_related("grupos__area")
     serializer_class = NodoSerializer
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")

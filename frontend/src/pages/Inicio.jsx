@@ -24,15 +24,15 @@ export default function Inicio() {
     { n: m?.casos_activos ?? "—", l: "Casos activos" },
   ];
 
-  // Secciones de la institución (gateadas por rol, como el menú).
+  // Secciones de la institución (gateadas por capacidad, como el menú).
   const secciones = [
-    { label: "Flujos", hint: "Diseñar y publicar procesos", icon: "workflow", to: "/flujos", grupo: "DISEÑO", c: "#3949C0" },
-    { label: "Formularios", hint: "Biblioteca de formularios", icon: "form", to: "/formularios", grupo: "DISEÑO", c: "#0E8893" },
-    { label: "Bandeja de tareas", hint: "Operar casos del día", icon: "inbox", to: "/bandeja", grupo: "TRABAJO", c: "#A96A12" },
-    { label: "Historia clínica", hint: "Expedientes de pacientes", icon: "clipboard", to: "/historia", grupo: "REGISTROS", c: "#D14B8F" },
-    { label: "Estructura organizativa", hint: "Áreas, sub-áreas y staff", icon: "cube", to: "/estructura", grupo: "SISTEMA", c: "#0E9E8E" },
-    { label: "Administración", hint: "Usuarios y accesos", icon: "users", to: "/administracion", grupo: "SISTEMA", c: "#5B7A99" },
-  ].filter((s) => puedeVer(s.grupo));
+    { label: "Flujos", hint: "Diseñar y publicar procesos", icon: "workflow", to: "/flujos", cap: "diseno", c: "#3949C0" },
+    { label: "Formularios", hint: "Biblioteca de formularios", icon: "form", to: "/formularios", cap: "diseno", c: "#0E8893" },
+    { label: "Bandeja de tareas", hint: "Operar casos del día", icon: "inbox", to: "/bandeja", cap: "trabajo", c: "#A96A12" },
+    { label: "Historia clínica", hint: "Expedientes de pacientes", icon: "clipboard", to: "/historia", cap: "registros", c: "#D14B8F" },
+    { label: "Estructura organizativa", hint: "Áreas, sub-áreas y staff", icon: "cube", to: "/estructura", cap: "config", c: "#0E9E8E" },
+    { label: "Administración", hint: "Usuarios y accesos", icon: "users", to: "/administracion", cap: "config", c: "#5B7A99" },
+  ].filter((s) => puedeVer(s.cap));
 
   if (!institucion) return <Spinner />;
 

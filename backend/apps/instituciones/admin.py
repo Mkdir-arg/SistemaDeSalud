@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Area, Institucion, Subarea
+from .models import Area, Grupo, Institucion, Subarea
 
 
 class SubareaInline(admin.TabularInline):
@@ -34,3 +34,11 @@ class SubareaAdmin(admin.ModelAdmin):
     list_display = ("nombre", "area", "activa")
     list_filter = ("area__institucion", "activa")
     search_fields = ("nombre",)
+
+
+@admin.register(Grupo)
+class GrupoAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "area", "activo", "creado")
+    list_filter = ("area__institucion", "activo")
+    search_fields = ("nombre",)
+    filter_horizontal = ("miembros",)

@@ -22,6 +22,8 @@ export const color = {
   white: "#FFFFFF",
   // Borde de controles de formulario (inputs/selects), según el componente del manual.
   inputBorder: "#E2E5EA",
+  // Acciones destructivas (rojo del estado "Error").
+  danger: "#B42318",
 };
 
 export const font = {

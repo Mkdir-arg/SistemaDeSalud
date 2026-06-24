@@ -4,8 +4,8 @@ from rest_framework.response import Response
 
 from apps.common import BaseModelViewSet
 
-from .models import Area, Institucion, Subarea
-from .serializers import AreaSerializer, InstitucionSerializer, SubareaSerializer
+from .models import Area, Grupo, Institucion, Subarea
+from .serializers import AreaSerializer, GrupoSerializer, InstitucionSerializer, SubareaSerializer
 
 
 class InstitucionViewSet(BaseModelViewSet):
@@ -44,3 +44,10 @@ class SubareaViewSet(BaseModelViewSet):
     serializer_class = SubareaSerializer
     institucion_path = "area__institucion"
     filter_fields = ("area", "activa")
+
+
+class GrupoViewSet(BaseModelViewSet):
+    queryset = Grupo.objects.select_related("area").prefetch_related("miembros")
+    serializer_class = GrupoSerializer
+    institucion_path = "area__institucion"
+    filter_fields = ("area", "area__institucion", "activo")

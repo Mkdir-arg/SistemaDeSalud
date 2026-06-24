@@ -16,6 +16,7 @@ import Flujos from "./pages/diseno/Flujos";
 import FlujoEditor from "./pages/diseno/FlujoEditor";
 import MapaFlujos from "./pages/diseno/MapaFlujos";
 import Formularios from "./pages/diseno/Formularios";
+import FormularioDetalle from "./pages/diseno/FormularioDetalle";
 import Areas from "./pages/admin/Areas";
 import Usuarios from "./pages/admin/Usuarios";
 import Registros from "./pages/registros/Registros";
@@ -95,6 +96,7 @@ export default function App() {
       <Route path="/flujos/:id" element={P(<FlujoEditor />)} />
       <Route path="/mapa" element={P(<MapaFlujos />)} />
       <Route path="/formularios" element={P(<Formularios />)} />
+      <Route path="/formularios/:id" element={P(<FormularioDetalle />)} />
 
       {/* SISTEMA */}
       <Route path="/estructura" element={P(<Areas />)} />

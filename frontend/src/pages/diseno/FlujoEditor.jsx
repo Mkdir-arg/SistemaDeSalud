@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { Badge, Button, Field, Input, Select, Spinner } from "../../components/ui";
+import { Icon } from "../../components/icons";
 import { caminoPorDefecto, correrAuto, nodoInicio, siguiente } from "../../lib/simular";
 import { color, estadoVersion, nodeCat } from "../../theme";
 
@@ -20,6 +21,7 @@ export default function FlujoEditor() {
   const [conectarDesde, setConectarDesde] = useState(null);
   const [campos, setCampos] = useState([]); // campos disponibles para reglas
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(null);
   const [sim, setSim] = useState(null); // modo Probar: {current, valores, camino, fin}
   const [repro, setRepro] = useState(null); // Reproducir: {camino, idx}
 
@@ -28,8 +30,10 @@ export default function FlujoEditor() {
     setVersion(v);
   }, []);
 
-  useEffect(() => {
-    (async () => {
+  const cargarTodo = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    try {
       const f = await api.get(`/flujos/${id}/`);
       setFlujo(f);
       const v = (f.versiones || [])[0];
@@ -43,9 +47,16 @@ export default function FlujoEditor() {
         (form.campos || []).map((c) => ({ id: c.id, label: c.label, formulario: form.titulo, formularioId: form.id, opciones: c.opciones, tipo: c.tipo, requerido: c.requerido }))
       );
       setCampos(lista);
+    } catch (e) {
+      setErrorCarga(e?.data?.detail || e?.message || "No se pudo cargar el flujo.");
+    } finally {
       setCargando(false);
-    })();
+    }
   }, [id, cargarVersion]);
+
+  useEffect(() => {
+    cargarTodo();
+  }, [cargarTodo]);
 
   // --- Drag de nodos -------------------------------------------------------
   const drag = useRef(null);
@@ -184,6 +195,17 @@ export default function FlujoEditor() {
   }, [repro]);
 
   if (cargando) return <Spinner label="Cargando flujo…" />;
+  if (errorCarga)
+    return (
+      <div style={{ padding: 40, maxWidth: 460 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#B42318", marginBottom: 6 }}>No se pudo cargar el flujo</div>
+        <div style={{ fontSize: 13.5, color: color.slate600, marginBottom: 16 }}>{errorCarga}</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Button onClick={cargarTodo}>Reintentar</Button>
+          <Button variant="secondary" onClick={() => navigate("/flujos")}>← Flujos</Button>
+        </div>
+      </div>
+    );
   if (!version) return <div style={{ padding: 32 }}>Este flujo no tiene versiones.</div>;
 
   const nodoSel = version.nodos.find((n) => n.id === sel);
@@ -198,6 +220,7 @@ export default function FlujoEditor() {
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button onClick={() => navigate("/flujos")} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 13.5, color: color.slate500 }}>← Flujos</button>
           <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.4px" }}>{flujo.titulo}</div>
+          {flujo.ambito_label && <span style={{ fontSize: 12.5, color: color.slate400 }}>· {flujo.ambito_label}</span>}
           <Badge tone={estV.tone}>{estV.label}</Badge>
           <Select value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ height: 32, width: "auto" }}>
             {flujo.versiones.map((v) => <option key={v.id} value={v.id}>{v.etiqueta}</option>)}
@@ -300,9 +323,15 @@ export default function FlujoEditor() {
                   }}
                 >
                   <span style={{ width: 11, height: 11, borderRadius: n.tipo === "decision" ? 2 : 3, background: cat.sol, transform: n.tipo === "decision" ? "rotate(45deg)" : "none", flex: "none" }} />
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".4px", color: cat.sol, opacity: 0.85 }}>{cat.name.toUpperCase()}</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#1F2430", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.titulo}</div>
+                    {n.grupos_detalle?.length > 0 && (
+                      <div title={`Responsable: ${n.grupos_detalle.map((g) => g.nombre).join(", ")}`} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: 10.5, color: color.slate500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <Icon name="users" size={11} />
+                        {n.grupos_detalle.length === 1 ? n.grupos_detalle[0].nombre : `${n.grupos_detalle.length} grupos`}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -471,19 +500,40 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
   );
 }
 
+// Pasos donde una persona ejecuta el trabajo: ahí tiene sentido decir "quién lo hace".
+const TIPOS_CON_RESPONSABLE = ["form", "atencion", "accion", "espera"];
+
 function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
   const [titulo, setTitulo] = useState(nodo.titulo);
   const [areas, setAreas] = useState([]);
+  const [flujos, setFlujos] = useState([]);
   const [formularios, setFormularios] = useState([]);
+  const [grupos, setGrupos] = useState([]);
   const cat = nodeCat[nodo.tipo] || nodeCat.form;
   const salidas = version.conexiones.filter((c) => c.origen === nodo.id);
+  const aplicaResponsable = TIPOS_CON_RESPONSABLE.includes(nodo.tipo);
 
   useEffect(() => {
-    if (nodo.tipo === "derivar") api.get(`/areas/?institucion=${flujoInstId}`).then((d) => setAreas(d.results || d));
+    if (nodo.tipo === "derivar") {
+      api.get(`/areas/?institucion=${flujoInstId}`).then((d) => setAreas(d.results || d));
+      api.get(`/flujos/?institucion=${flujoInstId}`).then((d) => setFlujos(d.results || d));
+    }
     if (nodo.tipo === "form") api.get(`/formularios/?institucion=${flujoInstId}`).then((d) => setFormularios(d.results || d));
-  }, [nodo.tipo, flujoInstId]);
+    if (aplicaResponsable) api.get(`/grupos/?area__institucion=${flujoInstId}&activo=true`).then((d) => setGrupos(d.results || d));
+  }, [nodo.tipo, flujoInstId, aplicaResponsable]);
+
+  // Flujos de destino candidatos: los del área elegida, sin el flujo actual (evita derivar a sí mismo).
+  const areaDestinoId = (nodo.config || {}).area_destino_id;
+  const flujosDelArea = flujos.filter((f) => f.area === areaDestinoId && f.id !== version.flujo);
+  const tienePublicada = (f) => (f.versiones || []).some((v) => v.estado === "publicada");
 
   const setConfig = (cambios) => onActualizar(nodo.id, { config: { ...(nodo.config || {}), ...cambios } });
+
+  const asignados = new Set(nodo.grupos || []);
+  const toggleGrupo = (gid) => {
+    const next = asignados.has(gid) ? [...asignados].filter((x) => x !== gid) : [...asignados, gid];
+    onActualizar(nodo.id, { grupos: next });
+  };
 
   return (
     <div style={{ padding: 20 }}>
@@ -509,12 +559,41 @@ function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar,
         )}
 
         {nodo.tipo === "derivar" && (
-          <Field label="Área de destino">
-            <Select value={(nodo.config || {}).area_destino_id || ""} onChange={(e) => setConfig({ area_destino_id: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">— Elegir —</option>
-              {areas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-            </Select>
-          </Field>
+          <>
+            <Field label="Área de destino">
+              {/* Cambiar de área limpia el flujo elegido (puede no pertenecer a la nueva área). */}
+              <Select
+                value={areaDestinoId || ""}
+                onChange={(e) => setConfig({ area_destino_id: e.target.value ? Number(e.target.value) : null, flujo_destino_id: null })}
+              >
+                <option value="">— Elegir —</option>
+                {areas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </Select>
+            </Field>
+
+            {areaDestinoId && (
+              <Field label="Flujo de destino">
+                <Select
+                  value={(nodo.config || {}).flujo_destino_id || ""}
+                  onChange={(e) => setConfig({ flujo_destino_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">— Solo cambiar de área (sin abrir un flujo) —</option>
+                  {flujosDelArea.map((f) => (
+                    <option key={f.id} value={f.id} disabled={!tienePublicada(f)}>
+                      {f.titulo}{tienePublicada(f) ? "" : " (sin publicar)"}
+                    </option>
+                  ))}
+                </Select>
+                <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+                  {flujosDelArea.length === 0
+                    ? "El área no tiene flujos. Se derivará solo cambiando el área."
+                    : (nodo.config || {}).flujo_destino_id
+                      ? "Al derivar se abre un caso nuevo en este flujo (debe estar publicado)."
+                      : "Sin flujo: la derivación solo cambia el área del caso."}
+                </div>
+              </Field>
+            )}
+          </>
         )}
 
         {nodo.tipo === "estado" && (
@@ -529,6 +608,37 @@ function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar,
         {nodo.tipo === "tiempo" && (
           <Field label="Duración (informativa)">
             <Input value={(nodo.config || {}).duracion || ""} onChange={(e) => setConfig({ duracion: e.target.value })} placeholder="1 mes" />
+          </Field>
+        )}
+
+        {/* Quién hace este paso: grupos responsables. */}
+        {aplicaResponsable && (
+          <Field label="Responsable — ¿quién lo hace?">
+            {grupos.length === 0 ? (
+              <div style={{ fontSize: 12, color: color.slate400 }}>
+                No hay grupos en la institución. Crealos en Estructura → área → Grupos.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 190, overflow: "auto", border: `1px solid ${color.inputBorder}`, borderRadius: 9, padding: 6 }}>
+                {grupos.map((g) => {
+                  const on = asignados.has(g.id);
+                  return (
+                    <label key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 7px", borderRadius: 7, cursor: "pointer", background: on ? color.accent50 : "transparent" }}>
+                      <input type="checkbox" checked={on} onChange={() => toggleGrupo(g.id)} />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: color.slate700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.nombre}</span>
+                        <span style={{ fontSize: 10.5, color: color.slate400 }}>{g.area_nombre}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {asignados.size > 0 && (
+              <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+                Cualquier integrante de {asignados.size === 1 ? "el grupo asignado" : `los ${asignados.size} grupos asignados`} podrá tomar este paso.
+              </div>
+            )}
           </Field>
         )}
 

@@ -68,3 +68,28 @@ class Subarea(models.Model):
 
     def __str__(self):
         return f"{self.nombre} · {self.area.nombre}"
+
+
+class Grupo(models.Model):
+    """
+    Equipo de trabajo dentro de un área (ej: 'Guardia mañana', 'Comité de ablación').
+    Agrupa personas del área; estos grupos luego se usan como destinatarios en los flujos.
+    """
+
+    area = models.ForeignKey(Area, on_delete=models.CASCADE, related_name="grupos")
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField("descripción", blank=True)
+    miembros = models.ManyToManyField(
+        "accounts.Usuario", blank=True, related_name="grupos"
+    )
+    activo = models.BooleanField(default=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "grupo"
+        verbose_name_plural = "grupos"
+        ordering = ["nombre"]
+        unique_together = [("area", "nombre")]
+
+    def __str__(self):
+        return f"{self.nombre} · {self.area.nombre}"

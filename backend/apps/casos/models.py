@@ -65,6 +65,15 @@ class Caso(models.Model):
         related_name="casos_asignados",
     )
 
+    # Caso que originó éste por una derivación entre flujos (ingreso → especialidad).
+    origen = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derivados",
+    )
+
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
 

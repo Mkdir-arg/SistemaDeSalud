@@ -11,10 +11,10 @@ validación previa a publicar.
 """
 from django.test import TestCase
 
-from apps.accounts.models import Usuario
+from apps.accounts.models import Membresia, Usuario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Institucion
+from apps.instituciones.models import Area, Grupo, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria
 
 from . import motor
@@ -27,6 +27,8 @@ class MotorTestCase(TestCase):
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.admision = Area.objects.create(institucion=self.inst, nombre="Admisión")
         self.cardio = Area.objects.create(institucion=self.inst, nombre="Cardiología")
+        # self.user opera como médico (puede firmar atenciones en los tests).
+        Membresia.objects.create(usuario=self.user, institucion=self.inst, rol=Membresia.Rol.MEDICO)
 
         self.form = Formulario.objects.create(institucion=self.inst, titulo="Datos del paciente")
         self.campo_prioridad = Campo.objects.create(
@@ -133,3 +135,77 @@ class MotorTestCase(TestCase):
         )
         problemas = motor.validar_version(self.ver)
         self.assertTrue(any("campo inexistente" in p["titulo"] for p in problemas))
+
+
+class ResponsabilidadTests(TestCase):
+    """`usuario_puede_tomar`: quién puede ejecutar el paso según los grupos del nodo."""
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.grupo = Grupo.objects.create(area=self.area, nombre="Turno mañana")
+        self.miembro = Usuario.objects.create_user("m@cauce.local", "x", nombre="Miembro")
+        self.ajeno = Usuario.objects.create_user("a@cauce.local", "x", nombre="Ajeno")
+        self.jefe = Usuario.objects.create_superuser("j@cauce.local", "x", nombre="Jefe")
+        self.grupo.miembros.add(self.miembro)
+
+        flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Triage")
+        ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        self.nodo = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Evaluar")
+        self.caso = Caso.objects.create(institucion=self.inst, version=ver, nodo_actual=self.nodo)
+
+    def test_paso_abierto_sin_grupos(self):
+        self.assertTrue(motor.usuario_puede_tomar(self.ajeno, self.caso))
+
+    def test_solo_integrantes_del_grupo(self):
+        self.nodo.grupos.add(self.grupo)
+        self.assertTrue(motor.usuario_puede_tomar(self.miembro, self.caso))
+        self.assertFalse(motor.usuario_puede_tomar(self.ajeno, self.caso))
+
+    def test_superusuario_siempre_puede(self):
+        self.nodo.grupos.add(self.grupo)
+        self.assertTrue(motor.usuario_puede_tomar(self.jefe, self.caso))
+
+
+class DerivacionEntreFlujosTests(TestCase):
+    """Un nodo `derivar` con `flujo_destino_id` instancia y arranca un caso allí."""
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.guardia = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.cardio = Area.objects.create(institucion=self.inst, nombre="Cardiología")
+
+        # Flujo destino (Cardiología), publicado: Inicio → Atención → Fin.
+        self.f_cardio = Flujo.objects.create(institucion=self.inst, area=self.cardio, titulo="Atención cardiológica")
+        vc = VersionFlujo.objects.create(flujo=self.f_cardio, numero=1)
+        ci = Nodo.objects.create(version=vc, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        ca = Nodo.objects.create(version=vc, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        cf = Nodo.objects.create(version=vc, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=vc, origen=ci, destino=ca)
+        Conexion.objects.create(version=vc, origen=ca, destino=cf)
+        vc.estado = VersionFlujo.Estado.PUBLICADA
+        vc.save()
+
+        # Flujo de ingreso: Inicio → Derivar(a Cardiología) → Fin.
+        self.f_ing = Flujo.objects.create(institucion=self.inst, area=self.guardia, titulo="Ingreso a Guardia")
+        self.vi = VersionFlujo.objects.create(flujo=self.f_ing, numero=1)
+        ii = Nodo.objects.create(version=self.vi, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        idd = Nodo.objects.create(version=self.vi, tipo=Nodo.Tipo.DERIVAR, titulo="Derivar a Cardiología",
+                                  config={"area_destino_id": self.cardio.id, "flujo_destino_id": self.f_cardio.id})
+        iff = Nodo.objects.create(version=self.vi, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=self.vi, origen=ii, destino=idd)
+        Conexion.objects.create(version=self.vi, origen=idd, destino=iff)
+
+    def test_derivar_instancia_caso_en_destino(self):
+        caso = Caso.objects.create(institucion=self.inst, version=self.vi)
+        motor.iniciar(caso, autor=None)
+
+        derivados = Caso.objects.filter(version__flujo=self.f_cardio)
+        self.assertEqual(derivados.count(), 1)
+        d = derivados.first()
+        self.assertEqual(d.origen_id, caso.id)            # vínculo de trazabilidad
+        self.assertEqual(d.area_actual_id, self.cardio.id)  # área del flujo destino
+        # El caso derivado arrancó y se detuvo en la Atención.
+        self.assertEqual(d.nodo_actual.tipo, Nodo.Tipo.ATENCION)
+        # El caso origen quedó marcado como derivado en su recorrido.
+        self.assertTrue(caso.eventos.filter(titulo="Derivado a otro flujo").exists())

@@ -79,7 +79,8 @@ class Membresia(models.Model):
     class Rol(models.TextChoices):
         ADMIN_INSTITUCION = "admin", "Admin de institución"
         CONFIGURADOR = "configurador", "Configurador"
-        ADMINISTRATIVO = "administrativo", "Administrativo / profesional"
+        ADMINISTRATIVO = "administrativo", "Administrativo"
+        MEDICO = "medico", "Médico / profesional"
 
     usuario = models.ForeignKey(
         Usuario, on_delete=models.CASCADE, related_name="membresias"

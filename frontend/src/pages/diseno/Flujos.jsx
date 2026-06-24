@@ -116,7 +116,16 @@ export default function Flujos() {
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.titulo}</div>
                     </div>
-                    <div><Badge tone="info">{f.area_nombre}</Badge></div>
+                    <div title={f.ambito_label}>
+                      {f.subarea_nombre ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                          <Badge tone="info">{f.area_nombre}</Badge>
+                          <span style={{ fontSize: 12.5, color: color.slate500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>› {f.subarea_nombre}</span>
+                        </span>
+                      ) : (
+                        <Badge tone="info">{f.area_nombre}</Badge>
+                      )}
+                    </div>
                     <div><Badge tone={est.tone}>{est.label}</Badge></div>
                     <div style={{ fontFamily: font.mono, fontSize: 13, color: color.slate500 }}>{f._ver?.etiqueta || "—"}</div>
                     <div style={{ fontSize: 13.5, color: color.slate700 }}>{f.casos_activos > 0 ? `${f.casos_activos} activos` : "—"}</div>
@@ -139,7 +148,7 @@ export default function Flujos() {
 }
 
 async function duplicar(flujo, recargar) {
-  const nf = await api.post("/flujos/", { institucion: flujo.institucion, area: flujo.area, titulo: `${flujo.titulo} (copia)` });
+  const nf = await api.post("/flujos/", { institucion: flujo.institucion, area: flujo.area, subarea: flujo.subarea, titulo: `${flujo.titulo} (copia)` });
   const ver = await api.post("/versiones-flujo/", { flujo: nf.id, numero: 1, estado: "borrador" });
   await api.post("/nodos/", { version: ver.id, tipo: "inicio", titulo: "Inicio", x: 80, y: 220 });
   await recargar();
@@ -161,7 +170,7 @@ function IconBtn({ title, onClick, name }) {
 
 function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
   const [areas, setAreas] = useState([]);
-  const [form, setForm] = useState({ area: "", titulo: "" });
+  const [form, setForm] = useState({ area: "", subarea: "", titulo: "" });
   const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -170,10 +179,18 @@ function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
     api.get(`/areas/?institucion=${institucionId}`).then((d) => setAreas(d.results || d));
   }, [institucionId]);
 
+  const areaSel = useMemo(() => areas.find((a) => String(a.id) === String(form.area)), [areas, form.area]);
+  const subareas = areaSel?.subareas || [];
+
   async function crear() {
     setGuardando(true);
     try {
-      const flujo = await api.post("/flujos/", { institucion: institucionId, area: form.area || null, titulo: form.titulo });
+      const flujo = await api.post("/flujos/", {
+        institucion: institucionId,
+        area: form.area || null,
+        subarea: form.subarea || null,
+        titulo: form.titulo,
+      });
       const ver = await api.post("/versiones-flujo/", { flujo: flujo.id, numero: 1, estado: "borrador" });
       await api.post("/nodos/", { version: ver.id, tipo: "inicio", titulo: "Inicio", x: 80, y: 220 });
       onCreated(flujo.id);
@@ -191,11 +208,27 @@ function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <Field label="Título *"><Input value={form.titulo} onChange={(e) => set("titulo", e.target.value)} autoFocus placeholder="Ingreso de paciente" /></Field>
         <Field label="Área">
-          <Select value={form.area} onChange={(e) => set("area", e.target.value)}>
+          {/* Al cambiar de área se resetea la sub-área elegida. */}
+          <Select value={form.area} onChange={(e) => setForm((p) => ({ ...p, area: e.target.value, subarea: "" }))}>
             <option value="">— Toda la institución —</option>
             {areas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </Select>
         </Field>
+        {areaSel && subareas.length > 0 && (
+          <Field label="Sub-área (proceso específico)">
+            <Select value={form.subarea} onChange={(e) => set("subarea", e.target.value)}>
+              <option value="">— Proceso general del área —</option>
+              {subareas.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </Select>
+          </Field>
+        )}
+        <div style={{ fontSize: 12, color: color.slate400 }}>
+          {form.subarea
+            ? "Proceso específico de la sub-área."
+            : form.area
+              ? "Proceso general del área."
+              : "Proceso de toda la institución."}
+        </div>
       </div>
     </Modal>
   );

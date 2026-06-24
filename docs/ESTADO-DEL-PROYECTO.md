@@ -7,6 +7,16 @@ Cauce = constructor y motor de flujos para procesos de salud / Estado. Ver
 `README.md` para la visión y los `.dc.html` de la raíz (prototipo de alta
 fidelidad — fuente del modelo de datos).
 
+Catálogo completo de funcionalidades (todos los módulos) en
+[`FUNCIONALIDADES.md`](FUNCIONALIDADES.md). Funcionalidades incrementales de
+estructura organizativa y flujos en
+[`FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md`](FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md)
+(eliminar áreas/sub-áreas, ámbito de flujos, grupos de staff).
+
+**Escenario objetivo (norte):** simular una **guardia completa** (ingreso →
+derivación a Trauma/Cardio/Salud mental → atención por especialidad). Spec y
+evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
+
 ---
 
 ## 1. Resumen rápido

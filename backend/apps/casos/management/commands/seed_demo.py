@@ -94,7 +94,11 @@ class Command(BaseCommand):
             return u
 
         staff("m.diaz@hospital.gob.ar", "Martín", "Díaz", [R.CONFIGURADOR], admision)
-        jperez = staff("j.perez@hospital.gob.ar", "Juan", "Pérez", [R.ADMINISTRATIVO], cardio)
+        jperez = staff("j.perez@hospital.gob.ar", "Juan", "Pérez", [R.MEDICO], cardio)
+        # Juan Pérez es médico también en Admisión (firma la atención del ingreso).
+        Membresia.objects.get(usuario=jperez, institucion=inst, rol=R.MEDICO).areas.add(admision)
+        # Limpia un eventual rol administrativo previo (en bases ya sembradas).
+        Membresia.objects.filter(usuario=jperez, institucion=inst, rol=R.ADMINISTRATIVO).delete()
         staff("l.romero@hospital.gob.ar", "Lucía", "Romero", [R.ADMINISTRATIVO], asistencia)
         staff("a.gomez@hospital.gob.ar", "Ana", "Gómez", [R.ADMIN_INSTITUCION], sistemas)
         rsosa = staff("r.sosa@hospital.gob.ar", "Ricardo", "Sosa", [R.CONFIGURADOR, R.ADMINISTRATIVO], cardio)
@@ -118,6 +122,21 @@ class Command(BaseCommand):
             Campo.objects.create(formulario=form, label="Motivo de consulta", tipo=Campo.Tipo.TEXTO_LARGO, orden=3)
         campo_prioridad = form.campos.get(label="Prioridad")
 
+        # Flujo "Atención cardiológica": destino de la derivación del ingreso.
+        # Se crea primero para poder referenciarlo desde el nodo «Derivar».
+        flujo_cardio, _ = Flujo.objects.get_or_create(institucion=inst, area=cardio, titulo="Atención cardiológica")
+        Caso.objects.filter(version__flujo=flujo_cardio).delete()
+        flujo_cardio.versiones.all().delete()
+        ver_cardio = VersionFlujo.objects.create(flujo=flujo_cardio, numero=1)
+        c_inicio = Nodo.objects.create(version=ver_cardio, tipo=Nodo.Tipo.INICIO, titulo="Inicio", x=60, y=160)
+        c_aten = Nodo.objects.create(version=ver_cardio, tipo=Nodo.Tipo.ATENCION, titulo="Consulta cardiológica", x=300, y=160)
+        c_fin = Nodo.objects.create(version=ver_cardio, tipo=Nodo.Tipo.FIN, titulo="Cierre", x=540, y=160)
+        Conexion.objects.create(version=ver_cardio, origen=c_inicio, destino=c_aten)
+        Conexion.objects.create(version=ver_cardio, origen=c_aten, destino=c_fin)
+        if motor.puede_publicar(ver_cardio):
+            ver_cardio.estado = VersionFlujo.Estado.PUBLICADA
+            ver_cardio.save()
+
         # Flujo "Ingreso de paciente" (recreado limpio para que el seed sea estable).
         flujo, _ = Flujo.objects.get_or_create(institucion=inst, area=admision, titulo="Ingreso de paciente")
         # Los casos referencian la versión con on_delete=PROTECT: borrarlos primero.
@@ -131,7 +150,8 @@ class Command(BaseCommand):
         n_inicio = N(Nodo.Tipo.INICIO, "Inicio", 60, 200)
         n_form = N(Nodo.Tipo.FORMULARIO, "Datos del paciente", 280, 200, formulario=form)
         n_dec = N(Nodo.Tipo.DECISION, "¿prioridad?", 520, 200)
-        n_derivar = N(Nodo.Tipo.DERIVAR, "Derivar a Cardiología", 760, 90, config={"area_destino_id": cardio.id})
+        n_derivar = N(Nodo.Tipo.DERIVAR, "Derivar a Cardiología", 760, 90,
+                      config={"area_destino_id": cardio.id, "flujo_destino_id": flujo_cardio.id})
         n_espera = N(Nodo.Tipo.ESPERA_FILA, "Sala de admisión", 760, 320)
         n_atencion = N(Nodo.Tipo.ATENCION, "Evaluación inicial", 1000, 320)
         n_estado = N(Nodo.Tipo.ESTADO, "Atendido", 1000, 90, config={"estado": Caso.Estado.ATENDIDO})
@@ -189,7 +209,8 @@ class Command(BaseCommand):
         motor.iniciar(cd, autor=op)
         motor.avanzar(cd, {"valores": {campo_prioridad.id: "Normal", form.campos.get(label="Nombre").id: "María González"}}, autor=op)
         motor.avanzar(cd, {}, autor=op)  # llamado desde la fila → Atención
-        motor.avanzar(cd, {"titulo": "Evaluación inicial", "contenido": "Paciente estable, dolor torácico leve.", "firmada": True}, autor=op)
+        # La atención la firma un médico (Juan Pérez), no el administrativo.
+        motor.avanzar(cd, {"titulo": "Evaluación inicial", "contenido": "Paciente estable, dolor torácico leve.", "firmada": True}, autor=jperez)
 
         # Antecedentes en la HC de María (para la tarjeta de solo lectura en ejecución).
         hc, _ = HistoriaClinica.objects.get_or_create(ciudadano=c1)

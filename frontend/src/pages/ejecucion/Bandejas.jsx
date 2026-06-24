@@ -37,9 +37,11 @@ export default function Bandejas() {
     cargar(); // eslint-disable-next-line
   }, [institucion]);
 
+  // "Sin asignar" muestra solo lo que el usuario puede tomar: pasos abiertos o
+  // pasos cuyos grupos responsables integra (el backend resuelve `puede_tomar`).
   const filtrados = casos.filter((c) => {
     if (tab === "mios") return c.asignado_a === user?.id;
-    if (tab === "sin") return !c.asignado_a;
+    if (tab === "sin") return !c.asignado_a && c.puede_tomar;
     return true;
   });
 
@@ -56,7 +58,7 @@ export default function Bandejas() {
   }
 
   const cuenta = (k) =>
-    casos.filter((c) => (k === "mios" ? c.asignado_a === user?.id : k === "sin" ? !c.asignado_a : true)).length;
+    casos.filter((c) => (k === "mios" ? c.asignado_a === user?.id : k === "sin" ? !c.asignado_a && c.puede_tomar : true)).length;
 
   return (
     <>
@@ -131,7 +133,14 @@ export default function Bandejas() {
                         <Mono style={{ fontWeight: 700 }}>#{String(c.id).padStart(4, "0")}</Mono>
                         <div style={{ fontSize: 12, color: color.slate500, marginTop: 2 }}>{c.flujo_titulo}</div>
                       </Td>
-                      <Td style={{ color: color.slate600 }}>{c.paso_actual || "—"}</Td>
+                      <Td style={{ color: color.slate600 }}>
+                        {c.paso_actual || "—"}
+                        {c.responsables?.length > 0 && (
+                          <div style={{ fontSize: 11.5, color: color.slate400, marginTop: 2 }}>
+                            👥 {c.responsables.map((g) => g.nombre).join(", ")}
+                          </div>
+                        )}
+                      </Td>
                       <Td>
                         <Badge tone={est.tone}>{est.label}</Badge>
                       </Td>

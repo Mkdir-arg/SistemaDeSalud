@@ -8,9 +8,10 @@ import { color } from "../../theme";
 const ROLES = [
   { value: "admin", label: "Admin de institución" },
   { value: "configurador", label: "Configurador" },
-  { value: "administrativo", label: "Administrativo / profesional" },
+  { value: "administrativo", label: "Administrativo" },
+  { value: "medico", label: "Médico / profesional" },
 ];
-const ROL_LABEL = { admin: "Admin del sistema", configurador: "Configurador", administrativo: "Administrativo" };
+const ROL_LABEL = { admin: "Admin del sistema", configurador: "Configurador", administrativo: "Administrativo", medico: "Médico / profesional" };
 const COLS = "minmax(180px,1.6fr) 160px 150px 110px 44px";
 
 export default function Usuarios() {

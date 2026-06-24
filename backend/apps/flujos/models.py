@@ -21,6 +21,16 @@ class Flujo(models.Model):
         blank=True,
         related_name="flujos",
     )
+    # Si se fija una sub-área, el flujo es un proceso específico de esa sub-área
+    # (y `area` queda apuntando al área padre). Si sólo hay `area`, es un proceso
+    # general del área. Sin ninguna de las dos, es un proceso de toda la institución.
+    subarea = models.ForeignKey(
+        "instituciones.Subarea",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="flujos",
+    )
     titulo = models.CharField("título", max_length=200)
     descripcion = models.TextField("descripción", blank=True)
     creado = models.DateTimeField(auto_now_add=True)
@@ -32,6 +42,22 @@ class Flujo(models.Model):
 
     def __str__(self):
         return self.titulo
+
+    def save(self, *args, **kwargs):
+        # Una sub-área implica su área padre: mantenemos `area` sincronizada para
+        # que los filtros y listados por área sigan funcionando.
+        if self.subarea_id:
+            self.area_id = self.subarea.area_id
+        super().save(*args, **kwargs)
+
+    @property
+    def ambito(self):
+        """Etiqueta del alcance del flujo: institución, área o sub-área."""
+        if self.subarea_id:
+            return "subarea"
+        if self.area_id:
+            return "area"
+        return "institucion"
 
     @property
     def version_publicada(self):
@@ -114,6 +140,13 @@ class Nodo(models.Model):
         null=True,
         blank=True,
         related_name="nodos",
+    )
+
+    # Grupos responsables del paso: definen "quién hace esta acción". Cualquier
+    # integrante de los grupos asignados puede ejecutar/tomar el nodo. Aplica a
+    # los pasos donde una persona trabaja (form, atención, acción, espera).
+    grupos = models.ManyToManyField(
+        "instituciones.Grupo", blank=True, related_name="nodos"
     )
 
     class Meta:

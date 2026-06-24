@@ -137,11 +137,46 @@ export default function CasoDetalle() {
               <Dato k="Estado" v={<Badge tone={est.tone}>{est.label}</Badge>} />
               <Dato k="Flujo" v={caso.flujo_titulo} />
               <Dato k="Área actual" v={caso.area_nombre || "—"} />
+              <Dato k="Responsable" v={caso.responsables?.length ? caso.responsables.map((g) => g.nombre).join(", ") : "Abierto a todos"} />
               <Dato k="Asignado a" v={caso.asignado_nombre || "Sin asignar"} />
               <Dato k="Ingreso" v={fechaHora(caso.creado)} />
               <Dato k="Prioridad" v={caso.prioridad_display} />
             </div>
           </Card>
+
+          {/* Derivaciones entre flujos (origen / destinos) */}
+          {(caso.origen || caso.derivados?.length > 0) && (
+            <Card style={{ padding: 22 }}>
+              <SectionTitle>Derivaciones</SectionTitle>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                {caso.origen && (
+                  <button
+                    onClick={() => navigate(`/casos/${caso.origen}`)}
+                    style={{ textAlign: "left", border: `1px solid ${color.divider}`, background: "none", borderRadius: 9, padding: "10px 12px", cursor: "pointer" }}
+                  >
+                    <div style={{ fontSize: 11, color: color.slate400 }}>Originado desde</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: color.accent }}>{casoId(caso.origen)} · {caso.origen_flujo}</div>
+                  </button>
+                )}
+                {(caso.derivados || []).map((d) => {
+                  const e = estadoCaso[d.estado] || { label: d.estado, tone: "neutral" };
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => navigate(`/casos/${d.id}`)}
+                      style={{ textAlign: "left", border: `1px solid ${color.divider}`, background: "none", borderRadius: 9, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+                    >
+                      <span>
+                        <span style={{ display: "block", fontSize: 11, color: color.slate400 }}>Derivado a</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: color.accent }}>{casoId(d.id)} · {d.flujo_titulo}</span>
+                      </span>
+                      <Badge tone={e.tone}>{e.label}</Badge>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
           {/* Trazabilidad */}
           <Card style={{ padding: 22 }}>
@@ -179,6 +214,20 @@ function PanelPaso({ caso, cerrado, accionando, ejecutar }) {
           <div style={{ fontSize: 15, fontWeight: 700 }}>Caso cerrado</div>
           <div style={{ fontSize: 13, color: color.slate500 }}>Este caso completó su recorrido.</div>
         </div>
+      </Card>
+    );
+  }
+
+  // Este paso tiene grupos responsables y el usuario no integra ninguno.
+  if (caso.responsables?.length > 0 && !caso.puede_tomar) {
+    return (
+      <Card style={{ padding: 24 }}>
+        <PanelHeader tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
+        <p style={{ fontSize: 13.5, color: color.slate600, margin: 0 }}>
+          Este paso lo realiza{" "}
+          <strong>{caso.responsables.map((g) => g.nombre).join(", ")}</strong>.
+          No integrás {caso.responsables.length === 1 ? "ese grupo" : "esos grupos"}, así que no podés ejecutarlo.
+        </p>
       </Card>
     );
   }

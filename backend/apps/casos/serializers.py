@@ -47,6 +47,11 @@ class CasoSerializer(serializers.ModelSerializer):
     area_nombre = serializers.SerializerMethodField()
     ciudadano_nombre = serializers.SerializerMethodField()
     asignado_nombre = serializers.SerializerMethodField()
+    # Grupos responsables del paso actual y si el usuario actual puede tomarlo.
+    responsables = serializers.SerializerMethodField()
+    puede_tomar = serializers.SerializerMethodField()
+    # Trazabilidad de derivaciones entre flujos.
+    origen_flujo = serializers.CharField(source="origen.version.flujo.titulo", read_only=True, default=None)
 
     class Meta:
         model = Caso
@@ -54,12 +59,31 @@ class CasoSerializer(serializers.ModelSerializer):
             "id", "institucion", "version", "flujo_titulo", "ciudadano", "ciudadano_nombre",
             "estado", "estado_display", "prioridad", "prioridad_display",
             "nodo_actual", "paso_actual", "nodo_tipo", "area_actual", "area_nombre",
-            "asignado_a", "asignado_nombre", "creado", "actualizado",
+            "asignado_a", "asignado_nombre", "responsables", "puede_tomar",
+            "origen", "origen_flujo", "creado", "actualizado",
         ]
         read_only_fields = ["creado", "actualizado"]
 
     def get_area_nombre(self, obj):
         return obj.area_actual.nombre if obj.area_actual_id else None
+
+    def get_responsables(self, obj):
+        if not obj.nodo_actual_id:
+            return []
+        return [{"id": g.id, "nombre": g.nombre} for g in obj.nodo_actual.grupos.all()]
+
+    def get_puede_tomar(self, obj):
+        # Abierto a todos si el paso no declara grupos; si los declara, el usuario
+        # debe integrar alguno (el super admin pasa siempre).
+        if not obj.nodo_actual_id:
+            return True
+        gids = [g.id for g in obj.nodo_actual.grupos.all()]
+        if not gids:
+            return True
+        if self.context.get("es_superuser"):
+            return True
+        user_gids = self.context.get("user_grupo_ids") or set()
+        return any(g in user_gids for g in gids)
 
     def get_ciudadano_nombre(self, obj):
         if obj.ciudadano_id:
@@ -75,6 +99,14 @@ class CasoDetalleSerializer(CasoSerializer):
 
     valores = ValorCampoSerializer(many=True, read_only=True)
     eventos = EventoCasoSerializer(many=True, read_only=True)
+    # Casos generados por derivación desde éste (ingreso → especialidades).
+    derivados = serializers.SerializerMethodField()
 
     class Meta(CasoSerializer.Meta):
-        fields = CasoSerializer.Meta.fields + ["valores", "eventos"]
+        fields = CasoSerializer.Meta.fields + ["valores", "eventos", "derivados"]
+
+    def get_derivados(self, obj):
+        return [
+            {"id": d.id, "flujo_titulo": d.version.flujo.titulo, "estado": d.estado}
+            for d in obj.derivados.select_related("version__flujo").all()
+        ]

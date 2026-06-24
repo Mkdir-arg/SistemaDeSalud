@@ -5,18 +5,24 @@ import { useAuth } from "./AuthContext";
 const InstitutionContext = createContext(null);
 const KEY = "cauce.institucion";
 
-// Grupos del menú que habilita cada rol (además, el super admin ve todo).
-const GRUPOS_POR_ROL = {
-  admin: ["TRABAJO", "REGISTROS", "DISEÑO", "SISTEMA"],
-  configurador: ["DISEÑO"],
-  administrativo: ["TRABAJO", "REGISTROS"],
+// Capacidades que habilita cada rol. El menú gatea por capacidad (no por grupo),
+// porque SISTEMA mezcla ítems de configuración (admin) con ítems de diseño (configurador).
+//   config    → Estructura organizativa, Administración
+//   diseno    → Flujos, Mapa de flujos, Formularios
+//   trabajo   → Bandeja, Filas, Casos
+//   registros → Historia clínica, Legajo
+const CAPS_POR_ROL = {
+  admin: ["config", "diseno", "trabajo", "registros"],
+  configurador: ["diseno"],
+  administrativo: ["trabajo", "registros"],
+  medico: ["trabajo", "registros"], // igual que administrativo; la diferencia es firmar atenciones
 };
 
 // Vista "ver como rol" (selector de la barra superior, sólo super admin).
-export const VISTA_GRUPOS = {
-  configurador: ["DISEÑO"],
-  administrativo: ["TRABAJO", "REGISTROS"],
-  sistema: ["TRABAJO", "REGISTROS", "DISEÑO", "SISTEMA"],
+export const VISTA_CAPS = {
+  configurador: ["diseno"],
+  administrativo: ["trabajo", "registros"],
+  sistema: ["config", "diseno", "trabajo", "registros"],
 };
 
 export function InstitutionProvider({ children }) {
@@ -70,10 +76,10 @@ export function InstitutionProvider({ children }) {
     else localStorage.removeItem(KEY);
   }
 
-  // ¿El usuario puede ver este grupo del menú en la institución actual?
-  function puedeVer(grupo) {
-    if (user?.is_superuser) return (VISTA_GRUPOS[vista] || VISTA_GRUPOS.sistema).includes(grupo);
-    return roles.some((r) => (GRUPOS_POR_ROL[r] || []).includes(grupo));
+  // ¿El usuario tiene esta capacidad en la institución actual?
+  function puedeVer(cap) {
+    if (user?.is_superuser) return (VISTA_CAPS[vista] || VISTA_CAPS.sistema).includes(cap);
+    return roles.some((r) => (CAPS_POR_ROL[r] || []).includes(cap));
   }
 
   return (
