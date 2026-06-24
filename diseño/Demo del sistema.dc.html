@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;box-sizing:border-box;}
+body{font-family:Inter,system-ui,sans-serif;color:#14161C;background:#0E1014;-webkit-font-smoothing:antialiased;overflow:hidden;}
+@keyframes dFadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+@keyframes dFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes dPop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
+@keyframes dGrowW{from{width:0}to{width:var(--w,100%)}}
+@keyframes dGrowH{from{height:0}to{height:var(--h,100%)}}
+@keyframes dFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes dRing{0%{transform:scale(.6);opacity:.6}100%{transform:scale(1.7);opacity:0}}
+@keyframes dSheen{0%{transform:translateX(-120%)}60%,100%{transform:translateX(220%)}}
+@keyframes dDash{to{stroke-dashoffset:0}}
+</style>
+</helmet>
+
+<div style="width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 120% at 50% 0%,#1A1E29 0%,#0E1014 60%);">
+  <div style="position:relative;width:1280px;height:720px;background:#F6F7F9;border-radius:18px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.55);">
+
+    <!-- top brand bar -->
+    <div style="position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:11px;padding:0 26px;background:#fff;border-bottom:1px solid #EBEDF1;z-index:5;">
+      <div style="width:26px;height:26px;border-radius:7px;background:#3949C0;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="3.5" cy="8" r="2.1" fill="#fff"/><circle cx="12.5" cy="3.5" r="2.1" fill="#fff" opacity=".85"/><circle cx="12.5" cy="12.5" r="2.1" fill="#fff" opacity=".85"/><path d="M5.4 7.1 10.8 4.2M5.4 8.9 10.8 11.8" stroke="#fff" stroke-width="1.3"/></svg></div>
+      <div style="font-size:14px;font-weight:700;letter-spacing:-.2px;">Cauce</div>
+      <div style="font-size:11.5px;color:#A4ABB8;font-weight:500;">Constructor y motor de flujos</div>
+      <div style="flex:1;"></div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.8px;color:#C3C8D0;">DEMO</div>
+    </div>
+
+    <!-- stage -->
+    <div style="position:absolute;top:52px;left:0;right:0;bottom:64px;overflow:hidden;">
+
+      <!-- SCENE 0 — TITLE -->
+      <sc-if value="{{ s0 }}">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(110% 90% at 50% 18%,#EEF0FB 0%,#F6F7F9 55%);">
+        <div style="animation:dPop .7s cubic-bezier(.2,.8,.2,1) both;width:74px;height:74px;border-radius:20px;background:#3949C0;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 40px rgba(57,73,192,.35);margin-bottom:26px;"><svg width="38" height="38" viewBox="0 0 16 16" fill="none"><circle cx="3.5" cy="8" r="2.1" fill="#fff"/><circle cx="12.5" cy="3.5" r="2.1" fill="#fff" opacity=".9"/><circle cx="12.5" cy="12.5" r="2.1" fill="#fff" opacity=".9"/><path d="M5.4 7.1 10.8 4.2M5.4 8.9 10.8 11.8" stroke="#fff" stroke-width="1.2"/></svg></div>
+        <div style="animation:dFadeUp .7s .15s both;font-size:62px;font-weight:800;letter-spacing:-1.5px;color:#14161C;">Cauce</div>
+        <div style="animation:dFadeUp .7s .32s both;font-size:24px;font-weight:600;color:#3949C0;margin-top:8px;">Dibujás el proceso. El sistema lo ejecuta.</div>
+        <div style="animation:dFadeUp .7s .5s both;font-size:15.5px;color:#667085;margin-top:18px;max-width:560px;line-height:1.5;">Un editor visual para procesos de hospitales y trámites del Estado — donde el diagrama se convierte, solo, en las pantallas que opera el personal.</div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 1 — LA IDEA -->
+      <sc-if value="{{ s1 }}">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:0;padding:0 70px;">
+        <div style="animation:dFadeUp .6s both;flex:1;max-width:380px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#3949C0;margin-bottom:10px;">EL PRINCIPIO</div>
+          <div style="font-size:34px;font-weight:800;letter-spacing:-.8px;line-height:1.12;">Una sola definición,<br>dos mundos.</div>
+          <div style="font-size:15px;color:#667085;margin-top:16px;line-height:1.55;">Lo que diseña el configurador es una <b style="color:#1F2430;">plantilla</b>. Lo que corre con datos reales es un <b style="color:#1F2430;">caso</b>. El motor lee la misma definición para dibujar el diagrama y para renderizar las pantallas. Nadie programa una pantalla a mano.</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:18px;align-items:center;">
+          <div style="animation:dPop .6s .2s both;width:330px;background:#fff;border:1px solid #E2E5EA;border-radius:14px;padding:16px;box-shadow:0 12px 30px rgba(16,24,40,.1);">
+            <div style="font-size:10.5px;font-weight:700;color:#A4ABB8;letter-spacing:.6px;margin-bottom:11px;">DISEÑO · LIENZO</div>
+            <div style="display:flex;align-items:center;gap:7px;">
+              <div style="flex:none;width:54px;height:30px;border-radius:8px;background:#E9F6EF;border:1px solid #BBE3CD;"></div>
+              <div style="flex:1;height:2px;background:#CFD4DC;"></div>
+              <div style="flex:none;width:60px;height:30px;border-radius:8px;background:#ECEEFB;border:1px solid #C7CDF2;"></div>
+              <div style="flex:1;height:2px;background:#CFD4DC;"></div>
+              <div style="flex:none;width:40px;height:30px;border-radius:8px;background:#FBF2E0;border:1px solid #EBD7AC;transform:rotate(45deg);"></div>
+            </div>
+          </div>
+          <div style="animation:dFadeIn .5s .55s both;color:#3949C0;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3949C0" stroke-width="2"><path d="M12 4v16M6 14l6 6 6-6"/></svg></div>
+          <div style="animation:dPop .6s .7s both;width:330px;background:#fff;border:1px solid #E2E5EA;border-radius:14px;padding:16px;box-shadow:0 12px 30px rgba(16,24,40,.1);">
+            <div style="font-size:10.5px;font-weight:700;color:#A4ABB8;letter-spacing:.6px;margin-bottom:11px;">EJECUCIÓN · SISTEMA</div>
+            <div style="height:11px;width:55%;background:#EEF0F3;border-radius:4px;margin-bottom:9px;"></div>
+            <div style="height:34px;background:#FAFBFC;border:1px solid #E7E9EE;border-radius:8px;margin-bottom:8px;"></div>
+            <div style="height:34px;background:#FAFBFC;border:1px solid #E7E9EE;border-radius:8px;"></div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 2 — DISEÑAR (lienzo) -->
+      <sc-if value="{{ s2 }}">
+      <div style="position:absolute;inset:0;padding:34px 56px;background-color:#FBFBFD;background-image:radial-gradient(circle,#DDE1E8 1.1px,transparent 1.1px);background-size:22px 22px;">
+        <div style="animation:dFadeUp .5s both;font-size:11px;font-weight:700;letter-spacing:1px;color:#3949C0;">PASO 1 · CONFIGURAR</div>
+        <div style="animation:dFadeUp .5s .08s both;font-size:27px;font-weight:800;letter-spacing:-.6px;margin-top:4px;">Arrastrás nodos y los conectás</div>
+        <div style="position:relative;margin-top:30px;height:330px;">
+          <svg width="100%" height="330" style="position:absolute;inset:0;pointer-events:none;overflow:visible;" fill="none">
+            <path d="M150 95 L250 95" stroke="#9AA2B1" stroke-width="2" stroke-dasharray="120" stroke-dashoffset="120" style="animation:dDash .5s 1s both;" marker-end="url(#dm)"/>
+            <path d="M420 95 L520 95" stroke="#9AA2B1" stroke-width="2" stroke-dasharray="120" stroke-dashoffset="120" style="animation:dDash .5s 1.5s both;" marker-end="url(#dm)"/>
+            <path d="M690 95 L790 95" stroke="#9AA2B1" stroke-width="2" stroke-dasharray="120" stroke-dashoffset="120" style="animation:dDash .5s 2s both;" marker-end="url(#dm)"/>
+            <path d="M935 110 C975 110 975 210 1010 210" stroke="#C98A2B" stroke-width="2" stroke-dasharray="160" stroke-dashoffset="160" style="animation:dDash .5s 2.5s both;" marker-end="url(#dma)"/>
+            <defs><marker id="dm" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M1 1 7.5 4.5 1 8" fill="none" stroke="#9AA2B1" stroke-width="1.5"/></marker><marker id="dma" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M1 1 7.5 4.5 1 8" fill="none" stroke="#C98A2B" stroke-width="1.5"/></marker></defs>
+          </svg>
+          <div style="position:absolute;left:30px;top:74px;animation:dPop .45s .2s both;display:flex;align-items:center;gap:9px;background:#E9F6EF;border:1px solid #BBE3CD;color:#16794B;border-radius:13px;padding:11px 14px;box-shadow:0 2px 6px rgba(16,24,40,.06);"><span style="width:18px;height:18px;border-radius:50%;border:2px solid currentColor;"></span><b style="font-size:13px;letter-spacing:.3px;">INICIO</b></div>
+          <div style="position:absolute;left:250px;top:70px;animation:dPop .45s .7s both;display:flex;align-items:center;gap:9px;background:#ECEEFB;border:1px solid #C7CDF2;color:#2D3A9E;border-radius:13px;padding:11px 14px;width:170px;box-shadow:0 2px 6px rgba(16,24,40,.06);"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2.5" width="14" height="15" rx="2"/><path d="M6 6.5h8M6 10h8M6 13.5h5"/></svg><div style="line-height:1.2;"><div style="font-size:9.5px;font-weight:700;opacity:.8;">FORMULARIO</div><div style="font-size:13px;font-weight:600;">datos del paciente</div></div></div>
+          <div style="position:absolute;left:520px;top:70px;animation:dPop .45s 1.2s both;display:flex;align-items:center;gap:9px;background:#E2F6F9;border:1px solid #B6E4EC;color:#0C7C8E;border-radius:13px;padding:11px 14px;width:170px;box-shadow:0 2px 6px rgba(16,24,40,.06);"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M5.5 7h9M5.5 10h9M5.5 13h5.5"/></svg><div style="line-height:1.2;"><div style="font-size:9.5px;font-weight:700;opacity:.8;">ESPERA DE FILA</div><div style="font-size:13px;font-weight:600;">Sala de admisión</div></div></div>
+          <div style="position:absolute;left:790px;top:70px;animation:dPop .45s 1.7s both;display:flex;align-items:center;gap:9px;background:#FCEAF2;border:1px solid #F2C4DA;color:#A8316E;border-radius:13px;padding:11px 14px;width:145px;box-shadow:0 2px 6px rgba(16,24,40,.06);"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 17s-6-3.7-6-8.2A3.3 3.3 0 0 1 10 6a3.3 3.3 0 0 1 6 2.8C16 13.3 10 17 10 17z"/></svg><div style="line-height:1.2;"><div style="font-size:9.5px;font-weight:700;opacity:.8;">ATENCIÓN</div><div style="font-size:13px;font-weight:600;">evaluación</div></div></div>
+          <div style="position:absolute;left:1010px;top:186px;animation:dPop .45s 2.2s both;display:flex;align-items:center;gap:9px;background:#FBF2E0;border:1px solid #EBD7AC;color:#A96A12;border-radius:13px;padding:11px 14px;width:150px;box-shadow:0 2px 6px rgba(16,24,40,.06);"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5 17.5 10 10 17.5 2.5 10z"/></svg><div style="line-height:1.2;"><div style="font-size:9.5px;font-weight:700;opacity:.8;">DECISIÓN</div><div style="font-size:13px;font-weight:600;">¿a qué área?</div></div></div>
+          <div style="position:absolute;left:128px;top:84px;width:16px;height:16px;border-radius:50%;background:#3949C0;box-shadow:0 0 0 5px rgba(57,73,192,.25);animation:dFadeIn .3s 2.9s both;"></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 3 — SE VUELVE PANTALLA -->
+      <sc-if value="{{ s3 }}">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;gap:40px;padding:0 64px;">
+        <div style="animation:dFadeUp .6s both;flex:1;max-width:360px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#3949C0;margin-bottom:10px;">PASO 2 · EL DISEÑO SE VUELVE PANTALLA</div>
+          <div style="font-size:32px;font-weight:800;letter-spacing:-.7px;line-height:1.14;">Armás el formulario.<br>Lo ves en vivo.</div>
+          <div style="font-size:15px;color:#667085;margin-top:14px;line-height:1.55;">Campos que se traen de la <b style="color:#2D3A9E;">historia clínica</b> o del legajo ciudadano, validaciones, reglas. La previsualización muestra exactamente lo que verá el personal.</div>
+        </div>
+        <div style="animation:dPop .6s .25s both;flex:1;display:flex;gap:16px;">
+          <div style="flex:1;background:#fff;border:1px solid #E7E9EE;border-radius:13px;padding:15px;box-shadow:0 10px 26px rgba(16,24,40,.08);">
+            <div style="font-size:10px;font-weight:700;color:#A4ABB8;letter-spacing:.5px;margin-bottom:11px;">EDITOR</div>
+            <div style="display:flex;flex-direction:column;gap:7px;">
+              <div style="height:30px;border:1px solid #E7E9EE;border-radius:7px;background:#FCFCFD;animation:dFadeUp .4s .5s both;"></div>
+              <div style="height:30px;border:1.5px solid #C7CDF2;border-radius:7px;background:#F4F5FC;animation:dFadeUp .4s .65s both;"></div>
+              <div style="height:30px;border:1px solid #E7E9EE;border-radius:7px;background:#FCFCFD;animation:dFadeUp .4s .8s both;"></div>
+            </div>
+          </div>
+          <div style="flex:1;background:#fff;border:1px solid #E7E9EE;border-radius:13px;padding:15px;box-shadow:0 10px 26px rgba(16,24,40,.08);">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:11px;"><span style="width:6px;height:6px;border-radius:50%;background:#1B7A4E;"></span><span style="font-size:10px;font-weight:700;color:#1B7A4E;letter-spacing:.4px;">VISTA EN VIVO</span></div>
+            <div style="font-size:12px;font-weight:600;margin-bottom:8px;">datos del paciente</div>
+            <div style="font-size:10px;color:#98A0AE;margin-bottom:3px;animation:dFadeUp .4s .55s both;">Nombre</div>
+            <div style="height:26px;border:1px solid #DDE0E6;border-radius:6px;margin-bottom:8px;animation:dFadeUp .4s .55s both;"></div>
+            <div style="font-size:10px;color:#0C7C8E;margin-bottom:3px;animation:dFadeUp .4s .72s both;">Alergias · ↩ historia clínica</div>
+            <div style="height:26px;border:1px solid #B6E4EC;background:#F3FCFD;border-radius:6px;animation:dFadeUp .4s .72s both;"></div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 4 — EJECUCIÓN -->
+      <sc-if value="{{ s4 }}">
+      <div style="position:absolute;inset:0;padding:34px 56px;">
+        <div style="animation:dFadeUp .5s both;font-size:11px;font-weight:700;letter-spacing:1px;color:#3949C0;">PASO 3 · EJECUTAR</div>
+        <div style="animation:dFadeUp .5s .08s both;font-size:27px;font-weight:800;letter-spacing:-.6px;margin-top:4px;">El personal opera casos reales</div>
+        <div style="margin-top:22px;display:flex;gap:18px;">
+          <div style="animation:dPop .5s .2s both;flex:1;background:#fff;border:1px solid #E7E9EE;border-radius:13px;overflow:hidden;box-shadow:0 10px 26px rgba(16,24,40,.07);">
+            <div style="padding:11px 16px;border-bottom:1px solid #EEF0F3;font-size:12px;font-weight:700;color:#344054;">Bandeja de tareas</div>
+            <div style="padding:8px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #F4F5F7;animation:dFadeUp .4s .5s both;"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;">#1042</span><span style="flex:1;font-size:12px;color:#667085;">Datos del paciente</span><span style="font-size:10.5px;font-weight:600;background:#EEF0F3;color:#475467;padding:2px 8px;border-radius:5px;">Recibido</span></div>
+            <div style="padding:8px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #F4F5F7;animation:dFadeUp .4s .65s both;"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;">#1039</span><span style="flex:1;font-size:12px;color:#667085;">Sala de admisión · A-042</span><span style="font-size:10.5px;font-weight:600;background:#FBF0DD;color:#A96A12;padding:2px 8px;border-radius:5px;">En espera</span></div>
+            <div style="padding:8px 16px;display:flex;align-items:center;gap:10px;animation:dFadeUp .4s .8s both;"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;">#1018</span><span style="flex:1;font-size:12px;color:#667085;">Evaluación inicial</span><span style="font-size:10.5px;font-weight:600;background:#E8EEFB;color:#2D3A9E;padding:2px 8px;border-radius:5px;">En evaluación</span></div>
+          </div>
+          <div style="animation:dPop .5s .4s both;width:420px;background:#fff;border:1px solid #E7E9EE;border-radius:13px;padding:16px;box-shadow:0 10px 26px rgba(16,24,40,.07);">
+            <div style="font-size:12px;font-weight:700;margin-bottom:14px;">Caso #1039 · stepper</div>
+            <div style="display:flex;align-items:center;">
+              <div style="width:22px;height:22px;border-radius:50%;background:#3949C0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;flex:none;">✓</div>
+              <div style="flex:1;height:2px;background:#3949C0;margin:0 5px;"></div>
+              <div style="width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #3949C0;color:#3949C0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:none;box-shadow:0 0 0 4px rgba(57,73,192,.13);">2</div>
+              <div style="flex:1;height:2px;background:#E2E5EA;margin:0 5px;"></div>
+              <div style="width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #DDE0E6;color:#A4ABB8;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:none;">3</div>
+              <div style="flex:1;height:2px;background:#E2E5EA;margin:0 5px;"></div>
+              <div style="width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #DDE0E6;color:#A4ABB8;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:none;">4</div>
+            </div>
+            <div style="margin-top:16px;background:#FAFBFC;border:1px solid #EEF0F3;border-radius:9px;padding:11px;animation:dFadeUp .4s .8s both;">
+              <div style="font-size:10px;color:#98A0AE;margin-bottom:7px;">EXPEDIENTE ACUMULATIVO</div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;padding:3px 0;"><span style="color:#98A0AE;">Nombre</span><b>María González</b></div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;padding:3px 0;"><span style="color:#98A0AE;">Obra social</span><b>OSDE</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 5 — FILA + ATENCIÓN → HC -->
+      <sc-if value="{{ s5 }}">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;gap:38px;padding:0 60px;">
+        <div style="animation:dFadeUp .6s both;flex:1;max-width:350px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#A8316E;margin-bottom:10px;">FILA · ATENCIÓN · HISTORIA CLÍNICA</div>
+          <div style="font-size:31px;font-weight:800;letter-spacing:-.6px;line-height:1.14;">Llamás al siguiente.<br>La atención queda asentada.</div>
+          <div style="font-size:15px;color:#667085;margin-top:14px;line-height:1.55;">El operador atiende de a uno. Cada <b style="color:#A8316E;">Atención</b> escribe una entrada firmada en la historia clínica del paciente y suma actividad al legajo del profesional.</div>
+        </div>
+        <div style="animation:dPop .6s .25s both;flex:1;display:flex;flex-direction:column;gap:14px;">
+          <div style="background:#fff;border:1px solid #E7E9EE;border-radius:13px;padding:15px;box-shadow:0 10px 26px rgba(16,24,40,.08);display:flex;align-items:center;gap:13px;">
+            <div style="width:48px;height:48px;border-radius:11px;background:#16B1C9;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;flex:none;">A-042</div>
+            <div style="flex:1;"><div style="font-size:13px;font-weight:700;">Atendiendo ahora</div><div style="font-size:11.5px;color:#98A0AE;">María González · próximo en la fila</div></div>
+            <div style="position:relative;width:18px;height:18px;"><div style="position:absolute;inset:0;border-radius:50%;border:2px solid #16B1C9;animation:dRing 1.2s ease-out infinite;"></div><div style="position:absolute;inset:5px;border-radius:50%;background:#16B1C9;"></div></div>
+          </div>
+          <div style="background:#FCEAF2;border:1px solid #F2C4DA;border-radius:13px;padding:15px;animation:dFadeUp .5s .6s both;">
+            <div style="font-size:11px;font-weight:700;color:#A8316E;margin-bottom:8px;">ATENCIÓN → HISTORIA CLÍNICA</div>
+            <div style="background:#fff;border-radius:9px;padding:11px;border:1px solid #F2C4DA;">
+              <div style="font-size:12px;font-weight:600;">Evaluación inicial · Cardiología</div>
+              <div style="font-size:11.5px;color:#667085;margin-top:3px;">Dolor torácico leve, ECG normal.</div>
+              <div style="font-size:10.5px;color:#A8316E;margin-top:7px;">✎ firmada por Dr. J. Pérez · M.N. 98.214</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 6 — MULTI-INSTITUCIÓN + ÁREAS -->
+      <sc-if value="{{ s6 }}">
+      <div style="position:absolute;inset:0;padding:34px 56px;">
+        <div style="animation:dFadeUp .5s both;font-size:11px;font-weight:700;letter-spacing:1px;color:#3949C0;">UNA PLATAFORMA · MUCHAS INSTITUCIONES</div>
+        <div style="animation:dFadeUp .5s .08s both;font-size:27px;font-weight:800;letter-spacing:-.6px;margin-top:4px;">Cada institución, su propia estructura</div>
+        <div style="margin-top:24px;display:flex;gap:18px;align-items:flex-start;">
+          <div style="display:flex;flex-direction:column;gap:11px;flex:none;">
+            <div style="animation:dPop .45s .2s both;width:250px;display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #E7E9EE;border-radius:11px;padding:13px;box-shadow:0 6px 18px rgba(16,24,40,.07);"><div style="width:34px;height:34px;border-radius:9px;background:#ECEEFB;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="#3949C0" stroke-width="1.5"><path d="M3 16V7l6-3.5L15 7v9M7 16v-4h4v4"/></svg></div><div><div style="font-size:13px;font-weight:700;">Hospital Central</div><div style="font-size:11px;color:#98A0AE;">142 staff · 59 casos</div></div></div>
+            <div style="animation:dPop .45s .35s both;width:250px;display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #E7E9EE;border-radius:11px;padding:13px;opacity:.92;"><div style="width:34px;height:34px;border-radius:9px;background:#EEF0F3;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="#667085" stroke-width="1.5"><path d="M3 16V7l6-3.5L15 7v9M7 16v-4h4v4"/></svg></div><div><div style="font-size:13px;font-weight:700;">Centro de Salud Norte</div><div style="font-size:11px;color:#98A0AE;">38 staff</div></div></div>
+            <div style="animation:dPop .45s .5s both;width:250px;display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #E7E9EE;border-radius:11px;padding:13px;opacity:.82;"><div style="width:34px;height:34px;border-radius:9px;background:#EEF0F3;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="#667085" stroke-width="1.5"><path d="M3 16V7l6-3.5L15 7v9M7 16v-4h4v4"/></svg></div><div><div style="font-size:13px;font-weight:700;">Hospital Pediátrico</div><div style="font-size:11px;color:#98A0AE;">97 staff</div></div></div>
+          </div>
+          <div style="animation:dFadeIn .5s .6s both;align-self:center;color:#C3C8D0;"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></div>
+          <div style="animation:dPop .55s .7s both;flex:1;background:#fff;border:1px solid #E7E9EE;border-radius:13px;padding:16px;box-shadow:0 10px 26px rgba(16,24,40,.08);">
+            <div style="font-size:10px;font-weight:700;color:#A4ABB8;letter-spacing:.5px;margin-bottom:12px;">ESTRUCTURA · HOSPITAL CENTRAL</div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:13px;">
+              <div style="display:flex;align-items:center;gap:8px;font-weight:700;"><span style="width:22px;height:22px;border-radius:6px;background:#E8EBF6;color:#3949C0;display:flex;align-items:center;justify-content:center;font-size:11px;">▣</span>Hospital Central</div>
+              <div style="display:flex;align-items:center;gap:8px;padding-left:22px;color:#475467;"><span style="width:20px;height:20px;border-radius:6px;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:10px;">◧</span>Admisión</div>
+              <div style="display:flex;align-items:center;gap:8px;padding-left:22px;color:#2D3A9E;font-weight:600;"><span style="width:20px;height:20px;border-radius:6px;background:#ECEEFB;display:flex;align-items:center;justify-content:center;font-size:10px;">◧</span>Cardiología</div>
+              <div style="display:flex;align-items:center;gap:8px;padding-left:44px;color:#667085;font-size:12px;"><span style="width:18px;height:18px;border-radius:5px;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:9px;">▫</span>Hemodinamia</div>
+              <div style="display:flex;align-items:center;gap:8px;padding-left:44px;color:#667085;font-size:12px;"><span style="width:18px;height:18px;border-radius:5px;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:9px;">▫</span>Consultorios externos</div>
+              <div style="display:flex;align-items:center;gap:8px;padding-left:22px;color:#475467;"><span style="width:20px;height:20px;border-radius:6px;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:10px;">◧</span>Asistencia social</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 7 — TRAZABILIDAD -->
+      <sc-if value="{{ s7 }}">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;gap:40px;padding:0 64px;">
+        <div style="animation:dFadeUp .6s both;flex:1;max-width:350px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#3949C0;margin-bottom:10px;">TRAZABILIDAD</div>
+          <div style="font-size:32px;font-weight:800;letter-spacing:-.7px;line-height:1.14;">Todo queda registrado.<br>Y es inmutable.</div>
+          <div style="font-size:15px;color:#667085;margin-top:14px;line-height:1.55;">Cada paso, dato, llamado, derivación y atención queda en una línea de tiempo de auditoría — con quién lo hizo y cuándo.</div>
+        </div>
+        <div style="animation:dPop .6s .25s both;flex:1;background:#fff;border:1px solid #E7E9EE;border-radius:14px;padding:20px 22px;box-shadow:0 12px 30px rgba(16,24,40,.1);">
+          <div style="font-size:12px;font-weight:700;margin-bottom:16px;">Caso #0997 · línea de tiempo</div>
+          <sc-for list="{{ tline }}" as="e" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:16px 1fr;gap:12px;{{ e.anim }}">
+              <div style="display:flex;flex-direction:column;align-items:center;"><span style="width:11px;height:11px;border-radius:50%;background:{{ e.c }};border:2px solid #fff;box-shadow:0 0 0 1.5px {{ e.c }}66;flex:none;"></span><sc-if value="{{ e.line }}"><span style="flex:1;width:2px;background:#EAECEF;margin:2px 0;min-height:16px;"></span></sc-if></div>
+              <div style="padding-bottom:13px;margin-top:-3px;"><div style="font-size:12.5px;font-weight:600;color:#1F2430;">{{ e.t }}</div><div style="font-size:10.5px;color:#A4ABB8;margin-top:1px;">{{ e.w }}</div></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- SCENE 8 — CIERRE -->
+      <sc-if value="{{ s8 }}">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(110% 90% at 50% 30%,#EEF0FB 0%,#F6F7F9 60%);">
+        <div style="animation:dPop .6s both;font-size:46px;font-weight:800;letter-spacing:-1.2px;line-height:1.1;">Del diagrama<br><span style="color:#3949C0;">al expediente.</span></div>
+        <div style="animation:dFadeUp .6s .2s both;font-size:17px;color:#667085;margin-top:18px;max-width:520px;line-height:1.5;">Diseñá una vez. Ejecutá miles de casos. Auditá todo. Cauce conecta el proceso con la operación real, sin programar una sola pantalla.</div>
+        <div style="animation:dFadeUp .6s .4s both;margin-top:30px;display:flex;align-items:center;gap:11px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:#3949C0;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="3.5" cy="8" r="2.1" fill="#fff"/><circle cx="12.5" cy="3.5" r="2.1" fill="#fff" opacity=".9"/><circle cx="12.5" cy="12.5" r="2.1" fill="#fff" opacity=".9"/><path d="M5.4 7.1 10.8 4.2M5.4 8.9 10.8 11.8" stroke="#fff" stroke-width="1.2"/></svg></div>
+          <span style="font-size:22px;font-weight:800;letter-spacing:-.4px;">Cauce</span>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+
+    <!-- control bar -->
+    <div style="position:absolute;bottom:0;left:0;right:0;height:64px;background:#14161C;display:flex;align-items:center;gap:16px;padding:0 22px;z-index:10;">
+      <button onClick="{{ onToggle }}" style="width:38px;height:38px;border-radius:10px;background:#3949C0;color:#fff;display:flex;align-items:center;justify-content:center;flex:none;" style-hover="background:#2D3A9E;">
+        <sc-if value="{{ playing }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="#fff"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg></sc-if>
+        <sc-if value="{{ paused }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="#fff"><path d="M4 3.2 13 8l-9 4.8z"/></svg></sc-if>
+      </button>
+      <button onClick="{{ onRestart }}" title="Reiniciar" style="width:38px;height:38px;border-radius:10px;background:#23262F;color:#fff;display:flex;align-items:center;justify-content:center;flex:none;" style-hover="background:#2E323D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.6"><path d="M12.5 6.5A5 5 0 1 0 13 9"/><path d="M12.5 2.5v4h-4"/></svg></button>
+      <div style="flex:1;display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;gap:9px;"><span style="font-size:12px;font-weight:700;color:#fff;">{{ sceneTitle }}</span><span style="font-size:11px;color:#8A93A3;">{{ sceneCount }}</span></div>
+        <div style="height:4px;background:#2C2F38;border-radius:3px;overflow:hidden;"><div style="height:100%;background:#3949C0;border-radius:3px;width:{{ progress }};transition:width .5s ease;"></div></div>
+      </div>
+      <div style="display:flex;gap:6px;flex:none;">
+        <sc-for list="{{ dots }}" as="d" hint-placeholder-count="9">
+          <button onClick="{{ d.go }}" style="{{ d.style }}"></button>
+        </sc-for>
+      </div>
+      <a href="Cauce - Procesos.dc.html" style="flex:none;height:36px;padding:0 15px;border-radius:9px;background:#fff;color:#14161C;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;text-decoration:none;" style-hover="background:#E7E9EE;">Abrir el sistema <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#14161C" stroke-width="1.7"><path d="M3 8h9M9 5l4 3-4 3"/></svg></a>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:720}}">
+class Component extends DCLogic {
+  state = { i:0, playing:true };
+  _durs = [4200, 6500, 5200, 5200, 5200, 5200, 5600, 5200, 5200];
+  componentDidMount(){ this._arm(); }
+  componentWillUnmount(){ if(this._t) clearTimeout(this._t); }
+  _arm(){
+    if(this._t) clearTimeout(this._t);
+    if(!this.state.playing) return;
+    const d=this._durs[this.state.i]||5000;
+    this._t=setTimeout(()=>{
+      this.setState(s=>{
+        if(s.i >= this._durs.length-1){ return {playing:false}; }
+        return {i:s.i+1};
+      }, ()=>this._arm());
+    }, d);
+  }
+  toggle(){
+    this.setState(s=>{
+      if(!s.playing && s.i>=this._durs.length-1) return {playing:true, i:0};
+      return {playing:!s.playing};
+    }, ()=>this._arm());
+  }
+  restart(){ this.setState({i:0, playing:true}, ()=>this._arm()); }
+  goTo(n){ this.setState({i:n, playing:false}, ()=>{ if(this._t) clearTimeout(this._t); }); }
+
+  renderVals(){
+    const self=this, i=this.state.i, N=this._durs.length;
+    const titles=['Cauce · constructor y motor de flujos','El principio: una definición, dos mundos','Configurar: el lienzo de flujos','El diseño se vuelve pantalla','Ejecutar: bandeja y casos','Fila, atención e historia clínica','Multi-institución y estructura','Trazabilidad inmutable','Del diagrama al expediente'];
+    const flags={}; for(let k=0;k<N;k++) flags['s'+k]=(i===k);
+    const dots=Array.from({length:N},(_,k)=>({go:()=>self.goTo(k),
+      style:`width:${k===i?22:8}px;height:8px;border-radius:5px;background:${k===i?'#3949C0':k<i?'#5560B5':'#3A3E48'};transition:.3s;border:none;cursor:pointer;padding:0;`}));
+    const tline=[
+      {t:'Caso iniciado · S. Paredes', w:'10/06 · 08:40', c:'#1F8A5B', line:true, anim:'animation:dFadeUp .4s .4s both;'},
+      {t:'Ingresó a la fila · turno A-031', w:'Sistema · 08:46', c:'#16B1C9', line:true, anim:'animation:dFadeUp .4s .7s both;'},
+      {t:'Atención registrada en historia clínica', w:'R. Gil · 09:32', c:'#D14B8F', line:true, anim:'animation:dFadeUp .4s 1s both;'},
+      {t:'Derivado a Cardiología', w:'Sistema · 09:32', c:'#0E8893', line:true, anim:'animation:dFadeUp .4s 1.3s both;'},
+      {t:'Estado → Cerrado', w:'L. Méndez · 12:15', c:'#667085', line:false, anim:'animation:dFadeUp .4s 1.6s both;'}
+    ];
+    return {
+      ...flags,
+      playing:this.state.playing, paused:!this.state.playing,
+      onToggle:()=>self.toggle(), onRestart:()=>self.restart(),
+      sceneTitle:titles[i], sceneCount:(i+1)+' / '+N,
+      progress:(((i+1)/N)*100).toFixed(0)+'%',
+      dots, tline
+    };
+  }
+}
+</script>
+</body>
+</html>

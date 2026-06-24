@@ -1,0 +1,42 @@
+# === Python / Django (backend) ===
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Base de datos local de desarrollo (no versionar)
+*.sqlite3
+backend/db.sqlite3
+
+# Estáticos recolectados y archivos subidos por usuarios
+backend/staticfiles/
+backend/media/
+!backend/media/.gitkeep
+
+# === Node / Vite (frontend) ===
+node_modules/
+frontend/dist/
+*.local
+
+# === Variables de entorno (solo se versiona .env.example) ===
+.env
+.env.*
+!.env.example
+
+# === Editores / SO ===
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+*.log
+npm-debug.log*
+
+# === Claude Code (config local de la sesión) ===
+.claude/

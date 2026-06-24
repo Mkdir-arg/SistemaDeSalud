@@ -1,0 +1,96 @@
+/* ============================================================
+   Cauce — Design Tokens (vanilla CSS custom properties)
+   Fuente de verdad: prototipo `Cauce - Procesos.dc.html`.
+   COPIAR TAL CUAL. No inventar colores, tamaños ni nombres.
+   ============================================================ */
+
+:root {
+  /* ---- Marca / acento ---- */
+  --accent:        #3949C0;   /* acción primaria, nodo seleccionado, ítem de menú activo */
+  --accent-hover:  #2D3A9E;
+  --accent-50:     #ECEEFB;
+  --accent-100:    #C7CDF2;
+  --accent-soft:   #F3F4FC;   /* fondo de hover suave / dashed */
+
+  /* ---- Texto (escala slate) ---- */
+  --ink:        #14161C;   /* títulos fuertes */
+  --slate-900:  #1F2430;
+  --slate-700:  #344054;
+  --slate-600:  #475467;
+  --slate-500:  #667085;
+  --slate-400:  #98A0AE;   /* texto secundario / placeholder */
+  --slate-300:  #A4ABB8;   /* micro-rótulos, meta */
+
+  /* ---- Superficies y líneas ---- */
+  --surface:    #FFFFFF;   /* tarjetas, header, sidebar */
+  --canvas:     #F4F5F7;   /* fondo de app (ejecución) */
+  --subtle:     #FAFBFC;   /* header de tabla, hover de fila, fondos suaves */
+  --border:     #E7E9EE;   /* borde de tarjeta */
+  --border-2:   #E2E5EA;   /* borde de input */
+  --divider:    #EEF0F3;
+  --divider-2:  #F1F2F5;   /* borde inferior de fila de tabla */
+
+  /* ---- Estado semántico (badge: fondo / texto) ---- */
+  --st-neutral-bg: #EEF0F3; --st-neutral-fg: #475467;  /* Recibido / Borrador */
+  --st-info-bg:    #E8EEFB; --st-info-fg:    #2D3A9E;  /* En evaluación */
+  --st-amber-bg:   #FBF0DD; --st-amber-fg:   #A96A12;  /* Derivado / En espera */
+  --st-green-bg:   #E6F5EC; --st-green-fg:   #1B7A4E;  /* Publicado / Atendido / Activo */
+  --st-gray-bg:    #F0F1F3; --st-gray-fg:    #9098A6;  /* Cerrado / Archivado */
+  --st-error-bg:   #FCEBEB; --st-error-fg:   #B42318;  /* error de validación / alergia */
+
+  /* ---- Tipografía ---- */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;  /* IDs, versiones, matrículas */
+
+  /* Escala de tamaño (px) — usar tal cual */
+  --fs-11: 11px;   /* micro-rótulo de tabla / meta */
+  --fs-12: 12px;
+  --fs-13: 13px;   /* cuerpo denso de tablas */
+  --fs-135: 13.5px;/* botones, inputs, cuerpo de UI */
+  --fs-14: 14px;
+  --fs-15: 15px;   /* nombre en card */
+  --fs-16: 16px;   /* título de modal */
+  --fs-17: 17px;   /* título de sección (header) */
+  --fs-18: 18px;   /* título de detalle */
+  --fs-27: 27px;   /* títulos grandes de demo/escena */
+  --fs-34: 34px;
+
+  /* Pesos */
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+  --fw-extra:   800;
+
+  /* ---- Radios ---- */
+  --r-input: 9px;
+  --r-card:  13px;
+  --r-lg:    16px;
+  --r-node:  14px;
+  --r-pill:  999px;
+
+  /* ---- Sombras ---- */
+  --sh-card:  0 1px 3px rgba(16,24,40,.07);
+  --sh-raise: 0 6px 18px rgba(16,24,40,.10);
+  --sh-modal: 0 24px 60px rgba(16,24,40,.28);
+  --sh-node-selected: 0 0 0 3px rgba(57,73,192,.32), 0 8px 20px rgba(16,24,40,.14);
+
+  /* ---- Espaciado (múltiplos de ~4) ---- */
+  --sp-1: 4px;  --sp-2: 6px;  --sp-3: 8px;  --sp-4: 11px;
+  --sp-5: 14px; --sp-6: 16px; --sp-7: 18px; --sp-8: 20px;
+  --sp-9: 22px; --sp-10: 26px; --sp-11: 30px;
+
+  /* ---- Layout ---- */
+  --sidebar-w: 248px;
+  --header-h:  64px;
+  --context-h: 44px;  /* header de contexto de institución */
+
+  /* ---- Lienzo (solo modo diseño) ---- */
+  --canvas-bg: #FAFBFC;
+  --canvas-dot: #D9DDE5;       /* grilla: radial-gradient(circle, var(--canvas-dot) 1.1px, transparent 1.1px); size 24px */
+  --canvas-arrow: #9AA2B1;     /* color de conexión / flecha por defecto */
+
+  /* ---- Motion ---- */
+  --t-fast: 120ms;
+  --t-token: .65s cubic-bezier(.5,0,.2,1);  /* token que viaja en "Reproducir" */
+}

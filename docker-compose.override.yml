@@ -1,0 +1,50 @@
+# Override de DESARROLLO.
+#
+# Docker Compose carga este archivo automáticamente junto a docker-compose.yml
+# cuando ejecutás `docker compose up`. Monta el código fuente como volumen y
+# arranca servidores con recarga en caliente, así un cambio en el código NO
+# requiere reconstruir la imagen ni levantar todo de nuevo.
+#
+#   docker compose up            -> desarrollo (este override, hot reload)
+#   docker compose -f docker-compose.yml up   -> producción (sin override)
+#
+# Requiere Docker Compose v2.24+ (por el tag `!reset`).
+
+services:
+  backend:
+    # Código montado: editás en tu máquina y se refleja dentro del contenedor.
+    volumes:
+      - ./backend:/app
+      - media:/app/media
+    environment:
+      # DEBUG=true habilita el autoreload y que Django sirva /media y /static.
+      DJANGO_DEBUG: "true"
+      SEED_DEMO: ${SEED_DEMO:-0}
+    # runserver recarga solo al detectar cambios en los .py (no gunicorn).
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    # Expuesto directo por si querés pegarle sin pasar por el frontend.
+    ports:
+      - "8000:8000"
+
+  frontend:
+    # Anula el build de nginx del compose base: en dev usamos el dev server
+    # de Vite (HMR) corriendo sobre una imagen de Node.
+    build: !reset null
+    image: node:20-slim
+    working_dir: /app
+    # `npm install` solo corre si cambió package.json (node_modules es un
+    # volumen persistente), luego arranca Vite escuchando en el contenedor.
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80"
+    environment:
+      # Vite proxea /api, /media, etc. hacia el backend dentro de la red de compose.
+      VITE_PROXY_TARGET: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      # node_modules vive en un volumen propio para no pisarse con el host
+      # ni perderse al montar ./frontend encima.
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  frontend_node_modules:
