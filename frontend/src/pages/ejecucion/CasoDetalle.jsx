@@ -374,31 +374,35 @@ function CampoArchivo({ value, onChange }) {
 }
 
 function PasoAtencion({ caso, accionando, ejecutar, hc }) {
+  const realizandoEstudio = !!caso.estudio_tipo; // este caso vino a REALIZAR un estudio
   const [titulo, setTitulo] = useState(caso.paso_actual || "");
   const [contenido, setContenido] = useState("");
   const [firmada, setFirmada] = useState(true);
   const [tipoEstudio, setTipoEstudio] = useState("");
-  const [areaEstudio, setAreaEstudio] = useState(""); // área a la que se deriva el estudio (opcional)
-  const [areasEstudio, setAreasEstudio] = useState([]);
+  const [areaEstudio, setAreaEstudio] = useState("");
+  const [areasDestino, setAreasDestino] = useState([]);
   const [detalleReceta, setDetalleReceta] = useState("");
+  const [motivoIc, setMotivoIc] = useState("");
+  const [areaIc, setAreaIc] = useState("");
+  const [resultado, setResultado] = useState("");
+  const [archivo, setArchivo] = useState("");
 
   const estudios = hc?.estudios || [];
   const recetas = hc?.recetas || [];
 
-  // Áreas que pueden realizar estudios: tienen un flujo publicado que acepta derivación.
+  // Áreas destino para derivar (estudio o interconsulta): tienen flujo publicado derivable.
   useEffect(() => {
+    if (realizandoEstudio) return;
     api.get(`/flujos/?institucion=${caso.institucion}`).then((d) => {
       const lista = d.results || d;
       const mapa = {};
       lista.forEach((f) => {
         const pub = (f.versiones || []).some((v) => v.estado === "publicada");
-        if (pub && f.origen_inicio !== "manual" && f.area && f.area !== caso.area_actual) {
-          mapa[f.area] = f.area_nombre;
-        }
+        if (pub && f.origen_inicio !== "manual" && f.area && f.area !== caso.area_actual) mapa[f.area] = f.area_nombre;
       });
-      setAreasEstudio(Object.entries(mapa).map(([id, nombre]) => ({ id: Number(id), nombre })));
+      setAreasDestino(Object.entries(mapa).map(([id, nombre]) => ({ id: Number(id), nombre })));
     });
-  }, [caso.institucion, caso.area_actual]);
+  }, [caso.institucion, caso.area_actual, realizandoEstudio]);
 
   async function solicitarEstudio() {
     if (!tipoEstudio.trim()) return;
@@ -412,15 +416,32 @@ function PasoAtencion({ caso, accionando, ejecutar, hc }) {
     await ejecutar(() => api.post(`/casos/${caso.id}/receta/`, { detalle: detalleReceta.trim() }));
     setDetalleReceta("");
   }
+  async function pedirInterconsulta() {
+    if (!areaIc) return;
+    await ejecutar(() => api.post(`/casos/${caso.id}/interconsulta/`, { area_id: Number(areaIc), motivo: motivoIc.trim() }));
+    setMotivoIc(""); setAreaIc("");
+  }
+  function registrar() {
+    const body = { titulo, contenido, firmada };
+    if (realizandoEstudio) { body.resultado = resultado; body.archivo = archivo; }
+    return api.post(`/casos/${caso.id}/avanzar/`, body);
+  }
+
+  const tituloSec = { fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 8 };
 
   return (
     <Card style={{ padding: 24 }}>
       <PanelHeader tipo="atencion" titulo={caso.paso_actual} />
+      {realizandoEstudio && (
+        <div style={{ fontSize: 12.5, color: color.slate500, marginBottom: 12 }}>
+          Estudio a realizar: <strong style={{ color: color.slate700 }}>{caso.estudio_tipo}</strong>
+        </div>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <Field label="Título de la atención">
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
         </Field>
-        <Field label="Evolución / observaciones">
+        <Field label={realizandoEstudio ? "Informe / observaciones" : "Evolución / observaciones"}>
           <Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} placeholder="Lo que se asienta en la historia clínica…" />
         </Field>
         <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, color: color.slate600, cursor: "pointer" }}>
@@ -429,51 +450,75 @@ function PasoAtencion({ caso, accionando, ejecutar, hc }) {
         </label>
       </div>
 
-      {/* Acciones del médico: estudios y recetas (quedan en la HC) */}
-      <div style={{ marginTop: 20, borderTop: `1px solid ${color.divider}`, paddingTop: 16, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 8 }}>Solicitar estudio</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Input value={tipoEstudio} onChange={(e) => setTipoEstudio(e.target.value)} placeholder="Ej.: Radiografía de tórax" onKeyDown={(e) => e.key === "Enter" && solicitarEstudio()} />
-            <Button variant="secondary" disabled={accionando || !tipoEstudio.trim()} onClick={solicitarEstudio}>Solicitar</Button>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <Select value={areaEstudio} onChange={(e) => setAreaEstudio(e.target.value)} style={{ height: 36 }}>
-              <option value="">Registrar en la HC (sin derivar)</option>
-              {areasEstudio.map((a) => <option key={a.id} value={a.id}>Derivar a {a.nombre} (el caso espera la vuelta)</option>)}
+      {realizandoEstudio ? (
+        /* Quien REALIZA el estudio carga su resultado estructurado. */
+        <div style={{ marginTop: 20, borderTop: `1px solid ${color.divider}`, paddingTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Resultado del estudio">
+            <Select value={resultado} onChange={(e) => setResultado(e.target.value)}>
+              <option value="">— Sin especificar —</option>
+              <option value="normal">Normal</option>
+              <option value="alterado">Alterado</option>
             </Select>
-          </div>
-          {estudios.length === 0 ? (
-            <div style={{ fontSize: 12, color: color.slate400, marginTop: 8 }}>Sin estudios solicitados.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-              {estudios.map((e) => (
-                <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "7px 11px" }}>
-                  <span style={{ color: color.slate700 }}>{e.tipo}</span>
-                  <Badge tone={e.realizado ? "green" : "amber"}>{e.realizado ? "realizado" : "pendiente"}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
+          </Field>
+          <Field label="Archivo del estudio (opcional)">
+            <CampoArchivo value={archivo} onChange={setArchivo} />
+          </Field>
         </div>
-        <Accion
-          label="Emitir receta"
-          placeholder="Medicación / indicaciones"
-          value={detalleReceta}
-          onChange={setDetalleReceta}
-          onAdd={emitirReceta}
-          disabled={accionando}
-          items={recetas.map((r) => ({ id: r.id, txt: r.detalle, tag: r.activa ? "activa" : "" }))}
-          vacio="Sin recetas."
-        />
-      </div>
+      ) : (
+        /* Quien ATIENDE puede pedir estudios, interconsultas y recetas. */
+        <div style={{ marginTop: 20, borderTop: `1px solid ${color.divider}`, paddingTop: 16, display: "flex", flexDirection: "column", gap: 18 }}>
+          <div>
+            <div style={tituloSec}>Solicitar estudio</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Input value={tipoEstudio} onChange={(e) => setTipoEstudio(e.target.value)} placeholder="Ej.: Radiografía de tórax" onKeyDown={(e) => e.key === "Enter" && solicitarEstudio()} />
+              <Button variant="secondary" disabled={accionando || !tipoEstudio.trim()} onClick={solicitarEstudio}>Solicitar</Button>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Select value={areaEstudio} onChange={(e) => setAreaEstudio(e.target.value)} style={{ height: 36 }}>
+                <option value="">Registrar en la HC (sin derivar)</option>
+                {areasDestino.map((a) => <option key={a.id} value={a.id}>Derivar a {a.nombre} (el caso espera la vuelta)</option>)}
+              </Select>
+            </div>
+            {estudios.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+                {estudios.map((e) => (
+                  <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "7px 11px" }}>
+                    <span style={{ color: color.slate700 }}>{e.tipo}{e.resultado_display ? ` · ${e.resultado_display}` : ""}</span>
+                    <Badge tone={e.realizado ? "green" : "amber"}>{e.realizado ? "realizado" : "pendiente"}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={tituloSec}>Interconsulta a otra área</div>
+            <Input value={motivoIc} onChange={(e) => setMotivoIc(e.target.value)} placeholder="Motivo (ej.: descartar foco neurológico)" />
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <Select value={areaIc} onChange={(e) => setAreaIc(e.target.value)} style={{ height: 36 }}>
+                <option value="">— Elegir área —</option>
+                {areasDestino.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </Select>
+              <Button variant="secondary" disabled={accionando || !areaIc} onClick={pedirInterconsulta}>Derivar y esperar</Button>
+            </div>
+          </div>
+
+          <Accion
+            label="Emitir receta"
+            placeholder="Medicación / indicaciones"
+            value={detalleReceta}
+            onChange={setDetalleReceta}
+            onAdd={emitirReceta}
+            disabled={accionando}
+            items={recetas.map((r) => ({ id: r.id, txt: r.detalle, tag: r.activa ? "activa" : "" }))}
+            vacio="Sin recetas."
+          />
+        </div>
+      )}
 
       <div style={{ marginTop: 20 }}>
-        <Button
-          disabled={accionando}
-          onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, { titulo, contenido, firmada }))}
-        >
-          {accionando ? "Registrando…" : "Registrar atención y avanzar"}
+        <Button disabled={accionando} onClick={() => ejecutar(registrar)}>
+          {accionando ? "Registrando…" : realizandoEstudio ? "Cargar resultado y cerrar" : "Registrar atención y avanzar"}
         </Button>
       </div>
     </Card>

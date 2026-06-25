@@ -279,11 +279,25 @@ class EstudioDerivadoTests(TestCase):
         with self.assertRaises(motor.ErrorMotor):
             motor.avanzar(self.caso, {"titulo": "x", "contenido": "y", "firmada": True}, autor=self.jefe)
 
-        # Imágenes informa el estudio y cierra el sub-caso → vuelve al origen.
-        motor.avanzar(sub, {"titulo": "Informe", "contenido": "ok", "firmada": True}, autor=self.jefe)
+        # Imágenes informa el estudio (con resultado estructurado) y cierra → vuelve al origen.
+        motor.avanzar(sub, {"titulo": "Informe", "contenido": "ok", "firmada": True, "resultado": "alterado"}, autor=self.jefe)
         self.caso.refresh_from_db(); sub.refresh_from_db()
         self.assertEqual(sub.estado, Caso.Estado.CERRADO)
         self.assertTrue(sub.estudio.realizado)
+        self.assertEqual(sub.estudio.resultado, "alterado")  # resultado cargado
+        self.assertFalse(self.caso.esperando)
+        self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
+
+    def test_interconsulta_round_trip(self):
+        # El mismo mecanismo general sirve para interconsultas (sin estudio).
+        sub = motor.solicitar_interconsulta(self.caso, self.imagenes, "Descartar foco", autor=self.jefe)
+        self.caso.refresh_from_db()
+        self.assertTrue(self.caso.esperando)
+        self.assertEqual(sub.origen_id, self.caso.id)
+        self.assertTrue(sub.bloquea_origen)
+        self.assertIsNone(sub.estudio_id)  # interconsulta no crea estudio
+        motor.avanzar(sub, {"titulo": "Opinión", "contenido": "ok", "firmada": True}, autor=self.jefe)
+        self.caso.refresh_from_db()
         self.assertFalse(self.caso.esperando)
         self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
 

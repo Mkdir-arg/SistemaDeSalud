@@ -139,6 +139,27 @@ class CasoViewSet(BaseModelViewSet):
         return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
+    def interconsulta(self, request, pk=None):
+        """Deriva el caso a otra área para una interconsulta y espera la vuelta
+        (cuerpo: {"area_id": <id>, "motivo": "..."})."""
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response({"detail": "No integrás ningún grupo responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
+        area_id = request.data.get("area_id")
+        if not area_id:
+            return Response({"detail": "Indicá el área de la interconsulta."}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.instituciones.models import Area
+        area = Area.objects.filter(pk=area_id).first()
+        if not area:
+            return Response({"detail": "Área inválida."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            motor.solicitar_interconsulta(caso, area, (request.data.get("motivo") or "").strip(), autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
     def iniciar(self, request, pk=None):
         """Coloca el caso en el nodo Inicio y lo corre hasta la 1ª parada."""
         caso = self.get_object()

@@ -59,6 +59,8 @@ class CasoSerializer(serializers.ModelSerializer):
     puede_tomar = serializers.SerializerMethodField()
     # Trazabilidad de derivaciones entre flujos.
     origen_flujo = serializers.CharField(source="origen.version.flujo.titulo", read_only=True, default=None)
+    # Si este caso vino a realizar un estudio, su tipo (el operador carga el resultado).
+    estudio_tipo = serializers.CharField(source="estudio.tipo", read_only=True, default=None)
     # El paso actual es una atención con fila de espera previa.
     nodo_con_fila = serializers.SerializerMethodField()
     # El caso está encolado esperando ser llamado: se opera SOLO desde la Fila,
@@ -72,7 +74,7 @@ class CasoSerializer(serializers.ModelSerializer):
             "estado", "estado_display", "prioridad", "prioridad_display",
             "nodo_actual", "paso_actual", "nodo_tipo", "nodo_con_fila", "en_fila", "area_actual", "area_nombre",
             "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "esperando",
-            "origen", "origen_flujo", "creado", "actualizado",
+            "origen", "origen_flujo", "estudio", "estudio_tipo", "creado", "actualizado",
         ]
         read_only_fields = ["creado", "actualizado"]
 

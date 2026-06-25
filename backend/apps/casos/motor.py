@@ -300,21 +300,21 @@ def agregar_estudio(caso: Caso, tipo: str, autor=None):
     return e
 
 
-@transaction.atomic
-def solicitar_estudio_derivado(caso: Caso, tipo: str, area_destino, autor=None) -> Caso:
+def _derivar_subproceso(caso: Caso, area_destino, autor=None, estudio=None,
+                        etiqueta_origen="Derivado y en espera", etiqueta_sub="Sub-proceso",
+                        detalle_sub="") -> Caso:
     """
-    Solicita un estudio que se realiza en OTRA área (ida y vuelta): crea el estudio
-    (pendiente), abre un sub-caso en el flujo de esa área y deja el caso actual
-    ESPERANDO hasta que el sub-caso termine y lo reactive.
+    Mecanismo general de ida y vuelta: abre un sub-caso en el flujo del área destino,
+    ligado al `caso` (que queda ESPERANDO), y al cerrarse el sub-caso reactiva al origen.
+    Sirve para estudios derivados e interconsultas.
     """
-    estudio = agregar_estudio(caso, tipo, autor=autor)
     ver = (
         VersionFlujo.objects
         .filter(flujo__area=area_destino, estado=VersionFlujo.Estado.PUBLICADA)
         .order_by("-flujo_id", "-numero").first()
     )
     if ver is None:
-        raise ErrorMotor(f"El área «{area_destino}» no tiene un flujo de estudios publicado.")
+        raise ErrorMotor(f"El área «{area_destino}» no tiene un flujo publicado para recibir el caso.")
 
     sub = Caso.objects.create(
         institucion=caso.institucion, version=ver, ciudadano=caso.ciudadano,
@@ -324,11 +324,32 @@ def solicitar_estudio_derivado(caso: Caso, tipo: str, area_destino, autor=None) 
     caso.esperando = True
     caso.estado = Caso.Estado.EN_ESPERA
     caso.save(update_fields=["esperando", "estado", "actualizado"])
-    _registrar(caso, f"Estudio derivado a {area_destino.nombre}",
-               detalle=f"{tipo} · caso #{sub.pk}", autor=autor, nodo=caso.nodo_actual)
-    _registrar(sub, "Estudio a realizar", detalle=f"{tipo} (del caso #{caso.pk})", autor=autor)
+    _registrar(caso, etiqueta_origen, detalle=f"{area_destino.nombre} · caso #{sub.pk}", autor=autor, nodo=caso.nodo_actual)
+    _registrar(sub, etiqueta_sub, detalle=detalle_sub or f"del caso #{caso.pk}", autor=autor)
     iniciar(sub, autor=autor)
     return sub
+
+
+@transaction.atomic
+def solicitar_estudio_derivado(caso: Caso, tipo: str, area_destino, autor=None) -> Caso:
+    """Estudio que se realiza en OTRA área (ida y vuelta). Crea el estudio pendiente."""
+    estudio = agregar_estudio(caso, tipo, autor=autor)
+    return _derivar_subproceso(
+        caso, area_destino, autor=autor, estudio=estudio,
+        etiqueta_origen=f"Estudio derivado a {area_destino.nombre}",
+        etiqueta_sub="Estudio a realizar", detalle_sub=f"{tipo} (del caso #{caso.pk})",
+    )
+
+
+@transaction.atomic
+def solicitar_interconsulta(caso: Caso, area_destino, motivo: str, autor=None) -> Caso:
+    """Interconsulta a otra área (ida y vuelta): el caso espera la opinión y vuelve."""
+    _registrar(caso, "Interconsulta solicitada", detalle=(motivo or "")[:120], autor=autor, nodo=caso.nodo_actual)
+    return _derivar_subproceso(
+        caso, area_destino, autor=autor, estudio=None,
+        etiqueta_origen=f"Interconsulta a {area_destino.nombre}",
+        etiqueta_sub="Interconsulta recibida", detalle_sub=(motivo or f"del caso #{caso.pk}"),
+    )
 
 
 def _retornar_al_origen(sub: Caso, autor=None):
@@ -451,6 +472,17 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
                 item.save(update_fields=["atendido"])
         _exigir_medico(caso, autor)
         _registrar_atencion(caso, nodo, datos, autor=autor)
+        # Si este caso vino a realizar un estudio, cargar su resultado estructurado.
+        if caso.estudio_id:
+            est = caso.estudio
+            resultado = datos.get("resultado", "")
+            archivo = datos.get("archivo", "")
+            if resultado:
+                est.resultado = resultado
+            if archivo:
+                est.archivo = archivo
+            est.realizado = True
+            est.save(update_fields=["resultado", "archivo", "realizado"])
 
     elif nodo.tipo == Nodo.Tipo.ESPERA_FILA:
         box_id = datos.get("box_id")
