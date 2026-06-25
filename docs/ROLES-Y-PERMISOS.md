@@ -68,12 +68,12 @@ miembros; escritura gateada por capacidad en la institución del objeto; el
 superusuario pasa siempre. Tests: `apps/casos/test_permisos.py` (10). Verificado
 por HTTP (médico no puede crear flujos: 403; sí puede leer: 200).
 
-> **Limitación conocida (a endurecer):** en el *create* de objetos hijos cuya
-> institución no viene explícita en el cuerpo (p. ej. crear un Nodo, que cuelga de
-> `version`), la verificación cae a «tener la capacidad en *alguna* membresía
-> activa». Para usuarios de una sola institución (el caso normal) es correcto; para
-> usuarios multi-institución con roles mixtos hay que resolver la institución del
-> padre. Pendiente: un `institucion_de_payload()` por viewset.
+> **Limitación cerrada** (2026-06-25): el *create* de objetos hijos resuelve la
+> institución del **padre** usando el mismo `institucion_path` del viewset
+> (`_institucion_de_payload` en `apps/common.py`). Ej.: crear un Nodo trae su
+> `version` y sigue `version__flujo__institucion`, así un configurador de la
+> institución A no puede crear nodos en versiones de la B. Tests:
+> `CreateHijoScopeTests` en `apps/casos/test_permisos.py`.
 
 Una permission class `CapacidadPermission` que **espeja** el mapa de capacidades del
 frontend y gatea cada viewset por la capacidad que requiere:
@@ -101,12 +101,22 @@ casi alineado.
   `{trabajo, registros}`; opera por grupo pero **no firma atención** (la regla
   `_exigir_medico` solo deja firmar al rol `medico`). En el seed, `guardia.enf` ya
   es enfermería.
-- **Jefe / Supervisor de área** — ⏳ **rol agregado, poderes pendientes**. Rol
-  `jefe_area`, hoy con `{trabajo, registros}`. Falta su poder distintivo:
-  - ver **todos** los casos de su área (no solo los de su grupo),
-  - **reasignar**, **repriorizar** y **cancelar** casos del área,
-  - una vista de **supervisión** (capacidad `supervision` + sección de menú).
-  Conecta con el pendiente «cancelar caso». **← próxima iteración.**
+- **Jefe / Supervisor de área** — ✅ **completo** (backend + UI, 2026-06-25).
+  Rol `jefe_area`, capacidades `{trabajo, registros, supervision}`. Poderes
+  (gateados por `motor.usuario_supervisa`, scopeado al área del caso):
+  - **reasignar** — `POST /casos/{id}/asignar/ {usuario_id}`,
+  - **repriorizar** — `POST /casos/{id}/priorizar/ {prioridad}` (refleja la urgencia en la fila),
+  - **cancelar** — `POST /casos/{id}/cancelar/ {motivo}` → estado `CANCELADO`, sale de
+    las colas y destraba el caso de origen si lo bloqueaba. Cierra el pendiente «cancelar caso».
+  - ver todos los casos de su área: ya posible vía `GET /casos/?area_actual=` (scope por institución).
+  Tests: `apps/casos/test_supervision.py` (7). UI: página **Supervisión**
+  (`frontend/src/pages/Supervision.jsx`, ruta `/supervision`, ítem de menú gateado por
+  `supervision`) con tabla de casos del área y acciones reasignar/repriorizar/cancelar;
+  el backend marca `puede_supervisar` por caso. Verificado end-to-end por HTTP.
+
+  También en el **detalle del caso** (`CasoDetalle`): card «Supervisión» (prioridad +
+  reasignar + cancelar) visible solo si `puede_supervisar`. Verificado por HTTP
+  (detalle: jefe `True`, médico `False`).
 
 ### Capa 4 — Regla de atención configurable por nodo
 Generalizar `_exigir_medico`: que el nodo declare qué rol/grupo puede *firmar*

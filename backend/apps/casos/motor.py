@@ -26,7 +26,7 @@ from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Area
 from apps.registros.models import EntradaHistoria, HistoriaClinica
 
-from .models import Caso, EventoCaso, ItemFila, ValorCampo
+from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
 
 
 class ErrorMotor(Exception):
@@ -165,6 +165,12 @@ def _registrar(caso: Caso, titulo: str, detalle: str = "", autor=None, nodo: Nod
     EventoCaso.objects.create(
         caso=caso, titulo=titulo, detalle=detalle, autor=autor, nodo=nodo
     )
+
+
+def _notificar(usuario, titulo: str, detalle: str = "", caso: Caso | None = None):
+    """Crea un aviso personal (si hay destinatario)."""
+    if usuario is not None and getattr(usuario, "pk", None):
+        Notificacion.objects.create(usuario=usuario, titulo=titulo, detalle=detalle[:255], caso=caso)
 
 
 def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
@@ -392,6 +398,8 @@ def _retornar_al_origen(sub: Caso, autor=None):
         parent.estado = Caso.Estado.EN_EVALUACION
         parent.save(update_fields=["esperando", "estado", "actualizado"])
         _registrar(parent, "Estudio recibido — retomar atención", detalle=f"desde el caso #{sub.pk}", autor=autor)
+        _notificar(parent.asignado_a, "Resultado recibido",
+                   detalle=f"Volvió «{sub.version.flujo.titulo}» — podés retomar la atención", caso=parent)
 
 
 @transaction.atomic

@@ -6,6 +6,7 @@ import { Badge, Button, Card, Field, Input, Mono, Select, Spinner, Stepper, Text
 import { Icon } from "../../components/icons";
 import { casoId, fechaHora } from "../../lib/format";
 import { color, estadoCaso, nodeCat } from "../../theme";
+import { CancelarModal, ReasignarModal } from "../Supervision";
 
 // Orden conceptual del stepper de ejecución.
 const PASOS = [
@@ -62,7 +63,7 @@ export default function CasoDetalle() {
   if (cargando || !caso) return <Spinner label="Cargando caso…" />;
 
   const est = estadoCaso[caso.estado] || { label: caso.estado_display, tone: "neutral" };
-  const cerrado = caso.estado === "cerrado";
+  const cerrado = ["cerrado", "cancelado"].includes(caso.estado);
 
   return (
     <>
@@ -144,6 +145,11 @@ export default function CasoDetalle() {
             </div>
           </Card>
 
+          {/* Supervisión: solo para el jefe del área del caso. */}
+          {caso.puede_supervisar && !cerrado && (
+            <PanelSupervision caso={caso} ejecutar={ejecutar} recargar={cargar} accionando={accionando} />
+          )}
+
           {/* Derivaciones entre flujos (origen / destinos) */}
           {(caso.origen || caso.derivados?.length > 0) && (
             <Card style={{ padding: 22 }}>
@@ -190,6 +196,56 @@ export default function CasoDetalle() {
 }
 
 // --------------------------------------------------------------------------- //
+// Acciones del jefe/supervisor de área sobre el caso (reasignar / repriorizar / cancelar).
+function PanelSupervision({ caso, ejecutar, recargar, accionando }) {
+  const [modal, setModal] = useState(null); // "reasignar" | "cancelar"
+  const [candidatos, setCandidatos] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [u, m] = await Promise.all([
+          api.get(`/usuarios/`),
+          api.get(`/membresias/?institucion=${caso.institucion}`),
+        ]);
+        const staff = u.results || u;
+        const mem = m.results || m;
+        let lista = staff;
+        if (caso.area_actual) {
+          const ids = new Set(mem.filter((x) => (x.areas || []).includes(caso.area_actual)).map((x) => x.usuario));
+          const f = staff.filter((s) => ids.has(s.id));
+          lista = f.length ? f : staff;
+        }
+        setCandidatos(lista);
+      } catch { /* silencioso */ }
+    })();
+  }, [caso.institucion, caso.area_actual]);
+
+  return (
+    <Card style={{ padding: 22 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, marginBottom: 14 }}>SUPERVISIÓN</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Field label="Prioridad">
+          <Select value={caso.prioridad} disabled={accionando}
+            onChange={(e) => ejecutar(() => api.post(`/casos/${caso.id}/priorizar/`, { prioridad: e.target.value }))}>
+            <option value="normal">Normal</option>
+            <option value="alta">Alta</option>
+            <option value="urgente">Urgente</option>
+          </Select>
+        </Field>
+        <Button variant="secondary" disabled={accionando} onClick={() => setModal("reasignar")}>Reasignar</Button>
+        <Button variant="danger" disabled={accionando} onClick={() => setModal("cancelar")}>Cancelar caso</Button>
+      </div>
+      {modal === "reasignar" && (
+        <ReasignarModal caso={caso} candidatos={candidatos} onClose={() => setModal(null)} onDone={() => { setModal(null); recargar(); }} />
+      )}
+      {modal === "cancelar" && (
+        <CancelarModal caso={caso} onClose={() => setModal(null)} onDone={() => { setModal(null); recargar(); }} />
+      )}
+    </Card>
+  );
+}
+
 function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
   // Caso aún no iniciado.
   if (!caso.nodo_actual && !cerrado) {

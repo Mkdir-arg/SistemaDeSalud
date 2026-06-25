@@ -1,5 +1,6 @@
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -8,12 +9,13 @@ from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Box
 
 from . import motor
-from .models import Caso, EventoCaso, ItemFila, ValorCampo
+from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
 from .serializers import (
     CasoDetalleSerializer,
     CasoSerializer,
     EventoCasoSerializer,
     ItemFilaSerializer,
+    NotificacionSerializer,
     ValorCampoSerializer,
 )
 
@@ -39,6 +41,7 @@ class CasoViewSet(BaseModelViewSet):
         if u and u.is_authenticated:
             ctx["es_superuser"] = u.is_superuser
             ctx["user_grupo_ids"] = set(u.grupos.values_list("id", flat=True))
+            ctx["areas_supervisadas"] = motor.areas_que_supervisa(u)
         return ctx
 
     def perform_create(self, serializer):
@@ -176,6 +179,10 @@ class CasoViewSet(BaseModelViewSet):
         caso.asignado_a = u
         caso.save(update_fields=["asignado_a", "actualizado"])
         EventoCaso.objects.create(caso=caso, titulo="Reasignado", detalle=f"a {u.nombre_completo}", autor=request.user, nodo=caso.nodo_actual)
+        if u.id != request.user.id:
+            paciente = f"{caso.ciudadano.nombre} {caso.ciudadano.apellido}".strip() if caso.ciudadano_id else ""
+            detalle = " · ".join(x for x in (paciente, caso.version.flujo.titulo) if x)
+            motor._notificar(u, "Te asignaron un caso", detalle=detalle, caso=caso)
         caso = self.get_queryset().get(pk=caso.pk)
         return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
@@ -463,3 +470,31 @@ class EventoCasoViewSet(BaseModelViewSet):
     capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
     filter_fields = ("caso", "autor")
+
+
+class NotificacionViewSet(viewsets.ModelViewSet):
+    """Avisos personales del usuario autenticado (no scopeado por institución)."""
+
+    serializer_class = NotificacionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notificacion.objects.filter(usuario=self.request.user).select_related("caso")
+
+    @action(detail=False, methods=["get"])
+    def resumen(self, request):
+        """{no_leidas, items} — para la campana de la barra (poll liviano)."""
+        qs = self.get_queryset()
+        return Response({
+            "no_leidas": qs.filter(leida=False).count(),
+            "items": NotificacionSerializer(qs[:12], many=True).data,
+        })
+
+    @action(detail=False, methods=["post"])
+    def leer(self, request):
+        """Marca como leídas todas las del usuario (o solo las de `ids`)."""
+        qs = self.get_queryset().filter(leida=False)
+        ids = request.data.get("ids")
+        if ids:
+            qs = qs.filter(id__in=ids)
+        return Response({"marcadas": qs.update(leida=True)})

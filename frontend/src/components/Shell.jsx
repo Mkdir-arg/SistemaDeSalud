@@ -6,10 +6,12 @@ import { Icon } from "./icons";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useInstitucion } from "../auth/InstitutionContext";
+import { antiguedad } from "../lib/format";
 import { color } from "../theme";
 
 const TITULOS = {
   "/inicio": "Inicio",
+  "/supervision": "Supervisión",
   "/bandeja": "Bandeja de tareas",
   "/filas": "Filas de espera",
   "/casos": "Casos",
@@ -33,6 +35,72 @@ const VISTAS = [
   { key: "sistema", label: "Sistema" },
 ];
 
+// Campana de notificaciones: contador de no leídas + dropdown (poll a /resumen/).
+function Campana() {
+  const navigate = useNavigate();
+  const [data, setData] = useState({ no_leidas: 0, items: [] });
+  const [abierto, setAbierto] = useState(false);
+
+  async function recargar() {
+    try { setData(await api.get("/notificaciones/resumen/")); } catch { /* silencioso */ }
+  }
+  useEffect(() => {
+    recargar();
+    const tick = () => { if (!document.hidden) recargar(); };
+    const id = setInterval(tick, 30000);
+    window.addEventListener("focus", tick);
+    return () => { clearInterval(id); window.removeEventListener("focus", tick); };
+  }, []);
+
+  async function abrir(n) {
+    setAbierto(false);
+    if (!n.leida) await api.post("/notificaciones/leer/", { ids: [n.id] });
+    if (n.caso) navigate(`/casos/${n.caso}`);
+    recargar();
+  }
+  async function marcarTodas() { await api.post("/notificaciones/leer/", {}); recargar(); }
+
+  return (
+    <div style={{ position: "relative", flex: "none" }}>
+      <button onClick={() => setAbierto((v) => !v)} title="Notificaciones"
+        style={{ position: "relative", border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 6 }}>
+        <Icon name="bell" size={19} />
+        {data.no_leidas > 0 && (
+          <span style={{ position: "absolute", top: -1, right: -1, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8, background: color.danger, color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
+            {data.no_leidas > 9 ? "9+" : data.no_leidas}
+          </span>
+        )}
+      </button>
+      {abierto && (
+        <>
+          <div onClick={() => setAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
+          <div style={{ position: "absolute", top: 42, right: 0, width: 324, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 12, boxShadow: "0 12px 32px rgba(16,24,40,.18)", zIndex: 31, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${color.divider}` }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>Notificaciones</span>
+              {data.no_leidas > 0 && <button onClick={marcarTodas} style={{ border: "none", background: "none", color: color.accent, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Marcar todas</button>}
+            </div>
+            <div style={{ maxHeight: 360, overflowY: "auto" }}>
+              {data.items.length === 0 ? (
+                <div style={{ padding: "24px 14px", textAlign: "center", fontSize: 12.5, color: color.slate400 }}>Sin notificaciones</div>
+              ) : data.items.map((n) => (
+                <div key={n.id} onClick={() => abrir(n)}
+                  style={{ display: "flex", gap: 10, padding: "11px 14px", borderTop: `1px solid ${color.divider}`, cursor: "pointer", background: n.leida ? "#fff" : color.accent50 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{n.titulo}</div>
+                    {n.detalle && <div style={{ fontSize: 12, color: color.slate500 }}>{n.detalle}</div>}
+                    <div style={{ fontSize: 11, color: color.slate400, marginTop: 2 }}>hace {antiguedad(n.creada)}</div>
+                  </div>
+                  {!n.leida && <span style={{ width: 8, height: 8, borderRadius: 99, background: color.accent, flex: "none", marginTop: 5 }} />}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TopBar() {
   const { user } = useAuth();
   const { vista, setVista } = useInstitucion();
@@ -48,6 +116,7 @@ function TopBar() {
           <input placeholder="Buscar casos, flujos, personas…" style={{ width: "100%", height: 38, border: `1px solid ${color.inputBorder}`, borderRadius: 9, padding: "0 12px 0 34px", fontSize: 13.5, background: color.subtle, outline: "none" }} />
         </div>
       </div>
+      <Campana />
       {user?.is_superuser && (
         <div style={{ display: "flex", alignItems: "center", background: "#F2F3F6", border: `1px solid ${color.border}`, borderRadius: 9, padding: 3, gap: 2, flex: "none" }}>
           {VISTAS.map((v) => (
@@ -83,6 +152,7 @@ const GRUPOS = [
   {
     label: "TRABAJO",
     items: [
+      { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
       { to: "/bandeja", label: "Bandeja de tareas", icon: "inbox", cap: "trabajo" },
       { to: "/filas", label: "Filas de espera", icon: "list", cap: "trabajo" },
       { to: "/casos", label: "Casos", icon: "fileText", cap: "trabajo" },

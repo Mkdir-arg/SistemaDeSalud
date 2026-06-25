@@ -6,6 +6,7 @@ quede abierta a cualquier miembro de la institución.
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
+from apps.flujos.models import Flujo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 
 
@@ -67,3 +68,35 @@ class PermisosPorRolTests(APITestCase):
     # --- Superusuario pasa siempre ----------------------------------------
     def test_superuser_puede_crear_area(self):
         self.assertEqual(self._post(self.root, "/api/areas/", {"institucion": self.inst.id, "nombre": "ZZ"}), 201)
+
+
+class CreateHijoScopeTests(APITestCase):
+    """El create de objetos hijos resuelve la institución del PADRE (no cae a
+    'capacidad en cualquier membresía'): un configurador de A no puede crear un
+    Nodo en una versión de B."""
+
+    @classmethod
+    def setUpTestData(cls):
+        R = Membresia.Rol
+        cls.A = Institucion.objects.create(nombre="Inst A", tipo="Hospital")
+        cls.B = Institucion.objects.create(nombre="Inst B", tipo="Hospital")
+        cls.flujoB = Flujo.objects.create(institucion=cls.B, titulo="F-B")
+        cls.verB = VersionFlujo.objects.create(flujo=cls.flujoB, numero=1)
+        cls.conf_A = cls._conf("confa@test.local", cls.A)
+        cls.conf_B = cls._conf("confb@test.local", cls.B)
+
+    @classmethod
+    def _conf(cls, email, inst):
+        u = Usuario.objects.create_user(email=email, password="x", nombre="N")
+        Membresia.objects.create(usuario=u, institucion=inst, rol=Membresia.Rol.CONFIGURADOR)
+        return u
+
+    def _crear_nodo(self, user):
+        self.client.force_authenticate(user)
+        return self.client.post("/api/nodos/", {"version": self.verB.id, "tipo": "form", "titulo": "N"}).status_code
+
+    def test_configurador_de_otra_institucion_no_puede_crear_nodo(self):
+        self.assertEqual(self._crear_nodo(self.conf_A), 403)
+
+    def test_configurador_de_la_institucion_si_puede(self):
+        self.assertEqual(self._crear_nodo(self.conf_B), 201)

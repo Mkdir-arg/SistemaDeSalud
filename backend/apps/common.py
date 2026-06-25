@@ -58,6 +58,37 @@ def _institucion_de_objeto(obj, path):
     return getattr(cur, "id", cur)
 
 
+def _institucion_de_payload(view, data):
+    """Resuelve la institución implicada en un `create`, usando el mismo
+    `institucion_path` del viewset. Si el path apunta a un padre (p. ej.
+    "version__flujo__institucion"), trae el padre por su id del cuerpo y sigue la
+    cadena; así un usuario no puede crear hijos en instituciones donde no actúa.
+    Devuelve None si no se puede resolver (cae al chequeo por cualquier membresía)."""
+    path = getattr(view, "institucion_path", None)
+    if not path:
+        return None
+    parts = path.split("__")
+    if parts == ["id"]:
+        return None  # crear la institución misma: no hay padre que resolver
+    if parts == ["institucion"]:
+        v = data.get("institucion")
+        return _coerce(str(v)) if v else None
+    # parts[0] es una FK; traemos el padre y seguimos la cadena hasta la institución.
+    val = data.get(parts[0])
+    if not val:
+        return None
+    try:
+        rel_model = view.queryset.model._meta.get_field(parts[0]).related_model
+    except Exception:
+        return None
+    cur = rel_model.objects.filter(pk=val).first()
+    for part in parts[1:]:
+        if cur is None:
+            return None
+        cur = getattr(cur, part, None)
+    return getattr(cur, "id", cur)
+
+
 class CapacidadPermission(BasePermission):
     """Autoriza la **escritura** según la capacidad del rol del usuario en la
     institución implicada; la **lectura** queda abierta a cualquier miembro (el
@@ -74,11 +105,10 @@ class CapacidadPermission(BasePermission):
         cap = getattr(view, "capacidad_requerida", None)
         if not cap:
             return True
-        # Alta (create): resolvemos la institución desde el cuerpo cuando viene
-        # explícita; si no, exigimos la capacidad en alguna membresía activa.
+        # Alta (create): resolvemos la institución del objeto (o de su padre) desde
+        # el cuerpo; si no se puede, se exige la capacidad en alguna membresía activa.
         if getattr(view, "action", None) == "create":
-            inst_id = _coerce(str(request.data.get("institucion"))) if request.data.get("institucion") else None
-            return cap in capacidades_de(user, inst_id)
+            return cap in capacidades_de(user, _institucion_de_payload(view, request.data))
         # Detalle (update/delete/acciones): se valida con el objeto.
         return True
 

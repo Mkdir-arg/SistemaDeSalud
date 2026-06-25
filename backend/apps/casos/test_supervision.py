@@ -93,3 +93,25 @@ class SupervisionTests(APITestCase):
         caso.refresh_from_db(); item.refresh_from_db()
         self.assertEqual(caso.prioridad, "urgente")
         self.assertTrue(item.urgente)
+
+    # --- Notificaciones ----------------------------------------------------
+    def test_reasignar_genera_notificacion(self):
+        from apps.casos.models import Notificacion
+        caso = self._caso()
+        self.client.force_authenticate(self.jefe)
+        self.client.post(f"/api/casos/{caso.id}/asignar/", {"usuario_id": self.med.id})
+        self.assertTrue(Notificacion.objects.filter(usuario=self.med, caso=caso).exists())
+        # El médico ve su resumen y luego marca todo leído.
+        self.client.force_authenticate(self.med)
+        r = self.client.get("/api/notificaciones/resumen/")
+        self.assertEqual(r.status_code, 200)
+        self.assertGreaterEqual(r.data["no_leidas"], 1)
+        self.client.post("/api/notificaciones/leer/", {})
+        self.assertEqual(self.client.get("/api/notificaciones/resumen/").data["no_leidas"], 0)
+
+    def test_notificaciones_son_privadas(self):
+        # Una notificación de un usuario no la ve otro.
+        from apps.casos.models import Notificacion
+        Notificacion.objects.create(usuario=self.med, titulo="privada")
+        self.client.force_authenticate(self.adm)
+        self.assertEqual(self.client.get("/api/notificaciones/resumen/").data["no_leidas"], 0)

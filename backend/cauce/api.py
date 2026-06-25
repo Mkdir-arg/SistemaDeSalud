@@ -15,6 +15,7 @@ from apps.casos.views import (
     CasoViewSet,
     EventoCasoViewSet,
     ItemFilaViewSet,
+    NotificacionViewSet,
     ValorCampoViewSet,
 )
 from apps.flujos.views import (
@@ -62,6 +63,7 @@ router.register("casos", CasoViewSet)
 router.register("valores-campo", ValorCampoViewSet)
 router.register("items-fila", ItemFilaViewSet)
 router.register("eventos-caso", EventoCasoViewSet)
+router.register("notificaciones", NotificacionViewSet, basename="notificacion")
 
 # registros
 router.register("ciudadanos", CiudadanoViewSet)

@@ -182,3 +182,26 @@ class EventoCaso(models.Model):
 
     def __str__(self):
         return f"{self.titulo} · caso #{self.caso_id}"
+
+
+class Notificacion(models.Model):
+    """Aviso personal para un usuario (ej.: «volvió el estudio que pediste»)."""
+
+    usuario = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.CASCADE, related_name="notificaciones"
+    )
+    titulo = models.CharField("título", max_length=200)
+    detalle = models.CharField(max_length=255, blank=True)
+    caso = models.ForeignKey(
+        Caso, on_delete=models.CASCADE, null=True, blank=True, related_name="notificaciones"
+    )
+    leida = models.BooleanField(default=False)
+    creada = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "notificación"
+        verbose_name_plural = "notificaciones"
+        ordering = ["-creada"]
+
+    def __str__(self):
+        return f"{self.titulo} → {self.usuario_id}"

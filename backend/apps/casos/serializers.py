@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import Caso, EventoCaso, ItemFila, ValorCampo
+from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
+
+
+class NotificacionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notificacion
+        fields = ["id", "titulo", "detalle", "caso", "leida", "creada"]
+        read_only_fields = ["creada"]
 
 
 class ValorCampoSerializer(serializers.ModelSerializer):
@@ -57,6 +64,8 @@ class CasoSerializer(serializers.ModelSerializer):
     # Grupos responsables del paso actual y si el usuario actual puede tomarlo.
     responsables = serializers.SerializerMethodField()
     puede_tomar = serializers.SerializerMethodField()
+    # Si el usuario actual es jefe/supervisor del área del caso (cancelar/reasignar/priorizar).
+    puede_supervisar = serializers.SerializerMethodField()
     # Trazabilidad de derivaciones entre flujos.
     origen_flujo = serializers.CharField(source="origen.version.flujo.titulo", read_only=True, default=None)
     # Si este caso vino a realizar un estudio, su tipo (el operador carga el resultado).
@@ -73,7 +82,7 @@ class CasoSerializer(serializers.ModelSerializer):
             "id", "institucion", "version", "flujo_titulo", "ciudadano", "ciudadano_nombre",
             "estado", "estado_display", "prioridad", "prioridad_display",
             "nodo_actual", "paso_actual", "nodo_tipo", "nodo_con_fila", "en_fila", "area_actual", "area_nombre",
-            "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "esperando",
+            "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "puede_supervisar", "esperando",
             "origen", "origen_flujo", "estudio", "estudio_tipo", "creado", "actualizado",
         ]
         read_only_fields = ["creado", "actualizado"]
@@ -116,6 +125,12 @@ class CasoSerializer(serializers.ModelSerializer):
             return True
         user_gids = self.context.get("user_grupo_ids") or set()
         return any(g in user_gids for g in gids)
+
+    def get_puede_supervisar(self, obj):
+        if self.context.get("es_superuser"):
+            return True
+        area_id = obj.area_actual_id or (obj.version.flujo.area_id if obj.version_id else None)
+        return area_id is not None and area_id in (self.context.get("areas_supervisadas") or set())
 
     def get_ciudadano_nombre(self, obj):
         if obj.ciudadano_id:
