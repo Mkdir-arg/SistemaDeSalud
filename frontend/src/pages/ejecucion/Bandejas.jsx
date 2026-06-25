@@ -4,7 +4,7 @@ import { api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { useInstitucion } from "../../auth/InstitutionContext";
 import { PageHeader } from "../../components/Shell";
-import { Badge, Button, Card, EmptyState, Field, Modal, Mono, Select, Spinner } from "../../components/ui";
+import { Badge, Button, Card, EmptyState, Field, Input, Modal, Mono, Select, Spinner } from "../../components/ui";
 import { antiguedad } from "../../lib/format";
 import { color, estadoCaso } from "../../theme";
 
@@ -174,41 +174,75 @@ export default function Bandejas() {
 function NuevoCasoModal({ institucionId, onClose, onCreated }) {
   const [flujos, setFlujos] = useState([]);
   const [ciudadanos, setCiudadanos] = useState([]);
-  const [form, setForm] = useState({ flujoId: "", ciudadano: "", prioridad: "normal" });
+  const [form, setForm] = useState({ flujoId: "", prioridad: "normal" });
+  const [modo, setModo] = useState("existente"); // "existente" | "nuevo"
+  const [ciudadanoId, setCiudadanoId] = useState("");
+  const [nuevo, setNuevo] = useState({ nombre: "", apellido: "", documento: "" });
   const [creando, setCreando] = useState(false);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const setNuevoCampo = (k, v) => setNuevo((p) => ({ ...p, [k]: v }));
 
   useEffect(() => {
     (async () => {
       const f = await api.get(`/flujos/?institucion=${institucionId}`);
-      // Solo flujos con una versión publicada.
+      // Solo flujos publicados que permiten alta manual (no los "solo por derivación").
       const lista = (f.results || f)
         .map((fl) => ({ ...fl, pub: (fl.versiones || []).find((v) => v.estado === "publicada") }))
-        .filter((fl) => fl.pub);
+        .filter((fl) => fl.pub && fl.origen_inicio !== "derivado");
       setFlujos(lista);
       if (lista[0]) set("flujoId", String(lista[0].id));
       const c = await api.get(`/ciudadanos/?institucion=${institucionId}`);
-      setCiudadanos(c.results || c);
+      const listaC = c.results || c;
+      setCiudadanos(listaC);
+      // Sin pacientes cargados → arrancar directo en «nuevo».
+      if (listaC.length === 0) setModo("nuevo");
+      else setCiudadanoId(String(listaC[0].id));
     })();
   }, [institucionId]);
 
+  const pacienteOk = modo === "existente" ? !!ciudadanoId : !!nuevo.nombre.trim();
+  const puedeCrear = !creando && form.flujoId && pacienteOk;
+
   async function crear() {
     const flujo = flujos.find((f) => String(f.id) === String(form.flujoId));
-    if (!flujo) return;
+    if (!flujo || !pacienteOk) return;
     setCreando(true);
     try {
+      // 1) Resolver el paciente: existente o crearlo en el momento.
+      let cid = ciudadanoId;
+      if (modo === "nuevo") {
+        const c = await api.post("/ciudadanos/", {
+          institucion: institucionId,
+          nombre: nuevo.nombre.trim(),
+          apellido: nuevo.apellido.trim(),
+          documento: nuevo.documento.trim(),
+        });
+        cid = c.id;
+      }
+      // 2) Crear el caso (el backend asegura su historia clínica) e iniciarlo.
       const caso = await api.post("/casos/", {
         institucion: flujo.institucion,
         version: flujo.pub.id,
-        ciudadano: form.ciudadano || null,
+        ciudadano: Number(cid),
         prioridad: form.prioridad,
       });
-      await api.post(`/casos/${caso.id}/iniciar/`); // arranca el flujo
+      await api.post(`/casos/${caso.id}/iniciar/`);
       onCreated(caso.id);
     } finally {
       setCreando(false);
     }
   }
+
+  const tabBtn = (k, label) => (
+    <button
+      onClick={() => setModo(k)}
+      style={{ flex: 1, padding: "7px 0", fontSize: 12.5, fontWeight: 600, borderRadius: 8, cursor: "pointer",
+        border: `1px solid ${modo === k ? color.accent : color.inputBorder}`,
+        background: modo === k ? color.accent50 : "#fff", color: modo === k ? color.accent : color.slate500 }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <Modal
@@ -217,7 +251,7 @@ function NuevoCasoModal({ institucionId, onClose, onCreated }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={creando || !form.flujoId} onClick={crear}>{creando ? "Creando…" : "Crear e iniciar"}</Button>
+          <Button disabled={!puedeCrear} onClick={crear}>{creando ? "Creando…" : "Crear e iniciar"}</Button>
         </>
       }
     >
@@ -232,12 +266,31 @@ function NuevoCasoModal({ institucionId, onClose, onCreated }) {
               {flujos.map((f) => <option key={f.id} value={f.id}>{f.titulo} ({f.pub.etiqueta})</option>)}
             </Select>
           </Field>
-          <Field label="Paciente">
-            <Select value={form.ciudadano} onChange={(e) => set("ciudadano", e.target.value)}>
-              <option value="">— Sin asociar —</option>
-              {ciudadanos.map((c) => <option key={c.id} value={c.id}>{c.nombre} {c.apellido}</option>)}
-            </Select>
+
+          <Field label="Paciente *">
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {tabBtn("existente", "Paciente existente")}
+              {tabBtn("nuevo", "Nuevo paciente")}
+            </div>
+            {modo === "existente" ? (
+              ciudadanos.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: color.slate400 }}>No hay pacientes cargados. Usá «Nuevo paciente».</div>
+              ) : (
+                <Select value={ciudadanoId} onChange={(e) => setCiudadanoId(e.target.value)}>
+                  {ciudadanos.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre} {c.apellido}{c.documento ? ` · ${c.documento}` : ""}</option>
+                  ))}
+                </Select>
+              )
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <Input placeholder="Nombre *" value={nuevo.nombre} onChange={(e) => setNuevoCampo("nombre", e.target.value)} autoFocus />
+                <Input placeholder="Apellido" value={nuevo.apellido} onChange={(e) => setNuevoCampo("apellido", e.target.value)} />
+                <Input placeholder="Documento" value={nuevo.documento} onChange={(e) => setNuevoCampo("documento", e.target.value)} />
+              </div>
+            )}
           </Field>
+
           <Field label="Prioridad">
             <Select value={form.prioridad} onChange={(e) => set("prioridad", e.target.value)}>
               <option value="normal">Normal</option>

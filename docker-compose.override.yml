@@ -20,6 +20,9 @@ services:
       # DEBUG=true habilita el autoreload y que Django sirva /media y /static.
       DJANGO_DEBUG: "true"
       SEED_DEMO: ${SEED_DEMO:-0}
+      # En dev, al levantar se siembra el escenario de guardia (usuario de test +
+      # datos) si la base está vacía. Poné SEED_GUARDIA=0 para desactivarlo.
+      SEED_GUARDIA: ${SEED_GUARDIA:-1}
     # runserver recarga solo al detectar cambios en los .py (no gunicorn).
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     # Expuesto directo por si querés pegarle sin pasar por el frontend.

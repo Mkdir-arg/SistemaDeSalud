@@ -61,15 +61,25 @@ class FlujoSerializer(serializers.ModelSerializer):
     subarea_nombre = serializers.SerializerMethodField()
     ambito = serializers.CharField(read_only=True)
     ambito_label = serializers.SerializerMethodField()
+    # Cómo entran los casos a este flujo (config del nodo Inicio publicado):
+    # "manual" | "derivado" | "ambos". Por defecto "ambos" (compatibilidad).
+    origen_inicio = serializers.SerializerMethodField()
     casos_activos = serializers.SerializerMethodField()
 
     class Meta:
         model = Flujo
         fields = [
             "id", "institucion", "area", "area_nombre", "subarea", "subarea_nombre",
-            "ambito", "ambito_label", "titulo", "descripcion", "creado", "versiones", "casos_activos",
+            "ambito", "ambito_label", "origen_inicio", "titulo", "descripcion", "creado", "versiones", "casos_activos",
         ]
         read_only_fields = ["creado"]
+
+    def get_origen_inicio(self, obj):
+        ver = obj.version_publicada
+        if not ver:
+            return "ambos"
+        inicio = ver.nodos.filter(tipo="inicio").first()
+        return (inicio.config or {}).get("origen", "ambos") if inicio else "ambos"
 
     def validate(self, attrs):
         # `area` se deriva de `subarea`; si vienen ambas, deben ser coherentes.

@@ -14,7 +14,7 @@ from django.test import TestCase
 from apps.accounts.models import Membresia, Usuario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Grupo, Institucion
+from apps.instituciones.models import Area, Box, Grupo, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria
 
 from . import motor
@@ -165,6 +165,49 @@ class ResponsabilidadTests(TestCase):
     def test_superusuario_siempre_puede(self):
         self.nodo.grupos.add(self.grupo)
         self.assertTrue(motor.usuario_puede_tomar(self.jefe, self.caso))
+
+
+class AtencionConFilaTests(TestCase):
+    """Atención con fila: el paciente espera, se lo llama de un box y recién ahí se atiende."""
+
+    def setUp(self):
+        self.jefe = Usuario.objects.create_superuser("jefe@cauce.local", "x", nombre="Jefe")
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Cardiología")
+        self.box = Box.objects.create(area=self.area, nombre="Box 1")
+        flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Atención cardio")
+        ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        ini = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.ate = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", config={"con_fila": True})
+        fin = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=ver, origen=ini, destino=self.ate)
+        Conexion.objects.create(version=ver, origen=self.ate, destino=fin)
+        self.ciud = Ciudadano.objects.create(institucion=self.inst, nombre="Pac", apellido="Test")
+        self.caso = Caso.objects.create(institucion=self.inst, version=ver, ciudadano=self.ciud)
+
+    def test_flujo_espera_llamado_atencion(self):
+        motor.iniciar(self.caso, autor=self.jefe)
+        self.caso.refresh_from_db()
+        # Encolado y en espera, sin box.
+        self.assertEqual(self.caso.estado, Caso.Estado.EN_ESPERA)
+        self.assertTrue(self.caso.en_filas.filter(atendido=False, box__isnull=True).exists())
+
+        # No se puede atender sin llamar.
+        with self.assertRaises(motor.ErrorMotor):
+            motor.avanzar(self.caso, {"titulo": "x", "contenido": "y", "firmada": True}, autor=self.jefe)
+
+        # Llamar desde el box: queda en el mismo nodo, ahora en atención.
+        motor.llamar(self.caso, box_id=self.box.id, autor=self.jefe)
+        self.caso.refresh_from_db()
+        self.assertEqual(self.caso.nodo_actual_id, self.ate.id)
+        self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
+        self.assertTrue(self.caso.en_filas.filter(box=self.box).exists())
+
+        # Ahora sí se atiende y avanza al cierre.
+        motor.avanzar(self.caso, {"titulo": "Consulta", "contenido": "ok", "firmada": True}, autor=self.jefe)
+        self.caso.refresh_from_db()
+        self.assertEqual(self.caso.estado, Caso.Estado.CERRADO)
+        self.assertTrue(EntradaHistoria.objects.filter(historia__ciudadano=self.ciud).exists())
 
 
 class DerivacionEntreFlujosTests(TestCase):

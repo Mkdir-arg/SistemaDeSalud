@@ -37,6 +37,11 @@ class CasoViewSet(BaseModelViewSet):
             ctx["user_grupo_ids"] = set(u.grupos.values_list("id", flat=True))
         return ctx
 
+    def perform_create(self, serializer):
+        # El ingreso siempre es de una persona: aseguramos su historia clínica.
+        caso = serializer.save()
+        motor.asegurar_historia(caso)
+
     @action(detail=True, methods=["get"])
     def eventos(self, request, pk=None):
         """Línea de tiempo (trazabilidad) del caso."""
@@ -69,6 +74,57 @@ class CasoViewSet(BaseModelViewSet):
         # Re-consulta para refrescar el prefetch de eventos/valores.
         caso = self.get_queryset().get(pk=caso.pk)
         return Response(CasoDetalleSerializer(caso).data)
+
+    @action(detail=True, methods=["post"])
+    def llamar(self, request, pk=None):
+        """Llama al caso desde un box (cuerpo: {"box_id": <id>}).
+
+        Solo puede llamar quien integre un grupo responsable del paso.
+        """
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response(
+                {"detail": "No integrás ningún grupo responsable de este paso."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            motor.llamar(caso, box_id=request.data.get("box_id"), autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def receta(self, request, pk=None):
+        """El médico emite una receta (cuerpo: {"detalle": "..."}) en la HC del paciente."""
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response({"detail": "No integrás ningún grupo responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
+        detalle = (request.data.get("detalle") or "").strip()
+        if not detalle:
+            return Response({"detail": "La receta necesita un detalle."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            motor.agregar_receta(caso, detalle, autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def estudio(self, request, pk=None):
+        """El médico solicita un estudio (cuerpo: {"tipo": "..."}) en la HC del paciente."""
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response({"detail": "No integrás ningún grupo responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
+        tipo = (request.data.get("tipo") or "").strip()
+        if not tipo:
+            return Response({"detail": "Indicá el tipo de estudio."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            motor.agregar_estudio(caso, tipo, autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
     def iniciar(self, request, pk=None):
@@ -109,10 +165,10 @@ class ValorCampoViewSet(BaseModelViewSet):
 
 
 class ItemFilaViewSet(BaseModelViewSet):
-    queryset = ItemFila.objects.select_related("caso", "nodo")
+    queryset = ItemFila.objects.select_related("caso__ciudadano", "nodo__version__flujo__area", "box")
     serializer_class = ItemFilaSerializer
     institucion_path = "caso__institucion"
-    filter_fields = ("caso", "nodo", "urgente", "atendido")
+    filter_fields = ("caso", "nodo", "urgente", "atendido", "nodo__version__flujo__area")
 
 
 class EventoCasoViewSet(BaseModelViewSet):

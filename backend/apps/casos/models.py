@@ -123,6 +123,10 @@ class ItemFila(models.Model):
     urgente = models.BooleanField(default=False)
     orden = models.PositiveIntegerField(default=0)
     atendido = models.BooleanField(default=False)
+    # Box desde el que se llamó a esta persona (se completa al llamar).
+    box = models.ForeignKey(
+        "instituciones.Box", on_delete=models.SET_NULL, null=True, blank=True, related_name="llamados"
+    )
     ingreso = models.DateTimeField(auto_now_add=True)
 
     class Meta:

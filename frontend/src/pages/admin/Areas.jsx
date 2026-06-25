@@ -104,16 +104,20 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
   const [crearSub, setCrearSub] = useState(false);
   const [crearGrupo, setCrearGrupo] = useState(false);
   const [recargaGrupos, setRecargaGrupos] = useState(0);
+  const [crearBox, setCrearBox] = useState(false);
+  const [recargaBoxes, setRecargaBoxes] = useState(0);
   const tabs = [
     { k: "datos", l: "Datos" },
     { k: "staff", l: "Staff" },
     { k: "grupos", l: "Grupos" },
+    { k: "boxes", l: "Boxes" },
     { k: "subareas", l: "Sub-áreas" },
   ];
   // Botón de acción contextual: cambia según la solapa activa.
   const accion = {
     staff: { label: "Asignar profesional", on: () => setAsignar(true) },
     grupos: { label: "Crear grupo", on: () => setCrearGrupo(true) },
+    boxes: { label: "Crear box", on: () => setCrearBox(true) },
     subareas: { label: "Crear sub-área", on: () => setCrearSub(true) },
   }[tab];
 
@@ -155,11 +159,13 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
       )}
       {tab === "staff" && <StaffTab area={area} />}
       {tab === "grupos" && <GruposTab area={area} recarga={recargaGrupos} />}
+      {tab === "boxes" && <BoxesTab area={area} recarga={recargaBoxes} />}
       {tab === "subareas" && <SubareasTab area={area} onChange={onChange} />}
 
       {asignar && <AsignarModal area={area} onClose={() => setAsignar(false)} onSaved={() => { setAsignar(false); onChange(); }} />}
       {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={() => { setCrearSub(false); onChange(); }} />}
       {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} onSaved={() => { setCrearGrupo(false); setRecargaGrupos((n) => n + 1); }} />}
+      {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} onSaved={() => { setCrearBox(false); setRecargaBoxes((n) => n + 1); }} />}
     </div>
   );
 }
@@ -435,6 +441,74 @@ function EliminarGrupoModal({ grupo, onClose, onDeleted }) {
   return (
     <Modal title="Eliminar grupo" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}>
       <div style={{ fontSize: 14, color: color.slate700 }}>¿Seguro que querés eliminar el grupo <strong>{grupo.nombre}</strong>? Esta acción no se puede deshacer.</div>
+    </Modal>
+  );
+}
+
+function BoxesTab({ area, recarga }) {
+  const [boxes, setBoxes] = useState(null);
+  const [borrar, setBorrar] = useState(null);
+
+  async function cargar() {
+    const d = await api.get(`/boxes/?area=${area.id}`);
+    setBoxes(d.results || d);
+  }
+  useEffect(() => {
+    cargar(); // eslint-disable-next-line
+  }, [area.id, recarga]);
+
+  if (boxes === null) return <Spinner />;
+  if (!boxes.length)
+    return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin boxes. Usá «Crear box» para definir los consultorios; desde ellos se llama a la fila de espera.</Card>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {boxes.map((b) => (
+        <Card key={b.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="enter" size={16} /></div>
+          <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{b.nombre}</div>
+          {!b.activo && <Badge tone="gray">inactivo</Badge>}
+          <button onClick={() => setBorrar(b)} title="Eliminar box" style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", display: "inline-flex" }}><Icon name="trash" size={15} /></button>
+        </Card>
+      ))}
+      {borrar && <EliminarBoxModal box={borrar} onClose={() => setBorrar(null)} onDeleted={() => { setBorrar(null); cargar(); }} />}
+    </div>
+  );
+}
+
+function BoxModal({ area, onClose, onSaved }) {
+  const [nombre, setNombre] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  async function crear() {
+    setGuardando(true);
+    try {
+      await api.post("/boxes/", { area: area.id, nombre: nombre.trim() });
+      onSaved();
+    } finally {
+      setGuardando(false);
+    }
+  }
+  return (
+    <Modal title={`Nuevo box · ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !nombre.trim()} onClick={crear}>{guardando ? "…" : "Crear"}</Button></>}>
+      <Field label="Nombre del box *"><Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Box 1" /></Field>
+    </Modal>
+  );
+}
+
+function EliminarBoxModal({ box, onClose, onDeleted }) {
+  const [borrando, setBorrando] = useState(false);
+  async function eliminar() {
+    setBorrando(true);
+    try {
+      await api.del(`/boxes/${box.id}/`);
+      onDeleted();
+    } finally {
+      setBorrando(false);
+    }
+  }
+  return (
+    <Modal title="Eliminar box" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}>
+      <div style={{ fontSize: 14, color: color.slate700 }}>¿Seguro que querés eliminar <strong>{box.nombre}</strong>?</div>
     </Modal>
   );
 }

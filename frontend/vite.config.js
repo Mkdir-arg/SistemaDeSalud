@@ -10,6 +10,9 @@ export default defineConfig({
   server: {
     host: true, // escucha en 0.0.0.0 para ser accesible desde fuera del contenedor.
     port: 5173,
+    // En Docker sobre Windows/Mac el bind mount no propaga eventos inotify;
+    // el polling hace que Vite detecte los cambios y recargue (HMR) igual.
+    watch: { usePolling: true, interval: 300 },
     proxy: {
       // Rutas servidas por Django (con DEBUG=true sirve /media, /static y /admin).
       "/api": proxyTarget,

@@ -63,12 +63,17 @@ Inicio → Formulario «Datos de ingreso» → Decisión «¿Especialidad?»
 ### 3.2. Flujo por especialidad (ámbito: área de la especialidad)
 Mismo esqueleto para Trauma / Cardio / Salud mental:
 ```
-Inicio → Formulario propio de la especialidad → Solicitud de estudios →
-         Atención (evolución en HC) → Fin
+Inicio → Formulario propio → Solicitud de estudios → Atención con fila → Fin
 ```
 - **Formulario propio:** cada especialidad tiene su formulario (campos distintos).
-- **Solicitud de estudios:** el pedido de los estudios de esa especialidad.
-- **Responsable:** los grupos de médicos/administrativos de esa área.
+- **Solicitud de estudios:** el pedido de los estudios de esa especialidad (hoy placeholder).
+- **Atención con fila:** un **único nodo** que une espera + llamado + atención. El
+  paciente queda en la **sala de espera** (cola FIFO + urgencia); un médico lo
+  **llama desde un Box** (consultorio del área) y recién ahí lo atiende (la
+  atención queda en la HC). Config: nodo Atención con «fila de espera» activada.
+- **Boxes:** consultorios del área (Estructura → área → Boxes). Se llama desde
+  cada box en la pantalla **Filas de espera**; queda registrado en qué box se atendió.
+- **Responsable:** el grupo de médicos del área (quién llama y atiende).
 
 ## 4. Recorrido de la prueba (cuando esté configurado)
 

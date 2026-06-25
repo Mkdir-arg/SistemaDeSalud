@@ -1,12 +1,21 @@
 from rest_framework import serializers
 
-from .models import Area, Grupo, Institucion, Subarea
+from .models import Area, Box, Grupo, Institucion, Subarea
 
 
 class SubareaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subarea
         fields = ["id", "area", "nombre", "activa"]
+
+
+class BoxSerializer(serializers.ModelSerializer):
+    area_nombre = serializers.CharField(source="area.nombre", read_only=True)
+
+    class Meta:
+        model = Box
+        fields = ["id", "area", "area_nombre", "nombre", "activo", "creado"]
+        read_only_fields = ["creado"]
 
 
 class GrupoSerializer(serializers.ModelSerializer):

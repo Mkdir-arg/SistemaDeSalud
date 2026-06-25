@@ -22,14 +22,25 @@ from apps.casos import motor
 from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Grupo
+from apps.instituciones.models import Area, Box, Grupo
 
 
 class Command(BaseCommand):
     help = "Carga el escenario de guardia (hospital, áreas, staff, grupos y flujos)."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--si-vacio", action="store_true",
+            help="Sembrar solo si no hay ninguna institución (no toca datos existentes).",
+        )
+
     @transaction.atomic
     def handle(self, *args, **options):
+        from apps.instituciones.models import Institucion
+        if options["si_vacio"] and Institucion.objects.exists():
+            self.stdout.write("Ya hay datos cargados; se omite el sembrado.")
+            return
+
         R = Membresia.Rol
 
         # --- Super admin (para poder entrar) -------------------------------
@@ -42,7 +53,6 @@ class Command(BaseCommand):
         admin.save()
 
         # --- Institución y áreas -------------------------------------------
-        from apps.instituciones.models import Institucion
         inst, _ = Institucion.objects.get_or_create(
             nombre="Hospital Central", defaults={"tipo": "Hospital general", "cuit": "30-12345678-9"}
         )
@@ -85,6 +95,11 @@ class Command(BaseCommand):
         g_med_sm = grupo(salud_mental, "Profesionales SM", med_sm)
         g_adm_sm = grupo(salud_mental, "Admin. SM", adm_sm)
 
+        # --- Boxes / consultorios por especialidad -------------------------
+        for area in (trauma, cardio, salud_mental):
+            for n in (1, 2):
+                Box.objects.get_or_create(area=area, nombre=f"Box {n}")
+
         # --- Formularios ----------------------------------------------------
         def formulario(titulo, campos):
             form, nuevo = Formulario.objects.get_or_create(institucion=inst, titulo=titulo)
@@ -123,16 +138,20 @@ class Command(BaseCommand):
             Caso.objects.filter(version__flujo=flujo).delete()
             flujo.versiones.all().delete()
             ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
-            ini = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio", x=60, y=180)
+            # Los flujos de especialidad solo reciben casos por derivación.
+            ini = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio", x=60, y=180, config={"origen": "derivado"})
             frm = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FORMULARIO, titulo=form.titulo, x=280, y=180, formulario=form)
             est = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ACCION, titulo="Solicitud de estudios", x=520, y=180)
-            ate = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", x=760, y=180)
+            # Un solo nodo «Atención con fila»: el paciente espera y el médico lo
+            # llama desde su box antes de atenderlo.
+            ate = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", x=760, y=180, config={"con_fila": True})
             fin = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FIN, titulo="Cierre", x=1000, y=180)
             Conexion.objects.create(version=ver, origen=ini, destino=frm)
             Conexion.objects.create(version=ver, origen=frm, destino=est)
             Conexion.objects.create(version=ver, origen=est, destino=ate)
             Conexion.objects.create(version=ver, origen=ate, destino=fin)
-            # Quién hace qué: el form lo carga el administrativo; la atención la firma el médico.
+            # Quién hace qué: el form lo carga el administrativo; la fila/llamado y
+            # la atención las maneja el médico (llama desde su box y atiende).
             frm.grupos.set([g_adm.id])
             ate.grupos.set([g_med.id])
             if motor.puede_publicar(ver):
@@ -153,7 +172,7 @@ class Command(BaseCommand):
         def N(tipo, titulo, x, y, **kw):
             return Nodo.objects.create(version=ver, tipo=tipo, titulo=titulo, x=x, y=y, **kw)
 
-        n_ini = N(Nodo.Tipo.INICIO, "Inicio", 60, 240)
+        n_ini = N(Nodo.Tipo.INICIO, "Inicio", 60, 240, config={"origen": "manual"})  # puerta de entrada manual
         n_form = N(Nodo.Tipo.FORMULARIO, "Datos de ingreso", 280, 240, formulario=form_ingreso)
         n_dec = N(Nodo.Tipo.DECISION, "¿Especialidad?", 520, 240)
         n_d_trauma = N(Nodo.Tipo.DERIVAR, "Derivar a Traumatología", 760, 80,

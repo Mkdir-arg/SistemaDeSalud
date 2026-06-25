@@ -212,6 +212,18 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
         dur = (nodo.config or {}).get("duracion", "")
         _registrar(caso, f"Espera programada: {nodo.titulo}", detalle=dur, autor=autor, nodo=nodo)
 
+    elif nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila"):
+        # Atención con fila: el paciente espera encolado hasta que lo llaman de un box.
+        ya = caso.en_filas.filter(nodo=nodo, atendido=False).exists()
+        if not ya:
+            orden = ItemFila.objects.filter(nodo=nodo, atendido=False).count()
+            ItemFila.objects.create(
+                caso=caso, nodo=nodo,
+                urgente=(caso.prioridad == Caso.Prioridad.URGENTE), orden=orden,
+            )
+        caso.estado = Caso.Estado.EN_ESPERA
+        _registrar(caso, f"En sala de espera: {nodo.titulo}", detalle="esperando ser llamado a un box", autor=autor, nodo=nodo)
+
     elif nodo.tipo == Nodo.Tipo.FIN:
         caso.estado = Caso.Estado.CERRADO
         _registrar(caso, f"Estado → Cerrado", detalle=nodo.titulo, autor=autor, nodo=nodo)
@@ -250,9 +262,90 @@ def _correr_automaticos(caso: Caso, autor=None):
     return caso
 
 
+def asegurar_historia(caso: Caso):
+    """Garantiza que el paciente del caso tenga su historia clínica (ingreso = HC)."""
+    if caso.ciudadano_id:
+        HistoriaClinica.objects.get_or_create(ciudadano=caso.ciudadano)
+
+
+def _hc_del_caso(caso: Caso) -> HistoriaClinica:
+    if not caso.ciudadano_id:
+        raise ErrorMotor("El caso no tiene un paciente asociado.")
+    asegurar_historia(caso)
+    return caso.ciudadano.historia_clinica
+
+
+def agregar_receta(caso: Caso, detalle: str, autor=None):
+    """El médico emite una receta que queda en la historia clínica del paciente."""
+    from apps.registros.models import Receta
+
+    hc = _hc_del_caso(caso)
+    r = Receta.objects.create(historia=hc, detalle=detalle, autor=autor if (autor and autor.is_authenticated) else None)
+    _registrar(caso, "Receta emitida", detalle=detalle[:120], autor=autor, nodo=caso.nodo_actual)
+    return r
+
+
+def agregar_estudio(caso: Caso, tipo: str, autor=None):
+    """El médico solicita un estudio (queda pendiente en la historia clínica)."""
+    from apps.registros.models import Estudio
+
+    hc = _hc_del_caso(caso)
+    e = Estudio.objects.create(
+        historia=hc, tipo=tipo, fecha=timezone.now().date(),
+        autor=(autor.nombre_completo if (autor and autor.is_authenticated) else ""),
+    )
+    _registrar(caso, "Estudio solicitado", detalle=tipo, autor=autor, nodo=caso.nodo_actual)
+    return e
+
+
+@transaction.atomic
+def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
+    """
+    Llama al caso desde un box. En una «Atención con fila» el caso queda asignado
+    al box y pasa a ser atendido (sin avanzar de nodo). En una «Espera de fila»
+    clásica, el llamado destraba la cola y avanza al siguiente nodo.
+    """
+    from apps.instituciones.models import Box
+
+    nodo = caso.nodo_actual
+    if nodo is None:
+        raise ErrorMotor("El caso no está posicionado en ningún nodo.")
+    item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
+    if item is None:
+        raise ErrorMotor("El caso no está en una fila de espera.")
+
+    box = Box.objects.filter(pk=box_id).first() if box_id else None
+    box_nombre = box.nombre if box else ""
+    item.box = box
+
+    es_atencion_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
+    if es_atencion_fila:
+        # Queda en el mismo nodo, ahora en atención en el box.
+        item.save(update_fields=["box"])
+        caso.estado = Caso.Estado.EN_EVALUACION
+        _registrar(caso, f"Llamado a {box_nombre}" if box_nombre else "Llamado para atención",
+                   detalle="pasa a atención", autor=autor, nodo=nodo)
+        caso.save()
+        return caso
+
+    # Espera de fila clásica: marca atendido y avanza al siguiente nodo.
+    item.atendido = True
+    item.save(update_fields=["box", "atendido"])
+    _registrar(caso, f"Llamado desde la fila{f' a {box_nombre}' if box_nombre else ''}",
+               detalle=nodo.titulo, autor=autor, nodo=nodo)
+    siguiente = _siguiente_nodo(nodo, caso)
+    if siguiente is None:
+        _registrar(caso, "Caso sin salida", detalle=f"nodo «{nodo.titulo}» sin conexión", autor=autor, nodo=nodo)
+        caso.save()
+        return caso
+    caso.nodo_actual = siguiente
+    return _correr_automaticos(caso, autor=autor)
+
+
 @transaction.atomic
 def iniciar(caso: Caso, autor=None) -> Caso:
     """Coloca el caso en el nodo Inicio de su versión y corre hasta la 1ª parada."""
+    asegurar_historia(caso)
     inicio = caso.version.nodos.filter(tipo=Nodo.Tipo.INICIO).first()
     if inicio is None:
         raise ErrorMotor("La versión del flujo no tiene un nodo Inicio.")
@@ -290,15 +383,31 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         _registrar(caso, f"Formulario «{nodo.titulo}» completado", detalle=f"{len(valores)} campos cargados", autor=autor, nodo=nodo)
 
     elif nodo.tipo == Nodo.Tipo.ATENCION:
+        if (nodo.config or {}).get("con_fila"):
+            item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
+            if item and item.box_id is None:
+                raise ErrorMotor("Primero hay que llamar al paciente desde un box.")
+            if item:
+                item.atendido = True
+                item.save(update_fields=["atendido"])
         _exigir_medico(caso, autor)
         _registrar_atencion(caso, nodo, datos, autor=autor)
 
     elif nodo.tipo == Nodo.Tipo.ESPERA_FILA:
+        box_id = datos.get("box_id")
+        box_nombre = ""
         item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
         if item:
             item.atendido = True
-            item.save(update_fields=["atendido"])
-        _registrar(caso, "Llamado desde la fila", detalle=nodo.titulo, autor=autor, nodo=nodo)
+            if box_id:
+                item.box_id = box_id
+            item.save(update_fields=["atendido", "box"])
+        if box_id:
+            from apps.instituciones.models import Box
+            b = Box.objects.filter(pk=box_id).first()
+            box_nombre = b.nombre if b else ""
+        detalle = f"{nodo.titulo}" + (f" · {box_nombre}" if box_nombre else "")
+        _registrar(caso, f"Llamado desde la fila{f' a {box_nombre}' if box_nombre else ''}", detalle=detalle, autor=autor, nodo=nodo)
 
     elif nodo.tipo == Nodo.Tipo.ESPERA_TIEMPO:
         _registrar(caso, "Espera finalizada", detalle=nodo.titulo, autor=autor, nodo=nodo)

@@ -70,6 +70,27 @@ class Subarea(models.Model):
         return f"{self.nombre} · {self.area.nombre}"
 
 
+class Box(models.Model):
+    """
+    Consultorio / box de atención de un área. Desde un box, un profesional llama
+    al siguiente de la fila de espera para atenderlo.
+    """
+
+    area = models.ForeignKey(Area, on_delete=models.CASCADE, related_name="boxes")
+    nombre = models.CharField(max_length=80, help_text="Ej.: «Box 1», «Consultorio A»")
+    activo = models.BooleanField(default=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "box"
+        verbose_name_plural = "boxes"
+        ordering = ["nombre"]
+        unique_together = [("area", "nombre")]
+
+    def __str__(self):
+        return f"{self.nombre} · {self.area.nombre}"
+
+
 class Grupo(models.Model):
     """
     Equipo de trabajo dentro de un área (ej: 'Guardia mañana', 'Comité de ablación').

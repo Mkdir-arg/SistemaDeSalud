@@ -111,7 +111,7 @@ export default function CasoDetalle() {
           )}
 
           {/* Panel del paso actual */}
-          <PanelPaso caso={caso} cerrado={cerrado} accionando={accionando} ejecutar={ejecutar} />
+          <PanelPaso caso={caso} cerrado={cerrado} accionando={accionando} ejecutar={ejecutar} hc={hc} />
 
           {/* Datos cargados */}
           {caso.valores?.length > 0 && (
@@ -190,7 +190,7 @@ export default function CasoDetalle() {
 }
 
 // --------------------------------------------------------------------------- //
-function PanelPaso({ caso, cerrado, accionando, ejecutar }) {
+function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
   // Caso aún no iniciado.
   if (!caso.nodo_actual && !cerrado) {
     return (
@@ -233,8 +233,19 @@ function PanelPaso({ caso, cerrado, accionando, ejecutar }) {
   }
 
   const tipo = caso.nodo_tipo;
+  // Atención con fila, todavía en espera (no llamado desde un box).
+  if (tipo === "atencion" && caso.nodo_con_fila && !caso.llamado) {
+    return (
+      <Card style={{ padding: 24 }}>
+        <PanelHeader tipo="atencion" titulo={caso.paso_actual} />
+        <p style={{ fontSize: 13.5, color: color.slate600, margin: 0 }}>
+          El paciente está en la <strong>sala de espera</strong>. Será atendido cuando se lo llame desde un box, en la pantalla <strong>«Filas de espera»</strong>.
+        </p>
+      </Card>
+    );
+  }
   if (tipo === "form") return <PasoFormulario caso={caso} accionando={accionando} ejecutar={ejecutar} />;
-  if (tipo === "atencion") return <PasoAtencion caso={caso} accionando={accionando} ejecutar={ejecutar} />;
+  if (tipo === "atencion") return <PasoAtencion caso={caso} accionando={accionando} ejecutar={ejecutar} hc={hc} />;
   if (tipo === "espera") return <PasoSimple caso={caso} accionando={accionando} ejecutar={ejecutar} titulo="Sala de espera" texto="El caso está en la fila. Cuando sea llamado, continúa al siguiente paso." accion="Llamar y continuar" />;
   if (tipo === "tiempo") return <PasoSimple caso={caso} accionando={accionando} ejecutar={ejecutar} titulo="Espera programada" texto="El caso está en pausa hasta cumplir el tiempo. Reactivá para continuar." accion="Reactivar" />;
 

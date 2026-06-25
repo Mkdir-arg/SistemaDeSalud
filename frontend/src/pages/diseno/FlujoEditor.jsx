@@ -361,6 +361,7 @@ export default function FlujoEditor() {
               nodo={nodoSel}
               version={version}
               flujoInstId={flujo.institucion}
+              flujoAreaId={flujo.area}
               campos={campos}
               onActualizar={actualizarNodo}
               onBorrar={borrarNodo}
@@ -503,12 +504,28 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
 // Pasos donde una persona ejecuta el trabajo: ahí tiene sentido decir "quién lo hace".
 const TIPOS_CON_RESPONSABLE = ["form", "atencion", "accion", "espera"];
 
-function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
+// Ayuda por tipo de nodo: para qué sirve y cómo se usa (helper del panel).
+const AYUDA_NODO = {
+  inicio: "Punto de arranque del flujo. Acá nace o entra el caso. Definí cómo entra: «Manual» (se crea desde Nuevo caso), «Solo por derivación» (lo manda otro flujo) o «Ambas».",
+  form: "Muestra un formulario para cargar datos del caso. El caso se detiene hasta que alguien lo completa. Elegí qué formulario usar y, en «Responsable», qué grupos pueden completarlo.",
+  decision: "Bifurca el camino según los datos ya cargados. En cada conexión de salida definí una regla (campo / operador / valor); la salida sin regla es la rama por defecto (else).",
+  accion: "Paso automático: ejecuta una acción del sistema y el flujo sigue solo (no se detiene). Útil para marcar un hito del proceso. (Ej.: «Solicitud de estudios» — en desarrollo.)",
+  atencion: "Registra una atención profesional que queda en la historia clínica del paciente. Si activás «fila de espera», el paciente queda en cola y un médico lo llama desde un box antes de atenderlo.",
+  derivar: "Envía el caso a otra área. Si además elegís un flujo de destino, abre un caso nuevo en ese flujo (ej.: ingreso → especialidad), vinculado al original. El caso de origen sigue hacia su cierre.",
+  espera: "Coloca el caso en una fila de espera (orden de llegada; los urgentes primero). Queda detenido hasta que se lo llama desde la fila.",
+  tiempo: "Pausa el caso por un período (dato informativo). Hoy se reactiva manualmente; la reactivación automática por tiempo es un pendiente.",
+  estado: "Cambia el estado del caso (Recibido, En espera, Atendido, Cerrado…). Es automático: sirve para reflejar en qué etapa está el caso.",
+  fin: "Cierra el caso: marca el estado como Cerrado y termina el recorrido. Un flujo puede tener varios nodos Fin.",
+};
+
+function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
   const [titulo, setTitulo] = useState(nodo.titulo);
+  const [ayuda, setAyuda] = useState(false);
   const [areas, setAreas] = useState([]);
   const [flujos, setFlujos] = useState([]);
   const [formularios, setFormularios] = useState([]);
   const [grupos, setGrupos] = useState([]);
+  const [boxesArea, setBoxesArea] = useState([]);
   const cat = nodeCat[nodo.tipo] || nodeCat.form;
   const salidas = version.conexiones.filter((c) => c.origen === nodo.id);
   const aplicaResponsable = TIPOS_CON_RESPONSABLE.includes(nodo.tipo);
@@ -520,11 +537,16 @@ function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar,
     }
     if (nodo.tipo === "form") api.get(`/formularios/?institucion=${flujoInstId}`).then((d) => setFormularios(d.results || d));
     if (aplicaResponsable) api.get(`/grupos/?area__institucion=${flujoInstId}&activo=true`).then((d) => setGrupos(d.results || d));
-  }, [nodo.tipo, flujoInstId, aplicaResponsable]);
+    if ((nodo.tipo === "atencion" || nodo.tipo === "espera") && flujoAreaId)
+      api.get(`/boxes/?area=${flujoAreaId}&activo=true`).then((d) => setBoxesArea(d.results || d));
+  }, [nodo.tipo, flujoInstId, flujoAreaId, aplicaResponsable]);
 
-  // Flujos de destino candidatos: los del área elegida, sin el flujo actual (evita derivar a sí mismo).
+  // Flujos de destino candidatos: los del área elegida, sin el flujo actual
+  // (evita derivar a sí mismo) y que acepten derivación (no los "solo manual").
   const areaDestinoId = (nodo.config || {}).area_destino_id;
-  const flujosDelArea = flujos.filter((f) => f.area === areaDestinoId && f.id !== version.flujo);
+  const flujosDelArea = flujos.filter(
+    (f) => f.area === areaDestinoId && f.id !== version.flujo && f.origen_inicio !== "manual"
+  );
   const tienePublicada = (f) => (f.versiones || []).some((v) => v.estado === "publicada");
 
   const setConfig = (cambios) => onActualizar(nodo.id, { config: { ...(nodo.config || {}), ...cambios } });
@@ -541,13 +563,42 @@ function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar,
         <span style={{ width: 28, height: 28, borderRadius: 8, background: cat.tint, border: `1px solid ${cat.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
           <span style={{ width: 11, height: 11, borderRadius: 3, background: cat.sol }} />
         </span>
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>{cat.name.toUpperCase()}</div>
+        <div style={{ flex: 1, fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>{cat.name.toUpperCase()}</div>
+        <button
+          onClick={() => setAyuda((v) => !v)}
+          title="¿Qué hace este nodo?"
+          style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${ayuda ? color.accent : color.inputBorder}`, background: ayuda ? color.accent50 : "#fff", color: ayuda ? color.accent : color.slate400, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
+        >
+          <Icon name="help" size={15} />
+        </button>
       </div>
+
+      {ayuda && (
+        <div style={{ display: "flex", gap: 9, background: color.accent50, border: `1px solid ${color.accent100}`, borderRadius: 10, padding: "11px 12px", marginBottom: 16 }}>
+          <Icon name="help" size={15} style={{ color: color.accent, marginTop: 1 }} />
+          <div style={{ fontSize: 12.5, lineHeight: 1.5, color: color.slate700 }}>
+            {AYUDA_NODO[nodo.tipo] || "Nodo del flujo."}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <Field label="Título">
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} onBlur={() => titulo !== nodo.titulo && onActualizar(nodo.id, { titulo })} />
         </Field>
+
+        {nodo.tipo === "inicio" && (
+          <Field label="¿Cómo entran los casos a este flujo?">
+            <Select value={(nodo.config || {}).origen || "ambos"} onChange={(e) => setConfig({ origen: e.target.value })}>
+              <option value="manual">Manual — se crea desde «Nuevo caso»</option>
+              <option value="derivado">Solo por derivación — no se crea a mano</option>
+              <option value="ambos">Ambas</option>
+            </Select>
+            <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+              Define si el flujo aparece en «Nuevo caso» y/o si puede ser destino de una derivación.
+            </div>
+          </Field>
+        )}
 
         {nodo.tipo === "form" && (
           <Field label="Formulario">
@@ -555,6 +606,28 @@ function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar,
               <option value="">— Elegir —</option>
               {formularios.map((f) => <option key={f.id} value={f.id}>{f.titulo}</option>)}
             </Select>
+          </Field>
+        )}
+
+        {nodo.tipo === "atencion" && (
+          <Field label="Fila de espera">
+            <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={!!(nodo.config || {}).con_fila}
+                onChange={(e) => setConfig({ con_fila: e.target.checked })}
+              />
+              El paciente espera y se lo llama desde un box
+            </label>
+            {(nodo.config || {}).con_fila && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: color.slate500 }}>
+                {!flujoAreaId
+                  ? "Este flujo no tiene área: configurá un área para usar boxes."
+                  : boxesArea.length === 0
+                    ? "El área no tiene boxes. Cargalos en Estructura → área → Boxes."
+                    : <>Se llama desde los boxes de <strong>{boxesArea[0].area_nombre}</strong>: {boxesArea.map((b) => b.nombre).join(", ")}.</>}
+              </div>
+            )}
           </Field>
         )}
 
@@ -586,7 +659,7 @@ function PanelNodo({ nodo, version, flujoInstId, campos, onActualizar, onBorrar,
                 </Select>
                 <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
                   {flujosDelArea.length === 0
-                    ? "El área no tiene flujos. Se derivará solo cambiando el área."
+                    ? "El área no tiene flujos que acepten derivación. Se derivará solo cambiando el área."
                     : (nodo.config || {}).flujo_destino_id
                       ? "Al derivar se abre un caso nuevo en este flujo (debe estar publicado)."
                       : "Sin flujo: la derivación solo cambia el área del caso."}

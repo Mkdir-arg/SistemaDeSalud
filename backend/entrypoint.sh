@@ -36,4 +36,11 @@ if [ "$SEED_DEMO" = "1" ]; then
   python manage.py seed_demo || echo "seed_demo falló o ya estaba sembrado; continúo."
 fi
 
+# Carga el escenario de guardia si SEED_GUARDIA=1. Con --si-vacio solo siembra
+# cuando la base no tiene datos, así un reinicio no pisa los casos creados.
+if [ "$SEED_GUARDIA" = "1" ]; then
+  echo "Sembrando escenario de guardia (si la base está vacía)..."
+  python manage.py seed_guardia --si-vacio || echo "seed_guardia falló; continúo."
+fi
+
 exec "$@"
