@@ -173,6 +173,23 @@ def _notificar(usuario, titulo: str, detalle: str = "", caso: Caso | None = None
         Notificacion.objects.create(usuario=usuario, titulo=titulo, detalle=detalle[:255], caso=caso)
 
 
+def _nombre_paciente(caso: Caso) -> str:
+    return f"{caso.ciudadano.nombre} {caso.ciudadano.apellido}".strip() if caso.ciudadano_id else ""
+
+
+def _notificar_grupo(nodo: Nodo | None, titulo: str, detalle: str = "", caso: Caso | None = None, excluir=None):
+    """Avisa a todos los integrantes de los grupos responsables del nodo."""
+    if nodo is None:
+        return
+    user_ids = set()
+    for g in nodo.grupos.all():
+        user_ids |= set(g.miembros.values_list("id", flat=True))
+    user_ids.discard(getattr(excluir, "id", None))
+    Notificacion.objects.bulk_create([
+        Notificacion(usuario_id=uid, titulo=titulo, detalle=detalle[:255], caso=caso) for uid in user_ids
+    ])
+
+
 def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
     """Aplica el efecto de *entrar* a un nodo automático o de espera."""
     if nodo.tipo == Nodo.Tipo.ESTADO:
@@ -274,6 +291,11 @@ def _correr_automaticos(caso: Caso, autor=None):
 
         if nodo.tipo in TIPOS_DETENCION:
             _aplicar_efecto_entrada(caso, nodo, autor=autor)
+            # Un caso urgente que llega a un paso de trabajo avisa al equipo responsable.
+            if caso.prioridad == Caso.Prioridad.URGENTE and nodo.tipo in (
+                Nodo.Tipo.FORMULARIO, Nodo.Tipo.ATENCION, Nodo.Tipo.ESPERA_FILA
+            ):
+                _notificar_grupo(nodo, "Caso urgente", detalle=f"{nodo.titulo} · {_nombre_paciente(caso)}".strip(" ·"), caso=caso, excluir=autor)
             break
 
         # Nodo automático: aplicar efecto y saltar al siguiente.
@@ -416,6 +438,9 @@ def cancelar_caso(caso: Caso, autor=None, motivo: str = "") -> Caso:
     caso.esperando = False
     caso.save(update_fields=["estado", "esperando", "actualizado"])
     _registrar(caso, "Caso cancelado", detalle=motivo[:200], autor=autor, nodo=caso.nodo_actual)
+    if caso.asignado_a_id and caso.asignado_a_id != getattr(autor, "id", None):
+        _notificar(caso.asignado_a, "Caso cancelado",
+                   detalle=f"{_nombre_paciente(caso)} · {motivo}".strip(" ·"), caso=caso)
 
     # Si bloqueaba a un caso de origen en espera y no quedan otros sub-procesos
     # pendientes, destrabamos el origen (sin marcar estudios como realizados).

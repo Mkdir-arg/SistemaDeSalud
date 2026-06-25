@@ -12,6 +12,7 @@ import { color } from "../theme";
 const TITULOS = {
   "/inicio": "Inicio",
   "/supervision": "Supervisión",
+  "/notificaciones": "Notificaciones",
   "/bandeja": "Bandeja de tareas",
   "/filas": "Filas de espera",
   "/casos": "Casos",
@@ -94,6 +95,10 @@ function Campana() {
                 </div>
               ))}
             </div>
+            <button onClick={() => { setAbierto(false); navigate("/notificaciones"); }}
+              style={{ width: "100%", padding: "10px 14px", border: "none", borderTop: `1px solid ${color.divider}`, background: "#fff", color: color.accent, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              Ver todas
+            </button>
           </div>
         </>
       )}

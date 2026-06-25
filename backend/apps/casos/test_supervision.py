@@ -109,6 +109,14 @@ class SupervisionTests(APITestCase):
         self.client.post("/api/notificaciones/leer/", {})
         self.assertEqual(self.client.get("/api/notificaciones/resumen/").data["no_leidas"], 0)
 
+    def test_cancelar_avisa_al_responsable(self):
+        from apps.casos.models import Notificacion
+        caso = self._caso()
+        caso.asignado_a = self.med
+        caso.save(update_fields=["asignado_a"])
+        motor.cancelar_caso(caso, autor=self.jefe, motivo="duplicado")
+        self.assertTrue(Notificacion.objects.filter(usuario=self.med, caso=caso, titulo="Caso cancelado").exists())
+
     def test_notificaciones_son_privadas(self):
         # Una notificación de un usuario no la ve otro.
         from apps.casos.models import Notificacion

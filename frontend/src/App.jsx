@@ -10,6 +10,7 @@ import Directorio from "./pages/Directorio";
 import Inicio from "./pages/Inicio";
 import MiTrabajo from "./pages/MiTrabajo";
 import Supervision from "./pages/Supervision";
+import Notificaciones from "./pages/Notificaciones";
 import Bandejas from "./pages/ejecucion/Bandejas";
 import Casos from "./pages/ejecucion/Casos";
 import CasoDetalle from "./pages/ejecucion/CasoDetalle";
@@ -89,6 +90,7 @@ export default function App() {
       <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />
+      <Route path="/notificaciones" element={P(<Notificaciones />)} />
 
       {/* TRABAJO */}
       <Route path="/supervision" element={P(<Supervision />)} />
