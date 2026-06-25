@@ -15,6 +15,7 @@ from .serializers import (
 class UsuarioViewSet(BaseModelViewSet):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
+    capacidad_requerida = "config"
     filter_fields = ("is_active", "is_staff")
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["email", "nombre", "apellido"]
@@ -64,6 +65,7 @@ class UsuarioViewSet(BaseModelViewSet):
 class MembresiaViewSet(BaseModelViewSet):
     queryset = Membresia.objects.select_related("usuario", "institucion").prefetch_related("areas")
     serializer_class = MembresiaSerializer
+    capacidad_requerida = "config"
     institucion_path = "institucion"
     filter_fields = ("usuario", "institucion", "rol", "activo")
 
@@ -71,4 +73,5 @@ class MembresiaViewSet(BaseModelViewSet):
 class LegajoProfesionalViewSet(BaseModelViewSet):
     queryset = LegajoProfesional.objects.select_related("usuario")
     serializer_class = LegajoProfesionalSerializer
+    capacidad_requerida = "config"
     filter_fields = ("usuario",)

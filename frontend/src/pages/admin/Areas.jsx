@@ -5,7 +5,7 @@ import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select, Spinner
 import { Icon } from "../../components/icons";
 import { color } from "../../theme";
 
-const ROL_LABEL = { admin: "Admin de institución", configurador: "Configurador", administrativo: "Administrativo", medico: "Médico / profesional" };
+const ROL_LABEL = { admin: "Admin de institución", configurador: "Configurador", jefe_area: "Jefe / Supervisor de área", administrativo: "Administrativo", enfermeria: "Enfermería", medico: "Médico / profesional" };
 
 // Estructura organizativa: tabla de áreas + ficha en panel lateral (drawer).
 export default function Areas() {
@@ -711,7 +711,9 @@ function EliminarModal({ tipo, item, onClose, onDeleted }) {
 
 // Funciones operativas que se pueden asignar a un área.
 const FUNCIONES = [
+  { value: "jefe_area", label: "Jefe / Supervisor de área" },
   { value: "administrativo", label: "Administrativo" },
+  { value: "enfermeria", label: "Enfermería" },
   { value: "medico", label: "Médico / profesional" },
 ];
 

@@ -12,10 +12,12 @@ const KEY = "cauce.institucion";
 //   trabajo   → Bandeja, Filas, Casos
 //   registros → Historia clínica, Legajo
 const CAPS_POR_ROL = {
-  admin: ["config", "diseno", "trabajo", "registros"],
+  admin: ["config", "diseno", "trabajo", "registros", "supervision"],
   configurador: ["diseno"],
+  jefe_area: ["trabajo", "registros", "supervision"], // supervisa su área
   administrativo: ["trabajo", "registros"],
-  medico: ["trabajo", "registros"], // igual que administrativo; la diferencia es firmar atenciones
+  enfermeria: ["trabajo", "registros"], // opera, pero no firma atenciones (regla del motor)
+  medico: ["trabajo", "registros"], // la diferencia es firmar atenciones
 };
 
 // Vista "ver como rol" (selector de la barra superior, sólo super admin).

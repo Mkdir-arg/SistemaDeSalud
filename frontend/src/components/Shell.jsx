@@ -100,7 +100,9 @@ const GRUPOS = [
 const ROL_LABEL = {
   admin: "Admin de institución",
   configurador: "Configurador",
+  jefe_area: "Jefe / Supervisor de área",
   administrativo: "Administrativo",
+  enfermeria: "Enfermería",
   medico: "Médico / profesional",
 };
 

@@ -42,6 +42,28 @@ def grupos_responsables_ids(caso):
     return list(caso.nodo_actual.grupos.values_list("id", flat=True))
 
 
+def areas_que_supervisa(usuario):
+    """IDs de áreas donde `usuario` es jefe/supervisor (membresía activa)."""
+    if not getattr(usuario, "is_authenticated", False):
+        return set()
+    from apps.accounts.models import Membresia
+    return set(
+        Area.objects.filter(
+            miembros__usuario=usuario,
+            miembros__rol=Membresia.Rol.JEFE_AREA,
+            miembros__activo=True,
+        ).values_list("id", flat=True)
+    )
+
+
+def usuario_supervisa(usuario, caso):
+    """¿`usuario` es jefe del área del caso? (el super admin supervisa todo)."""
+    if getattr(usuario, "is_superuser", False):
+        return True
+    area_id = caso.area_actual_id or (caso.version.flujo.area_id if caso.version_id else None)
+    return area_id is not None and area_id in areas_que_supervisa(usuario)
+
+
 def usuario_puede_tomar(usuario, caso):
     """
     ¿`usuario` puede tomar/ejecutar el paso actual del `caso`?
@@ -373,6 +395,40 @@ def _retornar_al_origen(sub: Caso, autor=None):
 
 
 @transaction.atomic
+def cancelar_caso(caso: Caso, autor=None, motivo: str = "") -> Caso:
+    """Cancela un caso (acción del jefe/supervisor de área).
+
+    Lo saca de cualquier fila, lo marca CANCELADO y, si bloqueaba a un caso de
+    origen que estaba esperando, lo destraba para que pueda retomarse.
+    """
+    if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO):
+        raise ErrorMotor("El caso ya está finalizado.")
+    caso.en_filas.filter(atendido=False).update(atendido=True)  # sale de las colas
+    caso.estado = Caso.Estado.CANCELADO
+    caso.esperando = False
+    caso.save(update_fields=["estado", "esperando", "actualizado"])
+    _registrar(caso, "Caso cancelado", detalle=motivo[:200], autor=autor, nodo=caso.nodo_actual)
+
+    # Si bloqueaba a un caso de origen en espera y no quedan otros sub-procesos
+    # pendientes, destrabamos el origen (sin marcar estudios como realizados).
+    if caso.bloquea_origen and caso.origen_id:
+        parent = caso.origen
+        pendientes = (
+            parent.derivados.filter(bloquea_origen=True)
+            .exclude(pk=caso.pk)
+            .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            .exists()
+        )
+        if not pendientes and parent.esperando:
+            parent.esperando = False
+            parent.estado = Caso.Estado.EN_EVALUACION
+            parent.save(update_fields=["esperando", "estado", "actualizado"])
+            _registrar(parent, "Sub-proceso cancelado — retomar atención",
+                       detalle=f"caso #{caso.pk}", autor=autor)
+    return caso
+
+
+@transaction.atomic
 def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     """
     Llama al caso desde un box. En una «Atención con fila» el caso queda asignado
@@ -449,8 +505,8 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     nodo = caso.nodo_actual
     if nodo is None:
         raise ErrorMotor("El caso no está posicionado en ningún nodo (¿falta iniciar?).")
-    if caso.estado == Caso.Estado.CERRADO or nodo.tipo == Nodo.Tipo.FIN:
-        raise ErrorMotor("El caso ya está cerrado.")
+    if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO) or nodo.tipo == Nodo.Tipo.FIN:
+        raise ErrorMotor("El caso ya está finalizado.")
     if caso.esperando:
         raise ErrorMotor("El caso está esperando el resultado de un estudio derivado.")
     if nodo.tipo not in TIPOS_DETENCION:

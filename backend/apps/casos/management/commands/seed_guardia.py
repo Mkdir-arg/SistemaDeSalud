@@ -111,9 +111,10 @@ class Command(BaseCommand):
             mem.areas.add(*areas)
             return u
 
-        # Guardia: admisión, enfermería de triage y médicos.
+        # Guardia: jefatura, admisión, enfermería de triage y médicos.
+        jefe_guardia = persona("guardia.jefe@hospital.gob.ar", "Marcos", "Ledesma", R.JEFE_AREA, guardia)
         adm_guardia = persona("guardia.adm@hospital.gob.ar", "Carla", "Ibáñez", R.ADMINISTRATIVO, guardia)
-        enf_guardia = persona("guardia.enf@hospital.gob.ar", "Roxana", "Páez", R.ADMINISTRATIVO, guardia)
+        enf_guardia = persona("guardia.enf@hospital.gob.ar", "Roxana", "Páez", R.ENFERMERIA, guardia)
         med_guardia = persona("guardia.med@hospital.gob.ar", "Hernán", "Ruiz", R.MEDICO, guardia)
         # Especialidades: 1 administrativo + 1 médico por área.
         adm_trauma = persona("trauma.adm@hospital.gob.ar", "Marta", "Ríos", R.ADMINISTRATIVO, trauma)
@@ -422,6 +423,7 @@ class Command(BaseCommand):
             "    · Internación\n"
             "Accesos (contraseña demo1234, salvo el admin):\n"
             "  admin@cauce.local / admin1234       (super admin)\n"
+            "  guardia.jefe@hospital.gob.ar        (jefe/supervisor de guardia)\n"
             "  guardia.adm@hospital.gob.ar         (admisión → arranca el ingreso)\n"
             "  guardia.enf@hospital.gob.ar         (enfermería → triage)\n"
             "  guardia.med@hospital.gob.ar         (médico de guardia → atención y conducta)\n"

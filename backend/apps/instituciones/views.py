@@ -11,6 +11,7 @@ from .serializers import AreaSerializer, BoxSerializer, GrupoSerializer, Institu
 class InstitucionViewSet(BaseModelViewSet):
     queryset = Institucion.objects.all()
     serializer_class = InstitucionSerializer
+    capacidad_requerida = "config"
     institucion_path = "id"
     filter_fields = ("activa",)
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -35,6 +36,7 @@ class InstitucionViewSet(BaseModelViewSet):
 class AreaViewSet(BaseModelViewSet):
     queryset = Area.objects.select_related("institucion").prefetch_related("subareas")
     serializer_class = AreaSerializer
+    capacidad_requerida = "config"
     institucion_path = "institucion"
     filter_fields = ("institucion", "activa")
 
@@ -42,6 +44,7 @@ class AreaViewSet(BaseModelViewSet):
 class SubareaViewSet(BaseModelViewSet):
     queryset = Subarea.objects.select_related("area")
     serializer_class = SubareaSerializer
+    capacidad_requerida = "config"
     institucion_path = "area__institucion"
     filter_fields = ("area", "activa")
 
@@ -49,6 +52,7 @@ class SubareaViewSet(BaseModelViewSet):
 class GrupoViewSet(BaseModelViewSet):
     queryset = Grupo.objects.select_related("area").prefetch_related("miembros")
     serializer_class = GrupoSerializer
+    capacidad_requerida = "config"
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "activo")
 
@@ -56,5 +60,6 @@ class GrupoViewSet(BaseModelViewSet):
 class BoxViewSet(BaseModelViewSet):
     queryset = Box.objects.select_related("area")
     serializer_class = BoxSerializer
+    capacidad_requerida = "config"
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "activo")

@@ -49,6 +49,7 @@ export const estadoCaso = {
   derivado: { label: "Derivado", tone: "amber" },
   atendido: { label: "Atendido", tone: "green" },
   cerrado: { label: "Cerrado", tone: "gray" },
+  cancelado: { label: "Cancelado", tone: "error" },
 };
 
 // Estado de la VersiónFlujo → tono.

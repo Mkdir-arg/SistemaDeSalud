@@ -19,6 +19,7 @@ class Caso(models.Model):
         DERIVADO = "derivado", "Derivado"
         ATENDIDO = "atendido", "Atendido"
         CERRADO = "cerrado", "Cerrado"
+        CANCELADO = "cancelado", "Cancelado"
 
     class Prioridad(models.TextChoices):
         NORMAL = "normal", "Normal"

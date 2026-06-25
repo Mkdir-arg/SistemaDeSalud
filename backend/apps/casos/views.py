@@ -23,6 +23,7 @@ class CasoViewSet(BaseModelViewSet):
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
     ).prefetch_related("valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo", "en_filas")
+    capacidad_requerida = "trabajo"
     institucion_path = "institucion"
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a")
 
@@ -163,6 +164,52 @@ class CasoViewSet(BaseModelViewSet):
         return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
+    def asignar(self, request, pk=None):
+        """Supervisor del área: reasigna el caso a un integrante (cuerpo {usuario_id})."""
+        caso = self.get_object()
+        if not motor.usuario_supervisa(request.user, caso):
+            return Response({"detail": "Solo el jefe del área puede reasignar el caso."}, status=status.HTTP_403_FORBIDDEN)
+        from apps.accounts.models import Usuario
+        u = Usuario.objects.filter(pk=request.data.get("usuario_id")).first()
+        if not u:
+            return Response({"detail": "Usuario inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        caso.asignado_a = u
+        caso.save(update_fields=["asignado_a", "actualizado"])
+        EventoCaso.objects.create(caso=caso, titulo="Reasignado", detalle=f"a {u.nombre_completo}", autor=request.user, nodo=caso.nodo_actual)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def priorizar(self, request, pk=None):
+        """Supervisor del área: cambia la prioridad (cuerpo {prioridad})."""
+        caso = self.get_object()
+        if not motor.usuario_supervisa(request.user, caso):
+            return Response({"detail": "Solo el jefe del área puede cambiar la prioridad."}, status=status.HTTP_403_FORBIDDEN)
+        pri = request.data.get("prioridad")
+        if pri not in dict(Caso.Prioridad.choices):
+            return Response({"detail": "Prioridad inválida."}, status=status.HTTP_400_BAD_REQUEST)
+        caso.prioridad = pri
+        caso.save(update_fields=["prioridad", "actualizado"])
+        # Reflejar la urgencia en la cola si el caso está esperando.
+        caso.en_filas.filter(atendido=False).update(urgente=(pri == Caso.Prioridad.URGENTE))
+        EventoCaso.objects.create(caso=caso, titulo="Prioridad cambiada", detalle=caso.get_prioridad_display(), autor=request.user, nodo=caso.nodo_actual)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def cancelar(self, request, pk=None):
+        """Supervisor del área: cancela el caso (cuerpo {motivo})."""
+        caso = self.get_object()
+        if not motor.usuario_supervisa(request.user, caso):
+            return Response({"detail": "Solo el jefe del área puede cancelar el caso."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            motor.cancelar_caso(caso, autor=request.user, motivo=(request.data.get("motivo") or "").strip())
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
     def iniciar(self, request, pk=None):
         """Coloca el caso en el nodo Inicio y lo corre hasta la 1ª parada."""
         caso = self.get_object()
@@ -255,7 +302,7 @@ class MisTareasView(APIView):
     def _tareas_y_esperando(self, inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user):
         casos = (
             Caso.objects.filter(institucion_id=inst_id, nodo_actual_id__in=mis_nodo_ids)
-            .exclude(estado=Caso.Estado.CERRADO)
+            .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
             .select_related("ciudadano", "version__flujo", "area_actual", "estudio")
             .prefetch_related("en_filas")
         )
@@ -397,6 +444,7 @@ class MisTareasView(APIView):
 class ValorCampoViewSet(BaseModelViewSet):
     queryset = ValorCampo.objects.select_related("caso", "campo", "nodo")
     serializer_class = ValorCampoSerializer
+    capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
     filter_fields = ("caso", "campo")
 
@@ -404,6 +452,7 @@ class ValorCampoViewSet(BaseModelViewSet):
 class ItemFilaViewSet(BaseModelViewSet):
     queryset = ItemFila.objects.select_related("caso__ciudadano", "nodo__version__flujo__area", "box")
     serializer_class = ItemFilaSerializer
+    capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
     filter_fields = ("caso", "nodo", "urgente", "atendido", "nodo__version__flujo__area")
 
@@ -411,5 +460,6 @@ class ItemFilaViewSet(BaseModelViewSet):
 class EventoCasoViewSet(BaseModelViewSet):
     queryset = EventoCaso.objects.select_related("caso", "autor", "nodo")
     serializer_class = EventoCasoSerializer
+    capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
     filter_fields = ("caso", "autor")

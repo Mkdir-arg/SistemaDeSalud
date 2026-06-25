@@ -8,10 +8,12 @@ import { color } from "../../theme";
 const ROLES = [
   { value: "admin", label: "Admin de institución" },
   { value: "configurador", label: "Configurador" },
+  { value: "jefe_area", label: "Jefe / Supervisor de área" },
   { value: "administrativo", label: "Administrativo" },
+  { value: "enfermeria", label: "Enfermería" },
   { value: "medico", label: "Médico / profesional" },
 ];
-const ROL_LABEL = { admin: "Admin del sistema", configurador: "Configurador", administrativo: "Administrativo", medico: "Médico / profesional" };
+const ROL_LABEL = { admin: "Admin del sistema", configurador: "Configurador", jefe_area: "Jefe / Supervisor de área", administrativo: "Administrativo", enfermeria: "Enfermería", medico: "Médico / profesional" };
 const COLS = "minmax(180px,1.6fr) 160px 150px 110px 44px";
 
 export default function Usuarios() {

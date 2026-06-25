@@ -17,6 +17,7 @@ from .serializers import (
 class FlujoViewSet(BaseModelViewSet):
     queryset = Flujo.objects.select_related("institucion", "area", "subarea").prefetch_related("versiones")
     serializer_class = FlujoSerializer
+    capacidad_requerida = "diseno"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area", "subarea")
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -64,6 +65,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
         "nodos", "conexiones"
     )
     serializer_class = VersionFlujoSerializer
+    capacidad_requerida = "diseno"
     institucion_path = "flujo__institucion"
     filter_fields = ("flujo", "estado")
 
@@ -101,6 +103,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
 class NodoViewSet(BaseModelViewSet):
     queryset = Nodo.objects.select_related("version", "formulario").prefetch_related("grupos__area")
     serializer_class = NodoSerializer
+    capacidad_requerida = "diseno"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")
 
@@ -108,5 +111,6 @@ class NodoViewSet(BaseModelViewSet):
 class ConexionViewSet(BaseModelViewSet):
     queryset = Conexion.objects.select_related("version", "origen", "destino")
     serializer_class = ConexionSerializer
+    capacidad_requerida = "diseno"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version",)

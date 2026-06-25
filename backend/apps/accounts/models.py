@@ -79,7 +79,9 @@ class Membresia(models.Model):
     class Rol(models.TextChoices):
         ADMIN_INSTITUCION = "admin", "Admin de institución"
         CONFIGURADOR = "configurador", "Configurador"
+        JEFE_AREA = "jefe_area", "Jefe / Supervisor de área"
         ADMINISTRATIVO = "administrativo", "Administrativo"
+        ENFERMERIA = "enfermeria", "Enfermería"
         MEDICO = "medico", "Médico / profesional"
 
     usuario = models.ForeignKey(

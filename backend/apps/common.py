@@ -4,8 +4,93 @@ import uuid
 from django.core.files.storage import default_storage
 from rest_framework import status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+
+# --- Autorización por rol --------------------------------------------------- #
+# Fuente de verdad de las capacidades de cada rol (espeja CAPS_POR_ROL del
+# frontend). Un rol habilita un conjunto de capacidades; cada viewset declara la
+# capacidad que requiere para escribir (`capacidad_requerida`).
+#   config    → estructura organizativa, administración (usuarios/membresías)
+#   diseno    → flujos, versiones, nodos, conexiones, formularios
+#   trabajo   → casos y su operación (tomar/llamar/avanzar), filas
+#   registros → historia clínica, estudios, recetas, ciudadanos
+TODAS_LAS_CAPACIDADES = {"config", "diseno", "trabajo", "registros", "supervision"}
+ROL_CAPACIDADES = {
+    "admin": TODAS_LAS_CAPACIDADES,
+    "configurador": {"diseno"},
+    "jefe_area": {"trabajo", "registros", "supervision"},  # supervisa su área
+    "administrativo": {"trabajo", "registros"},
+    "enfermeria": {"trabajo", "registros"},      # opera, pero no firma atención (regla del motor)
+    "medico": {"trabajo", "registros"},
+}
+
+
+def capacidades_de(user, institucion_id=None):
+    """Capacidades del usuario, opcionalmente acotadas a una institución.
+
+    El superusuario de plataforma tiene todas. El resto, la unión de las
+    capacidades de sus roles en las membresías activas (de esa institución, si se
+    indica una)."""
+    if getattr(user, "is_superuser", False):
+        return set(TODAS_LAS_CAPACIDADES)
+    qs = user.membresias.filter(activo=True)
+    if institucion_id is not None:
+        qs = qs.filter(institucion_id=institucion_id)
+    caps = set()
+    for rol in qs.values_list("rol", flat=True):
+        caps |= ROL_CAPACIDADES.get(rol, set())
+    return caps
+
+
+def _institucion_de_objeto(obj, path):
+    """Sigue una ruta ORM (p. ej. "version__flujo__institucion") hasta el id de
+    la institución del objeto. `path="id"` devuelve el id del propio objeto."""
+    if not path:
+        return None
+    cur = obj
+    for part in path.split("__"):
+        if cur is None:
+            return None
+        cur = getattr(cur, part, None)
+    return getattr(cur, "id", cur)
+
+
+class CapacidadPermission(BasePermission):
+    """Autoriza la **escritura** según la capacidad del rol del usuario en la
+    institución implicada; la **lectura** queda abierta a cualquier miembro (el
+    queryset ya está scopeado por institución). El superusuario pasa siempre.
+
+    Los viewsets declaran `capacidad_requerida`; sin ella, no se restringe."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser or request.method in SAFE_METHODS:
+            return True
+        cap = getattr(view, "capacidad_requerida", None)
+        if not cap:
+            return True
+        # Alta (create): resolvemos la institución desde el cuerpo cuando viene
+        # explícita; si no, exigimos la capacidad en alguna membresía activa.
+        if getattr(view, "action", None) == "create":
+            inst_id = _coerce(str(request.data.get("institucion"))) if request.data.get("institucion") else None
+            return cap in capacidades_de(user, inst_id)
+        # Detalle (update/delete/acciones): se valida con el objeto.
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if user.is_superuser or request.method in SAFE_METHODS:
+            return True
+        cap = getattr(view, "capacidad_requerida", None)
+        if not cap:
+            return True
+        inst_id = _institucion_de_objeto(obj, getattr(view, "institucion_path", None))
+        return cap in capacidades_de(user, inst_id)
 
 
 class QueryParamFilterMixin:
@@ -89,6 +174,9 @@ class SubirArchivoView(APIView):
 
 
 class BaseModelViewSet(QueryParamFilterMixin, InstitucionScopedMixin, viewsets.ModelViewSet):
-    """ViewSet estándar: CRUD + filtrado por query params + scope por institución."""
+    """ViewSet estándar: CRUD + filtrado por query params + scope por institución
+    + autorización por rol (lectura abierta a miembros, escritura por capacidad)."""
 
-    pass
+    permission_classes = [IsAuthenticated, CapacidadPermission]
+    # Capacidad requerida para escribir; None = sin restricción de rol.
+    capacidad_requerida = None
