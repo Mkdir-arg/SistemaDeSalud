@@ -60,6 +60,7 @@ class Command(BaseCommand):
         trauma, _ = Area.objects.get_or_create(institucion=inst, nombre="Traumatología")
         cardio, _ = Area.objects.get_or_create(institucion=inst, nombre="Cardiología")
         salud_mental, _ = Area.objects.get_or_create(institucion=inst, nombre="Salud mental")
+        imagenes, _ = Area.objects.get_or_create(institucion=inst, nombre="Diagnóstico por imágenes")
 
         # --- Staff: 1 médico + 1 administrativo por área -------------------
         def persona(email, nombre, apellido, rol, area):
@@ -79,6 +80,7 @@ class Command(BaseCommand):
         adm_cardio = persona("cardio.adm@hospital.gob.ar", "Diego", "Salas", R.ADMINISTRATIVO, cardio)
         med_sm = persona("sm.med@hospital.gob.ar", "Sofía", "Bravo", R.MEDICO, salud_mental)
         adm_sm = persona("sm.adm@hospital.gob.ar", "Nadia", "Coll", R.ADMINISTRATIVO, salud_mental)
+        med_img = persona("img.med@hospital.gob.ar", "Tomás", "Leiva", R.MEDICO, imagenes)
 
         # --- Grupos por área (equipos) -------------------------------------
         def grupo(area, nombre, *miembros):
@@ -94,6 +96,7 @@ class Command(BaseCommand):
         g_adm_cardio = grupo(cardio, "Admin. cardio", adm_cardio)
         g_med_sm = grupo(salud_mental, "Profesionales SM", med_sm)
         g_adm_sm = grupo(salud_mental, "Admin. SM", adm_sm)
+        g_med_img = grupo(imagenes, "Técnicos de imágenes", med_img)
 
         # --- Boxes / consultorios por especialidad -------------------------
         for area in (trauma, cardio, salud_mental):
@@ -140,15 +143,13 @@ class Command(BaseCommand):
             ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
             # Los flujos de especialidad solo reciben casos por derivación.
             ini = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio", x=60, y=180, config={"origen": "derivado"})
-            frm = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FORMULARIO, titulo=form.titulo, x=280, y=180, formulario=form)
-            est = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ACCION, titulo="Solicitud de estudios", x=520, y=180)
-            # Un solo nodo «Atención con fila»: el paciente espera y el médico lo
-            # llama desde su box antes de atenderlo.
-            ate = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", x=760, y=180, config={"con_fila": True})
-            fin = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FIN, titulo="Cierre", x=1000, y=180)
+            frm = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FORMULARIO, titulo=form.titulo, x=300, y=180, formulario=form)
+            # Un solo nodo «Atención con fila»: el paciente espera, el médico lo llama
+            # desde su box y lo atiende. Los estudios se piden dentro de la atención.
+            ate = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", x=560, y=180, config={"con_fila": True})
+            fin = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FIN, titulo="Cierre", x=820, y=180)
             Conexion.objects.create(version=ver, origen=ini, destino=frm)
-            Conexion.objects.create(version=ver, origen=frm, destino=est)
-            Conexion.objects.create(version=ver, origen=est, destino=ate)
+            Conexion.objects.create(version=ver, origen=frm, destino=ate)
             Conexion.objects.create(version=ver, origen=ate, destino=fin)
             # Quién hace qué: el form lo carga el administrativo; la fila/llamado y
             # la atención las maneja el médico (llama desde su box y atiende).
@@ -162,6 +163,21 @@ class Command(BaseCommand):
         f_trauma = flujo_especialidad(trauma, "Atención traumatológica", form_trauma, g_adm_trauma, g_med_trauma)
         f_cardio = flujo_especialidad(cardio, "Atención cardiológica", form_cardio, g_adm_cardio, g_med_cardio)
         f_sm = flujo_especialidad(salud_mental, "Atención en salud mental", form_sm, g_adm_sm, g_med_sm)
+
+        # --- Flujo de estudios (Imágenes): recibe la derivación y devuelve --
+        f_img, _ = Flujo.objects.get_or_create(institucion=inst, area=imagenes, titulo="Realizar estudio")
+        Caso.objects.filter(version__flujo=f_img).delete()
+        f_img.versiones.all().delete()
+        v_img = VersionFlujo.objects.create(flujo=f_img, numero=1)
+        i_ini = Nodo.objects.create(version=v_img, tipo=Nodo.Tipo.INICIO, titulo="Inicio", x=60, y=180, config={"origen": "derivado"})
+        i_ate = Nodo.objects.create(version=v_img, tipo=Nodo.Tipo.ATENCION, titulo="Informe del estudio", x=300, y=180)
+        i_fin = Nodo.objects.create(version=v_img, tipo=Nodo.Tipo.FIN, titulo="Estudio realizado", x=560, y=180)
+        Conexion.objects.create(version=v_img, origen=i_ini, destino=i_ate)
+        Conexion.objects.create(version=v_img, origen=i_ate, destino=i_fin)
+        i_ate.grupos.set([g_med_img.id])
+        if motor.puede_publicar(v_img):
+            v_img.estado = VersionFlujo.Estado.PUBLICADA
+            v_img.save()
 
         # --- Flujo de ingreso a guardia (con la decisión + 3 derivaciones) --
         f_ing, _ = Flujo.objects.get_or_create(institucion=inst, area=guardia, titulo="Ingreso a Guardia")

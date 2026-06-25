@@ -37,11 +37,12 @@ export default function Bandejas() {
     cargar(); // eslint-disable-next-line
   }, [institucion]);
 
-  // "Sin asignar" muestra solo lo que el usuario puede tomar: pasos abiertos o
-  // pasos cuyos grupos responsables integra (el backend resuelve `puede_tomar`).
+  // "Sin asignar" muestra solo lo accionable: lo que el usuario puede tomar y que
+  // NO está encolado en una fila (eso se opera SOLO desde la pantalla Fila).
+  const sinAsignar = (c) => !c.asignado_a && c.puede_tomar && !c.en_fila;
   const filtrados = casos.filter((c) => {
     if (tab === "mios") return c.asignado_a === user?.id;
-    if (tab === "sin") return !c.asignado_a && c.puede_tomar;
+    if (tab === "sin") return sinAsignar(c);
     return true;
   });
 
@@ -58,7 +59,7 @@ export default function Bandejas() {
   }
 
   const cuenta = (k) =>
-    casos.filter((c) => (k === "mios" ? c.asignado_a === user?.id : k === "sin" ? !c.asignado_a && c.puede_tomar : true)).length;
+    casos.filter((c) => (k === "mios" ? c.asignado_a === user?.id : k === "sin" ? sinAsignar(c) : true)).length;
 
   return (
     <>

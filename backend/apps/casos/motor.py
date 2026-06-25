@@ -227,6 +227,8 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
     elif nodo.tipo == Nodo.Tipo.FIN:
         caso.estado = Caso.Estado.CERRADO
         _registrar(caso, f"Estado → Cerrado", detalle=nodo.titulo, autor=autor, nodo=nodo)
+        if caso.bloquea_origen and caso.origen_id:
+            _retornar_al_origen(caso, autor=autor)
 
 
 # --------------------------------------------------------------------------- #
@@ -299,6 +301,57 @@ def agregar_estudio(caso: Caso, tipo: str, autor=None):
 
 
 @transaction.atomic
+def solicitar_estudio_derivado(caso: Caso, tipo: str, area_destino, autor=None) -> Caso:
+    """
+    Solicita un estudio que se realiza en OTRA área (ida y vuelta): crea el estudio
+    (pendiente), abre un sub-caso en el flujo de esa área y deja el caso actual
+    ESPERANDO hasta que el sub-caso termine y lo reactive.
+    """
+    estudio = agregar_estudio(caso, tipo, autor=autor)
+    ver = (
+        VersionFlujo.objects
+        .filter(flujo__area=area_destino, estado=VersionFlujo.Estado.PUBLICADA)
+        .order_by("-flujo_id", "-numero").first()
+    )
+    if ver is None:
+        raise ErrorMotor(f"El área «{area_destino}» no tiene un flujo de estudios publicado.")
+
+    sub = Caso.objects.create(
+        institucion=caso.institucion, version=ver, ciudadano=caso.ciudadano,
+        prioridad=caso.prioridad, origen=caso, bloquea_origen=True,
+        estudio=estudio, area_actual=area_destino,
+    )
+    caso.esperando = True
+    caso.estado = Caso.Estado.EN_ESPERA
+    caso.save(update_fields=["esperando", "estado", "actualizado"])
+    _registrar(caso, f"Estudio derivado a {area_destino.nombre}",
+               detalle=f"{tipo} · caso #{sub.pk}", autor=autor, nodo=caso.nodo_actual)
+    _registrar(sub, "Estudio a realizar", detalle=f"{tipo} (del caso #{caso.pk})", autor=autor)
+    iniciar(sub, autor=autor)
+    return sub
+
+
+def _retornar_al_origen(sub: Caso, autor=None):
+    """Al cerrarse un sub-caso bloqueante, marca su estudio como realizado y, si no
+    quedan otros sub-procesos pendientes, reactiva al caso de origen."""
+    parent = sub.origen
+    if parent is None:
+        return
+    if sub.estudio_id:
+        sub.estudio.realizado = True
+        sub.estudio.save(update_fields=["realizado"])
+    pendientes = (
+        parent.derivados.filter(bloquea_origen=True)
+        .exclude(pk=sub.pk).exclude(estado=Caso.Estado.CERRADO).exists()
+    )
+    if not pendientes and parent.esperando:
+        parent.esperando = False
+        parent.estado = Caso.Estado.EN_EVALUACION
+        parent.save(update_fields=["esperando", "estado", "actualizado"])
+        _registrar(parent, "Estudio recibido — retomar atención", detalle=f"desde el caso #{sub.pk}", autor=autor)
+
+
+@transaction.atomic
 def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     """
     Llama al caso desde un box. En una «Atención con fila» el caso queda asignado
@@ -317,6 +370,10 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     box = Box.objects.filter(pk=box_id).first() if box_id else None
     box_nombre = box.nombre if box else ""
     item.box = box
+
+    # El que llama se queda con el caso (queda asignado a quien atiende).
+    if autor is not None and getattr(autor, "is_authenticated", False):
+        caso.asignado_a = autor
 
     es_atencion_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
     if es_atencion_fila:
@@ -373,6 +430,8 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         raise ErrorMotor("El caso no está posicionado en ningún nodo (¿falta iniciar?).")
     if caso.estado == Caso.Estado.CERRADO or nodo.tipo == Nodo.Tipo.FIN:
         raise ErrorMotor("El caso ya está cerrado.")
+    if caso.esperando:
+        raise ErrorMotor("El caso está esperando el resultado de un estudio derivado.")
     if nodo.tipo not in TIPOS_DETENCION:
         raise ErrorMotor(f"El nodo actual («{nodo.titulo}») no espera una acción manual.")
 

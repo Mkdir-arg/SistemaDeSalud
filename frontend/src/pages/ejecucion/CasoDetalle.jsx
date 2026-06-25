@@ -218,6 +218,19 @@ function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
     );
   }
 
+  // Esperando que vuelva un estudio derivado a otra área.
+  if (caso.esperando) {
+    return (
+      <Card style={{ padding: 24 }}>
+        <PanelHeader tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
+        <p style={{ fontSize: 13.5, color: color.slate600, margin: 0 }}>
+          El caso está <strong>esperando el resultado de un estudio</strong> derivado a otra área.
+          Cuando el estudio se realice, el caso vuelve solo y vas a poder continuar la atención.
+        </p>
+      </Card>
+    );
+  }
+
   // Este paso tiene grupos responsables y el usuario no integra ninguno.
   if (caso.responsables?.length > 0 && !caso.puede_tomar) {
     return (
@@ -360,10 +373,46 @@ function CampoArchivo({ value, onChange }) {
   );
 }
 
-function PasoAtencion({ caso, accionando, ejecutar }) {
+function PasoAtencion({ caso, accionando, ejecutar, hc }) {
   const [titulo, setTitulo] = useState(caso.paso_actual || "");
   const [contenido, setContenido] = useState("");
   const [firmada, setFirmada] = useState(true);
+  const [tipoEstudio, setTipoEstudio] = useState("");
+  const [areaEstudio, setAreaEstudio] = useState(""); // área a la que se deriva el estudio (opcional)
+  const [areasEstudio, setAreasEstudio] = useState([]);
+  const [detalleReceta, setDetalleReceta] = useState("");
+
+  const estudios = hc?.estudios || [];
+  const recetas = hc?.recetas || [];
+
+  // Áreas que pueden realizar estudios: tienen un flujo publicado que acepta derivación.
+  useEffect(() => {
+    api.get(`/flujos/?institucion=${caso.institucion}`).then((d) => {
+      const lista = d.results || d;
+      const mapa = {};
+      lista.forEach((f) => {
+        const pub = (f.versiones || []).some((v) => v.estado === "publicada");
+        if (pub && f.origen_inicio !== "manual" && f.area && f.area !== caso.area_actual) {
+          mapa[f.area] = f.area_nombre;
+        }
+      });
+      setAreasEstudio(Object.entries(mapa).map(([id, nombre]) => ({ id: Number(id), nombre })));
+    });
+  }, [caso.institucion, caso.area_actual]);
+
+  async function solicitarEstudio() {
+    if (!tipoEstudio.trim()) return;
+    const body = { tipo: tipoEstudio.trim() };
+    if (areaEstudio) body.area_id = Number(areaEstudio);
+    await ejecutar(() => api.post(`/casos/${caso.id}/estudio/`, body));
+    setTipoEstudio("");
+  }
+  async function emitirReceta() {
+    if (!detalleReceta.trim()) return;
+    await ejecutar(() => api.post(`/casos/${caso.id}/receta/`, { detalle: detalleReceta.trim() }));
+    setDetalleReceta("");
+  }
+
   return (
     <Card style={{ padding: 24 }}>
       <PanelHeader tipo="atencion" titulo={caso.paso_actual} />
@@ -379,6 +428,46 @@ function PasoAtencion({ caso, accionando, ejecutar }) {
           Firmar la entrada
         </label>
       </div>
+
+      {/* Acciones del médico: estudios y recetas (quedan en la HC) */}
+      <div style={{ marginTop: 20, borderTop: `1px solid ${color.divider}`, paddingTop: 16, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 8 }}>Solicitar estudio</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Input value={tipoEstudio} onChange={(e) => setTipoEstudio(e.target.value)} placeholder="Ej.: Radiografía de tórax" onKeyDown={(e) => e.key === "Enter" && solicitarEstudio()} />
+            <Button variant="secondary" disabled={accionando || !tipoEstudio.trim()} onClick={solicitarEstudio}>Solicitar</Button>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <Select value={areaEstudio} onChange={(e) => setAreaEstudio(e.target.value)} style={{ height: 36 }}>
+              <option value="">Registrar en la HC (sin derivar)</option>
+              {areasEstudio.map((a) => <option key={a.id} value={a.id}>Derivar a {a.nombre} (el caso espera la vuelta)</option>)}
+            </Select>
+          </div>
+          {estudios.length === 0 ? (
+            <div style={{ fontSize: 12, color: color.slate400, marginTop: 8 }}>Sin estudios solicitados.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+              {estudios.map((e) => (
+                <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "7px 11px" }}>
+                  <span style={{ color: color.slate700 }}>{e.tipo}</span>
+                  <Badge tone={e.realizado ? "green" : "amber"}>{e.realizado ? "realizado" : "pendiente"}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <Accion
+          label="Emitir receta"
+          placeholder="Medicación / indicaciones"
+          value={detalleReceta}
+          onChange={setDetalleReceta}
+          onAdd={emitirReceta}
+          disabled={accionando}
+          items={recetas.map((r) => ({ id: r.id, txt: r.detalle, tag: r.activa ? "activa" : "" }))}
+          vacio="Sin recetas."
+        />
+      </div>
+
       <div style={{ marginTop: 20 }}>
         <Button
           disabled={accionando}
@@ -388,6 +477,31 @@ function PasoAtencion({ caso, accionando, ejecutar }) {
         </Button>
       </div>
     </Card>
+  );
+}
+
+// Sección reutilizable: input + botón "Agregar" y lista de lo ya cargado.
+function Accion({ label, placeholder, value, onChange, onAdd, disabled, items, vacio }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 8 }}>{label}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === "Enter" && onAdd()} />
+        <Button variant="secondary" disabled={disabled || !value.trim()} onClick={onAdd}>Agregar</Button>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 12, color: color.slate400, marginTop: 8 }}>{vacio}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+          {items.map((it) => (
+            <div key={it.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "7px 11px" }}>
+              <span style={{ color: color.slate700 }}>{it.txt}</span>
+              {it.tag && <Badge tone="neutral">{it.tag}</Badge>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

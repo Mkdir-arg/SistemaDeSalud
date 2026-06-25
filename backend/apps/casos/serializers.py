@@ -61,20 +61,32 @@ class CasoSerializer(serializers.ModelSerializer):
     origen_flujo = serializers.CharField(source="origen.version.flujo.titulo", read_only=True, default=None)
     # El paso actual es una atención con fila de espera previa.
     nodo_con_fila = serializers.SerializerMethodField()
+    # El caso está encolado esperando ser llamado: se opera SOLO desde la Fila,
+    # no desde la bandeja. Señal autoritativa para no duplicar la vista.
+    en_fila = serializers.SerializerMethodField()
 
     class Meta:
         model = Caso
         fields = [
             "id", "institucion", "version", "flujo_titulo", "ciudadano", "ciudadano_nombre",
             "estado", "estado_display", "prioridad", "prioridad_display",
-            "nodo_actual", "paso_actual", "nodo_tipo", "nodo_con_fila", "area_actual", "area_nombre",
-            "asignado_a", "asignado_nombre", "responsables", "puede_tomar",
+            "nodo_actual", "paso_actual", "nodo_tipo", "nodo_con_fila", "en_fila", "area_actual", "area_nombre",
+            "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "esperando",
             "origen", "origen_flujo", "creado", "actualizado",
         ]
         read_only_fields = ["creado", "actualizado"]
 
     def get_nodo_con_fila(self, obj):
         return bool(obj.nodo_actual and (obj.nodo_actual.config or {}).get("con_fila"))
+
+    def get_en_fila(self, obj):
+        # Hay un ítem de fila activo y todavía sin llamar (sin box) en el paso actual.
+        if not obj.nodo_actual_id:
+            return False
+        return any(
+            (it.nodo_id == obj.nodo_actual_id and not it.atendido and it.box_id is None)
+            for it in obj.en_filas.all()
+        )
 
     def validate(self, attrs):
         # Un ingreso es siempre de una persona: al crear, exigir paciente.

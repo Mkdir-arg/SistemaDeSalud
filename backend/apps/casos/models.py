@@ -73,6 +73,19 @@ class Caso(models.Model):
         blank=True,
         related_name="derivados",
     )
+    # Sub-proceso con retorno (ej. solicitud de estudio a otra área):
+    #  - `bloquea_origen`: al cerrarse este caso, reactiva a su `origen`.
+    #  - `esperando`: el caso está pausado esperando que vuelva un sub-proceso.
+    #  - `estudio`: el estudio que este sub-caso viene a realizar.
+    bloquea_origen = models.BooleanField(default=False)
+    esperando = models.BooleanField(default=False)
+    estudio = models.ForeignKey(
+        "registros.Estudio",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="casos_estudio",
+    )
 
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)

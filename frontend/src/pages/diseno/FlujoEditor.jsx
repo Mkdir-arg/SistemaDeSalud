@@ -512,7 +512,7 @@ const AYUDA_NODO = {
   accion: "Paso automático: ejecuta una acción del sistema y el flujo sigue solo (no se detiene). Útil para marcar un hito del proceso. (Ej.: «Solicitud de estudios» — en desarrollo.)",
   atencion: "Registra una atención profesional que queda en la historia clínica del paciente. Si activás «fila de espera», el paciente queda en cola y un médico lo llama desde un box antes de atenderlo.",
   derivar: "Envía el caso a otra área. Si además elegís un flujo de destino, abre un caso nuevo en ese flujo (ej.: ingreso → especialidad), vinculado al original. El caso de origen sigue hacia su cierre.",
-  espera: "Coloca el caso en una fila de espera (orden de llegada; los urgentes primero). Queda detenido hasta que se lo llama desde la fila.",
+  espera: "Fila de espera genérica: encola el caso (orden de llegada; urgentes primero) y, al llamarlo, avanza al SIGUIENTE paso. Si lo que sigue es atender al paciente, conviene usar el nodo «Atención» con la opción «fila de espera» (une espera + llamado + atención en un solo paso).",
   tiempo: "Pausa el caso por un período (dato informativo). Hoy se reactiva manualmente; la reactivación automática por tiempo es un pendiente.",
   estado: "Cambia el estado del caso (Recibido, En espera, Atendido, Cerrado…). Es automático: sirve para reflejar en qué etapa está el caso.",
   fin: "Cierra el caso: marca el estado como Cerrado y termina el recorrido. Un flujo puede tener varios nodos Fin.",

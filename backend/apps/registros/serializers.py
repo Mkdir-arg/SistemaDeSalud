@@ -17,7 +17,7 @@ class EstudioSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Estudio
-        fields = ["id", "historia", "tipo", "resultado", "resultado_display", "archivo", "autor", "fecha"]
+        fields = ["id", "historia", "tipo", "resultado", "resultado_display", "realizado", "archivo", "autor", "fecha"]
 
 
 class RecetaSerializer(serializers.ModelSerializer):

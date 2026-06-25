@@ -19,7 +19,7 @@ class CasoViewSet(BaseModelViewSet):
     queryset = Caso.objects.select_related(
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
-    ).prefetch_related("valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo")
+    ).prefetch_related("valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo", "en_filas")
     institucion_path = "institucion"
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a")
 
@@ -112,15 +112,27 @@ class CasoViewSet(BaseModelViewSet):
 
     @action(detail=True, methods=["post"])
     def estudio(self, request, pk=None):
-        """El médico solicita un estudio (cuerpo: {"tipo": "..."}) en la HC del paciente."""
+        """El médico solicita un estudio (cuerpo: {"tipo": "...", "area_id": <opcional>}).
+
+        Sin `area_id` queda como pedido en la HC. Con `area_id`, se deriva a esa
+        área (sub-proceso) y el caso espera hasta que el estudio vuelva.
+        """
         caso = self.get_object()
         if not motor.usuario_puede_tomar(request.user, caso):
             return Response({"detail": "No integrás ningún grupo responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
         tipo = (request.data.get("tipo") or "").strip()
         if not tipo:
             return Response({"detail": "Indicá el tipo de estudio."}, status=status.HTTP_400_BAD_REQUEST)
+        area_id = request.data.get("area_id")
         try:
-            motor.agregar_estudio(caso, tipo, autor=request.user)
+            if area_id:
+                from apps.instituciones.models import Area
+                area = Area.objects.filter(pk=area_id).first()
+                if not area:
+                    return Response({"detail": "Área de estudio inválida."}, status=status.HTTP_400_BAD_REQUEST)
+                motor.solicitar_estudio_derivado(caso, tipo, area, autor=request.user)
+            else:
+                motor.agregar_estudio(caso, tipo, autor=request.user)
         except motor.ErrorMotor as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         caso = self.get_queryset().get(pk=caso.pk)

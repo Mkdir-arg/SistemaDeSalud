@@ -196,11 +196,13 @@ class AtencionConFilaTests(TestCase):
         with self.assertRaises(motor.ErrorMotor):
             motor.avanzar(self.caso, {"titulo": "x", "contenido": "y", "firmada": True}, autor=self.jefe)
 
-        # Llamar desde el box: queda en el mismo nodo, ahora en atención.
+        # Llamar desde el box: queda en el mismo nodo, ahora en atención,
+        # asignado al médico que llamó.
         motor.llamar(self.caso, box_id=self.box.id, autor=self.jefe)
         self.caso.refresh_from_db()
         self.assertEqual(self.caso.nodo_actual_id, self.ate.id)
         self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
+        self.assertEqual(self.caso.asignado_a_id, self.jefe.id)
         self.assertTrue(self.caso.en_filas.filter(box=self.box).exists())
 
         # Ahora sí se atiende y avanza al cierre.
@@ -208,6 +210,82 @@ class AtencionConFilaTests(TestCase):
         self.caso.refresh_from_db()
         self.assertEqual(self.caso.estado, Caso.Estado.CERRADO)
         self.assertTrue(EntradaHistoria.objects.filter(historia__ciudadano=self.ciud).exists())
+
+    def test_en_fila_solo_mientras_espera(self):
+        from .serializers import CasoSerializer
+
+        motor.iniciar(self.caso, autor=self.jefe)
+        self.caso.refresh_from_db()
+        # Encolado: en_fila True (se ve solo en la Fila, no en la bandeja).
+        self.assertTrue(CasoSerializer(self.caso).data["en_fila"])
+        motor.llamar(self.caso, box_id=self.box.id, autor=self.jefe)
+        self.caso.refresh_from_db()
+        # Llamado: ya no está en la fila.
+        self.assertFalse(CasoSerializer(self.caso).data["en_fila"])
+
+    def test_acciones_receta_y_estudio(self):
+        from apps.registros.models import Estudio, Receta
+
+        motor.iniciar(self.caso, autor=self.jefe)
+        motor.agregar_estudio(self.caso, "Radiografía de tórax", autor=self.jefe)
+        motor.agregar_receta(self.caso, "Ibuprofeno 400mg", autor=self.jefe)
+        self.assertTrue(Estudio.objects.filter(historia__ciudadano=self.ciud, tipo="Radiografía de tórax").exists())
+        self.assertTrue(Receta.objects.filter(historia__ciudadano=self.ciud, detalle="Ibuprofeno 400mg").exists())
+
+
+class EstudioDerivadoTests(TestCase):
+    """Estudio que deriva a otra área y vuelve: el caso espera y se reactiva solo."""
+
+    def setUp(self):
+        self.jefe = Usuario.objects.create_superuser("jefe2@cauce.local", "x", nombre="Jefe")
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.cardio = Area.objects.create(institucion=self.inst, nombre="Cardiología")
+        self.imagenes = Area.objects.create(institucion=self.inst, nombre="Imágenes")
+
+        # Flujo de Imágenes (destino), publicado: Inicio → Atención → Fin.
+        f_img = Flujo.objects.create(institucion=self.inst, area=self.imagenes, titulo="Realizar estudio")
+        v_img = VersionFlujo.objects.create(flujo=f_img, numero=1)
+        ii = Nodo.objects.create(version=v_img, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        ia = Nodo.objects.create(version=v_img, tipo=Nodo.Tipo.ATENCION, titulo="Informe")
+        iff = Nodo.objects.create(version=v_img, tipo=Nodo.Tipo.FIN, titulo="Fin")
+        Conexion.objects.create(version=v_img, origen=ii, destino=ia)
+        Conexion.objects.create(version=v_img, origen=ia, destino=iff)
+        v_img.estado = VersionFlujo.Estado.PUBLICADA
+        v_img.save()
+
+        # Flujo de Cardio (origen): Inicio → Atención → Fin.
+        f_card = Flujo.objects.create(institucion=self.inst, area=self.cardio, titulo="Atención cardio")
+        v_card = VersionFlujo.objects.create(flujo=f_card, numero=1)
+        ci = Nodo.objects.create(version=v_card, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.ca = Nodo.objects.create(version=v_card, tipo=Nodo.Tipo.ATENCION, titulo="Atención")
+        cf = Nodo.objects.create(version=v_card, tipo=Nodo.Tipo.FIN, titulo="Fin")
+        Conexion.objects.create(version=v_card, origen=ci, destino=self.ca)
+        Conexion.objects.create(version=v_card, origen=self.ca, destino=cf)
+
+        self.ciud = Ciudadano.objects.create(institucion=self.inst, nombre="Pac", apellido="Est")
+        self.caso = Caso.objects.create(institucion=self.inst, version=v_card, ciudadano=self.ciud)
+        motor.iniciar(self.caso, autor=self.jefe)  # queda en la atención
+
+    def test_round_trip(self):
+        sub = motor.solicitar_estudio_derivado(self.caso, "Resonancia", self.imagenes, autor=self.jefe)
+        self.caso.refresh_from_db()
+        # El caso de origen quedó esperando; el sub-caso arrancó en Imágenes.
+        self.assertTrue(self.caso.esperando)
+        self.assertEqual(sub.origen_id, self.caso.id)
+        self.assertTrue(sub.bloquea_origen)
+        self.assertIsNotNone(sub.estudio_id)
+
+        # No se puede atender mientras espera.
+        with self.assertRaises(motor.ErrorMotor):
+            motor.avanzar(self.caso, {"titulo": "x", "contenido": "y", "firmada": True}, autor=self.jefe)
+
+        # Imágenes informa el estudio y cierra el sub-caso → vuelve al origen.
+        motor.avanzar(sub, {"titulo": "Informe", "contenido": "ok", "firmada": True}, autor=self.jefe)
+        self.caso.refresh_from_db(); sub.refresh_from_db()
+        self.assertEqual(sub.estado, Caso.Estado.CERRADO)
+        self.assertTrue(sub.estudio.realizado)
+        self.assertFalse(self.caso.esperando)
+        self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
 
 
 class DerivacionEntreFlujosTests(TestCase):

@@ -98,6 +98,7 @@ class Estudio(models.Model):
     )
     tipo = models.CharField(max_length=150)
     resultado = models.CharField(max_length=20, choices=Resultado.choices, blank=True)
+    realizado = models.BooleanField("realizado", default=False)
     archivo = models.CharField("archivo", max_length=255, blank=True)
     autor = models.CharField(max_length=150, blank=True)
     fecha = models.DateField()
