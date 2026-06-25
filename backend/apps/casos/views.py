@@ -1,8 +1,11 @@
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.common import BaseModelViewSet
+from apps.flujos.models import Conexion, Nodo, VersionFlujo
+from apps.instituciones.models import Box
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, ValorCampo
@@ -188,6 +191,207 @@ class CasoViewSet(BaseModelViewSet):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         caso = self.get_queryset().get(pk=caso.pk)
         return Response(CasoDetalleSerializer(caso).data)
+
+
+PRIORIDAD_RANK = {"urgente": 0, "alta": 1, "normal": 2}
+
+
+class MisTareasView(APIView):
+    """
+    Worklist del operador, segmentada por **paso** (nodo) del que es responsable.
+
+    El sistema deriva todo de `usuario → grupos → nodos`: cada nodo que mi grupo
+    posee, y los casos parados ahí, son mi trabajo. Devuelve cuatro bandas:
+
+      - ``iniciar``:   flujos manuales cuyo **primer paso humano** es mío (puedo
+                       arrancar un caso nuevo).
+      - ``tareas``:    casos activos en nodos míos que NO son fila ni están
+                       esperando un retorno, agrupados por paso.
+      - ``filas``:     nodos míos de *atención con fila* + la cola + los boxes del
+                       área (para llamar al siguiente).
+      - ``esperando``: casos míos pausados esperando que vuelva un estudio o
+                       interconsulta (no accionables todavía).
+
+    Query param: ``?institucion=<id>`` (si falta, toma la 1ª membresía activa).
+    """
+
+    VACIO = {"iniciar": [], "tareas": [], "filas": [], "esperando": []}
+
+    def get(self, request):
+        user = request.user
+        inst_id = request.query_params.get("institucion")
+        if not inst_id:
+            mem = user.membresias.filter(activo=True).first()
+            inst_id = mem.institucion_id if mem else None
+        if not inst_id:
+            return Response(self.VACIO)
+
+        # Grupos del usuario en la institución → nodos publicados de los que es responsable.
+        grupos = user.grupos.filter(area__institucion_id=inst_id)
+        mis_nodos = list(
+            Nodo.objects.filter(
+                grupos__in=grupos, version__estado=VersionFlujo.Estado.PUBLICADA
+            ).select_related("version__flujo__area").distinct()
+        )
+        mis_nodo_ids = {n.id for n in mis_nodos}
+        nodo_por_id = {n.id: n for n in mis_nodos}
+        fila_nodo_ids = {
+            n.id for n in mis_nodos
+            if n.tipo == Nodo.Tipo.ATENCION and (n.config or {}).get("con_fila")
+        }
+
+        tareas, esperando = self._tareas_y_esperando(inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user)
+        filas = self._filas(fila_nodo_ids, nodo_por_id)
+        iniciar = self._iniciar(inst_id, mis_nodo_ids)
+
+        return Response({
+            "iniciar": iniciar,
+            "tareas": tareas,
+            "filas": filas,
+            "esperando": esperando,
+        })
+
+    # -- bandas -------------------------------------------------------------
+    def _tareas_y_esperando(self, inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user):
+        casos = (
+            Caso.objects.filter(institucion_id=inst_id, nodo_actual_id__in=mis_nodo_ids)
+            .exclude(estado=Caso.Estado.CERRADO)
+            .select_related("ciudadano", "version__flujo", "area_actual", "estudio")
+            .prefetch_related("en_filas")
+        )
+        buckets, esperando = {}, []
+        for c in casos:
+            nodo = nodo_por_id.get(c.nodo_actual_id)
+            if nodo is None:
+                continue
+            # Encolado y sin llamar (sin box) → se opera desde la banda de filas.
+            if c.nodo_actual_id in fila_nodo_ids and self._en_cola(c):
+                continue
+            if c.esperando:
+                d = self._caso_dict(c, user)
+                d["nodo_titulo"] = nodo.titulo
+                d["espera_de"] = c.estudio.tipo if c.estudio_id else "interconsulta"
+                esperando.append(d)
+                continue
+            b = buckets.get(nodo.id)
+            if b is None:
+                flujo = nodo.version.flujo
+                b = buckets[nodo.id] = {
+                    "nodo_id": nodo.id, "nodo_titulo": nodo.titulo, "nodo_tipo": nodo.tipo,
+                    "flujo_titulo": flujo.titulo,
+                    "area_nombre": flujo.area.nombre if flujo.area_id else None,
+                    "casos": [],
+                }
+            b["casos"].append(self._caso_dict(c, user))
+
+        tareas = []
+        for b in buckets.values():
+            b["casos"].sort(key=lambda d: (PRIORIDAD_RANK.get(d["prioridad"], 9), d["creado"]))
+            b["total"] = len(b["casos"])
+            b["urgentes"] = sum(1 for d in b["casos"] if d["prioridad"] == "urgente")
+            tareas.append(b)
+        tareas.sort(key=lambda b: (-b["urgentes"], b["nodo_titulo"]))
+        esperando.sort(key=lambda d: d["creado"])
+        return tareas, esperando
+
+    def _filas(self, fila_nodo_ids, nodo_por_id):
+        if not fila_nodo_ids:
+            return []
+        items = (
+            ItemFila.objects.filter(nodo_id__in=fila_nodo_ids, atendido=False, box__isnull=True)
+            .select_related("caso__ciudadano").order_by("-urgente", "orden", "ingreso")
+        )
+        por_nodo = {}
+        for it in items:
+            por_nodo.setdefault(it.nodo_id, []).append(it)
+
+        filas = []
+        for nid in fila_nodo_ids:
+            nodo = nodo_por_id[nid]
+            flujo = nodo.version.flujo
+            area = flujo.area
+            cola = por_nodo.get(nid, [])
+            boxes = list(Box.objects.filter(area=area, activo=True).values("id", "nombre")) if area else []
+            filas.append({
+                "nodo_id": nid, "nodo_titulo": nodo.titulo, "flujo_titulo": flujo.titulo,
+                "area_id": area.id if area else None,
+                "area_nombre": area.nombre if area else None,
+                "en_cola": len(cola),
+                "urgentes": sum(1 for it in cola if it.urgente),
+                "boxes": boxes,
+                "casos": [{
+                    "id": it.caso_id, "item_id": it.id,
+                    "ciudadano_nombre": self._nombre(it.caso.ciudadano),
+                    "urgente": it.urgente, "ingreso": it.ingreso,
+                } for it in cola],
+            })
+        filas.sort(key=lambda f: (-f["urgentes"], f["nodo_titulo"]))
+        return filas
+
+    def _iniciar(self, inst_id, mis_nodo_ids):
+        iniciar = []
+        versiones = (
+            VersionFlujo.objects.filter(
+                flujo__institucion_id=inst_id, estado=VersionFlujo.Estado.PUBLICADA
+            ).select_related("flujo__area")
+        )
+        for ver in versiones:
+            inicio = ver.nodos.filter(tipo=Nodo.Tipo.INICIO).first()
+            if not inicio:
+                continue
+            if (inicio.config or {}).get("origen", "manual") not in ("manual", "ambos"):
+                continue
+            paso = self._primer_nodo_humano(ver, inicio)
+            if paso and paso.id in mis_nodo_ids:
+                iniciar.append({
+                    "flujo_id": ver.flujo_id, "flujo_titulo": ver.flujo.titulo,
+                    "version_id": ver.id,
+                    "area_nombre": ver.flujo.area.nombre if ver.flujo.area_id else None,
+                    "paso": paso.titulo,
+                })
+        iniciar.sort(key=lambda i: i["flujo_titulo"])
+        return iniciar
+
+    # -- helpers ------------------------------------------------------------
+    @staticmethod
+    def _nombre(ciudadano):
+        if not ciudadano:
+            return None
+        return f"{ciudadano.nombre} {ciudadano.apellido}".strip()
+
+    @staticmethod
+    def _en_cola(caso):
+        return any(
+            it.nodo_id == caso.nodo_actual_id and not it.atendido and it.box_id is None
+            for it in caso.en_filas.all()
+        )
+
+    def _caso_dict(self, c, user):
+        return {
+            "id": c.id,
+            "ciudadano_nombre": self._nombre(c.ciudadano),
+            "prioridad": c.prioridad,
+            "prioridad_display": c.get_prioridad_display(),
+            "estado": c.estado,
+            "estado_display": c.get_estado_display(),
+            "creado": c.creado,
+            "asignado_a": c.asignado_a_id,
+            "asignado_nombre": c.asignado_a.nombre_completo if c.asignado_a_id else None,
+            "mio": c.asignado_a_id == user.id,
+            "flujo_titulo": c.version.flujo.titulo,
+            "area_nombre": c.area_actual.nombre if c.area_actual_id else None,
+        }
+
+    @staticmethod
+    def _primer_nodo_humano(version, inicio):
+        """Camina desde el Inicio por los nodos automáticos hasta el primer nodo
+        que requiere acción humana (la puerta de entrada operable del flujo)."""
+        actual, visitados = inicio, set()
+        while actual is not None and actual.tipo in motor.TIPOS_AUTOMATICOS and actual.id not in visitados:
+            visitados.add(actual.id)
+            sig = Conexion.objects.filter(version=version, origen=actual).select_related("destino").first()
+            actual = sig.destino if sig else None
+        return actual
 
 
 class ValorCampoViewSet(BaseModelViewSet):

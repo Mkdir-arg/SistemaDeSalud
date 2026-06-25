@@ -8,6 +8,7 @@ import { Spinner } from "./components/ui";
 import Login from "./pages/Login";
 import Directorio from "./pages/Directorio";
 import Inicio from "./pages/Inicio";
+import MiTrabajo from "./pages/MiTrabajo";
 import Bandejas from "./pages/ejecucion/Bandejas";
 import Casos from "./pages/ejecucion/Casos";
 import CasoDetalle from "./pages/ejecucion/CasoDetalle";
@@ -53,6 +54,14 @@ function Landing() {
   return <Spinner label="Cargando…" />;
 }
 
+// Pantalla de inicio según el rol: el operador puro (administrativo/médico) cae
+// en su worklist "Mi trabajo"; los roles de configuración/diseño ven el panel.
+function InicioHome() {
+  const { puedeVer } = useInstitucion();
+  const operativo = puedeVer("trabajo") && !puedeVer("config") && !puedeVer("diseno");
+  return operativo ? <MiTrabajo /> : <Inicio />;
+}
+
 // Ruta protegida que además requiere una institución en contexto.
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -78,7 +87,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
 
-      <Route path="/inicio" element={P(<Inicio />)} />
+      <Route path="/inicio" element={P(<InicioHome />)} />
 
       {/* TRABAJO */}
       <Route path="/bandeja" element={P(<Bandejas />)} />

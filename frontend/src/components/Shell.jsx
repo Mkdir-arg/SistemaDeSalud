@@ -130,6 +130,27 @@ export function Shell({ children }) {
   }, [user]);
   const puedeCambiar = !user?.is_superuser && misInst.length > 1;
 
+  // Contador de tareas pendientes para roles operativos (el "Inicio" es su worklist).
+  // Se refresca solo cada 30s y se pausa con la pestaña oculta.
+  const operativo = puedeVer("trabajo") && !puedeVer("config") && !puedeVer("diseno");
+  const [pendientes, setPendientes] = useState(0);
+  useEffect(() => {
+    if (!operativo || !institucion) { setPendientes(0); return; }
+    let activo = true;
+    const cargar = async () => {
+      try {
+        const d = await api.get(`/mis-tareas/?institucion=${institucion.id}`);
+        if (!activo) return;
+        const t = (d.tareas || []).reduce((s, b) => s + (b.total || 0), 0);
+        const f = (d.filas || []).reduce((s, x) => s + (x.en_cola || 0), 0);
+        setPendientes(t + f);
+      } catch { /* silencioso */ }
+    };
+    cargar();
+    const id = setInterval(() => { if (!document.hidden) cargar(); }, 30000);
+    return () => { activo = false; clearInterval(id); };
+  }, [operativo, institucion]);
+
   function cambiarInstitucion(inst) {
     setMenuInst(false);
     if (inst.id === institucion?.id) return;
@@ -207,8 +228,17 @@ export function Shell({ children }) {
         {/* Navegación */}
         <nav style={{ flex: 1, overflowY: "auto", padding: "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
           <NavLink to={ITEM_INICIO.to} style={itemStyle}>
-            <Icon name={ITEM_INICIO.icon} size={17} />
-            {ITEM_INICIO.label}
+            {({ isActive }) => (
+              <>
+                <Icon name={ITEM_INICIO.icon} size={17} />
+                {operativo ? "Mi trabajo" : ITEM_INICIO.label}
+                {operativo && pendientes > 0 && (
+                  <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, fontSize: 11.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", background: isActive ? "rgba(255,255,255,.25)" : color.accent50, color: isActive ? "#fff" : color.accent }}>
+                    {pendientes}
+                  </span>
+                )}
+              </>
+            )}
           </NavLink>
 
           {GRUPOS.map((g) => {
