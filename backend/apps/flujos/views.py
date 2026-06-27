@@ -107,6 +107,20 @@ class NodoViewSet(BaseModelViewSet):
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")
 
+    @action(detail=True, methods=["post"])
+    def pantalla(self, request, pk=None):
+        """Genera (si falta) y devuelve el token de la pantalla de llamados del nodo.
+
+        La pantalla pública vive en `/pantalla/<token>` (sin login). Con `?rotar=1`
+        en el cuerpo se reemplaza el token actual (invalida la URL anterior)."""
+        import secrets
+
+        nodo = self.get_object()
+        if not nodo.pantalla_token or request.data.get("rotar"):
+            nodo.pantalla_token = secrets.token_urlsafe(12)
+            nodo.save(update_fields=["pantalla_token"])
+        return Response({"token": nodo.pantalla_token, "ruta": f"/pantalla/{nodo.pantalla_token}"})
+
 
 class ConexionViewSet(BaseModelViewSet):
     queryset = Conexion.objects.select_related("version", "origen", "destino")

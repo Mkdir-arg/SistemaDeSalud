@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useInstitucion } from "../../auth/InstitutionContext";
 import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Spinner, Table } from "../../components/ui";
@@ -12,7 +12,8 @@ export default function Registros() {
   const [ciudadanos, setCiudadanos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busca, setBusca] = useState("");
-  const [nuevo, setNuevo] = useState(false);
+  const [params] = useSearchParams();
+  const [nuevo, setNuevo] = useState(params.get("nuevo") === "1"); // abrir alta directo desde "Accesos rápidos"
 
   async function cargar() {
     if (!institucion) return;

@@ -1,40 +1,22 @@
 import { color, font } from "../theme";
+import logoUrl from "../assets/logo.png";
 
-// Marca de I-Core (empresa del sistema de salud).
-// Isotipo: una "C" (Core) abierta a la derecha con un núcleo central —
-// el punto central es la "i" / el núcleo. Construido en SVG: nítido a cualquier escala.
+// Marca del sistema. Isotipo = imagen (frontend/src/assets/logo.png), fondo transparente.
 //
 // Exporta:
-//   <LogoMark size light />        → solo isotipo (logo chico, p. ej. el menú)
+//   <LogoMark size />              → solo isotipo (logo chico, p. ej. el menú)
 //   <LogoFull size light descriptor> → imagotipo: isotipo + "I-Core" (logo grande)
 //   <Logo size />                  → alias de LogoMark (compatibilidad)
-//
-// `light`: para fondos oscuros (índigo) → cuadro blanco con la marca en índigo.
 
-export function LogoMark({ size = 40, light = false }) {
-  const fg = light ? color.accent : "#fff";
-  const sw = 24 * 0.115; // grosor del trazo relativo al viewBox 24
+export function LogoMark({ size = 40 }) {
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.27,
-        flex: "none",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: light ? "#fff" : `linear-gradient(150deg, ${color.accent} 0%, ${color.accentHover} 100%)`,
-        boxShadow: light ? "none" : "0 4px 12px rgba(57,73,192,.26)",
-      }}
-    >
-      <svg width={size * 0.62} height={size * 0.62} viewBox="0 0 24 24" fill="none">
-        {/* "C" de Core: arco abierto hacia la derecha */}
-        <path d="M17.6 6.4 A8 8 0 1 0 17.6 17.6" stroke={fg} strokeWidth={sw} strokeLinecap="round" />
-        {/* núcleo central (la "i" / el core) */}
-        <circle cx="12" cy="12" r="2.7" fill={fg} />
-      </svg>
-    </div>
+    <img
+      src={logoUrl}
+      alt="I-Core"
+      width={size}
+      height={size}
+      style={{ objectFit: "contain", flex: "none", display: "block" }}
+    />
   );
 }
 

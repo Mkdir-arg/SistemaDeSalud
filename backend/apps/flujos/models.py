@@ -142,6 +142,11 @@ class Nodo(models.Model):
         related_name="nodos",
     )
 
+    # Token de la «pantalla de llamados» pública del nodo (TV de sala de espera).
+    # Solo aplica a nodos con fila (atención con fila / espera de fila). Se genera
+    # bajo demanda desde el editor; queda vacío mientras no se pida.
+    pantalla_token = models.CharField(max_length=32, blank=True, default="", db_index=True)
+
     # Grupos responsables del paso: definen "quién hace esta acción". Cualquier
     # integrante de los grupos asignados puede ejecutar/tomar el nodo. Aplica a
     # los pasos donde una persona trabaja (form, atención, acción, espera).

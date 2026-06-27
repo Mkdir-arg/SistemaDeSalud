@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useInstitucion } from "../auth/InstitutionContext";
-import { PageHeader } from "../components/Shell";
+import { PageHeader, useRefresh } from "../components/Shell";
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Spinner } from "../components/ui";
 import { Icon } from "../components/icons";
 import { antiguedad } from "../lib/format";
-import { color } from "../theme";
+import { color, estadoCaso } from "../theme";
 
 const REFRESCO_MS = 30000; // auto-refresco silencioso del worklist
 
@@ -23,6 +23,8 @@ export default function MiTrabajo() {
   const [accion, setAccion] = useState(null); // id de caso que se está tomando
   const [ingresar, setIngresar] = useState(null); // item de "iniciar" elegido
   const [areaSel, setAreaSel] = useState(null); // área elegida en el lanzador
+  const [buscarEstado, setBuscarEstado] = useState(false); // modal "estado de un paciente"
+  const { setRefresco } = useRefresh();
 
   const cargar = useCallback(async (silent = false) => {
     if (!institucion) return;
@@ -55,6 +57,10 @@ export default function MiTrabajo() {
     };
   }, [cargar]);
 
+  // Publicar "última actualización" en la barra superior (al lado de la campana).
+  useEffect(() => { setRefresco({ ultima, refrescando }); }, [ultima, refrescando, setRefresco]);
+  useEffect(() => () => setRefresco(null), [setRefresco]);
+
   async function tomarYAbrir(c) {
     setAccion(c.id);
     try {
@@ -77,7 +83,6 @@ export default function MiTrabajo() {
   }
   const d = data || { iniciar: [], tareas: [], filas: [], esperando: [], puestos: [], turno: null };
   const puestos = d.puestos || [];
-  const turno = d.turno || null;
   const vacio = !d.iniciar.length && !d.tareas.length && !d.filas.length && !d.esperando.length && !puestos.length;
 
   // Áreas donde trabajás → el lanzador. Con una sola, entrás directo (sin tarjetas).
@@ -110,18 +115,10 @@ export default function MiTrabajo() {
     const afilas = [...new Map(dd.filas.map((f) => [f.area_id, f])).values()];
     return (
       <>
-        {dd.puestos.length > 0 && (
-          <Seccion titulo="Mis puestos">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
-              {dd.puestos.map((p) => <PuestoCard key={p.nodo_id} p={p} />)}
-            </div>
-          </Seccion>
-        )}
-        {afilas.length > 0 && (
-          <Seccion titulo="Tu box">
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {afilas.map((f) => <BoxBar key={f.area_id} f={f} recargar={() => cargar(true)} />)}
-            </div>
+        {/* PULSO DEL ÁREA — arriba de todo: estado del área hoy */}
+        {d.resumen_areas?.[areaActiva] && (
+          <Seccion titulo="Pulso del área (hoy)">
+            <PulsoArea r={d.resumen_areas[areaActiva]} />
           </Seccion>
         )}
         {dd.iniciar.length > 0 && (
@@ -143,13 +140,24 @@ export default function MiTrabajo() {
             </div>
           </Seccion>
         )}
-        {dd.tareas.length > 0 && (
-          <Seccion titulo="Para hacer ahora">
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {dd.tareas.map((b) => (
-                <TareaCard key={b.nodo_id} b={b} accion={accion}
-                  onAbrir={(id) => navigate(`/casos/${id}`)} onTomar={tomarYAbrir} />
-              ))}
+        {/* ACCESOS RÁPIDOS — tareas administrativas frecuentes */}
+        <Seccion titulo="Accesos rápidos">
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <AccesoCard icon="search" label="Estado de un paciente" hint="Buscar su ingreso o expediente" onClick={() => setBuscarEstado(true)} />
+            <AccesoCard icon="clipboard" label="Historias clínicas" hint="Buscar, ver y crear expedientes" onClick={() => navigate("/historia")} />
+          </div>
+        </Seccion>
+        {dd.puestos.length > 0 && (
+          <Seccion titulo="Mis puestos">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+              {dd.puestos.map((p) => <PuestoCard key={p.nodo_id} p={p} onAbrir={() => navigate(`/puesto/${p.nodo_id}`)} />)}
+            </div>
+          </Seccion>
+        )}
+        {afilas.length > 0 && (
+          <Seccion titulo="Tu box">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {afilas.map((f) => <BoxBar key={f.area_id} f={f} recargar={() => cargar(true)} />)}
             </div>
           </Seccion>
         )}
@@ -179,33 +187,40 @@ export default function MiTrabajo() {
             </Card>
           </Seccion>
         )}
+        {/* MIS INGRESOS DE HOY — lo que cargué/avancé hoy en esta área */}
+        {(() => {
+          const ingresos = (d.mis_ingresos || []).filter((c) => c.area_nombre === areaActiva);
+          return ingresos.length > 0 && (
+            <Seccion titulo="Mis ingresos de hoy">
+              <Card style={{ overflow: "hidden" }}>
+                {ingresos.map((c, i) => (
+                  <div key={c.id} onClick={() => navigate(`/casos/${c.id}`)}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer", borderTop: i ? `1px solid ${color.divider}` : "none" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.ciudadano_nombre || "—"}</div>
+                      <div style={{ fontSize: 12, color: color.slate400 }}>{c.paso_actual || "—"} · ingresó hace {antiguedad(c.creado)}</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: color.slate400 }}>{c.estado_display}</span>
+                  </div>
+                ))}
+              </Card>
+            </Seccion>
+          );
+        })()}
       </>
     );
   };
 
   return (
     <>
-      <PageHeader
-        subtitle={areaActiva && multi ? areaActiva : "Lo que podés iniciar y lo que está esperando por vos."}
-        right={
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {ultima && (
-              <span style={{ fontSize: 12, color: color.slate400 }}>
-                {refrescando ? "Actualizando…" : `Actualizado hace ${hace(ultima)}`}
-              </span>
-            )}
-            <Button variant="secondary" onClick={() => cargar()}>↻ Actualizar</Button>
-          </div>
-        }
-      />
+      <PageHeader subtitle={areaActiva && multi ? areaActiva : "Lo que podés iniciar y lo que está esperando por vos."} />
 
       <div style={{ padding: "22px 32px", display: "flex", flexDirection: "column", gap: 26 }}>
         {vacio && (
           <EmptyState title="No tenés tareas pendientes" hint="Cuando entren casos a los pasos que operás, van a aparecer acá." />
         )}
-
-        {/* TU TURNO — producción personal del día (siempre visible si tenés puestos). */}
-        {turno && puestos.length > 0 && <TurnoBanner turno={turno} esperando={d.esperando.length} />}
 
         {!vacio && (areaActiva ? (
           <>
@@ -258,6 +273,9 @@ export default function MiTrabajo() {
           onCreated={(id) => { setIngresar(null); navigate(`/casos/${id}`); }}
         />
       )}
+      {buscarEstado && (
+        <EstadoPacienteModal institucionId={institucion?.id} navigate={navigate} onClose={() => setBuscarEstado(false)} />
+      )}
     </>
   );
 }
@@ -298,13 +316,6 @@ const subPaso = (b) => {
   return b.grupos?.length ? `${base} · 👥 ${b.grupos.join(", ")}` : base;
 };
 
-// Relativo corto para el sello de "actualizado": segundos hasta el minuto, luego antigüedad.
-function hace(iso) {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 50) return "unos segundos";
-  return antiguedad(iso);
-}
-
 // Umbrales de espera (minutos) para resaltar demoras en el worklist. En una
 // guardia, cuánto lleva esperando un caso pesa tanto como su prioridad.
 const ESPERA_AMBAR_MIN = 15;
@@ -325,6 +336,45 @@ function EsperaChip({ iso, prefijo = "" }) {
 
 // ISO más antiguo (el que más espera) de una lista; null si está vacía.
 const masViejo = (isos) => (isos.length ? isos.reduce((a, b) => (new Date(a) < new Date(b) ? a : b)) : null);
+
+// Pulso del área (hoy): tira de números del estado del área.
+function PulsoArea({ r }) {
+  const tiles = [
+    { label: "En espera", n: r.en_espera },
+    { label: "En atención", n: r.en_atencion },
+    { label: "Ingresos hoy", n: r.ingresos_hoy },
+    { label: "Urgentes", n: r.urgentes, alerta: r.urgentes > 0 },
+    { label: "Espera prom.", n: `${r.espera_prom_min} min` },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+      {tiles.map((t) => (
+        <Card key={t.label} style={{ padding: "14px 16px", borderLeft: `3px solid ${t.alerta ? color.danger : color.border}` }}>
+          <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, color: t.alerta ? color.danger : color.ink }}>{t.n}</div>
+          <div style={{ fontSize: 12, color: color.slate500, marginTop: 6 }}>{t.label}</div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// Tarjeta de acceso rápido (acción administrativa frecuente).
+function AccesoCard({ icon, label, hint, onClick }) {
+  return (
+    <Card onClick={onClick}
+      style={{ padding: 14, cursor: "pointer", minWidth: 230, display: "flex", alignItems: "center", gap: 12, transition: "box-shadow .12s" }}
+      onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 6px 18px rgba(16,24,40,.08)")}
+      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}>
+      <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+        <Icon name={icon} size={18} />
+      </div>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{label}</div>
+        <div style={{ fontSize: 12, color: color.slate400 }}>{hint}</div>
+      </div>
+    </Card>
+  );
+}
 
 function Seccion({ titulo, children }) {
   return (
@@ -390,41 +440,16 @@ function PrioridadChip({ prioridad }) {
   return p ? <Badge tone={p.tone}>{p.label}</Badge> : null;
 }
 
-// "Tu turno": lo que hiciste hoy y lo que tenés en curso, de un vistazo. Pensado
-// para roles sin cola propia (admisión): aun sin nada en pantalla, ves tu pulso.
-function TurnoBanner({ turno, esperando }) {
-  const stats = [
-    { label: "Resueltos hoy", n: turno.resueltos_hoy, c: "#1B7A4E" },
-    { label: "En curso", n: turno.en_curso, c: color.accent },
-    ...(esperando > 0 ? [{ label: "Esperando resultados", n: esperando, c: "#A96A12" }] : []),
-  ];
-  return (
-    <Card style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 160 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Tu turno</div>
-        <div style={{ fontSize: 12.5, color: color.slate400 }}>
-          {turno.ultimo_at ? <>Último movimiento <EsperaChip iso={turno.ultimo_at} prefijo="hace " /></> : "Todavía sin movimientos hoy"}
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 26 }}>
-        {stats.map((s) => (
-          <div key={s.label} style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, color: s.c }}>{s.n}</div>
-            <div style={{ fontSize: 11.5, color: color.slate500, marginTop: 5 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 // Tarjeta-indicador de un puesto (nodo del que soy responsable): carga del momento
 // + lo resuelto hoy. No es accionable: los casos se operan en las bandas de abajo.
 const PUESTO_ICON = { entrada: "enter", fila: "list", tarea: "inbox" };
-function PuestoCard({ p }) {
+function PuestoCard({ p, onAbrir }) {
   const t = p.desde ? tonoEspera(p.desde) : null;
   return (
-    <Card style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, borderLeft: `3px solid ${p.urgentes > 0 ? color.danger : color.border}` }}>
+    <Card onClick={onAbrir}
+      style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, cursor: onAbrir ? "pointer" : "default", borderLeft: `3px solid ${p.urgentes > 0 ? color.danger : color.border}`, transition: "box-shadow .12s" }}
+      onMouseEnter={(e) => onAbrir && (e.currentTarget.style.boxShadow = "0 6px 18px rgba(16,24,40,.08)")}
+      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 30, height: 30, borderRadius: 8, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
           <Icon name={PUESTO_ICON[p.rol] || "inbox"} size={15} />
@@ -587,6 +612,104 @@ function FilaCard({ f, onLlamado }) {
         </div>
       )}
     </Card>
+  );
+}
+
+// Buscar el estado de un paciente: lo encontrás y ves su ingreso (caso) y su expediente.
+function EstadoPacienteModal({ institucionId, navigate, onClose }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+  const [sel, setSel] = useState(null);
+  const [casos, setCasos] = useState(null); // null = cargando
+
+  useEffect(() => {
+    if (sel) return;
+    const term = q.trim();
+    if (!term) { setRes([]); return; }
+    setBuscando(true);
+    const t = setTimeout(async () => {
+      try { const dd = await api.get(`/ciudadanos/?institucion=${institucionId}&search=${encodeURIComponent(term)}`); setRes((dd.results || dd).slice(0, 8)); }
+      catch { /* */ } finally { setBuscando(false); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, sel, institucionId]);
+
+  async function elegir(c) {
+    setSel(c); setCasos(null);
+    try { const dd = await api.get(`/casos/?institucion=${institucionId}&ciudadano=${c.id}`); setCasos(dd.results || dd); }
+    catch { setCasos([]); }
+  }
+  const irA = (path) => { onClose(); navigate(path); };
+
+  return (
+    <Modal title="Estado de un paciente" onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}>
+      {!sel ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Buscar paciente">
+            <Input autoFocus placeholder="Nombre, apellido o documento…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </Field>
+          {q.trim() && (
+            <div style={{ border: `1px solid ${color.border}`, borderRadius: 10, overflow: "hidden" }}>
+              {buscando ? (
+                <div style={{ padding: 14, fontSize: 13, color: color.slate400 }}>Buscando…</div>
+              ) : res.length === 0 ? (
+                <div style={{ padding: 14, fontSize: 13, color: color.slate400 }}>Sin pacientes para «{q.trim()}».</div>
+              ) : res.map((c, i) => (
+                <div key={c.id} onClick={() => elegir(c)}
+                  style={{ padding: "10px 14px", cursor: "pointer", borderTop: i ? `1px solid ${color.divider}` : "none" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.nombre} {c.apellido}</div>
+                  <div style={{ fontSize: 12, color: color.slate400 }}>{c.documento ? `DNI ${c.documento}` : "Sin documento"}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, border: `1px solid ${color.border}`, borderRadius: 10, background: color.subtle }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>{sel.nombre} {sel.apellido}</div>
+              <div style={{ fontSize: 12.5, color: color.slate400 }}>{sel.documento ? `DNI ${sel.documento}` : "Sin documento"}</div>
+            </div>
+            <button onClick={() => { setSel(null); setCasos(null); }} style={{ border: "none", background: "none", color: color.accent, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cambiar</button>
+          </div>
+
+          <Button variant="secondary" onClick={() => irA(`/historia/${sel.id}`)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <Icon name="clipboard" size={15} /> Ver expediente (historia clínica)
+          </Button>
+
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".5px", color: color.slate400, marginBottom: 8 }}>SUS CASOS</div>
+            {casos === null ? (
+              <div style={{ fontSize: 13, color: color.slate400 }}>Cargando…</div>
+            ) : casos.length === 0 ? (
+              <div style={{ fontSize: 13, color: color.slate400 }}>No tiene casos registrados.</div>
+            ) : (
+              <div style={{ border: `1px solid ${color.border}`, borderRadius: 10, overflow: "hidden" }}>
+                {casos.map((c, i) => {
+                  const est = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
+                  return (
+                    <div key={c.id} onClick={() => irA(`/casos/${c.id}`)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", cursor: "pointer", borderTop: i ? `1px solid ${color.divider}` : "none" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.flujo_titulo}</div>
+                        <div style={{ fontSize: 12, color: color.slate400 }}>{c.paso_actual || "—"}{c.area_nombre ? ` · ${c.area_nombre}` : ""}</div>
+                      </div>
+                      <Badge tone={est.tone}>{est.label}</Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

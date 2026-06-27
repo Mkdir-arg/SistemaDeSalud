@@ -631,6 +631,17 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           </Field>
         )}
 
+        {nodo.tipo === "atencion" && (nodo.config || {}).con_fila && <PantallaUrl nodo={nodo} />}
+
+        {nodo.tipo === "espera" && (
+          <>
+            <div style={{ fontSize: 12, color: color.slate500 }}>
+              Los casos esperan en una fila (FIFO + urgentes primero) y se los llama desde un box para que avancen al siguiente paso.
+            </div>
+            <PantallaUrl nodo={nodo} />
+          </>
+        )}
+
         {nodo.tipo === "derivar" && (
           <>
             <Field label="Área de destino">
@@ -754,6 +765,72 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         </button>
       </div>
     </div>
+  );
+}
+
+// Pantalla de llamados del nodo: genera/muestra la URL pública (TV de sala de
+// espera). El token se crea bajo demanda contra POST /nodos/<id>/pantalla/.
+function PantallaUrl({ nodo }) {
+  const [token, setToken] = useState(nodo.pantalla_token || "");
+  const [cargando, setCargando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const url = token ? `${window.location.origin}/pantalla/${token}` : "";
+
+  async function generar(rotar = false) {
+    setCargando(true);
+    try {
+      const d = await api.post(`/nodos/${nodo.id}/pantalla/`, rotar ? { rotar: true } : {});
+      setToken(d.token);
+      nodo.pantalla_token = d.token; // refleja en el nodo cargado en memoria
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch { /* sin portapapeles: el usuario copia a mano */ }
+  }
+
+  return (
+    <Field label="Pantalla de llamados">
+      {!token ? (
+        <>
+          <button onClick={() => generar(false)} disabled={cargando}
+            style={{ height: 36, padding: "0 14px", borderRadius: 9, background: color.accent, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+            {cargando ? "Generando…" : "Generar URL de pantalla"}
+          </button>
+          <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+            Una pantalla pública (TV de sala de espera) que muestra a quién se llama y desde qué box.
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Input readOnly value={url} onFocus={(e) => e.target.select()} style={{ fontSize: 12, fontFamily: "monospace" }} />
+            <button onClick={copiar} title="Copiar enlace"
+              style={{ flex: "none", height: 38, padding: "0 12px", borderRadius: 9, background: copiado ? "#E6F5EC" : "#EEF0F3", color: copiado ? "#1B7A4E" : color.slate600, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+              {copiado ? "✓" : "Copiar"}
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 14, marginTop: 8, alignItems: "center" }}>
+            <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: color.accent, textDecoration: "none" }}>
+              Abrir pantalla ↗
+            </a>
+            <button onClick={() => generar(true)} disabled={cargando}
+              style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", fontSize: 11.5 }}>
+              {cargando ? "…" : "Regenerar enlace"}
+            </button>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+            Abrila en el televisor de la sala. Al regenerar, el enlace anterior deja de funcionar.
+          </div>
+        </>
+      )}
+    </Field>
   );
 }
 

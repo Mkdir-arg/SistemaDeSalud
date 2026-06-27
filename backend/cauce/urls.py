@@ -21,7 +21,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.casos.views import MisTareasView
+from apps.casos.views import MisTareasView, PantallaLlamadosView, PuestoDetalleView
 from apps.common import SubirArchivoView
 from cauce.api import router
 
@@ -38,6 +38,8 @@ urlpatterns = [
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/archivos/", SubirArchivoView.as_view(), name="subir_archivo"),
     path("api/mis-tareas/", MisTareasView.as_view(), name="mis_tareas"),
+    path("api/puestos/<int:nodo_id>/", PuestoDetalleView.as_view(), name="puesto_detalle"),
+    path("api/pantalla/<str:token>/", PantallaLlamadosView.as_view(), name="pantalla_llamados"),
     path("api/", include(router.urls)),
 ]
 

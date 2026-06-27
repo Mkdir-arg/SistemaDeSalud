@@ -75,11 +75,6 @@ export default function CasoDetalle() {
           </span>
         }
         subtitle={`${caso.flujo_titulo}${caso.ciudadano_nombre ? " · " + caso.ciudadano_nombre : ""}`}
-        right={
-          <Button variant="secondary" onClick={() => navigate("/casos")}>
-            ← Bandejas
-          </Button>
-        }
       />
 
       <div style={{ padding: 32, display: "grid", gridTemplateColumns: "1fr 320px", gap: 24, alignItems: "start" }}>

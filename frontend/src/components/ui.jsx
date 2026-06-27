@@ -16,7 +16,8 @@ export function Button({ variant = "primary", children, style, disabled, ...prop
   };
   const variants = {
     primary: { background: color.accent, color: "#fff" },
-    secondary: { background: "#fff", border: "1px solid #D8DBE2", color: color.slate700 },
+    // Secundario: misma familia índigo que el primario, pero más claro.
+    secondary: { background: color.accent50, color: color.accent, border: `1px solid ${color.accent100}` },
     dashed: { background: "none", border: "1.5px dashed #C7CDF2", color: color.accent },
     danger: { background: color.danger, color: "#fff" },
     disabled: { background: "#EEF0F3", color: color.slate400 },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "./Logo";
 import { Avatar } from "./ui";
@@ -8,6 +8,19 @@ import { useAuth } from "../auth/AuthContext";
 import { useInstitucion } from "../auth/InstitutionContext";
 import { antiguedad } from "../lib/format";
 import { color } from "../theme";
+
+// Estado de "última actualización" que una pantalla publica para mostrarlo en la
+// barra superior (al lado de la campana). Null cuando no aplica.
+const RefreshCtx = createContext({ refresco: null, setRefresco: () => {} });
+export function useRefresh() { return useContext(RefreshCtx); }
+
+function textoRefresco(r) {
+  if (!r) return null;
+  if (r.refrescando) return "Actualizando…";
+  if (!r.ultima) return null;
+  const s = Math.floor((Date.now() - new Date(r.ultima).getTime()) / 1000);
+  return `Actualizado hace ${s < 50 ? "unos segundos" : antiguedad(r.ultima)}`;
+}
 
 const TITULOS = {
   "/inicio": "Inicio",
@@ -28,14 +41,9 @@ const TITULOS = {
 function tituloDeRuta(pathname) {
   if (pathname.startsWith("/casos/")) return "Detalle del caso";
   if (pathname.startsWith("/flujos/")) return "Diseñador de flujos";
+  if (pathname.startsWith("/puesto/")) return "Detalle del paso";
   return TITULOS[pathname] || "Cauce";
 }
-
-const VISTAS = [
-  { key: "configurador", label: "Configurador" },
-  { key: "administrativo", label: "Administrativo" },
-  { key: "sistema", label: "Sistema" },
-];
 
 // Campana de notificaciones: contador de no leídas + dropdown (poll a /resumen/).
 function Campana() {
@@ -175,29 +183,31 @@ function BuscadorPacientes() {
 }
 
 function TopBar() {
-  const { user } = useAuth();
-  const { vista, setVista } = useInstitucion();
+  const { logout } = useAuth();
+  const { refresco } = useRefresh();
   const location = useLocation();
+  const navigate = useNavigate();
+  const txtRefresco = textoRefresco(refresco);
+  // Volver: en toda página salvo el inicio (que es la base del recorrido).
+  const puedeVolver = !["/inicio", "/"].includes(location.pathname);
   return (
-    <header style={{ height: 64, flex: "none", background: "#fff", borderBottom: `1px solid ${color.border}`, display: "flex", alignItems: "center", gap: 20, padding: "0 26px" }}>
+    <header style={{ height: 64, flex: "none", background: "#fff", borderBottom: `1px solid ${color.border}`, display: "flex", alignItems: "center", gap: 14, padding: "0 26px" }}>
+      {puedeVolver && (
+        <button onClick={() => navigate(-1)} title="Volver"
+          style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${color.accent100}`, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flex: "none" }}>
+          <Icon name="back" size={17} />
+        </button>
+      )}
       <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap" }}>{tituloDeRuta(location.pathname)}</div>
       <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
         <BuscadorPacientes />
       </div>
+      {txtRefresco && <span style={{ fontSize: 12, color: color.slate400, whiteSpace: "nowrap" }}>{txtRefresco}</span>}
       <Campana />
-      {user?.is_superuser && (
-        <div style={{ display: "flex", alignItems: "center", background: "#F2F3F6", border: `1px solid ${color.border}`, borderRadius: 9, padding: 3, gap: 2, flex: "none" }}>
-          {VISTAS.map((v) => (
-            <button
-              key={v.key}
-              onClick={() => setVista(v.key)}
-              style={{ padding: "6px 12px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer", background: vista === v.key ? "#fff" : "transparent", color: vista === v.key ? color.accent : color.slate500, boxShadow: vista === v.key ? "0 1px 2px rgba(16,24,40,.12)" : "none" }}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <button onClick={() => { logout(); navigate("/login"); }} title="Cerrar sesión"
+        style={{ height: 36, padding: "0 12px", borderRadius: 9, border: `1px solid ${color.accent100}`, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, cursor: "pointer", flex: "none" }}>
+        <Icon name="power" size={15} /> Salir
+      </button>
     </header>
   );
 }
@@ -221,17 +231,17 @@ const GRUPOS = [
   {
     label: "TRABAJO",
     items: [
+      // Bandeja / Filas / Casos se operan desde «Mi trabajo» (Inicio); quedan las
+      // rutas vivas pero fuera del menú. Acá solo la vista de supervisión (jefe).
       { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
-      { to: "/bandeja", label: "Bandeja de tareas", icon: "inbox", cap: "trabajo" },
-      { to: "/filas", label: "Filas de espera", icon: "list", cap: "trabajo" },
-      { to: "/casos", label: "Casos", icon: "fileText", cap: "trabajo" },
     ],
   },
   {
     label: "REGISTROS",
     items: [
       { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "registros" },
-      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
+      // «Legajo profesional» es del rol médico/profesional → se reactiva con ese rol.
+      // Ruta /legajo viva, fuera del menú por ahora.
     ],
   },
 ];
@@ -245,11 +255,12 @@ const ROL_LABEL = {
   medico: "Médico / profesional",
 };
 
-const itemStyle = ({ isActive }) => ({
+const itemStyle = (col) => ({ isActive }) => ({
   display: "flex",
   alignItems: "center",
+  justifyContent: col ? "center" : "flex-start",
   gap: 11,
-  padding: "9px 12px",
+  padding: col ? "10px 0" : "9px 12px",
   borderRadius: 9,
   fontSize: 13.5,
   fontWeight: 600,
@@ -261,6 +272,13 @@ export function Shell({ children }) {
   const { user, logout } = useAuth();
   const { institucion, setInstitucion, roles, puedeVer } = useInstitucion();
   const navigate = useNavigate();
+
+  // "Última actualización" que publica la pantalla activa (lo muestra la TopBar).
+  const [refresco, setRefresco] = useState(null);
+
+  // Menú lateral colapsable (recordado entre sesiones).
+  const [colapsado, setColapsado] = useState(() => localStorage.getItem("cauce.menu") === "col");
+  const toggleMenu = () => setColapsado((v) => { localStorage.setItem("cauce.menu", v ? "exp" : "col"); return !v; });
 
   // Instituciones del usuario (no-super): habilitan el selector si hay más de una.
   const [misInst, setMisInst] = useState([]);
@@ -304,29 +322,36 @@ export function Shell({ children }) {
     : roles.map((r) => ROL_LABEL[r] || r).join(" · ") || "Usuario";
 
   return (
+    <RefreshCtx.Provider value={{ refresco, setRefresco }}>
     <div style={{ display: "flex", minHeight: "100vh", background: color.canvas }}>
-      <aside style={{ width: 244, background: "#fff", borderRight: `1px solid ${color.border}`, display: "flex", flexDirection: "column", flex: "none", height: "100vh", position: "sticky", top: 0 }}>
-        {/* Cabecera: institución actual (con selector si el usuario tiene varias) */}
-        <div style={{ position: "relative", flex: "none" }}>
+      <aside style={{ width: colapsado ? 68 : 244, transition: "width .15s ease", background: "#fff", borderRight: `1px solid ${color.border}`, display: "flex", flexDirection: "column", flex: "none", height: "100vh", position: "sticky", top: 0 }}>
+        {/* Cabecera: institución + colapsar (en una sola fila) */}
+        <div style={{ position: "relative", flex: "none", display: "flex", alignItems: "center", gap: 8, flexDirection: colapsado ? "column" : "row", padding: colapsado ? "14px 0 12px" : "14px 12px", borderBottom: colapsado ? `1px solid ${color.divider}` : "none" }}>
           <button
-            onClick={() => puedeCambiar && setMenuInst((v) => !v)}
-            style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "16px 16px 12px", background: "none", border: "none", textAlign: "left", cursor: puedeCambiar ? "pointer" : "default" }}
+            onClick={() => puedeCambiar && !colapsado && setMenuInst((v) => !v)}
+            title={colapsado ? institucion?.nombre : undefined}
+            style={{ display: "flex", alignItems: "center", gap: 11, flex: colapsado ? "none" : 1, minWidth: 0, padding: 0, background: "none", border: "none", textAlign: "left", cursor: (puedeCambiar && !colapsado) ? "pointer" : "default" }}
           >
             <Logo size={34} />
-            <div style={{ lineHeight: 1.15, minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {institucion?.nombre || "Cauce"}
+            {!colapsado && (
+              <div style={{ lineHeight: 1.15, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {institucion?.nombre || "Cauce"}
+                </div>
+                <div style={{ fontSize: 11, color: color.slate400, fontWeight: 500 }}>{institucion?.tipo || "Institución"}</div>
               </div>
-              <div style={{ fontSize: 11, color: color.slate400, fontWeight: 500 }}>{institucion?.tipo || "Institución"}</div>
-            </div>
-            {puedeCambiar && <Icon name="back" size={13} style={{ transform: menuInst ? "rotate(90deg)" : "rotate(-90deg)", color: color.slate400 }} />}
+            )}
+          </button>
+          <button onClick={toggleMenu} title={colapsado ? "Expandir menú" : "Colapsar menú"}
+            style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${color.accent100}`, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flex: "none" }}>
+            <Icon name="back" size={14} style={{ transform: colapsado ? "rotate(180deg)" : "none" }} />
           </button>
 
           {/* Menú desplegable de instituciones */}
-          {menuInst && (
+          {menuInst && !colapsado && (
             <>
               <div onClick={() => setMenuInst(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
-              <div style={{ position: "absolute", top: 60, left: 14, right: 14, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
+              <div style={{ position: "absolute", top: 62, left: 12, right: 12, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, padding: "6px 8px 4px" }}>CAMBIAR DE INSTITUCIÓN</div>
                 {misInst.map((inst) => {
                   const activa = inst.id === institucion?.id;
@@ -350,30 +375,39 @@ export function Shell({ children }) {
           )}
         </div>
 
-        {/* Volver al directorio (super admin) / rol del usuario (no-super) */}
-        <div style={{ flex: "none", padding: "0 14px 10px", borderBottom: `1px solid ${color.divider}` }}>
-          {user?.is_superuser ? (
-            <button
-              onClick={() => { setInstitucion(null); navigate("/"); }}
-              style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 10px", borderRadius: 8, background: "#F2F3F6", color: color.slate600, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer" }}
-            >
-              <Icon name="back" size={14} /> Volver al directorio
-            </button>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: color.slate400, padding: "4px 2px" }}>
-              <Icon name="power" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
-            </div>
-          )}
-        </div>
+        {/* Volver al directorio (super admin) / rol del usuario (no-super) — solo expandido */}
+        {!colapsado && (
+          <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid ${color.divider}` }}>
+            {user?.is_superuser ? (
+              <button
+                onClick={() => { setInstitucion(null); navigate("/"); }}
+                style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 10px", borderRadius: 8, background: "#F2F3F6", color: color.slate600, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer" }}
+              >
+                <Icon name="back" size={14} /> Volver al directorio
+              </button>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: color.slate400, padding: "4px 2px" }}>
+                <Icon name="power" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Navegación */}
-        <nav style={{ flex: 1, overflowY: "auto", padding: "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
-          <NavLink to={ITEM_INICIO.to} style={itemStyle}>
+        <nav style={{ flex: 1, overflowY: "auto", padding: colapsado ? "12px 10px" : "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+          <NavLink to={ITEM_INICIO.to} style={itemStyle(colapsado)} title={operativo ? "Mi trabajo" : "Inicio"}>
             {({ isActive }) => (
               <>
-                <Icon name={ITEM_INICIO.icon} size={17} />
-                {operativo ? "Mi trabajo" : ITEM_INICIO.label}
-                {operativo && pendientes > 0 && (
+                <span style={{ position: "relative", display: "flex" }}>
+                  <Icon name={ITEM_INICIO.icon} size={17} />
+                  {colapsado && operativo && pendientes > 0 && (
+                    <span style={{ position: "absolute", top: -5, right: -7, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 8, background: color.danger, color: "#fff", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
+                      {pendientes > 9 ? "9+" : pendientes}
+                    </span>
+                  )}
+                </span>
+                {!colapsado && (operativo ? "Mi trabajo" : ITEM_INICIO.label)}
+                {!colapsado && operativo && pendientes > 0 && (
                   <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, fontSize: 11.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", background: isActive ? "rgba(255,255,255,.25)" : color.accent50, color: isActive ? "#fff" : color.accent }}>
                     {pendientes}
                   </span>
@@ -387,12 +421,14 @@ export function Shell({ children }) {
             if (!items.length) return null;
             return (
               <div key={g.label}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: color.slate400, padding: "12px 12px 6px" }}>{g.label}</div>
+                {colapsado
+                  ? <div style={{ height: 1, background: color.divider, margin: "8px 8px 6px" }} />
+                  : <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: color.slate400, padding: "12px 12px 6px" }}>{g.label}</div>}
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {items.map((n) => (
-                    <NavLink key={n.to} to={n.to} style={itemStyle} end={n.to === "/flujos"}>
+                    <NavLink key={n.to} to={n.to} style={itemStyle(colapsado)} end={n.to === "/flujos"} title={n.label}>
                       <Icon name={n.icon} size={17} />
-                      {n.label}
+                      {!colapsado && n.label}
                     </NavLink>
                   ))}
                 </div>
@@ -402,12 +438,14 @@ export function Shell({ children }) {
         </nav>
 
         {/* Usuario */}
-        <div style={{ flex: "none", borderTop: `1px solid ${color.divider}`, padding: 14, display: "flex", alignItems: "center", gap: 11 }}>
+        <div style={{ flex: "none", borderTop: `1px solid ${color.divider}`, padding: colapsado ? "12px 0" : 14, display: "flex", flexDirection: colapsado ? "column" : "row", alignItems: "center", gap: colapsado ? 8 : 11 }}>
           <Avatar nombre={user?.nombre_completo || user?.email} size={34} />
-          <div style={{ minWidth: 0, flex: 1, lineHeight: 1.25 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.nombre_completo || user?.email}</div>
-            <div style={{ fontSize: 11, color: color.slate400 }}>{rolLabel}</div>
-          </div>
+          {!colapsado && (
+            <div style={{ minWidth: 0, flex: 1, lineHeight: 1.25 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.nombre_completo || user?.email}</div>
+              <div style={{ fontSize: 11, color: color.slate400 }}>{rolLabel}</div>
+            </div>
+          )}
           <button onClick={() => { logout(); navigate("/login"); }} title="Cerrar sesión" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex" }}>
             <Icon name="power" size={17} />
           </button>
@@ -419,6 +457,7 @@ export function Shell({ children }) {
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>{children}</div>
       </main>
     </div>
+    </RefreshCtx.Provider>
   );
 }
 

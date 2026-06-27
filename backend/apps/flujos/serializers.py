@@ -13,8 +13,10 @@ class NodoSerializer(serializers.ModelSerializer):
         fields = [
             "id", "version", "tipo", "tipo_display", "titulo", "descripcion",
             "x", "y", "config", "formulario", "grupos", "grupos_detalle",
+            "pantalla_token",
         ]
         extra_kwargs = {"grupos": {"required": False}}
+        read_only_fields = ["pantalla_token"]
 
     def get_grupos_detalle(self, obj):
         return [

@@ -50,7 +50,7 @@ export default function Inicio() {
         <div style={{ flex: 1 }} />
         <button
           onClick={() => navigate("/bandeja")}
-          style={{ height: 40, padding: "0 16px", borderRadius: 10, background: color.ink, color: "#fff", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, border: "none", cursor: "pointer" }}
+          style={{ height: 40, padding: "0 16px", borderRadius: 10, background: color.accent, color: "#fff", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, border: "none", cursor: "pointer" }}
         >
           <Icon name="enter" size={15} /> Operar
         </button>

@@ -6,10 +6,12 @@ import { useInstitucion } from "./auth/InstitutionContext";
 import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
 import Login from "./pages/Login";
+import PantallaLlamados from "./pages/PantallaLlamados";
 import Directorio from "./pages/Directorio";
 import Inicio from "./pages/Inicio";
 import Dashboard from "./pages/Dashboard";
 import MiTrabajo from "./pages/MiTrabajo";
+import PuestoDetalle from "./pages/PuestoDetalle";
 import Supervision from "./pages/Supervision";
 import Notificaciones from "./pages/Notificaciones";
 import Bandejas from "./pages/ejecucion/Bandejas";
@@ -88,11 +90,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
+      <Route path="/pantalla/:token" element={<PantallaLlamados />} />
       <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />
       <Route path="/dashboard" element={P(<Dashboard />)} />
       <Route path="/notificaciones" element={P(<Notificaciones />)} />
+      <Route path="/puesto/:id" element={P(<PuestoDetalle />)} />
 
       {/* TRABAJO */}
       <Route path="/supervision" element={P(<Supervision />)} />

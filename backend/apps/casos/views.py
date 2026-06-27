@@ -2,7 +2,7 @@ from django.db.models import Count
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -29,7 +29,7 @@ class CasoViewSet(BaseModelViewSet):
     ).prefetch_related("valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo", "en_filas")
     capacidad_requerida = "trabajo"
     institucion_path = "institucion"
-    filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a")
+    filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a", "ciudadano")
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -308,6 +308,8 @@ class MisTareasView(APIView):
             inst_id, nodo_por_id, fila_nodo_ids, iniciar_node_ids, user
         )
         mis_casos = self._mis_casos(inst_id, user)
+        resumen_areas = self._resumen_areas(inst_id, nodo_por_id)
+        mis_ingresos = self._mis_ingresos_hoy(inst_id, user)
 
         return Response({
             "iniciar": iniciar,
@@ -319,7 +321,61 @@ class MisTareasView(APIView):
             "turno": turno,
             # Casos a mi nombre, activos (para retomar de un toque).
             "mis_casos": mis_casos,
+            # Pulso por área (hoy) + lo que ingresé/toqué hoy.
+            "resumen_areas": resumen_areas,
+            "mis_ingresos": mis_ingresos,
         })
+
+    def _resumen_areas(self, inst_id, nodo_por_id):
+        """Pulso por área (las áreas donde trabajo): estado de la guardia hoy."""
+        areas = {}
+        for n in nodo_por_id.values():
+            flujo = n.version.flujo
+            if flujo.area_id:
+                areas[flujo.area_id] = flujo.area.nombre
+        hoy = timezone.localdate()
+        now = timezone.now()
+        out = {}
+        for aid, nombre in areas.items():
+            base = Caso.objects.filter(institucion_id=inst_id, version__flujo__area_id=aid)
+            activos = base.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            esperas = list(
+                ItemFila.objects.filter(
+                    caso__version__flujo__area_id=aid, atendido=False, box__isnull=True
+                ).values_list("ingreso", flat=True)
+            )
+            espera_prom = (
+                round(sum((now - i).total_seconds() / 60 for i in esperas) / len(esperas)) if esperas else 0
+            )
+            out[nombre] = {
+                "en_espera": activos.filter(estado=Caso.Estado.EN_ESPERA).count(),
+                "en_atencion": activos.filter(estado=Caso.Estado.EN_EVALUACION).count(),
+                "ingresos_hoy": base.filter(creado__date=hoy).count(),
+                "urgentes": activos.filter(prioridad=Caso.Prioridad.URGENTE).count(),
+                "espera_prom_min": espera_prom,
+            }
+        return out
+
+    def _mis_ingresos_hoy(self, inst_id, user):
+        """Casos que toqué hoy (los que ingresé/avancé), para seguirlos/corregirlos."""
+        hoy = timezone.localdate()
+        ids = list(
+            EventoCaso.objects.filter(autor=user, caso__institucion_id=inst_id, fecha__date=hoy)
+            .values_list("caso_id", flat=True).distinct()
+        )
+        casos = (
+            Caso.objects.filter(id__in=ids)
+            .select_related("ciudadano", "nodo_actual", "version__flujo__area")
+            .order_by("-actualizado")[:20]
+        )
+        return [{
+            "id": c.id,
+            "ciudadano_nombre": self._nombre(c.ciudadano),
+            "area_nombre": c.version.flujo.area.nombre if c.version.flujo.area_id else None,
+            "paso_actual": c.nodo_actual.titulo if c.nodo_actual_id else None,
+            "estado": c.estado, "estado_display": c.get_estado_display(),
+            "creado": c.creado,
+        } for c in casos]
 
     def _mis_casos(self, inst_id, user):
         casos = (
@@ -501,9 +557,10 @@ class MisTareasView(APIView):
                 "urgentes": s.get("urgentes", 0),
                 "desde": s.get("desde"),
                 "hoy": len(hoy_por_nodo.get(nid, ())),
+                "_orden": (flujo.titulo, nodo.x, nodo.id),  # posición en el flujo (de izq. a der.)
             })
-        # Primero los puestos con carga viva, luego por urgentes y por nombre.
-        puestos.sort(key=lambda p: (p["ahora"] == 0, -p["urgentes"], p["nodo_titulo"]))
+        # Orden del FLUJO: por flujo y posición del nodo en el lienzo (no por carga).
+        puestos.sort(key=lambda p: p.pop("_orden"))
 
         en_curso = (
             Caso.objects
@@ -578,6 +635,132 @@ class MisTareasView(APIView):
             sig = Conexion.objects.filter(version=version, origen=actual).select_related("destino").first()
             actual = sig.destino if sig else None
         return actual
+
+
+class PuestoDetalleView(APIView):
+    """Detalle de un **paso** (nodo) del que soy responsable: indicadores del
+    momento + la tabla de casos parados ahí. Lo abre cada tarjeta de «Mis puestos»."""
+
+    def get(self, request, nodo_id):
+        user = request.user
+        nodo = (
+            Nodo.objects.select_related("version__flujo__area")
+            .prefetch_related("grupos").filter(pk=nodo_id).first()
+        )
+        if nodo is None:
+            return Response({"detail": "El paso no existe."}, status=status.HTTP_404_NOT_FOUND)
+        # Seguridad: tenés que ser responsable del paso (o super admin).
+        if not user.is_superuser and not nodo.grupos.filter(miembros=user).exists():
+            return Response({"detail": "No sos responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
+
+        flujo = nodo.version.flujo
+        con_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
+        casos = list(
+            Caso.objects.filter(nodo_actual=nodo)
+            .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            .select_related("ciudadano", "asignado_a", "area_actual")
+            .prefetch_related("en_filas")
+        )
+
+        def item_de(c):
+            return next((it for it in c.en_filas.all() if it.nodo_id == nodo.id and not it.atendido), None)
+
+        rank = {"urgente": 0, "alta": 1, "normal": 2}
+        casos.sort(key=lambda c: (rank.get(c.prioridad, 9), c.creado))
+
+        filas = [{
+            "id": c.id,
+            "ciudadano_nombre": self._nombre(c.ciudadano),
+            "prioridad": c.prioridad, "prioridad_display": c.get_prioridad_display(),
+            "estado": c.estado, "estado_display": c.get_estado_display(),
+            "creado": c.creado,
+            "asignado_nombre": c.asignado_a.nombre_completo if c.asignado_a_id else None,
+            "mio": c.asignado_a_id == user.id,
+            "asignado": bool(c.asignado_a_id),
+            "esperando": c.esperando,
+            "en_fila": bool((it := item_de(c)) and it.box_id is None),
+            "llamado": bool(item_de(c) and item_de(c).box_id is not None),
+        } for c in casos]
+
+        # Box que ocupo en el área (para poder llamar desde este paso si es con fila).
+        mi_box = None
+        if con_fila and flujo.area_id:
+            mi_box = Box.objects.filter(area_id=flujo.area_id, ocupado_por=user).values_list("id", flat=True).first()
+
+        en_cola = sum(1 for f in filas if f["en_fila"])
+        urgentes = sum(1 for f in filas if f["prioridad"] == "urgente")
+        hoy = (
+            EventoCaso.objects.filter(nodo=nodo, fecha__date=timezone.localdate())
+            .values("caso").distinct().count()
+        )
+        return Response({
+            "nodo": {
+                "id": nodo.id, "titulo": nodo.titulo, "tipo": nodo.tipo, "con_fila": bool(con_fila),
+                "flujo_titulo": flujo.titulo,
+                "area_nombre": flujo.area.nombre if flujo.area_id else None,
+            },
+            "mi_box": mi_box,
+            "indicadores": {
+                "ahora": en_cola if con_fila else len(filas),
+                "en_cola": en_cola,
+                "urgentes": urgentes,
+                "hoy": hoy,
+                "desde": min((c.creado for c in casos), default=None),
+            },
+            "casos": filas,
+        })
+
+    @staticmethod
+    def _nombre(ciudadano):
+        return f"{ciudadano.nombre} {ciudadano.apellido}".strip() if ciudadano else None
+
+
+class PantallaLlamadosView(APIView):
+    """Pantalla pública de llamados de un nodo con fila (TV de sala de espera).
+
+    Sin autenticación: se accede por un token impredecible que se genera al
+    configurar el nodo (`/api/pantalla/<token>/`). Devuelve los últimos pacientes
+    llamados y desde qué box, para que la pantalla muestre a quién toca pasar.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        if not token:
+            return Response({"detail": "Token requerido."}, status=status.HTTP_404_NOT_FOUND)
+        nodo = (
+            Nodo.objects.select_related("version__flujo__area")
+            .filter(pantalla_token=token).first()
+        )
+        if nodo is None:
+            return Response({"detail": "Pantalla no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        flujo = nodo.version.flujo
+        llamados = list(
+            ItemFila.objects.filter(nodo=nodo, llamado_at__isnull=False)
+            .select_related("caso__ciudadano", "box")
+            .order_by("-llamado_at")[:8]
+        )
+        en_espera = ItemFila.objects.filter(nodo=nodo, atendido=False, box__isnull=True).count()
+
+        def nombre(c):
+            return f"{c.ciudadano.nombre} {c.ciudadano.apellido}".strip() if c and c.ciudadano_id else None
+
+        return Response({
+            "nodo": {"id": nodo.id, "titulo": nodo.titulo},
+            "area_nombre": flujo.area.nombre if flujo.area_id else None,
+            "flujo_titulo": flujo.titulo,
+            "en_espera": en_espera,
+            "llamados": [{
+                "id": it.id,
+                "persona": nombre(it.caso),
+                "turno": it.turno or f"#{it.caso_id}",
+                "box": it.box.nombre if it.box_id else None,
+                "urgente": it.urgente,
+                "llamado_at": it.llamado_at,
+            } for it in llamados],
+        })
 
 
 class ValorCampoViewSet(BaseModelViewSet):
