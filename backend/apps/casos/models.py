@@ -147,6 +147,11 @@ class ItemFila(models.Model):
     #  - atención real = atendido_at − llamado_at
     llamado_at = models.DateTimeField("llamado", null=True, blank=True)
     atendido_at = models.DateTimeField("atención", null=True, blank=True)
+    # Rellamado: el paciente fue llamado pero no se presentó y se lo vuelve a
+    # llamar. `llamado_at` se conserva (métrica de espera); `rellamado_at` marca
+    # el último llamado y `veces_llamado` cuántas veces se lo llamó en total.
+    rellamado_at = models.DateTimeField("rellamado", null=True, blank=True)
+    veces_llamado = models.PositiveIntegerField(default=1)
 
     class Meta:
         verbose_name = "ítem de fila"

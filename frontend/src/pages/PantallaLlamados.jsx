@@ -13,7 +13,7 @@ export default function PantallaLlamados() {
   const [error, setError] = useState("");
   const [sonido, setSonido] = useState(false);
   const [ahora, setAhora] = useState(new Date());
-  const ultimoId = useRef(null);
+  const ultimaClave = useRef(null);
   const [flash, setFlash] = useState(false);
 
   // Reloj de la cabecera.
@@ -52,13 +52,16 @@ export default function PantallaLlamados() {
         const d = await api.get(`/pantalla/${token}/`);
         if (!vivo) return;
         setError("");
-        const nuevo = d.llamados?.[0]?.id ?? null;
-        if (ultimoId.current !== null && nuevo !== null && nuevo !== ultimoId.current) {
+        // La clave incluye las veces llamado: un rellamado al mismo paciente
+        // también dispara el destello y el timbre.
+        const top = d.llamados?.[0];
+        const clave = top ? `${top.id}:${top.veces ?? 1}` : null;
+        if (ultimaClave.current !== null && clave !== null && clave !== ultimaClave.current) {
           setFlash(true);
           setTimeout(() => vivo && setFlash(false), 2800);
           if (sonido) beep();
         }
-        ultimoId.current = nuevo;
+        ultimaClave.current = clave;
         setData(d);
       } catch (e) {
         if (vivo) setError(e?.status === 404 ? "Pantalla no encontrada. Verificá el enlace." : "Sin conexión con el servidor.");
@@ -127,7 +130,10 @@ export default function PantallaLlamados() {
               <div style={{ ...S.actual, ...(flash ? S.actualFlash : null) }}>
                 <div style={S.actualBar} />
                 <div style={S.actualInfo}>
-                  <div style={S.actualEtq}>{actual.urgente ? "URGENTE" : "LLAMANDO"}</div>
+                  <div style={S.actualEtq}>
+                    {actual.urgente ? "URGENTE" : "LLAMANDO"}
+                    {actual.veces > 1 && <span style={S.veces}>· {actual.veces}º llamado</span>}
+                  </div>
                   <div style={S.actualNombre}>{actual.persona || actual.turno}</div>
                 </div>
                 <div style={S.actualBox}>{actual.box || "—"}</div>
@@ -212,6 +218,7 @@ const S = {
   actualBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: "8px", background: NARANJA },
   actualInfo: { flex: 1, minWidth: 0 },
   actualEtq: { fontSize: "1.2vw", fontWeight: 800, letterSpacing: "2px", color: "#B4690E" },
+  veces: { marginLeft: "0.6vw", color: "#C0392B", letterSpacing: "1px" },
   actualNombre: { fontSize: "4.4vw", fontWeight: 900, lineHeight: 1.02, textTransform: "uppercase", color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   actualBox: { flex: "none", fontSize: "3.6vw", fontWeight: 900, color: "#fff", background: NARANJA, borderRadius: "12px", padding: "1vh 2vw", minWidth: "6vw", textAlign: "center" },
 

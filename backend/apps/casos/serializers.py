@@ -150,14 +150,28 @@ class CasoDetalleSerializer(CasoSerializer):
     derivados = serializers.SerializerMethodField()
     # En una atención con fila: ¿ya fue llamado a un box? (si no, está esperando).
     llamado = serializers.SerializerMethodField()
+    # Box al que se lo llamó y cuántas veces (para el banner de «rellamar»).
+    llamado_box = serializers.SerializerMethodField()
+    veces_llamado = serializers.SerializerMethodField()
 
     class Meta(CasoSerializer.Meta):
-        fields = CasoSerializer.Meta.fields + ["valores", "eventos", "derivados", "llamado"]
+        fields = CasoSerializer.Meta.fields + ["valores", "eventos", "derivados", "llamado", "llamado_box", "veces_llamado"]
+
+    def _item_llamado(self, obj):
+        if not obj.nodo_actual_id:
+            return None
+        return obj.en_filas.filter(nodo=obj.nodo_actual, atendido=False, box__isnull=False).first()
 
     def get_llamado(self, obj):
-        if not obj.nodo_actual_id:
-            return False
-        return obj.en_filas.filter(nodo=obj.nodo_actual, atendido=False, box__isnull=False).exists()
+        return self._item_llamado(obj) is not None
+
+    def get_llamado_box(self, obj):
+        it = self._item_llamado(obj)
+        return it.box.nombre if it and it.box_id else None
+
+    def get_veces_llamado(self, obj):
+        it = self._item_llamado(obj)
+        return it.veces_llamado if it else None
 
     def get_derivados(self, obj):
         return [

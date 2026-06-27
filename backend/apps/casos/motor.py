@@ -328,9 +328,10 @@ def _hc_del_caso(caso: Caso) -> HistoriaClinica:
 
 
 def agregar_receta(caso: Caso, detalle: str, autor=None):
-    """El médico emite una receta que queda en la historia clínica del paciente."""
+    """El médico o enfermería emite una receta que queda en la historia clínica."""
     from apps.registros.models import Receta
 
+    _exigir_clinico(caso, autor)
     hc = _hc_del_caso(caso)
     r = Receta.objects.create(historia=hc, detalle=detalle, autor=autor if (autor and autor.is_authenticated) else None)
     _registrar(caso, "Receta emitida", detalle=detalle[:120], autor=autor, nodo=caso.nodo_actual)
@@ -338,9 +339,10 @@ def agregar_receta(caso: Caso, detalle: str, autor=None):
 
 
 def agregar_estudio(caso: Caso, tipo: str, autor=None):
-    """El médico solicita un estudio (queda pendiente en la historia clínica)."""
+    """El médico o enfermería solicita un estudio (queda pendiente en la HC)."""
     from apps.registros.models import Estudio
 
+    _exigir_clinico(caso, autor)
     hc = _hc_del_caso(caso)
     e = Estudio.objects.create(
         historia=hc, tipo=tipo, fecha=timezone.now().date(),
@@ -513,6 +515,32 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
 
 
 @transaction.atomic
+def rellamar(caso: Caso, autor=None) -> Caso:
+    """Vuelve a llamar a un paciente que ya fue llamado a un box pero no se
+    presentó (atención con fila). No cambia de nodo ni de estado: refresca el
+    último llamado para que vuelva a destacarse en la pantalla de la sala."""
+    nodo = caso.nodo_actual
+    if nodo is None:
+        raise ErrorMotor("El caso no está posicionado en ningún nodo.")
+    es_atencion_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
+    if not es_atencion_fila:
+        raise ErrorMotor("Rellamar solo aplica a una atención con fila de espera.")
+    item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
+    if item is None or item.box_id is None:
+        raise ErrorMotor("El paciente todavía no fue llamado a un box.")
+
+    item.rellamado_at = timezone.now()
+    item.veces_llamado = (item.veces_llamado or 1) + 1
+    item.save(update_fields=["rellamado_at", "veces_llamado"])
+    box_nombre = item.box.nombre if item.box_id else ""
+    _registrar(
+        caso, f"Rellamado{f' a {box_nombre}' if box_nombre else ''}",
+        detalle=f"{item.veces_llamado}º llamado", autor=autor, nodo=nodo,
+    )
+    return caso
+
+
+@transaction.atomic
 def iniciar(caso: Caso, autor=None) -> Caso:
     """Coloca el caso en el nodo Inicio de su versión y corre hasta la 1ª parada."""
     asegurar_historia(caso)
@@ -564,8 +592,8 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
                 item.atendido = True
                 item.atendido_at = timezone.now()  # fin de atención (métricas)
                 item.save(update_fields=["atendido", "atendido_at"])
-        _exigir_medico(caso, autor)
-        _registrar_atencion(caso, nodo, datos, autor=autor)
+        matricula = _exigir_medico(caso, autor)
+        _registrar_atencion(caso, nodo, datos, autor=autor, matricula=matricula)
         # Si este caso vino a realizar un estudio, cargar su resultado estructurado.
         if caso.estudio_id:
             est = caso.estudio
@@ -611,18 +639,21 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     return _correr_automaticos(caso, autor=autor)
 
 
-def _exigir_medico(caso: Caso, autor):
+def _exigir_medico(caso: Caso, autor) -> str:
     """
-    Solo un médico (rol `medico`) puede registrar una atención. Si el caso está en
-    un área, el médico debe tener esa área asignada en su membresía. El super admin
-    puede firmar siempre.
+    Solo un médico (rol `medico`) con matrícula cargada puede registrar una
+    atención. Si el caso está en un área, el médico debe tener esa área asignada
+    en su membresía. El super admin puede firmar siempre.
+
+    Devuelve la matrícula del profesional (snapshot para asentar en la firma);
+    cadena vacía si firma el super admin.
     """
     from apps.accounts.models import Membresia
 
     if autor is None:
         raise ErrorMotor("Se requiere un profesional autenticado para registrar la atención.")
     if getattr(autor, "is_superuser", False):
-        return
+        return ""
     medicas = Membresia.objects.filter(
         usuario=autor, institucion=caso.institucion, rol=Membresia.Rol.MEDICO, activo=True
     )
@@ -630,6 +661,32 @@ def _exigir_medico(caso: Caso, autor):
         raise ErrorMotor("Solo un médico puede registrar una atención.")
     if caso.area_actual_id and not medicas.filter(areas=caso.area_actual_id).exists():
         raise ErrorMotor(f"El médico no está asignado al área «{caso.area_actual}».")
+    matricula = (getattr(getattr(autor, "legajo", None), "matricula", "") or "").strip()
+    if not matricula:
+        raise ErrorMotor(
+            "Para firmar la atención necesitás tener tu matrícula cargada en el legajo profesional."
+        )
+    return matricula
+
+
+def _exigir_clinico(caso: Caso, autor):
+    """
+    Recetas y solicitudes de estudio son actos clínicos: solo un médico o
+    enfermería (con membresía activa en la institución del caso) pueden hacerlos.
+    El super admin pasa siempre.
+    """
+    from apps.accounts.models import Membresia
+
+    if autor is None:
+        raise ErrorMotor("Se requiere un profesional autenticado.")
+    if getattr(autor, "is_superuser", False):
+        return
+    permitido = Membresia.objects.filter(
+        usuario=autor, institucion=caso.institucion, activo=True,
+        rol__in=[Membresia.Rol.MEDICO, Membresia.Rol.ENFERMERIA],
+    ).exists()
+    if not permitido:
+        raise ErrorMotor("Solo un médico o enfermería puede emitir recetas o solicitar estudios.")
 
 
 def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
@@ -658,7 +715,7 @@ def _aplicar_prioridad_desde_form(caso: Caso, nodo: Nodo, autor=None):
         _registrar(caso, f"Prioridad → {caso.get_prioridad_display()}", detalle="según triage", autor=autor, nodo=nodo)
 
 
-def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None):
+def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricula: str = ""):
     """Crea una entrada en la historia clínica del ciudadano del caso."""
     titulo = datos.get("titulo") or nodo.titulo or "Atención"
     contenido = datos.get("contenido", "")
@@ -672,8 +729,9 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None):
             autor=autor,
             caso=caso,
             firmada=firmada,
+            matricula=matricula if firmada else "",
         )
-        detalle = "asentada en la historia clínica" + (" · firmada" if firmada else "")
+        detalle = "asentada en la historia clínica" + (f" · firmada (Mat. {matricula})" if firmada and matricula else (" · firmada" if firmada else ""))
     else:
         detalle = "sin ciudadano asociado"
     caso.estado = Caso.Estado.ATENDIDO

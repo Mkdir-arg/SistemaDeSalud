@@ -16,6 +16,7 @@ class CiudadanoViewSet(BaseModelViewSet):
     queryset = Ciudadano.objects.select_related("institucion")
     serializer_class = CiudadanoSerializer
     capacidad_requerida = "registros"
+    protege_lectura = True
     institucion_path = "institucion"
     filter_fields = ("institucion", "obra_social")
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -29,6 +30,7 @@ class HistoriaClinicaViewSet(BaseModelViewSet):
     )
     serializer_class = HistoriaClinicaSerializer
     capacidad_requerida = "registros"
+    protege_lectura = True
     institucion_path = "ciudadano__institucion"
     filter_fields = ("ciudadano",)
 
@@ -37,6 +39,7 @@ class EntradaHistoriaViewSet(BaseModelViewSet):
     queryset = EntradaHistoria.objects.select_related("historia", "autor", "caso")
     serializer_class = EntradaHistoriaSerializer
     capacidad_requerida = "registros"
+    protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "autor", "caso", "firmada")
 
@@ -45,6 +48,7 @@ class EstudioViewSet(BaseModelViewSet):
     queryset = Estudio.objects.select_related("historia")
     serializer_class = EstudioSerializer
     capacidad_requerida = "registros"
+    protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "resultado")
 
@@ -53,5 +57,6 @@ class RecetaViewSet(BaseModelViewSet):
     queryset = Receta.objects.select_related("historia", "autor")
     serializer_class = RecetaSerializer
     capacidad_requerida = "registros"
+    protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "activa")

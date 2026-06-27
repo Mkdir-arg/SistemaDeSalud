@@ -109,6 +109,12 @@ class Command(BaseCommand):
                 u.save()
             mem, _ = Membresia.objects.get_or_create(usuario=u, institucion=inst, rol=rol)
             mem.areas.add(*areas)
+            # Los médicos necesitan matrícula cargada para poder firmar atenciones.
+            if rol == R.MEDICO:
+                from apps.accounts.models import LegajoProfesional
+                LegajoProfesional.objects.get_or_create(
+                    usuario=u, defaults={"matricula": f"MP-{u.pk:05d}"}
+                )
             return u
 
         # Guardia: jefatura, admisión, enfermería de triage y médicos.

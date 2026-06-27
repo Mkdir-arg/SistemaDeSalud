@@ -104,8 +104,26 @@ class CasoViewSet(BaseModelViewSet):
         return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
+    def rellamar(self, request, pk=None):
+        """Vuelve a llamar al paciente (atención con fila) que no se presentó.
+
+        Solo puede rellamar quien integre un grupo responsable del paso."""
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response(
+                {"detail": "No integrás ningún grupo responsable de este paso."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            motor.rellamar(caso, autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
     def receta(self, request, pk=None):
-        """El médico emite una receta (cuerpo: {"detalle": "..."}) en la HC del paciente."""
+        """Médico o enfermería emite una receta (cuerpo: {"detalle": "..."}) en la HC del paciente."""
         caso = self.get_object()
         if not motor.usuario_puede_tomar(request.user, caso):
             return Response({"detail": "No integrás ningún grupo responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
@@ -121,7 +139,7 @@ class CasoViewSet(BaseModelViewSet):
 
     @action(detail=True, methods=["post"])
     def estudio(self, request, pk=None):
-        """El médico solicita un estudio (cuerpo: {"tipo": "...", "area_id": <opcional>}).
+        """Médico o enfermería solicita un estudio (cuerpo: {"tipo": "...", "area_id": <opcional>}).
 
         Sin `area_id` queda como pedido en la HC. Con `area_id`, se deriva a esa
         área (sub-proceso) y el caso espera hasta que el estudio vuelva.
@@ -736,11 +754,15 @@ class PantallaLlamadosView(APIView):
         if nodo is None:
             return Response({"detail": "Pantalla no encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
+        from django.db.models.functions import Coalesce
+
         flujo = nodo.version.flujo
+        # Orden por el ÚLTIMO llamado (un rellamado vuelve a ponerlo arriba).
         llamados = list(
             ItemFila.objects.filter(nodo=nodo, llamado_at__isnull=False)
             .select_related("caso__ciudadano", "box")
-            .order_by("-llamado_at")[:8]
+            .annotate(ultimo=Coalesce("rellamado_at", "llamado_at"))
+            .order_by("-ultimo")[:8]
         )
         en_espera = ItemFila.objects.filter(nodo=nodo, atendido=False, box__isnull=True).count()
 
@@ -758,7 +780,8 @@ class PantallaLlamadosView(APIView):
                 "turno": it.turno or f"#{it.caso_id}",
                 "box": it.box.nombre if it.box_id else None,
                 "urgente": it.urgente,
-                "llamado_at": it.llamado_at,
+                "llamado_at": it.ultimo,
+                "veces": it.veces_llamado,
             } for it in llamados],
         })
 

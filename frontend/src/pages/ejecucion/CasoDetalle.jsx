@@ -454,6 +454,20 @@ function PasoAtencion({ caso, accionando, ejecutar, hc }) {
   const estudios = hc?.estudios || [];
   const recetas = hc?.recetas || [];
 
+  // Rellamar: el paciente fue llamado a un box pero no se presentó. Vuelve a
+  // destacarlo (y suena) en la pantalla de la sala. No recarga: feedback liviano.
+  const [rellamando, setRellamando] = useState(false);
+  const [rellamos, setRellamos] = useState(0); // rellamados hechos en esta sesión
+  async function rellamar() {
+    setRellamando(true);
+    try {
+      await api.post(`/casos/${caso.id}/rellamar/`);
+      setRellamos((n) => n + 1);
+    } finally {
+      setRellamando(false);
+    }
+  }
+
   // Áreas destino para derivar (estudio o interconsulta): tienen flujo publicado derivable.
   useEffect(() => {
     if (realizandoEstudio) return;
@@ -496,6 +510,22 @@ function PasoAtencion({ caso, accionando, ejecutar, hc }) {
   return (
     <Card style={{ padding: 24 }}>
       <PanelHeader tipo="atencion" titulo={caso.paso_actual} />
+
+      {/* Atención con fila: el paciente fue llamado a un box. Si no se presenta,
+          se lo puede volver a llamar (parpadea en la pantalla de la sala). */}
+      {caso.nodo_con_fila && caso.llamado && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 16, background: "#FFF4DF", border: "1px solid #F3D49B", borderRadius: 10 }}>
+          <Icon name="enter" size={18} style={{ color: "#B4690E", flex: "none" }} />
+          <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#7A4D08" }}>
+            Paciente llamado{caso.llamado_box ? <> a <strong>{caso.llamado_box}</strong></> : ""}.
+            {rellamos > 0 ? <> Se rellamó {rellamos === 1 ? "una vez" : `${rellamos} veces`} — mirá la pantalla de la sala.</> : <> ¿No se presentó?</>}
+          </div>
+          <Button variant="secondary" disabled={rellamando} onClick={rellamar} style={{ flex: "none" }}>
+            {rellamando ? "Rellamando…" : "Rellamar"}
+          </Button>
+        </div>
+      )}
+
       {realizandoEstudio && (
         <div style={{ fontSize: 12.5, color: color.slate500, marginBottom: 12 }}>
           Estudio a realizar: <strong style={{ color: color.slate700 }}>{caso.estudio_tipo}</strong>

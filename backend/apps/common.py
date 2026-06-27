@@ -91,8 +91,10 @@ def _institucion_de_payload(view, data):
 
 class CapacidadPermission(BasePermission):
     """Autoriza la **escritura** según la capacidad del rol del usuario en la
-    institución implicada; la **lectura** queda abierta a cualquier miembro (el
-    queryset ya está scopeado por institución). El superusuario pasa siempre.
+    institución implicada. Por defecto la **lectura** queda abierta a cualquier
+    miembro (el queryset ya está scopeado por institución); si el viewset declara
+    `protege_lectura = True` (p. ej. datos clínicos), la lectura también exige la
+    capacidad. El superusuario pasa siempre.
 
     Los viewsets declaran `capacidad_requerida`; sin ella, no se restringe."""
 
@@ -100,23 +102,33 @@ class CapacidadPermission(BasePermission):
         user = request.user
         if not (user and user.is_authenticated):
             return False
-        if user.is_superuser or request.method in SAFE_METHODS:
+        if user.is_superuser:
             return True
         cap = getattr(view, "capacidad_requerida", None)
+        es_lectura = request.method in SAFE_METHODS
+        if es_lectura and not getattr(view, "protege_lectura", False):
+            return True
         if not cap:
             return True
         # Alta (create): resolvemos la institución del objeto (o de su padre) desde
         # el cuerpo; si no se puede, se exige la capacidad en alguna membresía activa.
         if getattr(view, "action", None) == "create":
             return cap in capacidades_de(user, _institucion_de_payload(view, request.data))
-        # Detalle (update/delete/acciones): se valida con el objeto.
+        # Lectura protegida de lista: se exige la capacidad en alguna institución
+        # del usuario (el queryset ya filtra por institución). El detalle se
+        # re-valida contra el objeto en has_object_permission.
+        if es_lectura:
+            return cap in capacidades_de(user)
+        # Detalle de escritura (update/delete/acciones): se valida con el objeto.
         return True
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        if user.is_superuser or request.method in SAFE_METHODS:
+        if user.is_superuser:
             return True
         cap = getattr(view, "capacidad_requerida", None)
+        if request.method in SAFE_METHODS and not getattr(view, "protege_lectura", False):
+            return True
         if not cap:
             return True
         inst_id = _institucion_de_objeto(obj, getattr(view, "institucion_path", None))
@@ -210,3 +222,5 @@ class BaseModelViewSet(QueryParamFilterMixin, InstitucionScopedMixin, viewsets.M
     permission_classes = [IsAuthenticated, CapacidadPermission]
     # Capacidad requerida para escribir; None = sin restricción de rol.
     capacidad_requerida = None
+    # Si True, la LECTURA también exige `capacidad_requerida` (datos sensibles).
+    protege_lectura = False

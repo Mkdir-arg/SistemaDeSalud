@@ -7,9 +7,9 @@ class EntradaHistoriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = EntradaHistoria
         fields = [
-            "id", "historia", "titulo", "contenido", "autor", "caso", "firmada", "fecha",
+            "id", "historia", "titulo", "contenido", "autor", "caso", "firmada", "matricula", "fecha",
         ]
-        read_only_fields = ["fecha"]
+        read_only_fields = ["fecha", "matricula"]
 
 
 class EstudioSerializer(serializers.ModelSerializer):

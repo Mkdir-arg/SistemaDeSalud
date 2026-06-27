@@ -75,6 +75,9 @@ class EntradaHistoria(models.Model):
         related_name="entradas_historia",
     )
     firmada = models.BooleanField(default=False)
+    # Matrícula del profesional al momento de firmar (snapshot: la matrícula del
+    # legajo puede cambiar después). Vacía si la firmó el super admin.
+    matricula = models.CharField("matrícula", max_length=60, blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
 
     class Meta:
