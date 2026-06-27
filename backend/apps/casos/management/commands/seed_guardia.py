@@ -342,13 +342,17 @@ class Command(BaseCommand):
         # =================================================================== #
         v_g, f_ingreso = nueva_version(guardia, "Ingreso a Guardia")
 
+        c_nivel = campo_de(form_triage, "Nivel de triage")
         g_ini = N(v_g, NT.INICIO, "Inicio", 40, 320, config={"origen": "manual"})
         g_adm = N(v_g, NT.FORMULARIO, "Admisión administrativa", 220, 320, formulario=form_admision)
-        g_tri = N(v_g, NT.FORMULARIO, "Triage de enfermería", 420, 320, formulario=form_triage)
-        g_dec_t = N(v_g, NT.DECISION, "¿Nivel de triage?", 640, 320)
-        g_shock = N(v_g, NT.ATENCION, "Shock Room", 860, 140)          # atención inmediata (sin fila)
-        g_sala = N(v_g, NT.ATENCION, "Sala de espera", 860, 460, config={"con_fila": True})
-        g_cond = N(v_g, NT.FORMULARIO, "Conducta médica", 1100, 320, formulario=form_conducta_g)
+        # El triage fija la PRIORIDAD del caso: la fila se ordena por ella (los rojos primero).
+        g_tri = N(v_g, NT.FORMULARIO, "Triage de enfermería", 420, 320, formulario=form_triage,
+                  config={"prioridad_campo": c_nivel.id, "prioridad_mapa": {
+                      "Rojo - Emergencia": "urgente", "Naranja - Muy urgente": "urgente",
+                      "Amarillo - Urgente": "alta", "Verde - Poco urgente": "normal", "Azul - No urgente": "normal",
+                  }})
+        g_sala = N(v_g, NT.ATENCION, "Sala de espera", 640, 320, config={"con_fila": True})
+        g_cond = N(v_g, NT.FORMULARIO, "Conducta médica", 860, 320, formulario=form_conducta_g)
         g_dec_c = N(v_g, NT.DECISION, "¿Conducta?", 1320, 320)
         g_alta = N(v_g, NT.FIN, "Alta de guardia", 1540, 80)
         g_obs = N(v_g, NT.ESPERA_TIEMPO, "Observación en guardia", 1320, 540,
@@ -368,14 +372,7 @@ class Command(BaseCommand):
 
         C(v_g, g_ini, g_adm)
         C(v_g, g_adm, g_tri)
-        C(v_g, g_tri, g_dec_t)
-        # Triage: Rojo → Shock Room; el resto va a la sala de espera (rama por defecto).
-        c_nivel = campo_de(form_triage, "Nivel de triage")
-        C(v_g, g_dec_t, g_shock, etiqueta="Rojo - Emergencia",
-          condicion={"campo": c_nivel.id, "operador": "=", "valor": "Rojo - Emergencia"})
-        C(v_g, g_dec_t, g_sala, etiqueta="Naranja / Amarillo / Verde / Azul")
-        # Ambas atenciones confluyen en la conducta médica.
-        C(v_g, g_shock, g_cond)
+        C(v_g, g_tri, g_sala)        # tras el triage, todos a la sala de espera (cola por prioridad)
         C(v_g, g_sala, g_cond)
         C(v_g, g_cond, g_dec_c)
         # Conducta: 4 ramas.
@@ -406,7 +403,6 @@ class Command(BaseCommand):
         # Quién hace qué en la guardia.
         g_adm.grupos.set([g_adm_guardia.id])
         g_tri.grupos.set([g_enf_guardia.id])
-        g_shock.grupos.set([g_med_guardia.id])
         g_sala.grupos.set([g_med_guardia.id])
         g_cond.grupos.set([g_med_guardia.id])
         publicar(v_g)
@@ -417,7 +413,7 @@ class Command(BaseCommand):
             "  Áreas: Guardia, Traumatología, Cardiología, Salud mental, Neurología,\n"
             "         Diagnóstico por imágenes, Laboratorio, Internación.\n"
             "  Flujos publicados:\n"
-            "    · Ingreso a Guardia  (Admisión → Triage → Shock/Sala → Conducta → derivaciones)\n"
+            "    · Ingreso a Guardia  (Admisión → Triage[fija prioridad] → Sala de espera → Conducta → derivaciones)\n"
             "    · Atención traumatológica / cardiológica / salud mental / neurológica\n"
             "    · Procesamiento de laboratorio · Realización de estudio por imágenes\n"
             "    · Internación\n"

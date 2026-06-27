@@ -11,6 +11,7 @@ import { color } from "../theme";
 
 const TITULOS = {
   "/inicio": "Inicio",
+  "/dashboard": "Tablero",
   "/supervision": "Supervisión",
   "/notificaciones": "Notificaciones",
   "/bandeja": "Bandeja de tareas",
@@ -106,6 +107,73 @@ function Campana() {
   );
 }
 
+// Buscador de pacientes (barra superior): nombre o documento → su historia clínica.
+function BuscadorPacientes() {
+  const { institucion } = useInstitucion();
+  const navigate = useNavigate();
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (!term || !institucion) { setRes([]); return; }
+    setBuscando(true);
+    const t = setTimeout(async () => {
+      try {
+        const d = await api.get(`/ciudadanos/?institucion=${institucion.id}&search=${encodeURIComponent(term)}`);
+        setRes((d.results || d).slice(0, 8));
+      } catch { /* silencioso */ } finally { setBuscando(false); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, institucion]);
+
+  function ir(c) {
+    setQ(""); setRes([]); setAbierto(false);
+    navigate(`/historia/${c.id}`);
+  }
+
+  return (
+    <div style={{ position: "relative", width: "100%", maxWidth: 420 }}>
+      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: color.slate400, display: "flex" }}>
+        <Icon name="search" size={16} />
+      </span>
+      <input
+        placeholder="Buscar paciente por nombre o documento…"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setAbierto(true); }}
+        onFocus={() => setAbierto(true)}
+        onKeyDown={(e) => { if (e.key === "Enter" && res[0]) ir(res[0]); if (e.key === "Escape") setAbierto(false); }}
+        style={{ width: "100%", height: 38, border: `1px solid ${color.inputBorder}`, borderRadius: 9, padding: "0 12px 0 34px", fontSize: 13.5, background: color.subtle, outline: "none", boxSizing: "border-box" }}
+      />
+      {abierto && q.trim() && (
+        <>
+          <div onClick={() => setAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
+          <div style={{ position: "absolute", top: 44, left: 0, right: 0, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(16,24,40,.16)", zIndex: 21, overflow: "hidden", maxHeight: 360, overflowY: "auto" }}>
+            {buscando ? (
+              <div style={{ padding: "14px 16px", fontSize: 13, color: color.slate400 }}>Buscando…</div>
+            ) : res.length === 0 ? (
+              <div style={{ padding: "14px 16px", fontSize: 13, color: color.slate400 }}>Sin pacientes para «{q.trim()}».</div>
+            ) : res.map((c, i) => (
+              <div key={c.id} onClick={() => ir(c)}
+                style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", cursor: "pointer", borderTop: i ? `1px solid ${color.divider}` : "none" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}>
+                <Avatar nombre={`${c.nombre} ${c.apellido}`} i={c.id} size={30} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.nombre} {c.apellido}</div>
+                  <div style={{ fontSize: 11.5, color: color.slate400 }}>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}{c.obra_social ? ` · ${c.obra_social}` : ""}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TopBar() {
   const { user } = useAuth();
   const { vista, setVista } = useInstitucion();
@@ -114,12 +182,7 @@ function TopBar() {
     <header style={{ height: 64, flex: "none", background: "#fff", borderBottom: `1px solid ${color.border}`, display: "flex", alignItems: "center", gap: 20, padding: "0 26px" }}>
       <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap" }}>{tituloDeRuta(location.pathname)}</div>
       <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-        <div style={{ position: "relative", width: "100%", maxWidth: 380 }}>
-          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: color.slate400, display: "flex" }}>
-            <Icon name="search" size={16} />
-          </span>
-          <input placeholder="Buscar casos, flujos, personas…" style={{ width: "100%", height: 38, border: `1px solid ${color.inputBorder}`, borderRadius: 9, padding: "0 12px 0 34px", fontSize: 13.5, background: color.subtle, outline: "none" }} />
-        </div>
+        <BuscadorPacientes />
       </div>
       <Campana />
       {user?.is_superuser && (
@@ -147,6 +210,7 @@ const GRUPOS = [
   {
     label: "SISTEMA",
     items: [
+      { to: "/dashboard", label: "Tablero", icon: "activity", cap: "config" },
       { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config" },
       { to: "/administracion", label: "Administración", icon: "users", cap: "config" },
       { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno" },

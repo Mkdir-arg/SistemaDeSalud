@@ -9,13 +9,14 @@ Una **guardia de hospital** de punta a punta, con triage tipo **Manchester** y
 todos los circuitos que nacen de ella: especialidades, estudios (laboratorio /
 imágenes) con **ida y vuelta**, interconsultas e **internación**.
 
+El triage **fija la prioridad** del caso (Rojo→urgente, Amarillo→alta, …) y todos
+pasan a una **única** sala de espera cuya cola se ordena por esa prioridad: el
+médico, desde su **box**, llama siempre al de mayor prioridad primero.
+
 ```
-                                          ┌─ Rojo ──────────► Shock Room (atención inmediata)
- Inicio ─► Admisión ─► Triage ─► ¿Nivel? ─┤
- (manual) (administr.) (enferm.)          └─ resto ────────► Sala de espera (atención con fila)
-                                                                     │
-                                                                     ▼
-                                                              Conducta médica ─► ¿Conducta?
+ Inicio ─► Admisión ─► Triage ─► Sala de espera ─► Conducta médica ─► ¿Conducta?
+ (manual) (administr.) (enferm.) (atención con fila,        │
+                       fija prioridad)  cola por prioridad)  ▼
                                                                      │
             ┌────────────────┬───────────────────┬─────────────────┴──────────────┐
             ▼                ▼                   ▼                                  ▼
@@ -59,10 +60,7 @@ Durante la **Atención con fila** el médico puede, con las acciones del caso:
 
 ### 3.1. Ingreso a Guardia (entrada manual) — flujo central
 ```
-Inicio → Admisión administrativa → Triage de enfermería → ¿Nivel de triage?
-   ├─ Rojo - Emergencia ───────► Shock Room (atención inmediata, sin fila)
-   └─ resto (default) ─────────► Sala de espera (atención con fila)
-→ Conducta médica → ¿Conducta?
+Inicio → Admisión administrativa → Triage de enfermería → Sala de espera → Conducta médica → ¿Conducta?
    ├─ Alta ───────────────► Alta de guardia (fin)
    ├─ Internación ────────► Internar (deriva al flujo Internación)
    ├─ Observación ────────► Observación en guardia (espera) → vuelve a Conducta
@@ -71,9 +69,13 @@ Inicio → Admisión administrativa → Triage de enfermería → ¿Nivel de tri
 - **Admisión administrativa** (grupo `Admisión de guardia`): motivo, forma de
   llegada, cobertura, acompañante.
 - **Triage de enfermería** (grupo `Enfermería de triage`): signos vitales, dolor y
-  el **Nivel de triage** (Rojo / Naranja / Amarillo / Verde / Azul) que decide la rama.
-- **Shock Room / Sala de espera** (grupo `Médicos de guardia`): la atención. Sólo el
-  rojo va directo al Shock Room; el resto espera en la sala y se llama desde un box.
+  el **Nivel de triage** (Rojo / Naranja / Amarillo / Verde / Azul). El nivel **fija
+  la prioridad** del caso (Rojo/Naranja→urgente, Amarillo→alta, Verde/Azul→normal),
+  que es lo que ordena la fila.
+- **Sala de espera** (grupo `Médicos de guardia`, atención con fila): una **única**
+  cola ordenada por prioridad. El médico **ocupa un box** y llama al de mayor
+  prioridad primero (los urgentes encabezan). No hay vía Shock Room separada: el
+  urgente simplemente va al frente de la fila.
 - **Conducta médica** (grupo `Médicos de guardia`): diagnóstico presuntivo + la
   **Conducta** (Alta / Derivar / Internación / Observación) y, si deriva, la
   **Especialidad**.
@@ -107,9 +109,9 @@ Inicio (derivado) → Asignar cama → Evolución médica → Conducta → ¿Con
 
 1. **`guardia.adm`** crea un caso nuevo sobre *Ingreso a Guardia* (Bandejas → Nuevo
    caso, eligiendo o creando el paciente) y completa la **admisión**.
-2. **`guardia.enf`** hace el **triage** y fija el nivel. Rojo → Shock Room; resto →
-   sala de espera.
-3. **`guardia.med`** llama al paciente (si está en la sala) y lo atiende; carga la
+2. **`guardia.enf`** hace el **triage** y fija el nivel → eso fija la **prioridad**;
+   el caso pasa a la **sala de espera** (los urgentes encabezan la cola).
+3. **`guardia.med`** **ocupa un box** y llama al de mayor prioridad; lo atiende y carga la
    **conducta**. Según ella el caso se da de **alta**, se **interna**, queda en
    **observación** o se **deriva** a una especialidad.
 4. En la **especialidad**, su médico (p. ej. `cardio.med`) llama desde un box,
@@ -128,16 +130,17 @@ Inicio (derivado) → Asignar cama → Evolución médica → Conducta → ¿Con
 | Áreas / staff / grupos / boxes | ✅ |
 | Asignar grupos a nodos («quién hace qué») | ✅ |
 | Bandeja y fila filtradas por grupo; restringir tomar/llamar/avanzar | ✅ |
-| Triage con decisión por nivel; ramas por valor de campo | ✅ |
-| Atención con fila (espera + llamado desde box + atención) | ✅ |
+| Triage que **fija la prioridad** del caso (Rojo→urgente, …) | ✅ |
+| Atención con fila por prioridad (cola urgente>alta>normal) + **box obligatorio** | ✅ |
+| Ocupación de box (check-in del médico: ocupar/liberar) | ✅ |
 | Derivar a otro flujo (instanciar caso en destino) | ✅ |
 | Solicitar estudio con ida y vuelta + **resultado estructurado** | ✅ |
 | Interconsulta a otra área (ida y vuelta) | ✅ |
 | Recetas en la historia clínica | ✅ |
 | Internación con loop de evolución | ✅ |
 | Observación: espera y reevaluación | ⚠️ La reactivación de la espera es manual (no hay cron) |
-| Cancelar / cerrar un caso a mano | ⚠️ Falta |
-| Notificaciones (cuando vuelve un estudio/interconsulta) | ⚠️ Falta |
+| Cancelar / reasignar / repriorizar (jefe de área) | ✅ |
+| Notificaciones (estudio vuelve · reasignación · urgente · cancelación) | ✅ |
 
 ## 6. Cómo cargar el escenario
 
@@ -158,7 +161,8 @@ docker compose exec backend python manage.py seed_guardia
 - `int.adm` · `int.med` — internación.
 
 > Verificado de punta a punta (smoke test del motor): ingreso urgente → triage Rojo
-> → Shock Room → conducta «Derivar a Cardiología» → atención cardiológica → estudio
+> (→ prioridad urgente, encabeza la fila) → el médico ocupa un box y lo llama →
+> atención → conducta «Derivar a Cardiología» → atención cardiológica → estudio
 > «Troponinas» derivado a Laboratorio → resultado *alterado* devuelto → conducta
 > «Internación» → caso abierto en Internación. La HC del paciente queda con el
 > estudio (resultado + realizado) y las entradas de atención.

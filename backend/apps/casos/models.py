@@ -142,6 +142,11 @@ class ItemFila(models.Model):
         "instituciones.Box", on_delete=models.SET_NULL, null=True, blank=True, related_name="llamados"
     )
     ingreso = models.DateTimeField(auto_now_add=True)
+    # Marcas de tiempo para métricas (se completan al llamar / al atender):
+    #  - espera real   = llamado_at − ingreso
+    #  - atención real = atendido_at − llamado_at
+    llamado_at = models.DateTimeField("llamado", null=True, blank=True)
+    atendido_at = models.DateTimeField("atención", null=True, blank=True)
 
     class Meta:
         verbose_name = "ítem de fila"

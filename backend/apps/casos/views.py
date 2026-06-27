@@ -1,3 +1,5 @@
+from django.db.models import Count
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -282,10 +284,11 @@ class MisTareasView(APIView):
 
         # Grupos del usuario en la institución → nodos publicados de los que es responsable.
         grupos = user.grupos.filter(area__institucion_id=inst_id)
+        mis_grupo_ids = set(grupos.values_list("id", flat=True))
         mis_nodos = list(
             Nodo.objects.filter(
                 grupos__in=grupos, version__estado=VersionFlujo.Estado.PUBLICADA
-            ).select_related("version__flujo__area").distinct()
+            ).select_related("version__flujo__area").prefetch_related("grupos").distinct()
         )
         mis_nodo_ids = {n.id for n in mis_nodos}
         nodo_por_id = {n.id: n for n in mis_nodos}
@@ -294,50 +297,95 @@ class MisTareasView(APIView):
             if n.tipo == Nodo.Tipo.ATENCION and (n.config or {}).get("con_fila")
         }
 
-        tareas, esperando = self._tareas_y_esperando(inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user)
-        filas = self._filas(fila_nodo_ids, nodo_por_id)
         iniciar = self._iniciar(inst_id, mis_nodo_ids)
+        iniciar_node_ids = {i["paso_nodo_id"] for i in iniciar}
+        tareas, esperando = self._tareas_y_esperando(
+            inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user, mis_grupo_ids
+        )
+        filas = self._filas(fila_nodo_ids, nodo_por_id, user, mis_grupo_ids)
+        # "Mis puestos" (indicadores vivos de cada paso) + "Tu turno" (producción del día).
+        puestos, turno = self._puestos_y_turno(
+            inst_id, nodo_por_id, fila_nodo_ids, iniciar_node_ids, user
+        )
+        mis_casos = self._mis_casos(inst_id, user)
 
         return Response({
             "iniciar": iniciar,
             "tareas": tareas,
             "filas": filas,
             "esperando": esperando,
+            # Indicadores VIVOS de los pasos de los que soy responsable + mi turno.
+            "puestos": puestos,
+            "turno": turno,
+            # Casos a mi nombre, activos (para retomar de un toque).
+            "mis_casos": mis_casos,
         })
 
+    def _mis_casos(self, inst_id, user):
+        casos = (
+            Caso.objects.filter(institucion_id=inst_id, asignado_a=user)
+            .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            .select_related("ciudadano", "nodo_actual", "area_actual", "version__flujo")
+            .order_by("-actualizado")[:20]
+        )
+        return [{
+            "id": c.id,
+            "ciudadano_nombre": self._nombre(c.ciudadano),
+            "paso_actual": c.nodo_actual.titulo if c.nodo_actual_id else None,
+            "area_nombre": c.area_actual.nombre if c.area_actual_id else None,
+            "flujo_titulo": c.version.flujo.titulo,
+            "estado": c.estado, "estado_display": c.get_estado_display(),
+            "prioridad": c.prioridad, "esperando": c.esperando,
+        } for c in casos]
+
     # -- bandas -------------------------------------------------------------
-    def _tareas_y_esperando(self, inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user):
+    def _bucket(self, nodo, mis_grupo_ids):
+        """Crea un bucket de paso, anotando el/los grupo(s) tuyos responsables."""
+        flujo = nodo.version.flujo
+        grupos = [g.nombre for g in nodo.grupos.all() if g.id in mis_grupo_ids]
+        return {
+            "nodo_id": nodo.id, "nodo_titulo": nodo.titulo, "nodo_tipo": nodo.tipo,
+            "flujo_titulo": flujo.titulo,
+            "area_nombre": flujo.area.nombre if flujo.area_id else None,
+            "grupos": grupos,
+            "casos": [],
+        }
+
+    def _tareas_y_esperando(self, inst_id, mis_nodo_ids, fila_nodo_ids, nodo_por_id, user, mis_grupo_ids):
         casos = (
             Caso.objects.filter(institucion_id=inst_id, nodo_actual_id__in=mis_nodo_ids)
             .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
             .select_related("ciudadano", "version__flujo", "area_actual", "estudio")
             .prefetch_related("en_filas")
         )
+        # Boxes que ocupa el usuario: una atención con fila ya llamada solo es "mía"
+        # si la llamé a un box que estoy ocupando.
+        mis_box_ids = set(Box.objects.filter(ocupado_por=user).values_list("id", flat=True))
+
         buckets, esperando = {}, []
         for c in casos:
             nodo = nodo_por_id.get(c.nodo_actual_id)
             if nodo is None:
                 continue
-            # Encolado y sin llamar (sin box) → se opera desde la banda de filas.
-            if c.nodo_actual_id in fila_nodo_ids and self._en_cola(c):
-                continue
+            # Atención con fila: separar la cola (banda Filas) de la atención en curso.
+            if c.nodo_actual_id in fila_nodo_ids:
+                item = next((it for it in c.en_filas.all() if it.nodo_id == c.nodo_actual_id and not it.atendido), None)
+                if item is None or item.box_id is None:
+                    continue  # en cola (sin box) → se opera desde la banda de filas
+                if item.box_id not in mis_box_ids:
+                    continue  # llamado a un box que no es el tuyo → no es tu atención
             if c.esperando:
                 d = self._caso_dict(c, user)
                 d["nodo_titulo"] = nodo.titulo
                 d["espera_de"] = c.estudio.tipo if c.estudio_id else "interconsulta"
                 esperando.append(d)
                 continue
-            b = buckets.get(nodo.id)
-            if b is None:
-                flujo = nodo.version.flujo
-                b = buckets[nodo.id] = {
-                    "nodo_id": nodo.id, "nodo_titulo": nodo.titulo, "nodo_tipo": nodo.tipo,
-                    "flujo_titulo": flujo.titulo,
-                    "area_nombre": flujo.area.nombre if flujo.area_id else None,
-                    "casos": [],
-                }
-            b["casos"].append(self._caso_dict(c, user))
+            if nodo.id not in buckets:
+                buckets[nodo.id] = self._bucket(nodo, mis_grupo_ids)
+            buckets[nodo.id]["casos"].append(self._caso_dict(c, user))
 
+        # Solo pasos CON casos accionables (la visión completa de responsabilidades
+        # vive en la banda "Mis puestos").
         tareas = []
         for b in buckets.values():
             b["casos"].sort(key=lambda d: (PRIORIDAD_RANK.get(d["prioridad"], 9), d["creado"]))
@@ -348,13 +396,15 @@ class MisTareasView(APIView):
         esperando.sort(key=lambda d: d["creado"])
         return tareas, esperando
 
-    def _filas(self, fila_nodo_ids, nodo_por_id):
+    def _filas(self, fila_nodo_ids, nodo_por_id, user, mis_grupo_ids):
         if not fila_nodo_ids:
             return []
-        items = (
+        items = list(
             ItemFila.objects.filter(nodo_id__in=fila_nodo_ids, atendido=False, box__isnull=True)
-            .select_related("caso__ciudadano").order_by("-urgente", "orden", "ingreso")
+            .select_related("caso__ciudadano")
         )
+        # La cola se ordena por prioridad del caso (urgente > alta > normal) y luego por llegada.
+        items.sort(key=lambda it: (PRIORIDAD_RANK.get(it.caso.prioridad, 9), it.ingreso))
         por_nodo = {}
         for it in items:
             por_nodo.setdefault(it.nodo_id, []).append(it)
@@ -365,22 +415,104 @@ class MisTareasView(APIView):
             flujo = nodo.version.flujo
             area = flujo.area
             cola = por_nodo.get(nid, [])
-            boxes = list(Box.objects.filter(area=area, activo=True).values("id", "nombre")) if area else []
+            boxes_qs = list(Box.objects.filter(area=area, activo=True).select_related("ocupado_por")) if area else []
+            boxes = [{
+                "id": b.id, "nombre": b.nombre,
+                "ocupado_por": b.ocupado_por_id,
+                "ocupado_por_nombre": b.ocupado_por.nombre_completo if b.ocupado_por_id else None,
+            } for b in boxes_qs]
+            mi_box = next((b["id"] for b in boxes if b["ocupado_por"] == user.id), None)
             filas.append({
                 "nodo_id": nid, "nodo_titulo": nodo.titulo, "flujo_titulo": flujo.titulo,
                 "area_id": area.id if area else None,
                 "area_nombre": area.nombre if area else None,
+                "grupos": [g.nombre for g in nodo.grupos.all() if g.id in mis_grupo_ids],
                 "en_cola": len(cola),
                 "urgentes": sum(1 for it in cola if it.urgente),
                 "boxes": boxes,
+                "mi_box": mi_box,
                 "casos": [{
                     "id": it.caso_id, "item_id": it.id,
                     "ciudadano_nombre": self._nombre(it.caso.ciudadano),
-                    "urgente": it.urgente, "ingreso": it.ingreso,
+                    "urgente": it.urgente, "prioridad": it.caso.prioridad, "ingreso": it.ingreso,
                 } for it in cola],
             })
         filas.sort(key=lambda f: (-f["urgentes"], f["nodo_titulo"]))
         return filas
+
+    def _puestos_y_turno(self, inst_id, nodo_por_id, fila_nodo_ids, iniciar_node_ids, user):
+        """Indicadores **vivos** de cada paso del que soy responsable + mi turno.
+
+        - ``puestos``: una tarjeta por nodo mío con su carga del momento (casos
+          parados ahí, urgentes, el más antiguo) y cuántos casos resolví hoy en
+          él. Sirve para todos los roles; para el administrativo de admisión —cuyo
+          único nodo es la entrada— convierte una pantalla vacía en su tablero.
+        - ``turno``: producción personal del día (casos tocados hoy, último
+          movimiento, casos en curso a mi nombre).
+        """
+        hoy = timezone.localdate()
+        nodo_ids = list(nodo_por_id.keys())
+        if not nodo_ids:
+            return [], {"resueltos_hoy": 0, "ultimo_at": None, "en_curso": 0}
+
+        # Snapshot del momento: casos activos parados en mis nodos (sin los que
+        # esperan el retorno de un sub-proceso, que viven en su propia banda).
+        activos = (
+            Caso.objects
+            .filter(institucion_id=inst_id, nodo_actual_id__in=nodo_ids, esperando=False)
+            .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            .values_list("nodo_actual_id", "prioridad", "creado")
+        )
+        snap = {}
+        for nid, prio, creado in activos:
+            s = snap.setdefault(nid, {"ahora": 0, "urgentes": 0, "desde": None})
+            s["ahora"] += 1
+            if prio == Caso.Prioridad.URGENTE:
+                s["urgentes"] += 1
+            if s["desde"] is None or creado < s["desde"]:
+                s["desde"] = creado
+
+        # Resueltos hoy: casos DISTINTOS que toqué hoy en cada nodo (cada paso que
+        # completo deja un EventoCaso con autor=yo y nodo=ese paso).
+        eventos = (
+            EventoCaso.objects
+            .filter(autor=user, nodo_id__in=nodo_ids, fecha__date=hoy)
+            .values_list("nodo_id", "caso_id", "fecha")
+        )
+        hoy_por_nodo, casos_hoy, ultimo = {}, set(), None
+        for nid, cid, fecha in eventos:
+            hoy_por_nodo.setdefault(nid, set()).add(cid)
+            casos_hoy.add(cid)
+            if ultimo is None or fecha > ultimo:
+                ultimo = fecha
+
+        puestos = []
+        for nid, nodo in nodo_por_id.items():
+            s = snap.get(nid, {})
+            flujo = nodo.version.flujo
+            rol = ("entrada" if nid in iniciar_node_ids
+                   else "fila" if nid in fila_nodo_ids else "tarea")
+            puestos.append({
+                "nodo_id": nid, "nodo_titulo": nodo.titulo, "nodo_tipo": nodo.tipo,
+                "flujo_titulo": flujo.titulo,
+                "area_nombre": flujo.area.nombre if flujo.area_id else None,
+                "rol": rol,
+                "ahora": s.get("ahora", 0),
+                "urgentes": s.get("urgentes", 0),
+                "desde": s.get("desde"),
+                "hoy": len(hoy_por_nodo.get(nid, ())),
+            })
+        # Primero los puestos con carga viva, luego por urgentes y por nombre.
+        puestos.sort(key=lambda p: (p["ahora"] == 0, -p["urgentes"], p["nodo_titulo"]))
+
+        en_curso = (
+            Caso.objects
+            .filter(institucion_id=inst_id, asignado_a=user, esperando=False)
+            .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            .count()
+        )
+        turno = {"resueltos_hoy": len(casos_hoy), "ultimo_at": ultimo, "en_curso": en_curso}
+        return puestos, turno
 
     def _iniciar(self, inst_id, mis_nodo_ids):
         iniciar = []
@@ -401,7 +533,7 @@ class MisTareasView(APIView):
                     "flujo_id": ver.flujo_id, "flujo_titulo": ver.flujo.titulo,
                     "version_id": ver.id,
                     "area_nombre": ver.flujo.area.nombre if ver.flujo.area_id else None,
-                    "paso": paso.titulo,
+                    "paso": paso.titulo, "paso_nodo_id": paso.id,
                 })
         iniciar.sort(key=lambda i: i["flujo_titulo"])
         return iniciar

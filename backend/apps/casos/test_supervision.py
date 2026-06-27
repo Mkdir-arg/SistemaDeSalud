@@ -117,6 +117,28 @@ class SupervisionTests(APITestCase):
         motor.cancelar_caso(caso, autor=self.jefe, motivo="duplicado")
         self.assertTrue(Notificacion.objects.filter(usuario=self.med, caso=caso, titulo="Caso cancelado").exists())
 
+    # --- Ocupación de box (acción operativa, no config) -------------------
+    def test_medico_ocupa_y_libera_box(self):
+        from apps.instituciones.models import Box
+        box = Box.objects.create(area=self.area, nombre="Box X")
+        self.client.force_authenticate(self.med)  # médico no tiene 'config'
+        r = self.client.post(f"/api/boxes/{box.id}/ocupar/")
+        self.assertEqual(r.status_code, 200)
+        box.refresh_from_db(); self.assertEqual(box.ocupado_por_id, self.med.id)
+        r2 = self.client.post(f"/api/boxes/{box.id}/liberar/")
+        self.assertEqual(r2.status_code, 200)
+        box.refresh_from_db(); self.assertIsNone(box.ocupado_por_id)
+
+    def test_ocupar_libera_el_box_anterior(self):
+        from apps.instituciones.models import Box
+        b1 = Box.objects.create(area=self.area, nombre="Box A", ocupado_por=self.med)
+        b2 = Box.objects.create(area=self.area, nombre="Box B")
+        self.client.force_authenticate(self.med)
+        self.client.post(f"/api/boxes/{b2.id}/ocupar/")
+        b1.refresh_from_db(); b2.refresh_from_db()
+        self.assertIsNone(b1.ocupado_por_id)
+        self.assertEqual(b2.ocupado_por_id, self.med.id)
+
     def test_notificaciones_son_privadas(self):
         # Una notificación de un usuario no la ve otro.
         from apps.casos.models import Notificacion

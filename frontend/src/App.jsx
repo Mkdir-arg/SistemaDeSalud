@@ -8,6 +8,7 @@ import { Spinner } from "./components/ui";
 import Login from "./pages/Login";
 import Directorio from "./pages/Directorio";
 import Inicio from "./pages/Inicio";
+import Dashboard from "./pages/Dashboard";
 import MiTrabajo from "./pages/MiTrabajo";
 import Supervision from "./pages/Supervision";
 import Notificaciones from "./pages/Notificaciones";
@@ -90,6 +91,7 @@ export default function App() {
       <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />
+      <Route path="/dashboard" element={P(<Dashboard />)} />
       <Route path="/notificaciones" element={P(<Notificaciones />)} />
 
       {/* TRABAJO */}

@@ -29,6 +29,8 @@ export const color = {
 export const font = {
   sans: "Inter, system-ui, sans-serif",
   mono: "'JetBrains Mono', monospace",
+  // Tipografía de marca (wordmark I-Core y títulos destacados).
+  display: "Manrope, Inter, system-ui, sans-serif",
 };
 
 // Tono → estilos de badge de estado (bg / fg). Mapea los estados semánticos.

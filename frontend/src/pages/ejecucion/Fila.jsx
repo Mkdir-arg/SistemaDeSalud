@@ -73,7 +73,7 @@ export default function Fila() {
   if (cargando) return <Spinner label="Cargando fila…" />;
 
   return (
-    <div style={{ padding: "26px 30px", maxWidth: 960 }}>
+    <div style={{ padding: "26px 30px" }}>
       {/* Cabecera */}
       <Card style={{ padding: "18px 22px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ width: 46, height: 46, borderRadius: 12, background: nodeCat.espera.tint, color: TEAL, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>

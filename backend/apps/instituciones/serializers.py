@@ -11,11 +11,12 @@ class SubareaSerializer(serializers.ModelSerializer):
 
 class BoxSerializer(serializers.ModelSerializer):
     area_nombre = serializers.CharField(source="area.nombre", read_only=True)
+    ocupado_por_nombre = serializers.CharField(source="ocupado_por.nombre_completo", read_only=True, default=None)
 
     class Meta:
         model = Box
-        fields = ["id", "area", "area_nombre", "nombre", "activo", "creado"]
-        read_only_fields = ["creado"]
+        fields = ["id", "area", "area_nombre", "nombre", "activo", "ocupado_por", "ocupado_por_nombre", "ocupado_desde", "creado"]
+        read_only_fields = ["creado", "ocupado_por", "ocupado_desde"]
 
 
 class GrupoSerializer(serializers.ModelSerializer):

@@ -44,7 +44,7 @@ export default function Notificaciones() {
           </div>
         }
       />
-      <div style={{ padding: "22px 32px", maxWidth: 760 }}>
+      <div style={{ padding: "22px 32px" }}>
         {cargando && !items.length ? (
           <Spinner label="Cargando notificaciones…" />
         ) : items.length === 0 ? (

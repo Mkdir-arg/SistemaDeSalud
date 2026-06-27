@@ -480,6 +480,8 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     box = Box.objects.filter(pk=box_id).first() if box_id else None
     box_nombre = box.nombre if box else ""
     item.box = box
+    if item.llamado_at is None:
+        item.llamado_at = timezone.now()  # marca de "llamado desde la fila" (métricas)
 
     # El que llama se queda con el caso (queda asignado a quien atiende).
     if autor is not None and getattr(autor, "is_authenticated", False):
@@ -488,7 +490,7 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     es_atencion_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
     if es_atencion_fila:
         # Queda en el mismo nodo, ahora en atención en el box.
-        item.save(update_fields=["box"])
+        item.save(update_fields=["box", "llamado_at"])
         caso.estado = Caso.Estado.EN_EVALUACION
         _registrar(caso, f"Llamado a {box_nombre}" if box_nombre else "Llamado para atención",
                    detalle="pasa a atención", autor=autor, nodo=nodo)
@@ -497,7 +499,8 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
 
     # Espera de fila clásica: marca atendido y avanza al siguiente nodo.
     item.atendido = True
-    item.save(update_fields=["box", "atendido"])
+    item.atendido_at = timezone.now()
+    item.save(update_fields=["box", "atendido", "llamado_at", "atendido_at"])
     _registrar(caso, f"Llamado desde la fila{f' a {box_nombre}' if box_nombre else ''}",
                detalle=nodo.titulo, autor=autor, nodo=nodo)
     siguiente = _siguiente_nodo(nodo, caso)
@@ -549,6 +552,7 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     if nodo.tipo == Nodo.Tipo.FORMULARIO:
         valores = datos.get("valores", {})
         _guardar_valores(caso, nodo, valores)
+        _aplicar_prioridad_desde_form(caso, nodo, autor)
         _registrar(caso, f"Formulario «{nodo.titulo}» completado", detalle=f"{len(valores)} campos cargados", autor=autor, nodo=nodo)
 
     elif nodo.tipo == Nodo.Tipo.ATENCION:
@@ -558,7 +562,8 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
                 raise ErrorMotor("Primero hay que llamar al paciente desde un box.")
             if item:
                 item.atendido = True
-                item.save(update_fields=["atendido"])
+                item.atendido_at = timezone.now()  # fin de atención (métricas)
+                item.save(update_fields=["atendido", "atendido_at"])
         _exigir_medico(caso, autor)
         _registrar_atencion(caso, nodo, datos, autor=autor)
         # Si este caso vino a realizar un estudio, cargar su resultado estructurado.
@@ -578,10 +583,14 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         box_nombre = ""
         item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
         if item:
+            ahora = timezone.now()
             item.atendido = True
+            item.atendido_at = ahora
+            if item.llamado_at is None:
+                item.llamado_at = ahora  # llamado y atención coinciden en la fila clásica
             if box_id:
                 item.box_id = box_id
-            item.save(update_fields=["atendido", "box"])
+            item.save(update_fields=["atendido", "box", "llamado_at", "atendido_at"])
         if box_id:
             from apps.instituciones.models import Box
             b = Box.objects.filter(pk=box_id).first()
@@ -630,6 +639,23 @@ def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
             campo_id=campo_id,
             defaults={"nodo": nodo, "valor": "" if valor is None else str(valor)},
         )
+
+
+def _aplicar_prioridad_desde_form(caso: Caso, nodo: Nodo, autor=None):
+    """Si el nodo (p. ej. triage) declara que un campo define la prioridad del caso,
+    la aplica según un mapa valor→prioridad. Config del nodo:
+        {"prioridad_campo": <id>, "prioridad_mapa": {"Rojo - Emergencia": "urgente", ...}}
+    """
+    cfg = nodo.config or {}
+    campo_id = cfg.get("prioridad_campo")
+    if not campo_id:
+        return
+    nueva = (cfg.get("prioridad_mapa") or {}).get(_valor_de_campo(caso, campo_id))
+    validas = {c for c, _ in Caso.Prioridad.choices}
+    if nueva in validas and nueva != caso.prioridad:
+        caso.prioridad = nueva
+        caso.en_filas.filter(atendido=False).update(urgente=(nueva == Caso.Prioridad.URGENTE))
+        _registrar(caso, f"Prioridad → {caso.get_prioridad_display()}", detalle="según triage", autor=autor, nodo=nodo)
 
 
 def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None):

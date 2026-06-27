@@ -64,6 +64,7 @@ export default function CasoDetalle() {
 
   const est = estadoCaso[caso.estado] || { label: caso.estado_display, tone: "neutral" };
   const cerrado = ["cerrado", "cancelado"].includes(caso.estado);
+  const catNodo = caso.nodo_tipo ? (nodeCat[caso.nodo_tipo] || nodeCat.form) : null;
 
   return (
     <>
@@ -84,9 +85,20 @@ export default function CasoDetalle() {
       <div style={{ padding: 32, display: "grid", gridTemplateColumns: "1fr 320px", gap: 24, alignItems: "start" }}>
         {/* Columna principal */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {/* Stepper */}
+          {/* Stepper + paso (nodo) actual */}
           <Card style={{ padding: "28px 32px" }}>
             <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
+            {caso.paso_actual && (
+              <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${color.divider}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>PASO ACTUAL</span>
+                {catNodo && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: catNodo.tint, border: `1px solid ${catNodo.bd}`, fontSize: 12, fontWeight: 600, color: catNodo.sol }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 2, background: catNodo.sol }} /> {catNodo.name}
+                  </span>
+                )}
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{caso.paso_actual}</span>
+              </div>
+            )}
           </Card>
 
           {/* Historia clínica · antecedentes (solo lectura) */}
@@ -136,6 +148,7 @@ export default function CasoDetalle() {
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, marginBottom: 14 }}>INFORMACIÓN DEL CASO</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
               <Dato k="Estado" v={<Badge tone={est.tone}>{est.label}</Badge>} />
+              <Dato k="Paso actual" v={caso.paso_actual || "—"} />
               <Dato k="Flujo" v={caso.flujo_titulo} />
               <Dato k="Área actual" v={caso.area_nombre || "—"} />
               <Dato k="Responsable" v={caso.responsables?.length ? caso.responsables.map((g) => g.nombre).join(", ") : "Abierto a todos"} />

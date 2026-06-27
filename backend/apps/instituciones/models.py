@@ -79,6 +79,11 @@ class Box(models.Model):
     area = models.ForeignKey(Area, on_delete=models.CASCADE, related_name="boxes")
     nombre = models.CharField(max_length=80, help_text="Ej.: «Box 1», «Consultorio A»")
     activo = models.BooleanField(default=True)
+    # Ocupación: el profesional «registrado» en el box (lo libera al salir).
+    ocupado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="boxes_ocupados"
+    )
+    ocupado_desde = models.DateTimeField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:
