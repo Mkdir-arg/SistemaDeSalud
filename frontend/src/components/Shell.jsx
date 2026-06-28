@@ -240,8 +240,7 @@ const GRUPOS = [
     label: "REGISTROS",
     items: [
       { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "registros" },
-      // «Legajo profesional» es del rol médico/profesional → se reactiva con ese rol.
-      // Ruta /legajo viva, fuera del menú por ahora.
+      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
     ],
   },
 ];

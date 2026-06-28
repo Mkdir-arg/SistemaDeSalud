@@ -29,6 +29,10 @@ const PATHS = {
   bell: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0",
   play: "M6 4.5v15l13-7.5z",
   flask: "M9 3h6M10 3v6.5L5 18a1.5 1.5 0 0 0 1.3 2.3h11.4A1.5 1.5 0 0 0 19 18l-5-8.5V3M8 14h8",
+  minus: "M5 12h14",
+  maximize: "M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3",
+  undo: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-1",
+  redo: "M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h1",
 };
 
 // Para `users` hace falta un círculo que no entra en el path simple.

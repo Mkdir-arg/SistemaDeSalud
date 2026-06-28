@@ -105,6 +105,15 @@ export default function FlujoEditor() {
   const zoomRef = useRef(1);
   zoomRef.current = zoom;
   const scrollRef = useRef(null);
+  // Historial de cambios reversibles (mover/editar nodos y conexiones). Cada
+  // entrada guarda su operación inversa concreta (un PATCH), por eso es segura:
+  // no recrea ids. Crear/borrar nodos quedan fuera (el borrado tiene su «Deshacer»).
+  const undoStack = useRef([]);
+  const redoStack = useRef([]);
+  const [, setHistTick] = useState(0);
+  // Paneles laterales colapsables (para pantallas chicas / tablets).
+  const [paletaAbierta, setPaletaAbierta] = useState(true);
+  const [panelAbierto, setPanelAbierto] = useState(true);
 
   function onNodoPointerDown(e, nodo) {
     e.stopPropagation();
@@ -115,6 +124,8 @@ export default function FlujoEditor() {
       id: nodo.id,
       dx: (e.clientX - rect.left) / z - nodo.x,
       dy: (e.clientY - rect.top) / z - nodo.y,
+      origX: nodo.x,
+      origY: nodo.y,
       moved: false,
     };
     setSel(nodo.id);
@@ -134,8 +145,7 @@ export default function FlujoEditor() {
     }
     async function onUp() {
       if (!drag.current) return;
-      const id = drag.current.id;
-      const moved = drag.current.moved;
+      const { id, moved, origX, origY } = drag.current;
       drag.current = null;
       setDragId(null);
       if (!moved) return;
@@ -144,8 +154,13 @@ export default function FlujoEditor() {
       // Snap a la grilla de 20px que dibuja el lienzo: flujos prolijos sin esfuerzo.
       const sx = Math.round(nodo.x / GRID) * GRID;
       const sy = Math.round(nodo.y / GRID) * GRID;
-      setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === id ? { ...n, x: sx, y: sy } : n)) }));
-      try { await api.patch(`/nodos/${id}/`, { x: sx, y: sy }); } catch { marcarError(); }
+      if (sx === origX && sy === origY) {
+        // Sin desplazamiento neto: re-encajar en la grilla sin registrar en el historial.
+        setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === id ? { ...n, x: sx, y: sy } : n)) }));
+        return;
+      }
+      registrarCambio(() => aplicarPos(id, origX, origY), () => aplicarPos(id, sx, sy));
+      aplicarPos(id, sx, sy);
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -240,8 +255,38 @@ export default function FlujoEditor() {
     setSel(nodo.id);
   }
 
-  async function actualizarNodo(nodoId, cambios) {
-    const prev = version;
+  // --- Historial (undo/redo) ----------------------------------------------
+  function registrarCambio(undo, redo) {
+    undoStack.current.push({ undo, redo });
+    if (undoStack.current.length > 60) undoStack.current.shift();
+    redoStack.current = [];
+    setHistTick((t) => t + 1);
+  }
+  async function deshacer() {
+    const cmd = undoStack.current.pop();
+    if (!cmd) return;
+    redoStack.current.push(cmd);
+    setHistTick((t) => t + 1);
+    await cmd.undo();
+  }
+  async function rehacer() {
+    const cmd = redoStack.current.pop();
+    if (!cmd) return;
+    undoStack.current.push(cmd);
+    setHistTick((t) => t + 1);
+    await cmd.redo();
+  }
+
+  // Aplicadores «silenciosos»: mutan + persisten SIN registrar en el historial
+  // (los usan tanto las acciones del usuario como el propio undo/redo).
+  async function aplicarPos(nodoId, x, y) {
+    if (!versionRef.current.nodos.some((n) => n.id === nodoId)) return;
+    setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === nodoId ? { ...n, x, y } : n)) }));
+    marcarGuardando();
+    try { await api.patch(`/nodos/${nodoId}/`, { x, y }); marcarGuardado(); } catch { marcarError(); }
+  }
+  async function aplicarNodo(nodoId, cambios) {
+    const prev = versionRef.current;
     setVersion((v) => ({ ...v, nodos: v.nodos.map((x) => (x.id === nodoId ? { ...x, ...cambios } : x)) }));
     marcarGuardando();
     try {
@@ -249,6 +294,16 @@ export default function FlujoEditor() {
       setVersion((v) => ({ ...v, nodos: v.nodos.map((x) => (x.id === nodoId ? n : x)) }));
       marcarGuardado();
     } catch { setVersion(prev); marcarError(); }
+  }
+
+  async function actualizarNodo(nodoId, cambios) {
+    const prev = version.nodos.find((n) => n.id === nodoId);
+    if (prev) {
+      const inverso = {};
+      for (const k of Object.keys(cambios)) inverso[k] = prev[k];
+      registrarCambio(() => aplicarNodo(nodoId, inverso), () => aplicarNodo(nodoId, cambios));
+    }
+    await aplicarNodo(nodoId, cambios);
   }
 
   async function borrarNodo(nodoId) {
@@ -307,8 +362,8 @@ export default function FlujoEditor() {
     catch { setVersion(snapshot); marcarError(); }
   }
 
-  async function actualizarConexion(cid, cambios) {
-    const prev = version;
+  async function aplicarConexion(cid, cambios) {
+    const prev = versionRef.current;
     setVersion((v) => ({ ...v, conexiones: v.conexiones.map((x) => (x.id === cid ? { ...x, ...cambios } : x)) }));
     marcarGuardando();
     try {
@@ -316,6 +371,16 @@ export default function FlujoEditor() {
       setVersion((v) => ({ ...v, conexiones: v.conexiones.map((x) => (x.id === cid ? c : x)) }));
       marcarGuardado();
     } catch { setVersion(prev); marcarError(); }
+  }
+
+  async function actualizarConexion(cid, cambios) {
+    const prev = version.conexiones.find((c) => c.id === cid);
+    if (prev) {
+      const inverso = {};
+      for (const k of Object.keys(cambios)) inverso[k] = prev[k];
+      registrarCambio(() => aplicarConexion(cid, inverso), () => aplicarConexion(cid, cambios));
+    }
+    await aplicarConexion(cid, cambios);
   }
 
   async function validar() {
@@ -394,10 +459,32 @@ export default function FlujoEditor() {
         setSel(null); setSelConexion(null);
         return;
       }
+      // Undo/redo (también dentro de inputs, como en cualquier editor).
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) rehacer(); else deshacer();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) { e.preventDefault(); rehacer(); return; }
       if (editando) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         if (sel != null) { e.preventDefault(); borrarNodo(sel); }
         else if (selConexion != null) { e.preventDefault(); borrarConexion(selConexion); }
+        return;
+      }
+      // Mover el nodo seleccionado con las flechas (un paso de grilla).
+      if (sel != null && e.key.startsWith("Arrow")) {
+        const n = version.nodos.find((x) => x.id === sel);
+        if (!n) return;
+        e.preventDefault();
+        let { x, y } = n;
+        if (e.key === "ArrowUp") y = Math.max(0, y - GRID);
+        else if (e.key === "ArrowDown") y += GRID;
+        else if (e.key === "ArrowLeft") x = Math.max(0, x - GRID);
+        else if (e.key === "ArrowRight") x += GRID;
+        if (x === n.x && y === n.y) return;
+        registrarCambio(() => aplicarPos(sel, n.x, n.y), () => aplicarPos(sel, x, y));
+        aplicarPos(sel, x, y);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -478,6 +565,10 @@ export default function FlujoEditor() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <SaveStatus estado={guardado} />
+          <div style={{ display: "flex", gap: 2 }}>
+            <ZoomBtn title="Deshacer (Ctrl+Z)" onClick={deshacer} disabled={undoStack.current.length === 0}><Icon name="undo" size={16} /></ZoomBtn>
+            <ZoomBtn title="Rehacer (Ctrl+Shift+Z)" onClick={rehacer} disabled={redoStack.current.length === 0}><Icon name="redo" size={16} /></ZoomBtn>
+          </div>
           <Button variant="secondary" onClick={reproducir} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para reproducir el recorrido" : "Anima el recorrido del flujo"} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Icon name="play" size={13} /> Reproducir
           </Button>
@@ -488,9 +579,13 @@ export default function FlujoEditor() {
       </div>
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {/* Paleta */}
+        {/* Paleta (colapsable para pantallas chicas) */}
+        {paletaAbierta ? (
         <div style={{ width: 188, borderRight: `1px solid ${color.border}`, background: "#fff", padding: 12, overflow: "auto", flex: "none" }}>
-          <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".6px", color: color.slate500, margin: "4px 4px 4px" }}>NODOS</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 4px 4px" }}>
+            <span style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".6px", color: color.slate500 }}>NODOS</span>
+            <button onClick={() => setPaletaAbierta(false)} title="Ocultar nodos" aria-label="Ocultar panel de nodos" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex", padding: 2, borderRadius: radius.sm }}><Icon name="back" size={14} /></button>
+          </div>
           <div style={{ fontSize: type.xs, color: color.slate400, margin: "0 4px 10px" }}>Hacé clic para agregar al lienzo</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {PALETA.map((p) => (
@@ -511,20 +606,29 @@ export default function FlujoEditor() {
             ))}
           </div>
         </div>
+        ) : (
+          <button onClick={() => setPaletaAbierta(true)} title="Mostrar nodos" aria-label="Mostrar panel de nodos" style={{ width: 34, flex: "none", borderRight: `1px solid ${color.border}`, background: "#fff", cursor: "pointer", color: color.slate500, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 14, border: "none" }}>
+            <Icon name="plus" size={16} />
+          </button>
+        )}
 
-        {/* Canvas */}
-        <div style={{ flex: 1, overflow: "auto", background: color.canvas, position: "relative" }}>
-          <div
-            ref={canvasRef}
-            onClick={() => { setSel(null); setSelConexion(null); setConectarDesde(null); }}
-            style={{
-              position: "relative",
-              width: 2200,
-              height: 1300,
-              backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)",
-              backgroundSize: `${GRID}px ${GRID}px`,
-            }}
-          >
+        {/* Canvas (viewport sin scroll → scrolleable → sizer a escala → capa escalada) */}
+        <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
+          <div ref={scrollRef} style={{ position: "absolute", inset: 0, overflow: "auto", background: color.canvas }}>
+            <div style={{ width: 2200 * zoom, height: 1300 * zoom }}>
+              <div
+                ref={canvasRef}
+                onClick={() => { setSel(null); setSelConexion(null); setConectarDesde(null); }}
+                style={{
+                  position: "relative",
+                  width: 2200,
+                  height: 1300,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "top left",
+                  backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)",
+                  backgroundSize: `${GRID}px ${GRID}px`,
+                }}
+              >
             {/* Conexiones */}
             <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
               <defs>
@@ -596,6 +700,10 @@ export default function FlujoEditor() {
                 <div
                   key={n.id}
                   data-nodo={n.id}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${cat.name}: ${n.titulo}. Flechas para mover, Suprimir para eliminar.`}
+                  onFocus={() => setSel(n.id)}
                   onPointerDown={(e) => onNodoPointerDown(e, n)}
                   onClick={(e) => { e.stopPropagation(); clickNodo(n); }}
                   style={{
@@ -656,7 +764,23 @@ export default function FlujoEditor() {
             {reproNodo && (
               <div style={{ position: "absolute", left: reproNodo.x + NODO_W / 2 - 9, top: reproNodo.y + NODO_H / 2 - 9, width: 18, height: 18, borderRadius: "50%", background: color.accent, border: "3px solid #fff", boxShadow: `0 0 0 4px ${color.accent}55, 0 6px 16px rgba(16,24,40,.3)`, transition: "left .65s cubic-bezier(.5,0,.2,1), top .65s cubic-bezier(.5,0,.2,1)", pointerEvents: "none", zIndex: 5 }} />
             )}
+              </div>
+            </div>
           </div>
+
+          {/* Controles de zoom (fijos sobre el viewport, no scrollean) */}
+          <div style={{ position: "absolute", left: 14, bottom: 14, display: "flex", alignItems: "center", gap: 4, background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.md, boxShadow: shadow.card, padding: 3, zIndex: 7 }}>
+            <ZoomBtn title="Alejar" onClick={() => zoomBoton(-0.1)}><Icon name="minus" size={15} /></ZoomBtn>
+            <button onClick={() => setZoom(1)} title="Restablecer zoom (100%)" style={{ border: "none", background: "none", cursor: "pointer", fontSize: type.sm, fontWeight: 600, color: color.slate600, minWidth: 42, fontVariantNumeric: "tabular-nums" }}>{Math.round(zoom * 100)}%</button>
+            <ZoomBtn title="Acercar" onClick={() => zoomBoton(0.1)}><Icon name="plus" size={15} /></ZoomBtn>
+            <div style={{ width: 1, height: 18, background: color.divider, margin: "0 2px" }} />
+            <ZoomBtn title="Ajustar al contenido" onClick={ajustar}><Icon name="maximize" size={15} /></ZoomBtn>
+          </div>
+
+          {/* Mostrar/ocultar el panel de propiedades */}
+          <button onClick={() => setPanelAbierto((v) => !v)} title={panelAbierto ? "Ocultar propiedades" : "Mostrar propiedades"} aria-label={panelAbierto ? "Ocultar panel de propiedades" : "Mostrar panel de propiedades"} style={{ position: "absolute", right: 10, top: 12, zIndex: 7, width: 30, height: 30, borderRadius: radius.sm, border: `1px solid ${color.border}`, background: "#fff", boxShadow: shadow.card, cursor: "pointer", color: color.slate600, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="back" size={15} style={{ transform: panelAbierto ? "rotate(180deg)" : "none" }} />
+          </button>
 
           {/* Onboarding del lienzo vacío */}
           {flujoVacio && (
@@ -686,7 +810,8 @@ export default function FlujoEditor() {
           )}
         </div>
 
-        {/* Panel de propiedades */}
+        {/* Panel de propiedades (colapsable) */}
+        {panelAbierto && (
         <div style={{ width: 300, borderLeft: `1px solid ${color.border}`, background: "#fff", overflow: "auto", flex: "none" }}>
           {sim ? (
             <PanelSimulacion sim={sim} version={version} campos={campos} onAvanzar={avanzarSim} onReiniciar={iniciarSim} onCerrar={() => setSim(null)} />
@@ -712,10 +837,28 @@ export default function FlujoEditor() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>
+  );
+}
+
+// Botón cuadrado e ícono (barra de zoom y deshacer/rehacer).
+function ZoomBtn({ title, onClick, children, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      style={{ width: 28, height: 28, borderRadius: radius.sm, border: "none", background: "none", color: disabled ? color.slate400 : color.slate600, opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = color.divider; }}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+    >
+      {children}
+    </button>
   );
 }
 
