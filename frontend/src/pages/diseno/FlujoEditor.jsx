@@ -105,6 +105,30 @@ export default function FlujoEditor() {
   const zoomRef = useRef(1);
   zoomRef.current = zoom;
   const scrollRef = useRef(null);
+
+  // Acercar/alejar con los botones de la barra de zoom (límites 0.3–2).
+  function zoomBoton(delta) {
+    setZoom((z) => Math.min(2, Math.max(0.3, +(z + delta).toFixed(2))));
+  }
+  // Ajustar al contenido: calcula el bounding box de los nodos, elige el zoom
+  // que lo encuadra y centra el lienzo en esa zona.
+  function ajustar() {
+    const ns = versionRef.current?.nodos || [];
+    const cont = scrollRef.current;
+    if (!ns.length || !cont) { setZoom(1); return; }
+    const minX = Math.min(...ns.map((n) => n.x));
+    const minY = Math.min(...ns.map((n) => n.y));
+    const maxX = Math.max(...ns.map((n) => n.x + NODO_W));
+    const maxY = Math.max(...ns.map((n) => n.y + NODO_H));
+    const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+    const pad = 80;
+    const k = Math.min(2, Math.max(0.3, Math.min((cont.clientWidth - pad) / w, (cont.clientHeight - pad) / h)));
+    setZoom(k);
+    requestAnimationFrame(() => {
+      cont.scrollLeft = Math.max(0, minX * k - (cont.clientWidth - w * k) / 2);
+      cont.scrollTop = Math.max(0, minY * k - (cont.clientHeight - h * k) / 2);
+    });
+  }
   // Historial de cambios reversibles (mover/editar nodos y conexiones). Cada
   // entrada guarda su operación inversa concreta (un PATCH), por eso es segura:
   // no recrea ids. Crear/borrar nodos quedan fuera (el borrado tiene su «Deshacer»).
