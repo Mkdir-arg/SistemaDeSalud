@@ -99,15 +99,22 @@ export default function FlujoEditor() {
   // Arrastre de conexión desde el handle de salida de un nodo (línea-fantasma).
   const conn = useRef(null);
   const [ghost, setGhost] = useState(null); // { x1, y1, x2, y2 }
+  // Zoom del lienzo (0.4–1.6). zoomRef permite leerlo desde los listeners de
+  // puntero montados una sola vez sin re-suscribir.
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  zoomRef.current = zoom;
+  const scrollRef = useRef(null);
 
   function onNodoPointerDown(e, nodo) {
     e.stopPropagation();
     if (e.button != null && e.button !== 0) return; // solo botón primario
     const rect = canvasRef.current.getBoundingClientRect();
+    const z = zoomRef.current;
     drag.current = {
       id: nodo.id,
-      dx: e.clientX - rect.left - nodo.x,
-      dy: e.clientY - rect.top - nodo.y,
+      dx: (e.clientX - rect.left) / z - nodo.x,
+      dy: (e.clientY - rect.top) / z - nodo.y,
       moved: false,
     };
     setSel(nodo.id);
@@ -119,8 +126,9 @@ export default function FlujoEditor() {
     function onMove(e) {
       if (!drag.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = Math.max(0, e.clientX - rect.left - drag.current.dx);
-      const y = Math.max(0, e.clientY - rect.top - drag.current.dy);
+      const z = zoomRef.current;
+      const x = Math.max(0, (e.clientX - rect.left) / z - drag.current.dx);
+      const y = Math.max(0, (e.clientY - rect.top) / z - drag.current.dy);
       drag.current.moved = true;
       setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === drag.current.id ? { ...n, x, y } : n)) }));
     }
@@ -153,7 +161,8 @@ export default function FlujoEditor() {
     if (e.button != null && e.button !== 0) return;
     conn.current = { fromId: nodo.id };
     const rect = canvasRef.current.getBoundingClientRect();
-    setGhost({ x1: nodo.x + NODO_W, y1: nodo.y + NODO_H / 2, x2: e.clientX - rect.left, y2: e.clientY - rect.top });
+    const z = zoomRef.current;
+    setGhost({ x1: nodo.x + NODO_W, y1: nodo.y + NODO_H / 2, x2: (e.clientX - rect.left) / z, y2: (e.clientY - rect.top) / z });
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no soportado */ }
   }
 
@@ -161,7 +170,8 @@ export default function FlujoEditor() {
     function onMove(e) {
       if (!conn.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
-      setGhost((g) => (g ? { ...g, x2: e.clientX - rect.left, y2: e.clientY - rect.top } : g));
+      const z = zoomRef.current;
+      setGhost((g) => (g ? { ...g, x2: (e.clientX - rect.left) / z, y2: (e.clientY - rect.top) / z } : g));
     }
     async function onUp(e) {
       if (!conn.current) return;
@@ -360,6 +370,10 @@ export default function FlujoEditor() {
   }
   useEffect(() => {
     if (!repro) return;
+    // Seguir el token: mantener el nodo en foco siempre visible en el viewport.
+    const nid = repro.camino[repro.idx];
+    const el = canvasRef.current?.querySelector(`[data-nodo="${nid}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
     if (repro.idx >= repro.camino.length - 1) {
       const t = setTimeout(() => setRepro(null), 1200);
       return () => clearTimeout(t);
@@ -394,8 +408,8 @@ export default function FlujoEditor() {
   if (errorCarga)
     return (
       <div style={{ padding: 40, maxWidth: 460 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#B42318", marginBottom: 6 }}>No se pudo cargar el flujo</div>
-        <div style={{ fontSize: 13.5, color: color.slate600, marginBottom: 16 }}>{errorCarga}</div>
+        <div style={{ fontSize: type.lg, fontWeight: 700, color: color.danger, marginBottom: 6 }}>No se pudo cargar el flujo</div>
+        <div style={{ fontSize: type.base, color: color.slate600, marginBottom: 16 }}>{errorCarga}</div>
         <div style={{ display: "flex", gap: 10 }}>
           <Button onClick={cargarTodo}>Reintentar</Button>
           <Button variant="secondary" onClick={() => navigate("/flujos")}>← Flujos</Button>
@@ -693,12 +707,43 @@ export default function FlujoEditor() {
               onActualizarConexion={actualizarConexion}
             />
           ) : (
-            <div style={{ padding: 22, fontSize: 13, color: color.slate400 }}>
-              Seleccioná un nodo para editar sus propiedades, o arrastrá uno desde la paleta.
+            <div style={{ padding: 22, fontSize: type.base, color: color.slate500 }}>
+              Seleccioná un nodo para editar sus propiedades, o agregá uno desde la paleta.
             </div>
           )}
         </div>
       </div>
+
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+// Indicador de autosave en la barra superior.
+function SaveStatus({ estado }) {
+  if (estado === "idle") return null;
+  const map = {
+    guardando: { txt: "Guardando…", col: color.slate500 },
+    guardado: { txt: "Guardado ✓", col: "#1B7A4E" },
+    error: { txt: "Error al guardar", col: color.danger },
+  };
+  const s = map[estado] || map.guardando;
+  return <span style={{ fontSize: type.sm, fontWeight: 600, color: s.col, whiteSpace: "nowrap" }}>{s.txt}</span>;
+}
+
+// Toast efímero con acción opcional (p. ej. «Deshacer»).
+function Toast({ toast, onClose }) {
+  const ok = toast.tipo === "ok";
+  return (
+    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 14, background: color.slate900, color: "#fff", padding: "11px 16px", borderRadius: radius.md, fontSize: type.base, boxShadow: shadow.dropdown, zIndex: 60, maxWidth: 460, animation: "fadeUp .16s ease" }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: ok ? "#46C08A" : "#F26D6D", flex: "none" }} />
+      <span style={{ flex: 1 }}>{toast.msg}</span>
+      {toast.accion && (
+        <button onClick={toast.accion.fn} style={{ border: "none", background: "none", color: "#9FB0FF", fontWeight: 700, cursor: "pointer", fontSize: type.base, whiteSpace: "nowrap" }}>{toast.accion.label}</button>
+      )}
+      <button onClick={onClose} aria-label="Cerrar" style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", display: "flex", opacity: .7 }}>
+        <Icon name="x" size={15} />
+      </button>
     </div>
   );
 }
@@ -721,40 +766,40 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1F8A5B" }} /> Modo prueba
+        <div style={{ fontSize: type.md, fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: badgeTone.green.fg }} /> Modo prueba
         </div>
-        <button onClick={onCerrar} style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, fontSize: 18 }}>×</button>
+        <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}><Icon name="x" size={18} /></button>
       </div>
-      <div style={{ fontSize: 12, color: color.slate500, marginBottom: 16 }}>Simulación sin datos reales. Recorré el flujo como lo haría un caso.</div>
+      <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 16 }}>Simulación sin datos reales. Recorré el flujo como lo haría un caso.</div>
 
       {sim.error ? (
-        <div style={{ fontSize: 13, color: "#B42318", background: "#FCEBEB", padding: "10px 12px", borderRadius: 9 }}>{sim.error}</div>
+        <div style={{ fontSize: type.base, color: color.danger, background: badgeTone.error.bg, padding: "10px 12px", borderRadius: radius.md }}>{sim.error}</div>
       ) : sim.fin ? (
-        <div style={{ background: "#E6F5EC", color: "#1B7A4E", padding: "14px 16px", borderRadius: 11, fontSize: 13.5, fontWeight: 600 }}>
+        <div style={{ background: badgeTone.green.bg, color: badgeTone.green.fg, padding: "14px 16px", borderRadius: radius.md, fontSize: type.base, fontWeight: 600 }}>
           ✓ Caso simulado {sim.sinSalida ? "detenido (nodo sin salida)" : "finalizado"}.
         </div>
       ) : nodo ? (
         <>
-          <div style={{ border: `1px solid ${cat.bd}`, background: cat.tint, borderRadius: 11, padding: 13, marginBottom: 14 }}>
-            <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".4px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1F2430" }}>{nodo.titulo}</div>
+          <div style={{ border: `1px solid ${cat.bd}`, background: cat.tint, borderRadius: radius.md, padding: 13, marginBottom: 14 }}>
+            <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
+            <div style={{ fontSize: type.md, fontWeight: 700, color: color.slate900 }}>{nodo.titulo}</div>
           </div>
 
           {nodo.tipo === "form" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
               {camposForm.length === 0 ? (
-                <div style={{ fontSize: 12.5, color: color.slate400 }}>Este formulario no tiene campos (o no está asignado).</div>
+                <div style={{ fontSize: type.sm, color: color.slate500 }}>Este formulario no tiene campos (o no está asignado).</div>
               ) : camposForm.map((c) => (
                 <div key={c.id}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: color.slate600, marginBottom: 5 }}>{c.label}{c.requerido && <span style={{ color: "#B42318" }}> *</span>}</div>
+                  <div style={{ fontSize: type.sm, fontWeight: 600, color: color.slate600, marginBottom: 5 }}>{c.label}{c.requerido && <span style={{ color: color.danger }}> *</span>}</div>
                   {c.tipo === "seleccion_unica" ? (
-                    <Select style={{ height: 34, fontSize: 12.5 }} value={valores[c.id] || ""} onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}>
+                    <Select size="sm" value={valores[c.id] || ""} onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}>
                       <option value="">Seleccionar…</option>
                       {(c.opciones || []).map((o) => <option key={o} value={o}>{o}</option>)}
                     </Select>
                   ) : (
-                    <Input style={{ height: 34, fontSize: 12.5 }} type={c.tipo === "fecha" ? "date" : "text"} value={valores[c.id] || ""} onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))} />
+                    <Input size="sm" type={c.tipo === "fecha" ? "date" : "text"} value={valores[c.id] || ""} onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))} />
                   )}
                 </div>
               ))}
@@ -766,57 +811,77 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
           </Button>
         </>
       ) : (
-        <div style={{ fontSize: 13, color: color.slate400 }}>Sin nodo actual.</div>
+        <div style={{ fontSize: type.base, color: color.slate500 }}>Sin nodo actual.</div>
       )}
 
       {/* Recorrido */}
       <div style={{ marginTop: 18, borderTop: `1px solid ${color.divider}`, paddingTop: 14 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px", color: color.slate400, marginBottom: 8 }}>RECORRIDO</div>
+        <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".5px", color: color.slate500, marginBottom: 8 }}>RECORRIDO</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {(sim.camino || []).map((nid, i) => {
             const n = version.nodos.find((x) => x.id === nid);
             if (!n) return null;
             const c = nodeCat[n.tipo] || nodeCat.form;
             return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: nid === sim.current ? color.slate900 : color.slate500 }}>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: type.sm, color: nid === sim.current ? color.slate900 : color.slate500 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: c.sol, flex: "none" }} />
                 {n.titulo}
               </div>
             );
           })}
         </div>
-        <button onClick={onReiniciar} style={{ marginTop: 12, border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>↻ Reiniciar prueba</button>
+        <button onClick={onReiniciar} style={{ marginTop: 12, border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: type.sm, fontWeight: 600 }}>↻ Reiniciar prueba</button>
       </div>
     </div>
   );
 }
 
 // --------------------------------------------------------------------------- //
-const OPERADORES = ["=", "!=", ">", "<", "contiene"];
+// Operadores válidos según el tipo del campo (>, < solo tienen sentido en
+// números/fechas; el motor hace parseFloat y devuelve false para texto).
+const OP_POR_TIPO = {
+  numero: ["=", "!=", ">", "<"],
+  entero: ["=", "!=", ">", "<"],
+  decimal: ["=", "!=", ">", "<"],
+  fecha: ["=", "!=", ">", "<"],
+  seleccion_unica: ["=", "!="],
+};
+function operadoresDe(campo) {
+  if (!campo) return ["=", "!=", "contiene"];
+  return OP_POR_TIPO[campo.tipo] || (campo.opciones?.length ? ["=", "!="] : ["=", "!=", "contiene"]);
+}
 
 function RuleBuilder({ conexion, campos, onActualizar }) {
   const cond = conexion.condicion || {};
   const set = (cambios) => onActualizar(conexion.id, { condicion: { ...cond, ...cambios } });
   const campoSel = campos.find((c) => String(c.id) === String(cond.campo));
+  const ops = operadoresDe(campoSel);
+  // Agrupar por formulario para desambiguar labels repetidos entre formularios.
+  const porForm = campos.reduce((acc, c) => { (acc[c.formulario] = acc[c.formulario] || []).push(c); return acc; }, {});
   return (
     <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".4px", color: color.slate400 }}>SI…</div>
-      <Select style={{ height: 32, fontSize: 12.5 }} value={cond.campo || ""} onChange={(e) => set({ campo: e.target.value ? Number(e.target.value) : null })}>
+      <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: color.slate500 }}>SI…</div>
+      <Select size="sm" value={cond.campo || ""} onChange={(e) => set({ campo: e.target.value ? Number(e.target.value) : null, operador: "=", valor: "" })}>
         <option value="">(sin condición · rama por defecto)</option>
-        {campos.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        {Object.entries(porForm).map(([form, cs]) => (
+          <optgroup key={form} label={form}>
+            {cs.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </optgroup>
+        ))}
       </Select>
       {cond.campo && (
         <div style={{ display: "flex", gap: 6 }}>
-          <Select style={{ height: 32, fontSize: 12.5, width: 90 }} value={cond.operador || "="} onChange={(e) => set({ operador: e.target.value })}>
-            {OPERADORES.map((o) => <option key={o} value={o}>{o}</option>)}
+          <Select size="sm" style={{ width: 138 }} value={cond.operador || "="} onChange={(e) => set({ operador: e.target.value })}>
+            {ops.map((o) => <option key={o} value={o}>{OPERADOR_LABEL[o] || o}</option>)}
           </Select>
           {campoSel?.opciones?.length ? (
-            <Select style={{ height: 32, fontSize: 12.5 }} value={cond.valor || ""} onChange={(e) => set({ valor: e.target.value })}>
+            <Select size="sm" value={cond.valor || ""} onChange={(e) => set({ valor: e.target.value })}>
               <option value="">valor…</option>
               {campoSel.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
             </Select>
           ) : (
-            <Input style={{ height: 32, fontSize: 12.5 }} placeholder="valor" defaultValue={cond.valor || ""} onBlur={(e) => e.target.value !== cond.valor && set({ valor: e.target.value })} />
+            // key fuerza el refresh del defaultValue al cambiar de campo/operador.
+            <Input key={`${cond.campo}-${cond.operador}`} size="sm" placeholder="valor" defaultValue={cond.valor || ""} onBlur={(e) => e.target.value !== (cond.valor || "") && set({ valor: e.target.value })} />
           )}
         </div>
       )}
@@ -843,7 +908,9 @@ const AYUDA_NODO = {
 
 function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
   const [titulo, setTitulo] = useState(nodo.titulo);
-  const [ayuda, setAyuda] = useState(false);
+  // La preferencia de ayuda se recuerda entre nodos (localStorage) en vez de
+  // resetearse cada vez que se selecciona otro nodo.
+  const [ayuda, setAyuda] = useState(() => localStorage.getItem("cauce.ayudaNodo") === "1");
   const [areas, setAreas] = useState([]);
   const [flujos, setFlujos] = useState([]);
   const [formularios, setFormularios] = useState([]);
@@ -886,11 +953,12 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         <span style={{ width: 28, height: 28, borderRadius: 8, background: cat.tint, border: `1px solid ${cat.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
           <span style={{ width: 11, height: 11, borderRadius: 3, background: cat.sol }} />
         </span>
-        <div style={{ flex: 1, fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>{cat.name.toUpperCase()}</div>
+        <div style={{ flex: 1, fontSize: type.sm, fontWeight: 700, letterSpacing: ".5px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
         <button
-          onClick={() => setAyuda((v) => !v)}
+          onClick={() => setAyuda((v) => { localStorage.setItem("cauce.ayudaNodo", v ? "0" : "1"); return !v; })}
           title="¿Qué hace este nodo?"
-          style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${ayuda ? color.accent : color.inputBorder}`, background: ayuda ? color.accent50 : "#fff", color: ayuda ? color.accent : color.slate400, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
+          aria-label="¿Qué hace este nodo?"
+          style={{ width: 28, height: 28, borderRadius: radius.sm, border: `1px solid ${ayuda ? color.accent : color.inputBorder}`, background: ayuda ? color.accent50 : "#fff", color: ayuda ? color.accent : color.slate500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
         >
           <Icon name="help" size={15} />
         </button>
@@ -929,6 +997,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               <option value="">— Elegir —</option>
               {formularios.map((f) => <option key={f.id} value={f.id}>{f.titulo}</option>)}
             </Select>
+            {!nodo.formulario && <AvisoFalta texto="Elegí qué formulario se completa en este paso." />}
           </Field>
         )}
 
@@ -976,6 +1045,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
                 <option value="">— Elegir —</option>
                 {areas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
               </Select>
+              {!areaDestinoId && <AvisoFalta texto="Elegí a qué área se deriva el caso." />}
             </Field>
 
             {areaDestinoId && (
@@ -1007,8 +1077,9 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           <Field label="Estado a aplicar">
             <Select value={(nodo.config || {}).estado || ""} onChange={(e) => setConfig({ estado: e.target.value })}>
               <option value="">— Elegir —</option>
-              {["recibido", "en_evaluacion", "en_espera", "derivado", "atendido", "cerrado"].map((s) => <option key={s} value={s}>{s}</option>)}
+              {["recibido", "en_evaluacion", "en_espera", "derivado", "atendido", "cerrado"].map((s) => <option key={s} value={s}>{estadoCaso[s]?.label || s}</option>)}
             </Select>
+            {!(nodo.config || {}).estado && <AvisoFalta texto="Elegí qué estado aplica este nodo." />}
           </Field>
         )}
 
@@ -1041,8 +1112,11 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
                 })}
               </div>
             )}
+            {grupos.length > 0 && asignados.size === 0 && (
+              <AvisoFalta texto="Sin grupo asignado: nadie podrá tomar este paso." />
+            )}
             {asignados.size > 0 && (
-              <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+              <div style={{ marginTop: 6, fontSize: type.xs, color: color.slate500 }}>
                 Cualquier integrante de {asignados.size === 1 ? "el grupo asignado" : `los ${asignados.size} grupos asignados`} podrá tomar este paso.
               </div>
             )}
@@ -1063,8 +1137,8 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               return (
                 <div key={c.id} style={{ border: `1px solid ${color.divider}`, borderRadius: 9, padding: 10, marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>→ {destino?.titulo || "?"}</span>
-                    <button onClick={() => onBorrarConexion(c.id)} style={{ border: "none", background: "none", color: "#B42318", cursor: "pointer", fontSize: 11.5 }}>quitar</button>
+                    <span style={{ fontSize: type.sm, fontWeight: 600 }}>→ {destino?.titulo || "?"}</span>
+                    <button onClick={() => onBorrarConexion(c.id)} style={{ border: "none", background: "none", color: color.danger, cursor: "pointer", fontSize: type.xs, padding: "4px 6px", borderRadius: radius.sm }}>quitar</button>
                   </div>
                   {nodo.tipo === "decision" && (
                     <>
@@ -1083,8 +1157,8 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           )}
         </div>
 
-        <button onClick={() => onBorrar(nodo.id)} style={{ marginTop: 6, border: "none", background: "#FCEBEB", color: "#B42318", padding: "9px 0", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-          Eliminar nodo
+        <button onClick={() => onBorrar(nodo.id)} style={{ marginTop: 6, border: "none", background: badgeTone.error.bg, color: color.danger, padding: "9px 0", borderRadius: radius.md, cursor: "pointer", fontSize: type.base, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+          <Icon name="trash" size={15} /> Eliminar nodo
         </button>
       </div>
     </div>
@@ -1140,15 +1214,15 @@ function PantallaUrl({ nodo }) {
             </button>
           </div>
           <div style={{ display: "flex", gap: 14, marginTop: 8, alignItems: "center" }}>
-            <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: color.accent, textDecoration: "none" }}>
+            <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: type.sm, fontWeight: 600, color: color.accent, textDecoration: "none" }}>
               Abrir pantalla ↗
             </a>
-            <button onClick={() => generar(true)} disabled={cargando}
-              style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", fontSize: 11.5 }}>
+            <button onClick={() => { if (window.confirm("¿Regenerar el enlace? La pantalla abierta actualmente dejará de funcionar.")) generar(true); }} disabled={cargando}
+              style={{ border: "none", background: "none", color: color.slate500, cursor: "pointer", fontSize: type.xs }}>
               {cargando ? "…" : "Regenerar enlace"}
             </button>
           </div>
-          <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+          <div style={{ marginTop: 6, fontSize: type.xs, color: color.slate500 }}>
             Abrila en el televisor de la sala. Al regenerar, el enlace anterior deja de funcionar.
           </div>
         </>
@@ -1158,40 +1232,52 @@ function PantallaUrl({ nodo }) {
 }
 
 function PanelValidacion({ problemas, onCerrar, onFocus }) {
-  const sevColor = { error: "#B42318", aviso: "#A96A12" };
-  const sevBg = { error: "#FCEBEB", aviso: "#FBF0DD" };
+  const sevColor = { error: color.danger, aviso: badgeTone.amber.fg };
+  const sevBg = { error: badgeTone.error.bg, aviso: badgeTone.amber.bg };
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700 }}>Validación</div>
-        <button onClick={onCerrar} style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, fontSize: 18 }}>×</button>
+        <div style={{ fontSize: type.md, fontWeight: 700 }}>Validación</div>
+        <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}><Icon name="x" size={18} /></button>
       </div>
       {problemas.publicado && (
-        <div style={{ fontSize: 13, background: "#E6F5EC", color: "#1B7A4E", padding: "10px 12px", borderRadius: 9, marginBottom: 12, fontWeight: 600 }}>✓ Versión publicada</div>
+        <div style={{ fontSize: type.base, background: badgeTone.green.bg, color: badgeTone.green.fg, padding: "10px 12px", borderRadius: radius.md, marginBottom: 12, fontWeight: 600 }}>✓ Versión publicada</div>
       )}
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <Badge tone={problemas.errores ? "error" : "green"}>{problemas.errores} errores</Badge>
         <Badge tone="amber">{problemas.avisos} avisos</Badge>
       </div>
       {problemas.problemas.length === 0 ? (
-        <div style={{ fontSize: 13, color: color.slate500 }}>Sin problemas. {problemas.puede_publicar ? "Lista para publicar." : ""}</div>
+        <div style={{ fontSize: type.base, color: color.slate500 }}>Sin problemas. {problemas.puede_publicar ? "Lista para publicar." : ""}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {problemas.problemas.map((p, i) => (
             <div
               key={i}
+              role={p.nodo_id ? "button" : undefined}
+              tabIndex={p.nodo_id ? 0 : undefined}
               onClick={() => p.nodo_id && onFocus(p.nodo_id)}
-              style={{ border: `1px solid ${color.divider}`, borderRadius: 10, padding: 12, cursor: p.nodo_id ? "pointer" : "default" }}
+              onKeyDown={(e) => { if (p.nodo_id && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onFocus(p.nodo_id); } }}
+              style={{ border: `1px solid ${color.divider}`, borderRadius: radius.md, padding: 12, cursor: p.nodo_id ? "pointer" : "default" }}
             >
-              <span style={{ display: "inline-block", fontSize: 10, fontWeight: 700, letterSpacing: ".4px", background: sevBg[p.sev], color: sevColor[p.sev], padding: "2px 7px", borderRadius: 6, marginBottom: 6 }}>
+              <span style={{ display: "inline-block", fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", background: sevBg[p.sev], color: sevColor[p.sev], padding: "2px 7px", borderRadius: radius.sm, marginBottom: 6 }}>
                 {p.sev === "error" ? "ERROR" : "AVISO"}
               </span>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{p.titulo}</div>
-              <div style={{ fontSize: 12, color: color.slate500, marginTop: 2 }}>{p.detalle}</div>
+              <div style={{ fontSize: type.base, fontWeight: 600 }}>{p.titulo}</div>
+              <div style={{ fontSize: type.sm, color: color.slate500, marginTop: 2 }}>{p.detalle}</div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Aviso inline ámbar para configuraciones incompletas de un nodo.
+function AvisoFalta({ texto }) {
+  return (
+    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, fontSize: type.xs, color: badgeTone.amber.fg, background: badgeTone.amber.bg, padding: "5px 8px", borderRadius: radius.sm }}>
+      <span style={{ fontWeight: 800 }}>!</span> {texto}
     </div>
   );
 }

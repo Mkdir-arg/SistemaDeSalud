@@ -4,7 +4,7 @@ import { api } from "../../api/client";
 import { useInstitucion } from "../../auth/InstitutionContext";
 import { Badge, Spinner } from "../../components/ui";
 import { Icon } from "../../components/icons";
-import { color, estadoVersion } from "../../theme";
+import { color, estadoVersion, radius, shadow, type } from "../../theme";
 
 const CARD_W = 250;
 const CARD_H = 96;
@@ -34,20 +34,21 @@ export default function MapaFlujos() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{ padding: "20px 30px 14px" }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>Cómo se encadenan los procesos</div>
-        <div style={{ fontSize: 13, color: color.slate500, marginTop: 3, maxWidth: 640 }}>
+        <div style={{ fontSize: type.lg, fontWeight: 700 }}>Cómo se encadenan los procesos</div>
+        <div style={{ fontSize: type.base, color: color.slate500, marginTop: 3, maxWidth: 640 }}>
           Cada bloque es un flujo; las flechas son derivaciones entre flujos. Hacé clic en un bloque para abrirlo en el diseñador.
         </div>
       </div>
-      <div style={{ flex: 1, overflow: "auto", background: "#FBFBFD", backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)", backgroundSize: "20px 20px", padding: 32 }}>
+      <div style={{ flex: 1, overflow: "auto", background: color.canvas, backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)", backgroundSize: "20px 20px", padding: 32 }}>
         {cargando ? (
           <Spinner />
         ) : !layout || layout.nodos.length === 0 ? (
-          <div style={{ fontSize: 14, color: color.slate400 }}>No hay flujos en esta institución.</div>
+          <div style={{ fontSize: type.md, color: color.slate500 }}>No hay flujos en esta institución.</div>
         ) : (
           <div style={{ position: "relative", width: layout.width, height: layout.height, minWidth: "100%" }}>
             {/* Flechas de derivación */}
-            <svg width={layout.width} height={layout.height} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }}>
+            <svg width={layout.width} height={layout.height} role="img" aria-label={`Mapa de ${layout.nodos.filter((n) => !n.externo).length} flujos y ${layout.aristas.length} derivaciones`} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }}>
+              <title>Mapa de derivaciones entre flujos</title>
               <defs>
                 <marker id="flecha" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
                   <path d="M0,0 L8,4 L0,8 Z" fill={color.slate400} />
@@ -60,7 +61,7 @@ export default function MapaFlujos() {
 
             {/* Etiquetas de las flechas (HTML, por encima de las tarjetas) */}
             {layout.aristas.map((a, i) => a.etiqueta && (
-              <div key={`l${i}`} style={{ position: "absolute", left: a.lx, top: a.ly, transform: "translate(-50%,-50%)", fontSize: 11, fontWeight: 600, color: color.slate500, background: "#FBFBFD", padding: "1px 6px", borderRadius: 6, whiteSpace: "nowrap", pointerEvents: "none" }}>
+              <div key={`l${i}`} style={{ position: "absolute", left: a.lx, top: a.ly, transform: "translate(-50%,-50%)", fontSize: type.xs, fontWeight: 600, color: color.slate500, background: color.canvas, padding: "1px 6px", borderRadius: radius.sm, whiteSpace: "nowrap", pointerEvents: "none" }}>
                 {a.etiqueta}
               </div>
             ))}
@@ -69,26 +70,31 @@ export default function MapaFlujos() {
             {layout.nodos.map((n) => {
               const est = estadoVersion[n.estado] || { label: "Borrador", tone: "neutral" };
               const externo = n.externo;
+              const abrir = () => !externo && navigate(`/flujos/${n.id}`);
               return (
                 <div
                   key={n.id}
-                  onClick={() => !externo && navigate(`/flujos/${n.id}`)}
+                  role={externo ? undefined : "button"}
+                  tabIndex={externo ? undefined : 0}
+                  aria-label={externo ? undefined : `Abrir flujo ${n.titulo}`}
+                  onClick={abrir}
+                  onKeyDown={(e) => { if (!externo && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); abrir(); } }}
                   style={{
                     position: "absolute", left: n.x, top: n.y, width: CARD_W, height: CARD_H,
                     background: externo ? "#F7F8FA" : "#fff",
                     border: `1px ${externo ? "dashed" : "solid"} ${color.border}`,
-                    borderRadius: 14, padding: "14px 16px", cursor: externo ? "default" : "pointer",
-                    boxShadow: externo ? "none" : "0 1px 3px rgba(16,24,40,.07)",
+                    borderRadius: radius.lg, padding: "14px 16px", cursor: externo ? "default" : "pointer",
+                    boxShadow: externo ? "none" : shadow.card,
                     display: "flex", flexDirection: "column", justifyContent: "space-between", boxSizing: "border-box",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: externo ? color.subtle : color.accent50, color: externo ? color.slate400 : color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-                      <Icon name="workflow" size={15} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: radius.md, background: externo ? color.subtle : color.accent50, color: externo ? color.slate400 : color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+                      <Icon name="workflow" size={16} />
                     </div>
-                    <div style={{ fontSize: 14.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }} title={n.titulo}>{n.titulo}</div>
+                    <div style={{ fontSize: type.md, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }} title={n.titulo}>{n.titulo}</div>
                   </div>
-                  <div style={{ fontSize: 12, color: color.slate500, display: "flex", alignItems: "center", gap: 7 }}>
+                  <div style={{ fontSize: type.sm, color: color.slate500, display: "flex", alignItems: "center", gap: 7 }}>
                     {externo ? (
                       "Flujo de otro alcance"
                     ) : (

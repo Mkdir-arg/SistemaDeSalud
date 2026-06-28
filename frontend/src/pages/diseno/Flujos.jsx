@@ -5,7 +5,7 @@ import { useInstitucion } from "../../auth/InstitutionContext";
 import { PageHeader } from "../../components/Shell";
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Spinner } from "../../components/ui";
 import { Icon } from "../../components/icons";
-import { color, estadoVersion, font } from "../../theme";
+import { badgeTone, color, estadoVersion, font, radius, type } from "../../theme";
 
 const TABS = [
   { key: "todos", label: "Todos" },
@@ -15,6 +15,42 @@ const TABS = [
 ];
 
 const COLS = "minmax(160px,1.7fr) 150px 120px 56px 90px 110px 70px";
+
+// Plantillas de arranque: en vez de un lienzo en blanco, el flujo nuevo puede
+// nacer con un esqueleto de nodos+conexiones listo para editar. Las claves `k`
+// se remapean a los ids reales tras crear cada nodo.
+const PLANTILLAS = [
+  { key: "vacio", nombre: "En blanco", desc: "Solo el nodo Inicio.", nodos: [{ k: "ini", tipo: "inicio", titulo: "Inicio", x: 80, y: 220 }], conexiones: [] },
+  {
+    key: "ingreso", nombre: "Ingreso de paciente", desc: "Inicio → Formulario de datos → Cierre.",
+    nodos: [
+      { k: "ini", tipo: "inicio", titulo: "Inicio", x: 80, y: 220 },
+      { k: "form", tipo: "form", titulo: "Datos del paciente", x: 360, y: 220 },
+      { k: "fin", tipo: "fin", titulo: "Cierre", x: 640, y: 220 },
+    ],
+    conexiones: [["ini", "form"], ["form", "fin"]],
+  },
+  {
+    key: "derivacion", nombre: "Derivación a especialidad", desc: "Inicio → Evaluación → Decisión → Derivar / Cierre.",
+    nodos: [
+      { k: "ini", tipo: "inicio", titulo: "Inicio", x: 60, y: 260 },
+      { k: "form", tipo: "form", titulo: "Evaluación", x: 320, y: 260 },
+      { k: "dec", tipo: "decision", titulo: "¿Requiere especialista?", x: 580, y: 260 },
+      { k: "der", tipo: "derivar", titulo: "Derivar a especialidad", x: 860, y: 160 },
+      { k: "fin", tipo: "fin", titulo: "Cierre", x: 860, y: 360 },
+    ],
+    conexiones: [["ini", "form"], ["form", "dec"], ["dec", "der"], ["dec", "fin"]],
+  },
+  {
+    key: "fila", nombre: "Atención con fila de espera", desc: "Inicio → Atención (con fila) → Cierre.",
+    nodos: [
+      { k: "ini", tipo: "inicio", titulo: "Inicio", x: 80, y: 220 },
+      { k: "at", tipo: "atencion", titulo: "Atención", x: 360, y: 220 },
+      { k: "fin", tipo: "fin", titulo: "Cierre", x: 640, y: 220 },
+    ],
+    conexiones: [["ini", "at"], ["at", "fin"]],
+  },
+];
 
 export default function Flujos() {
   const navigate = useNavigate();
@@ -71,14 +107,14 @@ export default function Flujos() {
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}
-                  style={{ padding: "7px 14px", borderRadius: 9, fontSize: 13, fontWeight: activo ? 600 : 500, background: "#fff", border: `1px solid ${activo ? color.accent : color.inputBorder}`, color: activo ? color.accent : color.slate500, cursor: "pointer" }}
+                  style={{ padding: "7px 14px", borderRadius: radius.md, fontSize: type.base, fontWeight: activo ? 600 : 500, background: "#fff", border: `1px solid ${activo ? color.accent : color.inputBorder}`, color: activo ? color.accent : color.slate500, cursor: "pointer" }}
                 >
                   {t.label}
                 </button>
               );
             })}
           </div>
-          <Select value={area} onChange={(e) => setArea(e.target.value)} style={{ width: "auto", height: 36 }}>
+          <Select size="sm" value={area} onChange={(e) => setArea(e.target.value)} style={{ width: "auto" }}>
             <option value="">Todas las áreas</option>
             {areas.map((a) => <option key={a} value={a}>{a}</option>)}
           </Select>
@@ -94,50 +130,56 @@ export default function Flujos() {
           ) : visibles.length === 0 ? (
             <EmptyState title="No hay flujos" hint="Creá el primero o cambiá los filtros." />
           ) : (
-            <>
+            // Scroll horizontal propio para que la página no se desborde en pantallas chicas.
+            <div style={{ overflowX: "auto" }}>
               {/* Encabezado */}
-              <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 13, padding: "13px 20px", background: color.subtle, borderBottom: `1px solid ${color.divider}`, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>
+              <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 13, padding: "12px 20px", minWidth: 720, background: color.subtle, borderBottom: `1px solid ${color.divider}`, fontSize: type.sm, fontWeight: 700, letterSpacing: ".5px", color: color.slate500 }}>
                 <div>FLUJO</div><div>ÁREA</div><div>ESTADO</div><div>VER.</div><div>CASOS</div><div>ÚLT. EDICIÓN</div><div />
               </div>
               {/* Filas */}
               {visibles.map((f) => {
                 const est = f._ver ? estadoVersion[f._ver.estado] : { label: "Borrador", tone: "neutral" };
+                const abrir = () => navigate(`/flujos/${f.id}`);
                 return (
                   <div
                     key={f.id}
-                    onClick={() => navigate(`/flujos/${f.id}`)}
-                    style={{ display: "grid", gridTemplateColumns: COLS, gap: 13, padding: "15px 20px", alignItems: "center", borderBottom: `1px solid ${color.divider}`, cursor: "pointer" }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Abrir flujo ${f.titulo}`}
+                    onClick={abrir}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); } }}
+                    style={{ display: "grid", gridTemplateColumns: COLS, gap: 13, padding: "15px 20px", minWidth: 720, alignItems: "center", borderBottom: `1px solid ${color.divider}`, cursor: "pointer" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-                        <Icon name="workflow" size={17} />
+                      <div style={{ width: 32, height: 32, borderRadius: radius.md, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+                        <Icon name="workflow" size={16} />
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.titulo}</div>
+                      <div style={{ fontSize: type.md, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.titulo}</div>
                     </div>
                     <div title={f.ambito_label}>
                       {f.subarea_nombre ? (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                           <Badge tone="info">{f.area_nombre}</Badge>
-                          <span style={{ fontSize: 12.5, color: color.slate500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>› {f.subarea_nombre}</span>
+                          <span style={{ fontSize: type.sm, color: color.slate500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>› {f.subarea_nombre}</span>
                         </span>
                       ) : (
                         <Badge tone="info">{f.area_nombre}</Badge>
                       )}
                     </div>
                     <div><Badge tone={est.tone}>{est.label}</Badge></div>
-                    <div style={{ fontFamily: font.mono, fontSize: 13, color: color.slate500 }}>{f._ver?.etiqueta || "—"}</div>
-                    <div style={{ fontSize: 13.5, color: color.slate700 }}>{f.casos_activos > 0 ? `${f.casos_activos} activos` : "—"}</div>
-                    <div style={{ fontSize: 13, color: color.slate400 }}>{f._ver ? new Date(f._ver.creada).toLocaleDateString("es-AR") : "—"}</div>
+                    <div style={{ fontFamily: font.mono, fontSize: type.base, color: color.slate500 }}>{f._ver?.etiqueta || "—"}</div>
+                    <div style={{ fontSize: type.md, color: color.slate700 }}>{f.casos_activos > 0 ? `${f.casos_activos} activos` : "—"}</div>
+                    <div style={{ fontSize: type.base, color: color.slate500 }}>{f._ver ? new Date(f._ver.creada).toLocaleDateString("es-AR") : "—"}</div>
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-                      <IconBtn title="Abrir en diseñador" onClick={() => navigate(`/flujos/${f.id}`)} name="edit" />
+                      <IconBtn title="Abrir en diseñador" onClick={abrir} name="edit" />
                       <IconBtn title="Duplicar" onClick={() => duplicar(f, cargar)} name="copy" />
                     </div>
                   </div>
                 );
               })}
-            </>
+            </div>
           )}
         </Card>
       </div>
@@ -148,18 +190,23 @@ export default function Flujos() {
 }
 
 async function duplicar(flujo, recargar) {
-  const nf = await api.post("/flujos/", { institucion: flujo.institucion, area: flujo.area, subarea: flujo.subarea, titulo: `${flujo.titulo} (copia)` });
-  const ver = await api.post("/versiones-flujo/", { flujo: nf.id, numero: 1, estado: "borrador" });
-  await api.post("/nodos/", { version: ver.id, tipo: "inicio", titulo: "Inicio", x: 80, y: 220 });
-  await recargar();
+  try {
+    const nf = await api.post("/flujos/", { institucion: flujo.institucion, area: flujo.area, subarea: flujo.subarea, titulo: `${flujo.titulo} (copia)` });
+    const ver = await api.post("/versiones-flujo/", { flujo: nf.id, numero: 1, estado: "borrador" });
+    await api.post("/nodos/", { version: ver.id, tipo: "inicio", titulo: "Inicio", x: 80, y: 220 });
+    await recargar();
+  } catch {
+    alert("No se pudo duplicar el flujo. Intentá de nuevo.");
+  }
 }
 
 function IconBtn({ title, onClick, name }) {
   return (
     <button
       title={title}
+      aria-label={title}
       onClick={onClick}
-      style={{ width: 30, height: 30, borderRadius: 7, border: "none", background: "none", color: color.slate500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+      style={{ width: 32, height: 32, borderRadius: radius.sm, border: "none", background: "none", color: color.slate500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
       onMouseEnter={(e) => (e.currentTarget.style.background = color.divider)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
     >
@@ -171,19 +218,25 @@ function IconBtn({ title, onClick, name }) {
 function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
   const [areas, setAreas] = useState([]);
   const [form, setForm] = useState({ area: "", subarea: "", titulo: "" });
+  const [plantilla, setPlantilla] = useState("vacio");
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   useEffect(() => {
     if (!institucionId) return;
-    api.get(`/areas/?institucion=${institucionId}`).then((d) => setAreas(d.results || d));
+    api.get(`/areas/?institucion=${institucionId}`).then((d) => setAreas(d.results || d)).catch(() => {});
   }, [institucionId]);
 
   const areaSel = useMemo(() => areas.find((a) => String(a.id) === String(form.area)), [areas, form.area]);
   const subareas = areaSel?.subareas || [];
+  const plantillaSel = PLANTILLAS.find((p) => p.key === plantilla) || PLANTILLAS[0];
 
+  // Crea flujo + versión + nodos/conexiones de la plantilla, con manejo de error
+  // (si falla un paso intermedio se avisa en vez de dejar al usuario sin feedback).
   async function crear() {
     setGuardando(true);
+    setError(null);
     try {
       const flujo = await api.post("/flujos/", {
         institucion: institucionId,
@@ -192,9 +245,17 @@ function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
         titulo: form.titulo,
       });
       const ver = await api.post("/versiones-flujo/", { flujo: flujo.id, numero: 1, estado: "borrador" });
-      await api.post("/nodos/", { version: ver.id, tipo: "inicio", titulo: "Inicio", x: 80, y: 220 });
+      const idMap = {};
+      for (const n of plantillaSel.nodos) {
+        const creado = await api.post("/nodos/", { version: ver.id, tipo: n.tipo, titulo: n.titulo, x: n.x, y: n.y });
+        idMap[n.k] = creado.id;
+      }
+      for (const [o, d] of plantillaSel.conexiones) {
+        await api.post("/conexiones/", { version: ver.id, origen: idMap[o], destino: idMap[d] });
+      }
       onCreated(flujo.id);
-    } finally {
+    } catch (e) {
+      setError(e?.data?.detail || "No se pudo crear el flujo. Revisá los datos e intentá de nuevo.");
       setGuardando(false);
     }
   }
@@ -206,7 +267,16 @@ function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !form.titulo} onClick={crear}>{guardando ? "Creando…" : "Crear y diseñar"}</Button></>}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {error && (
+          <div style={{ fontSize: type.base, color: color.danger, background: badgeTone.error.bg, padding: "10px 12px", borderRadius: radius.md }}>{error}</div>
+        )}
         <Field label="Título *"><Input value={form.titulo} onChange={(e) => set("titulo", e.target.value)} autoFocus placeholder="Ingreso de paciente" /></Field>
+        <Field label="Plantilla">
+          <Select value={plantilla} onChange={(e) => setPlantilla(e.target.value)}>
+            {PLANTILLAS.map((p) => <option key={p.key} value={p.key}>{p.nombre}</option>)}
+          </Select>
+          <div style={{ marginTop: 6, fontSize: type.xs, color: color.slate500 }}>{plantillaSel.desc}</div>
+        </Field>
         <Field label="Área">
           {/* Al cambiar de área se resetea la sub-área elegida. */}
           <Select value={form.area} onChange={(e) => setForm((p) => ({ ...p, area: e.target.value, subarea: "" }))}>
@@ -222,7 +292,7 @@ function NuevoFlujoModal({ institucionId, onClose, onCreated }) {
             </Select>
           </Field>
         )}
-        <div style={{ fontSize: 12, color: color.slate400 }}>
+        <div style={{ fontSize: type.sm, color: color.slate500 }}>
           {form.subarea
             ? "Proceso específico de la sub-área."
             : form.area
