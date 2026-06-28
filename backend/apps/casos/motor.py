@@ -592,7 +592,9 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
                 item.atendido = True
                 item.atendido_at = timezone.now()  # fin de atención (métricas)
                 item.save(update_fields=["atendido", "atendido_at"])
-        matricula = _exigir_medico(caso, autor)
+        # La matrícula se exige solo si la atención se FIRMA (acto firmado).
+        firmada = bool(datos.get("firmada", False))
+        matricula = _exigir_medico(caso, autor, requiere_matricula=firmada)
         _registrar_atencion(caso, nodo, datos, autor=autor, matricula=matricula)
         # Si este caso vino a realizar un estudio, cargar su resultado estructurado.
         if caso.estudio_id:
@@ -639,14 +641,15 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     return _correr_automaticos(caso, autor=autor)
 
 
-def _exigir_medico(caso: Caso, autor) -> str:
+def _exigir_medico(caso: Caso, autor, requiere_matricula: bool = True) -> str:
     """
-    Solo un médico (rol `medico`) con matrícula cargada puede registrar una
-    atención. Si el caso está en un área, el médico debe tener esa área asignada
-    en su membresía. El super admin puede firmar siempre.
+    Solo un médico (rol `medico`) puede registrar una atención. Si el caso está
+    en un área, el médico debe tener esa área asignada en su membresía. El super
+    admin puede firmar siempre. Si `requiere_matricula` (la atención se firma),
+    además exige tener la matrícula cargada en el legajo.
 
     Devuelve la matrícula del profesional (snapshot para asentar en la firma);
-    cadena vacía si firma el super admin.
+    cadena vacía si firma el super admin o no tiene matrícula.
     """
     from apps.accounts.models import Membresia
 
@@ -662,7 +665,7 @@ def _exigir_medico(caso: Caso, autor) -> str:
     if caso.area_actual_id and not medicas.filter(areas=caso.area_actual_id).exists():
         raise ErrorMotor(f"El médico no está asignado al área «{caso.area_actual}».")
     matricula = (getattr(getattr(autor, "legajo", None), "matricula", "") or "").strip()
-    if not matricula:
+    if requiere_matricula and not matricula:
         raise ErrorMotor(
             "Para firmar la atención necesitás tener tu matrícula cargada en el legajo profesional."
         )

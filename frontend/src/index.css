@@ -23,3 +23,55 @@ a {
   background: #d8dbe2;
   border-radius: 6px;
 }
+
+/* Foco visible por teclado en cualquier control interactivo. */
+:focus-visible {
+  outline: 2px solid #3949c0;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+/* No mostrar el anillo cuando el foco proviene del mouse. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Casillas con el acento de marca (reemplaza el azul del sistema). */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #3949c0;
+}
+
+/* Animaciones base reutilizables (referenciables desde estilos inline). */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

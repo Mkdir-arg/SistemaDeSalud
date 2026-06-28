@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { Badge, Button, Field, Input, Select, Spinner } from "../../components/ui";
+import { Badge, Button, Checkbox, Field, Input, Select, Spinner } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { caminoPorDefecto, correrAuto, nodoInicio, siguiente } from "../../lib/simular";
-import { color, estadoVersion, nodeCat } from "../../theme";
+import { badgeTone, color, estadoCaso, estadoVersion, nodeCat, radius, shadow, type } from "../../theme";
 
 const NODO_W = 184;
 const NODO_H = 64;
+const GRID = 20; // paso de la grilla de puntos del lienzo (para snap-to-grid)
 const PALETA = Object.entries(nodeCat).map(([tipo, c]) => ({ tipo, ...c }));
 
 export default function FlujoEditor() {
@@ -24,6 +25,29 @@ export default function FlujoEditor() {
   const [errorCarga, setErrorCarga] = useState(null);
   const [sim, setSim] = useState(null); // modo Probar: {current, valores, camino, fin}
   const [repro, setRepro] = useState(null); // Reproducir: {camino, idx}
+  const [guardado, setGuardado] = useState("idle"); // idle | guardando | guardado | error
+  const [toast, setToast] = useState(null); // { tipo:'ok'|'error', msg, accion?:{label,fn} }
+  const [publicando, setPublicando] = useState(false);
+  const [validando, setValidando] = useState(false);
+  const guardadoTimer = useRef(null);
+  const toastTimer = useRef(null);
+
+  // Indicador de autosave (barra superior) + feedback de error de red.
+  function marcarGuardando() { setGuardado("guardando"); }
+  function marcarGuardado() {
+    setGuardado("guardado");
+    clearTimeout(guardadoTimer.current);
+    guardadoTimer.current = setTimeout(() => setGuardado("idle"), 1800);
+  }
+  function mostrarToast(t, ms = 4000) {
+    clearTimeout(toastTimer.current);
+    setToast(t);
+    toastTimer.current = setTimeout(() => setToast(null), ms);
+  }
+  function marcarError() {
+    setGuardado("error");
+    mostrarToast({ tipo: "error", msg: "No se pudo guardar. Revisá tu conexión e intentá de nuevo." });
+  }
 
   const cargarVersion = useCallback(async (vid) => {
     const v = await api.get(`/versiones-flujo/${vid}/`);
@@ -58,19 +82,28 @@ export default function FlujoEditor() {
     cargarTodo();
   }, [cargarTodo]);
 
-  // --- Drag de nodos -------------------------------------------------------
+  // --- Drag de nodos (Pointer Events: mouse + touch + lápiz) ---------------
   const drag = useRef(null);
   const canvasRef = useRef(null);
+  // Ref con la versión actual: el listener se monta una sola vez y lee de acá,
+  // así no re-suscribimos en cada movimiento ni quedan listeners colgados.
+  const versionRef = useRef(version);
+  versionRef.current = version;
+  const [dragId, setDragId] = useState(null);
 
-  function onNodoMouseDown(e, nodo) {
+  function onNodoPointerDown(e, nodo) {
     e.stopPropagation();
+    if (e.button != null && e.button !== 0) return; // solo botón primario
     const rect = canvasRef.current.getBoundingClientRect();
     drag.current = {
       id: nodo.id,
       dx: e.clientX - rect.left - nodo.x,
       dy: e.clientY - rect.top - nodo.y,
+      moved: false,
     };
     setSel(nodo.id);
+    setDragId(nodo.id);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no soportado */ }
   }
 
   useEffect(() => {
@@ -79,21 +112,31 @@ export default function FlujoEditor() {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = Math.max(0, e.clientX - rect.left - drag.current.dx);
       const y = Math.max(0, e.clientY - rect.top - drag.current.dy);
+      drag.current.moved = true;
       setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === drag.current.id ? { ...n, x, y } : n)) }));
     }
     async function onUp() {
       if (!drag.current) return;
-      const nodo = version?.nodos.find((n) => n.id === drag.current.id);
+      const id = drag.current.id;
+      const moved = drag.current.moved;
       drag.current = null;
-      if (nodo) await api.patch(`/nodos/${nodo.id}/`, { x: Math.round(nodo.x), y: Math.round(nodo.y) });
+      setDragId(null);
+      if (!moved) return;
+      const nodo = versionRef.current?.nodos.find((n) => n.id === id);
+      if (!nodo) return;
+      // Snap a la grilla de 20px que dibuja el lienzo: flujos prolijos sin esfuerzo.
+      const sx = Math.round(nodo.x / GRID) * GRID;
+      const sy = Math.round(nodo.y / GRID) * GRID;
+      setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === id ? { ...n, x: sx, y: sy } : n)) }));
+      try { await api.patch(`/nodos/${id}/`, { x: sx, y: sy }); } catch { marcarError(); }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
     return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
     };
-  }, [version]);
+  }, []);
 
   // --- Acciones ------------------------------------------------------------
   async function agregarNodo(tipo) {

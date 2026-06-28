@@ -1,13 +1,14 @@
 // Componentes base de UI. Estilos calcados del "Sistema de diseño" de Cauce.
-import { avatarColors, badgeTone, color, font, iniciales } from "../theme";
+import { useEffect, useRef } from "react";
+import { avatarColors, badgeTone, color, font, iniciales, radius, shadow, type } from "../theme";
 import { Icon } from "./icons";
 
-export function Button({ variant = "primary", children, style, disabled, ...props }) {
+export function Button({ variant = "primary", size = "md", children, style, disabled, ...props }) {
   const base = {
-    height: 40,
-    padding: "0 18px",
-    borderRadius: 9,
-    fontSize: 13.5,
+    height: size === "sm" ? 32 : 40,
+    padding: size === "sm" ? "0 12px" : "0 18px",
+    borderRadius: radius.md,
+    fontSize: size === "sm" ? type.base : type.md,
     fontWeight: 600,
     fontFamily: font.sans,
     cursor: disabled ? "not-allowed" : "pointer",
@@ -39,8 +40,8 @@ export function Badge({ tone = "neutral", children }) {
         alignItems: "center",
         gap: 6,
         padding: "3px 10px",
-        borderRadius: 999,
-        fontSize: 12,
+        borderRadius: radius.pill,
+        fontSize: type.sm,
         fontWeight: 600,
         background: t.bg,
         color: t.fg,
@@ -59,7 +60,7 @@ export function Card({ children, style, ...props }) {
       style={{
         background: "#fff",
         border: `1px solid ${color.border}`,
-        borderRadius: 14,
+        borderRadius: radius.lg,
         ...style,
       }}
       {...props}
@@ -73,7 +74,7 @@ export function Field({ label, children }) {
   return (
     <label style={{ display: "block" }}>
       {label && (
-        <div style={{ fontSize: 13, fontWeight: 600, color: color.slate600, marginBottom: 6 }}>
+        <div style={{ fontSize: type.base, fontWeight: 600, color: color.slate600, marginBottom: 6 }}>
           {label}
         </div>
       )}
@@ -82,16 +83,16 @@ export function Field({ label, children }) {
   );
 }
 
-export function Input({ style, ...props }) {
+export function Input({ style, size = "md", ...props }) {
   return (
     <input
       style={{
-        height: 40,
+        height: size === "sm" ? 32 : 40,
         width: "100%",
         border: `1px solid ${color.inputBorder}`,
-        borderRadius: 9,
+        borderRadius: radius.md,
         padding: "0 12px",
-        fontSize: 13.5,
+        fontSize: size === "sm" ? type.base : type.md,
         fontFamily: font.sans,
         outline: "none",
         boxSizing: "border-box",
@@ -111,9 +112,9 @@ export function Textarea({ style, ...props }) {
         width: "100%",
         minHeight: 84,
         border: `1px solid ${color.inputBorder}`,
-        borderRadius: 9,
+        borderRadius: radius.md,
         padding: "10px 12px",
-        fontSize: 13.5,
+        fontSize: type.md,
         fontFamily: font.sans,
         outline: "none",
         boxSizing: "border-box",
@@ -125,16 +126,16 @@ export function Textarea({ style, ...props }) {
   );
 }
 
-export function Select({ style, children, ...props }) {
+export function Select({ style, size = "md", children, ...props }) {
   return (
     <select
       style={{
-        height: 40,
+        height: size === "sm" ? 32 : 40,
         width: "100%",
         border: `1px solid ${color.inputBorder}`,
-        borderRadius: 9,
+        borderRadius: radius.md,
         padding: "0 10px",
-        fontSize: 13.5,
+        fontSize: size === "sm" ? type.base : type.md,
         fontFamily: font.sans,
         outline: "none",
         background: "#fff",
@@ -145,6 +146,23 @@ export function Select({ style, children, ...props }) {
     >
       {children}
     </select>
+  );
+}
+
+// Checkbox con el acento de marca y un label opcional. Reemplaza el control
+// nativo azul-sistema que desentonaba en los paneles.
+export function Checkbox({ checked, onChange, label, style, ...props }) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", fontSize: type.md, ...style }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        style={{ width: 16, height: 16, accentColor: color.accent, cursor: "pointer", flex: "none" }}
+        {...props}
+      />
+      {label}
+    </label>
   );
 }
 
@@ -242,7 +260,11 @@ export function Stepper({ steps, current }) {
 
 export function Spinner({ label = "Cargando…" }) {
   return (
-    <div style={{ padding: 40, textAlign: "center", color: color.slate400, fontSize: 13.5 }}>
+    <div style={{ padding: 40, textAlign: "center", color: color.slate500, fontSize: type.md, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ animation: "spin 0.7s linear infinite" }} aria-hidden="true">
+        <circle cx="12" cy="12" r="9" stroke={color.divider} strokeWidth="3" />
+        <path d="M21 12a9 9 0 0 0-9-9" stroke={color.accent} strokeWidth="3" strokeLinecap="round" />
+      </svg>
       {label}
     </div>
   );
@@ -251,13 +273,21 @@ export function Spinner({ label = "Cargando…" }) {
 export function EmptyState({ title, hint }) {
   return (
     <div style={{ padding: "48px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: color.slate600 }}>{title}</div>
-      {hint && <div style={{ fontSize: 13, color: color.slate400, marginTop: 6 }}>{hint}</div>}
+      <div style={{ fontSize: type.lg, fontWeight: 700, color: color.slate600 }}>{title}</div>
+      {hint && <div style={{ fontSize: type.base, color: color.slate500, marginTop: 6 }}>{hint}</div>}
     </div>
   );
 }
 
 export function Modal({ title, onClose, children, footer, width = 460 }) {
+  const ref = useRef(null);
+  // Cerrar con Escape y trasladar el foco al diálogo al abrir.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    ref.current?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div
       onMouseDown={onClose}
@@ -270,15 +300,21 @@ export function Modal({ title, onClose, children, footer, width = 460 }) {
         justifyContent: "center",
         zIndex: 50,
         padding: 24,
+        animation: "fadeIn .12s ease",
       }}
     >
       <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === "string" ? title : undefined}
+        tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
-        style={{ background: "#fff", borderRadius: 16, width, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 18px 50px rgba(16,24,40,.28)" }}
+        style={{ background: "#fff", borderRadius: radius.lg, width, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: shadow.modal, outline: "none", animation: "fadeUp .16s ease" }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${color.divider}` }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
-          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex" }}>
+          <div style={{ fontSize: type.lg, fontWeight: 700 }}>{title}</div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}>
             <Icon name="x" size={18} />
           </button>
         </div>
@@ -297,11 +333,11 @@ export function Modal({ title, onClose, children, footer, width = 460 }) {
 export function Table({ columns, rows, onRowClick, vacio = "Sin registros" }) {
   if (!rows.length) return <EmptyState title={vacio} />;
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: type.md }}>
       <thead>
         <tr style={{ background: color.subtle, color: color.slate500, textAlign: "left" }}>
           {columns.map((c) => (
-            <th key={c.key} style={{ padding: "12px 16px", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>
+            <th key={c.key} style={{ padding: "12px 16px", fontWeight: 600, fontSize: type.sm, whiteSpace: "nowrap" }}>
               {c.label}
             </th>
           ))}
