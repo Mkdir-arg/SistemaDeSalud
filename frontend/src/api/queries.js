@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
 
@@ -60,5 +60,27 @@ export function useDetalle(recurso, id, opciones = {}) {
     queryFn: () => api.get(`/${recurso}/${id}/`),
     enabled: id != null,
     ...opciones,
+  });
+}
+
+/**
+ * Una acción que cambia datos del servidor.
+ *
+ * Al terminar invalida las listas: después de llamar a un paciente, la fila, la
+ * bandeja y el tablero quedaron viejos. Antes esto se hacía recargando a mano en
+ * cada pantalla y era la fuente habitual de «la pantalla no se actualizó».
+ *
+ *     const llamar = useAccion((caso) => api.post(`/casos/${caso}/llamar/`, {…}))
+ *     llamar.mutate(id, { onSuccess: … })
+ */
+export function useAccion(fn, { invalida = ["lista"], ...opciones } = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    ...opciones,
+    onSuccess: (...args) => {
+      for (const clave of invalida) qc.invalidateQueries({ queryKey: [clave] });
+      return opciones.onSuccess?.(...args);
+    },
   });
 }

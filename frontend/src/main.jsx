@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { InstitutionProvider } from "./auth/InstitutionContext";
+import { ToastProvider } from "./components/ui/toast";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -30,7 +31,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <BrowserRouter>
         <AuthProvider>
           <InstitutionProvider>
-            <App />
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </InstitutionProvider>
         </AuthProvider>
       </BrowserRouter>

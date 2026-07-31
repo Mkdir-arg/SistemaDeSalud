@@ -41,6 +41,16 @@
     text-decoration: none;
   }
 
+  /* Sin preflight, las listas conservan la viñeta y la sangría del navegador.
+     Las colas y los menús se marcan con <ul>/<li> porque es el HTML correcto,
+     no para que aparezca un punto. Verificado que no hay ninguna lista en la app
+     que dependa de la viñeta. */
+  ul,
+  ol {
+    list-style: none;
+    padding-left: 0;
+  }
+
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
