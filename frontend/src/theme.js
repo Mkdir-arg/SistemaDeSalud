@@ -111,7 +111,7 @@ export const badgeToneOscuro = {
   info: { bg: "#1D2745", fg: "#9FB2F2" },
   amber: { bg: "#382C18", fg: "#E3B573" },
   green: { bg: "#14301E", fg: "#6ED79A" },
-  gray: { bg: "#222732", fg: "#828B9C" },
+  gray: { bg: "#222732", fg: "#8B94A5" }, // #828B9C daba 4,36:1
   error: { bg: "#3A1D1B", fg: "#F0958C" },
 };
 
@@ -150,12 +150,18 @@ export const shadow = {
 };
 
 // Tono → estilos de badge de estado (bg / fg). Mapea los estados semánticos.
+// Tono → estilos de badge de estado (bg / fg). Mapea los estados semánticos.
+//
+// Dos textos se oscurecieron respecto del diseño original porque no llegaban al
+// contraste AA sobre su propio fondo, medido: el ámbar daba 3,91:1 y el gris
+// 2,57:1, con 4,5:1 requerido para texto chico. Son los estados «En espera» y
+// «Cerrado», que aparecen en casi toda tabla del sistema.
 export const badgeTone = {
-  neutral: { bg: "#EEF0F3", fg: "#475467" }, // Recibido / Borrador
+  neutral: { bg: "#EEF0F3", fg: "#475467" }, // Recibido / Borrador — 6,7:1
   info: { bg: "#E8EEFB", fg: "#2D3A9E" }, // En evaluación
-  amber: { bg: "#FBF0DD", fg: "#A96A12" }, // Derivado / En espera
-  green: { bg: "#E6F5EC", fg: "#1B7A4E" }, // Publicado / Atendido
-  gray: { bg: "#F0F1F3", fg: "#9098A6" }, // Cerrado / Archivado
+  amber: { bg: "#FBF0DD", fg: "#90590D" }, // Derivado / En espera — era #A96A12 (3,91:1)
+  green: { bg: "#E6F5EC", fg: "#1B7A4E" }, // Publicado / Atendido — 4,7:1
+  gray: { bg: "#F0F1F3", fg: "#5F6879" }, // Cerrado / Archivado — era #9098A6 (2,57:1)
   error: { bg: "#FCEBEB", fg: "#B42318" }, // Error
 };
 

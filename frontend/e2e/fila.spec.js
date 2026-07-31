@@ -1,0 +1,50 @@
+import { expect, test } from "@playwright/test";
+
+import { desbordaHorizontal, entrar } from "./apoyo";
+
+/**
+ * Fila de espera: la pantalla piloto de la migración y el recorrido operativo
+ * más importante de la guardia. Si esto se rompe, el médico no puede llamar
+ * pacientes.
+ */
+test.describe("Fila de espera", () => {
+  test.beforeEach(async ({ page }) => {
+    await entrar(page, "medico");
+    await page.goto("/filas");
+    await expect(page.getByRole("heading", { name: "Fila de espera" })).toBeVisible();
+  });
+
+  test("muestra la cola con los urgentes primero", async ({ page }) => {
+    const filas = page.locator("ul li button");
+    await expect(filas.first()).toBeVisible();
+    expect(await filas.count()).toBeGreaterThan(0);
+
+    // Si hay algún urgente en la cola, tiene que estar al frente: es toda la
+    // promesa del triage.
+    const urgentes = page.locator("ul li button", { has: page.getByText("urgente") });
+    if (await urgentes.count()) {
+      await expect(filas.first().getByText("urgente")).toBeVisible();
+    }
+  });
+
+  test("llamar al siguiente lo saca de la cola y abre su caso", async ({ page }) => {
+    const filas = page.locator("ul li button");
+    const antes = await filas.count();
+
+    await page.getByRole("button", { name: /Llamar siguiente/ }).first().click();
+    await expect(page).toHaveURL(/\/casos\/\d+/);
+
+    await page.goto("/filas");
+    await expect(page.getByRole("heading", { name: "Fila de espera" })).toBeVisible();
+    await expect.poll(() => page.locator("ul li button").count()).toBe(antes - 1);
+  });
+
+  test("se puede operar en tablet y en móvil", async ({ page }) => {
+    for (const width of [1024, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.waitForTimeout(400);
+      expect(await desbordaHorizontal(page), `desborda a ${width}px`).toBe(false);
+      await expect(page.getByRole("button", { name: /Llamar/ }).first()).toBeVisible();
+    }
+  });
+});

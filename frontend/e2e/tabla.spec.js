@@ -1,0 +1,107 @@
+import { expect, test } from "@playwright/test";
+
+import { desbordaHorizontal, entrar } from "./apoyo";
+
+/**
+ * La tabla de Casos. Cubre el fallo que motivó construirla: las 17 pantallas
+ * leían `results` y mostraban los primeros 25 de la API descartando el resto en
+ * silencio (25 de 531, sin forma de llegar al resto).
+ */
+test.describe("Tabla de casos", () => {
+  test.beforeEach(async ({ page }) => {
+    await entrar(page, "admin");
+    await page.goto("/casos");
+    await expect(page.locator("tbody tr").first()).toBeVisible();
+  });
+
+  const idsVisibles = (page) =>
+    page.$$eval("tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
+
+  test("informa el total real y no solo lo que entra en una página", async ({ page }) => {
+    const pie = page.locator("text=/Mostrando .* de /").first();
+    await expect(pie).toContainText("531");
+    expect(await idsVisibles(page)).toHaveLength(25);
+  });
+
+  test("se puede llegar a la segunda página y el estado queda en la URL", async ({ page }) => {
+    const primera = await idsVisibles(page);
+    await page.getByLabel("Página siguiente").click();
+    await expect(page).toHaveURL(/casos_pag=2/);
+    await expect.poll(async () => (await idsVisibles(page))[0]).not.toBe(primera[0]);
+  });
+
+  test("la página sobrevive a una recarga", async ({ page }) => {
+    await page.getByLabel("Página siguiente").click();
+    await expect(page).toHaveURL(/casos_pag=2/);
+    // Se compara el RANGO del pie y no los ids: es la aserción directa de «sigo
+    // en la página 2», y no se rompe si el orden tiene empates.
+    await expect(page.locator("text=/Mostrando /").first()).toContainText("26–50");
+
+    await page.reload();
+    await expect(page.locator("text=/Mostrando /").first()).toContainText("26–50");
+  });
+
+  test("ordenar por una columna cambia el resultado y vuelve a la página 1", async ({ page }) => {
+    const num = (s) => Number(s.replace("#", ""));
+    const ids = async () => (await idsVisibles(page)).map(num);
+    // Se espera a que la COLUMNA quede efectivamente ordenada, en vez de leer los
+    // ids apenas se hace clic: la consulta tarda y hasta que llega se siguen
+    // viendo los de la consulta anterior (`keepPreviousData`, a propósito).
+    const ordenada = (dir) => async () => {
+      const v = await ids();
+      return v.length > 1 && v.every((x, i) => i === 0 || (dir > 0 ? v[i - 1] <= x : v[i - 1] >= x));
+    };
+
+    await page.getByLabel("Página siguiente").click();
+    await expect(page).toHaveURL(/casos_pag=2/);
+
+    await page.getByRole("button", { name: /Ordenar por Caso/ }).click();
+    await expect(page).toHaveURL(/casos_ord=id/);
+    await expect(page).not.toHaveURL(/casos_pag=/); // reordenar vuelve a la página 1
+    await expect.poll(ordenada(1)).toBe(true);
+    const asc = await ids();
+
+    await page.getByRole("button", { name: /Ordenar por Caso/ }).click();
+    await expect(page).toHaveURL(/casos_ord=-id/);
+    await expect.poll(ordenada(-1)).toBe(true);
+    const desc = await ids();
+
+    expect(desc[0]).toBeGreaterThan(asc[0]);
+  });
+
+  test("filtrar por estado reduce el total", async ({ page }) => {
+    // El total se lee con `poll` porque la consulta filtrada tarda: leerlo una
+    // sola vez justo después de elegir devuelve el total viejo y el test pasa o
+    // falla según la latencia.
+    const total = async () => {
+      const t = await page.locator("text=/Mostrando /").first().textContent().catch(() => "");
+      return Number((t.match(/de\s*(\d+)/) || [])[1] || 0);
+    };
+    expect(await total()).toBe(531);
+
+    await page.getByLabel("Filtrar por estado").selectOption({ label: "En espera" });
+    await expect.poll(total).toBeLessThan(531);
+    expect(await total()).toBeGreaterThan(0);
+  });
+
+  test("buscar filtra y queda en la URL", async ({ page }) => {
+    await page.locator('input[type="search"]').fill("Quiroga");
+    await expect(page).toHaveURL(/q=Quiroga/);
+    await expect(page.locator("text=/Mostrando .* de /").first()).toBeVisible();
+  });
+
+  test("la densidad compacta muestra más filas en pantalla", async ({ page }) => {
+    const alto = () => page.$eval("tbody tr", (r) => r.getBoundingClientRect().height);
+    const comoda = await alto();
+    await page.getByRole("button", { name: /Compacta/ }).click();
+    await expect.poll(alto).toBeLessThan(comoda);
+  });
+
+  test("no desborda en horizontal en ningún ancho", async ({ page }) => {
+    for (const width of [1440, 1024, 768, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.waitForTimeout(400);
+      expect(await desbordaHorizontal(page), `desborda a ${width}px`).toBe(false);
+    }
+  });
+});

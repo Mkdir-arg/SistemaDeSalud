@@ -118,8 +118,8 @@ Nada de dominio nuevo. Es la inversión que hace baratas todas las fases siguien
 | 0.1 | ✅ **HECHO** — **Generador de datos con volumen** (`seed_volumen`): ~40 pacientes y ~530 casos recorridos **con el motor real** y refechados sobre 90 días; reset completo en un comando (`--rehacer`, 40 s), reproducible por semilla. Iba primero **por una razón de diseño, no de demo**, y se confirmó al instante: apenas hubo volumen apareció el fallo de paginación de las 17 pantallas, invisible con los 3 casos del seed anterior | 0,5 |
 | 0.2 | ✅ **HECHO** — **Tailwind 4 + tokens.** `tokens.css` se **genera** desde `theme.js` (`npm run tokens`): una sola fuente, imposible que diverjan mientras conviven las dos capas. 96 tokens en `@theme static`, con las escalas de Tailwind **reemplazadas** (`bg-red-500` no existe: la regla «no inventar colores» pasa a estar en la herramienta). Dark mode por clase y white-label por override de `--color-accent` en runtime. Verificado sin regresión visual | 1 |
 | 0.3 | **Librería de componentes** — base shadcn (Tabs, Dialog, Drawer, Toast, Tooltip, Dropdown, Combobox, DatePicker, **tabla paginada**, Skeleton, ConfirmDialog) + los de dominio (EstadoBadge, PrioridadTag, NodoChip, StepperCaso, TablaDensa, FiltroBarra). **La tabla paginada es prioridad**: arregla de una vez el fallo de las 17 pantallas | 1,5 |
-| 0.4 | **Shell de app grande** — sidebar colapsable, breadcrumbs, command palette, búsqueda global real, responsive | 0,5 |
-| 0.5 | **TanStack Query + arranque de tests** — capa de datos y los primeros Playwright sobre los recorridos críticos, para migrar con red | 0,5 |
+| 0.4 | ✅ **HECHO** — **Shell responsive**: cajón en móvil (hamburguesa, Escape, cierre al navegar), colapso en escritorio, TopBar que no desborda. Cierra el desborde horizontal en 390px. *Breadcrumbs y command palette quedan para la Fase 1* | 0,5 |
+| 0.5 | ✅ **HECHO** — **TanStack Query + suite e2e en el repo**: 23 tests Playwright sobre los recorridos críticos, con el contraste AA **medido** en ambos temas. `npm run e2e` | 0,5 |
 
 ### Dos convenciones que fija la Fase 0.2
 
@@ -140,6 +140,25 @@ Nada de dominio nuevo. Es la inversión que hace baratas todas las fases siguien
 **Terminado cuando:** existe una pantalla piloto (Fila de espera) migrada completa —
 Tailwind, componentes nuevos, query, responsive, dark, estados y test — que sirve de
 patrón a copiar para las otras 29.
+
+> ## ✅ Fase 0 cerrada (2026-08-01)
+>
+> El criterio se cumple: **Fila de espera** está migrada entera y verificada, y
+> **Casos** la acompaña con la tabla paginada. Las reglas de la fundación y el
+> procedimiento para migrar cada pantalla están en
+> [`FUNDACION-FRONTEND.md`](FUNDACION-FRONTEND.md).
+>
+> | | |
+> |---|---|
+> | Tests | 68 backend · 23 e2e |
+> | Contraste AA | 0 fallos en claro y en oscuro (eran 16 y 29) |
+> | Responsive | 1440 / 1024 / 390 sin desborde |
+> | Datos de demo | ~530 casos, reset en un comando |
+>
+> **Queda fuera de la Fase 0, a propósito:** breadcrumbs y command palette (0.4),
+> y los componentes Radix de shadcn —Tabs, Dialog, Drawer, Tooltip, Combobox,
+> DatePicker, ConfirmDialog— que se agregan cuando la primera pantalla los
+> necesite, en vez de construirlos por adelantado.
 
 ## Fase 1 — Migración de las pantallas existentes (5 semanas)
 

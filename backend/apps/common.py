@@ -136,6 +136,25 @@ class CapacidadPermission(BasePermission):
         return cap in capacidades_de(user, inst_id)
 
 
+class OrdenEstable(OrderingFilter):
+    """`OrderingFilter` que agrega el id como último criterio de desempate.
+
+    Un orden con empates hace que la paginación sea inestable: si dos casos
+    comparten `creado`, la base puede devolverlos en distinto orden entre una
+    consulta y la siguiente, y entonces un registro aparece en dos páginas o no
+    aparece en ninguna. Agregar una columna única al final lo vuelve determinista
+    sin cambiar el orden que pidió el usuario.
+    """
+
+    def get_ordering(self, request, queryset, view):
+        orden = super().get_ordering(request, queryset, view)
+        if not orden:
+            return orden
+        if any(c.lstrip("-") in ("pk", "id") for c in orden):
+            return orden
+        return list(orden) + ["-pk"]
+
+
 class QueryParamFilterMixin:
     """
     Permite filtrar un ViewSet por campos exactos vía query params.
@@ -228,7 +247,7 @@ class BaseModelViewSet(QueryParamFilterMixin, InstitucionScopedMixin, viewsets.M
     """
 
     permission_classes = [IsAuthenticated, CapacidadPermission]
-    filter_backends = [OrderingFilter, SearchFilter]
+    filter_backends = [OrdenEstable, SearchFilter]
     # Capacidad requerida para escribir; None = sin restricción de rol.
     capacidad_requerida = None
     # Si True, la LECTURA también exige `capacidad_requerida` (datos sensibles).

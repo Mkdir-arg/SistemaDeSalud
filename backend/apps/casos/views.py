@@ -30,6 +30,9 @@ class CasoViewSet(BaseModelViewSet):
     capacidad_requerida = "trabajo"
     institucion_path = "institucion"
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a", "ciudadano")
+    # Orden por defecto con desempate: `-creado` solo tiene empates y la
+    # paginación se vuelve inestable (ver `OrdenEstable` en apps/common.py).
+    ordering = ("-creado", "-id")
     # Columnas ordenables de la tabla de casos (`?ordering=-creado`).
     ordering_fields = (
         "id", "creado", "actualizado", "estado", "prioridad",

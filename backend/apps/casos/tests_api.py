@@ -124,6 +124,25 @@ class ListadoTest(APITestCase):
         r = self.client.get("/api/casos/?search=12345678")
         self.assertEqual(r.data["count"], 1)
 
+    def test_el_orden_lleva_desempate(self):
+        """Con empates en la clave, la paginación tiene que seguir siendo estable.
+
+        Los 30 casos del setUp se crean en el mismo instante, así que `-creado`
+        empata en todos: sin una columna única al final, la base puede devolver
+        un registro en dos páginas distintas o en ninguna.
+        """
+        vistos = []
+        for pagina in (1, 2):
+            r = self.client.get(f"/api/casos/?ordering=-creado&page={pagina}")
+            vistos += [c["id"] for c in r.data["results"]]
+
+        self.assertEqual(len(vistos), 30)
+        self.assertEqual(len(set(vistos)), 30, "hay casos repetidos entre páginas")
+
+    def test_el_desempate_no_pisa_el_orden_pedido(self):
+        asc = [c["id"] for c in self.client.get("/api/casos/?ordering=id").data["results"]]
+        self.assertEqual(asc, sorted(asc))
+
     def test_busqueda_se_combina_con_el_filtro_exacto(self):
         r = self.client.get("/api/casos/?search=Quiroga&prioridad=normal")
         self.assertEqual(r.data["count"], 0, "el caso de Quiroga es urgente")
