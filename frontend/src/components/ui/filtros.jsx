@@ -45,13 +45,13 @@ export function useBusquedaUrl(nombre = "q", ms = 350) {
 export function Buscador({ valor, onChange, placeholder = "Buscar…", className }) {
   return (
     <div className={cn("relative", className)}>
-      <Icon name="search" size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <Icon name="search" size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-texto-tenue" />
       <input
         type="search"
         value={valor}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-8 w-full rounded-md border border-input-border bg-white pl-8 pr-2 text-base outline-none placeholder:text-slate-400 focus:border-accent"
+        className="h-8 w-full rounded-md border border-campo-borde bg-superficie pl-8 pr-2 text-base outline-none placeholder:text-texto-tenue focus:border-accent"
       />
     </div>
   );
@@ -69,7 +69,7 @@ export function FiltroSelect({ valor, onChange, opciones, todos = "Todos", etiqu
       onChange={(e) => onChange(e.target.value)}
       aria-label={etiqueta || todos}
       className={cn(
-        "h-8 rounded-md border border-input-border bg-white px-2 text-base text-slate-700 outline-none focus:border-accent",
+        "h-8 rounded-md border border-campo-borde bg-superficie px-2 text-base text-texto-medio outline-none focus:border-accent",
         valor && "border-accent-100 bg-accent-50 text-accent",
         className,
       )}
@@ -89,7 +89,7 @@ export function LimpiarFiltros({ activos, onLimpiar }) {
     <button
       type="button"
       onClick={onLimpiar}
-      className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-subtle hover:text-slate-700"
+      className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold text-texto-debil hover:bg-superficie-2 hover:text-texto-medio"
     >
       <Icon name="x" size={13} /> Limpiar {activos > 1 ? `(${activos})` : ""}
     </button>

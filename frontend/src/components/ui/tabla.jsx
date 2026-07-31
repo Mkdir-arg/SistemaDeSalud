@@ -71,7 +71,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
   const activo = orden === col.orden || orden === `-${col.orden}`;
   const desc = orden === `-${col.orden}`;
   const clases = cn(
-    "whitespace-nowrap px-lg text-left text-sm font-semibold text-slate-500",
+    "whitespace-nowrap px-lg text-left text-sm font-semibold text-texto-debil",
     compacta ? "py-2" : "py-3",
     col.className,
   );
@@ -95,7 +95,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
         className={cn(
           "group flex w-full items-center gap-1.5 px-lg text-left text-sm font-semibold",
           compacta ? "py-2" : "py-3",
-          activo ? "text-accent" : "text-slate-500 hover:text-slate-700",
+          activo ? "text-accent" : "text-texto-debil hover:text-texto-medio",
         )}
         // Sin esto, el nombre accesible del botón es solo «Caso»: no se anuncia
         // que ordena ni en qué sentido. Incluye el texto visible, como pide el
@@ -117,20 +117,20 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
 /** Pie con el rango visible y la navegación. */
 function Paginador({ pagina, paginas, total, tamano, desde, hasta, irA, cambiarTamano }) {
   const btn =
-    "flex size-8 items-center justify-center rounded-md border border-border text-slate-600 " +
-    "enabled:hover:bg-subtle disabled:opacity-40 disabled:cursor-not-allowed";
+    "flex size-8 items-center justify-center rounded-md border border-borde text-texto-suave " +
+    "enabled:hover:bg-superficie-2 disabled:opacity-40 disabled:cursor-not-allowed";
   return (
-    <div className="flex flex-wrap items-center justify-between gap-md border-t border-divider px-lg py-2.5">
-      <div className="text-base text-slate-500">
-        {total === 0 ? "Sin resultados" : <>Mostrando <b className="font-semibold text-slate-700">{desde}–{hasta}</b> de <b className="font-semibold text-slate-700">{total}</b></>}
+    <div className="flex flex-wrap items-center justify-between gap-md border-t border-division px-lg py-2.5">
+      <div className="text-base text-texto-debil">
+        {total === 0 ? "Sin resultados" : <>Mostrando <b className="font-semibold text-texto-medio">{desde}–{hasta}</b> de <b className="font-semibold text-texto-medio">{total}</b></>}
       </div>
       <div className="flex items-center gap-md">
-        <label className="flex items-center gap-1.5 text-sm text-slate-500">
+        <label className="flex items-center gap-1.5 text-sm text-texto-debil">
           Filas
           <select
             value={tamano}
             onChange={(e) => cambiarTamano(Number(e.target.value))}
-            className="h-8 rounded-md border border-input-border bg-white px-1.5 text-base outline-none"
+            className="h-8 rounded-md border border-campo-borde bg-superficie px-1.5 text-base outline-none"
           >
             {TAMANOS.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -138,7 +138,7 @@ function Paginador({ pagina, paginas, total, tamano, desde, hasta, irA, cambiarT
         <div className="flex items-center gap-1">
           <button className={btn} onClick={() => irA(1)} disabled={pagina <= 1} aria-label="Primera página"><Icon name="chevronsLeft" size={15} /></button>
           <button className={btn} onClick={() => irA(pagina - 1)} disabled={pagina <= 1} aria-label="Página anterior"><Icon name="chevronLeft" size={15} /></button>
-          <span className="px-2 text-base tabular-nums text-slate-600">{pagina} / {paginas}</span>
+          <span className="px-2 text-base tabular-nums text-texto-suave">{pagina} / {paginas}</span>
           <button className={btn} onClick={() => irA(pagina + 1)} disabled={pagina >= paginas} aria-label="Página siguiente"><Icon name="chevronRight" size={15} /></button>
           <button className={btn} onClick={() => irA(paginas)} disabled={pagina >= paginas} aria-label="Última página"><Icon name="chevronsRight" size={15} /></button>
         </div>
@@ -172,14 +172,14 @@ export function DataTable({
   const hasta = Math.min(pagina * tamano, total);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-white">
+    <div className="overflow-hidden rounded-lg border border-borde bg-superficie">
       {/* La barra existe siempre: aunque no haya filtros, aloja la densidad. */}
-      <div className="flex flex-wrap items-center justify-between gap-md border-b border-divider px-lg py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-md border-b border-division px-lg py-2.5">
         <div className="flex flex-wrap items-center gap-md">{barra}</div>
         <button
           type="button"
           onClick={() => setDensidad(compacta ? "comoda" : "compacta")}
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-subtle hover:text-slate-700"
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-texto-debil hover:bg-superficie-2 hover:text-texto-medio"
           title={compacta ? "Ver más espaciado" : "Ver más filas en pantalla"}
         >
           <Icon name="rows" size={15} />
@@ -206,7 +206,7 @@ export function DataTable({
                 refrescando && "opacity-60 transition-opacity",
               )}
             >
-              <thead className="sticky top-0 z-10 bg-subtle">
+              <thead className="sticky top-0 z-10 bg-superficie-2">
                 <tr>
                   {columnas.map((c) => (
                     <Encabezado key={c.key} col={c} orden={orden} ordenarPor={ordenarPor} compacta={compacta} />
@@ -225,8 +225,8 @@ export function DataTable({
                         : undefined
                     }
                     className={cn(
-                      "border-t border-divider",
-                      onRowClick && "cursor-pointer hover:bg-subtle focus-visible:bg-subtle",
+                      "border-t border-division",
+                      onRowClick && "cursor-pointer hover:bg-superficie-2 focus-visible:bg-superficie-2",
                     )}
                   >
                     {columnas.map((c) => {

@@ -31,8 +31,11 @@
 
   body {
     font-family: var(--font-sans);
-    color: var(--color-ink);
-    background: var(--color-canvas);
+    /* Tokens SEMÁNTICOS, no literales: `--color-ink` y `--color-canvas` no
+       cambian con el tema, así que usarlos acá dejaba el fondo de la página en
+       claro con las tarjetas ya en oscuro. */
+    color: var(--color-texto);
+    background: var(--color-fondo);
     -webkit-font-smoothing: antialiased;
   }
 
@@ -41,14 +44,30 @@
     text-decoration: none;
   }
 
-  /* Sin preflight, las listas conservan la viñeta y la sangría del navegador.
-     Las colas y los menús se marcan con <ul>/<li> porque es el HTML correcto,
-     no para que aparezca un punto. Verificado que no hay ninguna lista en la app
-     que dependa de la viñeta. */
+  /* Mini-preflight.
+     No importamos el preflight completo de Tailwind mientras queden estilos
+     inline (ver arriba), pero hay dos defaults del navegador que ya rompieron
+     cosas y conviene neutralizar acá, con el motivo escrito:
+
+     1. Listas: conservaban viñeta y sangría. Las colas y los menús se marcan con
+        <ul>/<li> porque es el HTML correcto, no para que aparezca un punto.
+     2. Botones: conservaban el fondo nativo `buttonface`. Se notó recién en tema
+        oscuro —con `color-scheme: dark` ese gris pasa a rgb(107,107,107) y las
+        filas de la cola quedaban con cajas grises y el texto en 2:1— pero el
+        defecto también estaba en claro, apenas menos visible.
+
+     Verificado que ninguna lista dependía de la viñeta y que ningún botón
+     dependía del fondo nativo. */
   ul,
   ol {
     list-style: none;
     padding-left: 0;
+  }
+
+  button {
+    background-color: transparent;
+    color: inherit;
+    cursor: pointer;
   }
 
   ::-webkit-scrollbar {
@@ -56,7 +75,8 @@
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    background: #d8dbe2;
+    background: var(--color-texto-tenue);
+    opacity: 0.5;
     border-radius: 6px;
   }
 

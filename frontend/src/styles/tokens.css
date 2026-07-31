@@ -28,7 +28,7 @@
   --color-transparent: transparent;
   --color-current: currentColor;
 
-  /* Marca y neutros */
+  /* Marca y neutros (literales) */
   --color-accent: #3949C0;
   --color-accent-hover: #2D3A9E;
   --color-accent-50: #ECEEFB;
@@ -46,6 +46,24 @@
   --color-white: #FFFFFF;
   --color-input-border: #E2E5EA;
   --color-danger: #B42318;
+
+  /* Semánticos (los usa el código migrado; el tema oscuro solo redefine estos) */
+  --color-fondo: #F4F5F7;
+  --color-superficie: #FFFFFF;
+  --color-superficie-2: #FAFBFC;
+  --color-borde: #E7E9EE;
+  --color-division: #EEF0F3;
+  --color-campo-borde: #E2E5EA;
+  --color-accent-fuerte: #3949C0;
+  --color-sobre-accent: #FFFFFF;
+  --color-danger-fuerte: #B42318;
+  --color-sobre-danger: #FFFFFF;
+  --color-texto: #14161C;
+  --color-texto-fuerte: #1F2430;
+  --color-texto-medio: #344054;
+  --color-texto-suave: #475467;
+  --color-texto-debil: #667085;
+  --color-texto-tenue: #6B7385;
 
   /* Badges por tono semántico */
   --color-badge-neutral-bg: #EEF0F3;
@@ -134,4 +152,65 @@
   --shadow-float: 0 8px 20px rgba(16,24,40,.14);
   --shadow-dropdown: 0 12px 32px rgba(16,24,40,.16);
   --shadow-modal: 0 18px 50px rgba(16,24,40,.28);
+}
+
+/*
+ * Tema oscuro. Se activa con la clase «dark» en el elemento html.
+ *
+ * Redefine SOLO la capa semántica, la marca y los badges: las utilidades leen
+ * var(--color-…), así que cambiar la variable alcanza y no hace falta una
+ * segunda clase por componente. Las escalas literales (slate-600, canvas…) no se
+ * tocan: las siguen usando los estilos inline sin migrar, que no tienen modo
+ * oscuro — adoptarlo es parte de migrar cada pantalla.
+ *
+ * Las categorías de nodo del diseñador tampoco se redefinen todavía: ese lienzo
+ * se rehace entero en la Fase 2 y elegir ahora 30 colores que van a cambiar es
+ * trabajo tirado.
+ */
+.dark {
+  --color-fondo: #0E1219;
+  --color-superficie: #171C26;
+  --color-superficie-2: #1E242F;
+  --color-borde: #2A313F;
+  --color-division: #232A36;
+  --color-campo-borde: #333B4B;
+  --color-texto: #E7EAF1;
+  --color-texto-fuerte: #F2F4F8;
+  --color-texto-medio: #C6CDDA;
+  --color-texto-suave: #B4BCCB;
+  --color-texto-debil: #98A1B2;
+  --color-texto-tenue: #949DAE;
+  --color-accent: #8B97F0;
+  --color-accent-hover: #A2ACF5;
+  --color-accent-50: #1D2440;
+  --color-accent-100: #2B3560;
+  --color-accent-fuerte: #4A57C8;
+  --color-sobre-accent: #FFFFFF;
+  --color-danger: #F0958C;
+  --color-danger-fuerte: #B4453C;
+  --color-sobre-danger: #FFFFFF;
+  --color-badge-neutral-bg: #252B37;
+  --color-badge-neutral-fg: #B4BCCB;
+  --color-badge-info-bg: #1D2745;
+  --color-badge-info-fg: #9FB2F2;
+  --color-badge-amber-bg: #382C18;
+  --color-badge-amber-fg: #E3B573;
+  --color-badge-green-bg: #14301E;
+  --color-badge-green-fg: #6ED79A;
+  --color-badge-gray-bg: #222732;
+  --color-badge-gray-fg: #828B9C;
+  --color-badge-error-bg: #3A1D1B;
+  --color-badge-error-fg: #F0958C;
+
+  /* Sombras: en oscuro una sombra negra no se ve. La elevación se percibe por
+     el borde y por superficies más claras, así que se atenúan mucho. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-float: 0 8px 20px rgba(0, 0, 0, .5);
+  --shadow-dropdown: 0 12px 32px rgba(0, 0, 0, .55);
+  --shadow-modal: 0 18px 50px rgba(0, 0, 0, .65);
+}
+
+/* Interfaz nativa (scrollbars, controles de formulario) acorde al tema. */
+.dark {
+  color-scheme: dark;
 }

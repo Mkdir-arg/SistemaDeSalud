@@ -9,7 +9,7 @@ import { Icon } from "@/components/icons";
  * llegan los datos y se percibe más rápida.
  */
 export function Skeleton({ className }) {
-  return <div className={cn("animate-pulse rounded-md bg-divider", className)} aria-hidden="true" />;
+  return <div className={cn("animate-pulse rounded-md bg-division", className)} aria-hidden="true" />;
 }
 
 // Anchos desparejos pero DETERMINISTAS: una tabla real no tiene todas las celdas
@@ -21,7 +21,7 @@ export function SkeletonTabla({ filas = 8, columnas = 6 }) {
   return (
     <div role="status" aria-label="Cargando…">
       {Array.from({ length: filas }).map((_, f) => (
-        <div key={f} className="flex items-center gap-lg border-b border-divider px-lg py-3.5 last:border-0">
+        <div key={f} className="flex items-center gap-lg border-b border-division px-lg py-3.5 last:border-0">
           {Array.from({ length: columnas }).map((_, c) => (
             <Skeleton key={c} className={cn("h-4", ANCHOS[(f + c) % ANCHOS.length])} />
           ))}
@@ -35,11 +35,11 @@ export function SkeletonTabla({ filas = 8, columnas = 6 }) {
 export function EstadoVacio({ titulo, detalle, accion, icono = "inbox" }) {
   return (
     <div className="flex flex-col items-center gap-2 px-xxl py-12 text-center">
-      <span className="mb-1 flex size-11 items-center justify-center rounded-pill bg-subtle text-slate-400">
+      <span className="mb-1 flex size-11 items-center justify-center rounded-pill bg-superficie-2 text-texto-tenue">
         <Icon name={icono} size={20} />
       </span>
-      <div className="text-lg font-bold text-slate-600">{titulo}</div>
-      {detalle && <div className="max-w-md text-base text-slate-500">{detalle}</div>}
+      <div className="text-lg font-bold text-texto-suave">{titulo}</div>
+      {detalle && <div className="max-w-md text-base text-texto-debil">{detalle}</div>}
       {accion && <div className="mt-2">{accion}</div>}
     </div>
   );
@@ -56,10 +56,10 @@ export function EstadoError({ error, onReintentar, titulo = "No se pudieron carg
       <span className="mb-1 flex size-11 items-center justify-center rounded-pill bg-badge-error-bg text-badge-error-fg">
         <Icon name="alert" size={20} />
       </span>
-      <div className="text-lg font-bold text-slate-600">
+      <div className="text-lg font-bold text-texto-suave">
         {esPermiso ? "No tenés permiso para ver esto" : titulo}
       </div>
-      <div className="max-w-md text-base text-slate-500">
+      <div className="max-w-md text-base text-texto-debil">
         {esPermiso
           ? "Pedile a un administrador que revise tu rol en esta institución."
           : error?.message || "Puede ser un problema de conexión."}

@@ -10,6 +10,18 @@
       rel="stylesheet"
     />
     <title>I-Core Salud</title>
+    <script>
+      // Aplica el tema ANTES de pintar. Si esto se hiciera desde React, la página
+      // se dibujaría un instante en claro y saltaría a oscuro: en un puesto con
+      // turno noche ese fogonazo blanco es exactamente lo que se quiere evitar.
+      (function () {
+        try {
+          var t = localStorage.getItem("cauce.tema");
+          var oscuro = t === "oscuro" || (!t && matchMedia("(prefers-color-scheme: dark)").matches);
+          if (oscuro) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

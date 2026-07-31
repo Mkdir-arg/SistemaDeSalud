@@ -50,7 +50,7 @@ export default function Casos() {
     {
       key: "paso_actual", label: "Paso actual", orden: "nodo_actual__titulo",
       truncar: true, className: "max-w-48",
-      render: (c) => <span className="text-slate-600">{c.paso_actual || "—"}</span>,
+      render: (c) => <span className="text-texto-suave">{c.paso_actual || "—"}</span>,
     },
     {
       key: "estado", label: "Estado", orden: "estado",
@@ -67,15 +67,15 @@ export default function Casos() {
       key: "asignacion", label: "Asignación", orden: "asignado_a__apellido",
       render: (c) => {
         const a = asignacion(c);
-        return a ? <span className="text-slate-700">{a}</span>
-                 : <span className="text-slate-400">Sin asignar</span>;
+        return a ? <span className="text-texto-medio">{a}</span>
+                 : <span className="text-texto-tenue">Sin asignar</span>;
       },
     },
     {
       // Columna nueva: para triar trabajo, cuánto lleva abierto importa más que
       // la fecha exacta de creación.
       key: "creado", label: "Antigüedad", orden: "creado", className: "w-28 tabular-nums",
-      render: (c) => <span className="text-slate-600">{antiguedad(c.creado)}</span>,
+      render: (c) => <span className="text-texto-suave">{antiguedad(c.creado)}</span>,
     },
   ];
 

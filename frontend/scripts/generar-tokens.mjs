@@ -16,7 +16,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  avatarColors, badgeTone, color, font, nodeCat, radius, shadow, space, type,
+  avatarColors, badgeTone, badgeToneOscuro, color, font, nodeCat, oscuro, radius,
+  semantico, shadow, space, type,
 } from "../src/theme.js";
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -36,10 +37,17 @@ const bloque = (titulo, lineas) => `  /* ${titulo} */\n${lineas.join("\n")}\n`;
 
 const partes = [];
 
-// Colores de marca y neutros.
+// Colores de marca y neutros (capa literal).
 partes.push(bloque(
-  "Marca y neutros",
+  "Marca y neutros (literales)",
   Object.entries(color).map(([k, v]) => `  --color-${kebab(k)}: ${v};`),
+));
+
+// Capa semántica: la que usan los componentes migrados y la única que cambia
+// entre temas.
+partes.push(bloque(
+  "Semánticos (los usa el código migrado; el tema oscuro solo redefine estos)",
+  Object.entries(semantico).map(([k, v]) => `  --color-${kebab(k)}: ${v};`),
 ));
 
 // Tonos semánticos de badge (estado de caso, de versión, etc.).
@@ -122,6 +130,38 @@ const css = `/*
   --color-current: currentColor;
 
 ${partes.join("\n")}}
+
+/*
+ * Tema oscuro. Se activa con la clase «dark» en el elemento html.
+ *
+ * Redefine SOLO la capa semántica, la marca y los badges: las utilidades leen
+ * var(--color-…), así que cambiar la variable alcanza y no hace falta una
+ * segunda clase por componente. Las escalas literales (slate-600, canvas…) no se
+ * tocan: las siguen usando los estilos inline sin migrar, que no tienen modo
+ * oscuro — adoptarlo es parte de migrar cada pantalla.
+ *
+ * Las categorías de nodo del diseñador tampoco se redefinen todavía: ese lienzo
+ * se rehace entero en la Fase 2 y elegir ahora 30 colores que van a cambiar es
+ * trabajo tirado.
+ */
+.dark {
+${Object.entries(oscuro).map(([k, v]) => `  --color-${kebab(k)}: ${v};`).join("\n")}
+${Object.entries(badgeToneOscuro)
+  .flatMap(([t, { bg, fg }]) => [`  --color-badge-${t}-bg: ${bg};`, `  --color-badge-${t}-fg: ${fg};`])
+  .join("\n")}
+
+  /* Sombras: en oscuro una sombra negra no se ve. La elevación se percibe por
+     el borde y por superficies más claras, así que se atenúan mucho. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-float: 0 8px 20px rgba(0, 0, 0, .5);
+  --shadow-dropdown: 0 12px 32px rgba(0, 0, 0, .55);
+  --shadow-modal: 0 18px 50px rgba(0, 0, 0, .65);
+}
+
+/* Interfaz nativa (scrollbars, controles de formulario) acorde al tema. */
+.dark {
+  color-scheme: dark;
+}
 `;
 
 writeFileSync(DESTINO, css, "utf8");
@@ -131,6 +171,7 @@ writeFileSync(DESTINO, css, "utf8");
 // --------------------------------------------------------------------------- //
 const colores = [
   ...Object.keys(color).map(kebab),
+  ...Object.keys(semantico).map(kebab),
   ...Object.keys(badgeTone).flatMap((t) => [`badge-${t}-bg`, `badge-${t}-fg`]),
   ...Object.keys(nodeCat).flatMap((c) => [`nodo-${c}-sol`, `nodo-${c}-tint`, `nodo-${c}-bd`]),
   ...avatarColors.map((_, i) => `avatar-${i + 1}`),

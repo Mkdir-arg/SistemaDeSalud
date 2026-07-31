@@ -26,6 +26,95 @@ export const color = {
   danger: "#B42318",
 };
 
+// --------------------------------------------------------------------------- //
+// Capa semántica
+// --------------------------------------------------------------------------- //
+// La paleta de arriba es LITERAL: dice cómo se ve un color, no qué papel cumple.
+// Eso alcanza mientras haya un solo tema, pero rompe en modo oscuro: `bg-white`
+// tendría que valer gris oscuro, y un token llamado «white» que es negro es una
+// trampa para el que venga después.
+//
+// Los componentes migrados usan ESTOS nombres. El tema oscuro sólo redefine esta
+// capa; la literal queda intacta para los estilos inline que faltan migrar (que
+// no tienen modo oscuro, y está bien: adoptarlo es parte de migrar cada pantalla).
+export const semantico = {
+  fondo: color.canvas, // lienzo de la página
+  superficie: color.white, // tarjetas, paneles, filas
+  superficie2: color.subtle, // encabezados de tabla, zonas hundidas
+  borde: color.border,
+  division: color.divider, // separadores internos, más suaves que el borde
+  campoBorde: color.inputBorder,
+  // Seis niveles de texto, uno por cada neutro de la paleta literal. El mapeo es
+  // 1:1 a propósito: migrar un componente de `text-slate-600` a `text-texto-suave`
+  // no debe cambiar un solo píxel en modo claro.
+  // El acento tiene DOS papeles y no puede resolverlos un solo color: como texto
+  // sobre una superficie necesita ser claro en tema oscuro, y como relleno detrás
+  // de texto blanco necesita ser oscuro. Con un único token, en oscuro el «1» de
+  // la fila destacada quedaba en 2,7:1.
+  accentFuerte: color.accent, // relleno de botones y píldoras
+  sobreAccent: color.white, // texto encima de ese relleno
+  dangerFuerte: color.danger, // mismo desdoblamiento para el rojo: contador de
+  sobreDanger: color.white, // no leídas, botones destructivos
+  texto: color.ink, // títulos y cifras
+  textoFuerte: color.slate900,
+  textoMedio: color.slate700, // contenido principal de una fila
+  textoSuave: color.slate600,
+  textoDebil: color.slate500, // metadatos, texto de apoyo
+  // NO es `slate400`. Medido: #98A0AE sobre blanco da 2,63:1, muy por debajo del
+  // 4,5:1 que pide WCAG AA para texto chico — y con ese gris están puestos los
+  // rótulos de columna, los subtítulos y los placeholders de todo el sistema.
+  // Es deuda del diseño original, no de la migración.
+  //
+  // Se corrige acá, en el token semántico, y no en `color.slate400`: así las
+  // pantallas migradas cumplen AA sin alterar la escala literal de la marca ni
+  // las 17 capturas de referencia. A medida que se migren pantallas, el sistema
+  // converge solo. Cambiar `slate400` de raíz es una decisión de marca.
+  textoTenue: "#6B7385", // rótulos, placeholders, deshabilitado — 4,7:1 sobre blanco
+};
+
+// Tema oscuro. Valores elegidos a mano, no derivados: invertir la luminosidad de
+// una paleta clínica da grises azulados sucios y tintes de badge que vibran.
+// Reglas seguidas: superficies levemente más claras que el fondo (no al revés),
+// índigo de marca aclarado —#3949C0 sobre fondo oscuro no llega a contraste AA—
+// y tintes de badge oscuros con el texto claro, nunca el pastel del tema claro.
+export const oscuro = {
+  fondo: "#0E1219",
+  superficie: "#171C26",
+  superficie2: "#1E242F",
+  borde: "#2A313F",
+  division: "#232A36",
+  campoBorde: "#333B4B",
+  texto: "#E7EAF1",
+  textoFuerte: "#F2F4F8",
+  textoMedio: "#C6CDDA",
+  textoSuave: "#B4BCCB",
+  textoDebil: "#98A1B2",
+  // #7B8496 daba 4,14:1 sobre `superficie2` — justo por debajo de AA. Medido, no
+  // estimado: los rótulos de columna son texto chico y tienen que pasar.
+  textoTenue: "#949DAE",
+  // Marca
+  accent: "#8B97F0", // como TEXTO sobre superficie oscura
+  accentHover: "#A2ACF5",
+  accent50: "#1D2440",
+  accent100: "#2B3560",
+  accentFuerte: "#4A57C8", // como RELLENO, para que el blanco encima llegue a AA
+  sobreAccent: "#FFFFFF",
+  danger: "#F0958C", // como TEXTO
+  dangerFuerte: "#B4453C", // como RELLENO (blanco encima llega a 5,5:1)
+  sobreDanger: "#FFFFFF",
+};
+
+// Badges en oscuro: fondo apagado + texto claro (el pastel del tema claro
+// deslumbra sobre negro).
+export const badgeToneOscuro = {
+  neutral: { bg: "#252B37", fg: "#B4BCCB" },
+  info: { bg: "#1D2745", fg: "#9FB2F2" },
+  amber: { bg: "#382C18", fg: "#E3B573" },
+  green: { bg: "#14301E", fg: "#6ED79A" },
+  gray: { bg: "#222732", fg: "#828B9C" },
+  error: { bg: "#3A1D1B", fg: "#F0958C" },
+};
+
 export const font = {
   sans: "Inter, system-ui, sans-serif",
   mono: "'JetBrains Mono', monospace",
