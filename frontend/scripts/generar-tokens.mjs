@@ -21,6 +21,10 @@ import {
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const DESTINO = resolve(AQUI, "../src/styles/tokens.css");
+// Segunda salida: los nombres de las escalas, para que tailwind-merge sepa que
+// `rounded-pill` es un radio y `text-danger` un color. Sin esto, cn() no puede
+// deduplicar clases en conflicto de las escalas propias y gana la que no toca.
+const DESTINO_JS = resolve(AQUI, "../src/styles/escalas.js");
 
 /** `accentHover` → `accent-hover` · `slate900` → `slate-900` */
 const kebab = (s) =>
@@ -122,5 +126,40 @@ ${partes.join("\n")}}
 
 writeFileSync(DESTINO, css, "utf8");
 
+// --------------------------------------------------------------------------- //
+// Escalas para tailwind-merge
+// --------------------------------------------------------------------------- //
+const colores = [
+  ...Object.keys(color).map(kebab),
+  ...Object.keys(badgeTone).flatMap((t) => [`badge-${t}-bg`, `badge-${t}-fg`]),
+  ...Object.keys(nodeCat).flatMap((c) => [`nodo-${c}-sol`, `nodo-${c}-tint`, `nodo-${c}-bd`]),
+  ...avatarColors.map((_, i) => `avatar-${i + 1}`),
+];
+
+const lista = (xs) => `[${xs.map((x) => `"${x}"`).join(", ")}]`;
+
+const js = `/*
+ * ARCHIVO GENERADO — no editar a mano.
+ * Fuente: src/theme.js · Regenerar con: npm run tokens
+ *
+ * Nombres de las escalas del sistema de diseño, para configurar tailwind-merge.
+ * Sin esto no sabe que \`rounded-pill\` pertenece al grupo del radio ni que
+ * \`text-danger\` es un color, y al combinar clases deja las dos en conflicto en
+ * vez de quedarse con la última — que es justo lo que rompe los overrides por
+ * className en los componentes.
+ */
+export const escalas = {
+  color: ${lista(colores)},
+  text: ${lista(Object.keys(type).map(kebab))},
+  spacing: ${lista(Object.keys(space).map(kebab))},
+  radius: ${lista(Object.keys(radius).map(kebab))},
+  shadow: ${lista(Object.keys(shadow).map(kebab))},
+  font: ${lista(Object.keys(font).map(kebab))},
+};
+`;
+
+writeFileSync(DESTINO_JS, js, "utf8");
+
 const vars = (css.match(/^\s+--/gm) || []).length;
-console.log(`tokens.css generado desde theme.js — ${vars} variables.`);
+console.log(`tokens.css   — ${vars} variables desde theme.js`);
+console.log(`escalas.js   — ${colores.length} colores para tailwind-merge`);
