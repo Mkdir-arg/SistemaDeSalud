@@ -31,24 +31,29 @@ export function Button({ variant = "primary", size = "md", children, style, disa
   );
 }
 
+// Mapa tono → clases. Tiene que ser un mapa de strings COMPLETOS y estáticos:
+// Tailwind escanea el código fuente como texto, así que `bg-badge-${tono}-bg` no
+// genera nada (no existe esa clase en el archivo). Es la convención para todo
+// componente con variantes.
+const BADGE_TONO = {
+  neutral: "bg-badge-neutral-bg text-badge-neutral-fg",
+  info: "bg-badge-info-bg text-badge-info-fg",
+  amber: "bg-badge-amber-bg text-badge-amber-fg",
+  green: "bg-badge-green-bg text-badge-green-fg",
+  gray: "bg-badge-gray-bg text-badge-gray-fg",
+  error: "bg-badge-error-bg text-badge-error-fg",
+};
+
 export function Badge({ tone = "neutral", children }) {
-  const t = badgeTone[tone] || badgeTone.neutral;
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "3px 10px",
-        borderRadius: radius.pill,
-        fontSize: type.sm,
-        fontWeight: 600,
-        background: t.bg,
-        color: t.fg,
-        whiteSpace: "nowrap",
-      }}
+      className={
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-[3px] " +
+        "text-sm font-semibold " + (BADGE_TONO[tone] || BADGE_TONO.neutral)
+      }
     >
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.fg }} />
+      {/* El punto toma el color del texto: una variante menos que mantener. */}
+      <span className="size-1.5 rounded-full bg-current" />
       {children}
     </span>
   );
