@@ -11,7 +11,7 @@ validación previa a publicar.
 """
 from django.test import TestCase
 
-from apps.accounts.models import Membresia, Usuario
+from apps.accounts.models import LegajoProfesional, Membresia, Usuario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
 from apps.instituciones.models import Area, Box, Grupo, Institucion
@@ -27,8 +27,11 @@ class MotorTestCase(TestCase):
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.admision = Area.objects.create(institucion=self.inst, nombre="Admisión")
         self.cardio = Area.objects.create(institucion=self.inst, nombre="Cardiología")
-        # self.user opera como médico (puede firmar atenciones en los tests).
+        # self.user opera como médico (puede firmar atenciones en los tests). Firmar
+        # exige matrícula cargada en el legajo (`motor._exigir_medico`), así que el
+        # legajo es parte del setup mínimo de un médico que firma.
         Membresia.objects.create(usuario=self.user, institucion=self.inst, rol=Membresia.Rol.MEDICO)
+        LegajoProfesional.objects.create(usuario=self.user, matricula="MP-10001")
 
         self.form = Formulario.objects.create(institucion=self.inst, titulo="Datos del paciente")
         self.campo_prioridad = Campo.objects.create(
@@ -102,6 +105,47 @@ class MotorTestCase(TestCase):
         self.assertEqual(caso.estado, Caso.Estado.CERRADO)
         self.assertEqual(caso.nodo_actual, self.n_fin_normal)
         self.assertEqual(EntradaHistoria.objects.filter(caso=caso, firmada=True).count(), 1)
+
+    def _hasta_atencion(self):
+        """Lleva un caso hasta el nodo de Atención por la rama por defecto."""
+        caso = motor.iniciar(self._nuevo_caso(), autor=self.user)
+        caso = motor.avanzar(caso, {"valores": {self.campo_prioridad.id: "Normal"}}, autor=self.user)
+        return motor.avanzar(caso, {}, autor=self.user)
+
+    def _sin_legajo(self):
+        """Borra el legajo y devuelve el usuario recargado.
+
+        Hace falta releerlo: `legajo` es una relación uno-a-uno y queda cacheada en
+        la instancia en memoria, así que `self.user.legajo` seguiría devolviendo el
+        objeto borrado y el test pasaría por la razón equivocada.
+        """
+        LegajoProfesional.objects.filter(usuario=self.user).delete()
+        return Usuario.objects.get(pk=self.user.pk)
+
+    def test_firmar_sin_matricula_falla(self):
+        """Firmar es un acto profesional: exige matrícula cargada en el legajo."""
+        autor = self._sin_legajo()
+        caso = self._hasta_atencion()
+        with self.assertRaises(motor.ErrorMotor):
+            motor.avanzar(caso, {"titulo": "Evaluación", "contenido": "OK", "firmada": True}, autor=autor)
+
+    def test_atencion_sin_firmar_no_exige_matricula(self):
+        """Registrar la atención sin firmarla sí puede hacerse sin matrícula."""
+        autor = self._sin_legajo()
+        caso = self._hasta_atencion()
+        caso = motor.avanzar(caso, {"titulo": "Evaluación", "contenido": "OK", "firmada": False}, autor=autor)
+        self.assertEqual(caso.estado, Caso.Estado.CERRADO)
+        entrada = EntradaHistoria.objects.get(caso=caso)
+        self.assertFalse(entrada.firmada)
+        self.assertEqual(entrada.matricula, "")
+
+    def test_la_firma_asienta_la_matricula(self):
+        """La matrícula queda como snapshot en la entrada (puede cambiar después)."""
+        caso = self._hasta_atencion()
+        caso = motor.avanzar(caso, {"titulo": "Evaluación", "contenido": "OK", "firmada": True}, autor=self.user)
+        entrada = EntradaHistoria.objects.get(caso=caso)
+        self.assertTrue(entrada.firmada)
+        self.assertEqual(entrada.matricula, "MP-10001")
 
     def test_urgente_entra_a_fila_como_urgente(self):
         caso = motor.iniciar(self._nuevo_caso(prioridad=Caso.Prioridad.URGENTE), autor=self.user)
