@@ -30,6 +30,17 @@ class CasoViewSet(BaseModelViewSet):
     capacidad_requerida = "trabajo"
     institucion_path = "institucion"
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a", "ciudadano")
+    # Columnas ordenables de la tabla de casos (`?ordering=-creado`).
+    ordering_fields = (
+        "id", "creado", "actualizado", "estado", "prioridad",
+        "area_actual__nombre", "version__flujo__titulo", "nodo_actual__titulo",
+        "asignado_a__apellido",
+    )
+    # Búsqueda libre por paciente o por flujo (`?search=`).
+    search_fields = (
+        "ciudadano__nombre", "ciudadano__apellido", "ciudadano__documento",
+        "version__flujo__titulo",
+    )
 
     def get_serializer_class(self):
         if self.action == "retrieve":

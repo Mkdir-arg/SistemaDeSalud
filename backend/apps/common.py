@@ -3,6 +3,7 @@ import uuid
 
 from django.core.files.storage import default_storage
 from rest_framework import status, viewsets
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -217,9 +218,17 @@ class SubirArchivoView(APIView):
 
 class BaseModelViewSet(QueryParamFilterMixin, InstitucionScopedMixin, viewsets.ModelViewSet):
     """ViewSet estándar: CRUD + filtrado por query params + scope por institución
-    + autorización por rol (lectura abierta a miembros, escritura por capacidad)."""
+    + autorización por rol (lectura abierta a miembros, escritura por capacidad)
+    + orden y búsqueda por query param.
+
+    `?ordering=` y `?search=` quedan disponibles en todos los listados. Cada
+    viewset acota qué campos admite con `ordering_fields` y `search_fields`; sin
+    declararlos, `ordering` no acepta nada y `search` se ignora (comportamiento de
+    DRF), así que no hay riesgo de exponer campos por accidente.
+    """
 
     permission_classes = [IsAuthenticated, CapacidadPermission]
+    filter_backends = [OrderingFilter, SearchFilter]
     # Capacidad requerida para escribir; None = sin restricción de rol.
     capacidad_requerida = None
     # Si True, la LECTURA también exige `capacidad_requerida` (datos sensibles).
