@@ -7,6 +7,8 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useInstitucion } from "../auth/InstitutionContext";
 import { antiguedad } from "../lib/format";
+import { cn } from "../lib/cn";
+import { useEsEscritorio } from "../lib/media";
 import { color } from "../theme";
 
 // Estado de "última actualización" que una pantalla publica para mostrarlo en la
@@ -182,7 +184,11 @@ function BuscadorPacientes() {
   );
 }
 
-function TopBar() {
+const BOTON_BARRA =
+  "flex size-[34px] shrink-0 items-center justify-center rounded-md border " +
+  "border-accent-100 bg-accent-50 text-accent hover:bg-accent-100";
+
+function TopBar({ onAbrirMenu }) {
   const { logout } = useAuth();
   const { refresco } = useRefresh();
   const location = useLocation();
@@ -191,23 +197,35 @@ function TopBar() {
   // Volver: en toda página salvo el inicio (que es la base del recorrido).
   const puedeVolver = !["/inicio", "/"].includes(location.pathname);
   return (
-    <header style={{ height: 64, flex: "none", background: "#fff", borderBottom: `1px solid ${color.border}`, display: "flex", alignItems: "center", gap: 14, padding: "0 26px" }}>
+    <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-border bg-white px-lg sm:gap-3.5 sm:px-[26px]">
+      {/* Hamburguesa: solo en angosto, donde el menú es un cajón. */}
+      <button onClick={onAbrirMenu} aria-label="Abrir menú" className={cn(BOTON_BARRA, "md:hidden")}>
+        <Icon name="rows" size={17} />
+      </button>
       {puedeVolver && (
-        <button onClick={() => navigate(-1)} title="Volver"
-          style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${color.accent100}`, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flex: "none" }}>
+        <button onClick={() => navigate(-1)} aria-label="Volver" title="Volver" className={BOTON_BARRA}>
           <Icon name="back" size={17} />
         </button>
       )}
-      <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap" }}>{tituloDeRuta(location.pathname)}</div>
-      <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+      {/* `truncate` y no `nowrap`: un título largo en pantalla angosta debe
+          recortarse, no empujar la barra y desbordar la página. */}
+      <h1 className="truncate text-xl font-bold tracking-tight">{tituloDeRuta(location.pathname)}</h1>
+      {/* El buscador se esconde en angosto: compite con el título y la campana.
+          Queda accesible desde «Historia clínica». */}
+      <div className="hidden flex-1 justify-center md:flex">
         <BuscadorPacientes />
       </div>
-      {txtRefresco && <span style={{ fontSize: 12, color: color.slate400, whiteSpace: "nowrap" }}>{txtRefresco}</span>}
-      <Campana />
-      <button onClick={() => { logout(); navigate("/login"); }} title="Cerrar sesión"
-        style={{ height: 36, padding: "0 12px", borderRadius: 9, border: `1px solid ${color.accent100}`, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, cursor: "pointer", flex: "none" }}>
-        <Icon name="power" size={15} /> Salir
-      </button>
+      <div className="flex flex-1 items-center justify-end gap-2.5 md:flex-none">
+        {txtRefresco && <span className="hidden whitespace-nowrap text-sm text-slate-400 lg:inline">{txtRefresco}</span>}
+        <Campana />
+        <button
+          onClick={() => { logout(); navigate("/login"); }}
+          title="Cerrar sesión"
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-accent-100 bg-accent-50 px-2 text-md font-semibold text-accent hover:bg-accent-100 sm:px-3"
+        >
+          <Icon name="power" size={15} /> <span className="hidden sm:inline">Salir</span>
+        </button>
+      </div>
     </header>
   );
 }
@@ -276,8 +294,25 @@ export function Shell({ children }) {
   const [refresco, setRefresco] = useState(null);
 
   // Menú lateral colapsable (recordado entre sesiones).
-  const [colapsado, setColapsado] = useState(() => localStorage.getItem("cauce.menu") === "col");
+  const [colapsadoPref, setColapsado] = useState(() => localStorage.getItem("cauce.menu") === "col");
   const toggleMenu = () => setColapsado((v) => { localStorage.setItem("cauce.menu", v ? "exp" : "col"); return !v; });
+  // El colapso solo vale en escritorio: en el cajón móvil el menú se muestra
+  // siempre completo (si no, alguien que colapsó en la compu abre el cajón en el
+  // celular y ve una columna de iconos sin texto).
+  const esEscritorio = useEsEscritorio();
+  const colapsado = colapsadoPref && esEscritorio;
+
+  // Cajón del menú en pantallas angostas.
+  const [cajon, setCajon] = useState(false);
+  const location = useLocation();
+  // Al navegar se cierra solo: si no, queda tapando la pantalla a la que fuiste.
+  useEffect(() => { setCajon(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!cajon) return;
+    const onKey = (e) => { if (e.key === "Escape") setCajon(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cajon]);
 
   // Instituciones del usuario (no-super): habilitan el selector si hay más de una.
   const [misInst, setMisInst] = useState([]);
@@ -322,8 +357,26 @@ export function Shell({ children }) {
 
   return (
     <RefreshCtx.Provider value={{ refresco, setRefresco }}>
-    <div style={{ display: "flex", minHeight: "100vh", background: color.canvas }}>
-      <aside style={{ width: colapsado ? 68 : 244, transition: "width .15s ease", background: "#fff", borderRight: `1px solid ${color.border}`, display: "flex", flexDirection: "column", flex: "none", height: "100vh", position: "sticky", top: 0 }}>
+    <div className="flex min-h-screen bg-canvas">
+      {/* Fondo del cajón: solo existe en angosto y con el menú abierto. */}
+      {cajon && (
+        <div
+          onClick={() => setCajon(false)}
+          className="fixed inset-0 z-30 bg-ink/40 md:hidden"
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex h-screen w-[264px] flex-col border-r border-border bg-white",
+          "transition-transform duration-150",
+          // De `md` para arriba deja de ser cajón: vuelve al flujo y lo que
+          // cambia es el ancho (colapsado o no).
+          "md:sticky md:top-0 md:shrink-0 md:translate-x-0 md:transition-[width]",
+          colapsadoPref ? "md:w-[68px]" : "md:w-[244px]",
+          cajon ? "translate-x-0 shadow-modal" : "-translate-x-full",
+        )}
+      >
         {/* Cabecera: institución + colapsar (en una sola fila) */}
         <div style={{ position: "relative", flex: "none", display: "flex", alignItems: "center", gap: 8, flexDirection: colapsado ? "column" : "row", padding: colapsado ? "14px 0 12px" : "14px 12px", borderBottom: colapsado ? `1px solid ${color.divider}` : "none" }}>
           <button
@@ -341,9 +394,22 @@ export function Shell({ children }) {
               </div>
             )}
           </button>
-          <button onClick={toggleMenu} title={colapsado ? "Expandir menú" : "Colapsar menú"}
-            style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${color.accent100}`, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flex: "none" }}>
-            <Icon name="back" size={14} style={{ transform: colapsado ? "rotate(180deg)" : "none" }} />
+          {/* En angosto este botón cierra el cajón; de `md` para arriba colapsa
+              el menú. Son dos botones distintos porque también cambia el icono. */}
+          <button
+            onClick={() => setCajon(false)}
+            aria-label="Cerrar menú"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md border border-accent-100 bg-accent-50 text-accent md:hidden"
+          >
+            <Icon name="x" size={14} />
+          </button>
+          <button
+            onClick={toggleMenu}
+            title={colapsado ? "Expandir menú" : "Colapsar menú"}
+            aria-label={colapsado ? "Expandir menú" : "Colapsar menú"}
+            className="hidden size-7 shrink-0 items-center justify-center rounded-md border border-accent-100 bg-accent-50 text-accent md:flex"
+          >
+            <Icon name="back" size={14} className={colapsado ? "rotate-180" : undefined} />
           </button>
 
           {/* Menú desplegable de instituciones */}
@@ -451,9 +517,9 @@ export function Shell({ children }) {
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column" }}>
-        <TopBar />
-        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>{children}</div>
+      <main className="flex h-screen min-w-0 flex-1 flex-col">
+        <TopBar onAbrirMenu={() => setCajon(true)} />
+        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>
     </RefreshCtx.Provider>
