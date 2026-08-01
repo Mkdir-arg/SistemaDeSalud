@@ -37,13 +37,26 @@ class CasoViewSet(BaseModelViewSet):
     ordering_fields = (
         "id", "creado", "actualizado", "estado", "prioridad",
         "area_actual__nombre", "version__flujo__titulo", "nodo_actual__titulo",
-        "asignado_a__apellido",
+        "asignado_a__apellido", "ciudadano__apellido",
     )
     # Búsqueda libre por paciente o por flujo (`?search=`).
     search_fields = (
         "ciudadano__nombre", "ciudadano__apellido", "ciudadano__documento",
         "version__flujo__titulo",
     )
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # `?supervisables=true` — los casos que el usuario puede supervisar:
+        # activos y en un área donde es jefe. Se resuelve en el servidor a
+        # propósito: la pantalla de Supervisión traía TODOS los casos de la
+        # institución y filtraba en el cliente, así que con volumen real veía solo
+        # los que entraban en la primera página de la API.
+        if self.request.query_params.get("supervisables") in ("true", "1"):
+            qs = qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            if not self.request.user.is_superuser:
+                qs = qs.filter(area_actual__in=motor.areas_que_supervisa(self.request.user))
+        return qs
 
     def get_serializer_class(self):
         if self.action == "retrieve":

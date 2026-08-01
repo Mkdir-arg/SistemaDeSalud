@@ -67,7 +67,11 @@ class MembresiaViewSet(BaseModelViewSet):
     serializer_class = MembresiaSerializer
     capacidad_requerida = "config"
     institucion_path = "institucion"
-    filter_fields = ("usuario", "institucion", "rol", "activo")
+    # `areas` filtra por la M2M: `?areas=3` devuelve el staff de esa área, que es
+    # lo que necesita el selector de «reasignar» sin traerse todas las membresías.
+    filter_fields = ("usuario", "institucion", "rol", "activo", "areas")
+    search_fields = ("usuario__nombre", "usuario__apellido", "usuario__email")
+    ordering_fields = ("usuario__apellido", "rol", "creado")
 
 
 class LegajoProfesionalViewSet(BaseModelViewSet):

@@ -10,11 +10,13 @@ import { entrar, fallosDeContraste, fijarTema } from "./apoyo";
  * test rojo permanente que no informa nada. **Esta lista crece con cada pantalla
  * que se migra** — agregarla acá es parte de darla por terminada.
  */
-const PANTALLAS = ["/filas", "/casos"];
+const PANTALLAS = ["/filas", "/casos", "/supervision", "/notificaciones"];
 
 test.describe("Tema", () => {
   test.beforeEach(async ({ page }) => {
-    await entrar(page, "medico");
+    // El jefe de área es quien ve las tres pantallas de la lista: tiene trabajo,
+    // registros y supervisión.
+    await entrar(page, "jefe");
   });
 
   test("el conmutador cambia el tema y lo recuerda", async ({ page }) => {

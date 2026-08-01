@@ -11,10 +11,17 @@ class LegajoProfesionalSerializer(serializers.ModelSerializer):
 
 class MembresiaSerializer(serializers.ModelSerializer):
     rol_display = serializers.CharField(source="get_rol_display", read_only=True)
+    # Evita que el cliente tenga que cruzar membresías con /usuarios/ para poder
+    # mostrar un nombre en una lista.
+    usuario_nombre = serializers.CharField(source="usuario.nombre_completo", read_only=True)
+    usuario_email = serializers.CharField(source="usuario.email", read_only=True)
 
     class Meta:
         model = Membresia
-        fields = ["id", "usuario", "institucion", "rol", "rol_display", "areas", "activo", "creado"]
+        fields = [
+            "id", "usuario", "usuario_nombre", "usuario_email",
+            "institucion", "rol", "rol_display", "areas", "activo", "creado",
+        ]
         read_only_fields = ["creado"]
 
 
