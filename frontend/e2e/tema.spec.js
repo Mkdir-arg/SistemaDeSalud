@@ -64,7 +64,6 @@ test.describe("Tema", () => {
       test(`sin fallos de contraste AA en ${ruta} (${tema})`, async ({ page }) => {
         await page.goto(ruta);
         await fijarTema(page, tema);
-        await page.waitForTimeout(1200);
         const fallos = await fallosDeContraste(page);
         expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
       });
@@ -74,7 +73,6 @@ test.describe("Tema", () => {
       test(`sin fallos de contraste AA en ${nombre} (${tema})`, async ({ page }) => {
         await resolver(page);
         await fijarTema(page, tema);
-        await page.waitForTimeout(1500);
         const fallos = await fallosDeContraste(page);
         expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
       });
@@ -92,8 +90,6 @@ test.describe("Tema · pantallas de configuración", () => {
     test(`sin fallos de contraste AA en /dashboard (${tema})`, async ({ page }) => {
       await page.goto("/dashboard");
       await fijarTema(page, tema);
-      // El tablero trae gráficos y tablas: se le da tiempo a que todo pinte.
-      await page.waitForTimeout(2500);
       const fallos = await fallosDeContraste(page);
       expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
     });

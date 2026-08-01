@@ -27,6 +27,15 @@ test.describe("Fila de espera", () => {
     }
   });
 
+  /**
+   * OJO: este test CONSUME cola. Llama a un paciente de verdad, contra el motor
+   * real, y ese paciente no vuelve. Es a propósito —llamar es la acción central
+   * de la guardia y simularla no probaría nada—, pero implica que la suite no es
+   * idempotente: cada corrida completa gasta un lugar de la fila.
+   *
+   * El chequeo previo (e2e/setup.js) verifica que quede cola suficiente y avisa
+   * cuándo hay que volver a sembrar.
+   */
   test("llamar al siguiente lo saca de la cola y abre su caso", async ({ page }) => {
     const filas = page.locator("ul li button");
     const antes = await filas.count();

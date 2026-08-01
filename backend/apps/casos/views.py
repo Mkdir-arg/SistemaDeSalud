@@ -848,7 +848,10 @@ class ItemFilaViewSet(BaseModelViewSet):
     serializer_class = ItemFilaSerializer
     capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
-    filter_fields = ("caso", "nodo", "urgente", "atendido", "nodo__version__flujo__area")
+    # `box` permite pedir la cola REAL: `?atendido=false&box=null` son los que
+    # todavía esperan. Sin él hay que traerlos todos y descartar en el cliente los
+    # ya llamados, que es lo que hacía la pantalla de fila.
+    filter_fields = ("caso", "nodo", "urgente", "atendido", "box", "nodo__version__flujo__area")
 
 
 class EventoCasoViewSet(BaseModelViewSet):

@@ -23,7 +23,12 @@ export default function Fila() {
   const toast = useToast();
   const [areaSel, setAreaSel] = useState(null);
 
-  const q = useLista("items-fila", { atendido: false, pageSize: 200 });
+  // `box: "null"` como texto a propósito: `query()` descarta los valores null
+  // (para no ensuciar la URL), así que el filtro «sin box asignado» hay que
+  // pedirlo con la palabra, que es lo que el backend traduce a IS NULL.
+  // Se pide al servidor y no se descarta en el cliente: los ya llamados ocupaban
+  // lugar de las 200 filas del pedido y podían dejar afuera a gente que espera.
+  const q = useLista("items-fila", { atendido: false, box: "null", pageSize: 200 });
 
   // Los urgentes van al frente; dentro de cada grupo manda el orden de llegada.
   const items = useMemo(
@@ -43,8 +48,7 @@ export default function Fila() {
 
   const boxes = useLista("boxes", { area: areaSel, activo: true, pageSize: 50 }, { enabled: areaSel != null });
 
-  // En la fila quedan solo los que todavía no fueron llamados a un box.
-  const fila = items.filter((it) => it.area === areaSel && !it.box);
+  const fila = items.filter((it) => it.area === areaSel);
   const areaNombre = areas.find((a) => a.id === areaSel)?.nombre || "Sala de espera";
   const siguiente = fila[0];
 

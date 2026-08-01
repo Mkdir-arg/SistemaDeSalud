@@ -52,7 +52,36 @@ test.describe("Pantalla de llamados", () => {
     // 1920x1080: el tamaño real de una TV de sala.
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto(`/pantalla/${t}`);
-    await page.waitForTimeout(1500);
+    // Señal real en vez de temporizador: mientras dice «Conectando…» todavía no
+    // hay nada que medir, y con un tiempo fijo la medición caía a veces sobre esa
+    // pantalla intermedia.
+    await expect(page.getByText("Conectando…")).toBeHidden();
+    const fallos = await fallosDeContraste(page);
+    expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
+  });
+
+  /**
+   * El estado «no hay nadie llamado» se mide aparte, forzándolo.
+   *
+   * Es el que la sala tiene delante la mayor parte del tiempo, y hasta ahora sólo
+   * se medía cuando la fila sembrada casualmente estaba vacía: el test pasaba o
+   * fallaba según los datos del momento. Al forzarlo aparecieron dos textos que
+   * no llegaban al contraste mínimo.
+   */
+  test("el estado de espera también cumple AA", async ({ page, request }) => {
+    const t = await token(request);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    // Se vacía la lista de llamados para que la pantalla quede en espera.
+    // El patrón lleva `/api/` a propósito: sin eso también captura la navegación
+    // HTML a /pantalla/<token> y la página ni carga.
+    await page.route("**/api/pantalla/**", async (route) => {
+      const res = await route.fetch();
+      const datos = await res.json().catch(() => ({}));
+      await route.fulfill({ json: { ...datos, llamados: [], en_espera: 0 } });
+    });
+    await page.goto(`/pantalla/${t}`);
+    await expect(page.getByText("Aguarde a ser llamado")).toBeVisible();
+
     const fallos = await fallosDeContraste(page);
     expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
   });

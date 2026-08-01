@@ -71,8 +71,26 @@ Con un solo token, el número de la fila destacada quedaba en 2,7:1 en oscuro.
    Página, orden y filtros en la URL, para que una vista filtrada se pueda
    compartir por link y sobreviva un F5. La densidad y el tema en localStorage:
    son de la persona, no de la vista.
-4. **Toda lista pagina.** Nunca `api.get()` directo a un listado: `useLista` o
-   `TablaRecurso`. El fallo original era exactamente ese.
+4. **Toda lista pagina, y filtra en el SERVIDOR.** Nunca `api.get()` directo a un
+   listado: `useLista` o `TablaRecurso`. Y nunca `.filter()` sobre lo que trajo la
+   consulta: con la API paginando de a 25, filtrar en el cliente busca dentro de
+   esas 25 y el resto no existe. Ya apareció en cinco pantallas —Casos,
+   Supervisión, Bandejas, Directorio y la Fila—, cada una necesitó abrir el filtro
+   en el backend. Si falta el parámetro, se agrega a `filter_fields`; no se
+   compensa en el cliente.
+5. **La paleta de nodos (`nodo-*`) es para bordes y rellenos, nunca para texto.**
+   No llega al contraste AA como texto y ya rompió tres veces. Como fondo con su
+   `tint` y como ícono con su `sol`, funciona y además tiene variante oscura
+   resuelta con `color-mix`.
+6. **Antes de dar por buena una clase, correr el auditor.** Las escalas de color,
+   tipografía, radio y sombra están reemplazadas (`*: initial`), así que un nombre
+   que no exista es un no-op **silencioso**: no rompe el build ni avisa. Pasó con
+   `text-2xl` y `text-3xl`, y cinco pantallas mostraron sus cifras al tamaño de una
+   etiqueta durante días.
+
+   ```bash
+   npm run build && npm run auditar
+   ```
 
 ---
 
@@ -115,13 +133,14 @@ Es la red que hace que migrar 27 pantallas no sea a ciegas.
 cd backend  && python manage.py seed_volumen --rehacer && python manage.py runserver
 cd frontend && npm run dev
 
-# 2. La suite (23 tests)
+# 2. La suite (66 tests)
 cd frontend && npm run e2e        # npm run e2e:ui para verla correr
 ```
 
-`e2e/setup.js` chequea antes de empezar que los dos servidores respondan y que la
-demo tenga volumen, y si no falla con instrucciones. Sin eso, un backend caído se
-manifiesta como veinte tests rojos por «timeout esperando un selector».
+`e2e/setup.js` chequea antes de empezar que los dos servidores respondan, que la
+demo tenga volumen y que quede cola para llamar; si no, falla con el comando de
+siembra que corresponda. Sin eso, un backend caído se manifiesta como veinte tests
+rojos por «timeout esperando un selector».
 
 | Archivo | Cubre |
 |---|---|
@@ -129,9 +148,30 @@ manifiesta como veinte tests rojos por «timeout esperando un selector».
 | `fila.spec.js` | El recorrido operativo de la guardia: la cola ordena urgentes primero y llamar saca al paciente de la fila |
 | `shell.spec.js` | Colapso en escritorio, cajón en móvil (abrir, Escape, cierre al navegar) |
 | `tema.spec.js` | Conmutador, persistencia sin destello y **contraste AA medido** en ambos temas |
+| `sesion.spec.js` | Que un tropiezo del servidor no cierre la sesión, y un solo refresh ante varios 401 a la vez |
+| `directorio.spec.js` | Directorio de plataforma: búsqueda contra el servidor, total real, vista en la URL |
 
 **Los tests corren en serie** (`workers: 1`): operan sobre la misma base y llamar a
 un paciente cambia la fila que ve otro test.
+
+**La suite no es idempotente.** `fila.spec.js` llama pacientes de verdad contra el
+motor real, así que cada corrida completa gasta un lugar de la fila (una siembra
+fresca deja 7). Es deliberado —simular el llamado no probaría nada—, y por eso el
+chequeo previo mide la cola y avisa cuándo hay que volver a sembrar.
+
+### Esperar por señales, no por reloj
+
+Nada de `waitForTimeout` antes de mirar o medir una pantalla: alcanza en una
+máquina descansada y no alcanza bajo carga, y entonces el test falla por algo que
+no tiene que ver con lo que prueba. Costó media jornada de diagnóstico: el test de
+contraste medía la pantalla de login y reportaba 67 fallos inexistentes, en rutas
+distintas cada corrida. Se usa `esperarPantalla(page)` de `apoyo.js`, que espera la
+barra lateral y que no quede ningún `role="status"` cargando.
+
+Y si un estado depende de los datos —«no hay nadie llamado», por ejemplo—, se
+**fuerza** con `page.route` en vez de esperar a que la siembra caiga de ese lado.
+Ese estado de la pantalla de llamados tenía dos textos por debajo del contraste
+mínimo y el test sólo los veía cuando la fila quedaba casualmente vacía.
 
 El contraste se **mide** —se recorre todo el texto visible y se calcula la razón
 real contra su fondo efectivo— en vez de revisarse en capturas. Es requisito de
@@ -157,6 +197,11 @@ Tailwind ni los tokens, y es deliberado:
 Lo que sí sigue las reglas: la capa de datos, la accesibilidad y **el contraste**,
 que se mide igual —es la pantalla que más lejos se lee, así que es donde menos se
 puede fallar.
+
+Ojo con el escalado en `vw`: un texto de `1.4vw` mide 27px en una TV de 1920 y 19px
+en un monitor de 1366. Cruzando los 24px deja de contar como «texto grande» para
+WCAG y el mínimo salta de 3:1 a 4.5:1. Los colores de esta pantalla tienen que
+cumplir **4.5:1**, no el mínimo del televisor más grande.
 
 ## Deuda conocida
 

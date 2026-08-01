@@ -1,5 +1,7 @@
 /** Utilidades compartidas por la suite. */
 
+import { expect } from "@playwright/test";
+
 export const USUARIOS = {
   admin: { email: "admin@cauce.local", pass: "admin1234" },
   medico: { email: "guardia.med@hospital.gob.ar", pass: "demo1234" },
@@ -39,11 +41,46 @@ export async function entrar(page, quien = "medico") {
 export const desbordaHorizontal = (page) =>
   page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 
+/**
+ * Entra como super admin y se queda en el directorio de plataforma.
+ *
+ * A diferencia de `entrar`, NO elige institución: el directorio es justamente lo
+ * que se ve antes de hacerlo, y una vez elegida la landing redirige a /inicio y
+ * ya no hay forma de volver a verlo.
+ */
+export async function entrarPlataforma(page) {
+  const u = USUARIOS.admin;
+  await page.goto("/login");
+  await page.fill('input[type="email"]', u.email);
+  await page.fill('input[type="password"]', u.pass);
+  await page.click('button[type="submit"]');
+  await expect(page.getByRole("heading", { name: "Instituciones" })).toBeVisible();
+}
+
+/**
+ * Espera a que la pantalla esté realmente lista para mirarla o medirla.
+ *
+ * Reemplaza a los `waitForTimeout` que había antes. Un temporizador fijo alcanza
+ * en una máquina descansada y no alcanza bajo carga: la medición cae sobre la
+ * app a medio arrancar y el test falla por algo que no tiene que ver con lo que
+ * prueba. El caso concreto que motivó esto fue el test de contraste midiendo la
+ * pantalla de login y reportando 67 fallos inexistentes, en rutas distintas cada
+ * corrida.
+ */
+export async function esperarPantalla(page) {
+  // La barra lateral solo existe dentro de la sesión: si está, ya montó.
+  await page.locator("aside").first().waitFor({ state: "visible" });
+  // Y que no quede nada cargando: `role="status"` lo usan spinner y esqueletos.
+  await expect(page.locator('[role="status"]')).toHaveCount(0);
+}
+
 /** Fija el tema sin pasar por la interfaz (útil para preparar un test). */
 export async function fijarTema(page, tema) {
   await page.evaluate((t) => localStorage.setItem("cauce.tema", t), tema);
   await page.reload();
-  await page.waitForTimeout(600);
+  await esperarPantalla(page);
+  // El tema lo aplica el script del <head>, antes de que pinte React.
+  await expect(page.locator("html")).toHaveClass(tema === "oscuro" ? /\bdark\b/ : /^(?!.*\bdark\b)/);
 }
 
 /**

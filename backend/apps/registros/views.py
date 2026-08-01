@@ -1,4 +1,3 @@
-from rest_framework import filters
 
 from apps.common import BaseModelViewSet
 
@@ -19,7 +18,6 @@ class CiudadanoViewSet(BaseModelViewSet):
     protege_lectura = True
     institucion_path = "institucion"
     filter_fields = ("institucion", "obra_social")
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "apellido", "documento", "codigo"]
     ordering_fields = ["apellido", "nombre", "creado"]
 

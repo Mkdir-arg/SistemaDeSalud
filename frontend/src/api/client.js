@@ -41,17 +41,34 @@ async function parse(res) {
   }
 }
 
-async function refreshAccess() {
-  if (!tokens.refresh) return false;
-  const res = await fetch(`${BASE}/auth/token/refresh/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh: tokens.refresh }),
-  });
-  if (!res.ok) return false;
-  const data = await parse(res);
-  tokens.set({ access: data.access, refresh: data.refresh });
-  return true;
+// Refresco en vuelo, compartido por todas las llamadas.
+//
+// El backend tiene ROTATE_REFRESH_TOKENS activo: cada refresh invalida el token
+// anterior. Sin esto, cuando varios pedidos reciben 401 a la vez —lo normal en
+// una pantalla que carga tres consultas en paralelo— cada uno intenta refrescar
+// con el MISMO token: el primero rota, los demás reciben 401 del refresh y
+// terminan llamando a `tokens.clear()`, o sea cerrando la sesión del usuario en
+// medio de la carga.
+let refrescoEnVuelo = null;
+
+function refreshAccess() {
+  if (!tokens.refresh) return Promise.resolve(false);
+  // Si ya hay uno en curso, todos esperan ese mismo resultado.
+  if (refrescoEnVuelo) return refrescoEnVuelo;
+
+  refrescoEnVuelo = (async () => {
+    const res = await fetch(`${BASE}/auth/token/refresh/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh: tokens.refresh }),
+    });
+    if (!res.ok) return false;
+    const data = await parse(res);
+    tokens.set({ access: data.access, refresh: data.refresh });
+    return true;
+  })().finally(() => { refrescoEnVuelo = null; });
+
+  return refrescoEnVuelo;
 }
 
 async function request(method, path, body, _retried = false) {

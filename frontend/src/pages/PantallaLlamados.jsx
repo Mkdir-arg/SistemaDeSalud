@@ -265,7 +265,15 @@ const S = {
   filaBox: { fontSize: "2.1vw", fontWeight: 800, color: "#0E7C8F", textAlign: "right" },
 
   estado: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" },
-  idle: { fontSize: "3.4vw", fontWeight: 800, color: "#7B8A9C" },
-  idleSub: { fontSize: "1.4vw", color: "#8B98A8", marginTop: "1.5vh" },
+  // Estado de espera: es lo que se ve la mayor parte del tiempo en la sala.
+  //
+  // Los grises de antes (#7B8A9C y #8B98A8) daban 3.13:1 y 2.61:1 contra el fondo
+  // #EEF2F6. Aparte de ser poco legibles a distancia, el segundo no llegaba ni al
+  // mínimo de texto grande. Y con tipografías en `vw` el tamaño depende del
+  // televisor: en uno de 1366px ese texto baja de 24px y deja de contar como
+  // grande, así que pasa a exigir 4.5:1. Estos dos tonos cumplen 4.5:1 en
+  // cualquier pantalla, y conservan la jerarquía (7.2:1 contra 4.9:1).
+  idle: { fontSize: "3.4vw", fontWeight: 800, color: "#405167" },
+  idleSub: { fontSize: "1.4vw", color: MUTE, marginTop: "1.5vh" },
   error: { fontSize: "1.9vw", color: "#A3271B", fontWeight: 700 },
 };

@@ -1,4 +1,3 @@
-from rest_framework import filters
 
 from apps.common import BaseModelViewSet
 
@@ -12,7 +11,6 @@ class FormularioViewSet(BaseModelViewSet):
     capacidad_requerida = "diseno"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area")
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["titulo"]
     ordering_fields = ["titulo", "creado"]
 

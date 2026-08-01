@@ -1,4 +1,3 @@
-from rest_framework import filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -16,10 +15,12 @@ class UsuarioViewSet(BaseModelViewSet):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
     capacidad_requerida = "config"
-    filter_fields = ("is_active", "is_staff")
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    # `is_superuser` se filtra en el servidor porque el directorio lista sólo
+    # candidatos a admin de institución. Excluirlos en el cliente descontaba de la
+    # página ya paginada: el total quedaba mal y podían faltar usuarios reales.
+    filter_fields = ("is_active", "is_staff", "is_superuser")
     search_fields = ["email", "nombre", "apellido"]
-    ordering_fields = ["apellido", "nombre", "creado"]
+    ordering_fields = ["apellido", "nombre", "creado", "email"]
 
     @action(detail=False, methods=["get"])
     def me(self, request):
