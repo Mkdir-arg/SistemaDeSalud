@@ -311,7 +311,7 @@ function Pulso({ r }) {
     <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
       {tiles.map((t) => (
         <Card key={t.label} className={cn("border-l-[3px] px-lg py-3.5", t.alerta ? "border-l-danger" : "border-l-borde")}>
-          <div className={cn("text-2xl font-extrabold leading-none tabular-nums", t.alerta ? "text-danger" : "text-texto")}>{t.n}</div>
+          <div className={cn("text-cifra-lg font-extrabold leading-none tabular-nums", t.alerta ? "text-danger" : "text-texto")}>{t.n}</div>
           <div className="mt-1.5 text-sm text-texto-debil">{t.label}</div>
         </Card>
       ))}
@@ -400,11 +400,11 @@ function TarjetaPuesto({ p, onAbrir }) {
       </span>
       <span className="flex items-end gap-lg">
         <span>
-          <span className={cn("block text-2xl font-extrabold leading-none tabular-nums", p.ahora > 0 ? "text-texto" : "text-texto-tenue")}>{p.ahora}</span>
+          <span className={cn("block text-cifra-lg font-extrabold leading-none tabular-nums", p.ahora > 0 ? "text-texto" : "text-texto-tenue")}>{p.ahora}</span>
           <span className="mt-1 block text-xs text-texto-debil">{p.rol === "fila" ? "en cola" : "ahora"}</span>
         </span>
         <span>
-          <span className="block text-2xl font-extrabold leading-none tabular-nums text-texto-suave">{p.hoy}</span>
+          <span className="block text-cifra-lg font-extrabold leading-none tabular-nums text-texto-suave">{p.hoy}</span>
           <span className="mt-1 block text-xs text-texto-debil">hoy</span>
         </span>
         {p.desde && (

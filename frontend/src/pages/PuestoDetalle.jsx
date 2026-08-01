@@ -76,7 +76,7 @@ export default function PuestoDetalle() {
           </span>
           <div>
             <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.name.toUpperCase()}</div>
-            <h2 className="text-2xl font-extrabold tracking-tight">{nodo.titulo}</h2>
+            <h2 className="text-xxl font-extrabold tracking-tight">{nodo.titulo}</h2>
           </div>
         </div>
 
@@ -84,7 +84,7 @@ export default function PuestoDetalle() {
         <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
           {tiles.map((t) => (
             <Card key={t.label} className={cn("border-l-[3px] px-lg py-3.5", t.alerta ? "border-l-danger" : "border-l-borde")}>
-              <div className={cn("text-3xl font-extrabold leading-none tabular-nums", t.alerta ? "text-danger" : "text-texto")}>
+              <div className={cn("text-cifra-lg font-extrabold leading-none tabular-nums", t.alerta ? "text-danger" : "text-texto")}>
                 {t.n}
               </div>
               <div className="mt-1.5 text-sm text-texto-debil">{t.label}</div>

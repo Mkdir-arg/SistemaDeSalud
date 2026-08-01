@@ -170,16 +170,25 @@ export default function CasoDetalle() {
 // --------------------------------------------------------------------------- //
 // Piezas
 // --------------------------------------------------------------------------- //
-/** Chip con la categoría del nodo. Los colores son dinámicos (10 tipos). */
+/**
+ * Chip con la categoría del nodo (10 tipos, colores dinámicos).
+ *
+ * La etiqueta va en color de texto normal, no en el color de la categoría: esos
+ * colores están pensados para bordes y rellenos del lienzo, no para llevar texto
+ * —el rosa de «Atención» sobre su propio tinte da 3,56:1—. El color lo cargan el
+ * punto y el borde, que es donde sí funciona.
+ */
 function ChipNodo({ tipo, className }) {
   const cat = nodeCat[tipo] || nodeCat.form;
   return (
     <span
-      className={cn("inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-[3px] text-sm font-semibold", className)}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-[3px] text-sm font-semibold text-texto-medio",
+        className,
+      )}
       style={{
         background: `var(--color-nodo-${tipo}-tint)`,
         borderColor: `var(--color-nodo-${tipo}-bd)`,
-        color: `var(--color-nodo-${tipo}-sol)`,
       }}
     >
       <span className="size-1.5 rounded-sm" style={{ background: `var(--color-nodo-${tipo}-sol)` }} />

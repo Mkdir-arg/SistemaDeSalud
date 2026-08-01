@@ -460,7 +460,9 @@ export function Shell({ children }) {
             {user?.is_superuser ? (
               <button
                 onClick={() => { setInstitucion(null); navigate("/"); }}
-                style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 10px", borderRadius: 8, background: "#F2F3F6", color: "var(--color-texto-suave)", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer" }}
+                // El gris estaba hardcodeado (#F2F3F6) y en tema oscuro dejaba
+                // texto claro sobre fondo claro: 1,7:1.
+                style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--color-superficie-2)", color: "var(--color-texto-suave)", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer" }}
               >
                 <Icon name="back" size={14} /> Volver al directorio
               </button>

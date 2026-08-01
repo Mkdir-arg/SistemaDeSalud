@@ -144,10 +144,10 @@ PARADAS = {
 }
 
 
-def elegir(opciones):
-    """Elige entre `[(valor, peso), …]`."""
+def elegir(opciones, az=random):
+    """Elige entre `[(valor, peso), …]`. `az` permite usar otra corriente de azar."""
     total = sum(p for _, p in opciones)
-    r = random.uniform(0, total)
+    r = az.uniform(0, total)
     acum = 0
     for valor, peso in opciones:
         acum += peso
@@ -187,6 +187,15 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **opciones):
         random.seed(opciones["semilla"])
+        # Corriente de azar SEPARADA para las fechas de ingreso.
+        #
+        # `_momento_de_ingreso` sortea por rechazo (descarta días según el peso
+        # del día de la semana), así que consume una cantidad VARIABLE de números
+        # según qué días caen en la ventana. Si saliera de la corriente principal,
+        # correr el seed un martes y un miércoles desplazaría toda la secuencia
+        # posterior y cambiaría hasta el total de casos — que fue exactamente lo
+        # que pasó: 531 un día, 533 al siguiente, con la misma semilla.
+        self.azar_fechas = random.Random(opciones["semilla"] + 1)
 
         if opciones["rehacer"]:
             call_command("seed_guardia", verbosity=0)
@@ -368,17 +377,22 @@ class Command(BaseCommand):
     # ----------------------------------------------------------------- #
     def _momento_de_ingreso(self, ahora, dias):
         """Un instante de ingreso plausible: menos los fines de semana y con los
-        dos picos típicos de una guardia (media mañana y primera hora de la noche)."""
+        dos picos típicos de una guardia (media mañana y primera hora de la noche).
+
+        Todo el azar de acá sale de `azar_fechas`, no de la corriente principal
+        (ver el comentario en `handle`).
+        """
+        az = self.azar_fechas
         while True:
-            dia = ahora.date() - timedelta(days=random.randint(0, dias - 1))
+            dia = ahora.date() - timedelta(days=az.randint(0, dias - 1))
             peso = {5: 0.8, 6: 0.7}.get(dia.weekday(), 1.0)
-            if random.random() <= peso:
+            if az.random() <= peso:
                 break
         hora = elegir([(h, p) for h, p in zip(
             range(24),
             [3, 2, 2, 1, 1, 1, 2, 4, 7, 10, 11, 10, 8, 7, 6, 6, 7, 9, 11, 10, 8, 6, 5, 4],
-        )])
-        momento = datetime.combine(dia, time(hora, random.randint(0, 59), random.randint(0, 59)))
+        )], az)
+        momento = datetime.combine(dia, time(hora, az.randint(0, 59), az.randint(0, 59)))
         if timezone.is_naive(momento):
             momento = timezone.make_aware(momento, timezone.get_current_timezone())
         return min(momento, ahora - timedelta(minutes=2))

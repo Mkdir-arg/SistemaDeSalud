@@ -93,7 +93,7 @@ export default function Fila() {
           </select>
         )}
         <div className="text-right">
-          <div className="text-2xl font-extrabold leading-none tabular-nums">{fila.length}</div>
+          <div className="text-cifra font-extrabold leading-none tabular-nums">{fila.length}</div>
           <div className="text-xs text-texto-tenue">en {areaNombre}</div>
         </div>
       </section>

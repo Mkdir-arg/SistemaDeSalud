@@ -17,9 +17,27 @@ test.describe("Tabla de casos", () => {
   const idsVisibles = (page) =>
     page.$$eval("tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
 
-  test("informa el total real y no solo lo que entra en una página", async ({ page }) => {
+  /** Total de casos según la API, para no clavar un número en el test. */
+  async function totalDeCasos(request) {
+    const auth = await request.post("http://127.0.0.1:8000/api/auth/token/", {
+      data: { email: "admin@cauce.local", password: "admin1234" },
+    });
+    const { access } = await auth.json();
+    const r = await request.get("http://127.0.0.1:8000/api/casos/?page_size=1", {
+      headers: { Authorization: `Bearer ${access}` },
+    });
+    return (await r.json()).count;
+  }
+
+  test("informa el total real y no solo lo que entra en una página", async ({ page, request }) => {
+    // El total se compara contra el que devuelve la API, no contra un número
+    // fijo: el seed genera una cantidad que depende de decisiones al azar, y
+    // clavarla en el test lo vuelve frágil ante cualquier cambio del generador.
+    const total = await totalDeCasos(request);
+    expect(total).toBeGreaterThan(100); // la demo tiene volumen
+
     const pie = page.locator("text=/Mostrando .* de /").first();
-    await expect(pie).toContainText("531");
+    await expect(pie).toContainText(String(total));
     expect(await idsVisibles(page)).toHaveLength(25);
   });
 
@@ -69,7 +87,8 @@ test.describe("Tabla de casos", () => {
     expect(desc[0]).toBeGreaterThan(asc[0]);
   });
 
-  test("filtrar por estado reduce el total", async ({ page }) => {
+  test("filtrar por estado reduce el total", async ({ page, request }) => {
+    const todos = await totalDeCasos(request);
     // El total se lee con `poll` porque la consulta filtrada tarda: leerlo una
     // sola vez justo después de elegir devuelve el total viejo y el test pasa o
     // falla según la latencia.
@@ -77,10 +96,10 @@ test.describe("Tabla de casos", () => {
       const t = await page.locator("text=/Mostrando /").first().textContent().catch(() => "");
       return Number((t.match(/de\s*(\d+)/) || [])[1] || 0);
     };
-    expect(await total()).toBe(531);
+    expect(await total()).toBe(todos);
 
     await page.getByLabel("Filtrar por estado").selectOption({ label: "En espera" });
-    await expect.poll(total).toBeLessThan(531);
+    await expect.poll(total).toBeLessThan(todos);
     expect(await total()).toBeGreaterThan(0);
   });
 

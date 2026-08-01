@@ -63,7 +63,7 @@
   --color-texto-medio: #344054;
   --color-texto-suave: #475467;
   --color-texto-debil: #667085;
-  --color-texto-tenue: #6B7385;
+  --color-texto-tenue: #626A7B;
 
   /* Badges por tono semántico */
   --color-badge-neutral-bg: #EEF0F3;
@@ -132,6 +132,10 @@
   --text-md: 14px;
   --text-lg: 16px;
   --text-xl: 17px;
+  --text-xxl: 20px;
+  --text-cifra: 22px;
+  --text-cifra-lg: 26px;
+  --text-cifra-xl: 30px;
 
   /* Espaciado nombrado (la escala numérica de Tailwind sigue disponible) */
   --spacing-xs: 4px;

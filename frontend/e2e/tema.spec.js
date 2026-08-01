@@ -81,3 +81,21 @@ test.describe("Tema", () => {
     }
   }
 });
+
+/** Pantallas que requieren la capacidad `config`, así que las mira el super admin. */
+test.describe("Tema · pantallas de configuración", () => {
+  test.beforeEach(async ({ page }) => {
+    await entrar(page, "admin");
+  });
+
+  for (const tema of ["claro", "oscuro"]) {
+    test(`sin fallos de contraste AA en /dashboard (${tema})`, async ({ page }) => {
+      await page.goto("/dashboard");
+      await fijarTema(page, tema);
+      // El tablero trae gráficos y tablas: se le da tiempo a que todo pinte.
+      await page.waitForTimeout(2500);
+      const fallos = await fallosDeContraste(page);
+      expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
+    });
+  }
+});

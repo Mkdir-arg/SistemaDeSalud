@@ -69,7 +69,9 @@ export const semantico = {
   // pantallas migradas cumplen AA sin alterar la escala literal de la marca ni
   // las 17 capturas de referencia. A medida que se migren pantallas, el sistema
   // converge solo. Cambiar `slate400` de raíz es una decisión de marca.
-  textoTenue: "#6B7385", // rótulos, placeholders, deshabilitado — 4,7:1 sobre blanco
+  // 4,7:1 sobre blanco pero 4,3:1 sobre el fondo de página (`fondo` es gris, no
+  // blanco). Se calibra contra el fondo, que es el peor caso.
+  textoTenue: "#626A7B", // rótulos, placeholders, deshabilitado
 };
 
 // Tema oscuro. Valores elegidos a mano, no derivados: invertir la luminosidad de
@@ -132,6 +134,18 @@ export const type = {
   md: 14, // texto de controles y títulos de fila
   lg: 16, // títulos de sección / modal
   xl: 17, // título de pantalla
+  xxl: 20, // título grande de detalle
+
+  // Cifras: los números que SON el contenido de una tarjeta (KPIs, contadores),
+  // no texto. Son un rol aparte, no una continuación de la escala de texto.
+  //
+  // Faltaban, y como las escalas de Tailwind están reemplazadas por estas,
+  // escribir `text-2xl` o `text-3xl` no generaba ninguna clase: el número
+  // quedaba del mismo tamaño que su etiqueta, en silencio. Los pasos de abajo
+  // son los tamaños que el diseño original tenía en línea.
+  cifra: 22,
+  cifraLg: 26,
+  cifraXl: 30,
 };
 
 // Espaciado en múltiplos de 4 (grilla base). Colapsa los enteros sueltos
