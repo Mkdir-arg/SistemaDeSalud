@@ -80,18 +80,45 @@ test.describe("Tema", () => {
   }
 });
 
-/** Pantallas que requieren la capacidad `config`, así que las mira el super admin. */
-test.describe("Tema · pantallas de configuración", () => {
+/**
+ * Pantallas que piden capacidades que el jefe de área no tiene (`config`,
+ * `diseno`), así que las mira el super admin. Van en su propio bloque porque con
+ * el usuario del bloque de arriba darían 403 y el test mediría una pantalla de
+ * «no tenés permiso», que pasa el contraste sin probar nada.
+ */
+const PANTALLAS_ADMIN = ["/dashboard", "/flujos", "/mapa", "/formularios"];
+
+/** Rutas con parámetro dentro del alcance del admin. */
+const DINAMICAS_ADMIN = [
+  { nombre: "detalle de formulario", resolver: async (page) => {
+    await page.goto("/formularios");
+    await page.locator("tbody tr").first().click();
+    await page.waitForURL(/\/formularios\/\d+/);
+  } },
+];
+
+test.describe("Tema · pantallas de configuración y diseño", () => {
   test.beforeEach(async ({ page }) => {
     await entrar(page, "admin");
   });
 
   for (const tema of ["claro", "oscuro"]) {
-    test(`sin fallos de contraste AA en /dashboard (${tema})`, async ({ page }) => {
-      await page.goto("/dashboard");
-      await fijarTema(page, tema);
-      const fallos = await fallosDeContraste(page);
-      expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
-    });
+    for (const ruta of PANTALLAS_ADMIN) {
+      test(`sin fallos de contraste AA en ${ruta} (${tema})`, async ({ page }) => {
+        await page.goto(ruta);
+        await fijarTema(page, tema);
+        const fallos = await fallosDeContraste(page);
+        expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
+      });
+    }
+
+    for (const { nombre, resolver } of DINAMICAS_ADMIN) {
+      test(`sin fallos de contraste AA en ${nombre} (${tema})`, async ({ page }) => {
+        await resolver(page);
+        await fijarTema(page, tema);
+        const fallos = await fallosDeContraste(page);
+        expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
+      });
+    }
   }
 });

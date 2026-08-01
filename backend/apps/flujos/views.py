@@ -1,3 +1,4 @@
+from django.db.models import Exists, OuterRef, Subquery
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,6 +23,39 @@ class FlujoViewSet(BaseModelViewSet):
     filter_fields = ("institucion", "area", "subarea")
     search_fields = ["titulo"]
     ordering_fields = ["titulo", "creado"]
+
+    def get_queryset(self):
+        """Agrega `?estado=` sobre la versión VIGENTE del flujo.
+
+        «Vigente» es la publicada si existe y, si no, la última por número — la
+        misma regla que muestra el listado. No es un campo del flujo, así que no
+        alcanza con `filter_fields`; se resuelve con subconsultas.
+
+        Antes esto se filtraba en el frontend sobre los flujos ya traídos, con el
+        problema de siempre: la API pagina de a 25 y el filtro sólo veía esos.
+        """
+        qs = super().get_queryset()
+        estado = self.request.query_params.get("estado")
+        if not estado or estado == "todos":
+            return qs
+
+        publicada = VersionFlujo.objects.filter(
+            flujo=OuterRef("pk"), estado=VersionFlujo.Estado.PUBLICADA
+        )
+        if estado == VersionFlujo.Estado.PUBLICADA:
+            return qs.filter(Exists(publicada))
+
+        # Sin versión publicada, manda el estado de la última.
+        ultima = (
+            VersionFlujo.objects.filter(flujo=OuterRef("pk"))
+            .order_by("-numero")
+            .values("estado")[:1]
+        )
+        return (
+            qs.filter(~Exists(publicada))
+            .annotate(estado_vigente=Subquery(ultima))
+            .filter(estado_vigente=estado)
+        )
 
     @action(detail=False, methods=["get"])
     def mapa(self, request):

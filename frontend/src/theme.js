@@ -180,25 +180,13 @@ export const badgeTone = {
 };
 
 // Estado del Caso (valor de la API) → etiqueta + tono de badge.
-export const estadoCaso = {
-  recibido: { label: "Recibido", tone: "neutral" },
-  en_evaluacion: { label: "En evaluación", tone: "info" },
-  en_espera: { label: "En espera", tone: "amber" },
-  derivado: { label: "Derivado", tone: "amber" },
-  atendido: { label: "Atendido", tone: "green" },
-  cerrado: { label: "Cerrado", tone: "gray" },
-  cancelado: { label: "Cancelado", tone: "error" },
-};
 
-// Estado de la VersiónFlujo → tono.
-export const estadoVersion = {
-  borrador: { label: "Borrador", tone: "neutral" },
-  publicada: { label: "Publicada", tone: "green" },
-  reemplazada: { label: "Reemplazada", tone: "gray" },
-  archivada: { label: "Archivada", tone: "gray" },
-};
 
 // Categorías de nodo (color sólido, tinte de fondo, borde).
+//
+// Se queda acá y no en `lib/dominio.js` porque es la PALETA: de esto salen los
+// tokens `--color-nodo-*` que genera `scripts/generar-tokens.mjs`. Los nombres
+// de las categorías, que sí son dominio, viven en `lib/dominio.js`.
 export const nodeCat = {
   inicio: { name: "Inicio", sol: "#1F8A5B", tint: "#E9F6EF", bd: "#BBE3CD" },
   form: { name: "Formulario", sol: "#3949C0", tint: "#ECEEFB", bd: "#C7CDF2" },
@@ -215,13 +203,3 @@ export const nodeCat = {
 // Avatares: paleta rotativa.
 export const avatarColors = ["#3949C0", "#0E8893", "#9A3DB8", "#A96A12", "#1F8A5B", "#2B8FD6"];
 
-export function iniciales(nombre = "") {
-  return nombre
-    .replace(/\./g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}

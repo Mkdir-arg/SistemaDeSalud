@@ -9,7 +9,7 @@ import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { estadoCaso, nodeCat } from "@/theme";
+import { estadoCaso, nombreNodo } from "@/lib/dominio";
 
 const PRIO = { urgente: { label: "Urgente", tone: "error" }, alta: { label: "Alta", tone: "amber" } };
 
@@ -52,7 +52,7 @@ export default function PuestoDetalle() {
   }
 
   const { nodo, indicadores: ind, casos, mi_box: miBox } = q.data;
-  const cat = nodeCat[nodo.tipo] || nodeCat.form;
+  const cat = nombreNodo(nodo.tipo);
 
   const tiles = [
     { label: nodo.con_fila ? "En cola" : "Ahora", n: ind.ahora },
@@ -75,7 +75,7 @@ export default function PuestoDetalle() {
             <span className="size-3.5 rounded-sm" style={{ background: `var(--color-nodo-${nodo.tipo}-sol)` }} />
           </span>
           <div>
-            <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.name.toUpperCase()}</div>
+            <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.toUpperCase()}</div>
             <h2 className="text-xxl font-extrabold tracking-tight">{nodo.titulo}</h2>
           </div>
         </div>

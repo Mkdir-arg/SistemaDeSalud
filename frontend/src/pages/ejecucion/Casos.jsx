@@ -8,7 +8,7 @@ import { Buscador, FiltroSelect, LimpiarFiltros, useBusquedaUrl, useFiltroUrl } 
 import { TablaRecurso } from "@/components/ui/tabla";
 import { antiguedad } from "@/lib/format";
 import { casoId } from "@/lib/format";
-import { estadoCaso } from "@/theme";
+import { estadoCaso } from "@/lib/dominio";
 
 const ESTADOS = Object.entries(estadoCaso).map(([value, e]) => ({ value, label: e.label }));
 const PRIORIDADES = [

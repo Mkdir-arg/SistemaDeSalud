@@ -1,89 +1,110 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../api/client";
-import { useInstitucion } from "../../auth/InstitutionContext";
-import { Button, Card, Field, Input, Modal, Mono, Spinner, Table } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { color } from "../../theme";
 
-// Lista de formularios (tabla). El constructor vive en /formularios/:id.
+import { api } from "@/api/client";
+import { useAccion } from "@/api/queries";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { Icon } from "@/components/icons";
+import { Button, Field, Input, Modal, Mono } from "@/components/ui";
+import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
+import { TablaRecurso } from "@/components/ui/tabla";
+import { useToast } from "@/components/ui/toast";
+
+// Lista de formularios. El constructor vive en /formularios/:id.
 export default function Formularios() {
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [forms, setForms] = useState([]);
-  const [cargando, setCargando] = useState(true);
+  const [texto, setTexto, busqueda] = useBusquedaUrl("q");
   const [nuevo, setNuevo] = useState(false);
 
-  async function cargar() {
-    if (!institucion) return;
-    setCargando(true);
-    try {
-      const d = await api.get(`/formularios/?institucion=${institucion.id}`);
-      setForms(d.results || d);
-    } finally {
-      setCargando(false);
-    }
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [institucion]);
-
   return (
-    <div style={{ padding: "26px 30px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+    <div className="px-lg py-[26px] sm:px-[30px]">
+      <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
-          <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: "-.5px" }}>Formularios</div>
-          <div style={{ fontSize: 13, color: color.slate500, marginTop: 2 }}>Definí los campos que los flujos piden en cada paso.</div>
+          <h1 className="text-cifraLg font-extrabold tracking-tight">Formularios</h1>
+          <div className="mt-0.5 text-base text-texto-debil">
+            Definí los campos que los flujos piden en cada paso.
+          </div>
         </div>
-        <Button onClick={() => setNuevo(true)} style={{ display: "flex", alignItems: "center", gap: 8 }}><Icon name="plus" size={15} /> Nuevo formulario</Button>
+        <div className="flex items-center gap-2.5">
+          <Buscador valor={texto} onChange={setTexto} placeholder="Buscar formulario…" className="w-64" aria-label="Buscar formulario" />
+          <Button onClick={() => setNuevo(true)} className="flex items-center gap-2 whitespace-nowrap">
+            <Icon name="plus" size={15} /> Nuevo formulario
+          </Button>
+        </div>
       </div>
 
-      <Card style={{ overflow: "hidden", padding: 0 }}>
-        {cargando ? (
-          <Spinner />
-        ) : (
-          <Table
-            rows={forms}
-            onRowClick={(f) => navigate(`/formularios/${f.id}`)}
-            vacio="No hay formularios. Creá el primero."
-            columns={[
-              {
-                key: "titulo", label: "Formulario",
-                render: (f) => (
-                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="form" size={17} /></div>
-                    <span style={{ fontWeight: 600 }}>{f.titulo}</span>
-                  </div>
-                ),
-              },
-              { key: "campos", label: "Campos", render: (f) => <Mono>{f.campos?.length || 0}</Mono> },
-              { key: "vinculados", label: "Vinculados", render: (f) => <Mono>{(f.campos || []).filter((c) => c.origen).length}</Mono> },
-              { key: "descripcion", label: "Descripción", render: (f) => <span style={{ color: color.slate500 }}>{f.descripcion || "—"}</span> },
-            ]}
-          />
-        )}
-      </Card>
+      <TablaRecurso
+        clave="forms"
+        recurso="formularios"
+        params={{ institucion: institucion?.id, search: busqueda || undefined }}
+        ordenInicial="titulo"
+        onRowClick={(f) => navigate(`/formularios/${f.id}`)}
+        vacio={{
+          titulo: busqueda ? "Ningún formulario coincide" : "No hay formularios",
+          detalle: busqueda ? "Probá con otro título." : "Creá el primero para que los flujos tengan qué pedir.",
+          accion: !busqueda && <Button onClick={() => setNuevo(true)}>Nuevo formulario</Button>,
+        }}
+        columnas={[
+          {
+            key: "titulo", label: "Formulario", orden: "titulo", truncar: true,
+            render: (f) => (
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-9 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
+                  <Icon name="form" size={17} />
+                </span>
+                <span className="truncate font-semibold">{f.titulo}</span>
+              </div>
+            ),
+          },
+          { key: "campos", label: "Campos", render: (f) => <Mono>{f.campos?.length || 0}</Mono> },
+          {
+            key: "vinculados", label: "Vinculados",
+            render: (f) => <Mono>{(f.campos || []).filter((c) => c.origen).length}</Mono>,
+          },
+          {
+            key: "descripcion", label: "Descripción", truncar: true,
+            render: (f) => <span className="text-texto-debil">{f.descripcion || "—"}</span>,
+          },
+        ]}
+      />
 
-      {nuevo && <NuevoFormModal institucionId={institucion?.id} onClose={() => setNuevo(false)} onCreated={(id) => navigate(`/formularios/${id}`)} />}
+      {nuevo && (
+        <NuevoFormModal
+          institucionId={institucion?.id}
+          onClose={() => setNuevo(false)}
+          onCreated={(id) => navigate(`/formularios/${id}`)}
+        />
+      )}
     </div>
   );
 }
 
 function NuevoFormModal({ institucionId, onClose, onCreated }) {
+  const toast = useToast();
   const [titulo, setTitulo] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  async function crear() {
-    setGuardando(true);
-    try {
-      const f = await api.post("/formularios/", { institucion: institucionId, titulo });
-      onCreated(f.id);
-    } finally {
-      setGuardando(false);
-    }
-  }
+
+  const crear = useAccion(() => api.post("/formularios/", { institucion: institucionId, titulo }), {
+    onSuccess: (f) => onCreated(f.id),
+    onError: (e) => toast.deError(e, "No se pudo crear el formulario."),
+  });
+
   return (
-    <Modal title="Nuevo formulario" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !titulo} onClick={crear}>{guardando ? "…" : "Crear y diseñar"}</Button></>}>
-      <Field label="Título *"><Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Datos del paciente" /></Field>
+    <Modal
+      title="Nuevo formulario"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={crear.isPending || !titulo} onClick={() => crear.mutate()}>
+            {crear.isPending ? "…" : "Crear y diseñar"}
+          </Button>
+        </>
+      }
+    >
+      <Field label="Título *">
+        <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Datos del paciente" />
+      </Field>
     </Modal>
   );
 }

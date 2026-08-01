@@ -9,7 +9,7 @@ import { Badge, Button, ConfirmDialog, Field, Modal, Select, Textarea } from "@/
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad } from "@/lib/format";
-import { estadoCaso } from "@/theme";
+import { estadoCaso } from "@/lib/dominio";
 
 const PRIORIDADES = [
   { value: "normal", label: "Normal" },

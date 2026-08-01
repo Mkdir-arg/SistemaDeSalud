@@ -4,7 +4,8 @@ import { api } from "../../api/client";
 import { Badge, Button, Checkbox, Field, Input, Select, Spinner } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { caminoPorDefecto, correrAuto, nodoInicio, siguiente } from "../../lib/simular";
-import { badgeTone, color, estadoCaso, estadoVersion, nodeCat, radius, shadow, type } from "../../theme";
+import { estadoCaso, estadoVersion } from "../../lib/dominio";
+import { badgeTone, color, nodeCat, radius, shadow, type } from "../../theme";
 
 const NODO_W = 184;
 const NODO_H = 64;

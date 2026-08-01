@@ -40,10 +40,20 @@ const TITULOS = {
   "/estructura": "Estructura organizativa",
   "/administracion": "Administración",
 };
+// Rutas con parámetro: llevan prefijo, así que no entran por el mapa de arriba.
+// Faltando una, la barra dice «Cauce» y la persona pierde la referencia de dónde
+// está — que es justamente para lo que sirve el título.
+const TITULOS_DETALLE = [
+  ["/casos/", "Detalle del caso"],
+  ["/flujos/", "Diseñador de flujos"],
+  ["/puesto/", "Detalle del paso"],
+  ["/formularios/", "Constructor de formulario"],
+  ["/historia/", "Historia clínica"],
+];
+
 function tituloDeRuta(pathname) {
-  if (pathname.startsWith("/casos/")) return "Detalle del caso";
-  if (pathname.startsWith("/flujos/")) return "Diseñador de flujos";
-  if (pathname.startsWith("/puesto/")) return "Detalle del paso";
+  const detalle = TITULOS_DETALLE.find(([prefijo]) => pathname.startsWith(prefijo));
+  if (detalle) return detalle[1];
   return TITULOS[pathname] || "Cauce";
 }
 

@@ -11,7 +11,7 @@ import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { useFiltroUrl } from "@/components/ui/filtros";
 import { antiguedad } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { estadoCaso, estadoVersion, nodeCat } from "@/theme";
+import { estadoCaso, estadoVersion, nombreNodo } from "@/lib/dominio";
 
 /**
  * Tablero del hospital: números, tiempos por área y evolución de ingresos.
@@ -726,7 +726,7 @@ function MiniMapaFlujo({ flujo }) {
           return <line key={i} x1={cx(o)} y1={cy(o)} x2={cx(dn)} y2={cy(dn)} className="stroke-borde" strokeWidth="1.6" markerEnd="url(#flecha)" />;
         })}
         {nodos.map((n) => {
-          const cat = nodeCat[n.tipo] || nodeCat.estado;
+          const cat = nombreNodo(n.tipo);
           const activo = n.casos > 0;
           return (
             <g key={n.id} transform={`translate(${tx(n.x)} ${ty(n.y)})`}>
@@ -740,7 +740,7 @@ function MiniMapaFlujo({ flujo }) {
                 strokeWidth={n.destino ? 2.6 : activo ? 2 : 1.3} />
               <rect width="5" height={H} rx="2.5" fill={`var(--color-nodo-${n.tipo}-sol)`} />
               <text x="16" y="24" fontSize="13" fontWeight="700" className="fill-texto">{corta(n.titulo)}</text>
-              <text x="16" y="42" fontSize="11.5" fill={`var(--color-nodo-${n.tipo}-sol)`}>{cat.name}</text>
+              <text x="16" y="42" fontSize="11.5" fill={`var(--color-nodo-${n.tipo}-sol)`}>{cat}</text>
               {activo && (
                 <g transform={`translate(${W - 18} 18)`}>
                   <circle r="14" className="fill-accent-fuerte" />

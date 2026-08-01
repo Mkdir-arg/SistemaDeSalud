@@ -11,7 +11,9 @@ class FormularioViewSet(BaseModelViewSet):
     capacidad_requerida = "diseno"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area")
-    search_fields = ["titulo"]
+    # La descripción también se busca: el listado la muestra como columna, así que
+    # buscar por algo que está a la vista y no encontrarlo se siente roto.
+    search_fields = ["titulo", "descripcion"]
     ordering_fields = ["titulo", "creado"]
 
 

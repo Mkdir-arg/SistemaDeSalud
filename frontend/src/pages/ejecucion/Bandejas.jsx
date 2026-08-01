@@ -11,7 +11,7 @@ import { Buscador, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros"
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad, casoId } from "@/lib/format";
-import { estadoCaso } from "@/theme";
+import { estadoCaso } from "@/lib/dominio";
 
 export default function Bandejas() {
   const { user } = useAuth();

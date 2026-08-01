@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../api/client";
-import { useInstitucion } from "../../auth/InstitutionContext";
-import { Badge, Spinner } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { color, estadoVersion, radius, shadow, type } from "../../theme";
+import { useQuery } from "@tanstack/react-query";
+
+import { api } from "@/api/client";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { Icon } from "@/components/icons";
+import { Badge, Spinner } from "@/components/ui";
+import { EstadoError, EstadoVacio } from "@/components/ui/estados";
+import { estadoVersion } from "@/lib/dominio";
 
 const CARD_W = 250;
 const CARD_H = 96;
@@ -17,58 +20,81 @@ const PAD = 16;
 export default function MapaFlujos() {
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [data, setData] = useState(null); // { nodos, aristas }
-  const [cargando, setCargando] = useState(true);
 
-  useEffect(() => {
-    if (!institucion) return;
-    setCargando(true);
-    api
-      .get(`/flujos/mapa/?institucion=${institucion.id}`)
-      .then(setData)
-      .finally(() => setCargando(false));
-  }, [institucion]);
+  const q = useQuery({
+    queryKey: ["mapa-flujos", institucion?.id],
+    queryFn: () => api.get(`/flujos/mapa/?institucion=${institucion.id}`),
+    enabled: institucion?.id != null,
+  });
 
-  const layout = useMemo(() => calcularLayout(data), [data]);
+  const layout = useMemo(() => calcularLayout(q.data), [q.data]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "20px 30px 14px" }}>
-        <div style={{ fontSize: type.lg, fontWeight: 700 }}>Cómo se encadenan los procesos</div>
-        <div style={{ fontSize: type.base, color: color.slate500, marginTop: 3, maxWidth: 640 }}>
-          Cada bloque es un flujo; las flechas son derivaciones entre flujos. Hacé clic en un bloque para abrirlo en el diseñador.
+    <div className="flex h-full flex-col">
+      <div className="px-lg pb-3.5 pt-5 sm:px-[30px]">
+        <h1 className="text-lg font-bold">Cómo se encadenan los procesos</h1>
+        <div className="mt-0.5 max-w-2xl text-base text-texto-debil">
+          Cada bloque es un flujo; las flechas son derivaciones entre flujos. Hacé
+          clic en un bloque para abrirlo en el diseñador.
         </div>
       </div>
-      <div style={{ flex: 1, overflow: "auto", background: color.canvas, backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)", backgroundSize: "20px 20px", padding: 32 }}>
-        {cargando ? (
+
+      {/* La cuadrícula de puntos usa el token de borde, así que en tema oscuro se
+          atenúa sola en vez de quedar un enrejado claro sobre fondo negro. */}
+      <div
+        className="flex-1 overflow-auto bg-fondo p-8"
+        style={{
+          backgroundImage: "radial-gradient(circle, var(--color-borde) 1.1px, transparent 1.1px)",
+          backgroundSize: "20px 20px",
+        }}
+      >
+        {q.error ? (
+          <EstadoError error={q.error} onReintentar={q.refetch} />
+        ) : q.isLoading ? (
           <Spinner />
         ) : !layout || layout.nodos.length === 0 ? (
-          <div style={{ fontSize: type.md, color: color.slate500 }}>No hay flujos en esta institución.</div>
+          <EstadoVacio
+            titulo="No hay flujos en esta institución"
+            detalle="Creá un flujo desde Flujos y volvé acá para ver cómo se encadena con el resto."
+            icono="workflow"
+          />
         ) : (
-          <div style={{ position: "relative", width: layout.width, height: layout.height, minWidth: "100%" }}>
+          <div className="relative min-w-full" style={{ width: layout.width, height: layout.height }}>
             {/* Flechas de derivación */}
-            <svg width={layout.width} height={layout.height} role="img" aria-label={`Mapa de ${layout.nodos.filter((n) => !n.externo).length} flujos y ${layout.aristas.length} derivaciones`} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }}>
+            <svg
+              width={layout.width}
+              height={layout.height}
+              role="img"
+              aria-label={`Mapa de ${layout.nodos.filter((n) => !n.externo).length} flujos y ${layout.aristas.length} derivaciones`}
+              className="pointer-events-none absolute inset-0 overflow-visible text-texto-tenue"
+            >
               <title>Mapa de derivaciones entre flujos</title>
+              {/* `currentColor` en vez de un gris fijo: así la flecha y su punta
+                  toman el color del token y siguen al tema con una sola fuente. */}
               <defs>
                 <marker id="flecha" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L8,4 L0,8 Z" fill={color.slate400} />
+                  <path d="M0,0 L8,4 L0,8 Z" fill="currentColor" />
                 </marker>
               </defs>
               {layout.aristas.map((a, i) => (
-                <path key={i} d={a.path} fill="none" stroke={color.slate400} strokeWidth={1.7} strokeDasharray={a.externo ? "5 4" : undefined} markerEnd="url(#flecha)" />
+                <path key={i} d={a.path} fill="none" stroke="currentColor" strokeWidth={1.7} strokeDasharray={a.externo ? "5 4" : undefined} markerEnd="url(#flecha)" />
               ))}
             </svg>
 
             {/* Etiquetas de las flechas (HTML, por encima de las tarjetas) */}
             {layout.aristas.map((a, i) => a.etiqueta && (
-              <div key={`l${i}`} style={{ position: "absolute", left: a.lx, top: a.ly, transform: "translate(-50%,-50%)", fontSize: type.xs, fontWeight: 600, color: color.slate500, background: color.canvas, padding: "1px 6px", borderRadius: radius.sm, whiteSpace: "nowrap", pointerEvents: "none" }}>
+              <div
+                key={`l${i}`}
+                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-fondo px-1.5 py-px text-xs font-semibold text-texto-debil"
+                style={{ left: a.lx, top: a.ly }}
+              >
                 {a.etiqueta}
               </div>
             ))}
 
             {/* Bloques de flujo */}
             {layout.nodos.map((n) => {
-              const est = estadoVersion[n.estado] || { label: "Borrador", tone: "neutral" };
+              const est = estadoVersion[n.estado] || estadoVersion.borrador;
               const externo = n.externo;
               const abrir = () => !externo && navigate(`/flujos/${n.id}`);
               return (
@@ -79,22 +105,26 @@ export default function MapaFlujos() {
                   aria-label={externo ? undefined : `Abrir flujo ${n.titulo}`}
                   onClick={abrir}
                   onKeyDown={(e) => { if (!externo && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); abrir(); } }}
-                  style={{
-                    position: "absolute", left: n.x, top: n.y, width: CARD_W, height: CARD_H,
-                    background: externo ? "#F7F8FA" : "#fff",
-                    border: `1px ${externo ? "dashed" : "solid"} ${color.border}`,
-                    borderRadius: radius.lg, padding: "14px 16px", cursor: externo ? "default" : "pointer",
-                    boxShadow: externo ? "none" : shadow.card,
-                    display: "flex", flexDirection: "column", justifyContent: "space-between", boxSizing: "border-box",
-                  }}
+                  className={
+                    "absolute box-border flex flex-col justify-between rounded-lg border border-borde px-lg py-3.5 " +
+                    (externo
+                      ? "cursor-default border-dashed bg-superficie-2"
+                      : "cursor-pointer bg-superficie shadow-card hover:border-accent-100")
+                  }
+                  style={{ left: n.x, top: n.y, width: CARD_W, height: CARD_H }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: radius.md, background: externo ? color.subtle : color.accent50, color: externo ? color.slate400 : color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      className={
+                        "flex size-8 flex-none items-center justify-center rounded-md " +
+                        (externo ? "bg-superficie text-texto-tenue" : "bg-accent-50 text-accent")
+                      }
+                    >
                       <Icon name="workflow" size={16} />
-                    </div>
-                    <div style={{ fontSize: type.md, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }} title={n.titulo}>{n.titulo}</div>
+                    </span>
+                    <div className="min-w-0 truncate text-md font-semibold" title={n.titulo}>{n.titulo}</div>
                   </div>
-                  <div style={{ fontSize: type.sm, color: color.slate500, display: "flex", alignItems: "center", gap: 7 }}>
+                  <div className="flex items-center gap-1.5 text-sm text-texto-debil">
                     {externo ? (
                       "Flujo de otro alcance"
                     ) : (

@@ -11,11 +11,10 @@ import { Avatar, Badge, Button, Field, Input, Modal, Mono, Select } from "@/comp
 import { Buscador, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
+import { plural } from "@/lib/format";
 
 const ESTADO_TONE = { activa: "green", en_alta: "amber", inactiva: "gray" };
 
-/** «1 institución» / «5 instituciones». Con datos reales el singular aparece. */
-const plural = (n, singular, plural) => `${n} ${n === 1 ? singular : plural}`;
 
 const NAV = [
   { key: "instituciones", label: "Instituciones", icon: "building" },

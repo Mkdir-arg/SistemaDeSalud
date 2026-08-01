@@ -13,7 +13,7 @@ import { BuscadorPaciente, PacienteElegido } from "@/components/ui/paciente";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { estadoCaso } from "@/theme";
+import { estadoCaso } from "@/lib/dominio";
 
 const REFRESCO_MS = 30_000;
 

@@ -10,7 +10,7 @@ import { EstadoError, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { casoId, fechaHora } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { estadoCaso, nodeCat } from "@/theme";
+import { estadoCaso, nombreNodo } from "@/lib/dominio";
 import { CancelarModal, ReasignarModal } from "../Supervision";
 
 // Orden conceptual del stepper de ejecución.
@@ -52,7 +52,7 @@ export default function CasoDetalle() {
 
   const est = estadoCaso[caso.estado] || { label: caso.estado_display, tone: "neutral" };
   const cerrado = ["cerrado", "cancelado"].includes(caso.estado);
-  const cat = caso.nodo_tipo ? nodeCat[caso.nodo_tipo] || nodeCat.form : null;
+  const cat = caso.nodo_tipo ? nombreNodo(caso.nodo_tipo) : null;
 
   return (
     <>
@@ -179,7 +179,7 @@ export default function CasoDetalle() {
  * punto y el borde, que es donde sí funciona.
  */
 function ChipNodo({ tipo, className }) {
-  const cat = nodeCat[tipo] || nodeCat.form;
+  const cat = nombreNodo(tipo);
   return (
     <span
       className={cn(
@@ -192,7 +192,7 @@ function ChipNodo({ tipo, className }) {
       }}
     >
       <span className="size-1.5 rounded-sm" style={{ background: `var(--color-nodo-${tipo}-sol)` }} />
-      {cat.name}
+      {cat}
     </span>
   );
 }
@@ -331,7 +331,7 @@ function PanelPaso({ caso, cerrado, ocupado, ejecutar, hc }) {
 }
 
 function CabeceraPaso({ tipo, titulo }) {
-  const cat = nodeCat[tipo] || nodeCat.form;
+  const cat = nombreNodo(tipo);
   return (
     <div className="mb-lg flex items-center gap-2.5">
       <span
@@ -341,7 +341,7 @@ function CabeceraPaso({ tipo, titulo }) {
         <span className="size-2.5 rounded-sm" style={{ background: `var(--color-nodo-${tipo}-sol)` }} />
       </span>
       <div>
-        <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.name.toUpperCase()}</div>
+        <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.toUpperCase()}</div>
         <div className="text-lg font-bold">{titulo}</div>
       </div>
     </div>

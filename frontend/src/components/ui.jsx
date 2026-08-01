@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 
 import { cn } from "@/lib/cn";
-import { iniciales } from "../theme";
+import { iniciales } from "@/lib/dominio";
 import { Icon } from "./icons";
 
 // --------------------------------------------------------------------------- //
