@@ -187,6 +187,55 @@ export function EmptyState({ title, hint }) {
 }
 
 // --------------------------------------------------------------------------- //
+// Pestañas
+// --------------------------------------------------------------------------- //
+/**
+ * Pestañas de filtro. `tabs` = `[{ key, label, cuenta? }]`.
+ *
+ * Se marca con `role="tablist"` y flechas del teclado porque son controles de
+ * navegación: con solo `<button>` sueltos, un lector de pantalla no anuncia
+ * cuántas hay ni cuál está activa.
+ */
+export function Tabs({ tabs, valor, onChange, className }) {
+  function alTeclado(e) {
+    const i = tabs.findIndex((t) => t.key === valor);
+    if (e.key === "ArrowRight") onChange(tabs[(i + 1) % tabs.length].key);
+    if (e.key === "ArrowLeft") onChange(tabs[(i - 1 + tabs.length) % tabs.length].key);
+  }
+  return (
+    <div
+      role="tablist"
+      onKeyDown={alTeclado}
+      className={cn("inline-flex gap-1 rounded-lg bg-superficie-2 p-1", className)}
+    >
+      {tabs.map((t) => {
+        const activa = t.key === valor;
+        return (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={activa}
+            tabIndex={activa ? 0 : -1}
+            onClick={() => onChange(t.key)}
+            className={cn(
+              "rounded-md px-4 py-2 text-md font-semibold transition-colors",
+              activa ? "bg-superficie text-accent shadow-card" : "text-texto-debil hover:text-texto-suave",
+            )}
+          >
+            {t.label}
+            {t.cuenta != null && (
+              <span className={cn("ml-1.5 text-xs tabular-nums", activa ? "text-accent" : "text-texto-tenue")}>
+                {t.cuenta}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
 // Diálogo
 // --------------------------------------------------------------------------- //
 export function Modal({ title, onClose, children, footer, width = 460 }) {

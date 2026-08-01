@@ -10,7 +10,7 @@ import { entrar, fallosDeContraste, fijarTema } from "./apoyo";
  * test rojo permanente que no informa nada. **Esta lista crece con cada pantalla
  * que se migra** — agregarla acá es parte de darla por terminada.
  */
-const PANTALLAS = ["/filas", "/casos", "/supervision", "/notificaciones"];
+const PANTALLAS = ["/filas", "/casos", "/supervision", "/notificaciones", "/bandeja"];
 
 test.describe("Tema", () => {
   test.beforeEach(async ({ page }) => {

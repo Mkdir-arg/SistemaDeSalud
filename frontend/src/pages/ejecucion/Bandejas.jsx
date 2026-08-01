@@ -1,245 +1,206 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../api/client";
-import { useAuth } from "../../auth/AuthContext";
-import { useInstitucion } from "../../auth/InstitutionContext";
-import { PageHeader } from "../../components/Shell";
-import { Badge, Button, Card, EmptyState, Field, Input, Modal, Mono, Select, Spinner } from "../../components/ui";
-import { antiguedad } from "../../lib/format";
-import { color, estadoCaso } from "../../theme";
 
-const TABS = [
-  { key: "mios", label: "Mis casos" },
-  { key: "sin", label: "Sin asignar" },
-];
+import { api } from "@/api/client";
+import { useAccion, useLista } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { PageHeader } from "@/components/Shell";
+import { Badge, Button, Field, Input, Modal, Select, Tabs } from "@/components/ui";
+import { Buscador, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
+import { TablaRecurso } from "@/components/ui/tabla";
+import { useToast } from "@/components/ui/toast";
+import { antiguedad, casoId } from "@/lib/format";
+import { estadoCaso } from "@/theme";
 
 export default function Bandejas() {
   const { user } = useAuth();
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [casos, setCasos] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [tab, setTab] = useState("mios");
-  const [tomando, setTomando] = useState(null);
+  const toast = useToast();
+  const [tab, setTab] = useFiltroUrl("bandeja", "mios");
   const [nuevo, setNuevo] = useState(false);
 
-  async function cargar() {
-    if (!institucion) return;
-    setCargando(true);
-    try {
-      const data = await api.get(`/casos/?institucion=${institucion.id}`);
-      setCasos(data.results || data);
-    } finally {
-      setCargando(false);
-    }
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [institucion]);
+  // Cada pestaña es un filtro DEL SERVIDOR. Antes la pantalla traía todos los
+  // casos de la institución y separaba las bandejas en el navegador, así que con
+  // volumen real repartía los primeros 25 que devolvía la API.
+  const params = tab === "mios"
+    ? { institucion: institucion?.id, asignado_a: user?.id }
+    : { institucion: institucion?.id, tomables: true };
 
-  // "Sin asignar" muestra solo lo accionable: lo que el usuario puede tomar y que
-  // NO está encolado en una fila (eso se opera SOLO desde la pantalla Fila).
-  const sinAsignar = (c) => !c.asignado_a && c.puede_tomar && !c.en_fila;
-  const filtrados = casos.filter((c) => {
-    if (tab === "mios") return c.asignado_a === user?.id;
-    if (tab === "sin") return sinAsignar(c);
-    return true;
+  // Las cuentas de las pestañas piden una sola fila: lo único que interesa es el
+  // `count` que devuelve la API igual.
+  const nMios = useLista("casos", { institucion: institucion?.id, asignado_a: user?.id, pageSize: 1 });
+  const nSin = useLista("casos", { institucion: institucion?.id, tomables: true, pageSize: 1 });
+
+  const tomar = useAccion((caso) => api.post(`/casos/${caso}/tomar/`), {
+    onError: (e) => toast.deError(e, "No se pudo tomar el caso."),
   });
 
-  async function tomar(e, caso) {
-    e.stopPropagation();
-    setTomando(caso.id);
-    try {
-      await api.post(`/casos/${caso.id}/tomar/`);
-      await cargar();
-      setTab("mios");
-    } finally {
-      setTomando(null);
-    }
-  }
-
-  const cuenta = (k) =>
-    casos.filter((c) => (k === "mios" ? c.asignado_a === user?.id : k === "sin" ? sinAsignar(c) : true)).length;
+  const columnas = [
+    {
+      key: "id", label: "Caso", orden: "id", className: "w-36",
+      render: (c) => (
+        <span>
+          <span className="block font-mono font-bold">{casoId(c.id)}</span>
+          <span className="block text-sm text-texto-debil">{c.flujo_titulo}</span>
+        </span>
+      ),
+    },
+    {
+      key: "paso_actual", label: "Paso actual", orden: "nodo_actual__titulo", truncar: true,
+      className: "max-w-56",
+      render: (c) => (
+        <span>
+          <span className="block text-texto-suave">{c.paso_actual || "—"}</span>
+          {c.responsables?.length > 0 && (
+            <span className="block text-xs text-texto-tenue">
+              {c.responsables.map((g) => g.nombre).join(", ")}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "estado", label: "Estado", orden: "estado",
+      render: (c) => {
+        const e = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
+        return <Badge tone={e.tone}>{e.label}</Badge>;
+      },
+    },
+    { key: "area_nombre", label: "Área", orden: "area_actual__nombre", render: (c) => c.area_nombre || "—" },
+    {
+      key: "creado", label: "Antigüedad", orden: "creado", className: "w-28 tabular-nums",
+      render: (c) => <span className="text-texto-debil">{antiguedad(c.creado)}</span>,
+    },
+    {
+      key: "accion", label: "", className: "w-32 text-right",
+      render: (c) => (
+        <span onClick={(e) => e.stopPropagation()}>
+          {c.asignado_a === user?.id ? (
+            <Button size="sm" onClick={() => navigate(`/casos/${c.id}`)}>Continuar</Button>
+          ) : !c.asignado_a ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={tomar.isPending}
+              onClick={() => tomar.mutate(c.id, {
+                onSuccess: () => { toast.ok("Caso tomado"); navigate(`/casos/${c.id}`); },
+              })}
+            >
+              {tomar.isPending ? "…" : "Tomar"}
+            </Button>
+          ) : null}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <>
       <PageHeader
-        title="Bandejas"
         subtitle="Casos en curso. Tomá uno sin asignar o continuá los tuyos."
-        right={
-          <div style={{ display: "flex", gap: 10 }}>
-            <Button variant="secondary" onClick={cargar}>↻ Actualizar</Button>
-            <Button onClick={() => setNuevo(true)}>+ Nuevo caso</Button>
-          </div>
-        }
+        right={<Button onClick={() => setNuevo(true)}>+ Nuevo caso</Button>}
       />
 
-      <div style={{ padding: 32 }}>
-        {/* Tabs */}
-        <div style={{ display: "inline-flex", gap: 4, background: "#EFF1F4", padding: 4, borderRadius: 11, marginBottom: 20 }}>
-          {TABS.map((t) => {
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: 9,
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  border: "none",
-                  background: active ? "#fff" : "transparent",
-                  color: active ? color.accent : color.slate500,
-                  boxShadow: active ? "0 1px 2px rgba(16,24,40,.10)" : "none",
-                }}
-              >
-                {t.label}
-                <span style={{ marginLeft: 7, fontSize: 11.5, color: color.slate400 }}>{cuenta(t.key)}</span>
-              </button>
-            );
-          })}
-        </div>
+      <div className="px-lg pb-8 pt-lg sm:px-8">
+        <Tabs
+          className="mb-lg"
+          valor={tab}
+          onChange={setTab}
+          tabs={[
+            { key: "mios", label: "Mis casos", cuenta: nMios.total },
+            { key: "sin", label: "Sin asignar", cuenta: nSin.total },
+          ]}
+        />
 
-        <Card style={{ overflow: "hidden" }}>
-          {cargando ? (
-            <Spinner />
-          ) : filtrados.length === 0 ? (
-            <EmptyState title="No hay casos en esta bandeja" hint="Probá otra pestaña o creá un caso desde la API/admin." />
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-              <thead>
-                <tr style={{ background: color.subtle, color: color.slate500, textAlign: "left" }}>
-                  <Th>Caso</Th>
-                  <Th>Paso actual</Th>
-                  <Th>Estado</Th>
-                  <Th>Área</Th>
-                  <Th>Antigüedad</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.map((c) => {
-                  const est = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
-                  return (
-                    <tr
-                      key={c.id}
-                      onClick={() => navigate(`/casos/${c.id}`)}
-                      style={{ borderTop: `1px solid ${color.divider}`, cursor: "pointer" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <Td>
-                        <Mono style={{ fontWeight: 700 }}>#{String(c.id).padStart(4, "0")}</Mono>
-                        <div style={{ fontSize: 12, color: color.slate500, marginTop: 2 }}>{c.flujo_titulo}</div>
-                      </Td>
-                      <Td style={{ color: color.slate600 }}>
-                        {c.paso_actual || "—"}
-                        {c.responsables?.length > 0 && (
-                          <div style={{ fontSize: 11.5, color: color.slate400, marginTop: 2 }}>
-                            👥 {c.responsables.map((g) => g.nombre).join(", ")}
-                          </div>
-                        )}
-                      </Td>
-                      <Td>
-                        <Badge tone={est.tone}>{est.label}</Badge>
-                      </Td>
-                      <Td style={{ color: color.slate600 }}>{c.area_nombre || "—"}</Td>
-                      <Td style={{ color: color.slate500 }}>{antiguedad(c.creado)}</Td>
-                      <Td style={{ textAlign: "right" }}>
-                        {c.asignado_a === user?.id ? (
-                          <Button style={{ height: 34, padding: "0 15px" }} onClick={(e) => { e.stopPropagation(); navigate(`/casos/${c.id}`); }}>
-                            Continuar
-                          </Button>
-                        ) : !c.asignado_a ? (
-                          <Button variant="secondary" style={{ height: 34, padding: "0 15px" }} disabled={tomando === c.id} onClick={(e) => tomar(e, c)}>
-                            {tomando === c.id ? "…" : "Tomar"}
-                          </Button>
-                        ) : null}
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </Card>
+        <TablaRecurso
+          // La clave incluye la pestaña para que cada bandeja recuerde su propia
+          // página y su propio orden.
+          clave={`band-${tab}`}
+          recurso="casos"
+          ordenInicial="-creado"
+          params={params}
+          columnas={columnas}
+          onRowClick={(c) => navigate(`/casos/${c.id}`)}
+          vacio={
+            tab === "mios"
+              ? { titulo: "No tenés casos asignados", detalle: "Tomá uno de «Sin asignar» para empezar." }
+              : { titulo: "No hay casos para tomar", detalle: "Los casos encolados se operan desde Filas de espera." }
+          }
+        />
       </div>
 
-      {nuevo && <NuevoCasoModal institucionId={institucion?.id} onClose={() => setNuevo(false)} onCreated={(id) => navigate(`/casos/${id}`)} />}
+      {nuevo && (
+        <NuevoCasoModal
+          institucionId={institucion?.id}
+          onClose={() => setNuevo(false)}
+          onCreated={(id) => { toast.ok("Caso creado e iniciado"); navigate(`/casos/${id}`); }}
+        />
+      )}
     </>
   );
 }
 
 function NuevoCasoModal({ institucionId, onClose, onCreated }) {
-  const [flujos, setFlujos] = useState([]);
-  const [ciudadanos, setCiudadanos] = useState([]);
-  const [form, setForm] = useState({ flujoId: "", prioridad: "normal" });
-  const [modo, setModo] = useState("existente"); // "existente" | "nuevo"
+  const toast = useToast();
+  const [flujoId, setFlujoId] = useState("");
+  const [prioridad, setPrioridad] = useState("normal");
+  const [modo, setModo] = useState("existente");
   const [ciudadanoId, setCiudadanoId] = useState("");
   const [nuevo, setNuevo] = useState({ nombre: "", apellido: "", documento: "" });
-  const [creando, setCreando] = useState(false);
-  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
-  const setNuevoCampo = (k, v) => setNuevo((p) => ({ ...p, [k]: v }));
+  const [texto, setTexto] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      const f = await api.get(`/flujos/?institucion=${institucionId}`);
-      // Solo flujos publicados que permiten alta manual (no los "solo por derivación").
-      const lista = (f.results || f)
-        .map((fl) => ({ ...fl, pub: (fl.versiones || []).find((v) => v.estado === "publicada") }))
-        .filter((fl) => fl.pub && fl.origen_inicio !== "derivado");
-      setFlujos(lista);
-      if (lista[0]) set("flujoId", String(lista[0].id));
-      const c = await api.get(`/ciudadanos/?institucion=${institucionId}`);
-      const listaC = c.results || c;
-      setCiudadanos(listaC);
-      // Sin pacientes cargados → arrancar directo en «nuevo».
-      if (listaC.length === 0) setModo("nuevo");
-      else setCiudadanoId(String(listaC[0].id));
-    })();
-  }, [institucionId]);
+  const flujosQ = useLista("flujos", { institucion: institucionId, pageSize: 100 });
+  // Solo publicados y de alta manual: los «solo por derivación» no se crean acá.
+  const flujos = flujosQ.filas
+    .map((f) => ({ ...f, pub: (f.versiones || []).find((v) => v.estado === "publicada") }))
+    .filter((f) => f.pub && f.origen_inicio !== "derivado");
 
-  const pacienteOk = modo === "existente" ? !!ciudadanoId : !!nuevo.nombre.trim();
-  const puedeCrear = !creando && form.flujoId && pacienteOk;
+  // El paciente se BUSCA contra el servidor en vez de traer el padrón entero: con
+  // miles de pacientes un desplegable con todos no es usable ni cargable.
+  const pacientes = useLista(
+    "ciudadanos",
+    { institucion: institucionId, search: texto || undefined, pageSize: 20 },
+    { enabled: modo === "existente" },
+  );
 
-  async function crear() {
-    const flujo = flujos.find((f) => String(f.id) === String(form.flujoId));
-    if (!flujo || !pacienteOk) return;
-    setCreando(true);
-    try {
-      // 1) Resolver el paciente: existente o crearlo en el momento.
-      let cid = ciudadanoId;
-      if (modo === "nuevo") {
-        const c = await api.post("/ciudadanos/", {
-          institucion: institucionId,
-          nombre: nuevo.nombre.trim(),
-          apellido: nuevo.apellido.trim(),
-          documento: nuevo.documento.trim(),
-        });
-        cid = c.id;
-      }
-      // 2) Crear el caso (el backend asegura su historia clínica) e iniciarlo.
-      const caso = await api.post("/casos/", {
-        institucion: flujo.institucion,
-        version: flujo.pub.id,
-        ciudadano: Number(cid),
-        prioridad: form.prioridad,
+  const crear = useAccion(async () => {
+    const flujo = flujos.find((f) => String(f.id) === String(flujoId)) || flujos[0];
+    let cid = ciudadanoId;
+    if (modo === "nuevo") {
+      const c = await api.post("/ciudadanos/", {
+        institucion: institucionId,
+        nombre: nuevo.nombre.trim(),
+        apellido: nuevo.apellido.trim(),
+        documento: nuevo.documento.trim(),
       });
-      await api.post(`/casos/${caso.id}/iniciar/`);
-      onCreated(caso.id);
-    } finally {
-      setCreando(false);
+      cid = c.id;
     }
-  }
+    const caso = await api.post("/casos/", {
+      institucion: flujo.institucion,
+      version: flujo.pub.id,
+      ciudadano: Number(cid),
+      prioridad,
+    });
+    await api.post(`/casos/${caso.id}/iniciar/`);
+    return caso;
+  }, { onError: (e) => toast.deError(e, "No se pudo crear el caso.") });
 
-  const tabBtn = (k, label) => (
+  const flujoElegido = flujoId || (flujos[0] ? String(flujos[0].id) : "");
+  const pacienteOk = modo === "existente" ? !!ciudadanoId : !!nuevo.nombre.trim();
+  const puedeCrear = !crear.isPending && flujoElegido && pacienteOk;
+
+  const botonModo = (k, label) => (
     <button
+      type="button"
       onClick={() => setModo(k)}
-      style={{ flex: 1, padding: "7px 0", fontSize: 12.5, fontWeight: 600, borderRadius: 8, cursor: "pointer",
-        border: `1px solid ${modo === k ? color.accent : color.inputBorder}`,
-        background: modo === k ? color.accent50 : "#fff", color: modo === k ? color.accent : color.slate500 }}
+      className={
+        "flex-1 rounded-md border py-1.5 text-base font-semibold " +
+        (modo === k
+          ? "border-accent bg-accent-50 text-accent"
+          : "border-campo-borde bg-superficie text-texto-debil hover:text-texto-suave")
+      }
     >
       {label}
     </button>
@@ -249,51 +210,75 @@ function NuevoCasoModal({ institucionId, onClose, onCreated }) {
     <Modal
       title="Nuevo caso"
       onClose={onClose}
+      width={520}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={!puedeCrear} onClick={crear}>{creando ? "Creando…" : "Crear e iniciar"}</Button>
+          <Button disabled={!puedeCrear} onClick={() => crear.mutate(undefined, { onSuccess: (c) => onCreated(c.id) })}>
+            {crear.isPending ? "Creando…" : "Crear e iniciar"}
+          </Button>
         </>
       }
     >
-      {flujos.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: color.slate500 }}>
-          No hay flujos publicados. Publicá un flujo en el mundo Diseño primero.
+      {flujosQ.isLoading ? (
+        <div className="text-md text-texto-tenue">Cargando flujos…</div>
+      ) : flujos.length === 0 ? (
+        <div className="text-md text-texto-debil">
+          No hay flujos publicados con alta manual. Publicá uno desde Flujos.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="flex flex-col gap-3.5">
           <Field label="Flujo *">
-            <Select value={form.flujoId} onChange={(e) => set("flujoId", e.target.value)}>
+            <Select value={flujoElegido} onChange={(e) => setFlujoId(e.target.value)}>
               {flujos.map((f) => <option key={f.id} value={f.id}>{f.titulo} ({f.pub.etiqueta})</option>)}
             </Select>
           </Field>
 
           <Field label="Paciente *">
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              {tabBtn("existente", "Paciente existente")}
-              {tabBtn("nuevo", "Nuevo paciente")}
+            <div className="mb-2.5 flex gap-2">
+              {botonModo("existente", "Paciente existente")}
+              {botonModo("nuevo", "Nuevo paciente")}
             </div>
             {modo === "existente" ? (
-              ciudadanos.length === 0 ? (
-                <div style={{ fontSize: 12.5, color: color.slate400 }}>No hay pacientes cargados. Usá «Nuevo paciente».</div>
-              ) : (
-                <Select value={ciudadanoId} onChange={(e) => setCiudadanoId(e.target.value)}>
-                  {ciudadanos.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nombre} {c.apellido}{c.documento ? ` · ${c.documento}` : ""}</option>
-                  ))}
-                </Select>
-              )
+              <div className="flex flex-col gap-2">
+                <Buscador valor={texto} onChange={setTexto} placeholder="Buscar por nombre o documento…" />
+                {pacientes.isLoading ? (
+                  <div className="text-base text-texto-tenue">Buscando…</div>
+                ) : pacientes.filas.length === 0 ? (
+                  <div className="text-base text-texto-tenue">
+                    {texto ? `Sin pacientes para «${texto}».` : "No hay pacientes cargados. Usá «Nuevo paciente»."}
+                  </div>
+                ) : (
+                  <Select
+                    aria-label="Paciente"
+                    value={ciudadanoId}
+                    onChange={(e) => setCiudadanoId(e.target.value)}
+                  >
+                    <option value="">Elegí un paciente…</option>
+                    {pacientes.filas.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre} {c.apellido}{c.documento ? ` · ${c.documento}` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+                {pacientes.total > pacientes.filas.length && (
+                  <div className="text-xs text-texto-tenue">
+                    Mostrando {pacientes.filas.length} de {pacientes.total}. Afiná la búsqueda.
+                  </div>
+                )}
+              </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <Input placeholder="Nombre *" value={nuevo.nombre} onChange={(e) => setNuevoCampo("nombre", e.target.value)} autoFocus />
-                <Input placeholder="Apellido" value={nuevo.apellido} onChange={(e) => setNuevoCampo("apellido", e.target.value)} />
-                <Input placeholder="Documento" value={nuevo.documento} onChange={(e) => setNuevoCampo("documento", e.target.value)} />
+              <div className="flex flex-col gap-2">
+                <Input placeholder="Nombre *" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} autoFocus />
+                <Input placeholder="Apellido" value={nuevo.apellido} onChange={(e) => setNuevo({ ...nuevo, apellido: e.target.value })} />
+                <Input placeholder="Documento" value={nuevo.documento} onChange={(e) => setNuevo({ ...nuevo, documento: e.target.value })} />
               </div>
             )}
           </Field>
 
           <Field label="Prioridad">
-            <Select value={form.prioridad} onChange={(e) => set("prioridad", e.target.value)}>
+            <Select value={prioridad} onChange={(e) => setPrioridad(e.target.value)}>
               <option value="normal">Normal</option>
               <option value="alta">Alta</option>
               <option value="urgente">Urgente</option>
@@ -303,11 +288,4 @@ function NuevoCasoModal({ institucionId, onClose, onCreated }) {
       )}
     </Modal>
   );
-}
-
-function Th({ children }) {
-  return <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>{children}</th>;
-}
-function Td({ children, style }) {
-  return <td style={{ padding: "13px 16px", verticalAlign: "middle", ...style }}>{children}</td>;
 }

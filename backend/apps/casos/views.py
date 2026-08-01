@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -56,6 +56,28 @@ class CasoViewSet(BaseModelViewSet):
             qs = qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
             if not self.request.user.is_superuser:
                 qs = qs.filter(area_actual__in=motor.areas_que_supervisa(self.request.user))
+
+        # `?tomables=true` — lo accionable para el usuario: activo, sin asignar,
+        # que no esté encolado (eso se opera solo desde la pantalla Fila) y cuyo
+        # paso actual sea de un grupo suyo. Es el equivalente en queryset de
+        # `motor.usuario_puede_tomar`; sin esto la bandeja tenía que traerse todos
+        # los casos de la institución y filtrarlos en el navegador.
+        if self.request.query_params.get("tomables") in ("true", "1"):
+            qs = (
+                qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+                .filter(asignado_a__isnull=True)
+                .exclude(en_filas__atendido=False)
+            )
+            u = self.request.user
+            if not u.is_superuser:
+                # Paso sin grupos declarados = abierto a cualquiera; con grupos,
+                # solo si integra alguno.
+                qs = qs.filter(
+                    Q(nodo_actual__grupos__isnull=True)
+                    | Q(nodo_actual__grupos__in=u.grupos.values("id"))
+                )
+            # Los dos filtros anteriores atraviesan M2M y pueden duplicar filas.
+            qs = qs.distinct()
         return qs
 
     def get_serializer_class(self):
