@@ -163,9 +163,12 @@
  * tocan: las siguen usando los estilos inline sin migrar, que no tienen modo
  * oscuro — adoptarlo es parte de migrar cada pantalla.
  *
- * Las categorías de nodo del diseñador tampoco se redefinen todavía: ese lienzo
- * se rehace entero en la Fase 2 y elegir ahora 30 colores que van a cambiar es
- * trabajo tirado.
+ * Las categorías de nodo SÍ se redefinen, aunque el lienzo del diseñador se
+ * rehaga en la Fase 2: sus chips aparecen fuera del lienzo (detalle del caso,
+ * detalle del paso) y sobre fondo oscuro quedaban como islas de pastel claro.
+ * No están elegidas a mano una por una sino compuestas con color-mix, que es lo
+ * correcto acá: no se invierte una paleta clara, se apoya el color de la
+ * categoría sobre la superficie oscura en la proporción justa.
  */
 .dark {
   --color-fondo: #0E1219;
@@ -201,6 +204,39 @@
   --color-badge-gray-fg: #8B94A5;
   --color-badge-error-bg: #3A1D1B;
   --color-badge-error-fg: #F0958C;
+
+  /* Categorías de nodo: el color sólido se aclara para poder leerse sobre
+     oscuro, y el tinte y el borde se componen sobre la superficie. */
+  --color-nodo-inicio-sol: color-mix(in srgb, #1F8A5B 62%, white);
+  --color-nodo-inicio-tint: color-mix(in srgb, #1F8A5B 16%, var(--color-superficie));
+  --color-nodo-inicio-bd: color-mix(in srgb, #1F8A5B 38%, var(--color-superficie));
+  --color-nodo-form-sol: color-mix(in srgb, #3949C0 62%, white);
+  --color-nodo-form-tint: color-mix(in srgb, #3949C0 16%, var(--color-superficie));
+  --color-nodo-form-bd: color-mix(in srgb, #3949C0 38%, var(--color-superficie));
+  --color-nodo-decision-sol: color-mix(in srgb, #C98A2B 62%, white);
+  --color-nodo-decision-tint: color-mix(in srgb, #C98A2B 16%, var(--color-superficie));
+  --color-nodo-decision-bd: color-mix(in srgb, #C98A2B 38%, var(--color-superficie));
+  --color-nodo-accion-sol: color-mix(in srgb, #2B8FD6 62%, white);
+  --color-nodo-accion-tint: color-mix(in srgb, #2B8FD6 16%, var(--color-superficie));
+  --color-nodo-accion-bd: color-mix(in srgb, #2B8FD6 38%, var(--color-superficie));
+  --color-nodo-derivar-sol: color-mix(in srgb, #0E8893 62%, white);
+  --color-nodo-derivar-tint: color-mix(in srgb, #0E8893 16%, var(--color-superficie));
+  --color-nodo-derivar-bd: color-mix(in srgb, #0E8893 38%, var(--color-superficie));
+  --color-nodo-espera-sol: color-mix(in srgb, #16B1C9 62%, white);
+  --color-nodo-espera-tint: color-mix(in srgb, #16B1C9 16%, var(--color-superficie));
+  --color-nodo-espera-bd: color-mix(in srgb, #16B1C9 38%, var(--color-superficie));
+  --color-nodo-tiempo-sol: color-mix(in srgb, #0E9E8E 62%, white);
+  --color-nodo-tiempo-tint: color-mix(in srgb, #0E9E8E 16%, var(--color-superficie));
+  --color-nodo-tiempo-bd: color-mix(in srgb, #0E9E8E 38%, var(--color-superficie));
+  --color-nodo-atencion-sol: color-mix(in srgb, #D14B8F 62%, white);
+  --color-nodo-atencion-tint: color-mix(in srgb, #D14B8F 16%, var(--color-superficie));
+  --color-nodo-atencion-bd: color-mix(in srgb, #D14B8F 38%, var(--color-superficie));
+  --color-nodo-estado-sol: color-mix(in srgb, #5B7A99 62%, white);
+  --color-nodo-estado-tint: color-mix(in srgb, #5B7A99 16%, var(--color-superficie));
+  --color-nodo-estado-bd: color-mix(in srgb, #5B7A99 38%, var(--color-superficie));
+  --color-nodo-fin-sol: color-mix(in srgb, #475467 62%, white);
+  --color-nodo-fin-tint: color-mix(in srgb, #475467 16%, var(--color-superficie));
+  --color-nodo-fin-bd: color-mix(in srgb, #475467 38%, var(--color-superficie));
 
   /* Sombras: en oscuro una sombra negra no se ve. La elevación se percibe por
      el borde y por superficies más claras, así que se atenúan mucho. */

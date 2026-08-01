@@ -12,6 +12,16 @@ import { entrar, fallosDeContraste, fijarTema } from "./apoyo";
  */
 const PANTALLAS = ["/filas", "/casos", "/supervision", "/notificaciones", "/bandeja"];
 
+/** Rutas con parámetro: se resuelven en el momento contra datos reales. */
+const DINAMICAS = [
+  { nombre: "detalle de caso", resolver: async (page) => {
+    await page.goto("/casos");
+    await page.locator("tbody tr").first().click();
+    await page.waitForURL(/\/casos\/\d+/);
+    return page.url();
+  } },
+];
+
 test.describe("Tema", () => {
   test.beforeEach(async ({ page }) => {
     // El jefe de área es quien ve las tres pantallas de la lista: tiene trabajo,
@@ -55,6 +65,16 @@ test.describe("Tema", () => {
         await page.goto(ruta);
         await fijarTema(page, tema);
         await page.waitForTimeout(1200);
+        const fallos = await fallosDeContraste(page);
+        expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
+      });
+    }
+
+    for (const { nombre, resolver } of DINAMICAS) {
+      test(`sin fallos de contraste AA en ${nombre} (${tema})`, async ({ page }) => {
+        await resolver(page);
+        await fijarTema(page, tema);
+        await page.waitForTimeout(1500);
         const fallos = await fallosDeContraste(page);
         expect(fallos, JSON.stringify(fallos, null, 2)).toEqual([]);
       });

@@ -140,14 +140,27 @@ ${partes.join("\n")}}
  * tocan: las siguen usando los estilos inline sin migrar, que no tienen modo
  * oscuro — adoptarlo es parte de migrar cada pantalla.
  *
- * Las categorías de nodo del diseñador tampoco se redefinen todavía: ese lienzo
- * se rehace entero en la Fase 2 y elegir ahora 30 colores que van a cambiar es
- * trabajo tirado.
+ * Las categorías de nodo SÍ se redefinen, aunque el lienzo del diseñador se
+ * rehaga en la Fase 2: sus chips aparecen fuera del lienzo (detalle del caso,
+ * detalle del paso) y sobre fondo oscuro quedaban como islas de pastel claro.
+ * No están elegidas a mano una por una sino compuestas con color-mix, que es lo
+ * correcto acá: no se invierte una paleta clara, se apoya el color de la
+ * categoría sobre la superficie oscura en la proporción justa.
  */
 .dark {
 ${Object.entries(oscuro).map(([k, v]) => `  --color-${kebab(k)}: ${v};`).join("\n")}
 ${Object.entries(badgeToneOscuro)
   .flatMap(([t, { bg, fg }]) => [`  --color-badge-${t}-bg: ${bg};`, `  --color-badge-${t}-fg: ${fg};`])
+  .join("\n")}
+
+  /* Categorías de nodo: el color sólido se aclara para poder leerse sobre
+     oscuro, y el tinte y el borde se componen sobre la superficie. */
+${Object.entries(nodeCat)
+  .flatMap(([c, v]) => [
+    `  --color-nodo-${c}-sol: color-mix(in srgb, ${v.sol} 62%, white);`,
+    `  --color-nodo-${c}-tint: color-mix(in srgb, ${v.sol} 16%, var(--color-superficie));`,
+    `  --color-nodo-${c}-bd: color-mix(in srgb, ${v.sol} 38%, var(--color-superficie));`,
+  ])
   .join("\n")}
 
   /* Sombras: en oscuro una sombra negra no se ve. La elevación se percibe por

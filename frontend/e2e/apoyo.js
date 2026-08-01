@@ -56,11 +56,21 @@ export async function fijarTema(page, tema) {
  */
 export async function fallosDeContraste(page) {
   return page.evaluate(() => {
-    const lum = (rgb) => {
-      const m = rgb.match(/\d+(\.\d+)?/g);
+    /**
+     * Luminancia relativa (WCAG) de un color computado.
+     *
+     * Hay que aceptar DOS formatos: `rgb(r, g, b)` con canales 0-255, y
+     * `color(srgb r g b)` con canales 0-1, que es lo que devuelve el navegador
+     * para cualquier color salido de `color-mix()`. Tratar el segundo como si
+     * fuera 0-255 da luminancia ~0 para todo y el contraste sale 1:1 — un
+     * medidor equivocado es peor que no medir.
+     */
+    const lum = (css) => {
+      const m = css.match(/[\d.]+/g);
       if (!m) return null;
+      const esCero255 = !css.startsWith("color(");
       const [r, g, b] = m.slice(0, 3).map(Number).map((v) => {
-        const s = v / 255;
+        const s = esCero255 ? v / 255 : v;
         return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
       });
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
