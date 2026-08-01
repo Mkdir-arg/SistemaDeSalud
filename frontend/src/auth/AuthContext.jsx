@@ -61,9 +61,10 @@ export function AuthProvider({ children }) {
 
   const reintentar = () => setIntento((n) => n + 1);
 
-  async function login(email, password) {
-    await api.login(email, password);
+  async function login(email, password, opciones) {
+    await api.login(email, password, opciones);
     const me = await api.get("/usuarios/me/");
+    setError(null);
     setUser(me);
     return me;
   }

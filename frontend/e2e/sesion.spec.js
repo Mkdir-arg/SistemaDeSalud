@@ -78,6 +78,52 @@ test("un 500 al arrancar no cierra la sesión: ofrece reintentar", async ({ page
   await expect(page.getByRole("alert")).toBeHidden();
 });
 
+/**
+ * «Mantener la sesión iniciada» decide dónde vive el token.
+ *
+ * En una guardia la máquina es compartida. Si alguien destilda la casilla, su
+ * token tiene que morir al cerrar el navegador y no quedar para el turno
+ * siguiente: eso es `sessionStorage`. La casilla existía desde antes pero no
+ * hacía nada —la sesión quedaba siempre guardada en el equipo—, que es peor que
+ * no tenerla, porque la gente se apoya en ella.
+ */
+test.describe("Dónde queda la sesión", () => {
+  const donde = (page) =>
+    page.evaluate(() => ({
+      local: !!localStorage.getItem("cauce.refresh"),
+      sesion: !!sessionStorage.getItem("cauce.refresh"),
+    }));
+
+  async function entrarCon(page, recordar) {
+    await page.goto("/login");
+    await page.fill('input[type="email"]', "guardia.med@hospital.gob.ar");
+    await page.fill('input[type="password"]', "demo1234");
+    const casilla = page.getByLabel(/Mantener la sesión/);
+    if (recordar) await casilla.check();
+    else await casilla.uncheck();
+    await page.click('button[type="submit"]');
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  }
+
+  test("destildada, el token no queda en el equipo", async ({ page }) => {
+    await entrarCon(page, false);
+    expect(await donde(page)).toEqual({ local: false, sesion: true });
+  });
+
+  test("tildada, el token sobrevive al cierre del navegador", async ({ page }) => {
+    await entrarCon(page, true);
+    expect(await donde(page)).toEqual({ local: true, sesion: false });
+  });
+
+  test("cambiar de opción no deja el token viejo dando vueltas", async ({ page }) => {
+    await entrarCon(page, true);
+    await page.evaluate(() => localStorage.removeItem("cauce.tema")); // ruido aparte
+    await entrarCon(page, false);
+    // Lo importante: en localStorage no puede haber quedado el de la vez anterior.
+    expect(await donde(page)).toEqual({ local: false, sesion: true });
+  });
+});
+
 /** Una credencial realmente rechazada sí tiene que mandar a login. */
 test("un 401 al arrancar sí cierra la sesión", async ({ page }) => {
   await entrar(page, "medico");

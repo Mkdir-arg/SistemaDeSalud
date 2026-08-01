@@ -21,7 +21,7 @@ export default function Formularios() {
     <div className="px-lg py-[26px] sm:px-[30px]">
       <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
-          <h1 className="text-cifraLg font-extrabold tracking-tight">Formularios</h1>
+          <h1 className="text-cifra-lg font-extrabold tracking-tight">Formularios</h1>
           <div className="mt-0.5 text-base text-texto-debil">
             Definí los campos que los flujos piden en cada paso.
           </div>

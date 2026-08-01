@@ -5,21 +5,51 @@
 const BASE = import.meta.env.VITE_API_URL || "/api";
 const ACCESS_KEY = "cauce.access";
 const REFRESH_KEY = "cauce.refresh";
+const PERSISTIR_KEY = "cauce.persistir";
+
+/**
+ * Dónde viven los tokens según haya elegido la persona.
+ *
+ * En una guardia la computadora es compartida. Si alguien NO marca «mantener la
+ * sesión iniciada en este equipo», su token tiene que morir al cerrar el
+ * navegador y no quedar disponible para el turno siguiente: eso es
+ * `sessionStorage`, que se vacía solo al cerrar la pestaña.
+ *
+ * Hasta ahora la casilla estaba en la pantalla pero no hacía nada: la sesión
+ * quedaba siempre guardada en el equipo. Una casilla de seguridad que miente es
+ * peor que no tenerla, porque la gente se apoya en ella.
+ */
+const persistente = () => localStorage.getItem(PERSISTIR_KEY) !== "0";
+const almacen = () => (persistente() ? localStorage : sessionStorage);
+
+// Se lee de los dos: el token puede haber quedado en cualquiera según la elección
+// de la sesión anterior.
+const leer = (k) => sessionStorage.getItem(k) ?? localStorage.getItem(k);
 
 export const tokens = {
   get access() {
-    return localStorage.getItem(ACCESS_KEY);
+    return leer(ACCESS_KEY);
   },
   get refresh() {
-    return localStorage.getItem(REFRESH_KEY);
+    return leer(REFRESH_KEY);
   },
   set({ access, refresh }) {
-    if (access) localStorage.setItem(ACCESS_KEY, access);
-    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
+    const donde = almacen();
+    if (access) donde.setItem(ACCESS_KEY, access);
+    if (refresh) donde.setItem(REFRESH_KEY, refresh);
+  },
+  /** Elige dónde guardar. Se llama ANTES de `set`, al iniciar sesión. */
+  persistir(si) {
+    localStorage.setItem(PERSISTIR_KEY, si ? "1" : "0");
+    // Se limpian los dos para no dejar un token viejo en el almacén que se deja
+    // de usar: quedaría vivo y accesible sin que nadie lo espere.
+    this.clear();
   },
   clear() {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    for (const donde of [localStorage, sessionStorage]) {
+      donde.removeItem(ACCESS_KEY);
+      donde.removeItem(REFRESH_KEY);
+    }
   },
 };
 
@@ -111,7 +141,7 @@ export const api = {
     return data;
   },
 
-  async login(email, password) {
+  async login(email, password, { recordar = true } = {}) {
     const res = await fetch(`${BASE}/auth/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -119,6 +149,8 @@ export const api = {
     });
     const data = await parse(res);
     if (!res.ok) throw new ApiError(res.status, data);
+    // Primero se decide dónde guardar, después se guarda.
+    tokens.persistir(recordar);
     tokens.set(data);
     return data;
   },

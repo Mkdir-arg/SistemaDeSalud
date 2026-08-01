@@ -108,7 +108,7 @@ function Encabezado({ titulo, detalle, children }) {
   return (
     <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
       <div>
-        <h1 className="text-cifraLg font-extrabold tracking-tight">{titulo}</h1>
+        <h1 className="text-cifra-lg font-extrabold tracking-tight">{titulo}</h1>
         <div className="mt-0.5 text-base text-texto-debil">{detalle}</div>
       </div>
       <div className="flex items-center gap-2.5">{children}</div>

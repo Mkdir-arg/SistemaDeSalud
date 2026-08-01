@@ -1,160 +1,232 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../api/client";
-import { useInstitucion } from "../../auth/InstitutionContext";
-import { Avatar, Badge, Card, Field, Input, Modal, Mono, Select, Spinner } from "../../components/ui";
-import { fechaHora } from "../../lib/format";
-import { color } from "../../theme";
+import { useQuery } from "@tanstack/react-query";
 
-// Dashboard del legajo profesional (captura 14).
+import { api } from "@/api/client";
+import { useAccion, useLista } from "@/api/queries";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select } from "@/components/ui";
+import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
+import { useToast } from "@/components/ui/toast";
+import { casoId, fechaHora } from "@/lib/format";
+
 export default function Legajo() {
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [staff, setStaff] = useState([]);
   const [sel, setSel] = useState("");
-  const [legajo, setLegajo] = useState(null);
-  const [cargando, setCargando] = useState(true);
   const [editar, setEditar] = useState(false);
 
-  useEffect(() => {
-    if (!institucion) return;
-    (async () => {
-      const [membs, usuarios, areas] = await Promise.all([
-        api.get(`/membresias/?institucion=${institucion.id}`),
-        api.get("/usuarios/"),
-        api.get(`/areas/?institucion=${institucion.id}`),
-      ]);
-      const usuMap = Object.fromEntries((usuarios.results || usuarios).map((u) => [u.id, u]));
-      const areaMap = Object.fromEntries((areas.results || areas).map((a) => [a.id, a.nombre]));
-      const por = {};
-      for (const m of membs.results || membs) {
-        const u = usuMap[m.usuario];
-        if (!u) continue;
-        if (!por[m.usuario]) por[m.usuario] = { id: u.id, nombre: u.nombre_completo || u.email, areas: new Set() };
-        (m.areas || []).forEach((aid) => areaMap[aid] && por[m.usuario].areas.add(areaMap[aid]));
+  /*
+   * El staff sale de las membresías, sin cruzar con /usuarios/.
+   *
+   * Antes se pedían las tres listas y se cruzaban acá: `/usuarios/` devuelve 25
+   * por página, así que el desplegable de profesionales se cortaba en 25 sin
+   * decir nada. La membresía ya trae `usuario_nombre`, que es justamente para
+   * evitar ese cruce.
+   */
+  const membresias = useLista(
+    "membresias",
+    { institucion: institucion?.id, activo: true, pageSize: 200 },
+    { enabled: !!institucion },
+  );
+  const areas = useLista("areas", { institucion: institucion?.id, pageSize: 100 }, { enabled: !!institucion });
+
+  const staff = useMemo(() => {
+    const nombreArea = Object.fromEntries(areas.filas.map((a) => [a.id, a.nombre]));
+    const por = new Map();
+    for (const m of membresias.filas) {
+      if (!por.has(m.usuario)) {
+        por.set(m.usuario, { id: m.usuario, nombre: m.usuario_nombre || m.usuario_email, areas: new Set() });
       }
-      const lista = Object.values(por).map((x) => ({ ...x, areas: [...x.areas] }));
-      setStaff(lista);
-      if (lista[0]) setSel(String(lista[0].id));
-      setCargando(false);
-    })();
-  }, [institucion]);
+      (m.areas || []).forEach((aid) => nombreArea[aid] && por.get(m.usuario).areas.add(nombreArea[aid]));
+    }
+    return [...por.values()]
+      .map((x) => ({ ...x, areas: [...x.areas] }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [membresias.filas, areas.filas]);
 
+  // Al llegar la lista se elige al primero, salvo que ya haya alguien elegido.
   useEffect(() => {
-    if (!sel) return;
-    setLegajo(null);
-    api.get(`/usuarios/${sel}/legajo/`).then(setLegajo);
-  }, [sel]);
+    if (!sel && staff.length) setSel(String(staff[0].id));
+  }, [staff, sel]);
 
-  if (cargando) return <Spinner />;
-  if (!staff.length) return <div style={{ padding: 30, color: color.slate400 }}>No hay profesionales en esta institución.</div>;
+  const q = useQuery({
+    queryKey: ["legajo", sel],
+    queryFn: () => api.get(`/usuarios/${sel}/legajo/`),
+    enabled: !!sel,
+  });
+  const legajo = q.data;
+
+  if (membresias.error) return <EstadoError error={membresias.error} onReintentar={membresias.refetch} />;
+  if (membresias.isLoading) return <div className="p-[30px]"><SkeletonTabla filas={4} columnas={4} /></div>;
+  if (!staff.length) {
+    return (
+      <EstadoVacio
+        titulo="No hay profesionales en esta institución"
+        detalle="Asigná membresías desde Administración para que aparezcan acá."
+        icono="users"
+      />
+    );
+  }
 
   const prof = staff.find((s) => String(s.id) === String(sel));
   const u = legajo?.usuario;
   const metricas = [
-    { n: legajo?.casos_atendidos ?? "—", l: "casos atendidos" },
-    { n: legajo?.pacientes_vistos ?? "—", l: "pacientes vistos" },
-    { n: legajo?.llamados_fila ?? "—", l: "llamados de fila" },
-    { n: legajo?.ultima_actividad ? fechaHora(legajo.ultima_actividad).split(" · ")[0] : "—", l: "última actividad" },
+    { n: legajo?.casos_atendidos, l: "casos atendidos" },
+    { n: legajo?.pacientes_vistos, l: "pacientes vistos" },
+    { n: legajo?.llamados_fila, l: "llamados de fila" },
+    {
+      n: legajo?.ultima_actividad ? fechaHora(legajo.ultima_actividad).split(" · ")[0] : "—",
+      l: "última actividad",
+    },
   ];
 
   return (
-    <div style={{ padding: "22px 30px" }}>
-      {/* Selector de profesional */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, maxWidth: 360 }}>
-        <span style={{ fontSize: 12.5, color: color.slate500, whiteSpace: "nowrap" }}>Profesional:</span>
-        <Select value={sel} onChange={(e) => setSel(e.target.value)}>
+    <div className="px-lg py-[22px] sm:px-[30px]">
+      <div className="mb-lg flex max-w-sm items-center gap-2.5">
+        <label htmlFor="profesional" className="whitespace-nowrap text-sm text-texto-debil">
+          Profesional:
+        </label>
+        <Select id="profesional" value={sel} onChange={(e) => setSel(e.target.value)}>
           {staff.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
         </Select>
       </div>
 
-      {/* Header */}
-      <Card style={{ padding: "22px 24px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+      <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-[22px]">
         <Avatar nombre={prof?.nombre} i={prof?.id || 0} size={52} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-.3px" }}>{prof?.nombre}</div>
-          <div style={{ fontSize: 13, color: color.slate500 }}>
-            Profesional{u?.especialidad ? ` · ${u.especialidad}` : ""}{prof?.areas?.length ? ` · ${prof.areas.join(" · ")}` : ""}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-extrabold tracking-tight">{prof?.nombre}</h1>
+          <div className="text-base text-texto-debil">
+            Profesional
+            {u?.especialidad ? ` · ${u.especialidad}` : ""}
+            {prof?.areas?.length ? ` · ${prof.areas.join(" · ")}` : ""}
           </div>
-          {u?.matricula && <div style={{ marginTop: 6 }}><Mono style={{ fontSize: 13, fontWeight: 600 }}>M.N. {u.matricula}</Mono></div>}
+          {u?.matricula && <Mono className="mt-1.5 block text-base font-semibold">M.N. {u.matricula}</Mono>}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+        <div className="flex flex-col items-end gap-2">
+          {/* La matrícula es la que habilita a firmar una atención (regla del
+              motor), así que su estado se muestra con palabras, no sólo color. */}
           {u?.matricula ? <Badge tone="green">✓ Vigente</Badge> : <Badge tone="gray">Sin matrícula</Badge>}
-          <button onClick={() => setEditar(true)} style={{ border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>Editar legajo</button>
+          <button
+            onClick={() => setEditar(true)}
+            className="text-sm font-semibold text-accent hover:underline"
+          >
+            Editar legajo
+          </button>
         </div>
       </Card>
 
-      {!legajo ? (
-        <Spinner />
+      {q.error ? (
+        <EstadoError error={q.error} onReintentar={q.refetch} titulo="No se pudo cargar el legajo" />
       ) : (
         <>
-          {/* Métricas */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 22 }}>
+          <div className="mb-[22px] grid grid-cols-2 gap-3.5 sm:grid-cols-4">
             {metricas.map((m) => (
-              <Card key={m.l} style={{ padding: 18 }}>
-                <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1 }}>{m.n}</div>
-                <div style={{ fontSize: 12.5, color: color.slate400, marginTop: 6 }}>{m.l}</div>
+              <Card key={m.l} className="p-[18px]">
+                <div className="text-cifra-lg font-extrabold leading-none">
+                  {q.isLoading ? <Skeleton className="h-6 w-12" /> : (m.n ?? "—")}
+                </div>
+                <div className="mt-1.5 text-sm text-texto-debil">{m.l}</div>
               </Card>
             ))}
           </div>
 
-          {/* Actividad reciente */}
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px" }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>Actividad reciente</div>
-              <div style={{ fontSize: 12.5, color: color.slate500 }}>Cada Atención que genera enlaza con una entrada en la Historia clínica del paciente.</div>
+          <Card className="overflow-hidden">
+            <div className="px-5 py-lg">
+              <h2 className="text-lg font-bold">Actividad reciente</h2>
+              <div className="text-sm text-texto-debil">
+                Cada Atención que genera enlaza con una entrada en la Historia clínica del paciente.
+              </div>
             </div>
-            {legajo.actividad.length === 0 ? (
-              <div style={{ padding: "0 20px 22px", fontSize: 13, color: color.slate400 }}>Sin actividad registrada.</div>
+
+            {q.isLoading ? (
+              <SkeletonTabla filas={5} columnas={4} />
+            ) : !legajo?.actividad?.length ? (
+              <div className="px-5 pb-[22px] text-base text-texto-tenue">Sin actividad registrada.</div>
             ) : (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr 80px", gap: 12, padding: "10px 20px", background: color.subtle, borderTop: `1px solid ${color.divider}`, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>
-                  <div>FECHA</div><div>PACIENTE</div><div>ACCIÓN</div><div>CASO</div>
-                </div>
-                {legajo.actividad.map((a, i) => (
-                  <div key={i} onClick={() => navigate(`/casos/${a.caso}`)} style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr 80px", gap: 12, alignItems: "center", padding: "13px 20px", borderTop: `1px solid ${color.divider}`, cursor: "pointer", fontSize: 13.5 }}>
-                    <div style={{ color: color.slate500 }}>{fechaHora(a.fecha)}</div>
-                    <div style={{ fontWeight: 600 }}>{a.paciente || "—"}</div>
-                    <div style={{ color: color.slate600 }}>{a.accion}</div>
-                    <Mono>#{String(a.caso).padStart(4, "0")}</Mono>
-                  </div>
-                ))}
-              </>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-md">
+                  <thead className="bg-superficie-2">
+                    <tr>
+                      {["Fecha", "Paciente", "Acción", "Caso"].map((h) => (
+                        <th key={h} scope="col" className="whitespace-nowrap border-t border-division px-5 py-2.5 text-left text-sm font-semibold text-texto-debil">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {legajo.actividad.map((a, i) => (
+                      <tr
+                        key={i}
+                        onClick={() => navigate(`/casos/${a.caso}`)}
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/casos/${a.caso}`); } }}
+                        className="cursor-pointer border-t border-division hover:bg-superficie-2 focus-visible:bg-superficie-2"
+                      >
+                        <td className="whitespace-nowrap px-5 py-3 text-texto-debil">{fechaHora(a.fecha)}</td>
+                        <td className="px-5 py-3 font-semibold">{a.paciente || "—"}</td>
+                        <td className="px-5 py-3 text-texto-medio">{a.accion}</td>
+                        <td className="px-5 py-3"><Mono>{casoId(a.caso)}</Mono></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
         </>
       )}
 
-      {editar && u && <EditarLegajoModal usuario={u} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); api.get(`/usuarios/${sel}/legajo/`).then(setLegajo); }} />}
+      {editar && u && <EditarLegajoModal usuario={u} onClose={() => setEditar(false)} />}
     </div>
   );
 }
 
-function EditarLegajoModal({ usuario, onClose, onSaved }) {
+function EditarLegajoModal({ usuario, onClose }) {
+  const toast = useToast();
   const [especialidad, setEspecialidad] = useState(usuario.especialidad || "");
   const [matricula, setMatricula] = useState(usuario.matricula || "");
-  const [guardando, setGuardando] = useState(false);
-  async function guardar() {
-    setGuardando(true);
-    try {
-      // Buscar legajo existente del usuario.
+
+  const guardar = useAccion(
+    async () => {
+      // El legajo puede no existir todavía: se busca antes de decidir si es alta
+      // o edición.
       const d = await api.get(`/legajos/?usuario=${usuario.id}`);
       const existente = (d.results || d)[0];
-      if (existente) await api.patch(`/legajos/${existente.id}/`, { especialidad, matricula });
-      else await api.post("/legajos/", { usuario: usuario.id, especialidad, matricula });
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
+      return existente
+        ? api.patch(`/legajos/${existente.id}/`, { especialidad, matricula })
+        : api.post("/legajos/", { usuario: usuario.id, especialidad, matricula });
+    },
+    {
+      // El legajo se lee por `/usuarios/:id/legajo/`, que es una consulta aparte:
+      // sin invalidarla la tarjeta seguiría mostrando la matrícula vieja.
+      invalida: ["lista", "detalle", "legajo"],
+      onSuccess: () => { toast.ok("Legajo actualizado."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudo guardar el legajo."),
+    },
+  );
+
   return (
-    <Modal title={`Legajo · ${usuario.nombre}`} onClose={onClose} footer={<>
-      <button onClick={onClose} style={{ height: 40, padding: "0 18px", borderRadius: 9, background: "#fff", border: "1px solid #D8DBE2", color: color.slate700, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Cancelar</button>
-      <button onClick={guardar} disabled={guardando} style={{ height: 40, padding: "0 18px", borderRadius: 9, background: color.accent, color: "#fff", border: "none", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{guardando ? "…" : "Guardar"}</button>
-    </>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="Especialidad"><Input value={especialidad} onChange={(e) => setEspecialidad(e.target.value)} autoFocus /></Field>
-        <Field label="Matrícula"><Input value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="98.214" /></Field>
+    <Modal
+      title={`Legajo · ${usuario.nombre_completo || usuario.nombre}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={guardar.isPending} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "…" : "Guardar"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Especialidad">
+          <Input value={especialidad} onChange={(e) => setEspecialidad(e.target.value)} autoFocus />
+        </Field>
+        <Field label="Matrícula">
+          <Input value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="98.214" />
+        </Field>
       </div>
     </Modal>
   );

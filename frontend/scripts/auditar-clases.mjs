@@ -45,7 +45,14 @@ try {
 // demanda y ninguna puede quedar huérfana. Si algún día se resetea `--spacing`,
 // hay que agregar sus prefijos.
 const PREFIJOS = ["text", "rounded", "shadow", "font", "bg", "border", "fill", "stroke", "ring", "from", "to", "divide"];
-const re = new RegExp(`\\b(?:${PREFIJOS.join("|")})-[a-z0-9-]+\\b`, "g");
+// El rango incluye MAYÚSCULAS a propósito.
+//
+// Los tokens se declaran en camelCase (`type.cifraLg`) y el generador los pasa a
+// kebab (`--text-cifra-lg`), así que escribir `text-cifraLg` es el error más
+// natural del mundo. Con `[a-z0-9-]+` el patrón cortaba en la mayúscula y
+// validaba `text-cifra` —que existe—, dando por buena una clase que no genera
+// nada. Tres pantallas pasaron la auditoría con sus cifras sin tamaño.
+const re = new RegExp(`\\b(?:${PREFIJOS.join("|")})-[a-zA-Z0-9-]+\\b`, "g");
 
 const usadas = new Map(); // clase → [archivos]
 for (const f of archivos(join(RAIZ, "src"))) {
