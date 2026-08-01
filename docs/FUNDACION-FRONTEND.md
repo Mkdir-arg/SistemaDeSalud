@@ -140,6 +140,24 @@ alguien tiene que acordarse de mirar.
 
 ---
 
+## La única excepción: la pantalla de llamados
+
+[`PantallaLlamados.jsx`](../frontend/src/pages/PantallaLlamados.jsx) **no** usa
+Tailwind ni los tokens, y es deliberado:
+
+- **No participa del tema.** Es un cartel público en una sala de espera, con
+  identidad propia de turnero. Que cambie a oscuro porque un administrativo tocó
+  un botón en otra pantalla sería un error.
+- **Su tipografía se mide en `vw`/`vh`**, para leerse igual en un monitor de 24"
+  y en una TV de 55". Eso no son breakpoints: es escalado continuo, y escribirlo
+  con clases arbitrarias (`text-[4.4vw]`) sería el mismo estilo inline con más
+  ruido.
+- **No comparte un solo componente** con el resto de la app.
+
+Lo que sí sigue las reglas: la capa de datos, la accesibilidad y **el contraste**,
+que se mide igual —es la pantalla que más lejos se lee, así que es donde menos se
+puede fallar.
+
 ## Deuda conocida
 
 - **`slate400` de la marca no llega a AA** (2,63:1 sobre blanco) y con ese gris
