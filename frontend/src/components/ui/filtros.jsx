@@ -42,7 +42,7 @@ export function useBusquedaUrl(nombre = "q", ms = 350) {
   return [texto, setTexto, valor];
 }
 
-export function Buscador({ valor, onChange, placeholder = "Buscar…", className }) {
+export function Buscador({ valor, onChange, placeholder = "Buscar…", className, ...props }) {
   return (
     <div className={cn("relative", className)}>
       <Icon name="search" size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-texto-tenue" />
@@ -52,6 +52,7 @@ export function Buscador({ valor, onChange, placeholder = "Buscar…", className
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="h-8 w-full rounded-md border border-campo-borde bg-superficie pl-8 pr-2 text-base outline-none placeholder:text-texto-tenue focus:border-accent"
+        {...props}
       />
     </div>
   );

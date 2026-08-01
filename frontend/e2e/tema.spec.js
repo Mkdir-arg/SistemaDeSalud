@@ -10,7 +10,7 @@ import { entrar, fallosDeContraste, fijarTema } from "./apoyo";
  * test rojo permanente que no informa nada. **Esta lista crece con cada pantalla
  * que se migra** — agregarla acá es parte de darla por terminada.
  */
-const PANTALLAS = ["/filas", "/casos", "/supervision", "/notificaciones", "/bandeja"];
+const PANTALLAS = ["/filas", "/casos", "/supervision", "/notificaciones", "/bandeja", "/inicio"];
 
 /** Rutas con parámetro: se resuelven en el momento contra datos reales. */
 const DINAMICAS = [
