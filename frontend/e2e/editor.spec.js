@@ -85,6 +85,83 @@ test.describe("Diseñador de flujos", () => {
     }).toBe(true);
   });
 
+  test("shift+clic suma nodos a la selección", async ({ page }) => {
+    /*
+     * El shift+clic tenía tres cosas encima que lo reducían a un solo nodo: el
+     * `onClick` del nodo, el `onFocus` (que dispara junto con el pointerdown en
+     * un elemento con tabIndex) y el clic que sigue a soltar el mouse.
+     */
+    const nodos = page.locator("[data-nodo]");
+    await nodos.nth(0).click();
+    await nodos.nth(1).click({ modifiers: ["Shift"] });
+
+    await expect(page.getByText("2 nodos elegidos")).toBeVisible();
+  });
+
+  test("las flechas mueven todo el grupo, no sólo un nodo", async ({ page }) => {
+    const posiciones = () =>
+      page.evaluate(() =>
+        Object.fromEntries(
+          [...document.querySelectorAll("[data-nodo]")].map((e) => [e.dataset.nodo, Math.round(parseFloat(e.style.left))]),
+        ),
+      );
+
+    const nodos = page.locator("[data-nodo]");
+    await nodos.nth(0).click();
+    await nodos.nth(1).click({ modifiers: ["Shift"] });
+    await expect(page.getByText("2 nodos elegidos")).toBeVisible();
+
+    const antes = await posiciones();
+    await page.keyboard.press("ArrowRight");
+    await expect
+      .poll(async () => {
+        const d = await posiciones();
+        return Object.keys(antes).filter((id) => d[id] !== antes[id]).length;
+      })
+      .toBe(2);
+
+    // Se devuelve el grupo a su lugar: la suite no debería dejar el flujo movido.
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(posiciones).toEqual(antes);
+  });
+
+  test("la marquesina encierra nodos", async ({ page }) => {
+    const caja = await page.evaluate(() => {
+      const c = [...document.querySelectorAll("div")].find(
+        (d) => getComputedStyle(d).overflow === "auto" && d.scrollWidth > d.clientWidth + 50,
+      );
+      const r = c.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+
+    await page.mouse.move(caja.x + 15, caja.y + 15);
+    await page.mouse.down();
+    await page.mouse.move(caja.x + caja.w - 40, caja.y + caja.h - 40, { steps: 10 });
+    await page.mouse.up();
+
+    // Encierra el lienzo entero, así que agarra más de un nodo.
+    await expect(page.getByText(/\d+ nodos elegidos/)).toBeVisible();
+  });
+
+  test("Ctrl+D duplica el grupo con sus conexiones y se puede deshacer", async ({ page }) => {
+    const contar = () => page.locator("[data-nodo]").count();
+    const inicial = await contar();
+
+    const nodos = page.locator("[data-nodo]");
+    await nodos.nth(0).click();
+    await nodos.nth(1).click({ modifiers: ["Shift"] });
+    await expect(page.getByText("2 nodos elegidos")).toBeVisible();
+
+    await page.keyboard.press("Control+d");
+    await expect.poll(contar).toBe(inicial + 2);
+
+    // Lo pegado queda seleccionado, así que se puede borrar de una: el test
+    // deja el flujo como lo encontró (la suite corre sobre datos compartidos).
+    await expect(page.getByText("2 nodos elegidos")).toBeVisible();
+    await page.keyboard.press("Delete");
+    await expect.poll(contar).toBe(inicial);
+  });
+
   test("Escape cierra el buscador sin tocar el lienzo", async ({ page }) => {
     const antes = await estado(page);
     await page.keyboard.press("Control+f");

@@ -55,7 +55,28 @@ export default function FlujoEditor() {
   const [flujo, setFlujo] = useState(null);
   const [version, setVersion] = useState(null); // versión completa (nodos+conexiones)
   const [verId, setVerId] = useState(null);
-  const [sel, setSel] = useState(null); // id de nodo seleccionado
+  /*
+   * Selección de nodos.
+   *
+   * El conjunto es la ÚNICA fuente de verdad y `sel` se deriva de él: con dos
+   * estados en paralelo (uno para el panel y otro para las acciones masivas) se
+   * desincronizan a la primera. El panel de propiedades sólo tiene sentido con
+   * un nodo elegido; con varios muestra las acciones del grupo.
+   */
+  const [seleccion, setSeleccion] = useState(() => new Set());
+  const sel = seleccion.size === 1 ? [...seleccion][0] : null;
+  const seleccionRef = useRef(seleccion);
+  seleccionRef.current = seleccion;
+
+  const seleccionarSolo = useCallback((id) => setSeleccion(id == null ? new Set() : new Set([id])), []);
+  const alternarSeleccion = useCallback((id) => setSeleccion((s) => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  }), []);
+  // Alias para no reescribir las decenas de `setSel(...)` que ya existían.
+  const setSel = seleccionarSolo;
   const [selConexion, setSelConexion] = useState(null); // id de conexión seleccionada en el lienzo
   const [hoverConn, setHoverConn] = useState(null); // id de conexión bajo el cursor
   const [problemas, setProblemas] = useState(null);
@@ -258,17 +279,36 @@ export default function FlujoEditor() {
   function onNodoPointerDown(e, nodo) {
     e.stopPropagation();
     if (e.button != null && e.button !== 0) return; // solo botón primario
+
+    // Shift/Ctrl suma o quita de la selección sin arrastrar: es el gesto que
+    // todo el mundo espera y evita tener que encerrar los nodos con la marquesina.
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      alternarSeleccion(nodo.id);
+      return;
+    }
+
+    // Agarrar un nodo que YA está en la selección arrastra el grupo entero;
+    // agarrar uno de afuera pasa a seleccionarlo solo a él.
+    const enGrupo = seleccionRef.current.has(nodo.id) && seleccionRef.current.size > 1;
+    if (!enGrupo) seleccionarSolo(nodo.id);
+
+    const ids = enGrupo ? [...seleccionRef.current] : [nodo.id];
     const rect = canvasRef.current.getBoundingClientRect();
     const z = zoomRef.current;
     drag.current = {
       id: nodo.id,
       dx: (e.clientX - rect.left) / z - nodo.x,
       dy: (e.clientY - rect.top) / z - nodo.y,
-      origX: nodo.x,
-      origY: nodo.y,
+      // Posición de partida de cada nodo movido: hace falta para el snap y para
+      // registrar el movimiento en el historial como una sola operación.
+      origen: new Map(
+        ids.map((id) => {
+          const n = versionRef.current.nodos.find((x) => x.id === id);
+          return [id, { x: n.x, y: n.y }];
+        }),
+      ),
       moved: false,
     };
-    setSel(nodo.id);
     setDragId(nodo.id);
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no soportado */ }
   }
@@ -278,29 +318,56 @@ export default function FlujoEditor() {
       if (!drag.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
       const z = zoomRef.current;
-      const x = Math.max(0, (e.clientX - rect.left) / z - drag.current.dx);
-      const y = Math.max(0, (e.clientY - rect.top) / z - drag.current.dy);
+      const { id, dx, dy, origen } = drag.current;
+      const x = Math.max(0, (e.clientX - rect.left) / z - dx);
+      const y = Math.max(0, (e.clientY - rect.top) / z - dy);
+      // Todo el grupo se mueve el mismo delta que el nodo agarrado: así conserva
+      // su forma en vez de amontonarse en el cursor.
+      const base = origen.get(id);
+      const ddx = x - base.x;
+      const ddy = y - base.y;
       drag.current.moved = true;
-      setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === drag.current.id ? { ...n, x, y } : n)) }));
+      setVersion((v) => ({
+        ...v,
+        nodos: v.nodos.map((n) => {
+          const o = origen.get(n.id);
+          return o ? { ...n, x: Math.max(0, o.x + ddx), y: Math.max(0, o.y + ddy) } : n;
+        }),
+      }));
     }
     async function onUp() {
       if (!drag.current) return;
-      const { id, moved, origX, origY } = drag.current;
+      const { moved, origen } = drag.current;
       drag.current = null;
       setDragId(null);
       if (!moved) return;
-      const nodo = versionRef.current?.nodos.find((n) => n.id === id);
-      if (!nodo) return;
+
       // Snap a la grilla de 20px que dibuja el lienzo: flujos prolijos sin esfuerzo.
-      const sx = Math.round(nodo.x / GRID) * GRID;
-      const sy = Math.round(nodo.y / GRID) * GRID;
-      if (sx === origX && sy === origY) {
-        // Sin desplazamiento neto: re-encajar en la grilla sin registrar en el historial.
-        setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === id ? { ...n, x: sx, y: sy } : n)) }));
+      const destino = new Map();
+      for (const [id] of origen) {
+        const n = versionRef.current?.nodos.find((x) => x.id === id);
+        if (n) destino.set(id, { x: Math.round(n.x / GRID) * GRID, y: Math.round(n.y / GRID) * GRID });
+      }
+      const cambio = [...destino].some(([id, d]) => {
+        const o = origen.get(id);
+        return d.x !== o.x || d.y !== o.y;
+      });
+
+      const mover = (posiciones) => Promise.all(
+        [...posiciones].map(([id, p]) => aplicarPos(id, p.x, p.y)),
+      );
+      if (!cambio) {
+        // Sin desplazamiento neto: re-encajar en la grilla sin tocar el historial.
+        setVersion((v) => ({
+          ...v,
+          nodos: v.nodos.map((n) => (destino.has(n.id) ? { ...n, ...destino.get(n.id) } : n)),
+        }));
         return;
       }
-      registrarCambio(() => aplicarPos(id, origX, origY), () => aplicarPos(id, sx, sy));
-      aplicarPos(id, sx, sy);
+      // Una sola entrada de historial para todo el grupo: deshacer tiene que
+      // devolver el movimiento completo, no nodo por nodo.
+      registrarCambio(() => mover(origen), () => mover(destino));
+      mover(destino);
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -375,7 +442,10 @@ export default function FlujoEditor() {
     } catch { marcarError(); }
   }
 
-  async function clickNodo(nodo) {
+  async function clickNodo(nodo, e) {
+    // Con modificador, el pointerdown ya resolvió la selección: volver a fijarla
+    // acá la reduciría a un solo nodo y shift+clic no serviría de nada.
+    if (e && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
     if (conectarDesde && conectarDesde !== nodo.id) {
       // No duplicar una conexión que ya existe entre ese par.
       if (version.conexiones.some((c) => c.origen === conectarDesde && c.destino === nodo.id)) {
@@ -619,6 +689,143 @@ export default function FlujoEditor() {
     return () => clearTimeout(t);
   }, [repro]);
 
+  /* --- Copiar y pegar --------------------------------------------------------
+   *
+   * El portapapeles vive en memoria y no en el del sistema: lo que se copia son
+   * nodos con su configuración y las conexiones ENTRE ellos, que no tienen
+   * representación razonable como texto.
+   *
+   * Copiar un tramo y pegarlo es lo que convierte «rehacer un circuito parecido»
+   * de veinte clics en dos. Las conexiones que salen o entran desde afuera del
+   * grupo no se copian: apuntarían a nodos que el pegado no reprodujo.
+   */
+  // Ref y no estado: Ctrl+D copia y pega en el MISMO tick, y el estado de
+  // React todavía no está actualizado cuando corre `pegar()` — con `useState`
+  // el duplicado leía el portapapeles anterior (vacío) y no hacía nada.
+  const portapapeles = useRef(null);
+
+  function copiar() {
+    const ids = new Set(seleccionRef.current);
+    if (!ids.size) return;
+    const v = versionRef.current;
+    const nodos = v.nodos.filter((n) => ids.has(n.id));
+    portapapeles.current = {
+      nodos: nodos.map((n) => ({ tipo: n.tipo, titulo: n.titulo, x: n.x, y: n.y, config: n.config, formulario: n.formulario })),
+      // Índices dentro de `nodos`, no ids: al pegar los ids son otros.
+      conexiones: v.conexiones
+        .filter((c) => ids.has(c.origen) && ids.has(c.destino))
+        .map((c) => ({
+          origen: nodos.findIndex((n) => n.id === c.origen),
+          destino: nodos.findIndex((n) => n.id === c.destino),
+          etiqueta: c.etiqueta,
+          condicion: c.condicion,
+        })),
+    };
+    mostrarToast({ tipo: "ok", msg: `${nodos.length === 1 ? "Nodo copiado" : `${nodos.length} nodos copiados`}` });
+  }
+
+  async function pegar() {
+    const pp = portapapeles.current;
+    if (!pp?.nodos.length) return;
+    marcarGuardando();
+    try {
+      // Desplazamiento fijo para que la copia no tape al original.
+      const OFFSET = GRID * 2;
+      const creados = [];
+      for (const n of pp.nodos) {
+        creados.push(await api.post("/nodos/", {
+          version: verId, tipo: n.tipo, titulo: n.titulo,
+          x: n.x + OFFSET, y: n.y + OFFSET,
+          config: n.config || {}, formulario: n.formulario || null,
+        }));
+      }
+      const nuevasConex = [];
+      for (const c of pp.conexiones) {
+        nuevasConex.push(await api.post("/conexiones/", {
+          version: verId,
+          origen: creados[c.origen].id,
+          destino: creados[c.destino].id,
+          etiqueta: c.etiqueta || "",
+          condicion: c.condicion || {},
+        }));
+      }
+      setVersion((v) => ({
+        ...v,
+        nodos: [...v.nodos, ...creados],
+        conexiones: [...v.conexiones, ...nuevasConex],
+      }));
+      // Lo pegado queda seleccionado: se puede mover en bloque enseguida.
+      setSeleccion(new Set(creados.map((n) => n.id)));
+      marcarGuardado();
+    } catch {
+      marcarError();
+    }
+  }
+
+  /* --- Marquesina ------------------------------------------------------------
+   *
+   * Arrastrar sobre el lienzo vacío encierra nodos. Es la otra mitad de la
+   * multi-selección: con shift+clic se juntan tres o cuatro, pero para agarrar
+   * una rama entera hay que poder rodearla.
+   */
+  const [marquesina, setMarquesina] = useState(null); // {x1,y1,x2,y2} en coords del lienzo
+  const marcaRef = useRef(null);
+  const ignorarClick = useRef(false);
+
+  function onLienzoPointerDown(e) {
+    // Sólo el fondo, con el botón primario y sin estar tendiendo una conexión.
+    if (e.target !== e.currentTarget || e.button !== 0 || conectarDesde) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const z = zoomRef.current;
+    const x = (e.clientX - rect.left) / z;
+    const y = (e.clientY - rect.top) / z;
+    marcaRef.current = { x1: x, y1: y, x2: x, y2: y, aditiva: e.shiftKey };
+    setMarquesina(marcaRef.current);
+  }
+
+  useEffect(() => {
+    function onMove(e) {
+      if (!marcaRef.current) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const z = zoomRef.current;
+      marcaRef.current = {
+        ...marcaRef.current,
+        x2: (e.clientX - rect.left) / z,
+        y2: (e.clientY - rect.top) / z,
+      };
+      setMarquesina(marcaRef.current);
+    }
+    function onUp() {
+      const m = marcaRef.current;
+      marcaRef.current = null;
+      setMarquesina(null);
+      if (!m) return;
+      const [ix, fx] = [Math.min(m.x1, m.x2), Math.max(m.x1, m.x2)];
+      const [iy, fy] = [Math.min(m.y1, m.y2), Math.max(m.y1, m.y2)];
+      // Un clic suelto no es una marquesina: limpia la selección y ya.
+      if (fx - ix < 5 && fy - iy < 5) return;
+      const dentro = (versionRef.current?.nodos || []).filter(
+        (n) => n.x + NODO_W > ix && n.x < fx && n.y + NODO_H > iy && n.y < fy,
+      );
+      setSeleccion((prev) => {
+        const s = m.aditiva ? new Set(prev) : new Set();
+        dentro.forEach((n) => s.add(n.id));
+        return s;
+      });
+      // Tras soltar, el navegador dispara un `click` sobre el lienzo, y ése
+      // limpia la selección: se descarta el próximo para no borrar lo recién
+      // encerrado.
+      ignorarClick.current = true;
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
+
   // --- Atajos de teclado ---------------------------------------------------
   useEffect(() => {
     function onKey(e) {
@@ -639,29 +846,46 @@ export default function FlujoEditor() {
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) { e.preventDefault(); rehacer(); return; }
       if (editando) return;
+
+      const k = e.key.toLowerCase();
+      const meta = e.ctrlKey || e.metaKey;
+      // Seleccionar todo, copiar, pegar y duplicar: los atajos de siempre.
+      if (meta && k === "a") { e.preventDefault(); setSeleccion(new Set(version.nodos.map((n) => n.id))); return; }
+      if (meta && k === "c") { e.preventDefault(); copiar(); return; }
+      if (meta && k === "v") { e.preventDefault(); pegar(); return; }
+      if (meta && k === "d") { e.preventDefault(); copiar(); pegar(); return; }
+
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (sel != null) { e.preventDefault(); borrarNodo(sel); }
+        if (seleccion.size) { e.preventDefault(); [...seleccion].forEach(borrarNodo); }
         else if (selConexion != null) { e.preventDefault(); borrarConexion(selConexion); }
         return;
       }
-      // Mover el nodo seleccionado con las flechas (un paso de grilla).
-      if (sel != null && e.key.startsWith("Arrow")) {
-        const n = version.nodos.find((x) => x.id === sel);
-        if (!n) return;
+      // Mover la selección con las flechas (un paso de grilla).
+      if (seleccion.size && e.key.startsWith("Arrow")) {
         e.preventDefault();
-        let { x, y } = n;
-        if (e.key === "ArrowUp") y = Math.max(0, y - GRID);
-        else if (e.key === "ArrowDown") y += GRID;
-        else if (e.key === "ArrowLeft") x = Math.max(0, x - GRID);
-        else if (e.key === "ArrowRight") x += GRID;
-        if (x === n.x && y === n.y) return;
-        registrarCambio(() => aplicarPos(sel, n.x, n.y), () => aplicarPos(sel, x, y));
-        aplicarPos(sel, x, y);
+        let ddx = 0, ddy = 0;
+        if (e.key === "ArrowUp") ddy = -GRID;
+        else if (e.key === "ArrowDown") ddy = GRID;
+        else if (e.key === "ArrowLeft") ddx = -GRID;
+        else if (e.key === "ArrowRight") ddx = GRID;
+
+        const antes = new Map(), despues = new Map();
+        for (const id of seleccion) {
+          const n = version.nodos.find((x) => x.id === id);
+          if (!n) continue;
+          antes.set(id, { x: n.x, y: n.y });
+          despues.set(id, { x: Math.max(0, n.x + ddx), y: Math.max(0, n.y + ddy) });
+        }
+        if (!antes.size) return;
+        const mover = (m) => Promise.all([...m].map(([id, p]) => aplicarPos(id, p.x, p.y)));
+        registrarCambio(() => mover(antes), () => mover(despues));
+        mover(despues);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sel, selConexion, conectarDesde, sim, problemas, version]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seleccion, selConexion, conectarDesde, sim, problemas, version]);
 
   if (cargando) return <Spinner label="Cargando flujo…" />;
   if (errorCarga)
@@ -801,7 +1025,14 @@ export default function FlujoEditor() {
                 // Marca la capa escalada. La usa la suite para leer el zoom real
                 // del DOM sin adivinarlo por el `style`, que es frágil.
                 data-lienzo=""
-                onClick={() => { setSel(null); setSelConexion(null); setConectarDesde(null); }}
+                onPointerDown={onLienzoPointerDown}
+                onClick={(e) => {
+                  // Sólo el fondo limpia la selección; un clic sobre un nodo no
+                  // debe llegar acá (los nodos ya cortan la propagación).
+                  if (e.target !== e.currentTarget) return;
+                  if (ignorarClick.current) { ignorarClick.current = false; return; }
+                  setSel(null); setSelConexion(null); setConectarDesde(null);
+                }}
                 style={{
                   position: "relative",
                   width: 2200,
@@ -873,7 +1104,7 @@ export default function FlujoEditor() {
             {/* Nodos */}
             {version.nodos.map((n) => {
               const cat = nodeCat[n.tipo] || nodeCat.form;
-              const seleccionado = n.id === sel;
+              const seleccionado = seleccion.has(n.id);
               const esOrigenConexion = conectarDesde === n.id;
               const enFoco = n.id === nodoEnFoco;
               const arrastrando = dragId === n.id;
@@ -886,9 +1117,12 @@ export default function FlujoEditor() {
                   tabIndex={0}
                   role="button"
                   aria-label={`${cat.name}: ${n.titulo}. Flechas para mover, Suprimir para eliminar.`}
-                  onFocus={() => setSel(n.id)}
+                  // El foco no pisa una selección múltiple: en un elemento con
+                  // tabIndex el focus dispara junto con el pointerdown, así que
+                  // sin esto un shift+clic quedaba reducido a un solo nodo.
+                  onFocus={() => { if (!seleccion.has(n.id)) setSel(n.id); }}
                   onPointerDown={(e) => onNodoPointerDown(e, n)}
-                  onClick={(e) => { e.stopPropagation(); clickNodo(n); }}
+                  onClick={(e) => { e.stopPropagation(); clickNodo(n, e); }}
                   style={{
                     position: "absolute",
                     left: n.x,
@@ -942,6 +1176,25 @@ export default function FlujoEditor() {
                 </div>
               );
             })}
+
+            {/* Marquesina de selección */}
+            {marquesina && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: Math.min(marquesina.x1, marquesina.x2),
+                  top: Math.min(marquesina.y1, marquesina.y2),
+                  width: Math.abs(marquesina.x2 - marquesina.x1),
+                  height: Math.abs(marquesina.y2 - marquesina.y1),
+                  border: `1px solid ${color.accent}`,
+                  background: `${color.accent}14`,
+                  borderRadius: 3,
+                  pointerEvents: "none",
+                  zIndex: 4,
+                }}
+              />
+            )}
 
             {/* Token de "Reproducir" viajando por el lienzo */}
             {reproNodo && (
@@ -1000,6 +1253,13 @@ export default function FlujoEditor() {
             <PanelSimulacion sim={sim} version={version} campos={campos} onAvanzar={avanzarSim} onReiniciar={iniciarSim} onCerrar={() => setSim(null)} />
           ) : problemas ? (
             <PanelValidacion problemas={problemas} onCerrar={() => setProblemas(null)} onFocus={(nid) => { setSel(nid); setProblemas(null); }} />
+          ) : seleccion.size > 1 ? (
+            <PanelSeleccion
+              cantidad={seleccion.size}
+              onDuplicar={() => { copiar(); pegar(); }}
+              onBorrar={() => [...seleccion].forEach(borrarNodo)}
+              onLimpiar={() => setSeleccion(new Set())}
+            />
           ) : nodoSel ? (
             <PanelNodo
               key={nodoSel.id}
@@ -1213,6 +1473,37 @@ const OP_TEXTO = ["=", "!=", "contiene", "no_contiene", "en", "no_en", ...PRESEN
 function operadoresDe(campo) {
   if (!campo) return OP_TEXTO;
   return OP_POR_TIPO[campo.tipo] || (campo.opciones?.length ? OP_POR_TIPO.seleccion_unica : OP_TEXTO);
+}
+
+/**
+ * Panel de varios nodos elegidos.
+ *
+ * Con más de uno no hay propiedades que editar —son de distinto tipo—, así que
+ * el panel pasa a ofrecer lo que sí aplica al grupo. Dejarlo vacío haría pensar
+ * que la selección múltiple no sirve para nada.
+ */
+function PanelSeleccion({ cantidad, onDuplicar, onBorrar, onLimpiar }) {
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: type.md, fontWeight: 700 }}>{cantidad} nodos elegidos</div>
+        <button onClick={onLimpiar} aria-label="Quitar la selección" title="Quitar la selección" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4 }}>
+          <Icon name="x" size={18} />
+        </button>
+      </div>
+      <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 16 }}>
+        Arrastrá cualquiera de ellos para mover el grupo, o usá las flechas del teclado.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <Button variant="secondary" onClick={onDuplicar}>Duplicar (Ctrl+D)</Button>
+        <Button variant="danger" onClick={onBorrar}>Eliminar los {cantidad}</Button>
+      </div>
+      <div style={{ marginTop: 16, fontSize: type.xs, color: color.slate400, lineHeight: 1.5 }}>
+        Al duplicar se copian también las conexiones entre los nodos elegidos. Las que
+        entran o salen del grupo no, porque apuntarían a nodos que la copia no reprodujo.
+      </div>
+    </div>
+  );
 }
 
 /**
