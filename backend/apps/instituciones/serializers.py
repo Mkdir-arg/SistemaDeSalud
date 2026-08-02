@@ -30,7 +30,7 @@ class GrupoSerializer(serializers.ModelSerializer):
         read_only_fields = ["creado"]
         extra_kwargs = {"miembros": {"write_only": True, "required": False}}
 
-    def get_integrantes(self, obj):
+    def get_integrantes(self, obj) -> list[dict]:
         return [
             {"id": u.id, "nombre": u.nombre_completo, "email": u.email}
             for u in obj.miembros.all()
@@ -64,7 +64,7 @@ class AreaSerializer(serializers.ModelSerializer):
         model = Area
         fields = ["id", "institucion", "nombre", "responsable", "descripcion", "activa", "subareas", "staff"]
 
-    def get_staff(self, obj):
+    def get_staff(self, obj) -> list[dict]:
         return obj.miembros.values("usuario").distinct().count()
 
 
@@ -73,7 +73,7 @@ class InstitucionSerializer(serializers.ModelSerializer):
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     staff = serializers.SerializerMethodField()
 
-    def get_staff(self, obj):
+    def get_staff(self, obj) -> list[dict]:
         return obj.membresias.values("usuario").distinct().count()
 
     class Meta:

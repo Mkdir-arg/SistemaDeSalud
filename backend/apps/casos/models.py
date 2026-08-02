@@ -236,3 +236,8 @@ class Notificacion(models.Model):
 
     def __str__(self):
         return f"{self.titulo} → {self.usuario_id}"
+
+
+# Nombre estable para el esquema OpenAPI: hay tres modelos con un campo
+# «estado» distinto y sin esto quedan documentados como «Estado719Enum».
+ESTADOS_CASO = Caso.Estado.choices

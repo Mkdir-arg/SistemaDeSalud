@@ -39,11 +39,11 @@ class ItemFilaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["ingreso", "llamado_at", "atendido_at"]
 
-    def get_persona(self, obj):
+    def get_persona(self, obj) -> str | None:
         c = obj.caso.ciudadano
         return f"{c.nombre} {c.apellido}".strip() if c else None
 
-    def get_area_nombre(self, obj):
+    def get_area_nombre(self, obj) -> str | None:
         a = obj.nodo.version.flujo.area
         return a.nombre if a else None
 
@@ -56,7 +56,7 @@ class EventoCasoSerializer(serializers.ModelSerializer):
         fields = ["id", "caso", "titulo", "detalle", "autor", "autor_nombre", "nodo", "fecha"]
         read_only_fields = ["fecha"]
 
-    def get_autor_nombre(self, obj):
+    def get_autor_nombre(self, obj) -> str | None:
         return obj.autor.nombre_completo if obj.autor else "Sistema"
 
 
@@ -95,10 +95,10 @@ class CasoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creado", "actualizado"]
 
-    def get_nodo_con_fila(self, obj):
+    def get_nodo_con_fila(self, obj) -> bool:
         return bool(obj.nodo_actual and (obj.nodo_actual.config or {}).get("con_fila"))
 
-    def get_en_fila(self, obj):
+    def get_en_fila(self, obj) -> bool:
         # Hay un ítem de fila activo y todavía sin llamar (sin box) en el paso actual.
         if not obj.nodo_actual_id:
             return False
@@ -113,15 +113,15 @@ class CasoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"ciudadano": "El caso debe asociarse a un paciente."})
         return attrs
 
-    def get_area_nombre(self, obj):
+    def get_area_nombre(self, obj) -> str | None:
         return obj.area_actual.nombre if obj.area_actual_id else None
 
-    def get_responsables(self, obj):
+    def get_responsables(self, obj) -> list[dict]:
         if not obj.nodo_actual_id:
             return []
         return [{"id": g.id, "nombre": g.nombre} for g in obj.nodo_actual.grupos.all()]
 
-    def get_puede_tomar(self, obj):
+    def get_puede_tomar(self, obj) -> bool:
         # Abierto a todos si el paso no declara grupos; si los declara, el usuario
         # debe integrar alguno (el super admin pasa siempre).
         if not obj.nodo_actual_id:
@@ -134,18 +134,18 @@ class CasoSerializer(serializers.ModelSerializer):
         user_gids = self.context.get("user_grupo_ids") or set()
         return any(g in user_gids for g in gids)
 
-    def get_puede_supervisar(self, obj):
+    def get_puede_supervisar(self, obj) -> bool:
         if self.context.get("es_superuser"):
             return True
         area_id = obj.area_actual_id or (obj.version.flujo.area_id if obj.version_id else None)
         return area_id is not None and area_id in (self.context.get("areas_supervisadas") or set())
 
-    def get_ciudadano_nombre(self, obj):
+    def get_ciudadano_nombre(self, obj) -> str | None:
         if obj.ciudadano_id:
             return f"{obj.ciudadano.nombre} {obj.ciudadano.apellido}".strip()
         return None
 
-    def get_asignado_nombre(self, obj):
+    def get_asignado_nombre(self, obj) -> str | None:
         return obj.asignado_a.nombre_completo if obj.asignado_a_id else None
 
 
@@ -170,7 +170,7 @@ class CasoDetalleSerializer(CasoSerializer):
             "valores", "eventos", "derivados", "llamado", "llamado_box", "veces_llamado", "ausente",
         ]
 
-    def get_ausente(self, obj):
+    def get_ausente(self, obj) -> bool:
         if not obj.nodo_actual_id:
             return False
         return obj.en_filas.filter(nodo=obj.nodo_actual, ausente=True).exists()
@@ -180,18 +180,18 @@ class CasoDetalleSerializer(CasoSerializer):
             return None
         return obj.en_filas.filter(nodo=obj.nodo_actual, atendido=False, box__isnull=False).first()
 
-    def get_llamado(self, obj):
+    def get_llamado(self, obj) -> bool:
         return self._item_llamado(obj) is not None
 
-    def get_llamado_box(self, obj):
+    def get_llamado_box(self, obj) -> str | None:
         it = self._item_llamado(obj)
         return it.box.nombre if it and it.box_id else None
 
-    def get_veces_llamado(self, obj):
+    def get_veces_llamado(self, obj) -> int:
         it = self._item_llamado(obj)
         return it.veces_llamado if it else None
 
-    def get_derivados(self, obj):
+    def get_derivados(self, obj) -> list[dict]:
         return [
             {"id": d.id, "flujo_titulo": d.version.flujo.titulo, "estado": d.estado}
             for d in obj.derivados.select_related("version__flujo").all()

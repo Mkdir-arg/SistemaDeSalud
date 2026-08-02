@@ -119,3 +119,8 @@ class Grupo(models.Model):
 
     def __str__(self):
         return f"{self.nombre} · {self.area.nombre}"
+
+
+# Nombre estable para el esquema OpenAPI: hay tres modelos con un campo
+# «estado» distinto y sin esto quedan documentados como «Estado719Enum».
+ESTADOS_INSTITUCION = Institucion.Estado.choices

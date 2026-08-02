@@ -189,3 +189,8 @@ class Conexion(models.Model):
 
     def __str__(self):
         return f"{self.origen.titulo} → {self.destino.titulo}"
+
+
+# Nombre estable para el esquema OpenAPI: hay tres modelos con un campo
+# «estado» distinto y sin esto quedan documentados como «Estado719Enum».
+ESTADOS_VERSION = VersionFlujo.Estado.choices

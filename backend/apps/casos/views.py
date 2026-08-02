@@ -4,6 +4,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
 from apps.common import BaseModelViewSet
@@ -370,6 +372,15 @@ class CasoViewSet(BaseModelViewSet):
 PRIORIDAD_RANK = {"urgente": 0, "alta": 1, "normal": 2}
 
 
+@extend_schema(
+    tags=["casos"],
+    summary="Tareas pendientes del usuario",
+    description=(
+        "Lo que le toca hacer a quien consulta, agrupado por origen: casos "
+        "asignados, casos de sus grupos sin tomar y esperas vencidas."
+    ),
+    responses=OpenApiTypes.OBJECT,
+)
 class MisTareasView(APIView):
     """
     Worklist del operador, segmentada por **paso** (nodo) del que es responsable.
@@ -755,6 +766,15 @@ class MisTareasView(APIView):
         return actual
 
 
+@extend_schema(
+    tags=["casos"],
+    summary="Puesto de trabajo de un paso",
+    description=(
+        "Estado de un nodo para quien lo opera: la cola, los indicadores del día "
+        "y el box que ocupa quien consulta, si el paso tiene fila."
+    ),
+    responses=OpenApiTypes.OBJECT,
+)
 class PuestoDetalleView(APIView):
     """Detalle de un **paso** (nodo) del que soy responsable: indicadores del
     momento + la tabla de casos parados ahí. Lo abre cada tarjeta de «Mis puestos»."""
@@ -833,6 +853,19 @@ class PuestoDetalleView(APIView):
         return f"{ciudadano.nombre} {ciudadano.apellido}".strip() if ciudadano else None
 
 
+@extend_schema(
+    tags=["casos"],
+    summary="Pantalla pública de llamados (TV de sala de espera)",
+    description=(
+        "Últimos pacientes llamados y desde qué box. **Sin autenticación**: se "
+        "accede por un token impredecible que se genera al configurar el nodo, "
+        "porque corre en un televisor de la sala y no hay quien inicie sesión "
+        "ahí. Devuelve nombre y turno, así que el token es lo único que la "
+        "protege: no se publica ni se pone en un QR."
+    ),
+    auth=[],
+    responses=OpenApiTypes.OBJECT,
+)
 class PantallaLlamadosView(APIView):
     """Pantalla pública de llamados de un nodo con fila (TV de sala de espera).
 
@@ -947,6 +980,10 @@ class NotificacionViewSet(viewsets.ModelViewSet):
 
     serializer_class = NotificacionSerializer
     permission_classes = [IsAuthenticated]
+    # Sólo para que el esquema pueda deducir el tipo del id en la ruta: el
+    # queryset real depende del usuario y se arma abajo. Sin esto, el `id` de
+    # `/api/notificaciones/{id}/` quedaba documentado como texto.
+    queryset = Notificacion.objects.none()
 
     def get_queryset(self):
         return Notificacion.objects.filter(usuario=self.request.user).select_related("caso")

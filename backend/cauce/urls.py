@@ -19,6 +19,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.casos.views import MisTareasView, PantallaLlamadosView, PuestoDetalleView
@@ -34,6 +35,10 @@ def health(_request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/health/", health, name="health"),
+    # Esquema OpenAPI y su visor. Es lo primero que pide el área de sistemas
+    # de la institución cuando hay que integrar con lo que ya tienen.
+    path("api/esquema/", SpectacularAPIView.as_view(), name="esquema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="esquema"), name="docs"),
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/archivos/", SubirArchivoView.as_view(), name="subir_archivo"),

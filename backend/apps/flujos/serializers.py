@@ -18,7 +18,7 @@ class NodoSerializer(serializers.ModelSerializer):
         extra_kwargs = {"grupos": {"required": False}}
         read_only_fields = ["pantalla_token"]
 
-    def get_grupos_detalle(self, obj):
+    def get_grupos_detalle(self, obj) -> list[dict]:
         return [
             {"id": g.id, "nombre": g.nombre, "area": g.area_id, "area_nombre": g.area.nombre}
             for g in obj.grupos.all()
@@ -76,7 +76,7 @@ class FlujoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creado"]
 
-    def get_origen_inicio(self, obj):
+    def get_origen_inicio(self, obj) -> str:
         ver = obj.version_publicada
         if not ver:
             return "ambos"
@@ -91,19 +91,19 @@ class FlujoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"subarea": "La sub-área no pertenece al área indicada."})
         return attrs
 
-    def get_area_nombre(self, obj):
+    def get_area_nombre(self, obj) -> str | None:
         return obj.area.nombre if obj.area_id else "Institución"
 
-    def get_subarea_nombre(self, obj):
+    def get_subarea_nombre(self, obj) -> str | None:
         return obj.subarea.nombre if obj.subarea_id else None
 
-    def get_ambito_label(self, obj):
+    def get_ambito_label(self, obj) -> str:
         if obj.subarea_id:
             return f"{obj.area.nombre} › {obj.subarea.nombre}"
         if obj.area_id:
             return obj.area.nombre
         return "Institución"
 
-    def get_casos_activos(self, obj):
+    def get_casos_activos(self, obj) -> int:
         from apps.casos.models import Caso
         return Caso.objects.filter(version__flujo=obj).exclude(estado=Caso.Estado.CERRADO).count()

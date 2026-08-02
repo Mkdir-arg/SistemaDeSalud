@@ -178,7 +178,10 @@ sidebar/header (`src/components/Shell.jsx`) y login (`src/pages/Login.jsx`).
       casos del prototipo) para no empezar de cero cada vez.
 - [ ] **Subida de archivos** real para campos tipo Archivo y estudios (hoy solo
       se guarda el nombre como texto).
-- [ ] **Documentación de API** (OpenAPI/Swagger, p. ej. drf-spectacular).
+- [x] **Documentación de API**: esquema OpenAPI 3 en `/api/esquema/` y visor
+      Swagger en `/api/docs/` (drf-spectacular). 83 endpoints, sin avisos ni
+      errores de generación. En producción pide sesión: no expone datos pero
+      sí el mapa completo de la API.
 - [ ] Probar de verdad contra **Supabase/Postgres** y preparar despliegue
       (gunicorn/uvicorn, `collectstatic`, variables de entorno de producción).
 

@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Terceros
     "rest_framework",
+    "drf_spectacular",
     "corsheaders",
     # Apps del proyecto
     "apps.accounts",
@@ -130,6 +131,66 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "cauce.pagination.Paginacion",
     "PAGE_SIZE": 25,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# --------------------------------------------------------------------------- #
+# Documentación de la API (OpenAPI 3)
+# --------------------------------------------------------------------------- #
+# Un hospital no compra un sistema que no se pueda integrar con lo que ya tiene.
+# El esquema es lo primero que pide el área de sistemas del otro lado, y además
+# es la referencia que evita tener que leer el código para saber qué devuelve
+# cada endpoint.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Cauce · API",
+    "DESCRIPTION": """
+API de Cauce: flujos de trabajo para instituciones de salud.
+
+**Autenticación.** Todo requiere un token JWT (`Authorization: Bearer <token>`)
+que se obtiene en `POST /api/auth/token/`. Las dos excepciones son ese mismo
+endpoint y la pantalla pública de llamados de sala (`/api/pantalla/<token>/`),
+que se sirve sin sesión porque corre en un televisor.
+
+**Alcance.** Los listados devuelven sólo lo de las instituciones donde quien
+consulta tiene una membresía activa; el filtro es del servidor, no de la
+pantalla.
+
+**Listados.** Vienen paginados (`?page`, `?page_size`) y aceptan `?formato=csv`
+cuando el recurso declara columnas exportables.
+""",
+    "VERSION": "1.0.0",
+    # En producción el esquema pide sesión.
+    #
+    # No expone datos, pero sí el mapa completo de la API: qué endpoints existen,
+    # con qué campos y qué acciones acepta cada uno —incluidos los de historia
+    # clínica—. Publicarle eso a cualquiera que llegue al servidor le ahorra la
+    # mitad del trabajo a quien esté buscando por dónde entrar, y no le sirve a
+    # nadie más: quien tiene que integrar tiene credenciales.
+    #
+    # En desarrollo queda abierto, que es cuando se lo consulta a cada rato.
+    "SERVE_PERMISSIONS": ["apps.common.PuedeVerElEsquema"],
+    # El esquema no incluye la pantalla de Swagger a sí misma.
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": False,
+    # Agrupa por app en vez de por el primer segmento de la URL: así «casos» y
+    # «items-fila» quedan juntos, que es como se los usa.
+    # Tres modelos tienen un campo «estado» con opciones distintas. Sin esto
+    # el esquema los nombra «Estado719Enum», que es lo que termina leyendo quien
+    # tiene que integrar.
+    "ENUM_NAME_OVERRIDES": {
+        "EstadoCasoEnum": "apps.casos.models.ESTADOS_CASO",
+        "EstadoVersionEnum": "apps.flujos.models.ESTADOS_VERSION",
+        "EstadoInstitucionEnum": "apps.instituciones.models.ESTADOS_INSTITUCION",
+    },
+    "TAGS": [
+        {"name": "casos", "description": "Casos, su operación y la cola de espera."},
+        {"name": "flujos", "description": "Diseño de flujos: versiones, nodos y conexiones."},
+        {"name": "formularios", "description": "Formularios y campos de los pasos."},
+        {"name": "instituciones", "description": "Estructura organizativa: áreas, boxes, grupos."},
+        {"name": "registros", "description": "Pacientes e historia clínica."},
+        {"name": "usuarios", "description": "Cuentas, membresías y legajos."},
+    ],
 }
 
 # --------------------------------------------------------------------------- #

@@ -8,6 +8,8 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
 
@@ -212,6 +214,34 @@ def _coerce(value):
     return value
 
 
+class PuedeVerElEsquema(BasePermission):
+    """Abierto en desarrollo, con sesión en producción.
+
+    El esquema no tiene datos, pero sí el mapa completo de la API: qué endpoints
+    existen, con qué campos y qué acciones acepta cada uno, incluidos los de
+    historia clínica. Publicárselo a cualquiera que llegue al servidor le ahorra
+    medio trabajo a quien busque por dónde entrar, y no le sirve a nadie más:
+    quien tiene que integrar tiene credenciales.
+
+    Se decide por pedido y no al cargar settings, para que valga lo que DEBUG
+    diga en ese momento (y para poder probarlo).
+    """
+
+    def has_permission(self, request, view):
+        from django.conf import settings
+
+        if settings.DEBUG:
+            return True
+        return bool(request.user and request.user.is_authenticated)
+
+
+@extend_schema(
+    tags=["registros"],
+    summary="Sube un archivo",
+    description="Devuelve el nombre y la URL del archivo guardado, para referenciarlo desde un campo de formulario.",
+    request={"multipart/form-data": {"type": "object", "properties": {"archivo": {"type": "string", "format": "binary"}}}},
+    responses=OpenApiTypes.OBJECT,
+)
 class SubirArchivoView(APIView):
     """
     Sube un archivo y devuelve su nombre y URL. Usado por los campos de tipo

@@ -68,27 +68,27 @@ class CiudadanoSerializer(serializers.ModelSerializer):
     def _hc(self, obj):
         return getattr(obj, "historia_clinica", None)
 
-    def get_condiciones(self, obj):
+    def get_condiciones(self, obj) -> str:
         hc = self._hc(obj)
         return hc.condiciones if hc else ""
 
-    def get_alergias(self, obj):
+    def get_alergias(self, obj) -> str:
         hc = self._hc(obj)
         return hc.alergias if hc else ""
 
-    def get_entradas(self, obj):
+    def get_entradas(self, obj) -> list[dict]:
         hc = self._hc(obj)
         return hc.entradas.count() if hc else 0
 
-    def get_estudios(self, obj):
+    def get_estudios(self, obj) -> list[dict]:
         hc = self._hc(obj)
         return hc.estudios.count() if hc else 0
 
-    def get_recetas_activas(self, obj):
+    def get_recetas_activas(self, obj) -> list[dict]:
         hc = self._hc(obj)
         return hc.recetas.filter(activa=True).count() if hc else 0
 
-    def get_ultima(self, obj):
+    def get_ultima(self, obj) -> dict | None:
         hc = self._hc(obj)
         if not hc:
             return None
