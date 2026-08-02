@@ -151,3 +151,106 @@ class RecordatoriosTests(TestCase):
         salida, _ = self._correr()
         self.assertIn("Sin turnos por confirmar", salida)
         self.assertEqual(Notificacion.objects.count(), 0)
+
+
+class IndicadorAusentismoTests(TestCase):
+    """
+    El ausentismo es el número con el que se decide si hay que sobreturnear o
+    llamar más. Que esté mal no se nota —siempre da algo verosímil— así que las
+    dos formas de estropearlo tienen su test.
+    """
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.user = Usuario.objects.create_user(
+            "jefe@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Cardiología")
+        self.agenda = Agenda.objects.create(
+            institucion=self.inst, area=self.area, nombre="Dra. Suárez", duracion_min=20
+        )
+        self.ayer = timezone.localdate() - timedelta(days=1)
+        Disponibilidad.objects.create(
+            agenda=self.agenda, dia_semana=self.ayer.weekday(),
+            desde=time(8, 0), hasta=time(16, 0),
+        )
+
+    def _turno(self, minuto, estado):
+        from datetime import datetime
+
+        c = Ciudadano.objects.create(institucion=self.inst, nombre=f"P{minuto}", apellido="T")
+        inicio = timezone.make_aware(
+            datetime.combine(self.ayer, time(8, 0)), timezone.get_current_timezone()
+        ) + timedelta(minutes=minuto)
+        t = motor.reservar(self.agenda, c, inicio)
+        if estado != Turno.Estado.RESERVADO:
+            t.estado = estado
+            t.save(update_fields=["estado"])
+        return t
+
+    def _resumen(self):
+        r = self.client.get(f"/api/instituciones/{self.inst.id}/tablero/?dias=7")
+        return r.data["resumen"]
+
+    def test_el_ausentismo_sale_sobre_los_turnos_con_desenlace(self):
+        for i in range(8):
+            self._turno(i * 20, Turno.Estado.PRESENTE)
+        for i in range(8, 10):
+            self._turno(i * 20, Turno.Estado.AUSENTE)
+        self.assertEqual(self._resumen()["ausentismo"], 20)
+
+    def test_los_cancelados_no_cuentan_como_ausentes(self):
+        """
+        El que avisó con tiempo liberó el horario y se pudo reasignar. Contarlo
+        como ausente diría que el servicio pierde horas que en realidad usó.
+        """
+        for i in range(8):
+            self._turno(i * 20, Turno.Estado.PRESENTE)
+        for i in range(8, 10):
+            self._turno(i * 20, Turno.Estado.AUSENTE)
+        for i in range(10, 12):
+            self._turno(i * 20, Turno.Estado.CANCELADO)
+        r = self._resumen()
+        self.assertEqual(r["ausentismo"], 20, "los cancelados entraron en la cuenta")
+        self.assertEqual(r["turnos_cancelados"], 2)
+
+    def test_los_sin_registrar_se_cuentan_aparte_y_no_inflan_el_ausentismo(self):
+        """
+        Un turno que pasó y nadie resolvió puede ser alguien que vino y nadie
+        registró. Meterlo en ausentes haría que el número suba con el desorden
+        administrativo en vez de con la gente que faltó.
+        """
+        for i in range(8):
+            self._turno(i * 20, Turno.Estado.PRESENTE)
+        for i in range(8, 10):
+            self._turno(i * 20, Turno.Estado.AUSENTE)
+        for i in range(10, 14):
+            self._turno(i * 20, Turno.Estado.RESERVADO)  # nadie los cerró
+        r = self._resumen()
+        self.assertEqual(r["ausentismo"], 20, "los sin registrar inflaron el ausentismo")
+        self.assertEqual(r["turnos_sin_registrar"], 4, "y tienen que verse, para que alguien los cierre")
+
+    def test_los_turnos_futuros_no_entran_en_el_ausentismo(self):
+        """Todavía no faltó nadie: sólo tiene sentido sobre lo que ya pasó."""
+        manana = timezone.localdate() + timedelta(days=1)
+        Disponibilidad.objects.create(
+            agenda=self.agenda, dia_semana=manana.weekday(), desde=time(8, 0), hasta=time(16, 0)
+        )
+        from datetime import datetime
+
+        for i in range(6):
+            c = Ciudadano.objects.create(institucion=self.inst, nombre=f"F{i}", apellido="T")
+            motor.reservar(self.agenda, c, timezone.make_aware(
+                datetime.combine(manana, time(8, 0)), timezone.get_current_timezone()
+            ) + timedelta(minutes=i * 20))
+        self._turno(0, Turno.Estado.AUSENTE)
+        r = self._resumen()
+        self.assertEqual(r["ausentismo"], 100, "un ausente sobre un resuelto")
+        self.assertEqual(r["turnos_sin_registrar"], 0, "los futuros no son «sin registrar»")
+
+    def test_sin_turnos_no_divide_por_cero(self):
+        self.assertEqual(self._resumen()["ausentismo"], 0)

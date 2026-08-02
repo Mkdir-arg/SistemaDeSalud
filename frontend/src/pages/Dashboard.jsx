@@ -202,6 +202,23 @@ function TableroGeneral({ d, navigate }) {
     { l: "Espera prom.", v: r.espera_prom_min, u: "min", icon: "refresh", c: varEspera(r.espera_prom_min) },
     { l: "Atención prom.", v: r.atencion_prom_min ?? 0, u: "min", icon: "users", c: "var(--color-nodo-atencion-sol)" },
     { l: "Resolución prom.", v: r.resolucion_prom_h, u: "h", icon: "map", c: "var(--color-texto-suave)" },
+    // Sólo si hay turnos en el período: en un servicio sin agenda un «0 %»
+    // ocupa lugar y hace dudar de si está roto.
+    ...(r.turnos_periodo
+      ? [{
+          l: "Ausentismo",
+          v: r.ausentismo,
+          u: "%",
+          icon: "calendar",
+          // Un consultorio pierde entre el 10 y el 20 % de sus turnos; arriba de
+          // 25 hay algo que revisar y de reojo tiene que notarse.
+          c: r.ausentismo >= 25
+            ? "var(--color-danger)"
+            : r.ausentismo >= 15
+              ? "var(--color-warn)"
+              : "var(--color-nodo-espera-sol)",
+        }]
+      : []),
     // Sólo si la institución tiene camas: en un centro ambulatorio un «0 %» de
     // ocupación no dice nada, ocupa lugar y hace dudar de si está roto.
     ...(r.camas_total

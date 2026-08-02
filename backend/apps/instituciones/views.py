@@ -10,6 +10,8 @@ from rest_framework.response import Response
 from apps.casos import motor
 from apps.common import BaseModelViewSet, CapacidadPermission
 
+from apps.agenda.models import Turno
+
 from .models import Area, Box, Cama, EstadiaCama, Grupo, Institucion, Subarea
 from .serializers import (
     AreaSerializer, BoxSerializer, CamaSerializer, EstadiaCamaSerializer,
@@ -111,8 +113,37 @@ class InstitucionViewSet(BaseModelViewSet):
         camas_ocupadas = camas.filter(estado=Cama.Estado.OCUPADA).count()
         operativas = camas_total - camas_fuera
 
+        # Agenda del período. El ausentismo es EL indicador de un consultorio
+        # —cuánta hora de profesional se perdió— y sólo tiene sentido sobre los
+        # turnos que YA PASARON.
+        turnos = Turno.objects.filter(
+            agenda__institucion=inst, inicio__date__range=rango
+        )
+        pasados = turnos.filter(inicio__lt=now)
+        t_presentes = pasados.filter(estado=Turno.Estado.PRESENTE).count()
+        t_ausentes = pasados.filter(estado=Turno.Estado.AUSENTE).count()
+        t_cancelados = pasados.filter(estado=Turno.Estado.CANCELADO).count()
+        # Los que pasaron y nadie resolvió. Se cuentan aparte y NO se reparten
+        # entre ausentes y presentes: meterlos en ausentes inflaría el
+        # ausentismo con gente que sí vino y nadie registró, y el número dejaría
+        # de servir para decidir. Que se vean es la forma de que alguien los
+        # cierre.
+        t_sin_registrar = pasados.filter(
+            estado__in=[Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO]
+        ).count()
+        # Sobre los que tuvieron desenlace: un ausentismo calculado sobre los
+        # sin registrar sube o baja según la prolijidad administrativa, no según
+        # cuánta gente faltó.
+        resueltos = t_presentes + t_ausentes
+
         resumen = {
             "casos_activos": activos.count(),
+            "turnos_periodo": turnos.count(),
+            "turnos_presentes": t_presentes,
+            "turnos_ausentes": t_ausentes,
+            "turnos_cancelados": t_cancelados,
+            "turnos_sin_registrar": t_sin_registrar,
+            "ausentismo": round(100 * t_ausentes / resueltos) if resueltos else 0,
             "camas_total": camas_total,
             "camas_operativas": operativas,
             "camas_ocupadas": camas_ocupadas,
