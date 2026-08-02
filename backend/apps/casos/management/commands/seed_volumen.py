@@ -259,6 +259,7 @@ class Command(BaseCommand):
 
         self._sellar_notificaciones(ahora)
         self._poner_al_dia_la_higiene()
+        self._sembrar_turnos(pacientes, hechos)
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(
             estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO]).count()
@@ -439,6 +440,72 @@ class Command(BaseCommand):
         # quedaron esperando higiene.
         EstadiaCama.objects.filter(hasta__gt=t).update(hasta=t)
         Cama.objects.filter(estado=Cama.Estado.HIGIENE, desde__gt=t).update(desde=t)
+
+    def _sembrar_turnos(self, pacientes, hechos):
+        """
+        Turnos programados: pasados con su desenlace y futuros por atender.
+
+        Los pasados importan tanto como los futuros. El ausentismo es EL
+        indicador de una agenda —cuánta hora de profesional se perdió— y con
+        una grilla que arranca vacía hacia atrás no se puede mostrar.
+        """
+        from apps.agenda import motor as motor_agenda
+        from apps.agenda.models import Agenda, Turno
+
+        hoy = timezone.localdate()
+        dados = 0
+        for agenda in Agenda.objects.filter(institucion=self.inst, activa=True):
+            # Tres semanas para atrás y dos para adelante.
+            for delta in range(-21, 15):
+                dia = hoy + timedelta(days=delta)
+                horarios = motor_agenda.horarios_del_dia(agenda, dia)
+                if not horarios:
+                    continue
+                # Ni la agenda llena ni vacía: una ocupación creíble.
+                for h in horarios:
+                    if random.random() > 0.55:
+                        continue
+                    try:
+                        t = motor_agenda.reservar(
+                            agenda, random.choice(pacientes), h["inicio"],
+                            origen=elegir([("mostrador", 60), ("telefono", 30), ("derivacion", 10)]),
+                        )
+                    except motor_agenda.ErrorAgenda:
+                        continue  # el paciente ya tenía turno ese día
+                    dados += 1
+                    if delta >= 0:
+                        # Futuro: algunos ya confirmaron el recordatorio.
+                        if random.random() < 0.35:
+                            motor_agenda.confirmar(t)
+                        continue
+                    # Pasado: cada turno tuvo un desenlace. El ~14 % de
+                    # ausentismo es el orden de magnitud real de un hospital
+                    # público, y es el número que el tablero tiene que poder
+                    # mostrar sin que parezca un error.
+                    suerte = elegir([("presente", 78), ("ausente", 14), ("cancelado", 8)])
+                    if suerte == "presente":
+                        # Sólo los de los últimos días abren el caso de verdad.
+                        #
+                        # `registrar_llegada` arranca el flujo, y el flujo de
+                        # especialidad empieza con una fila. Con tres semanas de
+                        # turnos atendidos eso deja cientos de personas esperando
+                        # a alguien que nunca los va a llamar: la fila de la
+                        # guardia pasaba de 16 a 109 y dejaba de ser creíble.
+                        # Los recientes sí lo abren, para que el vínculo entre
+                        # turno y caso se vea en el demo.
+                        if delta >= -2:
+                            try:
+                                motor_agenda.registrar_llegada(t)
+                                continue
+                            except motor_agenda.ErrorAgenda:
+                                pass
+                        t.estado = Turno.Estado.PRESENTE
+                        t.save(update_fields=["estado"])
+                    elif suerte == "ausente":
+                        motor_agenda.marcar_ausente(t)
+                    else:
+                        motor_agenda.cancelar(t, motivo="Avisó que no podía venir")
+        hechos["turnos"] = dados
 
     def _poner_al_dia_la_higiene(self):
         """Deja como mucho dos camas esperando higiene por sector.

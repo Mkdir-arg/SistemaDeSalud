@@ -38,6 +38,8 @@ Idempotente: borra los flujos/formularios/casos de la institución y los recrea.
 """
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from datetime import time as dtime
+
 from django.utils import timezone
 
 from apps.accounts.models import Membresia, Usuario
@@ -45,6 +47,7 @@ from apps.casos import motor
 from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
+from apps.agenda.models import Agenda, Disponibilidad
 from apps.instituciones.models import Area, Box, Cama, Grupo, Institucion, Subarea
 
 
@@ -379,6 +382,37 @@ class Command(BaseCommand):
         f_cardio = flujo_especialidad(cardio, "Atención cardiológica", form_cond_cardio, g_med_cardio)
         f_sm = flujo_especialidad(salud_mental, "Atención en salud mental", form_cond_sm, g_med_sm)
         f_neuro = flujo_especialidad(neuro, "Atención neurológica", form_cond_neuro, g_med_neuro)
+
+        # --- Agendas de turnos programados ----------------------------------
+        # El consultorio externo, que es la otra mitad de un hospital: la
+        # guardia atiende a quien llega, la agenda a quien pidió turno.
+        # Dos de profesional y una de recurso, para que el demo muestre que se
+        # agendan igual.
+        def agenda(nombre, area, flujo, prof, dur, franjas, tipo=Agenda.Tipo.PROFESIONAL):
+            a, _ = Agenda.objects.get_or_create(
+                institucion=inst, nombre=nombre,
+                defaults={"area": area, "flujo": flujo, "profesional": prof,
+                          "duracion_min": dur, "tipo": tipo},
+            )
+            a.area, a.flujo, a.profesional = area, flujo, prof
+            a.duracion_min, a.tipo, a.activa = dur, tipo, True
+            a.save()
+            a.disponibilidades.all().delete()
+            for dia, desde, hasta in franjas:
+                Disponibilidad.objects.create(
+                    agenda=a, dia_semana=dia, desde=dtime(desde, 0), hasta=dtime(hasta, 0)
+                )
+            return a
+
+        agenda("Dra. Méndez · Cardiología", cardio, f_cardio, med_cardio, 20,
+               [(0, 8, 12), (2, 8, 12), (4, 14, 18)])
+        agenda("Dr. Vega · Traumatología", trauma, f_trauma, med_trauma, 15,
+               [(1, 9, 13), (3, 9, 13)])
+        # De recurso: se reserva igual, pero no tiene profesional detrás.
+        agenda("Tomógrafo", imagenes, f_img, None, 30,
+               [(d, 8, 16) for d in range(5)], tipo=Agenda.Tipo.RECURSO)
+
+
 
         # =================================================================== #
         # INGRESO A GUARDIA  (flujo central, entrada manual)
