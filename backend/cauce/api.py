@@ -25,6 +25,10 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.farmacia.views import (
+    DepositoViewSet, ExistenciaViewSet, InsumoViewSet, LoteViewSet,
+    MovimientoViewSet, PedidoViewSet,
+)
 from apps.agenda.views import (
     AgendaViewSet, BloqueoViewSet, DisponibilidadViewSet, TurnoViewSet,
 )
@@ -85,3 +89,11 @@ router.register("agendas", AgendaViewSet)
 router.register("disponibilidades", DisponibilidadViewSet)
 router.register("bloqueos-agenda", BloqueoViewSet)
 router.register("turnos", TurnoViewSet)
+
+# Farmacia e insumos.
+router.register("insumos", InsumoViewSet)
+router.register("depositos", DepositoViewSet)
+router.register("lotes", LoteViewSet)
+router.register("stock", ExistenciaViewSet)
+router.register("movimientos-stock", MovimientoViewSet)
+router.register("pedidos-stock", PedidoViewSet)
