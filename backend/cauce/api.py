@@ -25,6 +25,9 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.agenda.views import (
+    AgendaViewSet, BloqueoViewSet, DisponibilidadViewSet, TurnoViewSet,
+)
 from apps.instituciones.views import (
     AreaViewSet, BoxViewSet, CamaViewSet, EstadiaCamaViewSet, GrupoViewSet,
     InstitucionViewSet, SubareaViewSet,
@@ -76,3 +79,9 @@ router.register("historias-clinicas", HistoriaClinicaViewSet)
 router.register("entradas-historia", EntradaHistoriaViewSet)
 router.register("estudios", EstudioViewSet)
 router.register("recetas", RecetaViewSet)
+
+# Agenda de turnos.
+router.register("agendas", AgendaViewSet)
+router.register("disponibilidades", DisponibilidadViewSet)
+router.register("bloqueos-agenda", BloqueoViewSet)
+router.register("turnos", TurnoViewSet)
