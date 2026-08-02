@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "apps.formularios",
     "apps.casos",
     "apps.registros",
+    "apps.agenda",
 ]
 
 MIDDLEWARE = [
