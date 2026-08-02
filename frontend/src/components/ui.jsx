@@ -3,7 +3,7 @@
 // Migrados a Tailwind sobre tokens SEMÁNTICOS, así que responden al tema. Todos
 // siguen aceptando `style` además de `className`: las pantallas que faltan migrar
 // les pasan estilos inline y no se pueden romper hasta que les toque el turno.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, forwardRef } from "react";
 
 import { cn } from "@/lib/cn";
 import { iniciales } from "@/lib/dominio";
@@ -121,14 +121,21 @@ const CONTROL =
   "w-full rounded-md border border-campo-borde bg-superficie text-texto outline-none " +
   "placeholder:text-texto-tenue focus:border-accent disabled:bg-superficie-2 disabled:text-texto-tenue";
 
-export function Input({ className, size = "md", ...props }) {
+/**
+ * `forwardRef` porque hay pantallas que necesitan enfocar el campo a mano (el
+ * buscador de nodos del editor se abre con Ctrl+F y tiene que quedar listo para
+ * escribir). En React 18 un `ref` sobre un componente de función sin esto no
+ * llega al <input> y el foco falla en silencio.
+ */
+export const Input = forwardRef(function Input({ className, size = "md", ...props }, ref) {
   return (
     <input
+      ref={ref}
       className={cn(CONTROL, size === "sm" ? "h-8 px-3 text-base" : "h-10 px-3 text-md", className)}
       {...props}
     />
   );
-}
+});
 
 export function Textarea({ className, ...props }) {
   return <textarea className={cn(CONTROL, "min-h-21 resize-y px-3 py-2.5 text-md", className)} {...props} />;

@@ -140,10 +140,72 @@ export default function FlujoEditor() {
   zoomRef.current = zoom;
   const scrollRef = useRef(null);
 
-  // Acercar/alejar con los botones de la barra de zoom (límites 0.3–2).
+  const LIMITE_ZOOM = [0.3, 2];
+  const acotarZoom = (z) => Math.min(LIMITE_ZOOM[1], Math.max(LIMITE_ZOOM[0], +z.toFixed(3)));
+
+  // Acercar/alejar con los botones de la barra de zoom.
   function zoomBoton(delta) {
-    setZoom((z) => Math.min(2, Math.max(0.3, +(z + delta).toFixed(2))));
+    setZoom((z) => acotarZoom(z + delta));
   }
+
+  /**
+   * Zoom con la rueda, anclado al cursor.
+   *
+   * Anclarlo importa: si el zoom sale del origen, acercarse a un nodo del medio
+   * del lienzo lo manda fuera de la pantalla y hay que volver a buscarlo. Con el
+   * ancla, el punto que está bajo el mouse se queda donde está.
+   *
+   * Con Ctrl/Cmd —el gesto estándar de zoom, y el que hace el pellizco en un
+   * trackpad— o con la rueda sola, porque en un flujo de 40 nodos moverse es
+   * sobre todo acercarse y alejarse. Shift+rueda queda para el scroll lateral.
+   */
+  function onRueda(e) {
+    if (e.shiftKey) return; // scroll horizontal del navegador
+    const cont = scrollRef.current;
+    if (!cont) return;
+    e.preventDefault();
+
+    const z = zoomRef.current;
+    // deltaMode 1 = líneas (Firefox); se normaliza para que no salte de golpe.
+    const paso = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    const z2 = acotarZoom(z * Math.exp(-paso * 0.0015));
+    if (z2 === z) return;
+
+    const caja = cont.getBoundingClientRect();
+    const mx = e.clientX - caja.left;
+    const my = e.clientY - caja.top;
+    // Punto del lienzo (sin escalar) que está bajo el cursor.
+    const cx = (cont.scrollLeft + mx) / z;
+    const cy = (cont.scrollTop + my) / z;
+
+    setZoom(z2);
+    // El scroll se ajusta después de que el sizer haya cambiado de tamaño.
+    requestAnimationFrame(() => {
+      cont.scrollLeft = Math.max(0, cx * z2 - mx);
+      cont.scrollTop = Math.max(0, cy * z2 - my);
+    });
+  }
+
+  /*
+   * La rueda se suscribe a mano porque `onWheel` de React es pasivo y no puede
+   * llamar a `preventDefault`.
+   *
+   * Se engancha con una ref-callback y no con un `useEffect`: mientras el flujo
+   * carga, el editor devuelve un spinner y el contenedor del lienzo todavía no
+   * existe, así que el efecto corría con `scrollRef.current` en null y el zoom
+   * no se enganchaba nunca — sin ningún error a la vista. Con la ref-callback,
+   * React avisa exactamente cuando el nodo entra y sale del DOM; no hay lista de
+   * dependencias que adivinar.
+   */
+  const onRuedaRef = useRef(onRueda);
+  onRuedaRef.current = onRueda;
+  const manejarRueda = useCallback((e) => onRuedaRef.current(e), []);
+
+  const montarScroll = useCallback((el) => {
+    if (scrollRef.current) scrollRef.current.removeEventListener("wheel", manejarRueda);
+    scrollRef.current = el;
+    if (el) el.addEventListener("wheel", manejarRueda, { passive: false });
+  }, [manejarRueda]);
   // Ajustar al contenido: calcula el bounding box de los nodos, elige el zoom
   // que lo encuadra y centra el lienzo en esa zona.
   function ajustar() {
@@ -163,6 +225,26 @@ export default function FlujoEditor() {
       cont.scrollTop = Math.max(0, minY * k - (cont.clientHeight - h * k) / 2);
     });
   }
+  /**
+   * Trae un nodo al centro de la vista y lo selecciona.
+   *
+   * Es la pieza que le falta a un lienzo grande: sin esto, encontrar un nodo en
+   * un flujo de 40 es arrastrar el scroll a ojo hasta dar con él.
+   */
+  function irAlNodo(id) {
+    const n = versionRef.current?.nodos.find((x) => x.id === id);
+    const cont = scrollRef.current;
+    if (!n || !cont) return;
+    const z = zoomRef.current;
+    cont.scrollTo({
+      left: Math.max(0, (n.x + NODO_W / 2) * z - cont.clientWidth / 2),
+      top: Math.max(0, (n.y + NODO_H / 2) * z - cont.clientHeight / 2),
+      behavior: "smooth",
+    });
+    setSel(id);
+    setSelConexion(null);
+  }
+
   // Historial de cambios reversibles (mover/editar nodos y conexiones). Cada
   // entrada guarda su operación inversa concreta (un PATCH), por eso es segura:
   // no recrea ids. Crear/borrar nodos quedan fuera (el borrado tiene su «Deshacer»).
@@ -661,6 +743,7 @@ export default function FlujoEditor() {
           </Select>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <BuscarNodo nodos={version.nodos} onElegir={irAlNodo} />
           <SaveStatus estado={guardado} />
           <div style={{ display: "flex", gap: 2 }}>
             <ZoomBtn title="Deshacer (Ctrl+Z)" onClick={deshacer} disabled={undoStack.current.length === 0}><Icon name="undo" size={16} /></ZoomBtn>
@@ -711,10 +794,13 @@ export default function FlujoEditor() {
 
         {/* Canvas (viewport sin scroll → scrolleable → sizer a escala → capa escalada) */}
         <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          <div ref={scrollRef} style={{ position: "absolute", inset: 0, overflow: "auto", background: color.canvas }}>
+          <div ref={montarScroll} style={{ position: "absolute", inset: 0, overflow: "auto", background: color.canvas }}>
             <div style={{ width: 2200 * zoom, height: 1300 * zoom }}>
               <div
                 ref={canvasRef}
+                // Marca la capa escalada. La usa la suite para leer el zoom real
+                // del DOM sin adivinarlo por el `style`, que es frágil.
+                data-lienzo=""
                 onClick={() => { setSel(null); setSelConexion(null); setConectarDesde(null); }}
                 style={{
                   position: "relative",
@@ -1127,6 +1213,82 @@ const OP_TEXTO = ["=", "!=", "contiene", "no_contiene", "en", "no_en", ...PRESEN
 function operadoresDe(campo) {
   if (!campo) return OP_TEXTO;
   return OP_POR_TIPO[campo.tipo] || (campo.opciones?.length ? OP_POR_TIPO.seleccion_unica : OP_TEXTO);
+}
+
+/**
+ * Buscador de nodos del lienzo.
+ *
+ * Escribís, ves los que coinciden y al elegir uno el lienzo lo trae al centro.
+ * Sin esto, en un flujo grande encontrar un nodo es arrastrar el scroll a ojo.
+ * Se abre con Ctrl+F —el atajo que todo el mundo ya tiene en los dedos— y se
+ * cierra con Escape.
+ */
+function BuscarNodo({ nodos, onElegir }) {
+  const [texto, setTexto] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function alTeclado(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setAbierto(true);
+        requestAnimationFrame(() => ref.current?.focus());
+      }
+    }
+    document.addEventListener("keydown", alTeclado);
+    return () => document.removeEventListener("keydown", alTeclado);
+  }, []);
+
+  const plano = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const coincide = texto.trim()
+    ? nodos.filter((n) => plano(n.titulo).includes(plano(texto))).slice(0, 8)
+    : [];
+
+  if (!abierto) {
+    return (
+      <ZoomBtn title="Buscar un nodo (Ctrl+F)" onClick={() => { setAbierto(true); requestAnimationFrame(() => ref.current?.focus()); }}>
+        <Icon name="search" size={16} />
+      </ZoomBtn>
+    );
+  }
+
+  function cerrar() { setAbierto(false); setTexto(""); }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <Input
+        ref={ref}
+        size="sm"
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") cerrar();
+          // Enter salta al primero: buscar y elegir sin soltar el teclado.
+          if (e.key === "Enter" && coincide[0]) { onElegir(coincide[0].id); cerrar(); }
+        }}
+        onBlur={() => setTimeout(cerrar, 150)}
+        placeholder="Buscar nodo…"
+        aria-label="Buscar un nodo del flujo"
+        style={{ width: 190 }}
+      />
+      {coincide.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, width: 240, background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.md, boxShadow: shadow.dropdown, zIndex: 30, overflow: "hidden" }}>
+          {coincide.map((n) => (
+            <button
+              key={n.id}
+              onMouseDown={(e) => { e.preventDefault(); onElegir(n.id); cerrar(); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 11px", border: "none", background: "none", cursor: "pointer", textAlign: "left", fontSize: type.base }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: (nodeCat[n.tipo] || nodeCat.form).sol, flex: "none" }} />
+              <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.titulo}</span>
+              <span style={{ fontSize: type.xs, color: color.slate400 }}>{(nodeCat[n.tipo] || nodeCat.form).name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RuleBuilder({ conexion, campos, onActualizar }) {
