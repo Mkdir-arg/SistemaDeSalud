@@ -116,7 +116,7 @@ Nada de dominio nuevo. Es la inversión que hace baratas todas las fases siguien
 | # | Entregable | Sem. |
 |---|---|:--:|
 | 0.1 | ✅ **HECHO** — **Generador de datos con volumen** (`seed_volumen`): ~40 pacientes y ~530 casos recorridos **con el motor real** y refechados sobre 90 días; reset completo en un comando (`--rehacer`, 40 s), reproducible por semilla. Iba primero **por una razón de diseño, no de demo**, y se confirmó al instante: apenas hubo volumen apareció el fallo de paginación de las 17 pantallas, invisible con los 3 casos del seed anterior | 0,5 |
-| 0.2 | ✅ **HECHO** — **Tailwind 4 + tokens.** `tokens.css` se **genera** desde `theme.js` (`npm run tokens`): una sola fuente, imposible que diverjan mientras conviven las dos capas. 96 tokens en `@theme static`, con las escalas de Tailwind **reemplazadas** (`bg-red-500` no existe: la regla «no inventar colores» pasa a estar en la herramienta). Dark mode por clase y white-label por override de `--color-accent` en runtime. Verificado sin regresión visual | 1 |
+| 0.2 | ✅ **HECHO** — **Tailwind 4 + tokens.** `tokens.css` se generaba desde `theme.js` mientras convivían las dos capas; al terminar la Fase 2A ese archivo se borró y `tokens.css` pasó a ser la única fuente (de ahí se deriva `escalas.js` con `npm run escalas`). 96 tokens en `@theme static`, con las escalas de Tailwind **reemplazadas** (`bg-red-500` no existe: la regla «no inventar colores» pasa a estar en la herramienta). Dark mode por clase y white-label por override de `--color-accent` en runtime. Verificado sin regresión visual | 1 |
 | 0.3 | **Librería de componentes** — base shadcn (Tabs, Dialog, Drawer, Toast, Tooltip, Dropdown, Combobox, DatePicker, **tabla paginada**, Skeleton, ConfirmDialog) + los de dominio (EstadoBadge, PrioridadTag, NodoChip, StepperCaso, TablaDensa, FiltroBarra). **La tabla paginada es prioridad**: arregla de una vez el fallo de las 17 pantallas | 1,5 |
 | 0.4 | ✅ **HECHO** — **Shell responsive**: cajón en móvil (hamburguesa, Escape, cierre al navegar), colapso en escritorio, TopBar que no desborda. Cierra el desborde horizontal en 390px. *Breadcrumbs y command palette quedan para la Fase 1* | 0,5 |
 | 0.5 | ✅ **HECHO** — **TanStack Query + suite e2e en el repo**: 23 tests Playwright sobre los recorridos críticos, con el contraste AA **medido** en ambos temas. `npm run e2e` | 0,5 |
@@ -180,7 +180,11 @@ ningún `style={{}}` estructural y la app funciona en tablet.
 
 ---
 
-## Fase 2 — El constructor de flujos (8 semanas)
+## Fase 2 — El constructor de flujos — ✅ 2A + 2B HECHAS
+
+> **Estado al 2026-08-02.** Los dos tramos comprometidos están terminados y en
+> `main`. Lo que sigue de esta sección se conserva como registro de qué faltaba
+> y por qué; al final está lo que quedó pendiente de verdad.
 
 **Es el diferencial del producto.** Lo que se vende no es un módulo de guardia: es
 que el proceso *se configura en días en vez de programarse en meses*. Todo lo demás
@@ -240,22 +244,58 @@ carriles por área o grupo · sin comentarios en el lienzo · atajos de teclado 
 
 | Tramo | Contenido | Sem. |
 |---|---|:--:|
-| **2A · Imprescindible** | Dry-run server-side (borra `simular.js`) · reglas compuestas AND/OR + operadores nuevos · editor migrado a la fundación de la Fase 0 · minimapa, zoom con rueda, buscar nodo, multi-selección, copiar/pegar, atajos completos | 4 |
-| **2B · Diferencial** | **Nodo de integración** (llamada a API externa) y **nodo de notificación** · SLA y temporizadores con cron + escalamiento · carriles por área/grupo · auto-layout · firma configurable por nodo | 4 |
+| **2A · Imprescindible** ✅ | Dry-run server-side (borra `simular.js`) · reglas compuestas AND/OR + operadores nuevos · editor migrado a la fundación · minimapa, zoom con rueda, buscar nodo, multi-selección, copiar/pegar | 4 |
+| **2B · Diferencial** ✅ | **Nodo de integración** (llamada a API externa) y **nodo de notificación** · SLA y temporizadores + escalamiento · auto-layout · firma configurable por nodo | 4 |
 | **2C · Avanzado** *(opcional, diferible)* | Fork/join dibujable en el diagrama (toca `Caso.nodo_actual` → modelo de tokens: es el refactor más profundo del plan) · expresiones y variables calculadas · diff entre versiones y migración de casos vivos · excepciones · comentarios en el lienzo | 4 |
 
-**Comprometido: 2A + 2B = 8 semanas.** 2C queda fuera del cronograma y se decide
-cuando haya un cliente que lo pida.
+**2A + 2B están hechas.** 2C sigue fuera del cronograma y se decide cuando haya un
+cliente que lo pida.
 
-> **Decisión pendiente — React Flow.** Antes de 2A hay que decidir si el canvas
-> (1.450 líneas hechas a mano) se reescribe sobre **React Flow**, que trae minimapa,
-> zoom con rueda, multi-selección, handles y snapping ya resueltos — es decir, buena
-> parte de 2A. Recomendación: **spike de 2 días al arrancar la fase**. Si se adopta,
-> 2A puede bajar de 4 a 3 semanas; si no, se construye a mano lo que React Flow ya
-> tiene.
+> **React Flow — decidido: se construyó a mano.** El editor ya tenía resuelto lo
+> difícil (arrastre con Pointer Events, snap, ajuste al contenido, undo/redo con
+> operaciones inversas, autosave, conexiones con línea fantasma). Migrar obligaba a
+> reintegrar todo eso sobre otra abstracción, en la pantalla más importante del
+> producto, mientras que lo que faltaba era aditivo. Es reversible: si más adelante
+> hace falta auto-layout más sofisticado, `dagre`/`elkjs` resuelven eso sin cambiar
+> de canvas.
+
+> **Lo que quedó pendiente de 2B.** Los *carriles por área/grupo* no se hicieron:
+> son presentación pura y, con el auto-layout y los colores por categoría, el
+> diagrama ya se lee. Se retoma si un cliente con flujos muy grandes lo pide.
 
 > **Sinergia con la Fase 8.** El nodo de integración de 2B es la cañería genérica de
 > llamada a sistemas externos. HL7/FHIR en la Fase 8 se monta encima, no se duplica.
+
+---
+
+> ## ✅ Fase 2 (2A + 2B) cerrada — 2026-08-02
+>
+> **Lo que cambió para el producto.** El botón «Probar» dejó de mentir: corre el
+> motor real en una transacción que se deshace, así que lo que se ve al diseñar
+> es lo que va a pasar con un paciente. Las reglas pasaron de una condición a
+> compuestas anidables con 13 operadores. Aparecieron el nodo de integración
+> —con lista blanca de destinos, porque una URL configurable que llama el
+> servidor es un SSRF con formulario— y el de notificación. El SLA existe, y las
+> esperas por tiempo se reactivan solas: antes un caso que entraba a
+> «Observación 6 horas» no volvía nunca. La firma dejó de estar clavada al rol
+> médico.
+>
+> **Lo que cambió para quien diseña.** Zoom con rueda anclado al cursor, Ctrl+F,
+> multi-selección con marquesina, copiar/pegar con las conexiones internas,
+> minimapa y auto-layout reversible. El editor entró al sistema de diseño (tema
+> oscuro incluido) y pasó de cero a 9 tests e2e.
+>
+> **Lo que se decidió.** No se adoptó React Flow: el editor ya tenía resuelto lo
+> difícil y migrar era rehacer trabajo probado en la pantalla más importante.
+>
+> **Lo que NO se hizo.** Carriles por área/grupo (presentación pura; el diagrama
+> ya se lee con el auto-layout y los colores por categoría) y todo el tramo 2C.
+>
+> **Bugs que sólo aparecieron al construir esto:** el cálculo de profundidad no
+> convergía en flujos con ciclos y estiraba los diagramas cuatro mil píxeles;
+> `>` sobre fechas devolvía siempre False en silencio; `contiene` era sensible a
+> las tildes, así que una regla de triage mandaba al paciente por el circuito
+> equivocado; y «1 mes» se interpretaba como 1 minuto.
 
 ---
 
@@ -316,15 +356,18 @@ alertas de faltante y vencimiento, trazabilidad de lote.
 
 | Fase | Semanas | Acumulado |
 |---|:--:|:--:|
-| 0 · Fundación | 4 | 4 |
-| 1 · Migración de pantallas | 4,5 | 8,5 |
-| **2 · Constructor de flujos** (2A+2B) | **8** | **16,5** |
+| 0 · Fundación ✅ | 4 | 4 |
+| 1 · Migración de pantallas ✅ | 4,5 | 8,5 |
+| **2 · Constructor de flujos** (2A+2B) ✅ | **8** | **16,5** |
 | 3 · Cierre del núcleo | 3 | 19,5 |
 | 4 · Camas | 3 | 22,5 |
 | 5 · Turnos | 5 | 27,5 |
 | 6 · Farmacia | 5 | 32,5 |
 | 7 · Red multicentro | 6 | 38,5 |
 | 8 · Producción e integración | 5 | 43,5 |
+
+**≈ 43 semanas ≈ 10 meses de una persona a tiempo completo.** Las tres primeras
+fases están hechas: quedan ≈ 27 semanas.
 
 **≈ 43 semanas ≈ 10 meses de una persona a tiempo completo.** (Con el tramo 2C
 opcional, 47 semanas.)
