@@ -168,6 +168,11 @@ class ItemFila(models.Model):
     # el último llamado y `veces_llamado` cuántas veces se lo llamó en total.
     rellamado_at = models.DateTimeField("rellamado", null=True, blank=True)
     veces_llamado = models.PositiveIntegerField(default=1)
+    # No se presentó. Sale de la cola (`atendido=True`, que en todo el código es
+    # el predicado «ya no está en la cola») pero SIN `atendido_at`, así no
+    # contamina el promedio de tiempo de atención. La espera sí cuenta: esperó.
+    ausente = models.BooleanField("no se presentó", default=False)
+    ausente_at = models.DateTimeField("marcado ausente", null=True, blank=True)
 
     class Meta:
         verbose_name = "ítem de fila"

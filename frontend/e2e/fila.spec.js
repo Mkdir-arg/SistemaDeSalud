@@ -37,15 +37,18 @@ test.describe("Fila de espera", () => {
    * cuándo hay que volver a sembrar.
    */
   test("llamar al siguiente lo saca de la cola y abre su caso", async ({ page }) => {
-    const filas = page.locator("ul li button");
-    const antes = await filas.count();
+    // Se cuenta por turno y no por botón: cada fila tiene además la flecha de
+    // «adelantar un lugar», así que contar botones mide el doble y se rompe cada
+    // vez que la fila suma un control.
+    const enEspera = () => page.locator("ul li .font-mono").count();
+    const antes = await enEspera();
 
     await page.getByRole("button", { name: /Llamar siguiente/ }).first().click();
     await expect(page).toHaveURL(/\/casos\/\d+/);
 
     await page.goto("/filas");
     await expect(page.getByRole("heading", { name: "Fila de espera" })).toBeVisible();
-    await expect.poll(() => page.locator("ul li button").count()).toBe(antes - 1);
+    await expect.poll(enEspera).toBe(antes - 1);
   });
 
   /**
@@ -64,6 +67,39 @@ test.describe("Fila de espera", () => {
     // Y la prueba de fuego: llamar funciona sin cambiar de área.
     await page.getByRole("button", { name: /Llamar siguiente/ }).first().click();
     await expect(page).toHaveURL(/\/casos\/\d+/);
+  });
+
+  /**
+   * Adelantar a alguien que empeoró esperando. No consume cola: mueve, no llama.
+   */
+  test("se puede adelantar un lugar a quien esperando empeoró", async ({ page }) => {
+    const turnos = () => page.locator("ul li .font-mono").allTextContents();
+    const antes = await turnos();
+    const flechas = page.locator('button[aria-label^="Adelantar"]:not([disabled])');
+    const ultima = flechas.last();
+    // Índice de la fila a la que pertenece esa flecha.
+    const i = await ultima.evaluate(
+      (b) => [...b.closest("ul").querySelectorAll("li")].indexOf(b.closest("li")) - 1,
+    );
+    await ultima.click();
+    await expect.poll(async () => (await turnos()).indexOf(antes[i])).toBe(i - 1);
+  });
+
+  /**
+   * La flecha se apaga cuando arriba hay alguien de otra urgencia: los urgentes
+   * van primero siempre, así que ese movimiento se deshace solo. Estaba
+   * habilitada y el toast avisaba «se adelantó un lugar» sin que nada cambiara.
+   */
+  test("no ofrece adelantar por encima de un urgente", async ({ page }) => {
+    const filas = page.locator("ul li").filter({ has: page.locator(".font-mono") });
+    const total = await filas.count();
+    for (let i = 1; i < total; i++) {
+      const urg = async (n) => (await filas.nth(n).textContent()).toLowerCase().includes("urgente");
+      if ((await urg(i)) !== (await urg(i - 1))) {
+        await expect(filas.nth(i).getByRole("button", { name: /^Adelantar/ })).toBeDisabled();
+        return;
+      }
+    }
   });
 
   test("se puede operar en tablet y en móvil", async ({ page }) => {

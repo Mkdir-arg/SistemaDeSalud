@@ -37,6 +37,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from django.db import transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
@@ -595,7 +596,7 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
         # Encolar al final (urgentes primero los ordena el modelo).
         ya = caso.en_filas.filter(nodo=nodo, atendido=False).exists()
         if not ya:
-            orden = ItemFila.objects.filter(nodo=nodo, atendido=False).count()
+            orden = _proximo_orden(nodo)
             ItemFila.objects.create(
                 caso=caso,
                 nodo=nodo,
@@ -628,7 +629,7 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
         # Atención con fila: el paciente espera encolado hasta que lo llaman de un box.
         ya = caso.en_filas.filter(nodo=nodo, atendido=False).exists()
         if not ya:
-            orden = ItemFila.objects.filter(nodo=nodo, atendido=False).count()
+            orden = _proximo_orden(nodo)
             ItemFila.objects.create(
                 caso=caso, nodo=nodo,
                 urgente=(caso.prioridad == Caso.Prioridad.URGENTE), orden=orden,
@@ -890,6 +891,143 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
         return caso
     caso.nodo_actual = siguiente
     return _correr_automaticos(caso, autor=autor)
+
+
+def _proximo_orden(nodo) -> int:
+    """Último lugar de la cola del nodo.
+
+    Se usaba `count()` de los que esperan, pero eso no es una secuencia: si
+    alguien sale de la cola el contador BAJA y el siguiente que llega repite un
+    número ya usado. Con el orden solo como desempate no se notaba; desde que se
+    puede reordenar a mano, dos personas en la misma posición sí se notan.
+    """
+    ultimo = ItemFila.objects.filter(nodo=nodo, atendido=False).aggregate(m=Max("orden"))["m"]
+    return 0 if ultimo is None else ultimo + 1
+
+
+@transaction.atomic
+def devolver_a_la_cola(caso: Caso, autor=None, motivo: str = "") -> Caso:
+    """Devuelve a la cola a alguien que ya había sido llamado a un box.
+
+    Pasa cuando lo llamaron por error, cuando quien atiende se tuvo que ir a una
+    urgencia, o cuando el paciente aparece después de haber sido dado por
+    ausente. Sin esto, llamar es irreversible: el box queda ocupado por alguien
+    que no está y la única salida es avanzar un caso que nadie atendió.
+
+    Dónde vuelve depende de por qué vuelve, y no es un detalle: es el turno de
+    una persona.
+      - Lo llamaron y no lo atendieron → vuelve a SU lugar. La demora no fue
+        suya y ya esperó una vez.
+      - Estaba dado por ausente y reapareció → va al final. Perdió el turno.
+
+    `llamado_at` se conserva en los dos casos: mide la espera hasta el primer
+    llamado y esa espera ocurrió. Reiniciarlo dejaría el indicador de demora del
+    servicio más bajo cuanto peor se opera la cola.
+    """
+    nodo = caso.nodo_actual
+    if nodo is None:
+        raise ErrorMotor("El caso no está posicionado en ningún nodo.")
+    item = (
+        caso.en_filas.filter(nodo=nodo, atendido=False, box__isnull=False).first()
+        or caso.en_filas.filter(nodo=nodo, ausente=True).order_by("-ausente_at").first()
+    )
+    if item is None:
+        raise ErrorMotor("El caso no está llamado ni fue dado por ausente en esta fila.")
+
+    reaparecio = item.ausente
+    if reaparecio:
+        item.orden = _proximo_orden(nodo)
+    item.ausente = False
+    item.ausente_at = None
+    item.atendido = False
+    item.box = None
+    item.save(update_fields=["ausente", "ausente_at", "atendido", "box", "orden"])
+
+    caso.estado = Caso.Estado.EN_ESPERA
+    caso.asignado_a = None  # el box queda libre para el siguiente
+    _registrar(
+        caso,
+        "Vuelve a la cola" + (" (reapareció)" if reaparecio else ""),
+        detalle=motivo or ("va al final: había sido dado por ausente" if reaparecio else "conserva su lugar"),
+        autor=autor, nodo=nodo,
+    )
+    caso.save()
+    return caso
+
+
+@transaction.atomic
+def marcar_ausente(caso: Caso, autor=None) -> Caso:
+    """El paciente fue llamado y no se presentó.
+
+    Es lo más común que pasa en una guardia después de llamar, y hasta ahora no
+    se podía registrar: quedaba llamado para siempre, ocupando el box en la
+    pantalla y contando como si lo estuvieran atendiendo.
+
+    Sale de la cola con `atendido=True` —el predicado que todo el código ya usa
+    para «no está más en la cola»— pero sin `atendido_at`, así el promedio de
+    tiempo de atención no baja por gente que nunca se atendió. Si aparece
+    después, `devolver_a_la_cola` lo reencola al final.
+    """
+    nodo = caso.nodo_actual
+    if nodo is None:
+        raise ErrorMotor("El caso no está posicionado en ningún nodo.")
+    item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
+    if item is None:
+        raise ErrorMotor("El caso no está en una fila de espera.")
+    if item.llamado_at is None:
+        raise ErrorMotor("Todavía no se lo llamó: no se lo puede dar por ausente.")
+
+    item.ausente = True
+    item.ausente_at = timezone.now()
+    item.atendido = True   # sale de la cola
+    item.box = None        # libera el box
+    item.save(update_fields=["ausente", "ausente_at", "atendido", "box"])
+
+    caso.estado = Caso.Estado.EN_ESPERA
+    caso.asignado_a = None
+    _registrar(
+        caso, "No se presentó",
+        detalle=f"llamado {item.veces_llamado} {'vez' if item.veces_llamado == 1 else 'veces'}",
+        autor=autor, nodo=nodo,
+    )
+    caso.save()
+    return caso
+
+
+@transaction.atomic
+def mover_en_fila(item: ItemFila, posicion: int, autor=None) -> ItemFila:
+    """Mueve un ítem a una posición de la cola y renumera el resto.
+
+    Se usa cuando alguien empeora esperando y hay que adelantarlo sin llegar a
+    marcarlo urgente (que lo saltea todo). La cola se ordena por
+    `-urgente, orden, ingreso`: los urgentes van primero igual, así que la
+    posición es dentro del grupo que corresponde.
+
+    Se renumera 0..n para que quede una secuencia sin huecos ni repetidos.
+    """
+    # Solo los que ESPERAN: quien ya está en un box sigue con `atendido=False`
+    # pero no está en la cola, y meterlo acá correría las posiciones respecto de
+    # las que muestra la pantalla.
+    cola = list(
+        ItemFila.objects.select_for_update()
+        .filter(nodo=item.nodo_id, atendido=False, box__isnull=True)
+        .order_by("-urgente", "orden", "ingreso")
+    )
+    ids = [i.id for i in cola]
+    if item.id not in ids:
+        raise ErrorMotor("El ítem no está en la cola.")
+    destino = max(0, min(int(posicion), len(cola) - 1))
+    cola.insert(destino, cola.pop(ids.index(item.id)))
+    for n, it in enumerate(cola):
+        if it.orden != n:
+            it.orden = n
+            it.save(update_fields=["orden"])
+    _registrar(
+        item.caso, "Cambió de lugar en la cola",
+        detalle=f"pasa al puesto {destino + 1} de {len(cola)}",
+        autor=autor, nodo=item.nodo,
+    )
+    return ItemFila.objects.get(pk=item.pk)
 
 
 @transaction.atomic
@@ -1165,7 +1303,18 @@ def _acciones_posibles(caso: Caso, nodo: Nodo | None) -> list[str]:
     esperando_llamado = caso.en_filas.filter(
         nodo=nodo, atendido=False, llamado_at__isnull=True
     ).exists()
-    return ["llamar"] if esperando_llamado else ["avanzar"]
+    if esperando_llamado:
+        return ["llamar"]
+    # Ya llamado y en el box: además de registrar la atención, se puede
+    # devolverlo a la cola o darlo por ausente. Sin estas dos, llamar es
+    # irreversible y el único camino es avanzar un caso que nadie atendió.
+    en_box = caso.en_filas.filter(nodo=nodo, atendido=False, box__isnull=False).exists()
+    if en_box:
+        return ["avanzar", "devolver", "ausente"]
+    # Dado por ausente: lo único que queda es reencolarlo si aparece.
+    if caso.en_filas.filter(nodo=nodo, ausente=True).exists():
+        return ["devolver"]
+    return ["avanzar"]
 
 
 def _box_para_ensayo(caso: Caso):

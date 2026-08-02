@@ -300,7 +300,7 @@ function PanelPaso({ caso, cerrado, ocupado, ejecutar, hc }) {
   }
 
   const tipo = caso.nodo_tipo;
-  if (tipo === "atencion" && caso.nodo_con_fila && !caso.llamado) {
+  if (tipo === "atencion" && caso.nodo_con_fila && !caso.llamado && !caso.ausente) {
     return (
       <Card className="p-lg sm:p-xxl">
         <CabeceraPaso tipo="atencion" titulo={caso.paso_actual} />
@@ -457,10 +457,44 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
   });
   const [rellamos, setRellamos] = useState(0);
 
+  /*
+   * Dado por ausente: la única acción honesta es reencolarlo si aparece.
+   * Ofrecer el formulario de atención sería invitar a asentar en la historia
+   * clínica una atención que no ocurrió.
+   */
+  if (caso.ausente) {
+    return (
+      <Card className="p-lg sm:p-xxl">
+        <CabeceraPaso tipo="atencion" titulo={caso.paso_actual} />
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-borde bg-superficie-2 px-3.5 py-3">
+          <Icon name="alert" size={18} className="shrink-0 text-texto-tenue" />
+          <div className="min-w-40 flex-1 text-md text-texto-suave">
+            No se presentó cuando se lo llamó. Salió de la cola y el box quedó
+            libre. Si aparece, vuelve a la cola <strong>al final</strong>: ya se
+            llamó a los que estaban después.
+          </div>
+          <Button
+            size="sm"
+            disabled={ocupado}
+            onClick={() => ejecutar(
+              () => api.post(`/casos/${caso.id}/devolver/`),
+              "Volvió a la cola, al final",
+            )}
+          >
+            Apareció · volver a la cola
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-lg sm:p-xxl">
       <CabeceraPaso tipo="atencion" titulo={caso.paso_actual} />
 
+      {/* El cartel preguntaba «¿No se presentó?» y la única respuesta posible era
+          rellamar. Si el paciente no aparecía nunca, quedaba llamado para
+          siempre: el box figuraba ocupado y el caso contaba como en atención. */}
       {caso.nodo_con_fila && caso.llamado && (
         <div className="mb-lg flex flex-wrap items-center gap-3 rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg px-3.5 py-3">
           <Icon name="enter" size={18} className="shrink-0 text-badge-amber-fg" />
@@ -470,14 +504,39 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
               ? <> Se rellamó {rellamos === 1 ? "una vez" : `${rellamos} veces`} — mirá la pantalla de la sala.</>
               : <> ¿No se presentó?</>}
           </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={rellamar.isPending}
-            onClick={() => rellamar.mutate(undefined, { onSuccess: () => setRellamos((n) => n + 1) })}
-          >
-            {rellamar.isPending ? "Rellamando…" : "Rellamar"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={rellamar.isPending || ocupado}
+              onClick={() => rellamar.mutate(undefined, { onSuccess: () => setRellamos((n) => n + 1) })}
+            >
+              {rellamar.isPending ? "Rellamando…" : "Rellamar"}
+            </Button>
+            {/* Vuelve a SU lugar en la cola: la demora no fue del paciente. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={ocupado}
+              onClick={() => ejecutar(
+                () => api.post(`/casos/${caso.id}/devolver/`),
+                "Volvió a la cola, en su lugar",
+              )}
+            >
+              Volver a la cola
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={ocupado}
+              onClick={() => ejecutar(
+                () => api.post(`/casos/${caso.id}/ausente/`),
+                "Marcado como ausente · el box quedó libre",
+              )}
+            >
+              No se presentó
+            </Button>
+          </div>
         </div>
       )}
 

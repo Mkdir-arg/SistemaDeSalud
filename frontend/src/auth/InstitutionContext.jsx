@@ -27,24 +27,29 @@ export const VISTA_CAPS = {
   sistema: ["config", "diseno", "trabajo", "registros"],
 };
 
+/*
+ * La institución guardada, leída ANTES del primer render.
+ *
+ * Estaba en un `useEffect`, que corre un render tarde: en esa primera pasada
+ * `institucion` era null y las rutas protegidas ya habían redirigido a «/»,
+ * aunque el dato estuviera en localStorage todo el tiempo. En la práctica eso
+ * significaba que recargar la página estando en Filas —o abrir el link a un
+ * caso que te pasaron— te dejaba en Inicio, perdiendo dónde estabas.
+ */
+function institucionGuardada() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY)) || null;
+  } catch {
+    return null;
+  }
+}
+
 export function InstitutionProvider({ children }) {
   const { user } = useAuth();
-  const [institucion, setInstitucionState] = useState(null);
+  const [institucion, setInstitucionState] = useState(institucionGuardada);
   const [roles, setRoles] = useState([]); // roles del usuario en la institución actual
   const [vista, setVista] = useState("sistema"); // vista del super admin
   const [cargandoRoles, setCargandoRoles] = useState(false);
-
-  // Restaura la institución elegida desde localStorage.
-  useEffect(() => {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      try {
-        setInstitucionState(JSON.parse(raw));
-      } catch {
-        /* ignore */
-      }
-    }
-  }, []);
 
   // Carga los roles del usuario en la institución seleccionada.
   useEffect(() => {

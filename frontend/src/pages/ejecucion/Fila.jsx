@@ -89,6 +89,13 @@ export default function Fila() {
     onError: (e) => toast.deError(e, "No se pudo llamar al paciente."),
   });
 
+  // Adelantar a alguien que empeoró esperando. El backend renumera la cola
+  // entera, así que se relee en vez de mover el ítem en el cliente.
+  const mover = useAccion(({ id, posicion }) => api.post(`/items-fila/${id}/mover/`, { posicion }), {
+    onSuccess: (_, { quien }) => toast.ok(`${quien || "El paciente"} se adelantó un lugar`),
+    onError: (e) => toast.deError(e, "No se pudo cambiar el orden de la fila."),
+  });
+
   function alLlamar(box) {
     if (!siguiente) return;
     const caso = siguiente.caso;
@@ -198,17 +205,22 @@ export default function Fila() {
           <ul className="border-t border-division">
             {/* Encabezado solo en pantallas anchas: en angosto cada fila se lee
                 como una ficha y los rótulos de columna sobran. */}
-            <li className="hidden bg-superficie-2 px-xl py-2.5 text-micro font-bold tracking-wide text-texto-tenue sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem] sm:gap-md">
-              <span /><span>TURNO</span><span>PERSONA</span><span>INGRESO</span><span>ESPERA</span>
+            <li className="hidden bg-superficie-2 py-2.5 pl-xl pr-2.5 text-micro font-bold tracking-wide text-texto-tenue sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem_2rem] sm:gap-md">
+              <span /><span>TURNO</span><span>PERSONA</span><span>INGRESO</span><span>ESPERA</span><span />
             </li>
             {fila.map((it, i) => (
-              <li key={it.id}>
+              <li
+                key={it.id}
+                className={cn(
+                  "flex items-center border-t border-division pr-2.5 first:border-t-0",
+                  i === 0 ? "bg-accent-50 shadow-[inset_3px_0_0_var(--color-accent)]" : "hover:bg-superficie-2",
+                )}
+              >
                 <button
                   onClick={() => navigate(`/casos/${it.caso}`)}
                   className={cn(
-                    "flex w-full flex-wrap items-center gap-x-md gap-y-1 border-t border-division px-xl py-3.5 text-left first:border-t-0",
-                    "sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem]",
-                    i === 0 ? "bg-accent-50 shadow-[inset_3px_0_0_var(--color-accent)]" : "hover:bg-superficie-2",
+                    "flex min-w-0 flex-1 flex-wrap items-center gap-x-md gap-y-1 py-3.5 pl-xl text-left",
+                    "sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem] sm:gap-md",
                   )}
                 >
                   <span
@@ -234,6 +246,33 @@ export default function Fila() {
                   <span className="text-base text-texto-suave">{hora(it.ingreso)}</span>
                   <span className="text-base tabular-nums text-texto-suave">{antiguedad(it.ingreso)}</span>
                 </button>
+                {/* Adelantar a alguien que empeoró esperando, sin llegar a
+                    marcarlo urgente (que lo saltea todo). Fuera del botón de la
+                    fila: anidar botones no es HTML válido y el clic caería en el
+                    de afuera, que navega al caso.
+
+                    Se apaga cuando arriba hay alguien de otra urgencia: los
+                    urgentes van primero siempre, así que ahí el clic no movería
+                    nada. Estaba habilitado y el toast avisaba «se adelantó un
+                    lugar» sin que la fila cambiara. */}
+                <button
+                  onClick={() => mover.mutate({ id: it.id, posicion: i - 1, quien: it.persona })}
+                  disabled={!puedeSubir(fila, i) || mover.isPending}
+                  title={
+                    i > 0 && !puedeSubir(fila, i)
+                      ? "Los urgentes se atienden primero"
+                      : "Adelantar un lugar"
+                  }
+                  aria-label={`Adelantar un lugar a ${it.persona || casoId(it.caso)}`}
+                  className={cn(
+                    "flex size-8 flex-none items-center justify-center rounded-md transition-colors",
+                    !puedeSubir(fila, i)
+                      ? "cursor-not-allowed text-transparent"
+                      : "text-texto-tenue hover:bg-division hover:text-texto-medio",
+                  )}
+                >
+                  <Icon name="arrowUp" size={15} />
+                </button>
               </li>
             ))}
           </ul>
@@ -241,6 +280,16 @@ export default function Fila() {
       </section>
     </div>
   );
+}
+
+/**
+ * ¿Tiene sentido ofrecer «adelantar un lugar»?
+ *
+ * No para el primero, ni para quien tiene arriba a alguien de otra urgencia: la
+ * cola ordena los urgentes primero, así que ese movimiento se deshace solo.
+ */
+function puedeSubir(fila, i) {
+  return i > 0 && !!fila[i].urgente === !!fila[i - 1].urgente;
 }
 
 function CargandoFila() {

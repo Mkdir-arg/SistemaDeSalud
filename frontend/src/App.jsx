@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 import { useInstitucion } from "./auth/InstitutionContext";
@@ -35,6 +35,9 @@ function Landing() {
   const { user } = useAuth();
   const { institucion, setInstitucion } = useInstitucion();
   const [estado, setEstado] = useState("cargando");
+  // A dónde iba antes de pasar por acá (lo deja `Protected`). Sin esto, entrar
+  // por un link a un caso terminaba siempre en Inicio.
+  const destino = useLocation().state?.desde;
 
   useEffect(() => {
     if (institucion) return;
@@ -53,7 +56,7 @@ function Landing() {
     })();
   }, [user, institucion, setInstitucion]);
 
-  if (institucion) return <Navigate to="/inicio" replace />;
+  if (institucion) return <Navigate to={destino || "/inicio"} replace />;
   if (estado === "directorio") return <Directorio />;
   if (estado === "sin-institucion")
     return <div style={{ padding: 48, textAlign: "center", color: "#667085" }}>No tenés ninguna institución asignada. Pedile a un administrador que te dé acceso.</div>;
@@ -95,8 +98,10 @@ function usePuerta() {
 function Protected({ children }) {
   const puerta = usePuerta();
   const { institucion } = useInstitucion();
+  const loc = useLocation();
   if (puerta) return puerta;
-  if (!institucion) return <Navigate to="/" replace />;
+  // Se recuerda a dónde iba: el Landing elige institución y lo devuelve ahí.
+  if (!institucion) return <Navigate to="/" state={{ desde: loc.pathname + loc.search }} replace />;
   return <Shell>{children}</Shell>;
 }
 

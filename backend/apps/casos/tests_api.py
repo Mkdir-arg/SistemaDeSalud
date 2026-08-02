@@ -2,10 +2,10 @@
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
-from apps.flujos.models import Flujo, VersionFlujo
-from apps.flujos.models import Nodo
-from apps.instituciones.models import Area, Institucion
+from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
+from apps.instituciones.models import Area, Box, Institucion
 from apps.registros.models import Ciudadano
+from apps.casos import motor
 from apps.casos.models import Caso, ItemFila
 
 
@@ -300,3 +300,104 @@ class ExportacionCSVTests(APITestCase):
                 if clave not in expuestos:
                     faltantes.append(f"{basename}.{clave} («{encabezado}»)")
         self.assertEqual(faltantes, [], "columnas que el serializer no expone")
+
+
+class OperacionDeFilaAPITests(APITestCase):
+    """
+    Las acciones de la fila **por HTTP**.
+
+    Los tests del motor las llamaban como funciones, así que no vieron que
+    `mover` había quedado declarada en otro viewset: existía
+    `/api/notificaciones/<id>/mover/` y la fila daba 404. Un test por endpoint,
+    que es lo que el navegador realmente pide.
+    """
+
+    def setUp(self):
+        self.user = Usuario.objects.create_user(
+            "med@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.box = Box.objects.create(area=self.area, nombre="Box 1")
+        flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Guardia")
+        self.ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        ini = Nodo.objects.create(version=self.ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.ate = Nodo.objects.create(
+            version=self.ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", config={"con_fila": True}
+        )
+        fin = Nodo.objects.create(version=self.ver, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=self.ver, origen=ini, destino=self.ate)
+        Conexion.objects.create(version=self.ver, origen=self.ate, destino=fin)
+
+    def _encolar(self, nombre):
+        c = Ciudadano.objects.create(institucion=self.inst, nombre=nombre, apellido="T")
+        caso = Caso.objects.create(institucion=self.inst, version=self.ver, ciudadano=c)
+        motor.iniciar(caso, autor=self.user)
+        caso.refresh_from_db()
+        return caso
+
+    def _cola(self):
+        r = self.client.get("/api/items-fila/?atendido=false&box=null&ordering=orden")
+        return [f["persona"] for f in sorted(r.data["results"], key=lambda f: (not f["urgente"], f["orden"]))]
+
+    def test_marcar_ausente(self):
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.user)
+        r = self.client.post(f"/api/casos/{caso.id}/ausente/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data["ausente"])
+        self.assertEqual(self._cola(), [])
+
+    def test_devolver_a_la_cola(self):
+        caso = self._encolar("Ana")
+        self._encolar("Beto")
+        motor.llamar(caso, box_id=self.box.id, autor=self.user)
+        r = self.client.post(f"/api/casos/{caso.id}/devolver/", {"motivo": "lo llamé por error"})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._cola(), ["Ana T", "Beto T"])
+
+    def test_mover_en_la_fila(self):
+        for n in ("Ana", "Beto", "Caro"):
+            self._encolar(n)
+        item = ItemFila.objects.get(caso__ciudadano__nombre="Caro")
+        r = self.client.post(f"/api/items-fila/{item.id}/mover/", {"posicion": 0})
+        self.assertEqual(r.status_code, 200, getattr(r, "data", r.content[:200]))
+        self.assertEqual(self._cola(), ["Caro T", "Ana T", "Beto T"])
+
+    def test_mover_sin_posicion_lo_dice(self):
+        self._encolar("Ana")
+        item = ItemFila.objects.first()
+        r = self.client.post(f"/api/items-fila/{item.id}/mover/", {})
+        self.assertEqual(r.status_code, 400)
+
+    def test_no_se_puede_dar_por_ausente_a_quien_no_se_llamo(self):
+        caso = self._encolar("Ana")
+        r = self.client.post(f"/api/casos/{caso.id}/ausente/")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("llam", r.data["detail"].lower())
+
+    def test_el_detalle_avisa_que_esta_ausente(self):
+        """La pantalla decide con esto si ofrece atender o reencolar."""
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.user)
+        self.assertFalse(self.client.get(f"/api/casos/{caso.id}/").data["ausente"])
+        self.client.post(f"/api/casos/{caso.id}/ausente/")
+        self.assertTrue(self.client.get(f"/api/casos/{caso.id}/").data["ausente"])
+
+    def test_las_acciones_de_fila_existen_donde_dice_el_frontend(self):
+        """
+        Guarda contra el error que ya pasó: una acción declarada dentro del
+        viewset equivocado. Se pide la ruta tal como la arma la pantalla.
+        """
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.user)
+        item = ItemFila.objects.get(caso=caso)
+        for ruta, cuerpo in [
+            (f"/api/casos/{caso.id}/devolver/", {}),
+            (f"/api/items-fila/{item.id}/mover/", {"posicion": 0}),
+            (f"/api/casos/{caso.id}/ausente/", {}),
+        ]:
+            with self.subTest(ruta=ruta):
+                r = self.client.post(ruta, cuerpo)
+                self.assertNotEqual(r.status_code, 404, f"{ruta} no existe")

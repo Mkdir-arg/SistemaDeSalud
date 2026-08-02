@@ -185,6 +185,43 @@ class CasoViewSet(BaseModelViewSet):
         return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
+    def devolver(self, request, pk=None):
+        """Devuelve a la cola a quien fue llamado (o reencola a un ausente que apareció).
+
+        Cuerpo opcional: {"motivo": "..."}. Solo quien integre un grupo
+        responsable del paso."""
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response(
+                {"detail": "No integrás ningún grupo responsable de este paso."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            motor.devolver_a_la_cola(caso, autor=request.user, motivo=(request.data.get("motivo") or "").strip())
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def ausente(self, request, pk=None):
+        """Marca que el paciente llamado no se presentó y libera el box.
+
+        Solo quien integre un grupo responsable del paso."""
+        caso = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response(
+                {"detail": "No integrás ningún grupo responsable de este paso."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            motor.marcar_ausente(caso, autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
     def receta(self, request, pk=None):
         """Médico o enfermería emite una receta (cuerpo: {"detalle": "..."}) en la HC del paciente."""
         caso = self.get_object()
@@ -882,6 +919,20 @@ class ItemFilaViewSet(BaseModelViewSet):
         ("box_nombre", "Box"),
     ]
 
+    @action(detail=True, methods=["post"])
+    def mover(self, request, pk=None):
+        """Mueve el ítem a una posición de la cola (cuerpo: {"posicion": <0-based>})."""
+        item = self.get_object()
+        try:
+            posicion = int(request.data.get("posicion"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Falta la posición de destino."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            item = motor.mover_en_fila(item, posicion, autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(item).data)
+
 
 class EventoCasoViewSet(BaseModelViewSet):
     queryset = EventoCaso.objects.select_related("caso", "autor", "nodo")
@@ -917,3 +968,4 @@ class NotificacionViewSet(viewsets.ModelViewSet):
         if ids:
             qs = qs.filter(id__in=ids)
         return Response({"marcadas": qs.update(leida=True)})
+

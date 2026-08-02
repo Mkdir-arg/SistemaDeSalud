@@ -1030,3 +1030,215 @@ class FirmaConfigurableTests(TestCase):
         """
         for config in [{"firma_roles": []}, {"firma_roles": "medico"}, {"firma_roles": None}]:
             self.assertEqual(motor.quien_firma(self._nodo(**config))[0], ["medico"])
+
+
+class OperacionDeFilaTests(TestCase):
+    """
+    Lo que pasa en una cola de verdad además de llamar y atender: el paciente no
+    aparece, lo llamaron por error, o empeoró esperando y hay que adelantarlo.
+    """
+
+    def setUp(self):
+        self.jefe = Usuario.objects.create_superuser("jefe@cauce.local", "x", nombre="Jefe")
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.box = Box.objects.create(area=self.area, nombre="Box 1")
+        flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Guardia")
+        self.ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        ini = Nodo.objects.create(version=self.ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.ate = Nodo.objects.create(
+            version=self.ver, tipo=Nodo.Tipo.ATENCION, titulo="Atención", config={"con_fila": True}
+        )
+        fin = Nodo.objects.create(version=self.ver, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=self.ver, origen=ini, destino=self.ate)
+        Conexion.objects.create(version=self.ver, origen=self.ate, destino=fin)
+
+    def _encolar(self, nombre):
+        c = Ciudadano.objects.create(institucion=self.inst, nombre=nombre, apellido="T")
+        caso = Caso.objects.create(institucion=self.inst, version=self.ver, ciudadano=c)
+        motor.iniciar(caso, autor=self.jefe)
+        caso.refresh_from_db()
+        return caso
+
+    def _cola(self):
+        """La cola tal como la pide la pantalla."""
+        return list(
+            ItemFila.objects.filter(nodo=self.ate, atendido=False, box__isnull=True)
+            .order_by("-urgente", "orden", "ingreso")
+            .values_list("caso__ciudadano__nombre", flat=True)
+        )
+
+    # --- No se presentó ---------------------------------------------------- #
+
+    def test_el_ausente_sale_de_la_cola(self):
+        """
+        Antes quedaba llamado para siempre: ocupaba el box en la pantalla y
+        contaba como si lo estuvieran atendiendo.
+        """
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(caso, autor=self.jefe)
+        self.assertEqual(self._cola(), [])
+
+    def test_el_ausente_libera_el_box_y_al_profesional(self):
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        self.assertEqual(caso.en_filas.first().box_id, self.box.id)
+        motor.marcar_ausente(caso, autor=self.jefe)
+        caso.refresh_from_db()
+        self.assertIsNone(caso.en_filas.first().box_id)
+        self.assertIsNone(caso.asignado_a_id)
+
+    def test_el_ausente_no_baja_el_promedio_de_atencion(self):
+        """
+        Si el ausente contara como atendido con duración cero, el indicador de
+        tiempo de atención del servicio MEJORARÍA cuanta más gente se va sin ser
+        atendida. `atendido_at` queda nulo, que es lo que mira la métrica.
+        """
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(caso, autor=self.jefe)
+        item = caso.en_filas.first()
+        self.assertTrue(item.ausente)
+        self.assertIsNone(item.atendido_at)
+
+    def test_la_espera_del_ausente_si_cuenta(self):
+        """Esperó de verdad hasta que lo llamaron; esa demora fue real."""
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(caso, autor=self.jefe)
+        self.assertIsNotNone(caso.en_filas.first().llamado_at)
+
+    def test_no_se_puede_dar_por_ausente_a_quien_no_se_llamo(self):
+        caso = self._encolar("Ana")
+        with self.assertRaises(motor.ErrorMotor):
+            motor.marcar_ausente(caso, autor=self.jefe)
+
+    # --- Vuelve a la cola --------------------------------------------------- #
+
+    def test_devuelto_por_error_conserva_su_lugar(self):
+        """La demora no fue suya: ya esperó una vez."""
+        a, b, c = self._encolar("Ana"), self._encolar("Beto"), self._encolar("Caro")
+        motor.llamar(a, box_id=self.box.id, autor=self.jefe)
+        self.assertEqual(self._cola(), ["Beto", "Caro"])
+        motor.devolver_a_la_cola(a, autor=self.jefe, motivo="lo llamé por error")
+        self.assertEqual(self._cola(), ["Ana", "Beto", "Caro"])
+
+    def test_el_ausente_que_reaparece_va_al_final(self):
+        """Perdió el turno: adelantarlo sería castigar al que sí estaba."""
+        a, b, c = self._encolar("Ana"), self._encolar("Beto"), self._encolar("Caro")
+        motor.llamar(a, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(a, autor=self.jefe)
+        motor.devolver_a_la_cola(a, autor=self.jefe)
+        self.assertEqual(self._cola(), ["Beto", "Caro", "Ana"])
+
+    def test_el_urgente_que_reaparece_sigue_yendo_primero(self):
+        """
+        Va al final del ORDEN, pero la urgencia manda sobre el lugar: un urgente
+        que aparece tarde no espera detrás de los que no lo son. Perder el turno
+        es una regla de convivencia; la prioridad clínica no se negocia.
+        """
+        self._encolar("Ana")
+        self._encolar("Beto")
+        urg = self._encolar("Caro")
+        urg.en_filas.update(urgente=True)
+        motor.llamar(urg, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(urg, autor=self.jefe)
+        motor.devolver_a_la_cola(urg, autor=self.jefe)
+        item = ItemFila.objects.get(caso=urg)
+        self.assertEqual(item.orden, max(
+            ItemFila.objects.filter(nodo=self.ate, atendido=False).values_list("orden", flat=True)
+        ), "no quedó al final del orden")
+        self.assertEqual(self._cola()[0], "Caro", "la urgencia dejó de mandar")
+
+    def test_devolver_no_borra_la_espera_ya_acumulada(self):
+        """
+        Si `llamado_at` se reiniciara, el indicador de demora del servicio
+        mejoraría cuanto PEOR se opere la cola: llamar y devolver borraría la
+        espera. Se conserva a propósito.
+        """
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        llamado = caso.en_filas.first().llamado_at
+        motor.devolver_a_la_cola(caso, autor=self.jefe)
+        self.assertEqual(caso.en_filas.first().llamado_at, llamado)
+
+    def test_devolver_deja_al_caso_esperando_y_sin_dueno(self):
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        motor.devolver_a_la_cola(caso, autor=self.jefe)
+        caso.refresh_from_db()
+        self.assertEqual(caso.estado, Caso.Estado.EN_ESPERA)
+        self.assertIsNone(caso.asignado_a_id)
+        self.assertIsNone(caso.en_filas.first().box_id)
+
+    def test_no_se_puede_devolver_a_quien_nunca_se_llamo(self):
+        caso = self._encolar("Ana")
+        with self.assertRaises(motor.ErrorMotor):
+            motor.devolver_a_la_cola(caso, autor=self.jefe)
+
+    # --- Reordenar ---------------------------------------------------------- #
+
+    def test_adelantar_a_alguien_que_empeoro_esperando(self):
+        for n in ("Ana", "Beto", "Caro", "Dani"):
+            self._encolar(n)
+        item = ItemFila.objects.get(caso__ciudadano__nombre="Dani")
+        motor.mover_en_fila(item, 1, autor=self.jefe)
+        self.assertEqual(self._cola(), ["Ana", "Dani", "Beto", "Caro"])
+
+    def test_reordenar_deja_la_cola_sin_posiciones_repetidas(self):
+        for n in ("Ana", "Beto", "Caro"):
+            self._encolar(n)
+        motor.mover_en_fila(ItemFila.objects.get(caso__ciudadano__nombre="Caro"), 0, autor=self.jefe)
+        ordenes = sorted(ItemFila.objects.filter(nodo=self.ate, atendido=False, box__isnull=True).values_list("orden", flat=True))
+        self.assertEqual(ordenes, [0, 1, 2])
+
+    def test_una_posicion_fuera_de_rango_no_rompe_la_cola(self):
+        for n in ("Ana", "Beto"):
+            self._encolar(n)
+        motor.mover_en_fila(ItemFila.objects.get(caso__ciudadano__nombre="Ana"), 99, autor=self.jefe)
+        self.assertEqual(self._cola(), ["Beto", "Ana"])
+
+    def test_los_urgentes_siguen_yendo_primero(self):
+        """Reordenar mueve dentro de la cola; no saltea la prioridad clínica."""
+        for n in ("Ana", "Beto"):
+            self._encolar(n)
+        urg = self._encolar("Caro")
+        urg.en_filas.update(urgente=True)
+        motor.mover_en_fila(ItemFila.objects.get(caso__ciudadano__nombre="Ana"), 0, autor=self.jefe)
+        self.assertEqual(self._cola()[0], "Caro")
+
+    def test_dos_personas_no_comparten_lugar_cuando_alguien_sale_de_la_cola(self):
+        """
+        El orden se asignaba con `count()` de los que esperan: si alguien salía,
+        el contador bajaba y el siguiente que llegaba repetía un número ya usado.
+        """
+        a, b, c = self._encolar("Ana"), self._encolar("Beto"), self._encolar("Caro")
+        motor.llamar(a, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(a, autor=self.jefe)
+        self._encolar("Dani")
+        ordenes = list(ItemFila.objects.filter(nodo=self.ate, atendido=False).values_list("orden", flat=True))
+        self.assertEqual(len(ordenes), len(set(ordenes)), f"lugares repetidos en la cola: {ordenes}")
+
+    # --- Lo que ve la pantalla ---------------------------------------------- #
+
+    def test_las_acciones_ofrecidas_siguen_el_estado_real(self):
+        caso = self._encolar("Ana")
+        self.assertEqual(motor._acciones_posibles(caso, self.ate), ["llamar"])
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        caso.refresh_from_db()
+        self.assertEqual(motor._acciones_posibles(caso, self.ate), ["avanzar", "devolver", "ausente"])
+        motor.marcar_ausente(caso, autor=self.jefe)
+        caso.refresh_from_db()
+        self.assertEqual(motor._acciones_posibles(caso, self.ate), ["devolver"])
+
+    def test_queda_registrado_en_la_historia_del_caso(self):
+        """Un turno que se mueve o alguien que se va sin atenderse tiene que
+        poder reconstruirse: es la mitad de para qué existe la trazabilidad."""
+        caso = self._encolar("Ana")
+        motor.llamar(caso, box_id=self.box.id, autor=self.jefe)
+        motor.marcar_ausente(caso, autor=self.jefe)
+        motor.devolver_a_la_cola(caso, autor=self.jefe)
+        titulos = list(caso.eventos.values_list("titulo", flat=True))
+        self.assertIn("No se presentó", titulos)
+        self.assertIn("Vuelve a la cola (reapareció)", titulos)

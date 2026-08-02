@@ -34,7 +34,7 @@ class ItemFilaSerializer(serializers.ModelSerializer):
         # llamaran y cuánto duró la atención.
         fields = [
             "id", "caso", "nodo", "nodo_titulo", "area", "area_nombre", "turno",
-            "persona", "urgente", "orden", "atendido", "box", "box_nombre",
+            "persona", "urgente", "orden", "atendido", "ausente", "box", "box_nombre",
             "ingreso", "llamado_at", "atendido_at",
         ]
         read_only_fields = ["ingreso", "llamado_at", "atendido_at"]
@@ -161,9 +161,19 @@ class CasoDetalleSerializer(CasoSerializer):
     # Box al que se lo llamó y cuántas veces (para el banner de «rellamar»).
     llamado_box = serializers.SerializerMethodField()
     veces_llamado = serializers.SerializerMethodField()
+    # Se lo dio por ausente y sigue parado en este paso: la pantalla no puede
+    # ofrecer atenderlo (no está), pero sí reencolarlo si aparece.
+    ausente = serializers.SerializerMethodField()
 
     class Meta(CasoSerializer.Meta):
-        fields = CasoSerializer.Meta.fields + ["valores", "eventos", "derivados", "llamado", "llamado_box", "veces_llamado"]
+        fields = CasoSerializer.Meta.fields + [
+            "valores", "eventos", "derivados", "llamado", "llamado_box", "veces_llamado", "ausente",
+        ]
+
+    def get_ausente(self, obj):
+        if not obj.nodo_actual_id:
+            return False
+        return obj.en_filas.filter(nodo=obj.nodo_actual, ausente=True).exists()
 
     def _item_llamado(self, obj):
         if not obj.nodo_actual_id:
