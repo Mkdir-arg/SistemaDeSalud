@@ -9,7 +9,11 @@ validación previa a publicar.
         ├─ [Alta]    → Derivar(Cardiología) → Estado(Atendido) → Fin
         └─ [default] → Espera(Sala) → Atención(evaluación) → Fin
 """
+from datetime import timedelta
+
+from django.core.management import call_command
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from apps.accounts.models import LegajoProfesional, Membresia, Usuario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
@@ -732,3 +736,165 @@ class NotificacionNodoTests(TestCase):
         """Es un nodo automático: el caso no se detiene ahí."""
         self.assertIn("notificar", motor.TIPOS_AUTOMATICOS)
         self.assertIn("integracion", motor.TIPOS_AUTOMATICOS)
+
+
+class TiemposTests(TestCase):
+    """
+    Esperas programadas y SLA.
+
+    Hasta acá la duración de una «espera por tiempo» era un rótulo: el caso
+    entraba y no volvía nunca. Y no había forma de decir «si tarda más de X,
+    avisá», que es lo primero que pide quien dirige un servicio.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.grupo = Grupo.objects.create(area=self.area, nombre="Médicos")
+        self.medico = Usuario.objects.create_user(email="med@t.local", password="x")
+        self.jefe = Usuario.objects.create_user(email="jefe@t.local", password="x")
+        self.grupo.miembros.add(self.medico)
+        m = Membresia.objects.create(
+            usuario=self.jefe, institucion=self.inst, rol=Membresia.Rol.JEFE_AREA, activo=True
+        )
+        m.areas.add(self.area)
+
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="F")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+
+    # --- Interpretación de la duración ------------------------------------- #
+
+    def test_entiende_la_duracion_escrita_a_mano(self):
+        """
+        El texto libre ya está guardado en los flujos existentes: la duración
+        nació como rótulo. Migrarlo no aportaría nada; interpretarlo alcanza.
+        """
+        casos = [
+            ({"duracion": "6 horas"}, 360),
+            ({"duracion": "30 minutos"}, 30),
+            ({"duracion": "2 días"}, 2880),
+            ({"duracion": "1 mes"}, 43200),
+            ({"duracion": "1,5 horas"}, 90),
+            ({"minutos": 15}, 15),
+            # Los minutos explícitos le ganan al texto.
+            ({"minutos": 5, "duracion": "3 horas"}, 5),
+        ]
+        for config, esperado in casos:
+            self.assertEqual(motor.minutos_de_espera(config), esperado, config)
+
+    def test_una_duracion_que_no_se_entiende_no_inventa_un_plazo(self):
+        """Mejor que quede en reactivación manual a que se reactive cuando no toca."""
+        for config in [{}, {"duracion": ""}, {"duracion": "cuando el médico diga"}, {"minutos": 0}]:
+            self.assertIsNone(motor.minutos_de_espera(config))
+
+    # --- Reactivación ------------------------------------------------------- #
+
+    def _flujo_con_espera(self, config):
+        ini = Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+        esp = Nodo.objects.create(version=self.version, tipo="tiempo", titulo="Observación", config=config)
+        fin = Nodo.objects.create(version=self.version, tipo="fin", titulo="Alta")
+        Conexion.objects.create(version=self.version, origen=ini, destino=esp, condicion={})
+        Conexion.objects.create(version=self.version, origen=esp, destino=fin, condicion={})
+        caso = Caso.objects.create(institucion=self.inst, version=self.version, area_actual=self.area)
+        motor.iniciar(caso)
+        return caso, esp, fin
+
+    def test_al_entrar_a_la_espera_queda_agendado_el_vencimiento(self):
+        caso, esp, _ = self._flujo_con_espera({"duracion": "6 horas"})
+        caso.refresh_from_db()
+        self.assertEqual(caso.nodo_actual_id, esp.pk)
+        self.assertIsNotNone(caso.reactivar_en)
+        faltan = (caso.reactivar_en - timezone.now()).total_seconds() / 60
+        self.assertAlmostEqual(faltan, 360, delta=2)
+
+    def test_el_proceso_reactiva_el_caso_vencido(self):
+        caso, esp, fin = self._flujo_con_espera({"duracion": "6 horas"})
+        # Se adelanta el reloj poniendo el vencimiento en el pasado.
+        Caso.objects.filter(pk=caso.pk).update(reactivar_en=timezone.now() - timedelta(minutes=1))
+
+        call_command("correr_tiempos", verbosity=0)
+
+        caso.refresh_from_db()
+        self.assertEqual(caso.nodo_actual_id, fin.pk)
+        self.assertIsNone(caso.reactivar_en)
+
+    def test_no_toca_una_espera_que_todavia_no_vencio(self):
+        caso, esp, _ = self._flujo_con_espera({"duracion": "6 horas"})
+        call_command("correr_tiempos", verbosity=0)
+        caso.refresh_from_db()
+        self.assertEqual(caso.nodo_actual_id, esp.pk)
+
+    def test_una_espera_sin_duracion_entendible_no_se_reactiva_sola(self):
+        caso, esp, _ = self._flujo_con_espera({"duracion": "hasta que el médico lo indique"})
+        caso.refresh_from_db()
+        self.assertIsNone(caso.reactivar_en)
+        call_command("correr_tiempos", verbosity=0)
+        caso.refresh_from_db()
+        self.assertEqual(caso.nodo_actual_id, esp.pk)
+
+    # --- SLA ---------------------------------------------------------------- #
+
+    def _flujo_con_sla(self, config):
+        ini = Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+        paso = Nodo.objects.create(version=self.version, tipo="form", titulo="Triage", config=config)
+        Conexion.objects.create(version=self.version, origen=ini, destino=paso, condicion={})
+        paso.grupos.add(self.grupo)
+        caso = Caso.objects.create(institucion=self.inst, version=self.version, area_actual=self.area)
+        motor.iniciar(caso)
+        return caso, paso
+
+    def test_avisa_al_grupo_cuando_el_paso_se_pasa_del_plazo(self):
+        caso, paso = self._flujo_con_sla({"sla_minutos": 20})
+        Caso.objects.filter(pk=caso.pk).update(paso_desde=timezone.now() - timedelta(minutes=25))
+
+        call_command("correr_tiempos", verbosity=0)
+
+        aviso = Notificacion.objects.filter(usuario=self.medico).last()
+        self.assertEqual(aviso.titulo, "Paso demorado")
+        self.assertIn("Triage", aviso.detalle)
+
+    def test_no_repite_el_aviso_en_cada_pasada(self):
+        """Molestar cada cinco minutos consigue que se ignoren todos los avisos."""
+        caso, _ = self._flujo_con_sla({"sla_minutos": 20})
+        Caso.objects.filter(pk=caso.pk).update(paso_desde=timezone.now() - timedelta(minutes=25))
+
+        call_command("correr_tiempos", verbosity=0)
+        call_command("correr_tiempos", verbosity=0)
+        call_command("correr_tiempos", verbosity=0)
+
+        self.assertEqual(
+            Notificacion.objects.filter(usuario=self.medico, titulo="Paso demorado").count(), 1
+        )
+
+    def test_escalar_avisa_tambien_al_jefe_del_area(self):
+        caso, _ = self._flujo_con_sla({"sla_minutos": 20, "sla_accion": "escalar"})
+        Caso.objects.filter(pk=caso.pk).update(paso_desde=timezone.now() - timedelta(minutes=25))
+
+        call_command("correr_tiempos", verbosity=0)
+
+        self.assertTrue(Notificacion.objects.filter(usuario=self.jefe).exists())
+
+    def test_sin_sla_declarado_no_avisa_nada(self):
+        caso, _ = self._flujo_con_sla({})
+        Caso.objects.filter(pk=caso.pk).update(paso_desde=timezone.now() - timedelta(days=3))
+        call_command("correr_tiempos", verbosity=0)
+        self.assertFalse(Notificacion.objects.filter(titulo="Paso demorado").exists())
+
+    def test_el_reloj_del_paso_se_reinicia_al_avanzar(self):
+        """
+        Sin esto el SLA mediría desde que empezó el caso y avisaría de demoras
+        que no existen.
+        """
+        caso, paso = self._flujo_con_sla({"sla_minutos": 20})
+        Caso.objects.filter(pk=caso.pk).update(
+            paso_desde=timezone.now() - timedelta(minutes=25), sla_avisado=True
+        )
+        fin = Nodo.objects.create(version=self.version, tipo="fin", titulo="Fin")
+        Conexion.objects.create(version=self.version, origen=paso, destino=fin, condicion={})
+
+        caso.refresh_from_db()
+        motor.avanzar(caso, {"valores": {}})
+
+        caso.refresh_from_db()
+        self.assertLess((timezone.now() - caso.paso_desde).total_seconds(), 5)
+        self.assertFalse(caso.sla_avisado)

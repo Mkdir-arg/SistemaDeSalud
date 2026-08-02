@@ -2036,9 +2036,41 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         )}
 
         {nodo.tipo === "tiempo" && (
-          <Field label="Duración (informativa)">
-            <Input value={(nodo.config || {}).duracion || ""} onChange={(e) => setConfig({ duracion: e.target.value })} placeholder="1 mes" />
+          <Field
+            label="Duración de la espera"
+            hint="El caso vuelve solo al vencer. Se entiende «6 horas», «2 días», «1 mes»."
+          >
+            <Input value={(nodo.config || {}).duracion || ""} onChange={(e) => setConfig({ duracion: e.target.value })} placeholder="6 horas" />
+            {!(nodo.config || {}).duracion && (
+              <AvisoFalta texto="Sin duración, el caso queda esperando hasta que alguien lo reactive a mano." />
+            )}
           </Field>
+        )}
+
+        {/* SLA: sólo tiene sentido donde el caso ESPERA a una persona. */}
+        {["form", "atencion", "espera"].includes(nodo.tipo) && (
+          <div style={{ borderTop: `1px solid var(--color-division)`, paddingTop: 14, marginTop: 4 }}>
+            <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".5px", color: "var(--color-texto-debil)", marginBottom: 10 }}>
+              TIEMPO MÁXIMO EN ESTE PASO
+            </div>
+            <Field label="Avisar si tarda más de (minutos)" hint="Vacío = sin control de demora.">
+              <Input
+                type="number"
+                min="1"
+                value={(nodo.config || {}).sla_minutos ?? ""}
+                onChange={(e) => setConfig({ sla_minutos: e.target.value ? Number(e.target.value) : null })}
+                placeholder="30"
+              />
+            </Field>
+            {(nodo.config || {}).sla_minutos ? (
+              <Field label="Qué hacer al pasarse">
+                <Select value={(nodo.config || {}).sla_accion || "avisar"} onChange={(e) => setConfig({ sla_accion: e.target.value })}>
+                  <option value="avisar">Avisar al equipo responsable</option>
+                  <option value="escalar">Avisar también al jefe del área</option>
+                </Select>
+              </Field>
+            ) : null}
+          </div>
         )}
 
         {nodo.tipo === "notificar" && (

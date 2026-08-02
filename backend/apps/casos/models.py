@@ -88,6 +88,22 @@ class Caso(models.Model):
         related_name="casos_estudio",
     )
 
+    # --- Tiempos del paso actual ------------------------------------------ #
+    # `actualizado` no sirve para medir demora: cualquier cambio lo toca. Estos
+    # dos marcan el reloj del PASO, que es lo que un SLA mide.
+    paso_desde = models.DateTimeField(
+        "en este paso desde", null=True, blank=True,
+        help_text="Cuándo entró al nodo actual. Base del SLA.",
+    )
+    # Cuándo vence una «espera por tiempo». Indexado porque el proceso periódico
+    # busca justamente por acá, y va a correr cada pocos minutos.
+    reactivar_en = models.DateTimeField(
+        "reactivar en", null=True, blank=True, db_index=True,
+        help_text="Vencimiento de la espera por tiempo. Lo consume `correr_tiempos`.",
+    )
+    # Evita que el aviso por demora se repita en cada pasada del proceso.
+    sla_avisado = models.BooleanField("ya se avisó la demora", default=False)
+
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
 

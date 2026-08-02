@@ -28,9 +28,10 @@ from __future__ import annotations
 
 import contextvars
 import json
+import re
 import unicodedata
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -361,6 +362,68 @@ def _notificar_grupo(nodo: Nodo | None, titulo: str, detalle: str = "", caso: Ca
 
 
 # --------------------------------------------------------------------------- #
+# Tiempos: esperas programadas y SLA
+# --------------------------------------------------------------------------- #
+# Alias de unidad, ORDENADOS DE MÁS LARGO A MÁS CORTO.
+#
+# El orden es el punto: se compara con `startswith` para que «horas», «hora» y
+# «hs» caigan juntas, y con los alias de una letra eso muerde — «mes» empieza
+# con «m», así que «1 mes» se interpretaba como 1 MINUTO. Un caso que tenía que
+# volver en un mes volvía en sesenta segundos.
+_UNIDADES = sorted(
+    [
+        ("minuto", 1), ("min", 1), ("m", 1),
+        ("hora", 60), ("hs", 60), ("hr", 60), ("h", 60),
+        ("semana", 60 * 24 * 7), ("sem", 60 * 24 * 7),
+        ("dia", 60 * 24), ("d", 60 * 24),
+        ("mes", 60 * 24 * 30),
+        ("anio", 60 * 24 * 365), ("ano", 60 * 24 * 365),
+    ],
+    key=lambda par: -len(par[0]),
+)
+
+
+def minutos_de_espera(config: dict) -> int | None:
+    """
+    Duración de una espera, en minutos.
+
+    Acepta `{"minutos": 360}` y también el texto libre `{"duracion": "6 horas"}`,
+    que es lo que ya está guardado en los flujos existentes: la duración nació
+    como rótulo informativo y recién ahora se ejecuta. Migrar ese texto a un
+    número sería tocar datos de producción para no ganar nada — interpretarlo
+    alcanza, y el editor guarda los minutos de acá en adelante.
+
+    Devuelve None si no se entiende: ahí el nodo queda como estaba (esperando
+    una reactivación manual) en vez de inventar un plazo.
+    """
+    if not config:
+        return None
+    exacto = config.get("minutos")
+    if isinstance(exacto, (int, float)) and exacto > 0:
+        return int(exacto)
+
+    texto = _plano(config.get("duracion", ""))
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*([a-z]+)", texto)
+    if not m:
+        return None
+    cantidad = float(m.group(1).replace(",", "."))
+    palabra = m.group(2)
+    for alias, factor in _UNIDADES:
+        if palabra.startswith(alias):
+            return max(1, round(cantidad * factor))
+    return None
+
+
+def minutos_de_sla(nodo: Nodo) -> int | None:
+    """Plazo declarado para el paso, en minutos. None = sin SLA."""
+    cfg = nodo.config or {}
+    valor = cfg.get("sla_minutos")
+    if isinstance(valor, (int, float)) and valor > 0:
+        return int(valor)
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Integración con sistemas externos
 # --------------------------------------------------------------------------- #
 def _host_permitido(url: str) -> bool:
@@ -544,8 +607,22 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
 
     elif nodo.tipo == Nodo.Tipo.ESPERA_TIEMPO:
         caso.estado = Caso.Estado.EN_ESPERA
-        dur = (nodo.config or {}).get("duracion", "")
-        _registrar(caso, f"Espera programada: {nodo.titulo}", detalle=dur, autor=autor, nodo=nodo)
+        cfg = nodo.config or {}
+        dur = cfg.get("duracion", "")
+        minutos = minutos_de_espera(cfg)
+        if minutos:
+            # Acá se agenda el vencimiento. Hasta ahora la duración era sólo un
+            # texto informativo y el caso se quedaba en el nodo PARA SIEMPRE: una
+            # «observación 6 horas» no volvía nunca sola.
+            caso.reactivar_en = timezone.now() + timedelta(minutes=minutos)
+            _registrar(caso, f"Espera programada: {nodo.titulo}",
+                       detalle=f"{dur or f'{minutos} min'} · vence {caso.reactivar_en:%d/%m %H:%M}",
+                       autor=autor, nodo=nodo)
+        else:
+            caso.reactivar_en = None
+            _registrar(caso, f"Espera programada: {nodo.titulo}",
+                       detalle=(dur or "sin duración: hay que reactivarlo a mano"),
+                       autor=autor, nodo=nodo)
 
     elif nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila"):
         # Atención con fila: el paciente espera encolado hasta que lo llaman de un box.
@@ -581,6 +658,14 @@ def _correr_automaticos(caso: Caso, autor=None):
         # Único punto por donde pasa TODO nodo que el motor atraviesa: anotar acá
         # es lo que hace que la traza no pueda quedar desactualizada.
         _anotar(nodo)
+
+        # Mismo argumento para el reloj del paso: se reinicia acá y en ningún otro
+        # lado, así el SLA mide siempre desde que el caso ENTRÓ a este nodo.
+        caso.paso_desde = timezone.now()
+        caso.sla_avisado = False
+        # Un vencimiento viejo no puede sobrevivir al cambio de paso.
+        if nodo.tipo != Nodo.Tipo.ESPERA_TIEMPO:
+            caso.reactivar_en = None
 
         if nodo.tipo in TIPOS_DETENCION:
             _aplicar_efecto_entrada(caso, nodo, autor=autor)

@@ -23,8 +23,34 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
       SEED_DEMO: ${SEED_DEMO:-1}
+      CAUCE_INTEGRACIONES_PERMITIDAS: ${CAUCE_INTEGRACIONES_PERMITIDAS:-}
     volumes:
       - media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Reloj del motor: reactiva las esperas por tiempo vencidas y avisa las
+  # demoras. Sin esto un caso que entra a «Observación 6 horas» no vuelve nunca
+  # y los SLA declarados en el diseñador no se cumplen solos.
+  #
+  # Es un bucle y no cron para no meter un demonio más en la imagen: el comando
+  # es idempotente y toma cada caso con `select_for_update(skip_locked)`, así que
+  # correrlo de más no hace daño.
+  tiempos:
+    build: ./backend
+    command: >
+      sh -c "while true; do
+               python manage.py correr_tiempos || true;
+               sleep ${INTERVALO_TIEMPOS:-120};
+             done"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cauce}:${POSTGRES_PASSWORD:-cauce}@db:5432/${POSTGRES_DB:-cauce}
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      # No siembra: de eso se ocupa `backend`.
+      SEED_DEMO: "0"
     depends_on:
       db:
         condition: service_healthy
