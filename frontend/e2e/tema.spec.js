@@ -110,6 +110,14 @@ const DINAMICAS_ADMIN = [
     await page.locator("tbody tr").first().click();
     await page.getByRole("dialog").waitFor();
   } },
+  // El diseñador de flujos, con un nodo abierto: es donde vive el panel de
+  // propiedades, que es la mitad de la pantalla.
+  { nombre: "diseñador de flujos", resolver: async (page) => {
+    await page.goto("/flujos");
+    await page.locator("tbody tr").first().click();
+    await page.waitForURL(/\/flujos\/\d+/);
+    await page.locator("[data-nodo]").nth(1).click();
+  } },
 ];
 
 test.describe("Tema · pantallas de configuración y diseño", () => {

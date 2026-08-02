@@ -4,7 +4,7 @@ import { api } from "../../api/client";
 import { Badge, Button, Checkbox, Field, Input, Select, Spinner } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { estadoCaso, estadoVersion } from "../../lib/dominio";
-import { badgeTone, color, nodeCat, radius, shadow, type } from "../../theme";
+import { TIPOS_NODO, catDe } from "@/lib/nodos";
 
 const NODO_W = 184;
 const NODO_H = 64;
@@ -13,7 +13,7 @@ const GRID = 20; // paso de la grilla de puntos del lienzo (para snap-to-grid)
 // la misma superficie, así no salta de escala cada vez que se mueve un nodo.
 const MUNDO_W = 2200;
 const MUNDO_H = 1300;
-const PALETA = Object.entries(nodeCat).map(([tipo, c]) => ({ tipo, ...c }));
+const PALETA = TIPOS_NODO.map((tipo) => ({ tipo, ...catDe(tipo) }));
 
 // Operadores de regla en lenguaje natural (los usa el RuleBuilder y la etiqueta
 // automática de las ramas de Decisión en el lienzo).
@@ -435,7 +435,7 @@ export default function FlujoEditor() {
   }
 
   async function agregarNodo(tipo) {
-    const cat = nodeCat[tipo];
+    const cat = catDe(tipo);
     const { x, y } = posicionNuevoNodo();
     marcarGuardando();
     try {
@@ -945,8 +945,8 @@ export default function FlujoEditor() {
   if (errorCarga)
     return (
       <div style={{ padding: 40, maxWidth: 460 }}>
-        <div style={{ fontSize: type.lg, fontWeight: 700, color: color.danger, marginBottom: 6 }}>No se pudo cargar el flujo</div>
-        <div style={{ fontSize: type.base, color: color.slate600, marginBottom: 16 }}>{errorCarga}</div>
+        <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, color: "var(--color-danger)", marginBottom: 6 }}>No se pudo cargar el flujo</div>
+        <div style={{ fontSize: "var(--text-base)", color: "var(--color-texto-suave)", marginBottom: 16 }}>{errorCarga}</div>
         <div style={{ display: "flex", gap: 10 }}>
           <Button onClick={cargarTodo}>Reintentar</Button>
           <Button variant="secondary" onClick={() => navigate("/flujos")}>← Flujos</Button>
@@ -1008,13 +1008,13 @@ export default function FlujoEditor() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Barra superior */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: `1px solid ${color.border}`, background: "#fff", flex: "none", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: `1px solid var(--color-borde)`, background: "var(--color-superficie)", flex: "none", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <button onClick={() => navigate("/flujos")} title="Volver a Flujos" style={{ border: "none", background: "none", cursor: "pointer", fontSize: type.base, color: color.slate500, display: "flex", alignItems: "center", gap: 5, padding: 4, borderRadius: radius.sm }}>
+          <button onClick={() => navigate("/flujos")} title="Volver a Flujos" style={{ border: "none", background: "none", cursor: "pointer", fontSize: "var(--text-base)", color: "var(--color-texto-debil)", display: "flex", alignItems: "center", gap: 5, padding: 4, borderRadius: "var(--radius-sm)" }}>
             <Icon name="back" size={15} /> Flujos
           </button>
-          <div style={{ fontSize: type.xl, fontWeight: 700, letterSpacing: "-.4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{flujo.titulo}</div>
-          {flujo.ambito_label && <span style={{ fontSize: type.sm, color: color.slate500, whiteSpace: "nowrap" }}>· {flujo.ambito_label}</span>}
+          <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, letterSpacing: "-.4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{flujo.titulo}</div>
+          {flujo.ambito_label && <span style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", whiteSpace: "nowrap" }}>· {flujo.ambito_label}</span>}
           <Badge tone={estV.tone}>{estV.label}</Badge>
           <Select size="sm" value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ width: "auto" }}>
             {flujo.versiones.map((v) => <option key={v.id} value={v.id}>{v.etiqueta}</option>)}
@@ -1039,40 +1039,40 @@ export default function FlujoEditor() {
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Paleta (colapsable para pantallas chicas) */}
         {paletaAbierta ? (
-        <div style={{ width: 188, borderRight: `1px solid ${color.border}`, background: "#fff", padding: 12, overflow: "auto", flex: "none" }}>
+        <div style={{ width: 188, borderRight: `1px solid var(--color-borde)`, background: "var(--color-superficie)", padding: 12, overflow: "auto", flex: "none" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 4px 4px" }}>
-            <span style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".6px", color: color.slate500 }}>NODOS</span>
-            <button onClick={() => setPaletaAbierta(false)} title="Ocultar nodos" aria-label="Ocultar panel de nodos" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex", padding: 2, borderRadius: radius.sm }}><Icon name="back" size={14} /></button>
+            <span style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-debil)" }}>NODOS</span>
+            <button onClick={() => setPaletaAbierta(false)} title="Ocultar nodos" aria-label="Ocultar panel de nodos" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-tenue)", display: "flex", padding: 2, borderRadius: "var(--radius-sm)" }}><Icon name="back" size={14} /></button>
           </div>
-          <div style={{ fontSize: type.xs, color: color.slate400, margin: "0 4px 10px" }}>Hacé clic para agregar al lienzo</div>
+          <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", margin: "0 4px 10px" }}>Hacé clic para agregar al lienzo</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {PALETA.map((p) => (
               <button
                 key={p.tipo}
                 onClick={() => agregarNodo(p.tipo)}
                 title={`Agregar nodo «${p.name}»`}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid ${color.border}`, borderRadius: radius.md, background: "#fff", cursor: "pointer", textAlign: "left", transition: "background .12s, border-color .12s" }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", background: "var(--color-superficie)", cursor: "pointer", textAlign: "left", transition: "background .12s, border-color .12s" }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = p.tint; e.currentTarget.style.borderColor = p.bd; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = color.border; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-superficie)"; e.currentTarget.style.borderColor = "var(--color-borde)"; }}
               >
-                <span style={{ width: 26, height: 26, borderRadius: radius.sm, background: p.tint, border: `1px solid ${p.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+                <span style={{ width: 26, height: 26, borderRadius: "var(--radius-sm)", background: p.tint, border: `1px solid ${p.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
                   <span style={{ width: 10, height: 10, borderRadius: p.tipo === "decision" ? 2 : 3, background: p.sol, transform: p.tipo === "decision" ? "rotate(45deg)" : "none" }} />
                 </span>
-                <span style={{ fontSize: type.sm, fontWeight: 600, color: color.slate700, flex: 1 }}>{p.name}</span>
-                <Icon name="plus" size={13} style={{ color: color.slate400 }} />
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-texto-medio)", flex: 1 }}>{p.name}</span>
+                <Icon name="plus" size={13} style={{ color: "var(--color-texto-tenue)" }} />
               </button>
             ))}
           </div>
         </div>
         ) : (
-          <button onClick={() => setPaletaAbierta(true)} title="Mostrar nodos" aria-label="Mostrar panel de nodos" style={{ width: 34, flex: "none", borderRight: `1px solid ${color.border}`, background: "#fff", cursor: "pointer", color: color.slate500, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 14, border: "none" }}>
+          <button onClick={() => setPaletaAbierta(true)} title="Mostrar nodos" aria-label="Mostrar panel de nodos" style={{ width: 34, flex: "none", borderRight: `1px solid var(--color-borde)`, background: "var(--color-superficie)", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 14, border: "none" }}>
             <Icon name="plus" size={16} />
           </button>
         )}
 
         {/* Canvas (viewport sin scroll → scrolleable → sizer a escala → capa escalada) */}
         <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          <div ref={montarScroll} style={{ position: "absolute", inset: 0, overflow: "auto", background: color.canvas }}>
+          <div ref={montarScroll} style={{ position: "absolute", inset: 0, overflow: "auto", background: "var(--color-fondo)" }}>
             <div style={{ width: MUNDO_W * zoom, height: MUNDO_H * zoom }}>
               <div
                 ref={canvasRef}
@@ -1093,7 +1093,7 @@ export default function FlujoEditor() {
                   height: MUNDO_H,
                   transform: `scale(${zoom})`,
                   transformOrigin: "top left",
-                  backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)",
+                  backgroundImage: "radial-gradient(circle, var(--color-borde) 1.1px, transparent 1.1px)",
                   backgroundSize: `${GRID}px ${GRID}px`,
                 }}
               >
@@ -1101,10 +1101,10 @@ export default function FlujoEditor() {
             <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
               <defs>
                 <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L8,3 L0,6 Z" fill="#9AA2B1" />
+                  <path d="M0,0 L8,3 L0,6 Z" fill="var(--color-texto-tenue)" />
                 </marker>
                 <marker id="arrow-activo" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L8,3 L0,6 Z" fill={color.accent} />
+                  <path d="M0,0 L8,3 L0,6 Z" fill={"var(--color-accent)"} />
                 </marker>
               </defs>
               {version.conexiones.map((c) => {
@@ -1117,7 +1117,7 @@ export default function FlujoEditor() {
                 const activo = edgesActivos.has(`${c.origen}->${c.destino}`);
                 const seleccionada = c.id === selConexion;
                 const resaltada = seleccionada || activo || c.id === hoverConn;
-                const stroke = seleccionada || activo ? color.accent : c.id === hoverConn ? color.slate500 : "#9AA2B1";
+                const stroke = seleccionada || activo ? "var(--color-accent)" : c.id === hoverConn ? "var(--color-texto-debil)" : "var(--color-texto-tenue)";
                 const path = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
                 const etiqueta = etiquetaRama(c, o);
                 return (
@@ -1133,13 +1133,13 @@ export default function FlujoEditor() {
                     <path d={path} stroke={stroke} strokeWidth={resaltada ? 2.6 : 1.6} fill="none" markerEnd={`url(#${seleccionada || activo ? "arrow-activo" : "arrow"})`} style={{ transition: "stroke .15s, stroke-width .15s" }} />
                     {etiqueta && (
                       <>
-                        <rect x={mx - (etiqueta.length * 3.2 + 6)} y={my - 18} width={etiqueta.length * 6.4 + 12} height={16} rx={8} fill={color.canvas} stroke={color.divider} />
-                        <text x={mx} y={my - 6} fill={seleccionada || activo ? color.accent : color.slate600} fontSize="11" textAnchor="middle" style={{ fontWeight: 600 }}>{etiqueta}</text>
+                        <rect x={mx - (etiqueta.length * 3.2 + 6)} y={my - 18} width={etiqueta.length * 6.4 + 12} height={16} rx={8} fill={"var(--color-fondo)"} stroke={"var(--color-division)"} />
+                        <text x={mx} y={my - 6} fill={seleccionada || activo ? "var(--color-accent)" : "var(--color-texto-suave)"} fontSize="11" textAnchor="middle" style={{ fontWeight: 600 }}>{etiqueta}</text>
                       </>
                     )}
                     {seleccionada && (
                       <g onClick={(e) => { e.stopPropagation(); borrarConexion(c.id); }} style={{ cursor: "pointer" }}>
-                        <circle cx={mx} cy={my + 13} r="9" fill={color.danger} />
+                        <circle cx={mx} cy={my + 13} r="9" fill={"var(--color-danger)"} />
                         <path d={`M ${mx - 3} ${my + 10} L ${mx + 3} ${my + 16} M ${mx + 3} ${my + 10} L ${mx - 3} ${my + 16}`} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
                       </g>
                     )}
@@ -1150,14 +1150,14 @@ export default function FlujoEditor() {
               {ghost && (
                 <path
                   d={`M ${ghost.x1} ${ghost.y1} C ${(ghost.x1 + ghost.x2) / 2} ${ghost.y1}, ${(ghost.x1 + ghost.x2) / 2} ${ghost.y2}, ${ghost.x2} ${ghost.y2}`}
-                  stroke={color.accent} strokeWidth="2" strokeDasharray="5 4" fill="none" markerEnd="url(#arrow-activo)" style={{ pointerEvents: "none" }}
+                  stroke={"var(--color-accent)"} strokeWidth="2" strokeDasharray="5 4" fill="none" markerEnd="url(#arrow-activo)" style={{ pointerEvents: "none" }}
                 />
               )}
             </svg>
 
             {/* Nodos */}
             {version.nodos.map((n) => {
-              const cat = nodeCat[n.tipo] || nodeCat.form;
+              const cat = catDe(n.tipo);
               const seleccionado = seleccion.has(n.id);
               const esOrigenConexion = conectarDesde === n.id;
               const enFoco = n.id === nodoEnFoco;
@@ -1186,11 +1186,11 @@ export default function FlujoEditor() {
                     boxSizing: "border-box",
                     background: cat.tint,
                     border: `1.5px solid ${seleccionado || esOrigenConexion || enFoco ? cat.sol : cat.bd}`,
-                    borderRadius: radius.lg,
+                    borderRadius: "var(--radius-lg)",
                     padding: "11px 13px",
                     cursor: arrastrando ? "grabbing" : "grab",
                     touchAction: "none",
-                    boxShadow: enFoco ? `0 0 0 4px ${cat.sol}55, ${shadow.float}` : arrastrando ? shadow.float : seleccionado ? `0 0 0 3px ${cat.sol}33` : shadow.card,
+                    boxShadow: enFoco ? `0 0 0 4px ${cat.sol}55, var(--shadow-float)` : arrastrando ? "var(--shadow-float)" : seleccionado ? `0 0 0 3px ${cat.sol}33` : "var(--shadow-card)",
                     transform: arrastrando ? "scale(1.02)" : "none",
                     transition: arrastrando ? "none" : "box-shadow .2s, border-color .2s, transform .12s",
                     zIndex: arrastrando ? 4 : 1,
@@ -1201,13 +1201,17 @@ export default function FlujoEditor() {
                 >
                   <span style={{ width: 11, height: 11, borderRadius: n.tipo === "decision" ? 2 : 3, background: cat.sol, transform: n.tipo === "decision" ? "rotate(45deg)" : "none", flex: "none" }} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
-                    <div style={{ fontSize: type.base, fontWeight: 600, color: color.slate900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.titulo}</div>
+                    {/* La categoría va en un gris legible, NO en el color del nodo: esa paleta
+                        está pensada para bordes y rellenos, y como texto no llega a
+                        4.5:1 («Decisión» daba 2.64:1). El cuadradito de la izquierda,
+                        el borde y el tinte ya identifican el tipo. */}
+                    <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", color: "var(--color-texto-suave)" }}>{cat.name.toUpperCase()}</div>
+                    <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--color-texto-fuerte)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.titulo}</div>
                     {sub && (
-                      <div style={{ fontSize: type.xs, color: subFalta ? color.danger : color.slate500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{sub}</div>
+                      <div style={{ fontSize: "var(--text-xs)", color: subFalta ? "var(--color-danger)" : "var(--color-texto-suave)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{sub}</div>
                     )}
                     {n.grupos_detalle?.length > 0 && (
-                      <div title={`Responsable: ${n.grupos_detalle.map((g) => g.nombre).join(", ")}`} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: type.xs, color: color.slate500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div title={`Responsable: ${n.grupos_detalle.map((g) => g.nombre).join(", ")}`} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: "var(--text-xs)", color: "var(--color-texto-suave)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         <Icon name="users" size={11} />
                         {n.grupos_detalle.length === 1 ? n.grupos_detalle[0].nombre : `${n.grupos_detalle.length} grupos`}
                       </div>
@@ -1215,7 +1219,7 @@ export default function FlujoEditor() {
                   </div>
                   {/* Handle de entrada (visual) */}
                   {n.tipo !== "inicio" && (
-                    <span style={{ position: "absolute", left: -5, top: NODO_H / 2 - 4, width: 9, height: 9, borderRadius: "50%", background: "#fff", border: `2px solid ${cat.bd}`, pointerEvents: "none" }} />
+                    <span style={{ position: "absolute", left: -5, top: NODO_H / 2 - 4, width: 9, height: 9, borderRadius: "50%", background: "var(--color-superficie)", border: `2px solid ${cat.bd}`, pointerEvents: "none" }} />
                   )}
                   {/* Handle de salida: arrastrar desde acá para conectar */}
                   {n.tipo !== "fin" && (
@@ -1224,7 +1228,7 @@ export default function FlujoEditor() {
                       onPointerDown={(e) => onHandlePointerDown(e, n)}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
-                      style={{ position: "absolute", right: -7, top: NODO_H / 2 - 6, width: 13, height: 13, borderRadius: "50%", background: "#fff", border: `2px solid ${cat.sol}`, cursor: "crosshair", touchAction: "none", zIndex: 3 }}
+                      style={{ position: "absolute", right: -7, top: NODO_H / 2 - 6, width: 13, height: 13, borderRadius: "50%", background: "var(--color-superficie)", border: `2px solid ${cat.sol}`, cursor: "crosshair", touchAction: "none", zIndex: 3 }}
                     />
                   )}
                 </div>
@@ -1241,8 +1245,8 @@ export default function FlujoEditor() {
                   top: Math.min(marquesina.y1, marquesina.y2),
                   width: Math.abs(marquesina.x2 - marquesina.x1),
                   height: Math.abs(marquesina.y2 - marquesina.y1),
-                  border: `1px solid ${color.accent}`,
-                  background: `${color.accent}14`,
+                  border: `1px solid var(--color-accent)`,
+                  background: `var(--color-accent)14`,
                   borderRadius: 3,
                   pointerEvents: "none",
                   zIndex: 4,
@@ -1252,18 +1256,18 @@ export default function FlujoEditor() {
 
             {/* Token de "Reproducir" viajando por el lienzo */}
             {reproNodo && (
-              <div style={{ position: "absolute", left: reproNodo.x + NODO_W / 2 - 9, top: reproNodo.y + NODO_H / 2 - 9, width: 18, height: 18, borderRadius: "50%", background: color.accent, border: "3px solid #fff", boxShadow: `0 0 0 4px ${color.accent}55, 0 6px 16px rgba(16,24,40,.3)`, transition: "left .65s cubic-bezier(.5,0,.2,1), top .65s cubic-bezier(.5,0,.2,1)", pointerEvents: "none", zIndex: 5 }} />
+              <div style={{ position: "absolute", left: reproNodo.x + NODO_W / 2 - 9, top: reproNodo.y + NODO_H / 2 - 9, width: 18, height: 18, borderRadius: "50%", background: "var(--color-accent)", border: "3px solid #fff", boxShadow: `0 0 0 4px var(--color-accent)55, 0 6px 16px rgba(16,24,40,.3)`, transition: "left .65s cubic-bezier(.5,0,.2,1), top .65s cubic-bezier(.5,0,.2,1)", pointerEvents: "none", zIndex: 5 }} />
             )}
               </div>
             </div>
           </div>
 
           {/* Controles de zoom (fijos sobre el viewport, no scrollean) */}
-          <div style={{ position: "absolute", left: 14, bottom: 14, display: "flex", alignItems: "center", gap: 4, background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.md, boxShadow: shadow.card, padding: 3, zIndex: 7 }}>
+          <div style={{ position: "absolute", left: 14, bottom: 14, display: "flex", alignItems: "center", gap: 4, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-card)", padding: 3, zIndex: 7 }}>
             <ZoomBtn title="Alejar" onClick={() => zoomBoton(-0.1)}><Icon name="minus" size={15} /></ZoomBtn>
-            <button onClick={() => setZoom(1)} title="Restablecer zoom (100%)" style={{ border: "none", background: "none", cursor: "pointer", fontSize: type.sm, fontWeight: 600, color: color.slate600, minWidth: 42, fontVariantNumeric: "tabular-nums" }}>{Math.round(zoom * 100)}%</button>
+            <button onClick={() => setZoom(1)} title="Restablecer zoom (100%)" style={{ border: "none", background: "none", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-texto-suave)", minWidth: 42, fontVariantNumeric: "tabular-nums" }}>{Math.round(zoom * 100)}%</button>
             <ZoomBtn title="Acercar" onClick={() => zoomBoton(0.1)}><Icon name="plus" size={15} /></ZoomBtn>
-            <div style={{ width: 1, height: 18, background: color.divider, margin: "0 2px" }} />
+            <div style={{ width: 1, height: 18, background: "var(--color-division)", margin: "0 2px" }} />
             <ZoomBtn title="Ajustar al contenido" onClick={ajustar}><Icon name="maximize" size={15} /></ZoomBtn>
           </div>
 
@@ -1273,25 +1277,25 @@ export default function FlujoEditor() {
           )}
 
           {/* Mostrar/ocultar el panel de propiedades */}
-          <button onClick={() => setPanelAbierto((v) => !v)} title={panelAbierto ? "Ocultar propiedades" : "Mostrar propiedades"} aria-label={panelAbierto ? "Ocultar panel de propiedades" : "Mostrar panel de propiedades"} style={{ position: "absolute", right: 10, top: 12, zIndex: 7, width: 30, height: 30, borderRadius: radius.sm, border: `1px solid ${color.border}`, background: "#fff", boxShadow: shadow.card, cursor: "pointer", color: color.slate600, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={() => setPanelAbierto((v) => !v)} title={panelAbierto ? "Ocultar propiedades" : "Mostrar propiedades"} aria-label={panelAbierto ? "Ocultar panel de propiedades" : "Mostrar panel de propiedades"} style={{ position: "absolute", right: 10, top: 12, zIndex: 7, width: 30, height: 30, borderRadius: "var(--radius-sm)", border: `1px solid var(--color-borde)`, background: "var(--color-superficie)", boxShadow: "var(--shadow-card)", cursor: "pointer", color: "var(--color-texto-suave)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Icon name="back" size={15} style={{ transform: panelAbierto ? "rotate(180deg)" : "none" }} />
           </button>
 
           {/* Onboarding del lienzo vacío */}
           {flujoVacio && (
-            <div style={{ position: "absolute", top: 90, left: "50%", transform: "translateX(-50%)", width: 320, maxWidth: "80%", background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.lg, boxShadow: shadow.dropdown, padding: "18px 20px", animation: "fadeUp .2s ease", zIndex: 6 }}>
-              <div style={{ fontSize: type.md, fontWeight: 700, color: color.slate900, marginBottom: 4 }}>Diseñá tu primer proceso</div>
-              <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 12 }}>Tres pasos para armar un flujo:</div>
+            <div style={{ position: "absolute", top: 90, left: "50%", transform: "translateX(-50%)", width: 320, maxWidth: "80%", background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-dropdown)", padding: "18px 20px", animation: "fadeUp .2s ease", zIndex: 6 }}>
+              <div style={{ fontSize: "var(--text-md)", fontWeight: 700, color: "var(--color-texto-fuerte)", marginBottom: 4 }}>Diseñá tu primer proceso</div>
+              <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", marginBottom: 12 }}>Tres pasos para armar un flujo:</div>
               {[
                 ["1", "Agregá nodos", "Hacé clic en un tipo de la columna NODOS (izquierda)."],
                 ["2", "Conectalos", "Arrastrá desde el punto del borde derecho de un nodo al siguiente."],
                 ["3", "Probalo", "Usá «Probar» para recorrer el flujo como un caso real."],
               ].map(([n, t, d]) => (
                 <div key={n} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                  <span style={{ flex: "none", width: 20, height: 20, borderRadius: "50%", background: color.accent50, color: color.accent, fontSize: type.xs, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</span>
+                  <span style={{ flex: "none", width: 20, height: 20, borderRadius: "50%", background: "var(--color-accent-50)", color: "var(--color-accent)", fontSize: "var(--text-xs)", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</span>
                   <div>
-                    <div style={{ fontSize: type.base, fontWeight: 600, color: color.slate700 }}>{t}</div>
-                    <div style={{ fontSize: type.xs, color: color.slate500 }}>{d}</div>
+                    <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--color-texto-medio)" }}>{t}</div>
+                    <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)" }}>{d}</div>
                   </div>
                 </div>
               ))}
@@ -1299,7 +1303,7 @@ export default function FlujoEditor() {
           )}
 
           {conectarDesde && (
-            <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: color.slate900, color: "#fff", padding: "8px 16px", borderRadius: radius.pill, fontSize: type.sm, boxShadow: shadow.dropdown, zIndex: 40 }}>
+            <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "var(--color-ink)", color: "var(--color-white)", padding: "8px 16px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-sm)", boxShadow: "var(--shadow-dropdown)", zIndex: 40 }}>
               Hacé clic en el nodo destino · <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setConectarDesde(null)}>cancelar</span>
             </div>
           )}
@@ -1307,7 +1311,7 @@ export default function FlujoEditor() {
 
         {/* Panel de propiedades (colapsable) */}
         {panelAbierto && (
-        <div style={{ width: 300, borderLeft: `1px solid ${color.border}`, background: "#fff", overflow: "auto", flex: "none" }}>
+        <div style={{ width: 300, borderLeft: `1px solid var(--color-borde)`, background: "var(--color-superficie)", overflow: "auto", flex: "none" }}>
           {sim ? (
             <PanelSimulacion sim={sim} version={version} campos={campos} onAvanzar={avanzarSim} onReiniciar={iniciarSim} onCerrar={() => setSim(null)} />
           ) : problemas ? (
@@ -1334,7 +1338,7 @@ export default function FlujoEditor() {
               onActualizarConexion={actualizarConexion}
             />
           ) : (
-            <div style={{ padding: 22, fontSize: type.base, color: color.slate500 }}>
+            <div style={{ padding: 22, fontSize: "var(--text-base)", color: "var(--color-texto-debil)" }}>
               Seleccioná un nodo para editar sus propiedades, o agregá uno desde la paleta.
             </div>
           )}
@@ -1355,8 +1359,8 @@ function ZoomBtn({ title, onClick, children, disabled }) {
       title={title}
       aria-label={title}
       disabled={disabled}
-      style={{ width: 28, height: 28, borderRadius: radius.sm, border: "none", background: "none", color: disabled ? color.slate400 : color.slate600, opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = color.divider; }}
+      style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", border: "none", background: "none", color: disabled ? "var(--color-texto-tenue)" : "var(--color-texto-suave)", opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--color-division)"; }}
       onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
     >
       {children}
@@ -1368,23 +1372,26 @@ function ZoomBtn({ title, onClick, children, disabled }) {
 function SaveStatus({ estado }) {
   if (estado === "idle") return null;
   const map = {
-    guardando: { txt: "Guardando…", col: color.slate500 },
-    guardado: { txt: "Guardado ✓", col: "#1B7A4E" },
-    error: { txt: "Error al guardar", col: color.danger },
+    guardando: { txt: "Guardando…", col: "var(--color-texto-debil)" },
+    guardado: { txt: "Guardado ✓", col: "var(--color-badge-green-fg)" },
+    error: { txt: "Error al guardar", col: "var(--color-danger)" },
   };
   const s = map[estado] || map.guardando;
-  return <span style={{ fontSize: type.sm, fontWeight: 600, color: s.col, whiteSpace: "nowrap" }}>{s.txt}</span>;
+  return <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: s.col, whiteSpace: "nowrap" }}>{s.txt}</span>;
 }
 
 // Toast efímero con acción opcional (p. ej. «Deshacer»).
 function Toast({ toast, onClose }) {
   const ok = toast.tipo === "ok";
   return (
-    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 14, background: color.slate900, color: "#fff", padding: "11px 16px", borderRadius: radius.md, fontSize: type.base, boxShadow: shadow.dropdown, zIndex: 60, maxWidth: 460, animation: "fadeUp .16s ease" }}>
+    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 14, background: "var(--color-ink)", color: "var(--color-white)", padding: "11px 16px", borderRadius: "var(--radius-md)", fontSize: "var(--text-base)", boxShadow: "var(--shadow-dropdown)", zIndex: 60, maxWidth: 460, animation: "fadeUp .16s ease" }}>
+      {/* Estos colores NO siguen el tema a propósito: el aviso va siempre sobre
+          tinta oscura (`--color-ink`, que es literal), así que están elegidos para
+          leerse ahí. Pasarlos a tokens semánticos los volvería ilegibles en claro. */}
       <span style={{ width: 8, height: 8, borderRadius: "50%", background: ok ? "#46C08A" : "#F26D6D", flex: "none" }} />
       <span style={{ flex: 1 }}>{toast.msg}</span>
       {toast.accion && (
-        <button onClick={toast.accion.fn} style={{ border: "none", background: "none", color: "#9FB0FF", fontWeight: 700, cursor: "pointer", fontSize: type.base, whiteSpace: "nowrap" }}>{toast.accion.label}</button>
+        <button onClick={toast.accion.fn} style={{ border: "none", background: "none", color: "#9FB0FF", fontWeight: 700, cursor: "pointer", fontSize: "var(--text-base)", whiteSpace: "nowrap" }}>{toast.accion.label}</button>
       )}
       <button onClick={onClose} aria-label="Cerrar" style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", display: "flex", opacity: .7 }}>
         <Icon name="x" size={15} />
@@ -1396,7 +1403,7 @@ function Toast({ toast, onClose }) {
 // --------------------------------------------------------------------------- //
 function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerrar }) {
   const nodo = version.nodos.find((n) => n.id === sim.current);
-  const cat = nodo ? nodeCat[nodo.tipo] || nodeCat.form : nodeCat.inicio;
+  const cat = nodo ? catDe(nodo.tipo) : catDe("inicio");
   const [valores, setValores] = useState({});
 
   const camposForm = nodo?.tipo === "form" && nodo.formulario
@@ -1428,12 +1435,12 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: type.md, fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: badgeTone.green.fg }} /> Modo prueba
+        <div style={{ fontSize: "var(--text-md)", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-badge-green-fg)" }} /> Modo prueba
         </div>
-        <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}><Icon name="x" size={18} /></button>
+        <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", padding: 4, borderRadius: "var(--radius-sm)" }}><Icon name="x" size={18} /></button>
       </div>
-      <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 16 }}>
+      <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", marginBottom: 16 }}>
         Corre con el motor real y después se deshace: no queda nada en la base.
       </div>
 
@@ -1441,30 +1448,34 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
         // El error del motor es el resultado del ensayo, no una falla: dice qué
         // impide que el caso siga y en qué nodo. Es justo lo que el simulador
         // viejo no podía saber.
-        <div style={{ fontSize: type.base, color: color.danger, background: badgeTone.error.bg, padding: "10px 12px", borderRadius: radius.md }}>
+        <div style={{ fontSize: "var(--text-base)", color: "var(--color-danger)", background: "var(--color-badge-error-bg)", padding: "10px 12px", borderRadius: "var(--radius-md)" }}>
           <div style={{ fontWeight: 700, marginBottom: 3 }}>
             Se detiene en «{sim.error.titulo}»
           </div>
           {sim.error.mensaje}
         </div>
       ) : sim.fin ? (
-        <div style={{ background: badgeTone.green.bg, color: badgeTone.green.fg, padding: "14px 16px", borderRadius: radius.md, fontSize: type.base, fontWeight: 600 }}>
+        <div style={{ background: "var(--color-badge-green-bg)", color: "var(--color-badge-green-fg)", padding: "14px 16px", borderRadius: "var(--radius-md)", fontSize: "var(--text-base)", fontWeight: 600 }}>
           ✓ Caso simulado {sim.sinSalida ? "detenido (nodo sin salida)" : "finalizado"}.
         </div>
       ) : nodo ? (
         <>
-          <div style={{ border: `1px solid ${cat.bd}`, background: cat.tint, borderRadius: radius.md, padding: 13, marginBottom: 14 }}>
-            <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
-            <div style={{ fontSize: type.md, fontWeight: 700, color: color.slate900 }}>{nodo.titulo}</div>
+          <div style={{ border: `1px solid ${cat.bd}`, background: cat.tint, borderRadius: "var(--radius-md)", padding: 13, marginBottom: 14 }}>
+            {/* La categoría va en un gris legible, NO en el color del nodo: esa paleta
+                        está pensada para bordes y rellenos, y como texto no llega a
+                        4.5:1 («Decisión» daba 2.64:1). El cuadradito de la izquierda,
+                        el borde y el tinte ya identifican el tipo. */}
+                    <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", color: "var(--color-texto-suave)" }}>{cat.name.toUpperCase()}</div>
+            <div style={{ fontSize: "var(--text-md)", fontWeight: 700, color: "var(--color-texto-fuerte)" }}>{nodo.titulo}</div>
           </div>
 
           {nodo.tipo === "form" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
               {camposForm.length === 0 ? (
-                <div style={{ fontSize: type.sm, color: color.slate500 }}>Este formulario no tiene campos (o no está asignado).</div>
+                <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)" }}>Este formulario no tiene campos (o no está asignado).</div>
               ) : camposForm.map((c) => (
                 <div key={c.id}>
-                  <div style={{ fontSize: type.sm, fontWeight: 600, color: color.slate600, marginBottom: 5 }}>{c.label}{c.requerido && <span style={{ color: color.danger }}> *</span>}</div>
+                  <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-texto-suave)", marginBottom: 5 }}>{c.label}{c.requerido && <span style={{ color: "var(--color-danger)" }}> *</span>}</div>
                   {c.tipo === "seleccion_unica" ? (
                     <Select size="sm" value={valores[c.id] || ""} onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}>
                       <option value="">Seleccionar…</option>
@@ -1488,26 +1499,26 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
           </Button>
         </>
       ) : (
-        <div style={{ fontSize: type.base, color: color.slate500 }}>Sin nodo actual.</div>
+        <div style={{ fontSize: "var(--text-base)", color: "var(--color-texto-debil)" }}>Sin nodo actual.</div>
       )}
 
       {/* Recorrido */}
-      <div style={{ marginTop: 18, borderTop: `1px solid ${color.divider}`, paddingTop: 14 }}>
-        <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".5px", color: color.slate500, marginBottom: 8 }}>RECORRIDO</div>
+      <div style={{ marginTop: 18, borderTop: `1px solid var(--color-division)`, paddingTop: 14 }}>
+        <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".5px", color: "var(--color-texto-debil)", marginBottom: 8 }}>RECORRIDO</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {(sim.camino || []).map((nid, i) => {
             const n = version.nodos.find((x) => x.id === nid);
             if (!n) return null;
-            const c = nodeCat[n.tipo] || nodeCat.form;
+            const c = catDe(n.tipo);
             return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: type.sm, color: nid === sim.current ? color.slate900 : color.slate500 }}>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-sm)", color: nid === sim.current ? "var(--color-texto-fuerte)" : "var(--color-texto-debil)" }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: c.sol, flex: "none" }} />
                 {n.titulo}
               </div>
             );
           })}
         </div>
-        <button onClick={onReiniciar} style={{ marginTop: 12, border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: type.sm, fontWeight: 600 }}>↻ Reiniciar prueba</button>
+        <button onClick={onReiniciar} style={{ marginTop: 12, border: "none", background: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 600 }}>↻ Reiniciar prueba</button>
       </div>
     </div>
   );
@@ -1574,8 +1585,8 @@ function MiniMapa({ nodos, seleccion, vista, onIr }) {
       title="Mapa del flujo · hacé clic para ir a esa zona"
       style={{
         position: "absolute", right: 14, bottom: 14, width: MAPA_W, height: MAPA_H,
-        background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.md,
-        boxShadow: shadow.card, overflow: "hidden", cursor: "pointer", zIndex: 7,
+        background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)",
+        boxShadow: "var(--shadow-card)", overflow: "hidden", cursor: "pointer", zIndex: 7,
         touchAction: "none",
       }}
     >
@@ -1589,10 +1600,10 @@ function MiniMapa({ nodos, seleccion, vista, onIr }) {
             width: Math.max(3, NODO_W * k),
             height: Math.max(2, NODO_H * k),
             borderRadius: 1,
-            background: (nodeCat[n.tipo] || nodeCat.form).sol,
+            background: catDe(n.tipo).sol,
             // Lo elegido se destaca: el minimapa también sirve para ubicar dónde
             // quedó lo que se acaba de seleccionar o pegar.
-            outline: seleccion.has(n.id) ? `1.5px solid ${color.accent}` : "none",
+            outline: seleccion.has(n.id) ? `1.5px solid var(--color-accent)` : "none",
           }}
         />
       ))}
@@ -1606,8 +1617,8 @@ function MiniMapa({ nodos, seleccion, vista, onIr }) {
             top: vista.y * k,
             width: Math.min(MAPA_W, vista.w * k),
             height: Math.min(MAPA_H, vista.h * k),
-            border: `1.5px solid ${color.accent}`,
-            background: `${color.accent}12`,
+            border: `1.5px solid var(--color-accent)`,
+            background: `var(--color-accent)12`,
             borderRadius: 2,
             pointerEvents: "none",
           }}
@@ -1628,19 +1639,19 @@ function PanelSeleccion({ cantidad, onDuplicar, onBorrar, onLimpiar }) {
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: type.md, fontWeight: 700 }}>{cantidad} nodos elegidos</div>
-        <button onClick={onLimpiar} aria-label="Quitar la selección" title="Quitar la selección" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4 }}>
+        <div style={{ fontSize: "var(--text-md)", fontWeight: 700 }}>{cantidad} nodos elegidos</div>
+        <button onClick={onLimpiar} aria-label="Quitar la selección" title="Quitar la selección" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", padding: 4 }}>
           <Icon name="x" size={18} />
         </button>
       </div>
-      <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 16 }}>
+      <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", marginBottom: 16 }}>
         Arrastrá cualquiera de ellos para mover el grupo, o usá las flechas del teclado.
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <Button variant="secondary" onClick={onDuplicar}>Duplicar (Ctrl+D)</Button>
         <Button variant="danger" onClick={onBorrar}>Eliminar los {cantidad}</Button>
       </div>
-      <div style={{ marginTop: 16, fontSize: type.xs, color: color.slate400, lineHeight: 1.5 }}>
+      <div style={{ marginTop: 16, fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", lineHeight: 1.5 }}>
         Al duplicar se copian también las conexiones entre los nodos elegidos. Las que
         entran o salen del grupo no, porque apuntarían a nodos que la copia no reprodujo.
       </div>
@@ -1706,16 +1717,16 @@ function BuscarNodo({ nodos, onElegir }) {
         style={{ width: 190 }}
       />
       {coincide.length > 0 && (
-        <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, width: 240, background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.md, boxShadow: shadow.dropdown, zIndex: 30, overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, width: 240, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-dropdown)", zIndex: 30, overflow: "hidden" }}>
           {coincide.map((n) => (
             <button
               key={n.id}
               onMouseDown={(e) => { e.preventDefault(); onElegir(n.id); cerrar(); }}
-              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 11px", border: "none", background: "none", cursor: "pointer", textAlign: "left", fontSize: type.base }}
+              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 11px", border: "none", background: "none", cursor: "pointer", textAlign: "left", fontSize: "var(--text-base)" }}
             >
-              <span style={{ width: 7, height: 7, borderRadius: 2, background: (nodeCat[n.tipo] || nodeCat.form).sol, flex: "none" }} />
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: catDe(n.tipo).sol, flex: "none" }} />
               <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.titulo}</span>
-              <span style={{ fontSize: type.xs, color: color.slate400 }}>{(nodeCat[n.tipo] || nodeCat.form).name}</span>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)" }}>{catDe(n.tipo).name}</span>
             </button>
           ))}
         </div>
@@ -1740,7 +1751,7 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
   return (
     <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: color.slate500 }}>SI</span>
+        <span style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", color: "var(--color-texto-debil)" }}>SI</span>
         {reglas.length > 1 && (
           <Select
             size="sm"
@@ -1756,7 +1767,7 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
       </div>
 
       {reglas.length === 0 && (
-        <div style={{ fontSize: type.sm, color: color.slate500 }}>
+        <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)" }}>
           Sin condiciones: es la rama por defecto (si no).
         </div>
       )}
@@ -1766,7 +1777,7 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
         const ops = operadoresDe(campoSel);
         const operador = r.operador || "=";
         return (
-          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 5, borderLeft: `2px solid ${color.divider}`, paddingLeft: 9 }}>
+          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 5, borderLeft: `2px solid var(--color-division)`, paddingLeft: 9 }}>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <Select
                 size="sm"
@@ -1785,7 +1796,7 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
                 onClick={() => quitar(i)}
                 title="Quitar esta condición"
                 aria-label={`Quitar la condición ${i + 1}`}
-                style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex", padding: 3, flex: "none" }}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-tenue)", display: "flex", padding: 3, flex: "none" }}
               >
                 <Icon name="x" size={14} />
               </button>
@@ -1822,7 +1833,7 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
 
       <button
         onClick={agregar}
-        style={{ alignSelf: "flex-start", border: "none", background: "none", cursor: "pointer", color: color.accent, fontSize: type.sm, fontWeight: 600, padding: 0 }}
+        style={{ alignSelf: "flex-start", border: "none", background: "none", cursor: "pointer", color: "var(--color-accent)", fontSize: "var(--text-sm)", fontWeight: 600, padding: 0 }}
       >
         + Agregar condición
       </button>
@@ -1857,7 +1868,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
   const [formularios, setFormularios] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [boxesArea, setBoxesArea] = useState([]);
-  const cat = nodeCat[nodo.tipo] || nodeCat.form;
+  const cat = catDe(nodo.tipo);
   const salidas = version.conexiones.filter((c) => c.origen === nodo.id);
   const aplicaResponsable = TIPOS_CON_RESPONSABLE.includes(nodo.tipo);
 
@@ -1894,21 +1905,21 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         <span style={{ width: 28, height: 28, borderRadius: 8, background: cat.tint, border: `1px solid ${cat.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
           <span style={{ width: 11, height: 11, borderRadius: 3, background: cat.sol }} />
         </span>
-        <div style={{ flex: 1, fontSize: type.sm, fontWeight: 700, letterSpacing: ".5px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
+        <div style={{ flex: 1, fontSize: "var(--text-sm)", fontWeight: 700, letterSpacing: ".5px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
         <button
           onClick={() => setAyuda((v) => { localStorage.setItem("cauce.ayudaNodo", v ? "0" : "1"); return !v; })}
           title="¿Qué hace este nodo?"
           aria-label="¿Qué hace este nodo?"
-          style={{ width: 28, height: 28, borderRadius: radius.sm, border: `1px solid ${ayuda ? color.accent : color.inputBorder}`, background: ayuda ? color.accent50 : "#fff", color: ayuda ? color.accent : color.slate500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
+          style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", border: `1px solid ${ayuda ? "var(--color-accent)" : "var(--color-campo-borde)"}`, background: ayuda ? "var(--color-accent-50)" : "var(--color-superficie)", color: ayuda ? "var(--color-accent)" : "var(--color-texto-debil)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
         >
           <Icon name="help" size={15} />
         </button>
       </div>
 
       {ayuda && (
-        <div style={{ display: "flex", gap: 9, background: color.accent50, border: `1px solid ${color.accent100}`, borderRadius: 10, padding: "11px 12px", marginBottom: 16 }}>
-          <Icon name="help" size={15} style={{ color: color.accent, marginTop: 1 }} />
-          <div style={{ fontSize: 12.5, lineHeight: 1.5, color: color.slate700 }}>
+        <div style={{ display: "flex", gap: 9, background: "var(--color-accent-50)", border: `1px solid var(--color-accent-100)`, borderRadius: 10, padding: "11px 12px", marginBottom: 16 }}>
+          <Icon name="help" size={15} style={{ color: "var(--color-accent)", marginTop: 1 }} />
+          <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--color-texto-medio)" }}>
             {AYUDA_NODO[nodo.tipo] || "Nodo del flujo."}
           </div>
         </div>
@@ -1926,7 +1937,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               <option value="derivado">Solo por derivación — no se crea a mano</option>
               <option value="ambos">Ambas</option>
             </Select>
-            <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--color-texto-tenue)" }}>
               Define si el flujo aparece en «Nuevo caso» y/o si puede ser destino de una derivación.
             </div>
           </Field>
@@ -1953,7 +1964,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               El paciente espera y se lo llama desde un box
             </label>
             {(nodo.config || {}).con_fila && (
-              <div style={{ marginTop: 8, fontSize: 11.5, color: color.slate500 }}>
+              <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--color-texto-debil)" }}>
                 {!flujoAreaId
                   ? "Este flujo no tiene área: configurá un área para usar boxes."
                   : boxesArea.length === 0
@@ -1968,7 +1979,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
 
         {nodo.tipo === "espera" && (
           <>
-            <div style={{ fontSize: 12, color: color.slate500 }}>
+            <div style={{ fontSize: 12, color: "var(--color-texto-debil)" }}>
               Los casos esperan en una fila (FIFO + urgentes primero) y se los llama desde un box para que avancen al siguiente paso.
             </div>
             <PantallaUrl nodo={nodo} />
@@ -2002,7 +2013,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
                     </option>
                   ))}
                 </Select>
-                <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+                <div style={{ marginTop: 6, fontSize: 11, color: "var(--color-texto-tenue)" }}>
                   {flujosDelArea.length === 0
                     ? "El área no tiene flujos que acepten derivación. Se derivará solo cambiando el área."
                     : (nodo.config || {}).flujo_destino_id
@@ -2034,19 +2045,19 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         {aplicaResponsable && (
           <Field label="Responsable — ¿quién lo hace?">
             {grupos.length === 0 ? (
-              <div style={{ fontSize: 12, color: color.slate400 }}>
+              <div style={{ fontSize: 12, color: "var(--color-texto-tenue)" }}>
                 No hay grupos en la institución. Crealos en Estructura → área → Grupos.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 190, overflow: "auto", border: `1px solid ${color.inputBorder}`, borderRadius: 9, padding: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 190, overflow: "auto", border: `1px solid var(--color-campo-borde)`, borderRadius: 9, padding: 6 }}>
                 {grupos.map((g) => {
                   const on = asignados.has(g.id);
                   return (
-                    <label key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 7px", borderRadius: 7, cursor: "pointer", background: on ? color.accent50 : "transparent" }}>
+                    <label key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 7px", borderRadius: 7, cursor: "pointer", background: on ? "var(--color-accent-50)" : "transparent" }}>
                       <input type="checkbox" checked={on} onChange={() => toggleGrupo(g.id)} />
                       <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: color.slate700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.nombre}</span>
-                        <span style={{ fontSize: 10.5, color: color.slate400 }}>{g.area_nombre}</span>
+                        <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--color-texto-medio)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.nombre}</span>
+                        <span style={{ fontSize: 10.5, color: "var(--color-texto-tenue)" }}>{g.area_nombre}</span>
                       </span>
                     </label>
                   );
@@ -2057,7 +2068,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               <AvisoFalta texto="Sin grupo asignado: nadie podrá tomar este paso." />
             )}
             {asignados.size > 0 && (
-              <div style={{ marginTop: 6, fontSize: type.xs, color: color.slate500 }}>
+              <div style={{ marginTop: 6, fontSize: "var(--text-xs)", color: "var(--color-texto-debil)" }}>
                 Cualquier integrante de {asignados.size === 1 ? "el grupo asignado" : `los ${asignados.size} grupos asignados`} podrá tomar este paso.
               </div>
             )}
@@ -2065,21 +2076,21 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         )}
 
         {/* Conexiones salientes */}
-        <div style={{ borderTop: `1px solid ${color.divider}`, paddingTop: 14 }}>
+        <div style={{ borderTop: `1px solid var(--color-division)`, paddingTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: color.slate700 }}>Conexiones</div>
-            <button onClick={onConectar} style={{ border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>+ conectar</button>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--color-texto-medio)" }}>Conexiones</div>
+            <button onClick={onConectar} style={{ border: "none", background: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>+ conectar</button>
           </div>
           {salidas.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: color.slate400 }}>Sin salidas.</div>
+            <div style={{ fontSize: 12.5, color: "var(--color-texto-tenue)" }}>Sin salidas.</div>
           ) : (
             salidas.map((c) => {
               const destino = version.nodos.find((n) => n.id === c.destino);
               return (
-                <div key={c.id} style={{ border: `1px solid ${color.divider}`, borderRadius: 9, padding: 10, marginBottom: 8 }}>
+                <div key={c.id} style={{ border: `1px solid var(--color-division)`, borderRadius: 9, padding: 10, marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: type.sm, fontWeight: 600 }}>→ {destino?.titulo || "?"}</span>
-                    <button onClick={() => onBorrarConexion(c.id)} style={{ border: "none", background: "none", color: color.danger, cursor: "pointer", fontSize: type.xs, padding: "4px 6px", borderRadius: radius.sm }}>quitar</button>
+                    <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>→ {destino?.titulo || "?"}</span>
+                    <button onClick={() => onBorrarConexion(c.id)} style={{ border: "none", background: "none", color: "var(--color-danger)", cursor: "pointer", fontSize: "var(--text-xs)", padding: "4px 6px", borderRadius: "var(--radius-sm)" }}>quitar</button>
                   </div>
                   {nodo.tipo === "decision" && (
                     <>
@@ -2098,7 +2109,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           )}
         </div>
 
-        <button onClick={() => onBorrar(nodo.id)} style={{ marginTop: 6, border: "none", background: badgeTone.error.bg, color: color.danger, padding: "9px 0", borderRadius: radius.md, cursor: "pointer", fontSize: type.base, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+        <button onClick={() => onBorrar(nodo.id)} style={{ marginTop: 6, border: "none", background: "var(--color-badge-error-bg)", color: "var(--color-danger)", padding: "9px 0", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: "var(--text-base)", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
           <Icon name="trash" size={15} /> Eliminar nodo
         </button>
       </div>
@@ -2138,10 +2149,10 @@ function PantallaUrl({ nodo }) {
       {!token ? (
         <>
           <button onClick={() => generar(false)} disabled={cargando}
-            style={{ height: 36, padding: "0 14px", borderRadius: 9, background: color.accent, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+            style={{ height: 36, padding: "0 14px", borderRadius: 9, background: "var(--color-accent-fuerte)", color: "var(--color-sobre-accent)", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
             {cargando ? "Generando…" : "Generar URL de pantalla"}
           </button>
-          <div style={{ marginTop: 6, fontSize: 11, color: color.slate400 }}>
+          <div style={{ marginTop: 6, fontSize: 11, color: "var(--color-texto-tenue)" }}>
             Una pantalla pública (TV de sala de espera) que muestra a quién se llama y desde qué box.
           </div>
         </>
@@ -2150,20 +2161,20 @@ function PantallaUrl({ nodo }) {
           <div style={{ display: "flex", gap: 6 }}>
             <Input readOnly value={url} onFocus={(e) => e.target.select()} style={{ fontSize: 12, fontFamily: "monospace" }} />
             <button onClick={copiar} title="Copiar enlace"
-              style={{ flex: "none", height: 38, padding: "0 12px", borderRadius: 9, background: copiado ? "#E6F5EC" : "#EEF0F3", color: copiado ? "#1B7A4E" : color.slate600, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+              style={{ flex: "none", height: 38, padding: "0 12px", borderRadius: 9, background: copiado ? "var(--color-badge-green-bg)" : "var(--color-badge-neutral-bg)", color: copiado ? "var(--color-badge-green-fg)" : "var(--color-texto-suave)", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
               {copiado ? "✓" : "Copiar"}
             </button>
           </div>
           <div style={{ display: "flex", gap: 14, marginTop: 8, alignItems: "center" }}>
-            <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: type.sm, fontWeight: 600, color: color.accent, textDecoration: "none" }}>
+            <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-accent)", textDecoration: "none" }}>
               Abrir pantalla ↗
             </a>
             <button onClick={() => { if (window.confirm("¿Regenerar el enlace? La pantalla abierta actualmente dejará de funcionar.")) generar(true); }} disabled={cargando}
-              style={{ border: "none", background: "none", color: color.slate500, cursor: "pointer", fontSize: type.xs }}>
+              style={{ border: "none", background: "none", color: "var(--color-texto-debil)", cursor: "pointer", fontSize: "var(--text-xs)" }}>
               {cargando ? "…" : "Regenerar enlace"}
             </button>
           </div>
-          <div style={{ marginTop: 6, fontSize: type.xs, color: color.slate500 }}>
+          <div style={{ marginTop: 6, fontSize: "var(--text-xs)", color: "var(--color-texto-debil)" }}>
             Abrila en el televisor de la sala. Al regenerar, el enlace anterior deja de funcionar.
           </div>
         </>
@@ -2173,23 +2184,23 @@ function PantallaUrl({ nodo }) {
 }
 
 function PanelValidacion({ problemas, onCerrar, onFocus }) {
-  const sevColor = { error: color.danger, aviso: badgeTone.amber.fg };
-  const sevBg = { error: badgeTone.error.bg, aviso: badgeTone.amber.bg };
+  const sevColor = { error: "var(--color-danger)", aviso: "var(--color-badge-amber-fg)" };
+  const sevBg = { error: "var(--color-badge-error-bg)", aviso: "var(--color-badge-amber-bg)" };
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: type.md, fontWeight: 700 }}>Validación</div>
-        <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}><Icon name="x" size={18} /></button>
+        <div style={{ fontSize: "var(--text-md)", fontWeight: 700 }}>Validación</div>
+        <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", padding: 4, borderRadius: "var(--radius-sm)" }}><Icon name="x" size={18} /></button>
       </div>
       {problemas.publicado && (
-        <div style={{ fontSize: type.base, background: badgeTone.green.bg, color: badgeTone.green.fg, padding: "10px 12px", borderRadius: radius.md, marginBottom: 12, fontWeight: 600 }}>✓ Versión publicada</div>
+        <div style={{ fontSize: "var(--text-base)", background: "var(--color-badge-green-bg)", color: "var(--color-badge-green-fg)", padding: "10px 12px", borderRadius: "var(--radius-md)", marginBottom: 12, fontWeight: 600 }}>✓ Versión publicada</div>
       )}
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <Badge tone={problemas.errores ? "error" : "green"}>{problemas.errores} errores</Badge>
         <Badge tone="amber">{problemas.avisos} avisos</Badge>
       </div>
       {problemas.problemas.length === 0 ? (
-        <div style={{ fontSize: type.base, color: color.slate500 }}>Sin problemas. {problemas.puede_publicar ? "Lista para publicar." : ""}</div>
+        <div style={{ fontSize: "var(--text-base)", color: "var(--color-texto-debil)" }}>Sin problemas. {problemas.puede_publicar ? "Lista para publicar." : ""}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {problemas.problemas.map((p, i) => (
@@ -2199,13 +2210,13 @@ function PanelValidacion({ problemas, onCerrar, onFocus }) {
               tabIndex={p.nodo_id ? 0 : undefined}
               onClick={() => p.nodo_id && onFocus(p.nodo_id)}
               onKeyDown={(e) => { if (p.nodo_id && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onFocus(p.nodo_id); } }}
-              style={{ border: `1px solid ${color.divider}`, borderRadius: radius.md, padding: 12, cursor: p.nodo_id ? "pointer" : "default" }}
+              style={{ border: `1px solid var(--color-division)`, borderRadius: "var(--radius-md)", padding: 12, cursor: p.nodo_id ? "pointer" : "default" }}
             >
-              <span style={{ display: "inline-block", fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", background: sevBg[p.sev], color: sevColor[p.sev], padding: "2px 7px", borderRadius: radius.sm, marginBottom: 6 }}>
+              <span style={{ display: "inline-block", fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", background: sevBg[p.sev], color: sevColor[p.sev], padding: "2px 7px", borderRadius: "var(--radius-sm)", marginBottom: 6 }}>
                 {p.sev === "error" ? "ERROR" : "AVISO"}
               </span>
-              <div style={{ fontSize: type.base, fontWeight: 600 }}>{p.titulo}</div>
-              <div style={{ fontSize: type.sm, color: color.slate500, marginTop: 2 }}>{p.detalle}</div>
+              <div style={{ fontSize: "var(--text-base)", fontWeight: 600 }}>{p.titulo}</div>
+              <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", marginTop: 2 }}>{p.detalle}</div>
             </div>
           ))}
         </div>
@@ -2217,7 +2228,7 @@ function PanelValidacion({ problemas, onCerrar, onFocus }) {
 // Aviso inline ámbar para configuraciones incompletas de un nodo.
 function AvisoFalta({ texto }) {
   return (
-    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, fontSize: type.xs, color: badgeTone.amber.fg, background: badgeTone.amber.bg, padding: "5px 8px", borderRadius: radius.sm }}>
+    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-xs)", color: "var(--color-badge-amber-fg)", background: "var(--color-badge-amber-bg)", padding: "5px 8px", borderRadius: "var(--radius-sm)" }}>
       <span style={{ fontWeight: 800 }}>!</span> {texto}
     </div>
   );

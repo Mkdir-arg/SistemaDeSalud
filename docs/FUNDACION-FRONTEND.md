@@ -7,13 +7,11 @@ Contexto y hoja de ruta en [`PLAN-DESARROLLO.md`](PLAN-DESARROLLO.md).
 
 ## El estado
 
-Todas las pantallas están migradas **menos una**: el editor de flujos
-([`FlujoEditor.jsx`](../frontend/src/pages/diseno/FlujoEditor.jsx)), que se rehace
-entero en la Fase 2 y por eso no se tocó.
+**Todas** las pantallas están migradas, incluido el editor de flujos.
 
 | | Antes | Ahora |
 |---|---|---|
-| Estilos | `style={{}}` inline leyendo `theme.js` | clases de Tailwind sobre tokens |
+| Estilos | `style={{}}` inline leyendo `theme.js` | clases y variables sobre tokens |
 | Datos | `fetch` a mano en cada pantalla | TanStack Query (`useLista`, `useAccion`) |
 | Paginación | ninguna (mostraba los primeros 25 y descartaba el resto) | `TablaRecurso` |
 | Filtros y búsqueda | `.filter()` sobre lo ya traído | parámetros al servidor |
@@ -21,12 +19,14 @@ entero en la Fase 2 y por eso no se tocó.
 | Responsive | no | sí |
 | Contraste AA | sin verificar | medido en 12 pantallas × 2 temas |
 
-`theme.js` **sigue existiendo** y no se borra todavía: es lo que consume el editor
-de flujos, y además es la fuente del generador de tokens. Desaparece cuando la
-Fase 2 rehaga el editor. Lo que sí se separó es el vocabulario del negocio
-(estados, nombres de nodo), que se fue a
-[`lib/dominio.js`](../frontend/src/lib/dominio.js): eso sobrevive al sistema de
-diseño y no tenía por qué morir con él.
+`theme.js` **ya no existe**: se borró al migrar el editor de flujos en la Fase 2A,
+que era su último consumidor. La única fuente del sistema de diseño es ahora
+[`tokens.css`](../frontend/src/styles/tokens.css), y de ahí se deriva `escalas.js`
+con `npm run escalas`.
+
+El vocabulario del negocio (estados, nombres de nodo) se había separado antes a
+[`lib/dominio.js`](../frontend/src/lib/dominio.js), y eso es lo que permitió
+borrar `theme.js` sin llevárselo puesto: sobrevive al sistema de diseño.
 
 La excepción deliberada sigue siendo la pantalla de llamados (ver más abajo).
 

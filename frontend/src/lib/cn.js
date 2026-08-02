@@ -6,7 +6,7 @@ import { escalas } from "@/styles/escalas";
 // tailwind-merge sabe deduplicar las clases de Tailwind, pero no las escalas
 // propias: para él `rounded-pill` o `text-danger` son clases desconocidas y las
 // deja pasar junto con la que deberían pisar. Le pasamos las escalas generadas
-// desde theme.js para que las agrupe bien.
+// desde tokens.css para que las agrupe bien.
 const merge = extendTailwindMerge({ extend: { theme: escalas } });
 
 /**

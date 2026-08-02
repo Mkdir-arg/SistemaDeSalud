@@ -1,16 +1,25 @@
 /*
- * ARCHIVO GENERADO — no editar a mano.
- * Fuente: src/theme.js · Regenerar con: npm run tokens
+ * SISTEMA DE DISEÑO — la única fuente. Se edita acá.
+ *
+ * Hasta la Fase 2A este archivo se generaba desde `src/theme.js`, que alimentaba
+ * los estilos inline de las pantallas sin migrar. Ese archivo ya no existe: al
+ * migrar el editor de flujos quedó sin consumidores y se borró. Ahora los tokens
+ * viven sólo acá.
+ *
+ * Lo que SÍ sigue derivándose es `escalas.js` (los nombres, para tailwind-merge),
+ * con `npm run escalas`. Después de agregar o quitar un token, correrlo: si no,
+ * `cn()` deja de deduplicar esa escala y los overrides por `className` empiezan a
+ * fallar en silencio.
  *
  * Los tokens se declaran con @theme, así que Tailwind los publica como variables
  * CSS en :root **y** genera las utilidades correspondientes (bg-accent,
- * text-slate-600, rounded-lg, shadow-card…).
+ * text-texto-debil, rounded-lg, shadow-card…).
  *
  * Es `@theme static` y no `@theme` a propósito: por defecto Tailwind hace
- * tree-shaking y solo emite las variables que alguna utilidad usa. Mientras
- * convivan los estilos inline —que leen los tokens desde JS— y el CSS a mano, la
- * capa de tokens tiene que estar COMPLETA en :root, si no hay tokens que existen
- * en teoría y no en el navegador. Son ~96 variables: el costo es despreciable.
+ * tree-shaking y sólo emite las variables que alguna utilidad usa. Acá la capa
+ * tiene que estar COMPLETA en :root porque hay estilos que las leen como
+ * `var(--color-…)` —el lienzo del editor, sobre todo—, y esos usos el escaneo no
+ * los ve. Son ~180 variables: el costo es despreciable.
  *
  * Las escalas propias se declaran con `*: initial` antes de definirlas: eso borra
  * las de Tailwind y deja SOLO las del sistema de diseño. Es deliberado — la regla

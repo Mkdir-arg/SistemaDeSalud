@@ -1,13 +1,12 @@
 /**
  * Vocabulario del dominio: cómo se llama y con qué tono se muestra cada estado.
  *
- * Vive acá y no en `theme.js` porque no es estilo. Que un caso «cerrado» se
+ * Vive acá y no con el sistema de diseño porque no es estilo. Que un caso «cerrado» se
  * muestre en gris es una decisión visual, pero que exista un estado «cerrado» y
  * se escriba así es del negocio: sobrevive al sistema de diseño.
  *
- * La separación importa para el final de la Fase 1: `theme.js` se borra cuando no
- * queden estilos inline, y sin este archivo se llevaría puestos los mapas de
- * estado que usan hasta las pantallas ya migradas.
+ * La separación fue lo que permitió borrar `theme.js` al cerrar la Fase 2A sin
+ * llevarse puestos los mapas de estado, que usan casi todas las pantallas.
  */
 
 /** Estado del caso → etiqueta y tono de `Badge`. */
