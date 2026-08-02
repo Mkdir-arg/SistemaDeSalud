@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
+import { useQuery } from "@tanstack/react-query";
+
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/Shell";
 import { Badge, Button, Card, Checkbox, Field, Input, Mono, Select, Stepper, Textarea } from "@/components/ui";
 import { EstadoError, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
-import { casoId, fechaHora } from "@/lib/format";
+import { antiguedad, casoId, fechaHora } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { estadoCaso, nombreNodo } from "@/lib/dominio";
 import { CancelarModal, ReasignarModal } from "../Supervision";
@@ -115,6 +117,8 @@ export default function CasoDetalle() {
               <Dato k="Prioridad" v={caso.prioridad_display} />
             </dl>
           </Card>
+
+          {caso.cama && <PanelCama caso={caso} ejecutar={ejecutar} ocupado={accion.isPending} />}
 
           {caso.puede_supervisar && !cerrado && (
             <PanelSupervision caso={caso} ejecutar={ejecutar} ocupado={accion.isPending} />
@@ -311,6 +315,7 @@ function PanelPaso({ caso, cerrado, ocupado, ejecutar, hc }) {
       </Card>
     );
   }
+  if (tipo === "cama") return <PasoCama caso={caso} ocupado={ocupado} ejecutar={ejecutar} />;
   if (tipo === "form") return <PasoFormulario caso={caso} ocupado={ocupado} ejecutar={ejecutar} />;
   if (tipo === "atencion") return <PasoAtencion caso={caso} ocupado={ocupado} ejecutar={ejecutar} hc={hc} />;
   if (tipo === "espera") {
@@ -326,6 +331,143 @@ function PanelPaso({ caso, cerrado, ocupado, ejecutar, hc }) {
     <Card className="p-lg sm:p-xxl">
       <h3 className="text-lg font-bold">{caso.paso_actual}</h3>
       <p className="mt-2 text-md text-texto-debil">Este paso no requiere una acción manual.</p>
+    </Card>
+  );
+}
+
+/**
+ * Paso «Asignar cama»: el paciente espera una cama del sector.
+ *
+ * Se listan las camas libres y se elige una. No se asigna sola a propósito: qué
+ * cama le toca a quién depende de aislamiento, del sexo de la sala y de la
+ * gravedad, y adivinarlo se paga caro.
+ */
+function PasoCama({ caso, ocupado, ejecutar }) {
+  const q = useQuery({
+    queryKey: ["camas-disponibles", caso.id],
+    queryFn: () => api.get(`/casos/${caso.id}/cama/`),
+  });
+  const camas = q.data?.camas || [];
+
+  return (
+    <Card className="p-lg sm:p-xxl">
+      <CabeceraPaso tipo="cama" titulo={caso.paso_actual} />
+      {q.isLoading ? (
+        <Skeleton className="h-24" />
+      ) : camas.length === 0 ? (
+        /* Sin camas el caso no avanza, y eso es información operativa: el
+           sector está lleno. Decirlo es más útil que un panel vacío. */
+        <div className="flex items-start gap-2 rounded-md bg-badge-amber-bg px-3.5 py-3 text-md text-badge-amber-fg">
+          <Icon name="alert" size={16} className="mt-0.5 flex-none" />
+          <span>
+            No hay camas libres en el sector. El paciente queda esperando; se lo
+            puede internar apenas se libere una, desde acá o desde{" "}
+            <strong>Internación</strong>.
+          </span>
+        </div>
+      ) : (
+        <>
+          <p className="mb-3 text-md text-texto-suave">
+            {camas.length === 1 ? "Hay 1 cama libre" : `Hay ${camas.length} camas libres`} en el sector.
+          </p>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
+            {camas.map((c) => (
+              <button
+                key={c.id}
+                disabled={ocupado}
+                onClick={() => ejecutar(
+                  () => api.post(`/casos/${caso.id}/cama/`, { cama_id: c.id }),
+                  `Internado en la cama ${c.nombre}`,
+                )}
+                className="flex flex-col gap-0.5 rounded-md border border-borde px-3 py-2.5 text-left transition-colors hover:border-accent-100 hover:bg-accent-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="font-mono text-md font-bold">{c.nombre}</span>
+                <span className="text-sm text-texto-tenue">{c.sector}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Dónde está internado y qué se puede hacer desde ahí.
+ *
+ * Va en la columna de información y no en el panel del paso: la cama acompaña
+ * al paciente por varios pasos del flujo —evolución, conducta— y el pase o el
+ * egreso pueden hacerse en cualquiera de ellos.
+ */
+function PanelCama({ caso, ejecutar, ocupado }) {
+  const [pasando, setPasando] = useState(false);
+  const q = useQuery({
+    queryKey: ["camas-libres", caso.institucion],
+    queryFn: () => api.get(`/camas/?area__institucion=${caso.institucion}&estado=libre&page_size=200`),
+    enabled: pasando,
+  });
+  const camas = q.data?.results || [];
+
+  return (
+    <Card className="p-xl">
+      <h3 className="mb-3 text-xs font-bold tracking-wide text-texto-tenue">INTERNACIÓN</h3>
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-9 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
+          <Icon name="bed" size={17} />
+        </span>
+        <div className="min-w-0">
+          <div className="font-mono text-md font-bold">{caso.cama.nombre}</div>
+          <div className="truncate text-sm text-texto-tenue">
+            {caso.cama.sector} · hace {antiguedad(caso.cama.desde)}
+          </div>
+        </div>
+      </div>
+
+      {pasando ? (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="text-sm font-semibold text-texto-suave">Pasar a otra cama</div>
+          {q.isLoading ? (
+            <Skeleton className="h-16" />
+          ) : camas.length === 0 ? (
+            <p className="text-sm text-texto-tenue">No hay camas libres en la institución.</p>
+          ) : (
+            <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+              {camas.map((c) => (
+                <button
+                  key={c.id}
+                  disabled={ocupado}
+                  onClick={() => ejecutar(
+                    () => api.post(`/casos/${caso.id}/pase/`, { cama_id: c.id }),
+                    `Pasó a la cama ${c.nombre}`,
+                  )}
+                  className="flex items-baseline justify-between gap-2 rounded-md border border-division px-2.5 py-1.5 text-left hover:bg-superficie-2"
+                >
+                  <span className="font-mono text-base font-bold">{c.nombre}</span>
+                  <span className="truncate text-sm text-texto-tenue">{c.sector}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <Button size="sm" variant="secondary" onClick={() => setPasando(false)}>Cancelar</Button>
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => setPasando(true)}>
+            Pase de sector
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={ocupado}
+            onClick={() => ejecutar(
+              () => api.post(`/casos/${caso.id}/egreso-cama/`),
+              "Egresó de internación · la cama quedó en higiene",
+            )}
+          >
+            Egreso
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
@@ -711,9 +853,13 @@ function PasoSimple({ caso, ocupado, ejecutar, texto, accion }) {
 
 function Dato({ k, v }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-md">
-      <dt className="text-texto-debil">{k}</dt>
-      <dd className="text-right font-medium text-texto-fuerte">{v}</dd>
+    // `min-w-0` en el valor: en un flex el contenido no se achica por debajo de
+    // su ancho natural, así que un antecedente largo («Hipertensión arterial ·
+    // Diabetes tipo 2») se salía de la tarjeta en vez de cortar línea. La
+    // etiqueta no se achica: es corta y es lo que da sentido al valor.
+    <div className="flex items-baseline justify-between gap-3 text-md">
+      <dt className="flex-none text-texto-debil">{k}</dt>
+      <dd className="min-w-0 text-right font-medium text-texto-fuerte">{v}</dd>
     </div>
   );
 }
