@@ -206,7 +206,7 @@ export default function Fila() {
             {/* Encabezado solo en pantallas anchas: en angosto cada fila se lee
                 como una ficha y los rótulos de columna sobran. */}
             <li className="hidden bg-superficie-2 py-2.5 pl-xl pr-2.5 text-micro font-bold tracking-wide text-texto-tenue sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem_2rem] sm:gap-md">
-              <span /><span>TURNO</span><span>PERSONA</span><span>INGRESO</span><span>ESPERA</span><span />
+              <span /><span>TICKET</span><span>PERSONA</span><span>INGRESO</span><span>ESPERA</span><span />
             </li>
             {fila.map((it, i) => (
               <li
@@ -236,7 +236,7 @@ export default function Fila() {
                   >
                     {i + 1}
                   </span>
-                  <span className="font-mono font-bold">{it.turno || casoId(it.caso)}</span>
+                  <span className="font-mono font-bold">{it.ticket || casoId(it.caso)}</span>
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="truncate text-md text-texto-medio">{it.persona || casoId(it.caso)}</span>
                     {it.urgente && <Badge tone="error">urgente</Badge>}

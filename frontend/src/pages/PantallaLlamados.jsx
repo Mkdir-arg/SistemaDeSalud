@@ -162,8 +162,8 @@ export default function PantallaLlamados() {
                     {actual.urgente ? "URGENTE" : "LLAMANDO"}
                     {actual.veces > 1 && <span style={S.veces}>· {actual.veces}º llamado</span>}
                   </div>
-                  <div style={S.actualNombre(actual.persona || actual.turno || "")}>
-                    {actual.persona || actual.turno}
+                  <div style={S.actualNombre(actual.persona || actual.ticket || "")}>
+                    {actual.persona || actual.ticket}
                   </div>
                 </div>
                 <div style={S.actualBox}>{actual.box || "—"}</div>
@@ -171,7 +171,7 @@ export default function PantallaLlamados() {
 
               {anteriores.map((it, i) => (
                 <div key={it.id} style={{ ...S.fila, background: i % 2 ? "#F7F9FB" : "#fff" }}>
-                  <div style={S.filaNombre}>{it.persona || it.turno}</div>
+                  <div style={S.filaNombre}>{it.persona || it.ticket}</div>
                   <div style={S.filaBox}>{it.box || "—"}</div>
                 </div>
               ))}

@@ -152,7 +152,10 @@ class ItemFila(models.Model):
     nodo = models.ForeignKey(
         "flujos.Nodo", on_delete=models.CASCADE, related_name="fila"
     )
-    turno = models.CharField(max_length=20, blank=True)
+    # Número de ticket de la fila («A-042»). NO es un turno agendado: eso es
+    # `agenda.Turno`. Se llamaba `turno` y con la agenda de por medio dos
+    # cosas muy distintas compartían nombre en la misma pantalla.
+    ticket = models.CharField(max_length=20, blank=True)
     urgente = models.BooleanField(default=False)
     orden = models.PositiveIntegerField(default=0)
     atendido = models.BooleanField(default=False)
@@ -183,7 +186,7 @@ class ItemFila(models.Model):
         ordering = ["-urgente", "orden", "ingreso"]
 
     def __str__(self):
-        return f"{self.turno or self.caso} en {self.nodo.titulo}"
+        return f"{self.ticket or self.caso} en {self.nodo.titulo}"
 
 
 class EventoCaso(models.Model):

@@ -33,7 +33,7 @@ class ItemFilaSerializer(serializers.ModelSerializer):
         # jefe de guardia mira para entender la demora: cuánto esperó a que lo
         # llamaran y cuánto duró la atención.
         fields = [
-            "id", "caso", "nodo", "nodo_titulo", "area", "area_nombre", "turno",
+            "id", "caso", "nodo", "nodo_titulo", "area", "area_nombre", "ticket",
             "persona", "urgente", "orden", "atendido", "ausente", "box", "box_nombre",
             "ingreso", "llamado_at", "atendido_at",
         ]

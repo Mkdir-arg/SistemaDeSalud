@@ -24,7 +24,7 @@ class CasoAdmin(admin.ModelAdmin):
 
 @admin.register(ItemFila)
 class ItemFilaAdmin(admin.ModelAdmin):
-    list_display = ("turno", "caso", "nodo", "urgente", "orden", "atendido")
+    list_display = ("ticket", "caso", "nodo", "urgente", "orden", "atendido")
     list_filter = ("urgente", "atendido")
 
 

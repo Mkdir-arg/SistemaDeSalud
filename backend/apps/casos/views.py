@@ -912,7 +912,7 @@ class PuestoDetalleView(APIView):
         "Últimos pacientes llamados y desde qué box. **Sin autenticación**: se "
         "accede por un token impredecible que se genera al configurar el nodo, "
         "porque corre en un televisor de la sala y no hay quien inicie sesión "
-        "ahí. Devuelve nombre y turno, así que el token es lo único que la "
+        "ahí. Devuelve nombre y ticket, así que el token es lo único que la "
         "protege: no se publica ni se pone en un QR."
     ),
     auth=[],
@@ -962,7 +962,7 @@ class PantallaLlamadosView(APIView):
             "llamados": [{
                 "id": it.id,
                 "persona": nombre(it.caso),
-                "turno": it.turno or f"#{it.caso_id}",
+                "ticket": it.ticket or f"#{it.caso_id}",
                 "box": it.box.nombre if it.box_id else None,
                 "urgente": it.urgente,
                 "llamado_at": it.ultimo,
@@ -994,7 +994,7 @@ class ItemFilaViewSet(BaseModelViewSet):
     columnas_csv = [
         ("caso", "Caso"),
         ("persona", "Paciente"),
-        ("turno", "Turno"),
+        ("ticket", "Ticket"),
         ("area_nombre", "Área"),
         ("nodo_titulo", "Paso"),
         ("urgente", "Urgente"),

@@ -76,6 +76,14 @@ test.describe("Fila de espera", () => {
     const turnos = () => page.locator("ul li .font-mono").allTextContents();
     const antes = await turnos();
     const flechas = page.locator('button[aria-label^="Adelantar"]:not([disabled])');
+    // Precondición explícita: sin dos personas del mismo nivel de urgencia no
+    // hay nada que adelantar. Sin esto el test se colgaba 60 s esperando una
+    // flecha que no iba a aparecer, y el timeout no dice que falta re-sembrar.
+    expect(
+      await flechas.count(),
+      `la cola quedó sin filas movibles (${antes.length} esperando). ` +
+      "La suite consume cola: volvé a sembrar con `manage.py seed_volumen --rehacer`.",
+    ).toBeGreaterThan(0);
     const ultima = flechas.last();
     // Índice de la fila a la que pertenece esa flecha.
     const i = await ultima.evaluate(
