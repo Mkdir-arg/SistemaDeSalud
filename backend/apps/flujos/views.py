@@ -114,6 +114,29 @@ class VersionFlujoViewSet(BaseModelViewSet):
             "puede_publicar": not any(p["sev"] == "error" for p in problemas),
         })
 
+    @action(detail=True, methods=["post"], url_path="ensayo")
+    def ensayo(self, request, pk=None):
+        """
+        «Probar» el flujo: lo corre con el motor real y deshace todo.
+
+        Cuerpo: `{"pasos": [{...}, {...}]}` — los datos de cada parada, en el
+        mismo formato que recibe `avanzar` (para un formulario,
+        `{"valores": {<campo_id>: valor}}`).
+
+        Devuelve por dónde pasó, dónde quedó y, si el motor se plantó, en qué
+        nodo y por qué. Que el error viaje como parte del resultado y no como un
+        400 es deliberado: «acá hace falta un médico con matrícula» es la
+        respuesta correcta del ensayo, no una falla de la petición.
+        """
+        version = self.get_object()
+        pasos = request.data.get("pasos") or []
+        if not isinstance(pasos, list):
+            return Response(
+                {"detail": "«pasos» tiene que ser una lista."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(motor.ensayar(version, pasos, autor=request.user))
+
     @action(detail=True, methods=["post"])
     def publicar(self, request, pk=None):
         """Publica la versión si no tiene errores; marca las anteriores como reemplazadas."""

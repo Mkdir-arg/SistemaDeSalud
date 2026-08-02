@@ -19,6 +19,9 @@ Convención de `Conexion.condicion` (nodos Decisión):
 """
 from __future__ import annotations
 
+import contextvars
+from contextlib import contextmanager
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -31,6 +34,41 @@ from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
 
 class ErrorMotor(Exception):
     """Error de negocio del motor (estado inválido, datos faltantes, etc.)."""
+
+
+# --------------------------------------------------------------------------- #
+# Traza: por qué nodos pasó el motor
+# --------------------------------------------------------------------------- #
+# La usa el «Probar» del diseñador. Es la ÚNICA forma de que el botón diga la
+# verdad: el motor cuenta él mismo por dónde pasó, en vez de que un simulador
+# aparte adivine lo mismo con otro código.
+#
+# Va por `contextvars` y no por parámetro para no ensuciar la firma de media
+# docena de funciones. Fuera de un bloque `trazar()` la variable es None y todo
+# esto cuesta una comparación por nodo.
+_traza = contextvars.ContextVar("motor_traza", default=None)
+
+
+@contextmanager
+def trazar():
+    """Recolecta los nodos que atraviesa el motor dentro del bloque."""
+    token = _traza.set([])
+    try:
+        yield _traza.get()
+    finally:
+        _traza.reset(token)
+
+
+def _anotar(nodo: Nodo, motivo: str = ""):
+    registro = _traza.get()
+    if registro is None:
+        return
+    registro.append({
+        "nodo": nodo.pk,
+        "titulo": nodo.titulo,
+        "tipo": nodo.tipo,
+        "motivo": motivo,
+    })
 
 
 # --- Responsabilidad: quién puede ejecutar el paso actual de un caso ---------
@@ -288,6 +326,9 @@ def _correr_automaticos(caso: Caso, autor=None):
     visitados = set()
     while caso.nodo_actual is not None:
         nodo = caso.nodo_actual
+        # Único punto por donde pasa TODO nodo que el motor atraviesa: anotar acá
+        # es lo que hace que la traza no pueda quedar desactualizada.
+        _anotar(nodo)
 
         if nodo.tipo in TIPOS_DETENCION:
             _aplicar_efecto_entrada(caso, nodo, autor=autor)
@@ -744,6 +785,134 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricu
 # --------------------------------------------------------------------------- #
 # Validación de una versión antes de publicar
 # --------------------------------------------------------------------------- #
+def _acciones_posibles(caso: Caso, nodo: Nodo | None) -> list[str]:
+    """
+    Qué puede hacer quien está parado en este nodo, según el estado real del caso.
+
+    Un paciente encolado y todavía sin box hay que LLAMARLO; recién después se
+    registra la atención. Es la misma secuencia que en la guardia de verdad.
+    """
+    if nodo is None or nodo.tipo == Nodo.Tipo.FIN:
+        return []
+    # La señal de «todavía no lo llamaron» es `llamado_at`, no el box: se puede
+    # llamar sin box asignado y el paciente igual quedó llamado.
+    esperando_llamado = caso.en_filas.filter(
+        nodo=nodo, atendido=False, llamado_at__isnull=True
+    ).exists()
+    return ["llamar"] if esperando_llamado else ["avanzar"]
+
+
+def _box_para_ensayo(caso: Caso):
+    """
+    Un box cualquiera del área, para que el ensayo pueda llamar al paciente.
+
+    En el diseñador no importa a qué box se llama sino el recorrido, así que
+    elegirlo a mano sería ruido. Si el área no tiene boxes se llama sin box y el
+    motor lo dirá: un flujo con atención por fila necesita consultorios cargados,
+    y enterarse al diseñarlo es mucho mejor que enterarse en la guardia.
+    """
+    from apps.instituciones.models import Box
+
+    if not caso.area_actual_id:
+        return None
+    box = Box.objects.filter(area_id=caso.area_actual_id, activo=True).order_by("pk").first()
+    return box.pk if box else None
+
+
+def ensayar(version: VersionFlujo, pasos: list[dict] | None = None, autor=None) -> dict:
+    """
+    Corre un caso de prueba por `version` con el MOTOR REAL y deshace todo.
+
+    Es lo que hay detrás del botón «Probar» del diseñador. Antes eso lo resolvía
+    un simulador propio en el navegador (`lib/simular.js`, 83 líneas) que
+    espejaba a este archivo (800+). Dos implementaciones de la misma semántica
+    divergen siempre, y ésta ya había divergido: el simulador no sabía de grupos
+    responsables, boxes, prioridad de triage, estudios de ida y vuelta ni de la
+    regla de firma médica. O sea que el botón mentía, y en silencio: el
+    configurador probaba el flujo, le daba bien, publicaba, y en producción
+    pasaba otra cosa. Ese es el peor bug posible en un producto cuya promesa es
+    «el proceso se configura, no se programa».
+
+    Cómo funciona: se crea un caso de verdad, se lo hace avanzar con el mismo
+    código que atiende a un paciente real, se anota por dónde pasó, y al final se
+    deshace la transacción entera. No queda nada en la base.
+
+    `pasos` es la lista de datos para cada parada, en orden — el mismo formato
+    que recibe `avanzar`. Un paso `{"accion": "llamar"}` ejecuta `llamar` en vez
+    de `avanzar`: hace falta porque una «Atención con fila» exige que primero
+    llamen al paciente desde un box, y sin eso el ensayo no puede atravesar el
+    nodo más común de una guardia. También ahí se usa el motor real, no un atajo.
+
+    Corre **como quien lo pide**. Si el flujo llega a una Atención y quien prueba
+    no es médico, el motor lo rechaza y eso aparece en el resultado, con el nodo
+    donde pasó. Es a propósito: esa restricción es real y verla al diseñar es
+    justamente el punto.
+    """
+    pasos = list(pasos or [])
+    resultado: dict = {
+        "camino": [],
+        "parada": None,
+        "estado": None,
+        "prioridad": None,
+        "pasos_consumidos": 0,
+        "termino": False,
+        "error": None,
+    }
+
+    with transaction.atomic():
+        with trazar() as camino:
+            caso = Caso.objects.create(
+                institucion=version.flujo.institucion,
+                version=version,
+                area_actual=version.flujo.area,
+            )
+            try:
+                iniciar(caso, autor=autor)
+                for datos in pasos:
+                    datos = datos or {}
+                    nodo = caso.nodo_actual
+                    if nodo is None or nodo.tipo == Nodo.Tipo.FIN:
+                        break
+                    if datos.get("accion") == "llamar":
+                        llamar(caso, box_id=datos.get("box_id") or _box_para_ensayo(caso), autor=autor)
+                    else:
+                        avanzar(caso, datos, autor=autor)
+                    resultado["pasos_consumidos"] += 1
+            except ErrorMotor as e:
+                # El motor se plantó: es información, no una falla del ensayo.
+                nodo = caso.nodo_actual
+                resultado["error"] = {
+                    "mensaje": str(e),
+                    "nodo": nodo.pk if nodo else None,
+                    "titulo": nodo.titulo if nodo else "",
+                }
+
+            actual = caso.nodo_actual
+            resultado["camino"] = list(camino)
+            resultado["parada"] = (
+                {
+                    "nodo": actual.pk,
+                    "titulo": actual.titulo,
+                    "tipo": actual.tipo,
+                    # Qué acción admite esta parada. Lo decide el motor mirando el
+                    # estado real del caso, para que el diseñador no tenga que
+                    # deducirlo por su cuenta — deducirlo sería, otra vez, una
+                    # segunda implementación de la misma regla.
+                    "acciones": _acciones_posibles(caso, actual),
+                }
+                if actual else None
+            )
+            resultado["estado"] = caso.estado
+            resultado["prioridad"] = caso.prioridad
+            resultado["termino"] = bool(actual and actual.tipo == Nodo.Tipo.FIN)
+
+        # Nada de esto queda: el ensayo no puede dejar casos, eventos, ítems de
+        # fila ni entradas de historia clínica en la base.
+        transaction.set_rollback(True)
+
+    return resultado
+
+
 def validar_version(version) -> list[dict]:
     """
     Revisa el grafo y devuelve una lista de problemas. Cada problema:

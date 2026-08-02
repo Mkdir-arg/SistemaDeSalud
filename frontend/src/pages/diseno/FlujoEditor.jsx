@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { Badge, Button, Checkbox, Field, Input, Select, Spinner } from "../../components/ui";
 import { Icon } from "../../components/icons";
-import { caminoPorDefecto, correrAuto, nodoInicio, siguiente } from "../../lib/simular";
 import { estadoCaso, estadoVersion } from "../../lib/dominio";
 import { badgeTone, color, nodeCat, radius, shadow, type } from "../../theme";
 
@@ -431,31 +430,63 @@ export default function FlujoEditor() {
     } finally { setPublicando(false); }
   }
 
-  // --- Modo Probar (simulación sin datos reales) --------------------------
+  /* --- Modo Probar -----------------------------------------------------------
+   *
+   * Corre contra el MOTOR REAL (`POST /versiones-flujo/:id/ensayo/`), que ejecuta
+   * el caso en una transacción y la deshace. Antes esto lo resolvía un simulador
+   * propio en el navegador que espejaba a `motor.py`: 83 líneas contra 800, ya
+   * divergidas —no sabía de grupos responsables, boxes, prioridad de triage,
+   * estudios de ida y vuelta ni de la regla de firma médica—. O sea que el botón
+   * mentía, en silencio, y cada vez que el motor creciera iba a mentir más.
+   *
+   * El ensayo es sin estado: se guardan los pasos dados y en cada avance se
+   * reenvía la lista completa. Reproducible y sin sesión que se desincronice.
+   */
+  const [ensayando, setEnsayando] = useState(false);
+
+  async function correrEnsayo(pasos) {
+    setEnsayando(true);
+    try {
+      const r = await api.post(`/versiones-flujo/${version.id}/ensayo/`, { pasos });
+      const estado = {
+        pasos,
+        camino: (r.camino || []).map((p) => p.nodo),
+        current: r.parada?.nodo ?? null,
+        acciones: r.parada?.acciones || [],
+        fin: r.termino,
+        // Sin parada, sin fin y sin error = el motor se quedó sin conexión.
+        sinSalida: !r.termino && r.parada == null && !r.error,
+        error: r.error,
+        estado: r.estado,
+        prioridad: r.prioridad,
+      };
+      setSim(estado);
+      return estado;
+    } catch (e) {
+      mostrarToast({ tipo: "error", msg: e?.data?.detail || "No se pudo probar el flujo." });
+      return null;
+    } finally {
+      setEnsayando(false);
+    }
+  }
+
   function iniciarSim() {
     setProblemas(null); setSel(null); setRepro(null);
-    const inicio = nodoInicio(version.nodos);
-    if (!inicio) { setSim({ current: null, valores: {}, camino: [], fin: false, error: "El flujo no tiene un nodo Inicio." }); return; }
-    const { parada, camino } = correrAuto(version.nodos, version.conexiones, inicio.id, {});
-    const nodo = version.nodos.find((n) => n.id === parada);
-    setSim({ current: parada, valores: {}, camino, fin: nodo?.tipo === "fin" });
+    correrEnsayo([]);
   }
-  function avanzarSim(nuevosValores = {}) {
-    setSim((s) => {
-      const valores = { ...s.valores, ...nuevosValores };
-      const sig = siguiente(version.nodos, version.conexiones, s.current, valores);
-      if (sig == null) return { ...s, valores, fin: true, sinSalida: true };
-      const { parada, camino } = correrAuto(version.nodos, version.conexiones, sig, valores);
-      const nodo = version.nodos.find((n) => n.id === parada);
-      return { current: parada, valores, camino: [...s.camino, ...camino], fin: nodo?.tipo === "fin" };
-    });
+  function avanzarSim(datos = {}) {
+    correrEnsayo([...(sim?.pasos || []), datos]);
   }
 
   // --- Reproducir (animación del recorrido) -------------------------------
-  function reproducir() {
+  // Anima el recorrido del último ensayo. Si no hay ninguno, corre uno: el camino
+  // llega hasta la primera parada, que es hasta donde un caso avanza SOLO. Antes
+  // se dibujaba un camino hasta el final atravesando formularios sin datos, que
+  // es un recorrido que en la realidad no ocurre.
+  async function reproducir() {
     setProblemas(null); setSel(null);
-    const camino = sim?.camino?.length ? sim.camino : caminoPorDefecto(version.nodos, version.conexiones);
-    if (!camino.length) return;
+    const camino = sim?.camino?.length ? sim.camino : (await correrEnsayo([]))?.camino;
+    if (!camino?.length) return;
     setRepro({ camino, idx: 0 });
   }
   useEffect(() => {
@@ -926,8 +957,25 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
     ? campos.filter((c) => c.formularioId === nodo.formulario)
     : [];
 
-  function completarForm() {
-    onAvanzar(valores);
+  // Qué admite esta parada lo dice el motor, no el editor: si acá se dedujera,
+  // sería otra copia de la misma regla, que es justo el problema que se acaba
+  // de eliminar.
+  const toca = sim.acciones?.[0] || "avanzar";
+
+  // Los datos van en el formato que espera el motor, sin traductor en el medio.
+  function datosDelPaso() {
+    if (toca === "llamar") return { accion: "llamar" };
+    if (nodo?.tipo === "form") return { valores };
+    if (nodo?.tipo === "atencion") {
+      // `firmada: false` a propósito: firmar exige matrícula, y el ensayo no
+      // debería fallar por eso cuando lo que se está probando es el recorrido.
+      return { titulo: nodo.titulo, contenido: "Ensayo del diseñador", firmada: false };
+    }
+    return {};
+  }
+
+  function avanzar() {
+    onAvanzar(datosDelPaso());
     setValores({});
   }
 
@@ -939,10 +987,20 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
         </div>
         <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}><Icon name="x" size={18} /></button>
       </div>
-      <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 16 }}>Simulación sin datos reales. Recorré el flujo como lo haría un caso.</div>
+      <div style={{ fontSize: type.sm, color: color.slate500, marginBottom: 16 }}>
+        Corre con el motor real y después se deshace: no queda nada en la base.
+      </div>
 
       {sim.error ? (
-        <div style={{ fontSize: type.base, color: color.danger, background: badgeTone.error.bg, padding: "10px 12px", borderRadius: radius.md }}>{sim.error}</div>
+        // El error del motor es el resultado del ensayo, no una falla: dice qué
+        // impide que el caso siga y en qué nodo. Es justo lo que el simulador
+        // viejo no podía saber.
+        <div style={{ fontSize: type.base, color: color.danger, background: badgeTone.error.bg, padding: "10px 12px", borderRadius: radius.md }}>
+          <div style={{ fontWeight: 700, marginBottom: 3 }}>
+            Se detiene en «{sim.error.titulo}»
+          </div>
+          {sim.error.mensaje}
+        </div>
       ) : sim.fin ? (
         <div style={{ background: badgeTone.green.bg, color: badgeTone.green.fg, padding: "14px 16px", borderRadius: radius.md, fontSize: type.base, fontWeight: 600 }}>
           ✓ Caso simulado {sim.sinSalida ? "detenido (nodo sin salida)" : "finalizado"}.
@@ -974,8 +1032,13 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
             </div>
           )}
 
-          <Button onClick={nodo.tipo === "form" ? completarForm : () => onAvanzar({})} style={{ width: "100%" }}>
-            {nodo.tipo === "form" ? "Completar y avanzar" : nodo.tipo === "atencion" ? "Registrar y avanzar" : nodo.tipo === "espera" ? "Llamar y continuar" : nodo.tipo === "tiempo" ? "Reactivar" : "Avanzar"}
+          <Button onClick={avanzar} style={{ width: "100%" }}>
+            {toca === "llamar"
+              ? "Llamar al paciente"
+              : nodo.tipo === "form" ? "Completar y avanzar"
+              : nodo.tipo === "atencion" ? "Registrar y avanzar"
+              : nodo.tipo === "tiempo" ? "Reactivar"
+              : "Avanzar"}
           </Button>
         </>
       ) : (
