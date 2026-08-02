@@ -38,13 +38,14 @@ Idempotente: borra los flujos/formularios/casos de la institución y los recrea.
 """
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.models import Membresia, Usuario
 from apps.casos import motor
 from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Box, Grupo, Institucion
+from apps.instituciones.models import Area, Box, Cama, Grupo, Institucion, Subarea
 
 
 class Command(BaseCommand):
@@ -98,6 +99,42 @@ class Command(BaseCommand):
         imagenes = area("Diagnóstico por imágenes")
         laboratorio = area("Laboratorio")
         internacion = area("Internación")
+
+        # --- Sectores y camas de internación --------------------------------
+        # Los sectores son sub-áreas: una cama vive en el mismo lugar del
+        # organigrama que todo lo demás.
+        sectores = {}
+        for nombre, cuantas in [("Clínica médica", 14), ("UTI", 6), ("Pediatría", 8)]:
+            sub, _ = Subarea.objects.get_or_create(area=internacion, nombre=nombre)
+            sectores[nombre] = sub
+            prefijo = {"Clínica médica": "1", "UTI": "UTI ", "Pediatría": "P"}[nombre]
+            for i in range(1, cuantas + 1):
+                etiqueta = f"UTI {i}" if nombre == "UTI" else f"{prefijo}{i:02d}"
+                Cama.objects.get_or_create(
+                    area=internacion, nombre=etiqueta, defaults={"subarea": sub}
+                )
+        # Las camas vuelven a cero.
+        #
+        # Este comando borra los casos, y al borrarlos las camas se quedaban con
+        # el estado de la corrida anterior: «ocupada» o «en higiene» sin ningún
+        # paciente detrás, porque la referencia al caso se anula sola pero el
+        # estado no. Un demo que arranca con medio sector inutilizable por
+        # pacientes que ya no existen.
+        Cama.objects.filter(area=internacion).update(
+            estado=Cama.Estado.LIBRE, caso=None, desde=None, motivo=""
+        )
+        # Una fuera de servicio: el tablero tiene que saber restarla del
+        # denominador, y con todas operativas eso no se ve nunca.
+        rota = Cama.objects.filter(area=internacion, nombre="108").first()
+        if rota:
+            rota.estado = Cama.Estado.BLOQUEADA
+            rota.motivo = "Pérdida de agua — mantenimiento"
+            rota.save(update_fields=["estado", "motivo"])
+        # Y dos esperando higiene: es un estado que existe todo el día en un
+        # hospital y si el demo no lo muestra, nadie sabe que está.
+        Cama.objects.filter(area=internacion, nombre__in=["112", "P03"]).update(
+            estado=Cama.Estado.HIGIENE, desde=timezone.now()
+        )
 
         # --- Staff ----------------------------------------------------------
         def persona(email, nombre, apellido, rol, *areas):
@@ -229,11 +266,8 @@ class Command(BaseCommand):
             ("Estudio a realizar", T.TEXTO_CORTO, None, True),
             ("Preparación", T.SELECCION_UNICA, ["Ninguna", "Ayuno", "Contraste"], False),
         ])
-        form_cama = formulario("Asignación de cama", internacion, [
-            ("Sector", T.SELECCION_UNICA, ["Clínica médica", "Terapia intensiva", "Unidad coronaria"], True),
-            ("Cama", T.TEXTO_CORTO, None, True),
-            ("Médico de cabecera", T.TEXTO_CORTO, None, False),
-        ])
+        # (El formulario «Asignación de cama» se eliminó: el sector y la cama ya
+        # no se escriben a mano, los elige quien asigna desde el tablero.)
         form_evol = formulario("Evolución diaria", internacion, [
             ("Evolución", T.TEXTO_LARGO, None, True),
             ("Decisión", T.SELECCION_UNICA, ["Continúa internado", "Alta médica"], True),
@@ -264,7 +298,10 @@ class Command(BaseCommand):
             Conexion.objects.create(version=v, origen=o, destino=d, **kw)
 
         i_ini = N(v_int, NT.INICIO, "Inicio", 60, 200, config={"origen": "derivado"})
-        i_cama = N(v_int, NT.FORMULARIO, "Asignar cama", 280, 200, formulario=form_cama)
+        # Antes era un formulario donde se escribía el número a mano. Ahora el
+        # caso espera hasta que alguien le asigna una cama real del sector.
+        i_cama = N(v_int, NT.CAMA, "Asignar cama", 280, 200,
+                   config={"sector": sectores["Clínica médica"].id})
         i_evol = N(v_int, NT.ATENCION, "Evolución médica", 520, 200)
         i_cond = N(v_int, NT.FORMULARIO, "Conducta", 760, 200, formulario=form_evol)
         i_dec = N(v_int, NT.DECISION, "¿Continúa?", 1000, 200)

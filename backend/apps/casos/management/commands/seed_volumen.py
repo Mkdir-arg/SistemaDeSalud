@@ -44,7 +44,7 @@ from apps.casos import motor
 from apps.casos.models import Caso, EventoCaso, ItemFila, Notificacion
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Box, Institucion
+from apps.instituciones.models import Area, Box, Cama, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
 
 # --------------------------------------------------------------------------- #
@@ -687,13 +687,32 @@ class Command(BaseCommand):
             return  # internación en curso: pobla la bandeja de Internación
 
         reloj.mas(20, 70)
-        motor.avanzar(caso, {"valores": {
-            self.campo("Asignación de cama", "Sector"): elegir([(SECTORES[0], 70), (SECTORES[1], 18), (SECTORES[2], 12)]),
-            self.campo("Asignación de cama", "Cama"): f"{random.randint(1, 24)}-{random.choice('AB')}",
-            self.campo("Asignación de cama", "Médico de cabecera"): "Dr. Gabriel Ferro",
-        }}, autor=self._autor(caso))
+        # Se interna en una cama REAL. Si el sector está lleno el caso se queda
+        # esperando cama, que es exactamente lo que pasa en un hospital lleno y
+        # lo que el tablero tiene que mostrar.
+        libre = motor.camas_disponibles(caso.nodo_actual).order_by("?").first()
+        if libre is None:
+            hechos["sin_cama"] = hechos.get("sin_cama", 0) + 1
+            return
+        motor.asignar_cama(caso, libre.id, autor=self._autor(caso))
         self._sellar(reloj.t)
         caso.refresh_from_db()
+
+        # Uno de cada seis se descompensa y pasa a UTI. Además de ser lo que
+        # pasa, es lo que hace que el tablero muestre los tres sectores: sin
+        # pases, UTI y Pediatría figuran siempre vacías y el demo sugiere que la
+        # ocupación se mira de a un sector.
+        if random.random() < 0.17:
+            reloj.mas(180, 900)
+            uti = Cama.objects.filter(
+                subarea__nombre="UTI", estado=Cama.Estado.LIBRE, activa=True
+            ).order_by("?").first()
+            if uti:
+                motor.pasar_de_sector(caso, uti.id, autor=self._autor(caso),
+                                      motivo="Descompensación hemodinámica")
+                self._sellar(reloj.t)
+                caso.refresh_from_db()
+                hechos["pases_uti"] = hechos.get("pases_uti", 0) + 1
 
         for dia in range(random.randint(1, 4)):
             if caso.nodo_actual is None or caso.estado == Caso.Estado.CERRADO:
@@ -724,6 +743,21 @@ class Command(BaseCommand):
             caso.refresh_from_db()
             if ultimo:
                 break
+
+        # Alguien higieniza la cama después del alta.
+        #
+        # El alta la deja en higiene —a propósito: entre un paciente y el
+        # siguiente no se puede ofrecer— pero en el hospital eso dura un rato,
+        # no noventa días. Sin este paso el demo terminaba con casi todas las
+        # camas sucias y el tablero mostraba un sector inutilizable.
+        #
+        # Las de las últimas horas se dejan sucias: es el estado que hay que
+        # poder ver en el tablero, y si se limpian todas no se ve nunca.
+        ultima = caso.estadias.select_related("cama").order_by("-desde").first()
+        cama = ultima.cama if ultima else None
+        if cama and cama.estado == Cama.Estado.HIGIENE and reloj.t < self.limite_cola:
+            reloj.mas(25, 70)
+            motor.cambiar_estado_cama(cama, Cama.Estado.LIBRE)
 
     # ----------------------------------------------------------------- #
     # Auxiliares de fila y cierre
