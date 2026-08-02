@@ -18,7 +18,7 @@ from apps.instituciones.models import Area, Box, Grupo, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria
 
 from . import motor
-from .models import Caso, ItemFila
+from .models import Caso, ItemFila, ValorCampo
 
 
 class MotorTestCase(TestCase):
@@ -388,3 +388,179 @@ class DerivacionEntreFlujosTests(TestCase):
         self.assertEqual(d.nodo_actual.tipo, Nodo.Tipo.ATENCION)
         # El caso origen quedó marcado como derivado en su recorrido.
         self.assertTrue(caso.eventos.filter(titulo="Derivado a otro flujo").exists())
+
+
+class CondicionesTests(TestCase):
+    """
+    Reglas de rama de una Decisión.
+
+    Se prueban sobre `_cumple` directamente porque es la función que decide por
+    dónde sigue un caso: si se equivoca, un paciente toma el circuito
+    equivocado. El resto del motor se apoya en ella.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.flujo = Flujo.objects.create(institucion=self.inst, titulo="F")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+        self.form = Formulario.objects.create(institucion=self.inst, titulo="Triage")
+        self.caso = Caso.objects.create(institucion=self.inst, version=self.version)
+        self.campos = {}
+
+    def _cargar(self, nombre, valor):
+        """Crea el campo (si hace falta) y le carga un valor al caso."""
+        if nombre not in self.campos:
+            self.campos[nombre] = Campo.objects.create(
+                formulario=self.form, label=nombre, tipo="texto_corto", orden=len(self.campos)
+            )
+        ValorCampo.objects.update_or_create(
+            caso=self.caso, campo=self.campos[nombre], defaults={"valor": str(valor)}
+        )
+        return self.campos[nombre].pk
+
+    def _evalua(self, condicion):
+        return motor._cumple(condicion, self.caso)
+
+    def _regla(self, nombre, operador, valor=None):
+        return {"campo": self.campos[nombre].pk, "operador": operador, "valor": valor}
+
+    # --- Operadores -------------------------------------------------------- #
+
+    def test_orden_compara_como_numero(self):
+        self._cargar("edad", 70)
+        self.assertTrue(self._evalua(self._regla("edad", ">", "65")))
+        self.assertFalse(self._evalua(self._regla("edad", "<", "65")))
+        self.assertTrue(self._evalua(self._regla("edad", ">=", "70")))
+        self.assertTrue(self._evalua(self._regla("edad", "<=", "70")))
+
+    def test_orden_compara_fechas(self):
+        """Antes `>` sobre una fecha daba siempre False, en silencio."""
+        self._cargar("ultimo_control", "2026-03-15")
+        self.assertTrue(self._evalua(self._regla("ultimo_control", "<", "2026-06-01")))
+        self.assertFalse(self._evalua(self._regla("ultimo_control", ">", "2026-06-01")))
+
+    def test_entre_incluye_los_extremos(self):
+        self._cargar("edad", 65)
+        self.assertTrue(self._evalua(self._regla("edad", "entre", "65,80")))
+        self.assertTrue(self._evalua(self._regla("edad", "entre", ["18", "65"])))
+        self._cargar("edad", 17)
+        self.assertFalse(self._evalua(self._regla("edad", "entre", "18,65")))
+
+    def test_en_lista(self):
+        self._cargar("obra", "PAMI")
+        self.assertTrue(self._evalua(self._regla("obra", "en", "OSDE, PAMI, Swiss")))
+        self.assertFalse(self._evalua(self._regla("obra", "no_en", "OSDE, PAMI")))
+
+    def test_vacio_distingue_sin_cargar_de_cargado(self):
+        """
+        El caso importante: un campo que nunca se completó.
+
+        `vacio` tiene que responder True ahí, y por eso se resuelve antes del
+        descarte general por «valor ausente».
+        """
+        campo = Campo.objects.create(formulario=self.form, label="alergias", tipo="texto_corto", orden=99)
+        sin_cargar = {"campo": campo.pk, "operador": "vacio"}
+        self.assertTrue(self._evalua(sin_cargar))
+        self.assertFalse(self._evalua({**sin_cargar, "operador": "no_vacio"}))
+
+        ValorCampo.objects.create(caso=self.caso, campo=campo, valor="penicilina")
+        self.assertFalse(self._evalua(sin_cargar))
+        self.assertTrue(self._evalua({**sin_cargar, "operador": "no_vacio"}))
+
+    def test_una_cadena_vacia_cuenta_como_vacia(self):
+        campo = Campo.objects.create(formulario=self.form, label="nota", tipo="texto_corto", orden=98)
+        ValorCampo.objects.create(caso=self.caso, campo=campo, valor="   ")
+        self.assertTrue(self._evalua({"campo": campo.pk, "operador": "vacio"}))
+
+    def test_no_contiene(self):
+        self._cargar("motivo", "Dolor torácico agudo")
+        self.assertTrue(self._evalua(self._regla("motivo", "contiene", "torácico")))
+        self.assertTrue(self._evalua(self._regla("motivo", "no_contiene", "fractura")))
+
+    # --- Composición ------------------------------------------------------- #
+
+    def test_y_exige_las_dos(self):
+        self._cargar("edad", 70)
+        self._cargar("motivo", "Dolor torácico")
+        regla = {"op": "y", "reglas": [
+            self._regla("edad", ">", "65"),
+            self._regla("motivo", "contiene", "torácico"),
+        ]}
+        self.assertTrue(self._evalua(regla))
+
+        self._cargar("edad", 40)
+        self.assertFalse(self._evalua(regla))
+
+    def test_o_alcanza_con_una(self):
+        self._cargar("edad", 40)
+        self._cargar("motivo", "Dolor torácico")
+        self.assertTrue(self._evalua({"op": "o", "reglas": [
+            self._regla("edad", ">", "65"),
+            self._regla("motivo", "contiene", "torácico"),
+        ]}))
+
+    def test_anidado_permite_a_y_b_o_c(self):
+        """«(mayor de 65 Y con dolor torácico) O urgente» — el caso real."""
+        self._cargar("edad", 30)
+        self._cargar("motivo", "Fractura")
+        self._cargar("triage", "rojo")
+        regla = {"op": "o", "reglas": [
+            {"op": "y", "reglas": [
+                self._regla("edad", ">", "65"),
+                self._regla("motivo", "contiene", "torácico"),
+            ]},
+            self._regla("triage", "=", "rojo"),
+        ]}
+        self.assertTrue(self._evalua(regla))  # entra por el triage rojo
+
+        self._cargar("triage", "verde")
+        self.assertFalse(self._evalua(regla))  # ya no cumple ninguna de las dos
+
+    def test_las_condiciones_viejas_de_una_sola_regla_siguen_funcionando(self):
+        """Compatibilidad: es la forma que tienen todas las conexiones guardadas."""
+        self._cargar("triage", "rojo")
+        self.assertTrue(self._evalua(self._regla("triage", "=", "rojo")))
+        self.assertFalse(self._evalua(self._regla("triage", "=", "verde")))
+
+    def test_sin_condicion_es_la_rama_por_defecto(self):
+        self.assertTrue(self._evalua({}))
+        self.assertTrue(self._evalua(None))
+        self.assertTrue(self._evalua({"op": "y", "reglas": []}))
+
+    def test_la_validacion_ve_los_campos_de_una_regla_compuesta(self):
+        """
+        Sin esto la validación mentía: una regla compuesta no tiene campo arriba
+        de todo, así que se salteaba entera y nunca avisaba del campo inexistente.
+        """
+        c1 = self._cargar("edad", 70)
+        anidada = {"op": "o", "reglas": [
+            {"op": "y", "reglas": [
+                {"campo": c1, "operador": ">", "valor": "65"},
+                {"campo": 999, "operador": "=", "valor": "x"},
+            ]},
+        ]}
+        self.assertEqual(motor.campos_de_condicion(anidada), {c1, 999})
+        self.assertEqual(motor.campos_de_condicion({"campo": c1}), {c1})
+        self.assertEqual(motor.campos_de_condicion({}), set())
+
+    def test_contiene_ignora_tildes_y_mayusculas(self):
+        """
+        En una admisión se escribe «dolor toracico» tanto como «Dolor Torácico».
+        Si la regla sólo matchea con la tilde puesta, el paciente toma el
+        circuito equivocado y nadie se entera.
+        """
+        self._cargar("motivo", "Dolor toracico agudo")
+        self.assertTrue(self._evalua(self._regla("motivo", "contiene", "torácico")))
+        self.assertTrue(self._evalua(self._regla("motivo", "contiene", "TORACICO")))
+
+        self._cargar("motivo", "Dolor Torácico")
+        self.assertTrue(self._evalua(self._regla("motivo", "contiene", "toracico")))
+
+    def test_la_igualdad_sigue_siendo_exacta(self):
+        """
+        `=` compara tal cual: sus valores salen de una lista cerrada (una
+        selección única), donde «Alta» y «alta» pueden ser opciones distintas.
+        """
+        self._cargar("triage", "Rojo")
+        self.assertFalse(self._evalua(self._regla("triage", "=", "rojo")))
+        self.assertTrue(self._evalua(self._regla("triage", "=", "Rojo")))

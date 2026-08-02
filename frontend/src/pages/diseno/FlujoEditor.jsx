@@ -13,7 +13,41 @@ const PALETA = Object.entries(nodeCat).map(([tipo, c]) => ({ tipo, ...c }));
 
 // Operadores de regla en lenguaje natural (los usa el RuleBuilder y la etiqueta
 // automática de las ramas de Decisión en el lienzo).
-const OPERADOR_LABEL = { "=": "es igual a", "!=": "es distinto de", ">": "mayor que", "<": "menor que", contiene: "contiene" };
+const OPERADOR_LABEL = {
+  "=": "es igual a", "!=": "es distinto de",
+  ">": "mayor que", "<": "menor que", ">=": "mayor o igual que", "<=": "menor o igual que",
+  contiene: "contiene", no_contiene: "no contiene",
+  en: "es alguno de", no_en: "no es ninguno de",
+  entre: "está entre", vacio: "está vacío", no_vacio: "tiene algún valor",
+};
+
+// Operadores que no llevan valor: preguntan por la presencia del dato.
+const SIN_VALOR = new Set(["vacio", "no_vacio"]);
+// Operadores cuyo valor es una lista separada por comas.
+const CON_LISTA = new Set(["en", "no_en", "entre"]);
+
+/**
+ * Una condición guardada es una hoja `{campo, operador, valor}` o una compuesta
+ * `{op, reglas}`. Acá se trabaja siempre con la lista, y al guardar se vuelve a
+ * la forma mínima: así las conexiones de una sola regla —que son todas las ya
+ * existentes— conservan su formato y no hace falta migrar nada.
+ *
+ * El motor admite anidar («(A y B) o C»); este constructor es plano. Cubre el
+ * caso real («mayor de 65 Y dolor torácico») sin el costo de un editor de
+ * árboles; si algún flujo lo necesita, la capacidad ya está del lado del motor.
+ */
+function condicionALista(cond) {
+  if (!cond || (!cond.campo && !cond.reglas)) return { op: "y", reglas: [] };
+  if (cond.reglas) return { op: cond.op || "y", reglas: cond.reglas.filter((r) => !r.reglas) };
+  return { op: "y", reglas: [cond] };
+}
+
+function listaACondicion(op, reglas) {
+  const utiles = reglas.filter((r) => r.campo);
+  if (utiles.length === 0) return {};        // rama por defecto
+  if (utiles.length === 1) return utiles[0]; // forma hoja, como estaba
+  return { op, reglas: utiles };
+}
 
 export default function FlujoEditor() {
   const { id } = useParams();
@@ -591,10 +625,17 @@ export default function FlujoEditor() {
   function etiquetaRama(c, origen) {
     if (c.etiqueta) return c.etiqueta;
     if (origen?.tipo !== "decision") return null;
-    const cond = c.condicion;
-    if (!cond || !cond.campo) return "si no";
-    const campo = campos.find((cc) => String(cc.id) === String(cond.campo));
-    return `${campo?.label || "campo"} ${OPERADOR_LABEL[cond.operador] || cond.operador || "="} ${cond.valor ?? ""}`.trim();
+    const { op, reglas } = condicionALista(c.condicion);
+    if (!reglas.length) return "si no";
+    const texto = (r) => {
+      const campo = campos.find((cc) => String(cc.id) === String(r.campo));
+      const nombre = campo?.label || "campo";
+      const oper = OPERADOR_LABEL[r.operador] || r.operador || "=";
+      return SIN_VALOR.has(r.operador) ? `${nombre} ${oper}` : `${nombre} ${oper} ${r.valor ?? ""}`.trim();
+    };
+    // Con más de dos condiciones la etiqueta taparía el diagrama: se resume.
+    if (reglas.length > 2) return `${texto(reglas[0])} ${op === "o" ? "o" : "y"} ${reglas.length - 1} más`;
+    return reglas.map(texto).join(op === "o" ? "  o  " : "  y  ");
   }
 
   // Aristas que forman el recorrido activo (Probar / Reproducir) para resaltarlas.
@@ -1070,52 +1111,126 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
 // --------------------------------------------------------------------------- //
 // Operadores válidos según el tipo del campo (>, < solo tienen sentido en
 // números/fechas; el motor hace parseFloat y devuelve false para texto).
+// Operadores que ofrece cada tipo de campo. Los de orden comparan como número y,
+// si no se puede, como fecha ISO — por eso `fecha` los incluye.
+const ORDEN = [">", "<", ">=", "<=", "entre"];
+const PRESENCIA = ["vacio", "no_vacio"];
 const OP_POR_TIPO = {
-  numero: ["=", "!=", ">", "<"],
-  entero: ["=", "!=", ">", "<"],
-  decimal: ["=", "!=", ">", "<"],
-  fecha: ["=", "!=", ">", "<"],
-  seleccion_unica: ["=", "!="],
+  numero: ["=", "!=", ...ORDEN, ...PRESENCIA],
+  entero: ["=", "!=", ...ORDEN, ...PRESENCIA],
+  decimal: ["=", "!=", ...ORDEN, ...PRESENCIA],
+  fecha: ["=", "!=", ...ORDEN, ...PRESENCIA],
+  seleccion_unica: ["=", "!=", "en", "no_en", ...PRESENCIA],
 };
+const OP_TEXTO = ["=", "!=", "contiene", "no_contiene", "en", "no_en", ...PRESENCIA];
+
 function operadoresDe(campo) {
-  if (!campo) return ["=", "!=", "contiene"];
-  return OP_POR_TIPO[campo.tipo] || (campo.opciones?.length ? ["=", "!="] : ["=", "!=", "contiene"]);
+  if (!campo) return OP_TEXTO;
+  return OP_POR_TIPO[campo.tipo] || (campo.opciones?.length ? OP_POR_TIPO.seleccion_unica : OP_TEXTO);
 }
 
 function RuleBuilder({ conexion, campos, onActualizar }) {
-  const cond = conexion.condicion || {};
-  const set = (cambios) => onActualizar(conexion.id, { condicion: { ...cond, ...cambios } });
-  const campoSel = campos.find((c) => String(c.id) === String(cond.campo));
-  const ops = operadoresDe(campoSel);
+  const { op, reglas } = condicionALista(conexion.condicion);
+  const guardar = (nuevoOp, nuevasReglas) =>
+    onActualizar(conexion.id, { condicion: listaACondicion(nuevoOp, nuevasReglas) });
+
+  const cambiar = (i, cambios) =>
+    guardar(op, reglas.map((r, j) => (j === i ? { ...r, ...cambios } : r)));
+  const quitar = (i) => guardar(op, reglas.filter((_, j) => j !== i));
+  const agregar = () => guardar(op, [...reglas, { campo: null, operador: "=", valor: "" }]);
+
   // Agrupar por formulario para desambiguar labels repetidos entre formularios.
   const porForm = campos.reduce((acc, c) => { (acc[c.formulario] = acc[c.formulario] || []).push(c); return acc; }, {});
+
   return (
-    <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: color.slate500 }}>SI…</div>
-      <Select size="sm" value={cond.campo || ""} onChange={(e) => set({ campo: e.target.value ? Number(e.target.value) : null, operador: "=", valor: "" })}>
-        <option value="">(sin condición · rama por defecto)</option>
-        {Object.entries(porForm).map(([form, cs]) => (
-          <optgroup key={form} label={form}>
-            {cs.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </optgroup>
-        ))}
-      </Select>
-      {cond.campo && (
-        <div style={{ display: "flex", gap: 6 }}>
-          <Select size="sm" style={{ width: 138 }} value={cond.operador || "="} onChange={(e) => set({ operador: e.target.value })}>
-            {ops.map((o) => <option key={o} value={o}>{OPERADOR_LABEL[o] || o}</option>)}
+    <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: ".4px", color: color.slate500 }}>SI</span>
+        {reglas.length > 1 && (
+          <Select
+            size="sm"
+            style={{ width: 132 }}
+            value={op}
+            onChange={(e) => guardar(e.target.value, reglas)}
+            aria-label="Cómo se combinan las condiciones"
+          >
+            <option value="y">se cumplen TODAS</option>
+            <option value="o">se cumple ALGUNA</option>
           </Select>
-          {campoSel?.opciones?.length ? (
-            <Select size="sm" value={cond.valor || ""} onChange={(e) => set({ valor: e.target.value })}>
-              <option value="">valor…</option>
-              {campoSel.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
-            </Select>
-          ) : (
-            // key fuerza el refresh del defaultValue al cambiar de campo/operador.
-            <Input key={`${cond.campo}-${cond.operador}`} size="sm" placeholder="valor" defaultValue={cond.valor || ""} onBlur={(e) => e.target.value !== (cond.valor || "") && set({ valor: e.target.value })} />
-          )}
+        )}
+      </div>
+
+      {reglas.length === 0 && (
+        <div style={{ fontSize: type.sm, color: color.slate500 }}>
+          Sin condiciones: es la rama por defecto (si no).
         </div>
       )}
+
+      {reglas.map((r, i) => {
+        const campoSel = campos.find((c) => String(c.id) === String(r.campo));
+        const ops = operadoresDe(campoSel);
+        const operador = r.operador || "=";
+        return (
+          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 5, borderLeft: `2px solid ${color.divider}`, paddingLeft: 9 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <Select
+                size="sm"
+                value={r.campo || ""}
+                onChange={(e) => cambiar(i, { campo: e.target.value ? Number(e.target.value) : null, operador: "=", valor: "" })}
+                aria-label={`Campo de la condición ${i + 1}`}
+              >
+                <option value="">elegí un campo…</option>
+                {Object.entries(porForm).map(([form, cs]) => (
+                  <optgroup key={form} label={form}>
+                    {cs.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </optgroup>
+                ))}
+              </Select>
+              <button
+                onClick={() => quitar(i)}
+                title="Quitar esta condición"
+                aria-label={`Quitar la condición ${i + 1}`}
+                style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex", padding: 3, flex: "none" }}
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+
+            {r.campo && (
+              <div style={{ display: "flex", gap: 6 }}>
+                <Select size="sm" style={{ width: 150 }} value={operador} onChange={(e) => cambiar(i, { operador: e.target.value })} aria-label={`Operador de la condición ${i + 1}`}>
+                  {ops.map((o) => <option key={o} value={o}>{OPERADOR_LABEL[o] || o}</option>)}
+                </Select>
+
+                {/* «vacío» no lleva valor: pedirlo sería pedir un dato que no se usa. */}
+                {SIN_VALOR.has(operador) ? null : campoSel?.opciones?.length && !CON_LISTA.has(operador) ? (
+                  <Select size="sm" value={r.valor || ""} onChange={(e) => cambiar(i, { valor: e.target.value })} aria-label={`Valor de la condición ${i + 1}`}>
+                    <option value="">valor…</option>
+                    {campoSel.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </Select>
+                ) : (
+                  // key fuerza el refresh del defaultValue al cambiar de campo/operador.
+                  <Input
+                    key={`${r.campo}-${operador}`}
+                    size="sm"
+                    placeholder={operador === "entre" ? "desde, hasta" : CON_LISTA.has(operador) ? "uno, otro, otro más" : "valor"}
+                    defaultValue={r.valor || ""}
+                    onBlur={(e) => e.target.value !== (r.valor || "") && cambiar(i, { valor: e.target.value })}
+                    aria-label={`Valor de la condición ${i + 1}`}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <button
+        onClick={agregar}
+        style={{ alignSelf: "flex-start", border: "none", background: "none", cursor: "pointer", color: color.accent, fontSize: type.sm, fontWeight: 600, padding: 0 }}
+      >
+        + Agregar condición
+      </button>
     </div>
   );
 }
@@ -1127,7 +1242,7 @@ const TIPOS_CON_RESPONSABLE = ["form", "atencion", "accion", "espera"];
 const AYUDA_NODO = {
   inicio: "Punto de arranque del flujo. Acá nace o entra el caso. Definí cómo entra: «Manual» (se crea desde Nuevo caso), «Solo por derivación» (lo manda otro flujo) o «Ambas».",
   form: "Muestra un formulario para cargar datos del caso. El caso se detiene hasta que alguien lo completa. Elegí qué formulario usar y, en «Responsable», qué grupos pueden completarlo.",
-  decision: "Bifurca el camino según los datos ya cargados. En cada conexión de salida definí una regla (campo / operador / valor); la salida sin regla es la rama por defecto (else).",
+  decision: "Bifurca el camino según los datos ya cargados. En cada conexión de salida definí una o varias condiciones y decidí si tienen que cumplirse todas o alcanza con una; la salida sin condiciones es la rama por defecto (else).",
   accion: "Paso automático: ejecuta una acción del sistema y el flujo sigue solo (no se detiene). Útil para marcar un hito del proceso. (Ej.: «Solicitud de estudios» — en desarrollo.)",
   atencion: "Registra una atención profesional que queda en la historia clínica del paciente. Si activás «fila de espera», el paciente queda en cola y un médico lo llama desde un box antes de atenderlo.",
   derivar: "Envía el caso a otra área. Si además elegís un flujo de destino, abre un caso nuevo en ese flujo (ej.: ingreso → especialidad), vinculado al original. El caso de origen sigue hacia su cierre.",

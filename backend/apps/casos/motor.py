@@ -13,14 +13,23 @@ Convención de `Nodo.config` por tipo:
   - atencion : {"plantilla": "evaluación inicial"}
 
 Convención de `Conexion.condicion` (nodos Decisión):
-  {"campo": <id de Campo>, "operador": "=", "valor": "Alta"}
-  Operadores: "=", "!=", ">", "<", "contiene". Una conexión sin condición es la
-  rama por defecto (else).
+
+  hoja      {"campo": <id de Campo>, "operador": "=", "valor": "Alta"}
+  compuesta {"op": "y" | "o", "reglas": [<hoja o compuesta>, ...]}
+
+  Operadores: "=", "!=", ">", "<", ">=", "<=", "contiene", "no_contiene",
+  "en", "no_en", "entre", "vacio", "no_vacio". Los de orden comparan como
+  número y, si no se puede, como fecha ISO.
+
+  Las compuestas anidan, así que se puede expresar «(A y B) o C». Una conexión
+  sin condición es la rama por defecto (else).
 """
 from __future__ import annotations
 
 import contextvars
+import unicodedata
 from contextlib import contextmanager
+from datetime import date
 
 from django.db import transaction
 from django.utils import timezone
@@ -143,15 +152,59 @@ def _valor_de_campo(caso: Caso, campo_id) -> str | None:
     return vc.valor if vc else None
 
 
-def _cumple(condicion: dict, caso: Caso) -> bool:
-    """Evalúa una condición de rama contra los valores cargados del caso."""
-    if not condicion:
-        return True  # rama por defecto (else)
-    campo_id = condicion.get("campo")
+def _plano(texto) -> str:
+    """
+    Minúsculas y sin tildes, para comparar texto libre.
+
+    En una admisión se escribe «dolor toracico» tanto como «Dolor Torácico», y
+    una regla de triage que sólo matchea con la tilde puesta manda al paciente
+    por el circuito equivocado sin que nadie se entere. La comparación exacta
+    (`=`, `en`) NO pasa por acá: ahí los valores salen de una lista cerrada y
+    tienen que coincidir tal cual.
+    """
+    crudo = unicodedata.normalize("NFD", str(texto or ""))
+    return "".join(c for c in crudo if unicodedata.category(c) != "Mn").lower()
+
+
+def _lista(valor) -> list[str]:
+    """Normaliza el `valor` de «entre» / «en lista»: acepta lista o texto con comas."""
+    if isinstance(valor, (list, tuple)):
+        return [str(v).strip() for v in valor]
+    return [p.strip() for p in str(valor or "").split(",") if p.strip()]
+
+
+def _comparables(a, b):
+    """
+    Devuelve `(a, b)` en un tipo que se pueda ordenar, o None si no se puede.
+
+    Primero número, después fecha ISO. Las fechas hacen falta porque un flujo
+    clínico compara fechas todo el tiempo (nacimiento, último control) y hasta
+    ahora `>` sobre una fecha devolvía siempre False, en silencio.
+    """
+    try:
+        return float(a), float(b)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return date.fromisoformat(str(a)[:10]), date.fromisoformat(str(b)[:10])
+    except ValueError:
+        return None
+
+
+def _cumple_simple(condicion: dict, caso: Caso) -> bool:
+    """Evalúa UNA condición hoja `{campo, operador, valor}`."""
     operador = condicion.get("operador", "=")
     esperado = condicion.get("valor")
-    actual = _valor_de_campo(caso, campo_id)
-    if actual is None:
+    actual = _valor_de_campo(caso, condicion.get("campo"))
+
+    # Vacío se resuelve antes que nada: «sin cargar» es justamente lo que pregunta,
+    # así que no puede caer en el descarte por `actual is None`.
+    vacio = actual is None or str(actual).strip() == ""
+    if operador == "vacio":
+        return vacio
+    if operador == "no_vacio":
+        return not vacio
+    if vacio:
         return False
 
     if operador == "=":
@@ -159,14 +212,87 @@ def _cumple(condicion: dict, caso: Caso) -> bool:
     if operador == "!=":
         return str(actual) != str(esperado)
     if operador == "contiene":
-        return str(esperado).lower() in str(actual).lower()
-    if operador in (">", "<"):
-        try:
-            a, e = float(actual), float(esperado)
-        except (TypeError, ValueError):
+        return _plano(esperado) in _plano(actual)
+    if operador == "no_contiene":
+        return _plano(esperado) not in _plano(actual)
+    if operador == "en":
+        return str(actual) in _lista(esperado)
+    if operador == "no_en":
+        return str(actual) not in _lista(esperado)
+    if operador == "entre":
+        limites = _lista(esperado)
+        if len(limites) != 2:
             return False
-        return a > e if operador == ">" else a < e
+        desde = _comparables(actual, limites[0])
+        hasta = _comparables(actual, limites[1])
+        if desde is None or hasta is None:
+            return False
+        return desde[0] >= desde[1] and hasta[0] <= hasta[1]
+    if operador in (">", "<", ">=", "<="):
+        par = _comparables(actual, esperado)
+        if par is None:
+            return False
+        a, e = par
+        if operador == ">":
+            return a > e
+        if operador == "<":
+            return a < e
+        if operador == ">=":
+            return a >= e
+        return a <= e
     return False
+
+
+def campos_de_condicion(condicion: dict | None) -> set[int]:
+    """
+    Todos los campos que menciona una condición, recorriendo el árbol.
+
+    La validación previa a publicar avisa cuando una rama usa un campo que
+    ningún formulario del flujo carga. Mirando sólo `condicion["campo"]` una
+    regla compuesta no tiene campo arriba de todo, así que se salteaba entera y
+    el aviso no aparecía nunca: la validación decía «todo bien» sobre una regla
+    que en producción no iba a poder evaluarse.
+    """
+    if not condicion:
+        return set()
+    if "reglas" in condicion:
+        campos: set[int] = set()
+        for r in condicion.get("reglas") or []:
+            campos |= campos_de_condicion(r)
+        return campos
+    campo = condicion.get("campo")
+    try:
+        return {int(campo)} if campo else set()
+    except (TypeError, ValueError):
+        return set()
+
+
+def _cumple(condicion: dict, caso: Caso) -> bool:
+    """
+    Evalúa la condición de una rama contra los valores cargados del caso.
+
+    Admite dos formas, y las dos conviven a propósito:
+
+      hoja      {"campo": 3, "operador": ">", "valor": "65"}
+      compuesta {"op": "y", "reglas": [<hoja o compuesta>, ...]}
+
+    La compuesta anida, así que se puede expresar «(A y B) o C». Hacía falta
+    porque una decisión clínica real casi nunca es una sola condición: «mayor de
+    65 Y dolor torácico» es la regla, no la excepción.
+
+    La forma hoja se conserva porque es la que tienen todas las conexiones ya
+    guardadas. Migrarlas no aportaría nada: una hoja es exactamente una
+    compuesta de un solo elemento, y sostener las dos cuesta tres líneas.
+    """
+    if not condicion:
+        return True  # rama por defecto (else)
+    if "reglas" in condicion:
+        reglas = condicion.get("reglas") or []
+        if not reglas:
+            return True  # compuesta vacía = sin restricción
+        combinar = all if condicion.get("op", "y") == "y" else any
+        return combinar(_cumple(r, caso) for r in reglas)
+    return _cumple_simple(condicion, caso)
 
 
 def _siguiente_nodo(nodo: Nodo, caso: Caso) -> Nodo | None:
@@ -970,10 +1096,10 @@ def validar_version(version) -> list[dict]:
                               "detalle": f"El nodo «{n.titulo}» no tiene un área asignada."})
 
         # 5) Decisión con condición sobre un campo inexistente / no cargado.
+        #    Se recorre el árbol: una regla compuesta no tiene campo arriba de todo.
         if n.tipo == Nodo.Tipo.DECISION:
             for c in salidas:
-                campo_id = (c.condicion or {}).get("campo")
-                if campo_id and int(campo_id) not in campos_disponibles:
+                if campos_de_condicion(c.condicion) - campos_disponibles:
                     problemas.append({"sev": "error", "nodo_id": n.pk,
                                       "titulo": "Regla con un campo inexistente",
                                       "detalle": f"«{n.titulo}» usa un campo que no se carga en ningún formulario del flujo."})
