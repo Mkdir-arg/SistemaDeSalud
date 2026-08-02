@@ -44,7 +44,7 @@ from apps.casos import motor
 from apps.casos.models import Caso, EventoCaso, ItemFila, Notificacion
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Box, Cama, Institucion
+from apps.instituciones.models import Area, Box, Cama, EstadiaCama, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
 
 # --------------------------------------------------------------------------- #
@@ -226,6 +226,7 @@ class Command(BaseCommand):
         # que refecharlos. Se toma antes de generar para no tocar datos previos.
         self.cursor_evento = EventoCaso.objects.order_by("-pk").values_list("pk", flat=True).first() or 0
         self.cursor_entrada = EntradaHistoria.objects.order_by("-pk").values_list("pk", flat=True).first() or 0
+        self.cursor_estadia = EstadiaCama.objects.order_by("-pk").values_list("pk", flat=True).first() or 0
 
         ahora = timezone.localtime()
         # Un caso solo puede quedar EN CURSO si es reciente: nadie espera tres meses
@@ -257,6 +258,7 @@ class Command(BaseCommand):
                 self.stderr.write(f"  activo {i}: {e}")
 
         self._sellar_notificaciones(ahora)
+        self._poner_al_dia_la_higiene()
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(
             estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO]).count()
@@ -418,6 +420,54 @@ class Command(BaseCommand):
             EntradaHistoria.objects.filter(pk=pk).update(fecha=t)
         if entradas:
             self.cursor_entrada = entradas[-1]
+
+        # Las estadías en cama también viven en la línea de tiempo. Sin esto, una
+        # internación de cuatro días figuraba como «internado hace 11 minutos»:
+        # todas las camas mostraban la hora en que corrió el seed, no la del
+        # ingreso, y el tablero perdía justo el dato que se mira.
+        estadias = list(
+            EstadiaCama.objects.filter(pk__gt=self.cursor_estadia).order_by("pk").values_list("pk", flat=True)
+        )
+        for pk in estadias:
+            EstadiaCama.objects.filter(pk=pk).update(desde=t)
+            # `Cama.desde` es la antigüedad que muestra el tablero: mientras la
+            # estadía siga abierta tienen que decir lo mismo.
+            Cama.objects.filter(estadias__pk=pk, estado=Cama.Estado.OCUPADA).update(desde=t)
+        if estadias:
+            self.cursor_estadia = estadias[-1]
+        # Los egresos del tramo (una estadía que se cerró ahora) y las camas que
+        # quedaron esperando higiene.
+        EstadiaCama.objects.filter(hasta__gt=t).update(hasta=t)
+        Cama.objects.filter(estado=Cama.Estado.HIGIENE, desde__gt=t).update(desde=t)
+
+    def _poner_al_dia_la_higiene(self):
+        """Deja como mucho dos camas esperando higiene por sector.
+
+        Cada alta deja una cama sucia y el recorrido genera decenas a lo largo de
+        noventa días. Con todas acumuladas el demo abría con sectores enteros
+        inutilizables por altas de hace tres meses, y en particular sin ninguna
+        cama libre donde internar al siguiente paciente.
+
+        Se dejan dos: es un estado que existe todo el día en un hospital y si no
+        se ve, nadie sabe que está.
+        """
+        from apps.instituciones.models import Subarea
+
+        for sub in Subarea.objects.filter(camas__isnull=False).distinct():
+            sucias = list(
+                Cama.objects.filter(subarea=sub, estado=Cama.Estado.HIGIENE).order_by("-desde")
+            )
+            for cama in sucias[2:]:
+                cama.estado = Cama.Estado.LIBRE
+                cama.desde = None
+                cama.save(update_fields=["estado", "desde"])
+            # Las que quedan esperan desde hace un rato, no desde el alta
+            # simulada: el tablero mostraba «esperando higiene hace 69 días»,
+            # que además de absurdo tapa el dato que importa —hace cuánto que
+            # esa cama no se puede usar—.
+            for cama in sucias[:2]:
+                cama.desde = timezone.now() - timedelta(minutes=random.randint(15, 190))
+                cama.save(update_fields=["desde"])
 
     def _sellar_arbol(self, raiz):
         """Fecha cada caso del árbol (raíz + derivados) según sus propios eventos."""
@@ -682,10 +732,6 @@ class Command(BaseCommand):
 
     def _recorrer_internacion(self, caso, reloj, hechos):
         """Asignar cama → evolución diaria (loop) → alta médica."""
-        # Una internación sí puede llevar días, así que acá la ventana es más ancha.
-        if reloj.t >= self.limite_internacion and random.random() < 0.3:
-            return  # internación en curso: pobla la bandeja de Internación
-
         reloj.mas(20, 70)
         # Se interna en una cama REAL. Si el sector está lleno el caso se queda
         # esperando cama, que es exactamente lo que pasa en un hospital lleno y
@@ -713,6 +759,39 @@ class Command(BaseCommand):
                 self._sellar(reloj.t)
                 caso.refresh_from_db()
                 hechos["pases_uti"] = hechos.get("pases_uti", 0) + 1
+
+        # Una parte queda internada AHORA: son los pacientes que ocupan las camas
+        # que muestra el tablero, y sin ellos la pantalla arranca vacía.
+        #
+        # No se decide por el reloj del recorrido. Los casos que llegan a
+        # internarse son los que completaron todo el circuito de guardia, y esos
+        # son siempre los viejos: los recientes quedan detenidos antes (en la
+        # sala, en atención). Con un corte por fecha la internación más nueva
+        # daba 21 días y no había ninguna en curso.
+        #
+        # Se los refecha a una ventana reciente y plausible, que es la misma
+        # operación que el seed ya hace con eventos e historia clínica.
+        if hechos.get("internados_ahora", 0) < 12 and random.random() < 0.4:
+            # Los primeros tres van a UTI. Librado al azar del pase general
+            # (uno de cada seis, y sólo si además le toca quedar en curso) UTI
+            # salía vacía en casi todas las corridas, y un tablero donde un
+            # sector nunca se usa sugiere que la ocupación se mira de a uno.
+            if hechos.get("en_uti", 0) < 3:
+                uti = Cama.objects.filter(
+                    subarea__nombre="UTI", estado=Cama.Estado.LIBRE, activa=True
+                ).order_by("?").first()
+                if uti:
+                    motor.pasar_de_sector(caso, uti.id, autor=self._autor(caso),
+                                          motivo="Descompensación hemodinámica")
+                    caso.refresh_from_db()
+                    hechos["en_uti"] = hechos.get("en_uti", 0) + 1
+            ingreso = timezone.now() - timedelta(
+                days=random.randint(0, 7), hours=random.randint(1, 23)
+            )
+            EstadiaCama.objects.filter(caso=caso, hasta__isnull=True).update(desde=ingreso)
+            Cama.objects.filter(caso=caso).update(desde=ingreso)
+            hechos["internados_ahora"] = hechos.get("internados_ahora", 0) + 1
+            return
 
         for dia in range(random.randint(1, 4)):
             if caso.nodo_actual is None or caso.estado == Caso.Estado.CERRADO:
@@ -743,6 +822,28 @@ class Command(BaseCommand):
             caso.refresh_from_db()
             if ultimo:
                 break
+
+        # Los casos viejos tienen que terminar de resolverse.
+        #
+        # El bucle de evolución puede agotarse sin llegar al alta, y ahí la cama
+        # queda ocupada para siempre: el tablero mostraba pacientes «internados
+        # hace 76 días». Sólo las internaciones recientes siguen en curso; el
+        # resto se cierra.
+        if caso.estado != Caso.Estado.CERRADO and reloj.t < self.limite_internacion:
+            reloj.mas(600, 1200)
+            for _ in range(4):
+                if caso.nodo_actual is None or caso.estado == Caso.Estado.CERRADO:
+                    break
+                motor.avanzar(caso, {
+                    "titulo": "Evolución final", "contenido": "Evolución favorable. Se otorga el alta.",
+                    "firmada": True,
+                    "valores": {
+                        self.campo("Evolución diaria", "Evolución"): "Evolución favorable.",
+                        self.campo("Evolución diaria", "Decisión"): "Alta médica",
+                    },
+                }, autor=self._autor(caso))
+                caso.refresh_from_db()
+            self._sellar(reloj.t)
 
         # Alguien higieniza la cama después del alta.
         #

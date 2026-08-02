@@ -45,6 +45,8 @@ const PATHS = {
   // Doble flecha tenue: la columna es ordenable pero no es la activa.
   ordenable: "M8 9l4-4 4 4M8 15l4 4 4-4",
   filter: "M3 5h18l-7 8v6l-4 2v-8z",
+  // Cama de internación: respaldo, colchón y patas.
+  bed: "M3 7v11M3 12h18a2 2 0 0 1 2 2v4M3 18h20M7 12v-2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2",
   luna: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
   sol: "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
   // Densidad de tabla (cómoda / compacta).

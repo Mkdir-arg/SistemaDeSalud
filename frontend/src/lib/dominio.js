@@ -43,6 +43,7 @@ const NOMBRE_NODO = {
   accion: "Acción",
   derivar: "Derivar",
   espera: "Espera de fila",
+  cama: "Asignar cama",
   tiempo: "Espera por tiempo",
   atencion: "Atención",
   estado: "Estado",

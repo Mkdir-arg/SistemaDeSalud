@@ -31,6 +31,7 @@ const TITULOS = {
   "/notificaciones": "Notificaciones",
   "/bandeja": "Bandeja de tareas",
   "/filas": "Filas de espera",
+  "/internacion": "Internación",
   "/casos": "Casos",
   "/historia": "Historia clínica",
   "/legajo": "Legajo profesional",
@@ -276,6 +277,9 @@ const GRUPOS = [
     items: [
       // Bandeja / Filas / Casos se operan desde «Mi trabajo» (Inicio); quedan las
       // rutas vivas pero fuera del menú. Acá solo la vista de supervisión (jefe).
+      // Internación sí va en el menú: el tablero de camas se consulta todo el
+      // día por sí mismo, no como paso de un caso.
+      { to: "/internacion", label: "Internación", icon: "bed", cap: "trabajo" },
       { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
     ],
   },

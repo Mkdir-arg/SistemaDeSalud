@@ -19,6 +19,7 @@ import Bandejas from "./pages/ejecucion/Bandejas";
 import Casos from "./pages/ejecucion/Casos";
 import CasoDetalle from "./pages/ejecucion/CasoDetalle";
 import Fila from "./pages/ejecucion/Fila";
+import Internacion from "./pages/ejecucion/Internacion";
 import Flujos from "./pages/diseno/Flujos";
 import FlujoEditor from "./pages/diseno/FlujoEditor";
 import MapaFlujos from "./pages/diseno/MapaFlujos";
@@ -128,6 +129,7 @@ export default function App() {
       <Route path="/supervision" element={P(<Supervision />)} />
       <Route path="/bandeja" element={P(<Bandejas />)} />
       <Route path="/filas" element={P(<Fila />)} />
+      <Route path="/internacion" element={P(<Internacion />)} />
       <Route path="/casos" element={P(<Casos />)} />
       <Route path="/casos/:id" element={P(<CasoDetalle />)} />
 
