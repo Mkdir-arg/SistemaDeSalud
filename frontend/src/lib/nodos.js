@@ -13,7 +13,7 @@ import { nombreNodo } from "./dominio";
  */
 export const TIPOS_NODO = [
   "inicio", "form", "decision", "accion", "derivar",
-  "espera", "tiempo", "atencion", "estado", "notificar", "integracion", "fin",
+  "espera", "tiempo", "atencion", "cama", "estado", "notificar", "integracion", "fin",
 ];
 
 const CONOCIDO = new Set(TIPOS_NODO);

@@ -107,6 +107,11 @@
   --color-nodo-espera-sol: #16B1C9;
   --color-nodo-espera-tint: #E2F6F9;
   --color-nodo-espera-bd: #B6E4EC;
+  /* Asignar cama: violeta, para no confundirse con la fila (teal) ni con la
+     atención (rosa). Son los tres pasos donde el caso se detiene. */
+  --color-nodo-cama-sol: #7B5BD6;
+  --color-nodo-cama-tint: #EFEAFB;
+  --color-nodo-cama-bd: #CFC2F1;
   --color-nodo-tiempo-sol: #0E9E8E;
   --color-nodo-tiempo-tint: #E2F5F1;
   --color-nodo-tiempo-bd: #B3E2D9;
@@ -244,6 +249,9 @@
   --color-nodo-espera-sol: color-mix(in srgb, #16B1C9 62%, white);
   --color-nodo-espera-tint: color-mix(in srgb, #16B1C9 16%, var(--color-superficie));
   --color-nodo-espera-bd: color-mix(in srgb, #16B1C9 38%, var(--color-superficie));
+  --color-nodo-cama-sol: color-mix(in srgb, #7B5BD6 62%, white);
+  --color-nodo-cama-tint: color-mix(in srgb, #7B5BD6 16%, var(--color-superficie));
+  --color-nodo-cama-bd: color-mix(in srgb, #7B5BD6 38%, var(--color-superficie));
   --color-nodo-tiempo-sol: color-mix(in srgb, #0E9E8E 62%, white);
   --color-nodo-tiempo-tint: color-mix(in srgb, #0E9E8E 16%, var(--color-superficie));
   --color-nodo-tiempo-bd: color-mix(in srgb, #0E9E8E 38%, var(--color-superficie));

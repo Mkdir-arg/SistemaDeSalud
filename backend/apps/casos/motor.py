@@ -1603,7 +1603,21 @@ def ensayar(version: VersionFlujo, pasos: list[dict] | None = None, autor=None) 
                     nodo = caso.nodo_actual
                     if nodo is None or nodo.tipo == Nodo.Tipo.FIN:
                         break
-                    if datos.get("accion") == "llamar":
+                    if nodo.tipo == Nodo.Tipo.CAMA:
+                        # Sin esto, un flujo con internación no se podía ensayar:
+                        # el nodo detiene el avance esperando que alguien asigne
+                        # una cama, y el ensayo se plantaba ahí. Cuál cama no
+                        # importa para el recorrido; que NO HAYA sí importa, y
+                        # el motor lo dice —enterarse al diseñar el flujo es
+                        # mucho mejor que enterarse con un paciente esperando—.
+                        libre = camas_disponibles(nodo).first()
+                        if libre is None:
+                            raise ErrorMotor(
+                                f"No hay camas libres para «{nodo.titulo}»: "
+                                "cargá camas en el sector antes de publicar."
+                            )
+                        asignar_cama(caso, libre.id, autor=autor)
+                    elif datos.get("accion") == "llamar":
                         llamar(caso, box_id=datos.get("box_id") or _box_para_ensayo(caso), autor=autor)
                     else:
                         avanzar(caso, datos, autor=autor)

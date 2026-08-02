@@ -202,6 +202,23 @@ function TableroGeneral({ d, navigate }) {
     { l: "Espera prom.", v: r.espera_prom_min, u: "min", icon: "refresh", c: varEspera(r.espera_prom_min) },
     { l: "Atención prom.", v: r.atencion_prom_min ?? 0, u: "min", icon: "users", c: "var(--color-nodo-atencion-sol)" },
     { l: "Resolución prom.", v: r.resolucion_prom_h, u: "h", icon: "map", c: "var(--color-texto-suave)" },
+    // Sólo si la institución tiene camas: en un centro ambulatorio un «0 %» de
+    // ocupación no dice nada, ocupa lugar y hace dudar de si está roto.
+    ...(r.camas_total
+      ? [{
+          l: "Ocupación camas",
+          v: r.ocupacion_camas,
+          u: "%",
+          icon: "bed",
+          // Los mismos umbrales que el tablero de internación: al 90 % es una
+          // decisión distinta que al 60 %, y de reojo tiene que notarse.
+          c: r.ocupacion_camas >= 90
+            ? "var(--color-danger)"
+            : r.ocupacion_camas >= 75
+              ? "var(--color-warn)"
+              : "var(--color-nodo-atencion-sol)",
+        }]
+      : []),
   ];
   return (
     <>

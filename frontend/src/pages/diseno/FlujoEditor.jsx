@@ -1998,6 +1998,7 @@ const AYUDA_NODO = {
   atencion: "Registra una atención profesional que queda en la historia clínica del paciente. Si activás «fila de espera», el paciente queda en cola y un médico lo llama desde un box antes de atenderlo.",
   derivar: "Envía el caso a otra área. Si además elegís un flujo de destino, abre un caso nuevo en ese flujo (ej.: ingreso → especialidad), vinculado al original. El caso de origen sigue hacia su cierre.",
   espera: "Fila de espera genérica: encola el caso (orden de llegada; urgentes primero) y, al llamarlo, avanza al SIGUIENTE paso. Si lo que sigue es atender al paciente, conviene usar el nodo «Atención» con la opción «fila de espera» (une espera + llamado + atención en un solo paso).",
+  cama: "El caso espera una cama del sector y se detiene hasta que alguien se la asigna desde Internación. La cama la elige una persona a propósito: depende de aislamiento, del sexo de la sala y de la gravedad. Al dar el alta o cerrar el caso, la cama se libera sola y queda esperando higiene.",
   tiempo: "Pausa el caso por un período (dato informativo). Hoy se reactiva manualmente; la reactivación automática por tiempo es un pendiente.",
   estado: "Cambia el estado del caso (Recibido, En espera, Atendido, Cerrado…). Es automático: sirve para reflejar en qué etapa está el caso.",
   fin: "Cierra el caso: marca el estado como Cerrado y termina el recorrido. Un flujo puede tener varios nodos Fin.",
@@ -2013,6 +2014,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
   const [formularios, setFormularios] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [boxesArea, setBoxesArea] = useState([]);
+  const [subareas, setSubareas] = useState([]);
   const cat = catDe(nodo.tipo);
   const salidas = version.conexiones.filter((c) => c.origen === nodo.id);
   const aplicaResponsable = TIPOS_CON_RESPONSABLE.includes(nodo.tipo);
@@ -2026,6 +2028,12 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
     if (aplicaResponsable) api.get(`/grupos/?area__institucion=${flujoInstId}&activo=true`).then((d) => setGrupos(d.results || d));
     if ((nodo.tipo === "atencion" || nodo.tipo === "espera") && flujoAreaId)
       api.get(`/boxes/?area=${flujoAreaId}&activo=true`).then((d) => setBoxesArea(d.results || d));
+    // Sectores donde puede haber camas. Se piden de toda la institución y no
+    // sólo del área del flujo: un flujo de guardia puede internar en el área de
+    // internación, que es justamente lo que hace el escenario de demo.
+    if (nodo.tipo === "cama")
+      api.get(`/subareas/?area__institucion=${flujoInstId}&activa=true&page_size=200`)
+        .then((d) => setSubareas(d.results || d));
   }, [nodo.tipo, flujoInstId, flujoAreaId, aplicaResponsable]);
 
   // Flujos de destino candidatos: los del área elegida, sin el flujo actual
@@ -2128,6 +2136,26 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               Los casos esperan en una fila (FIFO + urgentes primero) y se los llama desde un box para que avancen al siguiente paso.
             </div>
             <PantallaUrl nodo={nodo} />
+          </>
+        )}
+
+        {nodo.tipo === "cama" && (
+          <>
+            <Field label="Sector de internación">
+              {/* Sin sector se ofrecen todas las camas del área del flujo.
+                  Declararlo evita que a alguien de clínica le ofrezcan una
+                  cama de UTI. */}
+              <Select
+                value={(nodo.config || {}).sector || ""}
+                onChange={(e) => setConfig({ sector: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">Todo el área del flujo</option>
+                {subareas.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              </Select>
+            </Field>
+            <div style={{ fontSize: 12, color: "var(--color-texto-debil)" }}>
+              El caso espera acá hasta que alguien le asigne una cama libre del sector.
+            </div>
           </>
         )}
 

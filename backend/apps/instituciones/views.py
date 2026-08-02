@@ -101,8 +101,23 @@ class InstitucionViewSet(BaseModelViewSet):
             avg = qs.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).annotate(d=dur).aggregate(a=Avg("d"))["a"]
             return round(avg.total_seconds() / 3600, 1) if avg else 0
 
+        # Ocupación de camas: se cuenta acá y no con una consulta por sector
+        # porque el resumen es una sola foto, y el porcentaje va sobre camas EN
+        # SERVICIO —contar las que están fuera de servicio en el denominador
+        # haría parecer desahogado a un servicio que no lo está—.
+        camas = Cama.objects.filter(area__institucion=inst, activa=True)
+        camas_total = camas.count()
+        camas_fuera = camas.filter(estado=Cama.Estado.BLOQUEADA).count()
+        camas_ocupadas = camas.filter(estado=Cama.Estado.OCUPADA).count()
+        operativas = camas_total - camas_fuera
+
         resumen = {
             "casos_activos": activos.count(),
+            "camas_total": camas_total,
+            "camas_operativas": operativas,
+            "camas_ocupadas": camas_ocupadas,
+            "camas_libres": camas.filter(estado=Cama.Estado.LIBRE).count(),
+            "ocupacion_camas": round(100 * camas_ocupadas / operativas) if operativas else 0,
             "ingresos": casos.filter(creado__date__range=rango).count(),
             "cerrados": casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).count(),
             "en_cola": len(cola),
@@ -380,7 +395,7 @@ class SubareaViewSet(BaseModelViewSet):
     serializer_class = SubareaSerializer
     capacidad_requerida = "config"
     institucion_path = "area__institucion"
-    filter_fields = ("area", "activa")
+    filter_fields = ("area", "area__institucion", "activa")
 
 
 class GrupoViewSet(BaseModelViewSet):

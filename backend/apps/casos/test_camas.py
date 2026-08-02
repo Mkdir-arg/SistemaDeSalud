@@ -226,3 +226,48 @@ class CamasTests(TestCase):
         self.assertIsNotNone(e.hasta)
         self.assertGreaterEqual(e.hasta, antes)
         self.assertEqual(e.motivo_egreso, EstadiaCama.Egreso.ALTA)
+
+
+class EnsayoConCamaTests(TestCase):
+    """
+    El ensayo del diseñador tiene que poder atravesar un paso de cama.
+
+    Sin esto un flujo con internación no se podía probar antes de publicarlo:
+    el nodo detiene el avance esperando que alguien asigne una cama y el ensayo
+    se plantaba ahí. Es justo el flujo donde más caro sale un error.
+    """
+
+    def setUp(self):
+        self.jefe = Usuario.objects.create_superuser("jefe2@cauce.local", "x", nombre="Jefe")
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Internación")
+        self.sala = Subarea.objects.create(area=self.area, nombre="Clínica médica")
+        flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Internación")
+        self.ver = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        ini = Nodo.objects.create(version=self.ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.cama_nodo = Nodo.objects.create(
+            version=self.ver, tipo=Nodo.Tipo.CAMA, titulo="Asignar cama",
+            config={"sector": self.sala.id},
+        )
+        fin = Nodo.objects.create(version=self.ver, tipo=Nodo.Tipo.FIN, titulo="Alta")
+        Conexion.objects.create(version=self.ver, origen=ini, destino=self.cama_nodo)
+        Conexion.objects.create(version=self.ver, origen=self.cama_nodo, destino=fin)
+
+    def test_el_ensayo_atraviesa_el_paso_de_cama(self):
+        Cama.objects.create(area=self.area, subarea=self.sala, nombre="101-A")
+        r = motor.ensayar(self.ver, [{}, {}], autor=self.jefe)
+        self.assertTrue(r["termino"], r)
+
+    def test_sin_camas_el_ensayo_lo_dice_antes_de_publicar(self):
+        """Enterarse al diseñar es mucho mejor que enterarse con un paciente esperando."""
+        r = motor.ensayar(self.ver, [{}, {}], autor=self.jefe)
+        self.assertFalse(r["termino"])
+        self.assertIn("camas libres", str(r))
+
+    def test_el_ensayo_no_deja_la_cama_ocupada(self):
+        """Es un ensayo: si ocupara camas de verdad, probar un flujo llenaría el sector."""
+        cama = Cama.objects.create(area=self.area, subarea=self.sala, nombre="101-A")
+        motor.ensayar(self.ver, [{}, {}], autor=self.jefe)
+        cama.refresh_from_db()
+        self.assertEqual(cama.estado, Cama.Estado.LIBRE)
+        self.assertEqual(EstadiaCama.objects.count(), 0)
