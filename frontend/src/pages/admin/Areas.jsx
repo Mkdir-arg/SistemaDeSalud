@@ -192,12 +192,14 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
   const [crearSub, setCrearSub] = useState(false);
   const [crearGrupo, setCrearGrupo] = useState(false);
   const [crearBox, setCrearBox] = useState(false);
+  const [crearAgenda, setCrearAgenda] = useState(false);
 
   const TABS = [
     { key: "datos", label: "Datos" },
     { key: "staff", label: "Staff" },
     { key: "grupos", label: "Grupos" },
     { key: "boxes", label: "Boxes" },
+    { key: "agendas", label: "Agendas" },
     { key: "subareas", label: "Sub-áreas" },
   ];
 
@@ -206,6 +208,7 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
     staff: { label: "Asignar profesional", on: () => setAsignar(true) },
     grupos: { label: "Crear grupo", on: () => setCrearGrupo(true) },
     boxes: { label: "Crear box", on: () => setCrearBox(true) },
+    agendas: { label: "Crear agenda", on: () => setCrearAgenda(true) },
     subareas: { label: "Crear sub-área", on: () => setCrearSub(true) },
   }[tab];
 
@@ -244,12 +247,14 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
       {tab === "staff" && <StaffTab area={area} />}
       {tab === "grupos" && <GruposTab area={area} />}
       {tab === "boxes" && <BoxesTab area={area} />}
+      {tab === "agendas" && <AgendasTab area={area} />}
       {tab === "subareas" && <SubareasTab area={area} onChange={onChange} />}
 
       {asignar && <AsignarModal area={area} onClose={() => setAsignar(false)} />}
       {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={onChange} />}
       {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} />}
       {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} />}
+      {crearAgenda && <AgendaModal area={area} onClose={() => setCrearAgenda(false)} />}
     </div>
   );
 }
@@ -931,6 +936,297 @@ function AsignarModal({ area, onClose }) {
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const hhmm = (t) => (t || "").slice(0, 5);
+
+/**
+ * Agendas del área: quién o qué se puede reservar, y en qué franjas.
+ *
+ * Las franjas se editan acá y no en una pantalla aparte porque son inseparables
+ * de la agenda: una agenda sin horarios no da ningún turno, y crearla sin poder
+ * cargarlos en el mismo lugar deja el trabajo a medias.
+ */
+function AgendasTab({ area }) {
+  const toast = useToast();
+  const [aBorrar, setABorrar] = useState(null);
+  const [franjas, setFranjas] = useState(null); // agenda cuyas franjas se editan
+  const agendas = useLista("agendas", { area: area.id, pageSize: 100 });
+
+  const borrar = useAccion((a) => api.del(`/agendas/${a.id}/`), {
+    onSuccess: () => { toast.ok("Agenda eliminada."); setABorrar(null); },
+    onError: (e) => toast.deError(e, "No se pudo eliminar la agenda."),
+  });
+
+  if (agendas.error) return <EstadoError error={agendas.error} onReintentar={agendas.refetch} />;
+  if (agendas.isLoading) return <Skeleton className="h-24" />;
+  if (!agendas.filas.length) {
+    return (
+      <Aviso>
+        Sin agendas. Usá «Crear agenda» para definir a quién o a qué se le pueden dar
+        turnos: un profesional, o un recurso como un tomógrafo.
+      </Aviso>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {agendas.filas.map((a) => (
+        <Card key={a.id} className="px-lg py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex size-8 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
+              <Icon name="calendar" size={16} />
+            </span>
+            <div className="min-w-40 flex-1">
+              <div className="text-md font-semibold">{a.nombre}</div>
+              <div className="text-sm text-texto-tenue">
+                turnos de {a.duracion_min} min
+                {a.sobreturnos_max > 0 && ` · hasta ${a.sobreturnos_max} sobreturnos`}
+                {a.flujo_titulo ? ` · abre «${a.flujo_titulo}»` : " · sin flujo"}
+              </div>
+            </div>
+            <Badge tone={a.tipo === "recurso" ? "gray" : "info"}>{a.tipo_display}</Badge>
+            {!a.activa && <Badge tone="gray">inactiva</Badge>}
+            <Button size="sm" variant="secondary" onClick={() => setFranjas(a)}>
+              Horarios ({a.disponibilidades?.length || 0})
+            </Button>
+            <button
+              onClick={() => setABorrar(a)}
+              title={`Eliminar ${a.nombre}`}
+              aria-label={`Eliminar ${a.nombre}`}
+              className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
+            >
+              <Icon name="trash" size={15} />
+            </button>
+          </div>
+
+          {/* Sin flujo la agenda da turnos pero presentarse no abre nada, y el
+              turno queda siendo una anotación. Se avisa acá y no al crear:
+              también se puede llegar a este estado editando. */}
+          {!a.flujo && (
+            <div className="mt-2 flex items-start gap-2 rounded-md bg-badge-amber-bg px-3 py-2 text-sm text-badge-amber-fg">
+              <Icon name="alert" size={14} className="mt-0.5 flex-none" />
+              <span>
+                Sin flujo asignado: se pueden dar turnos, pero registrar la llegada no
+                va a abrir ningún caso.
+              </span>
+            </div>
+          )}
+
+          {(a.disponibilidades || []).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5 pl-11">
+              {a.disponibilidades.map((d) => (
+                <span key={d.id} className="rounded-pill bg-division px-2 py-px text-xs font-medium text-texto-suave">
+                  {DIAS[d.dia_semana]} {hhmm(d.desde)}–{hhmm(d.hasta)}
+                </span>
+              ))}
+            </div>
+          )}
+        </Card>
+      ))}
+
+      {franjas && (
+        <FranjasModal
+          agenda={franjas}
+          onClose={() => { setFranjas(null); agendas.refetch(); }}
+        />
+      )}
+
+      {aBorrar && (
+        <ConfirmDialog
+          title="Eliminar agenda"
+          confirmar="Eliminar"
+          peligroso
+          cargando={borrar.isPending}
+          onConfirmar={() => borrar.mutate(aBorrar)}
+          onClose={() => setABorrar(null)}
+        >
+          ¿Seguro que querés eliminar <strong>{aBorrar.nombre}</strong>? Se van a borrar
+          también sus horarios y los turnos dados.
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
+function AgendaModal({ area, onClose }) {
+  const toast = useToast();
+  const [nombre, setNombre] = useState("");
+  const [tipo, setTipo] = useState("profesional");
+  const [profesional, setProfesional] = useState("");
+  const [flujo, setFlujo] = useState("");
+  const [duracion, setDuracion] = useState(20);
+  const [sobreturnos, setSobreturnos] = useState(2);
+
+  const staff = useLista("membresias", { areas: area.id, activo: true, pageSize: 100 });
+  const flujos = useLista("flujos", { area: area.id, pageSize: 100 });
+
+  const crear = useAccion(
+    () => api.post("/agendas/", {
+      institucion: area.institucion,
+      area: area.id,
+      nombre: nombre.trim(),
+      tipo,
+      // Una agenda de recurso no lleva profesional: el backend lo rechaza y
+      // mandarlo igual sería un 400 que la persona no entiende.
+      profesional: tipo === "profesional" && profesional ? Number(profesional) : null,
+      flujo: flujo ? Number(flujo) : null,
+      duracion_min: Number(duracion) || 20,
+      sobreturnos_max: Number(sobreturnos) || 0,
+    }),
+    {
+      onSuccess: () => { toast.ok("Agenda creada."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudo crear la agenda."),
+    },
+  );
+
+  return (
+    <Modal
+      title={`Nueva agenda · ${area.nombre}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={crear.isPending || !nombre.trim()} onClick={() => crear.mutate()}>
+            {crear.isPending ? "…" : "Crear"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Nombre">
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)}
+                 placeholder="Dra. Suárez, o Tomógrafo" autoFocus />
+        </Field>
+        <Field label="Tipo">
+          <Select value={tipo} onChange={(e) => { setTipo(e.target.value); setProfesional(""); }}>
+            <option value="profesional">Profesional</option>
+            <option value="recurso">Recurso (equipo, consultorio)</option>
+          </Select>
+        </Field>
+        {tipo === "profesional" && (
+          <Field label="Profesional">
+            <Select value={profesional} onChange={(e) => setProfesional(e.target.value)}>
+              <option value="">Sin asignar</option>
+              {staff.filas.map((m) => (
+                <option key={m.id} value={m.usuario}>{m.usuario_nombre || m.usuario_email}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        <Field
+          label="Flujo que se abre al presentarse"
+          hint="Sin flujo se pueden dar turnos, pero la llegada no abre ningún caso."
+        >
+          <Select value={flujo} onChange={(e) => setFlujo(e.target.value)}>
+            <option value="">Ninguno</option>
+            {flujos.filas.map((f) => <option key={f.id} value={f.id}>{f.titulo}</option>)}
+          </Select>
+        </Field>
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label="Duración del turno (min)">
+            <Input type="number" min="5" step="5" value={duracion}
+                   onChange={(e) => setDuracion(e.target.value)} />
+          </Field>
+          <Field label="Sobreturnos por horario">
+            <Input type="number" min="0" value={sobreturnos}
+                   onChange={(e) => setSobreturnos(e.target.value)} />
+          </Field>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Franjas semanales de una agenda: agregar y quitar. */
+function FranjasModal({ agenda, onClose }) {
+  const toast = useToast();
+  const [dia, setDia] = useState(0);
+  const [desde, setDesde] = useState("08:00");
+  const [hasta, setHasta] = useState("12:00");
+  const lista = useLista("disponibilidades", { agenda: agenda.id, pageSize: 100 });
+
+  const agregar = useAccion(
+    () => api.post("/disponibilidades/", {
+      agenda: agenda.id, dia_semana: Number(dia), desde, hasta,
+    }),
+    {
+      onSuccess: () => { toast.ok("Franja agregada."); lista.refetch(); },
+      onError: (e) => toast.deError(e, "No se pudo agregar la franja."),
+    },
+  );
+  const quitar = useAccion((d) => api.del(`/disponibilidades/${d.id}/`), {
+    onSuccess: () => { toast.ok("Franja quitada."); lista.refetch(); },
+    onError: (e) => toast.deError(e, "No se pudo quitar la franja."),
+  });
+
+  // Cuántos turnos genera la franja: es lo que la persona quiere saber antes de
+  // guardarla, y calcularlo mentalmente con turnos de 15 minutos es incómodo.
+  const cuantos = (() => {
+    const [h1, m1] = desde.split(":").map(Number);
+    const [h2, m2] = hasta.split(":").map(Number);
+    const min = (h2 * 60 + m2) - (h1 * 60 + m1);
+    return min > 0 ? Math.floor(min / agenda.duracion_min) : 0;
+  })();
+
+  return (
+    <Modal
+      title={`Horarios · ${agenda.nombre}`}
+      onClose={onClose}
+      footer={<Button onClick={onClose}>Listo</Button>}
+    >
+      <div className="flex flex-col gap-3.5">
+        {lista.isLoading ? (
+          <Skeleton className="h-16" />
+        ) : lista.filas.length === 0 ? (
+          <Aviso>Sin franjas: esta agenda todavía no genera ningún turno.</Aviso>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {lista.filas.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 rounded-md border border-division px-2.5 py-1.5">
+                <span className="flex-1 text-md">
+                  <strong>{DIAS[d.dia_semana]}</strong> de {hhmm(d.desde)} a {hhmm(d.hasta)}
+                  <span className="text-texto-tenue"> · cada {d.paso_min} min</span>
+                </span>
+                <button
+                  onClick={() => quitar.mutate(d)}
+                  disabled={quitar.isPending}
+                  title="Quitar franja"
+                  aria-label={`Quitar ${DIAS[d.dia_semana]} de ${hhmm(d.desde)} a ${hhmm(d.hasta)}`}
+                  className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
+                >
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="border-t border-division pt-3.5">
+          <div className="mb-2 text-sm font-semibold text-texto-suave">Agregar una franja</div>
+          <div className="grid gap-2.5 sm:grid-cols-[1fr_auto_auto]">
+            <Select value={dia} onChange={(e) => setDia(e.target.value)} aria-label="Día">
+              {DIAS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+            </Select>
+            <Input type="time" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
+            <Input type="time" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-sm text-texto-tenue">
+              {cuantos > 0
+                ? `Genera ${cuantos} turno${cuantos === 1 ? "" : "s"} de ${agenda.duracion_min} min.`
+                : "La franja tiene que terminar después de empezar."}
+            </span>
+            <Button size="sm" disabled={agregar.isPending || cuantos === 0}
+                    onClick={() => agregar.mutate()}>
+              Agregar
+            </Button>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }

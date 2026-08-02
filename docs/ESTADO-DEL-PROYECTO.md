@@ -37,6 +37,7 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Frontend — administración (instituciones, áreas, usuarios) | ✅ Completo + verificado |
 | Frontend — registros (historia clínica) | ✅ Completo + verificado |
 | Camas e internación (modelo, motor, tablero, pases) | ✅ Completo + 41 tests |
+| Turnos y agenda (agendas, franjas, sobreturnos, ausentismo) | ✅ Completo + 62 tests |
 | Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
 | Tests automatizados | ✅ Backend 57 tests; frontend verificado con Playwright |
 | Despliegue / Postgres-Supabase | ⚠️ Configurado pero no probado |
