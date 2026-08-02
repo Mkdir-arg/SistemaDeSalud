@@ -30,6 +30,20 @@ class CasoViewSet(BaseModelViewSet):
     capacidad_requerida = "trabajo"
     institucion_path = "institucion"
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a", "ciudadano")
+    # Exportación del listado de casos, con las mismas columnas que la pantalla.
+    nombre_csv = "casos"
+    columnas_csv = [
+        ("id", "Caso"),
+        ("ciudadano_nombre", "Paciente"),
+        ("flujo_titulo", "Flujo"),
+        ("paso_actual", "Paso actual"),
+        ("area_nombre", "Área"),
+        ("estado_display", "Estado"),
+        ("prioridad_display", "Prioridad"),
+        ("asignado_nombre", "Asignado a"),
+        ("creado", "Ingreso"),
+        ("actualizado", "Última actualización"),
+    ]
     # Orden por defecto con desempate: `-creado` solo tiene empates y la
     # paginación se vuelve inestable (ver `OrdenEstable` en apps/common.py).
     ordering = ("-creado", "-id")
@@ -852,6 +866,21 @@ class ItemFilaViewSet(BaseModelViewSet):
     # todavía esperan. Sin él hay que traerlos todos y descartar en el cliente los
     # ya llamados, que es lo que hacía la pantalla de fila.
     filter_fields = ("caso", "nodo", "urgente", "atendido", "box", "nodo__version__flujo__area")
+    # Exportación de la cola: lo que un jefe de guardia necesita para revisar
+    # tiempos de espera fuera del sistema.
+    nombre_csv = "cola-de-espera"
+    columnas_csv = [
+        ("caso", "Caso"),
+        ("persona", "Paciente"),
+        ("turno", "Turno"),
+        ("area_nombre", "Área"),
+        ("nodo_titulo", "Paso"),
+        ("urgente", "Urgente"),
+        ("ingreso", "Ingreso"),
+        ("llamado_at", "Llamado"),
+        ("atendido_at", "Fin de atención"),
+        ("box_nombre", "Box"),
+    ]
 
 
 class EventoCasoViewSet(BaseModelViewSet):

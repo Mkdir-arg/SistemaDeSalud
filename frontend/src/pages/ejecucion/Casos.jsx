@@ -86,6 +86,7 @@ export default function Casos() {
         <TablaRecurso
           clave="casos"
           recurso="casos"
+        exportable
           ordenInicial="-creado"
           params={{
             institucion: institucion?.id,

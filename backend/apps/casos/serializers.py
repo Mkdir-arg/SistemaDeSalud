@@ -25,11 +25,19 @@ class ItemFilaSerializer(serializers.ModelSerializer):
     # Área del flujo al que pertenece la fila (para mostrar la fila por área).
     area = serializers.IntegerField(source="nodo.version.flujo.area_id", read_only=True)
     area_nombre = serializers.SerializerMethodField()
+    box_nombre = serializers.CharField(source="box.nombre", read_only=True, default=None)
 
     class Meta:
         model = ItemFila
-        fields = ["id", "caso", "nodo", "nodo_titulo", "area", "area_nombre", "turno", "persona", "urgente", "orden", "atendido", "box", "ingreso"]
-        read_only_fields = ["ingreso"]
+        # `llamado_at` y `atendido_at` se exponen porque son los tiempos que un
+        # jefe de guardia mira para entender la demora: cuánto esperó a que lo
+        # llamaran y cuánto duró la atención.
+        fields = [
+            "id", "caso", "nodo", "nodo_titulo", "area", "area_nombre", "turno",
+            "persona", "urgente", "orden", "atendido", "box", "box_nombre",
+            "ingreso", "llamado_at", "atendido_at",
+        ]
+        read_only_fields = ["ingreso", "llamado_at", "atendido_at"]
 
     def get_persona(self, obj):
         c = obj.caso.ciudadano

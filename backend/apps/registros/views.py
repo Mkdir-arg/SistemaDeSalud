@@ -20,6 +20,21 @@ class CiudadanoViewSet(BaseModelViewSet):
     filter_fields = ("institucion", "obra_social")
     search_fields = ["nombre", "apellido", "documento", "codigo"]
     ordering_fields = ["apellido", "nombre", "creado"]
+    # El padrón de pacientes con registro. Son datos sensibles: la exportación
+    # pasa por el mismo permiso que la lectura (`protege_lectura`), así que sólo
+    # la obtiene quien ya podía ver la pantalla.
+    nombre_csv = "pacientes"
+    columnas_csv = [
+        ("documento", "Documento"),
+        ("apellido", "Apellido"),
+        ("nombre", "Nombre"),
+        ("fecha_nacimiento", "Fecha de nacimiento"),
+        ("obra_social", "Obra social"),
+        ("condiciones", "Condiciones"),
+        ("alergias", "Alergias"),
+        ("entradas", "Entradas de historia"),
+        ("ultima", "Última atención"),
+    ]
 
 
 class HistoriaClinicaViewSet(BaseModelViewSet):

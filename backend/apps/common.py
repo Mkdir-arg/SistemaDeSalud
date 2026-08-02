@@ -1,4 +1,5 @@
 """Utilidades compartidas por la capa API."""
+import re
 import uuid
 
 from django.core.files.storage import default_storage
@@ -235,7 +236,103 @@ class SubirArchivoView(APIView):
         )
 
 
-class BaseModelViewSet(QueryParamFilterMixin, InstitucionScopedMixin, viewsets.ModelViewSet):
+class ExportaCSV:
+    """
+    Agrega `?formato=csv` a cualquier listado.
+
+    Tres decisiones que hacen la diferencia entre «anda» y «el cliente dice que
+    está roto»:
+
+    1. **Respeta los filtros de la pantalla.** Se exporta exactamente lo que la
+       persona está viendo (búsqueda, filtros, orden), sin la paginación. Un
+       archivo que no coincide con lo que había en pantalla no sirve para rendir
+       cuentas, que es justamente para lo que se exporta.
+
+    2. **Se transmite fila por fila** (`StreamingHttpResponse`). Un servicio con
+       cien mil casos no puede armar el archivo entero en memoria mientras
+       alguien más está atendiendo pacientes.
+
+    3. **BOM y punto y coma.** Excel en configuración regional española abre un
+       CSV separado por comas metiendo todo en una sola columna, y sin BOM
+       rompe los acentos. Como quien exporta abre el archivo en Excel, ése es el
+       formato por defecto; `?sep=,` devuelve el CSV estándar para quien lo va a
+       leer con pandas.
+
+    Cada viewset declara `columnas_csv = [("clave", "Encabezado"), …]`. Las
+    claves se resuelven sobre lo que devuelve el serializer, así que la
+    exportación no puede mostrar un campo que la API no expone.
+    """
+
+    columnas_csv: list[tuple[str, str]] = []
+    # Nombre del archivo. Por defecto DRF deriva `basename` del modelo y sale
+    # en singular («caso-2026-08-02.csv»), que queda raro para un listado.
+    nombre_csv: str = ""
+
+    def list(self, request, *args, **kwargs):
+        if request.query_params.get("formato") != "csv" or not self.columnas_csv:
+            return super().list(request, *args, **kwargs)
+        return self.exportar_csv(request)
+
+    def exportar_csv(self, request):
+        import csv
+        from django.http import StreamingHttpResponse
+        from django.utils import timezone
+
+        qs = self.filter_queryset(self.get_queryset())
+        claves = [c for c, _ in self.columnas_csv]
+        sep = "," if request.query_params.get("sep") == "," else ";"
+
+        class Buffer:
+            """`csv.writer` escribe en un objeto con `write`; acá se devuelve."""
+            def write(self, valor):
+                return valor
+
+        escritor = csv.writer(Buffer(), delimiter=sep, quoting=csv.QUOTE_MINIMAL)
+
+        def filas():
+            # El BOM va primero para que Excel reconozca UTF-8.
+            yield "﻿"
+            yield escritor.writerow([e for _, e in self.columnas_csv])
+            serializer = self.get_serializer_class()
+            contexto = self.get_serializer_context()
+            # `iterator()` no arma la lista completa en memoria.
+            for obj in qs.iterator(chunk_size=500):
+                datos = serializer(obj, context=contexto).data
+                yield escritor.writerow([_texto_csv(datos.get(k)) for k in claves])
+
+        nombre = f"{self.nombre_csv or self.basename}-{timezone.localdate():%Y-%m-%d}.csv"
+        r = StreamingHttpResponse(filas(), content_type="text/csv; charset=utf-8")
+        r["Content-Disposition"] = f'attachment; filename="{nombre}"'
+        return r
+
+
+# Las fechas del serializer vienen en ISO con zona («2026-08-02T10:14:30-03:00»).
+# Excel no lo reconoce como fecha: lo deja como texto y no se puede ordenar ni
+# filtrar por él, que es la mitad de para qué se exporta.
+_ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?")
+
+
+def _texto_csv(valor):
+    """Aplana un valor del serializer a algo que tenga sentido en una celda."""
+    if valor is None:
+        return ""
+    if isinstance(valor, str):
+        m = _ISO.match(valor)
+        if m:
+            a, me, d, h, mi = m.groups()
+            return f"{d}/{me}/{a}" + (f" {h}:{mi}" if h else "")
+    if isinstance(valor, bool):
+        return "Sí" if valor else "No"
+    if isinstance(valor, (list, tuple)):
+        return " · ".join(_texto_csv(v) for v in valor)
+    if isinstance(valor, dict):
+        # Los anidados suelen traer un nombre legible; si no, se descarta en vez
+        # de volcar un JSON crudo en una celda.
+        return str(valor.get("nombre") or valor.get("titulo") or valor.get("label") or "")
+    return str(valor)
+
+
+class BaseModelViewSet(ExportaCSV, QueryParamFilterMixin, InstitucionScopedMixin, viewsets.ModelViewSet):
     """ViewSet estándar: CRUD + filtrado por query params + scope por institución
     + autorización por rol (lectura abierta a miembros, escritura por capacidad)
     + orden y búsqueda por query param.

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { useLista } from "@/api/queries";
+import { tokens } from "@/api/client";
+import { query, useLista } from "@/api/queries";
 import { Icon } from "@/components/icons";
 import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
 import { cn } from "@/lib/cn";
@@ -163,6 +164,8 @@ export function DataTable({
   vacio = {},
   tabla,
   barra,
+  onExportar,
+  exportando,
 }) {
   const { pagina, orden, tamano, densidad, setDensidad, irA, ordenarPor, cambiarTamano } = tabla;
   const compacta = densidad === "compacta";
@@ -176,6 +179,19 @@ export function DataTable({
       {/* La barra existe siempre: aunque no haya filtros, aloja la densidad. */}
       <div className="flex flex-wrap items-center justify-between gap-md border-b border-division px-lg py-2.5">
         <div className="flex flex-wrap items-center gap-md">{barra}</div>
+        <div className="flex items-center gap-1">
+        {onExportar && (
+          <button
+            type="button"
+            onClick={onExportar}
+            disabled={exportando}
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-texto-debil hover:bg-superficie-2 hover:text-texto-medio disabled:opacity-50"
+            title="Descargar lo que estás viendo, con los filtros aplicados"
+          >
+            <Icon name="download" size={15} />
+            {exportando ? "Exportando…" : "Exportar"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setDensidad(compacta ? "comoda" : "compacta")}
@@ -185,6 +201,7 @@ export function DataTable({
           <Icon name="rows" size={15} />
           {compacta ? "Cómoda" : "Compacta"}
         </button>
+        </div>
       </div>
 
       {error ? (
@@ -276,6 +293,7 @@ export function DataTable({
  */
 export function TablaRecurso({
   clave, recurso, params = {}, columnas, ordenInicial = "", onRowClick, vacio, barra,
+  exportable = false,
 }) {
   const tabla = useTablaUrl(clave, { ordenInicial });
   const { pagina, orden, tamano } = tabla;
@@ -305,9 +323,50 @@ export function TablaRecurso({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q.paginas, q.isLoading]);
 
+  /*
+   * Descarga lo que se está viendo, con los MISMOS filtros y orden.
+   *
+   * Sin filtros el archivo no coincidiría con la pantalla y dejaría de servir
+   * para lo único que se exporta: rendir cuentas de lo que uno ve.
+   *
+   * Va por `fetch` y no navegando a la URL porque la sesión es por token en
+   * localStorage: una navegación no lleva la cabecera `Authorization` y el
+   * servidor responde 401. El costo es sostener el archivo en memoria del lado
+   * del cliente; el servidor igual lo transmite fila por fila, que es donde
+   * importa (ahí puede haber cien mil casos y alguien atendiendo pacientes).
+   */
+  const [exportando, setExportando] = useState(false);
+
+  async function exportar() {
+    setExportando(true);
+    try {
+      const qs = query({ ...params, ordering: orden || undefined, formato: "csv" });
+      const r = await fetch(`/api/${recurso}/${qs}`, {
+        headers: { Authorization: `Bearer ${tokens.access}` },
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] ||
+        `${recurso}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Se libera enseguida: el blob queda retenido hasta revocarlo.
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportando(false);
+    }
+  }
+
   return (
     <DataTable
       columnas={columnas}
+      onExportar={exportable ? exportar : undefined}
+      exportando={exportando}
       filas={q.filas}
       total={q.total}
       paginas={q.paginas}

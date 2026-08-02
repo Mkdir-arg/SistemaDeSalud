@@ -49,6 +49,7 @@ export default function Registros() {
       <TablaRecurso
         clave="hc"
         recurso="ciudadanos"
+        exportable
         params={paramsLista}
         ordenInicial="apellido"
         onRowClick={(c) => navigate(`/historia/${c.id}`)}

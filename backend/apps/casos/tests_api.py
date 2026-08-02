@@ -3,8 +3,10 @@ from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
 from apps.flujos.models import Flujo, VersionFlujo
-from apps.instituciones.models import Institucion
-from apps.casos.models import Caso
+from apps.flujos.models import Nodo
+from apps.instituciones.models import Area, Institucion
+from apps.registros.models import Ciudadano
+from apps.casos.models import Caso, ItemFila
 
 
 class ScopeInstitucionTest(APITestCase):
@@ -165,3 +167,136 @@ class SubirArchivoTest(APITestCase):
         self.client.force_authenticate(user)
         r = self.client.post("/api/archivos/", {}, format="multipart")
         self.assertEqual(r.status_code, 400)
+
+
+class ExportacionCSVTests(APITestCase):
+    """
+    Exportación a CSV de los listados.
+
+    Es lo que separa «prototipo» de «producto» para cualquiera que tenga que
+    rendir cuentas de su servicio: poder llevarse lo que ve en pantalla.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.user = Usuario.objects.create_user(
+            email="admin@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+        self.ciudadano = Ciudadano.objects.create(
+            institucion=self.inst, nombre="Ana", apellido="Pérez", documento="30111222"
+        )
+        self.caso = Caso.objects.create(
+            institucion=self.inst, version=self.version, ciudadano=self.ciudadano,
+            area_actual=self.area, prioridad=Caso.Prioridad.URGENTE,
+        )
+
+    def _csv(self, ruta):
+        r = self.client.get(ruta)
+        self.assertEqual(r.status_code, 200)
+        return b"".join(r.streaming_content).decode("utf-8")
+
+    def test_devuelve_un_archivo_para_descargar(self):
+        r = self.client.get("/api/casos/?formato=csv")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/csv", r["Content-Type"])
+        self.assertIn("attachment", r["Content-Disposition"])
+        self.assertIn(".csv", r["Content-Disposition"])
+
+    def test_trae_encabezados_legibles_y_los_datos(self):
+        texto = self._csv("/api/casos/?formato=csv")
+        self.assertIn("Paciente", texto)
+        self.assertIn("Ana Pérez", texto)
+        self.assertIn("Urgente", texto)
+
+    def test_empieza_con_BOM_para_que_excel_no_rompa_los_acentos(self):
+        """Sin el BOM, Excel muestra «PÃ©rez» y el usuario dice que está roto."""
+        self.assertTrue(self._csv("/api/casos/?formato=csv").startswith("﻿"))
+
+    def test_separa_con_punto_y_coma_salvo_que_pidan_coma(self):
+        """
+        Excel en configuración regional española abre un CSV con comas metiendo
+        todo en una sola columna. Quien exporta lo abre en Excel; quien lo lee
+        con pandas puede pedir el estándar.
+        """
+        self.assertIn(";", self._csv("/api/casos/?formato=csv").splitlines()[0])
+        self.assertNotIn(";", self._csv("/api/casos/?formato=csv&sep=,").splitlines()[0])
+
+    def test_respeta_los_filtros_de_la_pantalla(self):
+        """
+        Un archivo que no coincide con lo que había en pantalla no sirve para
+        rendir cuentas, que es justamente para lo que se exporta.
+        """
+        otro = Ciudadano.objects.create(institucion=self.inst, nombre="Luis", apellido="Gómez")
+        Caso.objects.create(
+            institucion=self.inst, version=self.version, ciudadano=otro,
+            area_actual=self.area, prioridad=Caso.Prioridad.NORMAL,
+        )
+        texto = self._csv("/api/casos/?formato=csv&prioridad=urgente")
+        self.assertIn("Ana Pérez", texto)
+        self.assertNotIn("Luis Gómez", texto)
+
+    def test_no_lo_corta_la_paginacion(self):
+        """Se exporta TODO lo filtrado, no la página que se está mirando."""
+        for i in range(30):
+            Caso.objects.create(institucion=self.inst, version=self.version, area_actual=self.area)
+        filas = self._csv("/api/casos/?formato=csv").strip().splitlines()
+        self.assertEqual(len(filas), 32)  # 31 casos + encabezado
+
+    def test_sin_formato_csv_sigue_siendo_la_lista_paginada_de_siempre(self):
+        r = self.client.get("/api/casos/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("results", r.data)
+
+    def test_los_booleanos_salen_en_palabras(self):
+        Nodo.objects.create(version=self.version, tipo="espera", titulo="Sala")
+        nodo = Nodo.objects.first()
+        ItemFila.objects.create(caso=self.caso, nodo=nodo, urgente=True, orden=0)
+        texto = self._csv("/api/items-fila/?formato=csv")
+        self.assertIn("Sí", texto)
+
+    def test_las_fechas_salen_en_formato_local(self):
+        """
+        En ISO («2026-08-02T10:14:30-03:00») Excel las deja como texto: no se
+        pueden ordenar ni filtrar, que es la mitad de para qué se exporta.
+        """
+        texto = self._csv("/api/casos/?formato=csv")
+        fila = texto.strip().splitlines()[1]
+        self.assertRegex(fila, r"\d{2}/\d{2}/\d{4} \d{2}:\d{2}")
+        self.assertNotIn("T0", fila)
+
+    def test_el_archivo_se_llama_como_lo_que_trae(self):
+        """DRF deriva el basename del modelo y sale en singular («caso.csv»)."""
+        r = self.client.get("/api/casos/?formato=csv")
+        self.assertIn("casos-", r["Content-Disposition"])
+
+    def test_todas_las_columnas_declaradas_existen_en_su_serializer(self):
+        """
+        Guarda contra el error silencioso: declarar una columna que el
+        serializer no expone da una columna VACÍA, sin ningún aviso. Ya casi
+        pasa con los tiempos de la cola.
+
+        Recorre todos los viewsets registrados, así que cubre también los que se
+        agreguen después.
+        """
+        from cauce.api import router
+
+        faltantes = []
+        for _, viewset, basename in router.registry:
+            columnas = getattr(viewset, "columnas_csv", None)
+            if not columnas:
+                continue
+            # Se pregunta como lo hace el código real: hay viewsets que eligen el
+            # serializer según la acción (`get_serializer_class`), y mirar el
+            # atributo de la clase devuelve None.
+            vista = viewset()
+            vista.action = "list"
+            expuestos = set(vista.get_serializer_class()().get_fields())
+            for clave, encabezado in columnas:
+                if clave not in expuestos:
+                    faltantes.append(f"{basename}.{clave} («{encabezado}»)")
+        self.assertEqual(faltantes, [], "columnas que el serializer no expone")
