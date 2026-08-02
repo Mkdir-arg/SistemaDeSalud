@@ -86,7 +86,10 @@ test.describe("Tema", () => {
  * el usuario del bloque de arriba darían 403 y el test mediría una pantalla de
  * «no tenés permiso», que pasa el contraste sin probar nada.
  */
-const PANTALLAS_ADMIN = ["/dashboard", "/flujos", "/mapa", "/formularios"];
+const PANTALLAS_ADMIN = [
+  "/dashboard", "/flujos", "/mapa", "/formularios",
+  "/historia", "/legajo", "/estructura", "/administracion",
+];
 
 /** Rutas con parámetro dentro del alcance del admin. */
 const DINAMICAS_ADMIN = [
@@ -94,6 +97,18 @@ const DINAMICAS_ADMIN = [
     await page.goto("/formularios");
     await page.locator("tbody tr").first().click();
     await page.waitForURL(/\/formularios\/\d+/);
+  } },
+  { nombre: "historia clínica de un paciente", resolver: async (page) => {
+    await page.goto("/historia");
+    await page.locator("tbody tr").first().click();
+    await page.waitForURL(/\/historia\/\d+/);
+  } },
+  // El panel lateral del área es donde vive casi toda la pantalla de estructura,
+  // y no se ve si no se abre.
+  { nombre: "panel lateral de un área", resolver: async (page) => {
+    await page.goto("/estructura");
+    await page.locator("tbody tr").first().click();
+    await page.getByRole("dialog").waitFor();
   } },
 ];
 

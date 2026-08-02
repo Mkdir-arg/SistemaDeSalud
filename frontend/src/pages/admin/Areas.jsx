@@ -1,99 +1,187 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../../api/client";
-import { useInstitucion } from "../../auth/InstitutionContext";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select, Spinner, Table, Textarea } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { color } from "../../theme";
 
-const ROL_LABEL = { admin: "Admin de institución", configurador: "Configurador", jefe_area: "Jefe / Supervisor de área", administrativo: "Administrativo", enfermeria: "Enfermería", medico: "Médico / profesional" };
+import { api } from "@/api/client";
+import { useAccion, useLista } from "@/api/queries";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { Icon } from "@/components/icons";
+import {
+  Avatar, Badge, Button, Card, ConfirmDialog, Field, Input, Modal, Mono, Select, Tabs, Textarea,
+} from "@/components/ui";
+import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
+import { TablaRecurso } from "@/components/ui/tabla";
+import { useToast } from "@/components/ui/toast";
+import { plural } from "@/lib/format";
 
-// Estructura organizativa: tabla de áreas + ficha en panel lateral (drawer).
+/** Funciones operativas que se pueden asignar a un área. */
+const FUNCIONES = [
+  { value: "jefe_area", label: "Jefe / Supervisor de área" },
+  { value: "administrativo", label: "Administrativo" },
+  { value: "enfermeria", label: "Enfermería" },
+  { value: "medico", label: "Médico / profesional" },
+];
+
+// Estructura organizativa: tabla de áreas + ficha en panel lateral.
 export default function Areas() {
   const { institucion } = useInstitucion();
-  const [areas, setAreas] = useState([]);
-  const [cargando, setCargando] = useState(true);
+  const toast = useToast();
   const [nuevoArea, setNuevoArea] = useState(false);
-  const [sel, setSel] = useState(null);     // área abierta en el panel lateral
+  const [selId, setSelId] = useState(null); // área abierta en el panel lateral
   const [editar, setEditar] = useState(false);
-  const [borrar, setBorrar] = useState(null);
+  const [aBorrar, setABorrar] = useState(null);
 
-  async function cargar() {
-    if (!institucion) return;
-    setCargando(true);
-    try {
-      const d = await api.get(`/areas/?institucion=${institucion.id}`);
-      const lista = d.results || d;
-      setAreas(lista);
-      setSel((prev) => (prev ? lista.find((a) => a.id === prev.id) || null : null));
-    } finally {
-      setCargando(false);
-    }
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [institucion]);
+  const areas = useLista(
+    "areas",
+    { institucion: institucion?.id, pageSize: 100 },
+    { enabled: !!institucion },
+  );
+  // Se busca por id y no se guarda el objeto: así el panel refleja los cambios
+  // (renombrar, sumar sub-áreas) sin quedarse con una copia vieja en el estado.
+  const sel = areas.filas.find((a) => a.id === selId) || null;
+
+  const borrarArea = useAccion((a) => api.del(`/areas/${a.id}/`), {
+    onSuccess: () => { toast.ok("Área eliminada."); setABorrar(null); setSelId(null); },
+    onError: (e) => toast.deError(e, "No se pudo eliminar. Puede tener elementos asociados."),
+  });
 
   return (
-    <div style={{ padding: "26px 30px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+    <div className="px-lg py-[26px] sm:px-[30px]">
+      <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
-          <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: "-.5px" }}>Áreas</div>
-          <div style={{ fontSize: 13, color: color.slate500, marginTop: 2 }}>{areas.length} áreas · {institucion?.nombre}</div>
-        </div>
-        <Button onClick={() => setNuevoArea(true)} style={{ display: "flex", alignItems: "center", gap: 8 }}><Icon name="plus" size={15} /> Nueva área</Button>
-      </div>
-
-      <Card style={{ overflow: "hidden", padding: 0 }}>
-        {cargando ? (
-          <Spinner />
-        ) : (
-          <Table
-            rows={areas}
-            onRowClick={(a) => setSel(a)}
-            vacio="No hay áreas. Creá la primera."
-            columns={[
-              {
-                key: "nombre", label: "Área",
-                render: (a) => (
-                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="cube" size={17} /></div>
-                    <span style={{ fontWeight: 600 }}>{a.nombre}</span>
-                  </div>
-                ),
-              },
-              { key: "responsable", label: "Responsable", render: (a) => <span style={{ color: a.responsable ? color.slate700 : color.slate400 }}>{a.responsable || "—"}</span> },
-              { key: "staff", label: "Staff", render: (a) => <Mono>{a.staff}</Mono> },
-              { key: "sub", label: "Sub-áreas", render: (a) => <Mono>{a.subareas?.length || 0}</Mono> },
-              {
-                key: "acc", label: "",
-                render: (a) => (
-                  <div style={{ textAlign: "right" }}>
-                    <button onClick={(e) => { e.stopPropagation(); setBorrar({ tipo: "area", item: a }); }} title="Eliminar" style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", display: "inline-flex" }}><Icon name="trash" size={15} /></button>
-                  </div>
-                ),
-              },
-            ]}
-          />
-        )}
-      </Card>
-
-      {/* Panel lateral con la ficha del área */}
-      {sel && (
-        <div onMouseDown={() => setSel(null)} style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,.35)", zIndex: 40, display: "flex", justifyContent: "flex-end" }}>
-          <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 600, maxWidth: "100%", height: "100%", background: "#fff", boxShadow: "-8px 0 30px rgba(16,24,40,.18)", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 18px 0" }}>
-              <button onClick={() => setSel(null)} style={{ border: "none", background: "none", cursor: "pointer", color: color.slate400, display: "flex" }}><Icon name="x" size={18} /></button>
-            </div>
-            <div style={{ padding: "0 28px 28px" }}>
-              <FichaArea key={sel.id} area={sel} institucionNombre={institucion?.nombre} onEditar={() => setEditar(true)} onChange={cargar} />
-            </div>
+          <h1 className="text-cifra-lg font-extrabold tracking-tight">Áreas</h1>
+          <div className="mt-0.5 text-base text-texto-debil">
+            {plural(areas.total, "área", "áreas")} · {institucion?.nombre}
           </div>
         </div>
+        <Button onClick={() => setNuevoArea(true)} className="flex items-center gap-2">
+          <Icon name="plus" size={15} /> Nueva área
+        </Button>
+      </div>
+
+      <TablaRecurso
+        clave="areas"
+        recurso="areas"
+        params={{ institucion: institucion?.id }}
+        ordenInicial="nombre"
+        onRowClick={(a) => setSelId(a.id)}
+        vacio={{
+          titulo: "No hay áreas",
+          detalle: "Creá la primera para poder armar flujos, grupos y boxes.",
+          accion: <Button onClick={() => setNuevoArea(true)}>Nueva área</Button>,
+        }}
+        columnas={[
+          {
+            key: "nombre", label: "Área", orden: "nombre", truncar: true,
+            render: (a) => (
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-9 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
+                  <Icon name="cube" size={17} />
+                </span>
+                <span className="truncate font-semibold">{a.nombre}</span>
+              </div>
+            ),
+          },
+          {
+            key: "responsable", label: "Responsable",
+            render: (a) => (
+              <span className={a.responsable ? "text-texto-medio" : "text-texto-tenue"}>
+                {a.responsable || "—"}
+              </span>
+            ),
+          },
+          { key: "staff", label: "Staff", render: (a) => <Mono>{a.staff}</Mono> },
+          { key: "sub", label: "Sub-áreas", render: (a) => <Mono>{a.subareas?.length || 0}</Mono> },
+          {
+            key: "acc", label: "", className: "text-right",
+            render: (a) => (
+              <button
+                onClick={(e) => { e.stopPropagation(); setABorrar(a); }}
+                title={`Eliminar ${a.nombre}`}
+                aria-label={`Eliminar ${a.nombre}`}
+                className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            ),
+          },
+        ]}
+      />
+
+      {sel && (
+        <PanelLateral titulo={sel.nombre} onCerrar={() => setSelId(null)}>
+          <FichaArea
+            key={sel.id}
+            area={sel}
+            institucionNombre={institucion?.nombre}
+            onEditar={() => setEditar(true)}
+            onChange={areas.refetch}
+          />
+        </PanelLateral>
       )}
 
-      {nuevoArea && <AreaModal institucionId={institucion?.id} onClose={() => setNuevoArea(false)} onSaved={() => { setNuevoArea(false); cargar(); }} />}
-      {editar && sel && <AreaModal area={sel} institucionId={institucion?.id} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); cargar(); }} />}
-      {borrar && <EliminarModal {...borrar} onClose={() => setBorrar(null)} onDeleted={() => { setBorrar(null); setSel(null); cargar(); }} />}
+      {nuevoArea && <AreaModal institucionId={institucion?.id} onClose={() => setNuevoArea(false)} />}
+      {editar && sel && (
+        <AreaModal area={sel} institucionId={institucion?.id} onClose={() => setEditar(false)} />
+      )}
+
+      {aBorrar && (
+        <ConfirmDialog
+          title="Eliminar área"
+          confirmar="Eliminar"
+          peligroso
+          cargando={borrarArea.isPending}
+          onConfirmar={() => borrarArea.mutate(aBorrar)}
+          onClose={() => setABorrar(null)}
+        >
+          ¿Seguro que querés eliminar <strong>{aBorrar.nombre}</strong>? Se eliminarán
+          también sus sub-áreas. Esta acción no se puede deshacer.
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Panel lateral con la ficha del área.
+ *
+ * Es un diálogo: se anuncia como tal, cierra con Escape y bloquea el scroll de
+ * atrás. Antes sólo cerraba con clic afuera, así que con el teclado se quedaba
+ * atrapado sin salida.
+ */
+function PanelLateral({ titulo, onCerrar, children }) {
+  useEffect(() => {
+    const alTecla = (e) => { if (e.key === "Escape") onCerrar(); };
+    document.addEventListener("keydown", alTecla);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", alTecla);
+      document.body.style.overflow = overflow;
+    };
+  }, [onCerrar]);
+
+  return (
+    <div
+      onMouseDown={onCerrar}
+      className="fixed inset-0 z-40 flex justify-end bg-ink/35 animate-[fadeIn_.12s_ease]"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Área ${titulo}`}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="h-full w-full max-w-[37.5rem] overflow-y-auto bg-superficie shadow-modal"
+      >
+        <div className="flex justify-end px-lg pt-3.5">
+          <button
+            onClick={onCerrar}
+            aria-label="Cerrar panel"
+            className="flex rounded-md p-1 text-texto-debil hover:bg-superficie-2 hover:text-texto-medio"
+          >
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="px-7 pb-7">{children}</div>
+      </div>
     </div>
   );
 }
@@ -103,16 +191,16 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
   const [asignar, setAsignar] = useState(false);
   const [crearSub, setCrearSub] = useState(false);
   const [crearGrupo, setCrearGrupo] = useState(false);
-  const [recargaGrupos, setRecargaGrupos] = useState(0);
   const [crearBox, setCrearBox] = useState(false);
-  const [recargaBoxes, setRecargaBoxes] = useState(0);
-  const tabs = [
-    { k: "datos", l: "Datos" },
-    { k: "staff", l: "Staff" },
-    { k: "grupos", l: "Grupos" },
-    { k: "boxes", l: "Boxes" },
-    { k: "subareas", l: "Sub-áreas" },
+
+  const TABS = [
+    { key: "datos", label: "Datos" },
+    { key: "staff", label: "Staff" },
+    { key: "grupos", label: "Grupos" },
+    { key: "boxes", label: "Boxes" },
+    { key: "subareas", label: "Sub-áreas" },
   ];
+
   // Botón de acción contextual: cambia según la solapa activa.
   const accion = {
     staff: { label: "Asignar profesional", on: () => setAsignar(true) },
@@ -123,204 +211,201 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>{area.nombre}</span>
+      <div className="mb-1 flex items-center gap-2.5">
+        <h2 className="text-cifra font-extrabold tracking-tight">{area.nombre}</h2>
         <Badge tone="info">Área</Badge>
       </div>
-      <div style={{ fontSize: 13.5, color: color.slate500, marginBottom: 16 }}>
-        Responsable: <strong style={{ color: color.slate700 }}>{area.responsable || "—"}</strong>
+      <div className="mb-lg text-md text-texto-debil">
+        Responsable: <strong className="text-texto-medio">{area.responsable || "—"}</strong>
       </div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
+
+      <div className="mb-[22px] flex flex-wrap gap-2.5">
         <Button variant="secondary" onClick={onEditar}>Editar</Button>
         {accion && (
-          <Button onClick={accion.on} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <Button onClick={accion.on} className="flex items-center gap-1.5">
             <Icon name="plus" size={15} /> {accion.label}
           </Button>
         )}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", borderBottom: `1px solid ${color.border}`, marginBottom: 20 }}>
-        {tabs.map((t) => (
-          <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: "11px 2px", marginRight: 26, fontSize: 13.5, fontWeight: 600, border: "none", borderBottom: `2px solid ${tab === t.k ? color.accent : "transparent"}`, color: tab === t.k ? color.accent : color.slate400, background: "none", cursor: "pointer" }}>{t.l}</button>
-        ))}
-      </div>
+      <Tabs tabs={TABS} valor={tab} onChange={setTab} className="mb-5" />
 
       {tab === "datos" && (
-        <Card style={{ padding: 22 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            <Campo k="Nombre" v={area.nombre} />
-            <Campo k="Responsable / jefe" v={area.responsable || "—"} />
-            <Campo k="Estado" v={area.activa ? "Activa" : "Inactiva"} />
-            <Campo k="Área padre" v={institucionNombre} />
-            <div style={{ gridColumn: "1 / -1" }}><Campo k="Descripción" v={area.descripcion || "—"} /></div>
+        <Card className="p-[22px]">
+          <div className="grid gap-lg sm:grid-cols-2">
+            <Dato k="Nombre" v={area.nombre} />
+            <Dato k="Responsable / jefe" v={area.responsable || "—"} />
+            <Dato k="Estado" v={area.activa ? "Activa" : "Inactiva"} />
+            <Dato k="Pertenece a" v={institucionNombre} />
+            <div className="sm:col-span-2"><Dato k="Descripción" v={area.descripcion || "—"} /></div>
           </div>
         </Card>
       )}
       {tab === "staff" && <StaffTab area={area} />}
-      {tab === "grupos" && <GruposTab area={area} recarga={recargaGrupos} />}
-      {tab === "boxes" && <BoxesTab area={area} recarga={recargaBoxes} />}
+      {tab === "grupos" && <GruposTab area={area} />}
+      {tab === "boxes" && <BoxesTab area={area} />}
       {tab === "subareas" && <SubareasTab area={area} onChange={onChange} />}
 
-      {asignar && <AsignarModal area={area} onClose={() => setAsignar(false)} onSaved={() => { setAsignar(false); onChange(); }} />}
-      {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={() => { setCrearSub(false); onChange(); }} />}
-      {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} onSaved={() => { setCrearGrupo(false); setRecargaGrupos((n) => n + 1); }} />}
-      {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} onSaved={() => { setCrearBox(false); setRecargaBoxes((n) => n + 1); }} />}
+      {asignar && <AsignarModal area={area} onClose={() => setAsignar(false)} />}
+      {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={onChange} />}
+      {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} />}
+      {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} />}
     </div>
   );
 }
 
-function Campo({ k, v }) {
+function Dato({ k, v }) {
   return (
     <div>
-      <div style={{ fontSize: 12, color: color.slate400, marginBottom: 3 }}>{k}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: color.slate900 }}>{v}</div>
+      <div className="mb-0.5 text-sm text-texto-debil">{k}</div>
+      <div className="text-md font-semibold">{v}</div>
     </div>
   );
+}
+
+/** Aviso corto dentro de una pestaña de la ficha (sin datos todavía). */
+function Aviso({ children }) {
+  return <Card className="p-6 text-md text-texto-debil">{children}</Card>;
+}
+
+/**
+ * Membresías de ESTA área, filtradas por el servidor.
+ *
+ * `?areas=<id>` filtra por la M2M y existe en el backend desde hace rato; esta
+ * pantalla igual se traía TODAS las membresías de la institución y TODOS los
+ * usuarios para cruzarlos en memoria. Con `/usuarios/` paginando de a 25, quien
+ * no entrara en esa página aparecía como «—» aunque estuviera asignado.
+ */
+function useStaffDeArea(area) {
+  return useLista("membresias", { areas: area.id, pageSize: 200 });
 }
 
 function StaffTab({ area }) {
-  const [filas, setFilas] = useState(null);
-  const [quitando, setQuitando] = useState(null);
+  const toast = useToast();
+  const staff = useStaffDeArea(area);
+  const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
+
   // usuario_id → nombres de los grupos del área que integra.
-  const [gruposPorUsuario, setGruposPorUsuario] = useState({});
-
-  async function cargar() {
-    const [membs, usuarios, grupos] = await Promise.all([
-      api.get(`/membresias/?institucion=${area.institucion}`),
-      api.get("/usuarios/"),
-      api.get(`/grupos/?area=${area.id}`),
-    ]);
-    const usuMap = Object.fromEntries((usuarios.results || usuarios).map((u) => [u.id, u]));
-    const porUsuario = {};
-    (grupos.results || grupos).forEach((g) => {
-      (g.integrantes || []).forEach((p) => {
-        (porUsuario[p.id] = porUsuario[p.id] || []).push(g.nombre);
-      });
+  const gruposPorUsuario = useMemo(() => {
+    const m = {};
+    grupos.filas.forEach((g) => {
+      (g.integrantes || []).forEach((p) => { (m[p.id] = m[p.id] || []).push(g.nombre); });
     });
-    setGruposPorUsuario(porUsuario);
-    const lista = (membs.results || membs)
-      .filter((m) => (m.areas || []).includes(area.id))
-      .map((m) => ({ id: m.id, u: usuMap[m.usuario], rol: ROL_LABEL[m.rol] || m.rol, areas: m.areas || [] }));
-    setFilas(lista);
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [area.id]);
+    return m;
+  }, [grupos.filas]);
 
-  // Quitar a una persona de esta área: si la membresía cubre otras áreas, solo
-  // se le saca esta; si era la única, se elimina la membresía completa.
-  async function quitar(f) {
-    setQuitando(f.id);
-    try {
-      const resto = f.areas.filter((a) => a !== area.id);
-      if (resto.length) await api.patch(`/membresias/${f.id}/`, { areas: resto });
-      else await api.del(`/membresias/${f.id}/`);
-      await cargar();
-    } finally {
-      setQuitando(null);
-    }
-  }
+  // Quitar a alguien de esta área: si su membresía cubre otras, sólo se le saca
+  // esta; si era la única, se elimina la membresía completa.
+  const quitar = useAccion(
+    (m) => {
+      const resto = (m.areas || []).filter((a) => a !== area.id);
+      return resto.length
+        ? api.patch(`/membresias/${m.id}/`, { areas: resto })
+        : api.del(`/membresias/${m.id}/`);
+    },
+    {
+      onSuccess: () => toast.ok("Se quitó del área."),
+      onError: (e) => toast.deError(e, "No se pudo quitar del área."),
+    },
+  );
 
-  if (filas === null) return <Spinner />;
-  if (!filas.length) return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin profesionales asignados a esta área.</Card>;
+  if (staff.error) return <EstadoError error={staff.error} onReintentar={staff.refetch} />;
+  if (staff.isLoading) return <Skeleton className="h-24" />;
+  if (!staff.filas.length) return <Aviso>Sin profesionales asignados a esta área.</Aviso>;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {filas.map((f) => {
-        const grupos = gruposPorUsuario[f.u?.id] || [];
+    <ul className="flex flex-col gap-2">
+      {staff.filas.map((m) => {
+        const enGrupos = gruposPorUsuario[m.usuario] || [];
         return (
-        <Card key={f.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar nombre={f.u?.nombre_completo || f.u?.email} i={f.id} size={32} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{f.u?.nombre_completo || "—"}</div>
-            <div style={{ fontSize: 12, color: color.slate500 }}>{f.u?.email}</div>
-          </div>
-          {grupos.length > 0 && (
-            <Badge tone="info">
-              <span title={`En ${grupos.length === 1 ? "el grupo" : "los grupos"}: ${grupos.join(", ")}`} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <Icon name="users" size={12} />
-                {grupos.length === 1 ? grupos[0] : `${grupos.length} grupos`}
-              </span>
-            </Badge>
-          )}
-          <Badge tone="neutral">{f.rol}</Badge>
-          <button
-            onClick={() => quitar(f)}
-            disabled={quitando === f.id}
-            title="Quitar de esta área"
-            style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", fontSize: 12, padding: "4px 6px" }}
-          >
-            {quitando === f.id ? "…" : "quitar"}
-          </button>
-        </Card>
+          <li key={m.id}>
+            <Card className="flex flex-wrap items-center gap-3 px-lg py-3">
+              <Avatar nombre={m.usuario_nombre || m.usuario_email} i={m.usuario} size={32} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-md font-semibold">{m.usuario_nombre || "—"}</div>
+                <div className="truncate text-sm text-texto-debil">{m.usuario_email}</div>
+              </div>
+              {enGrupos.length > 0 && (
+                <Badge tone="info" className="cursor-default">
+                  <span title={`En ${enGrupos.length === 1 ? "el grupo" : "los grupos"}: ${enGrupos.join(", ")}`}>
+                    {enGrupos.length === 1 ? enGrupos[0] : plural(enGrupos.length, "grupo", "grupos")}
+                  </span>
+                </Badge>
+              )}
+              <Badge tone="neutral">{m.rol_display}</Badge>
+              <button
+                onClick={() => quitar.mutate(m)}
+                disabled={quitar.isPending}
+                title="Quitar de esta área"
+                className="rounded-md px-1.5 py-1 text-sm text-texto-debil hover:bg-badge-error-bg hover:text-danger disabled:opacity-40"
+              >
+                quitar
+              </button>
+            </Card>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
-// Personas asignadas al área (elegibles para integrar grupos): una entrada por
-// usuario, derivada de las membresías cuya lista de áreas incluye esta área.
-function useStaffDeArea(area) {
-  const [staff, setStaff] = useState(null);
-  useEffect(() => {
-    (async () => {
-      const [membs, usuarios] = await Promise.all([
-        api.get(`/membresias/?institucion=${area.institucion}`),
-        api.get("/usuarios/"),
-      ]);
-      const usuMap = Object.fromEntries((usuarios.results || usuarios).map((u) => [u.id, u]));
-      const vistos = new Set();
-      const lista = [];
-      (membs.results || membs)
-        .filter((m) => (m.areas || []).includes(area.id))
-        .forEach((m) => {
-          if (vistos.has(m.usuario)) return;
-          vistos.add(m.usuario);
-          if (usuMap[m.usuario]) lista.push(usuMap[m.usuario]);
-        });
-      setStaff(lista);
-    })();
-  }, [area.id]); // eslint-disable-line
-  return staff;
-}
+function GruposTab({ area }) {
+  const toast = useToast();
+  const [gestion, setGestion] = useState(null);
+  const [aBorrar, setABorrar] = useState(null);
 
-function GruposTab({ area, recarga }) {
-  const [grupos, setGrupos] = useState(null);
-  const [gestion, setGestion] = useState(null); // grupo cuyos miembros se editan
-  const [borrar, setBorrar] = useState(null);
+  const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
   const staff = useStaffDeArea(area);
 
-  async function cargar() {
-    const d = await api.get(`/grupos/?area=${area.id}`);
-    setGrupos(d.results || d);
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [area.id, recarga]);
+  const borrar = useAccion((g) => api.del(`/grupos/${g.id}/`), {
+    onSuccess: () => { toast.ok("Grupo eliminado."); setABorrar(null); },
+    onError: (e) => toast.deError(e, "No se pudo eliminar el grupo."),
+  });
 
-  if (grupos === null) return <Spinner />;
-  if (!grupos.length)
-    return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin grupos. Usá «Crear grupo» para armar equipos con personas del área; luego se usan en los flujos.</Card>;
+  if (grupos.error) return <EstadoError error={grupos.error} onReintentar={grupos.refetch} />;
+  if (grupos.isLoading) return <Skeleton className="h-24" />;
+  if (!grupos.filas.length) {
+    return (
+      <Aviso>
+        Sin grupos. Usá «Crear grupo» para armar equipos con personas del área; después
+        se usan en los flujos.
+      </Aviso>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {grupos.map((g) => (
-        <Card key={g.id} style={{ padding: "14px 16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="users" size={17} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{g.nombre}</div>
-              {g.descripcion && <div style={{ fontSize: 12, color: color.slate500 }}>{g.descripcion}</div>}
+    <div className="flex flex-col gap-2">
+      {grupos.filas.map((g) => (
+        <Card key={g.id} className="px-lg py-3.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex size-9 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
+              <Icon name="users" size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-md font-semibold">{g.nombre}</div>
+              {g.descripcion && <div className="truncate text-sm text-texto-debil">{g.descripcion}</div>}
             </div>
-            <span style={{ fontSize: 12.5, color: color.slate500 }}>{g.integrantes.length === 1 ? "1 integrante" : `${g.integrantes.length} integrantes`}</span>
+            <span className="text-sm text-texto-debil">
+              {plural(g.integrantes.length, "integrante", "integrantes")}
+            </span>
             <Button variant="secondary" onClick={() => setGestion(g)}>Gestionar</Button>
-            <button onClick={() => setBorrar(g)} title="Eliminar grupo" style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", display: "inline-flex" }}><Icon name="trash" size={15} /></button>
+            <button
+              onClick={() => setABorrar(g)}
+              title={`Eliminar grupo ${g.nombre}`}
+              aria-label={`Eliminar grupo ${g.nombre}`}
+              className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
+            >
+              <Icon name="trash" size={15} />
+            </button>
           </div>
+
           {g.integrantes.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+            <div className="mt-3 flex flex-wrap gap-1.5">
               {g.integrantes.map((p) => (
-                <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 20, padding: "3px 11px 3px 3px" }}>
+                <span
+                  key={p.id}
+                  className="inline-flex items-center gap-1.5 rounded-pill border border-borde bg-superficie-2 py-0.5 pl-0.5 pr-2.5 text-sm"
+                >
                   <Avatar nombre={p.nombre || p.email} i={p.id} size={22} /> {p.nombre || p.email}
                 </span>
               ))}
@@ -329,90 +414,138 @@ function GruposTab({ area, recarga }) {
         </Card>
       ))}
 
-      {gestion && <MiembrosModal grupo={gestion} staff={staff} grupos={grupos} onClose={() => setGestion(null)} onSaved={() => { setGestion(null); cargar(); }} />}
-      {borrar && <EliminarGrupoModal grupo={borrar} onClose={() => setBorrar(null)} onDeleted={() => { setBorrar(null); cargar(); }} />}
+      {gestion && (
+        <MiembrosModal
+          grupo={gestion}
+          staff={staff}
+          grupos={grupos.filas}
+          onClose={() => setGestion(null)}
+        />
+      )}
+
+      {aBorrar && (
+        <ConfirmDialog
+          title="Eliminar grupo"
+          confirmar="Eliminar"
+          peligroso
+          cargando={borrar.isPending}
+          onConfirmar={() => borrar.mutate(aBorrar)}
+          onClose={() => setABorrar(null)}
+        >
+          ¿Seguro que querés eliminar el grupo <strong>{aBorrar.nombre}</strong>? Los flujos
+          que lo usen quedan sin destinatario. Esta acción no se puede deshacer.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
 
-function GrupoModal({ area, onClose, onSaved }) {
+function GrupoModal({ area, onClose }) {
+  const toast = useToast();
   const [f, setF] = useState({ nombre: "", descripcion: "" });
-  const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  async function crear() {
-    setGuardando(true);
-    try {
-      await api.post("/grupos/", { area: area.id, nombre: f.nombre.trim(), descripcion: f.descripcion });
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
+
+  const crear = useAccion(
+    () => api.post("/grupos/", { area: area.id, nombre: f.nombre.trim(), descripcion: f.descripcion }),
+    {
+      onSuccess: () => { toast.ok("Grupo creado."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudo crear el grupo."),
+    },
+  );
+
   return (
-    <Modal title={`Nuevo grupo · ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !f.nombre.trim()} onClick={crear}>{guardando ? "…" : "Crear"}</Button></>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="Nombre del grupo *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus placeholder="Guardia mañana" /></Field>
-        <Field label="Descripción"><Textarea value={f.descripcion} onChange={(e) => set("descripcion", e.target.value)} placeholder="Para qué se usa este grupo…" /></Field>
+    <Modal
+      title={`Nuevo grupo · ${area.nombre}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={crear.isPending || !f.nombre.trim()} onClick={() => crear.mutate()}>
+            {crear.isPending ? "…" : "Crear"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Nombre del grupo *">
+          <Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus placeholder="Guardia mañana" />
+        </Field>
+        <Field label="Descripción">
+          <Textarea value={f.descripcion} onChange={(e) => set("descripcion", e.target.value)} placeholder="Para qué se usa este grupo…" />
+        </Field>
       </div>
     </Modal>
   );
 }
 
-function MiembrosModal({ grupo, staff, grupos = [], onClose, onSaved }) {
+function MiembrosModal({ grupo, staff, grupos = [], onClose }) {
+  const toast = useToast();
   const [sel, setSel] = useState(() => new Set(grupo.integrantes.map((p) => p.id)));
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState(null);
+
   // usuario_id → nombres de OTROS grupos del área que ya integra.
   const otrosGrupos = useMemo(() => {
     const m = {};
     grupos.filter((g) => g.id !== grupo.id).forEach((g) => {
-      (g.integrantes || []).forEach((p) => {
-        (m[p.id] = m[p.id] || []).push(g.nombre);
-      });
+      (g.integrantes || []).forEach((p) => { (m[p.id] = m[p.id] || []).push(g.nombre); });
     });
     return m;
   }, [grupos, grupo.id]);
-  function toggle(id) {
+
+  const guardar = useAccion(() => api.patch(`/grupos/${grupo.id}/`, { miembros: [...sel] }), {
+    onSuccess: () => { toast.ok("Integrantes actualizados."); onClose(); },
+    onError: (e) => toast.deError(e, "No se pudieron guardar los cambios."),
+  });
+
+  function alternar(id) {
     setSel((prev) => {
       const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   }
-  async function guardar() {
-    setGuardando(true);
-    setError(null);
-    try {
-      await api.patch(`/grupos/${grupo.id}/`, { miembros: [...sel] });
-      onSaved();
-    } catch (e) {
-      setError(e?.data?.miembros || "No se pudieron guardar los cambios.");
-      setGuardando(false);
-    }
-  }
+
   return (
-    <Modal title={`Integrantes · ${grupo.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando} onClick={guardar}>{guardando ? "…" : "Guardar"}</Button></>}>
-      {staff === null ? (
-        <Spinner />
-      ) : staff.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: color.slate500 }}>No hay personas asignadas al área. Primero asigná profesionales en la pestaña «Staff».</div>
+    <Modal
+      title={`Integrantes · ${grupo.nombre}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={guardar.isPending} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "…" : "Guardar"}
+          </Button>
+        </>
+      }
+    >
+      {staff.isLoading ? (
+        <Skeleton className="h-40" />
+      ) : staff.filas.length === 0 ? (
+        <div className="text-md text-texto-debil">
+          No hay personas asignadas al área. Primero asigná profesionales en la pestaña «Staff».
+        </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflow: "auto" }}>
-          {staff.map((u) => {
-            const checked = sel.has(u.id);
-            const enOtros = otrosGrupos[u.id] || [];
+        <div className="flex max-h-[22.5rem] flex-col gap-1 overflow-auto">
+          {staff.filas.map((m) => {
+            const marcado = sel.has(m.usuario);
+            const enOtros = otrosGrupos[m.usuario] || [];
             return (
-              <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "8px 10px", borderRadius: 9, cursor: "pointer", background: checked ? color.accent50 : "transparent" }}>
-                <input type="checkbox" checked={checked} onChange={() => toggle(u.id)} />
-                <Avatar nombre={u.nombre_completo || u.email} i={u.id} size={30} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{u.nombre_completo || "—"}</div>
-                  <div style={{ fontSize: 12, color: color.slate500 }}>{u.email}</div>
+              <label
+                key={m.usuario}
+                className={
+                  "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 " +
+                  (marcado ? "bg-accent-50" : "hover:bg-superficie-2")
+                }
+              >
+                <input type="checkbox" checked={marcado} onChange={() => alternar(m.usuario)} />
+                <Avatar nombre={m.usuario_nombre || m.usuario_email} i={m.usuario} size={30} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-md font-semibold">{m.usuario_nombre || "—"}</div>
+                  <div className="truncate text-sm text-texto-debil">{m.usuario_email}</div>
                 </div>
                 {enOtros.length > 0 && (
-                  <Badge tone="amber">
-                    <span title={`Ya está en: ${enOtros.join(", ")}`} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <Icon name="users" size={12} />
+                  <Badge tone="amber" className="cursor-pointer">
+                    <span title={`Ya está en: ${enOtros.join(", ")}`}>
                       {enOtros.length === 1 ? "En otro grupo" : `En ${enOtros.length} grupos`}
                     </span>
                   </Badge>
@@ -422,208 +555,226 @@ function MiembrosModal({ grupo, staff, grupos = [], onClose, onSaved }) {
           })}
         </div>
       )}
-      {error && <div style={{ marginTop: 12, fontSize: 13, color: color.danger }}>{String(error)}</div>}
     </Modal>
   );
 }
 
-function EliminarGrupoModal({ grupo, onClose, onDeleted }) {
-  const [borrando, setBorrando] = useState(false);
-  async function eliminar() {
-    setBorrando(true);
-    try {
-      await api.del(`/grupos/${grupo.id}/`);
-      onDeleted();
-    } finally {
-      setBorrando(false);
-    }
+function BoxesTab({ area }) {
+  const toast = useToast();
+  const [aBorrar, setABorrar] = useState(null);
+  const boxes = useLista("boxes", { area: area.id, pageSize: 100 });
+
+  const borrar = useAccion((b) => api.del(`/boxes/${b.id}/`), {
+    onSuccess: () => { toast.ok("Box eliminado."); setABorrar(null); },
+    onError: (e) => toast.deError(e, "No se pudo eliminar el box."),
+  });
+
+  if (boxes.error) return <EstadoError error={boxes.error} onReintentar={boxes.refetch} />;
+  if (boxes.isLoading) return <Skeleton className="h-24" />;
+  if (!boxes.filas.length) {
+    return (
+      <Aviso>
+        Sin boxes. Usá «Crear box» para definir los consultorios; desde ellos se llama a
+        la fila de espera.
+      </Aviso>
+    );
   }
-  return (
-    <Modal title="Eliminar grupo" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}>
-      <div style={{ fontSize: 14, color: color.slate700 }}>¿Seguro que querés eliminar el grupo <strong>{grupo.nombre}</strong>? Esta acción no se puede deshacer.</div>
-    </Modal>
-  );
-}
-
-function BoxesTab({ area, recarga }) {
-  const [boxes, setBoxes] = useState(null);
-  const [borrar, setBorrar] = useState(null);
-
-  async function cargar() {
-    const d = await api.get(`/boxes/?area=${area.id}`);
-    setBoxes(d.results || d);
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [area.id, recarga]);
-
-  if (boxes === null) return <Spinner />;
-  if (!boxes.length)
-    return <Card style={{ padding: 24, fontSize: 13.5, color: color.slate400 }}>Sin boxes. Usá «Crear box» para definir los consultorios; desde ellos se llama a la fila de espera.</Card>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {boxes.map((b) => (
-        <Card key={b.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="enter" size={16} /></div>
-          <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{b.nombre}</div>
+    <div className="flex flex-col gap-2">
+      {boxes.filas.map((b) => (
+        <Card key={b.id} className="flex items-center gap-3 px-lg py-3">
+          <span className="flex size-8 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
+            <Icon name="enter" size={16} />
+          </span>
+          <div className="flex-1 text-md font-semibold">{b.nombre}</div>
           {!b.activo && <Badge tone="gray">inactivo</Badge>}
-          <button onClick={() => setBorrar(b)} title="Eliminar box" style={{ border: "none", background: "none", color: color.slate400, cursor: "pointer", display: "inline-flex" }}><Icon name="trash" size={15} /></button>
+          <button
+            onClick={() => setABorrar(b)}
+            title={`Eliminar ${b.nombre}`}
+            aria-label={`Eliminar ${b.nombre}`}
+            className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
+          >
+            <Icon name="trash" size={15} />
+          </button>
         </Card>
       ))}
-      {borrar && <EliminarBoxModal box={borrar} onClose={() => setBorrar(null)} onDeleted={() => { setBorrar(null); cargar(); }} />}
+
+      {aBorrar && (
+        <ConfirmDialog
+          title="Eliminar box"
+          confirmar="Eliminar"
+          peligroso
+          cargando={borrar.isPending}
+          onConfirmar={() => borrar.mutate(aBorrar)}
+          onClose={() => setABorrar(null)}
+        >
+          ¿Seguro que querés eliminar <strong>{aBorrar.nombre}</strong>?
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
 
-function BoxModal({ area, onClose, onSaved }) {
+function BoxModal({ area, onClose }) {
+  const toast = useToast();
   const [nombre, setNombre] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  async function crear() {
-    setGuardando(true);
-    try {
-      await api.post("/boxes/", { area: area.id, nombre: nombre.trim() });
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
-  return (
-    <Modal title={`Nuevo box · ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !nombre.trim()} onClick={crear}>{guardando ? "…" : "Crear"}</Button></>}>
-      <Field label="Nombre del box *"><Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Box 1" /></Field>
-    </Modal>
-  );
-}
 
-function EliminarBoxModal({ box, onClose, onDeleted }) {
-  const [borrando, setBorrando] = useState(false);
-  async function eliminar() {
-    setBorrando(true);
-    try {
-      await api.del(`/boxes/${box.id}/`);
-      onDeleted();
-    } finally {
-      setBorrando(false);
-    }
-  }
+  const crear = useAccion(() => api.post("/boxes/", { area: area.id, nombre: nombre.trim() }), {
+    onSuccess: () => { toast.ok("Box creado."); onClose(); },
+    onError: (e) => toast.deError(e, "No se pudo crear el box."),
+  });
+
   return (
-    <Modal title="Eliminar box" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}>
-      <div style={{ fontSize: 14, color: color.slate700 }}>¿Seguro que querés eliminar <strong>{box.nombre}</strong>?</div>
+    <Modal
+      title={`Nuevo box · ${area.nombre}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={crear.isPending || !nombre.trim()} onClick={() => crear.mutate()}>
+            {crear.isPending ? "…" : "Crear"}
+          </Button>
+        </>
+      }
+    >
+      <Field label="Nombre del box *">
+        <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Box 1" />
+      </Field>
     </Modal>
   );
 }
 
 function SubareasTab({ area, onChange }) {
-  const [sel, setSel] = useState(null);
-  const [flujos, setFlujos] = useState([]);
-  useEffect(() => {
-    api.get(`/flujos/?institucion=${area.institucion}`).then((d) => setFlujos(d.results || d));
-  }, [area.institucion]);
+  const [selId, setSelId] = useState(null);
+  const flujos = useLista("flujos", { institucion: area.institucion, pageSize: 200 });
 
-  // Ficha de una sub-área seleccionada.
-  if (sel) {
-    const sub = (area.subareas || []).find((s) => s.id === sel.id) || sel;
-    const vinculados = flujos.filter((f) => f.subarea === sub.id);
-    return <SubareaFicha sub={sub} flujos={vinculados} onBack={() => setSel(null)} onChange={onChange} />;
+  const sub = (area.subareas || []).find((s) => s.id === selId);
+  if (sub) {
+    return (
+      <SubareaFicha
+        sub={sub}
+        flujos={flujos.filas.filter((f) => f.subarea === sub.id)}
+        onVolver={() => setSelId(null)}
+        onChange={onChange}
+      />
+    );
   }
 
-  if (!area.subareas?.length)
-    return <div style={{ fontSize: 13.5, color: color.slate400 }}>Sin sub-áreas. Usá «Crear sub-área». (Una sub-área no contiene sub-áreas.)</div>;
+  if (!area.subareas?.length) {
+    return <Aviso>Sin sub-áreas. Usá «Crear sub-área». (Una sub-área no contiene sub-áreas.)</Aviso>;
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <ul className="flex flex-col gap-2">
       {area.subareas.map((s) => {
-        const n = flujos.filter((f) => f.subarea === s.id).length;
+        const n = flujos.filas.filter((f) => f.subarea === s.id).length;
         return (
-          <Card
-            key={s.id}
-            onClick={() => setSel(s)}
-            style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
-          >
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: color.subtle, color: color.slate500, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="cube" size={15} /></div>
-            <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{s.nombre}</div>
-            <span style={{ fontSize: 12.5, color: color.slate500 }}>{n === 1 ? "1 flujo" : `${n} flujos`}</span>
-            <Icon name="back" size={14} style={{ transform: "rotate(180deg)", color: color.slate400 }} />
-          </Card>
+          <li key={s.id}>
+            <button
+              onClick={() => setSelId(s.id)}
+              className="flex w-full items-center gap-3 rounded-lg border border-borde bg-superficie px-lg py-3 text-left hover:border-accent-100"
+            >
+              <span className="flex size-8 flex-none items-center justify-center rounded-md bg-superficie-2 text-texto-debil">
+                <Icon name="cube" size={15} />
+              </span>
+              <span className="flex-1 truncate text-md font-semibold">{s.nombre}</span>
+              <span className="text-sm text-texto-debil">{plural(n, "flujo", "flujos")}</span>
+              <Icon name="back" size={14} className="rotate-180 text-texto-debil" />
+            </button>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
-function SubareaFicha({ sub, flujos, onBack, onChange }) {
+function SubareaFicha({ sub, flujos, onVolver, onChange }) {
+  const toast = useToast();
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(sub.nombre);
   const [confirmar, setConfirmar] = useState(false);
-  const [trabajando, setTrabajando] = useState(false);
 
-  async function renombrar() {
+  const renombrar = useAccion(() => api.patch(`/subareas/${sub.id}/`, { nombre: nombre.trim() }), {
+    onSuccess: () => { toast.ok("Sub-área renombrada."); setEditando(false); onChange(); },
+    onError: (e) => toast.deError(e, "No se pudo renombrar."),
+  });
+
+  const eliminar = useAccion(() => api.del(`/subareas/${sub.id}/`), {
+    onSuccess: () => { toast.ok("Sub-área eliminada."); onVolver(); onChange(); },
+    onError: (e) => toast.deError(e, "No se pudo eliminar la sub-área."),
+  });
+
+  function guardarNombre() {
     if (!nombre.trim() || nombre.trim() === sub.nombre) { setEditando(false); return; }
-    setTrabajando(true);
-    try {
-      await api.patch(`/subareas/${sub.id}/`, { nombre: nombre.trim() });
-      setEditando(false);
-      onChange();
-    } finally {
-      setTrabajando(false);
-    }
-  }
-  async function eliminar() {
-    setTrabajando(true);
-    try {
-      await api.del(`/subareas/${sub.id}/`);
-      onBack();
-      onChange();
-    } finally {
-      setTrabajando(false);
-    }
+    renombrar.mutate();
   }
 
   return (
     <div>
-      <button onClick={onBack} style={{ border: "none", background: "none", color: color.slate500, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 14, padding: 0 }}>
+      <button
+        onClick={onVolver}
+        className="mb-3.5 flex items-center gap-1.5 text-base text-texto-debil hover:text-texto-medio"
+      >
         <Icon name="back" size={14} /> Sub-áreas
       </button>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+      <div className="mb-lg flex flex-wrap items-center gap-2.5">
         {editando ? (
           <>
-            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus style={{ maxWidth: 280 }} />
-            <Button disabled={trabajando} onClick={renombrar}>Guardar</Button>
-            <Button variant="secondary" onClick={() => { setNombre(sub.nombre); setEditando(false); }}>Cancelar</Button>
+            <Input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") guardarNombre(); }}
+              autoFocus
+              className="max-w-70"
+              aria-label="Nombre de la sub-área"
+            />
+            <Button disabled={renombrar.isPending} onClick={guardarNombre}>Guardar</Button>
+            <Button variant="secondary" onClick={() => { setNombre(sub.nombre); setEditando(false); }}>
+              Cancelar
+            </Button>
           </>
         ) : (
           <>
-            <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-.3px" }}>{sub.nombre}</span>
+            <h3 className="text-xl font-extrabold tracking-tight">{sub.nombre}</h3>
             <Badge tone="neutral">Sub-área</Badge>
-            <button onClick={() => setEditando(true)} style={{ border: "none", background: "none", color: color.accent, cursor: "pointer", fontSize: 13 }}>Renombrar</button>
+            <button onClick={() => setEditando(true)} className="text-base font-semibold text-accent hover:underline">
+              Renombrar
+            </button>
           </>
         )}
       </div>
 
-      <div style={{ fontSize: 13, fontWeight: 700, color: color.slate600, marginBottom: 10 }}>Flujos vinculados <span style={{ color: color.slate400, fontWeight: 500 }}>· {flujos.length}</span></div>
+      <h4 className="mb-2.5 text-base font-bold text-texto-medio">
+        Flujos vinculados <span className="font-medium text-texto-debil">· {flujos.length}</span>
+      </h4>
       {flujos.length === 0 ? (
-        <Card style={{ padding: 18, fontSize: 13, color: color.slate400 }}>Ningún flujo usa esta sub-área todavía.</Card>
+        <Aviso>Ningún flujo usa esta sub-área todavía.</Aviso>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {flujos.map((f) => (
-            <Card key={f.id} style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-              <Icon name="workflow" size={15} style={{ color: color.accent }} />
-              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.titulo}</span>
+            <Card key={f.id} className="flex items-center gap-2.5 px-3.5 py-2.5">
+              <Icon name="workflow" size={15} className="text-accent" />
+              <span className="text-md font-semibold">{f.titulo}</span>
             </Card>
           ))}
         </div>
       )}
 
-      <div style={{ marginTop: 22, borderTop: `1px solid ${color.border}`, paddingTop: 16 }}>
+      <div className="mt-[22px] border-t border-borde pt-lg">
         {confirmar ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 13, color: color.slate700 }}>¿Eliminar «{sub.nombre}»?</span>
-            <Button variant="danger" disabled={trabajando} onClick={eliminar}>{trabajando ? "…" : "Sí, eliminar"}</Button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-base text-texto-medio">¿Eliminar «{sub.nombre}»?</span>
+            <Button variant="danger" disabled={eliminar.isPending} onClick={() => eliminar.mutate()}>
+              {eliminar.isPending ? "…" : "Sí, eliminar"}
+            </Button>
             <Button variant="secondary" onClick={() => setConfirmar(false)}>No</Button>
           </div>
         ) : (
-          <button onClick={() => setConfirmar(true)} style={{ border: "none", background: "none", color: color.danger, cursor: "pointer", fontSize: 13, padding: 0 }}>Eliminar sub-área</button>
+          <button onClick={() => setConfirmar(true)} className="text-base font-semibold text-danger hover:underline">
+            Eliminar sub-área
+          </button>
         )}
       </div>
     </div>
@@ -631,135 +782,142 @@ function SubareaFicha({ sub, flujos, onBack, onChange }) {
 }
 
 function NuevaSubareaModal({ area, onClose, onSaved }) {
+  const toast = useToast();
   const [nombre, setNombre] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  async function crear() {
-    setGuardando(true);
-    try {
-      await api.post("/subareas/", { area: area.id, nombre: nombre.trim() });
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
-  return (
-    <Modal title={`Nueva sub-área · ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !nombre.trim()} onClick={crear}>{guardando ? "…" : "Crear"}</Button></>}>
-      <Field label="Nombre de la sub-área *"><Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Hemodinamia" /></Field>
-    </Modal>
-  );
-}
 
-function AreaModal({ area, institucionId, onClose, onSaved }) {
-  const esNuevo = !area;
-  const [f, setF] = useState({ nombre: area?.nombre || "", responsable: area?.responsable || "", descripcion: area?.descripcion || "" });
-  const [guardando, setGuardando] = useState(false);
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  async function guardar() {
-    setGuardando(true);
-    try {
-      if (esNuevo) {
-        const a = await api.post("/areas/", { institucion: institucionId, ...f });
-        onSaved(a.id);
-      } else {
-        await api.patch(`/areas/${area.id}/`, f);
-        onSaved(area.id);
-      }
-    } finally {
-      setGuardando(false);
-    }
-  }
-  return (
-    <Modal title={esNuevo ? "Nueva área" : "Editar área"} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !f.nombre} onClick={guardar}>{guardando ? "…" : "Guardar"}</Button></>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus /></Field>
-        <Field label="Responsable / jefe"><Input value={f.responsable} onChange={(e) => set("responsable", e.target.value)} placeholder="Dra. Laura Méndez" /></Field>
-        <Field label="Descripción"><Textarea value={f.descripcion} onChange={(e) => set("descripcion", e.target.value)} /></Field>
-      </div>
-    </Modal>
-  );
-}
+  const crear = useAccion(() => api.post("/subareas/", { area: area.id, nombre: nombre.trim() }), {
+    onSuccess: () => { toast.ok("Sub-área creada."); onSaved(); onClose(); },
+    onError: (e) => toast.deError(e, "No se pudo crear la sub-área."),
+  });
 
-function EliminarModal({ tipo, item, onClose, onDeleted }) {
-  const [borrando, setBorrando] = useState(false);
-  const [error, setError] = useState(null);
-  const esArea = tipo === "area";
-  async function eliminar() {
-    setBorrando(true);
-    setError(null);
-    try {
-      await api.del(`/${esArea ? "areas" : "subareas"}/${item.id}/`);
-      onDeleted();
-    } catch (e) {
-      setError(e?.data?.detail || "No se pudo eliminar. Puede tener elementos asociados.");
-      setBorrando(false);
-    }
-  }
   return (
     <Modal
-      title={esArea ? "Eliminar área" : "Eliminar sub-área"}
+      title={`Nueva sub-área · ${area.nombre}`}
       onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" disabled={borrando} onClick={eliminar}>{borrando ? "…" : "Eliminar"}</Button></>}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={crear.isPending || !nombre.trim()} onClick={() => crear.mutate()}>
+            {crear.isPending ? "…" : "Crear"}
+          </Button>
+        </>
+      }
     >
-      <div style={{ fontSize: 14, color: color.slate700 }}>
-        ¿Seguro que querés eliminar <strong>{item.nombre}</strong>?
-        {esArea && <> Se eliminarán también sus sub-áreas.</>} Esta acción no se puede deshacer.
-      </div>
-      {error && <div style={{ marginTop: 12, fontSize: 13, color: color.danger }}>{error}</div>}
+      <Field label="Nombre de la sub-área *">
+        <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Hemodinamia" />
+      </Field>
     </Modal>
   );
 }
 
-// Funciones operativas que se pueden asignar a un área.
-const FUNCIONES = [
-  { value: "jefe_area", label: "Jefe / Supervisor de área" },
-  { value: "administrativo", label: "Administrativo" },
-  { value: "enfermeria", label: "Enfermería" },
-  { value: "medico", label: "Médico / profesional" },
-];
+function AreaModal({ area, institucionId, onClose }) {
+  const toast = useToast();
+  const esNuevo = !area;
+  const [f, setF] = useState({
+    nombre: area?.nombre || "",
+    responsable: area?.responsable || "",
+    descripcion: area?.descripcion || "",
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
-function AsignarModal({ area, onClose, onSaved }) {
-  const [usuarios, setUsuarios] = useState([]);
-  const [usuarioId, setUsuarioId] = useState("");
-  const [funcion, setFuncion] = useState("administrativo");
-  const [guardando, setGuardando] = useState(false);
-
-  useEffect(() => {
-    api.get("/usuarios/").then((d) => {
-      const lista = (d.results || d).filter((u) => !u.is_superuser);
-      setUsuarios(lista);
-      if (lista[0]) setUsuarioId(String(lista[0].id));
-    });
-  }, []);
-
-  async function asignar() {
-    if (!usuarioId) return;
-    setGuardando(true);
-    try {
-      // ¿Ya tiene una membresía con esa función en la institución?
-      const ms = await api.get(`/membresias/?usuario=${usuarioId}&institucion=${area.institucion}&rol=${funcion}`);
-      const existente = (ms.results || ms)[0];
-      if (existente) {
-        if (!(existente.areas || []).includes(area.id)) {
-          await api.patch(`/membresias/${existente.id}/`, { areas: [...(existente.areas || []), area.id] });
-        }
-      } else {
-        await api.post("/membresias/", { usuario: Number(usuarioId), institucion: area.institucion, rol: funcion, areas: [area.id] });
-      }
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
+  const guardar = useAccion(
+    () => (esNuevo
+      ? api.post("/areas/", { institucion: institucionId, ...f })
+      : api.patch(`/areas/${area.id}/`, f)),
+    {
+      onSuccess: () => { toast.ok(esNuevo ? "Área creada." : "Área actualizada."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudo guardar el área."),
+    },
+  );
 
   return (
-    <Modal title={`Asignar profesional a ${area.nombre}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !usuarioId} onClick={asignar}>{guardando ? "…" : "Asignar"}</Button></>}>
-      {usuarios.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: color.slate500 }}>No hay usuarios para asignar. Creá usuarios desde el directorio (Usuarios).</div>
+    <Modal
+      title={esNuevo ? "Nueva área" : "Editar área"}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={guardar.isPending || !f.nombre} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "…" : "Guardar"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus /></Field>
+        <Field label="Responsable / jefe">
+          <Input value={f.responsable} onChange={(e) => set("responsable", e.target.value)} placeholder="Dra. Laura Méndez" />
+        </Field>
+        <Field label="Descripción">
+          <Textarea value={f.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function AsignarModal({ area, onClose }) {
+  const toast = useToast();
+  const [usuarioId, setUsuarioId] = useState("");
+  const [funcion, setFuncion] = useState("administrativo");
+
+  // Se piden 100 y sin superusuarios: con los 25 de la primera página el
+  // desplegable ocultaba gente sin decirlo.
+  const usuarios = useLista("usuarios", { is_superuser: false, pageSize: 100, ordering: "apellido" });
+  const elegido = usuarioId || String(usuarios.filas[0]?.id || "");
+
+  const asignar = useAccion(
+    async () => {
+      // ¿Ya tiene una membresía con esa función en la institución? Se reusa en vez
+      // de crear una segunda, que dejaría al mismo rol duplicado.
+      const ms = await api.get(
+        `/membresias/?usuario=${elegido}&institucion=${area.institucion}&rol=${funcion}`,
+      );
+      const existente = (ms.results || ms)[0];
+      if (existente) {
+        if ((existente.areas || []).includes(area.id)) return existente;
+        return api.patch(`/membresias/${existente.id}/`, {
+          areas: [...(existente.areas || []), area.id],
+        });
+      }
+      return api.post("/membresias/", {
+        usuario: Number(elegido), institucion: area.institucion, rol: funcion, areas: [area.id],
+      });
+    },
+    {
+      onSuccess: () => { toast.ok("Profesional asignado al área."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudo asignar."),
+    },
+  );
+
+  return (
+    <Modal
+      title={`Asignar profesional a ${area.nombre}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={asignar.isPending || !elegido} onClick={() => asignar.mutate()}>
+            {asignar.isPending ? "…" : "Asignar"}
+          </Button>
+        </>
+      }
+    >
+      {usuarios.isLoading ? (
+        <Skeleton className="h-24" />
+      ) : usuarios.filas.length === 0 ? (
+        <EstadoVacio
+          titulo="No hay usuarios para asignar"
+          detalle="Creá usuarios desde el directorio de plataforma."
+          icono="users"
+        />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="flex flex-col gap-3.5">
           <Field label="Persona">
-            <Select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)}>
-              {usuarios.map((u) => <option key={u.id} value={u.id}>{u.nombre_completo || u.email}</option>)}
+            <Select value={elegido} onChange={(e) => setUsuarioId(e.target.value)}>
+              {usuarios.filas.map((u) => (
+                <option key={u.id} value={u.id}>{u.nombre_completo || u.email}</option>
+              ))}
             </Select>
           </Field>
           <Field label="Función en esta área">
@@ -767,8 +925,9 @@ function AsignarModal({ area, onClose, onSaved }) {
               {FUNCIONES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </Select>
           </Field>
-          <div style={{ fontSize: 12, color: color.slate400 }}>
-            El médico podrá registrar atenciones (firmar en la historia clínica); el administrativo opera el resto del proceso.
+          <div className="text-sm text-texto-debil">
+            El médico podrá registrar atenciones (firmar en la historia clínica); el
+            administrativo opera el resto del proceso.
           </div>
         </div>
       )}

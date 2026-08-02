@@ -201,5 +201,17 @@ export const nodeCat = {
 };
 
 // Avatares: paleta rotativa.
-export const avatarColors = ["#3949C0", "#0E8893", "#9A3DB8", "#A96A12", "#1F8A5B", "#2B8FD6"];
+/**
+ * Paleta rotativa de avatares. Las iniciales van en BLANCO encima, así que cada
+ * color tiene que llegar a 4.5:1 contra blanco.
+ *
+ * Cuatro de los seis originales no llegaban —el azul estaba en 3.50:1— y como
+ * las iniciales son texto chico, en pantallas con muchas personas (staff de un
+ * área, historias clínicas) quedaba media pantalla ilegible. Son colores
+ * decorativos de identidad, no el acento de marca: oscurecerlos no cambia el
+ * aspecto del sistema, sólo hace legible lo que va encima.
+ *
+ * Razón contra blanco de cada uno: 7.27 · 5.82 · 5.63 · 5.78 · 5.85 · 5.39
+ */
+export const avatarColors = ["#3949C0", "#0B7078", "#9A3DB8", "#8F5A0F", "#17734B", "#1F6FA8"];
 

@@ -21,11 +21,19 @@ export default defineConfig({
     // el polling hace que Vite detecte los cambios y recargue (HMR) igual.
     watch: { usePolling: true, interval: 300 },
     proxy: {
-      // Rutas servidas por Django (con DEBUG=true sirve /media, /static y /admin).
-      "/api": proxyTarget,
-      "/media": proxyTarget,
-      "/static": proxyTarget,
-      "/admin": proxyTarget,
+      /*
+       * Rutas servidas por Django (con DEBUG=true sirve /media, /static y /admin).
+       *
+       * Van como expresión regular —Vite trata la clave como regex si empieza con
+       * `^`— y terminan en `(/|$)` a propósito. Con las claves simples el proxy
+       * hace coincidencia por PREFIJO, así que `/admin` se llevaba también
+       * `/administracion`, que es una ruta del frontend: la pantalla no cargaba
+       * con F5 ni por link directo, el pedido iba a Django y devolvía un 404.
+       */
+      "^/api(/|$)": proxyTarget,
+      "^/media(/|$)": proxyTarget,
+      "^/static(/|$)": proxyTarget,
+      "^/admin(/|$)": proxyTarget,
     },
   },
 });
