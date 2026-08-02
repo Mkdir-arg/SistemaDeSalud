@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from django.db.models import Avg, Case, Count, DurationField, ExpressionWrapper, F, IntegerField, Q, When
 from django.utils import timezone
-from rest_framework import filters, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -19,7 +19,6 @@ class InstitucionViewSet(BaseModelViewSet):
     capacidad_requerida = "config"
     institucion_path = "id"
     filter_fields = ("activa",)
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "cuit"]
     ordering_fields = ["nombre", "creada"]
 

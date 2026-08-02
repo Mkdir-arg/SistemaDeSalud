@@ -1,89 +1,123 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../api/client";
-import { useInstitucion } from "../auth/InstitutionContext";
-import { Badge, Card, Spinner } from "../components/ui";
-import { Icon } from "../components/icons";
-import { color } from "../theme";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
-// Panel de institución (pantalla Inicio), fiel a docs/captures/02-panel-institucion.png
+import { api } from "@/api/client";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { Icon } from "@/components/icons";
+import { Badge, Card, Spinner } from "@/components/ui";
+import { EstadoError } from "@/components/ui/estados";
+
+/**
+ * Secciones de la institución, filtradas por capacidad igual que el menú.
+ *
+ * El acento de cada una sale de la paleta de nodos. No es que una sección «sea»
+ * un tipo de nodo: se reusa la paleta porque ya está definida en tokens y tiene
+ * su variante oscura resuelta. Antes eran hex fijos con el tinte al 10% (`+"1A"`),
+ * que en tema oscuro quedaba un manchón claro sobre fondo negro.
+ *
+ * El color va SOLO en el ícono y su fondo. Nunca en texto: esta paleta no llega
+ * al contraste AA como texto y ya rompió tres veces por usarla así.
+ */
+const SECCIONES = [
+  { label: "Flujos", hint: "Diseñar y publicar procesos", icon: "workflow", to: "/flujos", cap: "diseno", cat: "form" },
+  { label: "Formularios", hint: "Biblioteca de formularios", icon: "form", to: "/formularios", cap: "diseno", cat: "derivar" },
+  { label: "Bandeja de tareas", hint: "Operar casos del día", icon: "inbox", to: "/bandeja", cap: "trabajo", cat: "decision" },
+  { label: "Historia clínica", hint: "Expedientes de pacientes", icon: "clipboard", to: "/historia", cap: "registros", cat: "atencion" },
+  { label: "Estructura organizativa", hint: "Áreas, sub-áreas y staff", icon: "cube", to: "/estructura", cap: "config", cat: "tiempo" },
+  { label: "Administración", hint: "Usuarios y accesos", icon: "users", to: "/administracion", cap: "config", cat: "estado" },
+];
+
+// Clases completas por categoría: Tailwind no puede resolver `bg-nodo-${cat}-tint`
+// en tiempo de compilación, así que si se arma el nombre por concatenación la
+// clase no llega al CSS y el color desaparece sin error.
+const ACENTO = {
+  form: "bg-nodo-form-tint text-nodo-form-sol",
+  derivar: "bg-nodo-derivar-tint text-nodo-derivar-sol",
+  decision: "bg-nodo-decision-tint text-nodo-decision-sol",
+  atencion: "bg-nodo-atencion-tint text-nodo-atencion-sol",
+  tiempo: "bg-nodo-tiempo-tint text-nodo-tiempo-sol",
+  estado: "bg-nodo-estado-tint text-nodo-estado-sol",
+};
+
 export default function Inicio() {
   const { institucion, puedeVer } = useInstitucion();
-  const navigate = useNavigate();
-  const [m, setM] = useState(null);
-
-  useEffect(() => {
-    if (!institucion) return;
-    api.get(`/instituciones/${institucion.id}/metricas/`).then(setM).catch(() => setM({}));
-  }, [institucion]);
-
-  const metricas = [
-    { n: m?.areas ?? "—", l: "Áreas" },
-    { n: m?.subareas ?? "—", l: "Sub-áreas" },
-    { n: m?.staff ?? "—", l: "Staff" },
-    { n: m?.casos_activos ?? "—", l: "Casos activos" },
-  ];
-
-  // Secciones de la institución (gateadas por capacidad, como el menú).
-  const secciones = [
-    { label: "Flujos", hint: "Diseñar y publicar procesos", icon: "workflow", to: "/flujos", cap: "diseno", c: "#3949C0" },
-    { label: "Formularios", hint: "Biblioteca de formularios", icon: "form", to: "/formularios", cap: "diseno", c: "#0E8893" },
-    { label: "Bandeja de tareas", hint: "Operar casos del día", icon: "inbox", to: "/bandeja", cap: "trabajo", c: "#A96A12" },
-    { label: "Historia clínica", hint: "Expedientes de pacientes", icon: "clipboard", to: "/historia", cap: "registros", c: "#D14B8F" },
-    { label: "Estructura organizativa", hint: "Áreas, sub-áreas y staff", icon: "cube", to: "/estructura", cap: "config", c: "#0E9E8E" },
-    { label: "Administración", hint: "Usuarios y accesos", icon: "users", to: "/administracion", cap: "config", c: "#5B7A99" },
-  ].filter((s) => puedeVer(s.cap));
+  // Sub-recurso, no un detalle: `useDetalle` arma `/recurso/{id}/` y acá hace falta
+  // `/instituciones/{id}/metricas/`.
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["metricas-institucion", institucion?.id],
+    queryFn: () => api.get(`/instituciones/${institucion.id}/metricas/`),
+    enabled: institucion?.id != null,
+  });
 
   if (!institucion) return <Spinner />;
 
+  const secciones = SECCIONES.filter((s) => puedeVer(s.cap));
+  const metricas = [
+    { n: data?.areas, l: "Áreas" },
+    { n: data?.subareas, l: "Sub-áreas" },
+    { n: data?.staff, l: "Staff" },
+    { n: data?.casos_activos, l: "Casos activos" },
+  ];
+
   return (
-    <div style={{ padding: "26px 30px" }}>
+    <div className="px-lg py-[26px] sm:px-[30px]">
       {/* Cabecera de institución */}
-      <Card style={{ padding: "22px 24px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ width: 48, height: 48, borderRadius: 12, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+      <Card className="mb-5 flex flex-wrap items-center gap-lg px-6 py-[22px]">
+        <div className="flex size-12 flex-none items-center justify-center rounded-lg bg-accent-50 text-accent">
           <Icon name="building" size={24} />
         </div>
-        <div style={{ lineHeight: 1.3 }}>
-          <div style={{ fontSize: 19, fontWeight: 700 }}>{institucion.nombre}</div>
-          <div style={{ fontSize: 12.5, color: color.slate400 }}>{institucion.tipo || "Institución"}</div>
+        <div className="leading-tight">
+          <div className="text-xl font-bold">{institucion.nombre}</div>
+          <div className="text-sm text-texto-tenue">{institucion.tipo || "Institución"}</div>
         </div>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => navigate("/bandeja")}
-          style={{ height: 40, padding: "0 16px", borderRadius: 10, background: color.accent, color: "#fff", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, border: "none", cursor: "pointer" }}
+        <div className="flex-1" />
+        <Link
+          to="/bandeja"
+          className="flex h-10 items-center gap-2 rounded-lg bg-accent-fuerte px-lg text-base font-semibold text-sobre-accent hover:brightness-110"
         >
           <Icon name="enter" size={15} /> Operar
-        </button>
-        <Badge tone={institucion.activa === false ? "gray" : "green"}>{institucion.activa === false ? "Inactiva" : "Activa"}</Badge>
+        </Link>
+        <Badge tone={institucion.activa === false ? "gray" : "green"}>
+          {institucion.activa === false ? "Inactiva" : "Activa"}
+        </Badge>
       </Card>
 
       {/* Métricas */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
-        {metricas.map((c) => (
-          <Card key={c.l} style={{ padding: 18 }}>
-            <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{c.n}</div>
-            <div style={{ fontSize: 12.5, color: color.slate400, marginTop: 7 }}>{c.l}</div>
-          </Card>
-        ))}
-      </div>
+      {error ? (
+        <Card className="mb-6">
+          <EstadoError error={error} onReintentar={refetch} titulo="No se pudieron cargar las métricas" />
+        </Card>
+      ) : (
+        <div className="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+          {metricas.map((c) => (
+            <Card key={c.l} className="p-[18px]">
+              {/* `cifra`, no `xxl`: es el contenido de la tarjeta, no un título. */}
+              <div className="text-cifra font-bold leading-none">
+                {isLoading ? "…" : (c.n ?? "—")}
+              </div>
+              <div className="mt-[7px] text-sm text-texto-tenue">{c.l}</div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Secciones de la institución */}
-      <div style={{ fontSize: 13, fontWeight: 700, color: color.slate700, marginBottom: 14 }}>Secciones de la institución</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+      <h2 className="mb-3.5 text-base font-bold text-texto-suave">Secciones de la institución</h2>
+      <div className="grid gap-lg sm:grid-cols-2 lg:grid-cols-3">
         {secciones.map((s) => (
-          <Card
+          // <Link> y no <Card onClick>: son navegaciones, así que tienen que
+          // abrirse en pestaña nueva con ctrl+clic y ser alcanzables por teclado.
+          <Link
             key={s.to}
-            onClick={() => navigate(s.to)}
-            style={{ padding: 20, cursor: "pointer", transition: "border-color .12s, box-shadow .12s" }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = color.accent100; e.currentTarget.style.boxShadow = "0 6px 18px rgba(16,24,40,.08)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = color.border; e.currentTarget.style.boxShadow = "none"; }}
+            to={s.to}
+            className="rounded-lg border border-borde bg-superficie p-5 transition hover:border-accent-100 hover:shadow-float"
           >
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: s.c + "1A", color: s.c, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+            <div className={`mb-3 flex size-10 items-center justify-center rounded-lg ${ACENTO[s.cat]}`}>
               <Icon name={s.icon} size={20} />
             </div>
-            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{s.label}</div>
-            <div style={{ fontSize: 12.5, color: color.slate400, marginTop: 2 }}>{s.hint}</div>
-          </Card>
+            <div className="text-md font-bold">{s.label}</div>
+            <div className="mt-0.5 text-sm text-texto-tenue">{s.hint}</div>
+          </Link>
         ))}
       </div>
     </div>

@@ -22,6 +22,15 @@ node_modules/
 frontend/dist/
 *.local
 
+# === Playwright (artefactos de las corridas, no la suite) ===
+frontend/test-results/
+# Playwright a veces escribe en la raíz según desde dónde se lo invoque.
+/test-results/
+/playwright-report/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.playwright/
+
 # === Variables de entorno (solo se versiona .env.example) ===
 .env
 .env.*

@@ -1,119 +1,144 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../../api/client";
-import { useInstitucion } from "../../auth/InstitutionContext";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Spinner, Table } from "../../components/ui";
-import { color } from "../../theme";
 
-// Lista de historias clínicas (tabla). El detalle vive en /historia/:id.
+import { api } from "@/api/client";
+import { useAccion, useLista } from "@/api/queries";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { Avatar, Badge, Button, Field, Input, Modal, Mono } from "@/components/ui";
+import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
+import { TablaRecurso } from "@/components/ui/tabla";
+import { useToast } from "@/components/ui/toast";
+import { plural } from "@/lib/format";
+
+// Lista de historias clínicas. El detalle vive en /historia/:id.
 export default function Registros() {
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [ciudadanos, setCiudadanos] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [busca, setBusca] = useState("");
   const [params] = useSearchParams();
-  const [nuevo, setNuevo] = useState(params.get("nuevo") === "1"); // abrir alta directo desde "Accesos rápidos"
+  const [texto, setTexto, busqueda] = useBusquedaUrl("q");
+  // `?nuevo=1` abre el alta directo desde «Accesos rápidos».
+  const [nuevo, setNuevo] = useState(params.get("nuevo") === "1");
 
-  async function cargar() {
-    if (!institucion) return;
-    setCargando(true);
-    try {
-      const d = await api.get(`/ciudadanos/?institucion=${institucion.id}`);
-      setCiudadanos(d.results || d);
-    } finally {
-      setCargando(false);
-    }
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [institucion]);
-
-  const filtrados = ciudadanos.filter((c) =>
-    `${c.nombre} ${c.apellido} ${c.documento}`.toLowerCase().includes(busca.toLowerCase())
-  );
+  // La búsqueda va al servidor. Es lo más importante de esta pantalla: en un
+  // hospital hay miles de pacientes y buscar dentro de los 25 de la primera
+  // página significa no encontrar a casi nadie.
+  const paramsLista = { institucion: institucion?.id, search: busqueda || undefined };
+  const { total } = useLista("ciudadanos", { ...paramsLista, pageSize: 1 }, { enabled: !!institucion });
 
   return (
-    <div style={{ padding: "26px 30px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
+    <div className="px-lg py-[26px] sm:px-[30px]">
+      <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Historias clínicas</div>
-          <div style={{ fontSize: 12.5, color: color.slate500 }}>{ciudadanos.length} pacientes con registro</div>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ width: 280 }}>
-            <Input placeholder="Buscar por nombre o documento…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <h1 className="text-cifra font-extrabold tracking-tight">Historias clínicas</h1>
+          <div className="text-sm text-texto-debil">
+            {plural(total, "paciente con registro", "pacientes con registro")}
           </div>
-          <Button style={{ whiteSpace: "nowrap" }} onClick={() => setNuevo(true)}>+ Crear registro</Button>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <Buscador
+            valor={texto}
+            onChange={setTexto}
+            placeholder="Buscar por nombre o documento…"
+            className="w-70"
+            aria-label="Buscar paciente"
+          />
+          <Button onClick={() => setNuevo(true)} className="whitespace-nowrap">+ Crear registro</Button>
         </div>
       </div>
 
-      <Card style={{ overflow: "hidden", padding: 0 }}>
-        {cargando ? (
-          <Spinner />
-        ) : (
-          <Table
-            rows={filtrados}
-            onRowClick={(c) => navigate(`/historia/${c.id}`)}
-            vacio="Sin pacientes"
-            columns={[
-              {
-                key: "paciente", label: "Paciente",
-                render: (c) => (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Avatar nombre={`${c.nombre} ${c.apellido}`} i={c.id} size={38} />
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{c.nombre} {c.apellido}</div>
-                      <div style={{ fontSize: 12, color: color.slate500 }}>
-                        {c.documento ? <>DNI {c.documento}</> : c.codigo}{c.fecha_nacimiento ? ` · ${new Date(c.fecha_nacimiento).toLocaleDateString("es-AR")}` : ""}
-                      </div>
-                    </div>
+      <TablaRecurso
+        clave="hc"
+        recurso="ciudadanos"
+        params={paramsLista}
+        ordenInicial="apellido"
+        onRowClick={(c) => navigate(`/historia/${c.id}`)}
+        vacio={{
+          titulo: busqueda ? "Ningún paciente coincide" : "Sin pacientes",
+          detalle: busqueda
+            ? "Probá con el documento, o con parte del apellido."
+            : "Creá el primer registro para empezar a cargar historia clínica.",
+        }}
+        columnas={[
+          {
+            key: "paciente", label: "Paciente", orden: "apellido", truncar: true,
+            render: (c) => (
+              <div className="flex items-center gap-3">
+                <Avatar nombre={`${c.nombre} ${c.apellido}`} i={c.id} size={38} />
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{c.nombre} {c.apellido}</div>
+                  <div className="truncate text-sm text-texto-debil">
+                    {c.documento ? `DNI ${c.documento}` : c.codigo}
+                    {c.fecha_nacimiento ? ` · ${new Date(c.fecha_nacimiento).toLocaleDateString("es-AR")}` : ""}
                   </div>
-                ),
-              },
-              { key: "obra_social", label: "Obra social", render: (c) => c.obra_social || "—" },
-              {
-                key: "cond", label: "Condiciones / alergias",
-                render: (c) => (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {c.condiciones && <Badge tone="amber">{c.condiciones}</Badge>}
-                    {c.alergias && <Badge tone="error">⚠ {c.alergias}</Badge>}
-                    {!c.condiciones && !c.alergias && <span style={{ color: color.slate400 }}>—</span>}
-                  </div>
-                ),
-              },
-              { key: "entradas", label: "Entradas", render: (c) => <Mono>{c.entradas}</Mono> },
-              { key: "ultima", label: "Última", render: (c) => (c.ultima ? new Date(c.ultima).toLocaleDateString("es-AR") : "—") },
-            ]}
-          />
-        )}
-      </Card>
+                </div>
+              </div>
+            ),
+          },
+          { key: "obra_social", label: "Obra social", render: (c) => c.obra_social || "—" },
+          {
+            key: "cond", label: "Condiciones / alergias", envolver: true,
+            render: (c) => (
+              <div className="flex flex-wrap gap-1.5">
+                {c.condiciones && <Badge tone="amber">{c.condiciones}</Badge>}
+                {/* La alergia va con símbolo Y con la palabra: el color solo no
+                    alcanza para quien no lo distingue. */}
+                {c.alergias && <Badge tone="error">⚠ Alergia: {c.alergias}</Badge>}
+                {!c.condiciones && !c.alergias && <span className="text-texto-tenue">—</span>}
+              </div>
+            ),
+          },
+          { key: "entradas", label: "Entradas", render: (c) => <Mono>{c.entradas}</Mono> },
+          {
+            key: "ultima", label: "Última",
+            render: (c) => (c.ultima ? new Date(c.ultima).toLocaleDateString("es-AR") : "—"),
+          },
+        ]}
+      />
 
-      {nuevo && <NuevoPacienteModal institucionId={institucion?.id} onClose={() => setNuevo(false)} onSaved={(id) => { setNuevo(false); id ? navigate(`/historia/${id}`) : cargar(); }} />}
+      {nuevo && (
+        <NuevoPacienteModal
+          institucionId={institucion?.id}
+          onClose={() => setNuevo(false)}
+          onCreado={(id) => navigate(`/historia/${id}`)}
+        />
+      )}
     </div>
   );
 }
 
-function NuevoPacienteModal({ institucionId, onClose, onSaved }) {
+function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
+  const toast = useToast();
   const [f, setF] = useState({ nombre: "", apellido: "", documento: "", fecha_nacimiento: "", obra_social: "" });
-  const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  async function crear() {
-    setGuardando(true);
-    try {
-      const c = await api.post("/ciudadanos/", { institucion: institucionId, ...f, fecha_nacimiento: f.fecha_nacimiento || null });
-      onSaved(c.id);
-    } finally {
-      setGuardando(false);
-    }
-  }
+
+  const crear = useAccion(
+    () =>
+      api.post("/ciudadanos/", {
+        institucion: institucionId,
+        ...f,
+        fecha_nacimiento: f.fecha_nacimiento || null,
+      }),
+    {
+      onSuccess: (c) => { toast.ok("Registro creado."); onCreado(c.id); },
+      onError: (e) => toast.deError(e, "No se pudo crear el registro."),
+    },
+  );
+
   return (
-    <Modal title="Nuevo registro de paciente" onClose={onClose} footer={<>
-      <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-      <Button disabled={guardando || !f.nombre} onClick={crear}>{guardando ? "Creando…" : "Crear"}</Button>
-    </>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", gap: 12 }}>
+    <Modal
+      title="Nuevo registro de paciente"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={crear.isPending || !f.nombre} onClick={() => crear.mutate()}>
+            {crear.isPending ? "Creando…" : "Crear"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <div className="flex gap-3">
           <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus /></Field>
           <Field label="Apellido"><Input value={f.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
         </div>

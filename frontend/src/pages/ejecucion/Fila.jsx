@@ -1,156 +1,254 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../api/client";
-import { Badge, Card, EmptyState, Mono, Select, Spinner } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { antiguedad, casoId } from "../../lib/format";
-import { color, nodeCat } from "../../theme";
 
-const TEAL = nodeCat.espera.sol; // #16B1C9
+import { api } from "@/api/client";
+import { useAccion, useLista } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
+import { Icon } from "@/components/icons";
+import { Badge } from "@/components/ui";
+import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
+import { useToast } from "@/components/ui/toast";
+import { antiguedad, casoId } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
+const hora = (iso) =>
+  new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+
+/**
+ * Fila de espera de un área. Pantalla piloto de la migración: es la primera
+ * hecha entera con la fundación nueva (tokens, componentes, TanStack Query,
+ * responsive, estados y toasts) y sirve de patrón para las otras.
+ */
 export default function Fila() {
   const navigate = useNavigate();
-  const [items, setItems] = useState([]);
-  const [boxes, setBoxes] = useState([]);
+  const toast = useToast();
+  const { user } = useAuth();
   const [areaSel, setAreaSel] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [llamando, setLlamando] = useState(null); // id de box (o "global") en proceso
-  const [error, setError] = useState("");
 
-  async function cargarItems() {
-    const data = await api.get("/items-fila/?atendido=false");
-    const lista = data.results || data;
-    lista.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || a.orden - b.orden);
-    setItems(lista);
-  }
-  useEffect(() => {
-    (async () => {
-      setCargando(true);
-      try {
-        await cargarItems();
-      } finally {
-        setCargando(false);
-      }
-    })();
-  }, []);
+  // `box: "null"` como texto a propósito: `query()` descarta los valores null
+  // (para no ensuciar la URL), así que el filtro «sin box asignado» hay que
+  // pedirlo con la palabra, que es lo que el backend traduce a IS NULL.
+  // Se pide al servidor y no se descarta en el cliente: los ya llamados ocupaban
+  // lugar de las 200 filas del pedido y podían dejar afuera a gente que espera.
+  const q = useLista("items-fila", { atendido: false, box: "null", pageSize: 200 });
 
-  // Áreas que tienen gente esperando.
+  // Los urgentes van al frente; dentro de cada grupo manda el orden de llegada.
+  const items = useMemo(
+    () => [...q.filas].sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || a.orden - b.orden),
+    [q.filas],
+  );
+
   const areas = useMemo(() => {
-    const m = {};
-    items.forEach((it) => { if (it.area) m[it.area] = it.area_nombre || `Área ${it.area}`; });
-    return Object.entries(m).map(([id, nombre]) => ({ id: Number(id), nombre }));
+    const m = new Map();
+    for (const it of items) if (it.area) m.set(it.area, it.area_nombre || `Área ${it.area}`);
+    return [...m].map(([id, nombre]) => ({ id, nombre }));
   }, [items]);
 
-  // Elegir un área por defecto cuando aparecen items.
-  useEffect(() => {
-    if (areas.length && !areas.some((a) => a.id === areaSel)) setAreaSel(areas[0].id);
-  }, [areas, areaSel]);
+  /*
+   * Áreas donde esta persona realmente trabaja.
+   *
+   * La fila muestra TODAS las áreas con gente esperando —un jefe quiere ver el
+   * panorama—, pero arrancar en una donde no se puede llamar es una trampa: el
+   * médico de guardia entraba, apretaba «Llamar siguiente» y recibía «No integrás
+   * ningún grupo responsable de este paso». La acción principal de la pantalla
+   * fallaba de entrada, y sólo lo decía después del clic.
+   */
+  const misMembresias = useLista(
+    "membresias",
+    { usuario: user?.id, activo: true, pageSize: 50 },
+    { enabled: !!user?.id },
+  );
+  const misAreas = useMemo(
+    () => new Set(misMembresias.filas.flatMap((m) => m.areas || [])),
+    [misMembresias.filas],
+  );
 
-  // Boxes del área elegida.
   useEffect(() => {
-    if (areaSel == null) { setBoxes([]); return; }
-    api.get(`/boxes/?area=${areaSel}&activo=true`).then((d) => setBoxes(d.results || d));
-  }, [areaSel]);
+    if (!areas.length) return;
+    if (areas.some((a) => a.id === areaSel)) return; // ya hay una elegida y válida
+    // Se espera a saber cuáles son suyas antes de elegir. Sin esto, la primera
+    // pasada elegía `areas[0]` con las membresías todavía en vuelo, y la pasada
+    // siguiente ya veía un área válida elegida y no corregía nunca: el efecto
+    // decidía antes de tener el dato que informa la decisión.
+    if (misMembresias.isLoading) return;
+    // Se prefiere un área propia; si ninguna tiene cola, se cae a la primera.
+    setAreaSel((areas.find((a) => misAreas.has(a.id)) || areas[0]).id);
+  }, [areas, areaSel, misAreas, misMembresias.isLoading]);
 
-  // En la fila solo los que aún no fueron llamados (sin box asignado).
-  const fila = items.filter((it) => it.area === areaSel && !it.box);
+  // Sólo se avisa cuando ya se sabe a qué áreas pertenece: mientras carga, decir
+  // que no puede llamar sería mentirle por un instante.
+  const areaAjena = misMembresias.isSuccess && areaSel != null && !misAreas.has(areaSel);
+
+  const boxes = useLista("boxes", { area: areaSel, activo: true, pageSize: 50 }, { enabled: areaSel != null });
+
+  const fila = items.filter((it) => it.area === areaSel);
   const areaNombre = areas.find((a) => a.id === areaSel)?.nombre || "Sala de espera";
+  const siguiente = fila[0];
 
-  async function llamar(box) {
-    if (!fila.length) return;
-    const casoId = fila[0].caso;
-    setError("");
-    setLlamando(box ? box.id : "global");
-    try {
-      await api.post(`/casos/${casoId}/llamar/`, box ? { box_id: box.id } : {});
-      navigate(`/casos/${casoId}`); // el profesional pasa a atender al paciente llamado
-    } catch (e) {
-      setError(e?.data?.detail || "No se pudo llamar al paciente.");
-      setLlamando(null);
-    }
+  const llamar = useAccion(({ caso, box }) => api.post(`/casos/${caso}/llamar/`, box ? { box_id: box.id } : {}), {
+    onError: (e) => toast.deError(e, "No se pudo llamar al paciente."),
+  });
+
+  function alLlamar(box) {
+    if (!siguiente) return;
+    const caso = siguiente.caso;
+    const quien = siguiente.persona || casoId(caso);
+    llamar.mutate(
+      { caso, box },
+      {
+        onSuccess: () => {
+          toast.ok(`Llamaste a ${quien}`, { detalle: box ? `Pasá a ${box.nombre}` : undefined });
+          // El profesional pasa directo a atender al paciente que llamó.
+          navigate(`/casos/${caso}`);
+        },
+      },
+    );
   }
 
-  if (cargando) return <Spinner label="Cargando fila…" />;
+  if (q.isLoading) return <CargandoFila />;
+  if (q.error) return <div className="p-[30px]"><EstadoError error={q.error} onReintentar={q.refetch} /></div>;
 
   return (
-    <div style={{ padding: "26px 30px" }}>
+    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">
       {/* Cabecera */}
-      <Card style={{ padding: "18px 22px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ width: 46, height: 46, borderRadius: 12, background: nodeCat.espera.tint, color: TEAL, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+      <section className="flex flex-wrap items-center gap-lg rounded-lg border border-borde bg-superficie px-xl py-lg">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-nodo-espera-tint text-nodo-espera-sol">
           <Icon name="list" size={22} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>Fila de espera</div>
-          <div style={{ fontSize: 12.5, color: color.slate500 }}>FIFO + urgencia · se llama desde cada box</div>
+        </span>
+        <div className="min-w-40 flex-1">
+          <h2 className="text-xl font-bold">Fila de espera</h2>
+          <p className="text-base text-texto-debil">FIFO + urgencia · se llama desde cada box</p>
         </div>
         {areas.length > 1 && (
-          <Select value={areaSel ?? ""} onChange={(e) => setAreaSel(Number(e.target.value))} style={{ width: "auto", height: 38 }}>
+          <select
+            aria-label="Área de la fila"
+            value={areaSel ?? ""}
+            onChange={(e) => setAreaSel(Number(e.target.value))}
+            className="h-9 rounded-md border border-campo-borde bg-superficie px-2 text-md outline-none focus:border-accent"
+          >
             {areas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-          </Select>
+          </select>
         )}
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{fila.length}</div>
-          <div style={{ fontSize: 11.5, color: color.slate400 }}>en {areaNombre}</div>
+        <div className="text-right">
+          <div className="text-cifra font-extrabold leading-none tabular-nums">{fila.length}</div>
+          <div className="text-xs text-texto-tenue">en {areaNombre}</div>
         </div>
-      </Card>
+      </section>
 
-      {error && (
-        <div style={{ fontSize: 13, color: "#B42318", background: "#FCEBEB", padding: "10px 14px", borderRadius: 9, marginBottom: 16 }}>{error}</div>
-      )}
+      {/* Boxes: cada uno llama al siguiente de la cola */}
+      <section className="rounded-lg border border-borde bg-superficie px-xl py-lg">
+        <h3 className="mb-md text-sm font-bold text-texto-suave">Consultorios</h3>
 
-      {/* Boxes: cada uno llama al siguiente */}
-      <Card style={{ padding: "16px 20px", marginBottom: 18 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 12 }}>Consultorios</div>
-        {boxes.length === 0 ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <span style={{ fontSize: 12.5, color: color.slate400 }}>
+        {areaAjena && (
+          <div className="mb-md flex items-start gap-2 rounded-md bg-badge-amber-bg px-3 py-2 text-base text-badge-amber-fg">
+            <Icon name="alert" size={15} className="mt-px flex-none" />
+            <span>
+              Estás mirando la cola de <strong>{areaNombre}</strong>, que no es tuya.
+              Podés verla, pero llamar a un paciente lo tiene que hacer alguien del
+              área.
+            </span>
+          </div>
+        )}
+
+        {boxes.isLoading ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
+            {[0, 1].map((i) => <Skeleton key={i} className="h-[86px]" />)}
+          </div>
+        ) : boxes.filas.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-md">
+            <span className="text-base text-texto-tenue">
               Esta área no tiene boxes configurados. Cargalos en Estructura → área → Boxes.
             </span>
-            <BotonLlamar label="Llamar al siguiente" disabled={!fila.length || !!llamando} cargando={llamando === "global"} onClick={() => llamar(null)} />
+            <BotonLlamar
+              label="Llamar al siguiente"
+              disabled={!siguiente || llamar.isPending}
+              cargando={llamar.isPending}
+              onClick={() => alLlamar(null)}
+            />
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
-            {boxes.map((b) => (
-              <div key={b.id} style={{ border: `1px solid ${color.border}`, borderRadius: 11, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
-                  <Icon name="enter" size={15} style={{ color: TEAL }} /> {b.nombre}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
+            {boxes.filas.map((b) => (
+              <div key={b.id} className="flex flex-col gap-2.5 rounded-md border border-borde p-3">
+                <div className="flex items-center gap-2 text-md font-bold">
+                  <Icon name="enter" size={15} className="text-nodo-espera-sol" /> {b.nombre}
                 </div>
-                <BotonLlamar label="Llamar siguiente" disabled={!fila.length || !!llamando} cargando={llamando === b.id} onClick={() => llamar(b)} />
+                <BotonLlamar
+                  label="Llamar siguiente"
+                  disabled={!siguiente || llamar.isPending}
+                  cargando={llamar.isPending && llamar.variables?.box?.id === b.id}
+                  onClick={() => alLlamar(b)}
+                />
               </div>
             ))}
           </div>
         )}
-      </Card>
+      </section>
 
-      {/* Lista de espera */}
-      <Card style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, padding: "16px 20px" }}>En espera</div>
+      {/* Cola */}
+      <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
+        <h3 className="px-xl py-lg text-lg font-bold">En espera</h3>
         {fila.length === 0 ? (
-          <EmptyState title="La fila está vacía" hint="No hay pacientes esperando en esta área." />
+          <EstadoVacio
+            titulo="La fila está vacía"
+            detalle={`No hay pacientes esperando en ${areaNombre}.`}
+            icono="list"
+          />
         ) : (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "44px 90px 1fr 90px 90px", gap: 12, padding: "10px 20px", background: color.subtle, borderTop: `1px solid ${color.divider}`, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>
-              <div /><div>TURNO</div><div>PERSONA</div><div>INGRESO</div><div>ESPERA</div>
-            </div>
+          <ul className="border-t border-division">
+            {/* Encabezado solo en pantallas anchas: en angosto cada fila se lee
+                como una ficha y los rótulos de columna sobran. */}
+            <li className="hidden bg-superficie-2 px-xl py-2.5 text-micro font-bold tracking-wide text-texto-tenue sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem] sm:gap-md">
+              <span /><span>TURNO</span><span>PERSONA</span><span>INGRESO</span><span>ESPERA</span>
+            </li>
             {fila.map((it, i) => (
-              <div
-                key={it.id}
-                onClick={() => navigate(`/casos/${it.caso}`)}
-                style={{ display: "grid", gridTemplateColumns: "44px 90px 1fr 90px 90px", gap: 12, alignItems: "center", padding: "14px 20px", cursor: "pointer", borderTop: `1px solid ${color.divider}`, background: i === 0 ? color.accent50 : "#fff", boxShadow: i === 0 ? `inset 3px 0 0 ${color.accent}` : "none" }}
-              >
-                <span style={{ width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: i === 0 ? color.accent : "#EEF0F3", color: i === 0 ? "#fff" : color.slate500 }}>{i + 1}</span>
-                <Mono style={{ fontWeight: 700 }}>{it.turno || casoId(it.caso)}</Mono>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13.5, color: color.slate700 }}>{it.persona || casoId(it.caso)}</span>
-                  {it.urgente && <Badge tone="error">urgente</Badge>}
-                </div>
-                <span style={{ fontSize: 13, color: color.slate500 }}>{new Date(it.ingreso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
-                <span style={{ fontSize: 13, color: color.slate500 }}>{antiguedad(it.ingreso)}</span>
-              </div>
+              <li key={it.id}>
+                <button
+                  onClick={() => navigate(`/casos/${it.caso}`)}
+                  className={cn(
+                    "flex w-full flex-wrap items-center gap-x-md gap-y-1 border-t border-division px-xl py-3.5 text-left first:border-t-0",
+                    "sm:grid sm:grid-cols-[2.75rem_5.5rem_1fr_5.5rem_5.5rem]",
+                    i === 0 ? "bg-accent-50 shadow-[inset_3px_0_0_var(--color-accent)]" : "hover:bg-superficie-2",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-6.5 shrink-0 items-center justify-center rounded-pill text-sm font-bold",
+                      // Relleno + su color de texto: `accent` a secas es claro en
+                      // tema oscuro (para usarse como texto) y el blanco encima
+                      // caía a 2,7:1.
+                      // `texto-suave` y no `texto-debil`: medido, sobre el gris de
+                      // `division` el débil daba 4,36:1, justo por debajo de AA.
+                      i === 0 ? "bg-accent-fuerte text-sobre-accent" : "bg-division text-texto-suave",
+                    )}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="font-mono font-bold">{it.turno || casoId(it.caso)}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-md text-texto-medio">{it.persona || casoId(it.caso)}</span>
+                    {it.urgente && <Badge tone="error">urgente</Badge>}
+                  </span>
+                  {/* Sobre la fila destacada (tinte índigo) el `texto-debil`
+                      quedaba en 4,31:1. Un paso más oscuro y pasa en ambos fondos. */}
+                  <span className="text-base text-texto-suave">{hora(it.ingreso)}</span>
+                  <span className="text-base tabular-nums text-texto-suave">{antiguedad(it.ingreso)}</span>
+                </button>
+              </li>
             ))}
-          </>
+          </ul>
         )}
-      </Card>
+      </section>
+    </div>
+  );
+}
+
+function CargandoFila() {
+  return (
+    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]" role="status" aria-label="Cargando fila…">
+      <Skeleton className="h-[78px]" />
+      <Skeleton className="h-[130px]" />
+      <Skeleton className="h-80" />
     </div>
   );
 }
@@ -160,7 +258,16 @@ function BotonLlamar({ label, disabled, cargando, onClick }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ height: 36, padding: "0 14px", borderRadius: 9, background: disabled ? "#EEF0F3" : TEAL, color: disabled ? color.slate400 : "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: disabled ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+      className={cn(
+        "flex h-9 items-center justify-center gap-1.5 rounded-md px-3.5 text-base font-semibold transition-colors",
+        disabled
+          ? "cursor-not-allowed bg-division text-texto-tenue"
+          // Antes era el teal de la categoría con texto blanco: medido, daba 2,57:1
+        // en los dos temas (defecto que ya venía del diseño original). Llamar al
+        // siguiente paciente es LA acción primaria de la pantalla, así que usa el
+        // relleno de marca; el teal queda como color de categoría en el icono.
+        : "bg-accent-fuerte text-sobre-accent hover:bg-accent-hover",
+      )}
     >
       <Icon name="enter" size={14} /> {cargando ? "Llamando…" : label}
     </button>

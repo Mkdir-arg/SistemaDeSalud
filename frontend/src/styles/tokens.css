@@ -1,0 +1,256 @@
+/*
+ * ARCHIVO GENERADO — no editar a mano.
+ * Fuente: src/theme.js · Regenerar con: npm run tokens
+ *
+ * Los tokens se declaran con @theme, así que Tailwind los publica como variables
+ * CSS en :root **y** genera las utilidades correspondientes (bg-accent,
+ * text-slate-600, rounded-lg, shadow-card…).
+ *
+ * Es `@theme static` y no `@theme` a propósito: por defecto Tailwind hace
+ * tree-shaking y solo emite las variables que alguna utilidad usa. Mientras
+ * convivan los estilos inline —que leen los tokens desde JS— y el CSS a mano, la
+ * capa de tokens tiene que estar COMPLETA en :root, si no hay tokens que existen
+ * en teoría y no en el navegador. Son ~96 variables: el costo es despreciable.
+ *
+ * Las escalas propias se declaran con `*: initial` antes de definirlas: eso borra
+ * las de Tailwind y deja SOLO las del sistema de diseño. Es deliberado — la regla
+ * del manual es «no inventar colores» y así `bg-red-500` directamente no existe.
+ */
+@theme static {
+  /* Reemplazo total de las escalas por defecto de Tailwind. */
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  /* Palabras clave de color que no son del sistema pero hacen falta siempre. */
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* Marca y neutros (literales) */
+  --color-accent: #3949C0;
+  --color-accent-hover: #2D3A9E;
+  --color-accent-50: #ECEEFB;
+  --color-accent-100: #C7CDF2;
+  --color-ink: #14161C;
+  --color-slate-900: #1F2430;
+  --color-slate-700: #344054;
+  --color-slate-600: #475467;
+  --color-slate-500: #667085;
+  --color-slate-400: #98A0AE;
+  --color-border: #E7E9EE;
+  --color-divider: #EEF0F3;
+  --color-canvas: #F4F5F7;
+  --color-subtle: #FAFBFC;
+  --color-white: #FFFFFF;
+  --color-input-border: #E2E5EA;
+  --color-danger: #B42318;
+
+  /* Semánticos (los usa el código migrado; el tema oscuro solo redefine estos) */
+  --color-fondo: #F4F5F7;
+  --color-superficie: #FFFFFF;
+  --color-superficie-2: #FAFBFC;
+  --color-borde: #E7E9EE;
+  --color-division: #EEF0F3;
+  --color-campo-borde: #E2E5EA;
+  --color-accent-fuerte: #3949C0;
+  --color-sobre-accent: #FFFFFF;
+  --color-danger-fuerte: #B42318;
+  --color-sobre-danger: #FFFFFF;
+  --color-texto: #14161C;
+  --color-texto-fuerte: #1F2430;
+  --color-texto-medio: #344054;
+  --color-texto-suave: #475467;
+  --color-texto-debil: #667085;
+  --color-texto-tenue: #626A7B;
+
+  /* Badges por tono semántico */
+  --color-badge-neutral-bg: #EEF0F3;
+  --color-badge-neutral-fg: #475467;
+  --color-badge-info-bg: #E8EEFB;
+  --color-badge-info-fg: #2D3A9E;
+  --color-badge-amber-bg: #FBF0DD;
+  --color-badge-amber-fg: #90590D;
+  --color-badge-green-bg: #E6F5EC;
+  --color-badge-green-fg: #1B7A4E;
+  --color-badge-gray-bg: #F0F1F3;
+  --color-badge-gray-fg: #5F6879;
+  --color-badge-error-bg: #FCEBEB;
+  --color-badge-error-fg: #B42318;
+
+  /* Categorías de nodo (diseñador de flujos) */
+  --color-nodo-inicio-sol: #1F8A5B;
+  --color-nodo-inicio-tint: #E9F6EF;
+  --color-nodo-inicio-bd: #BBE3CD;
+  --color-nodo-form-sol: #3949C0;
+  --color-nodo-form-tint: #ECEEFB;
+  --color-nodo-form-bd: #C7CDF2;
+  --color-nodo-decision-sol: #C98A2B;
+  --color-nodo-decision-tint: #FBF2E0;
+  --color-nodo-decision-bd: #EBD7AC;
+  --color-nodo-accion-sol: #2B8FD6;
+  --color-nodo-accion-tint: #E6F1FB;
+  --color-nodo-accion-bd: #BBD9F2;
+  --color-nodo-derivar-sol: #0E8893;
+  --color-nodo-derivar-tint: #E3F4F4;
+  --color-nodo-derivar-bd: #B2DFE0;
+  --color-nodo-espera-sol: #16B1C9;
+  --color-nodo-espera-tint: #E2F6F9;
+  --color-nodo-espera-bd: #B6E4EC;
+  --color-nodo-tiempo-sol: #0E9E8E;
+  --color-nodo-tiempo-tint: #E2F5F1;
+  --color-nodo-tiempo-bd: #B3E2D9;
+  --color-nodo-atencion-sol: #D14B8F;
+  --color-nodo-atencion-tint: #FCEAF2;
+  --color-nodo-atencion-bd: #F2C4DA;
+  --color-nodo-estado-sol: #5B7A99;
+  --color-nodo-estado-tint: #EEF2F6;
+  --color-nodo-estado-bd: #CDD8E2;
+  --color-nodo-fin-sol: #475467;
+  --color-nodo-fin-tint: #EFF1F4;
+  --color-nodo-fin-bd: #D0D5DD;
+
+  /* Avatares (paleta rotativa) */
+  --color-avatar-1: #3949C0;
+  --color-avatar-2: #0B7078;
+  --color-avatar-3: #9A3DB8;
+  --color-avatar-4: #8F5A0F;
+  --color-avatar-5: #17734B;
+  --color-avatar-6: #1F6FA8;
+
+  /* Tipografía */
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-display: Manrope, Inter, system-ui, sans-serif;
+
+  /* Escala tipográfica (7 pasos) */
+  --text-micro: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 17px;
+  --text-xxl: 20px;
+  --text-cifra: 22px;
+  --text-cifra-lg: 26px;
+  --text-cifra-xl: 30px;
+
+  /* Espaciado nombrado (la escala numérica de Tailwind sigue disponible) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-xxl: 24px;
+
+  /* Radios */
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Elevación */
+  --shadow-card: 0 1px 3px rgba(16,24,40,.07);
+  --shadow-float: 0 8px 20px rgba(16,24,40,.14);
+  --shadow-dropdown: 0 12px 32px rgba(16,24,40,.16);
+  --shadow-modal: 0 18px 50px rgba(16,24,40,.28);
+}
+
+/*
+ * Tema oscuro. Se activa con la clase «dark» en el elemento html.
+ *
+ * Redefine SOLO la capa semántica, la marca y los badges: las utilidades leen
+ * var(--color-…), así que cambiar la variable alcanza y no hace falta una
+ * segunda clase por componente. Las escalas literales (slate-600, canvas…) no se
+ * tocan: las siguen usando los estilos inline sin migrar, que no tienen modo
+ * oscuro — adoptarlo es parte de migrar cada pantalla.
+ *
+ * Las categorías de nodo SÍ se redefinen, aunque el lienzo del diseñador se
+ * rehaga en la Fase 2: sus chips aparecen fuera del lienzo (detalle del caso,
+ * detalle del paso) y sobre fondo oscuro quedaban como islas de pastel claro.
+ * No están elegidas a mano una por una sino compuestas con color-mix, que es lo
+ * correcto acá: no se invierte una paleta clara, se apoya el color de la
+ * categoría sobre la superficie oscura en la proporción justa.
+ */
+.dark {
+  --color-fondo: #0E1219;
+  --color-superficie: #171C26;
+  --color-superficie-2: #1E242F;
+  --color-borde: #2A313F;
+  --color-division: #232A36;
+  --color-campo-borde: #333B4B;
+  --color-texto: #E7EAF1;
+  --color-texto-fuerte: #F2F4F8;
+  --color-texto-medio: #C6CDDA;
+  --color-texto-suave: #B4BCCB;
+  --color-texto-debil: #98A1B2;
+  --color-texto-tenue: #949DAE;
+  --color-accent: #8B97F0;
+  --color-accent-hover: #A2ACF5;
+  --color-accent-50: #1D2440;
+  --color-accent-100: #2B3560;
+  --color-accent-fuerte: #4A57C8;
+  --color-sobre-accent: #FFFFFF;
+  --color-danger: #F0958C;
+  --color-danger-fuerte: #B4453C;
+  --color-sobre-danger: #FFFFFF;
+  --color-badge-neutral-bg: #252B37;
+  --color-badge-neutral-fg: #B4BCCB;
+  --color-badge-info-bg: #1D2745;
+  --color-badge-info-fg: #9FB2F2;
+  --color-badge-amber-bg: #382C18;
+  --color-badge-amber-fg: #E3B573;
+  --color-badge-green-bg: #14301E;
+  --color-badge-green-fg: #6ED79A;
+  --color-badge-gray-bg: #222732;
+  --color-badge-gray-fg: #8B94A5;
+  --color-badge-error-bg: #3A1D1B;
+  --color-badge-error-fg: #F0958C;
+
+  /* Categorías de nodo: el color sólido se aclara para poder leerse sobre
+     oscuro, y el tinte y el borde se componen sobre la superficie. */
+  --color-nodo-inicio-sol: color-mix(in srgb, #1F8A5B 62%, white);
+  --color-nodo-inicio-tint: color-mix(in srgb, #1F8A5B 16%, var(--color-superficie));
+  --color-nodo-inicio-bd: color-mix(in srgb, #1F8A5B 38%, var(--color-superficie));
+  --color-nodo-form-sol: color-mix(in srgb, #3949C0 62%, white);
+  --color-nodo-form-tint: color-mix(in srgb, #3949C0 16%, var(--color-superficie));
+  --color-nodo-form-bd: color-mix(in srgb, #3949C0 38%, var(--color-superficie));
+  --color-nodo-decision-sol: color-mix(in srgb, #C98A2B 62%, white);
+  --color-nodo-decision-tint: color-mix(in srgb, #C98A2B 16%, var(--color-superficie));
+  --color-nodo-decision-bd: color-mix(in srgb, #C98A2B 38%, var(--color-superficie));
+  --color-nodo-accion-sol: color-mix(in srgb, #2B8FD6 62%, white);
+  --color-nodo-accion-tint: color-mix(in srgb, #2B8FD6 16%, var(--color-superficie));
+  --color-nodo-accion-bd: color-mix(in srgb, #2B8FD6 38%, var(--color-superficie));
+  --color-nodo-derivar-sol: color-mix(in srgb, #0E8893 62%, white);
+  --color-nodo-derivar-tint: color-mix(in srgb, #0E8893 16%, var(--color-superficie));
+  --color-nodo-derivar-bd: color-mix(in srgb, #0E8893 38%, var(--color-superficie));
+  --color-nodo-espera-sol: color-mix(in srgb, #16B1C9 62%, white);
+  --color-nodo-espera-tint: color-mix(in srgb, #16B1C9 16%, var(--color-superficie));
+  --color-nodo-espera-bd: color-mix(in srgb, #16B1C9 38%, var(--color-superficie));
+  --color-nodo-tiempo-sol: color-mix(in srgb, #0E9E8E 62%, white);
+  --color-nodo-tiempo-tint: color-mix(in srgb, #0E9E8E 16%, var(--color-superficie));
+  --color-nodo-tiempo-bd: color-mix(in srgb, #0E9E8E 38%, var(--color-superficie));
+  --color-nodo-atencion-sol: color-mix(in srgb, #D14B8F 62%, white);
+  --color-nodo-atencion-tint: color-mix(in srgb, #D14B8F 16%, var(--color-superficie));
+  --color-nodo-atencion-bd: color-mix(in srgb, #D14B8F 38%, var(--color-superficie));
+  --color-nodo-estado-sol: color-mix(in srgb, #5B7A99 62%, white);
+  --color-nodo-estado-tint: color-mix(in srgb, #5B7A99 16%, var(--color-superficie));
+  --color-nodo-estado-bd: color-mix(in srgb, #5B7A99 38%, var(--color-superficie));
+  --color-nodo-fin-sol: color-mix(in srgb, #475467 62%, white);
+  --color-nodo-fin-tint: color-mix(in srgb, #475467 16%, var(--color-superficie));
+  --color-nodo-fin-bd: color-mix(in srgb, #475467 38%, var(--color-superficie));
+
+  /* Sombras: en oscuro una sombra negra no se ve. La elevación se percibe por
+     el borde y por superficies más claras, así que se atenúan mucho. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-float: 0 8px 20px rgba(0, 0, 0, .5);
+  --shadow-dropdown: 0 12px 32px rgba(0, 0, 0, .55);
+  --shadow-modal: 0 18px 50px rgba(0, 0, 0, .65);
+}
+
+/* Interfaz nativa (scrollbars, controles de formulario) acorde al tema. */
+.dark {
+  color-scheme: dark;
+}

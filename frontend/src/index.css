@@ -1,44 +1,81 @@
-* {
-  margin: 0;
-  box-sizing: border-box;
-}
+/* Orden de capas. Lo declaramos explícito para que las utilidades de Tailwind
+   siempre le ganen al reset de abajo (si el reset quedara fuera de capa, la CSS
+   sin capa le gana a la que sí tiene, y `mt-4` no podría vencer a `margin: 0`). */
+@layer theme, base, components, utilities;
 
-body {
-  font-family: Inter, system-ui, sans-serif;
-  color: #14161c;
-  background: #f4f5f7;
-  -webkit-font-smoothing: antialiased;
-}
+@import "tailwindcss/theme.css" layer(theme);
+@import "./styles/tokens.css";
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+/* El preflight se activa recién ahora, al cerrar la Fase 1.
+   Durante la migración estuvo apagado a propósito: resetea márgenes, bordes,
+   títulos, listas y controles de formulario de toda la app, y con ~1.100 estilos
+   inline asumiendo el reset propio de más abajo, encenderlo antes habría cambiado
+   las 30 pantallas de golpe y sin red que lo detectara.
+   El mini-preflight que lo suplía (viñetas y botones) se borró: ya no hace falta. */
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: #d8dbe2;
-  border-radius: 6px;
-}
+/* Modo oscuro por clase (no por preferencia del sistema): en una guardia el turno
+   noche lo elige la persona, no el sistema operativo. Se activa con
+   `document.documentElement.classList.add("dark")`. */
+@custom-variant dark (&:where(.dark, .dark *));
 
-/* Foco visible por teclado en cualquier control interactivo. */
-:focus-visible {
-  outline: 2px solid #3949c0;
-  outline-offset: 2px;
-  border-radius: 3px;
-}
-/* No mostrar el anillo cuando el foco proviene del mouse. */
-:focus:not(:focus-visible) {
-  outline: none;
-}
+/* Marca blanca: los tokens viven en :root, así que una institución puede pisar su
+   color de acento en runtime sin recompilar nada:
+       document.documentElement.style.setProperty("--color-accent", "#0E8893")
+   Solo es posible porque los colores dejaron de estar incrustados en el JSX. */
 
-/* Casillas con el acento de marca (reemplaza el azul del sistema). */
-input[type="checkbox"],
-input[type="radio"] {
-  accent-color: #3949c0;
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    /* Tokens SEMÁNTICOS, no literales: `--color-ink` y `--color-canvas` no
+       cambian con el tema, así que usarlos acá dejaba el fondo de la página en
+       claro con las tarjetas ya en oscuro. */
+    color: var(--color-texto);
+    background: var(--color-fondo);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* El preflight deja los <button> sin `cursor: pointer` (sigue el default de
+     los navegadores modernos, que es `default`). Acá se prefiere el dedito: la
+     app tiene filas y tarjetas enteras que son botones, y sin la señal del cursor
+     no se distinguen de contenido inerte. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-texto-tenue);
+    opacity: 0.5;
+    border-radius: 6px;
+  }
+
+  /* Foco visible por teclado en cualquier control interactivo. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  /* No mostrar el anillo cuando el foco proviene del mouse. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Casillas con el acento de marca (reemplaza el azul del sistema). */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-accent);
+  }
 }
 
 /* Animaciones base reutilizables (referenciables desde estilos inline). */

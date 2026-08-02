@@ -1,4 +1,3 @@
-from rest_framework import filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -16,10 +15,12 @@ class UsuarioViewSet(BaseModelViewSet):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
     capacidad_requerida = "config"
-    filter_fields = ("is_active", "is_staff")
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    # `is_superuser` se filtra en el servidor porque el directorio lista sólo
+    # candidatos a admin de institución. Excluirlos en el cliente descontaba de la
+    # página ya paginada: el total quedaba mal y podían faltar usuarios reales.
+    filter_fields = ("is_active", "is_staff", "is_superuser")
     search_fields = ["email", "nombre", "apellido"]
-    ordering_fields = ["apellido", "nombre", "creado"]
+    ordering_fields = ["apellido", "nombre", "creado", "email"]
 
     @action(detail=False, methods=["get"])
     def me(self, request):
@@ -67,7 +68,11 @@ class MembresiaViewSet(BaseModelViewSet):
     serializer_class = MembresiaSerializer
     capacidad_requerida = "config"
     institucion_path = "institucion"
-    filter_fields = ("usuario", "institucion", "rol", "activo")
+    # `areas` filtra por la M2M: `?areas=3` devuelve el staff de esa área, que es
+    # lo que necesita el selector de «reasignar» sin traerse todas las membresías.
+    filter_fields = ("usuario", "institucion", "rol", "activo", "areas")
+    search_fields = ("usuario__nombre", "usuario__apellido", "usuario__email")
+    ordering_fields = ("usuario__apellido", "rol", "creado")
 
 
 class LegajoProfesionalViewSet(BaseModelViewSet):

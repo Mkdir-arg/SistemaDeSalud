@@ -144,12 +144,41 @@ Inicio (derivado) → Asignar cama → Evolución médica → Conducta → ¿Con
 
 ## 6. Cómo cargar el escenario
 
-Idempotente: borra los flujos/formularios/casos de la institución y los recrea.
+`seed_guardia` arma la **estructura**: áreas, staff, grupos, boxes, formularios y los
+8 flujos publicados. Es idempotente (borra flujos/formularios/casos y los recrea),
+pero **no crea ningún caso**: con solo esto, las bandejas, las filas, la pantalla de
+llamados y el tablero se ven vacíos.
+
+`seed_volumen` carga el **volumen**: el padrón de pacientes y los casos, recorridos
+con el motor real y fechados hacia atrás. Es lo que hace que el sistema se pueda
+mostrar y medir.
 
 ```bash
-docker compose exec backend python manage.py seed_guardia
-# o, en local:  python manage.py seed_guardia
+# Reset completo de la demo, un solo comando (~40 s):
+docker compose exec backend python manage.py seed_volumen --rehacer
+# o, en local:  python manage.py seed_volumen --rehacer
 ```
+
+Con los valores por defecto deja **~530 casos** sobre **90 días** de historia: ~300
+ingresos cerrados que alimentan el tablero, más ~42 casos en curso repartidos por
+todos los pasos para que ninguna bandeja ni fila quede vacía.
+
+| Opción | Para qué |
+|---|---|
+| `--rehacer` | Corre `seed_guardia` primero y limpia los registros clínicos previos |
+| `--casos N` | Ingresos históricos, ya cerrados (300) |
+| `--activos N` | Casos en curso, de las últimas horas (42) |
+| `--pacientes N` · `--dias N` | Tamaño del padrón (40) y ventana histórica (90) |
+| `--semilla N` | Misma semilla = mismos datos. La demo se resetea idéntica |
+
+**Dos detalles que importan** (y que costaron encontrar):
+
+- Los casos **en curso** solo pueden ser recientes. Un paciente esperando en una sala
+  desde hace 60 días es un dato absurdo que además rompe el panel de demoras del
+  tablero. Cada punto de detención tiene su propia ventana de antigüedad (`PARADAS`).
+- Al limpiar hay que borrar los **registros clínicos** a mano: `EntradaHistoria.caso`
+  es `SET_NULL`, así que las entradas sobreviven al borrado de los casos y se acumulan
+  en cada corrida.
 
 **Accesos** (contraseña `demo1234`, salvo el admin):
 - `admin@cauce.local` / `admin1234` — super admin (ve todo, configura).

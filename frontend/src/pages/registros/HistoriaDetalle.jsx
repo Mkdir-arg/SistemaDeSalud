@@ -1,105 +1,124 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../api/client";
-import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, Mono, Spinner, Textarea } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { fechaHora } from "../../lib/format";
-import { color } from "../../theme";
+
+import { api } from "@/api/client";
+import { useAccion, useDetalle, useLista } from "@/api/queries";
+import { Icon } from "@/components/icons";
+import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
+import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
+import { useToast } from "@/components/ui/toast";
+import { useFiltroUrl } from "@/components/ui/filtros";
+import { fechaHora } from "@/lib/format";
 
 export default function HistoriaDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [ciudadano, setCiudadano] = useState(null);
-  const [hc, setHc] = useState(undefined); // undefined=cargando, null=sin HC
-  const [tab, setTab] = useState("evolucion");
+  // La pestaña va en la URL: «mirá los estudios de este paciente» es un link.
+  const [tab, setTab] = useFiltroUrl("tab", "evolucion");
   const [nuevaAtencion, setNuevaAtencion] = useState(false);
 
-  async function cargarHc() {
-    const d = await api.get(`/historias-clinicas/?ciudadano=${id}`);
-    setHc((d.results || d)[0] || null);
-  }
-  useEffect(() => {
-    (async () => {
-      const c = await api.get(`/ciudadanos/${id}/`);
-      setCiudadano(c);
-      await cargarHc();
-    })(); // eslint-disable-next-line
-  }, [id]);
+  const paciente = useDetalle("ciudadanos", id);
+  // La historia se busca por paciente; puede no existir todavía.
+  const historias = useLista("historias-clinicas", { ciudadano: id }, { enabled: !!id });
+  const hc = historias.filas[0];
 
-  if (!ciudadano) return <Spinner label="Cargando historia…" />;
+  if (paciente.error) return <EstadoError error={paciente.error} onReintentar={paciente.refetch} />;
 
-  const nombre = `${ciudadano.nombre} ${ciudadano.apellido}`.trim();
+  const c = paciente.data;
+  const nombre = c ? `${c.nombre} ${c.apellido}`.trim() : "";
+
   const metricas = [
     { n: hc?.entradas?.length || 0, l: "consultas" },
     { n: hc?.estudios?.length || 0, l: "estudios" },
     { n: (hc?.recetas || []).filter((r) => r.activa).length, l: "recetas activas" },
-    { n: hc?.entradas?.length ? new Date(hc.entradas[0].fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) : "—", l: "última visita" },
+    {
+      n: hc?.entradas?.length
+        ? new Date(hc.entradas[0].fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+        : "—",
+      l: "última visita",
+    },
   ];
-  const tabs = [
-    { k: "evolucion", l: "Evolución" },
-    { k: "estudios", l: "Estudios" },
-    { k: "recetas", l: "Recetas" },
+
+  const TABS = [
+    { key: "evolucion", label: "Evolución", cuenta: hc?.entradas?.length },
+    { key: "estudios", label: "Estudios", cuenta: hc?.estudios?.length },
+    { key: "recetas", label: "Recetas", cuenta: hc?.recetas?.length },
   ];
 
   return (
-    <div style={{ padding: "22px 30px" }}>
-      {/* Breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <button onClick={() => navigate("/historia")} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${color.border}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: color.slate500 }}>
+    <div className="px-lg py-[22px] sm:px-[30px]">
+      <div className="mb-lg flex items-center gap-2.5">
+        <button
+          onClick={() => navigate("/historia")}
+          aria-label="Volver a historias clínicas"
+          className="flex size-8 items-center justify-center rounded-md border border-borde bg-superficie text-texto-debil hover:bg-superficie-2"
+        >
           <Icon name="back" size={15} />
         </button>
-        <div style={{ fontSize: 13.5, color: color.slate500 }}>Historias clínicas · <strong style={{ color: color.slate700 }}>{nombre}</strong></div>
+        <div className="text-md text-texto-debil">
+          Historias clínicas · <strong className="text-texto-suave">{nombre || "…"}</strong>
+        </div>
       </div>
 
-      {/* Header paciente */}
-      <Card style={{ padding: "20px 24px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <Avatar nombre={nombre} i={ciudadano.id} size={52} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.3px" }}>{nombre}</div>
-          <div style={{ fontSize: 13, color: color.slate500 }}>
-            {ciudadano.documento ? `DNI ${ciudadano.documento}` : ""}{ciudadano.fecha_nacimiento ? ` · ${new Date(ciudadano.fecha_nacimiento).toLocaleDateString("es-AR")}` : ""}{ciudadano.obra_social ? ` · ${ciudadano.obra_social}` : ""}
+      <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-5">
+        <Avatar nombre={nombre} i={c?.id || 0} size={52} />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xxl font-extrabold tracking-tight">
+            {c ? nombre : <Skeleton className="h-6 w-52" />}
+          </h1>
+          <div className="text-base text-texto-debil">
+            {c?.documento ? `DNI ${c.documento}` : ""}
+            {c?.fecha_nacimiento ? ` · ${new Date(c.fecha_nacimiento).toLocaleDateString("es-AR")}` : ""}
+            {c?.obra_social ? ` · ${c.obra_social}` : ""}
           </div>
-          {ciudadano.codigo && (
-            <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 600, padding: "3px 9px", borderRadius: 6, background: "#E2F6F9", color: "#0C7C8E" }}>
-              <Icon name="enter" size={12} /> Identidad del Legajo ciudadano (externo) · <Mono>{ciudadano.codigo}</Mono>
+          {c?.codigo && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-badge-info-bg px-2.5 py-1 text-xs font-semibold text-badge-info-fg">
+              <Icon name="enter" size={12} /> Identidad del Legajo ciudadano (externo) · <Mono>{c.codigo}</Mono>
             </div>
           )}
         </div>
-        <Button onClick={() => setNuevaAtencion(true)} style={{ display: "flex", alignItems: "center", gap: 8 }}><Icon name="plus" size={15} /> Nueva atención</Button>
+        <Button onClick={() => setNuevaAtencion(true)} className="flex items-center gap-2">
+          <Icon name="plus" size={15} /> Nueva atención
+        </Button>
       </Card>
 
-      {hc === undefined ? (
-        <Spinner />
+      {historias.isLoading ? (
+        <SkeletonTabla filas={4} columnas={4} />
       ) : (
         <>
-          {/* Métricas */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 22 }}>
+          <div className="mb-[22px] grid grid-cols-2 gap-3.5 sm:grid-cols-4">
             {metricas.map((m) => (
-              <Card key={m.l} style={{ padding: 18 }}>
-                <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1 }}>{m.n}</div>
-                <div style={{ fontSize: 12.5, color: color.slate400, marginTop: 6 }}>{m.l}</div>
+              <Card key={m.l} className="p-[18px]">
+                <div className="text-cifra-lg font-extrabold leading-none">{m.n}</div>
+                <div className="mt-1.5 text-sm text-texto-debil">{m.l}</div>
               </Card>
             ))}
           </div>
 
-          {/* Tabs */}
-          <div style={{ display: "flex", borderBottom: `1px solid ${color.border}`, marginBottom: 20 }}>
-            {tabs.map((t) => (
-              <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: "11px 2px", marginRight: 26, fontSize: 13.5, fontWeight: 600, border: "none", borderBottom: `2px solid ${tab === t.k ? color.accent : "transparent"}`, color: tab === t.k ? color.accent : color.slate400, background: "none", cursor: "pointer" }}>{t.l}</button>
-            ))}
-          </div>
+          <Tabs tabs={TABS} valor={tab} onChange={setTab} className="mb-5" />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20, alignItems: "start" }}>
+          {/* Los antecedentes bajan debajo del contenido hasta `lg`: en una tablet
+              una columna de 280px al lado deja la evolución ilegible. */}
+          <div className="grid items-start gap-5 lg:grid-cols-[1fr_17.5rem]">
             <div>
               {tab === "evolucion" && <Evolucion entradas={hc?.entradas || []} />}
               {tab === "estudios" && <Estudios estudios={hc?.estudios || []} />}
               {tab === "recetas" && <Recetas recetas={hc?.recetas || []} />}
             </div>
-            {/* Antecedentes */}
-            <Card style={{ padding: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, marginBottom: 12 }}>ANTECEDENTES</div>
-              <Dato k="Alergias" v={<span style={{ color: hc?.alergias ? "#B42318" : color.slate500 }}>{hc?.alergias || "—"}</span>} />
-              <div style={{ height: 10 }} />
+
+            <Card className="p-[18px] lg:order-last">
+              <h2 className="mb-3 text-xs font-bold tracking-wider text-texto-debil">ANTECEDENTES</h2>
+              <Dato
+                k="Alergias"
+                // Una alergia se marca con color Y con palabra: en una historia
+                // clínica confiar sólo en el rojo es un riesgo, no un detalle.
+                v={
+                  hc?.alergias
+                    ? <span className="text-danger">⚠ {hc.alergias}</span>
+                    : <span className="text-texto-debil">Sin alergias registradas</span>
+                }
+              />
+              <div className="h-2.5" />
               <Dato k="Condiciones" v={hc?.condiciones || "—"} />
             </Card>
           </div>
@@ -107,45 +126,57 @@ export default function HistoriaDetalle() {
       )}
 
       {nuevaAtencion && (
-        <NuevaAtencionModal
-          ciudadanoId={id}
-          hcId={hc?.id}
-          onClose={() => setNuevaAtencion(false)}
-          onSaved={() => { setNuevaAtencion(false); cargarHc(); }}
-        />
+        <NuevaAtencionModal ciudadanoId={id} hcId={hc?.id} onClose={() => setNuevaAtencion(false)} />
       )}
     </div>
   );
 }
 
-function NuevaAtencionModal({ ciudadanoId, hcId, onClose, onSaved }) {
+function NuevaAtencionModal({ ciudadanoId, hcId, onClose }) {
+  const toast = useToast();
   const [titulo, setTitulo] = useState("");
   const [contenido, setContenido] = useState("");
   const [firmada, setFirmada] = useState(true);
-  const [guardando, setGuardando] = useState(false);
-  async function guardar() {
-    setGuardando(true);
-    try {
+
+  const guardar = useAccion(
+    async () => {
+      // El paciente puede no tener historia todavía: se crea al vuelo.
       let historia = hcId;
       if (!historia) {
         const hc = await api.post("/historias-clinicas/", { ciudadano: ciudadanoId });
         historia = hc.id;
       }
-      await api.post("/entradas-historia/", { historia, titulo, contenido, firmada });
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
+      return api.post("/entradas-historia/", { historia, titulo, contenido, firmada });
+    },
+    {
+      onSuccess: () => { toast.ok("Atención registrada."); onClose(); },
+      // Firmar exige matrícula (regla del motor): el error del backend explica
+      // exactamente eso, así que se muestra tal cual en vez de uno genérico.
+      onError: (e) => toast.deError(e, "No se pudo registrar la atención."),
+    },
+  );
+
   return (
-    <Modal title="Nueva atención" onClose={onClose} footer={<>
-      <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-      <Button disabled={guardando || !titulo} onClick={guardar}>{guardando ? "Registrando…" : "Registrar atención"}</Button>
-    </>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="Título *"><Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Evaluación inicial, Control…" /></Field>
-        <Field label="Evolución / observaciones"><Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} /></Field>
-        <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, color: color.slate600, cursor: "pointer" }}>
+    <Modal
+      title="Nueva atención"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={guardar.isPending || !titulo} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "Registrando…" : "Registrar atención"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Título *">
+          <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Evaluación inicial, Control…" />
+        </Field>
+        <Field label="Evolución / observaciones">
+          <Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} />
+        </Field>
+        <label className="flex cursor-pointer items-center gap-2.5 text-md text-texto-medio">
           <input type="checkbox" checked={firmada} onChange={(e) => setFirmada(e.target.checked)} /> Firmar la entrada
         </label>
       </div>
@@ -156,24 +187,30 @@ function NuevaAtencionModal({ ciudadanoId, hcId, onClose, onSaved }) {
 function Dato({ k, v }) {
   return (
     <div>
-      <div style={{ fontSize: 12, color: color.slate400, marginBottom: 2 }}>{k}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: color.slate900 }}>{v}</div>
+      <div className="mb-0.5 text-sm text-texto-debil">{k}</div>
+      <div className="text-md font-semibold">{v}</div>
     </div>
   );
 }
 
 function Evolucion({ entradas }) {
-  if (!entradas.length) return <EmptyState title="Sin entradas de evolución" />;
+  if (!entradas.length) {
+    return <EstadoVacio titulo="Sin entradas de evolución" detalle="Registrá una atención para empezar la historia." />;
+  }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="flex flex-col gap-3">
       {entradas.map((e) => (
-        <Card key={e.id} style={{ padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{e.titulo}</div>
+        <Card key={e.id} className="p-[18px]">
+          <div className="mb-1.5 flex items-center justify-between gap-3">
+            <h3 className="text-md font-bold">{e.titulo}</h3>
             {e.firmada && <Badge tone="green">Firmada</Badge>}
           </div>
-          {e.contenido && <div style={{ fontSize: 13.5, color: color.slate700, marginBottom: 8 }}>{e.contenido}</div>}
-          <div style={{ fontSize: 11.5, color: color.slate400 }}>{fechaHora(e.fecha)}</div>
+          {e.contenido && <div className="mb-2 text-md text-texto-medio">{e.contenido}</div>}
+          <div className="text-xs text-texto-debil">
+            {fechaHora(e.fecha)}
+            {e.autor_nombre ? ` · ${e.autor_nombre}` : ""}
+            {e.matricula ? ` · M.N. ${e.matricula}` : ""}
+          </div>
         </Card>
       ))}
     </div>
@@ -181,16 +218,20 @@ function Evolucion({ entradas }) {
 }
 
 function Estudios({ estudios }) {
-  if (!estudios.length) return <EmptyState title="Sin estudios" />;
+  if (!estudios.length) return <EstadoVacio titulo="Sin estudios" detalle="Los estudios se cargan desde el flujo de diagnóstico." />;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="flex flex-col gap-2.5">
       {estudios.map((s) => (
-        <Card key={s.id} style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{s.tipo}</div>
-            <div style={{ fontSize: 12.5, color: color.slate500 }}>{s.fecha} · {s.autor || "—"} {s.archivo && <Mono style={{ marginLeft: 6 }}>{s.archivo}</Mono>}</div>
+        <Card key={s.id} className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3.5">
+          <div className="min-w-0">
+            <div className="text-md font-semibold">{s.tipo}</div>
+            <div className="text-sm text-texto-debil">
+              {s.fecha} · {s.autor || "—"} {s.archivo && <Mono className="ml-1.5">{s.archivo}</Mono>}
+            </div>
           </div>
-          {s.resultado && <Badge tone={s.resultado === "normal" ? "green" : "amber"}>{s.resultado_display}</Badge>}
+          {s.resultado && (
+            <Badge tone={s.resultado === "normal" ? "green" : "amber"}>{s.resultado_display}</Badge>
+          )}
         </Card>
       ))}
     </div>
@@ -198,14 +239,14 @@ function Estudios({ estudios }) {
 }
 
 function Recetas({ recetas }) {
-  if (!recetas.length) return <EmptyState title="Sin recetas" />;
+  if (!recetas.length) return <EstadoVacio titulo="Sin recetas" detalle="Las recetas se emiten durante la atención." />;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="flex flex-col gap-2.5">
       {recetas.map((r) => (
-        <Card key={r.id} style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 13.5, color: color.slate700 }}>{r.detalle}</div>
-            <div style={{ fontSize: 12, color: color.slate400 }}>{r.fecha}</div>
+        <Card key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3.5">
+          <div className="min-w-0">
+            <div className="text-md text-texto-medio">{r.detalle}</div>
+            <div className="text-sm text-texto-debil">{r.fecha}</div>
           </div>
           <Badge tone={r.activa ? "green" : "gray"}>{r.activa ? "Activa" : "Inactiva"}</Badge>
         </Card>

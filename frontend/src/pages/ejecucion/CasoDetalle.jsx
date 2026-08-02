@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../api/client";
-import { PageHeader } from "../../components/Shell";
-import { Badge, Button, Card, Field, Input, Mono, Select, Spinner, Stepper, Textarea } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { casoId, fechaHora } from "../../lib/format";
-import { color, estadoCaso, nodeCat } from "../../theme";
+
+import { api } from "@/api/client";
+import { useAccion, useDetalle, useLista } from "@/api/queries";
+import { Icon } from "@/components/icons";
+import { PageHeader } from "@/components/Shell";
+import { Badge, Button, Card, Checkbox, Field, Input, Mono, Select, Stepper, Textarea } from "@/components/ui";
+import { EstadoError, Skeleton } from "@/components/ui/estados";
+import { useToast } from "@/components/ui/toast";
+import { casoId, fechaHora } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { estadoCaso, nombreNodo } from "@/lib/dominio";
 import { CancelarModal, ReasignarModal } from "../Supervision";
 
 // Orden conceptual del stepper de ejecución.
@@ -16,132 +21,90 @@ const PASOS = [
   { label: "Atendido", estados: ["atendido"] },
   { label: "Cerrado", estados: ["cerrado"] },
 ];
-function pasoActual(estado) {
-  const i = PASOS.findIndex((p) => p.estados.includes(estado));
-  return i < 0 ? 0 : i;
-}
+const pasoActual = (estado) => Math.max(0, PASOS.findIndex((p) => p.estados.includes(estado)));
 
 export default function CasoDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [caso, setCaso] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [accionando, setAccionando] = useState(false);
-  const [error, setError] = useState("");
-  const [hc, setHc] = useState(null); // antecedentes de historia clínica (solo lectura)
+  const toast = useToast();
 
-  async function cargar() {
-    setCargando(true);
-    try {
-      const c = await api.get(`/casos/${id}/`);
-      setCaso(c);
-      if (c.ciudadano) {
-        const d = await api.get(`/historias-clinicas/?ciudadano=${c.ciudadano}`);
-        setHc((d.results || d)[0] || null);
-      }
-    } finally {
-      setCargando(false);
-    }
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [id]);
+  const q = useDetalle("casos", id);
+  const caso = q.data;
 
-  async function ejecutar(fn) {
-    setError("");
-    setAccionando(true);
-    try {
-      await fn();
-      await cargar();
-    } catch (e) {
-      setError(e?.data?.detail || "No se pudo completar la acción.");
-    } finally {
-      setAccionando(false);
-    }
-  }
+  const hcQ = useLista(
+    "historias-clinicas",
+    { ciudadano: caso?.ciudadano },
+    { enabled: !!caso?.ciudadano },
+  );
+  const hc = hcQ.filas[0] || null;
 
-  if (cargando || !caso) return <Spinner label="Cargando caso…" />;
+  // Todas las acciones del caso pasan por acá: una sola mutación que invalida las
+  // listas (bandeja, fila, tablero) y el detalle. Antes cada acción recargaba a
+  // mano y el error se mostraba en un div propio de la pantalla.
+  const accion = useAccion((fn) => fn(), {
+    invalida: ["lista", "detalle", "puesto"],
+    onError: (e) => toast.deError(e),
+  });
+  const ejecutar = (fn, ok) => accion.mutate(fn, { onSuccess: () => ok && toast.ok(ok) });
+
+  if (q.isLoading) return <CargandoCaso />;
+  if (q.error) return <div className="p-8"><EstadoError error={q.error} onReintentar={q.refetch} /></div>;
 
   const est = estadoCaso[caso.estado] || { label: caso.estado_display, tone: "neutral" };
   const cerrado = ["cerrado", "cancelado"].includes(caso.estado);
-  const catNodo = caso.nodo_tipo ? (nodeCat[caso.nodo_tipo] || nodeCat.form) : null;
+  const cat = caso.nodo_tipo ? nombreNodo(caso.nodo_tipo) : null;
 
   return (
     <>
-      <PageHeader
-        title={
-          <span>
-            <Mono style={{ fontSize: 19 }}>{casoId(caso.id)}</Mono>
-          </span>
-        }
-        subtitle={`${caso.flujo_titulo}${caso.ciudadano_nombre ? " · " + caso.ciudadano_nombre : ""}`}
-      />
+      <PageHeader subtitle={`${caso.flujo_titulo}${caso.ciudadano_nombre ? " · " + caso.ciudadano_nombre : ""}`} />
 
-      <div style={{ padding: 32, display: "grid", gridTemplateColumns: "1fr 320px", gap: 24, alignItems: "start" }}>
-        {/* Columna principal */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {/* Stepper + paso (nodo) actual */}
-          <Card style={{ padding: "28px 32px" }}>
-            <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
+      {/* Dos columnas en pantalla ancha; apiladas debajo de `lg`, con la
+          información del caso primero (es lo que se consulta en una tablet). */}
+      <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8">
+        <div className="flex flex-col gap-lg lg:order-1">
+          <Card className="px-lg py-7 sm:px-8">
+            <div className="overflow-x-auto">
+              <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
+            </div>
             {caso.paso_actual && (
-              <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${color.divider}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: color.slate400 }}>PASO ACTUAL</span>
-                {catNodo && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: catNodo.tint, border: `1px solid ${catNodo.bd}`, fontSize: 12, fontWeight: 600, color: catNodo.sol }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 2, background: catNodo.sol }} /> {catNodo.name}
-                  </span>
-                )}
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{caso.paso_actual}</span>
+              <div className="mt-xl flex flex-wrap items-center gap-2.5 border-t border-division pt-lg">
+                <span className="text-xs font-bold tracking-wide text-texto-tenue">PASO ACTUAL</span>
+                {cat && <ChipNodo tipo={caso.nodo_tipo} />}
+                <span className="text-lg font-bold">{caso.paso_actual}</span>
               </div>
             )}
           </Card>
 
-          {/* Historia clínica · antecedentes (solo lectura) */}
-          {hc && (hc.alergias || hc.condiciones) && (
-            <Card style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", background: "#FCEAF2", borderBottom: `1px solid ${color.divider}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#D14B8F" }}>
-                  <Icon name="clipboard" size={17} /> Historia clínica · antecedentes
-                </div>
-                <span style={{ fontSize: 11, color: color.slate400 }}>solo lectura</span>
-              </div>
-              <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <Dato k="Alergias" v={<span style={{ color: hc.alergias ? "#B42318" : color.slate500 }}>{hc.alergias || "—"}</span>} />
-                <Dato k="Condiciones" v={hc.condiciones || "—"} />
-              </div>
-            </Card>
-          )}
+          {hc && (hc.alergias || hc.condiciones) && <Antecedentes hc={hc} />}
 
-          {error && (
-            <div style={{ fontSize: 13, color: "#B42318", background: "#FCEBEB", padding: "10px 14px", borderRadius: 9 }}>
-              {error}
-            </div>
-          )}
+          <PanelPaso
+            caso={caso}
+            cerrado={cerrado}
+            ocupado={accion.isPending}
+            ejecutar={ejecutar}
+            hc={hc}
+          />
 
-          {/* Panel del paso actual */}
-          <PanelPaso caso={caso} cerrado={cerrado} accionando={accionando} ejecutar={ejecutar} hc={hc} />
-
-          {/* Datos cargados */}
           {caso.valores?.length > 0 && (
-            <Card style={{ padding: 24 }}>
-              <SectionTitle>Datos cargados</SectionTitle>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+            <Card className="p-lg sm:p-xxl">
+              <h3 className="text-lg font-bold">Datos cargados</h3>
+              <dl className="mt-3 flex flex-col gap-2.5">
                 {caso.valores.map((v) => (
-                  <div key={v.id} style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 13.5 }}>
-                    <span style={{ color: color.slate500 }}>{v.campo_label}</span>
-                    <span style={{ fontWeight: 500, color: color.slate900, textAlign: "right" }}>{v.valor || "—"}</span>
+                  <div key={v.id} className="flex justify-between gap-lg text-md">
+                    <dt className="text-texto-debil">{v.campo_label}</dt>
+                    <dd className="text-right font-medium text-texto-fuerte">{v.valor || "—"}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             </Card>
           )}
         </div>
 
-        {/* Columna lateral */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <Card style={{ padding: 22 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, marginBottom: 14 }}>INFORMACIÓN DEL CASO</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+        <div className="flex flex-col gap-lg">
+          <Card className="p-xl">
+            <h3 className="mb-3.5 text-xs font-bold tracking-wide text-texto-tenue">INFORMACIÓN DEL CASO</h3>
+            <dl className="flex flex-col gap-3">
+              <Dato k="Caso" v={<Mono className="font-bold">{casoId(caso.id)}</Mono>} />
               <Dato k="Estado" v={<Badge tone={est.tone}>{est.label}</Badge>} />
               <Dato k="Paso actual" v={caso.paso_actual || "—"} />
               <Dato k="Flujo" v={caso.flujo_titulo} />
@@ -150,26 +113,26 @@ export default function CasoDetalle() {
               <Dato k="Asignado a" v={caso.asignado_nombre || "Sin asignar"} />
               <Dato k="Ingreso" v={fechaHora(caso.creado)} />
               <Dato k="Prioridad" v={caso.prioridad_display} />
-            </div>
+            </dl>
           </Card>
 
-          {/* Supervisión: solo para el jefe del área del caso. */}
           {caso.puede_supervisar && !cerrado && (
-            <PanelSupervision caso={caso} ejecutar={ejecutar} recargar={cargar} accionando={accionando} />
+            <PanelSupervision caso={caso} ejecutar={ejecutar} ocupado={accion.isPending} />
           )}
 
-          {/* Derivaciones entre flujos (origen / destinos) */}
           {(caso.origen || caso.derivados?.length > 0) && (
-            <Card style={{ padding: 22 }}>
-              <SectionTitle>Derivaciones</SectionTitle>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+            <Card className="p-xl">
+              <h3 className="text-lg font-bold">Derivaciones</h3>
+              <div className="mt-3 flex flex-col gap-2">
                 {caso.origen && (
                   <button
                     onClick={() => navigate(`/casos/${caso.origen}`)}
-                    style={{ textAlign: "left", border: `1px solid ${color.divider}`, background: "none", borderRadius: 9, padding: "10px 12px", cursor: "pointer" }}
+                    className="rounded-md border border-division p-2.5 text-left hover:bg-superficie-2"
                   >
-                    <div style={{ fontSize: 11, color: color.slate400 }}>Originado desde</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: color.accent }}>{casoId(caso.origen)} · {caso.origen_flujo}</div>
+                    <span className="block text-xs text-texto-tenue">Originado desde</span>
+                    <span className="block text-md font-semibold text-accent">
+                      {casoId(caso.origen)} · {caso.origen_flujo}
+                    </span>
                   </button>
                 )}
                 {(caso.derivados || []).map((d) => {
@@ -178,11 +141,13 @@ export default function CasoDetalle() {
                     <button
                       key={d.id}
                       onClick={() => navigate(`/casos/${d.id}`)}
-                      style={{ textAlign: "left", border: `1px solid ${color.divider}`, background: "none", borderRadius: 9, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+                      className="flex items-center justify-between gap-2 rounded-md border border-division p-2.5 text-left hover:bg-superficie-2"
                     >
-                      <span>
-                        <span style={{ display: "block", fontSize: 11, color: color.slate400 }}>Derivado a</span>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: color.accent }}>{casoId(d.id)} · {d.flujo_titulo}</span>
+                      <span className="min-w-0">
+                        <span className="block text-xs text-texto-tenue">Derivado a</span>
+                        <span className="block truncate text-md font-semibold text-accent">
+                          {casoId(d.id)} · {d.flujo_titulo}
+                        </span>
                       </span>
                       <Badge tone={e.tone}>{e.label}</Badge>
                     </button>
@@ -192,9 +157,8 @@ export default function CasoDetalle() {
             </Card>
           )}
 
-          {/* Trazabilidad */}
-          <Card style={{ padding: 22 }}>
-            <SectionTitle>Trazabilidad</SectionTitle>
+          <Card className="p-xl">
+            <h3 className="text-lg font-bold">Trazabilidad</h3>
             <Timeline eventos={caso.eventos || []} />
           </Card>
         </div>
@@ -204,67 +168,96 @@ export default function CasoDetalle() {
 }
 
 // --------------------------------------------------------------------------- //
-// Acciones del jefe/supervisor de área sobre el caso (reasignar / repriorizar / cancelar).
-function PanelSupervision({ caso, ejecutar, recargar, accionando }) {
-  const [modal, setModal] = useState(null); // "reasignar" | "cancelar"
-  const [candidatos, setCandidatos] = useState([]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [u, m] = await Promise.all([
-          api.get(`/usuarios/`),
-          api.get(`/membresias/?institucion=${caso.institucion}`),
-        ]);
-        const staff = u.results || u;
-        const mem = m.results || m;
-        let lista = staff;
-        if (caso.area_actual) {
-          const ids = new Set(mem.filter((x) => (x.areas || []).includes(caso.area_actual)).map((x) => x.usuario));
-          const f = staff.filter((s) => ids.has(s.id));
-          lista = f.length ? f : staff;
-        }
-        setCandidatos(lista);
-      } catch { /* silencioso */ }
-    })();
-  }, [caso.institucion, caso.area_actual]);
-
+// Piezas
+// --------------------------------------------------------------------------- //
+/**
+ * Chip con la categoría del nodo (10 tipos, colores dinámicos).
+ *
+ * La etiqueta va en color de texto normal, no en el color de la categoría: esos
+ * colores están pensados para bordes y rellenos del lienzo, no para llevar texto
+ * —el rosa de «Atención» sobre su propio tinte da 3,56:1—. El color lo cargan el
+ * punto y el borde, que es donde sí funciona.
+ */
+function ChipNodo({ tipo, className }) {
+  const cat = nombreNodo(tipo);
   return (
-    <Card style={{ padding: 22 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", color: color.slate400, marginBottom: 14 }}>SUPERVISIÓN</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-[3px] text-sm font-semibold text-texto-medio",
+        className,
+      )}
+      style={{
+        background: `var(--color-nodo-${tipo}-tint)`,
+        borderColor: `var(--color-nodo-${tipo}-bd)`,
+      }}
+    >
+      <span className="size-1.5 rounded-sm" style={{ background: `var(--color-nodo-${tipo}-sol)` }} />
+      {cat}
+    </span>
+  );
+}
+
+function Antecedentes({ hc }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      {/* Tono ámbar («prestá atención»), no los colores de categoría de nodo: los
+          antecedentes no son un paso del flujo, y esa paleta no tiene variante
+          oscura ni está pensada para llevar texto encima. */}
+      <div className="flex items-center justify-between gap-2 border-b border-division bg-badge-amber-bg px-xl py-3.5">
+        <span className="flex items-center gap-2 text-md font-bold text-badge-amber-fg">
+          <Icon name="clipboard" size={17} /> Historia clínica · antecedentes
+        </span>
+        <span className="text-xs text-badge-amber-fg opacity-80">solo lectura</span>
+      </div>
+      <dl className="grid gap-3.5 px-xl py-lg sm:grid-cols-2">
+        <Dato k="Alergias" v={<span className={hc.alergias ? "text-danger" : "text-texto-debil"}>{hc.alergias || "—"}</span>} />
+        <Dato k="Condiciones" v={hc.condiciones || "—"} />
+      </dl>
+    </Card>
+  );
+}
+
+function PanelSupervision({ caso, ejecutar, ocupado }) {
+  const [modal, setModal] = useState(null);
+  return (
+    <Card className="p-xl">
+      <h3 className="mb-3.5 text-xs font-bold tracking-wide text-texto-tenue">SUPERVISIÓN</h3>
+      <div className="flex flex-col gap-3">
         <Field label="Prioridad">
-          <Select value={caso.prioridad} disabled={accionando}
-            onChange={(e) => ejecutar(() => api.post(`/casos/${caso.id}/priorizar/`, { prioridad: e.target.value }))}>
+          <Select
+            value={caso.prioridad}
+            disabled={ocupado}
+            onChange={(e) => ejecutar(
+              () => api.post(`/casos/${caso.id}/priorizar/`, { prioridad: e.target.value }),
+              "Prioridad actualizada",
+            )}
+          >
             <option value="normal">Normal</option>
             <option value="alta">Alta</option>
             <option value="urgente">Urgente</option>
           </Select>
         </Field>
-        <Button variant="secondary" disabled={accionando} onClick={() => setModal("reasignar")}>Reasignar</Button>
-        <Button variant="danger" disabled={accionando} onClick={() => setModal("cancelar")}>Cancelar caso</Button>
+        <Button variant="secondary" disabled={ocupado} onClick={() => setModal("reasignar")}>Reasignar</Button>
+        <Button variant="danger" disabled={ocupado} onClick={() => setModal("cancelar")}>Cancelar caso</Button>
       </div>
-      {modal === "reasignar" && (
-        <ReasignarModal caso={caso} candidatos={candidatos} onClose={() => setModal(null)} onDone={() => { setModal(null); recargar(); }} />
-      )}
-      {modal === "cancelar" && (
-        <CancelarModal caso={caso} onClose={() => setModal(null)} onDone={() => { setModal(null); recargar(); }} />
-      )}
+      {/* Los dos modales son los mismos de Supervisión: resuelven solos sus datos
+          y su mutación, así que esta pantalla no repite la lógica. */}
+      {modal === "reasignar" && <ReasignarModal caso={caso} onClose={() => setModal(null)} onDone={() => setModal(null)} />}
+      {modal === "cancelar" && <CancelarModal caso={caso} onClose={() => setModal(null)} onDone={() => setModal(null)} />}
     </Card>
   );
 }
 
-function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
-  // Caso aún no iniciado.
+function PanelPaso({ caso, cerrado, ocupado, ejecutar, hc }) {
   if (!caso.nodo_actual && !cerrado) {
     return (
-      <Card style={{ padding: 24 }}>
-        <SectionTitle>Sin iniciar</SectionTitle>
-        <p style={{ fontSize: 13.5, color: color.slate500, margin: "8px 0 16px" }}>
+      <Card className="p-lg sm:p-xxl">
+        <h3 className="text-lg font-bold">Sin iniciar</h3>
+        <p className="my-2 text-md text-texto-debil">
           El caso todavía no arrancó por el flujo. Iniciá para colocarlo en el primer paso.
         </p>
-        <Button disabled={accionando} onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/iniciar/`))}>
-          {accionando ? "Iniciando…" : "Iniciar caso"}
+        <Button disabled={ocupado} onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/iniciar/`), "Caso iniciado")}>
+          {ocupado ? "Iniciando…" : "Iniciar caso"}
         </Button>
       </Card>
     );
@@ -272,22 +265,21 @@ function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
 
   if (cerrado) {
     return (
-      <Card style={{ padding: 24, display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 22 }}>✓</span>
+      <Card className="flex items-center gap-3 p-lg sm:p-xxl">
+        <span className="flex size-9 items-center justify-center rounded-pill bg-badge-green-bg text-badge-green-fg">✓</span>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Caso cerrado</div>
-          <div style={{ fontSize: 13, color: color.slate500 }}>Este caso completó su recorrido.</div>
+          <div className="text-lg font-bold">Caso cerrado</div>
+          <div className="text-md text-texto-debil">Este caso completó su recorrido.</div>
         </div>
       </Card>
     );
   }
 
-  // Esperando que vuelva un estudio derivado a otra área.
   if (caso.esperando) {
     return (
-      <Card style={{ padding: 24 }}>
-        <PanelHeader tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
-        <p style={{ fontSize: 13.5, color: color.slate600, margin: 0 }}>
+      <Card className="p-lg sm:p-xxl">
+        <CabeceraPaso tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
+        <p className="text-md text-texto-suave">
           El caso está <strong>esperando el resultado de un estudio</strong> derivado a otra área.
           Cuando el estudio se realice, el caso vuelve solo y vas a poder continuar la atención.
         </p>
@@ -295,14 +287,12 @@ function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
     );
   }
 
-  // Este paso tiene grupos responsables y el usuario no integra ninguno.
   if (caso.responsables?.length > 0 && !caso.puede_tomar) {
     return (
-      <Card style={{ padding: 24 }}>
-        <PanelHeader tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
-        <p style={{ fontSize: 13.5, color: color.slate600, margin: 0 }}>
-          Este paso lo realiza{" "}
-          <strong>{caso.responsables.map((g) => g.nombre).join(", ")}</strong>.
+      <Card className="p-lg sm:p-xxl">
+        <CabeceraPaso tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
+        <p className="text-md text-texto-suave">
+          Este paso lo realiza <strong>{caso.responsables.map((g) => g.nombre).join(", ")}</strong>.
           No integrás {caso.responsables.length === 1 ? "ese grupo" : "esos grupos"}, así que no podés ejecutarlo.
         </p>
       </Card>
@@ -310,91 +300,85 @@ function PanelPaso({ caso, cerrado, accionando, ejecutar, hc }) {
   }
 
   const tipo = caso.nodo_tipo;
-  // Atención con fila, todavía en espera (no llamado desde un box).
   if (tipo === "atencion" && caso.nodo_con_fila && !caso.llamado) {
     return (
-      <Card style={{ padding: 24 }}>
-        <PanelHeader tipo="atencion" titulo={caso.paso_actual} />
-        <p style={{ fontSize: 13.5, color: color.slate600, margin: 0 }}>
-          El paciente está en la <strong>sala de espera</strong>. Será atendido cuando se lo llame desde un box, en la pantalla <strong>«Filas de espera»</strong>.
+      <Card className="p-lg sm:p-xxl">
+        <CabeceraPaso tipo="atencion" titulo={caso.paso_actual} />
+        <p className="text-md text-texto-suave">
+          El paciente está en la <strong>sala de espera</strong>. Será atendido cuando se lo llame
+          desde un box, en la pantalla <strong>«Filas de espera»</strong>.
         </p>
       </Card>
     );
   }
-  if (tipo === "form") return <PasoFormulario caso={caso} accionando={accionando} ejecutar={ejecutar} />;
-  if (tipo === "atencion") return <PasoAtencion caso={caso} accionando={accionando} ejecutar={ejecutar} hc={hc} />;
-  if (tipo === "espera") return <PasoSimple caso={caso} accionando={accionando} ejecutar={ejecutar} titulo="Sala de espera" texto="El caso está en la fila. Cuando sea llamado, continúa al siguiente paso." accion="Llamar y continuar" />;
-  if (tipo === "tiempo") return <PasoSimple caso={caso} accionando={accionando} ejecutar={ejecutar} titulo="Espera programada" texto="El caso está en pausa hasta cumplir el tiempo. Reactivá para continuar." accion="Reactivar" />;
+  if (tipo === "form") return <PasoFormulario caso={caso} ocupado={ocupado} ejecutar={ejecutar} />;
+  if (tipo === "atencion") return <PasoAtencion caso={caso} ocupado={ocupado} ejecutar={ejecutar} hc={hc} />;
+  if (tipo === "espera") {
+    return <PasoSimple caso={caso} ocupado={ocupado} ejecutar={ejecutar}
+      texto="El caso está en la fila. Cuando sea llamado, continúa al siguiente paso." accion="Llamar y continuar" />;
+  }
+  if (tipo === "tiempo") {
+    return <PasoSimple caso={caso} ocupado={ocupado} ejecutar={ejecutar}
+      texto="El caso está en pausa hasta cumplir el tiempo. Reactivá para continuar." accion="Reactivar" />;
+  }
 
-  // Nodo automático que quedó como actual (poco común) o sin acción.
   return (
-    <Card style={{ padding: 24 }}>
-      <SectionTitle>{caso.paso_actual}</SectionTitle>
-      <p style={{ fontSize: 13.5, color: color.slate500, marginTop: 8 }}>Este paso no requiere una acción manual.</p>
+    <Card className="p-lg sm:p-xxl">
+      <h3 className="text-lg font-bold">{caso.paso_actual}</h3>
+      <p className="mt-2 text-md text-texto-debil">Este paso no requiere una acción manual.</p>
     </Card>
   );
 }
 
-function PanelHeader({ tipo, titulo }) {
-  const cat = nodeCat[tipo] || nodeCat.form;
+function CabeceraPaso({ tipo, titulo }) {
+  const cat = nombreNodo(tipo);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 16 }}>
-      <span style={{ width: 30, height: 30, borderRadius: 8, background: cat.tint, border: `1px solid ${cat.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-        <span style={{ width: 11, height: 11, borderRadius: 3, background: cat.sol }} />
+    <div className="mb-lg flex items-center gap-2.5">
+      <span
+        className="flex size-8 shrink-0 items-center justify-center rounded-md border"
+        style={{ background: `var(--color-nodo-${tipo}-tint)`, borderColor: `var(--color-nodo-${tipo}-bd)` }}
+      >
+        <span className="size-2.5 rounded-sm" style={{ background: `var(--color-nodo-${tipo}-sol)` }} />
       </span>
       <div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: color.slate400 }}>{cat.name.toUpperCase()}</div>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>{titulo}</div>
+        <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.toUpperCase()}</div>
+        <div className="text-lg font-bold">{titulo}</div>
       </div>
     </div>
   );
 }
 
-function PasoFormulario({ caso, accionando, ejecutar }) {
-  const [campos, setCampos] = useState(null);
+function PasoFormulario({ caso, ocupado, ejecutar }) {
   const [valores, setValores] = useState({});
+  const nodo = useDetalle("nodos", caso.nodo_actual);
+  const form = useDetalle("formularios", nodo.data?.formulario, { enabled: !!nodo.data?.formulario });
 
-  useEffect(() => {
-    let activo = true;
-    (async () => {
-      const nodo = await api.get(`/nodos/${caso.nodo_actual}/`);
-      if (!nodo.formulario) {
-        if (activo) setCampos([]);
-        return;
-      }
-      const form = await api.get(`/formularios/${nodo.formulario}/`);
-      if (activo) setCampos(form.campos || []);
-    })();
-    return () => { activo = false; };
-  }, [caso.nodo_actual]);
-
-  if (campos === null) return <Card style={{ padding: 24 }}><Spinner label="Cargando formulario…" /></Card>;
-
-  const set = (id, v) => setValores((prev) => ({ ...prev, [id]: v }));
+  if (nodo.isLoading || (nodo.data?.formulario && form.isLoading)) {
+    return <Card className="flex flex-col gap-3 p-lg sm:p-xxl">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</Card>;
+  }
+  const campos = form.data?.campos || [];
 
   return (
-    <Card style={{ padding: 24 }}>
-      <PanelHeader tipo="form" titulo={caso.paso_actual} />
+    <Card className="p-lg sm:p-xxl">
+      <CabeceraPaso tipo="form" titulo={caso.paso_actual} />
       {campos.length === 0 ? (
-        <p style={{ fontSize: 13.5, color: color.slate500 }}>Este formulario no tiene campos definidos.</p>
+        <p className="text-md text-texto-debil">Este formulario no tiene campos definidos.</p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="flex flex-col gap-3.5">
           {campos.map((c) => (
-            <Field key={c.id} label={c.label + (c.requerido ? " *" : "")}>
-              <CampoInput campo={c} value={valores[c.id] || ""} onChange={(v) => set(c.id, v)} />
-              {c.ayuda && <div style={{ fontSize: 12, color: color.slate400, marginTop: 4 }}>{c.ayuda}</div>}
+            <Field key={c.id} label={c.label + (c.requerido ? " *" : "")} hint={c.ayuda}>
+              <CampoInput campo={c} value={valores[c.id] || ""} onChange={(v) => setValores((p) => ({ ...p, [c.id]: v }))} />
             </Field>
           ))}
         </div>
       )}
-      <div style={{ marginTop: 20 }}>
-        <Button
-          disabled={accionando}
-          onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, { valores }))}
-        >
-          {accionando ? "Guardando…" : "Completar y avanzar"}
-        </Button>
-      </div>
+      <Button
+        className="mt-xl"
+        disabled={ocupado}
+        onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, { valores }), "Paso completado")}
+      >
+        {ocupado ? "Guardando…" : "Completar y avanzar"}
+      </Button>
     </Card>
   );
 }
@@ -402,49 +386,49 @@ function PasoFormulario({ caso, accionando, ejecutar }) {
 function CampoInput({ campo, value, onChange }) {
   if (campo.tipo === "texto_largo") return <Textarea value={value} onChange={(e) => onChange(e.target.value)} />;
   if (campo.tipo === "fecha") return <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
-  if (campo.tipo === "seleccion_unica")
+  if (campo.tipo === "seleccion_unica") {
     return (
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">Seleccionar…</option>
-        {(campo.opciones || []).map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
+        {(campo.opciones || []).map((o) => <option key={o} value={o}>{o}</option>)}
       </Select>
     );
+  }
   if (campo.tipo === "archivo") return <CampoArchivo value={value} onChange={onChange} />;
   return <Input value={value} onChange={(e) => onChange(e.target.value)} />;
 }
 
 function CampoArchivo({ value, onChange }) {
-  const [subiendo, setSubiendo] = useState(false);
-  async function onFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSubiendo(true);
-    try {
-      const r = await api.upload(file);
-      onChange(r.nombre);
-    } finally {
-      setSubiendo(false);
-    }
-  }
+  const toast = useToast();
+  const subir = useAccion((file) => api.upload(file), {
+    invalida: [],
+    onError: (e) => toast.deError(e, "No se pudo subir el archivo."),
+  });
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <input type="file" onChange={onFile} disabled={subiendo} style={{ fontSize: 13 }} />
-      {subiendo && <span style={{ fontSize: 12, color: color.slate400 }}>Subiendo…</span>}
-      {value && !subiendo && <span style={{ fontSize: 12.5, color: color.slate600 }}>✓ {value}</span>}
+    <div className="flex items-center gap-2.5">
+      <input
+        type="file"
+        disabled={subir.isPending}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) subir.mutate(file, { onSuccess: (r) => onChange(r.nombre) });
+        }}
+        className="text-md file:mr-2 file:rounded-md file:border file:border-accent-100 file:bg-accent-50 file:px-2.5 file:py-1 file:text-base file:font-semibold file:text-accent"
+      />
+      {subir.isPending && <span className="text-sm text-texto-tenue">Subiendo…</span>}
+      {value && !subir.isPending && <span className="text-base text-texto-suave">✓ {value}</span>}
     </div>
   );
 }
 
-function PasoAtencion({ caso, accionando, ejecutar, hc }) {
-  const realizandoEstudio = !!caso.estudio_tipo; // este caso vino a REALIZAR un estudio
+function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
+  const toast = useToast();
+  const realizandoEstudio = !!caso.estudio_tipo;
   const [titulo, setTitulo] = useState(caso.paso_actual || "");
   const [contenido, setContenido] = useState("");
   const [firmada, setFirmada] = useState(true);
   const [tipoEstudio, setTipoEstudio] = useState("");
   const [areaEstudio, setAreaEstudio] = useState("");
-  const [areasDestino, setAreasDestino] = useState([]);
   const [detalleReceta, setDetalleReceta] = useState("");
   const [motivoIc, setMotivoIc] = useState("");
   const [areaIc, setAreaIc] = useState("");
@@ -454,99 +438,67 @@ function PasoAtencion({ caso, accionando, ejecutar, hc }) {
   const estudios = hc?.estudios || [];
   const recetas = hc?.recetas || [];
 
-  // Rellamar: el paciente fue llamado a un box pero no se presentó. Vuelve a
-  // destacarlo (y suena) en la pantalla de la sala. No recarga: feedback liviano.
-  const [rellamando, setRellamando] = useState(false);
-  const [rellamos, setRellamos] = useState(0); // rellamados hechos en esta sesión
-  async function rellamar() {
-    setRellamando(true);
-    try {
-      await api.post(`/casos/${caso.id}/rellamar/`);
-      setRellamos((n) => n + 1);
-    } finally {
-      setRellamando(false);
+  // Áreas a las que se puede derivar: las que tienen flujo publicado derivable.
+  const flujos = useLista("flujos", { institucion: caso.institucion, pageSize: 100 }, { enabled: !realizandoEstudio });
+  const areasDestino = [];
+  const vistas = new Set();
+  for (const f of flujos.filas) {
+    const pub = (f.versiones || []).some((v) => v.estado === "publicada");
+    if (pub && f.origen_inicio !== "manual" && f.area && f.area !== caso.area_actual && !vistas.has(f.area)) {
+      vistas.add(f.area);
+      areasDestino.push({ id: f.area, nombre: f.area_nombre });
     }
   }
 
-  // Áreas destino para derivar (estudio o interconsulta): tienen flujo publicado derivable.
-  useEffect(() => {
-    if (realizandoEstudio) return;
-    api.get(`/flujos/?institucion=${caso.institucion}`).then((d) => {
-      const lista = d.results || d;
-      const mapa = {};
-      lista.forEach((f) => {
-        const pub = (f.versiones || []).some((v) => v.estado === "publicada");
-        if (pub && f.origen_inicio !== "manual" && f.area && f.area !== caso.area_actual) mapa[f.area] = f.area_nombre;
-      });
-      setAreasDestino(Object.entries(mapa).map(([id, nombre]) => ({ id: Number(id), nombre })));
-    });
-  }, [caso.institucion, caso.area_actual, realizandoEstudio]);
-
-  async function solicitarEstudio() {
-    if (!tipoEstudio.trim()) return;
-    const body = { tipo: tipoEstudio.trim() };
-    if (areaEstudio) body.area_id = Number(areaEstudio);
-    await ejecutar(() => api.post(`/casos/${caso.id}/estudio/`, body));
-    setTipoEstudio("");
-  }
-  async function emitirReceta() {
-    if (!detalleReceta.trim()) return;
-    await ejecutar(() => api.post(`/casos/${caso.id}/receta/`, { detalle: detalleReceta.trim() }));
-    setDetalleReceta("");
-  }
-  async function pedirInterconsulta() {
-    if (!areaIc) return;
-    await ejecutar(() => api.post(`/casos/${caso.id}/interconsulta/`, { area_id: Number(areaIc), motivo: motivoIc.trim() }));
-    setMotivoIc(""); setAreaIc("");
-  }
-  function registrar() {
-    const body = { titulo, contenido, firmada };
-    if (realizandoEstudio) { body.resultado = resultado; body.archivo = archivo; }
-    return api.post(`/casos/${caso.id}/avanzar/`, body);
-  }
-
-  const tituloSec = { fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 8 };
+  // Rellamar no recarga el caso: es feedback liviano sobre la pantalla de la sala.
+  const rellamar = useAccion(() => api.post(`/casos/${caso.id}/rellamar/`), {
+    invalida: [],
+    onError: (e) => toast.deError(e, "No se pudo rellamar."),
+  });
+  const [rellamos, setRellamos] = useState(0);
 
   return (
-    <Card style={{ padding: 24 }}>
-      <PanelHeader tipo="atencion" titulo={caso.paso_actual} />
+    <Card className="p-lg sm:p-xxl">
+      <CabeceraPaso tipo="atencion" titulo={caso.paso_actual} />
 
-      {/* Atención con fila: el paciente fue llamado a un box. Si no se presenta,
-          se lo puede volver a llamar (parpadea en la pantalla de la sala). */}
       {caso.nodo_con_fila && caso.llamado && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 16, background: "#FFF4DF", border: "1px solid #F3D49B", borderRadius: 10 }}>
-          <Icon name="enter" size={18} style={{ color: "#B4690E", flex: "none" }} />
-          <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#7A4D08" }}>
+        <div className="mb-lg flex flex-wrap items-center gap-3 rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg px-3.5 py-3">
+          <Icon name="enter" size={18} className="shrink-0 text-badge-amber-fg" />
+          <div className="min-w-40 flex-1 text-md text-badge-amber-fg">
             Paciente llamado{caso.llamado_box ? <> a <strong>{caso.llamado_box}</strong></> : ""}.
-            {rellamos > 0 ? <> Se rellamó {rellamos === 1 ? "una vez" : `${rellamos} veces`} — mirá la pantalla de la sala.</> : <> ¿No se presentó?</>}
+            {rellamos > 0
+              ? <> Se rellamó {rellamos === 1 ? "una vez" : `${rellamos} veces`} — mirá la pantalla de la sala.</>
+              : <> ¿No se presentó?</>}
           </div>
-          <Button variant="secondary" disabled={rellamando} onClick={rellamar} style={{ flex: "none" }}>
-            {rellamando ? "Rellamando…" : "Rellamar"}
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={rellamar.isPending}
+            onClick={() => rellamar.mutate(undefined, { onSuccess: () => setRellamos((n) => n + 1) })}
+          >
+            {rellamar.isPending ? "Rellamando…" : "Rellamar"}
           </Button>
         </div>
       )}
 
       {realizandoEstudio && (
-        <div style={{ fontSize: 12.5, color: color.slate500, marginBottom: 12 }}>
-          Estudio a realizar: <strong style={{ color: color.slate700 }}>{caso.estudio_tipo}</strong>
-        </div>
+        <p className="mb-3 text-base text-texto-debil">
+          Estudio a realizar: <strong className="text-texto-medio">{caso.estudio_tipo}</strong>
+        </p>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      <div className="flex flex-col gap-3.5">
         <Field label="Título de la atención">
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
         </Field>
         <Field label={realizandoEstudio ? "Informe / observaciones" : "Evolución / observaciones"}>
           <Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} placeholder="Lo que se asienta en la historia clínica…" />
         </Field>
-        <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, color: color.slate600, cursor: "pointer" }}>
-          <input type="checkbox" checked={firmada} onChange={(e) => setFirmada(e.target.checked)} />
-          Firmar la entrada
-        </label>
+        <Checkbox checked={firmada} onChange={(e) => setFirmada(e.target.checked)} label="Firmar la entrada" />
       </div>
 
       {realizandoEstudio ? (
-        /* Quien REALIZA el estudio carga su resultado estructurado. */
-        <div style={{ marginTop: 20, borderTop: `1px solid ${color.divider}`, paddingTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="mt-xl flex flex-col gap-3.5 border-t border-division pt-lg">
           <Field label="Resultado del estudio">
             <Select value={resultado} onChange={(e) => setResultado(e.target.value)}>
               <option value="">— Sin especificar —</option>
@@ -559,136 +511,186 @@ function PasoAtencion({ caso, accionando, ejecutar, hc }) {
           </Field>
         </div>
       ) : (
-        /* Quien ATIENDE puede pedir estudios, interconsultas y recetas. */
-        <div style={{ marginTop: 20, borderTop: `1px solid ${color.divider}`, paddingTop: 16, display: "flex", flexDirection: "column", gap: 18 }}>
-          <div>
-            <div style={tituloSec}>Solicitar estudio</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Input value={tipoEstudio} onChange={(e) => setTipoEstudio(e.target.value)} placeholder="Ej.: Radiografía de tórax" onKeyDown={(e) => e.key === "Enter" && solicitarEstudio()} />
-              <Button variant="secondary" disabled={accionando || !tipoEstudio.trim()} onClick={solicitarEstudio}>Solicitar</Button>
+        <div className="mt-xl flex flex-col gap-lg border-t border-division pt-lg">
+          <section>
+            <h4 className="mb-2 text-base font-bold text-texto-suave">Solicitar estudio</h4>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                className="min-w-48 flex-1"
+                value={tipoEstudio}
+                onChange={(e) => setTipoEstudio(e.target.value)}
+                placeholder="Ej.: Radiografía de tórax"
+              />
+              <Button
+                variant="secondary"
+                disabled={ocupado || !tipoEstudio.trim()}
+                onClick={() => ejecutar(
+                  () => api.post(`/casos/${caso.id}/estudio/`, {
+                    tipo: tipoEstudio.trim(),
+                    ...(areaEstudio ? { area_id: Number(areaEstudio) } : {}),
+                  }),
+                  "Estudio solicitado",
+                )}
+              >
+                Solicitar
+              </Button>
             </div>
-            <div style={{ marginTop: 8 }}>
-              <Select value={areaEstudio} onChange={(e) => setAreaEstudio(e.target.value)} style={{ height: 36 }}>
-                <option value="">Registrar en la HC (sin derivar)</option>
-                {areasDestino.map((a) => <option key={a.id} value={a.id}>Derivar a {a.nombre} (el caso espera la vuelta)</option>)}
-              </Select>
-            </div>
+            <Select className="mt-2" size="sm" aria-label="Destino del estudio" value={areaEstudio} onChange={(e) => setAreaEstudio(e.target.value)}>
+              <option value="">Registrar en la HC (sin derivar)</option>
+              {areasDestino.map((a) => (
+                <option key={a.id} value={a.id}>Derivar a {a.nombre} (el caso espera la vuelta)</option>
+              ))}
+            </Select>
             {estudios.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+              <ul className="mt-2.5 flex flex-col gap-1.5">
                 {estudios.map((e) => (
-                  <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "7px 11px" }}>
-                    <span style={{ color: color.slate700 }}>{e.tipo}{e.resultado_display ? ` · ${e.resultado_display}` : ""}</span>
+                  <li key={e.id} className="flex items-center justify-between gap-2.5 rounded-md border border-borde bg-superficie-2 px-3 py-1.5 text-md">
+                    <span className="text-texto-medio">{e.tipo}{e.resultado_display ? ` · ${e.resultado_display}` : ""}</span>
                     <Badge tone={e.realizado ? "green" : "amber"}>{e.realizado ? "realizado" : "pendiente"}</Badge>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
+          </section>
 
-          <div>
-            <div style={tituloSec}>Interconsulta a otra área</div>
+          <section>
+            <h4 className="mb-2 text-base font-bold text-texto-suave">Interconsulta a otra área</h4>
             <Input value={motivoIc} onChange={(e) => setMotivoIc(e.target.value)} placeholder="Motivo (ej.: descartar foco neurológico)" />
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <Select value={areaIc} onChange={(e) => setAreaIc(e.target.value)} style={{ height: 36 }}>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Select className="min-w-40 flex-1" size="sm" aria-label="Área de la interconsulta" value={areaIc} onChange={(e) => setAreaIc(e.target.value)}>
                 <option value="">— Elegir área —</option>
                 {areasDestino.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
               </Select>
-              <Button variant="secondary" disabled={accionando || !areaIc} onClick={pedirInterconsulta}>Derivar y esperar</Button>
+              <Button
+                variant="secondary"
+                disabled={ocupado || !areaIc}
+                onClick={() => ejecutar(
+                  () => api.post(`/casos/${caso.id}/interconsulta/`, { area_id: Number(areaIc), motivo: motivoIc.trim() }),
+                  "Interconsulta solicitada",
+                )}
+              >
+                Derivar y esperar
+              </Button>
             </div>
-          </div>
+          </section>
 
-          <Accion
+          <ListaConAlta
             label="Emitir receta"
             placeholder="Medicación / indicaciones"
             value={detalleReceta}
             onChange={setDetalleReceta}
-            onAdd={emitirReceta}
-            disabled={accionando}
+            disabled={ocupado}
+            onAgregar={() => ejecutar(
+              () => api.post(`/casos/${caso.id}/receta/`, { detalle: detalleReceta.trim() }),
+              "Receta emitida",
+            )}
             items={recetas.map((r) => ({ id: r.id, txt: r.detalle, tag: r.activa ? "activa" : "" }))}
             vacio="Sin recetas."
           />
         </div>
       )}
 
-      <div style={{ marginTop: 20 }}>
-        <Button disabled={accionando} onClick={() => ejecutar(registrar)}>
-          {accionando ? "Registrando…" : realizandoEstudio ? "Cargar resultado y cerrar" : "Registrar atención y avanzar"}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-// Sección reutilizable: input + botón "Agregar" y lista de lo ya cargado.
-function Accion({ label, placeholder, value, onChange, onAdd, disabled, items, vacio }) {
-  return (
-    <div>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: color.slate600, marginBottom: 8 }}>{label}</div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === "Enter" && onAdd()} />
-        <Button variant="secondary" disabled={disabled || !value.trim()} onClick={onAdd}>Agregar</Button>
-      </div>
-      {items.length === 0 ? (
-        <div style={{ fontSize: 12, color: color.slate400, marginTop: 8 }}>{vacio}</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-          {items.map((it) => (
-            <div key={it.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13, background: color.subtle, border: `1px solid ${color.border}`, borderRadius: 8, padding: "7px 11px" }}>
-              <span style={{ color: color.slate700 }}>{it.txt}</span>
-              {it.tag && <Badge tone="neutral">{it.tag}</Badge>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PasoSimple({ caso, accionando, ejecutar, titulo, texto, accion }) {
-  return (
-    <Card style={{ padding: 24 }}>
-      <PanelHeader tipo={caso.nodo_tipo} titulo={caso.paso_actual || titulo} />
-      <p style={{ fontSize: 13.5, color: color.slate500, marginBottom: 16 }}>{texto}</p>
-      <Button disabled={accionando} onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, {}))}>
-        {accionando ? "Procesando…" : accion}
+      <Button
+        className="mt-xl"
+        disabled={ocupado}
+        onClick={() => ejecutar(
+          () => api.post(`/casos/${caso.id}/avanzar/`, {
+            titulo, contenido, firmada,
+            ...(realizandoEstudio ? { resultado, archivo } : {}),
+          }),
+          realizandoEstudio ? "Resultado cargado" : "Atención registrada",
+        )}
+      >
+        {ocupado ? "Registrando…" : realizandoEstudio ? "Cargar resultado y cerrar" : "Registrar atención y avanzar"}
       </Button>
     </Card>
   );
 }
 
-// --------------------------------------------------------------------------- //
-function SectionTitle({ children }) {
-  return <div style={{ fontSize: 16, fontWeight: 700 }}>{children}</div>;
+/** Campo + botón «Agregar» y la lista de lo ya cargado. */
+function ListaConAlta({ label, placeholder, value, onChange, onAgregar, disabled, items, vacio }) {
+  return (
+    <section>
+      <h4 className="mb-2 text-base font-bold text-texto-suave">{label}</h4>
+      <div className="flex flex-wrap gap-2">
+        <Input
+          className="min-w-48 flex-1"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          onKeyDown={(e) => { if (e.key === "Enter" && value.trim()) onAgregar(); }}
+        />
+        <Button variant="secondary" disabled={disabled || !value.trim()} onClick={onAgregar}>Agregar</Button>
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-texto-tenue">{vacio}</p>
+      ) : (
+        <ul className="mt-2.5 flex flex-col gap-1.5">
+          {items.map((it) => (
+            <li key={it.id} className="flex items-center justify-between gap-2.5 rounded-md border border-borde bg-superficie-2 px-3 py-1.5 text-md">
+              <span className="text-texto-medio">{it.txt}</span>
+              {it.tag && <Badge tone="neutral">{it.tag}</Badge>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
+
+function PasoSimple({ caso, ocupado, ejecutar, texto, accion }) {
+  return (
+    <Card className="p-lg sm:p-xxl">
+      <CabeceraPaso tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
+      <p className="mb-lg text-md text-texto-debil">{texto}</p>
+      <Button disabled={ocupado} onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, {}), "Caso avanzado")}>
+        {ocupado ? "Procesando…" : accion}
+      </Button>
+    </Card>
+  );
+}
+
 function Dato({ k, v }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, fontSize: 13.5 }}>
-      <span style={{ color: color.slate500 }}>{k}</span>
-      <span style={{ fontWeight: 500, color: color.slate900, textAlign: "right" }}>{v}</span>
+    <div className="flex items-center justify-between gap-3 text-md">
+      <dt className="text-texto-debil">{k}</dt>
+      <dd className="text-right font-medium text-texto-fuerte">{v}</dd>
     </div>
   );
 }
 
 function Timeline({ eventos }) {
-  if (eventos.length === 0)
-    return <div style={{ fontSize: 13, color: color.slate400, marginTop: 12 }}>Sin eventos todavía.</div>;
+  if (eventos.length === 0) return <p className="mt-3 text-md text-texto-tenue">Sin eventos todavía.</p>;
   return (
-    <div style={{ marginTop: 14, display: "flex", flexDirection: "column" }}>
+    <ol className="mt-3.5 flex flex-col">
       {eventos.map((e, i) => (
-        <div key={e.id} style={{ display: "flex", gap: 11 }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <span style={{ width: 11, height: 11, borderRadius: "50%", background: color.accent, border: "2.5px solid #fff", boxShadow: `0 0 0 1.5px ${color.accent}55`, flex: "none", marginTop: 3 }} />
-            {i < eventos.length - 1 && <span style={{ flex: 1, width: 2, background: color.divider, margin: "2px 0" }} />}
+        <li key={e.id} className="flex gap-2.5">
+          <div className="flex flex-col items-center">
+            <span className="mt-1 size-2.5 shrink-0 rounded-pill bg-accent ring-2 ring-superficie" />
+            {i < eventos.length - 1 && <span className="my-0.5 w-0.5 flex-1 bg-division" />}
           </div>
-          <div style={{ paddingBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: color.slate700 }}>{e.titulo}</div>
-            {e.detalle && <div style={{ fontSize: 12, color: color.slate500, marginTop: 1 }}>{e.detalle}</div>}
-            <div style={{ fontSize: 11, color: color.slate400, marginTop: 2 }}>
-              {e.autor_nombre} · {fechaHora(e.fecha)}
-            </div>
+          <div className="pb-lg">
+            <div className="text-md font-semibold text-texto-medio">{e.titulo}</div>
+            {e.detalle && <div className="text-sm text-texto-debil">{e.detalle}</div>}
+            <div className="mt-0.5 text-xs text-texto-tenue">{e.autor_nombre} · {fechaHora(e.fecha)}</div>
           </div>
-        </div>
+        </li>
       ))}
+    </ol>
+  );
+}
+
+function CargandoCaso() {
+  return (
+    <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8" role="status" aria-label="Cargando caso…">
+      <div className="flex flex-col gap-lg lg:order-1">
+        <Skeleton className="h-32" />
+        <Skeleton className="h-64" />
+      </div>
+      <div className="flex flex-col gap-lg">
+        <Skeleton className="h-72" />
+        <Skeleton className="h-48" />
+      </div>
     </div>
   );
 }

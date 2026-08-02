@@ -36,8 +36,8 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Frontend — mundo Diseño (lienzo, paleta, propiedades, reglas, validar/publicar) | ✅ Completo + verificado |
 | Frontend — administración (instituciones, áreas, usuarios) | ✅ Completo + verificado |
 | Frontend — registros (historia clínica) | ✅ Completo + verificado |
-| Datos de demo (seed) | ✅ `python manage.py seed_demo` |
-| Tests automatizados | ✅ Backend 17 tests; frontend verificado con Playwright |
+| Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
+| Tests automatizados | ✅ Backend 57 tests; frontend verificado con Playwright |
 | Despliegue / Postgres-Supabase | ⚠️ Configurado pero no probado |
 
 ---

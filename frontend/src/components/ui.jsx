@@ -1,190 +1,102 @@
-// Componentes base de UI. Estilos calcados del "Sistema de diseño" de Cauce.
+// Componentes base de UI.
+//
+// Migrados a Tailwind sobre tokens SEMÁNTICOS, así que responden al tema. Todos
+// siguen aceptando `style` además de `className`: las pantallas que faltan migrar
+// les pasan estilos inline y no se pueden romper hasta que les toque el turno.
 import { useEffect, useRef } from "react";
-import { avatarColors, badgeTone, color, font, iniciales, radius, shadow, type } from "../theme";
+
+import { cn } from "@/lib/cn";
+import { iniciales } from "@/lib/dominio";
 import { Icon } from "./icons";
 
-export function Button({ variant = "primary", size = "md", children, style, disabled, ...props }) {
-  const base = {
-    height: size === "sm" ? 32 : 40,
-    padding: size === "sm" ? "0 12px" : "0 18px",
-    borderRadius: radius.md,
-    fontSize: size === "sm" ? type.base : type.md,
-    fontWeight: 600,
-    fontFamily: font.sans,
-    cursor: disabled ? "not-allowed" : "pointer",
-    border: "none",
-    transition: ".12s",
-  };
-  const variants = {
-    primary: { background: color.accent, color: "#fff" },
-    // Secundario: misma familia índigo que el primario, pero más claro.
-    secondary: { background: color.accent50, color: color.accent, border: `1px solid ${color.accent100}` },
-    dashed: { background: "none", border: "1.5px dashed #C7CDF2", color: color.accent },
-    danger: { background: color.danger, color: "#fff" },
-    disabled: { background: "#EEF0F3", color: color.slate400 },
-  };
-  const v = disabled ? variants.disabled : variants[variant] || variants.primary;
+// --------------------------------------------------------------------------- //
+// Acciones
+// --------------------------------------------------------------------------- //
+const BOTON_VARIANTE = {
+  // El primario usa el relleno de marca con su color de texto: `accent` a secas
+  // es claro en tema oscuro y el blanco encima no llegaría a contraste.
+  primary: "bg-accent-fuerte text-sobre-accent hover:bg-accent-hover",
+  secondary: "bg-accent-50 text-accent border border-accent-100 hover:bg-accent-100",
+  dashed: "border-[1.5px] border-dashed border-accent-100 text-accent hover:bg-accent-50",
+  danger: "bg-danger-fuerte text-sobre-danger hover:brightness-110",
+  ghost: "text-texto-suave hover:bg-superficie-2 hover:text-texto",
+};
+
+export function Button({ variant = "primary", size = "md", className, children, disabled, ...props }) {
   return (
-    <button style={{ ...base, ...v, ...style }} disabled={disabled} {...props}>
+    <button
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-colors",
+        size === "sm" ? "h-8 px-3 text-base" : "h-10 px-4.5 text-md",
+        disabled
+          ? "cursor-not-allowed bg-division text-texto-tenue"
+          : BOTON_VARIANTE[variant] || BOTON_VARIANTE.primary,
+        className,
+      )}
+      {...props}
+    >
       {children}
     </button>
   );
 }
 
-export function Badge({ tone = "neutral", children }) {
-  const t = badgeTone[tone] || badgeTone.neutral;
+// --------------------------------------------------------------------------- //
+// Indicadores
+// --------------------------------------------------------------------------- //
+// Mapa tono → clases. Tiene que ser un mapa de strings COMPLETOS y estáticos:
+// Tailwind escanea el código fuente como texto, así que `bg-badge-${tono}-bg` no
+// genera nada (no existe esa clase en el archivo). Es la convención para todo
+// componente con variantes.
+const BADGE_TONO = {
+  neutral: "bg-badge-neutral-bg text-badge-neutral-fg",
+  info: "bg-badge-info-bg text-badge-info-fg",
+  amber: "bg-badge-amber-bg text-badge-amber-fg",
+  green: "bg-badge-green-bg text-badge-green-fg",
+  gray: "bg-badge-gray-bg text-badge-gray-fg",
+  error: "bg-badge-error-bg text-badge-error-fg",
+};
+
+export function Badge({ tone = "neutral", className, children }) {
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "3px 10px",
-        borderRadius: radius.pill,
-        fontSize: type.sm,
-        fontWeight: 600,
-        background: t.bg,
-        color: t.fg,
-        whiteSpace: "nowrap",
-      }}
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-[3px]",
+        "text-sm font-semibold",
+        BADGE_TONO[tone] || BADGE_TONO.neutral,
+        className,
+      )}
     >
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.fg }} />
+      {/* El punto toma el color del texto: una variante menos que mantener. */}
+      <span className="size-1.5 rounded-full bg-current" />
       {children}
     </span>
   );
 }
 
-export function Card({ children, style, ...props }) {
+export function Card({ className, children, ...props }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        border: `1px solid ${color.border}`,
-        borderRadius: radius.lg,
-        ...style,
-      }}
-      {...props}
-    >
+    <div className={cn("rounded-lg border border-borde bg-superficie", className)} {...props}>
       {children}
     </div>
   );
 }
 
-export function Field({ label, children }) {
-  return (
-    <label style={{ display: "block" }}>
-      {label && (
-        <div style={{ fontSize: type.base, fontWeight: 600, color: color.slate600, marginBottom: 6 }}>
-          {label}
-        </div>
-      )}
-      {children}
-    </label>
-  );
-}
-
-export function Input({ style, size = "md", ...props }) {
-  return (
-    <input
-      style={{
-        height: size === "sm" ? 32 : 40,
-        width: "100%",
-        border: `1px solid ${color.inputBorder}`,
-        borderRadius: radius.md,
-        padding: "0 12px",
-        fontSize: size === "sm" ? type.base : type.md,
-        fontFamily: font.sans,
-        outline: "none",
-        boxSizing: "border-box",
-        ...style,
-      }}
-      onFocus={(e) => (e.target.style.border = `1px solid ${color.accent}`)}
-      onBlur={(e) => (e.target.style.border = `1px solid ${color.inputBorder}`)}
-      {...props}
-    />
-  );
-}
-
-export function Textarea({ style, ...props }) {
-  return (
-    <textarea
-      style={{
-        width: "100%",
-        minHeight: 84,
-        border: `1px solid ${color.inputBorder}`,
-        borderRadius: radius.md,
-        padding: "10px 12px",
-        fontSize: type.md,
-        fontFamily: font.sans,
-        outline: "none",
-        boxSizing: "border-box",
-        resize: "vertical",
-        ...style,
-      }}
-      {...props}
-    />
-  );
-}
-
-export function Select({ style, size = "md", children, ...props }) {
-  return (
-    <select
-      style={{
-        height: size === "sm" ? 32 : 40,
-        width: "100%",
-        border: `1px solid ${color.inputBorder}`,
-        borderRadius: radius.md,
-        padding: "0 10px",
-        fontSize: size === "sm" ? type.base : type.md,
-        fontFamily: font.sans,
-        outline: "none",
-        background: "#fff",
-        boxSizing: "border-box",
-        ...style,
-      }}
-      {...props}
-    >
-      {children}
-    </select>
-  );
-}
-
-// Checkbox con el acento de marca y un label opcional. Reemplaza el control
-// nativo azul-sistema que desentonaba en los paneles.
-export function Checkbox({ checked, onChange, label, style, ...props }) {
-  return (
-    <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", fontSize: type.md, ...style }}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        style={{ width: 16, height: 16, accentColor: color.accent, cursor: "pointer", flex: "none" }}
-        {...props}
-      />
-      {label}
-    </label>
-  );
-}
-
-export function Mono({ children, style }) {
-  return <span style={{ fontFamily: font.mono, ...style }}>{children}</span>;
+export function Mono({ className, children, ...props }) {
+  return <span className={cn("font-mono", className)} {...props}>{children}</span>;
 }
 
 export function Avatar({ nombre, i = 0, size = 32 }) {
   return (
     <span
+      className="inline-flex shrink-0 items-center justify-center rounded-pill font-bold text-white"
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
-        flex: "none",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
         fontSize: size * 0.38,
-        fontWeight: 700,
-        color: "#fff",
-        background: avatarColors[i % avatarColors.length],
+        // Paleta rotativa: el índice es dinámico, así que no puede ser una clase
+        // (Tailwind no vería `bg-avatar-${i}`). La variable sí sigue al tema.
+        background: `var(--color-avatar-${(i % 6) + 1})`,
       }}
     >
       {iniciales(nombre)}
@@ -192,116 +104,161 @@ export function Avatar({ nombre, i = 0, size = 32 }) {
   );
 }
 
-// Stepper horizontal de ejecución. `steps` = [{label}], `current` = índice.
-export function Stepper({ steps, current }) {
+// --------------------------------------------------------------------------- //
+// Formulario
+// --------------------------------------------------------------------------- //
+export function Field({ label, hint, children }) {
   return (
-    <div style={{ display: "flex", alignItems: "center" }}>
-      {steps.map((s, i) => {
-        const st = i < current ? "done" : i === current ? "current" : "todo";
-        const dot =
-          st === "done"
-            ? { background: color.accent, color: "#fff", border: "none" }
-            : st === "current"
-            ? {
-                background: "#fff",
-                border: `2px solid ${color.accent}`,
-                color: color.accent,
-                boxShadow: "0 0 0 4px rgba(57,73,192,.13)",
-              }
-            : { background: "#fff", border: "2px solid #DDE0E6", color: "#A4ABB8" };
-        return (
-          <div key={i} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
-            <div style={{ display: "flex", alignItems: "center", flexDirection: "column", gap: 6 }}>
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  flex: "none",
-                  ...dot,
-                }}
-              >
-                {st === "done" ? "✓" : i + 1}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: st === "current" ? 700 : 500,
-                  color: st === "current" ? color.accent : st === "done" ? color.slate600 : "#A4ABB8",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {s.label}
-              </div>
-            </div>
-            {i < steps.length - 1 && (
-              <div
-                style={{
-                  flex: 1,
-                  height: 2,
-                  minWidth: 24,
-                  margin: "0 12px",
-                  marginBottom: 22,
-                  background: i < current ? color.accent : "#E2E5EA",
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <label className="block">
+      {label && <div className="mb-1.5 text-base font-semibold text-texto-suave">{label}</div>}
+      {children}
+      {hint && <div className="mt-1 text-sm text-texto-tenue">{hint}</div>}
+    </label>
   );
 }
 
+const CONTROL =
+  "w-full rounded-md border border-campo-borde bg-superficie text-texto outline-none " +
+  "placeholder:text-texto-tenue focus:border-accent disabled:bg-superficie-2 disabled:text-texto-tenue";
+
+export function Input({ className, size = "md", ...props }) {
+  return (
+    <input
+      className={cn(CONTROL, size === "sm" ? "h-8 px-3 text-base" : "h-10 px-3 text-md", className)}
+      {...props}
+    />
+  );
+}
+
+export function Textarea({ className, ...props }) {
+  return <textarea className={cn(CONTROL, "min-h-21 resize-y px-3 py-2.5 text-md", className)} {...props} />;
+}
+
+export function Select({ className, size = "md", children, ...props }) {
+  return (
+    <select
+      className={cn(CONTROL, size === "sm" ? "h-8 px-2 text-base" : "h-10 px-2.5 text-md", className)}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+}
+
+export function Checkbox({ checked, onChange, label, className, ...props }) {
+  return (
+    <label className={cn("flex cursor-pointer items-center gap-2.5 text-md", className)}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="size-4 shrink-0 cursor-pointer accent-accent"
+        {...props}
+      />
+      {label}
+    </label>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Estados
+// --------------------------------------------------------------------------- //
 export function Spinner({ label = "Cargando…" }) {
   return (
-    <div style={{ padding: 40, textAlign: "center", color: color.slate500, fontSize: type.md, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ animation: "spin 0.7s linear infinite" }} aria-hidden="true">
-        <circle cx="12" cy="12" r="9" stroke={color.divider} strokeWidth="3" />
-        <path d="M21 12a9 9 0 0 0-9-9" stroke={color.accent} strokeWidth="3" strokeLinecap="round" />
+    <div className="flex flex-col items-center gap-3 p-10 text-center text-md text-texto-debil" role="status">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="animate-spin" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" stroke="var(--color-division)" strokeWidth="3" />
+        <path d="M21 12a9 9 0 0 0-9-9" stroke="var(--color-accent)" strokeWidth="3" strokeLinecap="round" />
       </svg>
       {label}
     </div>
   );
 }
 
+/** Alias histórico de `EstadoVacio`. Se conserva porque lo usan las pantallas
+ *  que faltan migrar; al terminar la Fase 1 se borra. */
 export function EmptyState({ title, hint }) {
   return (
-    <div style={{ padding: "48px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: type.lg, fontWeight: 700, color: color.slate600 }}>{title}</div>
-      {hint && <div style={{ fontSize: type.base, color: color.slate500, marginTop: 6 }}>{hint}</div>}
+    <div className="px-xxl py-12 text-center">
+      <div className="text-lg font-bold text-texto-suave">{title}</div>
+      {hint && <div className="mt-1.5 text-base text-texto-debil">{hint}</div>}
     </div>
   );
 }
 
+// --------------------------------------------------------------------------- //
+// Pestañas
+// --------------------------------------------------------------------------- //
+/**
+ * Pestañas de filtro. `tabs` = `[{ key, label, cuenta? }]`.
+ *
+ * Se marca con `role="tablist"` y flechas del teclado porque son controles de
+ * navegación: con solo `<button>` sueltos, un lector de pantalla no anuncia
+ * cuántas hay ni cuál está activa.
+ */
+export function Tabs({ tabs, valor, onChange, className }) {
+  function alTeclado(e) {
+    const i = tabs.findIndex((t) => t.key === valor);
+    if (e.key === "ArrowRight") onChange(tabs[(i + 1) % tabs.length].key);
+    if (e.key === "ArrowLeft") onChange(tabs[(i - 1 + tabs.length) % tabs.length].key);
+  }
+  return (
+    <div
+      role="tablist"
+      onKeyDown={alTeclado}
+      className={cn("inline-flex gap-1 rounded-lg bg-superficie-2 p-1", className)}
+    >
+      {tabs.map((t) => {
+        const activa = t.key === valor;
+        return (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={activa}
+            tabIndex={activa ? 0 : -1}
+            onClick={() => onChange(t.key)}
+            className={cn(
+              "rounded-md px-4 py-2 text-md font-semibold transition-colors",
+              activa ? "bg-superficie text-accent shadow-card" : "text-texto-debil hover:text-texto-suave",
+            )}
+          >
+            {t.label}
+            {t.cuenta != null && (
+              <span className={cn("ml-1.5 text-xs tabular-nums", activa ? "text-accent" : "text-texto-tenue")}>
+                {t.cuenta}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Diálogo
+// --------------------------------------------------------------------------- //
 export function Modal({ title, onClose, children, footer, width = 460 }) {
   const ref = useRef(null);
-  // Cerrar con Escape y trasladar el foco al diálogo al abrir.
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
     window.addEventListener("keydown", onKey);
     ref.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
+    // Bloquea el scroll del fondo: si no, la rueda mueve la página de atrás y el
+    // diálogo parece flotar sobre contenido que se desliza.
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
   }, [onClose]);
+
   return (
     <div
       onMouseDown={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(16,24,40,.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-        padding: 24,
-        animation: "fadeIn .12s ease",
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-lg animate-[fadeIn_.12s_ease]"
     >
       <div
         ref={ref}
@@ -310,56 +267,139 @@ export function Modal({ title, onClose, children, footer, width = 460 }) {
         aria-label={typeof title === "string" ? title : undefined}
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
-        style={{ background: "#fff", borderRadius: radius.lg, width, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: shadow.modal, outline: "none", animation: "fadeUp .16s ease" }}
+        style={{ width }}
+        className="max-h-[90vh] max-w-full overflow-auto rounded-lg bg-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${color.divider}` }}>
-          <div style={{ fontSize: type.lg, fontWeight: 700 }}>{title}</div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ border: "none", background: "none", cursor: "pointer", color: color.slate500, display: "flex", padding: 4, borderRadius: radius.sm }}>
+        <div className="flex items-center justify-between border-b border-division px-xl py-lg">
+          <div className="text-lg font-bold">{title}</div>
+          <button onClick={onClose} aria-label="Cerrar" className="flex rounded-sm p-1 text-texto-debil hover:text-texto">
             <Icon name="x" size={18} />
           </button>
         </div>
-        <div style={{ padding: 22 }}>{children}</div>
+        <div className="p-xl">{children}</div>
         {footer && (
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "16px 22px", borderTop: `1px solid ${color.divider}` }}>
-            {footer}
-          </div>
+          <div className="flex justify-end gap-2.5 border-t border-division px-xl py-lg">{footer}</div>
         )}
       </div>
     </div>
   );
 }
 
-// Tabla simple estilo ERP. columns = [{key, label, render?}].
+/**
+ * Confirmación de una acción que no se puede deshacer.
+ *
+ * Existe para que cada pantalla no vuelva a inventar su propio modal de «¿seguro?»
+ * con textos y botones distintos. El botón de confirmar dice QUÉ hace («Cancelar
+ * caso»), no «Aceptar»: en un diálogo de cancelación, un botón que dice
+ * «Cancelar» es ambiguo hasta el absurdo.
+ */
+export function ConfirmDialog({
+  title, children, confirmar = "Confirmar", volver = "Volver",
+  peligroso = false, cargando = false, onConfirmar, onClose,
+}) {
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={cargando}>{volver}</Button>
+          <Button variant={peligroso ? "danger" : "primary"} onClick={onConfirmar} disabled={cargando}>
+            {cargando ? "…" : confirmar}
+          </Button>
+        </>
+      }
+    >
+      <div className="text-md text-texto-suave">{children}</div>
+    </Modal>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Tabla simple
+// --------------------------------------------------------------------------- //
+/**
+ * Tabla sin paginación. Solo para listas cortas y acotadas por naturaleza (los
+ * boxes de un área, las opciones de un formulario).
+ *
+ * Para cualquier listado de un recurso va `TablaRecurso` de `ui/tabla.jsx`: esta
+ * no pagina, y mostrar los primeros 25 de una lista larga descartando el resto
+ * en silencio fue exactamente el bug que motivó la fundación nueva.
+ */
 export function Table({ columns, rows, onRowClick, vacio = "Sin registros" }) {
   if (!rows.length) return <EmptyState title={vacio} />;
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: type.md }}>
-      <thead>
-        <tr style={{ background: color.subtle, color: color.slate500, textAlign: "left" }}>
-          {columns.map((c) => (
-            <th key={c.key} style={{ padding: "12px 16px", fontWeight: 600, fontSize: type.sm, whiteSpace: "nowrap" }}>
-              {c.label}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr
-            key={r.id}
-            onClick={onRowClick ? () => onRowClick(r) : undefined}
-            style={{ borderTop: `1px solid ${color.divider}`, cursor: onRowClick ? "pointer" : "default" }}
-            onMouseEnter={(e) => onRowClick && (e.currentTarget.style.background = color.subtle)}
-            onMouseLeave={(e) => onRowClick && (e.currentTarget.style.background = "transparent")}
-          >
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-md">
+        <thead>
+          <tr className="bg-superficie-2 text-left">
             {columns.map((c) => (
-              <td key={c.key} style={{ padding: "13px 16px", verticalAlign: "middle" }}>
-                {c.render ? c.render(r) : r[c.key]}
-              </td>
+              <th key={c.key} className="whitespace-nowrap px-lg py-3 text-sm font-semibold text-texto-debil">
+                {c.label}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.id}
+              onClick={onRowClick ? () => onRowClick(r) : undefined}
+              className={cn(
+                "border-t border-division",
+                onRowClick && "cursor-pointer hover:bg-superficie-2",
+              )}
+            >
+              {columns.map((c) => (
+                <td key={c.key} className="px-lg py-3.5 align-middle">
+                  {c.render ? c.render(r) : r[c.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Stepper
+// --------------------------------------------------------------------------- //
+export function Stepper({ steps, current }) {
+  return (
+    <div className="flex items-center">
+      {steps.map((s, i) => {
+        const hecho = i < current;
+        const actual = i === current;
+        return (
+          <div key={i} className={cn("flex items-center", i < steps.length - 1 && "flex-1")}>
+            <div className="flex flex-col items-center gap-1.5">
+              <div
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-pill text-sm font-bold",
+                  hecho && "bg-accent-fuerte text-sobre-accent",
+                  actual && "border-2 border-accent bg-superficie text-accent ring-4 ring-accent/15",
+                  !hecho && !actual && "border-2 border-borde bg-superficie text-texto-tenue",
+                )}
+              >
+                {hecho ? "✓" : i + 1}
+              </div>
+              <div
+                className={cn(
+                  "whitespace-nowrap text-sm",
+                  actual ? "font-bold text-accent" : hecho ? "font-medium text-texto-suave" : "font-medium text-texto-tenue",
+                )}
+              >
+                {s.label}
+              </div>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={cn("mb-[22px] h-0.5 min-w-6 flex-1 mx-3", hecho ? "bg-accent" : "bg-borde")} />
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

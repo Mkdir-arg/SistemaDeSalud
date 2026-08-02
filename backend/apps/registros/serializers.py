@@ -4,10 +4,16 @@ from .models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
 
 
 class EntradaHistoriaSerializer(serializers.ModelSerializer):
+    # Quién firmó, no sólo su id. Una entrada marcada como «Firmada» sin firmante
+    # visible no sirve como registro: la matrícula ya se guarda al firmar, y el
+    # nombre evita que el cliente tenga que cruzar contra /usuarios/.
+    autor_nombre = serializers.CharField(source="autor.nombre_completo", read_only=True, default=None)
+
     class Meta:
         model = EntradaHistoria
         fields = [
-            "id", "historia", "titulo", "contenido", "autor", "caso", "firmada", "matricula", "fecha",
+            "id", "historia", "titulo", "contenido", "autor", "autor_nombre",
+            "caso", "firmada", "matricula", "fecha",
         ]
         read_only_fields = ["fecha", "matricula"]
 

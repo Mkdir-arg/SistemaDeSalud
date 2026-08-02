@@ -11,6 +11,18 @@ export function casoId(id) {
   return "#" + String(id).padStart(4, "0");
 }
 
+/**
+ * Concuerda el número con su sustantivo: «1 caso activo», «3 casos activos».
+ *
+ * Con datos de demo el singular casi no aparece y es fácil no verlo; con datos
+ * reales de una institución chica salta enseguida y queda desprolijo.
+ *
+ *     plural(n, "caso activo", "casos activos")
+ */
+export function plural(n, singular, plural) {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 // Antigüedad relativa compacta: "5 min", "17 h", "3 d".
 export function antiguedad(iso) {
   if (!iso) return "—";

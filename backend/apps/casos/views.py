@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -30,6 +30,55 @@ class CasoViewSet(BaseModelViewSet):
     capacidad_requerida = "trabajo"
     institucion_path = "institucion"
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a", "ciudadano")
+    # Orden por defecto con desempate: `-creado` solo tiene empates y la
+    # paginación se vuelve inestable (ver `OrdenEstable` en apps/common.py).
+    ordering = ("-creado", "-id")
+    # Columnas ordenables de la tabla de casos (`?ordering=-creado`).
+    ordering_fields = (
+        "id", "creado", "actualizado", "estado", "prioridad",
+        "area_actual__nombre", "version__flujo__titulo", "nodo_actual__titulo",
+        "asignado_a__apellido", "ciudadano__apellido",
+    )
+    # Búsqueda libre por paciente o por flujo (`?search=`).
+    search_fields = (
+        "ciudadano__nombre", "ciudadano__apellido", "ciudadano__documento",
+        "version__flujo__titulo",
+    )
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # `?supervisables=true` — los casos que el usuario puede supervisar:
+        # activos y en un área donde es jefe. Se resuelve en el servidor a
+        # propósito: la pantalla de Supervisión traía TODOS los casos de la
+        # institución y filtraba en el cliente, así que con volumen real veía solo
+        # los que entraban en la primera página de la API.
+        if self.request.query_params.get("supervisables") in ("true", "1"):
+            qs = qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            if not self.request.user.is_superuser:
+                qs = qs.filter(area_actual__in=motor.areas_que_supervisa(self.request.user))
+
+        # `?tomables=true` — lo accionable para el usuario: activo, sin asignar,
+        # que no esté encolado (eso se opera solo desde la pantalla Fila) y cuyo
+        # paso actual sea de un grupo suyo. Es el equivalente en queryset de
+        # `motor.usuario_puede_tomar`; sin esto la bandeja tenía que traerse todos
+        # los casos de la institución y filtrarlos en el navegador.
+        if self.request.query_params.get("tomables") in ("true", "1"):
+            qs = (
+                qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+                .filter(asignado_a__isnull=True)
+                .exclude(en_filas__atendido=False)
+            )
+            u = self.request.user
+            if not u.is_superuser:
+                # Paso sin grupos declarados = abierto a cualquiera; con grupos,
+                # solo si integra alguno.
+                qs = qs.filter(
+                    Q(nodo_actual__grupos__isnull=True)
+                    | Q(nodo_actual__grupos__in=u.grupos.values("id"))
+                )
+            # Los dos filtros anteriores atraviesan M2M y pueden duplicar filas.
+            qs = qs.distinct()
+        return qs
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -799,7 +848,10 @@ class ItemFilaViewSet(BaseModelViewSet):
     serializer_class = ItemFilaSerializer
     capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
-    filter_fields = ("caso", "nodo", "urgente", "atendido", "nodo__version__flujo__area")
+    # `box` permite pedir la cola REAL: `?atendido=false&box=null` son los que
+    # todavía esperan. Sin él hay que traerlos todos y descartar en el cliente los
+    # ya llamados, que es lo que hacía la pantalla de fila.
+    filter_fields = ("caso", "nodo", "urgente", "atendido", "box", "nodo__version__flujo__area")
 
 
 class EventoCasoViewSet(BaseModelViewSet):

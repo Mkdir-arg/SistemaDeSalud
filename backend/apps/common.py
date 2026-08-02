@@ -3,6 +3,7 @@ import uuid
 
 from django.core.files.storage import default_storage
 from rest_framework import status, viewsets
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -135,6 +136,25 @@ class CapacidadPermission(BasePermission):
         return cap in capacidades_de(user, inst_id)
 
 
+class OrdenEstable(OrderingFilter):
+    """`OrderingFilter` que agrega el id como último criterio de desempate.
+
+    Un orden con empates hace que la paginación sea inestable: si dos casos
+    comparten `creado`, la base puede devolverlos en distinto orden entre una
+    consulta y la siguiente, y entonces un registro aparece en dos páginas o no
+    aparece en ninguna. Agregar una columna única al final lo vuelve determinista
+    sin cambiar el orden que pidió el usuario.
+    """
+
+    def get_ordering(self, request, queryset, view):
+        orden = super().get_ordering(request, queryset, view)
+        if not orden:
+            return orden
+        if any(c.lstrip("-") in ("pk", "id") for c in orden):
+            return orden
+        return list(orden) + ["-pk"]
+
+
 class QueryParamFilterMixin:
     """
     Permite filtrar un ViewSet por campos exactos vía query params.
@@ -217,9 +237,17 @@ class SubirArchivoView(APIView):
 
 class BaseModelViewSet(QueryParamFilterMixin, InstitucionScopedMixin, viewsets.ModelViewSet):
     """ViewSet estándar: CRUD + filtrado por query params + scope por institución
-    + autorización por rol (lectura abierta a miembros, escritura por capacidad)."""
+    + autorización por rol (lectura abierta a miembros, escritura por capacidad)
+    + orden y búsqueda por query param.
+
+    `?ordering=` y `?search=` quedan disponibles en todos los listados. Cada
+    viewset acota qué campos admite con `ordering_fields` y `search_fields`; sin
+    declararlos, `ordering` no acepta nada y `search` se ignora (comportamiento de
+    DRF), así que no hay riesgo de exponer campos por accidente.
+    """
 
     permission_classes = [IsAuthenticated, CapacidadPermission]
+    filter_backends = [OrdenEstable, SearchFilter]
     # Capacidad requerida para escribir; None = sin restricción de rol.
     capacidad_requerida = None
     # Si True, la LECTURA también exige `capacidad_requerida` (datos sensibles).

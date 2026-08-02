@@ -1,15 +1,29 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../api/client";
-import { Button, Card, EmptyState, Field, Input, Modal, Select, Spinner, Textarea } from "../../components/ui";
-import { Icon } from "../../components/icons";
-import { color } from "../../theme";
 
-const TIPO_DOT = { texto_corto: "#3949C0", texto_largo: "#1F8A5B", fecha: "#0E8893", seleccion_unica: "#A96A12", archivo: "#9A3DB8" };
-const ORIGEN = {
-  historia_clinica: { label: "Historia clínica", bg: "#ECEEFB", fg: "#2D3A9E" },
-  legajo_ciudadano: { label: "Legajo ciudadano", bg: "#E2F6F9", fg: "#0C7C8E" },
+import { api } from "@/api/client";
+import { useAccion, useDetalle } from "@/api/queries";
+import { Icon } from "@/components/icons";
+import { Badge, Button, Card, ConfirmDialog, Field, Input, Modal, Select, Textarea } from "@/components/ui";
+import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
+import { useToast } from "@/components/ui/toast";
+import { plural } from "@/lib/format";
+
+// Color del punto por tipo de campo. Sale de la paleta de nodos porque ya está en
+// tokens y tiene variante oscura; acá es sólo un punto de 9px, nunca texto.
+const TIPO_PUNTO = {
+  texto_corto: "bg-nodo-form-sol",
+  texto_largo: "bg-nodo-inicio-sol",
+  fecha: "bg-nodo-derivar-sol",
+  seleccion_unica: "bg-nodo-decision-sol",
+  archivo: "bg-nodo-atencion-sol",
 };
+
+const ORIGEN = {
+  historia_clinica: { label: "Historia clínica", tone: "info" },
+  legajo_ciudadano: { label: "Legajo ciudadano", tone: "green" },
+};
+
 const TIPOS = [
   { value: "texto_corto", label: "Texto corto" },
   { value: "texto_largo", label: "Texto largo" },
@@ -21,93 +35,118 @@ const TIPOS = [
 export default function FormularioDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [form, setForm] = useState(null);
+  const toast = useToast();
   const [agregar, setAgregar] = useState(false);
+  const [aBorrar, setABorrar] = useState(null);
 
-  async function cargar() {
-    setForm(await api.get(`/formularios/${id}/`));
-  }
-  useEffect(() => {
-    cargar(); // eslint-disable-next-line
-  }, [id]);
+  const q = useDetalle("formularios", id);
+  const form = q.data;
+  const campos = form?.campos || [];
 
-  if (!form) return <Spinner label="Cargando formulario…" />;
-  const campos = form.campos || [];
+  const borrar = useAccion((campo) => api.del(`/campos/${campo.id}/`), {
+    invalida: ["lista", "detalle"],
+    onSuccess: () => { toast.ok("Campo eliminado."); setABorrar(null); },
+    onError: (e) => toast.deError(e, "No se pudo eliminar el campo."),
+  });
 
-  async function borrarCampo(cid) {
-    await api.del(`/campos/${cid}/`);
-    cargar();
-  }
+  if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
 
   return (
-    <div style={{ padding: "22px 30px" }}>
-      {/* Breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <button onClick={() => navigate("/formularios")} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${color.border}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: color.slate500 }}>
+    <div className="px-lg py-[22px] sm:px-[30px]">
+      <div className="mb-lg flex items-center gap-2.5">
+        <button
+          onClick={() => navigate("/formularios")}
+          aria-label="Volver a formularios"
+          className="flex size-8 items-center justify-center rounded-md border border-borde bg-superficie text-texto-debil hover:bg-superficie-2"
+        >
           <Icon name="back" size={15} />
         </button>
-        <div style={{ fontSize: 13.5, color: color.slate500 }}>Formularios · <strong style={{ color: color.slate700 }}>{form.titulo}</strong></div>
+        <div className="text-md text-texto-debil">
+          Formularios · <strong className="text-texto-suave">{form?.titulo || "…"}</strong>
+        </div>
       </div>
 
-      {/* Cabecera */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <div style={{ width: 44, height: 44, borderRadius: 11, background: color.accent50, color: color.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+      <div className="mb-5 flex items-center gap-3">
+        <div className="flex size-11 flex-none items-center justify-center rounded-lg bg-accent-50 text-accent">
           <Icon name="form" size={22} />
         </div>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.3px" }}>{form.titulo}</div>
-          <div style={{ fontSize: 12.5, color: color.slate500 }}>Formulario de la institución · {campos.length} campos</div>
+          <h1 className="text-xxl font-extrabold tracking-tight">
+            {form ? form.titulo : <Skeleton className="h-6 w-56" />}
+          </h1>
+          <div className="text-sm text-texto-debil">
+            Formulario de la institución · {plural(campos.length, "campo", "campos")}
+          </div>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
-        {/* Campos */}
-        <Card style={{ padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>Campos <span style={{ color: color.slate400, fontWeight: 500 }}>· {campos.length}</span></div>
-            <Button variant="secondary" onClick={() => setAgregar(true)} style={{ height: 32, padding: "0 12px" }}>+ Agregar</Button>
+      {/* Una columna hasta `lg`: a 1024px dos columnas dejan la vista previa
+          demasiado angosta para parecerse a lo que verá el administrativo. */}
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <Card className="p-lg">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-md font-bold">
+              Campos <span className="font-medium text-texto-tenue">· {campos.length}</span>
+            </h2>
+            <Button variant="secondary" onClick={() => setAgregar(true)} className="h-8 px-3">
+              + Agregar
+            </Button>
           </div>
-          {campos.length === 0 ? (
-            <EmptyState title="Sin campos" hint="Agregá el primero." />
+
+          {q.isLoading ? (
+            <div className="flex flex-col gap-2">
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}
+            </div>
+          ) : campos.length === 0 ? (
+            <EstadoVacio titulo="Sin campos" detalle="Agregá el primero para que el formulario pida algo." />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <ul className="flex flex-col gap-2">
               {campos.map((c) => {
                 const o = ORIGEN[c.origen];
                 return (
-                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: `1px solid ${color.border}`, borderRadius: 10 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 3, background: TIPO_DOT[c.tipo] || color.slate400, flex: "none" }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.label} {c.requerido && <span style={{ color: "#B42318" }}>*</span>}</div>
-                      <div style={{ fontSize: 11.5, color: color.slate500, display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  <li key={c.id} className="flex items-center gap-2.5 rounded-lg border border-borde px-3 py-2.5">
+                    <span className={`size-2.5 flex-none rounded-sm ${TIPO_PUNTO[c.tipo] || "bg-texto-tenue"}`} aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-md font-semibold">
+                        {c.label} {c.requerido && <span className="text-danger" title="Requerido">*</span>}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-texto-debil">
                         {c.tipo_display}
-                        {o && <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 5, background: o.bg, color: o.fg }}>{o.label}</span>}
+                        {o && <Badge tone={o.tone}>{o.label}</Badge>}
                       </div>
                     </div>
-                    <button onClick={() => borrarCampo(c.id)} style={{ border: "none", background: "none", color: "#B42318", cursor: "pointer", fontSize: 11.5 }}>quitar</button>
-                  </div>
+                    <button
+                      onClick={() => setABorrar(c)}
+                      className="rounded-md px-2 py-1 text-xs font-semibold text-danger hover:bg-badge-error-bg"
+                    >
+                      quitar
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </Card>
 
         {/* Vista previa en vivo */}
         <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 12 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1F8A5B" }} />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>Vista previa en vivo</span>
-            <span style={{ fontSize: 12, color: color.slate400 }}>así lo verá el administrativo</span>
+          <div className="mb-3 flex items-baseline gap-2">
+            <span className="size-2 rounded-full bg-nodo-inicio-sol" aria-hidden="true" />
+            <h2 className="text-md font-bold">Vista previa en vivo</h2>
+            <span className="text-sm text-texto-debil">así lo verá el administrativo</span>
           </div>
-          <Card style={{ padding: 22 }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{form.titulo}</div>
-            <div style={{ fontSize: 13, color: color.slate500, marginBottom: 16 }}>Completá los campos para continuar.</div>
+          <Card className="p-[22px]">
+            <div className="text-lg font-bold">{form?.titulo}</div>
+            <div className="mb-lg text-base text-texto-debil">Completá los campos para continuar.</div>
             {campos.length === 0 ? (
-              <div style={{ fontSize: 13, color: color.slate400 }}>Sin campos para previsualizar.</div>
+              <div className="text-base text-texto-tenue">Sin campos para previsualizar.</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div className="flex flex-col gap-3.5">
                 {campos.map((c) => (
                   <div key={c.id}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: color.slate600, marginBottom: 6 }}>{c.label} {c.requerido && <span style={{ color: "#B42318" }}>*</span>}</div>
+                    <div className="mb-1.5 text-base font-semibold text-texto-medio">
+                      {c.label} {c.requerido && <span className="text-danger">*</span>}
+                    </div>
                     <PreviewInput campo={c} />
                   </div>
                 ))}
@@ -117,55 +156,105 @@ export default function FormularioDetalle() {
         </div>
       </div>
 
-      {agregar && <CampoModal formularioId={form.id} orden={campos.length} onClose={() => setAgregar(false)} onSaved={() => { setAgregar(false); cargar(); }} />}
+      {agregar && (
+        <CampoModal
+          formularioId={form.id}
+          orden={campos.length}
+          onClose={() => setAgregar(false)}
+        />
+      )}
+
+      {/* Quitar un campo es irreversible y se perdía sin preguntar nada. */}
+      {aBorrar && (
+        <ConfirmDialog
+          title={`¿Quitar «${aBorrar.label}»?`}
+          confirmar="Quitar campo"
+          peligroso
+          cargando={borrar.isPending}
+          onConfirmar={() => borrar.mutate(aBorrar)}
+          onClose={() => setABorrar(null)}
+        >
+          El campo deja de pedirse en los flujos que usan este formulario. Los datos
+          ya cargados no se borran.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
 
 function PreviewInput({ campo }) {
-  const dis = { pointerEvents: "none", background: color.subtle };
-  if (campo.tipo === "texto_largo") return <Textarea placeholder="Escribí aquí…" readOnly style={dis} />;
-  if (campo.tipo === "fecha") return <Input type="date" readOnly style={dis} />;
+  // `inert` en vez de `pointerEvents:none`: la vista previa tampoco tiene que
+  // recibir foco con Tab, si no se navega por un formulario que no hace nada.
+  const props = { readOnly: true, tabIndex: -1, className: "bg-superficie-2" };
+  if (campo.tipo === "texto_largo") return <Textarea placeholder="Escribí aquí…" {...props} />;
+  if (campo.tipo === "fecha") return <Input type="date" {...props} />;
   if (campo.tipo === "seleccion_unica")
     return (
-      <Select readOnly style={dis}>
+      <Select disabled {...props}>
         <option>Seleccionar…</option>
         {(campo.opciones || []).map((o) => <option key={o}>{o}</option>)}
       </Select>
     );
-  if (campo.tipo === "archivo") return <Input placeholder="Adjuntar archivo…" readOnly style={dis} />;
-  return <Input placeholder="Ingresá el dato" readOnly style={dis} />;
+  if (campo.tipo === "archivo") return <Input placeholder="Adjuntar archivo…" {...props} />;
+  return <Input placeholder="Ingresá el dato" {...props} />;
 }
 
-function CampoModal({ formularioId, orden, onClose, onSaved }) {
+function CampoModal({ formularioId, orden, onClose }) {
+  const toast = useToast();
   const [f, setF] = useState({ label: "", tipo: "texto_corto", requerido: false, opciones: "" });
-  const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  async function guardar() {
-    setGuardando(true);
-    try {
-      await api.post("/campos/", {
+
+  const guardar = useAccion(
+    () =>
+      api.post("/campos/", {
         formulario: formularioId,
         label: f.label,
         tipo: f.tipo,
         requerido: f.requerido,
-        opciones: f.tipo === "seleccion_unica" ? f.opciones.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        opciones:
+          f.tipo === "seleccion_unica"
+            ? f.opciones.split(",").map((s) => s.trim()).filter(Boolean)
+            : [],
         orden,
-      });
-      onSaved();
-    } finally {
-      setGuardando(false);
-    }
-  }
+      }),
+    {
+      invalida: ["lista", "detalle"],
+      onSuccess: () => { toast.ok("Campo agregado."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudo agregar el campo."),
+    },
+  );
+
+  // Una selección única sin opciones es un desplegable vacío.
+  const faltanOpciones = f.tipo === "seleccion_unica" && !f.opciones.trim();
+
   return (
-    <Modal title="Nuevo campo" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={guardando || !f.label} onClick={guardar}>{guardando ? "…" : "Agregar"}</Button></>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="Etiqueta *"><Input value={f.label} onChange={(e) => set("label", e.target.value)} autoFocus placeholder="Nombre, Obra social…" /></Field>
-        <Field label="Tipo"><Select value={f.tipo} onChange={(e) => set("tipo", e.target.value)}>{TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</Select></Field>
+    <Modal
+      title="Nuevo campo"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={guardar.isPending || !f.label || faltanOpciones} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "…" : "Agregar"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Etiqueta *">
+          <Input value={f.label} onChange={(e) => set("label", e.target.value)} autoFocus placeholder="Nombre, Obra social…" />
+        </Field>
+        <Field label="Tipo">
+          <Select value={f.tipo} onChange={(e) => set("tipo", e.target.value)}>
+            {TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </Select>
+        </Field>
         {f.tipo === "seleccion_unica" && (
-          <Field label="Opciones (separadas por coma)"><Input value={f.opciones} onChange={(e) => set("opciones", e.target.value)} placeholder="OSDE, PAMI, Particular" /></Field>
+          <Field label="Opciones (separadas por coma) *">
+            <Input value={f.opciones} onChange={(e) => set("opciones", e.target.value)} placeholder="OSDE, PAMI, Particular" />
+          </Field>
         )}
-        <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5 }}>
+        <label className="flex items-center gap-2.5 text-md">
           <input type="checkbox" checked={f.requerido} onChange={(e) => set("requerido", e.target.checked)} /> Requerido
         </label>
       </div>

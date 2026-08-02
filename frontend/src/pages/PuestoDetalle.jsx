@@ -1,63 +1,59 @@
-import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/client";
-import { PageHeader } from "../components/Shell";
-import { Badge, Button, Card, EmptyState, Spinner } from "../components/ui";
-import { antiguedad } from "../lib/format";
-import { color, estadoCaso, nodeCat } from "../theme";
+import { useQuery } from "@tanstack/react-query";
+
+import { api } from "@/api/client";
+import { useAccion } from "@/api/queries";
+import { PageHeader } from "@/components/Shell";
+import { Badge, Button, Card } from "@/components/ui";
+import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
+import { useToast } from "@/components/ui/toast";
+import { antiguedad } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { estadoCaso, nombreNodo } from "@/lib/dominio";
 
 const PRIO = { urgente: { label: "Urgente", tone: "error" }, alta: { label: "Alta", tone: "amber" } };
-const tonoEspera = (iso) => {
-  const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
-  return m >= 30 ? color.danger : m >= 15 ? "#A96A12" : color.slate500;
-};
 
-// Detalle de un paso (nodo): indicadores del momento + tabla de casos parados ahí.
+/** Color de la espera: a los 15 min avisa, a los 30 alarma. */
+function claseEspera(iso) {
+  const min = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  return min >= 30 ? "text-danger" : min >= 15 ? "text-badge-amber-fg" : "text-texto-debil";
+}
+
+/** Detalle de un paso (nodo): indicadores del momento + los casos parados ahí. */
 export default function PuestoDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [d, setD] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
-  const [accion, setAccion] = useState(null); // id de caso en acción
+  const toast = useToast();
 
-  const cargar = useCallback(async () => {
-    setCargando(true);
-    try { setD(await api.get(`/puestos/${id}/`)); setError(false); }
-    catch { setError(true); }
-    finally { setCargando(false); }
-  }, [id]);
-  useEffect(() => { cargar(); }, [cargar]);
+  const q = useQuery({
+    queryKey: ["puesto", id],
+    queryFn: () => api.get(`/puestos/${id}/`),
+    refetchInterval: 30_000, // el puesto cambia solo: llegan y salen casos
+  });
 
-  if (cargando && !d) return <Spinner label="Cargando el paso…" />;
-  if (error) {
+  const tomar = useAccion((caso) => api.post(`/casos/${caso}/tomar/`), {
+    onError: (e) => toast.deError(e, "No se pudo tomar el caso."),
+  });
+  const llamar = useAccion(({ caso, box }) => api.post(`/casos/${caso}/llamar/`, { box_id: box }), {
+    onError: (e) => toast.deError(e, "No se pudo llamar al paciente."),
+  });
+
+  if (q.isLoading) return <CargandoPuesto />;
+  if (q.error) {
     return (
-      <div style={{ padding: 48, textAlign: "center" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: color.slate700 }}>No pudimos cargar este paso</div>
-        <div style={{ fontSize: 13, color: color.slate400, margin: "6px 0 16px" }}>Puede que no seas responsable de él.</div>
-        <Button onClick={() => navigate("/inicio")}>Volver a Mi trabajo</Button>
+      <div className="p-8">
+        <EstadoError
+          error={q.error}
+          titulo="No pudimos cargar este paso"
+          onReintentar={q.refetch}
+        />
       </div>
     );
   }
 
-  const { nodo, indicadores: ind, casos } = d;
-  const cat = nodeCat[nodo.tipo] || nodeCat.form;
+  const { nodo, indicadores: ind, casos, mi_box: miBox } = q.data;
+  const cat = nombreNodo(nodo.tipo);
 
-  async function tomarYAbrir(c) {
-    setAccion(c.id);
-    try {
-      if (!c.mio) await api.post(`/casos/${c.id}/tomar/`);
-      navigate(`/casos/${c.id}`);
-    } finally { setAccion(null); }
-  }
-  async function llamar(c) {
-    if (!d.mi_box) return;
-    setAccion(c.id);
-    try {
-      await api.post(`/casos/${c.id}/llamar/`, { box_id: d.mi_box });
-      navigate(`/casos/${c.id}`);
-    } finally { setAccion(null); }
-  }
   const tiles = [
     { label: nodo.con_fila ? "En cola" : "Ahora", n: ind.ahora },
     { label: "Urgentes", n: ind.urgentes, alerta: ind.urgentes > 0 },
@@ -66,76 +62,99 @@ export default function PuestoDetalle() {
 
   return (
     <>
-      <PageHeader
-        subtitle={[nodo.flujo_titulo, nodo.area_nombre].filter(Boolean).join(" · ")}
-        right={<Button variant="secondary" onClick={cargar}>↻ Actualizar</Button>}
-      />
+      <PageHeader subtitle={[nodo.flujo_titulo, nodo.area_nombre].filter(Boolean).join(" · ")} />
 
-      <div style={{ padding: "22px 32px", display: "flex", flexDirection: "column", gap: 22 }}>
+      <div className="flex flex-col gap-[22px] px-lg pb-8 pt-[22px] sm:px-8">
         {/* Encabezado del paso */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ width: 38, height: 38, borderRadius: 10, background: cat.tint, border: `1px solid ${cat.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-            <span style={{ width: 13, height: 13, borderRadius: 4, background: cat.sol }} />
+        <div className="flex items-center gap-3">
+          <span
+            className="flex size-10 shrink-0 items-center justify-center rounded-md border"
+            // Las 10 categorías de nodo son dinámicas: no puede ser una clase.
+            style={{ background: `var(--color-nodo-${nodo.tipo}-tint)`, borderColor: `var(--color-nodo-${nodo.tipo}-bd)` }}
+          >
+            <span className="size-3.5 rounded-sm" style={{ background: `var(--color-nodo-${nodo.tipo}-sol)` }} />
           </span>
           <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: color.slate400 }}>{cat.name.toUpperCase()}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.3px" }}>{nodo.titulo}</div>
+            <div className="text-micro font-bold tracking-wide text-texto-tenue">{cat.toUpperCase()}</div>
+            <h2 className="text-xxl font-extrabold tracking-tight">{nodo.titulo}</h2>
           </div>
         </div>
 
         {/* Indicadores */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
           {tiles.map((t) => (
-            <Card key={t.label} style={{ padding: "14px 16px", borderLeft: `3px solid ${t.alerta ? color.danger : color.border}` }}>
-              <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: t.alerta ? color.danger : color.ink }}>{t.n}</div>
-              <div style={{ fontSize: 12, color: color.slate500, marginTop: 6 }}>{t.label}</div>
+            <Card key={t.label} className={cn("border-l-[3px] px-lg py-3.5", t.alerta ? "border-l-danger" : "border-l-borde")}>
+              <div className={cn("text-cifra-lg font-extrabold leading-none tabular-nums", t.alerta ? "text-danger" : "text-texto")}>
+                {t.n}
+              </div>
+              <div className="mt-1.5 text-sm text-texto-debil">{t.label}</div>
             </Card>
           ))}
-          <Card style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: ind.desde ? color.ink : color.slate400 }}>
+          <Card className="px-lg py-3.5">
+            <div className={cn("text-xl font-extrabold leading-tight", ind.desde ? "text-texto" : "text-texto-tenue")}>
               {ind.desde ? `hace ${antiguedad(ind.desde)}` : "—"}
             </div>
-            <div style={{ fontSize: 12, color: color.slate500, marginTop: 6 }}>El más antiguo</div>
+            <div className="mt-1.5 text-sm text-texto-debil">El más antiguo</div>
           </Card>
         </div>
 
-        {/* Tabla de casos en este paso */}
-        <Card style={{ overflow: "hidden" }}>
-          <div style={{ padding: "13px 16px", borderBottom: `1px solid ${color.divider}`, fontSize: 13, fontWeight: 700 }}>
-            Casos en este paso <span style={{ color: color.slate400, fontWeight: 500 }}>({casos.length})</span>
+        {/* Casos parados en este paso */}
+        <Card className="overflow-hidden">
+          <div className="border-b border-division px-lg py-3 text-md font-bold">
+            Casos en este paso <span className="font-medium text-texto-tenue">({casos.length})</span>
           </div>
           {casos.length === 0 ? (
-            <EmptyState title="No hay casos en este paso" hint="Cuando lleguen, los vas a ver acá." />
+            <EstadoVacio titulo="No hay casos en este paso" detalle="Cuando lleguen, los vas a ver acá." />
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-              <thead>
-                <tr style={{ background: color.subtle, color: color.slate500, textAlign: "left" }}>
-                  <Th>Paciente</Th><Th>Prioridad</Th><Th>Estado</Th><Th>Espera</Th><Th>Asignado</Th><Th />
-                </tr>
-              </thead>
-              <tbody>
-                {casos.map((c) => {
-                  const est = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
-                  const p = PRIO[c.prioridad];
-                  return (
-                    <tr key={c.id} onClick={() => navigate(`/casos/${c.id}`)}
-                      style={{ borderTop: `1px solid ${color.divider}`, cursor: "pointer" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = color.subtle)}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                      <Td style={{ fontWeight: 600 }}>{c.ciudadano_nombre || "—"}</Td>
-                      <Td>{p ? <Badge tone={p.tone}>{p.label}</Badge> : <span style={{ color: color.slate400 }}>Normal</span>}</Td>
-                      <Td>{c.esperando ? <Badge tone="amber">Esperando</Badge> : <Badge tone={est.tone}>{est.label}</Badge>}</Td>
-                      <Td style={{ color: tonoEspera(c.creado), fontWeight: 600 }}>{antiguedad(c.creado)}</Td>
-                      <Td style={{ color: color.slate600 }}>{c.asignado_nombre || <span style={{ color: color.slate400 }}>—</span>}</Td>
-                      <Td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                        <AccionCaso c={c} nodo={nodo} miBox={d.mi_box} cargando={accion === c.id}
-                          onAbrir={() => navigate(`/casos/${c.id}`)} onTomar={() => tomarYAbrir(c)} onLlamar={() => llamar(c)} />
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-md">
+                <thead className="bg-superficie-2 text-left">
+                  <tr>
+                    {["Paciente", "Prioridad", "Estado", "Espera", "Asignado", ""].map((h, i) => (
+                      <th key={i} className="whitespace-nowrap px-lg py-2.5 text-sm font-semibold text-texto-debil">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {casos.map((c) => {
+                    const est = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
+                    const p = PRIO[c.prioridad];
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => navigate(`/casos/${c.id}`)}
+                        className="cursor-pointer border-t border-division hover:bg-superficie-2"
+                      >
+                        <td className="whitespace-nowrap px-lg py-3 font-semibold">{c.ciudadano_nombre || "—"}</td>
+                        <td className="px-lg py-3">
+                          {p ? <Badge tone={p.tone}>{p.label}</Badge> : <span className="text-texto-tenue">Normal</span>}
+                        </td>
+                        <td className="px-lg py-3">
+                          {c.esperando ? <Badge tone="amber">Esperando</Badge> : <Badge tone={est.tone}>{est.label}</Badge>}
+                        </td>
+                        <td className={cn("whitespace-nowrap px-lg py-3 font-semibold tabular-nums", claseEspera(c.creado))}>
+                          {antiguedad(c.creado)}
+                        </td>
+                        <td className="whitespace-nowrap px-lg py-3 text-texto-suave">
+                          {c.asignado_nombre || <span className="text-texto-tenue">—</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-lg py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <AccionCaso
+                            c={c}
+                            nodo={nodo}
+                            miBox={miBox}
+                            ocupado={tomar.isPending || llamar.isPending}
+                            onAbrir={() => navigate(`/casos/${c.id}`)}
+                            onTomar={() => tomar.mutate(c.id, { onSuccess: () => navigate(`/casos/${c.id}`) })}
+                            onLlamar={() => llamar.mutate({ caso: c.id, box: miBox }, { onSuccess: () => navigate(`/casos/${c.id}`) })}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>
@@ -143,24 +162,30 @@ export default function PuestoDetalle() {
   );
 }
 
-// Acción por caso según su estado y el tipo de paso.
-function AccionCaso({ c, nodo, miBox, cargando, onAbrir, onTomar, onLlamar }) {
-  const btn = { height: 32, padding: "0 14px" };
-  if (c.mio) return <Button style={btn} onClick={onAbrir}>Continuar</Button>;
+/** La acción depende del estado del caso y del tipo de paso. */
+function AccionCaso({ c, nodo, miBox, ocupado, onAbrir, onTomar, onLlamar }) {
+  if (c.mio) return <Button size="sm" onClick={onAbrir}>Continuar</Button>;
   if (nodo.con_fila && c.en_fila) {
-    return miBox
-      ? <Button style={btn} disabled={cargando} onClick={onLlamar}>{cargando ? "…" : "Llamar"}</Button>
-      : <Button variant="secondary" style={btn} disabled title="Ocupá tu box en «Mi trabajo»">Ocupá un box</Button>;
+    return miBox ? (
+      <Button size="sm" disabled={ocupado} onClick={onLlamar}>{ocupado ? "…" : "Llamar"}</Button>
+    ) : (
+      <Button size="sm" variant="secondary" disabled title="Ocupá tu box en «Mi trabajo»">Ocupá un box</Button>
+    );
   }
   if (!c.asignado) {
-    return <Button variant="secondary" style={btn} disabled={cargando} onClick={onTomar}>{cargando ? "…" : "Tomar y abrir"}</Button>;
+    return <Button size="sm" variant="secondary" disabled={ocupado} onClick={onTomar}>{ocupado ? "…" : "Tomar y abrir"}</Button>;
   }
-  return <Button variant="secondary" style={btn} onClick={onAbrir}>Abrir</Button>;
+  return <Button size="sm" variant="secondary" onClick={onAbrir}>Abrir</Button>;
 }
 
-function Th({ children }) {
-  return <th style={{ padding: "11px 16px", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>{children}</th>;
-}
-function Td({ children, style }) {
-  return <td style={{ padding: "12px 16px", verticalAlign: "middle", ...style }}>{children}</td>;
+function CargandoPuesto() {
+  return (
+    <div className="flex flex-col gap-[22px] px-lg pb-8 pt-[22px] sm:px-8" role="status" aria-label="Cargando el paso…">
+      <Skeleton className="h-10 w-64" />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
+        {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[72px]" />)}
+      </div>
+      <Skeleton className="h-80" />
+    </div>
+  );
 }

@@ -33,14 +33,32 @@ const PATHS = {
   maximize: "M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3",
   undo: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-1",
   redo: "M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h1",
+  alert: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01",
+  chevronLeft: "M15 18l-6-6 6-6",
+  chevronRight: "M9 18l6-6-6-6",
+  chevronsLeft: "M11 17l-5-5 5-5M18 17l-5-5 5-5",
+  chevronsRight: "M13 17l5-5-5-5M6 17l5-5-5-5",
+  // Indicadores de orden de columna.
+  arrowUp: "M12 19V5M5 12l7-7 7 7",
+  arrowDown: "M12 5v14M19 12l-7 7-7-7",
+  // Doble flecha tenue: la columna es ordenable pero no es la activa.
+  ordenable: "M8 9l4-4 4 4M8 15l4 4 4-4",
+  filter: "M3 5h18l-7 8v6l-4 2v-8z",
+  luna: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
+  sol: "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
+  // Densidad de tabla (cómoda / compacta).
+  rows: "M3 5h18M3 12h18M3 19h18",
 };
 
 // Para `users` hace falta un círculo que no entra en el path simple.
 const EXTRA = {
   users: <circle cx="9" cy="7" r="4" />,
+  sol: <circle cx="12" cy="12" r="4" />,
 };
 
-export function Icon({ name, size = 18, strokeWidth = 1.8, style }) {
+// `style` sigue existiendo para los llamadores con estilos inline (los que quedan
+// por migrar); `className` es la vía para los componentes nuevos.
+export function Icon({ name, size = 18, strokeWidth = 1.8, style, className }) {
   const d = PATHS[name];
   if (!d) return null;
   return (
@@ -53,7 +71,9 @@ export function Icon({ name, size = 18, strokeWidth = 1.8, style }) {
       strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
+      className={className}
       style={{ flex: "none", ...style }}
+      aria-hidden="true"
     >
       <path d={d} />
       {EXTRA[name]}

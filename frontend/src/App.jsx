@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthContext";
 import { useInstitucion } from "./auth/InstitutionContext";
 import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
+import { EstadoError } from "./components/ui/estados";
 import Login from "./pages/Login";
 import PantallaLlamados from "./pages/PantallaLlamados";
 import Directorio from "./pages/Directorio";
@@ -67,21 +68,40 @@ function InicioHome() {
   return operativo ? <MiTrabajo /> : <Inicio />;
 }
 
+/**
+ * Resuelve el estado de sesión común a las rutas protegidas.
+ *
+ * Devuelve un elemento a renderizar, o null si la sesión está lista.
+ * Importa el orden: `error` va ANTES que `!user`. Si no se pudo consultar quién
+ * es la persona (sin red, backend caído), mandarla a login sería mentirle: no la
+ * echaron, no se pudo preguntar. Se le ofrece reintentar sin perder el token.
+ */
+function usePuerta() {
+  const { user, loading, error, reintentar } = useAuth();
+  if (loading) return <Spinner label="Cargando sesión…" />;
+  if (error)
+    return (
+      <EstadoError
+        error={error}
+        onReintentar={reintentar}
+        titulo="No se pudo conectar con el servidor"
+      />
+    );
+  if (!user) return <Navigate to="/login" replace />;
+  return null;
+}
+
 // Ruta protegida que además requiere una institución en contexto.
 function Protected({ children }) {
-  const { user, loading } = useAuth();
+  const puerta = usePuerta();
   const { institucion } = useInstitucion();
-  if (loading) return <Spinner label="Cargando sesión…" />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (puerta) return puerta;
   if (!institucion) return <Navigate to="/" replace />;
   return <Shell>{children}</Shell>;
 }
 
 function AuthOnly({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return <Spinner label="Cargando sesión…" />;
-  if (!user) return <Navigate to="/login" replace />;
-  return children;
+  return usePuerta() ?? children;
 }
 
 const P = (el) => <Protected>{el}</Protected>;

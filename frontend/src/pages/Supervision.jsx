@@ -1,162 +1,197 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/client";
-import { useInstitucion } from "../auth/InstitutionContext";
-import { PageHeader } from "../components/Shell";
-import { Badge, Button, Card, EmptyState, Field, Modal, Select, Spinner, Textarea } from "../components/ui";
-import { antiguedad } from "../lib/format";
-import { color, estadoCaso } from "../theme";
 
-const ACTIVOS = (c) => !["cerrado", "cancelado"].includes(c.estado);
+import { api } from "@/api/client";
+import { useAccion, useLista } from "@/api/queries";
+import { useInstitucion } from "@/auth/InstitutionContext";
+import { PageHeader } from "@/components/Shell";
+import { Badge, Button, ConfirmDialog, Field, Modal, Select, Textarea } from "@/components/ui";
+import { TablaRecurso } from "@/components/ui/tabla";
+import { useToast } from "@/components/ui/toast";
+import { antiguedad } from "@/lib/format";
+import { estadoCaso } from "@/lib/dominio";
+
 const PRIORIDADES = [
   { value: "normal", label: "Normal" },
   { value: "alta", label: "Alta" },
   { value: "urgente", label: "Urgente" },
 ];
 
-// Vista del jefe/supervisor de área: todos los casos activos de su área, con las
-// acciones de supervisión (reasignar, repriorizar, cancelar). Gateada por la
-// capacidad "supervision"; el backend marca `puede_supervisar` por caso.
+/**
+ * Vista del jefe/supervisor de área: los casos activos de su área, con las
+ * acciones de supervisión. Gateada por la capacidad «supervision».
+ *
+ * El filtrado lo hace el servidor (`?supervisables=true`). Antes esta pantalla
+ * pedía TODOS los casos de la institución y descartaba en el cliente los que no
+ * podía supervisar: con 531 casos eso significaba filtrar sobre los primeros 25
+ * que devolvía la API y mostrar un puñado arbitrario.
+ */
 export default function Supervision() {
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [casos, setCasos] = useState([]);
-  const [staff, setStaff] = useState([]);
-  const [membresias, setMembresias] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
-  const [reasignar, setReasignar] = useState(null); // caso en modal de reasignación
-  const [cancelar, setCancelar] = useState(null); // caso en modal de cancelación
+  const toast = useToast();
+  const [reasignar, setReasignar] = useState(null);
+  const [cancelar, setCancelar] = useState(null);
 
-  const cargar = useCallback(async () => {
-    if (!institucion) return;
-    setCargando(true);
-    try {
-      const [c, u, m] = await Promise.all([
-        api.get(`/casos/?institucion=${institucion.id}`),
-        api.get(`/usuarios/`),
-        api.get(`/membresias/?institucion=${institucion.id}`),
-      ]);
-      setCasos((c.results || c).filter((x) => x.puede_supervisar && ACTIVOS(x)));
-      setStaff(u.results || u);
-      setMembresias(m.results || m);
-      setError(false);
-    } catch {
-      setError(true);
-    } finally {
-      setCargando(false);
-    }
-  }, [institucion]);
-  useEffect(() => { cargar(); }, [cargar]);
+  const priorizar = useAccion(
+    ({ caso, prioridad }) => api.post(`/casos/${caso.id}/priorizar/`, { prioridad }),
+    { onError: (e) => toast.deError(e, "No se pudo cambiar la prioridad.") },
+  );
 
-  async function priorizar(caso, prioridad) {
-    await api.post(`/casos/${caso.id}/priorizar/`, { prioridad });
-    cargar();
-  }
-
-  // Staff candidato para reasignar: quien tenga el área del caso (si no hay área, todos).
-  function staffDelArea(areaId) {
-    if (!areaId) return staff;
-    const ids = new Set(membresias.filter((m) => (m.areas || []).includes(areaId)).map((m) => m.usuario));
-    const f = staff.filter((u) => ids.has(u.id));
-    return f.length ? f : staff;
-  }
-
-  if (cargando && !casos.length) return <Spinner label="Cargando supervisión…" />;
-  if (error && !casos.length) {
-    return (
-      <div style={{ padding: 48, textAlign: "center" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: color.slate700 }}>No pudimos cargar la supervisión</div>
-        <div style={{ fontSize: 13, color: color.slate400, margin: "6px 0 16px" }}>Revisá la conexión y reintentá.</div>
-        <Button onClick={cargar}>Reintentar</Button>
-      </div>
-    );
-  }
+  const columnas = [
+    {
+      key: "ciudadano_nombre", label: "Paciente", orden: "ciudadano__apellido", truncar: true,
+      className: "max-w-48",
+      render: (c) => (
+        <span>
+          <span className="block font-semibold">{c.ciudadano_nombre || "Sin paciente"}</span>
+          <span className="block text-xs text-texto-tenue">{c.area_nombre || "—"}</span>
+        </span>
+      ),
+    },
+    {
+      key: "paso_actual", label: "Paso / flujo", orden: "nodo_actual__titulo", truncar: true,
+      className: "max-w-52",
+      render: (c) => (
+        <span>
+          <span className="block text-texto-suave">{c.paso_actual || "—"}</span>
+          <span className="block text-xs text-texto-tenue">{c.flujo_titulo}</span>
+        </span>
+      ),
+    },
+    {
+      key: "estado", label: "Estado", orden: "estado",
+      render: (c) => {
+        const e = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
+        return <Badge tone={e.tone}>{e.label}</Badge>;
+      },
+    },
+    {
+      key: "prioridad", label: "Prioridad", orden: "prioridad", className: "w-32",
+      render: (c) => (
+        <Select
+          size="sm"
+          aria-label={`Prioridad de ${c.ciudadano_nombre || "el caso"}`}
+          value={c.prioridad}
+          disabled={priorizar.isPending}
+          // La fila abre el caso al hacer clic: sin esto, tocar el selector
+          // navegaría en vez de desplegarlo.
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            e.stopPropagation();
+            priorizar.mutate({ caso: c, prioridad: e.target.value });
+          }}
+        >
+          {PRIORIDADES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </Select>
+      ),
+    },
+    {
+      key: "asignado_nombre", label: "Asignado", orden: "asignado_a__apellido",
+      render: (c) => c.asignado_nombre
+        ? <span className="text-texto-suave">{c.asignado_nombre}</span>
+        : <span className="text-texto-tenue">—</span>,
+    },
+    {
+      key: "creado", label: "Espera", orden: "creado", className: "w-24 tabular-nums",
+      render: (c) => <span className="text-texto-debil">{antiguedad(c.creado)}</span>,
+    },
+    {
+      key: "acciones", label: "", className: "w-52 text-right",
+      render: (c) => (
+        <span className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" variant="secondary" onClick={() => setReasignar(c)}>Reasignar</Button>
+          <Button size="sm" variant="danger" onClick={() => setCancelar(c)}>Cancelar</Button>
+        </span>
+      ),
+    },
+  ];
 
   return (
     <>
-      <PageHeader
-        subtitle="Todos los casos activos de tu área. Reasigná, cambiá la prioridad o cancelá."
-        right={<Button variant="secondary" onClick={cargar}>↻ Actualizar</Button>}
-      />
-      <div style={{ padding: "22px 32px" }}>
-        {casos.length === 0 ? (
-          <EmptyState title="No hay casos activos en tu área" hint="Cuando ingresen casos a tu área, vas a poder supervisarlos desde acá." />
-        ) : (
-          <Card style={{ overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-              <thead>
-                <tr style={{ background: color.subtle, color: color.slate500, textAlign: "left" }}>
-                  <Th>Paciente</Th><Th>Paso / flujo</Th><Th>Estado</Th><Th>Prioridad</Th>
-                  <Th>Asignado</Th><Th>Espera</Th><Th />
-                </tr>
-              </thead>
-              <tbody>
-                {casos.map((c) => {
-                  const est = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
-                  return (
-                    <tr key={c.id} style={{ borderTop: `1px solid ${color.divider}` }}>
-                      <Td>
-                        <div style={{ fontWeight: 600, cursor: "pointer" }} onClick={() => navigate(`/casos/${c.id}`)}>
-                          {c.ciudadano_nombre || "Sin paciente"}
-                        </div>
-                        <div style={{ fontSize: 11.5, color: color.slate400 }}>{c.area_nombre || "—"}</div>
-                      </Td>
-                      <Td style={{ color: color.slate600 }}>
-                        {c.paso_actual || "—"}
-                        <div style={{ fontSize: 11.5, color: color.slate400 }}>{c.flujo_titulo}</div>
-                      </Td>
-                      <Td><Badge tone={est.tone}>{est.label}</Badge></Td>
-                      <Td>
-                        <Select value={c.prioridad} onChange={(e) => priorizar(c, e.target.value)} style={{ height: 32, width: 110 }}>
-                          {PRIORIDADES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                        </Select>
-                      </Td>
-                      <Td style={{ color: color.slate600 }}>{c.asignado_nombre || <span style={{ color: color.slate400 }}>—</span>}</Td>
-                      <Td style={{ color: color.slate500 }}>{antiguedad(c.creado)}</Td>
-                      <Td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <Button variant="secondary" style={{ height: 32, padding: "0 12px", marginRight: 8 }} onClick={() => setReasignar(c)}>Reasignar</Button>
-                        <Button variant="danger" style={{ height: 32, padding: "0 12px" }} onClick={() => setCancelar(c)}>Cancelar</Button>
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
-        )}
+      <PageHeader subtitle="Todos los casos activos de tu área. Reasigná, cambiá la prioridad o cancelá." />
+      <div className="px-8 pb-8 pt-[22px]">
+        <TablaRecurso
+          clave="sup"
+          recurso="casos"
+          ordenInicial="-creado"
+          params={{ institucion: institucion?.id, supervisables: true }}
+          columnas={columnas}
+          onRowClick={(c) => navigate(`/casos/${c.id}`)}
+          vacio={{
+            titulo: "No hay casos activos en tu área",
+            detalle: "Cuando ingresen casos, vas a poder supervisarlos desde acá.",
+          }}
+        />
       </div>
 
       {reasignar && (
-        <ReasignarModal caso={reasignar} candidatos={staffDelArea(reasignar.area_actual)}
-          onClose={() => setReasignar(null)} onDone={() => { setReasignar(null); cargar(); }} />
+        <ReasignarModal
+          caso={reasignar}
+          onClose={() => setReasignar(null)}
+          onDone={(nombre) => { setReasignar(null); toast.ok(`Caso reasignado a ${nombre}`); }}
+        />
       )}
       {cancelar && (
-        <CancelarModal caso={cancelar} onClose={() => setCancelar(null)} onDone={() => { setCancelar(null); cargar(); }} />
+        <CancelarModal
+          caso={cancelar}
+          onClose={() => setCancelar(null)}
+          onDone={() => { setCancelar(null); toast.ok("Caso cancelado"); }}
+        />
       )}
     </>
   );
 }
 
-export function ReasignarModal({ caso, candidatos, onClose, onDone }) {
-  const [usuarioId, setUsuarioId] = useState(candidatos[0] ? String(candidatos[0].id) : "");
-  const [guardando, setGuardando] = useState(false);
-  async function guardar() {
-    if (!usuarioId) return;
-    setGuardando(true);
-    try { await api.post(`/casos/${caso.id}/asignar/`, { usuario_id: Number(usuarioId) }); onDone(); }
-    finally { setGuardando(false); }
+export function ReasignarModal({ caso, onClose, onDone }) {
+  const toast = useToast();
+  const [usuarioId, setUsuarioId] = useState("");
+
+  // Candidatos: staff con membresía en el área del caso. Lo resuelve la API con
+  // el filtro por área en vez de traer todas las membresías y cruzarlas acá.
+  const membresias = useLista("membresias", { institucion: caso.institucion, areas: caso.area_actual, pageSize: 200 });
+  const candidatos = [];
+  const vistos = new Set();
+  for (const m of membresias.filas) {
+    if (m.usuario && !vistos.has(m.usuario)) {
+      vistos.add(m.usuario);
+      candidatos.push({ id: m.usuario, nombre: m.usuario_nombre || m.usuario_email || `Usuario ${m.usuario}` });
+    }
   }
+
+  const asignar = useAccion(
+    (id) => api.post(`/casos/${caso.id}/asignar/`, { usuario_id: Number(id) }),
+    { onError: (e) => toast.deError(e, "No se pudo reasignar el caso.") },
+  );
+
+  const elegido = usuarioId || (candidatos[0] ? String(candidatos[0].id) : "");
+
   return (
-    <Modal title={`Reasignar caso de ${caso.ciudadano_nombre || "—"}`} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button disabled={!usuarioId || guardando} onClick={guardar}>{guardando ? "Reasignando…" : "Reasignar"}</Button></>}>
-      {candidatos.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: color.slate400 }}>No hay staff disponible para esta área.</div>
+    <Modal
+      title={`Reasignar caso de ${caso.ciudadano_nombre || "—"}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Volver</Button>
+          <Button
+            disabled={!elegido || asignar.isPending}
+            onClick={() => asignar.mutate(elegido, {
+              onSuccess: () => onDone(candidatos.find((c) => String(c.id) === elegido)?.nombre || "—"),
+            })}
+          >
+            {asignar.isPending ? "Reasignando…" : "Reasignar"}
+          </Button>
+        </>
+      }
+    >
+      {membresias.isLoading ? (
+        <div className="text-md text-texto-tenue">Cargando staff…</div>
+      ) : candidatos.length === 0 ? (
+        <div className="text-md text-texto-tenue">No hay staff asignado a esta área.</div>
       ) : (
         <Field label="Asignar a">
-          <Select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)}>
-            {candidatos.map((u) => <option key={u.id} value={u.id}>{u.nombre_completo || u.email}</option>)}
+          <Select value={elegido} onChange={(e) => setUsuarioId(e.target.value)}>
+            {candidatos.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </Select>
         </Field>
       )}
@@ -165,30 +200,36 @@ export function ReasignarModal({ caso, candidatos, onClose, onDone }) {
 }
 
 export function CancelarModal({ caso, onClose, onDone }) {
+  const toast = useToast();
   const [motivo, setMotivo] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  async function confirmar() {
-    setGuardando(true);
-    try { await api.post(`/casos/${caso.id}/cancelar/`, { motivo: motivo.trim() }); onDone(); }
-    finally { setGuardando(false); }
-  }
-  return (
-    <Modal title={`Cancelar caso de ${caso.ciudadano_nombre || "—"}`} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Volver</Button>
-        <Button variant="danger" disabled={guardando} onClick={confirmar}>{guardando ? "Cancelando…" : "Cancelar caso"}</Button></>}>
-      <div style={{ fontSize: 13.5, color: color.slate600, marginBottom: 12 }}>
-        El caso saldrá de las colas y quedará cerrado como <strong>cancelado</strong>. Esta acción no se revierte.
-      </div>
-      <Field label="Motivo (opcional)">
-        <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: duplicado, paciente se retiró…" />
-      </Field>
-    </Modal>
+  const cancelar = useAccion(
+    () => api.post(`/casos/${caso.id}/cancelar/`, { motivo: motivo.trim() }),
+    { onError: (e) => toast.deError(e, "No se pudo cancelar el caso.") },
   );
-}
 
-function Th({ children }) {
-  return <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>{children}</th>;
-}
-function Td({ children, style }) {
-  return <td style={{ padding: "12px 16px", verticalAlign: "middle", ...style }}>{children}</td>;
+  return (
+    <ConfirmDialog
+      title={`Cancelar caso de ${caso.ciudadano_nombre || "—"}`}
+      peligroso
+      // Dice qué hace, no «Aceptar»: en un diálogo de cancelación un botón que
+      // diga «Cancelar» es ambiguo hasta el absurdo.
+      confirmar="Cancelar el caso"
+      volver="No, volver"
+      cargando={cancelar.isPending}
+      onConfirmar={() => cancelar.mutate(undefined, { onSuccess: onDone })}
+      onClose={onClose}
+    >
+      <p className="mb-md">
+        El caso saldrá de las colas y quedará cerrado como <strong>cancelado</strong>.
+        Esta acción no se revierte.
+      </p>
+      <Field label="Motivo (opcional)">
+        <Textarea
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Ej.: duplicado, paciente se retiró…"
+        />
+      </Field>
+    </ConfirmDialog>
+  );
 }
