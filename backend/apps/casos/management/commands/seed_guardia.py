@@ -452,8 +452,10 @@ class Command(BaseCommand):
                     # mismo mes la alerta lista media farmacia y se vuelve ruido
                     # —y una alerta ruidosa se deja de mirar, que es peor que no
                     # tenerla—.
-                    pronto = insumo.nombre in ("Dipirona", "Solución fisiológica", "Amoxicilina")
-                    primero = 40 if pronto else 240 + (insumo.id % 7) * 30
+                    # Vencimientos escalonados: con los tres venciendo el mismo
+                    # día la lista se ve sintética y, peor, no dice cuál urge.
+                    PRONTO = {"Dipirona": 12, "Amoxicilina": 27, "Solución fisiológica": 44}
+                    primero = PRONTO.get(insumo.nombre, 240 + (insumo.id % 7) * 30)
                     partidas = [
                         (f"L-{insumo.id}-A", primero),
                         (f"L-{insumo.id}-B", primero + 300),

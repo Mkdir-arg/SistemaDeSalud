@@ -59,14 +59,38 @@ const PREFIJOS = [...PREFIJOS_ESCALA, ...PREFIJOS_DIMENSION];
 const re = new RegExp(`\\b(?:${PREFIJOS.join("|")})-[a-zA-Z0-9-]+\\b`, "g");
 
 const usadas = new Map(); // clase → [archivos]
+// Nombres que parecen clases pero no lo son. Mirar todas las cadenas del
+// archivo trae algún falso positivo; se listan acá con el motivo en vez de
+// volver atrás y perder la detección que sí importa.
+const NO_SON_CLASES = new Set([
+  "stroke-width",  // propiedad CSS dentro de un `transition`, en el editor de flujos
+]);
+
 for (const f of archivos(join(RAIZ, "src"))) {
-  const src = readFileSync(f, "utf8");
-  // Sólo dentro de className="..." o cadenas de clases.
-  for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{([^}]*)\})/g)) {
+  // Se sacan los comentarios: explican por qué NO se usa una clase, y ese
+  // nombre no debería contar como uso (p. ej. «Tailwind no vería bg-avatar-x»).
+  const src = readFileSync(f, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  /*
+   * Todas las cadenas del archivo, no sólo las de `className`.
+   *
+   * Muchas clases no se escriben en el atributo: viven en un objeto de
+   * configuración («{ texto: "text-warn", barra: "bg-warn" }») y llegan al
+   * `className` por una variable. Mirando sólo el atributo, esas quedaban sin
+   * revisar — y así el tramo de aviso del tablero de camas estuvo sin color
+   * desde que se escribió, con la auditoría en verde.
+   *
+   * El costo de mirar todas las cadenas es algún falso positivo si alguien
+   * escribe un texto que parece una clase; hasta ahora no pasó, y el precio de
+   * lo contrario ya se pagó.
+   */
+  for (const m of src.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`]*)`/g)) {
     const texto = m[1] || m[2] || m[3] || "";
     for (const c of texto.match(re) || []) {
       // Se ignoran las variantes (hover:, md:): el nombre base es el mismo y el
       // escaneo lo cubre igual.
+      if (NO_SON_CLASES.has(c)) continue;
       if (!usadas.has(c)) usadas.set(c, []);
       const lista = usadas.get(c);
       const rel = relative(RAIZ, f).replace(/\\/g, "/");

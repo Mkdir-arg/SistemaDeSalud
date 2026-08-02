@@ -23,9 +23,9 @@ import { cn } from "@/lib/cn";
  * nada — ni en el numerador ni en el denominador de la ocupación.
  */
 const ESTADOS = {
-  libre: { label: "Libre", chip: "bg-badge-green-bg text-badge-green-fg", punto: "bg-ok" },
+  libre: { label: "Libre", chip: "bg-badge-green-bg text-badge-green-fg", punto: "bg-badge-green-fg" },
   ocupada: { label: "Ocupada", chip: "bg-accent-50 text-accent", punto: "bg-accent-fuerte" },
-  higiene: { label: "En higiene", chip: "bg-badge-amber-bg text-badge-amber-fg", punto: "bg-warn" },
+  higiene: { label: "En higiene", chip: "bg-badge-amber-bg text-badge-amber-fg", punto: "bg-badge-amber-fg" },
   bloqueada: { label: "Fuera de servicio", chip: "bg-division text-texto-suave", punto: "bg-texto-tenue" },
 };
 
@@ -33,7 +33,7 @@ const ESTADOS = {
 // distinta a uno al 60 %, y quien mira el tablero de reojo tiene que verlo.
 function tonoOcupacion(pct) {
   if (pct >= 90) return { texto: "text-danger", barra: "bg-danger" };
-  if (pct >= 75) return { texto: "text-warn", barra: "bg-warn" };
+  if (pct >= 75) return { texto: "text-badge-amber-fg", barra: "bg-badge-amber-fg" };
   return { texto: "text-texto-fuerte", barra: "bg-accent-fuerte" };
 }
 

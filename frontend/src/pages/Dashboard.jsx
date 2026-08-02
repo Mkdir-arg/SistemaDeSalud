@@ -215,7 +215,7 @@ function TableroGeneral({ d, navigate }) {
           c: r.ausentismo >= 25
             ? "var(--color-danger)"
             : r.ausentismo >= 15
-              ? "var(--color-warn)"
+              ? "var(--color-badge-amber-fg)"
               : "var(--color-nodo-espera-sol)",
         }]
       : []),
@@ -232,7 +232,7 @@ function TableroGeneral({ d, navigate }) {
           c: r.ocupacion_camas >= 90
             ? "var(--color-danger)"
             : r.ocupacion_camas >= 75
-              ? "var(--color-warn)"
+              ? "var(--color-badge-amber-fg)"
               : "var(--color-nodo-atencion-sol)",
         }]
       : []),

@@ -33,6 +33,7 @@ const TITULOS = {
   "/filas": "Filas de espera",
   "/internacion": "Internación",
   "/agenda": "Turnos programados",
+  "/farmacia": "Farmacia e insumos",
   "/casos": "Casos",
   "/historia": "Historia clínica",
   "/legajo": "Legajo profesional",
@@ -282,6 +283,7 @@ const GRUPOS = [
       // día por sí mismo, no como paso de un caso.
       { to: "/agenda", label: "Turnos programados", icon: "calendar", cap: "trabajo" },
       { to: "/internacion", label: "Internación", icon: "bed", cap: "trabajo" },
+      { to: "/farmacia", label: "Farmacia e insumos", icon: "cube", cap: "trabajo" },
       { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
     ],
   },
