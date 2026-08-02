@@ -160,6 +160,9 @@ class Nodo(models.Model):
     )
 
     class Meta:
+        # Orden explícito: sin él la paginación es inestable y un registro
+        # puede salir en dos páginas o en ninguna.
+        ordering = ["id"]
         verbose_name = "nodo"
         verbose_name_plural = "nodos"
 
@@ -184,6 +187,9 @@ class Conexion(models.Model):
     condicion = models.JSONField(default=dict, blank=True)
 
     class Meta:
+        # Orden explícito: sin él la paginación es inestable y un registro
+        # puede salir en dos páginas o en ninguna.
+        ordering = ["id"]
         verbose_name = "conexión"
         verbose_name_plural = "conexiones"
 

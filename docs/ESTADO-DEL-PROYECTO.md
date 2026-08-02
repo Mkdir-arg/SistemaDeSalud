@@ -171,9 +171,10 @@ sidebar/header (`src/components/Shell.jsx`) y login (`src/pages/Login.jsx`).
 ### 4.3. Otros pendientes
 
 - [ ] **Tests** automatizados (los `tests.py` de cada app están vacíos).
-- [ ] **Permisos por rol/institución**: hoy cualquier usuario autenticado ve y
-      edita todo. Falta restringir queryset por institución/membresía y por rol
-      (configurador vs administrativo vs admin).
+- [x] **Permisos auditados por rol**: barrida automática de los 24 recursos
+      registrados contra los 6 roles, comparando lo que el servidor hace
+      con lo que el rol declara poder hacer. Falla si alguien agrega un
+      recurso sin declarar su capacidad.
 - [ ] **Seed de datos** de demo (script que cargue las instituciones, flujos y
       casos del prototipo) para no empezar de cero cada vez.
 - [ ] **Subida de archivos** real para campos tipo Archivo y estudios (hoy solo

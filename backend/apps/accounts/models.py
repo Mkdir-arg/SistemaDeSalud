@@ -98,6 +98,9 @@ class Membresia(models.Model):
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        # Orden explícito: sin él la paginación es inestable y un registro
+        # puede salir en dos páginas o en ninguna.
+        ordering = ["institucion_id", "rol", "id"]
         verbose_name = "membresía"
         verbose_name_plural = "membresías"
         unique_together = [("usuario", "institucion", "rol")]
@@ -116,6 +119,9 @@ class LegajoProfesional(models.Model):
     matricula = models.CharField(max_length=60, blank=True)
 
     class Meta:
+        # Orden explícito: sin él la paginación es inestable y un registro
+        # puede salir en dos páginas o en ninguna.
+        ordering = ["id"]
         verbose_name = "legajo profesional"
         verbose_name_plural = "legajos profesionales"
 

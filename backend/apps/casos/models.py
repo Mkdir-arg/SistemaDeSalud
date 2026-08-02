@@ -134,6 +134,9 @@ class ValorCampo(models.Model):
     cargado = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        # Orden explícito: sin él la paginación es inestable y un registro
+        # puede salir en dos páginas o en ninguna.
+        ordering = ["id"]
         verbose_name = "valor de campo"
         verbose_name_plural = "valores de campo"
         unique_together = [("caso", "campo")]

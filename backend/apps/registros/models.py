@@ -44,6 +44,9 @@ class HistoriaClinica(models.Model):
     creada = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        # Orden explícito: sin él la paginación es inestable y un registro
+        # puede salir en dos páginas o en ninguna.
+        ordering = ["id"]
         verbose_name = "historia clínica"
         verbose_name_plural = "historias clínicas"
 
