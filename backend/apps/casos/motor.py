@@ -1509,6 +1509,10 @@ def _acciones_posibles(caso: Caso, nodo: Nodo | None) -> list[str]:
     """
     if nodo is None or nodo.tipo == Nodo.Tipo.FIN:
         return []
+    # Esperando cama: lo único que se puede hacer es internarlo. Avanzar sin
+    # asignar cama dejaría a un paciente internado en ningún lado.
+    if nodo.tipo == Nodo.Tipo.CAMA:
+        return ["asignar_cama"]
     # La señal de «todavía no lo llamaron» es `llamado_at`, no el box: se puede
     # llamar sin box asignado y el paciente igual quedó llamado.
     esperando_llamado = caso.en_filas.filter(

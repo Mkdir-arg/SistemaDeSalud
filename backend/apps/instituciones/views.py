@@ -2,15 +2,19 @@ from datetime import date, timedelta
 
 from django.db.models import Avg, Case, Count, DurationField, ExpressionWrapper, F, IntegerField, Q, When
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.common import BaseModelViewSet
+from apps.casos import motor
+from apps.common import BaseModelViewSet, CapacidadPermission
 
-from .models import Area, Box, Grupo, Institucion, Subarea
-from .serializers import AreaSerializer, BoxSerializer, GrupoSerializer, InstitucionSerializer, SubareaSerializer
+from .models import Area, Box, Cama, EstadiaCama, Grupo, Institucion, Subarea
+from .serializers import (
+    AreaSerializer, BoxSerializer, CamaSerializer, EstadiaCamaSerializer,
+    GrupoSerializer, InstitucionSerializer, SubareaSerializer,
+)
 
 
 class InstitucionViewSet(BaseModelViewSet):
@@ -421,3 +425,116 @@ class BoxViewSet(BaseModelViewSet):
         box.ocupado_desde = None
         box.save(update_fields=["ocupado_por", "ocupado_desde"])
         return Response(self.get_serializer(box).data)
+
+
+class CamaViewSet(BaseModelViewSet):
+    """
+    Camas de internación.
+
+    Dar de alta o de baja una cama es configurar el hospital (`config`), pero
+    marcarla higienizada o fuera de servicio es operación de todos los días y la
+    hace enfermería (`trabajo`). De ahí las dos capacidades.
+    """
+
+    queryset = Cama.objects.select_related("area", "subarea", "caso__ciudadano")
+    serializer_class = CamaSerializer
+    capacidad_requerida = "config"
+    capacidad_por_accion = {"estado": "trabajo"}
+    institucion_path = "area__institucion"
+    filter_fields = ("area", "area__institucion", "subarea", "estado", "activa")
+    search_fields = ("nombre",)
+    ordering_fields = ("nombre", "estado", "desde")
+    nombre_csv = "camas"
+    columnas_csv = [
+        ("nombre", "Cama"),
+        ("sector", "Sector"),
+        ("estado_display", "Estado"),
+        ("paciente", "Paciente"),
+        ("desde", "Desde"),
+        ("motivo", "Motivo"),
+    ]
+
+    @action(detail=True, methods=["post"])
+    def estado(self, request, pk=None):
+        """Higiene → libre, o poner/sacar de servicio.
+
+        Cuerpo: {"estado": "libre"|"higiene"|"bloqueada", "motivo": "..."}.
+        Ocupar y desocupar NO pasan por acá: eso lo mueve el motor junto con la
+        estadía del paciente.
+        """
+        cama = self.get_object()
+        try:
+            cama = motor.cambiar_estado_cama(
+                cama, request.data.get("estado"), autor=request.user,
+                motivo=(request.data.get("motivo") or "").strip(),
+            )
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(cama).data)
+
+    @action(detail=False, methods=["get"])
+    def tablero(self, request):
+        """
+        Ocupación por sector: lo que se mira para saber si entra otro paciente.
+
+        Es una sola consulta agrupada y no la lista de camas: un hospital con
+        400 camas no necesita mandarlas todas para contestar «¿cuántas quedan?».
+        Las camas dadas de baja no cuentan para nada — no existen a los fines de
+        la ocupación.
+        """
+        qs = self.filter_queryset(self.get_queryset()).filter(activa=True)
+        sectores = {}
+        for cama in qs:
+            clave = cama.subarea_id or f"area-{cama.area_id}"
+            s = sectores.setdefault(clave, {
+                "sector_id": cama.subarea_id,
+                "area_id": cama.area_id,
+                "sector": cama.sector_nombre,
+                "total": 0, "ocupadas": 0, "libres": 0, "higiene": 0, "bloqueadas": 0,
+            })
+            s["total"] += 1
+            s[{
+                Cama.Estado.OCUPADA: "ocupadas",
+                Cama.Estado.LIBRE: "libres",
+                Cama.Estado.HIGIENE: "higiene",
+                Cama.Estado.BLOQUEADA: "bloqueadas",
+            }[cama.estado]] += 1
+
+        for s in sectores.values():
+            # Sobre camas EN SERVICIO: una cama fuera de servicio no está
+            # disponible ni ocupada, y contarla en el denominador haría que un
+            # sector con la mitad de las camas rotas parezca desahogado.
+            operativas = s["total"] - s["bloqueadas"]
+            s["operativas"] = operativas
+            s["ocupacion"] = round(100 * s["ocupadas"] / operativas) if operativas else 0
+
+        lista = sorted(sectores.values(), key=lambda s: s["sector"])
+        totales = {
+            k: sum(s[k] for s in lista)
+            for k in ("total", "operativas", "ocupadas", "libres", "higiene", "bloqueadas")
+        }
+        totales["ocupacion"] = (
+            round(100 * totales["ocupadas"] / totales["operativas"]) if totales["operativas"] else 0
+        )
+        return Response({"sectores": lista, "totales": totales})
+
+
+class EstadiaCamaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """
+    Historial de paso por camas. Sólo lectura: las estadías las abre y cierra el
+    motor junto con la cama, y editarlas a mano rompería la correspondencia.
+    """
+
+    queryset = EstadiaCama.objects.select_related("cama__subarea", "cama__area")
+    serializer_class = EstadiaCamaSerializer
+    permission_classes = [IsAuthenticated, CapacidadPermission]
+    capacidad_requerida = "registros"
+    institucion_path = "cama__area__institucion"
+    filter_fields = ("cama", "caso", "cama__subarea")
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.user.is_superuser:
+            return qs
+        inst = self.request.user.membresias.filter(activo=True).values_list("institucion_id", flat=True)
+        return qs.filter(cama__area__institucion_id__in=list(inst))

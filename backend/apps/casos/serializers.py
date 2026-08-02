@@ -164,11 +164,27 @@ class CasoDetalleSerializer(CasoSerializer):
     # Se lo dio por ausente y sigue parado en este paso: la pantalla no puede
     # ofrecer atenderlo (no está), pero sí reencolarlo si aparece.
     ausente = serializers.SerializerMethodField()
+    # Dónde está internado, si lo está: la pantalla lo necesita para ofrecer el
+    # pase de sector o el egreso.
+    cama = serializers.SerializerMethodField()
 
     class Meta(CasoSerializer.Meta):
         fields = CasoSerializer.Meta.fields + [
-            "valores", "eventos", "derivados", "llamado", "llamado_box", "veces_llamado", "ausente",
+            "valores", "eventos", "derivados", "llamado", "llamado_box", "veces_llamado",
+            "ausente", "cama",
         ]
+
+    def get_cama(self, obj) -> dict | None:
+        e = (
+            obj.estadias.select_related("cama__subarea", "cama__area")
+            .filter(hasta__isnull=True).first()
+        )
+        if e is None:
+            return None
+        return {
+            "id": e.cama_id, "nombre": e.cama.nombre,
+            "sector": e.cama.sector_nombre, "desde": e.desde,
+        }
 
     def get_ausente(self, obj) -> bool:
         if not obj.nodo_actual_id:

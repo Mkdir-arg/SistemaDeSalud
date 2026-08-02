@@ -25,7 +25,10 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
-from apps.instituciones.views import AreaViewSet, BoxViewSet, GrupoViewSet, InstitucionViewSet, SubareaViewSet
+from apps.instituciones.views import (
+    AreaViewSet, BoxViewSet, CamaViewSet, EstadiaCamaViewSet, GrupoViewSet,
+    InstitucionViewSet, SubareaViewSet,
+)
 from apps.registros.views import (
     CiudadanoViewSet,
     EntradaHistoriaViewSet,
@@ -47,6 +50,8 @@ router.register("areas", AreaViewSet)
 router.register("subareas", SubareaViewSet)
 router.register("grupos", GrupoViewSet)
 router.register("boxes", BoxViewSet)
+router.register("camas", CamaViewSet)
+router.register("estadias-cama", EstadiaCamaViewSet)
 
 # formularios
 router.register("formularios", FormularioViewSet)

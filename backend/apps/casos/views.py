@@ -223,6 +223,58 @@ class CasoViewSet(BaseModelViewSet):
         caso = self.get_queryset().get(pk=caso.pk)
         return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
 
+    @action(detail=True, methods=["get", "post"], url_path="cama")
+    def cama(self, request, pk=None):
+        """
+        GET: camas que se le pueden ofrecer a este caso (las libres del sector
+        que el paso declara). POST {"cama_id": N}: lo interna y hace avanzar.
+        """
+        caso = self.get_object()
+        if request.method == "GET":
+            nodo = caso.nodo_actual
+            if nodo is None or nodo.tipo != Nodo.Tipo.CAMA:
+                return Response({"camas": []})
+            from apps.instituciones.serializers import CamaSerializer
+
+            camas = motor.camas_disponibles(nodo).select_related("area", "subarea")
+            return Response({"camas": CamaSerializer(camas, many=True).data})
+
+        if not motor.usuario_puede_tomar(request.user, caso):
+            return Response({"detail": "No integrás ningún grupo responsable de este paso."},
+                            status=status.HTTP_403_FORBIDDEN)
+        try:
+            motor.asignar_cama(caso, request.data.get("cama_id"), autor=request.user)
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def pase(self, request, pk=None):
+        """Mueve al paciente a otra cama (cuerpo: {"cama_id": N, "motivo": "..."})."""
+        caso = self.get_object()
+        try:
+            motor.pasar_de_sector(
+                caso, request.data.get("cama_id"), autor=request.user,
+                motivo=(request.data.get("motivo") or "").strip(),
+            )
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="egreso-cama")
+    def egreso_cama(self, request, pk=None):
+        """Libera la cama sin cerrar el caso (cuerpo opcional: {"motivo": "alta"|"pase"|…})."""
+        caso = self.get_object()
+        try:
+            motor.dar_de_alta_cama(caso, autor=request.user,
+                                   motivo=(request.data.get("motivo") or "").strip())
+        except motor.ErrorMotor as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        caso = self.get_queryset().get(pk=caso.pk)
+        return Response(CasoDetalleSerializer(caso, context=self.get_serializer_context()).data)
+
     @action(detail=True, methods=["post"])
     def receta(self, request, pk=None):
         """Médico o enfermería emite una receta (cuerpo: {"detalle": "..."}) en la HC del paciente."""

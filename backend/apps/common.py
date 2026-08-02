@@ -100,7 +100,17 @@ class CapacidadPermission(BasePermission):
     `protege_lectura = True` (p. ej. datos clínicos), la lectura también exige la
     capacidad. El superusuario pasa siempre.
 
-    Los viewsets declaran `capacidad_requerida`; sin ella, no se restringe."""
+    Los viewsets declaran `capacidad_requerida`; sin ella, no se restringe.
+
+    Un mismo recurso puede necesitar capacidades distintas según qué se le haga:
+    crear una cama es configurar el hospital, pero marcarla higienizada lo hace
+    enfermería todos los días. Para eso está `capacidad_por_accion`, que pisa a
+    `capacidad_requerida` en las acciones que nombre."""
+
+    @staticmethod
+    def _capacidad(view):
+        por_accion = getattr(view, "capacidad_por_accion", None) or {}
+        return por_accion.get(getattr(view, "action", None)) or getattr(view, "capacidad_requerida", None)
 
     def has_permission(self, request, view):
         user = request.user
@@ -108,7 +118,7 @@ class CapacidadPermission(BasePermission):
             return False
         if user.is_superuser:
             return True
-        cap = getattr(view, "capacidad_requerida", None)
+        cap = self._capacidad(view)
         es_lectura = request.method in SAFE_METHODS
         if es_lectura and not getattr(view, "protege_lectura", False):
             return True
@@ -130,7 +140,7 @@ class CapacidadPermission(BasePermission):
         user = request.user
         if user.is_superuser:
             return True
-        cap = getattr(view, "capacidad_requerida", None)
+        cap = self._capacidad(view)
         if request.method in SAFE_METHODS and not getattr(view, "protege_lectura", False):
             return True
         if not cap:
