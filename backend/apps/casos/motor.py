@@ -41,7 +41,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
-from apps.instituciones.models import Area
+from apps.instituciones.models import Area, Cama, EstadiaCama
 from apps.registros.models import EntradaHistoria, HistoriaClinica
 
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -148,6 +148,7 @@ TIPOS_DETENCION = {
     Nodo.Tipo.ATENCION,
     Nodo.Tipo.ESPERA_FILA,
     Nodo.Tipo.ESPERA_TIEMPO,
+    Nodo.Tipo.CAMA,
     Nodo.Tipo.FIN,
 }
 
@@ -637,11 +638,220 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
         caso.estado = Caso.Estado.EN_ESPERA
         _registrar(caso, f"En sala de espera: {nodo.titulo}", detalle="esperando ser llamado a un box", autor=autor, nodo=nodo)
 
+    elif nodo.tipo == Nodo.Tipo.CAMA:
+        # El caso queda esperando cama. No se le asigna una sola: elegirla es una
+        # decisión de quien conoce el sector (aislamiento, sexo de la sala,
+        # gravedad), y automatizarla sería adivinar algo que se paga caro.
+        caso.estado = Caso.Estado.EN_ESPERA
+        sector = _sector_del_nodo(nodo)
+        _registrar(
+            caso, f"Esperando cama: {nodo.titulo}",
+            detalle=f"sector {sector.nombre}" if sector else "sin sector definido",
+            autor=autor, nodo=nodo,
+        )
+
     elif nodo.tipo == Nodo.Tipo.FIN:
+        # Una cama ocupada por un caso cerrado no se libera nunca sola: el sector
+        # se queda sin camas y nadie entiende por qué. Se libera acá.
+        _liberar_camas_del_caso(caso, EstadiaCama.Egreso.ALTA, autor=autor)
         caso.estado = Caso.Estado.CERRADO
         _registrar(caso, f"Estado → Cerrado", detalle=nodo.titulo, autor=autor, nodo=nodo)
         if caso.bloquea_origen and caso.origen_id:
             _retornar_al_origen(caso, autor=autor)
+
+
+# --------------------------------------------------------------------------- #
+# Camas de internación
+# --------------------------------------------------------------------------- #
+def _sector_del_nodo(nodo):
+    """Sub-área a la que el nodo restringe la búsqueda de cama, si declara una."""
+    from apps.instituciones.models import Subarea
+
+    sid = (nodo.config or {}).get("sector")
+    return Subarea.objects.filter(pk=sid).first() if sid else None
+
+
+def camas_disponibles(nodo):
+    """Camas que se le pueden ofrecer a un caso parado en este nodo.
+
+    Si el nodo declara sector, sólo las de ese sector; si no, las del área del
+    flujo. Nunca las de otra institución: se filtra por el área, que ya cuelga
+    de una sola.
+    """
+    sector = _sector_del_nodo(nodo)
+    qs = Cama.objects.filter(activa=True, estado=Cama.Estado.LIBRE)
+    if sector:
+        return qs.filter(subarea=sector)
+    area_id = nodo.version.flujo.area_id
+    return qs.filter(area_id=area_id) if area_id else qs.none()
+
+
+def _liberar_camas_del_caso(caso: Caso, motivo: str, autor=None, hasta=None) -> int:
+    """Cierra las estadías abiertas del caso y deja las camas en higiene.
+
+    Devuelve cuántas liberó. Se llama al cerrar y al cancelar un caso: una cama
+    ocupada por un caso que ya terminó no se libera nunca sola, y el sector se
+    queda sin camas sin que nadie entienda por qué.
+    """
+    ahora = hasta or timezone.now()
+    n = 0
+    for estadia in EstadiaCama.objects.select_related("cama").filter(caso=caso, hasta__isnull=True):
+        estadia.hasta = ahora
+        estadia.motivo_egreso = motivo
+        estadia.save(update_fields=["hasta", "motivo_egreso"])
+        cama = estadia.cama
+        # A higiene, no a libre: entre un paciente y el siguiente la cama no
+        # está disponible, y ofrecerla sin higienizar es el error que nadie
+        # quiere cometer.
+        cama.estado = Cama.Estado.HIGIENE
+        cama.caso = None
+        cama.desde = ahora
+        cama.save(update_fields=["estado", "caso", "desde"])
+        n += 1
+    return n
+
+
+@transaction.atomic
+def asignar_cama(caso: Caso, cama_id, autor=None) -> Caso:
+    """Interna al caso en una cama y lo hace avanzar.
+
+    La cama la elige una persona: qué cama le toca a quién depende de
+    aislamiento, del sexo de la sala y de la gravedad, y adivinarlo se paga
+    caro. El motor se ocupa de que la cama esté realmente libre y de que el
+    caso no ocupe dos.
+    """
+    nodo = caso.nodo_actual
+    if nodo is None:
+        raise ErrorMotor("El caso no está posicionado en ningún nodo.")
+    if nodo.tipo != Nodo.Tipo.CAMA:
+        raise ErrorMotor("Este paso no es de asignación de cama.")
+    if EstadiaCama.objects.filter(caso=caso, hasta__isnull=True).exists():
+        raise ErrorMotor("El caso ya está internado en una cama.")
+
+    # `select_for_update` porque dos administrativos mirando el mismo tablero
+    # pueden apretar la misma cama con segundos de diferencia.
+    #
+    # El `order_by()` vacío no es adorno: `Cama` ordena por `subarea__nombre` y
+    # la sub-área es opcional, así que el orden por defecto arma un LEFT JOIN y
+    # Postgres no deja bloquear filas sobre el lado nullable de un outer join.
+    # Acá se busca por id y el orden no aporta nada.
+    cama = Cama.objects.order_by().select_for_update().filter(pk=cama_id).first()
+    if cama is None:
+        raise ErrorMotor("La cama no existe.")
+    if not cama.activa:
+        raise ErrorMotor(f"La cama {cama.nombre} está dada de baja.")
+    if cama.estado != Cama.Estado.LIBRE:
+        raise ErrorMotor(
+            f"La cama {cama.nombre} no está libre ({cama.get_estado_display().lower()})."
+        )
+
+    ahora = timezone.now()
+    cama.estado = Cama.Estado.OCUPADA
+    cama.caso = caso
+    cama.desde = ahora
+    cama.save(update_fields=["estado", "caso", "desde"])
+    EstadiaCama.objects.create(cama=cama, caso=caso, desde=ahora, autor=autor)
+
+    _registrar(caso, f"Internado en cama {cama.nombre}",
+               detalle=cama.sector_nombre, autor=autor, nodo=nodo)
+    siguiente = _siguiente_nodo(nodo, caso)
+    if siguiente is None:
+        _registrar(caso, "Caso sin salida", detalle=f"nodo «{nodo.titulo}» sin conexión",
+                   autor=autor, nodo=nodo)
+        caso.save()
+        return caso
+    caso.nodo_actual = siguiente
+    return _correr_automaticos(caso, autor=autor)
+
+
+@transaction.atomic
+def pasar_de_sector(caso: Caso, cama_id, autor=None, motivo: str = "") -> Caso:
+    """Mueve al paciente a otra cama (típicamente de otro sector).
+
+    Es el pase de UTI a sala y viceversa. Cierra la estadía anterior y abre una
+    nueva, así el recorrido del paciente queda completo sin ningún registro
+    aparte. La cama que deja va a higiene como cualquier egreso.
+    """
+    actual = (
+        EstadiaCama.objects.select_related("cama")
+        .filter(caso=caso, hasta__isnull=True).first()
+    )
+    if actual is None:
+        raise ErrorMotor("El caso no está internado en ninguna cama.")
+
+    # `order_by()` vacío por lo mismo que en `asignar_cama`.
+    destino = Cama.objects.order_by().select_for_update().filter(pk=cama_id).first()
+    if destino is None:
+        raise ErrorMotor("La cama de destino no existe.")
+    if destino.id == actual.cama_id:
+        raise ErrorMotor("El paciente ya está en esa cama.")
+    if not destino.activa or destino.estado != Cama.Estado.LIBRE:
+        raise ErrorMotor(f"La cama {destino.nombre} no está libre.")
+
+    origen = actual.cama
+    ahora = timezone.now()
+    actual.hasta = ahora
+    actual.motivo_egreso = EstadiaCama.Egreso.PASE
+    actual.save(update_fields=["hasta", "motivo_egreso"])
+    origen.estado = Cama.Estado.HIGIENE
+    origen.caso = None
+    origen.desde = ahora
+    origen.save(update_fields=["estado", "caso", "desde"])
+
+    destino.estado = Cama.Estado.OCUPADA
+    destino.caso = caso
+    destino.desde = ahora
+    destino.save(update_fields=["estado", "caso", "desde"])
+    EstadiaCama.objects.create(cama=destino, caso=caso, desde=ahora, autor=autor)
+
+    cambia_sector = origen.subarea_id != destino.subarea_id
+    _registrar(
+        caso,
+        f"Pase a {destino.sector_nombre}" if cambia_sector else f"Cambio de cama: {destino.nombre}",
+        detalle=motivo or f"{origen.nombre} → {destino.nombre}",
+        autor=autor, nodo=caso.nodo_actual,
+    )
+    caso.save()
+    return caso
+
+
+@transaction.atomic
+def dar_de_alta_cama(caso: Caso, autor=None, motivo: str = "") -> Caso:
+    """Libera la cama sin cerrar el caso.
+
+    Se usa cuando el paciente egresa de internación pero el caso sigue —queda
+    pendiente el resumen de epicrisis, o se lo deriva—. Sin esto, la única
+    forma de liberar una cama era cerrar el caso.
+    """
+    egreso = motivo if motivo in EstadiaCama.Egreso.values else EstadiaCama.Egreso.ALTA
+    if not _liberar_camas_del_caso(caso, egreso, autor=autor):
+        raise ErrorMotor("El caso no está internado en ninguna cama.")
+    _registrar(caso, "Egreso de internación",
+               detalle=dict(EstadiaCama.Egreso.choices).get(egreso, ""),
+               autor=autor, nodo=caso.nodo_actual)
+    caso.save()
+    return caso
+
+
+@transaction.atomic
+def cambiar_estado_cama(cama: Cama, estado: str, autor=None, motivo: str = "") -> Cama:
+    """Higiene → libre, o poner/sacar una cama de servicio.
+
+    No pasa por acá ocupar ni desocupar: eso lo hace el motor junto con la
+    estadía del paciente, y dejar que alguien marque «libre» una cama ocupada
+    dejaría a un paciente internado en ningún lado.
+    """
+    if estado not in (Cama.Estado.LIBRE, Cama.Estado.HIGIENE, Cama.Estado.BLOQUEADA):
+        raise ErrorMotor("Ese estado se cambia internando o dando el alta, no a mano.")
+    if cama.estado == Cama.Estado.OCUPADA:
+        raise ErrorMotor(
+            f"La cama {cama.nombre} está ocupada: primero hay que dar el egreso del paciente."
+        )
+    cama.estado = estado
+    cama.motivo = motivo[:200] if estado == Cama.Estado.BLOQUEADA else ""
+    cama.desde = timezone.now()
+    cama.save(update_fields=["estado", "motivo", "desde"])
+    return cama
 
 
 # --------------------------------------------------------------------------- #
@@ -815,6 +1025,7 @@ def cancelar_caso(caso: Caso, autor=None, motivo: str = "") -> Caso:
     if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO):
         raise ErrorMotor("El caso ya está finalizado.")
     caso.en_filas.filter(atendido=False).update(atendido=True)  # sale de las colas
+    _liberar_camas_del_caso(caso, EstadiaCama.Egreso.ALTA, autor=autor)
     caso.estado = Caso.Estado.CANCELADO
     caso.esperando = False
     caso.save(update_fields=["estado", "esperando", "actualizado"])

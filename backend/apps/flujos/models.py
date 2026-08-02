@@ -111,6 +111,9 @@ class Nodo(models.Model):
         ATENCION = "atencion", "Atención"
         DERIVAR = "derivar", "Derivar"
         ESPERA_FILA = "espera", "Espera de fila"
+        # El caso espera una cama del sector; se destraba cuando alguien se
+        # la asigna desde el tablero de internación.
+        CAMA = "cama", "Asignar cama"
         ESPERA_TIEMPO = "tiempo", "Espera por tiempo"
         ESTADO = "estado", "Estado"
         NOTIFICAR = "notificar", "Notificación"

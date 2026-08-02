@@ -124,3 +124,112 @@ class Grupo(models.Model):
 # Nombre estable para el esquema OpenAPI: hay tres modelos con un campo
 # «estado» distinto y sin esto quedan documentados como «Estado719Enum».
 ESTADOS_INSTITUCION = Institucion.Estado.choices
+
+
+class Cama(models.Model):
+    """
+    Cama de internación.
+
+    El sector (`subarea`) es lo que se mira para operar: «UTI», «Clínica
+    médica», «Pediatría». Se reutiliza la jerarquía que ya existe —área y
+    sub-área— en vez de inventar una paralela: una cama vive en el mismo lugar
+    del organigrama que todo lo demás, y así hereda el alcance por institución,
+    los permisos y los tableros sin nada especial.
+
+    **Estado y ocupante son dos hechos distintos.** `estado` responde «¿se puede
+    usar?» y `caso` responde «¿quién está?». La invariante es que
+    `estado == OCUPADA` si y solo si hay un caso; el motor las mueve juntas y
+    hay un test que la verifica sobre la base entera.
+
+    El historial de quién pasó por cada cama vive en `EstadiaCama`: es lo que
+    responde «¿dónde estuvo este paciente?» y lo que permite medir la ocupación
+    de un período que ya pasó.
+    """
+
+    class Estado(models.TextChoices):
+        LIBRE = "libre", "Libre"
+        OCUPADA = "ocupada", "Ocupada"
+        # Entre un paciente y el siguiente la cama NO está disponible. Sin este
+        # estado, el sistema ofrecería una cama sin higienizar apenas se va
+        # alguien, que es exactamente el error que nadie quiere cometer.
+        HIGIENE = "higiene", "En higiene"
+        BLOQUEADA = "bloqueada", "Fuera de servicio"
+
+    area = models.ForeignKey(Area, on_delete=models.CASCADE, related_name="camas")
+    # El sector de internación. Opcional porque no toda institución subdivide.
+    subarea = models.ForeignKey(
+        Subarea, on_delete=models.SET_NULL, null=True, blank=True, related_name="camas",
+        verbose_name="sector",
+    )
+    nombre = models.CharField(max_length=80, help_text="Ej.: «101-A», «UTI 3»")
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.LIBRE)
+    # Quién la ocupa ahora. Nulo en cualquier otro estado (ver invariante arriba).
+    caso = models.ForeignKey(
+        "casos.Caso", on_delete=models.SET_NULL, null=True, blank=True, related_name="camas",
+    )
+    # Desde cuándo está en el estado actual: es la antigüedad que se muestra en
+    # el tablero («ocupada hace 3 días», «esperando higiene hace 40 minutos»).
+    desde = models.DateTimeField(null=True, blank=True)
+    # Por qué está fuera de servicio (mantenimiento, aislamiento, obra).
+    motivo = models.CharField(max_length=200, blank=True)
+    activa = models.BooleanField(default=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "cama"
+        verbose_name_plural = "camas"
+        ordering = ["subarea__nombre", "nombre"]
+        unique_together = [("area", "nombre")]
+
+    def __str__(self):
+        return f"{self.nombre} · {self.subarea.nombre if self.subarea_id else self.area.nombre}"
+
+    @property
+    def sector_nombre(self):
+        return self.subarea.nombre if self.subarea_id else self.area.nombre
+
+    @property
+    def disponible(self):
+        return self.activa and self.estado == self.Estado.LIBRE
+
+
+class EstadiaCama(models.Model):
+    """
+    Paso de un caso por una cama: desde cuándo, hasta cuándo y por qué se fue.
+
+    Es el historial que responde «¿dónde estuvo este paciente?» —una pregunta
+    clínica y administrativa real— y el único dato que permite medir la
+    ocupación de un período que ya pasó: la foto de `Cama.estado` sólo sabe del
+    momento actual.
+
+    Un pase de sector cierra una estadía y abre otra: así el recorrido queda
+    completo sin ningún registro aparte.
+    """
+
+    class Egreso(models.TextChoices):
+        ALTA = "alta", "Alta"
+        PASE = "pase", "Pase a otro sector"
+        DERIVACION = "derivacion", "Derivación a otra institución"
+        FALLECIMIENTO = "fallecimiento", "Fallecimiento"
+
+    cama = models.ForeignKey(Cama, on_delete=models.CASCADE, related_name="estadias")
+    caso = models.ForeignKey("casos.Caso", on_delete=models.CASCADE, related_name="estadias")
+    desde = models.DateTimeField()
+    hasta = models.DateTimeField(null=True, blank=True)
+    motivo_egreso = models.CharField(max_length=20, choices=Egreso.choices, blank=True)
+    # Quién asignó la cama (para trazabilidad; no es el responsable clínico).
+    autor = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="estadias_asignadas",
+    )
+
+    class Meta:
+        verbose_name = "estadía en cama"
+        verbose_name_plural = "estadías en cama"
+        ordering = ["-desde", "-id"]
+
+    def __str__(self):
+        return f"{self.caso_id} en {self.cama} desde {self.desde:%d/%m/%Y}"
+
+    @property
+    def abierta(self):
+        return self.hasta is None
