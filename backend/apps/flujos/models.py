@@ -113,6 +113,8 @@ class Nodo(models.Model):
         ESPERA_FILA = "espera", "Espera de fila"
         ESPERA_TIEMPO = "tiempo", "Espera por tiempo"
         ESTADO = "estado", "Estado"
+        NOTIFICAR = "notificar", "Notificación"
+        INTEGRACION = "integracion", "Integración"
         FIN = "fin", "Fin"
 
     version = models.ForeignKey(
@@ -132,6 +134,9 @@ class Nodo(models.Model):
     #  - estado: {"estado": "En espera"}
     #  - tiempo: {"duracion": "1 mes"}
     #  - atencion: {"plantilla": "evaluación inicial"}
+    #  - notificar: {"titulo": str, "detalle": str, "a": "grupos"|"asignado"}
+    #  - integracion: {"url": str, "metodo": "GET"|"POST", "cuerpo": {...},
+    #                  "guardar_en": <id de Campo>, "ruta": "a.b.c"}
     config = models.JSONField(default=dict, blank=True)
 
     formulario = models.ForeignKey(

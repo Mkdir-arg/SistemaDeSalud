@@ -27,9 +27,13 @@ Convención de `Conexion.condicion` (nodos Decisión):
 from __future__ import annotations
 
 import contextvars
+import json
 import unicodedata
 from contextlib import contextmanager
 from datetime import date
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from django.db import transaction
 from django.utils import timezone
@@ -133,6 +137,8 @@ TIPOS_AUTOMATICOS = {
     Nodo.Tipo.ACCION,
     Nodo.Tipo.DERIVAR,
     Nodo.Tipo.ESTADO,
+    Nodo.Tipo.NOTIFICAR,
+    Nodo.Tipo.INTEGRACION,
 }
 # Nodos que detienen el avance hasta un disparador externo.
 TIPOS_DETENCION = {
@@ -354,9 +360,129 @@ def _notificar_grupo(nodo: Nodo | None, titulo: str, detalle: str = "", caso: Ca
     ])
 
 
+# --------------------------------------------------------------------------- #
+# Integración con sistemas externos
+# --------------------------------------------------------------------------- #
+def _host_permitido(url: str) -> bool:
+    """
+    ¿La URL apunta a un host habilitado por la infraestructura?
+
+    El nodo de integración deja que alguien con permiso de DISEÑO configure una
+    URL que llama el servidor. Sin restricción eso es un SSRF con formulario:
+    quien diseña un flujo podría hacer que el backend consulte un servicio
+    interno que no está expuesto a internet y guardar la respuesta en un campo
+    del caso, que después se lee desde la pantalla.
+
+    Es lista blanca y no «bloquear rangos privados» porque el DNS puede cambiar
+    de respuesta entre la validación y la petición. Y la lista vive en settings,
+    no en el flujo: habilitar un destino es una decisión de infraestructura, no
+    de quien dibuja el diagrama.
+    """
+    from django.conf import settings
+
+    permitidos = getattr(settings, "INTEGRACIONES_PERMITIDAS", []) or []
+    if not permitidos:
+        return False
+    partes = urlparse(url)
+    if partes.scheme not in ("http", "https"):
+        return False
+    host = (partes.hostname or "").lower()
+    return any(host == h.lower() or host.endswith("." + h.lower()) for h in permitidos)
+
+
+def _extraer(datos, ruta: str):
+    """Sigue una ruta tipo `paciente.cobertura.plan` dentro de la respuesta."""
+    actual = datos
+    for parte in (ruta or "").split("."):
+        if not parte:
+            continue
+        if isinstance(actual, dict):
+            actual = actual.get(parte)
+        elif isinstance(actual, list) and parte.isdigit():
+            actual = actual[int(parte)] if int(parte) < len(actual) else None
+        else:
+            return None
+    return actual
+
+
+def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
+    """
+    Llama a un sistema externo y, si se pidió, guarda un dato de la respuesta.
+
+    Config: `{url, metodo, cuerpo, guardar_en: <id de Campo>, ruta, obligatorio}`.
+
+    Ante una falla, por defecto se ANOTA y el caso sigue: un padrón que no
+    responde no puede dejar a un paciente trabado en el circuito. Con
+    `obligatorio: true` el flujo se detiene, para los pasos donde seguir sin el
+    dato no tiene sentido.
+    """
+    from django.conf import settings
+
+    cfg = nodo.config or {}
+    url = (cfg.get("url") or "").strip()
+    obligatorio = bool(cfg.get("obligatorio"))
+
+    def fallar(motivo: str):
+        _registrar(caso, f"Integración fallida: {nodo.titulo}", detalle=motivo, autor=autor, nodo=nodo)
+        if obligatorio:
+            raise ErrorMotor(f"«{nodo.titulo}» no pudo completarse: {motivo}")
+
+    if not url:
+        return fallar("el nodo no tiene URL configurada")
+    if not _host_permitido(url):
+        return fallar(
+            "el destino no está habilitado. Un administrador tiene que agregarlo a "
+            "CAUCE_INTEGRACIONES_PERMITIDAS."
+        )
+
+    metodo = (cfg.get("metodo") or "GET").upper()
+    cuerpo = cfg.get("cuerpo")
+    datos = json.dumps(cuerpo).encode() if (cuerpo and metodo != "GET") else None
+    pedido = Request(url, data=datos, method=metodo)
+    pedido.add_header("Content-Type", "application/json")
+    pedido.add_header("Accept", "application/json")
+
+    try:
+        with urlopen(pedido, timeout=getattr(settings, "INTEGRACIONES_TIMEOUT", 6)) as r:
+            # Tope de lectura: una respuesta enorme no puede comerse la memoria
+            # del proceso que está atendiendo a un paciente.
+            crudo = r.read(256_000).decode("utf-8", "replace")
+        respuesta = json.loads(crudo) if crudo.strip() else {}
+    except (URLError, HTTPError, TimeoutError, OSError) as e:
+        return fallar(f"no respondió ({type(e).__name__})")
+    except ValueError:
+        return fallar("la respuesta no es JSON")
+
+    campo_id = cfg.get("guardar_en")
+    if campo_id:
+        valor = _extraer(respuesta, cfg.get("ruta", ""))
+        ValorCampo.objects.update_or_create(
+            caso=caso, campo_id=campo_id,
+            defaults={"nodo": nodo, "valor": "" if valor is None else str(valor)},
+        )
+        _registrar(caso, nodo.titulo or "Integración", detalle=f"dato recibido: {valor}", autor=autor, nodo=nodo)
+    else:
+        _registrar(caso, nodo.titulo or "Integración", detalle="consulta realizada", autor=autor, nodo=nodo)
+
+
 def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
     """Aplica el efecto de *entrar* a un nodo automático o de espera."""
-    if nodo.tipo == Nodo.Tipo.ESTADO:
+    if nodo.tipo == Nodo.Tipo.NOTIFICAR:
+        cfg = nodo.config or {}
+        titulo = cfg.get("titulo") or nodo.titulo or "Aviso del flujo"
+        # El detalle admite {paciente}: un aviso que dice a quién se refiere
+        # sirve; uno que dice «revisá el sistema», no.
+        detalle = (cfg.get("detalle") or "").replace("{paciente}", _nombre_paciente(caso))
+        if cfg.get("a") == "asignado":
+            _notificar(caso.asignado_a, titulo, detalle, caso=caso)
+        else:
+            _notificar_grupo(nodo, titulo, detalle, caso=caso, excluir=autor)
+        _registrar(caso, f"Aviso enviado: {titulo}", detalle=detalle, autor=autor, nodo=nodo)
+
+    elif nodo.tipo == Nodo.Tipo.INTEGRACION:
+        _llamar_externo(caso, nodo, autor=autor)
+
+    elif nodo.tipo == Nodo.Tipo.ESTADO:
         nuevo = (nodo.config or {}).get("estado")
         valores_validos = {c for c, _ in Caso.Estado.choices}
         if nuevo in valores_validos:
@@ -1105,7 +1231,28 @@ def validar_version(version) -> list[dict]:
                                       "detalle": f"«{n.titulo}» usa un campo que no se carga en ningún formulario del flujo."})
                     break
 
-        # 6) Formulario sin formulario asignado.
+        # 6) Integración sin URL, o con un destino que la infraestructura no
+        #    habilitó. Avisarlo al publicar es mucho mejor que descubrirlo con un
+        #    paciente esperando: el flujo se dibuja hoy y se ejecuta mañana.
+        if n.tipo == Nodo.Tipo.INTEGRACION:
+            url = ((n.config or {}).get("url") or "").strip()
+            if not url:
+                problemas.append({"sev": "error", "nodo_id": n.pk,
+                                  "titulo": f"«{n.titulo}» no tiene URL",
+                                  "detalle": "El paso de integración no haría nada."})
+            elif not _host_permitido(url):
+                problemas.append({"sev": "error", "nodo_id": n.pk,
+                                  "titulo": "Destino de integración no habilitado",
+                                  "detalle": f"«{n.titulo}» apunta a un servicio que un administrador "
+                                             "todavía no habilitó en el sistema."})
+
+        # 7) Notificación sin nada que decir.
+        if n.tipo == Nodo.Tipo.NOTIFICAR and not ((n.config or {}).get("titulo") or n.titulo):
+            problemas.append({"sev": "aviso", "nodo_id": n.pk,
+                              "titulo": "Aviso sin título",
+                              "detalle": "Llegaría una notificación vacía."})
+
+        # 8) Formulario sin formulario asignado.
         if n.tipo == Nodo.Tipo.FORMULARIO and not n.formulario_id:
             problemas.append({"sev": "aviso", "nodo_id": n.pk,
                               "titulo": f"«{n.titulo}» no tiene formulario asignado",

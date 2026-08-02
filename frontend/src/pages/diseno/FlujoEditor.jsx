@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { Badge, Button, Checkbox, Field, Input, Select, Spinner } from "../../components/ui";
+import { Badge, Button, Checkbox, Field, Input, Select, Spinner, Textarea } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { estadoCaso, estadoVersion } from "../../lib/dominio";
 import { TIPOS_NODO, catDe } from "@/lib/nodos";
@@ -2039,6 +2039,78 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           <Field label="Duración (informativa)">
             <Input value={(nodo.config || {}).duracion || ""} onChange={(e) => setConfig({ duracion: e.target.value })} placeholder="1 mes" />
           </Field>
+        )}
+
+        {nodo.tipo === "notificar" && (
+          <>
+            <Field label="Título del aviso">
+              <Input
+                value={(nodo.config || {}).titulo || ""}
+                onChange={(e) => setConfig({ titulo: e.target.value })}
+                placeholder="Paciente en espera prolongada"
+              />
+            </Field>
+            <Field label="Detalle" hint="Podés usar {paciente} y se reemplaza por su nombre.">
+              <Textarea
+                value={(nodo.config || {}).detalle || ""}
+                onChange={(e) => setConfig({ detalle: e.target.value })}
+                placeholder="{paciente} lleva más de 2 horas esperando."
+              />
+            </Field>
+            <Field label="¿A quién le llega?">
+              <Select value={(nodo.config || {}).a || "grupos"} onChange={(e) => setConfig({ a: e.target.value })}>
+                <option value="grupos">A los grupos responsables de este nodo</option>
+                <option value="asignado">A quien tenga el caso</option>
+              </Select>
+            </Field>
+          </>
+        )}
+
+        {nodo.tipo === "integracion" && (
+          <>
+            <Field label="URL del servicio">
+              <Input
+                value={(nodo.config || {}).url || ""}
+                onChange={(e) => setConfig({ url: e.target.value })}
+                placeholder="https://padron.gob.ar/api/afiliado"
+              />
+              {!(nodo.config || {}).url && <AvisoFalta texto="Sin URL, este paso no hace nada." />}
+            </Field>
+            <Field label="Método">
+              <Select value={(nodo.config || {}).metodo || "GET"} onChange={(e) => setConfig({ metodo: e.target.value })}>
+                <option value="GET">GET (consultar)</option>
+                <option value="POST">POST (enviar)</option>
+              </Select>
+            </Field>
+            <Field label="Guardar la respuesta en" hint="El dato queda cargado en el caso y se puede usar en una Decisión.">
+              <Select value={(nodo.config || {}).guardar_en || ""} onChange={(e) => setConfig({ guardar_en: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">— No guardar nada —</option>
+                {campos.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </Select>
+            </Field>
+            {(nodo.config || {}).guardar_en && (
+              <Field label="Qué parte de la respuesta" hint="Ruta dentro del JSON, por ejemplo: afiliado.plan">
+                <Input
+                  value={(nodo.config || {}).ruta || ""}
+                  onChange={(e) => setConfig({ ruta: e.target.value })}
+                  placeholder="afiliado.plan"
+                />
+              </Field>
+            )}
+            <Checkbox
+              checked={!!(nodo.config || {}).obligatorio}
+              onChange={(e) => setConfig({ obligatorio: e.target.checked })}
+              label="Detener el caso si el servicio no responde"
+            />
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", lineHeight: 1.5, marginTop: 4 }}>
+              Sin tildar, si el servicio falla se anota en el historial y el caso sigue: un
+              padrón caído no debería dejar a un paciente trabado.
+              <br /><br />
+              El destino tiene que estar habilitado por un administrador del sistema. Es a
+              propósito: que alguien pueda elegir a qué servidor llama la aplicación es una
+              decisión de infraestructura, no del diseño del flujo.
+            </div>
+          </>
         )}
 
         {/* Quién hace este paso: grupos responsables. */}

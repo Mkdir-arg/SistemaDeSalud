@@ -132,6 +132,30 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
 }
 
+# --------------------------------------------------------------------------- #
+# Integraciones con sistemas externos (nodo «Integración» del diseñador)
+# --------------------------------------------------------------------------- #
+# Lista blanca de hosts a los que un flujo puede llamar.
+#
+# El nodo de integración deja que alguien con permiso de DISEÑO configure una URL
+# que llama el SERVIDOR. Sin restricción eso es un SSRF con formulario: quien
+# diseñe un flujo podría hacer que el backend consulte `http://localhost:5432`,
+# el endpoint de metadatos de la nube (169.254.169.254) o cualquier servicio
+# interno que no está expuesto a internet — y guardar la respuesta en un campo
+# del caso, que después se lee desde la pantalla.
+#
+# Se resuelve con lista blanca y no bloqueando rangos privados porque el DNS
+# puede cambiar de respuesta entre la validación y la petición (rebinding).
+#
+# VACÍA POR DEFECTO: la función viene apagada y hay que habilitar cada host a
+# conciencia, del lado de la infraestructura y no del diseñador del flujo.
+INTEGRACIONES_PERMITIDAS = [
+    h.strip() for h in env("CAUCE_INTEGRACIONES_PERMITIDAS", "").split(",") if h.strip()
+]
+# Tope de espera de una llamada externa. El motor la hace en línea, así que un
+# servicio lento colgaría el avance del caso.
+INTEGRACIONES_TIMEOUT = int(env("CAUCE_INTEGRACIONES_TIMEOUT", "6"))
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),

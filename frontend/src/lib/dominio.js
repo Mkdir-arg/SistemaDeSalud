@@ -46,6 +46,8 @@ const NOMBRE_NODO = {
   tiempo: "Espera por tiempo",
   atencion: "Atención",
   estado: "Estado",
+  notificar: "Notificación",
+  integracion: "Integración",
   fin: "Fin",
 };
 

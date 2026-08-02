@@ -116,6 +116,12 @@
   --color-nodo-estado-sol: #5B7A99;
   --color-nodo-estado-tint: #EEF2F6;
   --color-nodo-estado-bd: #CDD8E2;
+  --color-nodo-notificar-sol: #7C4DBE;
+  --color-nodo-notificar-tint: #F1EBFA;
+  --color-nodo-notificar-bd: #D7C6EF;
+  --color-nodo-integracion-sol: #B04A2F;
+  --color-nodo-integracion-tint: #FBEDE8;
+  --color-nodo-integracion-bd: #EFC8B9;
   --color-nodo-fin-sol: #475467;
   --color-nodo-fin-tint: #EFF1F4;
   --color-nodo-fin-bd: #D0D5DD;
@@ -247,6 +253,12 @@
   --color-nodo-estado-sol: color-mix(in srgb, #5B7A99 62%, white);
   --color-nodo-estado-tint: color-mix(in srgb, #5B7A99 16%, var(--color-superficie));
   --color-nodo-estado-bd: color-mix(in srgb, #5B7A99 38%, var(--color-superficie));
+  --color-nodo-notificar-sol: color-mix(in srgb, #7C4DBE 62%, white);
+  --color-nodo-notificar-tint: color-mix(in srgb, #7C4DBE 16%, var(--color-superficie));
+  --color-nodo-notificar-bd: color-mix(in srgb, #7C4DBE 38%, var(--color-superficie));
+  --color-nodo-integracion-sol: color-mix(in srgb, #B04A2F 62%, white);
+  --color-nodo-integracion-tint: color-mix(in srgb, #B04A2F 16%, var(--color-superficie));
+  --color-nodo-integracion-bd: color-mix(in srgb, #B04A2F 38%, var(--color-superficie));
   --color-nodo-fin-sol: color-mix(in srgb, #475467 62%, white);
   --color-nodo-fin-tint: color-mix(in srgb, #475467 16%, var(--color-superficie));
   --color-nodo-fin-bd: color-mix(in srgb, #475467 38%, var(--color-superficie));

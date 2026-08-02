@@ -9,7 +9,7 @@ validación previa a publicar.
         ├─ [Alta]    → Derivar(Cardiología) → Estado(Atendido) → Fin
         └─ [default] → Espera(Sala) → Atención(evaluación) → Fin
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.accounts.models import LegajoProfesional, Membresia, Usuario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
@@ -18,7 +18,7 @@ from apps.instituciones.models import Area, Box, Grupo, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria
 
 from . import motor
-from .models import Caso, ItemFila, ValorCampo
+from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
 
 
 class MotorTestCase(TestCase):
@@ -564,3 +564,171 @@ class CondicionesTests(TestCase):
         self._cargar("triage", "Rojo")
         self.assertFalse(self._evalua(self._regla("triage", "=", "rojo")))
         self.assertTrue(self._evalua(self._regla("triage", "=", "Rojo")))
+
+
+class IntegracionTests(TestCase):
+    """
+    Nodo de integración: la pieza que hace verdadera la promesa de «se integra
+    con los sistemas existentes».
+
+    Lo que más se prueba acá es lo que NO tiene que pasar. El nodo deja que
+    alguien con permiso de diseño configure una URL que llama el servidor, así
+    que sin lista blanca es un SSRF con formulario.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.flujo = Flujo.objects.create(institucion=self.inst, titulo="F")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+        self.caso = Caso.objects.create(institucion=self.inst, version=self.version)
+
+    def _nodo(self, **config):
+        return Nodo.objects.create(
+            version=self.version, tipo="integracion", titulo="Padrón", config=config
+        )
+
+    # --- Lista blanca ------------------------------------------------------ #
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=[])
+    def test_sin_lista_blanca_la_funcion_esta_apagada(self):
+        self.assertFalse(motor._host_permitido("https://padron.gob.ar/api"))
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=["padron.gob.ar"])
+    def test_solo_pasa_el_host_habilitado_y_sus_subdominios(self):
+        self.assertTrue(motor._host_permitido("https://padron.gob.ar/api/x"))
+        self.assertTrue(motor._host_permitido("https://api.padron.gob.ar/x"))
+        self.assertFalse(motor._host_permitido("https://otro.com/x"))
+        # Y no alcanza con que el host TERMINE parecido.
+        self.assertFalse(motor._host_permitido("https://malpadron.gob.ar/x"))
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=["padron.gob.ar"])
+    def test_no_se_puede_apuntar_a_la_red_interna(self):
+        """
+        El caso que motiva la lista blanca: alguien con permiso de diseño
+        apuntando el backend a un servicio interno o al metadata de la nube.
+        """
+        for url in [
+            "http://localhost:5432/",
+            "http://127.0.0.1:8000/api/usuarios/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://backend:8000/admin/",
+            "file:///etc/passwd",
+        ]:
+            self.assertFalse(motor._host_permitido(url), url)
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=["padron.gob.ar"])
+    def test_solo_http_y_https(self):
+        self.assertFalse(motor._host_permitido("ftp://padron.gob.ar/x"))
+
+    # --- Comportamiento ante fallas ---------------------------------------- #
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=[])
+    def test_un_destino_no_habilitado_anota_y_el_caso_sigue(self):
+        """
+        Por defecto el caso NO se traba: un padrón caído no puede dejar a un
+        paciente detenido en el circuito.
+        """
+        nodo = self._nodo(url="https://padron.gob.ar/api")
+        motor._aplicar_efecto_entrada(self.caso, nodo)
+
+        evento = EventoCaso.objects.filter(caso=self.caso).last()
+        self.assertIn("Integración fallida", evento.titulo)
+        self.assertIn("no está habilitado", evento.detalle)
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=[])
+    def test_marcado_obligatorio_el_flujo_se_detiene(self):
+        """Para los pasos donde seguir sin el dato no tendría sentido."""
+        nodo = self._nodo(url="https://padron.gob.ar/api", obligatorio=True)
+        with self.assertRaises(motor.ErrorMotor):
+            motor._aplicar_efecto_entrada(self.caso, nodo)
+
+    def test_sin_url_configurada_lo_dice(self):
+        nodo = self._nodo()
+        motor._aplicar_efecto_entrada(self.caso, nodo)
+        self.assertIn("no tiene URL", EventoCaso.objects.filter(caso=self.caso).last().detalle)
+
+    @override_settings(INTEGRACIONES_PERMITIDAS=["padron.gob.ar"])
+    def test_la_validacion_avisa_del_destino_no_habilitado(self):
+        """
+        El flujo se dibuja hoy y se ejecuta mañana: enterarse al publicar es
+        mucho mejor que descubrirlo con un paciente esperando.
+        """
+        ini = Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+        integ = self._nodo(url="https://otro-sistema.com/api")
+        fin = Nodo.objects.create(version=self.version, tipo="fin", titulo="Fin")
+        Conexion.objects.create(version=self.version, origen=ini, destino=integ, condicion={})
+        Conexion.objects.create(version=self.version, origen=integ, destino=fin, condicion={})
+
+        titulos = [p["titulo"] for p in motor.validar_version(self.version)]
+        self.assertIn("Destino de integración no habilitado", titulos)
+
+        # Con el host habilitado, deja de ser un problema.
+        integ.config = {"url": "https://padron.gob.ar/api"}
+        integ.save()
+        titulos = [p["titulo"] for p in motor.validar_version(self.version)]
+        self.assertNotIn("Destino de integración no habilitado", titulos)
+
+    def test_la_validacion_avisa_de_la_integracion_sin_url(self):
+        ini = Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+        integ = self._nodo()
+        fin = Nodo.objects.create(version=self.version, tipo="fin", titulo="Fin")
+        Conexion.objects.create(version=self.version, origen=ini, destino=integ, condicion={})
+        Conexion.objects.create(version=self.version, origen=integ, destino=fin, condicion={})
+        self.assertIn("«Padrón» no tiene URL", [p["titulo"] for p in motor.validar_version(self.version)])
+
+    # --- Lectura de la respuesta ------------------------------------------- #
+
+    def test_extraer_sigue_una_ruta_anidada(self):
+        datos = {"paciente": {"cobertura": {"plan": "PAMI"}}, "hist": [{"a": 1}, {"a": 2}]}
+        self.assertEqual(motor._extraer(datos, "paciente.cobertura.plan"), "PAMI")
+        self.assertEqual(motor._extraer(datos, "hist.1.a"), 2)
+        self.assertIsNone(motor._extraer(datos, "paciente.no.existe"))
+        self.assertEqual(motor._extraer(datos, ""), datos)
+
+
+class NotificacionNodoTests(TestCase):
+    """Nodo de notificación: avisar a un equipo desde el propio flujo."""
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.grupo = Grupo.objects.create(area=self.area, nombre="Médicos de guardia")
+        self.medico = Usuario.objects.create_user(email="med@test.local", password="x")
+        self.grupo.miembros.add(self.medico)
+
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="F")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+        self.ciudadano = Ciudadano.objects.create(institucion=self.inst, nombre="Ana", apellido="Pérez")
+        self.caso = Caso.objects.create(
+            institucion=self.inst, version=self.version, ciudadano=self.ciudadano
+        )
+
+    def test_avisa_a_los_integrantes_del_grupo_responsable(self):
+        nodo = Nodo.objects.create(
+            version=self.version, tipo="notificar", titulo="Avisar a guardia",
+            config={"titulo": "Paciente crítico", "detalle": "{paciente} necesita atención"},
+        )
+        nodo.grupos.add(self.grupo)
+
+        motor._aplicar_efecto_entrada(self.caso, nodo)
+
+        aviso = Notificacion.objects.get(usuario=self.medico)
+        self.assertEqual(aviso.titulo, "Paciente crítico")
+        # {paciente} se reemplaza: un aviso que dice a quién se refiere sirve.
+        self.assertEqual(aviso.detalle, "Ana Pérez necesita atención")
+        self.assertEqual(aviso.caso_id, self.caso.pk)
+
+    def test_puede_avisar_solo_a_quien_tiene_el_caso(self):
+        self.caso.asignado_a = self.medico
+        self.caso.save()
+        nodo = Nodo.objects.create(
+            version=self.version, tipo="notificar", titulo="Recordatorio",
+            config={"titulo": "Pendiente", "a": "asignado"},
+        )
+        motor._aplicar_efecto_entrada(self.caso, nodo)
+        self.assertEqual(Notificacion.objects.filter(usuario=self.medico).count(), 1)
+
+    def test_el_motor_lo_atraviesa_solo(self):
+        """Es un nodo automático: el caso no se detiene ahí."""
+        self.assertIn("notificar", motor.TIPOS_AUTOMATICOS)
+        self.assertIn("integracion", motor.TIPOS_AUTOMATICOS)
