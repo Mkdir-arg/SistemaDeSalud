@@ -169,22 +169,41 @@ function calcularLayout(data) {
     .map((a) => ({ ...a, from: a.origen, to: idDe(a.destino, a.externo) }))
     .filter((a) => ids.has(a.from) && (ids.has(a.to) || String(a.to).startsWith("ext-")));
 
-  // Profundidad por relajación (grafos chicos; tope de iteraciones = #nodos).
+  /*
+   * Profundidad por NIVELES desde las raíces (recorrido en anchura).
+   *
+   * No por «camino más largo»: las derivaciones entre flujos pueden ciclar
+   * —Guardia deriva a Cardiología y Cardiología devuelve a Guardia— y ahí la
+   * relajación no converge: sigue sumando una vuelta por pasada hasta el tope
+   * de iteraciones. El mismo bug estiraba el diagrama del editor a cuatro mil
+   * píxeles. Por niveles, cada flujo se fija la primera vez que se lo alcanza.
+   */
   const adj = new Map(items.map((n) => [n.id, []]));
   const indeg = new Map(items.map((n) => [n.id, 0]));
   edges.forEach((e) => {
     adj.get(e.from)?.push(e.to);
     indeg.set(e.to, (indeg.get(e.to) || 0) + 1);
   });
-  const depth = new Map(items.map((n) => [n.id, 0]));
-  for (let it = 0; it < items.length; it++) {
-    let cambio = false;
-    for (const e of edges) {
-      const nd = depth.get(e.from) + 1;
-      if (nd > depth.get(e.to)) { depth.set(e.to, nd); cambio = true; }
+  const depth = new Map();
+  // Raíces: los que nadie deriva. Si TODO cicla no hay ninguna, y ahí se arranca
+  // por el primero para no dejar el mapa vacío.
+  let frontera = items.filter((n) => !indeg.get(n.id)).map((n) => n.id);
+  if (!frontera.length && items.length) frontera = [items[0].id];
+  frontera.forEach((id) => depth.set(id, 0));
+  let nivel = 0;
+  while (frontera.length) {
+    nivel += 1;
+    const siguiente = [];
+    for (const id of frontera) {
+      for (const d of adj.get(id) || []) {
+        if (depth.has(d)) continue;
+        depth.set(d, nivel);
+        siguiente.push(d);
+      }
     }
-    if (!cambio) break;
+    frontera = siguiente;
   }
+  items.forEach((n) => { if (!depth.has(n.id)) depth.set(n.id, nivel); });
 
   // Agrupar por columna y asignar fila.
   const columnas = new Map();

@@ -9,10 +9,25 @@ import { TIPOS_NODO, catDe } from "@/lib/nodos";
 const NODO_W = 184;
 const NODO_H = 64;
 const GRID = 20; // paso de la grilla de puntos del lienzo (para snap-to-grid)
-// Tamaño del «mundo» del lienzo. Fijo a propósito: el minimapa mapea siempre
-// la misma superficie, así no salta de escala cada vez que se mueve un nodo.
-const MUNDO_W = 2200;
-const MUNDO_H = 1300;
+// Tamaño MÍNIMO del «mundo» del lienzo. Crece con el contenido: un flujo
+// largo necesita más superficie, y con el mundo fijo los nodos que caían más
+// allá del borde quedaban inalcanzables — pasaba al ordenar el diagrama
+// automáticamente, que estira la cadena a lo ancho.
+//
+// El crecimiento va por saltos de 400px y no al milímetro: si siguiera cada
+// arrastre, el minimapa cambiaría de escala mientras se mueve un nodo y
+// dejaría de servir como referencia.
+const MUNDO_MIN_W = 2200;
+const MUNDO_MIN_H = 1300;
+const PASO_MUNDO = 400;
+
+function tamanoMundo(nodos) {
+  const alBorde = (v, min) => Math.max(min, Math.ceil((v + 300) / PASO_MUNDO) * PASO_MUNDO);
+  return {
+    w: alBorde(Math.max(0, ...nodos.map((n) => n.x + NODO_W)), MUNDO_MIN_W),
+    h: alBorde(Math.max(0, ...nodos.map((n) => n.y + NODO_H)), MUNDO_MIN_H),
+  };
+}
 const PALETA = TIPOS_NODO.map((tipo) => ({ tipo, ...catDe(tipo) }));
 
 // Operadores de regla en lenguaje natural (los usa el RuleBuilder y la etiqueta
@@ -241,6 +256,114 @@ export default function FlujoEditor() {
     scrollRef.current = el;
     if (el) el.addEventListener("wheel", manejarRueda, { passive: false });
   }, [manejarRueda]);
+  /**
+   * Ordena el diagrama solo: columnas por profundidad, filas dentro de cada una.
+   *
+   * Sirve para dos momentos concretos: un flujo que creció a los tirones y quedó
+   * enredado, y uno recién importado o duplicado donde todos los nodos están
+   * amontonados.
+   *
+   * Se registra como UNA operación del historial. Es lo que lo hace usable:
+   * alguien pasó un rato acomodando ese diagrama a mano y un clic no puede
+   * perder ese trabajo sin vuelta atrás.
+   */
+  async function ordenar() {
+    const v = versionRef.current;
+    const nodos = v?.nodos || [];
+    if (nodos.length < 2) return;
+
+    /*
+     * Profundidad por NIVELES desde el inicio (recorrido en anchura).
+     *
+     * No por «camino más largo»: un flujo clínico tiene ciclos —observar,
+     * reevaluar, volver a observar— y ahí la relajación por camino más largo no
+     * converge, sigue sumando una vuelta por pasada. Con este mismo flujo daba
+     * columnas 0,1,2,3 y de golpe 47,48,49,50: el diagrama quedaba estirado
+     * cuatro mil píxeles y fuera de la pantalla.
+     *
+     * Por niveles cada nodo se fija la primera vez que se lo alcanza, así que un
+     * ciclo no lo mueve nunca más.
+     */
+    const salidas = new Map();
+    for (const c of v.conexiones) {
+      if (!salidas.has(c.origen)) salidas.set(c.origen, []);
+      salidas.get(c.origen).push(c.destino);
+    }
+    const prof = new Map();
+    const raiz = nodos.find((n) => n.tipo === "inicio") || nodos[0];
+    let frontera = [raiz.id];
+    prof.set(raiz.id, 0);
+    let nivel = 0;
+    while (frontera.length) {
+      nivel += 1;
+      const siguiente = [];
+      for (const id of frontera) {
+        for (const d of salidas.get(id) || []) {
+          if (prof.has(d)) continue;
+          prof.set(d, nivel);
+          siguiente.push(d);
+        }
+      }
+      frontera = siguiente;
+    }
+    // Los que no cuelgan del inicio (todavía sin conectar) van al final.
+    for (const n of nodos) if (!prof.has(n.id)) prof.set(n.id, nivel);
+
+    const columnas = new Map();
+    for (const n of nodos) {
+      const d = prof.get(n.id);
+      if (!columnas.has(d)) columnas.set(d, []);
+      columnas.get(d).push(n);
+    }
+
+    // Dentro de cada columna, se ordena por la altura promedio de los nodos que
+    // apuntan a cada uno (baricentro). Es el truco barato que evita que las
+    // conexiones se crucen: sin esto el orden sería arbitrario y el diagrama
+    // ordenado quedaría más enredado que el original.
+    const fila = new Map();
+    for (const d of [...columnas.keys()].sort((a, b) => a - b)) {
+      const lista = columnas.get(d);
+      lista.sort((a, b) => {
+        const centro = (n) => {
+          const previos = v.conexiones
+            .filter((c) => c.destino === n.id && fila.has(c.origen))
+            .map((c) => fila.get(c.origen));
+          return previos.length ? previos.reduce((s, x) => s + x, 0) / previos.length : n.y / 200;
+        };
+        return centro(a) - centro(b);
+      });
+      lista.forEach((n, i) => fila.set(n.id, i));
+    }
+
+    const PAD = 60;
+    const GAP_X = 110;
+    const GAP_Y = 40;
+    const antes = new Map();
+    const despues = new Map();
+    for (const n of nodos) {
+      antes.set(n.id, { x: n.x, y: n.y });
+      despues.set(n.id, {
+        x: PAD + prof.get(n.id) * (NODO_W + GAP_X),
+        y: PAD + fila.get(n.id) * (NODO_H + GAP_Y),
+      });
+    }
+    const quedaIgual = [...despues].every(([id, p]) => {
+      const o = antes.get(id);
+      return o.x === p.x && o.y === p.y;
+    });
+    if (quedaIgual) return;
+
+    const mover = (m) => Promise.all([...m].map(([id, p]) => aplicarPos(id, p.x, p.y)));
+    registrarCambio(() => mover(antes), () => mover(despues));
+    // Se ESPERA a que las posiciones nuevas estén aplicadas antes de encuadrar:
+    // `ajustar` lee el bounding box de `versionRef`, y lanzado un frame después
+    // lo calculaba con las posiciones viejas y dejaba el lienzo mirando a un
+    // lugar vacío.
+    await mover(despues);
+    mostrarToast({ tipo: "ok", msg: "Diagrama ordenado", accion: { txt: "Deshacer", fn: deshacer } });
+    ajustar();
+  }
+
   // Ajustar al contenido: calcula el bounding box de los nodos, elige el zoom
   // que lo encuadra y centra el lienzo en esa zona.
   function ajustar() {
@@ -1008,6 +1131,9 @@ export default function FlujoEditor() {
     return reglas.map(texto).join(op === "o" ? "  o  " : "  y  ");
   }
 
+  // Superficie del lienzo, derivada de dónde llegaron los nodos.
+  const mundo = tamanoMundo(version.nodos);
+
   // Aristas que forman el recorrido activo (Probar / Reproducir) para resaltarlas.
   const edgesActivos = new Set();
   const caminoArr = repro ? repro.camino.slice(0, repro.idx + 1) : sim ? sim.camino : [];
@@ -1083,7 +1209,7 @@ export default function FlujoEditor() {
         {/* Canvas (viewport sin scroll → scrolleable → sizer a escala → capa escalada) */}
         <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
           <div ref={montarScroll} style={{ position: "absolute", inset: 0, overflow: "auto", background: "var(--color-fondo)" }}>
-            <div style={{ width: MUNDO_W * zoom, height: MUNDO_H * zoom }}>
+            <div style={{ width: mundo.w * zoom, height: mundo.h * zoom }}>
               <div
                 ref={canvasRef}
                 // Marca la capa escalada. La usa la suite para leer el zoom real
@@ -1099,8 +1225,8 @@ export default function FlujoEditor() {
                 }}
                 style={{
                   position: "relative",
-                  width: MUNDO_W,
-                  height: MUNDO_H,
+                  width: mundo.w,
+                  height: mundo.h,
                   transform: `scale(${zoom})`,
                   transformOrigin: "top left",
                   backgroundImage: "radial-gradient(circle, var(--color-borde) 1.1px, transparent 1.1px)",
@@ -1279,11 +1405,18 @@ export default function FlujoEditor() {
             <ZoomBtn title="Acercar" onClick={() => zoomBoton(0.1)}><Icon name="plus" size={15} /></ZoomBtn>
             <div style={{ width: 1, height: 18, background: "var(--color-division)", margin: "0 2px" }} />
             <ZoomBtn title="Ajustar al contenido" onClick={ajustar}><Icon name="maximize" size={15} /></ZoomBtn>
+            <ZoomBtn
+              title="Ordenar el diagrama automáticamente (se puede deshacer)"
+              onClick={ordenar}
+              disabled={version.nodos.length < 2}
+            >
+              <Icon name="workflow" size={15} />
+            </ZoomBtn>
           </div>
 
           {/* Minimapa (abajo a la derecha, del lado opuesto al zoom) */}
           {version.nodos.length > 3 && (
-            <MiniMapa nodos={version.nodos} seleccion={seleccion} vista={vista} onIr={centrarEn} />
+            <MiniMapa nodos={version.nodos} seleccion={seleccion} vista={vista} mundo={mundo} onIr={centrarEn} />
           )}
 
           {/* Mostrar/ocultar el panel de propiedades */}
@@ -1569,12 +1702,14 @@ function operadoresDe(campo) {
  * Se oculta con flujos de pocos nodos: ahí no orienta, sólo tapa lienzo.
  */
 const MAPA_W = 168;
-const MAPA_H = Math.round((MAPA_W * MUNDO_H) / MUNDO_W);
 
-function MiniMapa({ nodos, seleccion, vista, onIr }) {
+function MiniMapa({ nodos, seleccion, vista, mundo, onIr }) {
   const ref = useRef(null);
   const arrastrando = useRef(false);
-  const k = MAPA_W / MUNDO_W; // misma escala en los dos ejes
+  // Misma escala en los dos ejes, y el alto sale de la proporción del mundo:
+  // así el mapa acompaña cuando el lienzo crece con el flujo.
+  const k = MAPA_W / mundo.w;
+  const MAPA_H = Math.round(mundo.h * k);
 
   function irDesdeEvento(e) {
     const caja = ref.current?.getBoundingClientRect();
