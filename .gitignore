@@ -49,3 +49,8 @@ npm-debug.log*
 
 # === Claude Code (config local de la sesión) ===
 .claude/
+
+# Esquema OpenAPI generado. No se versiona: comiteado se vuelve mentira
+# apenas cambie un endpoint. Se sirve en /api/esquema/ y hay un test que
+# verifica que se genere limpio.
+backend/esquema.yml
