@@ -90,7 +90,7 @@ export default function Login() {
               ordenado de principio a fin.
             </h1>
 
-            <ul className="flex max-w-md flex-col gap-5">
+            <ul className="flex max-w-[26rem] flex-col gap-5">
               {PUNTOS.map((p) => (
                 <li key={p.titulo} className="flex items-start gap-3.5">
                   <span className="flex size-10 flex-none items-center justify-center rounded-lg border border-white/20 bg-white/15 text-white">

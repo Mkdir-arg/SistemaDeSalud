@@ -39,7 +39,7 @@ export function EstadoVacio({ titulo, detalle, accion, icono = "inbox" }) {
         <Icon name={icono} size={20} />
       </span>
       <div className="text-lg font-bold text-texto-suave">{titulo}</div>
-      {detalle && <div className="max-w-md text-base text-texto-debil">{detalle}</div>}
+      {detalle && <div className="max-w-[28rem] text-base text-texto-debil">{detalle}</div>}
       {accion && <div className="mt-2">{accion}</div>}
     </div>
   );
@@ -59,7 +59,7 @@ export function EstadoError({ error, onReintentar, titulo = "No se pudieron carg
       <div className="text-lg font-bold text-texto-suave">
         {esPermiso ? "No tenés permiso para ver esto" : titulo}
       </div>
-      <div className="max-w-md text-base text-texto-debil">
+      <div className="max-w-[28rem] text-base text-texto-debil">
         {esPermiso
           ? "Pedile a un administrador que revise tu rol en esta institución."
           : error?.message || "Puede ser un problema de conexión."}

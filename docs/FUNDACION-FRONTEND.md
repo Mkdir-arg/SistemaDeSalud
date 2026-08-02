@@ -1,25 +1,34 @@
 # Fundación del frontend
 
-> Cómo está construido el frontend después de la Fase 0, y las reglas que hay que
-> respetar al migrar las pantallas que faltan. Documento vivo.
-> Creado: **2026-08-01**.
+> Cómo está construido el frontend y las reglas que hay que respetar al tocarlo.
+> Documento vivo. Creado: **2026-08-01** · Fase 1 cerrada: **2026-08-02**.
 
 Contexto y hoja de ruta en [`PLAN-DESARROLLO.md`](PLAN-DESARROLLO.md).
 
-## El estado: dos capas conviviendo
+## El estado
 
-La migración va por pantalla, así que durante la Fase 1 conviven:
+Todas las pantallas están migradas **menos una**: el editor de flujos
+([`FlujoEditor.jsx`](../frontend/src/pages/diseno/FlujoEditor.jsx)), que se rehace
+entero en la Fase 2 y por eso no se tocó.
 
-| | Capa vieja | Capa nueva |
+| | Antes | Ahora |
 |---|---|---|
 | Estilos | `style={{}}` inline leyendo `theme.js` | clases de Tailwind sobre tokens |
 | Datos | `fetch` a mano en cada pantalla | TanStack Query (`useLista`, `useAccion`) |
 | Paginación | ninguna (mostraba los primeros 25 y descartaba el resto) | `TablaRecurso` |
+| Filtros y búsqueda | `.filter()` sobre lo ya traído | parámetros al servidor |
 | Tema oscuro | no | sí |
 | Responsive | no | sí |
+| Contraste AA | sin verificar | medido en 12 pantallas × 2 temas |
 
-**Pantallas ya migradas:** Fila de espera (piloto), Casos, y el Shell.
-Las otras ~27 siguen en la capa vieja y funcionan igual que antes.
+`theme.js` **sigue existiendo** y no se borra todavía: es lo que consume el editor
+de flujos, y además es la fuente del generador de tokens. Desaparece cuando la
+Fase 2 rehaga el editor. Lo que sí se separó es el vocabulario del negocio
+(estados, nombres de nodo), que se fue a
+[`lib/dominio.js`](../frontend/src/lib/dominio.js): eso sobrevive al sistema de
+diseño y no tenía por qué morir con él.
+
+La excepción deliberada sigue siendo la pantalla de llamados (ver más abajo).
 
 ---
 
@@ -62,11 +71,15 @@ Con un solo token, el número de la fila destacada quedaba en 2,7:1 en oscuro.
 1. **Las variantes usan mapas de clases completas, nunca interpolación.** Tailwind
    escanea el código como texto: `` `bg-badge-${tono}-bg` `` no genera nada. Ver
    `BADGE_TONO` en [`ui.jsx`](../frontend/src/components/ui.jsx).
-2. **No está el preflight de Tailwind.** Su reset cambiaría de golpe las pantallas
-   que todavía dependen del reset propio. En su lugar hay un *mini-preflight* en
-   [`index.css`](../frontend/src/index.css) con el motivo de cada regla escrito al
-   lado. Se agregó por dos bugs reales: las viñetas de `<ul>` y el fondo nativo
-   `buttonface` de los `<button>` (que en tema oscuro pintaba cajas grises).
+2. **El preflight de Tailwind está activo desde el cierre de la Fase 1.** Durante
+   la migración estuvo apagado a propósito —con ~1.100 estilos inline asumiendo el
+   reset propio, encenderlo antes habría cambiado las 30 pantallas de golpe y sin
+   red— y lo suplía un *mini-preflight* con las dos reglas que habían causado bugs
+   reales: las viñetas de `<ul>` y el fondo nativo `buttonface` de los `<button>`
+   (que en tema oscuro pintaba cajas grises). Ese parche ya se borró. Lo único que
+   se conserva encima del preflight es `cursor: pointer` en los botones: el
+   preflight sigue el default del navegador, y acá hay filas y tarjetas enteras
+   que son botones.
 3. **El estado de una vista va en la URL; las preferencias en localStorage.**
    Página, orden y filtros en la URL, para que una vista filtrada se pueda
    compartir por link y sobreviva un F5. La densidad y el tema en localStorage:
@@ -91,6 +104,20 @@ Con un solo token, el número de la fila destacada quedaba en 2,7:1 en oscuro.
    ```bash
    npm run build && npm run auditar
    ```
+
+7. **Los anchos y altos van con valor explícito: `max-w-[28rem]`, nunca `max-w-md`.**
+   Los tokens de espaciado se llaman `xs/sm/md/lg/xl/xxl` y esos mismos nombres
+   existen en la escala de contenedores de Tailwind. En `max-w-md` gana el de
+   espaciado: la clase significa **12px**, no 448px.
+
+   Es peor que una clase huérfana porque genera CSS perfectamente válido —
+   revisar «¿existe la clase?» no lo detecta. Estuvo en el panel del login y en
+   **todos** los estados vacíos y de error de la app, con el texto de detalle en
+   una columna de 12px, y sobrevivió a varias revisiones visuales. El auditor
+   ahora lo marca aparte, como COLISIONES.
+
+   Para espaciado (`p-lg`, `gap-md`, `px-xl`) los nombres se usan igual: ahí no
+   hay con qué colisionar.
 
 ---
 

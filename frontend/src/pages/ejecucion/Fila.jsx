@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
 import { Icon } from "@/components/icons";
 import { Badge } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
@@ -21,6 +22,7 @@ const hora = (iso) =>
 export default function Fila() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const [areaSel, setAreaSel] = useState(null);
 
   // `box: "null"` como texto a propósito: `query()` descarta los valores null
@@ -42,9 +44,40 @@ export default function Fila() {
     return [...m].map(([id, nombre]) => ({ id, nombre }));
   }, [items]);
 
+  /*
+   * Áreas donde esta persona realmente trabaja.
+   *
+   * La fila muestra TODAS las áreas con gente esperando —un jefe quiere ver el
+   * panorama—, pero arrancar en una donde no se puede llamar es una trampa: el
+   * médico de guardia entraba, apretaba «Llamar siguiente» y recibía «No integrás
+   * ningún grupo responsable de este paso». La acción principal de la pantalla
+   * fallaba de entrada, y sólo lo decía después del clic.
+   */
+  const misMembresias = useLista(
+    "membresias",
+    { usuario: user?.id, activo: true, pageSize: 50 },
+    { enabled: !!user?.id },
+  );
+  const misAreas = useMemo(
+    () => new Set(misMembresias.filas.flatMap((m) => m.areas || [])),
+    [misMembresias.filas],
+  );
+
   useEffect(() => {
-    if (areas.length && !areas.some((a) => a.id === areaSel)) setAreaSel(areas[0].id);
-  }, [areas, areaSel]);
+    if (!areas.length) return;
+    if (areas.some((a) => a.id === areaSel)) return; // ya hay una elegida y válida
+    // Se espera a saber cuáles son suyas antes de elegir. Sin esto, la primera
+    // pasada elegía `areas[0]` con las membresías todavía en vuelo, y la pasada
+    // siguiente ya veía un área válida elegida y no corregía nunca: el efecto
+    // decidía antes de tener el dato que informa la decisión.
+    if (misMembresias.isLoading) return;
+    // Se prefiere un área propia; si ninguna tiene cola, se cae a la primera.
+    setAreaSel((areas.find((a) => misAreas.has(a.id)) || areas[0]).id);
+  }, [areas, areaSel, misAreas, misMembresias.isLoading]);
+
+  // Sólo se avisa cuando ya se sabe a qué áreas pertenece: mientras carga, decir
+  // que no puede llamar sería mentirle por un instante.
+  const areaAjena = misMembresias.isSuccess && areaSel != null && !misAreas.has(areaSel);
 
   const boxes = useLista("boxes", { area: areaSel, activo: true, pageSize: 50 }, { enabled: areaSel != null });
 
@@ -105,6 +138,18 @@ export default function Fila() {
       {/* Boxes: cada uno llama al siguiente de la cola */}
       <section className="rounded-lg border border-borde bg-superficie px-xl py-lg">
         <h3 className="mb-md text-sm font-bold text-texto-suave">Consultorios</h3>
+
+        {areaAjena && (
+          <div className="mb-md flex items-start gap-2 rounded-md bg-badge-amber-bg px-3 py-2 text-base text-badge-amber-fg">
+            <Icon name="alert" size={15} className="mt-px flex-none" />
+            <span>
+              Estás mirando la cola de <strong>{areaNombre}</strong>, que no es tuya.
+              Podés verla, pero llamar a un paciente lo tiene que hacer alguien del
+              área.
+            </span>
+          </div>
+        )}
+
         {boxes.isLoading ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
             {[0, 1].map((i) => <Skeleton key={i} className="h-[86px]" />)}

@@ -48,6 +48,24 @@ test.describe("Fila de espera", () => {
     await expect.poll(() => page.locator("ul li button").count()).toBe(antes - 1);
   });
 
+  /**
+   * La pantalla tiene que abrir en un área donde la persona pueda llamar.
+   *
+   * La fila lista TODAS las áreas con gente esperando —un jefe quiere el
+   * panorama—, pero arrancar en una ajena convierte la acción principal en un
+   * error: el médico entraba, apretaba «Llamar siguiente» y recibía «No integrás
+   * ningún grupo responsable de este paso». Sin este test, el orden de las áreas
+   * decide si la pantalla sirve o no.
+   */
+  test("abre en un área donde el médico puede llamar", async ({ page }) => {
+    // Si aparece el aviso de área ajena, la pantalla arrancó en la equivocada.
+    await expect(page.getByText(/no es tuya/)).toBeHidden();
+
+    // Y la prueba de fuego: llamar funciona sin cambiar de área.
+    await page.getByRole("button", { name: /Llamar siguiente/ }).first().click();
+    await expect(page).toHaveURL(/\/casos\/\d+/);
+  });
+
   test("se puede operar en tablet y en móvil", async ({ page }) => {
     for (const width of [1024, 390]) {
       await page.setViewportSize({ width, height: 800 });

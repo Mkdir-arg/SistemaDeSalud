@@ -83,7 +83,7 @@ export default function Legajo() {
 
   return (
     <div className="px-lg py-[22px] sm:px-[30px]">
-      <div className="mb-lg flex max-w-sm items-center gap-2.5">
+      <div className="mb-lg flex max-w-[24rem] items-center gap-2.5">
         <label htmlFor="profesional" className="whitespace-nowrap text-sm text-texto-debil">
           Profesional:
         </label>

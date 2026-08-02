@@ -39,12 +39,16 @@ try {
 
 // Prefijos de las escalas que reemplazamos: son los que pueden quedar huérfanos.
 //
-// La lista se corresponde una a una con los `*: initial` de tokens.css (color,
-// font, text, radius, shadow). Las de espaciado y tamaño —`w-70`, `gap-2.5`,
-// `p-3.5`— NO van acá: esa escala no se reemplazó, Tailwind sigue generándolas a
-// demanda y ninguna puede quedar huérfana. Si algún día se resetea `--spacing`,
-// hay que agregar sus prefijos.
-const PREFIJOS = ["text", "rounded", "shadow", "font", "bg", "border", "fill", "stroke", "ring", "from", "to", "divide"];
+// Se corresponden una a una con los `*: initial` de tokens.css (color, font,
+// text, radius, shadow): son las escalas reemplazadas, o sea las únicas donde un
+// nombre inexistente queda huérfano.
+const PREFIJOS_ESCALA = ["text", "rounded", "shadow", "font", "bg", "border", "fill", "stroke", "ring", "from", "to", "divide"];
+
+// Ancho y alto: acá el problema no es que falte CSS sino que sobre del lado
+// equivocado (ver COLISIONES más abajo). Se escanean para poder revisarlo.
+const PREFIJOS_DIMENSION = ["max-w", "min-w", "max-h", "min-h", "w", "h", "size"];
+
+const PREFIJOS = [...PREFIJOS_ESCALA, ...PREFIJOS_DIMENSION];
 // El rango incluye MAYÚSCULAS a propósito.
 //
 // Los tokens se declaran en camelCase (`type.cifraLg`) y el generador los pasa a
@@ -71,6 +75,27 @@ for (const f of archivos(join(RAIZ, "src"))) {
   }
 }
 
+/*
+ * Colisiones entre nuestros nombres de espaciado y las escalas de ancho/alto.
+ *
+ * Los tokens de espaciado se llaman `xs/sm/md/lg/xl/xxl` (`--spacing-md: 12px`) y
+ * esos MISMOS nombres existen en la escala de contenedores de Tailwind
+ * (`--container-md: 28rem`). En `max-w-md` gana el de espaciado, así que la clase
+ * significa 12px en vez de 448px.
+ *
+ * Es peor que una clase huérfana: genera CSS perfectamente válido, así que
+ * revisar «¿existe la clase?» no lo detecta. Pasó en el panel del login y en
+ * TODOS los estados vacíos y de error de la app —el texto de detalle quedaba en
+ * una columna de 12px— y sobrevivió a varias revisiones visuales.
+ *
+ * Para anchos hay que usar valor explícito: `max-w-[28rem]`.
+ */
+const DIMENSION = /^(?:max-w|min-w|max-h|min-h|w|h|size)-(?:xs|sm|md|lg|xl|xxl)$/;
+const colisiones = [];
+for (const [clase, files] of usadas) {
+  if (DIMENSION.test(clase)) colisiones.push({ clase, files });
+}
+
 const huerfanas = [];
 for (const [clase, files] of usadas) {
   // Basta con que el nombre aparezca en algún selector: puede llevar variante
@@ -80,12 +105,27 @@ for (const [clase, files] of usadas) {
 }
 
 console.log(`Clases revisadas: ${usadas.size}`);
-if (!huerfanas.length) {
-  console.log("Ninguna clase huérfana.");
-} else {
-  console.log(`\nHUÉRFANAS (${huerfanas.length}) — la clase se escribe pero no genera CSS:`);
-  for (const h of huerfanas.sort((a, b) => a.clase.localeCompare(b.clase))) {
+
+const listar = (titulo, items) => {
+  console.log(`\n${titulo}`);
+  for (const h of items.sort((a, b) => a.clase.localeCompare(b.clase))) {
     console.log(`  ${h.clase.padEnd(28)} ${h.files.join(", ")}`);
   }
+};
+
+if (huerfanas.length) {
+  listar(`HUÉRFANAS (${huerfanas.length}) — la clase se escribe pero no genera CSS:`, huerfanas);
+}
+if (colisiones.length) {
+  listar(
+    `COLISIONES (${colisiones.length}) — el nombre lo resuelve la escala de espaciado,\n` +
+      "así que el ancho/alto sale en píxeles sueltos. Usá valor explícito, p. ej. max-w-[28rem]:",
+    colisiones,
+  );
+}
+
+if (!huerfanas.length && !colisiones.length) {
+  console.log("Ninguna clase huérfana ni en colisión.");
+} else {
   process.exit(1); // que falle: es lo único que distingue esto de un comentario
 }

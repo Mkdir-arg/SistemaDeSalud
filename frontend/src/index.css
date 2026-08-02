@@ -5,13 +5,15 @@
 
 @import "tailwindcss/theme.css" layer(theme);
 @import "./styles/tokens.css";
+@import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* NO importamos `tailwindcss/preflight.css` todavía, a propósito.
-   El preflight resetea márgenes, bordes, títulos y listas de toda la app, y hoy
-   quedan ~1.100 estilos inline que asumen el reset propio de más abajo:
-   activarlo ahora cambiaría las 30 pantallas de golpe y sin red.
-   Se adopta al final de la Fase 1, cuando ya no queden estilos inline. */
+/* El preflight se activa recién ahora, al cerrar la Fase 1.
+   Durante la migración estuvo apagado a propósito: resetea márgenes, bordes,
+   títulos, listas y controles de formulario de toda la app, y con ~1.100 estilos
+   inline asumiendo el reset propio de más abajo, encenderlo antes habría cambiado
+   las 30 pantallas de golpe y sin red que lo detectara.
+   El mini-preflight que lo suplía (viñetas y botones) se borró: ya no hace falta. */
 
 /* Modo oscuro por clase (no por preferencia del sistema): en una guardia el turno
    noche lo elige la persona, no el sistema operativo. Se activa con
@@ -24,11 +26,6 @@
    Solo es posible porque los colores dejaron de estar incrustados en el JSX. */
 
 @layer base {
-  * {
-    margin: 0;
-    box-sizing: border-box;
-  }
-
   body {
     font-family: var(--font-sans);
     /* Tokens SEMÁNTICOS, no literales: `--color-ink` y `--color-canvas` no
@@ -44,36 +41,12 @@
     text-decoration: none;
   }
 
-  /* Mini-preflight.
-     No importamos el preflight completo de Tailwind mientras queden estilos
-     inline (ver arriba), pero hay dos defaults del navegador que ya rompieron
-     cosas y conviene neutralizar acá, con el motivo escrito:
-
-     1. Listas: conservaban viñeta y sangría. Las colas y los menús se marcan con
-        <ul>/<li> porque es el HTML correcto, no para que aparezca un punto.
-     2. Botones: conservaban el fondo, el borde y la tipografía nativos. El fondo
-        `buttonface` se notó en tema oscuro —con `color-scheme: dark` ese gris
-        pasa a rgb(107,107,107) y las filas de la cola quedaban con cajas grises
-        y el texto en 2:1—. El borde apareció después: al usar <button> para
-        filas clicables (que es el marcado correcto para algo operable con
-        teclado), cada fila quedaba con un recuadro alrededor.
-
-     El reset va en la capa `base`, así que cualquier utilidad —`border`,
-     `bg-accent`— le gana igual. Verificado que ninguna lista dependía de la
-     viñeta y que ningún botón dependía de los defaults nativos. */
-  ul,
-  ol {
-    list-style: none;
-    padding-left: 0;
-  }
-
-  button {
-    background-color: transparent;
-    border-width: 0;
-    border-style: solid;
-    color: inherit;
-    font: inherit;
-    text-align: inherit;
+  /* El preflight deja los <button> sin `cursor: pointer` (sigue el default de
+     los navegadores modernos, que es `default`). Acá se prefiere el dedito: la
+     app tiene filas y tarjetas enteras que son botones, y sin la señal del cursor
+     no se distinguen de contenido inerte. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
     cursor: pointer;
   }
 
