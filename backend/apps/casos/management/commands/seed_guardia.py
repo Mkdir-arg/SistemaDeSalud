@@ -47,7 +47,11 @@ from apps.casos import motor
 from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
+from datetime import timedelta
+
 from apps.agenda.models import Agenda, Disponibilidad
+from apps.farmacia import motor as farmacia_motor
+from apps.farmacia.models import Deposito, Existencia, Insumo, Lote, Movimiento
 from apps.instituciones.models import Area, Box, Cama, Grupo, Institucion, Subarea
 
 
@@ -382,6 +386,106 @@ class Command(BaseCommand):
         f_cardio = flujo_especialidad(cardio, "Atención cardiológica", form_cond_cardio, g_med_cardio)
         f_sm = flujo_especialidad(salud_mental, "Atención en salud mental", form_cond_sm, g_med_sm)
         f_neuro = flujo_especialidad(neuro, "Atención neurológica", form_cond_neuro, g_med_neuro)
+
+
+        # --- Farmacia: catálogo, depósitos y stock --------------------------
+        # Un catálogo chico y real: sólo lo que una guardia usa de verdad. Un
+        # vademécum entero sin stock hace que buscar sea inútil.
+        central, _ = Deposito.objects.get_or_create(
+            institucion=inst, nombre="Farmacia central", defaults={"central": True}
+        )
+        botiquin, _ = Deposito.objects.get_or_create(
+            institucion=inst, nombre="Botiquín de guardia", defaults={"area": guardia}
+        )
+        bot_int, _ = Deposito.objects.get_or_create(
+            institucion=inst, nombre="Botiquín de internación", defaults={"area": internacion}
+        )
+
+        CATALOGO = [
+            # (nombre, presentación, unidad, tipo, lote, controlado, mínimo)
+            ("Dipirona", "Ampolla 1 g", "ampolla", "medicamento", True, False, 40),
+            ("Ibuprofeno", "Comprimido 400 mg", "comprimido", "medicamento", True, False, 100),
+            ("Amoxicilina", "Comprimido 500 mg", "comprimido", "medicamento", True, False, 60),
+            ("Adrenalina", "Ampolla 1 mg/ml", "ampolla", "medicamento", True, False, 20),
+            ("Solución fisiológica", "Sachet 500 ml", "sachet", "medicamento", True, False, 50),
+            ("Midazolam", "Ampolla 5 mg", "ampolla", "medicamento", True, True, 10),
+            ("Morfina", "Ampolla 10 mg", "ampolla", "medicamento", True, True, 8),
+            ("Gasa estéril", "Sobre 10×10", "sobre", "descartable", False, False, 200),
+            ("Jeringa", "5 ml", "unidad", "descartable", False, False, 300),
+            ("Guantes de examen", "Caja x100", "caja", "descartable", False, False, 20),
+            ("Vía periférica", "Catéter 20 G", "unidad", "descartable", False, False, 80),
+            ("Suero glucosado", "Sachet 500 ml", "sachet", "medicamento", True, False, 40),
+        ]
+        insumos = {}
+        for nombre, pres, unidad, tipo, lote, ctrl, minimo in CATALOGO:
+            i, _ = Insumo.objects.get_or_create(
+                institucion=inst, nombre=nombre, presentacion=pres,
+                defaults={"unidad": unidad, "tipo": tipo, "requiere_lote": lote,
+                          "controlado": ctrl, "stock_minimo": minimo},
+            )
+            i.unidad, i.tipo, i.requiere_lote = unidad, tipo, lote
+            i.controlado, i.stock_minimo, i.activo = ctrl, minimo, True
+            i.save()
+            insumos[nombre] = i
+
+        # Stock a cero antes de sembrar: este comando borra los casos, y sin
+        # esto el stock se acumularía en cada corrida hasta dejar de tener
+        # sentido —el mismo problema que ya tuvieron las camas—.
+        Movimiento.objects.filter(insumo__institucion=inst).delete()
+        Existencia.objects.filter(deposito__institucion=inst).delete()
+        Lote.objects.filter(insumo__institucion=inst).delete()
+
+        hoy = timezone.localdate()
+        for nombre, insumo in insumos.items():
+            # La central tiene bastante; los botiquines, cómodos por encima de
+            # su mínimo. Sembrarlos por debajo dejaba 24 insumos en alerta, que
+            # es un hospital en crisis y no uno operando: con todo en rojo la
+            # pantalla no distingue lo que hay que resolver hoy.
+            for dep, factor in ((central, 6), (botiquin, 2), (bot_int, 2)):
+                cantidad = max(insumo.stock_minimo, 10) * factor
+                if insumo.requiere_lote:
+                    # Dos lotes por insumo en la central, con vencimientos
+                    # distintos: es lo que hace visible la regla de sacar primero
+                    # el que vence antes.
+                    #
+                    # Sólo tres insumos vencen pronto. Con todos venciendo el
+                    # mismo mes la alerta lista media farmacia y se vuelve ruido
+                    # —y una alerta ruidosa se deja de mirar, que es peor que no
+                    # tenerla—.
+                    pronto = insumo.nombre in ("Dipirona", "Solución fisiológica", "Amoxicilina")
+                    primero = 40 if pronto else 240 + (insumo.id % 7) * 30
+                    partidas = [
+                        (f"L-{insumo.id}-A", primero),
+                        (f"L-{insumo.id}-B", primero + 300),
+                    ]
+                    for j, (num, dias) in enumerate(partidas):
+                        if dep is not central and j:
+                            continue
+                        lote, _ = Lote.objects.get_or_create(
+                            insumo=insumo, numero=num,
+                            defaults={"vencimiento": hoy + timedelta(days=dias)},
+                        )
+                        farmacia_motor.ingresar(
+                            dep, insumo, max(1, cantidad // (2 if dep is central else 1)),
+                            lote=lote, motivo="Carga inicial",
+                        )
+                else:
+                    farmacia_motor.ingresar(dep, insumo, cantidad, motivo="Carga inicial")
+
+        # Un par por debajo del mínimo, para que la alerta tenga qué mostrar: en
+        # una guardia real siempre falta algo, y una pantalla de alertas vacía no
+        # deja ver para qué sirve.
+        for nombre in ("Adrenalina", "Gasa estéril"):
+            i = insumos[nombre]
+            hay = sum(
+                e.cantidad for e in Existencia.objects.filter(deposito=botiquin, insumo=i)
+            )
+            if hay > 3:
+                farmacia_motor.ajustar(
+                    botiquin, i, 3,
+                    lote=Existencia.objects.filter(deposito=botiquin, insumo=i).first().lote,
+                    motivo="Recuento: quedaba menos de lo registrado",
+                )
 
         # --- Agendas de turnos programados ----------------------------------
         # El consultorio externo, que es la otra mitad de un hospital: la
