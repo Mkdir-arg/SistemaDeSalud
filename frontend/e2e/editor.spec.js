@@ -162,6 +162,31 @@ test.describe("Diseñador de flujos", () => {
     await expect.poll(contar).toBe(inicial);
   });
 
+  test("el minimapa lleva a otra zona del lienzo", async ({ page }) => {
+    const mapa = page.getByTitle(/Mapa del flujo/);
+    await expect(mapa).toBeVisible();
+
+    const scroll = () =>
+      page.evaluate(() => {
+        const c = [...document.querySelectorAll("div")].find(
+          (d) => getComputedStyle(d).overflow === "auto" && d.scrollWidth > d.clientWidth + 50,
+        );
+        return { x: Math.round(c.scrollLeft), y: Math.round(c.scrollTop) };
+      });
+
+    const antes = await scroll();
+    const caja = await mapa.boundingBox();
+    // Esquina opuesta del mapa: el lienzo tiene que saltar a esa zona.
+    await page.mouse.click(caja.x + caja.width - 8, caja.y + caja.height - 8);
+
+    await expect
+      .poll(async () => {
+        const d = await scroll();
+        return d.x !== antes.x || d.y !== antes.y;
+      })
+      .toBe(true);
+  });
+
   test("Escape cierra el buscador sin tocar el lienzo", async ({ page }) => {
     const antes = await estado(page);
     await page.keyboard.press("Control+f");

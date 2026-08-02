@@ -9,6 +9,10 @@ import { badgeTone, color, nodeCat, radius, shadow, type } from "../../theme";
 const NODO_W = 184;
 const NODO_H = 64;
 const GRID = 20; // paso de la grilla de puntos del lienzo (para snap-to-grid)
+// Tamaño del «mundo» del lienzo. Fijo a propósito: el minimapa mapea siempre
+// la misma superficie, así no salta de escala cada vez que se mueve un nodo.
+const MUNDO_W = 2200;
+const MUNDO_H = 1300;
 const PALETA = Object.entries(nodeCat).map(([tipo, c]) => ({ tipo, ...c }));
 
 // Operadores de regla en lenguaje natural (los usa el RuleBuilder y la etiqueta
@@ -826,6 +830,56 @@ export default function FlujoEditor() {
     };
   }, []);
 
+  /* --- Minimapa --------------------------------------------------------------
+   *
+   * Da lo que el scroll solo no da: dónde estás parado dentro del flujo entero.
+   * En un diagrama de 40 nodos, sin esto se navega a ciegas.
+   *
+   * El rectángulo de la vista se recalcula al scrollear y al hacer zoom. Se
+   * agrupa con `requestAnimationFrame` porque el scroll dispara decenas de
+   * eventos por segundo y re-renderizar en cada uno traba el arrastre.
+   */
+  const [vista, setVista] = useState(null); // {x, y, w, h} en coords del mundo
+
+  useEffect(() => {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    let pendiente = false;
+    const medir = () => {
+      pendiente = false;
+      const z = zoomRef.current;
+      setVista({
+        x: cont.scrollLeft / z,
+        y: cont.scrollTop / z,
+        w: cont.clientWidth / z,
+        h: cont.clientHeight / z,
+      });
+    };
+    const alScrollear = () => {
+      if (pendiente) return;
+      pendiente = true;
+      requestAnimationFrame(medir);
+    };
+    medir();
+    cont.addEventListener("scroll", alScrollear, { passive: true });
+    window.addEventListener("resize", alScrollear);
+    return () => {
+      cont.removeEventListener("scroll", alScrollear);
+      window.removeEventListener("resize", alScrollear);
+    };
+  }, [flujo, verId, zoom]);
+
+  /** Centra la vista en un punto del mundo (lo usa el minimapa al hacer clic). */
+  function centrarEn(x, y) {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const z = zoomRef.current;
+    cont.scrollTo({
+      left: Math.max(0, x * z - cont.clientWidth / 2),
+      top: Math.max(0, y * z - cont.clientHeight / 2),
+    });
+  }
+
   // --- Atajos de teclado ---------------------------------------------------
   useEffect(() => {
     function onKey(e) {
@@ -1019,7 +1073,7 @@ export default function FlujoEditor() {
         {/* Canvas (viewport sin scroll → scrolleable → sizer a escala → capa escalada) */}
         <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
           <div ref={montarScroll} style={{ position: "absolute", inset: 0, overflow: "auto", background: color.canvas }}>
-            <div style={{ width: 2200 * zoom, height: 1300 * zoom }}>
+            <div style={{ width: MUNDO_W * zoom, height: MUNDO_H * zoom }}>
               <div
                 ref={canvasRef}
                 // Marca la capa escalada. La usa la suite para leer el zoom real
@@ -1035,8 +1089,8 @@ export default function FlujoEditor() {
                 }}
                 style={{
                   position: "relative",
-                  width: 2200,
-                  height: 1300,
+                  width: MUNDO_W,
+                  height: MUNDO_H,
                   transform: `scale(${zoom})`,
                   transformOrigin: "top left",
                   backgroundImage: "radial-gradient(circle, #D9DDE5 1.1px, transparent 1.1px)",
@@ -1212,6 +1266,11 @@ export default function FlujoEditor() {
             <div style={{ width: 1, height: 18, background: color.divider, margin: "0 2px" }} />
             <ZoomBtn title="Ajustar al contenido" onClick={ajustar}><Icon name="maximize" size={15} /></ZoomBtn>
           </div>
+
+          {/* Minimapa (abajo a la derecha, del lado opuesto al zoom) */}
+          {version.nodos.length > 3 && (
+            <MiniMapa nodos={version.nodos} seleccion={seleccion} vista={vista} onIr={centrarEn} />
+          )}
 
           {/* Mostrar/ocultar el panel de propiedades */}
           <button onClick={() => setPanelAbierto((v) => !v)} title={panelAbierto ? "Ocultar propiedades" : "Mostrar propiedades"} aria-label={panelAbierto ? "Ocultar panel de propiedades" : "Mostrar panel de propiedades"} style={{ position: "absolute", right: 10, top: 12, zIndex: 7, width: 30, height: 30, borderRadius: radius.sm, border: `1px solid ${color.border}`, background: "#fff", boxShadow: shadow.card, cursor: "pointer", color: color.slate600, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1473,6 +1532,89 @@ const OP_TEXTO = ["=", "!=", "contiene", "no_contiene", "en", "no_en", ...PRESEN
 function operadoresDe(campo) {
   if (!campo) return OP_TEXTO;
   return OP_POR_TIPO[campo.tipo] || (campo.opciones?.length ? OP_POR_TIPO.seleccion_unica : OP_TEXTO);
+}
+
+/**
+ * Minimapa del lienzo.
+ *
+ * Responde a «dónde estoy parado dentro del flujo entero», que el scroll solo no
+ * contesta. Cada nodo es un rectángulo con el color de su categoría y el marco
+ * claro es la porción visible; haciendo clic o arrastrando ahí, el lienzo salta.
+ *
+ * Mapea el mundo COMPLETO y no el rectángulo que ocupan los nodos: si se
+ * ajustara al contenido, el mapa cambiaría de escala cada vez que alguien mueve
+ * un nodo y dejaría de servir como referencia estable.
+ *
+ * Se oculta con flujos de pocos nodos: ahí no orienta, sólo tapa lienzo.
+ */
+const MAPA_W = 168;
+const MAPA_H = Math.round((MAPA_W * MUNDO_H) / MUNDO_W);
+
+function MiniMapa({ nodos, seleccion, vista, onIr }) {
+  const ref = useRef(null);
+  const arrastrando = useRef(false);
+  const k = MAPA_W / MUNDO_W; // misma escala en los dos ejes
+
+  function irDesdeEvento(e) {
+    const caja = ref.current?.getBoundingClientRect();
+    if (!caja) return;
+    onIr((e.clientX - caja.left) / k, (e.clientY - caja.top) / k);
+  }
+
+  return (
+    <div
+      ref={ref}
+      onPointerDown={(e) => {
+        arrastrando.current = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        irDesdeEvento(e);
+      }}
+      onPointerMove={(e) => arrastrando.current && irDesdeEvento(e)}
+      onPointerUp={() => { arrastrando.current = false; }}
+      title="Mapa del flujo · hacé clic para ir a esa zona"
+      style={{
+        position: "absolute", right: 14, bottom: 14, width: MAPA_W, height: MAPA_H,
+        background: "#fff", border: `1px solid ${color.border}`, borderRadius: radius.md,
+        boxShadow: shadow.card, overflow: "hidden", cursor: "pointer", zIndex: 7,
+        touchAction: "none",
+      }}
+    >
+      {nodos.map((n) => (
+        <span
+          key={n.id}
+          style={{
+            position: "absolute",
+            left: n.x * k,
+            top: n.y * k,
+            width: Math.max(3, NODO_W * k),
+            height: Math.max(2, NODO_H * k),
+            borderRadius: 1,
+            background: (nodeCat[n.tipo] || nodeCat.form).sol,
+            // Lo elegido se destaca: el minimapa también sirve para ubicar dónde
+            // quedó lo que se acaba de seleccionar o pegar.
+            outline: seleccion.has(n.id) ? `1.5px solid ${color.accent}` : "none",
+          }}
+        />
+      ))}
+
+      {vista && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: vista.x * k,
+            top: vista.y * k,
+            width: Math.min(MAPA_W, vista.w * k),
+            height: Math.min(MAPA_H, vista.h * k),
+            border: `1.5px solid ${color.accent}`,
+            background: `${color.accent}12`,
+            borderRadius: 2,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 /**
