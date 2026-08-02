@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { desbordaHorizontal, entrar } from "./apoyo";
+import { entrar, sinDesborde } from "./apoyo";
 
 /**
  * La tabla de Casos. Cubre el fallo que motivó construirla: las 17 pantallas
@@ -118,9 +118,7 @@ test.describe("Tabla de casos", () => {
 
   test("no desborda en horizontal en ningún ancho", async ({ page }) => {
     for (const width of [1440, 1024, 768, 390]) {
-      await page.setViewportSize({ width, height: 800 });
-      await page.waitForTimeout(400);
-      expect(await desbordaHorizontal(page), `desborda a ${width}px`).toBe(false);
+      await sinDesborde(page, width);
     }
   });
 });

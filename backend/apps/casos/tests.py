@@ -898,3 +898,135 @@ class TiemposTests(TestCase):
         caso.refresh_from_db()
         self.assertLess((timezone.now() - caso.paso_desde).total_seconds(), 5)
         self.assertFalse(caso.sla_avisado)
+
+
+class FirmaConfigurableTests(TestCase):
+    """
+    Quién puede registrar una atención lo declara el NODO.
+
+    Estaba clavado en el código: sólo rol `medico`, siempre con matrícula. Eso
+    bloquea media docena de procesos reales de un hospital —una consulta de
+    enfermería, una entrevista de trabajo social, una admisión administrativa—
+    donde el acto lo firma otra persona.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="F")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+        self.caso = Caso.objects.create(
+            institucion=self.inst, version=self.version, area_actual=self.area
+        )
+
+    def _persona(self, email, rol, matricula=None):
+        u = Usuario.objects.create_user(email=email, password="x")
+        m = Membresia.objects.create(usuario=u, institucion=self.inst, rol=rol, activo=True)
+        m.areas.add(self.area)
+        if matricula is not None:
+            LegajoProfesional.objects.create(usuario=u, matricula=matricula)
+        return u
+
+    def _nodo(self, **config):
+        return Nodo.objects.create(
+            version=self.version, tipo="atencion", titulo="Consulta", config=config
+        )
+
+    # --- Compatibilidad ----------------------------------------------------- #
+
+    def test_sin_configurar_se_comporta_como_antes(self):
+        """
+        Los flujos ya publicados no tienen esta config y su semántica no puede
+        cambiar sola: siguen siendo médico + matrícula.
+        """
+        self.assertEqual(motor.quien_firma(self._nodo()), (["medico"], True))
+
+        enfermera = self._persona("enf@t.local", Membresia.Rol.ENFERMERIA)
+        with self.assertRaises(motor.ErrorMotor):
+            motor._exigir_firmante(self.caso, self._nodo(), enfermera)
+
+    # --- Rol declarado por el nodo ------------------------------------------ #
+
+    def test_un_paso_puede_declarar_que_lo_firma_enfermeria(self):
+        nodo = self._nodo(firma_roles=["enfermeria"])
+        enfermera = self._persona("enf@t.local", Membresia.Rol.ENFERMERIA, matricula="E-100")
+
+        self.assertEqual(motor._exigir_firmante(self.caso, nodo, enfermera), "E-100")
+
+    def test_puede_declarar_varios_roles(self):
+        nodo = self._nodo(firma_roles=["medico", "enfermeria"])
+        medico = self._persona("med@t.local", Membresia.Rol.MEDICO, matricula="M-1")
+        enfermera = self._persona("enf@t.local", Membresia.Rol.ENFERMERIA, matricula="E-1")
+
+        self.assertEqual(motor._exigir_firmante(self.caso, nodo, medico), "M-1")
+        self.assertEqual(motor._exigir_firmante(self.caso, nodo, enfermera), "E-1")
+
+    def test_quien_no_tiene_el_rol_declarado_no_firma(self):
+        nodo = self._nodo(firma_roles=["enfermeria"])
+        medico = self._persona("med@t.local", Membresia.Rol.MEDICO, matricula="M-1")
+
+        with self.assertRaises(motor.ErrorMotor) as e:
+            motor._exigir_firmante(self.caso, nodo, medico)
+        # El mensaje dice QUIÉN puede, no sólo que no se puede.
+        self.assertIn("Enfermería", str(e.exception))
+
+    # --- Matrícula ---------------------------------------------------------- #
+
+    def test_un_paso_administrativo_puede_no_exigir_matricula(self):
+        """
+        Una admisión la registra un administrativo, que no tiene matrícula: sin
+        esto ese paso era imposible de modelar.
+        """
+        nodo = self._nodo(firma_roles=["administrativo"], firma_matricula=False)
+        admin = self._persona("adm@t.local", Membresia.Rol.ADMINISTRATIVO)
+
+        self.assertEqual(motor._exigir_firmante(self.caso, nodo, admin), "")
+
+    def test_con_matricula_exigida_y_sin_legajo_no_firma(self):
+        nodo = self._nodo(firma_roles=["enfermeria"])
+        enfermera = self._persona("enf@t.local", Membresia.Rol.ENFERMERIA)
+
+        with self.assertRaises(motor.ErrorMotor) as e:
+            motor._exigir_firmante(self.caso, nodo, enfermera)
+        self.assertIn("matrícula", str(e.exception))
+
+    def test_sin_firmar_no_hace_falta_matricula(self):
+        """La matrícula la exige el acto FIRMADO, no cargar la evolución."""
+        nodo = self._nodo(firma_roles=["enfermeria"])
+        enfermera = self._persona("enf@t.local", Membresia.Rol.ENFERMERIA)
+
+        self.assertEqual(
+            motor._exigir_firmante(self.caso, nodo, enfermera, requiere_matricula=False), ""
+        )
+
+    # --- Área --------------------------------------------------------------- #
+
+    def test_hay_que_estar_asignado_al_area_del_caso(self):
+        nodo = self._nodo(firma_roles=["medico"])
+        otra = Area.objects.create(institucion=self.inst, nombre="Laboratorio")
+        u = Usuario.objects.create_user(email="ajeno@t.local", password="x")
+        m = Membresia.objects.create(
+            usuario=u, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        m.areas.add(otra)
+        LegajoProfesional.objects.create(usuario=u, matricula="M-9")
+
+        with self.assertRaises(motor.ErrorMotor) as e:
+            motor._exigir_firmante(self.caso, nodo, u)
+        self.assertIn("Guardia", str(e.exception))
+
+    def test_el_super_admin_firma_siempre(self):
+        nodo = self._nodo(firma_roles=["enfermeria"])
+        root = Usuario.objects.create_user(
+            email="root@t.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.assertEqual(motor._exigir_firmante(self.caso, nodo, root), "")
+
+    def test_una_config_rota_cae_en_el_default_en_vez_de_abrir_el_paso(self):
+        """
+        Si `firma_roles` viene vacío o con basura, se vuelve a médico. Lo
+        contrario —dejar pasar a cualquiera— sería un agujero abierto por un
+        error de tipeo en el diseñador.
+        """
+        for config in [{"firma_roles": []}, {"firma_roles": "medico"}, {"firma_roles": None}]:
+            self.assertEqual(motor.quien_firma(self._nodo(**config))[0], ["medico"])

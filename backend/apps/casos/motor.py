@@ -972,7 +972,7 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
                 item.save(update_fields=["atendido", "atendido_at"])
         # La matrícula se exige solo si la atención se FIRMA (acto firmado).
         firmada = bool(datos.get("firmada", False))
-        matricula = _exigir_medico(caso, autor, requiere_matricula=firmada)
+        matricula = _exigir_firmante(caso, nodo, autor, requiere_matricula=firmada)
         _registrar_atencion(caso, nodo, datos, autor=autor, matricula=matricula)
         # Si este caso vino a realizar un estudio, cargar su resultado estructurado.
         if caso.estudio_id:
@@ -1019,15 +1019,39 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     return _correr_automaticos(caso, autor=autor)
 
 
-def _exigir_medico(caso: Caso, autor, requiere_matricula: bool = True) -> str:
+def quien_firma(nodo: Nodo | None) -> tuple[list[str], bool]:
     """
-    Solo un médico (rol `medico`) puede registrar una atención. Si el caso está
-    en un área, el médico debe tener esa área asignada en su membresía. El super
-    admin puede firmar siempre. Si `requiere_matricula` (la atención se firma),
-    además exige tener la matrícula cargada en el legajo.
+    Qué roles pueden registrar la atención de este nodo, y si hace falta matrícula.
+
+    Antes estaba clavado: sólo `medico`, siempre con matrícula. Eso bloquea
+    media docena de procesos reales de un hospital —una consulta de enfermería,
+    una entrevista de trabajo social, una admisión administrativa— donde el acto
+    lo firma otra persona. El rol pasa a declararlo el nodo.
+
+    El default conserva el comportamiento anterior a propósito: los flujos ya
+    publicados no tienen esta config y su semántica no puede cambiar sola.
+    """
+    cfg = (nodo.config or {}) if nodo else {}
+    roles = cfg.get("firma_roles")
+    if not isinstance(roles, list) or not roles:
+        roles = ["medico"]
+    # La matrícula es lo que convierte a la firma en un acto profesional
+    # registrable. Se puede apagar donde el rol no la tiene (un administrativo),
+    # pero por defecto se exige, que es la regla clínica.
+    exige_matricula = cfg.get("firma_matricula", True) is not False
+    return [str(r) for r in roles], bool(exige_matricula)
+
+
+def _exigir_firmante(caso: Caso, nodo: Nodo | None, autor, requiere_matricula: bool = True) -> str:
+    """
+    Verifica que `autor` pueda registrar la atención de `nodo`.
+
+    Los roles habilitados y si hace falta matrícula los declara el nodo (ver
+    `quien_firma`). Si el caso está en un área, además hay que tener esa área
+    asignada en la membresía. El super admin firma siempre.
 
     Devuelve la matrícula del profesional (snapshot para asentar en la firma);
-    cadena vacía si firma el super admin o no tiene matrícula.
+    cadena vacía si firma el super admin o si el rol no la requiere.
     """
     from apps.accounts.models import Membresia
 
@@ -1035,17 +1059,22 @@ def _exigir_medico(caso: Caso, autor, requiere_matricula: bool = True) -> str:
         raise ErrorMotor("Se requiere un profesional autenticado para registrar la atención.")
     if getattr(autor, "is_superuser", False):
         return ""
-    medicas = Membresia.objects.filter(
-        usuario=autor, institucion=caso.institucion, rol=Membresia.Rol.MEDICO, activo=True
+
+    roles, exige_matricula = quien_firma(nodo)
+    membresias = Membresia.objects.filter(
+        usuario=autor, institucion=caso.institucion, rol__in=roles, activo=True
     )
-    if not medicas.exists():
-        raise ErrorMotor("Solo un médico puede registrar una atención.")
-    if caso.area_actual_id and not medicas.filter(areas=caso.area_actual_id).exists():
-        raise ErrorMotor(f"El médico no está asignado al área «{caso.area_actual}».")
+    if not membresias.exists():
+        etiquetas = dict(Membresia.Rol.choices)
+        nombres = " o ".join(etiquetas.get(r, r) for r in roles)
+        raise ErrorMotor(f"Este paso lo puede registrar {nombres}.")
+    if caso.area_actual_id and not membresias.filter(areas=caso.area_actual_id).exists():
+        raise ErrorMotor(f"No estás asignado al área «{caso.area_actual}».")
+
     matricula = (getattr(getattr(autor, "legajo", None), "matricula", "") or "").strip()
-    if requiere_matricula and not matricula:
+    if requiere_matricula and exige_matricula and not matricula:
         raise ErrorMotor(
-            "Para firmar la atención necesitás tener tu matrícula cargada en el legajo profesional."
+            "Para firmar necesitás tener tu matrícula cargada en el legajo profesional."
         )
     return matricula
 

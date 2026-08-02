@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { desbordaHorizontal, entrar } from "./apoyo";
+import { entrar, sinDesborde } from "./apoyo";
 
 /**
  * «Mi trabajo»: la pantalla de inicio del operador y su worklist.
@@ -64,9 +64,7 @@ test.describe("Mi trabajo", () => {
   test("no desborda en ningún ancho", async ({ page }) => {
     await entrar(page, "medico");
     for (const width of [1440, 1024, 390]) {
-      await page.setViewportSize({ width, height: 800 });
-      await page.waitForTimeout(400);
-      expect(await desbordaHorizontal(page), `desborda a ${width}px`).toBe(false);
+      await sinDesborde(page, width);
     }
   });
 });

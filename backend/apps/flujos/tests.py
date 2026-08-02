@@ -211,7 +211,8 @@ class EnsayoTests(APITestCase):
 
         d = self._ensayo([{"titulo": "Consulta", "contenido": "ok"}])
         self.assertIsNotNone(d["error"])
-        self.assertIn("médico", d["error"]["mensaje"])
+        # El mensaje dice QUIÉN puede registrar el paso, no sólo que no se puede.
+        self.assertIn("médico", d["error"]["mensaje"].lower())
         self.assertEqual(d["error"]["nodo"], aten.pk)
         # Y no miente diciendo que terminó.
         self.assertFalse(d["termino"])

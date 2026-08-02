@@ -58,6 +58,22 @@ export async function entrarPlataforma(page) {
 }
 
 /**
+ * Cambia el ancho de la ventana y comprueba que la pantalla no desborde.
+ *
+ * Antes cada test hacía `setViewportSize` + `waitForTimeout(400)`. Los 400 ms
+ * alcanzan en una máquina descansada y no alcanzan bajo carga: la medición cae
+ * sobre el layout a medio rehacer y el test falla por algo que no tiene que ver
+ * con lo que prueba. `expect.poll` reintenta hasta que el navegador terminó, y
+ * si de verdad desborda igual falla.
+ */
+export async function sinDesborde(page, ancho) {
+  await page.setViewportSize({ width: ancho, height: 800 });
+  await expect
+    .poll(() => desbordaHorizontal(page), { message: `desborda a ${ancho}px` })
+    .toBe(false);
+}
+
+/**
  * Espera a que la pantalla esté realmente lista para mirarla o medirla.
  *
  * Reemplaza a los `waitForTimeout` que había antes. Un temporizador fijo alcanza

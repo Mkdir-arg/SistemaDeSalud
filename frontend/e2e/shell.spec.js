@@ -27,15 +27,18 @@ test.describe("Shell", () => {
 
   test("en tablet sigue siendo barra lateral", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.waitForTimeout(400);
-    expect(await asideVisible(page)).toBe(true);
-    expect(await desbordaHorizontal(page)).toBe(false);
+    // `expect.poll` en vez de un temporizador: el relayout puede tardar más de
+    // 400 ms bajo carga y ahí el test falla por el reloj, no por la pantalla.
+    await expect.poll(() => asideVisible(page)).toBe(true);
+    await expect.poll(() => desbordaHorizontal(page)).toBe(false);
   });
 
   test.describe("en móvil el menú es un cajón", () => {
     test.beforeEach(async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.waitForTimeout(400);
+      // La barra lateral tiene que haber desaparecido: ésa es la señal de que el
+      // layout móvil ya se aplicó, y es mucho más confiable que un temporizador.
+      await expect.poll(() => asideVisible(page)).toBe(false);
     });
 
     test("arranca oculto y no desborda", async ({ page }) => {

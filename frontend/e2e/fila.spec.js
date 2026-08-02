@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { desbordaHorizontal, entrar } from "./apoyo";
+import { entrar, sinDesborde } from "./apoyo";
 
 /**
  * Fila de espera: la pantalla piloto de la migración y el recorrido operativo
@@ -68,9 +68,7 @@ test.describe("Fila de espera", () => {
 
   test("se puede operar en tablet y en móvil", async ({ page }) => {
     for (const width of [1024, 390]) {
-      await page.setViewportSize({ width, height: 800 });
-      await page.waitForTimeout(400);
-      expect(await desbordaHorizontal(page), `desborda a ${width}px`).toBe(false);
+      await sinDesborde(page, width);
       await expect(page.getByRole("button", { name: /Llamar/ }).first()).toBeVisible();
     }
   });

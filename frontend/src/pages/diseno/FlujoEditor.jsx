@@ -17,6 +17,16 @@ const PALETA = TIPOS_NODO.map((tipo) => ({ tipo, ...catDe(tipo) }));
 
 // Operadores de regla en lenguaje natural (los usa el RuleBuilder y la etiqueta
 // automática de las ramas de Decisión en el lienzo).
+// Roles que pueden registrar una atención. No están todos los del sistema: un
+// configurador o un admin no atienden pacientes, y ofrecerlos acá invitaría a
+// modelar un flujo que después nadie puede ejecutar.
+const ROLES_FIRMA = [
+  { value: "medico", label: "Médico / profesional" },
+  { value: "enfermeria", label: "Enfermería" },
+  { value: "administrativo", label: "Administrativo" },
+  { value: "jefe_area", label: "Jefe / Supervisor de área" },
+];
+
 const OPERADOR_LABEL = {
   "=": "es igual a", "!=": "es distinto de",
   ">": "mayor que", "<": "menor que", ">=": "mayor o igual que", "<=": "menor o igual que",
@@ -2045,6 +2055,47 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
               <AvisoFalta texto="Sin duración, el caso queda esperando hasta que alguien lo reactive a mano." />
             )}
           </Field>
+        )}
+
+        {/* Quién firma. Sólo en Atención: es el nodo que produce un acto
+            registrable en la historia clínica. */}
+        {nodo.tipo === "atencion" && (
+          <div style={{ borderTop: `1px solid var(--color-division)`, paddingTop: 14, marginTop: 4 }}>
+            <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".5px", color: "var(--color-texto-debil)", marginBottom: 10 }}>
+              QUIÉN REGISTRA LA ATENCIÓN
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 10 }}>
+              {ROLES_FIRMA.map((r) => {
+                const actuales = (nodo.config || {}).firma_roles || ["medico"];
+                const marcado = actuales.includes(r.value);
+                return (
+                  <Checkbox
+                    key={r.value}
+                    checked={marcado}
+                    onChange={() => {
+                      const siguiente = marcado
+                        ? actuales.filter((x) => x !== r.value)
+                        : [...actuales, r.value];
+                      // Vacío vuelve al default (médico): dejarlo sin roles no
+                      // abriría el paso a cualquiera, pero confunde al leerlo.
+                      setConfig({ firma_roles: siguiente.length ? siguiente : ["medico"] });
+                    }}
+                    label={r.label}
+                  />
+                );
+              })}
+            </div>
+            <Checkbox
+              checked={(nodo.config || {}).firma_matricula !== false}
+              onChange={(e) => setConfig({ firma_matricula: e.target.checked })}
+              label="Exigir matrícula para firmar"
+            />
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", lineHeight: 1.5, marginTop: 6 }}>
+              Destildalo en pasos que registra alguien sin matrícula, como una admisión
+              administrativa. La matrícula es lo que convierte a la firma en un acto
+              profesional registrable.
+            </div>
+          </div>
         )}
 
         {/* SLA: sólo tiene sentido donde el caso ESPERA a una persona. */}
