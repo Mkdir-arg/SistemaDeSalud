@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
@@ -60,10 +60,21 @@ export default function CasoDetalle() {
     <>
       <PageHeader subtitle={`${caso.flujo_titulo}${caso.ciudadano_nombre ? " · " + caso.ciudadano_nombre : ""}`} />
 
-      {/* Dos columnas en pantalla ancha; apiladas debajo de `lg`, con la
-          información del caso primero (es lo que se consulta en una tablet). */}
+      {/*
+        Dos columnas en pantalla ancha, apiladas debajo de `lg`.
+
+        El panel de trabajo va en la columna ANCHA y la ficha del caso en la
+        angosta. Estaba al revés: `lg:order-1` lo empujaba a la segunda columna,
+        así que el formulario donde se registra la atención —con su textarea, el
+        pedido de estudios, la interconsulta y los insumos— vivía en 320 px
+        mientras al lado sobraban mil. Los nombres de insumo salían cortados
+        («Dipiron…») y los selects no entraban.
+
+        Apiladas, en cambio, la ficha va primero: en una tablet lo que se
+        consulta es el estado del caso, no el formulario.
+      */}
       <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8">
-        <div className="flex flex-col gap-lg lg:order-1">
+        <div className="order-last flex flex-col gap-lg lg:order-first">
           <Card className="px-lg py-7 sm:px-8">
             <div className="overflow-x-auto">
               <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
@@ -775,6 +786,8 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
             </div>
           </section>
 
+          <Insumos caso={caso} ocupado={ocupado} toast={toast} />
+
           <ListaConAlta
             label="Emitir receta"
             placeholder="Medicación / indicaciones"
@@ -805,6 +818,150 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
         {ocupado ? "Registrando…" : realizandoEstudio ? "Cargar resultado y cerrar" : "Registrar atención y avanzar"}
       </Button>
     </Card>
+  );
+}
+
+/**
+ * Insumos usados en esta atención.
+ *
+ * Registrarlo acá y no en Farmacia es lo que hace que el consumo quede imputado
+ * al paciente: es la diferencia entre «bajaron 3 ampollas del botiquín» y «a
+ * esta persona se le dieron 3 ampollas de este lote», que es lo único que sirve
+ * cuando hay que responder un retiro de ANMAT.
+ *
+ * El depósito no se elige: es el del área donde se está atendiendo. Preguntarlo
+ * cada vez sería pedirle a quien atiende que sepa algo que el sistema ya sabe.
+ */
+function Insumos({ caso, ocupado, toast }) {
+  const [busca, setBusca] = useState("");
+  const [cantidades, setCantidades] = useState({});
+
+  const depositos = useLista(
+    "depositos",
+    { institucion: caso.institucion, activo: true, pageSize: 50 },
+  );
+  // El botiquín del área donde se atiende; si no hay, la central.
+  const deposito = useMemo(() => {
+    const d = depositos.filas;
+    return d.find((x) => x.area === caso.area_actual) || d.find((x) => x.central) || d[0];
+  }, [depositos.filas, caso.area_actual]);
+
+  const stock = useQuery({
+    queryKey: ["stock-consumo", deposito?.id, busca],
+    queryFn: () => api.get(
+      `/stock/?deposito=${deposito.id}&search=${encodeURIComponent(busca)}&page_size=40`
+    ),
+    enabled: !!deposito && busca.trim().length >= 2,
+  });
+
+  const usados = useQuery({
+    queryKey: ["consumos-caso", caso.id],
+    queryFn: () => api.get(`/movimientos-stock/?caso=${caso.id}&tipo=consumo&page_size=50`),
+  });
+
+  // Se agrupa por insumo: la búsqueda devuelve un renglón por lote y quien
+  // atiende elige un insumo, no un lote —de eso se ocupa el motor—.
+  const opciones = useMemo(() => {
+    const m = new Map();
+    for (const e of stock.data?.results || []) {
+      if (!m.has(e.insumo)) {
+        m.set(e.insumo, { id: e.insumo, nombre: e.insumo_nombre, unidad: e.unidad, total: 0 });
+      }
+      m.get(e.insumo).total += e.cantidad;
+    }
+    return [...m.values()].filter((o) => o.total > 0);
+  }, [stock.data]);
+
+  const registrar = useAccion(
+    ({ insumo, cantidad }) => api.post("/movimientos-stock/consumo/", {
+      deposito: deposito.id, insumo, cantidad, caso: caso.id,
+    }),
+    {
+      invalida: [],
+      onSuccess: (_, { nombre }) => {
+        toast.ok(`${nombre} registrado`);
+        setCantidades({});
+        usados.refetch();
+        stock.refetch();
+      },
+      onError: (e) => toast.deError(e, "No se pudo registrar el consumo."),
+    },
+  );
+
+  if (!depositos.isLoading && !deposito) return null; // la institución no usa farmacia
+
+  return (
+    <section className="rounded-md border border-borde p-3.5">
+      <h4 className="mb-2 text-base font-bold text-texto-suave">
+        Insumos usados
+        {deposito && <span className="font-normal text-texto-tenue"> · {deposito.nombre}</span>}
+      </h4>
+
+      {(usados.data?.results || []).length > 0 && (
+        <ul className="mb-2.5 flex flex-col gap-1">
+          {usados.data.results.map((m) => (
+            <li key={m.id} className="flex items-baseline justify-between gap-2 text-base">
+              <span className="min-w-0 truncate">{m.cantidad} × {m.insumo_nombre}</span>
+              {m.lote_numero && (
+                <span className="whitespace-nowrap font-mono text-sm text-texto-tenue">
+                  lote {m.lote_numero}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Input
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Buscar un insumo del botiquín…"
+        aria-label="Buscar insumo"
+        disabled={ocupado || !deposito}
+      />
+
+      {busca.trim().length >= 2 && (
+        stock.isLoading ? (
+          <Skeleton className="mt-2 h-14" />
+        ) : opciones.length === 0 ? (
+          /* Que no haya es información: hay que pedir reposición, no seguir
+             buscando con otras palabras. */
+          <p className="mt-2 text-sm text-texto-tenue">
+            No hay stock de eso en {deposito?.nombre}.
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {opciones.map((o) => (
+              <div key={o.id} className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-base">
+                  {o.nombre}
+                  <span className="text-texto-tenue"> · hay {o.total} {o.unidad}</span>
+                </span>
+                <Input
+                  type="number"
+                  min="1"
+                  max={o.total}
+                  value={cantidades[o.id] ?? 1}
+                  onChange={(e) => setCantidades({ ...cantidades, [o.id]: e.target.value })}
+                  aria-label={`Cantidad de ${o.nombre}`}
+                  className="w-20"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={ocupado || registrar.isPending}
+                  onClick={() => registrar.mutate({
+                    insumo: o.id, cantidad: Number(cantidades[o.id] ?? 1), nombre: o.nombre,
+                  })}
+                >
+                  Registrar
+                </Button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </section>
   );
 }
 
@@ -888,7 +1045,7 @@ function Timeline({ eventos }) {
 function CargandoCaso() {
   return (
     <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8" role="status" aria-label="Cargando caso…">
-      <div className="flex flex-col gap-lg lg:order-1">
+      <div className="order-last flex flex-col gap-lg lg:order-first">
         <Skeleton className="h-32" />
         <Skeleton className="h-64" />
       </div>
