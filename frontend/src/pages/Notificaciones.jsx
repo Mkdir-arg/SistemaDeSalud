@@ -76,7 +76,10 @@ export default function Notificaciones() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-md font-semibold">{n.titulo}</span>
-                      {n.detalle && <span className="block text-base text-texto-debil">{n.detalle}</span>}
+                      {/* `texto-suave` y no `texto-debil`: sobre el tinte de «no leída»
+                          (`accent-50`) el débil mide 4,31:1, por debajo de AA.
+                          Es la tercera pantalla donde falla ese mismo par. */}
+                      {n.detalle && <span className="block text-base text-texto-suave">{n.detalle}</span>}
                       <span className="mt-0.5 block text-xs text-texto-tenue">hace {antiguedad(n.creada)}</span>
                     </span>
                     {!n.leida && (
