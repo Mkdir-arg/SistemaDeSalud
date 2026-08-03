@@ -786,6 +786,8 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
             </div>
           </section>
 
+          <TrasladoExterno caso={caso} ocupado={ocupado} ejecutar={ejecutar} />
+
           <Insumos caso={caso} ocupado={ocupado} toast={toast} />
 
           <ListaConAlta
@@ -961,6 +963,68 @@ function Insumos({ caso, ocupado, toast }) {
           </div>
         )
       )}
+    </section>
+  );
+}
+
+/**
+ * Derivar a OTRO establecimiento.
+ *
+ * Va separado de la interconsulta a propósito, aunque las dos «derivan»: una
+ * manda el caso a otra área de esta casa y vuelve; la otra manda al paciente a
+ * otro hospital, que puede decir que no. Mezclarlas en el mismo selector haría
+ * que se elija por error el destino equivocado.
+ *
+ * Sólo aparece si el establecimiento pertenece a una red: donde no la hay, es
+ * una opción que nunca va a funcionar.
+ */
+function TrasladoExterno({ caso, ocupado, ejecutar }) {
+  const [destino, setDestino] = useState("");
+  const [motivo, setMotivo] = useState("complejidad");
+  const [detalle, setDetalle] = useState("");
+
+  const q = useQuery({
+    queryKey: ["destinos-traslado", caso.institucion],
+    queryFn: () => api.get(`/traslados/destinos/?institucion=${caso.institucion}`),
+  });
+  const destinos = q.data?.destinos || [];
+  if (q.isLoading || destinos.length === 0) return null;
+
+  return (
+    <section>
+      <h4 className="mb-2 text-base font-bold text-texto-suave">Derivar a otro establecimiento</h4>
+      <div className="flex flex-col gap-2">
+        <Select aria-label="Establecimiento de destino" value={destino}
+                onChange={(e) => setDestino(e.target.value)}>
+          <option value="">— Elegir establecimiento —</option>
+          {destinos.map((d) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+        </Select>
+        <Select aria-label="Motivo del traslado" value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}>
+          <option value="complejidad">Mayor complejidad</option>
+          <option value="especialidad">Especialidad no disponible</option>
+          <option value="cama">Falta de cama</option>
+          <option value="estudio">Estudio no disponible</option>
+          <option value="cercania">Cercanía al domicilio</option>
+          <option value="otro">Otro</option>
+        </Select>
+        {/* El resumen es lo ÚNICO clínico que cruza al otro hospital: su
+            historia clínica no viaja. Quien recibe decide con esto. */}
+        <Textarea value={detalle} onChange={(e) => setDetalle(e.target.value)}
+                  placeholder="Resumen para quien recibe: es lo único que va a ver del cuadro." />
+        <Button
+          variant="secondary"
+          disabled={ocupado || !destino}
+          onClick={() => ejecutar(
+            () => api.post("/traslados/solicitar/", {
+              caso: caso.id, destino: Number(destino), motivo, detalle: detalle.trim(),
+            }),
+            "Traslado solicitado · el paciente sigue a cargo hasta que lo reciban",
+          )}
+        >
+          Solicitar traslado
+        </Button>
+      </div>
     </section>
   );
 }

@@ -22,6 +22,7 @@ import Fila from "./pages/ejecucion/Fila";
 import Internacion from "./pages/ejecucion/Internacion";
 import Agenda from "./pages/ejecucion/Agenda";
 import Farmacia from "./pages/ejecucion/Farmacia";
+import RedTraslados from "./pages/ejecucion/RedTraslados";
 import Flujos from "./pages/diseno/Flujos";
 import FlujoEditor from "./pages/diseno/FlujoEditor";
 import MapaFlujos from "./pages/diseno/MapaFlujos";
@@ -134,6 +135,7 @@ export default function App() {
       <Route path="/internacion" element={P(<Internacion />)} />
       <Route path="/agenda" element={P(<Agenda />)} />
       <Route path="/farmacia" element={P(<Farmacia />)} />
+      <Route path="/red" element={P(<RedTraslados />)} />
       <Route path="/casos" element={P(<Casos />)} />
       <Route path="/casos/:id" element={P(<CasoDetalle />)} />
 
