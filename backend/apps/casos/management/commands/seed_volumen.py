@@ -199,6 +199,14 @@ class Command(BaseCommand):
 
         if opciones["rehacer"]:
             call_command("seed_guardia", verbosity=0)
+            # Si el demo tiene red, se rehace también.
+            #
+            # `seed_guardia` borra los casos, y con ellos se van los traslados
+            # (cuelgan del caso de origen). El segundo establecimiento y la red
+            # sobreviven, así que sin esto el reset dejaba una red configurada
+            # con cero traslados: peor que las dos puntas, porque parece que la
+            # función existe y no anda.
+            self._rehacer_red = Institucion.objects.count() > 1
             self.stdout.write("Escenario de guardia recreado.")
 
         self.inst = Institucion.objects.filter(nombre="Hospital Central").first()
@@ -259,6 +267,8 @@ class Command(BaseCommand):
 
         self._sellar_notificaciones(ahora)
         self._poner_al_dia_la_higiene()
+        if getattr(self, "_rehacer_red", False):
+            call_command("seed_red", verbosity=0)
         self._sembrar_turnos(pacientes, hechos)
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(

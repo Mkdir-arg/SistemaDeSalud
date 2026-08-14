@@ -43,6 +43,7 @@ services:
       sh -c "while true; do
                python manage.py correr_tiempos || true;
                python manage.py recordar_turnos || true;
+               python manage.py alertar_saturacion || true;
                sleep ${INTERVALO_TIEMPOS:-120};
              done"
     environment:

@@ -55,6 +55,11 @@ class Command(BaseCommand):
             nombre="Hospital Municipal de Villa Real",
             defaults={"tipo": "Hospital de baja complejidad"},
         )
+        # Ubicaciones reales del conurbano sur: dan una distancia creíble entre
+        # los dos —unos 20 km— que es lo que hace visible para qué sirve el dato.
+        Institucion.objects.filter(pk=principal.pk).update(latitud=-34.7606, longitud=-58.3956)
+        chico.latitud, chico.longitud = -34.8751, -58.2827
+        chico.save(update_fields=["latitud", "longitud"])
         guardia, _ = Area.objects.get_or_create(institucion=chico, nombre="Guardia")
         internacion, _ = Area.objects.get_or_create(institucion=chico, nombre="Internación")
         Box.objects.get_or_create(area=guardia, nombre="Consultorio 1")

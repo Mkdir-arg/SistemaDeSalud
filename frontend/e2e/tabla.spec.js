@@ -17,23 +17,31 @@ test.describe("Tabla de casos", () => {
   const idsVisibles = (page) =>
     page.$$eval("tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
 
-  /** Total de casos según la API, para no clavar un número en el test. */
-  async function totalDeCasos(request) {
-    const auth = await request.post("http://127.0.0.1:8000/api/auth/token/", {
-      data: { email: "admin@cauce.local", password: "admin1234" },
+  /**
+   * Total de casos según la API, para no clavar un número en el test.
+   *
+   * Se pide DESDE la página y acotado a la institución en la que está parada.
+   * Pedirlo aparte como super admin devuelve los casos de todas las
+   * instituciones: con un solo hospital coincidía por casualidad, y al sumar el
+   * segundo el test empezó a comparar 570 contra los 528 que la tabla muestra
+   * —correctamente— de su institución.
+   */
+  async function totalDeCasos(page) {
+    return page.evaluate(async () => {
+      const inst = JSON.parse(localStorage.getItem("cauce.institucion") || "null");
+      const r = await fetch(
+        `/api/casos/?page_size=1${inst ? `&institucion=${inst.id}` : ""}`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem("cauce.access")}` } },
+      );
+      return (await r.json()).count;
     });
-    const { access } = await auth.json();
-    const r = await request.get("http://127.0.0.1:8000/api/casos/?page_size=1", {
-      headers: { Authorization: `Bearer ${access}` },
-    });
-    return (await r.json()).count;
   }
 
-  test("informa el total real y no solo lo que entra en una página", async ({ page, request }) => {
+  test("informa el total real y no solo lo que entra en una página", async ({ page }) => {
     // El total se compara contra el que devuelve la API, no contra un número
     // fijo: el seed genera una cantidad que depende de decisiones al azar, y
     // clavarla en el test lo vuelve frágil ante cualquier cambio del generador.
-    const total = await totalDeCasos(request);
+    const total = await totalDeCasos(page);
     expect(total).toBeGreaterThan(100); // la demo tiene volumen
 
     const pie = page.locator("text=/Mostrando .* de /").first();
@@ -87,8 +95,8 @@ test.describe("Tabla de casos", () => {
     expect(desc[0]).toBeGreaterThan(asc[0]);
   });
 
-  test("filtrar por estado reduce el total", async ({ page, request }) => {
-    const todos = await totalDeCasos(request);
+  test("filtrar por estado reduce el total", async ({ page }) => {
+    const todos = await totalDeCasos(page);
     // El total se lee con `poll` porque la consulta filtrada tarda: leerlo una
     // sola vez justo después de elegir devuelve el total viejo y el test pasa o
     // falla según la latencia.

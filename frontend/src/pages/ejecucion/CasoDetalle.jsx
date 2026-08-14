@@ -994,10 +994,20 @@ function TrasladoExterno({ caso, ocupado, ejecutar }) {
     <section>
       <h4 className="mb-2 text-base font-bold text-texto-suave">Derivar a otro establecimiento</h4>
       <div className="flex flex-col gap-2">
+        {/* Con camas y distancia en la misma línea: elegir sólo por nombre es
+            elegir a ciegas entre dos opciones que pueden diferir en media hora
+            de ambulancia y en si hay lugar. Los saturados van al final. */}
         <Select aria-label="Establecimiento de destino" value={destino}
                 onChange={(e) => setDestino(e.target.value)}>
           <option value="">— Elegir establecimiento —</option>
-          {destinos.map((d) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+          {destinos.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.nombre}
+              {d.km != null && ` · ${d.km} km`}
+              {d.camas_operativas > 0 && ` · ${d.camas_libres} camas libres`}
+              {d.saturado && " · SATURADO"}
+            </option>
+          ))}
         </Select>
         <Select aria-label="Motivo del traslado" value={motivo}
                 onChange={(e) => setMotivo(e.target.value)}>

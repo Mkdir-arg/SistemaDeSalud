@@ -24,12 +24,29 @@ test.describe("Detalle del caso", () => {
   test("el panel del paso corresponde al tipo de nodo", async ({ page }) => {
     await entrar(page, "admin");
     await abrirPrimerCaso(page);
-    // Cualquiera sea el paso, la pantalla dice qué se puede hacer: nunca queda
-    // una zona muerta sin explicación.
+    /*
+     * Cualquiera sea el paso, la pantalla dice qué se puede hacer: nunca queda
+     * una zona muerta sin explicación.
+     *
+     * La lista crece con cada tipo de nodo nuevo, y eso es a propósito: agregar
+     * un tipo sin escribirle su panel deja al caso parado en una pantalla que no
+     * explica nada. Pasó con «Asignar cama», que estuvo tres fases fuera de esta
+     * lista —el panel existía, pero nada verificaba que existiera—.
+     */
     const panel = page.getByText(
-      /Completar y avanzar|Registrar atención|Caso cerrado|Iniciar caso|sala de espera|esperando el resultado|no requiere una acción|Llamar y continuar|Reactivar|lo realiza/i,
+      new RegExp([
+        "Completar y avanzar", "Registrar atención", "Caso cerrado", "Iniciar caso",
+        "sala de espera", "esperando el resultado", "no requiere una acción",
+        "Llamar y continuar", "Reactivar", "lo realiza",
+        "camas libres",            // paso «Asignar cama» (fase 4)
+        "No se presentó",          // paciente dado por ausente (fase 3)
+      ].join("|"), "i"),
     );
-    await expect(panel.first()).toBeVisible();
+    await expect(
+      panel.first(),
+      "el paso no explica qué hacer. Si agregaste un tipo de nodo, escribile su " +
+      "panel en PanelPaso y sumá acá una frase suya.",
+    ).toBeVisible();
   });
 
   test("el jefe de área ve el panel de supervisión", async ({ page }) => {

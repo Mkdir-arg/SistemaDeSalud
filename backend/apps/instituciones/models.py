@@ -20,6 +20,13 @@ class Institucion(models.Model):
     cuit = models.CharField("CUIT", max_length=20, blank=True)
     direccion = models.CharField("dirección", max_length=255, blank=True)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVA)
+    # Ubicación, para poder ordenar los destinos de un traslado por cercanía.
+    #
+    # Es media hora de ambulancia lo que separa dos opciones que en una lista
+    # alfabética se ven iguales. Opcional: una institución sin coordenadas
+    # sigue funcionando, sólo que aparece sin distancia.
+    latitud = models.FloatField(null=True, blank=True)
+    longitud = models.FloatField(null=True, blank=True)
     activa = models.BooleanField(default=True)
     creada = models.DateTimeField(auto_now_add=True)
 

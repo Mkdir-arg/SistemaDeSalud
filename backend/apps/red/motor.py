@@ -20,6 +20,24 @@ class ErrorTraslado(Exception):
     """Regla de traslado incumplida. La API la traduce a un 400 con el texto."""
 
 
+def distancia_km(a, b):
+    """
+    Distancia en línea recta entre dos establecimientos, en kilómetros.
+
+    En línea recta y no por ruta: calcular el trayecto real necesitaría un
+    servicio de mapas externo, y para elegir entre dos hospitales el orden de
+    magnitud alcanza. Devuelve None si a alguno le falta la ubicación —es mejor
+    no mostrar distancia que mostrar una inventada—.
+    """
+    from math import asin, cos, radians, sin, sqrt
+
+    if None in (a.latitud, a.longitud, b.latitud, b.longitud):
+        return None
+    lat1, lon1, lat2, lon2 = map(radians, [a.latitud, a.longitud, b.latitud, b.longitud])
+    h = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+    return round(2 * 6371 * asin(sqrt(h)), 1)
+
+
 def destinos_posibles(institucion):
     """
     A qué establecimientos puede derivar esta institución.
@@ -316,3 +334,82 @@ def saturadas(red: Red, umbral=90):
     números se contradigan y no se pueda confiar en ninguno.
     """
     return [c for c in camas_en_red(red) if c["operativas"] and c["ocupacion"] >= umbral]
+
+
+def tablero(red: Red, dias=30):
+    """
+    Panorama de la red: cada establecimiento con sus indicadores, comparables
+    entre sí.
+
+    Comparables es la palabra: los números se calculan igual en todos —misma
+    definición de ocupación, mismo rango de fechas— porque una región usa este
+    tablero para decidir a dónde mandar recursos, y dos criterios distintos
+    harían que la comparación mienta.
+
+    Los traslados se cuentan por establecimiento de ORIGEN: «cuántos derivó» es
+    una medida de lo que ese efector no pudo resolver, que es lo que la región
+    quiere ver.
+    """
+    from datetime import timedelta
+
+    from apps.casos.models import Caso
+
+    desde = timezone.now() - timedelta(days=dias)
+    por_camas = {c["institucion"].id: c for c in camas_en_red(red)}
+
+    filas = []
+    for inst in red.instituciones.filter(activa=True).order_by("nombre"):
+        casos = Caso.objects.filter(institucion=inst)
+        activos = casos.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+        enviados = Traslado.objects.filter(origen=inst, solicitado_at__gte=desde)
+        recibidos = Traslado.objects.filter(destino=inst, solicitado_at__gte=desde)
+        respondidos = recibidos.filter(resuelto_at__isnull=False)
+        demoras = [t.demora_min for t in respondidos if t.demora_min is not None]
+
+        cam = por_camas.get(inst.id, {})
+        filas.append({
+            "institucion": inst,
+            "casos_activos": activos.count(),
+            "ingresos": casos.filter(creado__gte=desde).count(),
+            "urgentes": activos.filter(prioridad=Caso.Prioridad.URGENTE).count(),
+            "camas_operativas": cam.get("operativas", 0),
+            "camas_libres": cam.get("libres", 0),
+            "ocupacion": cam.get("ocupacion", 0),
+            "derivo": enviados.count(),
+            "recibio": recibidos.count(),
+            # Cuánto tarda en contestar un pedido de traslado. Es el indicador
+            # que más le importa a quien deriva: un hospital que tarda seis
+            # horas en decir que sí es, en la práctica, un hospital que no
+            # recibe.
+            "demora_respuesta_min": round(sum(demoras) / len(demoras)) if demoras else None,
+            "rechazados": recibidos.filter(estado=Traslado.Estado.RECHAZADO).count(),
+            "pendientes": recibidos.filter(estado=Traslado.Estado.SOLICITADO).count(),
+        })
+
+    total_enviados = Traslado.objects.filter(
+        origen__in=red.instituciones.all(), solicitado_at__gte=desde
+    )
+    resueltos = total_enviados.filter(resuelto_at__isnull=False)
+    viajes = [t.traslado_min for t in total_enviados if t.traslado_min is not None]
+
+    return {
+        "red": red,
+        "dias": dias,
+        "establecimientos": filas,
+        "totales": {
+            "casos_activos": sum(f["casos_activos"] for f in filas),
+            "camas_operativas": sum(f["camas_operativas"] for f in filas),
+            "camas_libres": sum(f["camas_libres"] for f in filas),
+            "traslados": total_enviados.count(),
+            "pendientes": total_enviados.filter(estado=Traslado.Estado.SOLICITADO).count(),
+            # Sobre los RESUELTOS: incluir los que todavía nadie contestó haría
+            # que el porcentaje mejore solo por dejar pedidos sin responder.
+            "rechazo_pct": (
+                round(100 * resueltos.filter(estado=Traslado.Estado.RECHAZADO).count()
+                      / resueltos.count())
+                if resueltos.count() else 0
+            ),
+            "viaje_prom_min": round(sum(viajes) / len(viajes)) if viajes else None,
+        },
+        "saturados": [s["institucion"].nombre for s in saturadas(red)],
+    }

@@ -35,6 +35,34 @@ class RedViewSet(BaseModelViewSet):
         return qs
 
     @action(detail=True, methods=["get"])
+    def tablero(self, request, pk=None):
+        """
+        Indicadores comparados de la red: `?dias=30`.
+
+        Todo se calcula igual en todos los establecimientos —misma definición de
+        ocupación, mismo rango— porque una región usa esto para decidir a dónde
+        mandar recursos, y dos criterios distintos harían que la comparación
+        mienta.
+        """
+        red = self.get_object()
+        try:
+            dias = max(1, min(int(request.query_params.get("dias", 30)), 365))
+        except ValueError:
+            dias = 30
+        d = motor.tablero(red, dias=dias)
+        return Response({
+            "red": red.nombre,
+            "dias": d["dias"],
+            "establecimientos": [{
+                "id": f["institucion"].id,
+                "nombre": f["institucion"].nombre,
+                **{k: v for k, v in f.items() if k != "institucion"},
+            } for f in d["establecimientos"]],
+            "totales": d["totales"],
+            "saturados": d["saturados"],
+        })
+
+    @action(detail=True, methods=["get"])
     def camas(self, request, pk=None):
         """
         Disponibilidad de camas de toda la red.
@@ -218,6 +246,26 @@ class TrasladoViewSet(
         inst = Institucion.objects.filter(pk=request.query_params.get("institucion")).first()
         if inst is None or inst.id not in self._mis_instituciones():
             return Response({"destinos": []})
-        return Response({"destinos": [
-            {"id": i.id, "nombre": i.nombre} for i in motor.destinos_posibles(inst)
-        ]})
+        # Con la ocupación y la distancia: elegir a dónde derivar sin eso es
+        # elegir a ciegas entre opciones que en una lista alfabética se ven
+        # iguales, cuando una puede estar llena y la otra a media hora más.
+        from apps.instituciones.models import Cama
+
+        destinos = []
+        for i in motor.destinos_posibles(inst):
+            camas = Cama.objects.filter(area__institucion=i, activa=True)
+            operativas = camas.exclude(estado=Cama.Estado.BLOQUEADA).count()
+            destinos.append({
+                "id": i.id,
+                "nombre": i.nombre,
+                "km": motor.distancia_km(inst, i),
+                "camas_libres": camas.filter(estado=Cama.Estado.LIBRE).count(),
+                "camas_operativas": operativas,
+                "saturado": i.nombre in [
+                    s["institucion"].nombre
+                    for red in inst.redes.filter(activa=True) for s in motor.saturadas(red)
+                ],
+            })
+        # Primero los que tienen lugar; entre ellos, el más cerca.
+        destinos.sort(key=lambda d: (d["saturado"], d["km"] if d["km"] is not None else 1e9))
+        return Response({"destinos": destinos})

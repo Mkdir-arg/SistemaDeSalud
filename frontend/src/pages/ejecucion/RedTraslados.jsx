@@ -58,7 +58,7 @@ export default function RedTraslados() {
   const TABS = [
     { key: "entrantes", label: "Nos derivan" },
     { key: "salientes", label: "Derivamos" },
-    { key: "camas", label: "Camas en la red" },
+    { key: "panorama", label: "Panorama de la red" },
   ];
 
   if (redes.isLoading) return <Cargando />;
@@ -95,8 +95,8 @@ export default function RedTraslados() {
 
       {tab === null ? (
         <Skeleton className="h-64" />
-      ) : tab === "camas" ? (
-        <CamasRed red={red} institucion={institucion} />
+      ) : tab === "panorama" ? (
+        <Panorama red={red} institucion={institucion} />
       ) : (
         <Lista lado={tab} />
       )}
@@ -310,16 +310,27 @@ function ResponderModal({ t, accion, onClose }) {
   );
 }
 
-function CamasRed({ red, institucion }) {
+/**
+ * Panorama de la red: cada establecimiento, uno debajo del otro, con los mismos
+ * indicadores.
+ *
+ * Comparables es el punto. Una región mira esto para decidir a dónde mandar
+ * recursos, y si cada establecimiento contara distinto la comparación mentiría.
+ * Por eso las columnas son las mismas para todos, incluso cuando alguna no
+ * aplica —un efector sin internación muestra «sin camas», no un 0 % que se
+ * confunde con «vacío»—.
+ */
+function Panorama({ red, institucion }) {
+  const [dias, setDias] = useState(30);
   const q = useQuery({
-    queryKey: ["camas-red", red.id],
-    queryFn: () => api.get(`/redes/${red.id}/camas/`),
+    queryKey: ["tablero-red", red.id, dias],
+    queryFn: () => api.get(`/redes/${red.id}/tablero/?dias=${dias}`),
   });
 
   if (q.isLoading) return <Skeleton className="h-64" />;
   if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
 
-  const { establecimientos = [], saturados = [] } = q.data || {};
+  const { establecimientos = [], totales = {}, saturados = [] } = q.data || {};
 
   return (
     <div className="flex flex-col gap-lg">
@@ -333,46 +344,92 @@ function CamasRed({ red, institucion }) {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-        <ul className="divide-y divide-division">
-          {establecimientos.map((e) => {
-            const propio = e.id === institucion?.id;
-            const tono = e.ocupacion >= 90 ? "text-danger"
-              : e.ocupacion >= 75 ? "text-badge-amber-fg" : "text-texto-fuerte";
-            return (
-              <li key={e.id} className="flex flex-wrap items-center gap-x-md gap-y-2 px-xl py-3.5">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-md font-semibold">
-                    {e.nombre}
-                    {propio && <span className="font-normal text-texto-tenue"> · acá</span>}
-                  </span>
-                  <span className="block text-sm text-texto-tenue">
-                    {e.total === 0
-                      ? "sin camas de internación"
-                      : `${e.libres} libres de ${e.operativas} en servicio`}
-                  </span>
-                </span>
-                {e.operativas > 0 && (
-                  <>
-                    <div className="h-2 w-28 overflow-hidden rounded-pill bg-division" role="presentation">
-                      <div
-                        className={cn("h-full rounded-pill",
-                          e.ocupacion >= 90 ? "bg-danger"
-                            : e.ocupacion >= 75 ? "bg-badge-amber-fg" : "bg-accent-fuerte")}
-                        style={{ width: `${e.ocupacion}%` }}
-                      />
-                    </div>
-                    <span className="w-16 text-right tabular-nums">
-                      <span className={cn("text-md font-extrabold", tono)}>{e.ocupacion}%</span>
-                      <span className="block text-xs text-texto-tenue">{e.ocupadas}/{e.operativas}</span>
-                    </span>
-                  </>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+      <section className="flex flex-wrap items-center gap-lg rounded-lg border border-borde bg-superficie px-xl py-lg">
+        <div className="flex flex-1 flex-wrap gap-x-8 gap-y-3">
+          <Cifra n={totales.casos_activos} l="casos activos" />
+          <Cifra n={totales.camas_libres} l={`camas libres de ${totales.camas_operativas ?? 0}`} />
+          <Cifra n={totales.traslados} l={`traslados en ${dias} días`} />
+          <Cifra n={totales.pendientes} l="sin responder"
+                 tono={totales.pendientes > 0 ? "text-badge-amber-fg" : undefined} />
+          <Cifra n={`${totales.rechazo_pct ?? 0}%`} l="rechazados" />
+          <Cifra n={totales.viaje_prom_min ? `${totales.viaje_prom_min}′` : "—"} l="viaje promedio" />
+        </div>
+        <Select value={dias} onChange={(e) => setDias(Number(e.target.value))}
+                aria-label="Período" className="w-auto">
+          <option value={7}>7 días</option>
+          <option value={30}>30 días</option>
+          <option value={90}>90 días</option>
+        </Select>
       </section>
+
+      <section className="overflow-x-auto rounded-lg border border-borde bg-superficie">
+        <table className="w-full min-w-[54rem] text-md">
+          <thead>
+            <tr className="border-b border-division bg-superficie-2 text-micro font-bold tracking-wide text-texto-tenue">
+              <th className="px-xl py-2.5 text-left">ESTABLECIMIENTO</th>
+              <th className="px-3 py-2.5 text-right">ACTIVOS</th>
+              <th className="px-3 py-2.5 text-right">URGENTES</th>
+              <th className="px-3 py-2.5 text-right">CAMAS</th>
+              <th className="px-3 py-2.5 text-right">OCUPACIÓN</th>
+              <th className="px-3 py-2.5 text-right">DERIVÓ</th>
+              <th className="px-3 py-2.5 text-right">RECIBIÓ</th>
+              <th className="px-3 py-2.5 text-right">RESPONDE EN</th>
+              <th className="px-xl py-2.5 text-right">RECHAZÓ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {establecimientos.map((e) => (
+              <tr key={e.id} className="border-b border-division last:border-b-0">
+                <td className="px-xl py-3 font-semibold">
+                  {e.nombre}
+                  {e.id === institucion?.id && (
+                    <span className="font-normal text-texto-tenue"> · acá</span>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums">{e.casos_activos}</td>
+                <td className={cn("px-3 py-3 text-right tabular-nums",
+                                  e.urgentes > 0 && "font-bold text-danger")}>
+                  {e.urgentes}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums text-texto-tenue">
+                  {e.camas_operativas ? `${e.camas_libres}/${e.camas_operativas}` : "—"}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums">
+                  {e.camas_operativas ? (
+                    <span className={cn("font-bold",
+                      e.ocupacion >= 90 ? "text-danger"
+                        : e.ocupacion >= 75 ? "text-badge-amber-fg" : "text-texto-fuerte")}>
+                      {e.ocupacion}%
+                    </span>
+                  ) : (
+                    <span className="text-texto-tenue">sin camas</span>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums">{e.derivo}</td>
+                <td className="px-3 py-3 text-right tabular-nums">
+                  {e.recibio}
+                  {e.pendientes > 0 && (
+                    <span className="ml-1 text-badge-amber-fg">({e.pendientes} sin resp.)</span>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums text-texto-suave">
+                  {e.demora_respuesta_min != null ? `${e.demora_respuesta_min}′` : "—"}
+                </td>
+                <td className="px-xl py-3 text-right tabular-nums">{e.rechazados}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  );
+}
+
+function Cifra({ n, l, tono }) {
+  return (
+    <div>
+      <div className={cn("text-lg font-extrabold leading-none tabular-nums", tono)}>{n ?? "—"}</div>
+      <div className="mt-0.5 text-xs text-texto-tenue">{l}</div>
     </div>
   );
 }
