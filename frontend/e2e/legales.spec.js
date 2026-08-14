@@ -195,3 +195,55 @@ test.describe("Consentimiento e integridad en la historia", () => {
     await expect(page.getByText("No tenés permiso para ver esta lista")).toBeVisible();
   });
 });
+
+/**
+ * Aviso de proceso periódico detenido, en el tablero.
+ *
+ * Si el reloj del motor se muere, la aplicación sigue respondiendo y las
+ * pantallas cargan: lo único que pasa es que los pacientes en espera por tiempo
+ * dejan de volver. Nadie lo descubre hasta que alguien pregunta por un caso
+ * parado hace tres días.
+ */
+test.describe("Procesos detenidos", () => {
+  const DETENIDO = {
+    servicios: {
+      correr_tiempos: { estado: "atrasado", hace_segundos: 5400, detalle: "" },
+      recordar_turnos: { estado: "al día", hace_segundos: 60, detalle: "" },
+    },
+    atrasados: ["correr_tiempos"],
+  };
+
+  async function conEstado(page, cuerpo, status) {
+    await page.route("**/api/estado/", (r) =>
+      r.fulfill({ status, contentType: "application/json", body: JSON.stringify(cuerpo) }),
+    );
+  }
+
+  test("el tablero avisa cuando el reloj del motor se detuvo", async ({ page }) => {
+    await entrar(page, "admin");
+    await conEstado(page, DETENIDO, 503);
+    await page.goto("/dashboard");
+    await expect(page.getByText("Un proceso del sistema dejó de correr")).toBeVisible();
+  });
+
+  test("dice qué se rompe, no sólo qué se detuvo", async ({ page }) => {
+    // «correr_tiempos está atrasado» no le dice nada a quien dirige un hospital.
+    await entrar(page, "admin");
+    await conEstado(page, DETENIDO, 503);
+    await page.goto("/dashboard");
+    await expect(page.getByText(/no vuelven al circuito/)).toBeVisible();
+  });
+
+  test("con todo al día no muestra ningún cartel", async ({ page }) => {
+    /*
+     * Un cartel verde permanente que dice «todo bien» se vuelve parte del fondo
+     * en una semana, y entonces nadie lo mira el día que cambia. Lo que tiene
+     * que llamar la atención es la excepción.
+     */
+    await entrar(page, "admin");
+    await conEstado(page, { servicios: {}, atrasados: [] }, 200);
+    await page.goto("/dashboard");
+    await esperarPantalla(page);
+    await expect(page.getByText(/proceso.* del sistema dejó|procesos del sistema dejaron/)).toHaveCount(0);
+  });
+});

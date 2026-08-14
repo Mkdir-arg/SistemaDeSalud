@@ -79,6 +79,7 @@ export default function Dashboard() {
       />
 
       <div className="flex flex-col gap-[22px] px-lg pb-8 pt-[22px] sm:px-8">
+        <ProcesosDetenidos />
         <RangoFechas desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
         <SolapasArea areas={d.por_area} tab={tab} setTab={setTab} />
 
@@ -87,6 +88,90 @@ export default function Dashboard() {
           : <TableroArea key={tab} areaId={tab} desde={desde} hasta={hasta} navigate={navigate} />}
       </div>
     </>
+  );
+}
+
+/*
+ * Aviso de proceso periódico detenido.
+ *
+ * Sólo aparece cuando hay algo detenido, y ése es el punto: un cartel verde
+ * permanente que dice «todo bien» se vuelve parte del fondo en una semana y
+ * nadie lo mira el día que cambia. Lo que tiene que llamar la atención es la
+ * excepción.
+ *
+ * Importa que esté acá y no sólo en la API. Si el reloj del motor se muere, la
+ * aplicación sigue respondiendo y las pantallas cargan: lo único que pasa es que
+ * los pacientes en espera por tiempo dejan de volver y los avisos de demora no
+ * salen. Nadie lo descubre hasta que alguien pregunta por un caso parado hace
+ * tres días.
+ */
+const QUE_SE_ROMPE = {
+  correr_tiempos:
+    "Los pacientes en espera por tiempo no vuelven al circuito y los avisos de demora no salen.",
+  recordar_turnos: "No se están avisando los turnos por confirmar del día siguiente.",
+  alertar_saturacion: "No se avisa cuando un establecimiento de la red se satura.",
+  respaldar: "Hace más de un día que no se guarda —ni se verifica— un respaldo de la base.",
+};
+
+const NOMBRE_PROCESO = {
+  correr_tiempos: "Reloj del motor",
+  recordar_turnos: "Recordatorios de turno",
+  alertar_saturacion: "Alertas de saturación",
+  respaldar: "Respaldo de la base",
+};
+
+function ProcesosDetenidos() {
+  const q = useQuery({
+    queryKey: ["estado-procesos"],
+    queryFn: () => api.get("/estado/"),
+    refetchInterval: REFRESCO_MS,
+    refetchIntervalInBackground: false,
+    // El endpoint contesta 503 cuando hay algo atrasado: es una respuesta
+    // válida con el dato adentro, no un fallo del que haya que reintentar.
+    retry: false,
+  });
+
+  const datos = q.data || q.error?.data;
+  const atrasados = datos?.atrasados || [];
+  if (!atrasados.length) return null;
+
+  return (
+    <Card className="border-danger-fuerte bg-badge-error-bg p-lg">
+      <div className="flex items-start gap-3">
+        <Icon name="alert" size={18} className="mt-0.5 shrink-0 text-danger" />
+        <div className="min-w-0">
+          <h2 className="text-md font-bold text-danger">
+            {atrasados.length === 1
+              ? "Un proceso del sistema dejó de correr"
+              : `${atrasados.length} procesos del sistema dejaron de correr`}
+          </h2>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {atrasados.map((s) => (
+              <li key={s} className="text-md text-texto-medio">
+                <strong>{NOMBRE_PROCESO[s] || s}</strong>
+                {/* Qué se rompe, no sólo qué se detuvo: «correr_tiempos está
+                    atrasado» no le dice nada a quien dirige un hospital. */}
+                {QUE_SE_ROMPE[s] ? ` — ${QUE_SE_ROMPE[s]}` : ""}
+                {datos.servicios?.[s]?.hace_segundos != null && (
+                  <span className="text-texto-debil">
+                    {/* En minutos, un respaldo caído hace dos días decía «hace
+                        3167 min», que no se lee. La misma escala que el resto
+                        del sistema usa para antigüedades. */}
+                    {" "}(último: hace {antiguedad(
+                      new Date(Date.now() - datos.servicios[s].hace_segundos * 1000).toISOString(),
+                    )})
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2.5 text-sm text-texto-debil">
+            Avisale a quien administra los servidores: el sistema web anda, lo que
+            se detuvo son las tareas que corren solas.
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 

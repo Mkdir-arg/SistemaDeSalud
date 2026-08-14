@@ -62,25 +62,57 @@ export default async function globalSetup() {
    * failed» en fila.spec.js, que hace pensar en un bug de la pantalla. Con él,
    * dice exactamente qué pasa y cómo arreglarlo.
    */
-  // `box=null` son los que ESPERAN. Sin eso también cuenta a los ya llamados a un
-  // box, y el número no baja aunque la fila se vacíe: el chequeo daría luz verde
-  // justo cuando no queda nadie a quien llamar.
-  const cola = await fetch(`${API}/api/items-fila/?atendido=false&box=null&page_size=1`, {
-    headers: { Authorization: `Bearer ${token.access}` },
-  }).then((r) => r.json());
+  const enCola = await colaDelMedico(token.access);
 
-  // Una siembra fresca deja 7 esperando (los otros que informa el seed ya fueron
-  // llamados a un box). Cada corrida completa gasta uno, así que 3 avisa con
-  // varias corridas de anticipación sin molestar en el uso normal.
-  const EN_COLA_MINIMO = 3;
-  if ((cola.count ?? 0) < EN_COLA_MINIMO) {
+  // Una siembra fresca deja varios esperando en Guardia. Cada corrida completa
+  // gasta dos —los dos tests que llaman—, así que 4 avisa con un par de corridas
+  // de anticipación sin molestar en el uso normal.
+  const EN_COLA_MINIMO = 4;
+  if (enCola < EN_COLA_MINIMO) {
     throw new Error(
-      `\n\n  Quedan ${cola.count ?? 0} pacientes en cola y la suite necesita al menos ${EN_COLA_MINIMO}.\n` +
+      `\n\n  Quedan ${enCola} pacientes en la cola del médico y la suite necesita al menos ${EN_COLA_MINIMO}.\n` +
         "  Es normal después de correr la suite un par de veces: los tests de la fila\n" +
         "  llaman pacientes de verdad y la van vaciando.\n" +
         `  Volvé a sembrar:  ${SEMBRAR}\n`,
     );
   }
 
-  console.log(`Demo lista: ${casos.count} casos, ${cola.count} en cola.`);
+  console.log(`Demo lista: ${casos.count} casos, ${enCola} en la cola del médico.`);
+}
+
+/**
+ * Cuántos esperan en las áreas donde el médico de los tests puede llamar.
+ *
+ * Contaba la cola de TODA la institución, y ahí está el problema: los tests
+ * llaman desde el área del médico, no desde cualquiera. Con dieciséis personas
+ * esperando en otras áreas y ninguna en Guardia, el chequeo daba luz verde y
+ * `fila.spec` fallaba igual —con un «toBeVisible failed» que hace pensar en un
+ * bug de la pantalla, que es exactamente lo que este chequeo existe para evitar—.
+ *
+ * `box=null` son los que ESPERAN. Sin eso también cuenta a los ya llamados a un
+ * box, y el número no baja aunque la fila se vacíe.
+ */
+async function colaDelMedico(access) {
+  const cab = { Authorization: `Bearer ${access}` };
+  const json = (u) => fetch(`${API}${u}`, { headers: cab }).then((r) => r.json());
+
+  const medico = await fetch(`${API}/api/auth/token/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "guardia.med@hospital.gob.ar", password: "demo1234" }),
+  }).then((r) => (r.ok ? r.json() : null));
+
+  const items = (await json("/api/items-fila/?atendido=false&box=null&page_size=200")).results || [];
+  if (!medico) return items.length; // sin el médico del escenario, se cuenta todo
+
+  const yo = await fetch(`${API}/api/usuarios/me/`, {
+    headers: { Authorization: `Bearer ${medico.access}` },
+  }).then((r) => (r.ok ? r.json() : null));
+  if (!yo) return items.length;
+
+  const mias = new Set(
+    ((await json(`/api/membresias/?usuario=${yo.id}&activo=true&page_size=50`)).results || [])
+      .flatMap((m) => m.areas || []),
+  );
+  return items.filter((it) => mias.has(it.area)).length;
 }

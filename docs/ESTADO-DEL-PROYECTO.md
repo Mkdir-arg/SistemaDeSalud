@@ -50,8 +50,9 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Respaldo verificable (`respaldar`) | ✅ Restaura y compara en cada corrida; servicio diario |
 | Endurecimiento para producción | ✅ `check --deploy` limpio, con test que lo corre |
 | Monitoreo | ✅ `/api/health/` toca la base · `/api/estado/` delata el proceso periódico que murió |
+| Aviso en el Tablero | ✅ Aparece sólo si algo se detuvo, y dice qué se rompe |
 | Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
-| Tests automatizados | ✅ 527 de backend · 140 end-to-end (Playwright, dos temas) |
+| Tests automatizados | ✅ 545 de backend · 143 end-to-end (Playwright, dos temas) |
 | Guardas de calidad | ✅ Esquema OpenAPI, clases Tailwind huérfanas, contraste WCAG AA, N+1 por volumen |
 | Despliegue real (hosting, dominio, monitoreo) | ⚠️ Falta decidir dónde se hospeda |
 
