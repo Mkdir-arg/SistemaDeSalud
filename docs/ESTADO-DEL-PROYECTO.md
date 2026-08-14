@@ -1,7 +1,8 @@
 # Estado del proyecto — Cauce
 
 > Documento vivo. Resume **qué está hecho**, **cómo levantarlo** y **qué falta**.
-> Última actualización: **2026-06-24** (motor de ejecución terminado).
+> Última actualización: **2026-08-14** (Fase 8: normativa, interoperabilidad FHIR
+> y preparación para producción).
 
 Cauce = constructor y motor de flujos para procesos de salud / Estado. Ver
 `README.md` para la visión y los `.dc.html` de la raíz (prototipo de alta
@@ -40,30 +41,42 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Turnos y agenda (agendas, franjas, sobreturnos, ausentismo) | ✅ Completo + 62 tests |
 | Farmacia e insumos (stock, lotes, trazabilidad, pedidos) | ✅ Completo + 48 tests |
 | Red multicentro (traslados, panorama, saturación) | ✅ Completo + 55 tests |
-| Auditoría de accesos clínicos (Ley 26.529) | ✅ Completo + 22 tests |
-| Sellado de integridad de la historia clínica | ✅ Completo + 22 tests |
-| Firma digital con certificado (Ley 25.506) | ⏳ Enganche listo; falta elegir certificador |
+| Auditoría de accesos clínicos (Ley 26.529) | ✅ Backend + pantalla `/accesos` |
+| Sellado de integridad de la historia clínica | ✅ Backend + verificación en pantalla |
+| Retención y consentimiento (Ley 25.326) | ✅ `purgar_datos` (en seco por defecto) + panel en la HC |
+| Firma digital con certificado (Ley 25.506) | ⏳ Enganche listo; falta que el cliente elija certificador |
+| Fachada FHIR R4 de sólo lectura (`/fhir/`) | ✅ Patient · Encounter · Organization · metadata |
+| Consulta a padrón FHIR desde un paso del flujo | ✅ Completa los campos vacíos del paciente |
+| Respaldo verificable (`respaldar`) | ✅ Restaura y compara en cada corrida; servicio diario |
+| Endurecimiento para producción | ✅ `check --deploy` limpio, con test que lo corre |
 | Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
-| Tests automatizados | ✅ Backend 57 tests; frontend verificado con Playwright |
-| Despliegue / Postgres-Supabase | ⚠️ Configurado pero no probado |
+| Tests automatizados | ✅ 527 de backend · 140 end-to-end (Playwright, dos temas) |
+| Guardas de calidad | ✅ Esquema OpenAPI, clases Tailwind huérfanas, contraste WCAG AA, N+1 por volumen |
+| Despliegue real (hosting, dominio, monitoreo) | ⚠️ Falta decidir dónde se hospeda |
 
 ---
 
 ## 2. Cómo levantar el backend
 
+Todo el stack corre con Docker Compose: base, backend, frontend, el reloj del
+motor y el respaldo diario.
+
 ```bash
-cd backend
-.venv/Scripts/python.exe manage.py runserver
-# API navegable: http://127.0.0.1:8000/api/
-# Admin:         http://127.0.0.1:8000/admin/
+docker compose up -d
+# Aplicación:    http://localhost:8080
+# API navegable: http://localhost:8000/api/
+# Documentación: http://localhost:8000/api/docs/
+# Fachada FHIR:  http://localhost:8000/fhir/metadata
 ```
 
-- Entorno virtual: `backend/.venv` (Django 6.0.6 + DRF + SimpleJWT + CORS).
-  Siempre usar `.venv/Scripts/python.exe` (Windows).
+- Django 6 + DRF + SimpleJWT sobre PostgreSQL 16.
 - Dependencias declaradas en `backend/requirements.txt`.
 - **Superusuario de desarrollo:** `admin@cauce.local` / `admin1234`.
-- Base de datos: SQLite local (`backend/db.sqlite3`). Para Postgres/Supabase,
-  definir `DATABASE_URL` en `backend/.env` (ver `backend/.env.example`).
+  El staff del escenario entra con `demo1234`.
+- El cliente de Postgres de la imagen está pinchado a la versión del servidor
+  (`PG_MAJOR`): un `pg_dump` de otra versión produce respaldos que no se pueden
+  restaurar.
+- Comandos dentro del contenedor: `docker compose exec backend python manage.py …`
 
 ### Obtener un token y llamar la API
 

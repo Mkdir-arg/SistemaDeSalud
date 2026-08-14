@@ -1,4 +1,6 @@
 
+from django.db.models import IntegerField, OuterRef, Prefetch, Subquery
+from django.db.models.functions import Coalesce
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -18,9 +20,54 @@ from .serializers import (
 )
 
 
+def _conteo(modelo, **filtros):
+    """
+    Cuántas filas de `modelo` cuelgan de la historia de cada ciudadano.
+
+    Va como subconsulta y no como `Count(..., distinct=True)` sobre varios
+    `join`: contar entradas, estudios y recetas en la misma consulta multiplica
+    las filas entre sí, y en una historia larga eso es peor que el N+1 que se
+    está sacando.
+    """
+    from django.db.models import Count, OuterRef, Subquery
+
+    sub = (
+        modelo.objects.filter(historia__ciudadano=OuterRef("pk"), **filtros)
+        .order_by()
+        .values("historia__ciudadano")
+        .annotate(n=Count("id"))
+        .values("n")
+    )
+    return Coalesce(Subquery(sub, output_field=IntegerField()), 0)
+
+
 class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ciudadano_path = "self"
-    queryset = Ciudadano.objects.select_related("institucion")
+    # El resumen de cada paciente se anota de una vez. Calculado por fila en el
+    # serializer eran seis consultas por paciente: 155 para mostrar 30, y peor
+    # cuanto más grande el padrón. Hay un test que compara las consultas con 3 y
+    # con 30 filas; si alguien saca esto, se pone en rojo.
+    queryset = (
+        Ciudadano.objects
+        .select_related("institucion", "historia_clinica")
+        .prefetch_related(Prefetch(
+            "consentimientos",
+            # El orden va acá: el serializer lee `all()` para no saltear la
+            # precarga, así que el «último consentimiento» tiene que ser el
+            # primero de esta lista.
+            queryset=ConsentimientoDatos.objects.order_by("-momento", "-id"),
+        ))
+        .annotate(
+            _entradas=_conteo(EntradaHistoria),
+            _estudios=_conteo(Estudio),
+            _recetas_activas=_conteo(Receta, activa=True),
+            _ultima=Subquery(
+                EntradaHistoria.objects
+                .filter(historia__ciudadano=OuterRef("pk"))
+                .order_by("-fecha").values("fecha")[:1]
+            ),
+        )
+    )
     serializer_class = CiudadanoSerializer
     capacidad_requerida = "registros"
     protege_lectura = True

@@ -207,6 +207,16 @@ def encounter(caso) -> dict:
 
 
 def _tiene_cama(caso) -> bool:
+    """
+    ¿El caso tiene una cama abierta?
+
+    Usa la anotación `_internado` cuando viene del listado, que la trae para
+    todos de una sola consulta. La consulta suelta queda como respaldo para
+    cuando se serializa un caso que no salió de ese queryset.
+    """
+    anotado = getattr(caso, "_internado", None)
+    if anotado is not None:
+        return bool(anotado)
     return caso.estadias.filter(hasta__isnull=True).exists()
 
 

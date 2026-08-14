@@ -265,7 +265,15 @@ function Consentimiento({ ciudadanoId, estado }) {
   );
 }
 
-const MODO = { escrito: "Escrito", verbal: "Verbal", electronico: "Electrónico" };
+/*
+ * Tiene que coincidir con `ConsentimientoDatos.Modo` del backend.
+ *
+ * Acá decía «electronico», que no existe: el alta devolvía 400 y un
+ * consentimiento guardado como «digital» se mostraba con el valor crudo. Una
+ * lista de opciones duplicada de este lado se desincroniza sin que nada avise,
+ * así que hay un test que manda cada opción del selector contra la API.
+ */
+const MODO = { escrito: "Escrito", verbal: "Verbal", digital: "Digital" };
 
 function ConsentimientoModal({ ciudadanoId, otorgar, onClose, onListo }) {
   const toast = useToast();

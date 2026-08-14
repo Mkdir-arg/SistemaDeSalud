@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from rest_framework import serializers
 
 from .models import Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta
@@ -81,8 +83,20 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creado"]
 
+    # Los campos derivados salen de ANOTACIONES del queryset, no de una consulta
+    # por fila.
+    #
+    # Antes cada paciente costaba seis consultas —una por resumen— y el padrón se
+    # degradaba solo a medida que la institución lo usaba: con 30 pacientes en la
+    # página eran 155 consultas para abrir una pantalla. `CiudadanoViewSet` las
+    # anota de una sola vez; acá sólo se leen, con el cálculo viejo de respaldo
+    # para cuando el serializer se usa fuera de esa lista —al responder un alta,
+    # por ejemplo, donde el objeto recién creado no viene anotado—.
+
     def get_consentimiento(self, obj) -> dict | None:
-        c = obj.consentimientos.order_by("-momento", "-id").first()
+        # `all()` y no `order_by()`: cualquier cambio al queryset saltea la
+        # precarga y vuelve a consultar por fila. El orden lo pone el Prefetch.
+        c = next(iter(obj.consentimientos.all()), None)
         if c is None:
             # Nunca se registró. No es lo mismo que revocado, y confundirlos
             # haría creer que el paciente dijo que no.
@@ -97,6 +111,10 @@ class CiudadanoSerializer(serializers.ModelSerializer):
     def _hc(self, obj):
         return getattr(obj, "historia_clinica", None)
 
+    def _anotado(self, obj, nombre, calcular):
+        valor = getattr(obj, nombre, None)
+        return calcular() if valor is None else valor
+
     def get_condiciones(self, obj) -> str:
         hc = self._hc(obj)
         return hc.condiciones if hc else ""
@@ -105,19 +123,24 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         hc = self._hc(obj)
         return hc.alergias if hc else ""
 
-    def get_entradas(self, obj) -> list[dict]:
+    def get_entradas(self, obj) -> int:
         hc = self._hc(obj)
-        return hc.entradas.count() if hc else 0
+        return self._anotado(obj, "_entradas", lambda: hc.entradas.count() if hc else 0)
 
-    def get_estudios(self, obj) -> list[dict]:
+    def get_estudios(self, obj) -> int:
         hc = self._hc(obj)
-        return hc.estudios.count() if hc else 0
+        return self._anotado(obj, "_estudios", lambda: hc.estudios.count() if hc else 0)
 
-    def get_recetas_activas(self, obj) -> list[dict]:
+    def get_recetas_activas(self, obj) -> int:
         hc = self._hc(obj)
-        return hc.recetas.filter(activa=True).count() if hc else 0
+        return self._anotado(
+            obj, "_recetas_activas",
+            lambda: hc.recetas.filter(activa=True).count() if hc else 0,
+        )
 
-    def get_ultima(self, obj) -> dict | None:
+    def get_ultima(self, obj) -> datetime | None:
+        if hasattr(obj, "_ultima"):
+            return obj._ultima
         hc = self._hc(obj)
         if not hc:
             return None

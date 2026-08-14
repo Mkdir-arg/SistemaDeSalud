@@ -104,6 +104,42 @@ test.describe("Consentimiento e integridad en la historia", () => {
     await expect(page.getByText(/No reemplaza ni borra los anteriores/)).toBeVisible();
   });
 
+  test("cada opción de «cómo se tomó» la acepta el backend", async ({ page }) => {
+    /*
+     * El selector repetía de este lado una lista que define el modelo, y se
+     * había desincronizado: ofrecía «Electrónico», que no existe, y el alta
+     * devolvía 400. Una lista duplicada se desincroniza sin que nada avise, así
+     * que se manda cada opción de verdad contra la API.
+     */
+    await entrar(page, "medico");
+    await abrirUnaHistoria(page);
+
+    const fallidas = [];
+    page.on("response", (r) => {
+      if (r.url().includes("/api/consentimientos/") && r.request().method() === "POST" && !r.ok()) {
+        fallidas.push(`${r.status()} al guardar`);
+      }
+    });
+
+    await page.getByRole("button", { name: /Registrar (consentimiento|revocación)/ }).click();
+    const modo = page.getByLabel("Cómo se tomó");
+    const opciones = await modo.locator("option").evaluateAll((os) => os.map((o) => o.value));
+    expect(opciones.length).toBeGreaterThan(1);
+
+    for (const opcion of opciones) {
+      await modo.selectOption(opcion);
+      // `exact`: sin eso también machea «Registrar consentimiento», el botón
+      // del panel que quedó detrás del modal.
+      const guardar = page.getByRole("button", { name: "Registrar", exact: true });
+      await guardar.click();
+      // Que el modal se cierre es la señal de que guardó. El aviso de «Registrado»
+      // no sirve: el de la vuelta anterior sigue en pantalla y machea igual.
+      await expect(guardar).toBeHidden();
+      await page.getByRole("button", { name: /Registrar (consentimiento|revocación)/ }).click();
+    }
+    expect(fallidas, `el backend rechazó opciones del selector: ${fallidas}`).toEqual([]);
+  });
+
   test("se puede verificar que la historia no fue alterada", async ({ page }) => {
     await entrar(page, "medico");
     await abrirUnaHistoria(page);

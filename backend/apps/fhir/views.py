@@ -213,9 +213,22 @@ def patient_search(request):
 # Encounter
 # --------------------------------------------------------------------------- #
 def _casos(request):
-    return Caso.objects.select_related(
-        "institucion", "area_actual", "version__flujo", "ciudadano"
-    ).filter(institucion__in=_instituciones(request))
+    # `_internado` se anota acá y no se consulta por caso: saber si hay cama es
+    # una consulta más por fila, y del otro lado de esta fachada hay un sistema
+    # que pide de a cien sin mirar. Un N+1 acá no lo sufre una pantalla, lo sufre
+    # la base mientras alguien atiende pacientes.
+    from django.db.models import Exists, OuterRef
+
+    from apps.instituciones.models import EstadiaCama
+
+    return (
+        Caso.objects
+        .select_related("institucion", "area_actual", "version__flujo", "ciudadano")
+        .annotate(_internado=Exists(
+            EstadiaCama.objects.filter(caso=OuterRef("pk"), hasta__isnull=True)
+        ))
+        .filter(institucion__in=_instituciones(request))
+    )
 
 
 @fuera_del_openapi

@@ -272,6 +272,7 @@ class Command(BaseCommand):
             call_command("seed_red", verbosity=0)
         self._sembrar_turnos(pacientes, hechos)
         sellados = self._sellar_historias()
+        consentimientos = self._sembrar_consentimientos(pacientes)
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(
             estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO]).count()
@@ -286,8 +287,48 @@ class Command(BaseCommand):
             f"  {activos} casos activos ahora · {en_cola} pacientes esperando en filas\n"
             f"  {EntradaHistoria.objects.count()} entradas de historia clínica "
             f"({sellados} selladas)\n"
+            f"  {consentimientos} consentimientos de datos\n"
             f"\nReproducible: misma --semilla ({opciones['semilla']}) = mismos datos."
         ))
+
+    def _sembrar_consentimientos(self, pacientes):
+        """
+        Consentimientos del padrón, con las TRES situaciones que existen.
+
+        No alcanza con ponerle «otorgado» a todos: la pantalla distingue tres
+        estados y el que más importa es el tercero —sin registro no es lo mismo
+        que revocado—. Un demo donde nunca se ve esa diferencia enseña la
+        función al revés.
+
+        Una revocación es una fila nueva sobre un consentimiento previo, que es
+        como funciona de verdad: primero se otorga y después se retira.
+        """
+        from apps.accounts.models import Usuario
+        from apps.registros.models import ConsentimientoDatos
+
+        ConsentimientoDatos.objects.filter(institucion=self.inst).delete()
+        admin = Usuario.objects.filter(
+            membresias__institucion=self.inst, membresias__rol="administrativo"
+        ).first()
+
+        for i, p in enumerate(pacientes):
+            if i % 7 == 6:
+                continue  # sin registro: nunca se le pidió
+            ConsentimientoDatos.objects.create(
+                ciudadano=p, institucion=self.inst, otorgado=True,
+                modo=[ConsentimientoDatos.Modo.ESCRITO, ConsentimientoDatos.Modo.VERBAL,
+                      ConsentimientoDatos.Modo.DIGITAL][i % 3],
+                alcance="Atención y tratamiento de datos de salud",
+                tomado_por=admin,
+            )
+            if i % 11 == 5:
+                ConsentimientoDatos.objects.create(
+                    ciudadano=p, institucion=self.inst, otorgado=False,
+                    modo=ConsentimientoDatos.Modo.ESCRITO,
+                    alcance="El paciente retira el consentimiento",
+                    tomado_por=admin,
+                )
+        return ConsentimientoDatos.objects.filter(institucion=self.inst).count()
 
     def _sellar_historias(self):
         """
