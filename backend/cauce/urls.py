@@ -46,6 +46,10 @@ urlpatterns = [
     path("api/puestos/<int:nodo_id>/", PuestoDetalleView.as_view(), name="puesto_detalle"),
     path("api/pantalla/<str:token>/", PantallaLlamadosView.as_view(), name="pantalla_llamados"),
     path("api/", include(router.urls)),
+    # Fachada FHIR R4. Fuera de /api/ a propósito: las rutas son las del
+    # estándar y un cliente FHIR las arma solo a partir de la URL base, así que
+    # tiene que poder apuntar a una raíz limpia.
+    path("fhir/", include("apps.fhir.urls")),
 ]
 
 # Servir archivos subidos en desarrollo.

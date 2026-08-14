@@ -21,6 +21,37 @@ def _ip(request):
     return request.META.get("REMOTE_ADDR")
 
 
+def registrar_acceso(request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0):
+    """
+    Escribe UNA línea del registro de accesos.
+
+    Está suelta y no dentro del mixin para que cualquier camino que exponga
+    datos clínicos —el viewset, la fachada FHIR, lo que venga— anote por el
+    mismo lado. Una segunda implementación es una segunda forma de olvidarse.
+
+    `recurso` es el nombre del MODELO y no el de la URL: una ruta se puede
+    renombrar y el registro tiene que seguir diciendo lo mismo dentro de diez
+    años, que es cuanto hay que conservarlo.
+    """
+    try:
+        AccesoClinico.objects.create(
+            usuario=request.user,
+            ciudadano=ciudadano,
+            institucion=getattr(ciudadano, "institucion", None),
+            tipo=tipo,
+            recurso=recurso,
+            objeto_id=str(objeto_id or "")[:40],
+            detalle=(detalle or "")[:300],
+            resultados=resultados,
+            ip=_ip(request),
+        )
+    except Exception:
+        # Ver la regla de oro del módulo: la atención no se detiene porque falle
+        # la auditoría. Queda en el log del servidor para que alguien lo vea, en
+        # vez de desaparecer.
+        log.exception("no se pudo registrar el acceso clínico")
+
+
 class AuditaLecturaClinica:
     """
     Registra quién consulta datos clínicos.
@@ -48,27 +79,10 @@ class AuditaLecturaClinica:
         return cur
 
     def _anotar(self, tipo, ciudadano=None, objeto_id="", detalle="", resultados=0):
-        try:
-            inst = getattr(ciudadano, "institucion", None)
-            AccesoClinico.objects.create(
-                usuario=self.request.user,
-                ciudadano=ciudadano,
-                institucion=inst,
-                tipo=tipo,
-                # El nombre del MODELO y no el de la URL: una ruta se puede
-                # renombrar y el registro tiene que seguir diciendo lo mismo
-                # dentro de diez años, que es cuanto hay que conservarlo.
-                recurso=self.queryset.model._meta.model_name,
-                objeto_id=str(objeto_id or "")[:40],
-                detalle=detalle[:300],
-                resultados=resultados,
-                ip=_ip(self.request),
-            )
-        except Exception:
-            # Ver la regla de oro del módulo: la atención no se detiene porque
-            # falle la auditoría. Queda en el log del servidor para que alguien
-            # lo vea, en vez de desaparecer.
-            log.exception("no se pudo registrar el acceso clínico")
+        registrar_acceso(
+            self.request, tipo, self.queryset.model._meta.model_name,
+            ciudadano=ciudadano, objeto_id=objeto_id, detalle=detalle, resultados=resultados,
+        )
 
     def retrieve(self, request, *args, **kwargs):
         respuesta = super().retrieve(request, *args, **kwargs)

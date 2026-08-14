@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "apps.farmacia",
     "apps.red",
     "apps.auditoria",
+    "apps.fhir",
 ]
 
 MIDDLEWARE = [
@@ -161,6 +162,11 @@ pantalla.
 
 **Listados.** Vienen paginados (`?page`, `?page_size`) y aceptan `?formato=csv`
 cuando el recurso declara columnas exportables.
+
+**Interoperabilidad (FHIR R4).** Además de esta API hay una fachada FHIR de sólo
+lectura en `/fhir/`, con `Patient`, `Encounter` y `Organization`. No se documenta
+acá porque FHIR trae su propio documento de contrato: `GET /fhir/metadata`
+devuelve el CapabilityStatement y se sirve sin credenciales.
 """,
     "VERSION": "1.0.0",
     # En producción el esquema pide sesión.
