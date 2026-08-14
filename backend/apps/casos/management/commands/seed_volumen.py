@@ -45,6 +45,7 @@ from apps.casos.models import Caso, EventoCaso, ItemFila, Notificacion
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
 from apps.instituciones.models import Area, Box, Cama, EstadiaCama, Institucion
+from apps.registros import integridad
 from apps.registros.models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
 
 # --------------------------------------------------------------------------- #
@@ -270,6 +271,7 @@ class Command(BaseCommand):
         if getattr(self, "_rehacer_red", False):
             call_command("seed_red", verbosity=0)
         self._sembrar_turnos(pacientes, hechos)
+        sellados = self._sellar_historias()
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(
             estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO]).count()
@@ -282,9 +284,40 @@ class Command(BaseCommand):
             f"  {hechos['derivados']} derivaciones a especialidad · {hechos['estudios']} estudios "
             f"· {hechos['internados']} internaciones\n"
             f"  {activos} casos activos ahora · {en_cola} pacientes esperando en filas\n"
-            f"  {EntradaHistoria.objects.count()} entradas de historia clínica\n"
+            f"  {EntradaHistoria.objects.count()} entradas de historia clínica "
+            f"({sellados} selladas)\n"
             f"\nReproducible: misma --semilla ({opciones['semilla']}) = mismos datos."
         ))
+
+    def _sellar_historias(self):
+        """
+        Sella las entradas firmadas, al final y en orden de fecha.
+
+        Va acá y no al crearlas por dos razones. El sello cubre la fecha, y las
+        fechas se corrigen después (`_sellar`): sellar antes daría una historia
+        entera que se verifica como alterada. Y la cadena encadena cada entrada
+        con la anterior, así que hay que recorrerlas en el orden en que quedaron,
+        no en el que se crearon.
+
+        Sin esto el demo mostraba «0 de 11 entradas selladas» en cada paciente:
+        la comprobación de integridad existía pero no había nada que comprobar,
+        que es la peor forma de enseñar una función.
+        """
+        firmadas = EntradaHistoria.objects.filter(
+            historia__ciudadano__institucion=self.inst, firmada=True
+        )
+        # Se borran TODOS los sellos antes de empezar, no uno por uno al pasar.
+        # `sellar` busca la entrada anterior entre las que ya tienen sello, y en
+        # una segunda corrida las posteriores todavía conservan el de la corrida
+        # previa: encadenaría cada entrada con una que viene después.
+        firmadas.update(sello="", sello_previo="")
+
+        entradas = list(firmadas.order_by("historia_id", "fecha", "id"))
+        for e in entradas:
+            e.sello = e.sello_previo = ""
+            e.firmada_at = e.fecha
+            integridad.sellar(e)
+        return len(entradas)
 
     def _limpiar(self):
         """Deja la institución sin datos de operación previos.

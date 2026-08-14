@@ -25,6 +25,7 @@ const PANTALLAS = [
   { ruta: "/internacion", como: "medico" },
   { ruta: "/farmacia", como: "medico" },
   { ruta: "/supervision", como: "jefe" },
+  { ruta: "/accesos", como: "jefe" },
 ];
 
 /** Contraste WCAG entre dos colores ya resueltos a `[r, g, b]`. */

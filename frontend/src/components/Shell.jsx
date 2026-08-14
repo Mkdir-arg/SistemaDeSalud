@@ -294,6 +294,9 @@ const GRUPOS = [
     items: [
       { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "registros" },
       { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
+      // Quién consultó datos clínicos. Va en REGISTROS y no en SISTEMA: es la
+      // contracara de la historia clínica, no una opción de configuración.
+      { to: "/accesos", label: "Registro de accesos", icon: "search", cap: "auditoria" },
     ],
   },
 ];

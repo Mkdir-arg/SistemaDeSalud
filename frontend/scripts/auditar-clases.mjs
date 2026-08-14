@@ -28,10 +28,11 @@ function archivos(dir, out = []) {
 }
 
 const distDir = join(RAIZ, "dist/assets");
-let css;
+let css, cssMtime;
 try {
   const cssFile = readdirSync(distDir).filter((f) => f.endsWith(".css")).pop();
   css = readFileSync(join(distDir, cssFile), "utf8");
+  cssMtime = statSync(join(distDir, cssFile)).mtimeMs;
 } catch {
   console.error("No hay CSS compilado en dist/assets. Corré `npm run build` primero.");
   process.exit(2);
@@ -66,7 +67,25 @@ const NO_SON_CLASES = new Set([
   "stroke-width",  // propiedad CSS dentro de un `transition`, en el editor de flujos
 ]);
 
-for (const f of archivos(join(RAIZ, "src"))) {
+/*
+ * Contra un CSS viejo, TODA clase nueva se denuncia como huérfana.
+ *
+ * Pasó al agregar una pantalla: el auditor marcó `w-80` con total seguridad
+ * porque estaba comparando contra el build anterior, donde esa clase no existía
+ * todavía. Un falso positivo dicho con esa firmeza es lo que enseña a ignorar la
+ * herramienta, así que se corta antes de acusar a nadie.
+ */
+const fuentes = archivos(join(RAIZ, "src"));
+const masNueva = Math.max(...fuentes.map((f) => statSync(f).mtimeMs));
+if (masNueva > cssMtime) {
+  console.error(
+    "El CSS compilado es más viejo que el código: se marcaría como huérfana toda\n" +
+    "clase nueva. Corré `npm run build` y volvé a auditar.",
+  );
+  process.exit(2);
+}
+
+for (const f of fuentes) {
   // Se sacan los comentarios: explican por qué NO se usa una clase, y ese
   // nombre no debería contar como uso (p. ej. «Tailwind no vería bg-avatar-x»).
   const src = readFileSync(f, "utf8")

@@ -11,20 +11,25 @@ const KEY = "cauce.institucion";
 //   diseno    → Flujos, Mapa de flujos, Formularios
 //   trabajo   → Bandeja, Filas, Casos
 //   registros → Historia clínica, Legajo
+//   auditoria → Registro de accesos
+//
+// `auditoria` copia exacto a `PuedeAuditar` del backend (apps/auditoria/views.py):
+// admin y jefe de área, nadie más. Si acá se abriera de más, el menú ofrecería
+// un link que responde 403, que es peor que no mostrarlo.
 const CAPS_POR_ROL = {
-  admin: ["config", "diseno", "trabajo", "registros", "supervision"],
+  admin: ["config", "diseno", "trabajo", "registros", "supervision", "auditoria"],
   configurador: ["diseno"],
-  jefe_area: ["trabajo", "registros", "supervision"], // supervisa su área
+  jefe_area: ["trabajo", "registros", "supervision", "auditoria"], // supervisa su área
   administrativo: ["trabajo", "registros"],
   enfermeria: ["trabajo", "registros"], // opera, pero no firma atenciones (regla del motor)
-  medico: ["trabajo", "registros"], // la diferencia es firmar atenciones
+  medico: ["trabajo", "registros"], // un médico no audita a sus colegas
 };
 
 // Vista "ver como rol" (selector de la barra superior, sólo super admin).
 export const VISTA_CAPS = {
   configurador: ["diseno"],
   administrativo: ["trabajo", "registros"],
-  sistema: ["config", "diseno", "trabajo", "registros"],
+  sistema: ["config", "diseno", "trabajo", "registros", "auditoria"],
 };
 
 /*

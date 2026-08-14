@@ -33,6 +33,7 @@ import Usuarios from "./pages/admin/Usuarios";
 import Registros from "./pages/registros/Registros";
 import HistoriaDetalle from "./pages/registros/HistoriaDetalle";
 import Legajo from "./pages/registros/Legajo";
+import Accesos from "./pages/auditoria/Accesos";
 
 // Landing: el super admin ve el directorio; el resto entra a su institución.
 function Landing() {
@@ -143,6 +144,7 @@ export default function App() {
       <Route path="/historia" element={P(<Registros />)} />
       <Route path="/historia/:id" element={P(<HistoriaDetalle />)} />
       <Route path="/legajo" element={P(<Legajo />)} />
+      <Route path="/accesos" element={P(<Accesos />)} />
 
       {/* DISEÑO */}
       <Route path="/flujos" element={P(<Flujos />)} />
