@@ -30,9 +30,64 @@ def env_bool(key: str, default=False):
 
 
 # --- Seguridad -------------------------------------------------------------
-SECRET_KEY = env("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-me")
+CLAVE_DE_DESARROLLO = "django-insecure-dev-key-change-me"
+
+SECRET_KEY = env("DJANGO_SECRET_KEY", CLAVE_DE_DESARROLLO)
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+
+# Sin DEBUG y con la clave de desarrollo, el sistema NO arranca.
+#
+# Esa clave está escrita en el repositorio y en el docker-compose. Con ella,
+# cualquiera que haya leído el proyecto puede firmar un JWT válido y entrar como
+# quien quiera —incluido un admin de institución— sin tocar la base ni conocer
+# ninguna contraseña. No hay señal de que esté pasando: los tokens falsos son
+# indistinguibles de los buenos.
+#
+# Falla al arrancar y no con un aviso en el log a propósito: el día del
+# despliegue nadie lee los logs de arranque, y un sistema que anda igual con una
+# clave pública queda así durante años.
+if not DEBUG and SECRET_KEY == CLAVE_DE_DESARROLLO:
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY es la clave de desarrollo, que está publicada en el "
+        "repositorio: con ella cualquiera puede firmar un token y entrar como "
+        "cualquier usuario. Generá una y ponela en el entorno:\n"
+        "  python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+    )
+
+# --- Endurecimiento para producción ---------------------------------------- #
+#
+# Sólo se aplica con DEBUG apagado: en desarrollo se corre sobre http, y forzar
+# HTTPS ahí deja a todo el equipo con un redirect infinito.
+#
+# `manage.py check --deploy` los pide todos y hay un test que lo corre: sin eso,
+# la lista se completa el día que alguien se acuerda de mirar el checklist.
+if not DEBUG:
+    # El proxy termina el TLS y habla http con la aplicación; sin esto Django ve
+    # http y redirige para siempre.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = env_bool("DJANGO_SSL_REDIRECT", True)
+
+    # Un año, con subdominios. HSTS es difícil de revertir —el navegador lo
+    # recuerda—, así que se puede bajar por entorno para el primer despliegue.
+    SECURE_HSTS_SECONDS = int(env("DJANGO_HSTS_SECONDS", 31536000))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+    # La sesión del admin de Django. La API usa JWT, pero el admin existe y por
+    # ahí se entra a todo.
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    # Un hospital con la aplicación embebida en un iframe ajeno es clickjacking
+    # sobre acciones clínicas: «llamar paciente», «dar el alta». Hoy coincide con
+    # el default de Django; se deja escrito porque es una decisión, no una
+    # herencia, y porque hay un test que la nombra.
+    X_FRAME_OPTIONS = "DENY"
+
+    # No se repiten acá los ajustes que Django ya trae seguros por defecto
+    # (nosniff, referrer-policy, cookies httponly): el test de `check --deploy`
+    # se pone en rojo si alguno cambia, así que restatearlos sólo agrega ruido.
 
 
 # --- Apps ------------------------------------------------------------------

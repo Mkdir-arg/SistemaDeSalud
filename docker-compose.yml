@@ -26,6 +26,7 @@ services:
       CAUCE_INTEGRACIONES_PERMITIDAS: ${CAUCE_INTEGRACIONES_PERMITIDAS:-}
     volumes:
       - media:/app/media
+      - respaldos:/respaldos
     depends_on:
       db:
         condition: service_healthy
@@ -57,6 +58,33 @@ services:
       db:
         condition: service_healthy
 
+  # Respaldo diario, con la restauración verificada en cada corrida.
+  #
+  # Va como servicio y no como una línea más del reloj porque son cadencias
+  # distintas: el reloj corre cada dos minutos y esto una vez por día.
+  #
+  # Verifica siempre. Un respaldo que nunca se restauró no es un respaldo, y la
+  # falla clásica es que el cron corrió dos años, los archivos estaban ahí, y el
+  # día que hizo falta ninguno servía.
+  respaldos:
+    build: ./backend
+    command: >
+      sh -c "while true; do
+               python manage.py respaldar --conservar ${RESPALDOS_CONSERVAR:-14} || true;
+               sleep ${INTERVALO_RESPALDO:-86400};
+             done"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cauce}:${POSTGRES_PASSWORD:-cauce}@db:5432/${POSTGRES_DB:-cauce}
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      SEED_DEMO: "0"
+    volumes:
+      - respaldos:/respaldos
+    depends_on:
+      db:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     ports:
@@ -69,3 +97,4 @@ services:
 volumes:
   pgdata:
   media:
+  respaldos:
