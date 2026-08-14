@@ -29,6 +29,12 @@ SIN_CAPACIDAD_A_PROPOSITO = {
     # que cada uno sólo ve y marca como leídos los suyos. Una capacidad de rol
     # acá no protegería nada que el queryset no proteja ya.
     "notificaciones",
+    # Registro de accesos clínicos: no se gatea por capacidad sino por rol de
+    # conducción (`PuedeAuditar`). Ninguna de las cuatro capacidades sirve acá:
+    # «registros» la tiene todo el que atiende, y el registro dice quién miró la
+    # historia de quién —es tan sensible como lo que audita—. Además es de sólo
+    # lectura, así que no hay escritura que gatear.
+    "accesos-clinicos",
 }
 
 

@@ -25,6 +25,7 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.auditoria.views import AccesoClinicoViewSet
 from apps.red.views import RedViewSet, TrasladoViewSet
 from apps.farmacia.views import (
     DepositoViewSet, ExistenciaViewSet, InsumoViewSet, LoteViewSet,
@@ -102,3 +103,6 @@ router.register("pedidos-stock", PedidoViewSet)
 # Red de establecimientos.
 router.register("redes", RedViewSet)
 router.register("traslados", TrasladoViewSet, basename="traslado")
+
+# Auditoría de accesos a datos clínicos (Ley 26.529).
+router.register("accesos-clinicos", AccesoClinicoViewSet, basename="acceso-clinico")

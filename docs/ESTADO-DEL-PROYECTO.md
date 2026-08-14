@@ -40,6 +40,7 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Turnos y agenda (agendas, franjas, sobreturnos, ausentismo) | ✅ Completo + 62 tests |
 | Farmacia e insumos (stock, lotes, trazabilidad, pedidos) | ✅ Completo + 48 tests |
 | Red multicentro (traslados, panorama, saturación) | ✅ Completo + 55 tests |
+| Auditoría de accesos clínicos (Ley 26.529) | ✅ Completo + 22 tests |
 | Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
 | Tests automatizados | ✅ Backend 57 tests; frontend verificado con Playwright |
 | Despliegue / Postgres-Supabase | ⚠️ Configurado pero no probado |

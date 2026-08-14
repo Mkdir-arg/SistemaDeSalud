@@ -1,4 +1,5 @@
 
+from apps.auditoria.mixins import AuditaLecturaClinica
 from apps.common import BaseModelViewSet
 
 from .models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
@@ -11,7 +12,8 @@ from .serializers import (
 )
 
 
-class CiudadanoViewSet(BaseModelViewSet):
+class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
+    ciudadano_path = "self"
     queryset = Ciudadano.objects.select_related("institucion")
     serializer_class = CiudadanoSerializer
     capacidad_requerida = "registros"
@@ -37,7 +39,7 @@ class CiudadanoViewSet(BaseModelViewSet):
     ]
 
 
-class HistoriaClinicaViewSet(BaseModelViewSet):
+class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):
     queryset = HistoriaClinica.objects.select_related("ciudadano").prefetch_related(
         "entradas", "estudios", "recetas"
     )
@@ -48,7 +50,8 @@ class HistoriaClinicaViewSet(BaseModelViewSet):
     filter_fields = ("ciudadano",)
 
 
-class EntradaHistoriaViewSet(BaseModelViewSet):
+class EntradaHistoriaViewSet(AuditaLecturaClinica, BaseModelViewSet):
+    ciudadano_path = "historia__ciudadano"
     queryset = EntradaHistoria.objects.select_related("historia", "autor", "caso")
     serializer_class = EntradaHistoriaSerializer
     capacidad_requerida = "registros"
@@ -57,7 +60,8 @@ class EntradaHistoriaViewSet(BaseModelViewSet):
     filter_fields = ("historia", "autor", "caso", "firmada")
 
 
-class EstudioViewSet(BaseModelViewSet):
+class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
+    ciudadano_path = "historia__ciudadano"
     queryset = Estudio.objects.select_related("historia")
     serializer_class = EstudioSerializer
     capacidad_requerida = "registros"
@@ -66,7 +70,8 @@ class EstudioViewSet(BaseModelViewSet):
     filter_fields = ("historia", "resultado")
 
 
-class RecetaViewSet(BaseModelViewSet):
+class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):
+    ciudadano_path = "historia__ciudadano"
     queryset = Receta.objects.select_related("historia", "autor")
     serializer_class = RecetaSerializer
     capacidad_requerida = "registros"
