@@ -49,6 +49,64 @@ test("varios 401 en paralelo disparan un solo refresh", async ({ page }) => {
 });
 
 /**
+ * El pedido rezagado: el que vuelve tarde no pide un segundo refresh.
+ *
+ * El test de arriba cubre los 401 SIMULTÁNEOS, que se juntan en el refresco en
+ * vuelo. Falta el otro caso, que es el que de verdad aparece: un pedido más
+ * lento sale con el token viejo y vuelve cuando otro ya refrescó. Ahí no hay
+ * refresco en vuelo al que sumarse y abría uno nuevo, para un token que ya
+ * estaba renovado.
+ *
+ * Hoy eso es una rotación de más. El día que se active BLACKLIST_AFTER_ROTATION,
+ * dos rezagados que coincidan se invalidan el token entre sí y la sesión se
+ * cierra en medio de la pantalla.
+ *
+ * Apareció como un rojo suelto de la suite completa que no se reproducía
+ * aislado; se ataja acá con los tiempos forzados en vez de dejarlo como
+ * intermitente, que es como se convierte en un rojo que todos ignoran.
+ */
+test("un pedido que vuelve tarde no dispara un segundo refresh", async ({ page }) => {
+  await entrar(page, "medico");
+
+  let refrescos = 0;
+  page.on("request", (r) => {
+    if (r.url().includes("/auth/token/refresh/")) refrescos++;
+  });
+
+  const VENCIDO = "token-vencido-a-proposito";
+  await page.evaluate((t) => localStorage.setItem("cauce.access", t), VENCIDO);
+
+  /*
+   * Los pedidos se identifican por el token con el que SALEN, no por el orden.
+   *
+   * La primera versión de este test contaba pedidos y demoraba al segundo, pero
+   * el segundo era el REINTENTO del primero —que ya viajaba con el token nuevo—,
+   * así que nunca había un rezagado y el test pasaba igual sin el arreglo.
+   *
+   * Acá se demora el segundo que lleva el token viejo: ése es el rezagado, y su
+   * 401 vuelve cuando el refresco del primero ya terminó.
+   */
+  let conTokenViejo = 0;
+  await page.route("**/api/**", async (ruta) => {
+    const auth = ruta.request().headers()["authorization"] || "";
+    if (auth.includes(VENCIDO)) {
+      conTokenViejo += 1;
+      if (conTokenViejo === 2) await new Promise((r) => setTimeout(r, 600));
+    }
+    return ruta.continue();
+  });
+
+  await page.goto("/bandeja");
+  await expect(page.getByRole("tablist")).toBeVisible();
+
+  // Que el caso se haya dado de verdad: sin dos pedidos con el token viejo no
+  // hay rezagado y el test no probó nada.
+  expect(conTokenViejo).toBeGreaterThan(1);
+  expect(refrescos).toBe(1);
+  await expect(page).not.toHaveURL(/\/login/);
+});
+
+/**
  * Un fallo del servidor al arrancar no es un cierre de sesión.
  *
  * Al montar, la app pregunta quién es la persona. Si esa consulta fallaba por

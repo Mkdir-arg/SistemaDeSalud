@@ -103,7 +103,10 @@ function refreshAccess() {
 
 async function request(method, path, body, _retried = false) {
   const headers = { "Content-Type": "application/json" };
-  if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`;
+  // Con cuál salió ESTE pedido. Se guarda para poder distinguir, al volver con
+  // 401, si el token sigue siendo el mismo o si mientras tanto ya lo renovaron.
+  const usado = tokens.access;
+  if (usado) headers.Authorization = `Bearer ${usado}`;
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -112,6 +115,22 @@ async function request(method, path, body, _retried = false) {
   });
 
   if (res.status === 401 && !_retried && tokens.refresh) {
+    /*
+     * El pedido rezagado.
+     *
+     * `refrescoEnVuelo` junta a los que reciben 401 A LA VEZ, pero no alcanza:
+     * un pedido más lento sale con el token viejo y vuelve DESPUÉS de que otro
+     * ya refrescó. Ahí no hay refresco en vuelo al que sumarse, así que abría
+     * uno nuevo —para un token que ya estaba renovado—. Con
+     * ROTATE_REFRESH_TOKENS eso es una rotación de más; con
+     * BLACKLIST_AFTER_ROTATION, si dos rezagados coinciden, uno invalida el
+     * token del otro y la sesión se cierra en medio de la pantalla.
+     *
+     * Si el token cambió, no hay nada que refrescar: alcanza con reintentar.
+     */
+    if (tokens.access && tokens.access !== usado) {
+      return request(method, path, body, true);
+    }
     const ok = await refreshAccess();
     if (ok) return request(method, path, body, true);
     tokens.clear();
