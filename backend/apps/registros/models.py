@@ -33,6 +33,59 @@ class Ciudadano(models.Model):
         return f"{nombre} ({self.documento})" if self.documento else nombre
 
 
+class ConsentimientoDatos(models.Model):
+    """
+    Consentimiento del paciente para tratar sus datos (Ley 25.326, art. 5).
+
+    Se guarda **cada** consentimiento y cada revocación como una fila nueva, sin
+    pisar la anterior: lo que importa ante un reclamo no es el estado de hoy sino
+    qué se consintió y cuándo. Un booleano en el paciente no puede contestar «¿en
+    qué momento dio el consentimiento?», que es justo la pregunta.
+
+    La atención de urgencia NO depende de esto. La ley exceptúa expresamente los
+    datos necesarios para una prestación de salud (art. 8), y un sistema que
+    frene una guardia por un consentimiento faltante sería peligroso además de
+    equivocado: se registra que falta, no se bloquea.
+    """
+
+    class Modo(models.TextChoices):
+        ESCRITO = "escrito", "Escrito"
+        VERBAL = "verbal", "Verbal"
+        DIGITAL = "digital", "Digital"
+
+    ciudadano = models.ForeignKey(
+        "registros.Ciudadano", on_delete=models.CASCADE, related_name="consentimientos"
+    )
+    otorgado = models.BooleanField(
+        default=True, help_text="False = revocación de un consentimiento anterior."
+    )
+    modo = models.CharField(max_length=20, choices=Modo.choices, default=Modo.ESCRITO)
+    alcance = models.TextField(
+        blank=True,
+        help_text="Para qué se consintió: atención, docencia, investigación…",
+    )
+    # Quién lo tomó. Un consentimiento sin responsable no se puede verificar.
+    tomado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="consentimientos_tomados",
+    )
+    institucion = models.ForeignKey(
+        "instituciones.Institucion", on_delete=models.CASCADE,
+        related_name="consentimientos", null=True, blank=True,
+    )
+    momento = models.DateTimeField(auto_now_add=True)
+    observaciones = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "consentimiento de datos"
+        verbose_name_plural = "consentimientos de datos"
+        ordering = ["-momento", "-id"]
+
+    def __str__(self):
+        estado = "otorga" if self.otorgado else "revoca"
+        return f"{self.ciudadano} {estado} · {self.momento:%d/%m/%Y}"
+
+
 class HistoriaClinica(models.Model):
     """Expediente clínico de un ciudadano dentro de una institución."""
 

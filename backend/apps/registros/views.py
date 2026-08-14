@@ -5,9 +5,12 @@ from rest_framework.response import Response
 from apps.auditoria.mixins import AuditaLecturaClinica
 from apps.common import BaseModelViewSet
 
-from .models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
+from .models import (
+    Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta,
+)
 from .serializers import (
     CiudadanoSerializer,
+    ConsentimientoDatosSerializer,
     EntradaHistoriaSerializer,
     EstudioSerializer,
     HistoriaClinicaSerializer,
@@ -95,3 +98,29 @@ class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "activa")
+
+
+class ConsentimientoDatosViewSet(AuditaLecturaClinica, BaseModelViewSet):
+    """
+    Consentimiento del paciente para el tratamiento de sus datos (Ley 25.326).
+
+    Se agregan registros; no se editan ni se borran. Una revocación es una fila
+    NUEVA con `otorgado=False`: lo que vale ante un reclamo es el historial —qué
+    se consintió y cuándo—, no el estado de hoy.
+    """
+
+    queryset = ConsentimientoDatos.objects.select_related("ciudadano", "tomado_por")
+    serializer_class = ConsentimientoDatosSerializer
+    capacidad_requerida = "registros"
+    protege_lectura = True
+    institucion_path = "ciudadano__institucion"
+    filter_fields = ("ciudadano", "otorgado", "modo")
+    http_method_names = ["get", "head", "options", "post"]
+
+    def perform_create(self, serializer):
+        # Quién lo tomó sale de la sesión, no del cuerpo: un consentimiento que
+        # se puede atribuir a cualquiera no se puede verificar.
+        obj = serializer.save(tomado_por=self.request.user)
+        if obj.institucion_id is None:
+            obj.institucion = obj.ciudadano.institucion
+            obj.save(update_fields=["institucion"])

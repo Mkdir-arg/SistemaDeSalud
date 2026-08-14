@@ -39,6 +39,7 @@ from apps.instituciones.views import (
     InstitucionViewSet, SubareaViewSet,
 )
 from apps.registros.views import (
+    ConsentimientoDatosViewSet,
     CiudadanoViewSet,
     EntradaHistoriaViewSet,
     EstudioViewSet,
@@ -106,3 +107,4 @@ router.register("traslados", TrasladoViewSet, basename="traslado")
 
 # Auditoría de accesos a datos clínicos (Ley 26.529).
 router.register("accesos-clinicos", AccesoClinicoViewSet, basename="acceso-clinico")
+router.register("consentimientos", ConsentimientoDatosViewSet)

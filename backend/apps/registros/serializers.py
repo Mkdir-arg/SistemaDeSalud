@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
+from .models import Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta
 
 
 class EntradaHistoriaSerializer(serializers.ModelSerializer):
@@ -66,6 +66,10 @@ class CiudadanoSerializer(serializers.ModelSerializer):
     estudios = serializers.SerializerMethodField()
     recetas_activas = serializers.SerializerMethodField()
     ultima = serializers.SerializerMethodField()
+    # Estado del consentimiento (Ley 25.326). Derivado del último registro, no
+    # un campo editable: lo que vale es el historial, y un booleano suelto no
+    # puede contestar «¿cuándo lo dio?».
+    consentimiento = serializers.SerializerMethodField()
 
     class Meta:
         model = Ciudadano
@@ -73,8 +77,22 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             "id", "institucion", "codigo", "nombre", "apellido", "documento",
             "fecha_nacimiento", "obra_social", "domicilio", "creado",
             "condiciones", "alergias", "entradas", "estudios", "recetas_activas", "ultima",
+            "consentimiento",
         ]
         read_only_fields = ["creado"]
+
+    def get_consentimiento(self, obj) -> dict | None:
+        c = obj.consentimientos.order_by("-momento", "-id").first()
+        if c is None:
+            # Nunca se registró. No es lo mismo que revocado, y confundirlos
+            # haría creer que el paciente dijo que no.
+            return None
+        return {
+            "otorgado": c.otorgado,
+            "modo": c.modo,
+            "momento": c.momento,
+            "alcance": c.alcance,
+        }
 
     def _hc(self, obj):
         return getattr(obj, "historia_clinica", None)
@@ -105,3 +123,28 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             return None
         e = hc.entradas.order_by("-fecha").first()
         return e.fecha if e else None
+
+
+class ConsentimientoDatosSerializer(serializers.ModelSerializer):
+    paciente = serializers.SerializerMethodField()
+    tomado_por_nombre = serializers.SerializerMethodField()
+    modo_display = serializers.CharField(source="get_modo_display", read_only=True)
+
+    class Meta:
+        model = ConsentimientoDatos
+        fields = [
+            "id", "ciudadano", "paciente", "otorgado", "modo", "modo_display",
+            "alcance", "tomado_por", "tomado_por_nombre", "institucion",
+            "momento", "observaciones",
+        ]
+        # No se edita ni se borra: una revocación es un registro NUEVO, no una
+        # corrección del anterior. Poder editarlo dejaría sin poder contestar
+        # qué se consintió y cuándo, que es la pregunta de la ley.
+        read_only_fields = ["momento", "tomado_por"]
+
+    def get_paciente(self, obj) -> str:
+        c = obj.ciudadano
+        return f"{c.nombre} {c.apellido}".strip()
+
+    def get_tomado_por_nombre(self, obj) -> str | None:
+        return obj.tomado_por.nombre_completo if obj.tomado_por_id else None
