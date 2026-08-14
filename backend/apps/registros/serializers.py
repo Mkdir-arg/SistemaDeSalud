@@ -8,14 +8,25 @@ class EntradaHistoriaSerializer(serializers.ModelSerializer):
     # visible no sirve como registro: la matrícula ya se guarda al firmar, y el
     # nombre evita que el cliente tenga que cruzar contra /usuarios/.
     autor_nombre = serializers.CharField(source="autor.nombre_completo", read_only=True, default=None)
+    # Si la entrada dice hoy lo mismo que cuando se firmó. `null` = firmada antes
+    # de que existiera el sellado: no se puede afirmar ni lo uno ni lo otro, y
+    # decir «intacta» sin poder probarlo sería peor que no decir nada.
+    integra = serializers.SerializerMethodField()
 
     class Meta:
         model = EntradaHistoria
         fields = [
             "id", "historia", "titulo", "contenido", "autor", "autor_nombre",
-            "caso", "firmada", "matricula", "fecha",
+            "caso", "firmada", "matricula", "fecha", "firmada_at", "sello", "integra",
         ]
-        read_only_fields = ["fecha", "matricula"]
+        # El sello no se escribe desde afuera: lo calcula el sistema al firmar, y
+        # poder mandarlo permitiría sellar contenido alterado.
+        read_only_fields = ["fecha", "matricula", "firmada_at", "sello"]
+
+    def get_integra(self, obj) -> bool | None:
+        from .integridad import verificar
+
+        return verificar(obj)["ok"]
 
 
 class EstudioSerializer(serializers.ModelSerializer):

@@ -82,6 +82,15 @@ class EntradaHistoria(models.Model):
     # legajo puede cambiar después). Vacía si la firmó el super admin.
     matricula = models.CharField("matrícula", max_length=60, blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
+    # Sellado de integridad: prueba que la entrada no se tocó después de
+    # firmarse. Hasta acá «firmada» era sólo un booleano y alguien con acceso a
+    # la base podía editar una atención de hace dos años sin dejar rastro.
+    # Ver `apps/registros/integridad.py` —incluido qué es y qué no es—.
+    sello = models.CharField(max_length=64, blank=True, editable=False)
+    # El sello de la entrada firmada anterior de esta historia: encadenarlas es
+    # lo que hace que alterar una vieja no alcance con recalcular su resumen.
+    sello_previo = models.CharField(max_length=64, blank=True, editable=False)
+    firmada_at = models.DateTimeField("firmada el", null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "entrada de historia clínica"

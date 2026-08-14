@@ -1481,7 +1481,7 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricu
     firmada = bool(datos.get("firmada", False))
     if caso.ciudadano_id:
         historia, _ = HistoriaClinica.objects.get_or_create(ciudadano=caso.ciudadano)
-        EntradaHistoria.objects.create(
+        entrada = EntradaHistoria.objects.create(
             historia=historia,
             titulo=titulo,
             contenido=contenido,
@@ -1490,6 +1490,11 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricu
             firmada=firmada,
             matricula=matricula if firmada else "",
         )
+        # Se sella al firmar: es lo que después permite demostrar que la entrada
+        # no se tocó. Una sin firmar es un borrador y no se sella.
+        from apps.registros.integridad import sellar
+
+        sellar(entrada)
         detalle = "asentada en la historia clínica" + (f" · firmada (Mat. {matricula})" if firmada and matricula else (" · firmada" if firmada else ""))
     else:
         detalle = "sin ciudadano asociado"
