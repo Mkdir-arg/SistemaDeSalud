@@ -140,6 +140,8 @@ class Nodo(models.Model):
     #  - notificar: {"titulo": str, "detalle": str, "a": "grupos"|"asignado"}
     #  - integracion: {"url": str, "metodo": "GET"|"POST", "cuerpo": {...},
     #                  "guardar_en": <id de Campo>, "ruta": "a.b.c"}
+    #    · modo padrón FHIR: {"fhir": "Patient", "url": <base>, "sistema": str}
+    #      busca al paciente por documento y completa sus campos vacíos.
     config = models.JSONField(default=dict, blank=True)
 
     formulario = models.ForeignKey(

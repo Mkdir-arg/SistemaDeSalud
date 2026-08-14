@@ -2314,34 +2314,97 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
 
         {nodo.tipo === "integracion" && (
           <>
-            <Field label="URL del servicio">
+            {/* El modo va PRIMERO: cambia lo que significan los campos de abajo.
+                Debajo de la URL se leería como un detalle y alguien terminaría
+                configurando una ruta JSON para un padrón FHIR. */}
+            <Field label="Tipo de servicio">
+              <Select
+                value={(nodo.config || {}).fhir ? "fhir" : "generico"}
+                onChange={(e) =>
+                  setConfig(
+                    e.target.value === "fhir"
+                      // Se limpia lo del otro modo: un `ruta` que quedó de antes
+                      // no hace nada y confunde al que lo lea después.
+                      ? { fhir: "Patient", metodo: null, guardar_en: null, ruta: null }
+                      : { fhir: null, sistema: null }
+                  )
+                }
+              >
+                <option value="generico">Servicio genérico (JSON)</option>
+                <option value="fhir">Padrón FHIR — completar los datos del paciente</option>
+              </Select>
+            </Field>
+
+            <Field
+              label={(nodo.config || {}).fhir ? "Dirección del padrón" : "URL del servicio"}
+              hint={
+                (nodo.config || {}).fhir
+                  // Poner acá la URL de búsqueda completa es el error más común:
+                  // Cauce le agrega `/Patient?identifier=…` por su cuenta.
+                  ? "La base del servidor FHIR, sin /Patient: Cauce arma la búsqueda."
+                  : undefined
+              }
+            >
               <Input
                 value={(nodo.config || {}).url || ""}
                 onChange={(e) => setConfig({ url: e.target.value })}
-                placeholder="https://padron.gob.ar/api/afiliado"
+                placeholder={
+                  (nodo.config || {}).fhir
+                    ? "https://padron.gob.ar/fhir"
+                    : "https://padron.gob.ar/api/afiliado"
+                }
               />
               {!(nodo.config || {}).url && <AvisoFalta texto="Sin URL, este paso no hace nada." />}
             </Field>
-            <Field label="Método">
-              <Select value={(nodo.config || {}).metodo || "GET"} onChange={(e) => setConfig({ metodo: e.target.value })}>
-                <option value="GET">GET (consultar)</option>
-                <option value="POST">POST (enviar)</option>
-              </Select>
-            </Field>
-            <Field label="Guardar la respuesta en" hint="El dato queda cargado en el caso y se puede usar en una Decisión.">
-              <Select value={(nodo.config || {}).guardar_en || ""} onChange={(e) => setConfig({ guardar_en: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">— No guardar nada —</option>
-                {campos.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </Select>
-            </Field>
-            {(nodo.config || {}).guardar_en && (
-              <Field label="Qué parte de la respuesta" hint="Ruta dentro del JSON, por ejemplo: afiliado.plan">
-                <Input
-                  value={(nodo.config || {}).ruta || ""}
-                  onChange={(e) => setConfig({ ruta: e.target.value })}
-                  placeholder="afiliado.plan"
-                />
-              </Field>
+
+            {(nodo.config || {}).fhir ? (
+              <>
+                <Field
+                  label="Sistema del documento"
+                  hint="Opcional. Lo pide el padrón cuando maneja más de un tipo de identificación."
+                >
+                  <Input
+                    value={(nodo.config || {}).sistema || ""}
+                    onChange={(e) => setConfig({ sistema: e.target.value })}
+                    placeholder="http://www.renaper.gob.ar/dni"
+                  />
+                </Field>
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", lineHeight: 1.5 }}>
+                  Busca al paciente del caso por su documento y completa los campos que
+                  estén <strong>vacíos</strong>: nombre, apellido, fecha de nacimiento y
+                  domicilio.
+                  <br /><br />
+                  {/* Quien configura esto necesita saber que NO corrige datos
+                      equivocados, o va a creer que el padrón los arregla solo. */}
+                  Nunca pisa un dato ya cargado: lo que una persona dijo en el mostrador
+                  vale más que un padrón desactualizado. Si el padrón devuelve más de una
+                  persona con ese documento, no completa nada.
+                </div>
+              </>
+            ) : (
+              <>
+                <Field label="Método">
+                  <Select value={(nodo.config || {}).metodo || "GET"} onChange={(e) => setConfig({ metodo: e.target.value })}>
+                    <option value="GET">GET (consultar)</option>
+                    <option value="POST">POST (enviar)</option>
+                  </Select>
+                </Field>
+                <Field label="Guardar la respuesta en" hint="El dato queda cargado en el caso y se puede usar en una Decisión.">
+                  <Select value={(nodo.config || {}).guardar_en || ""} onChange={(e) => setConfig({ guardar_en: e.target.value ? Number(e.target.value) : null })}>
+                    <option value="">— No guardar nada —</option>
+                    {campos.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </Select>
+                </Field>
+                {(nodo.config || {}).guardar_en && (
+                  <Field label="Qué parte de la respuesta" hint="Ruta dentro del JSON, por ejemplo: afiliado.plan">
+                    <Input
+                      value={(nodo.config || {}).ruta || ""}
+                      onChange={(e) => setConfig({ ruta: e.target.value })}
+                      placeholder="afiliado.plan"
+                    />
+                  </Field>
+                )}
+              </>
             )}
             <Checkbox
               checked={!!(nodo.config || {}).obligatorio}

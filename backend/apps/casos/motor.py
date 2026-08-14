@@ -470,6 +470,51 @@ def _extraer(datos, ruta: str):
     return actual
 
 
+def _completar_desde_padron(caso: Caso, nodo: Nodo, url, cfg, fallar, autor=None):
+    """
+    Completa los datos del paciente consultando un padrón FHIR externo.
+
+    Config: `{"fhir": "Patient", "url": <base del servidor>, "sistema": <system
+    del identificador>, "obligatorio": bool}`.
+
+    Es el caso de una guardia: la persona llega con el documento y nada más.
+    Cargar a mano nombre, fecha de nacimiento y domicilio es lo que hace que un
+    ingreso tarde tres minutos en vez de veinte segundos, y lo que produce los
+    registros duplicados con el apellido mal escrito.
+
+    Sólo rellena campos VACÍOS (ver `fhir.cliente.completar`): lo que una persona
+    dijo en el mostrador vale más que lo que dice un padrón.
+    """
+    from django.conf import settings
+
+    from apps.fhir import cliente
+
+    if caso.ciudadano_id is None:
+        return fallar("el caso no tiene un paciente al que completar")
+    if not caso.ciudadano.documento:
+        # No es una falla del padrón: no hay con qué buscar. Se anota igual para
+        # que quede visible por qué un paso no hizo nada.
+        return fallar("el paciente no tiene documento cargado")
+
+    patient = cliente.buscar_paciente(
+        url, caso.ciudadano.documento,
+        sistema=cfg.get("sistema") or None,
+        timeout=getattr(settings, "INTEGRACIONES_TIMEOUT", 6),
+    )
+    if patient is None:
+        return fallar("el padrón no devolvió una persona única para ese documento")
+
+    completados = cliente.completar(caso.ciudadano, patient)
+    _registrar(
+        caso, nodo.titulo or "Consulta al padrón",
+        detalle=(
+            "se completó " + ", ".join(completados) if completados
+            else "el paciente ya tenía todos los datos cargados"
+        ),
+        autor=autor, nodo=nodo,
+    )
+
+
 def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
     """
     Llama a un sistema externo y, si se pidió, guarda un dato de la respuesta.
@@ -499,6 +544,14 @@ def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
             "el destino no está habilitado. Un administrador tiene que agregarlo a "
             "CAUCE_INTEGRACIONES_PERMITIDAS."
         )
+
+    # Modo FHIR: el destino es un padrón y lo que se quiere es completar al
+    # paciente. Pasa por la MISMA lista blanca que el modo genérico —un segundo
+    # camino de salida a internet sería un segundo lugar donde olvidarse de
+    # restringirlo—, y sale por acá porque el resto de esta función espera un
+    # JSON cualquiera del que se extrae un campo.
+    if cfg.get("fhir") == "Patient":
+        return _completar_desde_padron(caso, nodo, url, cfg, fallar, autor=autor)
 
     metodo = (cfg.get("metodo") or "GET").upper()
     cuerpo = cfg.get("cuerpo")

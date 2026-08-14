@@ -199,3 +199,68 @@ test.describe("Diseñador de flujos", () => {
     expect([despues.sx, despues.sy]).toEqual([antes.sx, antes.sy]);
   });
 });
+
+/**
+ * Configuración del nodo de integración.
+ *
+ * El modo padrón FHIR existía en el motor y no se podía elegir desde ningún
+ * lado, que para quien diseña el flujo es lo mismo que no existir. Estos tests
+ * cubren que se pueda elegir y —sobre todo— que la pantalla diga lo que el paso
+ * NO hace: quien lo configura tiene que saber que no corrige datos equivocados,
+ * o va a creer que el padrón los arregla solo.
+ */
+test.describe("Nodo de integración", () => {
+  test.beforeEach(async ({ page }) => {
+    await entrar(page, "admin");
+    await page.goto("/flujos");
+    await page.locator("tbody tr").first().click();
+    await page.waitForURL(/\/flujos\/\d+/);
+    await expect(page.locator("[data-nodo]").first()).toBeVisible();
+    await page.getByTitle("Agregar nodo «Integración»").click();
+    await expect(page.getByLabel("Tipo de servicio")).toBeVisible();
+  });
+
+  /*
+   * El nodo se guarda en el servidor apenas se agrega, así que sin esto cada
+   * corrida deja uno suelto en el flujo del demo. La suite corre sobre la misma
+   * base y una que ensucia lo que mira la siguiente es la forma más rápida de
+   * que nadie confíe en los rojos.
+   */
+  test.afterEach(async ({ page }) => {
+    const borrar = page.getByRole("button", { name: "Eliminar nodo" });
+    if (await borrar.isVisible().catch(() => false)) await borrar.click();
+  });
+
+  test("se puede elegir el modo padrón FHIR", async ({ page }) => {
+    const modo = page.getByLabel("Tipo de servicio");
+    await expect(modo).toBeVisible();
+    await modo.selectOption("fhir");
+    await expect(page.getByLabel("Dirección del padrón")).toBeVisible();
+  });
+
+  test("avisa que la URL es la base y no la de búsqueda", async ({ page }) => {
+    // Es el error más común: Cauce le agrega /Patient?identifier=… por su cuenta.
+    await page.getByLabel("Tipo de servicio").selectOption("fhir");
+    await expect(page.getByText(/sin \/Patient/)).toBeVisible();
+  });
+
+  test("dice que no pisa datos ya cargados", async ({ page }) => {
+    await page.getByLabel("Tipo de servicio").selectOption("fhir");
+    await expect(page.getByText(/Nunca pisa un dato ya cargado/)).toBeVisible();
+  });
+
+  test("en modo padrón esconde lo que no aplica", async ({ page }) => {
+    // Una ruta JSON configurada sobre un padrón FHIR no hace nada y hace perder
+    // media hora a quien la escribió.
+    await page.getByLabel("Tipo de servicio").selectOption("fhir");
+    await expect(page.getByLabel("Guardar la respuesta en")).toHaveCount(0);
+    await expect(page.getByLabel("Método")).toHaveCount(0);
+  });
+
+  test("volver al modo genérico devuelve sus campos", async ({ page }) => {
+    await page.getByLabel("Tipo de servicio").selectOption("fhir");
+    await page.getByLabel("Tipo de servicio").selectOption("generico");
+    await expect(page.getByLabel("Método")).toBeVisible();
+    await expect(page.getByLabel("Sistema del documento")).toHaveCount(0);
+  });
+});
