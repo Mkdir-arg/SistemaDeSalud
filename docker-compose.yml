@@ -27,6 +27,15 @@ services:
     volumes:
       - media:/app/media
       - respaldos:/respaldos
+    # El chequeo consulta la base, no sólo que el proceso responda: una
+    # instancia que contesta HTTP pero no llega a Postgres no puede atender a
+    # nadie, y sin esto el orquestador la deja en rotación igual.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health/', timeout=4).status==200 else 1)\""]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 40s
     depends_on:
       db:
         condition: service_healthy

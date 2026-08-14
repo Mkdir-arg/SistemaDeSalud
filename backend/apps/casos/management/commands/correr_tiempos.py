@@ -23,6 +23,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.auditoria.latidos import latir
 from apps.casos import motor
 from apps.casos.models import Caso
 from apps.flujos.models import Nodo
@@ -49,10 +50,15 @@ class Command(BaseCommand):
         reactivados = self._reactivar(ahora, limite, seco)
         avisados = self._avisar_demoras(ahora, limite, seco)
 
+        resumen = f"{reactivados} espera(s) reactivada(s) · {avisados} demora(s) avisada(s)"
         prefijo = "[en seco] " if seco else ""
-        self.stdout.write(
-            f"{prefijo}{reactivados} espera(s) reactivada(s) · {avisados} demora(s) avisada(s)"
-        )
+        self.stdout.write(f"{prefijo}{resumen}")
+
+        if not seco:
+            # El latido va DESPUÉS de hacer el trabajo, no al empezar: lo que
+            # interesa saber es que el proceso llegó hasta el final, no que
+            # arrancó. Un bucle que arranca y muere a la mitad se vería sano.
+            latir("correr_tiempos", resumen)
 
     # ----------------------------------------------------------------- #
     def _reactivar(self, ahora, limite, seco) -> int:

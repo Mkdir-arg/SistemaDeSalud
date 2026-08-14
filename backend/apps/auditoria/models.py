@@ -79,3 +79,8 @@ class AccesoClinico(models.Model):
     def __str__(self):
         quien = self.usuario.nombre_completo if self.usuario_id else "?"
         return f"{quien} · {self.recurso} · {self.momento:%d/%m/%Y %H:%M}"
+
+
+# El latido de los procesos periódicos vive en `latidos.py`, con su explicación.
+# Se re-exporta acá para que Django lo descubra como modelo de esta app.
+from .latidos import Latido  # noqa: E402,F401

@@ -90,6 +90,40 @@ if not DEBUG:
     # se pone en rojo si alguno cambia, así que restatearlos sólo agrega ruido.
 
 
+# --- Registro de la aplicación --------------------------------------------- #
+#
+# Sale todo por stdout: en un contenedor, escribir a un archivo es escribir
+# adentro de algo que se borra al redesplegar. Quien recoge los logs es la
+# infraestructura, y esa decisión no la toma la aplicación.
+#
+# Los `log.exception` de las apps son los avisos que el sistema da cuando decide
+# seguir andando pese a un problema —no se pudo escribir el registro de accesos,
+# el padrón externo no contestó—. Sin un handler propio caen en el «last resort»
+# de Python: sin fecha, sin de dónde salieron, imposibles de encontrar entre
+# millones de líneas.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "cauce": {
+            "format": "{asctime} {levelname:<8} {name} · {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "consola": {"class": "logging.StreamHandler", "formatter": "cauce"},
+    },
+    "loggers": {
+        "apps": {"handlers": ["consola"], "level": "INFO", "propagate": False},
+        "cauce": {"handlers": ["consola"], "level": "INFO", "propagate": False},
+        # Los 500 con su traza. Django los manda por mail si hay ADMINS y si no,
+        # a ningún lado.
+        "django.request": {"handlers": ["consola"], "level": "WARNING", "propagate": False},
+    },
+    "root": {"handlers": ["consola"], "level": "WARNING"},
+}
+
+
 # --- Apps ------------------------------------------------------------------
 INSTALLED_APPS = [
     "django.contrib.admin",

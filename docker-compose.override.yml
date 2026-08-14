@@ -29,6 +29,21 @@ services:
     ports:
       - "8000:8000"
 
+  # El reloj del motor y el respaldo también corren el código montado.
+  #
+  # Sin esto siguen ejecutando el de la imagen: un cambio a `correr_tiempos` se
+  # aplicaba en silencio recién al reconstruir, y mientras tanto el contenedor
+  # corría la versión anterior sin que nada lo dijera. Es la misma clase de
+  # falla muda que estos servicios existen para evitar.
+  tiempos:
+    volumes:
+      - ./backend:/app
+
+  respaldos:
+    volumes:
+      - ./backend:/app
+      - respaldos:/respaldos
+
   frontend:
     # Anula el build de nginx del compose base: en dev usamos el dev server
     # de Vite (HMR) corriendo sobre una imagen de Node.

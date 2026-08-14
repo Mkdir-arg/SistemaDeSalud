@@ -49,6 +49,7 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Consulta a padrón FHIR desde un paso del flujo | ✅ Completa los campos vacíos del paciente |
 | Respaldo verificable (`respaldar`) | ✅ Restaura y compara en cada corrida; servicio diario |
 | Endurecimiento para producción | ✅ `check --deploy` limpio, con test que lo corre |
+| Monitoreo | ✅ `/api/health/` toca la base · `/api/estado/` delata el proceso periódico que murió |
 | Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
 | Tests automatizados | ✅ 527 de backend · 140 end-to-end (Playwright, dos temas) |
 | Guardas de calidad | ✅ Esquema OpenAPI, clases Tailwind huérfanas, contraste WCAG AA, N+1 por volumen |
@@ -121,7 +122,10 @@ ejecución). El motor usa la misma definición para diseñar y para ejecutar.
   activa con sesión.
 
 **Endpoints / acciones especiales:**
-- `GET  /api/health/` — chequeo de vida (sin auth).
+- `GET  /api/health/` — ¿puede atender? Consulta la base; 503 si no llega. Sin auth
+  (una sonda no tramita credenciales) y por eso no cuenta qué falló.
+- `GET  /api/estado/` — latido de los procesos periódicos (reloj del motor,
+  recordatorios, saturación, respaldo). 503 si alguno se quedó callado. Con sesión.
 - `POST /api/auth/token/` y `/api/auth/token/refresh/` — JWT.
 - `GET  /api/usuarios/me/` — usuario autenticado.
 - `POST /api/casos/{id}/tomar/` — asigna el caso al usuario + registra `EventoCaso`.

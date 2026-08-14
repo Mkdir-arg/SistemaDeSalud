@@ -29,6 +29,8 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
+from apps.auditoria.latidos import latir
+
 # Tablas cuyo conteo se compara entre el original y el restaurado.
 #
 # No se comparan todas: alcanza con las que dolería perder y las que un volcado
@@ -107,6 +109,13 @@ class Command(BaseCommand):
             self._verificar(cred, archivo)
 
         self._rotar(destino, op["conservar"])
+
+        # Sólo late si VERIFICÓ. Un respaldo sin verificar no prueba nada, y
+        # dejar el latido igual haría que el monitor diga «al día» sobre una
+        # carpeta que quizás no tenga un solo archivo restaurable.
+        if not op["sin_verificar"]:
+            latir("respaldar", f"{archivo.name} · {tamano / 1_048_576:.1f} MB · verificado")
+
         self.stdout.write(self.style.SUCCESS(f"\nListo: {archivo}"))
 
     # ------------------------------------------------------------------ #

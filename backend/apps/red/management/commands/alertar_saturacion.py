@@ -25,6 +25,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from apps.auditoria.latidos import latir
 from apps.accounts.models import Membresia
 from apps.casos.models import Notificacion
 from apps.red import motor
@@ -91,4 +92,7 @@ class Command(BaseCommand):
                         f"«{red.nombre}» no tiene otro establecimiento con personal."
                     )
 
-        self.stdout.write(f"{avisos} aviso(s) de saturación" + (" (en seco)" if seco else ""))
+        resumen = f"{avisos} aviso(s) de saturación"
+        self.stdout.write(resumen + (" (en seco)" if seco else ""))
+        if not seco:
+            latir("alertar_saturacion", resumen)

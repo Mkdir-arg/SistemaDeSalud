@@ -25,6 +25,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Count
 from django.utils import timezone
 
+from apps.auditoria.latidos import latir
 from apps.accounts.models import Membresia
 from apps.casos.models import Notificacion
 from apps.agenda.models import Turno
@@ -60,7 +61,14 @@ class Command(BaseCommand):
         )
         total = pendientes.count()
         if not total:
-            self.stdout.write(f"Sin turnos por confirmar para el {objetivo:%d/%m}.")
+            # Late igual: no tener nada que hacer es haber corrido bien.
+            #
+            # Sin esto el proceso salía por acá sin dejar rastro y el monitor lo
+            # daba por muerto justo cuando estaba sano, que es la falsa alarma
+            # que enseña a ignorar las alarmas de verdad.
+            resumen = f"Sin turnos por confirmar para el {objetivo:%d/%m}."
+            self.stdout.write(resumen)
+            latir("recordar_turnos", resumen)
             return
 
         # Se agrupa por área: quien llama es del mostrador de esa área, y una
@@ -117,8 +125,10 @@ class Command(BaseCommand):
             Turno.objects.filter(id__in=avisados).update(recordado_at=timezone.now())
 
         sin_dueno = sum(c for _, c in huerfanos)
-        self.stdout.write(
+        resumen = (
             f"{total} turno(s) por confirmar para el {objetivo:%d/%m} · "
             f"{avisos} aviso(s) a mostrador"
             + (f" · {sin_dueno} sin destinatario" if sin_dueno else "")
         )
+        self.stdout.write(resumen)
+        latir("recordar_turnos", resumen)
