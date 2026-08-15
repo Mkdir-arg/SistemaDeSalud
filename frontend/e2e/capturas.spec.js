@@ -94,10 +94,28 @@ async function foto(page, nombre) {
   await page.screenshot({ path: `${CARPETA}/${nombre}`, fullPage: false });
 }
 
+/**
+ * Espera a que el menú del rol esté resuelto.
+ *
+ * Las capacidades del rol llegan en una llamada aparte de la sesión, y hasta que
+ * contesta el Shell no tiene grupos de menú, el rótulo del rol dice «Usuario» y
+ * /inicio cae en el panel de institución en vez de «Mi trabajo». No alcanza con
+ * esperar a que no quede nada cargando: ese estado intermedio no tiene esqueletos
+ * ni spinner, así que pasa los dos filtros y la foto sale de OTRA pantalla —fue lo
+ * que pasó con /inicio del médico, capturado con el menú vacío.
+ *
+ * Se espera un grupo del menú, que es señal positiva: todos los roles que se
+ * capturan tienen al menos uno, y el estado sin capacidades no tiene ninguno.
+ */
+async function esperarMenu(page) {
+  await expect(page.locator("aside").first().getByText(/^(SISTEMA|TRABAJO|REGISTROS)$/).first()).toBeVisible();
+}
+
 /** Pantalla de lista o detalle dentro de la sesión: navegar, esperar, sacar. */
 async function pantalla(page, ruta, nombre) {
   await page.goto(ruta);
   await fijarTema(page, "claro"); // recarga y espera a que no quede nada cargando
+  await esperarMenu(page); // ...y que el rol haya resuelto su menú
   await foto(page, nombre);
 }
 
@@ -189,6 +207,7 @@ test.describe("admin", () => {
   test("08 detalle de formulario", async ({ page }) => {
     await page.goto("/formularios");
     await esperarPantalla(page);
+    await esperarMenu(page);
     await primeraFila(page, /\/formularios\/\d+/);
     await foto(page, "08-formulario-detalle.png");
   });
@@ -200,6 +219,7 @@ test.describe("admin", () => {
   test("10 y 11 diseñador de flujos", async ({ page }) => {
     await page.goto("/flujos");
     await esperarPantalla(page);
+    await esperarMenu(page);
     await page.locator("tbody tr").first().click();
     await page.waitForURL(/\/flujos\/\d+/);
     // El lienzo está listo cuando hay nodos dibujados (igual que editor.spec.js).
@@ -249,6 +269,7 @@ test.describe("médico", () => {
      */
     await page.goto("/inicio");
     await esperarPantalla(page);
+    await esperarMenu(page); // sin esto, /inicio puede ser todavía el panel de institución
     const areas = page.getByRole("heading", { name: "Mis áreas" });
     if (await areas.isVisible().catch(() => false)) {
       await page.getByText("Entrar →").first().click();
@@ -268,12 +289,39 @@ test.describe("médico", () => {
   test("19 detalle del caso", async ({ page }) => {
     await page.goto("/casos");
     await esperarPantalla(page);
+    await esperarMenu(page);
     await primeraFila(page, /\/casos\/\d+/);
     await foto(page, "19-caso-detalle.png");
   });
 
   test("20 agenda", async ({ page }) => {
-    await pantalla(page, "/agenda", "20-agenda.png");
+    /*
+     * Elegir una agenda que atienda el día que se muestra.
+     *
+     * La pantalla abre con la primera agenda del listado y cada profesional
+     * atiende ciertos días: la de Traumatología no atiende viernes, así que la
+     * captura salía con «La agenda no atiende este día». No es un error —el
+     * estado vacío es correcto— pero como lámina de «Turnos programados» no
+     * muestra nada. Se prueban las agendas hasta dar con una que tenga turnos.
+     */
+    await page.goto("/agenda");
+    await fijarTema(page, "claro");
+    await esperarMenu(page);
+
+    const agendas = page.locator("select").first();
+    const vacia = page.getByText("La agenda no atiende este día");
+    const opciones = await agendas.locator("option").evaluateAll((os) => os.map((o) => o.value));
+    for (const valor of opciones) {
+      await agendas.selectOption(valor);
+      await esperarPantalla(page);
+      if (!(await vacia.isVisible().catch(() => false))) break;
+    }
+    blando(
+      await vacia.isVisible().catch(() => false),
+      "20-agenda.png: ninguna de las agendas atiende hoy, la lámina sale vacía",
+    ).toBe(false);
+
+    await foto(page, "20-agenda.png");
   });
 
   test("21 internación", async ({ page }) => {
@@ -295,6 +343,7 @@ test.describe("médico", () => {
   test("26 detalle de la historia", async ({ page }) => {
     await page.goto("/historia");
     await esperarPantalla(page);
+    await esperarMenu(page);
     await primeraFila(page, /\/historia\/\d+/);
     await foto(page, "26-historia-detalle.png");
   });
