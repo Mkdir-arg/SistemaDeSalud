@@ -120,7 +120,13 @@ class FlujoSerializer(serializers.ModelSerializer):
         ver = _publicada_de(obj)
         if not ver:
             return "ambos"
-        inicio = next(iter(getattr(ver, "nodos_inicio", None) or ver.nodos.filter(tipo="inicio")[:1]), None)
+        # `is None` y no `or`: el `to_attr` del prefetch existe siempre y una
+        # versión sin nodo Inicio lo trae en `[]`, que es falsy — con `or` esa
+        # versión volvía a consultar la base, una vez por flujo.
+        inicios = getattr(ver, "nodos_inicio", None)
+        if inicios is None:
+            inicios = ver.nodos.filter(tipo="inicio")[:1]
+        inicio = next(iter(inicios), None)
         return (inicio.config or {}).get("origen", "ambos") if inicio else "ambos"
 
     def validate(self, attrs):

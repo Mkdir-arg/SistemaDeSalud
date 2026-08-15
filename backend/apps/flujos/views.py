@@ -188,7 +188,15 @@ class FlujoViewSet(BaseModelViewSet):
             })
             if not vigente:
                 continue
-            for nodo in getattr(vigente, "nodos_derivar", None) or vigente.nodos.filter(tipo=Nodo.Tipo.DERIVAR):
+            # `is None` y no `or`: el `to_attr` del prefetch SIEMPRE existe, y para
+            # un flujo que no deriva vale `[]`, que es falsy. Con `or`, el
+            # precargado servía sólo para los flujos que sí derivan y los demás
+            # —la mayoría— caían al queryset: una consulta por flujo en un
+            # endpoint que a propósito no pagina.
+            nodos_derivar = getattr(vigente, "nodos_derivar", None)
+            if nodos_derivar is None:
+                nodos_derivar = vigente.nodos.filter(tipo=Nodo.Tipo.DERIVAR)
+            for nodo in nodos_derivar:
                 destino = (nodo.config or {}).get("flujo_destino_id")
                 if destino:
                     aristas.append({
@@ -311,6 +319,51 @@ class VersionFlujoViewSet(BaseModelViewSet):
                     v.save(update_fields=["estado"])
             version.estado = VersionFlujo.Estado.PUBLICADA
             version.save(update_fields=["estado"])
+        return Response(self.get_serializer(version).data)
+
+    @action(detail=True, methods=["post"])
+    def archivar(self, request, pk=None):
+        """Retira el proceso de circulación: la versión publicada pasa a ARCHIVADA.
+
+        Un proceso se discontinúa —cambia el protocolo, cierra un consultorio,
+        termina la campaña de vacunación— y hasta acá no había forma de sacarlo:
+        el estado ARCHIVADA existía en el modelo y en la pestaña del listado, y
+        ningún código lo asignaba nunca. El flujo viejo seguía publicado para
+        siempre y seguía apareciendo en el desplegable de «Nuevo caso», así que el
+        administrativo del mostrador podía meter un paciente en un circuito que la
+        institución dejó de usar.
+
+        No se retira con casos en curso: esos casos están parados sobre estos
+        nodos y el flujo tiene que poder terminarlos.
+        """
+        version = self.get_object()
+        if version.estado != VersionFlujo.Estado.PUBLICADA:
+            return Response(
+                {"detail": "Sólo se retira la versión publicada: ésta está "
+                           f"{version.get_estado_display().lower()}."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        from apps.casos.models import Caso
+
+        activos = (
+            Caso.objects.filter(version=version)
+            .exclude(estado=Caso.Estado.CERRADO)
+            .count()
+        )
+        if activos:
+            return Response(
+                {
+                    "detail": f"El flujo tiene {activos} "
+                              f"{'caso activo' if activos == 1 else 'casos activos'} en esta "
+                              "versión. Terminalos o cerralos antes de retirarlo: si se retira "
+                              "ahora, esos casos quedan corriendo un proceso que ya no figura "
+                              "en ningún lado.",
+                    "casos_activos": activos,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        version.estado = VersionFlujo.Estado.ARCHIVADA
+        version.save(update_fields=["estado"])
         return Response(self.get_serializer(version).data)
 
     @action(detail=True, methods=["post"], url_path="nueva-version")

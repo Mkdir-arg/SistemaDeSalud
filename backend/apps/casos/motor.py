@@ -74,6 +74,23 @@ def trazar():
         _traza.reset(token)
 
 
+# Ensayo en curso: el «Probar» del diseñador corre el motor de verdad y al final
+# deshace la transacción. La base vuelve atrás; un pedido HTTP que ya salió del
+# servidor, no. Va por `contextvars` por lo mismo que la traza: para no arrastrar
+# un parámetro por media docena de funciones que no tienen nada que ver.
+_en_ensayo = contextvars.ContextVar("motor_en_ensayo", default=False)
+
+
+@contextmanager
+def _ensayando():
+    """Marca el bloque como ensayo: nada de lo que haga puede salir del servidor."""
+    token = _en_ensayo.set(True)
+    try:
+        yield
+    finally:
+        _en_ensayo.reset(token)
+
+
 def _anotar(nodo: Nodo, motivo: str = ""):
     registro = _traza.get()
     if registro is None:
@@ -528,6 +545,18 @@ def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
     """
     from django.conf import settings
 
+    # En el ensayo del diseñador no se sale a la red. El `set_rollback` limpia la
+    # base, pero un POST ya emitido no se puede volver atrás: recorrer un circuito
+    # de seis pasos con un nodo «crear el turno en el HIS» dejaba seis órdenes
+    # fantasma del otro lado —para un caso de prueba sin paciente, y sin ningún
+    # rastro de este lado que las explique, justamente porque se deshizo todo—.
+    # Y el panel reenvía la lista completa de pasos en cada avance, así que el
+    # mismo pedido se repetía una vez por clic en «Continuar».
+    if _en_ensayo.get():
+        _registrar(caso, nodo.titulo or "Integración",
+                   detalle="no se llamó al servicio: es un ensayo", autor=autor, nodo=nodo)
+        return
+
     cfg = nodo.config or {}
     url = (cfg.get("url") or "").strip()
     obligatorio = bool(cfg.get("obligatorio"))
@@ -893,8 +922,19 @@ def pasar_de_sector(caso: Caso, cama_id, autor=None, motivo: str = "") -> Caso:
         raise ErrorMotor("La cama de destino no existe.")
     if destino.id == actual.cama_id:
         raise ErrorMotor("El paciente ya está en esa cama.")
-    if not destino.activa or destino.estado != Cama.Estado.LIBRE:
-        raise ErrorMotor(f"La cama {destino.nombre} no está libre.")
+    # Las dos condiciones van separadas porque dicen cosas distintas y el usuario
+    # actúa distinto con cada una. Dar de baja una cama NO le toca el `estado`:
+    # una cama de baja sigue siendo `libre`, así que juntarlas hacía que el pase
+    # contestara «no está libre» sobre una cama que está libre — y que la propia
+    # pantalla acababa de ofrecer. Enfermería lee que la app se contradice y deja
+    # de creerle a la lista de camas libres, que es el activo entero del módulo.
+    # `asignar_cama` ya las distingue: el pase decía otra cosa por el mismo caso.
+    if not destino.activa:
+        raise ErrorMotor(f"La cama {destino.nombre} está dada de baja.")
+    if destino.estado != Cama.Estado.LIBRE:
+        raise ErrorMotor(
+            f"La cama {destino.nombre} no está libre ({destino.get_estado_display().lower()})."
+        )
     # El pase cruza sectores a propósito (UTI ↔ sala), así que no se valida
     # contra el nodo; la institución sí: mover a un paciente a una cama de otro
     # hospital la saca del tablero de ese hospital sin que nadie de ahí pueda
@@ -1858,7 +1898,9 @@ def ensayar(version: VersionFlujo, pasos: list[dict] | None = None, autor=None) 
 
     Cómo funciona: se crea un caso de verdad, se lo hace avanzar con el mismo
     código que atiende a un paciente real, se anota por dónde pasó, y al final se
-    deshace la transacción entera. No queda nada en la base.
+    deshace la transacción entera. No queda nada en la base, y tampoco afuera:
+    los nodos de integración se anotan sin llamar al servicio, porque un pedido
+    HTTP ya emitido no lo deshace ningún rollback.
 
     `pasos` es la lista de datos para cada parada, en orden — el mismo formato
     que recibe `avanzar`. Un paso `{"accion": "llamar"}` ejecuta `llamar` en vez
@@ -1882,7 +1924,10 @@ def ensayar(version: VersionFlujo, pasos: list[dict] | None = None, autor=None) 
         "error": None,
     }
 
-    with transaction.atomic():
+    # `_ensayando` es lo que hace verdadera la promesa de «no queda nada»: el
+    # rollback alcanza a la base y no a los sistemas de afuera, así que los nodos
+    # de integración se anotan pero no se ejecutan.
+    with transaction.atomic(), _ensayando():
         with trazar() as camino:
             caso = Caso.objects.create(
                 institucion=version.flujo.institucion,
@@ -1990,6 +2035,18 @@ def validar_version(version) -> list[dict]:
     for n in por_tipo.get(Nodo.Tipo.FORMULARIO, []):
         if n.formulario_id:
             campos_disponibles.update(n.formulario.campos.values_list("id", flat=True))
+    # Un campo también lo puede cargar una integración: `guardar_en` escribe un
+    # ValorCampo igual que un formulario. Sin contarlo acá, el circuito que el
+    # propio panel recomienda —consultar la cobertura en el padrón y rutear al
+    # paciente según el plan— no se podía publicar nunca: el chequeo 5 lo marcaba
+    # como «campo inexistente» y encima culpaba a la causa equivocada.
+    for n in por_tipo.get(Nodo.Tipo.INTEGRACION, []):
+        campo_id = (n.config or {}).get("guardar_en")
+        try:
+            if campo_id:
+                campos_disponibles.add(int(campo_id))
+        except (TypeError, ValueError):
+            pass
 
     for n in nodos:
         salidas = salidas_por_nodo.get(n.pk, [])
@@ -1999,6 +2056,20 @@ def validar_version(version) -> list[dict]:
             problemas.append({"sev": "aviso", "nodo_id": n.pk,
                               "titulo": f"«{n.titulo}» no tiene salida",
                               "detalle": "El caso quedaría detenido en este nodo."})
+
+        # 3 bis) Dos salidas en un nodo que no es Decisión. `_siguiente_nodo` toma
+        #    `salidas[0]` —la flecha que se dibujó primero— y la otra rama queda
+        #    muerta. «Después de ver al paciente, o lo interno o le doy el alta»
+        #    dibujado como dos flechas desde la Atención hace que TODOS los
+        #    pacientes vayan por la misma, y nada lo delata: se publica limpio y
+        #    hasta el «Probar» recorre esa misma rama, así que el ensayo confirma
+        #    el flujo equivocado.
+        if n.tipo != Nodo.Tipo.DECISION and len(salidas) > 1:
+            problemas.append({"sev": "error", "nodo_id": n.pk,
+                              "titulo": f"«{n.titulo}» tiene más de una salida y no es una Decisión",
+                              "detalle": "El flujo no sabe cuál elegir: siempre tomaría la primera que se "
+                                         "dibujó y el resto de las ramas nunca se usarían. Poné una "
+                                         "Decisión antes de las ramas."})
 
         # 4) Derivar sin área de destino.
         if n.tipo == Nodo.Tipo.DERIVAR and not (n.config or {}).get("area_destino_id"):
@@ -2054,6 +2125,23 @@ def validar_version(version) -> list[dict]:
             problemas.append({"sev": "aviso", "nodo_id": n.pk,
                               "titulo": f"«{n.titulo}» no tiene formulario asignado",
                               "detalle": "No habría datos para cargar en este paso."})
+
+        # 9) Espera por tiempo con una duración que el motor no sabe leer. La
+        #    duración es texto libre: «una semana», «media hora» o «hasta el
+        #    lunes» no se interpretan, el caso queda EN_ESPERA sin vencimiento y
+        #    no vuelve a ninguna bandeja. Como nadie está esperando que aparezca,
+        #    nadie lo busca: el paciente al que había que controlar a la semana se
+        #    pierde y el sistema no lo dice en ningún momento. Se avisa al
+        #    publicar porque es el último momento en que sale barato.
+        if n.tipo == Nodo.Tipo.ESPERA_TIEMPO:
+            cfg = n.config or {}
+            declarada = str(cfg.get("duracion") or "").strip()
+            if (declarada or cfg.get("minutos") is not None) and minutos_de_espera(cfg) is None:
+                problemas.append({"sev": "error", "nodo_id": n.pk,
+                                  "titulo": f"«{n.titulo}» tiene una duración que no se entiende",
+                                  "detalle": f"«{declarada or cfg.get('minutos')}» no se puede interpretar: el caso "
+                                             "quedaría esperando para siempre, hasta que alguien lo reactive a "
+                                             "mano. Escribí un número y una unidad («6 horas», «7 días»)."})
 
     return problemas
 

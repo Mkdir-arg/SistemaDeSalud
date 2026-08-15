@@ -10,13 +10,15 @@ Dos cosas se cuidan por encima del resto:
 2. **Que un hospital no vea los datos del otro.** Lo único compartido es el
    traslado; el caso de cada lado es de su dueño.
 """
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Membresia, Usuario
 from apps.casos.models import Caso, Notificacion
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
-from apps.instituciones.models import Area, Cama, Institucion, Subarea
+from apps.instituciones.models import Area, Cama, EstadiaCama, Institucion, Subarea
 from apps.registros.models import Ciudadano
 
 from . import motor
@@ -118,6 +120,41 @@ class SolicitudTests(RedTestCase):
         """Un traslado que nadie mira es un paciente esperando."""
         self._solicitar()
         self.assertTrue(Notificacion.objects.filter(usuario=self.jefe).exists())
+
+    def test_el_aviso_le_llega_a_la_guardia_medica_y_de_enfermeria(self):
+        """
+        A las tres de la mañana en el hospital de referencia no hay
+        administrativo ni jefe de área: hay médico y enfermería de guardia, que
+        tienen la capacidad «trabajo» y son los que deciden si se recibe.
+        Dejándolos afuera, el pedido no le suena a nadie que esté en el edificio
+        —no hay otro canal: los traslados no aparecen en Inicio ni en
+        Supervisión— y queda en «Esperando respuesta» hasta que alguien se
+        acuerde de abrir la pantalla, con un paciente esperando del otro lado.
+        """
+        de_guardia = {}
+        for rol in ("medico", "enfermeria"):
+            u = Usuario.objects.create_user(f"{rol}@interzonal.gob.ar", "x", nombre=rol.title())
+            Membresia.objects.create(usuario=u, institucion=self.centro, rol=rol, activo=True)
+            de_guardia[rol] = u
+
+        self._solicitar()
+        for rol, u in de_guardia.items():
+            with self.subTest(rol=rol):
+                self.assertTrue(
+                    Notificacion.objects.filter(usuario=u).exists(),
+                    f"a {rol} de guardia no le suena nada y es quien decide si se recibe",
+                )
+
+    def test_un_destino_atendido_solo_por_la_guardia_recibe_el_aviso(self):
+        """
+        El agujero completo: un establecimiento cuyos usuarios activos son sólo
+        médicos y enfermería no generaba NINGUNA notificación. El pedido entraba
+        y del otro lado no se enteraba nadie.
+        """
+        Membresia.objects.filter(institucion=self.centro).update(rol="enfermeria")
+        Notificacion.objects.all().delete()
+        self._solicitar()
+        self.assertTrue(Notificacion.objects.exists(), "el pedido entró y no le avisó a nadie")
 
     def test_no_se_piden_dos_traslados_del_mismo_caso(self):
         self._solicitar()
@@ -350,6 +387,146 @@ class ViajeTests(RedTestCase):
         self.assertTrue(any("Móvil 7" in n.detalle for n in avisos), "no dice en qué móvil viene")
 
 
+class RecepcionTests(RedTestCase):
+    """
+    Lo que el origen tiene que soltar cuando el paciente llega al otro hospital.
+
+    `marcar_recibido` es el ÚNICO final del sistema que no pasa por el nodo FIN
+    ni por `cancelar_caso`, que son los dos que liberan camas y colas. Si no lo
+    hace acá, no lo hace nadie: nada libera una cama sola.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from apps.casos import motor as motor_casos
+
+        self.internacion = Area.objects.create(institucion=self.hosp, nombre="Internación")
+        f = Flujo.objects.create(
+            institucion=self.hosp, area=self.internacion, titulo="Internación"
+        )
+        v = VersionFlujo.objects.create(
+            flujo=f, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        ini = Nodo.objects.create(version=v, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        cama_nodo = Nodo.objects.create(version=v, tipo=Nodo.Tipo.CAMA, titulo="Asignar cama")
+        espera = Nodo.objects.create(
+            version=v, tipo=Nodo.Tipo.ESPERA_FILA, titulo="Espera del pase"
+        )
+        fin = Nodo.objects.create(version=v, tipo=Nodo.Tipo.FIN, titulo="Egreso")
+        Conexion.objects.create(version=v, origen=ini, destino=cama_nodo)
+        Conexion.objects.create(version=v, origen=cama_nodo, destino=espera)
+        Conexion.objects.create(version=v, origen=espera, destino=fin)
+
+        sala = Subarea.objects.create(area=self.internacion, nombre="Sala general")
+        self.cama = Cama.objects.create(area=self.internacion, subarea=sala, nombre="101-A")
+
+        paciente = Ciudadano.objects.create(
+            institucion=self.hosp, nombre="Rosa", apellido="Díaz", documento="27888111"
+        )
+        self.caso = Caso.objects.create(
+            institucion=self.hosp, version=v, ciudadano=paciente, area_actual=self.internacion
+        )
+        motor_casos.iniciar(self.caso, autor=self.med)
+        self.caso.refresh_from_db()
+        motor_casos.asignar_cama(self.caso, self.cama.id, autor=self.med)
+        self.caso.refresh_from_db()
+
+        self.t = self._solicitar()
+        motor.aceptar(self.t, autor=self.jefe, area_destino=self.uti)
+        self.t.refresh_from_db()
+
+    def test_al_llegar_al_otro_hospital_se_libera_la_cama_del_origen(self):
+        """
+        El paciente se fue en la ambulancia. Si la cama no se suelta acá no se
+        suelta nunca: queda OCUPADA con su nombre, con la estadía abierta, y el
+        sector se queda sin camas sin que nadie entienda por qué. En red es peor:
+        esa ocupación falsa es la que alimentan `camas_en_red`, `saturadas` y el
+        desplegable de destinos, así que el efector que deriva se muestra más
+        lleno de lo que está y la red le deja de mandar pacientes.
+        """
+        motor.marcar_recibido(self.t, autor=self.jefe)
+        self.cama.refresh_from_db()
+        self.assertEqual(self.cama.estado, Cama.Estado.HIGIENE)
+        self.assertIsNone(self.cama.caso_id)
+        estadia = EstadiaCama.objects.get(caso=self.caso)
+        self.assertIsNotNone(estadia.hasta, "la estadía queda abierta para siempre")
+        self.assertEqual(
+            estadia.motivo_egreso, EstadiaCama.Egreso.DERIVACION,
+            "«derivación» existe justamente para este egreso y este camino nunca lo escribía",
+        )
+
+    def test_la_cama_liberada_vuelve_a_contarse_en_el_panorama_de_la_red(self):
+        """
+        Es el daño que se propaga: con la cama trabada, el hospital que deriva
+        figura lleno, cruza el umbral, se marca SATURADO y cae al fondo de la
+        lista de derivación de todos los demás. Cada traslado que sale bien
+        empeoraba la información con la que la red decide a dónde va la próxima
+        ambulancia.
+        """
+        antes = {c["institucion"].id: c for c in motor.camas_en_red(self.red)}[self.hosp.id]
+        self.assertEqual(antes["ocupacion"], 100)
+        motor.marcar_recibido(self.t, autor=self.jefe)
+        despues = {c["institucion"].id: c for c in motor.camas_en_red(self.red)}[self.hosp.id]
+        self.assertEqual(despues["ocupacion"], 0)
+        self.assertEqual(despues["higiene"], 1, "la cama tiene que quedar esperando limpieza")
+
+    def test_el_caso_derivado_sale_de_las_colas_del_origen(self):
+        """
+        Un paciente internado en otro hospital no puede seguir esperando que lo
+        llamen de un box de éste: queda en la fila adelante de gente que sí está
+        en el edificio, y ahí no lo saca nadie.
+        """
+        self.assertTrue(self.caso.en_filas.filter(atendido=False).exists())
+        motor.marcar_recibido(self.t, autor=self.jefe)
+        self.assertFalse(self.caso.en_filas.filter(atendido=False).exists())
+
+
+class TableroTests(RedTestCase):
+    """
+    El panorama con el que una región decide a dónde mandar recursos.
+    """
+
+    def test_los_pedidos_sin_responder_no_se_recortan_por_el_periodo(self):
+        """
+        «Sin responder» es el estado de AHORA, no un hecho del período.
+        Contándolo sobre la ventana, elegir «7 días» hacía desaparecer al pedido
+        que lleva nueve sin respuesta —el peor de todos, con un paciente
+        esperando en otra guardia— y la cifra ámbar bajaba sola, sin que nada lo
+        explicara.
+        """
+        t = self._solicitar()
+        Traslado.objects.filter(pk=t.pk).update(
+            solicitado_at=timezone.now() - timedelta(days=9)
+        )
+        d = motor.tablero(self.red, dias=7)
+        por = {f["institucion"].nombre: f for f in d["establecimientos"]}
+        self.assertEqual(por["Hospital Interzonal"]["pendientes"], 1)
+        self.assertEqual(d["totales"]["pendientes"], 1)
+        self.assertIsNotNone(
+            por["Hospital Interzonal"]["pendiente_mas_viejo"],
+            "sin la antigüedad del más viejo, «4 sin responder» no dice si hay que llamar",
+        )
+
+    def test_cada_indicador_se_cuenta_del_lado_que_corresponde(self):
+        """
+        Guarda de la agregación: «derivó» va por origen y «recibió», «rechazó» y
+        «responde en» por destino. Cruzados, la región lee que el hospital
+        desbordado es el que recibe y le manda recursos al que no los necesita.
+        """
+        t = self._solicitar()
+        motor.rechazar(t, "No hay camas de UTI", autor=self.jefe)
+        d = motor.tablero(self.red, dias=30)
+        por = {f["institucion"].nombre: f for f in d["establecimientos"]}
+        self.assertEqual(por["Hospital de Lomas"]["derivo"], 1)
+        self.assertEqual(por["Hospital de Lomas"]["recibio"], 0)
+        self.assertEqual(por["Hospital Interzonal"]["recibio"], 1)
+        self.assertEqual(por["Hospital Interzonal"]["rechazados"], 1)
+        self.assertIsNotNone(por["Hospital Interzonal"]["demora_respuesta_min"])
+        self.assertEqual(por["Hospital de Lomas"]["casos_activos"], 1)
+        self.assertEqual(d["totales"]["traslados"], 1)
+        self.assertEqual(d["totales"]["rechazo_pct"], 100)
+
+
 class NoLlegoTests(RedTestCase):
     """
     El traslado que sale mal: el paciente se descompensa y fallece en la
@@ -473,6 +650,28 @@ class PanoramaTests(RedTestCase):
         panorama = {c["institucion"].nombre: c for c in motor.camas_en_red(self.red)}
         self.assertEqual(panorama["Hospital Interzonal"]["operativas"], 5)
         self.assertEqual(panorama["Hospital Interzonal"]["ocupacion"], 100)
+
+    def test_las_camas_en_higiene_se_ven_y_los_estados_cierran(self):
+        """
+        Una cama en higiene no es ni libre ni ocupada, y sin exponerla
+        desaparecía de la red: la fracción «15/27» de la tabla invita a restar y
+        da 44 % de ocupación al lado de una columna que dice 33 %, y quien mira
+        deja de confiar en las dos. Son además las que se liberan con un llamado
+        a limpieza: la diferencia entre «no hay lugar» y «hay lugar en veinte
+        minutos».
+        """
+        camas = list(Cama.objects.filter(area=self.uti))
+        for c in camas[:4]:
+            Cama.objects.filter(pk=c.pk).update(estado=Cama.Estado.OCUPADA)
+        for c in camas[4:6]:
+            Cama.objects.filter(pk=c.pk).update(estado=Cama.Estado.HIGIENE)
+
+        c = {x["institucion"].nombre: x for x in motor.camas_en_red(self.red)}["Hospital Interzonal"]
+        self.assertEqual(c["higiene"], 2)
+        self.assertEqual(
+            c["libres"] + c["ocupadas"] + c["higiene"], c["operativas"],
+            "hay camas que no están en ninguno de los números que muestra la pantalla",
+        )
 
     def test_avisa_de_los_establecimientos_saturados(self):
         Cama.objects.filter(area=self.uti).update(estado=Cama.Estado.OCUPADA)

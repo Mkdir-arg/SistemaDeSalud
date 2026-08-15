@@ -80,6 +80,22 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
     filter_fields = ("institucion", "obra_social")
     search_fields = ["nombre", "apellido", "documento", "codigo"]
     ordering_fields = ["apellido", "nombre", "creado"]
+    # Sin DELETE ni PUT, igual que la historia y sus entradas. Borrar al paciente
+    # ES borrar su historia: `historia_clinica` es CASCADE y de ella cuelgan
+    # entradas, estudios y recetas también en CASCADE, así que un solo DELETE se
+    # llevaba diez años de expediente legal —firmado y sellado— sin
+    # confirmación, sin baja lógica y sin dejar rastro (el registro de accesos
+    # sólo engancha las lecturas). La puerta estaba trabada en los hijos y
+    # abierta de par en par en el padre.
+    #
+    # Peor todavía: `AccesoClinico.ciudadano` es PROTECT, así que el mismo
+    # pedido reventaba con un 500 si alguien alguna vez abrió la ficha y borraba
+    # todo si nadie la había abierto. Que el expediente sobreviva no puede
+    # depender de si un compañero entró a mirarlo.
+    #
+    # Si hay que dar de baja un registro creado por error, eso es una baja lógica
+    # con motivo y autor, no un método HTTP.
+    http_method_names = ["get", "head", "options", "post", "patch"]
     # El padrón de pacientes con registro. Son datos sensibles: la exportación
     # pasa por el mismo permiso que la lectura (`protege_lectura`), así que sólo
     # la obtiene quien ya podía ver la pantalla.
@@ -220,6 +236,12 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "resultado")
+    # Sin DELETE ni PUT, como recetas y entradas: un estudio es parte de un
+    # expediente de conservación obligatoria por diez años, y hacerlo desaparecer
+    # con un DELETE no deja rastro —el estudio no lleva sello y
+    # `verificar_historia` sólo recorre entradas firmadas—. Un estudio cargado
+    # por error se corrige con uno nuevo.
+    http_method_names = ["get", "head", "options", "post", "patch"]
 
     def perform_create(self, serializer):
         # Solicitar un estudio es un acto clínico, igual que emitirlo desde el
@@ -228,6 +250,17 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         historia = serializer.validated_data["historia"]
         reglas.exigir_clinico(historia.ciudadano.institucion, self.request.user)
         serializer.save(autor=self.request.user.nombre_completo)
+
+    def perform_update(self, serializer):
+        # Informar un resultado es tan clínico como pedirlo, y hasta acá sólo el
+        # alta lo exigía: mesa de entradas podía pasar un «alterado» a «normal» o
+        # cambiar qué estudio fue, y como `autor` es read-only el registro seguía
+        # diciendo que lo pidió la médica. Ella no tiene con qué desmentirlo: el
+        # estudio no lleva sello ni matrícula, que es el mismo argumento con el
+        # que se blindó el alta.
+        estudio = serializer.instance
+        reglas.exigir_clinico(estudio.historia.ciudadano.institucion, self.request.user)
+        serializer.save()
 
 
 class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):

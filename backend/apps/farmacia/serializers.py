@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from .models import Deposito, Existencia, Insumo, LineaPedido, Lote, Movimiento, Pedido
@@ -44,13 +45,17 @@ class ExistenciaSerializer(serializers.ModelSerializer):
     vencimiento = serializers.DateField(source="lote.vencimiento", read_only=True, default=None)
     vencido = serializers.SerializerMethodField()
     stock_minimo = serializers.IntegerField(source="insumo.stock_minimo", read_only=True)
+    # Viaja con cada fila porque el recuento de estupefacientes se hace mirando
+    # esta lista: sin la marca, la morfina se lee igual que una gasa y quien
+    # cuenta a la mañana tiene que saber de memoria cuáles exigen doble firma.
+    controlado = serializers.BooleanField(source="insumo.controlado", read_only=True)
 
     class Meta:
         model = Existencia
         fields = [
             "id", "deposito", "deposito_nombre", "insumo", "insumo_nombre", "unidad",
             "lote", "lote_numero", "vencimiento", "vencido", "cantidad", "stock_minimo",
-            "actualizado",
+            "controlado", "actualizado",
         ]
         # Se mueve con los movimientos; escribirla a mano rompería la única cosa
         # que el módulo garantiza: que el stock se explique por su historial.
@@ -68,13 +73,17 @@ class MovimientoSerializer(serializers.ModelSerializer):
     destino_nombre = serializers.CharField(source="destino.nombre", read_only=True, default=None)
     paciente = serializers.SerializerMethodField()
     autor_nombre = serializers.SerializerMethodField()
+    # Quien revisa el historial tiene que poder ver cuáles renglones van al libro
+    # de la Ley 19.303; sin el campo, hay que saberlos de memoria (y el CSV
+    # tampoco los distinguía).
+    controlado = serializers.BooleanField(source="insumo.controlado", read_only=True)
 
     class Meta:
         model = Movimiento
         fields = [
-            "id", "tipo", "tipo_display", "insumo", "insumo_nombre", "lote", "lote_numero",
-            "origen", "origen_nombre", "destino", "destino_nombre", "cantidad",
-            "caso", "paciente", "motivo", "autor_nombre", "fecha",
+            "id", "tipo", "tipo_display", "insumo", "insumo_nombre", "controlado",
+            "lote", "lote_numero", "origen", "origen_nombre", "destino", "destino_nombre",
+            "cantidad", "caso", "paciente", "motivo", "autor_nombre", "fecha",
         ]
         # Un movimiento no se edita: un error se corrige con otro movimiento. Un
         # historial reescribible no sirve para auditar.
@@ -119,25 +128,73 @@ class PedidoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["estado", "creado", "resuelto"]
 
+    @transaction.atomic
     def create(self, validated):
+        # Atómico: sin esto, un renglón que fallaba dejaba el Pedido ya
+        # commiteado y sin líneas. La central lo veía en su cola sin poder
+        # entregarlo ni saber para qué era, y cada request mal armado sumaba uno
+        # más a la lista donde se decide qué preparar.
         items = validated.pop("items", [])
         pedido = super().create(validated)
-        for it in items:
-            try:
-                LineaPedido.objects.create(
-                    pedido=pedido, insumo_id=int(it["insumo"]), pedido_cant=int(it["cantidad"])
-                )
-            except (KeyError, TypeError, ValueError):
-                raise serializers.ValidationError(
-                    {"items": "Cada renglón necesita `insumo` y `cantidad`."}
-                )
+        LineaPedido.objects.bulk_create([
+            LineaPedido(pedido=pedido, insumo=it["insumo"], pedido_cant=it["cantidad"])
+            for it in items
+        ])
         return pedido
 
     def validate(self, attrs):
         origen = attrs.get("origen", getattr(self.instance, "origen", None))
         destino = attrs.get("destino", getattr(self.instance, "destino", None))
-        if origen and destino and origen.id == destino.id:
-            raise serializers.ValidationError(
-                {"destino": "Un depósito no se puede pedir a sí mismo."}
-            )
+        if origen and destino:
+            if origen.id == destino.id:
+                raise serializers.ValidationError(
+                    {"destino": "Un depósito no se puede pedir a sí mismo."}
+                )
+            # El permiso del alta se resuelve por `origen__institucion`, o sea
+            # contra el depósito propio: sin este chequeo, alguien del hospital A
+            # pedía 25 ampollas a la central del hospital B y se las llevaba. B no
+            # ve de dónde salió el movimiento, sólo que el número no coincide con
+            # el estante.
+            if origen.institucion_id != destino.institucion_id:
+                raise serializers.ValidationError(
+                    {"destino": "Ese depósito es de otra institución."}
+                )
+        if "items" in attrs:
+            attrs["items"] = self._renglones(attrs["items"], origen)
         return attrs
+
+    def _renglones(self, items, origen):
+        """
+        Los renglones resueltos a objetos, antes de crear nada.
+
+        Resolverlos acá y no en `create` es lo que hace que un pedido mal armado
+        sea un 400 con el renglón que falla en vez de un pedido a medias en la
+        cola de la central (o un 500: un `insumo` inexistente pasaba el `int()` y
+        reventaba en la clave foránea).
+        """
+        insumos = (
+            Insumo.objects.filter(institucion_id=origen.institucion_id)
+            if origen is not None else Insumo.objects.none()
+        )
+        salida = []
+        for n, it in enumerate(items, start=1):
+            try:
+                cantidad = int(it["cantidad"])
+                numero = int(it["insumo"])
+            except (KeyError, TypeError, ValueError):
+                raise serializers.ValidationError(
+                    {"items": f"El renglón {n} necesita `insumo` y `cantidad`."}
+                )
+            # Un id fuera del rango del entero de la base revienta en la consulta:
+            # sería otro 500 por un pedido mal armado.
+            insumo = insumos.filter(pk=numero).first() if 0 < numero < 2 ** 31 else None
+            if insumo is None:
+                raise serializers.ValidationError(
+                    {"items": f"El renglón {n}: ese insumo no es de tu institución."}
+                )
+            if not 0 < cantidad < 2 ** 31:
+                raise serializers.ValidationError(
+                    {"items": f"El renglón {n}: la cantidad tiene que ser mayor que cero."}
+                )
+            salida.append({"insumo": insumo, "cantidad": cantidad})
+        return salida

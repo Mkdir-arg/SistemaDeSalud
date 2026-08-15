@@ -16,7 +16,7 @@ from rest_framework.test import APITestCase
 from apps.accounts.models import Membresia, Usuario
 from apps.auditoria import retencion
 from apps.auditoria.models import AccesoClinico
-from apps.casos.models import Notificacion
+from apps.casos.models import ItemFila, Notificacion
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import (
     Ciudadano, ConsentimientoDatos, EntradaHistoria, HistoriaClinica,
@@ -112,6 +112,47 @@ class RetencionTests(TestCase):
         salida = self._correr()
         self.assertTrue(Notificacion.objects.filter(pk=n.pk).exists())
         self.assertIn("no se borró nada", salida.lower())
+
+    def test_un_item_de_fila_atendido_sigue_estando_a_los_ocho_meses(self):
+        """
+        El renglón de la fila es el ÚNICO registro de cuánto esperó y cuánto
+        duró la atención: no hay ningún agregado calculado del que puedan salir
+        después, el tablero cuenta en vivo y el histórico se saca exportando
+        estos ítems. Con el plazo en 180 días, la primera corrida de
+        `purgar_datos --aplicar` se llevaba para siempre la demora del año
+        pasado, que es contra la que se reporta, y el comando sólo imprime
+        cuántas filas borró.
+        """
+        item = self._item_de_fila()
+        self._viejo(ItemFila, item.pk, "ingreso", dias=240)
+        self._correr("--aplicar")
+        self.assertTrue(ItemFila.objects.filter(pk=item.pk).exists())
+
+    def test_el_ausentismo_de_la_fila_no_dura_menos_que_el_de_los_turnos(self):
+        """
+        Quien no se presenta sale de la cola con `atendido=True`, así que la
+        regla de los ítems se lleva puesto el ausentismo de la guardia. La regla
+        de al lado conserva los turnos cancelados un año «porque el ausentismo
+        del período se sigue reportando»: con 180 días las dos se contradecían y
+        el mismo hecho vivía la mitad de tiempo según por dónde entró el paciente.
+        """
+        plazos = {r["regla"]: r["dias"] for r in retencion.informe()}
+        self.assertGreaterEqual(plazos["ítems de fila"], plazos["turnos cancelados"])
+
+    def _item_de_fila(self):
+        """Un paciente que ya pasó por la cola (atendido: es lo que se purga)."""
+        from apps.casos.models import Caso, ItemFila
+        from apps.flujos.models import Flujo, Nodo, VersionFlujo
+        from apps.instituciones.models import Area
+
+        area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.inst, area=area, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ESPERA_FILA, titulo="Espera")
+        caso = Caso.objects.create(
+            institucion=self.inst, version=version, ciudadano=self.paciente, area_actual=area
+        )
+        return ItemFila.objects.create(caso=caso, nodo=nodo, atendido=True)
 
     def test_toda_regla_explica_su_plazo(self):
         """

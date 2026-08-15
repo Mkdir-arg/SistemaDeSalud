@@ -67,7 +67,13 @@ export default function Supervision() {
       },
     },
     {
-      key: "prioridad", label: "Prioridad", orden: "prioridad", className: "w-32",
+      // `prioridad_rank` y no `prioridad`: el CharField ordena alfabético (alta <
+      // normal < urgente), así que el primer clic dejaba los 16 urgentes al final
+      // y el segundo mandaba los 26 casos en Alta a la página 17 de 18, detrás de
+      // 407 normales. El jefe toca esta columna para hacer triage, ve los
+      // urgentes arriba, da la lista por revisada — y los pacientes que alguien
+      // decidió que no podían seguir en la cola normal no los mira nadie.
+      key: "prioridad", label: "Prioridad", orden: "prioridad_rank", className: "w-32",
       render: (c) => (
         <Select
           size="sm"
@@ -77,6 +83,10 @@ export default function Supervision() {
           // La fila abre el caso al hacer clic: sin esto, tocar el selector
           // navegaría en vez de desplegarlo.
           onClick={(e) => e.stopPropagation()}
+          // Y sin esto el Enter del teclado burbujea a la fila, que hace
+          // `preventDefault()` y navega: quien opera sin mouse no puede tocar
+          // este control y encima termina en otra pantalla.
+          onKeyDown={(e) => e.stopPropagation()}
           onChange={(e) => {
             e.stopPropagation();
             priorizar.mutate({ caso: c, prioridad: e.target.value });
@@ -93,13 +103,28 @@ export default function Supervision() {
         : <span className="text-texto-tenue">—</span>,
     },
     {
-      key: "creado", label: "Espera", orden: "creado", className: "w-24 tabular-nums",
-      render: (c) => <span className="text-texto-debil">{antiguedad(c.creado)}</span>,
+      // El reloj del PASO (`paso_desde`), no la edad del caso. `creado` es el
+      // ingreso del paciente al hospital: en Internación todas las filas decían
+      // «12 d» y la columna dejaba de discriminar, y el ranking contradecía a los
+      // avisos de demora, que el motor dispara sobre `paso_desde`. El jefe entra
+      // a buscar el caso que le avisaron y lo encuentra en el medio de la lista.
+      key: "paso_desde", label: "Espera", orden: "paso_desde", className: "w-24 tabular-nums",
+      // El fallback a `creado` es para los casos que todavía no entraron a ningún
+      // paso (y para mientras el serializer no exponga el campo).
+      render: (c) => <span className="text-texto-debil">{antiguedad(c.paso_desde || c.creado)}</span>,
     },
     {
       key: "acciones", label: "", className: "w-52 text-right",
       render: (c) => (
-        <span className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        // La fila navega al caso con clic y con Enter. Frenar sólo el clic dejaba
+        // a quien opera por teclado sin poder reasignar ni cancelar: el keydown
+        // burbujeaba, la fila hacía `preventDefault()` —que cancela la activación
+        // del botón— y encima lo mandaba al detalle del caso.
+        <span
+          className="flex justify-end gap-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <Button size="sm" variant="secondary" onClick={() => setReasignar(c)}>Reasignar</Button>
           <Button size="sm" variant="danger" onClick={() => setCancelar(c)}>Cancelar</Button>
         </span>
@@ -147,17 +172,57 @@ export function ReasignarModal({ caso, onClose, onDone }) {
   const toast = useToast();
   const [usuarioId, setUsuarioId] = useState("");
 
-  // Candidatos: staff con membresía en el área del caso. Lo resuelve la API con
-  // el filtro por área en vez de traer todas las membresías y cruzarlas acá.
-  const membresias = useLista("membresias", { institucion: caso.institucion, areas: caso.area_actual, pageSize: 200 });
-  const candidatos = [];
-  const vistos = new Set();
+  // Candidatos: los que el backend va a ACEPTAR, no los que comparten área.
+  //
+  // `asignar` exige membresía ACTIVA en la institución y, si el paso declara
+  // grupos responsables, integrar alguno (`motor.usuario_puede_tomar`); si no,
+  // devuelve 400. El modal ofrecía todo el staff del área —el administrativo
+  // incluido—, con el primero de la lista ya preseleccionado, así que el jefe
+  // elegía, le rebotaba, elegía otro y le rebotaba, sin que la pantalla le dijera
+  // nunca cuál iba a andar. En un turno de noche eso es tiempo del paciente.
+  const responsables = caso.responsables || [];
+  const membresias = useLista("membresias", {
+    institucion: caso.institucion,
+    // Con grupos responsables el área no acota nada: el grupo puede ser de otra
+    // área que el caso ya recorrió. Sin grupos, el paso está abierto a cualquiera
+    // y «staff del área» es el conjunto que tiene sentido ofrecer.
+    ...(responsables.length ? {} : { areas: caso.area_actual }),
+    activo: true,
+    pageSize: 200,
+  });
+  const grupos = useLista(
+    "grupos",
+    { area__institucion: caso.institucion, activo: true, pageSize: 200 },
+    { enabled: responsables.length > 0 },
+  );
+
+  // Usuario → nombre, sólo los de membresía activa (el residente que terminó la
+  // rotación sigue en el grupo y el backend lo rechaza).
+  const activos = new Map();
   for (const m of membresias.filas) {
-    if (m.usuario && !vistos.has(m.usuario)) {
-      vistos.add(m.usuario);
-      candidatos.push({ id: m.usuario, nombre: m.usuario_nombre || m.usuario_email || `Usuario ${m.usuario}` });
+    if (m.usuario && !activos.has(m.usuario)) {
+      activos.set(m.usuario, m.usuario_nombre || m.usuario_email || `Usuario ${m.usuario}`);
     }
   }
+
+  const candidatos = [];
+  const vistos = new Set();
+  if (responsables.length) {
+    const responsablesIds = new Set(responsables.map((g) => g.id));
+    for (const g of grupos.filas) {
+      if (!responsablesIds.has(g.id)) continue;
+      for (const u of g.integrantes || []) {
+        if (vistos.has(u.id) || !activos.has(u.id)) continue;
+        vistos.add(u.id);
+        candidatos.push({ id: u.id, nombre: u.nombre || activos.get(u.id) });
+      }
+    }
+  } else {
+    for (const [id, nombre] of activos) candidatos.push({ id, nombre });
+  }
+
+  const cargando = membresias.isLoading || (responsables.length > 0 && grupos.isLoading);
+  const grupoNombres = responsables.map((g) => g.nombre).join(", ");
 
   const asignar = useAccion(
     (id) => api.post(`/casos/${caso.id}/asignar/`, { usuario_id: Number(id) }),
@@ -184,12 +249,27 @@ export function ReasignarModal({ caso, onClose, onDone }) {
         </>
       }
     >
-      {membresias.isLoading ? (
+      {cargando ? (
         <div className="text-md text-texto-tenue">Cargando staff…</div>
       ) : candidatos.length === 0 ? (
-        <div className="text-md text-texto-tenue">No hay staff asignado a esta área.</div>
+        // Decirlo ANTES de que el jefe pruebe, y decir por dónde sale: si no, el
+        // único camino es tocar «Reasignar» hasta que rebote con todos.
+        <div className="text-md text-texto-tenue">
+          {responsables.length
+            ? <>
+                Este paso sólo lo puede tomar quien integre <strong>{grupoNombres}</strong>, y ahí
+                no hay nadie con membresía activa. Cambiá el grupo responsable del paso en el
+                flujo, o dejá el caso sin asignar para que lo tome quien corresponda.
+              </>
+            : "No hay staff con membresía activa en esta área."}
+        </div>
       ) : (
-        <Field label="Asignar a">
+        <Field
+          label="Asignar a"
+          // Que se lea de dónde sale la lista: es la diferencia entre «faltan
+          // personas» y «el paso sólo lo puede tomar este grupo».
+          hint={responsables.length ? `Sólo los que integran el grupo responsable del paso: ${grupoNombres}.` : undefined}
+        >
           <Select value={elegido} onChange={(e) => setUsuarioId(e.target.value)}>
             {candidatos.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </Select>

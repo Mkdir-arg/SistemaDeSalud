@@ -245,21 +245,72 @@ export function Tabs({ tabs, valor, onChange, className }) {
 // --------------------------------------------------------------------------- //
 // Diálogo
 // --------------------------------------------------------------------------- //
+// Lo que el navegador enfoca con Tab. `[tabindex="-1"]` queda afuera a propósito:
+// es enfocable por código pero no por teclado, y el propio contenedor del diálogo
+// lo usa.
+const ENFOCABLES =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),' +
+  'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 export function Modal({ title, onClose, children, footer, width = 460 }) {
   const ref = useRef(null);
 
+  // Montaje: foco al diálogo, scroll del fondo bloqueado, y al cerrar el foco
+  // vuelve a donde estaba. Va separado del atajo de teclado porque `onClose`
+  // suele cambiar de identidad en cada render del padre, y si todo viviera en el
+  // mismo efecto cada re-render le sacaría el foco a quien está tipeando.
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
-    window.addEventListener("keydown", onKey);
+    const previo = document.activeElement;
     ref.current?.focus();
     // Bloquea el scroll del fondo: si no, la rueda mueve la página de atrás y el
     // diálogo parece flotar sobre contenido que se desliza.
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflow;
+      // Al cerrar, el foco queda en el <body> y la próxima tabulación arranca
+      // desde el principio de la página en vez de desde el botón que abrió el
+      // diálogo: quien opera con teclado tiene que volver a recorrer la barra
+      // lateral entera para seguir donde estaba.
+      previo?.focus?.();
     };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose?.(); return; }
+      if (e.key !== "Tab" || !ref.current) return;
+      // El foco cicla DENTRO del diálogo. Sin esto, un par de tabulaciones de
+      // más lo sacan a la barra lateral con el diálogo todavía abierto: un Enter
+      // ahí cambia de pantalla y se pierde el recuento o la baja a medio cargar,
+      // sin aviso ni confirmación. Para un lector de pantalla es peor: con
+      // `aria-modal` el resto de la página está oculta, así que el foco recorre
+      // elementos que no se anuncian y la persona no sabe dónde está.
+      const lista = [...ref.current.querySelectorAll(ENFOCABLES)]
+        .filter((el) => el.getClientRects().length > 0);
+      if (!lista.length) {
+        e.preventDefault();
+        ref.current.focus();
+        return;
+      }
+      const activo = document.activeElement;
+      const adentro = ref.current.contains(activo);
+      const primero = lista[0];
+      const ultimo = lista[lista.length - 1];
+      if (e.shiftKey) {
+        // Desde el primero (o desde el contenedor) hacia atrás se saldría al
+        // fondo: se va al último.
+        if (!adentro || activo === primero || activo === ref.current) {
+          e.preventDefault();
+          ultimo.focus();
+        }
+      } else if (!adentro || activo === ultimo) {
+        e.preventDefault();
+        primero.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   return (

@@ -59,8 +59,14 @@ export default function Formularios() {
           },
           { key: "campos", label: "Campos", render: (f) => <Mono>{f.campos?.length || 0}</Mono> },
           {
-            key: "vinculados", label: "Vinculados",
-            render: (f) => <Mono>{(f.campos || []).filter((c) => c.origen).length}</Mono>,
+            // Reemplaza a la columna «Vinculados», que sólo podía dar 0: la
+            // precarga desde historia clínica o legajo no está implementada en
+            // ninguna parte y el alta de campo tampoco dejaba elegir el origen,
+            // así que la columna contaba una función que no existe. Cuántos
+            // campos son obligatorios sí dice algo del formulario: es lo que
+            // traba a un caso cuando falta cargarlos.
+            key: "requeridos", label: "Requeridos",
+            render: (f) => <Mono>{(f.campos || []).filter((c) => c.requerido).length}</Mono>,
           },
           {
             key: "descripcion", label: "Descripción", truncar: true,

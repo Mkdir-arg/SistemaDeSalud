@@ -232,6 +232,165 @@ class QuienLoPuedeVerTests(AuditoriaTestCase):
             self.client.get("/api/accesos-clinicos/de-paciente/").status_code, 400
         )
 
+    def test_conducir_en_un_hospital_no_deja_auditar_el_otro(self):
+        """
+        El portero y el alcance tienen que preguntar lo mismo. Quien es jefe de
+        área en un hospital y médico en otro —lo normal en Argentina— entraba
+        por el primero y leía entero el registro del segundo: qué pacientes se
+        atendieron ahí, con nombre y documento, y qué mira cada colega. Con el
+        buscador por documento eso contesta «¿esta persona es paciente de esta
+        casa?», que es justo el dato que protege la Ley 25.326.
+        """
+        otra = Institucion.objects.create(nombre="Otro hospital")
+        doble = Usuario.objects.create_user("doble@test.local", "x", nombre="Doble")
+        Membresia.objects.create(usuario=doble, institucion=otra, rol="admin", activo=True)
+        Membresia.objects.create(usuario=doble, institucion=self.inst, rol="medico", activo=True)
+
+        self.client.force_authenticate(doble)
+        r = self.client.get("/api/accesos-clinicos/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            r.data["count"], 0,
+            "conduce en el otro hospital: acá es médico y no audita a sus colegas",
+        )
+        # Y tampoco por el buscador, que es el camino real: se pregunta por un DNI.
+        r = self.client.get("/api/accesos-clinicos/?search=30111222")
+        self.assertEqual(r.data["count"], 0)
+
+    def test_buscar_al_paciente_por_nombre_y_apellido_lo_encuentra(self):
+        """
+        Es el gesto del día del reclamo: copiar el nombre que muestra la columna
+        «De quién». Sin `ciudadano__nombre` entre los campos de búsqueda, DRF
+        exige que cada término matchee algo y «Ana» no matcheaba ninguno: la
+        pantalla contestaba «Ningún acceso coincide» sobre accesos que existían,
+        y con eso se redacta un descargo que dice que nadie consultó sus datos.
+        """
+        self.client.force_authenticate(self.jefe)
+        for buscado in ("Ana Pérez", "Ana", "Pérez"):
+            with self.subTest(buscado=buscado):
+                r = self.client.get(f"/api/accesos-clinicos/?search={buscado}")
+                self.assertEqual(r.data["count"], 1, f"«{buscado}» no encontró el acceso")
+
+    def test_se_pueden_aislar_los_accesos_de_una_institucion(self):
+        """
+        Sin el filtro no hay forma de contestar «qué pasó en ESTE hospital», que
+        es exactamente lo que se pregunta cuando el reclamo llega de uno solo, y
+        cada fila de la lista se lee como si fuera del que figura en pantalla.
+        """
+        otra = Institucion.objects.create(nombre="Otro hospital")
+        ajeno = Ciudadano.objects.create(
+            institucion=otra, nombre="Cala", apellido="Díaz", documento="31222333"
+        )
+        AccesoClinico.objects.create(
+            usuario=self.med, ciudadano=ajeno, institucion=otra,
+            tipo="detalle", recurso="historiaclinica",
+        )
+        jefe_de_las_dos = Usuario.objects.create_user("dos@test.local", "x")
+        for i in (self.inst, otra):
+            Membresia.objects.create(
+                usuario=jefe_de_las_dos, institucion=i, rol="admin", activo=True
+            )
+
+        self.client.force_authenticate(jefe_de_las_dos)
+        self.assertEqual(self.client.get("/api/accesos-clinicos/").data["count"], 2)
+        r = self.client.get(f"/api/accesos-clinicos/?institucion={self.inst.id}")
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["institucion_nombre"], "Hospital Central")
+
+    def test_de_paciente_contesta_quienes_y_no_solo_cuantas_veces(self):
+        """
+        La pregunta del art. 14 es «quién», y la respuesta correcta es «tres
+        personas, y son estas». Una lista cronológica de 637 eventos en 26
+        páginas no se lee en un mostrador, y el número exagera: abrir la historia
+        una vez deja más de una fila.
+        """
+        self.client.get(f"/api/historias-clinicas/{self.hc.id}/")  # segundo acceso del médico
+        self.client.force_authenticate(self.jefe)
+        self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
+
+        r = self.client.get(f"/api/accesos-clinicos/de-paciente/?ciudadano={self.paciente.id}")
+        personas = r.data["personas"]
+        self.assertEqual(len(personas), 2, personas)
+        self.assertEqual(personas[0]["email"], "med@test.local")
+        self.assertEqual(personas[0]["veces"], 2)
+        self.assertIsNotNone(personas[0]["primera"])
+        self.assertIsNotNone(personas[0]["ultima"])
+
+    def test_un_parametro_basura_no_tumba_el_registro_de_accesos(self):
+        """
+        El mismo cuidado que ya tenía el lado que ESCRIBE el registro, del lado
+        que lo lee. `de-paciente` es con lo que se contesta el art. 14 delante de
+        quien lo está preguntando: un link viejo o un `undefined` del frontend lo
+        convertían en una pantalla de error, y quien atiende el reclamo no puede
+        distinguir «el sistema se rompió» de «nadie miró tu historia».
+        """
+        self.client.force_authenticate(self.jefe)
+        for consulta in (
+            "?ciudadano=undefined", "?usuario=Patient%2F12",
+            "?desde=ayer", "?hasta=2026-02-31", "?institucion=todas",
+        ):
+            with self.subTest(consulta=consulta):
+                r = self.client.get(f"/api/accesos-clinicos/{consulta}")
+                self.assertEqual(r.status_code, 200, r.data)
+
+        r = self.client.get("/api/accesos-clinicos/de-paciente/?ciudadano=undefined")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("paciente", r.data["detail"].lower())
+
+
+class DobleCargoTests(AuditoriaTestCase):
+    """
+    El empleado con cargo en dos hospitales, que en Argentina es lo normal.
+
+    Es el caso que rompía las dos mitades del módulo a la vez: escribiendo,
+    porque el acceso quedaba sin institución y no lo veía ningún admin; y
+    leyendo, porque el alcance no miraba el rol.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.otra = Institucion.objects.create(nombre="Otro hospital")
+        self.ajeno = Ciudadano.objects.create(
+            institucion=self.otra, nombre="Cala", apellido="Díaz", documento="31222333"
+        )
+        self.admin_dos = Usuario.objects.create_user("dos@test.local", "x", nombre="Doble")
+        for i in (self.inst, self.otra):
+            Membresia.objects.create(
+                usuario=self.admin_dos, institucion=i, rol="admin", activo=True
+            )
+        self.client.force_authenticate(self.admin_dos)
+
+    def test_la_exportacion_del_padron_se_atribuye_a_cada_institucion(self):
+        """
+        El CSV del padrón trae documento, fecha de nacimiento, obra social,
+        condiciones y alergias: es el evento más grave que este registro tiene
+        que poder mostrar. Atribuido a «ninguna institución» no lo ve ningún
+        admin —el alcance filtra por institución y NULL nunca matchea—, así que
+        el único que se enteraba era el proveedor del software.
+        """
+        self.assertEqual(self.client.get("/api/ciudadanos/?formato=csv").status_code, 200)
+        filas = AccesoClinico.objects.filter(tipo=AccesoClinico.Tipo.EXPORTACION)
+        self.assertFalse(
+            filas.filter(institucion__isnull=True).exists(),
+            "la exportación quedó sin institución: no la puede ver ningún admin",
+        )
+        self.assertEqual(
+            sorted(filas.values_list("institucion_id", "resultados")),
+            sorted([(self.inst.id, 2), (self.otra.id, 1)]),
+            "cada institución tiene que ver cuántos de SUS pacientes se llevaron",
+        )
+
+    def test_el_admin_de_un_hospital_ve_la_exportacion_que_se_llevo_a_su_gente(self):
+        self.client.get("/api/ciudadanos/?formato=csv")
+        solo_central = Usuario.objects.create_user("solo@test.local", "x")
+        Membresia.objects.create(
+            usuario=solo_central, institucion=self.inst, rol="admin", activo=True
+        )
+        self.client.force_authenticate(solo_central)
+        r = self.client.get("/api/accesos-clinicos/?tipo=exportacion")
+        self.assertEqual(r.data["count"], 1, "el hospital no ve que se bajaron su padrón")
+        self.assertEqual(r.data["results"][0]["resultados"], 2)
+
 
 class CoberturaTests(AuditoriaTestCase):
     """

@@ -170,9 +170,10 @@ def _avisar_destino(t: Traslado, titulo=None, detalle=None):
     """
     Avisa a quien puede resolverlo en el establecimiento de destino.
 
-    Un traslado que nadie mira es un paciente esperando. Se avisa a los jefes y
-    administrativos del área destino, o de toda la institución si no se indicó
-    área.
+    Un traslado que nadie mira es un paciente esperando. Se avisa a todos los
+    roles con capacidad «trabajo» —que es la que la pantalla de traslados exige
+    para aceptar o rechazar— del área destino, o de toda la institución si no se
+    indicó área.
 
     Sirve para todo el ciclo y no sólo para el pedido: el destino se enteró por
     esta vía, y si después el móvil sale, el origen cancela o el paciente no
@@ -182,8 +183,16 @@ def _avisar_destino(t: Traslado, titulo=None, detalle=None):
     from apps.accounts.models import Membresia
     from apps.casos.models import Notificacion
 
+    # Médico y enfermería van en la lista: a las tres de la mañana en el hospital
+    # de referencia no hay administrativo ni jefe de área, hay guardia, y es la
+    # guardia la que decide si se recibe. Dejándolos afuera, un destino cuyos
+    # usuarios activos son sólo médicos y enfermería no recibe NINGÚN aviso —no
+    # hay otro canal: los traslados no aparecen en Inicio ni en Supervisión— y
+    # el pedido queda en «Esperando respuesta» hasta que alguien se acuerde de
+    # abrir la pantalla, con un paciente esperando del otro lado.
     qs = Membresia.objects.filter(
-        activo=True, institucion=t.destino, rol__in=["administrativo", "jefe_area", "admin"]
+        activo=True, institucion=t.destino,
+        rol__in=["administrativo", "jefe_area", "admin", "medico", "enfermeria"],
     )
     if t.area_destino_id:
         qs = qs.filter(Q(areas=t.area_destino_id) | Q(rol="admin"))
@@ -391,6 +400,8 @@ def marcar_recibido(t: Traslado, autor=None) -> Traslado:
     responsabilidad de quien lo mandó, y un caso cerrado desaparece de su
     bandeja.
     """
+    from apps.instituciones.models import EstadiaCama
+
     t = _bloquear(t)
     if t.estado not in (Traslado.Estado.ACEPTADO, Traslado.Estado.EN_CAMINO):
         raise ErrorTraslado("El traslado no está en curso.")
@@ -399,6 +410,19 @@ def marcar_recibido(t: Traslado, autor=None) -> Traslado:
     t.save(update_fields=["estado", "llegada_at"])
 
     caso = t.caso_origen
+    # El paciente se fue en la ambulancia: sus recursos se cierran acá, como en
+    # los otros dos finales del sistema (el nodo FIN y `cancelar_caso`). Sin
+    # esto la cama del origen queda OCUPADA con su nombre y la estadía abierta
+    # para siempre —nada la libera sola—, y acá es peor que en un hospital solo:
+    # esa ocupación falsa es la que alimentan `camas_en_red()`, `saturadas()` y
+    # el desplegable de destinos, así que el efector que deriva se muestra más
+    # lleno de lo que está, se marca SATURADO y la red le deja de mandar
+    # pacientes. Cada traslado que sale bien empeoraba, en silencio, la
+    # información con la que se decide a dónde va la próxima ambulancia.
+    motor_casos._liberar_camas_del_caso(caso, EstadiaCama.Egreso.DERIVACION, autor=autor)
+    # Y sale de las colas: un paciente que ya está internado en otro hospital no
+    # puede seguir esperando a que lo llamen de un box de éste.
+    caso.en_filas.filter(atendido=False).update(atendido=True)
     caso.esperando = False
     caso.estado = Caso.Estado.DERIVADO
     caso.save(update_fields=["esperando", "estado", "actualizado"])
@@ -462,6 +486,7 @@ def camas_en_red(red: Red):
             fuera=Count("id", filter=Q(estado=Cama.Estado.BLOQUEADA)),
             ocupadas=Count("id", filter=Q(estado=Cama.Estado.OCUPADA)),
             libres=Count("id", filter=Q(estado=Cama.Estado.LIBRE)),
+            higiene=Count("id", filter=Q(estado=Cama.Estado.HIGIENE)),
         )
     }
 
@@ -477,6 +502,13 @@ def camas_en_red(red: Red):
             "operativas": operativas,
             "ocupadas": ocupadas,
             "libres": c.get("libres", 0),
+            # Las camas en higiene no son ni libres ni ocupadas, y sin exponerlas
+            # desaparecen de la red: son las que se liberan con un llamado a
+            # limpieza, o sea la diferencia entre «no hay lugar» y «hay lugar en
+            # veinte minutos». Además son las que explican por qué libres +
+            # ocupadas no da operativas, que leído en la pantalla parece un
+            # número mal calculado.
+            "higiene": c.get("higiene", 0),
             "ocupacion": round(100 * ocupadas / operativas) if operativas else 0,
         })
     return salida
@@ -490,7 +522,35 @@ def saturadas(red: Red, umbral=90):
     hospital: un criterio distinto en la red que en la casa haría que los dos
     números se contradigan y no se pueda confiar en ninguno.
     """
-    return [c for c in camas_en_red(red) if c["operativas"] and c["ocupacion"] >= umbral]
+    return saturadas_de(camas_en_red(red), umbral)
+
+
+def saturadas_de(camas, umbral=90):
+    """
+    Lo mismo, sobre un panorama de camas YA calculado.
+
+    El umbral vive en un solo lugar y el tablero no vuelve a recorrer la red
+    entera para saber quién está lleno: `camas_en_red()` ya se calculó unas
+    líneas más arriba y el resultado es idéntico.
+    """
+    return [c for c in camas if c["operativas"] and c["ocupacion"] >= umbral]
+
+
+def _minutos(promedio):
+    """
+    Un promedio de duración calculado por la base, en minutos.
+
+    Postgres devuelve `timedelta` y SQLite un número de microsegundos. Sin
+    normalizarlo, el mismo tablero muestra «12′» en el servidor y un número de
+    siete cifras en una corrida local, y nadie sabe cuál de los dos creer.
+    """
+    from datetime import timedelta
+
+    if promedio is None:
+        return None
+    if isinstance(promedio, timedelta):
+        return round(promedio.total_seconds() / 60)
+    return round(float(promedio) / 60_000_000)
 
 
 def tablero(red: Red, dias=30):
@@ -506,48 +566,107 @@ def tablero(red: Red, dias=30):
     Los traslados se cuentan por establecimiento de ORIGEN: «cuántos derivó» es
     una medida de lo que ese efector no pudo resolver, que es lo que la región
     quiere ver.
+
+    **Todo se agrega en la base, no de a un establecimiento por vez.** Antes esto
+    hacía ocho consultas por efector y traía a memoria los traslados resueltos de
+    cada uno: 32 consultas con 3 hospitales y 248 con 30. Una región sanitaria no
+    tiene 3 efectores, tiene 40, y esta pantalla es la que abre dirección contra
+    la misma base que en ese momento está atendiendo la guardia.
     """
     from datetime import timedelta
+
+    from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Min
 
     from apps.casos.models import Caso
 
     desde = timezone.now() - timedelta(days=dias)
-    por_camas = {c["institucion"].id: c for c in camas_en_red(red)}
+    camas = camas_en_red(red)
+    instituciones = [c["institucion"] for c in camas]
+    por_camas = {c["institucion"].id: c for c in camas}
+    ids = [i.id for i in instituciones]
 
-    filas = []
-    for inst in red.instituciones.filter(activa=True).order_by("nombre"):
-        casos = Caso.objects.filter(institucion=inst)
-        activos = casos.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
-        enviados = Traslado.objects.filter(origen=inst, solicitado_at__gte=desde)
-        recibidos = Traslado.objects.filter(destino=inst, solicitado_at__gte=desde)
-        respondidos = recibidos.filter(resuelto_at__isnull=False)
-        demoras = [t.demora_min for t in respondidos if t.demora_min is not None]
-
-        cam = por_camas.get(inst.id, {})
-        filas.append({
-            "institucion": inst,
-            "casos_activos": activos.count(),
-            "ingresos": casos.filter(creado__gte=desde).count(),
-            "urgentes": activos.filter(prioridad=Caso.Prioridad.URGENTE).count(),
-            "camas_operativas": cam.get("operativas", 0),
-            "camas_libres": cam.get("libres", 0),
-            "ocupacion": cam.get("ocupacion", 0),
-            "derivo": enviados.count(),
-            "recibio": recibidos.count(),
+    activo = ~Q(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+    por_casos = {
+        c["institucion"]: c
+        for c in Caso.objects.filter(institucion__in=ids).values("institucion").annotate(
+            activos=Count("id", filter=activo),
+            ingresos=Count("id", filter=Q(creado__gte=desde)),
+            urgentes=Count("id", filter=activo & Q(prioridad=Caso.Prioridad.URGENTE)),
+        )
+    }
+    por_enviados = {
+        t["origen"]: t
+        for t in Traslado.objects.filter(origen__in=ids, solicitado_at__gte=desde)
+        .values("origen").annotate(derivo=Count("id"))
+    }
+    espera = ExpressionWrapper(
+        F("resuelto_at") - F("solicitado_at"), output_field=DurationField()
+    )
+    por_recibidos = {
+        t["destino"]: t
+        for t in Traslado.objects.filter(destino__in=ids, solicitado_at__gte=desde)
+        .values("destino").annotate(
+            recibio=Count("id"),
+            rechazados=Count("id", filter=Q(estado=Traslado.Estado.RECHAZADO)),
             # Cuánto tarda en contestar un pedido de traslado. Es el indicador
             # que más le importa a quien deriva: un hospital que tarda seis
             # horas en decir que sí es, en la práctica, un hospital que no
             # recibe.
-            "demora_respuesta_min": round(sum(demoras) / len(demoras)) if demoras else None,
-            "rechazados": recibidos.filter(estado=Traslado.Estado.RECHAZADO).count(),
-            "pendientes": recibidos.filter(estado=Traslado.Estado.SOLICITADO).count(),
+            demora=Avg(espera, filter=Q(resuelto_at__isnull=False)),
+        )
+    }
+    # «Sin responder» NO se recorta por el período: es el estado de ahora, no un
+    # hecho de la ventana. Contándolo sobre `desde`, elegir «7 días» escondía
+    # justamente los peores casos —un pedido que lleva nueve días sin respuesta
+    # dejaba de contarse y la cifra ámbar bajaba sin que nada lo explicara—, con
+    # un paciente esperando en otra guardia por cada uno. Va con la antigüedad
+    # del más viejo, que es el dato que decide si alguien levanta el teléfono.
+    por_pendientes = {
+        t["destino"]: t
+        for t in Traslado.objects.filter(destino__in=ids, estado=Traslado.Estado.SOLICITADO)
+        .values("destino").annotate(pendientes=Count("id"), mas_viejo=Min("solicitado_at"))
+    }
+
+    filas = []
+    for inst in instituciones:
+        cam = por_camas.get(inst.id, {})
+        cas = por_casos.get(inst.id, {})
+        env = por_enviados.get(inst.id, {})
+        rec = por_recibidos.get(inst.id, {})
+        pen = por_pendientes.get(inst.id, {})
+        filas.append({
+            "institucion": inst,
+            "casos_activos": cas.get("activos", 0),
+            "ingresos": cas.get("ingresos", 0),
+            "urgentes": cas.get("urgentes", 0),
+            "camas_operativas": cam.get("operativas", 0),
+            "camas_libres": cam.get("libres", 0),
+            "camas_higiene": cam.get("higiene", 0),
+            "ocupacion": cam.get("ocupacion", 0),
+            "derivo": env.get("derivo", 0),
+            "recibio": rec.get("recibio", 0),
+            "demora_respuesta_min": _minutos(rec.get("demora")),
+            "rechazados": rec.get("rechazados", 0),
+            "pendientes": pen.get("pendientes", 0),
+            "pendiente_mas_viejo": pen.get("mas_viejo"),
         })
 
-    total_enviados = Traslado.objects.filter(
-        origen__in=red.instituciones.all(), solicitado_at__gte=desde
+    viaje = ExpressionWrapper(
+        F("llegada_at") - F("salida_at"), output_field=DurationField()
     )
-    resueltos = total_enviados.filter(resuelto_at__isnull=False)
-    viajes = [t.traslado_min for t in total_enviados if t.traslado_min is not None]
+    # Sobre los mismos establecimientos que las filas, para que los totales sean
+    # la suma de lo que se está mirando y no de algo más.
+    totales = Traslado.objects.filter(origen__in=ids, solicitado_at__gte=desde).aggregate(
+        traslados=Count("id"),
+        resueltos=Count("id", filter=Q(resuelto_at__isnull=False)),
+        # Sobre los RESUELTOS: incluir los que todavía nadie contestó haría
+        # que el porcentaje mejore solo por dejar pedidos sin responder.
+        rechazados=Count("id", filter=Q(estado=Traslado.Estado.RECHAZADO)),
+        viaje=Avg(viaje, filter=Q(salida_at__isnull=False, llegada_at__isnull=False)),
+    )
+    sin_responder = Traslado.objects.filter(
+        origen__in=ids, estado=Traslado.Estado.SOLICITADO
+    ).aggregate(n=Count("id"), mas_viejo=Min("solicitado_at"))
 
     return {
         "red": red,
@@ -557,16 +676,15 @@ def tablero(red: Red, dias=30):
             "casos_activos": sum(f["casos_activos"] for f in filas),
             "camas_operativas": sum(f["camas_operativas"] for f in filas),
             "camas_libres": sum(f["camas_libres"] for f in filas),
-            "traslados": total_enviados.count(),
-            "pendientes": total_enviados.filter(estado=Traslado.Estado.SOLICITADO).count(),
-            # Sobre los RESUELTOS: incluir los que todavía nadie contestó haría
-            # que el porcentaje mejore solo por dejar pedidos sin responder.
+            "camas_higiene": sum(f["camas_higiene"] for f in filas),
+            "traslados": totales["traslados"],
+            "pendientes": sin_responder["n"],
+            "pendiente_mas_viejo": sin_responder["mas_viejo"],
             "rechazo_pct": (
-                round(100 * resueltos.filter(estado=Traslado.Estado.RECHAZADO).count()
-                      / resueltos.count())
-                if resueltos.count() else 0
+                round(100 * totales["rechazados"] / totales["resueltos"])
+                if totales["resueltos"] else 0
             ),
-            "viaje_prom_min": round(sum(viajes) / len(viajes)) if viajes else None,
+            "viaje_prom_min": _minutos(totales["viaje"]),
         },
-        "saturados": [s["institucion"].nombre for s in saturadas(red)],
+        "saturados": [s["institucion"].nombre for s in saturadas_de(camas)],
     }

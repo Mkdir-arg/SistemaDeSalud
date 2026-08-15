@@ -247,3 +247,40 @@ test.describe("Procesos detenidos", () => {
     await expect(page.getByText(/proceso.* del sistema dejó|procesos del sistema dejaron/)).toHaveCount(0);
   });
 });
+
+/**
+ * El egreso de internación pregunta POR QUÉ.
+ *
+ * Sin el motivo, todo egreso quedaba registrado como «alta» —incluido un
+ * fallecimiento—. El recorrido del paciente miente justo en el lugar donde se
+ * mira cuando alguien reclama, y no se puede contar mortalidad ni derivaciones
+ * por sector, que es el dato que jefatura reporta hacia arriba.
+ */
+test.describe("Egreso de internación", () => {
+  test("el egreso ofrece los motivos reales, no sólo «alta»", async ({ page }) => {
+    await entrar(page, "medico");
+
+    // El caso internado se busca por la API y no recorriendo la tabla: en la
+    // primera página de Casos puede no haber ninguno, y el test se salteaba sin
+    // haber probado nada.
+    const caso = await page.evaluate(async () => {
+      const tok = sessionStorage.getItem("cauce.access") ?? localStorage.getItem("cauce.access");
+      const r = await fetch("/api/camas/?estado=ocupada&page_size=20", {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      const d = await r.json();
+      return (d.results || d).map((c) => c.caso).find(Boolean) || null;
+    });
+    test.skip(!caso, "no hay ninguna cama ocupada en el demo");
+
+    await page.goto(`/casos/${caso}`);
+    await esperarPantalla(page);
+    await page.getByRole("button", { name: "Egreso" }).click();
+
+    const motivo = page.getByLabel("Motivo del egreso");
+    await expect(motivo).toBeVisible();
+    const opciones = await motivo.locator("option").allTextContents();
+    expect(opciones).toContain("Fallecimiento");
+    expect(opciones).toContain("Derivación a otra institución");
+  });
+});

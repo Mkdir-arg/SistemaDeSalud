@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.casos.models import Caso
-from apps.common import BaseModelViewSet, CapacidadPermission, OrdenEstable
+from apps.common import BaseModelViewSet, CapacidadPermission, OrdenEstable, capacidades_de
 from apps.instituciones.models import Area, Institucion
 from rest_framework.filters import SearchFilter
 
@@ -22,7 +22,12 @@ class RedViewSet(BaseModelViewSet):
     queryset = Red.objects.prefetch_related("instituciones")
     serializer_class = RedSerializer
     capacidad_requerida = "config"
-    filter_fields = ("activa",)
+    # Por institución también: un hospital puede estar en la región sanitaria y
+    # además en una red de patología (trauma, perinatal, quemados). Sin este
+    # filtro la pantalla sólo puede quedarse con la primera de TODAS mis redes
+    # por orden alfabético, que para una dirección de red con varios efectores
+    # es el panorama de otro lado.
+    filter_fields = ("activa", "instituciones")
     search_fields = ("nombre",)
 
     def get_queryset(self):
@@ -81,6 +86,10 @@ class RedViewSet(BaseModelViewSet):
                 "operativas": d["operativas"],
                 "ocupadas": d["ocupadas"],
                 "libres": d["libres"],
+                # Ni libres ni ocupadas: son las que se liberan con un llamado a
+                # limpieza, o sea la diferencia entre «no hay lugar» y «hay lugar
+                # en veinte minutos».
+                "higiene": d["higiene"],
                 "ocupacion": d["ocupacion"],
             } for d in datos],
             "saturados": [d["institucion"].nombre for d in motor.saturadas(red)],
@@ -185,6 +194,33 @@ class TrasladoViewSet(
             return esperado == actual
         return esperado in set(self._mis_instituciones())
 
+    def _sin_capacidad(self, institucion_id):
+        """
+        La capacidad operativa EN ese establecimiento, o el 403 que corresponde.
+
+        Dos agujeros tapa esto. Uno: `solicitar` es una acción de LISTA, y
+        `CapacidadPermission` sólo valida la capacidad en `create` y en las
+        acciones de detalle —que se revalidan contra el objeto—, así que un
+        usuario de sólo diseño (el rol del proveedor, del consultor, de quien
+        arma los flujos) podía pedir el traslado de un paciente real: el caso
+        quedaba EN_ESPERA, el destino reservaba una cama, y después ni él podía
+        cancelarlo ni nadie más podía derivar a ese paciente hasta que alguien
+        diera de baja el pedido falso.
+
+        Dos: este viewset no declara `institucion_path` —origen y destino son
+        distintos según la acción—, así que `has_object_permission` resuelve la
+        capacidad contra la UNIÓN de mis membresías: quien es jefe de área en un
+        hospital y configurador en otro podía aceptar traslados en el segundo,
+        donde no tiene ninguna capacidad operativa. Acá se valida contra el lado
+        que manda en cada acción.
+        """
+        if self.capacidad_requerida in capacidades_de(self.request.user, institucion_id):
+            return None
+        return Response(
+            {"detail": "No tenés permiso para operar traslados en este establecimiento."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     @action(detail=False, methods=["post"])
     def solicitar(self, request):
         """
@@ -198,6 +234,8 @@ class TrasladoViewSet(
         if caso.institucion_id not in self._mis_instituciones():
             return Response({"detail": "Ese caso no es de tu institución."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(caso.institucion_id)):
+            return falta
         area = Area.objects.filter(pk=request.data.get("area_destino")).first()
         try:
             t = motor.solicitar(
@@ -218,6 +256,8 @@ class TrasladoViewSet(
         if not self._de_mi_lado(t, "destino"):
             return Response({"detail": "Sólo el establecimiento de destino puede aceptar."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(t.destino_id)):
+            return falta
         area = Area.objects.filter(pk=request.data.get("area_destino")).first()
         try:
             t = motor.aceptar(t, autor=request.user, area_destino=area)
@@ -232,6 +272,8 @@ class TrasladoViewSet(
         if not self._de_mi_lado(t, "destino"):
             return Response({"detail": "Sólo el establecimiento de destino puede rechazar."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(t.destino_id)):
+            return falta
         try:
             t = motor.rechazar(t, request.data.get("motivo") or "", autor=request.user)
         except motor.ErrorTraslado as e:
@@ -245,6 +287,8 @@ class TrasladoViewSet(
         if not self._de_mi_lado(t, "origen"):
             return Response({"detail": "Sólo el establecimiento de origen puede cancelar."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(t.origen_id)):
+            return falta
         try:
             t = motor.cancelar(t, autor=request.user, motivo=(request.data.get("motivo") or ""))
         except motor.ErrorTraslado as e:
@@ -258,6 +302,8 @@ class TrasladoViewSet(
         if not self._de_mi_lado(t, "origen"):
             return Response({"detail": "Lo registra el establecimiento que traslada."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(t.origen_id)):
+            return falta
         try:
             t = motor.marcar_en_camino(t, movil=(request.data.get("movil") or ""), autor=request.user)
         except motor.ErrorTraslado as e:
@@ -271,6 +317,8 @@ class TrasladoViewSet(
         if not self._de_mi_lado(t, "destino"):
             return Response({"detail": "Lo registra el establecimiento que recibe."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(t.destino_id)):
+            return falta
         try:
             t = motor.marcar_recibido(t, autor=request.user)
         except motor.ErrorTraslado as e:
@@ -288,9 +336,12 @@ class TrasladoViewSet(
         EN_ESPERA para siempre.
         """
         t = self.get_object()
-        if not (self._de_mi_lado(t, "origen") or self._de_mi_lado(t, "destino")):
+        mio = next((l for l in ("origen", "destino") if self._de_mi_lado(t, l)), None)
+        if mio is None:
             return Response({"detail": "Sólo los establecimientos del traslado pueden registrarlo."},
                             status=status.HTTP_403_FORBIDDEN)
+        if (falta := self._sin_capacidad(t.origen_id if mio == "origen" else t.destino_id)):
+            return falta
         try:
             t = motor.no_llego(t, request.data.get("motivo") or "", autor=request.user)
         except motor.ErrorTraslado as e:

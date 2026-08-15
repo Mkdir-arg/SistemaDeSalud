@@ -230,6 +230,46 @@ class FarmaciaAPITests(APITestCase):
         self.assertEqual(len(r.data["faltantes"]), 1)
         self.assertEqual([v["lote"] for v in r.data["por_vencer"]], ["P1"])
 
+    def test_lo_que_vence_dice_de_que_lote_y_de_que_deposito_habla(self):
+        """
+        Lo único que se hace con un lote vencido es darlo de baja, y sin los ids
+        el renglón de la alerta no se puede enlazar a esa acción: hay que
+        memorizar insumo, depósito y lote e ir a buscarlos a Stock. Esa fricción
+        es la que deja la ampolla vencida en el botiquín.
+        """
+        vencido = Lote.objects.create(
+            insumo=self.insumo, numero="V1", vencimiento=timezone.localdate() - timedelta(days=3),
+        )
+        Existencia.objects.create(
+            deposito=self.botiquin, insumo=self.insumo, lote=vencido, cantidad=6
+        )
+        r = self.client.get(f"/api/pedidos-stock/alertas/?institucion={self.inst.id}")
+        fila = next(v for v in r.data["por_vencer"] if v["lote"] == "V1")
+        self.assertEqual(fila["lote_id"], vencido.id)
+        self.assertEqual(fila["insumo_id"], self.insumo.id)
+        self.assertEqual(fila["deposito_id"], self.botiquin.id)
+        self.assertTrue(fila["vencido"])
+
+    # --- Controlados -------------------------------------------------------------- #
+
+    def test_el_stock_y_el_historial_dicen_cual_insumo_es_controlado(self):
+        """
+        El recuento de estupefacientes y el libro de la Ley 19.303 se arman
+        mirando estas dos listas. Sin el dato, la morfina se lee igual que una
+        gasa y hay que saber de memoria cuáles exigen doble firma.
+        """
+        morfina = Insumo.objects.create(
+            institucion=self.inst, nombre="Morfina", presentacion="Ampolla 10 mg",
+            unidad="ampolla", requiere_lote=False, controlado=True,
+        )
+        self.client.post("/api/movimientos-stock/ingreso/", {
+            "deposito": self.central.id, "insumo": morfina.id, "cantidad": 10,
+        })
+        stock = self.client.get(f"/api/stock/?insumo={morfina.id}").data["results"]
+        self.assertTrue(stock[0]["controlado"])
+        movs = self.client.get(f"/api/movimientos-stock/?insumo={morfina.id}").data["results"]
+        self.assertTrue(movs[0]["controlado"])
+
     # --- Pedidos ----------------------------------------------------------------- #
 
     def test_un_pedido_se_crea_con_sus_renglones(self):
@@ -246,6 +286,32 @@ class FarmaciaAPITests(APITestCase):
             "origen": self.central.id, "destino": self.central.id,
         }, format="json")
         self.assertEqual(r.status_code, 400)
+
+    def test_un_renglon_mal_armado_no_deja_el_pedido_huerfano(self):
+        """
+        El pedido se creaba primero y los renglones después, sin transacción: la
+        central quedaba con un pedido pendiente sin líneas en la cola donde
+        decide qué preparar, imposible de entregar y sin saber para qué era.
+        """
+        r = self.client.post("/api/pedidos-stock/", {
+            "origen": self.botiquin.id, "destino": self.central.id,
+            "items": [{"insumo": self.insumo.id, "cantidad": 30}, {"cantidad": 5}],
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Pedido.objects.count(), 0)
+        self.assertEqual(LineaPedido.objects.count(), 0)
+
+    def test_un_insumo_inexistente_es_un_dato_equivocado_y_no_una_caida(self):
+        """
+        El id pasaba el `int()` y reventaba en la clave foránea: un pedido mal
+        armado se veía como un sistema caído, y encima dejaba el pedido vacío.
+        """
+        r = self.client.post("/api/pedidos-stock/", {
+            "origen": self.botiquin.id, "destino": self.central.id,
+            "items": [{"insumo": 999999, "cantidad": 5}],
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Pedido.objects.count(), 0)
 
     def test_entregar_mueve_el_stock_y_deja_ver_el_faltante(self):
         self._ingresar(10)
@@ -352,6 +418,33 @@ class StockDeOtroHospitalTests(APITestCase):
             with self.subTest(accion=ruta):
                 r = self.client.post(f"/api/movimientos-stock/{ruta}/", cuerpo)
                 self.assertIn(r.status_code, (400, 403), r.data)
+        self.assertEqual(
+            Existencia.objects.get(deposito=self.dep_b, insumo=self.insumo_b).cantidad, 30
+        )
+
+    def test_un_pedido_no_saca_stock_de_la_central_de_otro_hospital(self):
+        """
+        El camino de los pedidos no pasaba por la validación de los movimientos:
+        el permiso se resolvía contra `origen__institucion` —el depósito propio,
+        así que daba OK— y la entrega transfería desde la central ajena. Con dos
+        requests, la adrenalina de B aparecía en el botiquín de A y B sólo veía
+        que el número no coincidía con el estante.
+        """
+        dep_a = Deposito.objects.create(institucion=self.a, nombre="Botiquín A")
+        insumo_a = Insumo.objects.create(
+            institucion=self.a, nombre="Adrenalina", presentacion="Ampolla 1 mg/ml",
+            requiere_lote=False, unidad="ampolla",
+        )
+        # Los dos disfraces del mismo pedido: pidiendo el insumo del otro
+        # hospital y pidiendo el propio a la central del otro.
+        for insumo in (self.insumo_b, insumo_a):
+            with self.subTest(insumo=insumo.institucion.nombre):
+                r = self.client.post("/api/pedidos-stock/", {
+                    "origen": dep_a.id, "destino": self.dep_b.id,
+                    "items": [{"insumo": insumo.id, "cantidad": 25}],
+                }, format="json")
+                self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Pedido.objects.count(), 0)
         self.assertEqual(
             Existencia.objects.get(deposito=self.dep_b, insumo=self.insumo_b).cantidad, 30
         )

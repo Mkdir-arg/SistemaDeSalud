@@ -6,7 +6,7 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/Shell";
-import { Badge, Button, Field, Input, Modal, Mono, Select, Tabs } from "@/components/ui";
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Mono, Select, Tabs } from "@/components/ui";
 import { Buscador, FiltroSelect, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
@@ -74,18 +74,43 @@ export default function Flujos() {
 
   const areas = useLista("areas", { institucion: institucion?.id, pageSize: 100 }, { enabled: !!institucion });
 
-  const duplicar = useAccion(async (flujo) => {
-    const nf = await api.post("/flujos/", {
-      institucion: flujo.institucion, area: flujo.area, subarea: flujo.subarea,
-      titulo: `${flujo.titulo} (copia)`,
-    });
-    const ver = await api.post("/versiones-flujo/", { flujo: nf.id, numero: 1, estado: "borrador" });
-    await api.post("/nodos/", { version: ver.id, tipo: "inicio", titulo: "Inicio", x: 80, y: 220 });
-    return nf;
-  }, {
-    onSuccess: (nf) => toast.ok(`Se duplicó como «${nf.titulo}».`),
+  /*
+   * Duplicar es del SERVIDOR, que clona el grafo entero.
+   *
+   * Acá se armaba la copia a mano —flujo + versión + un único nodo Inicio— y se
+   * avisaba «Se duplicó»: el configurador se enteraba del lienzo vacío recién al
+   * abrirlo, y si no lo abría, ese flujo de un solo nodo pasa la validación sin
+   * errores, se puede publicar y se puede elegir como destino de una derivación
+   * (los casos derivados ahí quedan parados en Inicio con el evento «Caso sin
+   * salida»). El endpoint que copia config, condiciones y grupos existía desde
+   * siempre y ninguna pantalla lo usaba.
+   */
+  const duplicar = useAccion((flujo) => api.post(`/flujos/${flujo.id}/duplicar/`, {}), {
+    onSuccess: (nf) => {
+      toast.ok(`Se duplicó como «${nf.titulo}».`);
+      navigate(`/flujos/${nf.id}`);
+    },
     onError: (e) => toast.deError(e, "No se pudo duplicar el flujo."),
   });
+
+  /*
+   * Retirar un proceso que se discontinuó.
+   *
+   * Sin esto, el flujo de la campaña que terminó o del consultorio que cerró
+   * seguía publicado para siempre y seguía apareciendo en el desplegable de
+   * «Nuevo caso»: el administrativo del mostrador elegía el circuito viejo y el
+   * paciente entraba a un proceso que la institución dejó de usar. Y la pestaña
+   * «Archivado» siempre decía «No hay flujos», que se lee como un filtro roto.
+   */
+  const [aRetirar, setARetirar] = useState(null);
+  const retirar = useAccion(
+    (flujo) => api.post(`/versiones-flujo/${versionVigente(flujo).id}/archivar/`, {}),
+    {
+      invalida: ["lista"],
+      onSuccess: () => { toast.ok("Flujo retirado. Ya no se puede elegir en «Nuevo caso»."); setARetirar(null); },
+      onError: (e) => toast.deError(e, "No se pudo retirar el flujo."),
+    },
+  );
 
   return (
     <>
@@ -181,6 +206,16 @@ export default function Flujos() {
                     disabled={duplicar.isPending}
                     onClick={() => duplicar.mutate(f)}
                   />
+                  {/* Sólo con versión publicada: es lo único que se retira, y es
+                      lo que lo saca de «Nuevo caso» y de los destinos de derivación. */}
+                  {versionVigente(f)?.estado === "publicada" && (
+                    <IconBtn
+                      title="Retirar flujo"
+                      name="power"
+                      disabled={retirar.isPending}
+                      onClick={() => setARetirar(f)}
+                    />
+                  )}
                 </div>
               ),
             },
@@ -194,6 +229,32 @@ export default function Flujos() {
           onClose={() => setNuevo(false)}
           onCreated={(id) => navigate(`/flujos/${id}`)}
         />
+      )}
+
+      {aRetirar && (
+        <ConfirmDialog
+          title={`¿Retirar «${aRetirar.titulo}»?`}
+          confirmar="Retirar flujo"
+          peligroso
+          cargando={retirar.isPending}
+          onConfirmar={() => retirar.mutate(aRetirar)}
+          onClose={() => setARetirar(null)}
+        >
+          {aRetirar.casos_activos > 0 ? (
+            // El servidor también lo rechaza; decirlo antes evita el ida y vuelta.
+            <>
+              Tiene {plural(aRetirar.casos_activos, "caso activo", "casos activos")} corriendo
+              sobre esta versión. Terminalos o cerralos primero: si se retira ahora, esos casos
+              quedan en un proceso que ya no figura en ningún lado.
+            </>
+          ) : (
+            <>
+              Deja de aparecer en «Nuevo caso» y de poder elegirse como destino de una
+              derivación. El flujo y su historial quedan guardados, en la pestaña
+              «Archivado». Para volver a usarlo hay que sacar una versión nueva y publicarla.
+            </>
+          )}
+        </ConfirmDialog>
       )}
     </>
   );

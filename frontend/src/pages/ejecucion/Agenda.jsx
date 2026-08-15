@@ -6,8 +6,9 @@ import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { Badge, Button, ConfirmDialog, Input } from "@/components/ui";
+import { Badge, Button, ConfirmDialog, Field, Input } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
+import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { BuscadorPaciente } from "@/components/ui/paciente";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -105,6 +106,13 @@ export default function Agenda() {
   const recargar = () => { dia.refetch(); turnos.refetch(); if (verProximos) proximos.refetch(); };
 
   const ocupados = horarios.filter((h) => h.ocupado).length;
+  // Sale de la grilla del día y no de la consulta de turnos: si esa falla, el
+  // resumen tiene que seguir siendo el de verdad y no un cero tranquilizador.
+  const sobreturnos = horarios.reduce((n, h) => n + (h.sobreturnos || 0), 0);
+  // El máximo del día manda sobre el de la lista de agendas: si alguien lo
+  // cambió mientras esta pantalla está abierta, lo que la grilla ofrece y lo que
+  // el encabezado dice tienen que salir del mismo lado.
+  const sobreturnosMax = dia.data?.agenda?.sobreturnos_max ?? agenda?.sobreturnos_max;
   const sinConfirmar = (turnos.data?.results || []).filter((t) => t.estado === "reservado").length;
   const irAFecha = (f) => { setFecha(f); setAbrir(null); };
   const mover = (dias) => {
@@ -146,6 +154,7 @@ export default function Agenda() {
       key={h.inicio}
       horario={h}
       agenda={agenda}
+      sobreturnosMax={sobreturnosMax}
       turnos={porHorario.get(new Date(h.inicio).getTime()) || []}
       turnosListos={!turnos.isLoading && !turnos.error}
       abierto={abrir != null && mismoInstante(abrir, h.inicio)}
@@ -176,6 +185,12 @@ export default function Agenda() {
               Esta agenda no tiene flujo: registrar la llegada no abre ningún caso.
             </p>
           )}
+          {/* Un renglón sin «+» no distingue «esta agenda no toma sobreturnos»
+              de «ya se usaron los cupos de ese horario». Dicho una vez acá, la
+              respuesta a «¿me da un sobreturno a las 10?» deja de ser un tanteo. */}
+          {sobreturnosMax === 0 && (
+            <p className="text-sm text-texto-tenue">Esta agenda no toma sobreturnos.</p>
+          )}
         </div>
         {lista.length > 1 && (
           <select
@@ -191,9 +206,17 @@ export default function Agenda() {
           <div className="text-cifra font-extrabold leading-none tabular-nums">
             {ocupados}/{horarios.length}
           </div>
-          <div className="text-xs text-texto-tenue">dados</div>
+          {/* El sobreturno no ocupa un renglón propio de la grilla, así que sin
+              esta línea un día con 12 horarios llenos y 5 sobreturnos se resume
+              «12/12 dados» — y ése es el número con el que se contesta «¿cuánta
+              gente tiene hoy la doctora?» y se decide si se acepta uno más. */}
+          <div className="text-xs text-texto-tenue">
+            dados{sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
+          </div>
         </div>
       </section>
+
+      <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />
 
       {/* Navegación por día */}
       <section className="flex flex-wrap items-center gap-2 rounded-lg border border-borde bg-superficie px-xl py-3">
@@ -299,6 +322,101 @@ export default function Agenda() {
   );
 }
 
+/*
+ * Buscar el turno de una persona sin saber la agenda ni el día.
+ *
+ * Es la pantalla que atiende al que llama para cancelar: «tengo turno con la
+ * doctora, no puedo ir», sin acordarse de la fecha y sin saber si es Suárez o
+ * Gómez. Con la grilla sola había que ir agenda por agenda y día por día, con
+ * otra persona esperando en el mostrador, así que se cortaba el teléfono sin
+ * cancelar: el horario quedaba tomado, no se reasignaba a nadie de la lista de
+ * espera y el turno terminaba contado como «no vino». Ese ausentismo falso es
+ * justo el indicador con el que después se decide cuánto sobreturnear.
+ */
+function BuscarTurnos({ institucionId, onCambio, toast }) {
+  const navigate = useNavigate();
+  const [texto, setTexto, busqueda] = useBusquedaUrl("paciente");
+  const termino = busqueda.trim();
+
+  // De hoy en adelante y en TODAS las agendas: quien llama pregunta por su
+  // turno, no por la agenda. Un turno de la semana pasada no se puede cancelar
+  // ni confirmar, y mezclado tapa los que sí.
+  const q = useLista(
+    "turnos",
+    {
+      search: termino || undefined,
+      desde: iso(new Date()),
+      agenda__institucion: institucionId,
+      ordering: "inicio",
+      pageSize: 20,
+    },
+    { enabled: termino.length > 0 && institucionId != null },
+  );
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie px-xl py-lg">
+      <Field label="Buscar el turno de un paciente" hint="En todas las agendas, de hoy en adelante.">
+        <Buscador
+          valor={texto}
+          onChange={setTexto}
+          placeholder="Nombre, apellido o documento…"
+          autoFocus={false}
+        />
+      </Field>
+
+      {termino.length > 0 && (
+        q.isLoading ? (
+          <Skeleton className="h-10" />
+        ) : q.error ? (
+          <EstadoError error={q.error} onReintentar={q.refetch} />
+        ) : q.filas.length === 0 ? (
+          <p className="text-base text-texto-debil">
+            Sin turnos de hoy en adelante para «{termino}».
+          </p>
+        ) : (
+          <>
+            <ul aria-label="Turnos encontrados"
+                className="divide-y divide-division overflow-hidden rounded-md border border-borde">
+              {q.filas.map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center gap-x-md gap-y-2 px-3.5 py-2.5">
+                  {/* La fecha y la agenda son la mitad de la respuesta: quien
+                      llama no las sabe, y sin ellas no hay forma de confirmarle
+                      que se está cancelando el turno que él tiene en la mano. */}
+                  <span className="w-40 shrink-0">
+                    <span className="block text-base font-semibold">
+                      {ddmm(t.inicio)}{" "}
+                      <span className="font-mono tabular-nums">{hhmm(t.inicio)}</span>
+                    </span>
+                    <span className="block truncate text-sm text-texto-tenue">
+                      {t.agenda_nombre}
+                      {t.documento ? ` · doc. ${t.documento}` : ""}
+                    </span>
+                  </span>
+                  <FichaTurno
+                    turno={t}
+                    porTelefono
+                    onCambio={onCambio}
+                    toast={toast}
+                    navigate={navigate}
+                  />
+                </li>
+              ))}
+            </ul>
+            {/* Callar que hay más es peor que no buscar: se cancela el turno que
+                aparece, que puede no ser el que la persona tiene. */}
+            {q.total > q.filas.length && (
+              <p className="text-sm text-texto-tenue">
+                Se muestran los primeros {q.filas.length} de {q.total}. Agregá el apellido o
+                el documento para achicar la lista.
+              </p>
+            )}
+          </>
+        )
+      )}
+    </section>
+  );
+}
+
 function ProximosLibres({ consulta, onElegir }) {
   const libres = consulta.data?.horarios || [];
   return (
@@ -330,7 +448,7 @@ function ProximosLibres({ consulta, onElegir }) {
   );
 }
 
-function Renglon({ horario, agenda, turnos, turnosListos, abierto, onCambio, toast }) {
+function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abierto, onCambio, toast }) {
   const navigate = useNavigate();
   const [dando, setDando] = useState(!!abierto);
   // El turno «titular» del horario y los sobreturnos que cuelgan de él.
@@ -392,6 +510,15 @@ function Renglon({ horario, agenda, turnos, turnosListos, abierto, onCambio, toa
             <Icon name={dando ? "x" : "plus"} size={14} />
           </button>
         )}
+        {/* Agotados los cupos, el lugar del «+» no puede quedar vacío: un
+            horario sin botón se lee igual que una agenda que no toma
+            sobreturnos, y ahí la respuesta al mostrador sale a tanteo. */}
+        {horario.ocupado && !horario.admite_sobreturno && !horario.bloqueado
+          && !horario.fuera_de_grilla && sobreturnosMax > 0 && (
+          <span className="flex-none text-sm text-texto-tenue">
+            {horario.sobreturnos}/{sobreturnosMax} sobreturnos
+          </span>
+        )}
       </div>
 
       {/* Dos titulares en el mismo horario no deberían existir. Si existen, el
@@ -425,7 +552,7 @@ function Renglon({ horario, agenda, turnos, turnosListos, abierto, onCambio, toa
   );
 }
 
-function FichaTurno({ turno, onCambio, toast, navigate }) {
+function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
   const est = ESTADOS[turno.estado] || { label: turno.estado, tone: "neutral" };
   // Las dos acciones irreversibles se confirman antes de disparar. En el
   // mostrador se opera con alguien enfrente y apurado: un clic corrido una
@@ -443,7 +570,10 @@ function FichaTurno({ turno, onCambio, toast, navigate }) {
     onError: (e) => { setConfirmando(null); toast.deError(e); },
   });
   const pendiente = ["reservado", "confirmado"].includes(turno.estado);
-  const hora = hhmm(turno.inicio);
+  // Desde el buscador el turno puede ser de cualquier día: preguntar «¿cancelo
+  // el de las 10:20?» a secas deja cancelar el de la semana equivocada, y de eso
+  // nadie se entera hasta que el paciente se presenta.
+  const hora = porTelefono ? `${ddmm(turno.inicio)} ${hhmm(turno.inicio)}` : hhmm(turno.inicio);
 
   return (
     <>
@@ -462,7 +592,14 @@ function FichaTurno({ turno, onCambio, toast, navigate }) {
       {pendiente && (
         <div className="flex flex-wrap items-center gap-1.5">
           {/* «Llegó» es la acción principal: es la que abre el caso y arranca la
-              atención. El resto son excepciones. */}
+              atención. El resto son excepciones.
+
+              En el buscador no va, y «No vino» tampoco: las dos dependen de
+              estar parado en el día del turno con el paciente enfrente. Sobre un
+              turno de la semana que viene, «Llegó» deja un caso abierto que
+              llaman por altavoz y nadie contesta, y «No vino» le carga un
+              ausentismo a alguien que justamente está llamando para avisar. */}
+          {!porTelefono && (
           <Button size="sm" disabled={accion.isPending}
                   onClick={() => accion.mutate({
                     nombre: "llegada",
@@ -476,6 +613,7 @@ function FichaTurno({ turno, onCambio, toast, navigate }) {
                   })}>
             Llegó
           </Button>
+          )}
           {/* El circuito de recordatorios se cierra acá: el comando arma la
               lista de llamados, la persona llama y el paciente dice «sí, voy».
               Sin este botón no había dónde anotarlo, así que el estado
@@ -492,6 +630,7 @@ function FichaTurno({ turno, onCambio, toast, navigate }) {
           )}
           {/* Separadas del primario: son las dos que no se pueden deshacer. */}
           <span className="mx-0.5 h-5 w-px bg-division" aria-hidden="true" />
+          {!porTelefono && (
           <Button size="sm" variant="secondary" disabled={accion.isPending}
                   onClick={() => setConfirmando({
                     nombre: "ausente",
@@ -502,6 +641,7 @@ function FichaTurno({ turno, onCambio, toast, navigate }) {
                   })}>
             No vino
           </Button>
+          )}
           <Button size="sm" variant="secondary" disabled={accion.isPending}
                   onClick={() => setConfirmando({
                     nombre: "cancelar",

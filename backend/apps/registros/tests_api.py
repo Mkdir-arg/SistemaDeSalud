@@ -166,6 +166,67 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
         self.assertTrue(HistoriaClinica.objects.filter(pk=self.hc.pk).exists())
         self.assertEqual(EntradaHistoria.objects.count(), 1)
 
+    def test_el_paciente_tampoco_se_puede_borrar_porque_su_historia_va_con_el(self):
+        """
+        La puerta estaba trabada en la historia y abierta en el padre: como
+        `historia_clinica` es CASCADE, un DELETE al paciente se llevaba la
+        evolución firmada, los estudios y las recetas de una sola vez, sin dejar
+        constancia de que existieron. Y el resultado dependía del azar: con
+        `AccesoClinico.ciudadano` en PROTECT, el mismo pedido reventaba con 500 si
+        alguien había abierto la ficha y borraba todo si nadie la había abierto.
+        """
+        self._firmada()
+        Estudio.objects.create(historia=self.hc, tipo="TAC", fecha="2026-07-01")
+        Receta.objects.create(historia=self.hc, detalle="Amoxicilina", autor=self.med)
+        self.como(self.adm)
+        r = self.client.delete(f"/api/ciudadanos/{self.paciente.id}/")
+        self.assertEqual(r.status_code, 405, getattr(r, "data", r))
+        self.assertTrue(Ciudadano.objects.filter(pk=self.paciente.pk).exists())
+        self.assertEqual(EntradaHistoria.objects.count(), 1)
+        self.assertEqual(Estudio.objects.count(), 1)
+        self.assertEqual(Receta.objects.count(), 1)
+
+    def test_una_historia_no_se_puede_pasar_a_otro_paciente(self):
+        """
+        Mudar la historia deja al paciente A sin nada y al B con atenciones
+        ajenas —la alergia y la medicación crónica en la ficha equivocada—, y
+        además rompe los sellos: el canónico incluye el ciudadano, así que
+        `verificar_historia` pasa a denunciar entradas que nadie tocó. Ese falso
+        positivo convierte la única prueba de integridad del hospital en una
+        acusación contra sí mismo y no se puede deshacer.
+        """
+        self._firmada()
+        otro = Ciudadano.objects.create(
+            institucion=self.inst, nombre="María", apellido="Cabrera", documento="27418305"
+        )
+        self.como(self.adm)
+        r = self.client.patch(f"/api/historias-clinicas/{self.hc.id}/", {"ciudadano": otro.id})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.hc.refresh_from_db()
+        self.assertEqual(self.hc.ciudadano_id, self.paciente.id)
+        self.assertTrue(integridad.verificar_historia(self.hc)["ok"])
+
+    def test_un_borrador_no_se_puede_mudar_a_la_historia_de_otro_paciente(self):
+        """
+        En un módulo donde nada se borra ni se mueve, la FK abierta era la puerta
+        que quedaba: el asiento «Ingresó por guardia, dolor precordial» aparecía
+        en la evolución de otra persona y, una vez firmado ahí, el sello
+        certificaba esa ubicación equivocada como correcta.
+        """
+        otra_hc = HistoriaClinica.objects.create(
+            ciudadano=Ciudadano.objects.create(
+                institucion=self.inst, nombre="Elena", apellido="Ledesma", documento="27418305"
+            )
+        )
+        e = EntradaHistoria.objects.create(
+            historia=self.hc, titulo="Ingresó por guardia", autor=self.adm
+        )
+        self.como(self.adm)
+        r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"historia": otra_hc.id})
+        self.assertEqual(r.status_code, 400, r.data)
+        e.refresh_from_db()
+        self.assertEqual(e.historia_id, self.hc.id)
+
     def test_un_borrador_sin_firmar_si_se_puede_corregir(self):
         """Corregir un borrador es lo esperable; trabarlo sería trabar el trabajo."""
         e = EntradaHistoria.objects.create(historia=self.hc, titulo="Nota", autor=self.adm)
@@ -312,6 +373,61 @@ class EstudiosTests(RegistrosAPITestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(Estudio.objects.get().autor, self.med.nombre_completo)
 
+    def _estudio(self):
+        return Estudio.objects.create(
+            historia=self.hc, tipo="Rx de tórax", resultado="alterado",
+            autor=self.med.nombre_completo, fecha="2026-07-01",
+        )
+
+    def test_un_administrativo_no_puede_cambiar_el_resultado_de_un_estudio(self):
+        """
+        Informar es tan clínico como pedir, y sólo el alta lo exigía: mesa de
+        entradas pasaba un «alterado» a «normal» y el registro seguía diciendo
+        que lo pidió la médica. Ella no tiene con qué desmentirlo —el estudio no
+        lleva sello ni matrícula—, que es el mismo argumento con el que se blindó
+        el alta.
+        """
+        e = self._estudio()
+        self.como(self.adm)
+        r = self.client.patch(f"/api/estudios/{e.id}/", {"resultado": "normal", "tipo": "Rx normal"})
+        self.assertEqual(r.status_code, 400, r.data)
+        e.refresh_from_db()
+        self.assertEqual(e.resultado, "alterado")
+        self.assertEqual(e.tipo, "Rx de tórax")
+
+    def test_un_estudio_no_se_puede_borrar(self):
+        """Diez años de conservación obligatoria, y el estudio no lleva sello:
+        borrado no queda nada que verificar. Se corrige con uno nuevo."""
+        e = self._estudio()
+        self.como(self.med)
+        r = self.client.delete(f"/api/estudios/{e.id}/")
+        self.assertEqual(r.status_code, 405, getattr(r, "data", r))
+        self.assertTrue(Estudio.objects.filter(pk=e.pk).exists())
+
+    def test_un_estudio_no_se_puede_mudar_a_la_ficha_de_otro_paciente(self):
+        """El resultado de una persona en el expediente de otra se lee como suyo."""
+        e = self._estudio()
+        otra_hc = HistoriaClinica.objects.create(
+            ciudadano=Ciudadano.objects.create(
+                institucion=self.inst, nombre="Elena", apellido="Ledesma", documento="27418305"
+            )
+        )
+        self.como(self.med)
+        r = self.client.patch(f"/api/estudios/{e.id}/", {"historia": otra_hc.id})
+        self.assertEqual(r.status_code, 400, r.data)
+        e.refresh_from_db()
+        self.assertEqual(e.historia_id, self.hc.id)
+
+    def test_el_medico_si_puede_informar_el_resultado(self):
+        """Trabar la edición entera dejaría el estudio pedido sin forma de informarse."""
+        e = self._estudio()
+        self.como(self.med)
+        r = self.client.patch(f"/api/estudios/{e.id}/", {"resultado": "normal", "realizado": True})
+        self.assertEqual(r.status_code, 200, r.data)
+        e.refresh_from_db()
+        self.assertEqual(e.resultado, "normal")
+        self.assertTrue(e.realizado)
+
 
 class PacienteDuplicadoTests(RegistrosAPITestCase):
     """
@@ -342,6 +458,54 @@ class PacienteDuplicadoTests(RegistrosAPITestCase):
             "institucion": self.inst.id, "nombre": "J.", "documento": "30111222",
         })
         self.assertIn("Juan Pérez", str(r.data["detail"]))
+
+    def test_el_mismo_documento_con_puntos_es_el_mismo_paciente(self):
+        """
+        En Argentina el DNI con puntos es como está impreso en el documento que
+        el administrativo tiene en la mano: es el caso normal, no un error raro.
+        Comparando la cadena cruda, «30.111.222» entraba como paciente nuevo y a
+        partir de ahí había dos historias clínicas del mismo: el médico abre una
+        al azar y la alergia puede estar en la otra. No se pueden fusionar, así
+        que frenar el alta es toda la defensa que hay.
+        """
+        self.como(self.adm)
+        r = self.client.post("/api/ciudadanos/", {
+            "institucion": self.inst.id, "nombre": "Juan", "apellido": "Perez",
+            "documento": "30.111.222",
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn("Juan Pérez", str(r.data["detail"]))
+        self.assertEqual(Ciudadano.objects.filter(institucion=self.inst).count(), 1)
+
+    def test_el_documento_queda_guardado_sin_puntos_ni_guiones(self):
+        """
+        Si se guardara como vino, el próximo alta compara contra la cadena
+        punteada y el duplicado vuelve a entrar por el otro lado: la constraint
+        de la base compara texto.
+        """
+        self.como(self.adm)
+        r = self.client.post("/api/ciudadanos/", {
+            "institucion": self.inst.id, "nombre": "Elena", "apellido": "Acosta",
+            "documento": "27.418-305",
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Ciudadano.objects.get(nombre="Elena").documento, "27418305")
+
+    def test_el_duplicado_tampoco_entra_por_el_alta_directa_del_modelo(self):
+        """
+        El alta del paciente también ocurre fuera del serializer —el motor al
+        ingresar a alguien, un import—. Si la normalización viviera sólo en la
+        API, esos caminos seguirían creando la segunda historia clínica.
+        """
+        from django.db import IntegrityError, transaction
+
+        # El atomic propio es para que el error no deje inservible la transacción
+        # del test: sin él, lo que falla es el desarme y no se entiende por qué.
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Ciudadano.objects.create(
+                institucion=self.inst, nombre="Juan", apellido="Perez",
+                documento="30.111.222",
+            )
 
     def test_el_paciente_sin_documento_se_anota_igual_y_no_traba_al_siguiente(self):
         """

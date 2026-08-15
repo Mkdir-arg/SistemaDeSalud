@@ -121,6 +121,28 @@ def verificar(entrada) -> dict:
     )
 
 
+def sellado_desde():
+    """
+    Desde cuándo sella este sistema, según sus propios datos.
+
+    Es el `firmada_at` más viejo que tenga sello: a partir de ese momento, toda
+    entrada que se firmó por la aplicación quedó sellada en la misma
+    transacción. Sirve para que «firmada antes del sellado» deje de ser una
+    excusa que cualquiera puede invocar y pase a ser una fecha comprobable.
+
+    Se calcula sobre toda la base y no por historia: si se tomara la historia,
+    quien inserta la primera entrada de un paciente nuevo definiría él mismo el
+    límite y su propia entrada quedaría siempre fuera de alcance.
+    """
+    from django.db.models import Min
+
+    from .models import EntradaHistoria
+
+    return EntradaHistoria.objects.filter(sello__gt="").aggregate(
+        primera=Min("firmada_at")
+    )["primera"]
+
+
 def verificar_historia(historia) -> dict:
     """
     Verifica la historia completa: cada entrada y la cadena entre ellas.
@@ -132,12 +154,30 @@ def verificar_historia(historia) -> dict:
     entradas = list(
         historia.entradas.filter(firmada=True).order_by("firmada_at", "fecha", "id")
     )
-    problemas, previo = [], ""
+    desde = sellado_desde()
+    problemas, previo, fuera_de_alcance = [], "", 0
     for e in entradas:
         r = verificar(e)
         if r["ok"] is False:
             problemas.append({"entrada": e.id, "titulo": e.titulo, "motivo": r["motivo"]})
         elif r["ok"] is None:
+            # Firmada y sin sello. `sello` es `editable=False` y el alta sella
+            # dentro de la misma transacción, así que después de que el sellado
+            # entró en servicio una fila así NO la pudo escribir la aplicación:
+            # es una entrada insertada por afuera, que es el atacante que este
+            # archivo nombra. Antes se salteaba sin contarse y sin cortar la
+            # cadena, así que una historia con una atención fabricada —firmada,
+            # fechada dos años atrás— se presentaba en verde como «sin
+            # alteraciones» en la pantalla que existe para probar lo contrario.
+            momento = e.firmada_at or e.fecha
+            if desde and momento and momento >= desde:
+                problemas.append({
+                    "entrada": e.id, "titulo": e.titulo,
+                    "motivo": "firmada sin sello después de que el sistema empezó "
+                              "a sellar: no la escribió la aplicación",
+                })
+            else:
+                fuera_de_alcance += 1
             continue  # anterior al sellado: no entra en la cadena
         elif e.sello_previo != previo:
             problemas.append({
@@ -151,6 +191,11 @@ def verificar_historia(historia) -> dict:
         "ok": not problemas,
         "firmadas": len(entradas),
         "selladas": sum(1 for e in entradas if e.sello),
+        # Desde cuándo se sella y cuántas quedaron legítimamente afuera. Van en
+        # la respuesta para que la pantalla pueda decirlo: «anterior al sellado»
+        # sin fecha ni cantidad es una salvedad que nadie puede comprobar.
+        "sella_desde": desde,
+        "fuera_de_alcance": fuera_de_alcance,
         "problemas": problemas,
     }
 

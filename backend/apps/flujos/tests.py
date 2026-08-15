@@ -343,6 +343,73 @@ class EstadoDeVersionNoEsUnCampoTests(APITestCase):
         self.assertEqual((self.version.flujo_id, self.version.numero), (self.flujo.pk, 1))
 
 
+class ArchivarFlujoTests(APITestCase):
+    """
+    Un proceso se discontinúa y tiene que poder salir de circulación.
+
+    ARCHIVADA existía en el modelo y en la pestaña «Archivado» del listado, y
+    ningún código la asignaba nunca: el flujo de la campaña que terminó seguía
+    publicado para siempre y seguía apareciendo en «Nuevo caso» —que lista los
+    flujos con versión publicada—, así que el administrativo del mostrador metía
+    pacientes en un circuito que la institución dejó de usar.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.user = Usuario.objects.create_user(
+            email="config@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.flujo = Flujo.objects.create(institucion=self.inst, titulo="Campaña de vacunación")
+        self.version = VersionFlujo.objects.create(
+            flujo=self.flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+
+    def test_retirar_deja_la_version_archivada(self):
+        r = self.client.post(f"/api/versiones-flujo/{self.version.pk}/archivar/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.version.refresh_from_db()
+        self.assertEqual(self.version.estado, VersionFlujo.Estado.ARCHIVADA)
+
+    def test_el_flujo_retirado_deja_de_tener_version_publicada(self):
+        """Es lo que lo saca de «Nuevo caso» y de los destinos de derivación.
+
+        Las dos pantallas eligen flujo por «tiene una versión publicada». Si
+        archivar no rompiera esa condición, retirar el proceso no retiraría nada.
+        """
+        self.client.post(f"/api/versiones-flujo/{self.version.pk}/archivar/", {}, format="json")
+        self.flujo.refresh_from_db()
+        self.assertIsNone(self.flujo.version_publicada)
+
+        r = self.client.get(f"/api/flujos/?institucion={self.inst.pk}&estado=archivada")
+        self.assertEqual([f["id"] for f in r.data["results"]], [self.flujo.pk])
+
+    def test_no_se_retira_un_flujo_con_casos_en_curso(self):
+        """Esos casos están parados sobre estos nodos y tienen que poder terminar."""
+        Caso.objects.create(institucion=self.inst, version=self.version)
+        r = self.client.post(f"/api/versiones-flujo/{self.version.pk}/archivar/", {}, format="json")
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data["casos_activos"], 1)
+        self.version.refresh_from_db()
+        self.assertEqual(self.version.estado, VersionFlujo.Estado.PUBLICADA)
+
+    def test_un_caso_cerrado_no_impide_retirarlo(self):
+        Caso.objects.create(
+            institucion=self.inst, version=self.version, estado=Caso.Estado.CERRADO
+        )
+        r = self.client.post(f"/api/versiones-flujo/{self.version.pk}/archivar/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+
+    def test_no_se_archiva_un_borrador(self):
+        """Archivar un borrador lo escondería en una pestaña sin haber publicado nada."""
+        borrador = VersionFlujo.objects.create(flujo=self.flujo, numero=2)
+        r = self.client.post(f"/api/versiones-flujo/{borrador.pk}/archivar/", {}, format="json")
+        self.assertEqual(r.status_code, 409, r.data)
+        borrador.refresh_from_db()
+        self.assertEqual(borrador.estado, VersionFlujo.Estado.BORRADOR)
+
+
 class DuplicarFlujoTests(APITestCase):
     """
     Duplicar copia el proceso, no sólo el título.
@@ -425,7 +492,16 @@ class VolumenDelDisenoTests(APITestCase):
         )
         self.client.force_authenticate(self.user)
 
-    def _poblar(self, cuantos):
+    def _poblar(self, cuantos, deriva=None):
+        """Crea `cuantos` flujos publicados. `deriva` decide cuáles tienen nodo Derivar.
+
+        La mayoría de los procesos de una institución NO derivan a otro flujo, y
+        el fixture le ponía un nodo Derivar a todos: con eso, el precargado del
+        mapa se usaba siempre y el N+1 de los flujos sin derivación quedaba
+        afuera del test. Por defecto sólo deriva uno de cada tres.
+        """
+        if deriva is None:
+            deriva = lambda i: i % 3 == 0  # noqa: E731
         for i in range(cuantos):
             flujo = Flujo.objects.create(
                 institucion=self.inst, area=self.area, titulo=f"Proceso {i}"
@@ -437,26 +513,29 @@ class VolumenDelDisenoTests(APITestCase):
             ini = Nodo.objects.create(
                 version=v1, tipo="inicio", titulo="Inicio", config={"origen": "ambos"}
             )
-            der = Nodo.objects.create(
-                version=v1, tipo="derivar", titulo="Derivar", config={"flujo_destino_id": flujo.pk}
-            )
-            Conexion.objects.create(version=v1, origen=ini, destino=der)
-            Caso.objects.create(institucion=self.inst, version=v1, nodo_actual=der)
+            ultimo = ini
+            if deriva(i):
+                ultimo = Nodo.objects.create(
+                    version=v1, tipo="derivar", titulo="Derivar",
+                    config={"flujo_destino_id": flujo.pk},
+                )
+                Conexion.objects.create(version=v1, origen=ini, destino=ultimo)
+            Caso.objects.create(institucion=self.inst, version=v1, nodo_actual=ultimo)
 
-    def _consultas(self, url, cuantos):
+    def _consultas(self, url, cuantos, **kw):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
-        self._poblar(cuantos)
+        self._poblar(cuantos, **kw)
         self.client.get(url)  # calienta lo que se cachea por proceso
         with CaptureQueriesContext(connection) as ctx:
             r = self.client.get(url)
         self.assertEqual(r.status_code, 200, r.data)
         return len(ctx.captured_queries)
 
-    def _no_escala(self, url):
-        pocas = self._consultas(url, 3)
-        muchas = self._consultas(url, 27)  # 3 + 27 = 30
+    def _no_escala(self, url, **kw):
+        pocas = self._consultas(url, 3, **kw)
+        muchas = self._consultas(url, 27, **kw)  # 3 + 27 = 30
         self.assertEqual(
             pocas, muchas,
             f"{url} hace {pocas} consultas con 3 flujos y {muchas} con 30: hay un N+1.",
@@ -467,6 +546,18 @@ class VolumenDelDisenoTests(APITestCase):
 
     def test_mapa_de_flujos(self):
         self._no_escala("/api/flujos/mapa/")
+
+    def test_el_mapa_no_consulta_de_mas_por_los_flujos_que_no_derivan(self):
+        """Los procesos que NO derivan son la mayoría, y eran los que pagaban el N+1.
+
+        El precargado se leía con `getattr(vigente, 'nodos_derivar', None) or
+        queryset`: el `to_attr` del Prefetch existe siempre y vale `[]` para una
+        versión sin nodo Derivar, y `[]` es falsy, así que el `or` caía al
+        queryset. Si esto se rompe, una red con 200 procesos de los cuales 180 no
+        derivan hace 180 consultas de más en una sola pantallada del mapa, que a
+        propósito no pagina.
+        """
+        self._no_escala("/api/flujos/mapa/", deriva=lambda i: False)
 
     def test_el_conteo_de_casos_activos_sigue_siendo_el_correcto(self):
         """La anotación reemplaza a un `count()` por fila: tiene que dar lo mismo."""

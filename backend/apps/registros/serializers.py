@@ -3,10 +3,39 @@ from datetime import datetime
 from rest_framework import serializers
 
 from . import reglas
-from .models import Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta
+from .models import (
+    Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta,
+    normalizar_documento,
+)
 
 
-class EntradaHistoriaSerializer(serializers.ModelSerializer):
+class HistoriaFija:
+    """
+    La historia se elige al crear y no cambia después.
+
+    Vale para todo lo que cuelga del expediente: una atención, un estudio. Con la
+    FK abierta, un PATCH `{"historia": otra}` mueve el asiento a la ficha de otra
+    persona —al paciente que lo generó le falta de su evolución y al otro le
+    sobra—, y si después alguien lo firma, el sello certifica esa ubicación
+    equivocada como correcta. El permiso no ayuda: se valida contra el objeto
+    viejo, así que el destino ni se mira.
+
+    Un registro cargado en la historia equivocada se corrige con uno nuevo en la
+    correcta, igual que una entrada firmada.
+    """
+
+    def validate(self, datos):
+        datos = super().validate(datos)
+        nueva = datos.get("historia")
+        if self.instance is not None and nueva is not None and nueva.pk != self.instance.historia_id:
+            raise serializers.ValidationError({
+                "historia": "Un registro no cambia de paciente. Cargalo en la historia "
+                            "correcta y dejá asentado el error en la que lo tenía."
+            })
+        return datos
+
+
+class EntradaHistoriaSerializer(HistoriaFija, serializers.ModelSerializer):
     # Quién firmó, no sólo su id. Una entrada marcada como «Firmada» sin firmante
     # visible no sirve como registro: la matrícula ya se guarda al firmar, y el
     # nombre evita que el cliente tenga que cruzar contra /usuarios/.
@@ -36,7 +65,7 @@ class EntradaHistoriaSerializer(serializers.ModelSerializer):
         return verificar(obj)["ok"]
 
 
-class EstudioSerializer(serializers.ModelSerializer):
+class EstudioSerializer(HistoriaFija, serializers.ModelSerializer):
     resultado_display = serializers.CharField(source="get_resultado_display", read_only=True)
 
     class Meta:
@@ -83,6 +112,30 @@ class HistoriaClinicaSerializer(serializers.ModelSerializer):
         # puede atribuir a cualquiera no contesta «¿quién preguntó?».
         read_only_fields = ["creada", "antecedentes_por", "antecedentes_at"]
 
+    def validate(self, datos):
+        """
+        La historia no cambia de dueño. Los antecedentes son lo único editable.
+
+        Un PATCH `{"ciudadano": otro}` —un integrador, un formulario que manda el
+        objeto entero— mudaba el expediente completo: el paciente A quedaba sin
+        historia y el B con trece atenciones ajenas, y el médico prescribe
+        leyendo eso. Peor todavía: el canónico del sello incluye el ciudadano, así
+        que `verificar_historia` pasaba a denunciar «el contenido cambió después
+        de firmarse» sobre entradas que nadie tocó. Ese falso positivo es el peor
+        error posible del módulo: convierte la única prueba de integridad que
+        tiene el hospital en una acusación contra sí mismo, y no se puede deshacer
+        desde la aplicación.
+
+        Mandar el MISMO ciudadano no es error: el formulario que reenvía el objeto
+        entero tiene que seguir funcionando.
+        """
+        nuevo = datos.get("ciudadano")
+        if self.instance is not None and nuevo is not None and nuevo.pk != self.instance.ciudadano_id:
+            raise serializers.ValidationError({
+                "ciudadano": "Una historia clínica no se puede pasar a otro paciente."
+            })
+        return datos
+
 
 class CiudadanoSerializer(serializers.ModelSerializer):
     # Resumen de la historia clínica (para la lista de HC).
@@ -113,6 +166,14 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         # quién corresponde ese documento ni adónde ir. Se desactiva para que la
         # respuesta sea la de `validate`, más abajo.
         validators = []
+
+    def validate_documento(self, valor):
+        # Se normaliza ANTES de buscar el duplicado: el filtro de abajo compara
+        # cadenas, y con «30.111.222» contra «30111222» guardado no encuentra
+        # nada, devuelve 201 y deja al paciente con dos historias clínicas. El
+        # DNI con puntos es como está impreso en el documento, o sea lo que el
+        # administrativo copia.
+        return normalizar_documento(valor)
 
     def validate(self, datos):
         """

@@ -178,7 +178,141 @@ test.describe("Diseñador de flujos", () => {
     // deja el flujo como lo encontró (la suite corre sobre datos compartidos).
     await expect(page.getByText("2 nodos elegidos")).toBeVisible();
     await page.keyboard.press("Delete");
+    await page.getByRole("button", { name: /Eliminar 2 nodos/ }).click();
     await expect.poll(contar).toBe(inicial);
+  });
+
+  test("borrar varios nodos pregunta antes y el Deshacer los restaura a todos", async ({ page }) => {
+    /*
+     * Una rama de un flujo son cinco o seis nodos con formulario, grupos, SLA y
+     * condiciones: se encierran con la marquesina en un gesto y un Suprimir de
+     * más se los lleva sin preguntar. Y lo que la pantalla ofrecía para volver
+     * atrás restauraba UNO: `mostrarToast` pisa el toast anterior, así que de N
+     * borrados sobrevivía el «Deshacer» del último y los otros se perdían.
+     */
+    const contar = () => page.locator("[data-nodo]").count();
+    const inicial = await contar();
+
+    // Se trabaja sobre una copia para no borrar nodos reales del flujo.
+    const nodos = page.locator("[data-nodo]");
+    await nodos.nth(0).click();
+    await nodos.nth(1).click({ modifiers: ["Shift"] });
+    await page.keyboard.press("Control+d");
+    await expect.poll(contar).toBe(inicial + 2);
+
+    await page.keyboard.press("Delete");
+    await expect(page.getByText("¿Eliminar 2 nodos?")).toBeVisible();
+    await page.getByRole("button", { name: /Eliminar 2 nodos/ }).click();
+    await expect.poll(contar).toBe(inicial);
+
+    // Un solo aviso para toda la operación, y su Deshacer trae los DOS.
+    await expect(page.getByText(/Se eliminaron 2 nodos/)).toBeVisible();
+    await page.getByRole("button", { name: "Deshacer", exact: true }).click();
+    await expect.poll(contar).toBe(inicial + 2);
+
+    // Se vuelve a dejar el flujo como estaba.
+    await expect(page.getByText("2 nodos elegidos")).toBeVisible();
+    await page.keyboard.press("Delete");
+    await page.getByRole("button", { name: /Eliminar 2 nodos/ }).click();
+    await expect.poll(contar).toBe(inicial);
+  });
+
+  test("quitar una conexión deja «Deshacer» y la restaura con su regla", async ({ page }) => {
+    /*
+     * En un nodo Decisión la conexión ES la regla: «mayor de 65 Y dolor
+     * torácico» son varios minutos de RuleBuilder y estaba a un clic de
+     * desaparecer para siempre — sin confirmación, sin historial y sin
+     * «Deshacer», a diferencia del borrado de nodos. Si nadie lo nota, la
+     * decisión queda con una rama menos y todos los casos caen por la rama por
+     * defecto.
+     *
+     * Se trabaja sobre una copia (Ctrl+D duplica también las conexiones entre
+     * los nodos elegidos) para no tocar el grafo real de la demo.
+     */
+    const contar = () => page.locator("[data-nodo]").count();
+    const inicial = await contar();
+    const nodos = page.locator("[data-nodo]");
+    await nodos.nth(0).click();
+    await nodos.nth(1).click({ modifiers: ["Shift"] });
+    await page.keyboard.press("Control+d");
+    await expect.poll(contar).toBe(inicial + 2);
+
+    // Se abre el panel de uno de los nodos pegados y se quita su salida.
+    await page.locator("[data-nodo]").nth(inicial).click();
+    const quitar = page.getByRole("button", { name: "quitar" }).first();
+    test.skip(!(await quitar.isVisible().catch(() => false)), "los nodos copiados no quedaron conectados");
+
+    await quitar.click();
+    const confirmar = page.getByRole("button", { name: "Quitar conexión" });
+    if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+
+    await expect(page.getByText(/Se quitó la conexión/)).toBeVisible();
+    await page.getByRole("button", { name: "Deshacer", exact: true }).click();
+    await expect(page.getByRole("button", { name: "quitar" }).first()).toBeVisible();
+
+    // Limpieza: se borran los dos nodos copiados.
+    await page.locator("[data-nodo]").nth(inicial).click();
+    await page.locator("[data-nodo]").nth(inicial + 1).click({ modifiers: ["Shift"] });
+    await page.keyboard.press("Delete");
+    await page.getByRole("button", { name: /Eliminar 2 nodos/ }).click();
+    await expect.poll(contar).toBe(inicial);
+  });
+
+  test("el «Deshacer» de ordenar el diagrama se puede leer", async ({ page }) => {
+    /*
+     * «Ordenar el diagrama» reubica TODOS los nodos de un flujo de un solo clic,
+     * encima de un diagrama que alguien acomodó a mano. El toast ofrecía la
+     * salida en un botón vacío: pasaba `txt` y el componente pinta `label`.
+     */
+    // Se corre un nodo primero: si el diagrama ya está en la disposición que
+    // «Ordenar» produce, la acción no mueve nada y no hay toast que mirar.
+    await page.locator("[data-nodo]").first().click();
+    await page.keyboard.press("ArrowDown");
+
+    await page.getByTitle(/Ordenar el diagrama/).click();
+    await expect(page.getByText("Diagrama ordenado")).toBeVisible();
+
+    const deshacer = page.getByRole("button", { name: "Deshacer", exact: true });
+    await expect(deshacer).toBeVisible();
+    // Se deshace: el test no debe dejar el diagrama del demo reacomodado.
+    await deshacer.click();
+    await page.keyboard.press("ArrowUp");
+  });
+
+  test("con el panel de propiedades cerrado, Validar muestra el resultado igual", async ({ page }) => {
+    /*
+     * Todo el feedback del editor se dibuja adentro del panel, y ese panel se
+     * cierra por el motivo más razonable del mundo: ver el diagrama. Con el
+     * panel cerrado, «Validar» pasaba a «Validando…», volvía, y la pantalla
+     * quedaba idéntica — y un Publicar rechazado por errores no dejaba rastro
+     * en ningún lado.
+     */
+    await page.getByRole("button", { name: "Ocultar panel de propiedades" }).click();
+    await expect(page.getByText("Validación")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Validar" }).click();
+    await expect(page.getByText("Validación")).toBeVisible();
+    await expect(page.getByText(/errores/)).toBeVisible();
+  });
+
+  test("una versión publicada no se puede editar desde la pantalla", async ({ page }) => {
+    /*
+     * El servidor rechaza toda escritura sobre una versión publicada, pero el
+     * editor sólo lo decía en un cartel: la paleta seguía invitando a agregar
+     * nodos y el botón rojo «Eliminar nodo» seguía ahí, así que cada intento era
+     * un 409 que el editor mostraba como «revisá tu conexión».
+     */
+    const versiones = page.getByLabel("Versión del flujo");
+    const opciones = await versiones.locator("option").allTextContents();
+    test.skip(opciones.length < 2, "el flujo no tiene una versión publicada aparte del borrador");
+
+    // Las versiones se listan de mayor a menor: la última opción es la v1.
+    await versiones.selectOption({ label: opciones[opciones.length - 1] });
+    await expect(page.getByText(/los casos en curso están parados/)).toBeVisible();
+
+    await expect(page.getByTitle("Agregar nodo «Formulario»")).toBeDisabled();
+    await page.locator("[data-nodo]").first().click();
+    await expect(page.getByRole("button", { name: "Eliminar nodo" })).toHaveCount(0);
   });
 
   test("el minimapa lleva a otra zona del lienzo", async ({ page }) => {
@@ -216,6 +350,101 @@ test.describe("Diseñador de flujos", () => {
 
     const despues = await estado(page);
     expect([despues.sx, despues.sy]).toEqual([antes.sx, antes.sy]);
+  });
+});
+
+/**
+ * Nodo «Espera por tiempo».
+ *
+ * El texto de ayuda decía que la reactivación automática era un pendiente y que
+ * el caso se reactiva a mano; dos campos más abajo, el hint del mismo panel dice
+ * «El caso vuelve solo al vencer», que es lo cierto (el motor agenda
+ * `reactivar_en` y `correr_tiempos` lo levanta). Quien lee ese texto es la
+ * persona de la institución que no puede verificarlo en el código: si cree que
+ * el sistema no le va a traer de vuelta el «control a los 7 días», se arma una
+ * planilla aparte y saca del sistema el trabajo que el sistema ya hace bien.
+ */
+test.describe("Nodo de espera por tiempo", () => {
+  test.beforeEach(async ({ page }) => {
+    await abrirBorrador(page);
+    await page.getByTitle("Agregar nodo «Espera por tiempo»").click();
+    await expect(page.getByLabel("Duración de la espera")).toBeVisible();
+  });
+
+  // El nodo se guarda apenas se agrega: sin esto cada corrida deja uno suelto.
+  test.afterEach(async ({ page }) => {
+    const borrar = page.getByRole("button", { name: "Eliminar nodo" });
+    if (await borrar.isVisible().catch(() => false)) await borrar.click();
+  });
+
+  test("la ayuda dice que el caso vuelve solo, igual que el hint del campo", async ({ page }) => {
+    // La preferencia de ayuda se recuerda en localStorage, así que puede venir
+    // ya abierta de otro test: se abre sólo si hace falta.
+    const texto = page.getByText(/lo trae de vuelta solo al vencer/);
+    if (!(await texto.isVisible().catch(() => false))) {
+      await page.getByRole("button", { name: "¿Qué hace este nodo?" }).click();
+    }
+    await expect(texto).toBeVisible();
+    await expect(page.getByText(/reactivación automática por tiempo es un pendiente/)).toHaveCount(0);
+    // El hint del campo dice lo mismo: era la contradicción dentro del panel.
+    await expect(page.getByText("El caso vuelve solo al vencer.", { exact: false })).toBeVisible();
+  });
+});
+
+/**
+ * El triage, configurable desde el diseñador.
+ *
+ * El motor ya sabía convertir el resultado de un formulario en la prioridad del
+ * caso (`prioridad_campo` + `prioridad_mapa`), pero el único flujo con esa config
+ * era el de la demo, escrita a mano en Python: el panel del nodo Formulario sólo
+ * ofrecía Formulario, Responsable y SLA. Una guardia que diseñe su propio
+ * circuito de triage quedaba en FIFO puro —la enfermera carga «Rojo -
+ * Emergencia» y el paciente igual espera detrás de los quince esguinces que
+ * llegaron antes—, salvo que alguien se acordara de abrir la ficha del caso y
+ * cambiar la prioridad a mano en otra pantalla.
+ */
+test.describe("Prioridad del caso desde un formulario", () => {
+  test.beforeEach(async ({ page }) => {
+    await abrirBorrador(page);
+    await page.getByTitle("Agregar nodo «Formulario»").click();
+    await expect(page.getByLabel("Formulario del paso")).toBeVisible();
+  });
+
+  test.afterEach(async ({ page }) => {
+    const borrar = page.getByRole("button", { name: "Eliminar nodo" });
+    if (await borrar.isVisible().catch(() => false)) await borrar.click();
+  });
+
+  test("se elige el campo que fija la prioridad y qué prioridad da cada valor", async ({ page }) => {
+    const formulario = page.getByLabel("Formulario del paso");
+    // El catálogo llega por red: sin esperarlo, el desplegable todavía tiene
+    // sólo el «— Elegir —» y el test se saltea sin haber probado nada.
+    await expect.poll(() => formulario.locator("option").count()).toBeGreaterThan(1);
+    const opciones = await formulario.locator("option").allTextContents();
+    const triage = opciones.find((t) => /triage/i.test(t));
+    test.skip(!triage, "la institución de la demo no tiene un formulario de triage");
+
+    await formulario.selectOption({ label: triage });
+
+    const campo = page.getByLabel("Este campo define la prioridad del caso");
+    await expect(campo).toBeVisible();
+    const campos = await campo.locator("option").allTextContents();
+    const nivel = campos.find((t) => /nivel/i.test(t));
+    test.skip(!nivel, "el formulario de triage no tiene un campo de selección única");
+
+    await campo.selectOption({ label: nivel });
+
+    // Una fila valor→prioridad por cada opción del campo.
+    const rojo = page.getByLabel(/Prioridad para «Rojo/);
+    await expect(rojo).toBeVisible();
+    await rojo.selectOption("urgente");
+    await expect(rojo).toHaveValue("urgente");
+
+    // Se recarga y se vuelve a abrir el nodo: lo elegido tiene que haber
+    // quedado guardado en el servidor, no sólo en la pantalla.
+    await page.reload();
+    await page.locator("[data-nodo]").last().click();
+    await expect(page.getByLabel(/Prioridad para «Rojo/)).toHaveValue("urgente");
   });
 });
 

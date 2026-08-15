@@ -235,6 +235,53 @@ class TransferenciaTests(StockTestCase):
         self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 0)
 
 
+class StockDeOtraInstitucionTests(StockTestCase):
+    """
+    El cinturón donde de verdad protege.
+
+    En un despliegue provincial hay varios hospitales sobre la misma base. La
+    validación de institución vivía sólo en la vista de movimientos, así que
+    cualquier otro camino que llame al motor —los pedidos, hoy— movía stock del
+    hospital de al lado sin que el hospital víctima pudiera ver de dónde salió.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.otro_hospital = Institucion.objects.create(nombre="Hospital B")
+        self.central_b = Deposito.objects.create(
+            institucion=self.otro_hospital, nombre="Farmacia B", central=True
+        )
+        self.adrenalina_b = Insumo.objects.create(
+            institucion=self.otro_hospital, nombre="Adrenalina",
+            presentacion="Ampolla 1 mg/ml", requiere_lote=False, unidad="ampolla",
+        )
+        Existencia.objects.create(
+            deposito=self.central_b, insumo=self.adrenalina_b, cantidad=30
+        )
+
+    def test_no_se_transfiere_a_un_deposito_de_otro_hospital(self):
+        lote = self._lote("A1")
+        motor.ingresar(self.central, self.dipirona, 100, lote=lote, autor=self.user)
+        with self.assertRaises(motor.ErrorStock):
+            motor.transferir(self.central, self.central_b, self.dipirona, 10, autor=self.user)
+        self.assertEqual(motor.disponible(self.central, self.dipirona), 100)
+
+    def test_un_pedido_a_la_central_ajena_no_le_vacia_el_estante(self):
+        """
+        Es el ataque completo: el botiquín de A le pide a la central de B y la
+        entrega transfiere. Sin el chequeo en `transferir`, salían las 25
+        ampollas con un 200 y B no se enteraba.
+        """
+        pedido = Pedido.objects.create(origen=self.botiquin, destino=self.central_b)
+        linea = LineaPedido.objects.create(
+            pedido=pedido, insumo=self.adrenalina_b, pedido_cant=25
+        )
+        with self.assertRaises(motor.ErrorStock):
+            motor.entregar_pedido(pedido, {linea.id: 25}, autor=self.user)
+        self.assertEqual(motor.disponible(self.central_b, self.adrenalina_b), 30)
+        self.assertEqual(motor.disponible(self.botiquin, self.adrenalina_b), 0)
+
+
 class AjusteYBajaTests(StockTestCase):
     def setUp(self):
         super().setUp()

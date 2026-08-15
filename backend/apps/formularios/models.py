@@ -2,8 +2,17 @@
 Formularios y sus campos.
 
 Un formulario es una definición reutilizable que un nodo de tipo «Formulario»
-de un flujo puede usar para pedir datos. Los campos pueden estar «vinculados»
-a un origen (Historia clínica / Legajo ciudadano), lo que precarga su valor.
+de un flujo puede usar para pedir datos.
+
+`Campo.origen` está declarado pero TODAVÍA NO HACE NADA: ningún código lo lee.
+El docstring decía que «precarga su valor» y era falso —no hay un solo consumidor
+de `origen` ni de `vinculado` fuera de esta definición y de la serialización—, así
+que la pantalla mostraba un badge y una columna «Vinculados» que no podían
+aparecer nunca. Las dos se sacaron hasta que la precarga exista: hay que
+implementarla en el motor, al abrir el nodo Formulario, completando los campos con
+origen desde el ciudadano y su historia sin pisar lo ya cargado (la misma regla
+del padrón FHIR). El campo se conserva para no perder el dato de los formularios
+que ya lo tengan seteado.
 """
 from django.db import models
 

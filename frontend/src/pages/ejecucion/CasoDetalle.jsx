@@ -410,11 +410,32 @@ function PasoCama({ caso, ocupado, ejecutar }) {
  * al paciente por varios pasos del flujo —evolución, conducta— y el pase o el
  * egreso pueden hacerse en cualquiera de ellos.
  */
+// Los motivos son los del modelo (`EstadiaCama.Egreso`), menos «pase»: eso se
+// hace con el botón de al lado y no es una salida de internación.
+//
+// Sin preguntarlo, TODO egreso quedaba registrado como «alta» —incluido un
+// fallecimiento—. El recorrido del paciente mentía en el único lugar donde se
+// mira cuando alguien reclama, no se podía contar mortalidad ni derivaciones
+// por sector, y el trámite administrativo había que armarlo fuera del sistema.
+const MOTIVOS_EGRESO = [
+  { valor: "alta", label: "Alta" },
+  { valor: "derivacion", label: "Derivación a otra institución" },
+  { valor: "fallecimiento", label: "Fallecimiento" },
+];
+
 function PanelCama({ caso, ejecutar, ocupado }) {
   const [pasando, setPasando] = useState(false);
+  const [egresando, setEgresando] = useState(false);
+  const [motivo, setMotivo] = useState("alta");
+  // `activa=true`: sin eso la lista ofrecía camas dadas de baja y el motor las
+  // rechazaba después, con un error que contradice lo que la pantalla acaba de
+  // mostrar. Enfermería deja de confiar en la lista de camas libres, que es el
+  // activo entero del módulo.
   const q = useQuery({
     queryKey: ["camas-libres", caso.institucion],
-    queryFn: () => api.get(`/camas/?area__institucion=${caso.institucion}&estado=libre&page_size=200`),
+    queryFn: () => api.get(
+      `/camas/?area__institucion=${caso.institucion}&estado=libre&activa=true&page_size=200`,
+    ),
     enabled: pasando,
   });
   const camas = q.data?.results || [];
@@ -461,20 +482,38 @@ function PanelCama({ caso, ejecutar, ocupado }) {
           )}
           <Button size="sm" variant="secondary" onClick={() => setPasando(false)}>Cancelar</Button>
         </div>
+      ) : egresando ? (
+        <div className="mt-3 flex flex-col gap-2.5">
+          <Field label="Motivo del egreso">
+            <Select value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+              {MOTIVOS_EGRESO.map((m) => (
+                <option key={m.valor} value={m.valor}>{m.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={ocupado}
+              onClick={() => {
+                setEgresando(false);
+                ejecutar(
+                  () => api.post(`/casos/${caso.id}/egreso-cama/`, { motivo }),
+                  "Egresó de internación · la cama quedó en higiene",
+                );
+              }}
+            >
+              Registrar egreso
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setEgresando(false)}>Cancelar</Button>
+          </div>
+        </div>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => setPasando(true)}>
             Pase de sector
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={ocupado}
-            onClick={() => ejecutar(
-              () => api.post(`/casos/${caso.id}/egreso-cama/`),
-              "Egresó de internación · la cama quedó en higiene",
-            )}
-          >
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => setEgresando(true)}>
             Egreso
           </Button>
         </div>

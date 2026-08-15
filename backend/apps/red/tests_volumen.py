@@ -71,6 +71,25 @@ class VolumenRedTests(TestCase):
             f"con 30 efectores hace {grande} consultas y con 3 hace {chica}",
         )
 
+    def test_el_tablero_de_la_red_no_consulta_mas_por_tener_mas_efectores(self):
+        """
+        Es la pantalla que abre dirección para decidir a dónde mandar recursos, y
+        corre contra la misma base que en ese momento está atendiendo la guardia.
+        Contando de a un establecimiento por vez eran ocho consultas por efector
+        —32 con 3, 248 con 30— más todos los traslados resueltos traídos a
+        memoria: el día que la región crece, la pantalla se pone lenta para todos
+        sin que nadie haya tocado un traslado.
+        """
+        url = f"/api/redes/{self.red.id}/tablero/"
+        self._sumar_efectores(3)
+        chica = self._consultas(url)
+        self._sumar_efectores(27)
+        grande = self._consultas(url)
+        self.assertEqual(
+            grande, chica,
+            f"con 30 efectores hace {grande} consultas y con 3 hace {chica}",
+        )
+
     def test_el_panorama_de_camas_no_consulta_mas_por_tener_mas_efectores(self):
         """
         `camas_en_red` es lo que llama el desplegable de derivación por cada

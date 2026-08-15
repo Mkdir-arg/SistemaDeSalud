@@ -25,14 +25,26 @@ import { cn } from "@/lib/cn";
  * chico en lo que deriva.
  */
 const ESTADOS = {
-  solicitado: { label: "Esperando respuesta", tone: "warning" },
-  aceptado: { label: "Aceptado", tone: "success" },
+  solicitado: { label: "Esperando respuesta", tone: "amber" },
+  aceptado: { label: "Aceptado", tone: "green" },
   rechazado: { label: "Rechazado", tone: "error" },
   en_camino: { label: "En camino", tone: "info" },
-  recibido: { label: "Recibido", tone: "success" },
+  recibido: { label: "Recibido", tone: "green" },
   cancelado: { label: "Cancelado", tone: "gray" },
   fallido: { label: "No llegó", tone: "error" },
 };
+
+/*
+ * Media hora sin respuesta ya es un problema: del otro lado hay un paciente
+ * esperando una cama en una guardia. Pasado el umbral la fila cambia de tono,
+ * porque «sin responder hace 4 h» en gris chico al borde derecho de la fila no
+ * lo mira nadie. Lo mismo para el que aceptó y todavía no salió: «Aceptado» es
+ * el estado donde hay una cama comprometida y nada se mueve.
+ */
+const DEMORA_MIN = 30;
+
+/** ¿Hace más de `minutos` que pasó esto? */
+const masDe = (ts, minutos) => !!ts && Date.now() - new Date(ts).getTime() > minutos * 60_000;
 
 /*
  * Refresco automático, como en toda pantalla viva del sistema (la fila, mi
@@ -55,6 +67,11 @@ function reloj(t) {
   if (t.estado === "en_camino" && t.salida_at) return { texto: "salió hace", ts: t.salida_at };
   if (t.estado === "recibido" && t.llegada_at) return { texto: "llegó hace", ts: t.llegada_at };
   if (t.estado === "solicitado") return { texto: "sin responder hace", ts: t.solicitado_at };
+  // «Aceptado · hace 3 d» sobre una cama que se reservó recién decía la
+  // antigüedad del PEDIDO, y se leía igual que la del traslado aceptado hace
+  // tres días cuya ambulancia nunca salió. El equipo que reservó la cama mira
+  // esta fila para decidir si esperar o llamar al hospital de origen.
+  if (t.estado === "aceptado" && t.resuelto_at) return { texto: "aceptado hace", ts: t.resuelto_at };
   return { texto: "hace", ts: t.solicitado_at };
 }
 
@@ -62,8 +79,24 @@ export default function RedTraslados() {
   const { institucion } = useInstitucion();
   const [tab, setTab] = useState(null);
 
-  const redes = useLista("redes", { activa: true, pageSize: 20 });
-  const red = redes.filas[0];
+  /*
+   * Las redes de ESTE establecimiento, no las de todas mis membresías.
+   *
+   * El listado sin filtrar devuelve las redes de cualquier institución donde yo
+   * tenga membresía, ordenadas por nombre: quedándose con la primera, una
+   * dirección de red parada en el Hospital X miraba la tabla comparativa de otra
+   * red —sin ninguna fila marcada «· acá»— y decidía a dónde mandar recursos
+   * sobre establecimientos que no son los suyos. Y un hospital que además está
+   * en una red de patología (trauma, perinatal, quemados) no tenía forma de ver
+   * la otra: no existía en la pantalla y nada decía que faltara.
+   */
+  const redes = useLista(
+    "redes",
+    { activa: true, instituciones: institucion?.id, pageSize: 20 },
+    { enabled: !!institucion?.id },
+  );
+  const [redId, setRedId] = useState(null);
+  const red = redes.filas.find((r) => r.id === redId) || redes.filas[0];
 
   /*
    * La pestaña inicial depende de lo que este establecimiento hace.
@@ -93,7 +126,7 @@ export default function RedTraslados() {
     { key: "panorama", label: "Panorama de la red" },
   ];
 
-  if (redes.isLoading) return <Cargando />;
+  if (!institucion?.id || redes.isLoading) return <Cargando />;
   if (redes.error) {
     return <div className="p-[30px]"><EstadoError error={redes.error} onReintentar={redes.refetch} /></div>;
   }
@@ -121,6 +154,15 @@ export default function RedTraslados() {
             {red.nombre} · {red.instituciones_detalle?.length || 0} establecimientos
           </p>
         </div>
+        {/* Con más de una red hay que poder elegir: la ocupación de la red por
+            la que se va a derivar este paciente no se puede mirar si la pantalla
+            se queda siempre con la primera por orden alfabético. */}
+        {redes.filas.length > 1 && (
+          <Select value={red.id} onChange={(e) => setRedId(Number(e.target.value))}
+                  aria-label="Red" className="w-auto">
+            {redes.filas.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+          </Select>
+        )}
       </section>
 
       <Tabs tabs={TABS} valor={tab} onChange={setTab} />
@@ -151,11 +193,18 @@ function Lista({ lado, institucion }) {
    * urgentes acumulados dejaba de ver cualquier pedido no urgente, incluido uno
    * de hace diez minutos, sin ninguna señal de que faltaban filas. Del otro
    * lado hay un paciente esperando una respuesta que no iba a llegar.
+   *
+   * Y entre los abiertos, el que espera hace MÁS tiempo va primero. Es una cola
+   * de servicio y se atiende de arriba para abajo: con el más nuevo arriba,
+   * quien abre «Nos derivan» contesta los pedidos frescos y el paciente que hace
+   * cuatro horas espera una cama en otra guardia queda último o abajo del
+   * pliegue. Es el mismo orden que la otra cola de la app (`ItemFila`: urgentes
+   * primero y después por llegada ascendente).
    */
   const comun = { lado, institucion: institucion?.id };
   const abiertos = useLista(
     "traslados",
-    { ...comun, abiertos: true, ordering: "-urgente,-solicitado_at", pageSize: 200 },
+    { ...comun, abiertos: true, ordering: "-urgente,solicitado_at", pageSize: 200 },
     VIVA,
   );
   const resueltos = useLista(
@@ -195,44 +244,53 @@ function Lista({ lado, institucion }) {
     );
   }
 
-  // Lo pendiente arriba: es lo único que requiere una decisión.
-  const pendientes = abiertos.filas;
+  /*
+   * Lo que espera una decisión, aparte de lo que ya está viajando.
+   *
+   * En una sola lista ordenada por fecha de pedido, las filas que hay que
+   * responder quedaban intercaladas con ambulancias en la calle: la que abre la
+   * pantalla tiene que barrer entre medio para encontrar qué contestar.
+   */
+  const esperan = abiertos.filas.filter((t) => t.estado === "solicitado");
+  const enViaje = abiertos.filas.filter((t) => t.estado !== "solicitado");
   const cerrados = resueltos.filas;
+  const fila = (t, acciones) => (
+    <Fila key={t.id} t={t} accion={accion} navigate={navigate} institucion={institucion}
+          {...(acciones
+            ? { onResponder: () => setRespondiendo(t),
+                onConfirmar: (c) => setConfirmando({ ...c, t }) }
+            : {})} />
+  );
 
   return (
     <div className="flex flex-col gap-lg">
-      {pendientes.length > 0 && (
-        <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-          <header className="flex items-center gap-2 border-b border-division px-xl py-lg">
-            <h3 className="flex-1 text-lg font-bold">En curso</h3>
-            <Badge tone="warning">{pendientes.length}</Badge>
-          </header>
-          <ul className="divide-y divide-division">
-            {pendientes.map((t) => (
-              <Fila key={t.id} t={t} accion={accion} navigate={navigate} institucion={institucion}
-                    onResponder={() => setRespondiendo(t)}
-                    onConfirmar={(c) => setConfirmando({ ...c, t })} />
-            ))}
-          </ul>
-        </section>
+      {esperan.length > 0 && (
+        <Seccion
+          titulo="Esperan respuesta"
+          extra={<Badge tone={esperan.some((t) => masDe(t.solicitado_at, DEMORA_MIN))
+                                ? "error" : "amber"}>{esperan.length}</Badge>}
+        >
+          {esperan.map((t) => fila(t, true))}
+        </Seccion>
+      )}
+
+      {enViaje.length > 0 && (
+        <Seccion titulo="En viaje" extra={<Badge tone="info">{enViaje.length}</Badge>}>
+          {enViaje.map((t) => fila(t, true))}
+        </Seccion>
       )}
 
       {cerrados.length > 0 && (
-        <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-          <header className="flex items-center gap-2 border-b border-division px-xl py-lg">
-            <h3 className="flex-1 text-lg font-bold">Resueltos</h3>
-            {resueltos.total > cerrados.length && (
-              <span className="text-sm text-texto-tenue">
-                últimos {cerrados.length} de {resueltos.total}
-              </span>
-            )}
-          </header>
-          <ul className="divide-y divide-division">
-            {cerrados.map((t) => (
-              <Fila key={t.id} t={t} accion={accion} navigate={navigate} institucion={institucion} />
-            ))}
-          </ul>
-        </section>
+        <Seccion
+          titulo="Resueltos"
+          extra={resueltos.total > cerrados.length && (
+            <span className="text-sm text-texto-tenue">
+              últimos {cerrados.length} de {resueltos.total}
+            </span>
+          )}
+        >
+          {cerrados.map((t) => fila(t, false))}
+        </Seccion>
       )}
 
       {respondiendo && (
@@ -254,9 +312,28 @@ function Lista({ lado, institucion }) {
   );
 }
 
+function Seccion({ titulo, extra, children }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
+      <header className="flex items-center gap-2 border-b border-division px-xl py-lg">
+        <h3 className="flex-1 text-lg font-bold">{titulo}</h3>
+        {extra}
+      </header>
+      <ul className="divide-y divide-division">{children}</ul>
+    </section>
+  );
+}
+
 function Fila({ t, accion, navigate, institucion, onResponder, onConfirmar }) {
   const est = ESTADOS[t.estado] || { label: t.estado_display, tone: "gray" };
   const ocupado = accion.isPending;
+  // Pasado el umbral, la chapa lo dice. Antes esto vivía sólo en el «hace 4 h»
+  // en gris chico del borde derecho, que es exactamente lo que nadie mira: un
+  // pedido sin responder es un paciente esperando en otra guardia, y un
+  // «Aceptado» que no sale es una cama comprometida por alguien que no llega.
+  const tarde =
+    (t.estado === "solicitado" && masDe(t.solicitado_at, DEMORA_MIN)) ||
+    (t.estado === "aceptado" && masDe(t.resuelto_at, DEMORA_MIN));
   // El caso propio: el del otro lado no se puede abrir, y ofrecerlo sería
   // prometer algo que el servidor va a rechazar.
   const miCaso = t.soy_origen ? t.caso_origen : t.caso_destino;
@@ -281,6 +358,7 @@ function Fila({ t, accion, navigate, institucion, onResponder, onConfirmar }) {
           {" · "}{t.motivo_display}
           {t.area_destino_nombre && ` · ${t.area_destino_nombre}`}
           {t.estado === "en_camino" && t.movil && ` · ${t.movil}`}
+          {t.estado === "aceptado" && tarde && " · todavía sin salir"}
         </span>
         {/* El motivo es lo que dice si insistir, buscar otro o esperar: vale
             igual para el rechazo, para la baja del origen y para el que no
@@ -291,8 +369,9 @@ function Fila({ t, accion, navigate, institucion, onResponder, onConfirmar }) {
       </span>
 
       <span className="whitespace-nowrap text-right text-sm text-texto-tenue">
-        <Badge tone={est.tone}>{est.label}</Badge>
-        <span className="mt-0.5 block" title={`Pedido el ${fechaHora(t.solicitado_at)}`}>
+        <Badge tone={tarde ? "error" : est.tone}>{est.label}</Badge>
+        <span className={cn("mt-0.5 block", tarde && "font-semibold text-danger")}
+              title={`Pedido el ${fechaHora(t.solicitado_at)}`}>
           {texto} {antiguedad(ts)}
         </span>
       </span>
@@ -577,8 +656,16 @@ function Panorama({ red, institucion }) {
           <Cifra n={totales.casos_activos} l="casos activos" />
           <Cifra n={totales.camas_libres} l={`camas libres de ${totales.camas_operativas ?? 0}`} />
           <Cifra n={totales.traslados} l={`traslados en ${dias} días`} />
-          <Cifra n={totales.pendientes} l="sin responder"
-                 tono={totales.pendientes > 0 ? "text-badge-amber-fg" : undefined} />
+          {/* «Sin responder» no se recorta por el período: es el estado de ahora.
+              Y con la antigüedad del más viejo al lado, que es el dato que
+              decide si alguien levanta el teléfono. */}
+          <Cifra
+            n={totales.pendientes}
+            l={totales.pendiente_mas_viejo
+              ? `sin responder · el más viejo hace ${antiguedad(totales.pendiente_mas_viejo)}`
+              : "sin responder"}
+            tono={totales.pendientes > 0 ? "text-badge-amber-fg" : undefined}
+          />
           <Cifra n={`${totales.rechazo_pct ?? 0}%`} l="rechazados" />
           <Cifra n={totales.viaje_prom_min ? `${totales.viaje_prom_min}′` : "—"} l="viaje promedio" />
         </div>
@@ -597,7 +684,12 @@ function Panorama({ red, institucion }) {
               <th className="px-xl py-2.5 text-left">ESTABLECIMIENTO</th>
               <th className="px-3 py-2.5 text-right">ACTIVOS</th>
               <th className="px-3 py-2.5 text-right">URGENTES</th>
-              <th className="px-3 py-2.5 text-right">CAMAS</th>
+              {/* «CAMAS 15/27» no decía qué eran los dos números y la fracción
+                  invitaba a restar: 12 ocupadas contra el 33 % de la columna de
+                  al lado, dos lecturas distintas del mismo hecho pegadas una a
+                  la otra. La diferencia son las camas en higiene, que además son
+                  las que se liberan con un llamado a limpieza. */}
+              <th className="px-3 py-2.5 text-right">CAMAS LIBRES</th>
               <th className="px-3 py-2.5 text-right">OCUPACIÓN</th>
               <th className="px-3 py-2.5 text-right">DERIVÓ</th>
               <th className="px-3 py-2.5 text-right">RECIBIÓ</th>
@@ -620,7 +712,15 @@ function Panorama({ red, institucion }) {
                   {e.urgentes}
                 </td>
                 <td className="px-3 py-3 text-right tabular-nums text-texto-tenue">
-                  {e.camas_operativas ? `${e.camas_libres}/${e.camas_operativas}` : "—"}
+                  {e.camas_operativas ? (
+                    <>
+                      <span className="font-semibold text-texto-fuerte">{e.camas_libres}</span>
+                      {` de ${e.camas_operativas}`}
+                      {e.camas_higiene > 0 && (
+                        <span className="block text-xs">+{e.camas_higiene} en higiene</span>
+                      )}
+                    </>
+                  ) : "—"}
                 </td>
                 <td className="px-3 py-3 text-right tabular-nums">
                   {e.camas_operativas ? (
@@ -638,6 +738,11 @@ function Panorama({ red, institucion }) {
                   {e.recibio}
                   {e.pendientes > 0 && (
                     <span className="ml-1 text-badge-amber-fg">({e.pendientes} sin resp.)</span>
+                  )}
+                  {e.pendiente_mas_viejo && (
+                    <span className="block text-xs text-badge-amber-fg">
+                      el más viejo hace {antiguedad(e.pendiente_mas_viejo)}
+                    </span>
                   )}
                 </td>
                 <td className="px-3 py-3 text-right tabular-nums text-texto-suave">

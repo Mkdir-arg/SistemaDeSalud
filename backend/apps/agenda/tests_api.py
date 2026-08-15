@@ -259,6 +259,43 @@ class AgendaAPITests(APITestCase):
         r = self.client.get("/api/turnos/?search=30111222")
         self.assertEqual(r.data["count"], 1)
 
+    def test_se_buscan_los_turnos_futuros_de_una_persona_en_todas_las_agendas(self):
+        """
+        Es la consulta que hace la pantalla cuando alguien llama para cancelar:
+        no sabe el día ni si es Suárez o Gómez, así que se busca por documento
+        sobre TODAS las agendas y de hoy en adelante.
+
+        Si la búsqueda dejara de combinarse con el rango, la lista se llenaría de
+        turnos viejos —que no se pueden cancelar— y el que la persona tiene en la
+        mano quedaría abajo de todo; si dejara de cruzar agendas, se vuelve a
+        tener que adivinar cuál era, que es de dónde salió este endpoint.
+        """
+        self._dar(8, 0)
+        otra = Agenda.objects.create(
+            institucion=self.inst, area=self.area, nombre="Dr. Gómez", duracion_min=30
+        )
+        Disponibilidad.objects.create(
+            agenda=otra, dia_semana=1, desde=time(11, 0), hasta=time(12, 0)
+        )
+        r = self.client.post("/api/turnos/", {
+            "agenda": otra.id, "ciudadano": self.paciente.id, "inicio": self._iso(11, 0),
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+
+        # Un turno viejo de la misma persona: no se cancela ni se confirma.
+        Turno.objects.create(
+            agenda=self.agenda, ciudadano=self.paciente, duracion_min=20,
+            inicio=timezone.now() - timedelta(days=30),
+        )
+
+        r = self.client.get(
+            f"/api/turnos/?search=30111222&desde={timezone.localdate()}&ordering=inicio"
+        )
+        self.assertEqual(r.data["count"], 2, r.data)
+        self.assertEqual(
+            [t["agenda_nombre"] for t in r.data["results"]], ["Dra. Suárez", "Dr. Gómez"]
+        )
+
 
 class AgendaPermisosTests(APITestCase):
     """Configurar la agenda y operarla son cosas distintas."""

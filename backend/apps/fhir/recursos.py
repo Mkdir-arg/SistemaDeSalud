@@ -223,21 +223,37 @@ def _tiene_cama(caso) -> bool:
 # --------------------------------------------------------------------------- #
 # Sobres
 # --------------------------------------------------------------------------- #
-def bundle(recursos, total=None, tipo="searchset") -> dict:
+def bundle(recursos, total=None, tipo="searchset", enlaces=None, avisos=None) -> dict:
     """
     El sobre de una búsqueda.
 
     Un cliente FHIR espera SIEMPRE un Bundle en una búsqueda, aunque no haya
     resultados. Devolver una lista pelada, o un 404 cuando no hay nada, rompe
     clientes que por lo demás funcionarían: «ninguno» es un resultado válido.
+
+    `enlaces` lleva `self` y `next`. Sin `next`, un `total` de 250 con 100
+    entradas es un truncamiento que del otro lado nadie ve: el cliente cuenta lo
+    que recibió, coincide con lo que pidió y da la sincronización por completa.
+
+    `avisos` son `OperationOutcome` de severidad `warning` —lo que el estándar
+    llama `handling=lenient`— y van AL FINAL y marcados `search.mode: outcome`,
+    para que un cliente que sólo lee `entry[].resource` no los confunda con
+    resultados. Es la única forma de decir «esto no lo filtré» sin romper a los
+    clientes que ya funcionan.
     """
     lista = list(recursos)
-    return {
+    sobre = {
         "resourceType": "Bundle",
         "type": tipo,
         "total": len(lista) if total is None else total,
-        "entry": [{"resource": r} for r in lista],
     }
+    if enlaces:
+        sobre["link"] = list(enlaces)
+    sobre["entry"] = (
+        [{"resource": r, "search": {"mode": "match"}} for r in lista]
+        + [{"resource": a, "search": {"mode": "outcome"}} for a in (avisos or [])]
+    )
+    return sobre
 
 
 def operation_outcome(severidad, codigo, mensaje) -> dict:

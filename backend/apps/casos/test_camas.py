@@ -186,6 +186,42 @@ class CamasTests(TestCase):
         with self.assertRaises(motor.ErrorMotor):
             motor.pasar_de_sector(a, self.c102.id, autor=self.jefe)
 
+    def test_el_pase_a_una_cama_de_baja_dice_que_esta_de_baja_y_no_que_esta_ocupada(self):
+        """
+        Dar de baja una cama es un PATCH sobre `activa` y no le toca el `estado`:
+        la cama sigue figurando «libre» y el panel de pase se la ofrece. Si el
+        motor contesta «no está libre», le está diciendo a enfermería algo que
+        contradice lo que la pantalla acaba de mostrar; deja de confiar en la
+        lista de camas libres, que es lo único que este módulo tiene para dar.
+        """
+        caso = self._internar()
+        motor.asignar_cama(caso, self.c101.id, autor=self.jefe)
+        caso.refresh_from_db()
+        self.uti1.activa = False
+        self.uti1.save(update_fields=["activa"])
+        self.assertEqual(self.uti1.estado, Cama.Estado.LIBRE)
+
+        with self.assertRaises(motor.ErrorMotor) as e:
+            motor.pasar_de_sector(caso, self.uti1.id, autor=self.jefe)
+        self.assertIn("dada de baja", str(e.exception))
+        self.assertNotIn("no está libre", str(e.exception))
+
+    def test_el_pase_a_una_cama_ocupada_dice_en_que_estado_esta(self):
+        """
+        El otro lado de lo mismo: si el rechazo no nombra el estado, quien mira
+        una ficha vieja del tablero no sabe si la cama se ocupó o quedó en
+        higiene, y vuelve a intentar sobre la misma.
+        """
+        a = self._internar("Ana")
+        motor.asignar_cama(a, self.c101.id, autor=self.jefe)
+        b = self._internar("Beto")
+        motor.asignar_cama(b, self.c102.id, autor=self.jefe)
+        a.refresh_from_db()
+        with self.assertRaises(motor.ErrorMotor) as e:
+            motor.pasar_de_sector(a, self.c102.id, autor=self.jefe)
+        self.assertIn("no está libre", str(e.exception))
+        self.assertIn("ocupada", str(e.exception))
+
     def test_no_se_pasa_a_alguien_que_no_esta_internado(self):
         caso = self._internar()
         with self.assertRaises(motor.ErrorMotor):

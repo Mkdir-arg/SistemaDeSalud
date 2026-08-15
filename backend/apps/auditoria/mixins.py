@@ -35,8 +35,11 @@ def _institucion_del_pedido(request):
 
     Se toma del contexto del pedido: el `?institucion=` del listado —si el
     usuario actúa ahí— o su única membresía activa. Con varias membresías y sin
-    filtro, el listado abarcó a más de una y elegir una sería anotar algo que no
-    pasó: queda en nulo, como antes.
+    filtro, elegir una sería anotar algo que no pasó: queda en nulo.
+
+    Es el último recurso. Un listado con resultados se atribuye a las
+    instituciones de las filas que devolvió (`_instituciones_alcanzadas`), que es
+    el dato real; acá se cae sólo cuando no hay filas de donde sacarlo.
     """
     u = getattr(request, "user", None)
     if not (u and u.is_authenticated):
@@ -51,7 +54,10 @@ def _institucion_del_pedido(request):
     return next(iter(ids)) if len(ids) == 1 else None
 
 
-def registrar_acceso(request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0):
+def registrar_acceso(
+    request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0,
+    institucion_id=None,
+):
     """
     Escribe UNA línea del registro de accesos.
 
@@ -62,13 +68,20 @@ def registrar_acceso(request, tipo, recurso, ciudadano=None, objeto_id="", detal
     `recurso` es el nombre del MODELO y no el de la URL: una ruta se puede
     renombrar y el registro tiene que seguir diciendo lo mismo dentro de diez
     años, que es cuanto hay que conservarlo.
+
+    `institucion_id` es para quien ya sabe a qué institución pertenece lo que se
+    leyó —un listado sabe de dónde salieron sus filas—; sin eso hay que
+    adivinarlo del contexto del pedido, y adivinar mal deja el acceso fuera de
+    la vista de quien tiene que responder por él.
     """
     try:
         AccesoClinico.objects.create(
             usuario=request.user,
             ciudadano=ciudadano,
             institucion_id=(
-                getattr(ciudadano, "institucion_id", None) or _institucion_del_pedido(request)
+                getattr(ciudadano, "institucion_id", None)
+                or institucion_id
+                or _institucion_del_pedido(request)
             ),
             tipo=tipo,
             recurso=recurso,
@@ -110,10 +123,12 @@ class AuditaLecturaClinica:
             cur = getattr(cur, parte, None)
         return cur
 
-    def _anotar(self, tipo, ciudadano=None, objeto_id="", detalle="", resultados=0):
+    def _anotar(self, tipo, ciudadano=None, objeto_id="", detalle="", resultados=0,
+                institucion_id=None):
         registrar_acceso(
             self.request, tipo, self.queryset.model._meta.model_name,
-            ciudadano=ciudadano, objeto_id=objeto_id, detalle=detalle, resultados=resultados,
+            ciudadano=ciudadano, objeto_id=objeto_id, detalle=detalle,
+            resultados=resultados, institucion_id=institucion_id,
         )
 
     def retrieve(self, request, *args, **kwargs):
@@ -179,9 +194,47 @@ class AuditaLecturaClinica:
                 ciudadano = Ciudadano.objects.filter(pk=valor).first()
                 break
 
-        self._anotar(
-            AccesoClinico.Tipo.EXPORTACION if exportacion else AccesoClinico.Tipo.LISTADO,
-            ciudadano=ciudadano,
-            detalle=" ".join(f"{k}={v}" for k, v in sorted(filtros.items())),
-            resultados=cuantos or 0,
+        tipo = AccesoClinico.Tipo.EXPORTACION if exportacion else AccesoClinico.Tipo.LISTADO
+        texto = " ".join(f"{k}={v}" for k, v in sorted(filtros.items()))
+        if ciudadano is not None:
+            self._anotar(tipo, ciudadano=ciudadano, detalle=texto, resultados=cuantos or 0)
+            return
+
+        # A qué instituciones tocó de verdad este listado.
+        #
+        # Sin esto, un administrativo con cargo en dos hospitales pedía
+        # `/api/ciudadanos/?formato=csv`, se llevaba los dos padrones en un
+        # archivo —documento, fecha de nacimiento, obra social, condiciones y
+        # alergias— y el acceso quedaba sin institución, o sea invisible para
+        # los dos admins que responden por esa base ante la Ley 25.326. Igual
+        # con el superusuario del proveedor, que no tiene ninguna membresía: el
+        # hospital no podía auditar ni a su propio empleado con doble cargo ni a
+        # su proveedor. Una fila por institución, cada una con SU cantidad: así
+        # el admin de A lee «se exportaron 2 de sus pacientes» y el de B también.
+        por_institucion = self._instituciones_alcanzadas()
+        if len(por_institucion) <= 1:
+            unica = por_institucion[0][0] if por_institucion else None
+            self._anotar(tipo, detalle=texto, resultados=cuantos or 0, institucion_id=unica)
+            return
+        for institucion_id, n in por_institucion:
+            self._anotar(tipo, detalle=texto, resultados=n, institucion_id=institucion_id)
+
+    def _instituciones_alcanzadas(self):
+        """`[(institucion_id, cuántas filas), …]` de lo que este listado devolvió."""
+        campo = getattr(self, "institucion_path", None)
+        if not campo:
+            return []
+        from django.db.models import Count
+
+        modelo = self.queryset.model
+        # Se rearma la consulta desde el modelo en vez de agrupar el queryset del
+        # viewset: ése trae anotaciones y precargas que no tienen nada que ver
+        # con contar por institución y romperían el GROUP BY.
+        filas = (
+            modelo.objects
+            .filter(pk__in=self.filter_queryset(self.get_queryset()).values("pk"))
+            .order_by()
+            .values(campo)
+            .annotate(n=Count("pk"))
         )
+        return [(f[campo], f["n"]) for f in filas]

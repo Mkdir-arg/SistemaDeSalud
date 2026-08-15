@@ -70,18 +70,64 @@ class TraduccionTests(TestCase):
         self.assertEqual(cliente.a_ciudadano({"resourceType": "OperationOutcome"}), {})
         self.assertEqual(cliente.a_ciudadano(None), {})
 
+    def test_un_given_que_viene_como_texto_no_se_guarda_letra_por_letra(self):
+        """
+        Hay padrones que mandan `"given": "Juan"` en vez de `["Juan"]`. Iterarlo
+        recorre caracteres y el paciente queda anotado «J u a n» en su historia
+        clínica; como `completar` nunca pisa un campo con contenido, esa basura
+        queda blindada y la próxima consulta ya no la toca.
+        """
+        d = cliente.a_ciudadano(_patient(name=[
+            {"use": "official", "family": "Pérez", "given": "Juan"},
+        ]))
+        self.assertEqual(d["nombre"], "Juan")
+
+    def test_un_family_que_viene_como_lista_no_rompe_el_caso(self):
+        """
+        Sin normalizar el tipo es un AttributeError que no atrapa nadie: sube
+        hasta el `@transaction.atomic` del motor y el ingreso contesta 500 con el
+        caso sin nodo y sin un solo evento que lo explique.
+        """
+        d = cliente.a_ciudadano(_patient(name=[
+            {"use": "official", "family": ["Pérez"], "given": ["Juan"]},
+        ]))
+        self.assertEqual(d["apellido"], "Pérez")
+
+    def test_una_fecha_parcial_del_padron_no_se_guarda_como_fecha(self):
+        """
+        `1985` y `1985-03` son birthDate válidas en FHIR R4 y frecuentes en
+        padrones; el DateField de Cauce no las admite. Copiarlas tal cual levanta
+        ValidationError dentro de la transacción del motor y el ingreso se cae
+        entero. Una fecha que Cauce no puede representar es mejor vacía.
+        """
+        for parcial in ("1985", "1985-03", "no sé", "1985-02-30"):
+            with self.subTest(parcial=parcial):
+                self.assertNotIn("fecha_nacimiento", cliente.a_ciudadano(_patient(birthDate=parcial)))
+
+    def test_un_nombre_larguisimo_se_recorta_al_largo_de_la_columna(self):
+        """
+        Un `family` de 300 caracteres da DataError y ABORTA la transacción de
+        Postgres: se lleva puesto el ingreso, no sólo el apellido.
+        """
+        d = cliente.a_ciudadano(_patient(name=[{"use": "official", "family": "X" * 300}]))
+        self.assertEqual(len(d["apellido"]), 120)
+
+
+def _responder(datos):
+    """Simula al servidor externo. No se sale a la red en un test."""
+    cuerpo = __import__("json").dumps(datos).encode()
+
+    class Respuesta:
+        def read(self, _n=None): return cuerpo
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    return patch("apps.fhir.cliente.urlopen", return_value=Respuesta())
+
 
 class BusquedaTests(TestCase):
     def _responder(self, datos):
-        """Simula al servidor externo. No se sale a la red en un test."""
-        cuerpo = __import__("json").dumps(datos).encode()
-
-        class Respuesta:
-            def read(self, _n=None): return cuerpo
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-
-        return patch("apps.fhir.cliente.urlopen", return_value=Respuesta())
+        return _responder(datos)
 
     def test_encuentra_a_la_persona(self):
         with self._responder(_bundle(_patient())):
@@ -131,6 +177,89 @@ class BusquedaTests(TestCase):
         with patch("apps.fhir.cliente.urlopen", side_effect=TimeoutError()) as u:
             cliente.buscar_paciente(PADRON, "30111222", sistema="urn:dni")
         self.assertIn("urn:dni|30111222", u.call_args[0][0].full_url)
+
+    def test_un_documento_con_espacios_no_tumba_el_ingreso(self):
+        """
+        «30 111 222» es lo que alguien tipea en un mostrador. Sin codificar,
+        `http.client` levanta InvalidURL, que hereda de HTTPException y NO de
+        OSError: se escapaba del except y subía hasta la transacción del motor,
+        dejando el caso sin nodo, sin eventos y con un 500 en el ingreso.
+        """
+        # Puerto cerrado: el pedido sale de verdad y falla en la conexión, que es
+        # lo que prueba que la URL quedó bien armada.
+        self.assertIsNone(cliente.buscar_paciente("http://127.0.0.1:1/fhir", "30 111 222", timeout=1))
+
+    def test_un_numeral_en_el_documento_no_consulta_por_otra_persona(self):
+        """
+        urllib trata el `#` como fragmento y lo descarta: `12345678#x` se
+        consultaba como `12345678`, o sea por alguien que no es quien se pidió.
+        """
+        with patch("apps.fhir.cliente.urlopen", side_effect=TimeoutError()) as u:
+            cliente.buscar_paciente(PADRON, "12345678#x")
+        pedido = u.call_args[0][0]
+        self.assertNotIn("#", pedido.selector)
+        self.assertIn("%23x", pedido.selector)
+
+
+class MotivoTests(TestCase):
+    """
+    Por qué falló el padrón, no sólo que falló.
+
+    Un único texto para las cuatro fallas afirma dos cosas que casi siempre son
+    mentira: que el padrón contestó y que el problema es el documento de esta
+    persona. Si el padrón provincial se cae un martes, la Trazabilidad de los 80
+    ingresos de esa mañana dice, uno por uno, que el paciente estaba mal
+    identificado, y después nadie puede reconstruir que fue una caída.
+    """
+
+    def _motivo(self, **kw):
+        return cliente.buscar_paciente_con_motivo(PADRON, "30111222", **kw)[1]
+
+    def test_un_padron_caido_no_se_confunde_con_un_documento_que_no_esta(self):
+        from urllib.error import HTTPError
+
+        casos = {
+            "sin_conexion": TimeoutError(),
+            "no_autorizado": HTTPError(PADRON, 401, "no", {}, None),
+        }
+        for esperado, error in casos.items():
+            with self.subTest(esperado=esperado):
+                with patch("apps.fhir.cliente.urlopen", side_effect=error):
+                    self.assertEqual(self._motivo(), esperado)
+
+    def test_cero_resultados_y_mas_de_uno_son_motivos_distintos(self):
+        """
+        Sólo «más de uno» justifica que alguien mire el DNI del paciente; las
+        otras son para sistemas.
+        """
+        with _responder(_bundle()):
+            self.assertEqual(self._motivo(), "sin_resultados")
+        with _responder(_bundle(_patient(), _patient(id="10"))):
+            self.assertEqual(self._motivo(), "ambiguo")
+
+    def test_sin_documento_el_motivo_lo_dice_y_no_se_consulta(self):
+        with patch("apps.fhir.cliente.urlopen") as u:
+            _, motivo = cliente.buscar_paciente_con_motivo(PADRON, "")
+        u.assert_not_called()
+        self.assertEqual(motivo, "sin_documento")
+
+    def test_cuando_encuentra_a_la_persona_no_hay_motivo(self):
+        with _responder(_bundle(_patient())):
+            patient, motivo = cliente.buscar_paciente_con_motivo(PADRON, "30111222")
+        self.assertIsNotNone(patient)
+        self.assertIsNone(motivo)
+
+    def test_cada_motivo_tiene_un_texto_para_mostrar(self):
+        """
+        Sin texto, el motivo muere en el log del servidor, que es donde no llega
+        nadie que atienda pacientes.
+        """
+        posibles = {
+            "sin_documento", "sin_conexion", "no_autorizado",
+            "respuesta_invalida", "sin_resultados", "ambiguo",
+        }
+        self.assertEqual(set(cliente.MOTIVOS), posibles)
+        self.assertTrue(all(cliente.MOTIVOS.values()))
 
 
 class CompletarTests(TestCase):

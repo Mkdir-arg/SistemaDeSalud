@@ -19,6 +19,8 @@ función que los viewsets (`registrar_acceso`), no una copia.
 usuario tiene membresía activa, ni una más. El scope no lo decide el parámetro
 de la consulta.
 """
+from urllib.parse import urlencode
+
 from django.http import JsonResponse
 from django.urls import reverse
 from drf_spectacular.utils import extend_schema
@@ -28,8 +30,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from apps.auditoria.mixins import registrar_acceso
 from apps.auditoria.models import AccesoClinico
 from apps.casos.models import Caso
+from apps.common import capacidades_de
 from apps.instituciones.models import Institucion
-from apps.registros.models import Ciudadano
+from apps.registros.models import Ciudadano, normalizar_documento
 
 from . import recursos
 
@@ -56,6 +59,16 @@ TIPO = "application/fhir+json"
 # peor para el registro de accesos, donde queda una línea que dice «miró todo».
 TOPE = 100
 
+# Los recursos que esta fachada expone de verdad. Se usa para no contestarle a un
+# cliente que Patient no existe cuando lo que pasó es que el id no tiene forma.
+IMPLEMENTADOS = ("Patient", "Encounter", "Organization")
+
+# Hasta cuántas filas de una búsqueda por identificador se anotan como lectura
+# de ESAS personas. Una persona registrada en varias instituciones de la red
+# devuelve una fila por institución: siguen siendo pocas y siguen siendo ella.
+# Más que un puñado ya no es leer a alguien, es listar.
+POCAS = 10
+
 
 def _fhir(datos, status=200):
     return JsonResponse(datos, status=status, content_type=TIPO, json_dumps_params={"ensure_ascii": False})
@@ -72,6 +85,112 @@ def _instituciones(request):
         return Institucion.objects.all()
     ids = request.user.membresias.filter(activo=True).values_list("institucion_id", flat=True)
     return Institucion.objects.filter(id__in=list(ids))
+
+
+def _id_sin_forma(tipo, pk):
+    """
+    404 para un id que no puede existir, sin negar que el recurso exista.
+
+    En FHIR el `id` es una cadena, así que `Patient/abc` y `Patient/12/_history`
+    son pedidos bien formados que un cliente arma solo. Contestar «Patient no
+    está implementado» contradice el CapabilityStatement que ese mismo cliente
+    leyó treinta segundos antes, y el integrador —que es quien decide si la
+    prueba sigue— no tiene motivo para dudar: da la integración por descartada.
+    """
+    ruta = f"{tipo}/{pk}" if pk else f"{tipo}/"
+    return _error(
+        404, "not-found",
+        f"«{tipo}» sí está implementado, pero «{ruta}» no es una ruta de este "
+        f"servidor. Los id de Cauce son numéricos ({tipo}/12), la búsqueda va sin "
+        f"barra final ({tipo}?…) y no hay operaciones ni sufijos del estándar "
+        f"(_history, _search); lo que sí hay está en /fhir/metadata.",
+    )
+
+
+def _falta_capacidad(request, capacidad):
+    """
+    El OTRO eje del permiso: no dónde, sino qué rol.
+
+    El alcance por institución no alcanza. `CiudadanoViewSet` exige la capacidad
+    `registros` incluso para LEER (`protege_lectura`), así que sin esto un
+    usuario con rol `configurador` —que existe justamente para dibujar flujos sin
+    tocar datos clínicos— recibe 403 en `/api/ciudadanos/` y se baja el padrón
+    entero por `/fhir/Patient` con su propio token. Se consulta la MISMA fuente
+    de verdad que los viewsets (`capacidades_de`), no una copia: una segunda
+    tabla de roles es un segundo lugar donde olvidarse de actualizarla.
+    """
+    if capacidad in capacidades_de(request.user):
+        return None
+    return _error(
+        403, "forbidden",
+        f"Tu rol no tiene la capacidad «{capacidad}», que es la que habilita estos datos "
+        f"en Cauce. Es el mismo permiso que pide la API interna: la fachada FHIR no es "
+        f"una puerta con otras reglas.",
+    )
+
+
+# Parámetros que toda búsqueda acepta además de los suyos. `_format` lo manda
+# cualquier cliente FHIR y no cambia nada acá: siempre se contesta JSON.
+COMUNES = {"_count", "_offset", "_format", "_pretty"}
+
+
+def _paginacion(request):
+    """
+    `(offset, count)` de esta búsqueda, dentro del tope.
+
+    Sin esto, `_offset` se ignoraba y la segunda página era idéntica a la
+    primera: el cliente que sincroniza de a cien se lleva los mismos cien
+    registros dos veces y cree que terminó, porque el `total` que declara el
+    Bundle sí es el real.
+    """
+    def entero(nombre, defecto):
+        crudo = (request.query_params.get(nombre) or "").strip()
+        return int(crudo) if crudo.isdigit() else defecto
+
+    return max(entero("_offset", 0), 0), min(entero("_count", TOPE), TOPE)
+
+
+def _enlaces(request, offset, count, devueltas, total):
+    """
+    `self` y `next` del Bundle.
+
+    El tope está bien puesto; lo que lo convierte en truncamiento silencioso es
+    no decir que hay más. Sin `next`, un hospital de 250 pacientes sincroniza 100
+    y del otro lado nadie se entera.
+    """
+    base = request.build_absolute_uri(request.path)
+    parametros = {k: v for k, v in request.query_params.items() if k not in ("_count", "_offset")}
+    enlaces = [{"relation": "self", "url": f"{base}?{urlencode({**parametros, '_count': count, '_offset': offset})}"}]
+    if offset + devueltas < total and devueltas:
+        enlaces.append({
+            "relation": "next",
+            "url": f"{base}?{urlencode({**parametros, '_count': count, '_offset': offset + devueltas})}",
+        })
+    return enlaces
+
+
+def _ignorados(request, soportados):
+    """
+    Los parámetros que esta búsqueda NO sabe aplicar.
+
+    Se devuelven como aviso dentro del Bundle (`handling=lenient` del estándar)
+    en vez de descartarlos callado: `?date=ge2099-01-01` contestando 200 con
+    todos los episodios del hospital es indistinguible de una respuesta buena, y
+    la sincronización nocturna del ministerio carga la historia entera como si
+    fuera de ayer. Nadie lo descubre hasta comparar números meses después.
+    """
+    return sorted(k for k in request.query_params if k not in soportados and k not in COMUNES)
+
+
+def _aviso_ignorados(nombres):
+    if not nombres:
+        return []
+    return [recursos.operation_outcome(
+        "warning", "not-supported",
+        "Esta búsqueda no aplicó " + ", ".join(nombres) + ": este servidor no los implementa, "
+        "así que el resultado NO está filtrado por esos parámetros. Los que sí acepta cada "
+        "recurso están en /fhir/metadata.",
+    )]
 
 
 # --------------------------------------------------------------------------- #
@@ -111,7 +230,12 @@ def metadata(request):
             "documentation": (
                 "Sólo lectura. Escribir datos clínicos salteándose el motor de flujos "
                 "dejaría el episodio sin línea de tiempo y sin sellado de integridad; "
-                "para escribir desde afuera se usa un nodo de integración del flujo."
+                "para escribir desde afuera se usa un nodo de integración del flujo. "
+                f"Las búsquedas devuelven como máximo {TOPE} recursos por página: se "
+                "paginan con _count y _offset y se sigue el link 'next' del Bundle "
+                "hasta que no venga. Un parámetro de búsqueda que este servidor no "
+                "implemente NO se aplica en silencio: vuelve como OperationOutcome de "
+                "severidad warning dentro del Bundle."
             ),
             "security": {"description": "Bearer JWT. Alcance limitado a las instituciones del usuario."},
             "resource": [
@@ -120,7 +244,13 @@ def metadata(request):
                     "interaction": [{"code": "read"}, {"code": "search-type"}],
                     "searchParam": [
                         {"name": "identifier", "type": "token",
-                         "documentation": f"Documento. Ej.: {recursos.SISTEMA_DNI}|30111222"},
+                         "documentation": (
+                             f"Documento. Ej.: {recursos.SISTEMA_DNI}|30111222, o el número "
+                             f"solo. También se buscan los identificadores que emite Cauce: "
+                             f"{recursos.SISTEMA_LOCAL}:ciu y {recursos.SISTEMA_LOCAL}:ciudadano. "
+                             f"Con cualquier otro sistema la respuesta es un Bundle vacío: "
+                             f"contestar la persona con ese documento sería devolver a otra."
+                         )},
                         {"name": "family", "type": "string"},
                     ],
                 },
@@ -144,10 +274,43 @@ def metadata(request):
 # --------------------------------------------------------------------------- #
 # Patient
 # --------------------------------------------------------------------------- #
+def _por_identificador(qs, identificador):
+    """
+    Filtra por `identifier`, respetando el `system` cuando viene.
+
+    Cada sistema apunta a una columna distinta. Un sistema que no es ninguno de
+    estos NO se busca por documento «total el número está»: el sistema del
+    organismo pregunta por número de afiliado o por su propia historia clínica,
+    recibiría 200 con la persona cuyo DNI coincide y la asociaría al episodio
+    equivocado. Del otro lado no hay nadie mirando.
+    """
+    sistema, marca, valor = identificador.rpartition("|")
+    valor = valor.strip()
+    if not valor:
+        return qs.none()
+    if not marca or sistema == recursos.SISTEMA_DNI:
+        # Sin sistema es el caso que el estándar contempla y el más común.
+        # `normalizar_documento` es la misma función con la que se guarda: sin
+        # ella, un documento escrito «7.775.258» del otro lado no encuentra nada.
+        return qs.filter(documento=normalizar_documento(valor))
+    if sistema == f"{recursos.SISTEMA_LOCAL}:ciu":
+        return qs.filter(codigo=valor)
+    if sistema == f"{recursos.SISTEMA_LOCAL}:ciudadano":
+        # Los identificadores que Cauce mismo emite tienen que poder volver a
+        # buscarse; hasta acá `urn:cauce:id:ciudadano|28` devolvía a la persona
+        # con documento 28.
+        return qs.filter(pk=valor) if valor.isdigit() else qs.none()
+    return qs.none()
+
+
 @fuera_del_openapi
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def patient_read(request, pk):
+    if (negado := _falta_capacidad(request, "registros")) is not None:
+        return negado
+    if not str(pk).isdigit():
+        return _id_sin_forma("Patient", pk)
     c = (
         Ciudadano.objects.select_related("institucion")
         .filter(pk=pk, institucion__in=_instituciones(request))
@@ -171,42 +334,67 @@ def patient_read(request, pk):
 @permission_classes([IsAuthenticated])
 def patient_search(request):
     """
-    `GET /fhir/Patient?identifier=<sistema>|<documento>&family=<apellido>`
+    `GET /fhir/Patient?identifier=[<sistema>|]<documento>&family=<apellido>`
 
     El `identifier` de FHIR viene como `sistema|valor`, y el sistema es
-    opcional. Se acepta con y sin: exigirlo haría fallar consultas correctas por
-    una cuestión de forma.
+    opcional. Se acepta SIN sistema: exigirlo haría fallar consultas correctas
+    por una cuestión de forma.
+
+    Ahora bien, si el sistema VIENE, se respeta. Ignorarlo y buscar siempre por
+    documento es lo que hacía que pedir por número de afiliado, por pasaporte o
+    por la historia clínica del otro organismo devolviera 200 y la persona cuyo
+    DNI coincide con ese número: otra persona, presentada como coincidencia. Un
+    Bundle vacío el otro lado lo sabe manejar; una identidad equivocada, no.
     """
+    if (negado := _falta_capacidad(request, "registros")) is not None:
+        return negado
+
+    # Desempate por id: `Ciudadano` ordena por apellido y nombre, que no son
+    # únicos. Paginar sobre un orden con empates hace que una fila aparezca en
+    # dos páginas o en ninguna.
     qs = Ciudadano.objects.select_related("institucion").filter(
         institucion__in=_instituciones(request)
-    )
+    ).order_by("apellido", "nombre", "id")
 
     identificador = request.query_params.get("identifier", "")
     if identificador:
-        valor = identificador.split("|")[-1].strip()
-        qs = qs.filter(documento=valor) if valor else qs.none()
+        qs = _por_identificador(qs, identificador)
     familia = request.query_params.get("family", "").strip()
     if familia:
         qs = qs.filter(apellido__icontains=familia)
 
-    filas = list(qs[:TOPE])
+    offset, count = _paginacion(request)
+    filas = list(qs[offset:offset + count])
     total = qs.count()
+    ignorados = _ignorados(request, {"identifier", "family"})
 
-    # Buscar por documento y encontrar UNA persona es leer los datos de esa
-    # persona: se anota a su nombre. Si no, consultar por documento sería la
-    # forma de mirar a alguien sin dejar rastro suyo.
-    unico = filas[0] if (identificador and len(filas) == 1) else None
-    registrar_acceso(
-        request,
-        AccesoClinico.Tipo.DETALLE if unico else AccesoClinico.Tipo.LISTADO,
-        "ciudadano",
-        ciudadano=unico,
-        objeto_id=unico.id if unico else "",
-        detalle="fhir Patient/search "
-                + " ".join(f"{k}={v}" for k, v in sorted(request.query_params.items())),
-        resultados=total,
-    )
-    return _fhir(recursos.bundle([recursos.patient(c) for c in filas], total=total))
+    detalle = ("fhir Patient/search "
+               + " ".join(f"{k}={v}" for k, v in sorted(request.query_params.items())))
+    # Buscar por identificador y encontrar a UNA persona es leer los datos de esa
+    # persona: se anota a su nombre, una línea por cada una. Si no, consultar por
+    # documento sería la forma de mirar a alguien sin dejar rastro suyo — y con
+    # una sola línea de LISTADO anónima pasaba igual en el escenario de red,
+    # donde la misma persona está registrada en dos instituciones (el unique de
+    # Ciudadano es institucion+documento) y la búsqueda devuelve dos filas. Esa
+    # lectura no aparecía en la lista que la Ley 26.529 le da derecho a pedir al
+    # paciente, que se arma filtrando por `ciudadano_id`.
+    identificadas = filas if (identificador and 0 < len(filas) <= POCAS) else []
+    if identificadas:
+        for c in identificadas:
+            registrar_acceso(
+                request, AccesoClinico.Tipo.DETALLE, "ciudadano",
+                ciudadano=c, objeto_id=c.id, detalle=detalle, resultados=total,
+            )
+    else:
+        registrar_acceso(
+            request, AccesoClinico.Tipo.LISTADO, "ciudadano",
+            detalle=detalle, resultados=total,
+        )
+    return _fhir(recursos.bundle(
+        [recursos.patient(c) for c in filas], total=total,
+        enlaces=_enlaces(request, offset, count, len(filas), total),
+        avisos=_aviso_ignorados(ignorados),
+    ))
 
 
 # --------------------------------------------------------------------------- #
@@ -235,6 +423,10 @@ def _casos(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def encounter_read(request, pk):
+    if (negado := _falta_capacidad(request, "trabajo")) is not None:
+        return negado
+    if not str(pk).isdigit():
+        return _id_sin_forma("Encounter", pk)
     caso = _casos(request).filter(pk=pk).first()
     if caso is None:
         return _error(404, "not-found", "No hay un Encounter con ese id.")
@@ -250,24 +442,48 @@ def encounter_read(request, pk):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def encounter_search(request):
-    """`GET /fhir/Encounter?patient=<id>&status=<estado FHIR>`"""
-    qs = _casos(request)
+    """`GET /fhir/Encounter?patient=<id>&status=<estado FHIR>[,<otro>]`"""
+    if (negado := _falta_capacidad(request, "trabajo")) is not None:
+        return negado
+
+    # `Caso` ordena por `-creado`, que no es único: hace falta el desempate para
+    # que paginar no repitiera ni salteara episodios.
+    qs = _casos(request).order_by("-creado", "-id")
 
     paciente = request.query_params.get("patient", "")
     if paciente:
         # FHIR admite `Patient/12` además del id pelado.
-        qs = qs.filter(ciudadano_id=paciente.split("/")[-1])
+        ref = paciente.split("/")[-1].strip()
+        if not ref.isdigit():
+            # El mismo ValueError que ya se arregló en auditoria/mixins.py y
+            # volvió a entrar por acá: `?patient=urn:uuid:9` levantaba un 500 de
+            # Django, y el integrador del otro lado escala «Cauce se cayó» por un
+            # parámetro que la fachada puede rechazar explicando qué mandar.
+            return _error(
+                400, "value",
+                "El parámetro patient tiene que ser el id numérico del Patient, "
+                "solo o como Patient/<id>. Este servidor no resuelve identificadores "
+                "lógicos ni UUID.",
+            )
+        qs = qs.filter(ciudadano_id=ref)
 
     estado = request.query_params.get("status", "").strip()
     if estado:
+        # La coma es la sintaxis estándar de FHIR para «o» en un parámetro de
+        # tipo token, y `status` está declarado como token en /fhir/metadata.
+        # Sin partirla, `status=in-progress,finished` daba total 0: un hospital
+        # sin actividad, que es un dato falso y no una carencia.
+        pedidos = {e.strip() for e in estado.split(",") if e.strip()}
         # Se traduce al revés desde el estado FHIR: varios estados de Cauce caen
         # en `in-progress`, así que filtrar por el texto crudo no encontraría
         # nada aunque haya casos que corresponden.
-        propios = [c for c, f in recursos.ESTADO_ENCOUNTER.items() if f == estado]
+        propios = [c for c, f in recursos.ESTADO_ENCOUNTER.items() if f in pedidos]
         qs = qs.filter(estado__in=propios) if propios else qs.none()
 
-    filas = list(qs[:TOPE])
+    offset, count = _paginacion(request)
+    filas = list(qs[offset:offset + count])
     total = qs.count()
+    ignorados = _ignorados(request, {"patient", "status"})
 
     ciudadano = filas[0].ciudadano if (paciente and filas) else None
     registrar_acceso(
@@ -277,7 +493,11 @@ def encounter_search(request):
                 + " ".join(f"{k}={v}" for k, v in sorted(request.query_params.items())),
         resultados=total,
     )
-    return _fhir(recursos.bundle([recursos.encounter(c) for c in filas], total=total))
+    return _fhir(recursos.bundle(
+        [recursos.encounter(c) for c in filas], total=total,
+        enlaces=_enlaces(request, offset, count, len(filas), total),
+        avisos=_aviso_ignorados(ignorados),
+    ))
 
 
 # --------------------------------------------------------------------------- #
@@ -291,6 +511,8 @@ def encounter_search(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def organization_read(request, pk):
+    if not str(pk).isdigit():
+        return _id_sin_forma("Organization", pk)
     i = _instituciones(request).filter(pk=pk).first()
     if i is None:
         return _error(404, "not-found", "No hay una Organization con ese id.")
@@ -301,8 +523,15 @@ def organization_read(request, pk):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def organization_search(request):
-    qs = _instituciones(request)
-    return _fhir(recursos.bundle([recursos.organization(i) for i in qs[:TOPE]], total=qs.count()))
+    qs = _instituciones(request).order_by("nombre", "id")
+    offset, count = _paginacion(request)
+    filas = list(qs[offset:offset + count])
+    total = qs.count()
+    return _fhir(recursos.bundle(
+        [recursos.organization(i) for i in filas], total=total,
+        enlaces=_enlaces(request, offset, count, len(filas), total),
+        avisos=_aviso_ignorados(_ignorados(request, set())),
+    ))
 
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +554,14 @@ def no_soportado(request, tipo=None, pk=None):
             "motor dejaría el episodio sin línea de tiempo ni sellado de integridad; "
             "para escribir desde afuera se usa un nodo de integración del flujo.",
         )
+    # Un recurso que SÍ está implementado no puede salir por acá diciendo lo
+    # contrario. Acá caen `Patient/abc`, `Patient/12/_history` y `Patient/_search`
+    # —formas que un cliente FHIR arma sin pensarlo, porque el `id` del estándar
+    # es una cadena—, y el integrador que treinta segundos antes leyó el
+    # CapabilityStatement no tiene motivo para dudar del mensaje: da la
+    # integración por descartada.
+    if tipo in IMPLEMENTADOS:
+        return _id_sin_forma(tipo, pk)
     return _error(
         404, "not-supported",
         f"«{tipo}» no está implementado. Este servidor expone Patient, Encounter y "

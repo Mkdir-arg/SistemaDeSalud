@@ -7,6 +7,9 @@ verifican lo único que importa del sellado —que ese cambio se detecte— y qu
 cadena entre entradas haga que alterar una vieja no alcance con recalcular su
 propio resumen.
 """
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import LegajoProfesional, Membresia, Usuario
@@ -167,6 +170,68 @@ class CadenaTests(IntegridadTestCase):
         self._entrada(titulo="Tercera")
         EntradaHistoria.objects.filter(pk=b.pk).delete()
         self.assertFalse(integridad.verificar_historia(self.hc)["ok"])
+
+
+class EntradaInsertadaPorAfueraTests(IntegridadTestCase):
+    """
+    La otra forma de alterar una historia: no editar, insertar.
+
+    La cadena encarece editar una entrada vieja. Insertar sigue costando una
+    fila, y el resultado es el mismo: una atención que nunca ocurrió dentro de un
+    expediente que se presenta como intacto.
+    """
+
+    def test_una_entrada_firmada_sin_sello_de_hoy_se_denuncia_en_vez_de_saltearse(self):
+        """
+        `sello` es `editable=False` y el alta sella en la misma transacción: una
+        fila firmada y sin sello no la pudo escribir la aplicación. Antes se
+        salteaba —ni se contaba como problema ni cortaba la cadena—, así que la
+        jefatura abría el panel de INTEGRIDAD y leía en verde «Sin alteraciones»
+        sobre una historia con una atención fabricada, con la pantalla que existe
+        para probar lo contrario.
+        """
+        self._entrada(titulo="Primera")
+        fabricada = EntradaHistoria.objects.create(
+            historia=self.hc, titulo="Se indicó control en 48 hs y pautas de alarma",
+            contenido="Paciente en condiciones de alta.", autor=self.med,
+            firmada=True, matricula="MP 12345",
+        )
+
+        r = integridad.verificar_historia(self.hc)
+        self.assertFalse(r["ok"], "la entrada insertada pasó como «anterior al sellado»")
+        self.assertIn(fabricada.id, [p["entrada"] for p in r["problemas"]])
+
+    def test_una_entrada_anterior_al_sellado_sigue_quedando_fuera_y_dice_desde_cuando(self):
+        """
+        La salvedad tiene que seguir existiendo para las historias que venían de
+        antes —decir «alterada» de algo que nunca se pudo sellar es una alarma
+        falsa que enseña a ignorar las verdaderas—, pero ahora con una fecha y
+        una cantidad, para que se pueda comprobar en vez de invocar.
+        """
+        vieja = EntradaHistoria.objects.create(
+            historia=self.hc, titulo="Control 2019", autor=self.med, firmada=True,
+        )
+        EntradaHistoria.objects.filter(pk=vieja.pk).update(
+            fecha=timezone.now() - timedelta(days=900)
+        )
+        self._entrada(titulo="Atención de hoy")
+
+        r = integridad.verificar_historia(self.hc)
+        self.assertTrue(r["ok"], r["problemas"])
+        self.assertEqual(r["fuera_de_alcance"], 1)
+        self.assertIsNotNone(r["sella_desde"])
+
+    def test_la_verificacion_por_api_tambien_lo_delata(self):
+        """Es la pantalla que se presenta ante un reclamo; si ahí sale verde, da igual el resto."""
+        self.client.force_authenticate(self.med)
+        self._entrada(titulo="Primera")
+        EntradaHistoria.objects.create(
+            historia=self.hc, titulo="Alta médica", autor=self.med,
+            firmada=True, matricula="MP 12345",
+        )
+        r = self.client.get(f"/api/historias-clinicas/{self.hc.id}/verificar/")
+        self.assertFalse(r.data["ok"])
+        self.assertTrue(r.data["problemas"])
 
 
 class DosAlaVezTests(IntegridadTestCase):

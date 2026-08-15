@@ -5,7 +5,29 @@ Registros: lo que persiste más allá de un caso.
 - HistoriaClinica + EntradaHistoria / Estudio / Receta: el expediente clínico.
 El legajo profesional (de los usuarios) vive en `apps.accounts`.
 """
+import re
+
 from django.db import models
+
+_SEPARADORES = re.compile(r"[^0-9A-Za-z]")
+
+
+def normalizar_documento(valor) -> str:
+    """
+    El documento como se COMPARA, no como lo escribió el administrativo.
+
+    En Argentina el DNI se escribe con puntos: es lo que dice el documento
+    físico que la persona tiene en la mano, o sea el caso normal y no el raro.
+    Guardado tal cual, «30.111.222» y «30111222» son dos cadenas distintas para
+    la base, la UniqueConstraint de abajo deja pasar la segunda y el paciente
+    queda con dos historias clínicas paralelas: el médico abre una al azar y la
+    alergia, la medicación crónica y la última internación pueden estar en la
+    otra. No hay forma de fusionarlas, así que prevenir es toda la defensa.
+
+    Se van puntos, espacios y guiones; las letras (pasaportes, LC/LE) quedan en
+    mayúscula para que «ab123456» no sea un paciente distinto de «AB123456».
+    """
+    return _SEPARADORES.sub("", str(valor or "")).upper()
 
 
 class Ciudadano(models.Model):
@@ -43,6 +65,15 @@ class Ciudadano(models.Model):
                 name="ciudadano_documento_unico_por_institucion",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        # La normalización va acá y no sólo en el serializer porque la constraint
+        # de arriba compara la cadena guardada: si un alta entra por otro camino
+        # —el motor al ingresar un paciente, un import, el admin— con el DNI
+        # punteado, la base acepta el duplicado igual y el módulo pierde su única
+        # defensa contra las dos historias clínicas del mismo paciente.
+        self.documento = normalizar_documento(self.documento)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         nombre = f"{self.nombre} {self.apellido}".strip()

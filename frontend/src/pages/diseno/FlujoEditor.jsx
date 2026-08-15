@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { Badge, Button, Checkbox, Field, Input, Select, Spinner, Textarea } from "../../components/ui";
+import { Badge, Button, Checkbox, ConfirmDialog, Field, Input, Select, Spinner, Textarea } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { estadoCaso, estadoVersion } from "../../lib/dominio";
 import { TIPOS_NODO, catDe } from "@/lib/nodos";
@@ -29,6 +29,15 @@ function tamanoMundo(nodos) {
   };
 }
 const PALETA = TIPOS_NODO.map((tipo) => ({ tipo, ...catDe(tipo) }));
+
+// Ancho de ventana por debajo del cual el lienzo no entra entre los dos paneles
+// laterales (188 + 300, más los 244 del menú del Shell). Por debajo, los paneles
+// arrancan colapsados.
+const ANCHO_COMODO = 1100;
+const esAngosto = () => typeof window !== "undefined" && window.innerWidth < ANCHO_COMODO;
+// Por debajo de este ancho el minimapa (168px) deja de orientar y sólo tapa
+// media pantalla, encimándose además con la barra de zoom.
+const LIENZO_MIN_MINIMAPA = 500;
 
 // Operadores de regla en lenguaje natural (los usa el RuleBuilder y la etiqueta
 // automática de las ramas de Decisión en el lienzo).
@@ -78,6 +87,50 @@ function listaACondicion(op, reglas) {
   return { op, reglas: utiles };
 }
 
+// `max_page_size` de la paginación del backend (cauce/pagination.py).
+const PAGINA_MAX = 200;
+
+/**
+ * El host de una URL configurada, para mostrarla en el lienzo.
+ *
+ * Es el dato que se quiere ver de un vistazo cuando la pregunta es «¿qué de
+ * esto sale a internet y a dónde?». La URL entera no entra en un nodo de 184px
+ * y una URL a medio escribir no tiene por qué romper el dibujo del flujo.
+ */
+function hostDe(url) {
+  try {
+    return new URL(String(url)).host;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Trae TODAS las páginas de un listado, no la primera.
+ *
+ * La API pagina de a 25 y estos catálogos se leían con `d.results`: en una
+ * institución con más de 25 formularios —uno por área es lo normal: admisión,
+ * triage, consentimientos, enfermería— los siguientes no aparecían en el
+ * desplegable del nodo y nada lo decía, la lista simplemente terminaba. Con los
+ * grupos es peor: el paso queda sin responsable, y un nodo sin grupos es un paso
+ * ABIERTO A TODOS. Y los campos de los formularios que quedaban afuera no se
+ * podían usar en ninguna Decisión, con lo cual las reglas ya creadas sobre ellos
+ * se dibujaban en el lienzo como «campo > 65».
+ */
+async function traerTodo(url) {
+  const sep = url.includes("?") ? "&" : "?";
+  const todo = [];
+  // Cota dura: 50 páginas son 10.000 filas. Si una institución tuviera más, el
+  // problema es otro y un bucle sin fin en el editor no lo arregla.
+  for (let pagina = 1; pagina <= 50; pagina++) {
+    const d = await api.get(`${url}${sep}page_size=${PAGINA_MAX}&page=${pagina}`);
+    if (Array.isArray(d)) return d; // endpoints que no paginan
+    todo.push(...(d.results || []));
+    if (!d.next) break;
+  }
+  return todo;
+}
+
 export default function FlujoEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -97,7 +150,12 @@ export default function FlujoEditor() {
   const seleccionRef = useRef(seleccion);
   seleccionRef.current = seleccion;
 
-  const seleccionarSolo = useCallback((id) => setSeleccion(id == null ? new Set() : new Set([id])), []);
+  const seleccionarSolo = useCallback((id) => {
+    setSeleccion(id == null ? new Set() : new Set([id]));
+    // Ver: `angostoRef`. En pantalla ancha el panel ya está abierto y esto no
+    // hace nada; en una tablet es lo que hace que tocar un nodo muestre algo.
+    if (id != null && angostoRef.current) setPanelAbierto(true);
+  }, []);
   const alternarSeleccion = useCallback((id) => setSeleccion((s) => {
     const n = new Set(s);
     if (n.has(id)) n.delete(id);
@@ -135,9 +193,23 @@ export default function FlujoEditor() {
     setToast(t);
     toastTimer.current = setTimeout(() => setToast(null), ms);
   }
-  function marcarError() {
+  /**
+   * Falla de guardado.
+   *
+   * El servidor manda el motivo escrito para leerse («Esta versión ya está
+   * publicada y no se edita: los casos en curso están parados sobre estos nodos.
+   * Sacá una versión nueva…»). Descartarlo y culpar siempre a la conexión hace
+   * que la persona reintente, acomode diez nodos, y termine reportando «se cae
+   * internet» en vez de «tengo que sacar una versión nueva», que es el botón que
+   * tiene al lado. El texto de red queda para las fallas SIN respuesta.
+   */
+  function marcarError(e) {
     setGuardado("error");
-    mostrarToast({ tipo: "error", msg: "No se pudo guardar. Revisá tu conexión e intentá de nuevo." });
+    const detalle = typeof e?.data?.detail === "string" ? e.data.detail : null;
+    mostrarToast(
+      { tipo: "error", msg: detalle || "No se pudo guardar. Revisá tu conexión e intentá de nuevo." },
+      detalle ? 9000 : 4000,
+    );
   }
 
   const cargarVersion = useCallback(async (vid) => {
@@ -157,8 +229,8 @@ export default function FlujoEditor() {
         await cargarVersion(v.id);
       }
       // Campos disponibles para reglas: los de los formularios de la institución.
-      const fs = await api.get(`/formularios/?institucion=${f.institucion}`);
-      const lista = (fs.results || fs).flatMap((form) =>
+      const fs = await traerTodo(`/formularios/?institucion=${f.institucion}`);
+      const lista = fs.flatMap((form) =>
         (form.campos || []).map((c) => ({ id: c.id, label: c.label, formulario: form.titulo, formularioId: form.id, opciones: c.opciones, tipo: c.tipo, requerido: c.requerido }))
       );
       setCampos(lista);
@@ -180,6 +252,21 @@ export default function FlujoEditor() {
   // así no re-suscribimos en cada movimiento ni quedan listeners colgados.
   const versionRef = useRef(version);
   versionRef.current = version;
+
+  /*
+   * Una versión publicada NO se edita, y ahora la pantalla entera lo respeta.
+   *
+   * El servidor rechaza cualquier escritura del grafo —los casos en curso están
+   * parados sobre esos nodos— con un mensaje escrito para leerse. El editor lo
+   * decía sólo en un cartel: la paleta seguía invitando a agregar nodos, los
+   * nodos se arrastraban, los campos del panel se editaban y el botón rojo
+   * «Eliminar nodo» seguía ahí. La pantalla decía tres cosas contradictorias a la
+   * vez —el cartel dice que no se edita, el nodo se ve movido como si se hubiera
+   * guardado, y el toast culpa a la red—, así que se acomodaban diez nodos, se
+   * cambiaban responsables, y al recargar no quedaba nada.
+   */
+  const soloLectura = !!version && version.estado !== "borrador";
+
   const [dragId, setDragId] = useState(null);
   // Arrastre de conexión desde el handle de salida de un nodo (línea-fantasma).
   const conn = useRef(null);
@@ -361,7 +448,9 @@ export default function FlujoEditor() {
     // lo calculaba con las posiciones viejas y dejaba el lienzo mirando a un
     // lugar vacío.
     await mover(despues);
-    mostrarToast({ tipo: "ok", msg: "Diagrama ordenado", accion: { txt: "Deshacer", fn: deshacer } });
+    // `label`, no `txt`: el Toast pinta `accion.label` y con la otra clave el
+    // botón salía vacío, justo en la operación que reubica TODOS los nodos.
+    mostrarToast({ tipo: "ok", msg: "Diagrama ordenado", accion: { label: "Deshacer", fn: deshacer } });
     ajustar();
   }
 
@@ -410,9 +499,25 @@ export default function FlujoEditor() {
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const [, setHistTick] = useState(0);
-  // Paneles laterales colapsables (para pantallas chicas / tablets).
-  const [paletaAbierta, setPaletaAbierta] = useState(true);
-  const [panelAbierto, setPanelAbierto] = useState(true);
+  /*
+   * Paneles laterales colapsables.
+   *
+   * Arrancan según el ancho de la ventana. La fila es paleta (188px) + lienzo +
+   * propiedades (300px), y con los dos abiertos a 1024px —una tablet, o la
+   * máquina de escritorio administrativa— el lienzo queda en 292px: menos de dos
+   * nodos, que miden 184. A 390px queda en 0px y el diagrama directamente no se
+   * dibuja. La salida existía (dos chevrones sin texto) y nada indicaba que
+   * hubiera que tocarlos: lo que la persona concluye es que el diseñador «no anda
+   * en esta computadora».
+   */
+  const [paletaAbierta, setPaletaAbierta] = useState(() => !esAngosto());
+  const [panelAbierto, setPanelAbierto] = useState(() => !esAngosto());
+  // En pantalla angosta el panel arranca cerrado, así que elegir un nodo tiene
+  // que abrirlo: si no, tocar un nodo no muestra nada y no hay nada que lo diga.
+  const angostoRef = useRef(esAngosto());
+  // Lo que se está por borrar, a la espera de confirmación:
+  // {tipo:"nodos", ids, nodos, conexiones} | {tipo:"conexion", conexion}
+  const [aConfirmar, setAConfirmar] = useState(null);
 
   function onNodoPointerDown(e, nodo) {
     e.stopPropagation();
@@ -429,6 +534,11 @@ export default function FlujoEditor() {
     // agarrar uno de afuera pasa a seleccionarlo solo a él.
     const enGrupo = seleccionRef.current.has(nodo.id) && seleccionRef.current.size > 1;
     if (!enGrupo) seleccionarSolo(nodo.id);
+
+    // En una versión publicada el nodo se puede elegir para LEER su
+    // configuración, pero no se arrastra: el PATCH de posición vuelve 409 y el
+    // nodo quedaba dibujado donde nadie lo guardó.
+    if (soloLectura) return;
 
     const ids = enGrupo ? [...seleccionRef.current] : [nodo.id];
     const rect = canvasRef.current.getBoundingClientRect();
@@ -519,6 +629,7 @@ export default function FlujoEditor() {
   function onHandlePointerDown(e, nodo) {
     e.stopPropagation();
     if (e.button != null && e.button !== 0) return;
+    if (soloLectura) return; // el POST de la conexión vuelve 409
     conn.current = { fromId: nodo.id };
     const rect = canvasRef.current.getBoundingClientRect();
     const z = zoomRef.current;
@@ -547,7 +658,7 @@ export default function FlujoEditor() {
         const c = await api.post("/conexiones/", { version: verId, origen: from, destino: toId });
         setVersion((v) => ({ ...v, conexiones: [...v.conexiones, c] }));
         marcarGuardado();
-      } catch { marcarError(); }
+      } catch (e) { marcarError(e); }
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -577,7 +688,7 @@ export default function FlujoEditor() {
       setVersion((v) => ({ ...v, nodos: [...v.nodos, n] }));
       setSel(n.id);
       marcarGuardado();
-    } catch { marcarError(); }
+    } catch (e) { marcarError(e); }
   }
 
   async function clickNodo(nodo, e) {
@@ -597,7 +708,7 @@ export default function FlujoEditor() {
         const c = await api.post("/conexiones/", { version: verId, origen, destino: nodo.id });
         setVersion((v) => ({ ...v, conexiones: [...v.conexiones, c] }));
         marcarGuardado();
-      } catch { marcarError(); }
+      } catch (e) { marcarError(e); }
       return;
     }
     setSel(nodo.id);
@@ -627,21 +738,35 @@ export default function FlujoEditor() {
 
   // Aplicadores «silenciosos»: mutan + persisten SIN registrar en el historial
   // (los usan tanto las acciones del usuario como el propio undo/redo).
+  // Restaura un nodo tal como estaba, sin tocar el resto del grafo. Revertir con
+  // una foto de la versión ENTERA borra de la pantalla los otros cambios que sí
+  // se guardaron bien, y el configurador los rehace sobre un lienzo que ya no
+  // coincide con la base.
+  const revertirNodo = (anterior) => {
+    if (!anterior) return;
+    setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === anterior.id ? anterior : n)) }));
+  };
+
   async function aplicarPos(nodoId, x, y) {
-    if (!versionRef.current.nodos.some((n) => n.id === nodoId)) return;
+    const anterior = versionRef.current.nodos.find((n) => n.id === nodoId);
+    if (!anterior) return;
     setVersion((v) => ({ ...v, nodos: v.nodos.map((n) => (n.id === nodoId ? { ...n, x, y } : n)) }));
     marcarGuardando();
-    try { await api.patch(`/nodos/${nodoId}/`, { x, y }); marcarGuardado(); } catch { marcarError(); }
+    try { await api.patch(`/nodos/${nodoId}/`, { x, y }); marcarGuardado(); }
+    // Sin revertir, el nodo queda DIBUJADO en una posición que no está guardada
+    // en ningún lado: al recargar vuelve a su lugar y el acomodado se perdió sin
+    // que nada lo dijera.
+    catch (e) { revertirNodo(anterior); marcarError(e); }
   }
   async function aplicarNodo(nodoId, cambios) {
-    const prev = versionRef.current;
+    const anterior = versionRef.current.nodos.find((n) => n.id === nodoId);
     setVersion((v) => ({ ...v, nodos: v.nodos.map((x) => (x.id === nodoId ? { ...x, ...cambios } : x)) }));
     marcarGuardando();
     try {
       const n = await api.patch(`/nodos/${nodoId}/`, cambios);
       setVersion((v) => ({ ...v, nodos: v.nodos.map((x) => (x.id === nodoId ? n : x)) }));
       marcarGuardado();
-    } catch { setVersion(prev); marcarError(); }
+    } catch (e) { revertirNodo(anterior); marcarError(e); }
   }
 
   async function actualizarNodo(nodoId, cambios) {
@@ -654,71 +779,169 @@ export default function FlujoEditor() {
     await aplicarNodo(nodoId, cambios);
   }
 
-  async function borrarNodo(nodoId) {
-    const nodo = version.nodos.find((n) => n.id === nodoId);
-    const conexiones = version.conexiones.filter((c) => c.origen === nodoId || c.destino === nodoId);
-    const snapshot = version;
-    setVersion((v) => ({
-      ...v,
-      nodos: v.nodos.filter((n) => n.id !== nodoId),
-      conexiones: v.conexiones.filter((c) => c.origen !== nodoId && c.destino !== nodoId),
+  const borrarNodo = (nodoId) => borrarNodos([nodoId]);
+
+  /**
+   * Borra uno o VARIOS nodos como una sola operación.
+   *
+   * Antes el borrado múltiple era `[...seleccion].forEach(borrarNodo)`: N
+   * borrados, N toasts, y `mostrarToast` pisa el anterior — de ocho nodos
+   * borrados sobrevivía un único «Deshacer», el del último, y los otros siete
+   * había que reconstruirlos a mano (formulario asignado, grupos, SLA,
+   * condiciones y pantalla de llamados incluidos). Ctrl+Z tampoco ayuda: el
+   * borrado queda fuera del historial a propósito.
+   */
+  async function borrarNodos(ids) {
+    const v = versionRef.current;
+    const nodos = v.nodos.filter((n) => ids.includes(n.id));
+    if (!nodos.length) return;
+    const conexiones = v.conexiones.filter((c) => ids.includes(c.origen) || ids.includes(c.destino));
+    const snapshot = v;
+    setVersion((prev) => ({
+      ...prev,
+      nodos: prev.nodos.filter((n) => !ids.includes(n.id)),
+      conexiones: prev.conexiones.filter((c) => !ids.includes(c.origen) && !ids.includes(c.destino)),
     }));
-    setSel(null);
-    if (conectarDesde === nodoId) setConectarDesde(null);
+    setSeleccion(new Set());
+    if (ids.includes(conectarDesde)) setConectarDesde(null);
     marcarGuardando();
     try {
-      await api.del(`/nodos/${nodoId}/`);
+      for (const n of nodos) await api.del(`/nodos/${n.id}/`);
       marcarGuardado();
+      const cuantas = conexiones.length
+        ? ` y ${conexiones.length} conexión${conexiones.length > 1 ? "es" : ""}`
+        : "";
       mostrarToast({
         tipo: "ok",
-        msg: `Se eliminó «${nodo?.titulo}»${conexiones.length ? ` y ${conexiones.length} conexión${conexiones.length > 1 ? "es" : ""}` : ""}.`,
-        accion: { label: "Deshacer", fn: () => restaurarNodo(nodo, conexiones) },
-      }, 7000);
-    } catch { setVersion(snapshot); marcarError(); }
+        msg: nodos.length === 1
+          ? `Se eliminó «${nodos[0].titulo}»${cuantas}.`
+          : `Se eliminaron ${nodos.length} nodos${cuantas}.`,
+        accion: { label: "Deshacer", fn: () => restaurarNodos(nodos, conexiones) },
+      }, 9000);
+    } catch (e) { setVersion(snapshot); marcarError(e); }
   }
 
-  // Rehace un nodo borrado y sus conexiones (remapeando el id al nuevo nodo).
-  async function restaurarNodo(nodo, conexiones) {
+  // Rehace los nodos borrados y sus conexiones (remapeando los ids a los nuevos).
+  async function restaurarNodos(nodos, conexiones) {
     setToast(null);
     marcarGuardando();
     try {
-      const n = await api.post("/nodos/", {
-        version: verId, tipo: nodo.tipo, titulo: nodo.titulo, descripcion: nodo.descripcion,
-        x: nodo.x, y: nodo.y, config: nodo.config || {}, formulario: nodo.formulario, grupos: nodo.grupos || [],
-      });
+      const creados = [];
+      const mapa = new Map(); // id viejo → id nuevo
+      for (const nodo of nodos) {
+        const n = await api.post("/nodos/", {
+          version: verId, tipo: nodo.tipo, titulo: nodo.titulo, descripcion: nodo.descripcion,
+          x: nodo.x, y: nodo.y, config: nodo.config || {}, formulario: nodo.formulario, grupos: nodo.grupos || [],
+        });
+        creados.push(n);
+        mapa.set(nodo.id, n.id);
+      }
       const nuevas = [];
       for (const c of conexiones) {
         // La otra punta debe seguir existiendo; si no, se omite esa conexión.
-        const origen = c.origen === nodo.id ? n.id : c.origen;
-        const destino = c.destino === nodo.id ? n.id : c.destino;
-        const existe = (gid) => gid === n.id || versionRef.current.nodos.some((x) => x.id === gid);
+        const origen = mapa.get(c.origen) ?? c.origen;
+        const destino = mapa.get(c.destino) ?? c.destino;
+        const existe = (gid) => creados.some((x) => x.id === gid) || versionRef.current.nodos.some((x) => x.id === gid);
         if (!existe(origen) || !existe(destino)) continue;
         nuevas.push(await api.post("/conexiones/", { version: verId, origen, destino, etiqueta: c.etiqueta, condicion: c.condicion }));
       }
-      setVersion((v) => ({ ...v, nodos: [...v.nodos, n], conexiones: [...v.conexiones, ...nuevas] }));
-      setSel(n.id);
+      setVersion((v) => ({ ...v, nodos: [...v.nodos, ...creados], conexiones: [...v.conexiones, ...nuevas] }));
+      setSeleccion(new Set(creados.map((n) => n.id)));
       marcarGuardado();
-    } catch { marcarError(); }
+    } catch (e) { marcarError(e); }
   }
 
+  /**
+   * Quitar una conexión se lleva su etiqueta y su CONDICIÓN completa.
+   *
+   * En un nodo Decisión la conexión ES la regla: «mayor de 65 Y dolor torácico»
+   * son varios minutos de RuleBuilder y un clic de distancia de desaparecer. No
+   * estaba en el historial ni ofrecía «Deshacer» —a diferencia del borrado de
+   * nodos y de la edición de la propia conexión—, así que si nadie lo notaba la
+   * decisión quedaba con una rama menos y todos los casos caían por la rama por
+   * defecto: pacientes que tenían que ir a una especialidad siguen por el camino
+   * general.
+   */
   async function borrarConexion(cid) {
-    const snapshot = version;
+    const conexion = versionRef.current.conexiones.find((c) => c.id === cid);
+    const snapshot = versionRef.current;
     setVersion((v) => ({ ...v, conexiones: v.conexiones.filter((c) => c.id !== cid) }));
     if (selConexion === cid) setSelConexion(null);
     marcarGuardando();
-    try { await api.del(`/conexiones/${cid}/`); marcarGuardado(); }
-    catch { setVersion(snapshot); marcarError(); }
+    try {
+      await api.del(`/conexiones/${cid}/`);
+      marcarGuardado();
+      if (conexion) {
+        mostrarToast({
+          tipo: "ok",
+          msg: `Se quitó la conexión${conexion.etiqueta ? ` «${conexion.etiqueta}»` : ""}.`,
+          accion: { label: "Deshacer", fn: () => restaurarConexion(conexion) },
+        }, 9000);
+      }
+    } catch (e) { setVersion(snapshot); marcarError(e); }
+  }
+
+  async function restaurarConexion(conexion) {
+    setToast(null);
+    // Los dos extremos tienen que seguir existiendo: si se borró el nodo, la
+    // conexión no tiene dónde volver.
+    const existe = (gid) => versionRef.current.nodos.some((n) => n.id === gid);
+    if (!existe(conexion.origen) || !existe(conexion.destino)) return;
+    marcarGuardando();
+    try {
+      const c = await api.post("/conexiones/", {
+        version: verId, origen: conexion.origen, destino: conexion.destino,
+        etiqueta: conexion.etiqueta, condicion: conexion.condicion,
+      });
+      setVersion((v) => ({ ...v, conexiones: [...v.conexiones, c] }));
+      setSelConexion(c.id);
+      marcarGuardado();
+    } catch (e) { marcarError(e); }
+  }
+
+  /** ¿Esta conexión se lleva una regla puesta? Entonces se pregunta antes. */
+  const conexionConRegla = (c) => {
+    if (!c) return false;
+    const { reglas } = condicionALista(c.condicion);
+    return !!c.etiqueta || reglas.length > 0;
+  };
+  function pedirBorrarConexion(cid) {
+    const c = versionRef.current.conexiones.find((x) => x.id === cid);
+    if (conexionConRegla(c)) setAConfirmar({ tipo: "conexion", conexion: c });
+    else borrarConexion(cid);
+  }
+
+  /**
+   * Borrado de la selección, con confirmación cuando hay más de un nodo.
+   *
+   * Una rama de un flujo son cinco o seis nodos con formulario asignado, grupos
+   * responsables, SLA, condiciones y pantalla de llamados. Se encierran con la
+   * marquesina en un gesto y un Suprimir de más se los lleva puestos. De a uno no
+   * se pregunta: eso ya es reversible con su «Deshacer» y confirmar cada nodo
+   * sería un obstáculo en el trabajo normal de diseñar.
+   */
+  function pedirBorrarNodos(ids) {
+    const v = versionRef.current;
+    const nodos = v.nodos.filter((n) => ids.includes(n.id));
+    if (!nodos.length) return;
+    if (nodos.length === 1) return borrarNodos(ids);
+    const conexiones = v.conexiones.filter((c) => ids.includes(c.origen) || ids.includes(c.destino));
+    setAConfirmar({ tipo: "nodos", ids, nodos, conexiones });
   }
 
   async function aplicarConexion(cid, cambios) {
-    const prev = versionRef.current;
+    const anterior = versionRef.current.conexiones.find((c) => c.id === cid);
     setVersion((v) => ({ ...v, conexiones: v.conexiones.map((x) => (x.id === cid ? { ...x, ...cambios } : x)) }));
     marcarGuardando();
     try {
       const c = await api.patch(`/conexiones/${cid}/`, cambios);
       setVersion((v) => ({ ...v, conexiones: v.conexiones.map((x) => (x.id === cid ? c : x)) }));
       marcarGuardado();
-    } catch { setVersion(prev); marcarError(); }
+    } catch (e) {
+      // Igual que en los nodos: se revierte SÓLO la conexión tocada.
+      if (anterior) setVersion((v) => ({ ...v, conexiones: v.conexiones.map((x) => (x.id === cid ? anterior : x)) }));
+      marcarError(e);
+    }
   }
 
   async function actualizarConexion(cid, cambios) {
@@ -731,11 +954,25 @@ export default function FlujoEditor() {
     await aplicarConexion(cid, cambios);
   }
 
+  /*
+   * Todo el feedback del editor —validación, ensayo y el rechazo de un
+   * Publicar— se dibuja DENTRO del panel de propiedades, y ese panel se cierra
+   * por el motivo más razonable del mundo: ver el diagrama. Con el panel
+   * cerrado, «Validar» era un botón que no hacía nada visible y un Publicar
+   * rechazado por errores no dejaba rastro en ninguna parte: el configurador se
+   * iba convencido de que la versión quedó publicada mientras en la institución
+   * seguía corriendo la anterior. Mostrar feedback abre el panel, siempre.
+   */
+  function mostrarProblemas(p) {
+    setProblemas(p);
+    setPanelAbierto(true);
+  }
+
   async function validar() {
     setValidando(true);
     try {
       const r = await api.get(`/versiones-flujo/${verId}/validar/`);
-      setProblemas(r);
+      mostrarProblemas(r);
     } catch { mostrarToast({ tipo: "error", msg: "No se pudo validar el flujo." }); }
     finally { setValidando(false); }
   }
@@ -746,11 +983,19 @@ export default function FlujoEditor() {
       await cargarVersion(verId);
       const f = await api.get(`/flujos/${id}/`);
       setFlujo(f);
-      setProblemas({ problemas: [], errores: 0, avisos: 0, puede_publicar: true, publicado: true });
+      mostrarProblemas({ problemas: [], errores: 0, avisos: 0, puede_publicar: true, publicado: true });
       mostrarToast({ tipo: "ok", msg: "Versión publicada ✓" });
     } catch (e) {
-      if (e?.data?.problemas) setProblemas({ ...e.data, errores: e.data.problemas.filter((p) => p.sev === "error").length });
-      else mostrarToast({ tipo: "error", msg: "No se pudo publicar la versión." });
+      if (e?.data?.problemas) {
+        const errores = e.data.problemas.filter((p) => p.sev === "error").length;
+        mostrarProblemas({ ...e.data, errores });
+        // El toast además es independiente del panel: que «no se publicó» no
+        // dependa de que la persona esté mirando la columna de la derecha.
+        mostrarToast({
+          tipo: "error",
+          msg: `No se publicó: el flujo tiene ${errores === 1 ? "1 error" : `${errores} errores`}.`,
+        });
+      } else mostrarToast({ tipo: "error", msg: e?.data?.detail || "No se pudo publicar la versión." });
     } finally { setPublicando(false); }
   }
 
@@ -815,7 +1060,10 @@ export default function FlujoEditor() {
         estado: r.estado,
         prioridad: r.prioridad,
       };
+      // El ensayo deja el editor en modo prueba: sin el panel no hay formulario
+      // que completar, ni botón para avanzar, ni forma de salir del modo.
       setSim(estado);
+      setPanelAbierto(true);
       return estado;
     } catch (e) {
       mostrarToast({ tipo: "error", msg: e?.data?.detail || "No se pudo probar el flujo." });
@@ -879,7 +1127,15 @@ export default function FlujoEditor() {
     const v = versionRef.current;
     const nodos = v.nodos.filter((n) => ids.has(n.id));
     portapapeles.current = {
-      nodos: nodos.map((n) => ({ tipo: n.tipo, titulo: n.titulo, x: n.x, y: n.y, config: n.config, formulario: n.formulario })),
+      // `grupos` viaja con el nodo. Un nodo sin grupos no es un nodo con un dato
+      // faltante: es un paso ABIERTO A TODOS (`usuario_puede_tomar` da True si el
+      // nodo no declara responsables), y en el lienzo no se nota. El tramo de
+      // enfermería duplicado para el otro turno quedaba tomable por cualquiera.
+      nodos: nodos.map((n) => ({
+        tipo: n.tipo, titulo: n.titulo, descripcion: n.descripcion,
+        x: n.x, y: n.y, config: n.config, formulario: n.formulario,
+        grupos: n.grupos || [],
+      })),
       // Índices dentro de `nodos`, no ids: al pegar los ids son otros.
       conexiones: v.conexiones
         .filter((c) => ids.has(c.origen) && ids.has(c.destino))
@@ -903,9 +1159,10 @@ export default function FlujoEditor() {
       const creados = [];
       for (const n of pp.nodos) {
         creados.push(await api.post("/nodos/", {
-          version: verId, tipo: n.tipo, titulo: n.titulo,
+          version: verId, tipo: n.tipo, titulo: n.titulo, descripcion: n.descripcion || "",
           x: n.x + OFFSET, y: n.y + OFFSET,
           config: n.config || {}, formulario: n.formulario || null,
+          grupos: n.grupos || [],
         }));
       }
       const nuevasConex = [];
@@ -1050,6 +1307,9 @@ export default function FlujoEditor() {
     function onKey(e) {
       const tag = e.target?.tagName;
       const editando = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable;
+      // Con un diálogo de confirmación abierto manda el diálogo: si no, Escape
+      // limpiaría además la selección y Suprimir volvería a disparar el borrado.
+      if (aConfirmar) return;
       if (e.key === "Escape") {
         if (conectarDesde) return setConectarDesde(null);
         if (sim) return setSim(null);
@@ -1071,12 +1331,15 @@ export default function FlujoEditor() {
       // Seleccionar todo, copiar, pegar y duplicar: los atajos de siempre.
       if (meta && k === "a") { e.preventDefault(); setSeleccion(new Set(version.nodos.map((n) => n.id))); return; }
       if (meta && k === "c") { e.preventDefault(); copiar(); return; }
+      // Pegar, duplicar, borrar y mover escriben el grafo: en una versión
+      // publicada el servidor los rechaza y acá sólo dejaban un error de red.
+      if (soloLectura) return;
       if (meta && k === "v") { e.preventDefault(); pegar(); return; }
       if (meta && k === "d") { e.preventDefault(); copiar(); pegar(); return; }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (seleccion.size) { e.preventDefault(); [...seleccion].forEach(borrarNodo); }
-        else if (selConexion != null) { e.preventDefault(); borrarConexion(selConexion); }
+        if (seleccion.size) { e.preventDefault(); pedirBorrarNodos([...seleccion]); }
+        else if (selConexion != null) { e.preventDefault(); pedirBorrarConexion(selConexion); }
         return;
       }
       // Mover la selección con las flechas (un paso de grilla).
@@ -1104,7 +1367,7 @@ export default function FlujoEditor() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seleccion, selConexion, conectarDesde, sim, problemas, version]);
+  }, [seleccion, selConexion, conectarDesde, sim, problemas, version, aConfirmar]);
 
   if (cargando) return <Spinner label="Cargando flujo…" />;
   if (errorCarga)
@@ -1142,6 +1405,17 @@ export default function FlujoEditor() {
     if (n.tipo === "estado") return cfg.estado ? estadoCaso[cfg.estado]?.label || cfg.estado : "Sin estado";
     if (n.tipo === "atencion" && cfg.con_fila) return "Con fila de espera";
     if (n.tipo === "tiempo" && cfg.duracion) return `Pausa ${cfg.duracion}`;
+    // El nodo con la dependencia externa más cara de auditar era el único sin
+    // subtítulo: en el lienzo, uno que consulta un padrón y escribe sobre la
+    // identidad del paciente se veía igual que un GET a un JSON cualquiera e
+    // igual que uno sin configurar. «¿Qué de esto sale a internet y a dónde?»
+    // se contestaba abriendo los quince nodos de a uno.
+    if (n.tipo === "integracion") {
+      if (!cfg.url) return "Sin URL";
+      const host = hostDe(cfg.url);
+      if (cfg.fhir) return host ? `Padrón FHIR · ${host}` : "Padrón FHIR";
+      return `${cfg.metodo || "GET"} ${host || cfg.url}`;
+    }
     return null;
   }
 
@@ -1173,19 +1447,8 @@ export default function FlujoEditor() {
   // Sin recorrido posible: deshabilita Probar/Reproducir y explica por qué.
   const sinRecorrido = version.nodos.length < 2 || version.conexiones.length === 0;
 
-  /*
-   * Una versión publicada no se edita, y ahora la pantalla lo dice ANTES.
-   *
-   * El servidor rechaza cualquier escritura sobre el grafo de una versión que ya
-   * no es borrador —los casos en curso están parados sobre esos nodos—, pero el
-   * editor dejaba intentarlo igual: se arrastraba un nodo, se agregaba otro, y
-   * lo único que aparecía era «Error al guardar» en letra chica en la barra. El
-   * trabajo se perdía y el motivo no estaba en ningún lado.
-   *
-   * Con el aviso, además, hay salida: sacar una versión nueva es lo que hay que
-   * hacer, el endpoint existía y ninguna pantalla lo ofrecía.
-   */
-  const soloLectura = version.estado !== "borrador";
+  // Ancho real del lienzo, para decidir si el minimapa orienta o sólo tapa.
+  const anchoLienzo = vista ? vista.w * zoom : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -1198,7 +1461,7 @@ export default function FlujoEditor() {
           <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, letterSpacing: "-.4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{flujo.titulo}</div>
           {flujo.ambito_label && <span style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", whiteSpace: "nowrap" }}>· {flujo.ambito_label}</span>}
           <Badge tone={estV.tone}>{estV.label}</Badge>
-          <Select size="sm" value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ width: "auto" }}>
+          <Select size="sm" aria-label="Versión del flujo" value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ width: "auto" }}>
             {flujo.versiones.map((v) => <option key={v.id} value={v.id}>{v.etiqueta}</option>)}
           </Select>
         </div>
@@ -1245,15 +1508,20 @@ export default function FlujoEditor() {
             <span style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-debil)" }}>NODOS</span>
             <button onClick={() => setPaletaAbierta(false)} title="Ocultar nodos" aria-label="Ocultar panel de nodos" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-tenue)", display: "flex", padding: 2, borderRadius: "var(--radius-sm)" }}><Icon name="back" size={14} /></button>
           </div>
-          <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", margin: "0 4px 10px" }}>Hacé clic para agregar al lienzo</div>
+          <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", margin: "0 4px 10px" }}>
+            {soloLectura ? "Esta versión no se edita: sacá una versión nueva para agregar nodos." : "Hacé clic para agregar al lienzo"}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {PALETA.map((p) => (
               <button
                 key={p.tipo}
                 onClick={() => agregarNodo(p.tipo)}
+                // La paleta seguía invitando a agregar nodos sobre una versión
+                // congelada: cada clic era un 409 y un toast que hablaba de la red.
+                disabled={soloLectura}
                 title={`Agregar nodo «${p.name}»`}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", background: "var(--color-superficie)", cursor: "pointer", textAlign: "left", transition: "background .12s, border-color .12s" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = p.tint; e.currentTarget.style.borderColor = p.bd; }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", background: "var(--color-superficie)", cursor: soloLectura ? "not-allowed" : "pointer", opacity: soloLectura ? 0.5 : 1, textAlign: "left", transition: "background .12s, border-color .12s" }}
+                onMouseEnter={(e) => { if (soloLectura) return; e.currentTarget.style.background = p.tint; e.currentTarget.style.borderColor = p.bd; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-superficie)"; e.currentTarget.style.borderColor = "var(--color-borde)"; }}
               >
                 <span style={{ width: 26, height: 26, borderRadius: "var(--radius-sm)", background: p.tint, border: `1px solid ${p.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
@@ -1338,8 +1606,8 @@ export default function FlujoEditor() {
                         <text x={mx} y={my - 6} fill={seleccionada || activo ? "var(--color-accent)" : "var(--color-texto-suave)"} fontSize="11" textAnchor="middle" style={{ fontWeight: 600 }}>{etiqueta}</text>
                       </>
                     )}
-                    {seleccionada && (
-                      <g onClick={(e) => { e.stopPropagation(); borrarConexion(c.id); }} style={{ cursor: "pointer" }}>
+                    {seleccionada && !soloLectura && (
+                      <g onClick={(e) => { e.stopPropagation(); pedirBorrarConexion(c.id); }} style={{ cursor: "pointer" }}>
                         <circle cx={mx} cy={my + 13} r="9" fill={"var(--color-danger)"} />
                         <path d={`M ${mx - 3} ${my + 10} L ${mx + 3} ${my + 16} M ${mx + 3} ${my + 10} L ${mx - 3} ${my + 16}`} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
                       </g>
@@ -1371,7 +1639,9 @@ export default function FlujoEditor() {
                   data-nodo={n.id}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${cat.name}: ${n.titulo}. Flechas para mover, Suprimir para eliminar.`}
+                  aria-label={soloLectura
+                    ? `${cat.name}: ${n.titulo}. Versión publicada: sólo lectura.`
+                    : `${cat.name}: ${n.titulo}. Flechas para mover, Suprimir para eliminar.`}
                   // El foco no pisa una selección múltiple: en un elemento con
                   // tabIndex el focus dispara junto con el pointerdown, así que
                   // sin esto un shift+clic quedaba reducido a un solo nodo.
@@ -1389,7 +1659,7 @@ export default function FlujoEditor() {
                     border: `1.5px solid ${seleccionado || esOrigenConexion || enFoco ? cat.sol : cat.bd}`,
                     borderRadius: "var(--radius-lg)",
                     padding: "11px 13px",
-                    cursor: arrastrando ? "grabbing" : "grab",
+                    cursor: soloLectura ? "default" : arrastrando ? "grabbing" : "grab",
                     touchAction: "none",
                     boxShadow: enFoco ? `0 0 0 4px ${cat.sol}55, var(--shadow-float)` : arrastrando ? "var(--shadow-float)" : seleccionado ? `0 0 0 3px ${cat.sol}33` : "var(--shadow-card)",
                     transform: arrastrando ? "scale(1.02)" : "none",
@@ -1423,7 +1693,9 @@ export default function FlujoEditor() {
                     <span style={{ position: "absolute", left: -5, top: NODO_H / 2 - 4, width: 9, height: 9, borderRadius: "50%", background: "var(--color-superficie)", border: `2px solid ${cat.bd}`, pointerEvents: "none" }} />
                   )}
                   {/* Handle de salida: arrastrar desde acá para conectar */}
-                  {n.tipo !== "fin" && (
+                  {/* El handle de salida se esconde en una versión publicada: es una
+                      invitación a tender una conexión que el servidor rechaza. */}
+                  {n.tipo !== "fin" && !soloLectura && (
                     <span
                       title="Arrastrá para conectar con otro nodo"
                       onPointerDown={(e) => onHandlePointerDown(e, n)}
@@ -1479,8 +1751,10 @@ export default function FlujoEditor() {
             </ZoomBtn>
           </div>
 
-          {/* Minimapa (abajo a la derecha, del lado opuesto al zoom) */}
-          {version.nodos.length > 3 && (
+          {/* Minimapa (abajo a la derecha, del lado opuesto al zoom).
+              En un lienzo angosto el mapa (168px) le tapa la mitad inferior y se
+              encima con la barra de zoom: ahí deja de orientar y sólo estorba. */}
+          {version.nodos.length > 3 && (anchoLienzo == null || anchoLienzo >= LIENZO_MIN_MINIMAPA) && (
             <MiniMapa nodos={version.nodos} seleccion={seleccion} vista={vista} mundo={mundo} onIr={centrarEn} />
           )}
 
@@ -1527,8 +1801,9 @@ export default function FlujoEditor() {
           ) : seleccion.size > 1 ? (
             <PanelSeleccion
               cantidad={seleccion.size}
+              soloLectura={soloLectura}
               onDuplicar={() => { copiar(); pegar(); }}
-              onBorrar={() => [...seleccion].forEach(borrarNodo)}
+              onBorrar={() => pedirBorrarNodos([...seleccion])}
               onLimpiar={() => setSeleccion(new Set())}
             />
           ) : nodoSel ? (
@@ -1536,13 +1811,14 @@ export default function FlujoEditor() {
               key={nodoSel.id}
               nodo={nodoSel}
               version={version}
+              soloLectura={soloLectura}
               flujoInstId={flujo.institucion}
               flujoAreaId={flujo.area}
               campos={campos}
               onActualizar={actualizarNodo}
               onBorrar={borrarNodo}
               onConectar={() => setConectarDesde(nodoSel.id)}
-              onBorrarConexion={borrarConexion}
+              onBorrarConexion={pedirBorrarConexion}
               onActualizarConexion={actualizarConexion}
             />
           ) : (
@@ -1553,6 +1829,41 @@ export default function FlujoEditor() {
         </div>
         )}
       </div>
+
+      {aConfirmar?.tipo === "nodos" && (
+        <ConfirmDialog
+          title={`¿Eliminar ${aConfirmar.nodos.length} nodos?`}
+          confirmar={`Eliminar ${aConfirmar.nodos.length} nodos`}
+          peligroso
+          onConfirmar={() => { const { ids } = aConfirmar; setAConfirmar(null); borrarNodos(ids); }}
+          onClose={() => setAConfirmar(null)}
+        >
+          Se van con su formulario, sus grupos responsables, su SLA y sus condiciones
+          {aConfirmar.conexiones.length > 0 && `, y también ${aConfirmar.conexiones.length} conexión${aConfirmar.conexiones.length > 1 ? "es" : ""}`}:
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+            {aConfirmar.nodos.slice(0, 8).map((n) => (
+              <li key={n.id}>{catDe(n.tipo).name}: <strong>{n.titulo}</strong></li>
+            ))}
+            {aConfirmar.nodos.length > 8 && <li>y {aConfirmar.nodos.length - 8} más</li>}
+          </ul>
+        </ConfirmDialog>
+      )}
+
+      {aConfirmar?.tipo === "conexion" && (
+        <ConfirmDialog
+          title="¿Quitar esta conexión?"
+          confirmar="Quitar conexión"
+          peligroso
+          onConfirmar={() => { const { conexion } = aConfirmar; setAConfirmar(null); borrarConexion(conexion.id); }}
+          onClose={() => setAConfirmar(null)}
+        >
+          {/* En un nodo Decisión la conexión ES la regla: sin ella, todos los
+              casos caen por la rama por defecto y nadie se entera. */}
+          Se pierde la regla de esta rama
+          {aConfirmar.conexion.etiqueta ? ` («${aConfirmar.conexion.etiqueta}»)` : ""}: los casos
+          que iban por acá van a seguir por la rama por defecto.
+        </ConfirmDialog>
+      )}
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>
@@ -1598,7 +1909,9 @@ function Toast({ toast, onClose }) {
           leerse ahí. Pasarlos a tokens semánticos los volvería ilegibles en claro. */}
       <span style={{ width: 8, height: 8, borderRadius: "50%", background: ok ? "#46C08A" : "#F26D6D", flex: "none" }} />
       <span style={{ flex: 1 }}>{toast.msg}</span>
-      {toast.accion && (
+      {/* Sin etiqueta no se dibuja: un botón vacío es una salida que la persona
+          no puede ver, y peor que no ofrecer ninguna. */}
+      {toast.accion?.label && (
         <button onClick={toast.accion.fn} style={{ border: "none", background: "none", color: "#9FB0FF", fontWeight: 700, cursor: "pointer", fontSize: "var(--text-base)", whiteSpace: "nowrap" }}>{toast.accion.label}</button>
       )}
       <button onClick={onClose} aria-label="Cerrar" style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", display: "flex", opacity: .7 }}>
@@ -1845,7 +2158,7 @@ function MiniMapa({ nodos, seleccion, vista, mundo, onIr }) {
  * el panel pasa a ofrecer lo que sí aplica al grupo. Dejarlo vacío haría pensar
  * que la selección múltiple no sirve para nada.
  */
-function PanelSeleccion({ cantidad, onDuplicar, onBorrar, onLimpiar }) {
+function PanelSeleccion({ cantidad, soloLectura, onDuplicar, onBorrar, onLimpiar }) {
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -1855,11 +2168,13 @@ function PanelSeleccion({ cantidad, onDuplicar, onBorrar, onLimpiar }) {
         </button>
       </div>
       <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", marginBottom: 16 }}>
-        Arrastrá cualquiera de ellos para mover el grupo, o usá las flechas del teclado.
+        {soloLectura
+          ? "Esta versión está publicada: los nodos se pueden ver, no mover ni eliminar."
+          : "Arrastrá cualquiera de ellos para mover el grupo, o usá las flechas del teclado."}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Button variant="secondary" onClick={onDuplicar}>Duplicar (Ctrl+D)</Button>
-        <Button variant="danger" onClick={onBorrar}>Eliminar los {cantidad}</Button>
+        <Button variant="secondary" onClick={onDuplicar} disabled={soloLectura}>Duplicar (Ctrl+D)</Button>
+        <Button variant="danger" onClick={onBorrar} disabled={soloLectura}>Eliminar los {cantidad}</Button>
       </div>
       <div style={{ marginTop: 16, fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", lineHeight: 1.5 }}>
         Al duplicar se copian también las conexiones entre los nodos elegidos. Las que
@@ -2054,6 +2369,44 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
 // Pasos donde una persona ejecuta el trabajo: ahí tiene sentido decir "quién lo hace".
 const TIPOS_CON_RESPONSABLE = ["form", "atencion", "accion", "espera"];
 
+// El `fieldset` es sólo el mecanismo para apagar todo de una: no tiene que
+// aportar borde, relleno ni romper el apilado de los campos.
+const CAJA_CAMPOS = {
+  border: "none", margin: 0, padding: 0, minInlineSize: 0,
+  display: "flex", flexDirection: "column", gap: 14,
+};
+
+/**
+ * Campo de texto del panel que guarda al SALIR, no en cada tecla.
+ *
+ * `setConfig` hace un PATCH y una entrada de historial por llamada, y estos
+ * campos lo llamaban en cada `onChange`. Escribir una URL de 40 caracteres
+ * generaba 40 entradas de deshacer sobre un stack capado en 60: después de
+ * escribirla, Ctrl+Z ya no alcanzaba para deshacer el movimiento o la edición de
+ * antes, o sea que se perdía el historial real. Además las respuestas podían
+ * llegar desordenadas y `aplicarNodo` reemplaza el nodo con lo que devolvió el
+ * servidor: el texto saltaba hacia atrás mientras se escribía y podía quedar
+ * guardado un prefijo de la URL, que después falla la lista blanca de
+ * integraciones y se descubre recién al publicar.
+ *
+ * Es el mismo patrón que ya usaba el campo «Título» del nodo.
+ */
+function CampoDiferido({ valor, onGuardar, componente: Componente = Input, ...props }) {
+  const [texto, setTexto] = useState(valor ?? "");
+  // El nodo puede cambiar por debajo (deshacer, otra versión): se resincroniza.
+  useEffect(() => { setTexto(valor ?? ""); }, [valor]);
+  return (
+    <Componente
+      {...props}
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => { if ((valor ?? "") !== texto) onGuardar(texto); }}
+      // Enter guarda sin tener que salir del campo (en un textarea no aplica).
+      onKeyDown={(e) => { if (e.key === "Enter" && Componente !== Textarea) e.currentTarget.blur(); }}
+    />
+  );
+}
+
 // Ayuda por tipo de nodo: para qué sirve y cómo se usa (helper del panel).
 const AYUDA_NODO = {
   inicio: "Punto de arranque del flujo. Acá nace o entra el caso. Definí cómo entra: «Manual» (se crea desde Nuevo caso), «Solo por derivación» (lo manda otro flujo) o «Ambas».",
@@ -2064,12 +2417,12 @@ const AYUDA_NODO = {
   derivar: "Envía el caso a otra área. Si además elegís un flujo de destino, abre un caso nuevo en ese flujo (ej.: ingreso → especialidad), vinculado al original. El caso de origen sigue hacia su cierre.",
   espera: "Fila de espera genérica: encola el caso (orden de llegada; urgentes primero) y, al llamarlo, avanza al SIGUIENTE paso. Si lo que sigue es atender al paciente, conviene usar el nodo «Atención» con la opción «fila de espera» (une espera + llamado + atención en un solo paso).",
   cama: "El caso espera una cama del sector y se detiene hasta que alguien se la asigna desde Internación. La cama la elige una persona a propósito: depende de aislamiento, del sexo de la sala y de la gravedad. Al dar el alta o cerrar el caso, la cama se libera sola y queda esperando higiene.",
-  tiempo: "Pausa el caso por un período (dato informativo). Hoy se reactiva manualmente; la reactivación automática por tiempo es un pendiente.",
+  tiempo: "Pausa el caso durante el plazo que indiques y lo trae de vuelta solo al vencer, sin que nadie tenga que acordarse («observación 6 horas», «control a los 7 días»). Si el plazo queda vacío o no se entiende, el caso espera hasta que alguien lo reactive a mano.",
   estado: "Cambia el estado del caso (Recibido, En espera, Atendido, Cerrado…). Es automático: sirve para reflejar en qué etapa está el caso.",
   fin: "Cierra el caso: marca el estado como Cerrado y termina el recorrido. Un flujo puede tener varios nodos Fin.",
 };
 
-function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
+function PanelNodo({ nodo, version, soloLectura, flujoInstId, flujoAreaId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
   const [titulo, setTitulo] = useState(nodo.titulo);
   // La preferencia de ayuda se recuerda entre nodos (localStorage) en vez de
   // resetearse cada vez que se selecciona otro nodo.
@@ -2083,22 +2436,25 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
   const cat = catDe(nodo.tipo);
   const salidas = version.conexiones.filter((c) => c.origen === nodo.id);
   const aplicaResponsable = TIPOS_CON_RESPONSABLE.includes(nodo.tipo);
+  const conPantallaDeLlamados =
+    (nodo.tipo === "atencion" && !!(nodo.config || {}).con_fila) || nodo.tipo === "espera";
 
   useEffect(() => {
+    // Todos los catálogos van por `traerTodo`: con `d.results` la lista se
+    // cortaba en 25 sin decir nada, y lo que queda afuera no se puede elegir.
     if (nodo.tipo === "derivar") {
-      api.get(`/areas/?institucion=${flujoInstId}`).then((d) => setAreas(d.results || d));
-      api.get(`/flujos/?institucion=${flujoInstId}`).then((d) => setFlujos(d.results || d));
+      traerTodo(`/areas/?institucion=${flujoInstId}`).then(setAreas);
+      traerTodo(`/flujos/?institucion=${flujoInstId}`).then(setFlujos);
     }
-    if (nodo.tipo === "form") api.get(`/formularios/?institucion=${flujoInstId}`).then((d) => setFormularios(d.results || d));
-    if (aplicaResponsable) api.get(`/grupos/?area__institucion=${flujoInstId}&activo=true`).then((d) => setGrupos(d.results || d));
+    if (nodo.tipo === "form") traerTodo(`/formularios/?institucion=${flujoInstId}`).then(setFormularios);
+    if (aplicaResponsable) traerTodo(`/grupos/?area__institucion=${flujoInstId}&activo=true`).then(setGrupos);
     if ((nodo.tipo === "atencion" || nodo.tipo === "espera") && flujoAreaId)
-      api.get(`/boxes/?area=${flujoAreaId}&activo=true`).then((d) => setBoxesArea(d.results || d));
+      traerTodo(`/boxes/?area=${flujoAreaId}&activo=true`).then(setBoxesArea);
     // Sectores donde puede haber camas. Se piden de toda la institución y no
     // sólo del área del flujo: un flujo de guardia puede internar en el área de
     // internación, que es justamente lo que hace el escenario de demo.
     if (nodo.tipo === "cama")
-      api.get(`/subareas/?area__institucion=${flujoInstId}&activa=true&page_size=200`)
-        .then((d) => setSubareas(d.results || d));
+      traerTodo(`/subareas/?area__institucion=${flujoInstId}&activa=true`).then(setSubareas);
   }, [nodo.tipo, flujoInstId, flujoAreaId, aplicaResponsable]);
 
   // Flujos de destino candidatos: los del área elegida, sin el flujo actual
@@ -2143,7 +2499,23 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         </div>
       )}
 
+      {soloLectura && (
+        <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", background: "var(--color-superficie-2)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 14 }}>
+          Ficha de sólo lectura: esta versión ya está publicada.
+        </div>
+      )}
+
+      {/*
+        Un `fieldset` deshabilitado apaga TODOS los controles de adentro, que es
+        exactamente lo que hacía falta: hasta acá el panel se editaba igual sobre
+        una versión publicada y cada cambio volvía 409 disfrazado de falla de red.
+        La pantalla de llamados queda AFUERA a propósito: generar el token no toca
+        el grafo, el servidor lo permite sobre una versión publicada, y es
+        justamente cuando el flujo está en producción que hace falta el televisor
+        de la sala.
+      */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <fieldset disabled={soloLectura} style={CAJA_CAMPOS}>
         <Field label="Título">
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} onBlur={() => titulo !== nodo.titulo && onActualizar(nodo.id, { titulo })} />
         </Field>
@@ -2163,13 +2535,18 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
 
         {nodo.tipo === "form" && (
           <Field label="Formulario">
-            <Select value={nodo.formulario || ""} onChange={(e) => onActualizar(nodo.id, { formulario: e.target.value || null })}>
+            {/* `aria-label` propio: el `<label>` del Field envuelve al select, y
+                el nombre accesible calculado arrastraba el texto de TODAS las
+                opciones («Formulario— Elegir —Admisión…»). */}
+            <Select aria-label="Formulario del paso" value={nodo.formulario || ""} onChange={(e) => onActualizar(nodo.id, { formulario: e.target.value || null })}>
               <option value="">— Elegir —</option>
               {formularios.map((f) => <option key={f.id} value={f.id}>{f.titulo}</option>)}
             </Select>
             {!nodo.formulario && <AvisoFalta texto="Elegí qué formulario se completa en este paso." />}
           </Field>
         )}
+
+        {nodo.tipo === "form" && <PrioridadDesdeFormulario nodo={nodo} campos={campos} setConfig={setConfig} />}
 
         {nodo.tipo === "atencion" && (
           <Field label="Fila de espera">
@@ -2193,17 +2570,19 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           </Field>
         )}
 
-        {nodo.tipo === "atencion" && (nodo.config || {}).con_fila && <PantallaUrl nodo={nodo} />}
-
         {nodo.tipo === "espera" && (
-          <>
-            <div style={{ fontSize: 12, color: "var(--color-texto-debil)" }}>
-              Los casos esperan en una fila (FIFO + urgentes primero) y se los llama desde un box para que avancen al siguiente paso.
-            </div>
-            <PantallaUrl nodo={nodo} />
-          </>
+          <div style={{ fontSize: 12, color: "var(--color-texto-debil)" }}>
+            Los casos esperan en una fila (FIFO + urgentes primero) y se los llama desde un box para que avancen al siguiente paso.
+          </div>
         )}
+      </fieldset>
 
+      {/* La pantalla de llamados vive FUERA del fieldset: generar su token no
+          toca el grafo y el servidor lo permite sobre una versión publicada, que
+          es justo cuando hace falta el televisor de la sala de espera. */}
+      {conPantallaDeLlamados && <PantallaUrl nodo={nodo} />}
+
+      <fieldset disabled={soloLectura} style={CAJA_CAMPOS}>
         {nodo.tipo === "cama" && (
           <>
             <Field label="Sector de internación">
@@ -2278,7 +2657,7 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
             label="Duración de la espera"
             hint="El caso vuelve solo al vencer. Se entiende «6 horas», «2 días», «1 mes»."
           >
-            <Input value={(nodo.config || {}).duracion || ""} onChange={(e) => setConfig({ duracion: e.target.value })} placeholder="6 horas" />
+            <CampoDiferido valor={(nodo.config || {}).duracion || ""} onGuardar={(v) => setConfig({ duracion: v })} placeholder="6 horas" />
             {!(nodo.config || {}).duracion && (
               <AvisoFalta texto="Sin duración, el caso queda esperando hasta que alguien lo reactive a mano." />
             )}
@@ -2355,16 +2734,17 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
         {nodo.tipo === "notificar" && (
           <>
             <Field label="Título del aviso">
-              <Input
-                value={(nodo.config || {}).titulo || ""}
-                onChange={(e) => setConfig({ titulo: e.target.value })}
+              <CampoDiferido
+                valor={(nodo.config || {}).titulo || ""}
+                onGuardar={(v) => setConfig({ titulo: v })}
                 placeholder="Paciente en espera prolongada"
               />
             </Field>
             <Field label="Detalle" hint="Podés usar {paciente} y se reemplaza por su nombre.">
-              <Textarea
-                value={(nodo.config || {}).detalle || ""}
-                onChange={(e) => setConfig({ detalle: e.target.value })}
+              <CampoDiferido
+                componente={Textarea}
+                valor={(nodo.config || {}).detalle || ""}
+                onGuardar={(v) => setConfig({ detalle: v })}
                 placeholder="{paciente} lleva más de 2 horas esperando."
               />
             </Field>
@@ -2410,9 +2790,9 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
                   : undefined
               }
             >
-              <Input
-                value={(nodo.config || {}).url || ""}
-                onChange={(e) => setConfig({ url: e.target.value })}
+              <CampoDiferido
+                valor={(nodo.config || {}).url || ""}
+                onGuardar={(v) => setConfig({ url: v })}
                 placeholder={
                   (nodo.config || {}).fhir
                     ? "https://padron.gob.ar/fhir"
@@ -2428,11 +2808,17 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
                   label="Sistema del documento"
                   hint="Opcional. Lo pide el padrón cuando maneja más de un tipo de identificación."
                 >
-                  <Input
-                    value={(nodo.config || {}).sistema || ""}
-                    onChange={(e) => setConfig({ sistema: e.target.value })}
+                  <CampoDiferido
+                    valor={(nodo.config || {}).sistema || ""}
+                    onGuardar={(v) => setConfig({ sistema: v })}
                     placeholder="http://www.renaper.gob.ar/dni"
                   />
+                  {/* Un espacio de más al pegar la URL del RENAPER hace que el
+                      padrón no encuentre a nadie en TODOS los ingresos de esta
+                      guardia, y el error que se ve no menciona este campo. */}
+                  {/\s/.test((nodo.config || {}).sistema || "") && (
+                    <AvisoFalta texto="El sistema tiene espacios: el padrón no va a encontrar a nadie." />
+                  )}
                 </Field>
                 <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", lineHeight: 1.5 }}>
                   Busca al paciente del caso por su documento y completa los campos que
@@ -2462,9 +2848,9 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
                 </Field>
                 {(nodo.config || {}).guardar_en && (
                   <Field label="Qué parte de la respuesta" hint="Ruta dentro del JSON, por ejemplo: afiliado.plan">
-                    <Input
-                      value={(nodo.config || {}).ruta || ""}
-                      onChange={(e) => setConfig({ ruta: e.target.value })}
+                    <CampoDiferido
+                      valor={(nodo.config || {}).ruta || ""}
+                      onGuardar={(v) => setConfig({ ruta: v })}
                       placeholder="afiliado.plan"
                     />
                   </Field>
@@ -2474,11 +2860,39 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
             <Checkbox
               checked={!!(nodo.config || {}).obligatorio}
               onChange={(e) => setConfig({ obligatorio: e.target.checked })}
-              label="Detener el caso si el servicio no responde"
+              label={
+                (nodo.config || {}).fhir
+                  ? "Detener el caso si este paso no completa los datos"
+                  : "Detener el caso si el servicio no responde"
+              }
             />
             <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", lineHeight: 1.5, marginTop: 4 }}>
-              Sin tildar, si el servicio falla se anota en el historial y el caso sigue: un
-              padrón caído no debería dejar a un paciente trabado.
+              {(nodo.config || {}).fhir ? (
+                <>
+                  {/* La etiqueta anterior decía «si el servicio no responde» y esa
+                      casilla gobierna además tres salidas que no son del servicio.
+                      Quien la tildaba para que un padrón caído no metiera pacientes
+                      sin identificar compraba sin saberlo que ningún NN, ningún
+                      recién nacido, ningún extranjero y ningún indigente sin DNI
+                      pueda ser admitido: una persona parada frente al mostrador y un
+                      caso que no avanza. Acá se enumera qué detiene de verdad. */}
+                  <strong>Tildada, el caso se detiene en los cuatro casos</strong>: el padrón
+                  no responde, el paciente no tiene documento cargado, el padrón no encuentra
+                  a nadie con ese documento y el padrón devuelve más de una persona. Los tres
+                  últimos <strong>no</strong> son fallas del servicio: en una guardia son el
+                  NN, el recién nacido, el extranjero y quien no figura en el padrón
+                  provincial. Ninguno de ellos podría ser admitido por este flujo.
+                  <br /><br />
+                  Sin tildar, cualquiera de las cuatro se anota en el historial y el caso
+                  sigue con los datos que haya: es lo que corresponde en un ingreso, donde
+                  frenar a la persona cuesta más que completar la ficha a mano después.
+                </>
+              ) : (
+                <>
+                  Sin tildar, si el servicio falla se anota en el historial y el caso sigue: un
+                  padrón caído no debería dejar a un paciente trabado.
+                </>
+              )}
               <br /><br />
               El destino tiene que estar habilitado por un administrador del sistema. Es a
               propósito: que alguien pueda elegir a qué servidor llama la aplicación es una
@@ -2555,10 +2969,100 @@ function PanelNodo({ nodo, version, flujoInstId, flujoAreaId, campos, onActualiz
           )}
         </div>
 
-        <button onClick={() => onBorrar(nodo.id)} style={{ marginTop: 6, border: "none", background: "var(--color-badge-error-bg)", color: "var(--color-danger)", padding: "9px 0", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: "var(--text-base)", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-          <Icon name="trash" size={15} /> Eliminar nodo
-        </button>
+        {/* En una versión publicada ni se muestra: el botón rojo invitaba a un
+            borrado que el servidor rechaza y que además se llevaría la fila de
+            espera de los casos que están parados ahí. */}
+        {!soloLectura && (
+          <button onClick={() => onBorrar(nodo.id)} style={{ marginTop: 6, border: "none", background: "var(--color-badge-error-bg)", color: "var(--color-danger)", padding: "9px 0", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: "var(--text-base)", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <Icon name="trash" size={15} /> Eliminar nodo
+          </button>
+        )}
+      </fieldset>
       </div>
+    </div>
+  );
+}
+
+// Prioridades del caso, en el mismo orden que las ofrece la ficha del caso.
+const PRIORIDADES = [
+  { value: "normal", label: "Normal" },
+  { value: "alta", label: "Alta" },
+  { value: "urgente", label: "Urgente" },
+];
+
+/**
+ * «Este campo define la prioridad del caso» — el triage, configurable.
+ *
+ * El motor ya sabía hacerlo (`prioridad_campo` + `prioridad_mapa` en la config
+ * del nodo Formulario: repriorizan el caso y reordenan la fila), pero el único
+ * flujo que tenía esa config era el de la demo, escrita a mano en Python. Sin
+ * este control, una guardia que diseña su propio circuito de triage queda en
+ * FIFO puro: la enfermera carga «Rojo - Emergencia» y el paciente igual espera
+ * detrás de los quince esguinces que llegaron antes. La única salida era que
+ * alguien se acordara de abrir la ficha del caso y cambiar la prioridad a mano —
+ * el mismo dato cargado dos veces, y el olvido no deja rastro en ningún lado.
+ */
+function PrioridadDesdeFormulario({ nodo, campos, setConfig }) {
+  const cfg = nodo.config || {};
+  // Sólo sirven los de selección única: el mapa es valor→prioridad y hay que
+  // poder enumerar los valores posibles.
+  const candidatos = campos.filter(
+    (c) => c.formularioId === nodo.formulario && c.tipo === "seleccion_unica" && (c.opciones || []).length > 0,
+  );
+  if (!nodo.formulario || candidatos.length === 0) return null;
+
+  const elegido = candidatos.find((c) => String(c.id) === String(cfg.prioridad_campo));
+  const mapa = cfg.prioridad_mapa || {};
+
+  return (
+    <div style={{ borderTop: `1px solid var(--color-division)`, paddingTop: 14, marginTop: 4 }}>
+      <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".5px", color: "var(--color-texto-debil)", marginBottom: 10 }}>
+        PRIORIDAD DEL CASO
+      </div>
+      <Field
+        label="Este campo define la prioridad del caso"
+        hint="La prioridad ordena todas las filas (los urgentes primero) y dispara el aviso «Caso urgente» al equipo responsable."
+      >
+        <Select
+          value={elegido ? String(elegido.id) : ""}
+          onChange={(e) => setConfig(
+            e.target.value
+              ? { prioridad_campo: Number(e.target.value), prioridad_mapa: {} }
+              // Se limpia el mapa junto con el campo: un mapa huérfano con los
+              // valores del campo anterior no se aplica y confunde al leerlo.
+              : { prioridad_campo: null, prioridad_mapa: null },
+          )}
+        >
+          <option value="">— Ninguno: la prioridad no cambia acá —</option>
+          {candidatos.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </Select>
+      </Field>
+
+      {elegido && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {(elegido.opciones || []).map((op) => (
+            <label key={op} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--color-texto-medio)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={op}>{op}</span>
+              <Select
+                size="sm"
+                aria-label={`Prioridad para «${op}»`}
+                style={{ width: 122, flex: "none" }}
+                value={mapa[op] || ""}
+                onChange={(e) => setConfig({
+                  prioridad_mapa: { ...mapa, [op]: e.target.value || undefined },
+                })}
+              >
+                <option value="">— sin cambio —</option>
+                {PRIORIDADES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </Select>
+            </label>
+          ))}
+          <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-debil)", lineHeight: 1.5, marginTop: 2 }}>
+            Al completarse el formulario, el caso pasa a la prioridad del valor cargado y
+            la fila se reordena sola. Los valores sin prioridad dejan el caso como está.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

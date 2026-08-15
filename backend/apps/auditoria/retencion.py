@@ -86,10 +86,21 @@ def reglas():
             lambda: AccesoClinico.objects.all(), "momento", protegido=True,
         ),
         Regla(
-            "ítems de fila", 180,
-            "Cumplió su fin cuando el paciente fue atendido. Los tiempos que "
-            "alimentan los indicadores ya se calcularon; el renglón en sí no "
-            "aporta nada después de seis meses.",
+            # Dos años, no seis meses, y el motivo de antes era falso: decía que
+            # «los tiempos que alimentan los indicadores ya se calcularon» y en
+            # este sistema no hay ningún agregado calculado. El tablero cuenta en
+            # vivo y sólo sobre los que están esperando ahora; el único histórico
+            # de demoras es la exportación de ítems de fila. O sea que la primera
+            # corrida de `purgar_datos --aplicar` se llevaba para siempre los
+            # tiempos de espera anteriores a seis meses, sin nada de donde
+            # recalcularlos, y el comando sólo imprime cuántas filas borró.
+            "ítems de fila", 2 * 365,
+            "El renglón ES el registro de cuánto esperó y cuánto duró la "
+            "atención: no hay ningún agregado calculado del que puedan salir "
+            "después. Se conservan dos años porque la demora se reporta contra "
+            "el mismo período del año anterior. Incluye el ausentismo de la fila "
+            "—quien no se presenta sale de la cola con `atendido=True`—, que se "
+            "sigue reportando igual que el de los turnos cancelados.",
             lambda: ItemFila.objects.filter(atendido=True), "ingreso",
         ),
         Regla(

@@ -179,6 +179,9 @@ class MovimientoViewSet(BaseModelViewSet):
         ("origen_nombre", "Origen"),
         ("destino_nombre", "Destino"),
         ("paciente", "Paciente"),
+        # El libro de controlados se arma con esta exportación: sin la columna
+        # hay que ir insumo por insumo a ver cuál lo era.
+        ("controlado", "Controlado"),
         ("motivo", "Motivo"),
         ("autor_nombre", "Registró"),
     ]
@@ -437,12 +440,23 @@ class PedidoViewSet(BaseModelViewSet):
             "vencida": f["vencida"],
             "minimo": f["insumo"].stock_minimo,
             "unidad": f["insumo"].unidad,
+            "controlado": f["insumo"].controlado,
         } for f in motor.bajo_minimo(inst, deposito)]
 
+        # Los ids no son decoración: lo único que hay que hacer con un lote
+        # vencido es darlo de baja, y sin ellos el renglón no se puede enlazar a
+        # esa acción. Sin eso hay que memorizar insumo, depósito y lote, ir a
+        # Stock y buscarlos, que es la fricción por la que la ampolla vencida
+        # sigue en el botiquín.
         vencen = [{
             "deposito": v["existencia"].deposito.nombre,
+            "deposito_id": v["existencia"].deposito_id,
             "insumo": str(v["existencia"].insumo),
+            "insumo_id": v["existencia"].insumo_id,
+            "unidad": v["existencia"].insumo.unidad,
+            "controlado": v["existencia"].insumo.controlado,
             "lote": v["existencia"].lote.numero,
+            "lote_id": v["existencia"].lote_id,
             "vencimiento": v["existencia"].lote.vencimiento,
             "cantidad": v["existencia"].cantidad,
             "dias": v["dias"],

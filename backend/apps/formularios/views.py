@@ -20,7 +20,15 @@ class FormularioViewSet(BaseModelViewSet):
         # El conteo de valores viaja con cada campo (lo usa el diálogo de borrado
         # para decir cuántos datos están en juego). Anotado en el prefetch y no
         # por campo: la pantalla de detalle abre todos los campos de una.
-        Prefetch("campos", queryset=Campo.objects.annotate(valores_n=Count("valores")))
+        #
+        # El `order_by` es explícito porque `annotate` arma un GROUP BY y ahí
+        # Django IGNORA el `Meta.ordering` del modelo: sin esto los campos
+        # salían en el orden en que se crearon, así que reordenarlos no cambiaba
+        # nada en la pantalla que completa el administrativo ni en la vista previa.
+        Prefetch(
+            "campos",
+            queryset=Campo.objects.annotate(valores_n=Count("valores")).order_by("orden", "id"),
+        )
     )
     serializer_class = FormularioSerializer
     capacidad_requerida = "diseno"
@@ -33,11 +41,45 @@ class FormularioViewSet(BaseModelViewSet):
 
 
 class CampoViewSet(BaseModelViewSet):
-    queryset = Campo.objects.select_related("formulario").annotate(valores_n=Count("valores"))
+    # Mismo motivo que en el prefetch de arriba: con `annotate` el `Meta.ordering`
+    # no se aplica, y una lista sin orden explícito pagina mal (una fila puede
+    # salir en dos páginas o en ninguna).
+    queryset = (
+        Campo.objects.select_related("formulario")
+        .annotate(valores_n=Count("valores"))
+        .order_by("formulario", "orden", "id")
+    )
     serializer_class = CampoSerializer
     capacidad_requerida = "diseno"
     institucion_path = "formulario__institucion"
     filter_fields = ("formulario", "tipo", "requerido", "origen")
+
+    def perform_update(self, serializer):
+        """La etiqueta, la ayuda, las opciones y el orden se editan siempre; el TIPO no.
+
+        Corregir «Tensión artrial», agregar una obra social nueva a la lista o
+        volver obligatorio el motivo de consulta son cambios que un hospital hace
+        todo el tiempo y no tocan un solo dato guardado. El tipo sí: los valores
+        se guardan como texto, así que pasar «Nivel de triage» de selección única
+        a fecha deja los valores ya cargados sin significado —el detalle del caso
+        muestra «Rojo - Emergencia» en un campo fecha— y las Decisiones que
+        comparaban ese campo empiezan a mandar los casos por la rama que no era.
+        """
+        campo = serializer.instance
+        nuevo_tipo = serializer.validated_data.get("tipo", campo.tipo)
+        if nuevo_tipo != campo.tipo:
+            cargados = campo.valores.count()
+            if cargados:
+                raise CampoConDatos({
+                    "detail": (
+                        f"«{campo.label}» ya tiene {cargados} "
+                        f"{'valor cargado' if cargados == 1 else 'valores cargados'} en casos: "
+                        "cambiarle el tipo los dejaría sin sentido. Podés editar la etiqueta, "
+                        "la ayuda, las opciones y el orden."
+                    ),
+                    "valores": cargados,
+                })
+        serializer.save()
 
     def perform_destroy(self, instance):
         """No se borra un campo del que ya cuelgan datos cargados.

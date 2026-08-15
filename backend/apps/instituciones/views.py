@@ -224,6 +224,15 @@ class InstitucionViewSet(BaseModelViewSet):
         # anterior hacía cuarenta agregaciones en una pantalla que se refresca
         # sola cada minuto, contra la misma base donde se admiten pacientes.
         AREA_ITEM = "nodo__version__flujo__area"
+        # Dos definiciones de «área», una por pregunta, y NO mezcladas en la misma
+        # fila. `area_actual` es un puntero móvil —el nodo `derivar` lo pisa con el
+        # área destino mientras el caso sigue corriendo el flujo de origen—, así
+        # que responde bien «quién está acá AHORA» (activos, en cola) y responde
+        # mal la producción del PERÍODO: el caso que Guardia resolvió se lo
+        # contaba el área a la que lo derivó, y la atribución cambiaba hacia
+        # atrás. La producción se cuelga del área del flujo que lo procesó, igual
+        # que la espera y la atención, que ya se agrupaban así.
+        AREA_CASO = "version__flujo__area"
 
         def _por_clave(qs, clave, campo, valor):
             return {r[clave]: r[valor] for r in qs.values(clave).annotate(**{valor: campo})}
@@ -232,7 +241,7 @@ class InstitucionViewSet(BaseModelViewSet):
         aten_area = _por_clave(casos.filter(estado=Caso.Estado.ATENDIDO), "area_actual", Count("id"), "n")
         esp_area = _por_clave(medidos_espera, AREA_ITEM, Avg(espera_expr), "w")
         ate_area = _por_clave(medidos_atencion, AREA_ITEM, Avg(atencion_expr), "w")
-        res_area = _por_clave(cerrados_rango, "area_actual", Avg(dur), "d")
+        res_area = _por_clave(cerrados_rango, AREA_CASO, Avg(dur), "d")
 
         por_area = []
         for area in inst.areas.all():
@@ -319,9 +328,22 @@ class AreaViewSet(BaseModelViewSet):
         espera_expr = ExpressionWrapper(F("llamado_at") - F("ingreso"), output_field=DurationField())
         atencion_expr = ExpressionWrapper(F("atendido_at") - F("llamado_at"), output_field=DurationField())
 
-        casos = Caso.objects.filter(area_actual=area)
-        activos = casos.filter(ACTIVO)
-        en_rango = casos.filter(creado__date__range=rango)
+        # Dos preguntas distintas, dos definiciones de «área».
+        #
+        # `area_actual` es un puntero MÓVIL: el nodo `derivar` lo pisa con el área
+        # destino mientras el caso sigue corriendo el flujo del área de origen.
+        # Sirve para la carga VIVA (quién está parado acá ahora) y arruina la
+        # producción del PERÍODO: los ingresos y cerrados de Guardia se los
+        # llevaba el área a la que derivó, y la atribución cambiaba HACIA ATRÁS
+        # —el ingreso contado a las 10:00 desaparecía de la serie a las 11:00, así
+        # que el tablero de ayer no era el mismo hoy y el jefe no podía
+        # reconciliarlo con su turno—. Lo que el área procesó se cuelga del flujo,
+        # que no se mueve.
+        vivos = Caso.objects.filter(area_actual=area)
+        procesados = Caso.objects.filter(version__flujo__area=area)
+        activos = vivos.filter(ACTIVO)
+        en_rango = procesados.filter(creado__date__range=rango)
+        cerrados_rango = procesados.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango)
         items = ItemFila.objects.filter(nodo__version__flujo__area=area)
         # Sin `box__isnull=True` la cola incluye a los que ya están adentro del
         # box: el jefe lee «12 esperando» cuando la mitad está siendo atendida.
@@ -342,7 +364,7 @@ class AreaViewSet(BaseModelViewSet):
         atencion_v = _minutos(items.filter(
             atendido_at__isnull=False, atendido_at__gt=F("llamado_at"), atendido_at__date__range=rango
         ).aggregate(a=Avg(atencion_expr))["a"]) or 0
-        resol_avg = casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).aggregate(a=Avg(dur))["a"]
+        resol_avg = cerrados_rango.aggregate(a=Avg(dur))["a"]
 
         resumen = {
             "activos": activos.count(),
@@ -352,9 +374,9 @@ class AreaViewSet(BaseModelViewSet):
             # `cerrado` en cuanto el caso llega al nodo Fin—. No mide lo que el
             # área atendió en el período: para eso está `cerrados`, que es lo que
             # dibuja la pantalla.
-            "atendidos": casos.filter(estado=Caso.Estado.ATENDIDO).count(),
+            "atendidos": vivos.filter(estado=Caso.Estado.ATENDIDO).count(),
             "ingresos": en_rango.count(),
-            "cerrados": casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).count(),
+            "cerrados": cerrados_rango.count(),
             "espera_prom_min": espera_v,
             "atencion_prom_min": atencion_v,
             "resolucion_prom_h": round(resol_avg.total_seconds() / 3600, 1) if resol_avg else 0,

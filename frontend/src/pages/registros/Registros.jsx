@@ -10,6 +10,19 @@ import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
 import { plural } from "@/lib/format";
 
+/*
+ * La fecha de nacimiento en dd/mm/aaaa, partiendo el texto.
+ *
+ * `fecha_nacimiento` es un DateField: llega «1974-09-11» y `new Date` lo lee
+ * como medianoche UTC, que en Argentina se muestra como el 10 de septiembre. Un
+ * día de menos en la fecha de nacimiento no es un detalle de formato: es el dato
+ * con el que se distingue a dos pacientes del mismo apellido.
+ */
+function fechaCorta(iso) {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
 // Lista de historias clínicas. El detalle vive en /historia/:id.
 export default function Registros() {
   const { institucion } = useInstitucion();
@@ -34,12 +47,21 @@ export default function Registros() {
             {plural(total, "paciente con registro", "pacientes con registro")}
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
+        {/*
+          El buscador encoge y el botón baja de línea. Con `w-70` fijo (280 px)
+          dentro de un flex sin wrap, a 390 px la cabecera medía 432 px contra
+          358 disponibles y el desborde se propagaba al contenedor de scroll de
+          la app: el «+ Crear registro» quedaba cortado y para llegar a él había
+          que arrastrar el panel entero de la aplicación, que se lee como
+          pantalla rota. Es el mismo defecto que HistoriaDetalle ya arregló para
+          su tira de pestañas.
+        */}
+        <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
           <Buscador
             valor={texto}
             onChange={setTexto}
             placeholder="Buscar por nombre o documento…"
-            className="w-70"
+            className="min-w-0 flex-1 sm:w-70 sm:flex-none"
             aria-label="Buscar paciente"
           />
           <Button onClick={() => setNuevo(true)} className="whitespace-nowrap">+ Crear registro</Button>
@@ -69,7 +91,7 @@ export default function Registros() {
                   <div className="truncate font-semibold">{c.nombre} {c.apellido}</div>
                   <div className="truncate text-sm text-texto-debil">
                     {c.documento ? `DNI ${c.documento}` : c.codigo}
-                    {c.fecha_nacimiento ? ` · ${new Date(c.fecha_nacimiento).toLocaleDateString("es-AR")}` : ""}
+                    {c.fecha_nacimiento ? ` · ${fechaCorta(c.fecha_nacimiento)}` : ""}
                   </div>
                 </div>
               </div>
@@ -107,6 +129,24 @@ export default function Registros() {
   );
 }
 
+/*
+ * El documento como se COMPARA. Espeja a `normalizar_documento` del backend.
+ *
+ * Sin esto el detector buscaba con el texto tal cual y después comparaba
+ * `c.documento === doc`: escribir el DNI con puntos —como está impreso en el
+ * documento que el administrativo tiene en la mano— no macheaba «30111222» y la
+ * pantalla no avisaba nada. La defensa entera contra las dos historias clínicas
+ * del mismo paciente se caía con un punto.
+ */
+function normalizarDocumento(valor) {
+  return String(valor || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+}
+
+/** «Perez» y «Pérez» son el mismo apellido para quien lo escribió apurado. */
+function igualSinAcentos(a, b) {
+  return String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base" }) === 0;
+}
+
 function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
   const toast = useToast();
   const navigate = useNavigate();
@@ -126,13 +166,37 @@ function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
    * ofrece ir a la historia que ya existe. El backend también lo rechaza, pero
    * un error después de completar el formulario llega tarde y no dice adónde ir.
    */
-  const doc = f.documento.trim();
+  const doc = normalizarDocumento(f.documento);
   const posibles = useLista(
     "ciudadanos",
     { institucion: institucionId, search: doc, pageSize: 5 },
     { enabled: doc.length >= 6 },
   );
-  const yaExiste = posibles.filas.find((c) => c.documento === doc);
+  const yaExiste = posibles.filas.find((c) => normalizarDocumento(c.documento) === doc);
+
+  /*
+   * El otro camino por el que se cuela el duplicado: el paciente que volvió y
+   * la vez anterior se anotó sin documento.
+   *
+   * Ahí no hay documento con qué comparar, así que se avisa por apellido y
+   * fecha de nacimiento. Es un AVISO y no un freno —dos personas pueden
+   * compartir apellido y fecha—, pero alcanza para que el administrativo mire
+   * antes de abrir una segunda historia que después no se puede fusionar.
+   */
+  const apellido = f.apellido.trim();
+  const homonimos = useLista(
+    "ciudadanos",
+    { institucion: institucionId, search: apellido, pageSize: 10 },
+    { enabled: !yaExiste && apellido.length >= 3 && !!f.fecha_nacimiento },
+  );
+  const mismaPersona =
+    !yaExiste &&
+    homonimos.filas.find(
+      (c) =>
+        c.fecha_nacimiento === f.fecha_nacimiento &&
+        igualSinAcentos(c.apellido, apellido),
+    );
+  const parecido = yaExiste || mismaPersona;
 
   const crear = useAccion(
     () =>
@@ -167,15 +231,21 @@ function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
         </div>
         <Field label="Documento"><Input value={f.documento} onChange={(e) => set("documento", e.target.value)} placeholder="27418305" /></Field>
 
-        {yaExiste && (
+        {parecido && (
           <div className="rounded-md bg-badge-amber-bg px-3 py-2.5 text-md text-badge-amber-fg">
-            <strong>Ese documento ya está cargado:</strong>{" "}
-            {yaExiste.nombre} {yaExiste.apellido}
-            {yaExiste.fecha_nacimiento
-              ? ` · ${new Date(yaExiste.fecha_nacimiento).toLocaleDateString("es-AR")}`
-              : ""}
+            <strong>
+              {yaExiste
+                ? "Ese documento ya está cargado:"
+                : "Ya hay un paciente con ese apellido y esa fecha de nacimiento:"}
+            </strong>{" "}
+            {parecido.nombre} {parecido.apellido}
+            {/* Se muestra el dato que NO se está tipeando: es con lo que se
+                decide si es la misma persona o un homónimo. */}
+            {yaExiste
+              ? (parecido.fecha_nacimiento ? ` · ${fechaCorta(parecido.fecha_nacimiento)}` : "")
+              : (parecido.documento ? ` · DNI ${parecido.documento}` : " · sin documento")}
             <div className="mt-2">
-              <Button className="text-sm" onClick={() => navigate(`/historia/${yaExiste.id}`)}>
+              <Button className="text-sm" onClick={() => navigate(`/historia/${parecido.id}`)}>
                 ¿Es este paciente? Abrir su historia
               </Button>
             </div>

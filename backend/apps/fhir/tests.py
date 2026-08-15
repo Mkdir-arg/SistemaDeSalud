@@ -134,6 +134,36 @@ class PatientTests(FhirTestCase):
         _, d = self.get("/fhir/Patient?identifier=30111222")
         self.assertEqual(d["total"], 1)
 
+    def test_un_identificador_de_otro_sistema_no_devuelve_al_del_documento(self):
+        """
+        Si el organismo busca por número de afiliado, por pasaporte o por su
+        propia historia clínica y Cauce le contesta 200 con la persona cuyo DNI
+        coincide con ese número, del otro lado nadie mira: se toma esa identidad
+        y se asocia al episodio equivocado. Un Bundle vacío sí lo sabe manejar.
+        """
+        r, d = self.get("/fhir/Patient?identifier=urn:sistema-inventado|30111222")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(d["total"], 0)
+
+    def test_los_identificadores_que_cauce_emite_se_pueden_volver_a_buscar(self):
+        """
+        La fachada emite `urn:cauce:id:ciudadano` en cada Patient. Si buscar por
+        él devuelve a la persona cuyo DOCUMENTO es ese número, un cliente que
+        guardó el identificador que le dimos vuelve con otra persona.
+        """
+        _, d = self.get(f"/fhir/Patient?identifier=urn:cauce:id:ciudadano|{self.paciente.id}")
+        self.assertEqual(d["total"], 1)
+        self.assertEqual(d["entry"][0]["resource"]["id"], str(self.paciente.id))
+
+    def test_un_documento_con_puntos_encuentra_a_la_persona(self):
+        """
+        Cauce guarda el documento normalizado. Comparando la cadena cruda, un
+        «30.111.222» del otro lado —que es como está escrito el documento
+        físico— no encuentra nada y parece que la persona no existe.
+        """
+        _, d = self.get("/fhir/Patient?identifier=30.111.222")
+        self.assertEqual(d["total"], 1)
+
     def test_una_busqueda_sin_resultados_devuelve_un_bundle_vacio(self):
         """«Ninguno» es un resultado válido; un 404 acá rompe clientes sanos."""
         r, d = self.get("/fhir/Patient?identifier=00000000")
@@ -217,6 +247,128 @@ class EncounterTests(FhirTestCase):
         _, d = self.get("/fhir/Encounter?status=in-progress")
         self.assertEqual(d["total"], 1)
 
+    def test_varios_estados_separados_por_coma_se_suman(self):
+        """
+        La coma es la sintaxis estándar de FHIR para «o» en un token, y `status`
+        está declarado como token en /fhir/metadata. Sin partirla, un tablero que
+        pide «abiertos o cerrados» recibe total 0 y alguien concluye que el
+        hospital no atendió a nadie.
+        """
+        otro = Caso.objects.create(
+            institucion=self.inst, version=self.ver, ciudadano=self.paciente,
+            area_actual=self.area, estado=Caso.Estado.CERRADO,
+        )
+        Caso.objects.filter(pk=self.caso.pk).update(estado=Caso.Estado.EN_ESPERA)
+        _, d = self.get("/fhir/Encounter?status=in-progress,finished")
+        self.assertEqual(d["total"], 2)
+        self.assertEqual(
+            {e["resource"]["id"] for e in d["entry"]},
+            {str(self.caso.id), str(otro.id)},
+        )
+
+    def test_un_patient_que_no_es_un_id_contesta_en_fhir_y_no_se_cae(self):
+        """
+        `patient` es un `reference` y un cliente manda `Patient/urn:uuid:9` sin
+        pensarlo. Con un 500, el integrador escala «Cauce se cayó» por un
+        parámetro que la fachada puede rechazar explicando qué mandar.
+        """
+        for valor in ("abc", "Patient/urn:uuid:9", "undefined"):
+            with self.subTest(valor=valor):
+                r, d = self.get(f"/fhir/Encounter?patient={valor}")
+                self.assertEqual(r.status_code, 400)
+                self.assertEqual(d["resourceType"], "OperationOutcome")
+                self.assertIn("patient", d["issue"][0]["diagnostics"])
+
+
+class FiltrosIgnoradosTests(FhirTestCase):
+    """
+    Un filtro que la fachada no entiende no puede pasar por respuesta buena.
+
+    `?date=ge2099-01-01` contestando 200 con todos los episodios del hospital es
+    indistinguible de una respuesta correcta: la sincronización nocturna se lleva
+    la historia entera y la carga como si fuera de ayer. Nadie lo descubre hasta
+    comparar números meses después.
+    """
+
+    def _avisos(self, d):
+        return [
+            e["resource"] for e in d["entry"]
+            if e["resource"]["resourceType"] == "OperationOutcome"
+        ]
+
+    def test_un_parametro_que_no_se_aplica_vuelve_como_aviso(self):
+        _, d = self.get("/fhir/Encounter?date=ge2099-01-01")
+        avisos = self._avisos(d)
+        self.assertTrue(avisos)
+        self.assertEqual(avisos[0]["issue"][0]["severity"], "warning")
+        self.assertIn("date", avisos[0]["issue"][0]["diagnostics"])
+
+    def test_el_aviso_no_se_cuenta_como_resultado(self):
+        """
+        Si contara, el `total` mentiría y el aviso pensado para que alguien lea
+        se procesaría como un episodio más.
+        """
+        _, d = self.get("/fhir/Encounter?date=ge2099-01-01")
+        self.assertEqual(d["total"], 1)
+        modos = [e["search"]["mode"] for e in d["entry"]]
+        self.assertEqual(modos, ["match", "outcome"])
+
+    def test_una_busqueda_que_se_entendio_entera_no_avisa_nada(self):
+        _, d = self.get("/fhir/Encounter?status=in-progress")
+        self.assertEqual(self._avisos(d), [])
+
+
+class PaginacionTests(FhirTestCase):
+    """
+    Un tope sin continuación es truncamiento silencioso: el cliente cuenta lo
+    que recibió, coincide con lo que pidió y da la sincronización por completa.
+    """
+
+    def setUp(self):
+        super().setUp()
+        Ciudadano.objects.bulk_create([
+            Ciudadano(institucion=self.inst, nombre=f"P{i:03d}", apellido=f"A{i:03d}",
+                      documento=f"9000{i:04d}")
+            for i in range(12)
+        ])
+
+    def test_la_segunda_pagina_no_es_la_primera_otra_vez(self):
+        _, p1 = self.get("/fhir/Patient?_count=5&_offset=0")
+        _, p2 = self.get("/fhir/Patient?_count=5&_offset=5")
+        ids1 = [e["resource"]["id"] for e in p1["entry"]]
+        ids2 = [e["resource"]["id"] for e in p2["entry"]]
+        self.assertEqual(len(ids1), 5)
+        self.assertEqual(len(ids2), 5)
+        self.assertFalse(set(ids1) & set(ids2))
+
+    def test_siguiendo_el_link_next_se_juntan_todos_sin_repetidos(self):
+        """
+        Sin `next`, un hospital de 250 pacientes sincroniza 100 y cree que
+        sincronizó todo, porque el `total` que declara Cauce coincide con lo que
+        el cliente contó.
+        """
+        url, vistos = "/fhir/Patient?_count=5", []
+        total = None
+        for _ in range(20):
+            _, d = self.get(url)
+            total = d["total"]
+            vistos += [e["resource"]["id"] for e in d["entry"]]
+            siguiente = [l["url"] for l in d.get("link", []) if l["relation"] == "next"]
+            if not siguiente:
+                break
+            url = siguiente[0]
+        self.assertEqual(len(vistos), total)
+        self.assertEqual(len(set(vistos)), total)
+
+    def test_la_ultima_pagina_no_ofrece_una_siguiente(self):
+        """Un `next` que siempre viene deja al cliente en un bucle infinito."""
+        _, d = self.get("/fhir/Patient?_count=100")
+        self.assertFalse([l for l in d.get("link", []) if l["relation"] == "next"])
+
+    def test_el_bundle_dice_de_donde_salio(self):
+        _, d = self.get("/fhir/Patient?_count=5")
+        self.assertIn("self", [l["relation"] for l in d["link"]])
+
 
 class AlcanceYAuditoriaTests(FhirTestCase):
     """
@@ -268,6 +420,87 @@ class AlcanceYAuditoriaTests(FhirTestCase):
         self.get(f"/fhir/Organization/{self.inst.id}")
         self.assertEqual(AccesoClinico.objects.count(), 0)
 
+    def test_un_paciente_que_esta_en_dos_instituciones_queda_anotado_en_las_dos(self):
+        """
+        `Ciudadano` es por institución, así que en una red la misma persona
+        devuelve una fila por institución. Anotar eso como un LISTADO anónimo
+        deja la consulta fuera de la lista que la Ley 26.529 le da derecho a
+        pedir al paciente: esa vista filtra por `ciudadano_id`.
+        """
+        segunda = Institucion.objects.create(nombre="Hospital Municipal de Villa Real")
+        Membresia.objects.create(usuario=self.user, institucion=segunda, rol="medico", activo=True)
+        gemelo = Ciudadano.objects.create(
+            institucion=segunda, nombre="Juan", apellido="Pérez", documento="30111222",
+        )
+
+        _, d = self.get("/fhir/Patient?identifier=30111222")
+        self.assertEqual(d["total"], 2)
+        anotados = set(AccesoClinico.objects.values_list("ciudadano_id", flat=True))
+        self.assertEqual(anotados, {self.paciente.id, gemelo.id})
+        self.assertEqual(
+            set(AccesoClinico.objects.values_list("tipo", flat=True)),
+            {AccesoClinico.Tipo.DETALLE},
+        )
+
+
+class CapacidadTests(FhirTestCase):
+    """
+    El otro eje del permiso: no dónde, sino qué rol.
+
+    El rol `configurador` existe para que alguien de sistemas dibuje flujos SIN
+    tocar datos clínicos. Sin este chequeo se baja el padrón entero del hospital
+    —nombre, DNI, fecha de nacimiento, domicilio y obra social— con un curl y su
+    propio token, y la institución queda con el registro de que pasó y ninguna
+    defensa de por qué estaba habilitado.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.config = Usuario.objects.create_user("sis@test.local", "x", nombre="Sis")
+        Membresia.objects.create(
+            usuario=self.config, institucion=self.inst, rol="configurador", activo=True
+        )
+        self.client.force_authenticate(self.config)
+
+    def test_un_rol_sin_registros_no_lee_pacientes_por_fhir(self):
+        for url in (f"/fhir/Patient/{self.paciente.id}", "/fhir/Patient?identifier=30111222"):
+            with self.subTest(url=url):
+                r, d = self.get(url)
+                self.assertEqual(r.status_code, 403)
+                self.assertEqual(d["resourceType"], "OperationOutcome")
+
+    def test_un_rol_sin_trabajo_no_lee_episodios_por_fhir(self):
+        for url in (f"/fhir/Encounter/{self.caso.id}", "/fhir/Encounter"):
+            with self.subTest(url=url):
+                self.assertEqual(self.get(url)[0].status_code, 403)
+
+    def test_el_rechazo_no_deja_una_lectura_anotada(self):
+        """Anotarlo diría que se accedió a datos que no se entregaron."""
+        self.get("/fhir/Patient?identifier=30111222")
+        self.assertEqual(AccesoClinico.objects.count(), 0)
+
+    def test_ninguna_vista_clinica_de_la_fachada_queda_sin_chequear_capacidad(self):
+        """
+        Guard: una vista nueva de Patient o Encounter que se olvide del chequeo
+        abre el mismo agujero. El alcance por institución no lo tapa: es otro eje.
+        """
+        from apps.fhir import urls as fhir_urls
+
+        rutas = [
+            str(p.pattern) for p in fhir_urls.urlpatterns
+            if getattr(p, "name", "") and (
+                "patient" in p.name or "encounter" in p.name
+            )
+        ]
+        self.assertTrue(rutas, "no se encontraron rutas clínicas: revisar el guard")
+        for ruta in rutas:
+            url = "/fhir/" + ruta.replace("<str:pk>", str(self.paciente.id))
+            with self.subTest(ruta=ruta):
+                self.assertEqual(
+                    self.get(url)[0].status_code, 403,
+                    f"{ruta} deja leer datos clínicos a un rol sin la capacidad",
+                )
+
 
 class SoloLecturaTests(FhirTestCase):
     """
@@ -298,3 +531,29 @@ class SoloLecturaTests(FhirTestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(d["resourceType"], "OperationOutcome")
         self.assertIn("Patient", d["issue"][0]["diagnostics"])
+
+
+class IdConFormaRaraTests(FhirTestCase):
+    """
+    En FHIR el `id` de un recurso es una CADENA, y los sufijos del estándar
+    (`/_history`, `/_search`) los arma cualquier cliente sin pensarlo.
+    """
+
+    def test_un_id_que_no_es_numero_no_dice_que_patient_no_existe(self):
+        """
+        El integrador leyó el CapabilityStatement treinta segundos antes: si la
+        fachada le contesta que Patient no está implementado, no tiene motivo
+        para dudar y da la integración por descartada.
+        """
+        for url in ("/fhir/Patient/abc", "/fhir/Patient/12/_history", "/fhir/Patient/_search"):
+            with self.subTest(url=url):
+                r, d = self.get(url)
+                self.assertEqual(r.status_code, 404)
+                self.assertEqual(d["resourceType"], "OperationOutcome")
+                texto = d["issue"][0]["diagnostics"]
+                self.assertNotIn("no está implementado", texto)
+                self.assertIn("sí está implementado", texto)
+
+    def test_un_recurso_que_de_verdad_no_existe_sigue_diciendolo(self):
+        _, d = self.get("/fhir/Observation/abc")
+        self.assertIn("no está implementado", d["issue"][0]["diagnostics"])

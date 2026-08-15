@@ -186,6 +186,14 @@ def transferir(origen, destino, insumo, cantidad, autor=None, lote=None, motivo=
     """Mueve stock de un depósito a otro (reposición de un botiquín)."""
     if origen.id == destino.id:
         raise ErrorStock("El origen y el destino son el mismo depósito.")
+    # La regla vivía sólo en la vista de movimientos, así que el camino de los
+    # pedidos —que llama acá— movía stock entre hospitales: la central del
+    # hospital B se vaciaba y B sólo veía que el número no coincidía con el
+    # estante. Va acá para que ningún camino nuevo se la saltee.
+    if not (origen.institucion_id == destino.institucion_id == insumo.institucion_id):
+        raise ErrorStock(
+            "El origen, el destino y el insumo tienen que ser de la misma institución."
+        )
     if cantidad <= 0:
         raise ErrorStock("La cantidad tiene que ser mayor que cero.")
 

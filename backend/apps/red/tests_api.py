@@ -232,6 +232,45 @@ class TrasladosAPITests(APITestCase):
         })
         self.assertEqual(r.status_code, 403)
 
+    def test_un_rol_sin_capacidad_operativa_no_puede_pedir_un_traslado(self):
+        """
+        `solicitar` es una acción de LISTA: el permiso por capacidad sólo valida
+        `create` y las acciones de detalle, así que sin chequearlo acá el rol de
+        sólo diseño —el del proveedor, el consultor, quien arma los flujos—
+        deriva un paciente real. El caso queda EN_ESPERA, el destino reserva una
+        cama, y después ese mismo usuario recibe 403 al cancelarlo (las acciones
+        de detalle sí se validan): quien tiene «trabajo» se come «Ese caso ya
+        tiene un traslado en curso» hasta que alguien dé de baja el pedido falso.
+        """
+        conf = self._usuario("conf@lomas.gob.ar", self.hosp, "configurador")
+        self._como(conf)
+        r = self.client.post("/api/traslados/solicitar/", {
+            "caso": self.caso.id, "destino": self.centro.id, "motivo": "complejidad",
+        })
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertFalse(Traslado.objects.exists(), "quedó un pedido que su autor no puede deshacer")
+        self.caso.refresh_from_db()
+        self.assertNotEqual(self.caso.estado, Caso.Estado.EN_ESPERA)
+
+    def test_no_se_responde_un_traslado_en_el_establecimiento_donde_no_se_opera(self):
+        """
+        La capacidad se resolvía contra la UNIÓN de las membresías: quien es jefe
+        de área en un hospital y configurador en otro aceptaba traslados en el
+        segundo —comprometiendo una cama y abriendo un caso clínico— donde no
+        tiene ninguna capacidad operativa.
+        """
+        mixto = self._usuario("mixto@lomas.gob.ar", self.hosp, "jefe_area")
+        Membresia.objects.create(
+            usuario=mixto, institucion=self.centro, rol="configurador", activo=True
+        )
+        t = self._solicitar().data["id"]
+        self._como(mixto)
+        r = self.client.post(f"/api/traslados/{t}/aceptar/", {
+            "area_destino": self.uti.id, "institucion": self.centro.id,
+        })
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(Traslado.objects.get(pk=t).estado, Traslado.Estado.SOLICITADO)
+
     def test_el_rechazo_sin_motivo_lo_dice(self):
         t = self._solicitar().data["id"]
         self._como(self.jefe)
@@ -289,3 +328,22 @@ class TrasladosAPITests(APITestCase):
         self.assertEqual(
             [r["nombre"] for r in self.client.get("/api/redes/").data["results"]], ["Región VI"]
         )
+
+    def test_las_redes_se_pueden_pedir_por_establecimiento(self):
+        """
+        Un hospital está en su región sanitaria y además en las redes de
+        patología (trauma, perinatal, quemados), y quien tiene varios efectores
+        ve las redes de todos. Sin poder filtrar, la pantalla sólo puede quedarse
+        con la primera por orden alfabético: el panorama que se mira para decidir
+        a dónde mandar recursos es el de otra red, y nada avisa que falten.
+        """
+        trauma = Red.objects.create(nombre="Aa Red de trauma")
+        trauma.instituciones.add(self.centro)
+        Membresia.objects.create(
+            usuario=self.med, institucion=self.centro, rol="jefe_area", activo=True
+        )
+        self._como(self.med)
+        todas = [r["nombre"] for r in self.client.get("/api/redes/").data["results"]]
+        self.assertEqual(todas[0], "Aa Red de trauma", "sin filtro decide el orden alfabético")
+        de_lomas = self.client.get(f"/api/redes/?instituciones={self.hosp.id}").data["results"]
+        self.assertEqual([r["nombre"] for r in de_lomas], ["Región VI"])
