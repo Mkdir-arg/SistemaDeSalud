@@ -132,8 +132,12 @@ export default function PuestoDetalle() {
                         <td className="px-lg py-3">
                           {c.esperando ? <Badge tone="amber">Esperando</Badge> : <Badge tone={est.tone}>{est.label}</Badge>}
                         </td>
-                        <td className={cn("whitespace-nowrap px-lg py-3 font-semibold tabular-nums", claseEspera(c.creado))}>
-                          {antiguedad(c.creado)}
+                        {/* `espera_desde` y no `creado`: el semáforo mide la
+                            espera EN ESTE PASO. Con el ingreso al hospital, un
+                            paciente que llegó al paso hace dos minutos salía en
+                            rojo igual que el abandonado, y el color se ignoraba. */}
+                        <td className={cn("whitespace-nowrap px-lg py-3 font-semibold tabular-nums", claseEspera(c.espera_desde || c.creado))}>
+                          {antiguedad(c.espera_desde || c.creado)}
                         </td>
                         <td className="whitespace-nowrap px-lg py-3 text-texto-suave">
                           {c.asignado_nombre || <span className="text-texto-tenue">—</span>}

@@ -15,14 +15,22 @@ class MembresiaSerializer(serializers.ModelSerializer):
     # mostrar un nombre en una lista.
     usuario_nombre = serializers.CharField(source="usuario.nombre_completo", read_only=True)
     usuario_email = serializers.CharField(source="usuario.email", read_only=True)
+    # Los nombres de las áreas, por el mismo motivo: la pantalla de Fila arma su
+    # selector con las áreas propias y sin esto sólo tenía los ids, así que
+    # mostraba «Área 3» donde tiene que decir «Guardia».
+    areas_nombres = serializers.SerializerMethodField()
 
     class Meta:
         model = Membresia
         fields = [
             "id", "usuario", "usuario_nombre", "usuario_email",
-            "institucion", "rol", "rol_display", "areas", "activo", "creado",
+            "institucion", "rol", "rol_display", "areas", "areas_nombres",
+            "activo", "creado",
         ]
         read_only_fields = ["creado"]
+
+    def get_areas_nombres(self, obj) -> dict[str, str]:
+        return {str(a.id): a.nombre for a in obj.areas.all()}
 
 
 class UsuarioSerializer(serializers.ModelSerializer):

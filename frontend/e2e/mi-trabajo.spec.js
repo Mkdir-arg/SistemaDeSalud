@@ -32,7 +32,13 @@ test.describe("Mi trabajo", () => {
     await expect(page.getByRole("button", { name: /Llamar siguiente|Sin pacientes en cola/ }).first()).toBeVisible();
 
     // Se libera para no dejar el box tomado para los demás tests.
+    //
+    // Si hay un paciente adentro, salir pide confirmación: el box queda libre y
+    // otro puede llamar a alguien más a ese consultorio. Se confirma acá porque
+    // el test justamente quiere dejarlo libre.
     await page.getByRole("button", { name: "Salir del box" }).click();
+    const confirmar = page.getByRole("button", { name: "Salir igual" });
+    if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
     await expect(page.getByRole("button", { name: "Ocupar box" }).first()).toBeVisible();
   });
 

@@ -7,7 +7,7 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { PageHeader, useRefresh } from "@/components/Shell";
-import { Badge, Button, Card, Field, Modal, Select } from "@/components/ui";
+import { Badge, Button, Card, ConfirmDialog, Field, Modal, Select } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { BuscadorPaciente, PacienteElegido } from "@/components/ui/paciente";
 import { useToast } from "@/components/ui/toast";
@@ -521,6 +521,30 @@ function BarraBox({ f }) {
   });
   const ocupado = ocupar.isPending || liberar.isPending;
 
+  /*
+   * Salir del box con alguien adentro se avisa antes.
+   *
+   * En un cambio de turno el médico se iba con el paciente todavía en el
+   * consultorio: el sistema lo daba por libre, la fila lo ofrecía, y el
+   * siguiente profesional llamaba a otra persona al mismo lugar. El que estaba
+   * siendo atendido desaparecía del trabajo de quien lo atendía y aparecía —sin
+   * que nadie se lo dijera— en el de quien tomara el box.
+   *
+   * No se bloquea: hay motivos legítimos para salir (una urgencia en otro lado).
+   * Lo que no puede pasar es que ocurra sin que quien lo hace lo sepa.
+   *
+   * Va con el `ConfirmDialog` de la app y no con un `confirm` del navegador: el
+   * nativo no sigue el tema y bloquea el hilo. El primer intento lo usó y rompió
+   * el e2e sin que el comportamiento estuviera mal —Playwright descarta los
+   * diálogos nativos por omisión, así que «Salir del box» no se ejecutaba nunca—.
+   */
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+
+  function alSalir() {
+    if (f.mi_paciente) return setConfirmarSalida(true);
+    liberar.mutate(f.mi_box);
+  }
+
   return (
     <Card className={cn("flex flex-wrap items-center gap-3 border-l-[3px] p-lg", miBox ? "border-l-badge-green-fg" : "border-l-accent")}>
       <span className={cn(
@@ -537,8 +561,23 @@ function BarraBox({ f }) {
             : "Elegí tu box para empezar a llamar pacientes"}
         </div>
       </div>
+      {confirmarSalida && (
+        <ConfirmDialog
+          title="Hay un paciente en tu consultorio"
+          confirmar="Salir igual"
+          volver="Seguir atendiendo"
+          peligroso
+          cargando={liberar.isPending}
+          onClose={() => setConfirmarSalida(false)}
+          onConfirmar={() => { setConfirmarSalida(false); liberar.mutate(f.mi_box); }}
+        >
+          <strong>{f.mi_paciente?.persona || "Un paciente"}</strong> está en {miBox?.nombre}.
+          Si salís, el consultorio queda libre y otro profesional puede llamar a alguien
+          más ahí. El caso deja de figurar en tu trabajo.
+        </ConfirmDialog>
+      )}
       {miBox ? (
-        <Button variant="secondary" disabled={ocupado} onClick={() => liberar.mutate(f.mi_box)}>Salir del box</Button>
+        <Button variant="secondary" disabled={ocupado} onClick={alSalir}>Salir del box</Button>
       ) : f.boxes.length === 0 ? (
         <span className="text-md text-texto-tenue">El área no tiene boxes configurados.</span>
       ) : (

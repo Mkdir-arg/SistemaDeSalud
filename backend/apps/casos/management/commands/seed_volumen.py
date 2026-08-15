@@ -273,6 +273,8 @@ class Command(BaseCommand):
         self._sembrar_turnos(pacientes, hechos)
         sellados = self._sellar_historias()
         consentimientos = self._sembrar_consentimientos(pacientes)
+        self._dejar_consultorios_libres()
+        self._ordenar_las_colas()
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(
             estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO]).count()
@@ -290,6 +292,82 @@ class Command(BaseCommand):
             f"  {consentimientos} consentimientos de datos\n"
             f"\nReproducible: misma --semilla ({opciones['semilla']}) = mismos datos."
         ))
+
+    def _dejar_consultorios_libres(self):
+        """
+        Deja como mucho UN consultorio ocupado por área.
+
+        Desde que no se puede llamar a un box con alguien adentro, un área con
+        todos —o casi todos— los consultorios llenos deja la pantalla de Fila sin
+        una sola acción posible: se ve como si el sistema estuviera roto, y basta
+        con llamar a una persona para trabarla del todo.
+
+        Tampoco es un estado sostenible de verdad: si los consultorios
+        estuvieran siempre llenos, nadie podría ser llamado nunca. Uno ocupado
+        muestra la función —el box con paciente adentro, con su nombre— sin
+        dejar el demo en un callejón.
+
+        Los que sobran vuelven a la cola, que es lo que pasa cuando alguien los
+        llamó por error o tuvo que salir a una urgencia.
+        """
+        from apps.casos.models import ItemFila
+        from apps.instituciones.models import Area, Box
+
+        devueltos = 0
+        for area in Area.objects.filter(institucion=self.inst):
+            boxes = list(Box.objects.filter(area=area, activo=True).values_list("id", flat=True))
+            if not boxes:
+                continue
+            # Ningún profesional queda «parado» en un consultorio.
+            #
+            # `Box.ocupado_por` lo toma quien atiende y lo suelta al salir; si una
+            # sesión se corta en el medio, queda tomado para siempre. Al rehacer
+            # el demo aparecía un médico «Atendiendo en Consultorio 1» sin que
+            # nadie lo hubiera ocupado en esta corrida.
+            Box.objects.filter(id__in=boxes).update(ocupado_por=None)
+
+            dentro = list(
+                ItemFila.objects.filter(atendido=False, box_id__in=boxes)
+                .select_related("caso").order_by("llamado_at", "id")
+            )
+            # Se conserva el más viejo —el que lleva más rato adentro, que es el
+            # más creíble— y vuelven a la cola los demás.
+            for it in dentro[1:]:
+                try:
+                    motor.devolver_a_la_cola(
+                        it.caso, autor=self.admin, motivo="se liberó el consultorio"
+                    )
+                except motor.ErrorMotor:
+                    ItemFila.objects.filter(pk=it.pk).update(box=None)
+                devueltos += 1
+        return devueltos
+
+    def _ordenar_las_colas(self):
+        """
+        Renumera `orden` para que siga a `ingreso` en cada cola.
+
+        `orden` se asigna al encolar y `ingreso` se corrige DESPUÉS —el seed
+        recorre con el motor y refecha al final—, así que quedaban
+        desincronizados: en la pantalla de Fila, entre dos urgentes, el que
+        esperó dos horas aparecía debajo del que esperó una. En la operación real
+        no pasa, porque los dos se fijan en el mismo momento; en el demo sí, y el
+        demo es lo que se muestra.
+
+        No se toca el orden como concepto —el reordenamiento manual sigue
+        mandando sobre la llegada—: acá simplemente se lo alinea con la línea de
+        tiempo que el seed acaba de inventar.
+        """
+        from apps.casos.models import ItemFila
+
+        nodos = ItemFila.objects.filter(atendido=False).values_list("nodo_id", flat=True).distinct()
+        tocados = 0
+        for nodo_id in nodos:
+            items = ItemFila.objects.filter(nodo_id=nodo_id, atendido=False).order_by("ingreso", "id")
+            for i, it in enumerate(items):
+                if it.orden != i:
+                    ItemFila.objects.filter(pk=it.pk).update(orden=i)
+                    tocados += 1
+        return tocados
 
     def _sembrar_consentimientos(self, pacientes):
         """

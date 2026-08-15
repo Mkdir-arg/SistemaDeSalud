@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -14,6 +16,7 @@ from apps.instituciones.models import Box
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
+
 from .serializers import (
     CasoDetalleSerializer,
     CasoSerializer,
@@ -22,6 +25,13 @@ from .serializers import (
     NotificacionSerializer,
     ValorCampoSerializer,
 )
+
+# Cuánto vale un llamado en la pantalla de la sala.
+#
+# Un turno de guardia, para que el que se llamó al principio del turno siga
+# visible, pero no el de anoche. Es a propósito más corto que un día: la pantalla
+# es pública y cada nombre que sobra es un dato de salud expuesto de más.
+VIGENCIA_LLAMADO_H = 8
 
 
 class CasoViewSet(BaseModelViewSet):
@@ -636,12 +646,17 @@ class MisTareasView(APIView):
     def _filas(self, fila_nodo_ids, nodo_por_id, user, mis_grupo_ids):
         if not fila_nodo_ids:
             return []
+        # El orden lo pone `motor.cola_ordenada`, que es el mismo que usa la
+        # pantalla de Filas. Acá se ordenaba distinto —por prioridad, sin mirar
+        # el reordenamiento manual— y «el siguiente» terminaba siendo una
+        # persona en una pantalla y otra en la otra.
         items = list(
-            ItemFila.objects.filter(nodo_id__in=fila_nodo_ids, atendido=False, box__isnull=True)
-            .select_related("caso__ciudadano")
+            motor.cola_ordenada(
+                ItemFila.objects.filter(
+                    nodo_id__in=fila_nodo_ids, atendido=False, box__isnull=True
+                ).select_related("caso__ciudadano")
+            )
         )
-        # La cola se ordena por prioridad del caso (urgente > alta > normal) y luego por llegada.
-        items.sort(key=lambda it: (PRIORIDAD_RANK.get(it.caso.prioridad, 9), it.ingreso))
         por_nodo = {}
         for it in items:
             por_nodo.setdefault(it.nodo_id, []).append(it)
@@ -659,7 +674,26 @@ class MisTareasView(APIView):
                 "ocupado_por_nombre": b.ocupado_por.nombre_completo if b.ocupado_por_id else None,
             } for b in boxes_qs]
             mi_box = next((b["id"] for b in boxes if b["ocupado_por"] == user.id), None)
+            # Quién está adentro de mi box ahora.
+            #
+            # «Salir del box» no lo sabía y no avisaba: en un cambio de turno el
+            # médico se iba con el paciente todavía adentro, el sistema daba el
+            # consultorio por libre, la fila lo ofrecía y el siguiente llamaba a
+            # otra persona al mismo lugar. El que estaba siendo atendido
+            # desaparecía del trabajo de quien lo atendía.
+            adentro = None
+            if mi_box:
+                it = (
+                    ItemFila.objects.filter(nodo_id=nid, atendido=False, box_id=mi_box)
+                    .select_related("caso__ciudadano").first()
+                )
+                if it:
+                    adentro = {
+                        "caso": it.caso_id,
+                        "persona": self._nombre(it.caso.ciudadano),
+                    }
             filas.append({
+                "mi_paciente": adentro,
                 "nodo_id": nid, "nodo_titulo": nodo.titulo, "flujo_titulo": flujo.titulo,
                 "area_id": area.id if area else None,
                 "area_nombre": area.nombre if area else None,
@@ -864,6 +898,19 @@ class PuestoDetalleView(APIView):
             "prioridad": c.prioridad, "prioridad_display": c.get_prioridad_display(),
             "estado": c.estado, "estado_display": c.get_estado_display(),
             "creado": c.creado,
+            # Desde cuándo espera EN ESTE PASO, que es lo que mide el semáforo.
+            #
+            # La pantalla usaba `creado` —el ingreso del paciente al hospital— y
+            # entonces todo lo que está más adelante del flujo salía en rojo: el
+            # que llegó al paso «Conducta» hace dos minutos figuraba «5 h» igual
+            # que el realmente abandonado. En internación, donde el caso vive
+            # días, decía «3 d» para todos y el color dejaba de significar algo.
+            #
+            # Se prefiere el ingreso a la cola cuando hay fila (es cuando el
+            # paciente empezó a esperar de verdad); si no, cuándo entró al nodo.
+            "espera_desde": (
+                (it.ingreso if (it := item_de(c)) else None) or c.paso_desde or c.creado
+            ),
             "asignado_nombre": c.asignado_a.nombre_completo if c.asignado_a_id else None,
             "mio": c.asignado_a_id == user.id,
             "asignado": bool(c.asignado_a_id),
@@ -942,11 +989,20 @@ class PantallaLlamadosView(APIView):
         from django.db.models.functions import Coalesce
 
         flujo = nodo.version.flujo
-        # Orden por el ÚLTIMO llamado (un rellamado vuelve a ponerlo arriba).
+        # Orden por el ÚLTIMO llamado (un rellamado vuelve a ponerlo arriba), y
+        # sólo los de las últimas horas.
+        #
+        # Sin el corte, a las 7 de la mañana el televisor de la sala anunciaba en
+        # letras enormes al paciente llamado a las 23:40 y lo mandaba a un box
+        # que ahora ocupa otro. Peor: dejaba el nombre y apellido de alguien ya
+        # atendido colgado toda la noche en una pantalla pública sin
+        # autenticación, que es justo lo que este endpoint dice cuidar.
+        desde = timezone.now() - timedelta(hours=VIGENCIA_LLAMADO_H)
         llamados = list(
             ItemFila.objects.filter(nodo=nodo, llamado_at__isnull=False)
             .select_related("caso__ciudadano", "box")
             .annotate(ultimo=Coalesce("rellamado_at", "llamado_at"))
+            .filter(ultimo__gte=desde)
             .order_by("-ultimo")[:8]
         )
         en_espera = ItemFila.objects.filter(nodo=nodo, atendido=False, box__isnull=True).count()
@@ -984,10 +1040,35 @@ class ItemFilaViewSet(BaseModelViewSet):
     serializer_class = ItemFilaSerializer
     capacidad_requerida = "trabajo"
     institucion_path = "caso__institucion"
+    # La cola se lee por acá y se OPERA por el motor: llamar, devolver, ausente,
+    # mover. Sin este recorte, un PATCH cambiaba el orden, el box o el
+    # «atendido» de cualquiera sin registrar un solo evento —y la línea de tiempo
+    # del caso es la trazabilidad del episodio: quién hizo qué y cuándo—. Un
+    # DELETE directamente sacaba a un paciente de la cola sin dejar rastro de que
+    # existió.
+    http_method_names = ["get", "head", "options", "post"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Sale ordenada como la cola de verdad, salvo que pidan otro orden.
+        #
+        # La pantalla de Fila reordenaba por su cuenta con una regla distinta a
+        # la de «Mi trabajo», así que «el siguiente» era otra persona según
+        # dónde se mirara. El orden es del dominio: lo pone el servidor.
+        if not self.request.query_params.get("ordering"):
+            qs = motor.cola_ordenada(qs)
+        return qs
     # `box` permite pedir la cola REAL: `?atendido=false&box=null` son los que
     # todavía esperan. Sin él hay que traerlos todos y descartar en el cliente los
     # ya llamados, que es lo que hacía la pantalla de fila.
-    filter_fields = ("caso", "nodo", "urgente", "atendido", "box", "nodo__version__flujo__area")
+    # `ausente` se puede filtrar: quien se dio por ausente sale de la cola
+    # (`atendido=True`) y desaparecía de TODAS las pantallas. El paciente que se
+    # fue a fumar y vuelve a los diez minutos no tenía cómo ser reencolado sin
+    # buscar el caso a mano por otro lado.
+    filter_fields = (
+        "caso", "nodo", "urgente", "atendido", "ausente", "box",
+        "nodo__version__flujo__area",
+    )
     # Exportación de la cola: lo que un jefe de guardia necesita para revisar
     # tiempos de espera fuera del sistema.
     nombre_csv = "cola-de-espera"
@@ -1006,8 +1087,19 @@ class ItemFilaViewSet(BaseModelViewSet):
 
     @action(detail=True, methods=["post"])
     def mover(self, request, pk=None):
-        """Mueve el ítem a una posición de la cola (cuerpo: {"posicion": <0-based>})."""
+        """Mueve el ítem a una posición de la cola (cuerpo: {"posicion": <0-based>}).
+
+        Solo puede reordenar quien integre un grupo responsable del paso, igual
+        que llamar. Era el único punto de la fila donde ese control faltaba: el
+        orden de la cola es quién se atiende primero, y cualquiera que cambiara
+        el selector de área podía adelantar a alguien en una guardia ajena.
+        """
         item = self.get_object()
+        if not motor.usuario_puede_tomar(request.user, item.caso):
+            return Response(
+                {"detail": "No integrás ningún grupo responsable de este paso."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             posicion = int(request.data.get("posicion"))
         except (TypeError, ValueError):

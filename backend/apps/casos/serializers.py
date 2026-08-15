@@ -26,6 +26,14 @@ class ItemFilaSerializer(serializers.ModelSerializer):
     area = serializers.IntegerField(source="nodo.version.flujo.area_id", read_only=True)
     area_nombre = serializers.SerializerMethodField()
     box_nombre = serializers.CharField(source="box.nombre", read_only=True, default=None)
+    # El escalón de urgencia con el que el servidor ordena la cola.
+    #
+    # La pantalla decidía sola si se puede adelantar a alguien mirando `urgente`,
+    # pero el orden también pesa la prioridad del caso: la flecha quedaba
+    # habilitada, el toast decía «se adelantó un lugar» y la fila no se movía.
+    # Exponer el mismo escalón que usa el orden hace que las dos reglas no puedan
+    # discrepar.
+    rango = serializers.SerializerMethodField()
 
     class Meta:
         model = ItemFila
@@ -34,10 +42,17 @@ class ItemFilaSerializer(serializers.ModelSerializer):
         # llamaran y cuánto duró la atención.
         fields = [
             "id", "caso", "nodo", "nodo_titulo", "area", "area_nombre", "ticket",
-            "persona", "urgente", "orden", "atendido", "ausente", "box", "box_nombre",
-            "ingreso", "llamado_at", "atendido_at",
+            "persona", "urgente", "rango", "orden", "atendido", "ausente",
+            "box", "box_nombre", "ingreso", "llamado_at", "atendido_at",
+            "veces_llamado",
         ]
         read_only_fields = ["ingreso", "llamado_at", "atendido_at"]
+
+    def get_rango(self, obj) -> int:
+        # Mismo criterio que `motor.cola_ordenada`, que es quien ordena de verdad.
+        if obj.urgente or obj.caso.prioridad == Caso.Prioridad.URGENTE:
+            return 0
+        return 1 if obj.caso.prioridad == Caso.Prioridad.ALTA else 2
 
     def get_persona(self, obj) -> str | None:
         c = obj.caso.ciudadano

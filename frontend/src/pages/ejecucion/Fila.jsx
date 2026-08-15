@@ -14,6 +14,11 @@ import { cn } from "@/lib/cn";
 const hora = (iso) =>
   new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
 
+// Cada cuánto se refresca la cola. Corto a propósito: es la pantalla del box y
+// lo que muestra decide a quién se llama. Medio minuto de desfasaje ya alcanza
+// para que dos boxes llamen a la misma persona.
+const REFRESCO_MS = 20_000;
+
 /**
  * Fila de espera de un área. Pantalla piloto de la migración: es la primera
  * hecha entera con la fundación nueva (tokens, componentes, TanStack Query,
@@ -30,19 +35,38 @@ export default function Fila() {
   // pedirlo con la palabra, que es lo que el backend traduce a IS NULL.
   // Se pide al servidor y no se descarta en el cliente: los ya llamados ocupaban
   // lugar de las 200 filas del pedido y podían dejar afuera a gente que espera.
-  const q = useLista("items-fila", { atendido: false, box: "null", pageSize: 200 });
-
-  // Los urgentes van al frente; dentro de cada grupo manda el orden de llegada.
-  const items = useMemo(
-    () => [...q.filas].sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || a.orden - b.orden),
-    [q.filas],
+  //
+  // `refetchInterval`: esta pantalla queda abierta en el monitor del box durante
+  // todo el turno y era la única viva de la app sin refresco. Congelada mostraba
+  // gente que ya había llamado otro —de ahí que «Llamar siguiente» disparara un
+  // llamado duplicado— y no mostraba a los que llegaron después: un paciente que
+  // el triage marcó ROJO hace diez minutos no subía al tope de la lista de nadie.
+  const q = useLista(
+    "items-fila",
+    { atendido: false, box: "null", pageSize: 200 },
+    { refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
   );
 
-  const areas = useMemo(() => {
+  // Quién está adentro de cada box. Es una lista corta —a lo sumo uno por box—
+  // y va aparte de la cola para no mezclarla: la de arriba son los que ESPERAN.
+  const enBox = useLista(
+    "items-fila",
+    { atendido: false, pageSize: 200 },
+    { refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
+  );
+  const ocupacion = useMemo(() => {
     const m = new Map();
-    for (const it of items) if (it.area) m.set(it.area, it.area_nombre || `Área ${it.area}`);
-    return [...m].map(([id, nombre]) => ({ id, nombre }));
-  }, [items]);
+    for (const it of enBox.filas) if (it.box) m.set(it.box, it);
+    return m;
+  }, [enBox.filas]);
+
+  // El orden viene del servidor y NO se vuelve a ordenar acá.
+  //
+  // Esta pantalla ordenaba por `urgente` y `orden`, y «Mi trabajo» por la
+  // prioridad del caso: eran dos reglas distintas y «el siguiente» resultaba ser
+  // una persona en cada una. La enfermera adelantaba a alguien que empeoró
+  // esperando y el médico, llamando desde la otra pantalla, llamaba a otro.
+  const items = q.filas;
 
   /*
    * Áreas donde esta persona realmente trabaja.
@@ -63,6 +87,29 @@ export default function Fila() {
     [misMembresias.filas],
   );
 
+  /*
+   * Las áreas del selector: las que tienen cola MÁS las propias.
+   *
+   * Salían sólo de los ítems en espera, y por eso una cola vacía —de madrugada,
+   * entre picos, que es un estado normal y frecuente— dejaba la lista en cero:
+   * desaparecía el selector, no se elegía ninguna área, y la pantalla terminaba
+   * afirmando que el área no tiene consultorios cargados. Alguien con permisos
+   * se iba a Estructura a «arreglar» boxes que ya existían.
+   *
+   * Peor todavía: si tu área estaba vacía y otra tenía gente, el selector te
+   * dejaba mirando la cola ajena sin forma de volver a la tuya.
+   */
+  const areas = useMemo(() => {
+    const m = new Map();
+    for (const it of items) if (it.area) m.set(it.area, it.area_nombre || `Área ${it.area}`);
+    for (const mem of misMembresias.filas) {
+      for (const id of mem.areas || []) {
+        if (!m.has(id)) m.set(id, mem.areas_nombres?.[String(id)] || `Área ${id}`);
+      }
+    }
+    return [...m].map(([id, nombre]) => ({ id, nombre }));
+  }, [items, misMembresias.filas]);
+
   useEffect(() => {
     if (!areas.length) return;
     if (areas.some((a) => a.id === areaSel)) return; // ya hay una elegida y válida
@@ -81,7 +128,29 @@ export default function Fila() {
 
   const boxes = useLista("boxes", { area: areaSel, activo: true, pageSize: 50 }, { enabled: areaSel != null });
 
+  /*
+   * Los que se dieron por ausente.
+   *
+   * `marcar_ausente` los saca de la cola (`atendido=True`) y desaparecían de
+   * TODAS las pantallas: el paciente que salió a fumar y vuelve a los diez
+   * minutos no tenía cómo volver a la cola sin ir a buscar su caso a mano por
+   * otro lado. Aparecen acá, aparte de la fila —no están esperando— y con la
+   * acción que los reencola al final.
+   */
+  const ausentes = useLista(
+    "items-fila",
+    { ausente: true, pageSize: 50 },
+    { refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
+  );
+  const misAusentes = ausentes.filas.filter((it) => it.area === areaSel);
+
+  const reencolar = useAccion((caso) => api.post(`/casos/${caso}/devolver/`, {}), {
+    onSuccess: () => toast.ok("Vuelve a la cola, al final"),
+    onError: (e) => toast.deError(e, "No se pudo devolver a la cola."),
+  });
+
   const fila = items.filter((it) => it.area === areaSel);
+  const todosOcupados = boxes.filas.length > 0 && boxes.filas.every((b) => ocupacion.has(b.id));
   const areaNombre = areas.find((a) => a.id === areaSel)?.nombre || "Sala de espera";
   const siguiente = fila[0];
 
@@ -163,8 +232,13 @@ export default function Fila() {
           </div>
         ) : boxes.filas.length === 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-md">
+            {/* Sólo se afirma que faltan boxes cuando de verdad se preguntó por
+                ellos. Con `areaSel` en null la consulta ni sale, y la pantalla
+                acusaba de mala configuración a un área que está bien. */}
             <span className="text-base text-texto-tenue">
-              Esta área no tiene boxes configurados. Cargalos en Estructura → área → Boxes.
+              {areaSel == null
+                ? "Elegí un área para ver sus consultorios."
+                : "Esta área no tiene boxes configurados. Cargalos en Estructura → área → Boxes."}
             </span>
             <BotonLlamar
               label="Llamar al siguiente"
@@ -174,23 +248,91 @@ export default function Fila() {
             />
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
-            {boxes.filas.map((b) => (
-              <div key={b.id} className="flex flex-col gap-2.5 rounded-md border border-borde p-3">
-                <div className="flex items-center gap-2 text-md font-bold">
-                  <Icon name="enter" size={15} className="text-nodo-espera-sol" /> {b.nombre}
-                </div>
-                <BotonLlamar
-                  label="Llamar siguiente"
-                  disabled={!siguiente || llamar.isPending}
-                  cargando={llamar.isPending && llamar.variables?.box?.id === b.id}
-                  onClick={() => alLlamar(b)}
-                />
+          <>
+            {/* Todos ocupados: la pantalla se quedaba sin una sola acción y sin
+                decir por qué. Con siete personas esperando y ningún botón, lo
+                razonable es pensar que el sistema se rompió. */}
+            {todosOcupados && (
+              <div className="mb-md flex items-start gap-2 rounded-md bg-superficie-2 px-3 py-2 text-base text-texto-medio">
+                <Icon name="alert" size={15} className="mt-px flex-none text-texto-debil" />
+                <span>
+                  Los {boxes.filas.length} consultorios están ocupados. Va a haber uno
+                  libre cuando alguien termine su atención o salga del box.
+                </span>
               </div>
-            ))}
+            )}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
+            {boxes.filas.map((b) => {
+              /*
+               * Un box con alguien adentro no se puede usar para llamar.
+               *
+               * Las tarjetas están una al lado de la otra y ninguna decía cuál
+               * estaba ocupada: el médico del Box 2 apretaba la del Box 1, el
+               * televisor de la sala anunciaba «JUAN PÉREZ → Box 1» y Juan
+               * entraba al consultorio donde otro estaba revisando a alguien.
+               * Interrumpe una consulta y expone al que está adentro.
+               */
+              const dentro = ocupacion.get(b.id);
+              return (
+                <div key={b.id} className="flex flex-col gap-2.5 rounded-md border border-borde p-3">
+                  <div className="flex items-center gap-2 text-md font-bold">
+                    <Icon name="enter" size={15} className="text-nodo-espera-sol" /> {b.nombre}
+                  </div>
+                  {dentro ? (
+                    <div className="text-sm text-texto-debil">
+                      Ocupado
+                      {dentro.persona ? <> · <span className="text-texto-medio">{dentro.persona}</span></> : null}
+                    </div>
+                  ) : (
+                    <BotonLlamar
+                      label="Llamar siguiente"
+                      disabled={!siguiente || llamar.isPending}
+                      cargando={llamar.isPending && llamar.variables?.box?.id === b.id}
+                      onClick={() => alLlamar(b)}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
+          </>
         )}
       </section>
+
+      {/* Dados por ausente: fuera de la cola, pero recuperables */}
+      {misAusentes.length > 0 && (
+        <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
+          <h3 className="px-xl py-lg text-lg font-bold">
+            No se presentaron
+            <span className="ml-2 text-base font-semibold text-texto-tenue">
+              {misAusentes.length}
+            </span>
+          </h3>
+          <ul className="border-t border-division">
+            {misAusentes.map((it) => (
+              <li key={it.id} className="flex flex-wrap items-center gap-md border-t border-division px-xl py-3 first:border-t-0">
+                <span className="min-w-40 flex-1 font-semibold">{it.persona || casoId(it.caso)}</span>
+                <span className="text-sm text-texto-debil">
+                  llamado {it.veces_llamado > 1 ? `${it.veces_llamado} veces` : "1 vez"}
+                </span>
+                <button
+                  type="button"
+                  disabled={reencolar.isPending}
+                  onClick={() => reencolar.mutate(it.caso)}
+                  className="rounded-md border border-borde px-3 py-1.5 text-base font-semibold text-texto-medio hover:bg-superficie-2 disabled:opacity-50"
+                >
+                  Volver a la cola
+                </button>
+              </li>
+            ))}
+          </ul>
+          {/* Va al final a propósito, y se dice: perdió el turno, pero el que
+              esperó todo el tiempo no tiene por qué pagarlo. */}
+          <div className="px-xl pb-lg text-sm text-texto-debil">
+            Vuelven al final de la cola: ya perdieron su turno.
+          </div>
+        </section>
+      )}
 
       {/* Cola */}
       <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
@@ -288,8 +430,20 @@ export default function Fila() {
  * No para el primero, ni para quien tiene arriba a alguien de otra urgencia: la
  * cola ordena los urgentes primero, así que ese movimiento se deshace solo.
  */
+/*
+ * ¿Adelantar a esta persona cambiaría algo?
+ *
+ * Se compara el `rango` que manda el servidor —el mismo escalón con el que
+ * ordena la cola— y no `urgente` a mano. Con `urgente` la pantalla y el servidor
+ * usaban reglas distintas: la flecha quedaba habilitada entre dos personas de
+ * prioridad distinta, el toast decía «se adelantó un lugar» y la fila no se
+ * movía. Un control que promete algo y no lo cumple es peor que uno apagado.
+ */
 function puedeSubir(fila, i) {
-  return i > 0 && !!fila[i].urgente === !!fila[i - 1].urgente;
+  if (i <= 0) return false;
+  const a = fila[i].rango, b = fila[i - 1].rango;
+  if (a == null || b == null) return !!fila[i].urgente === !!fila[i - 1].urgente;
+  return a === b;
 }
 
 function CargandoFila() {

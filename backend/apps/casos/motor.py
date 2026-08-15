@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Case, IntegerField, Max, Value, When
 from django.utils import timezone
 
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
@@ -1118,15 +1118,64 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     nodo = caso.nodo_actual
     if nodo is None:
         raise ErrorMotor("El caso no está posicionado en ningún nodo.")
-    item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
+    # `select_for_update` y no `.first()` pelado: dos boxes que aprietan «Llamar»
+    # al mismo tiempo entraban los dos, el segundo pisaba `box` y `asignado_a`, y
+    # el primero se quedaba esperando a alguien que ya estaba en otro consultorio.
+    # `.order_by()` porque el orden por defecto del modelo cruza el nodo y
+    # Postgres no bloquea el lado nulo de un outer join.
+    item = (
+        caso.en_filas.select_for_update().filter(nodo=nodo, atendido=False)
+        .order_by().first()
+    )
     if item is None:
         raise ErrorMotor("El caso no está en una fila de espera.")
 
+    # Ya lo llamó otro. No se le roba en silencio: quien llama tiene que
+    # enterarse de que ese paciente está caminando hacia otro box, porque si no
+    # el primero espera a alguien que no va a llegar —y peor, se queda con el
+    # formulario de atención habilitado sobre un paciente que nunca vio—.
+    if item.box_id and box_id and item.box_id != int(box_id):
+        quien = getattr(caso.asignado_a, "nombre_completo", None) or "otro profesional"
+        raise ErrorMotor(
+            f"Ya lo llamaron a {item.box.nombre} ({quien}). Si no se presentó ahí, "
+            f"primero hay que devolverlo a la cola."
+        )
+
     box = Box.objects.filter(pk=box_id).first() if box_id else None
     box_nombre = box.nombre if box else ""
+
+    # Un consultorio tiene UN paciente adentro.
+    #
+    # El motor aceptaba cualquier box y no miraba si ya había alguien: en el
+    # demo llegó a haber tres pacientes en el mismo consultorio al mismo tiempo.
+    # Que la pantalla no ofrezca el botón es cosmético —la regla tiene que estar
+    # acá, porque también se llama por API y desde el propio flujo—.
+    if box is not None:
+        otro = (
+            ItemFila.objects.filter(box=box, atendido=False)
+            .exclude(pk=item.pk).select_related("caso__ciudadano").first()
+        )
+        if otro is not None:
+            quien = getattr(getattr(otro.caso, "ciudadano", None), "nombre", None) or "otro paciente"
+            raise ErrorMotor(
+                f"{box.nombre} está ocupado ({quien}). Elegí otro consultorio o esperá "
+                f"a que se libere."
+            )
+
     item.box = box
+
+    campos = ["box", "llamado_at"]
     if item.llamado_at is None:
         item.llamado_at = timezone.now()  # marca de "llamado desde la fila" (métricas)
+    else:
+        # Segundo llamado: volvió a la cola o reapareció después de un ausente.
+        # `llamado_at` se conserva —mide la espera hasta el primer llamado, y esa
+        # espera ocurrió— pero sin tocar nada más el llamado era MUDO: la TV de
+        # la sala ordena por el último llamado y no cambiaba nada, así que el
+        # paciente seguía parado mientras el médico creía haberlo llamado.
+        item.rellamado_at = timezone.now()
+        item.veces_llamado = (item.veces_llamado or 1) + 1
+        campos += ["rellamado_at", "veces_llamado"]
 
     # El que llama se queda con el caso (queda asignado a quien atiende).
     if autor is not None and getattr(autor, "is_authenticated", False):
@@ -1135,7 +1184,7 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     es_atencion_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
     if es_atencion_fila:
         # Queda en el mismo nodo, ahora en atención en el box.
-        item.save(update_fields=["box", "llamado_at"])
+        item.save(update_fields=campos)
         caso.estado = Caso.Estado.EN_EVALUACION
         _registrar(caso, f"Llamado a {box_nombre}" if box_nombre else "Llamado para atención",
                    detalle="pasa a atención", autor=autor, nodo=nodo)
@@ -1145,7 +1194,7 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
     # Espera de fila clásica: marca atendido y avanza al siguiente nodo.
     item.atendido = True
     item.atendido_at = timezone.now()
-    item.save(update_fields=["box", "atendido", "llamado_at", "atendido_at"])
+    item.save(update_fields=campos + ["atendido", "atendido_at"])
     _registrar(caso, f"Llamado desde la fila{f' a {box_nombre}' if box_nombre else ''}",
                detalle=nodo.titulo, autor=autor, nodo=nodo)
     siguiente = _siguiente_nodo(nodo, caso)
@@ -1155,6 +1204,38 @@ def llamar(caso: Caso, box_id=None, autor=None) -> Caso:
         return caso
     caso.nodo_actual = siguiente
     return _correr_automaticos(caso, autor=autor)
+
+
+def cola_ordenada(qs):
+    """
+    El orden de una cola de espera. UNO SOLO para todo el sistema.
+
+    Había dos, y no daban la misma persona:
+      · «Mi trabajo» ordenaba por prioridad del caso e ignoraba el
+        reordenamiento manual;
+      · «Filas de espera» ordenaba por el reordenamiento manual e ignoraba la
+        prioridad.
+
+    Así, la enfermera de triage adelantaba a alguien que empeoró esperando —el
+    sistema le decía «se adelantó un lugar»—, el médico llamaba desde «Mi
+    trabajo», y llamaba a otro. El adelantamiento manual es LA herramienta de la
+    guardia para el que se descompensa en la sala, y se perdía en silencio.
+
+    El orden es una regla del dominio, no una preferencia de cada pantalla, así
+    que vive acá y las dos lo piden.
+    """
+    return qs.annotate(
+        _rango=Case(
+            # El `urgente` del ítem y la prioridad del caso dicen lo mismo por
+            # dos caminos (el triage marca uno, una decisión del flujo marca el
+            # otro). Cualquiera de los dos manda al frente.
+            When(urgente=True, then=Value(0)),
+            When(caso__prioridad=Caso.Prioridad.URGENTE, then=Value(0)),
+            When(caso__prioridad=Caso.Prioridad.ALTA, then=Value(1)),
+            default=Value(2),
+            output_field=IntegerField(),
+        )
+    ).order_by("_rango", "orden", "ingreso", "id")
 
 
 def _proximo_orden(nodo) -> int:
@@ -1263,19 +1344,26 @@ def mover_en_fila(item: ItemFila, posicion: int, autor=None) -> ItemFila:
     """Mueve un ítem a una posición de la cola y renumera el resto.
 
     Se usa cuando alguien empeora esperando y hay que adelantarlo sin llegar a
-    marcarlo urgente (que lo saltea todo). La cola se ordena por
-    `-urgente, orden, ingreso`: los urgentes van primero igual, así que la
-    posición es dentro del grupo que corresponde.
+    marcarlo urgente (que lo saltea todo). La posición es dentro del escalón de
+    urgencia que le toca: los más urgentes van primero igual.
 
     Se renumera 0..n para que quede una secuencia sin huecos ni repetidos.
     """
+    # Se ordena con `cola_ordenada`, el MISMO orden que ve la pantalla.
+    #
+    # Acá se ordenaba por `-urgente, orden, ingreso` —la regla vieja, sin la
+    # prioridad del caso—, así que «mover a la posición 3» contaba sobre una lista
+    # distinta de la que la persona está mirando: el clic movía a otro, o no movía
+    # nada y el toast decía «se adelantó un lugar» igual.
+    #
     # Solo los que ESPERAN: quien ya está en un box sigue con `atendido=False`
     # pero no está en la cola, y meterlo acá correría las posiciones respecto de
     # las que muestra la pantalla.
     cola = list(
-        ItemFila.objects.select_for_update()
-        .filter(nodo=item.nodo_id, atendido=False, box__isnull=True)
-        .order_by("-urgente", "orden", "ingreso")
+        cola_ordenada(
+            ItemFila.objects.select_for_update()
+            .filter(nodo=item.nodo_id, atendido=False, box__isnull=True)
+        )
     )
     ids = [i.id for i in cola]
     if item.id not in ids:
@@ -1368,6 +1456,27 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
             item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
             if item and item.box_id is None:
                 raise ErrorMotor("Primero hay que llamar al paciente desde un box.")
+            # No alcanza con que ESTÉ llamado: tiene que estar llamado por quien
+            # va a registrar la atención.
+            #
+            # Sin esto, el médico que perdió el llamado —lo llamó primero y otro
+            # box se lo llevó— se quedaba con el formulario abierto y podía
+            # firmar con su matrícula una atención de un paciente sentado en otro
+            # consultorio. Un acto profesional asentado en la historia clínica
+            # sobre alguien a quien no vio.
+            if (
+                item
+                and caso.asignado_a_id
+                and autor is not None
+                and getattr(autor, "is_authenticated", False)
+                and not getattr(autor, "is_superuser", False)
+                and caso.asignado_a_id != autor.id
+            ):
+                quien = getattr(caso.asignado_a, "nombre_completo", None) or "otro profesional"
+                raise ErrorMotor(
+                    f"Este paciente lo está atendiendo {quien} en {item.box.nombre if item.box_id else 'otro box'}. "
+                    f"No podés registrar su atención."
+                )
             if item:
                 item.atendido = True
                 item.atendido_at = timezone.now()  # fin de atención (métricas)

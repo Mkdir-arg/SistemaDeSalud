@@ -170,3 +170,31 @@ export async function fallosDeContraste(page) {
     return fallos;
   });
 }
+
+/**
+ * Devuelve a la cola a todos los pacientes que quedaron dentro de un box.
+ *
+ * Llamar a alguien OCUPA un consultorio y no lo suelta. La cola tiene decenas de
+ * lugares y se puede gastar; los consultorios son cuatro, y la suite los llenaba
+ * antes de terminar: los tests que corren después se quedaban sin ningún box
+ * libre y fallaban por falta de recurso, no por un defecto.
+ *
+ * Es distinto de gastar cola —eso es a propósito, porque llamar es la acción
+ * central de la guardia y simularla no probaría nada—. Acá se devuelve lo que se
+ * tomó, que es lo que haría cualquiera al terminar su turno.
+ */
+export async function liberarConsultorios(page) {
+  await page.evaluate(async () => {
+    // El token va como texto plano y puede estar en cualquiera de los dos
+    // almacenes, según si la sesión anterior eligió recordarla (ver client.js).
+    const tok = sessionStorage.getItem("cauce.access") ?? localStorage.getItem("cauce.access");
+    if (!tok) return;
+    const cab = { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" };
+    const r = await fetch("/api/items-fila/?atendido=false&page_size=200", { headers: cab });
+    const d = await r.json();
+    for (const it of (d.results || d)) {
+      if (!it.box) continue;
+      await fetch(`/api/casos/${it.caso}/devolver/`, { method: "POST", headers: cab, body: "{}" });
+    }
+  });
+}

@@ -202,8 +202,15 @@ class Command(BaseCommand):
         g_med_int = grupo(internacion, "Médicos de planta", med_int)
 
         # --- Boxes / consultorios ------------------------------------------
-        for nombre in ("Consultorio 1", "Consultorio 2"):
-            Box.objects.get_or_create(area=guardia, nombre=nombre)
+        #
+        # La guardia tiene cuatro y no dos. Dos era poco hasta para el demo:
+        # desde que no se puede llamar a un consultorio con alguien adentro, con
+        # uno ocupado quedaba un solo lugar libre y la pantalla de Fila se
+        # trababa apenas se llamaba a una persona. Una guardia de verdad tiene
+        # varios consultorios en paralelo, que es justamente lo que esta pantalla
+        # existe para coordinar.
+        for n in (1, 2, 3, 4):
+            Box.objects.get_or_create(area=guardia, nombre=f"Consultorio {n}")
         for ar in (trauma, cardio, salud_mental, neuro):
             for n in (1, 2):
                 Box.objects.get_or_create(area=ar, nombre=f"Box {n}")

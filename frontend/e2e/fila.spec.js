@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { entrar, sinDesborde } from "./apoyo";
+import { entrar, liberarConsultorios, sinDesborde } from "./apoyo";
 
 /**
  * Fila de espera: la pantalla piloto de la migración y el recorrido operativo
@@ -12,6 +12,13 @@ test.describe("Fila de espera", () => {
     await entrar(page, "medico");
     await page.goto("/filas");
     await expect(page.getByRole("heading", { name: "Fila de espera" })).toBeVisible();
+  });
+
+  // Los pacientes llamados vuelven a la cola. Sin esto la suite llena los cuatro
+  // consultorios y los tests que siguen fallan por falta de box libre, no por un
+  // defecto —que es el peor tipo de rojo: manda a buscar un bug que no existe—.
+  test.afterEach(async ({ page }) => {
+    await liberarConsultorios(page).catch(() => {});
   });
 
   test("muestra la cola con los urgentes primero", async ({ page }) => {
