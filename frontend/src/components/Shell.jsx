@@ -267,7 +267,6 @@ const GRUPOS = [
   {
     label: "SISTEMA",
     items: [
-      { to: "/dashboard", label: "Tablero", icon: "activity", cap: "config" },
       { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config" },
       { to: "/administracion", label: "Administración", icon: "users", cap: "config" },
       { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno" },
@@ -282,6 +281,13 @@ const GRUPOS = [
       // rutas vivas pero fuera del menú. Acá solo la vista de supervisión (jefe).
       // Internación sí va en el menú: el tablero de camas se consulta todo el
       // día por sí mismo, no como paso de un caso.
+      // El Tablero se gatea por `supervision` y no por `config`: la solapa por
+      // área —mapa del flujo, casos por paso, top de demoras— existe para el jefe
+      // de área, que es el único rol sin `config` y por lo tanto el único que no
+      // tenía por dónde entrar. Dárselo con `config` le abriría también
+      // Estructura y Administración: el jefe de Guardia dando de alta usuarios
+      // del hospital para poder mirar su propia espera promedio.
+      { to: "/dashboard", label: "Tablero", icon: "activity", cap: "supervision" },
       { to: "/agenda", label: "Turnos programados", icon: "calendar", cap: "trabajo" },
       { to: "/internacion", label: "Internación", icon: "bed", cap: "trabajo" },
       { to: "/farmacia", label: "Farmacia e insumos", icon: "cube", cap: "trabajo" },

@@ -1,10 +1,12 @@
-from django.db.models import Sum
+from django.core.exceptions import ValidationError
+from django.db.models import Q, Sum
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.response import Response
 
 from apps.casos.models import Caso
-from apps.common import BaseModelViewSet
+from apps.common import BaseModelViewSet, capacidades_de
 from apps.instituciones.models import Institucion
 
 from . import motor
@@ -15,8 +17,58 @@ from .serializers import (
 )
 
 
-def _obj(modelo, valor):
-    return modelo.objects.filter(pk=valor).first() if valor else None
+class DatoInvalido(APIException):
+    """Un id del cuerpo que no resuelve. 400 con el texto, no un 500 ni un 201."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+
+
+# Ruta ORM de cada modelo hacia su institución. Los ids que llegan en el cuerpo se
+# resuelven contra ella: el queryset del viewset scopea la LECTURA, pero estas
+# acciones traían los objetos con un `filter(pk=...)` pelado, y con eso alguien de
+# un hospital podía mover el stock de otro mandando los ids.
+_RUTA_INSTITUCION = {
+    Caso: "institucion_id",
+    Deposito: "institucion_id",
+    Institucion: "id",
+    Insumo: "institucion_id",
+    Lote: "insumo__institucion_id",
+}
+
+
+def _instituciones(user):
+    """Las instituciones donde el usuario actúa. None = superusuario, ve todas."""
+    if user.is_superuser:
+        return None
+    return list(user.membresias.filter(activo=True).values_list("institucion_id", flat=True))
+
+
+def _obj(modelo, valor, instituciones=None, nombre=""):
+    """
+    El objeto de ese id, o None si no vino ninguno.
+
+    Un id que vino y no resuelve corta con 400 en vez de devolver None: son cosas
+    distintas y confundirlas hacía que un consumo con un caso inexistente se
+    registrara con 201 y sin paciente —la imputación al paciente se perdía sin
+    que nadie se enterara hasta el día del retiro de lote—, y que un lote
+    inventado se descontara por FEFO de otra partida.
+    """
+    if valor in (None, ""):
+        return None
+    qs = modelo.objects.all()
+    if instituciones is not None:
+        qs = qs.filter(**{f"{_RUTA_INSTITUCION[modelo]}__in": instituciones})
+    try:
+        obj = qs.filter(pk=valor).first()
+    except (ValidationError, TypeError, ValueError):
+        # Un id no numérico reventaba con un 500; es un pedido mal armado.
+        obj = None
+    if obj is None:
+        raise DatoInvalido(
+            f"No existe {nombre or modelo._meta.verbose_name} con id «{valor}» "
+            f"en tu institución."
+        )
+    return obj
 
 
 class InsumoViewSet(BaseModelViewSet):
@@ -80,7 +132,11 @@ class ExistenciaViewSet(BaseModelViewSet):
     institucion_path = "deposito__institucion"
     filter_fields = ("deposito", "deposito__institucion", "insumo", "lote")
     search_fields = ("insumo__nombre", "insumo__generico", "lote__numero")
-    ordering_fields = ("cantidad", "insumo__nombre")
+    # `deposito__nombre` está para que la pantalla pueda pedir las filas
+    # agrupables juntas: agrupa por (depósito, insumo) en el cliente y, si el
+    # orden interpola depósitos, un mismo grupo queda partido entre dos páginas
+    # y su total sale menor al real (y se pinta rojo sin faltar).
+    ordering_fields = ("cantidad", "insumo__nombre", "deposito__nombre")
     http_method_names = ["get", "head", "options"]
     nombre_csv = "stock"
     columnas_csv = [
@@ -127,6 +183,17 @@ class MovimientoViewSet(BaseModelViewSet):
         ("autor_nombre", "Registró"),
     ]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        dep = self.request.query_params.get("deposito")
+        if dep and str(dep).isdigit():
+            # «Los movimientos de este depósito» son los que entraron y los que
+            # salieron; `origen` solo esconde las reposiciones que llegaron.
+            # Filtrar acá y no en el navegador: sobre la página traída, elegir un
+            # depósito mostraba «Sin movimientos» habiendo veinte más atrás.
+            qs = qs.filter(Q(origen_id=dep) | Q(destino_id=dep))
+        return qs
+
     def create(self, request, *args, **kwargs):
         return Response(
             {"detail": "Usá las acciones (`ingreso`, `consumo`, `transferencia`, "
@@ -135,11 +202,37 @@ class MovimientoViewSet(BaseModelViewSet):
         )
 
     def _comun(self, request):
+        insts = _instituciones(request.user)
         return (
-            _obj(Insumo, request.data.get("insumo")),
-            _obj(Lote, request.data.get("lote")),
+            _obj(Insumo, request.data.get("insumo"), insts, "el insumo"),
+            _obj(Lote, request.data.get("lote"), insts, "el lote"),
             (request.data.get("motivo") or "").strip(),
         )
+
+    def _deposito(self, request, clave="deposito"):
+        return _obj(Deposito, request.data.get(clave), _instituciones(request.user),
+                    f"el depósito «{clave}»")
+
+    def _autorizar(self, request, insumo, *depositos):
+        """
+        Capacidad del usuario EN la institución del insumo, y depósitos de esa
+        misma institución.
+
+        `check_object_permissions` no sirve para estas acciones: el
+        `institucion_path` del viewset describe un Movimiento
+        («insumo__institucion») y acá se le pasaba un Insumo, así que la ruta se
+        cortaba, la institución salía None y el permiso degradaba a «¿tiene
+        trabajo en algún lado?». Con eso una enfermera de un hospital movía el
+        stock de otro y el hospital víctima sólo veía que el número no coincidía
+        con el estante.
+        """
+        for d in depositos:
+            if d is not None and d.institucion_id != insumo.institucion_id:
+                raise PermissionDenied("El depósito y el insumo son de instituciones distintas.")
+        if request.user.is_superuser:
+            return
+        if self.capacidad_requerida not in capacidades_de(request.user, insumo.institucion_id):
+            raise PermissionDenied("No tenés permiso para mover el stock de esta institución.")
 
     def _cantidad(self, request, clave="cantidad"):
         try:
@@ -155,13 +248,13 @@ class MovimientoViewSet(BaseModelViewSet):
     @action(detail=False, methods=["post"])
     def ingreso(self, request):
         """Entra stock: {"deposito", "insumo", "cantidad", "lote", "motivo"}."""
-        deposito = _obj(Deposito, request.data.get("deposito"))
+        deposito = self._deposito(request)
         insumo, lote, motivo = self._comun(request)
         cantidad = self._cantidad(request)
         if not (deposito and insumo and cantidad):
             return Response({"detail": "Faltan depósito, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
-        self.check_object_permissions(request, insumo)
+        self._autorizar(request, insumo, deposito)
         try:
             return self._responder(
                 motor.ingresar(deposito, insumo, cantidad, lote=lote, autor=request.user, motivo=motivo)
@@ -172,14 +265,16 @@ class MovimientoViewSet(BaseModelViewSet):
     @action(detail=False, methods=["post"])
     def consumo(self, request):
         """Se usó en un paciente: {"deposito", "insumo", "cantidad", "caso", "lote"}."""
-        deposito = _obj(Deposito, request.data.get("deposito"))
+        deposito = self._deposito(request)
         insumo, lote, motivo = self._comun(request)
         cantidad = self._cantidad(request)
-        caso = _obj(Caso, request.data.get("caso"))
+        caso = _obj(Caso, request.data.get("caso"), _instituciones(request.user), "el caso")
         if not (deposito and insumo and cantidad):
             return Response({"detail": "Faltan depósito, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
-        self.check_object_permissions(request, insumo)
+        self._autorizar(request, insumo, deposito)
+        if caso is not None and caso.institucion_id != insumo.institucion_id:
+            raise PermissionDenied("Ese caso es de otra institución.")
         try:
             return self._responder(
                 motor.consumir(deposito, insumo, cantidad, caso=caso, autor=request.user,
@@ -191,14 +286,14 @@ class MovimientoViewSet(BaseModelViewSet):
     @action(detail=False, methods=["post"])
     def transferencia(self, request):
         """Mueve entre depósitos: {"origen", "destino", "insumo", "cantidad", "lote"}."""
-        origen = _obj(Deposito, request.data.get("origen"))
-        destino = _obj(Deposito, request.data.get("destino"))
+        origen = self._deposito(request, "origen")
+        destino = self._deposito(request, "destino")
         insumo, lote, motivo = self._comun(request)
         cantidad = self._cantidad(request)
         if not (origen and destino and insumo and cantidad):
             return Response({"detail": "Faltan origen, destino, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
-        self.check_object_permissions(request, insumo)
+        self._autorizar(request, insumo, origen, destino)
         try:
             return self._responder(
                 motor.transferir(origen, destino, insumo, cantidad, autor=request.user,
@@ -210,13 +305,13 @@ class MovimientoViewSet(BaseModelViewSet):
     @action(detail=False, methods=["post"])
     def ajuste(self, request):
         """Inventario: {"deposito", "insumo", "contado", "lote", "motivo"}."""
-        deposito = _obj(Deposito, request.data.get("deposito"))
+        deposito = self._deposito(request)
         insumo, lote, motivo = self._comun(request)
         contado = self._cantidad(request, "contado")
         if not (deposito and insumo) or contado is None:
             return Response({"detail": "Faltan depósito, insumo o lo contado."},
                             status=status.HTTP_400_BAD_REQUEST)
-        self.check_object_permissions(request, insumo)
+        self._autorizar(request, insumo, deposito)
         try:
             mov = motor.ajustar(deposito, insumo, contado, lote=lote, autor=request.user, motivo=motivo)
         except motor.ErrorStock as e:
@@ -231,13 +326,13 @@ class MovimientoViewSet(BaseModelViewSet):
     @action(detail=False, methods=["post"])
     def baja(self, request):
         """Vencido, roto, extraviado: {"deposito", "insumo", "cantidad", "lote", "motivo"}."""
-        deposito = _obj(Deposito, request.data.get("deposito"))
+        deposito = self._deposito(request)
         insumo, lote, motivo = self._comun(request)
         cantidad = self._cantidad(request)
         if not (deposito and insumo and cantidad):
             return Response({"detail": "Faltan depósito, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
-        self.check_object_permissions(request, insumo)
+        self._autorizar(request, insumo, deposito)
         try:
             return self._responder(
                 motor.dar_de_baja(deposito, insumo, cantidad, lote=lote, autor=request.user,
@@ -254,7 +349,7 @@ class MovimientoViewSet(BaseModelViewSet):
         Es la respuesta a un retiro de ANMAT, y la razón por la que el consumo
         se imputa al caso.
         """
-        lote = _obj(Lote, request.query_params.get("lote"))
+        lote = _obj(Lote, request.query_params.get("lote"), _instituciones(request.user), "el lote")
         if lote is None:
             return Response({"detail": "Falta el lote."}, status=status.HTTP_400_BAD_REQUEST)
         movs = motor.trazar_lote(lote)
@@ -317,14 +412,15 @@ class PedidoViewSet(BaseModelViewSet):
         Las dos juntas porque son la misma pregunta operativa —qué tengo que
         resolver hoy— y separarlas obliga a mirar dos pantallas.
         """
-        inst = _obj(Institucion, request.query_params.get("institucion"))
+        insts = _instituciones(request.user)
+        inst = _obj(Institucion, request.query_params.get("institucion"), insts, "la institución")
         if inst is None:
             inst = Institucion.objects.filter(
                 id__in=request.user.membresias.filter(activo=True).values("institucion")
             ).first()
         if inst is None:
             return Response({"faltantes": [], "por_vencer": []})
-        deposito = _obj(Deposito, request.query_params.get("deposito"))
+        deposito = _obj(Deposito, request.query_params.get("deposito"), insts, "el depósito")
         try:
             dias = int(request.query_params.get("dias", 60))
         except ValueError:
@@ -336,6 +432,9 @@ class PedidoViewSet(BaseModelViewSet):
             "insumo": str(f["insumo"]),
             "insumo_id": f["insumo"].id,
             "cantidad": f["cantidad"],
+            # Lo vencido no cuenta como stock pero tampoco es lo mismo que no
+            # tener: «0 de 20 · 59 vencidas» dice que hay algo que dar de baja.
+            "vencida": f["vencida"],
             "minimo": f["insumo"].stock_minimo,
             "unidad": f["insumo"].unidad,
         } for f in motor.bajo_minimo(inst, deposito)]

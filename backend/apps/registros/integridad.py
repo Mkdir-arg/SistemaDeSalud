@@ -22,6 +22,7 @@ y eso deja la última en evidencia contra cualquier copia o respaldo.
 import hashlib
 from datetime import timezone as tz
 
+from django.db import transaction
 from django.utils import timezone
 
 # Versión del formato del resumen. Si algún día cambia cómo se arma, las
@@ -71,17 +72,31 @@ def sellar(entrada):
     if not entrada.firmada:
         return entrada
 
-    previa = (
-        type(entrada).objects
-        .filter(historia_id=entrada.historia_id, firmada=True, sello__gt="")
-        .exclude(pk=entrada.pk)
-        .order_by("-firmada_at", "-fecha", "-id")
-        .first()
-    )
-    entrada.sello_previo = previa.sello if previa else ""
-    entrada.firmada_at = entrada.firmada_at or timezone.now()
-    entrada.sello = calcular(entrada)
-    entrada.save(update_fields=["sello", "sello_previo", "firmada_at"])
+    from .models import HistoriaClinica
+
+    # El atomic propio garantiza que haya transacción donde tomar el candado
+    # (adentro del de `motor.avanzar` es apenas un savepoint, no cuesta nada).
+    with transaction.atomic():
+        # Se serializan los sellados de UNA historia. Sin este candado, dos
+        # atenciones simultáneas del mismo paciente leen la misma entrada previa
+        # y las dos se encadenan a ella: después `verificar_historia` denuncia
+        # «la cadena se rompió» sobre una historia que nadie tocó, y ese falso
+        # positivo no se puede deshacer desde la aplicación. Es el peor error
+        # posible acá: la única prueba que el hospital tiene para decir que la
+        # historia está intacta pasa a acusarlo.
+        HistoriaClinica.objects.select_for_update().filter(pk=entrada.historia_id).first()
+
+        previa = (
+            type(entrada).objects
+            .filter(historia_id=entrada.historia_id, firmada=True, sello__gt="")
+            .exclude(pk=entrada.pk)
+            .order_by("-firmada_at", "-fecha", "-id")
+            .first()
+        )
+        entrada.sello_previo = previa.sello if previa else ""
+        entrada.firmada_at = entrada.firmada_at or timezone.now()
+        entrada.sello = calcular(entrada)
+        entrada.save(update_fields=["sello", "sello_previo", "firmada_at"])
     return entrada
 
 

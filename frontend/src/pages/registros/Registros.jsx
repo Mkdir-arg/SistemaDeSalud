@@ -109,8 +109,30 @@ export default function Registros() {
 
 function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
   const toast = useToast();
+  const navigate = useNavigate();
   const [f, setF] = useState({ nombre: "", apellido: "", documento: "", fecha_nacimiento: "", obra_social: "" });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  /*
+   * ¿Este paciente ya está cargado?
+   *
+   * El caso real es el paciente que vuelve: el administrativo lo busca por
+   * apellido, no lo encuentra por un error de tipeo del ingreso anterior, y lo
+   * carga de nuevo. Como la historia clínica es una por paciente, a partir de
+   * ahí hay DOS historias del mismo y el médico abre una al azar: la alergia, la
+   * medicación crónica y la última internación pueden estar en la otra.
+   *
+   * Se busca por documento mientras se escribe, antes de crear nada, y se
+   * ofrece ir a la historia que ya existe. El backend también lo rechaza, pero
+   * un error después de completar el formulario llega tarde y no dice adónde ir.
+   */
+  const doc = f.documento.trim();
+  const posibles = useLista(
+    "ciudadanos",
+    { institucion: institucionId, search: doc, pageSize: 5 },
+    { enabled: doc.length >= 6 },
+  );
+  const yaExiste = posibles.filas.find((c) => c.documento === doc);
 
   const crear = useAccion(
     () =>
@@ -132,7 +154,7 @@ function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={crear.isPending || !f.nombre} onClick={() => crear.mutate()}>
+          <Button disabled={crear.isPending || !f.nombre || !!yaExiste} onClick={() => crear.mutate()}>
             {crear.isPending ? "Creando…" : "Crear"}
           </Button>
         </>
@@ -144,6 +166,21 @@ function NuevoPacienteModal({ institucionId, onClose, onCreado }) {
           <Field label="Apellido"><Input value={f.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
         </div>
         <Field label="Documento"><Input value={f.documento} onChange={(e) => set("documento", e.target.value)} placeholder="27418305" /></Field>
+
+        {yaExiste && (
+          <div className="rounded-md bg-badge-amber-bg px-3 py-2.5 text-md text-badge-amber-fg">
+            <strong>Ese documento ya está cargado:</strong>{" "}
+            {yaExiste.nombre} {yaExiste.apellido}
+            {yaExiste.fecha_nacimiento
+              ? ` · ${new Date(yaExiste.fecha_nacimiento).toLocaleDateString("es-AR")}`
+              : ""}
+            <div className="mt-2">
+              <Button className="text-sm" onClick={() => navigate(`/historia/${yaExiste.id}`)}>
+                ¿Es este paciente? Abrir su historia
+              </Button>
+            </div>
+          </div>
+        )}
         <Field label="Fecha de nacimiento"><Input type="date" value={f.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} /></Field>
         <Field label="Obra social"><Input value={f.obra_social} onChange={(e) => set("obra_social", e.target.value)} placeholder="OSDE" /></Field>
       </div>

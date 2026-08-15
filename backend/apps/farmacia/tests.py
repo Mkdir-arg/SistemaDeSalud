@@ -137,6 +137,38 @@ class ConsumoTests(StockTestCase):
         self.assertEqual(motor.disponible(self.botiquin, self.dipirona, self.nuevo), 47)
         self.assertEqual(motor.disponible(self.botiquin, self.dipirona, self.viejo), 10)
 
+    def test_un_lote_vencido_no_se_consume_ni_pidiendolo_por_su_nombre(self):
+        """
+        Es el escenario que el módulo declara como grave: aplicarle a un
+        paciente un medicamento vencido. Y quedaba registrado como un consumo
+        cualquiera, así que después nadie lo encontraba en el historial.
+        """
+        self.viejo.vencimiento = timezone.localdate() - timedelta(days=1)
+        self.viejo.save()
+        with self.assertRaises(motor.ErrorStock) as e:
+            motor.consumir(self.botiquin, self.dipirona, 1, lote=self.viejo, autor=self.user)
+        self.assertIn("vencido", str(e.exception))
+        self.assertEqual(motor.disponible(self.botiquin, self.dipirona, self.viejo), 10)
+
+    def test_un_estupefaciente_no_sale_sin_paciente_ni_motivo(self):
+        """
+        Una salida de controlado sin nominar y sin justificar no permite armar
+        el libro de la Ley 19.303, y `trazar_lote` no la ve: ante un retiro esas
+        unidades son «no sabemos», que es lo que el módulo existe para evitar.
+        """
+        morfina = Insumo.objects.create(
+            institucion=self.inst, nombre="Morfina", presentacion="Ampolla 10 mg",
+            unidad="ampolla", controlado=True,
+        )
+        lote = self._lote("M1", insumo=morfina)
+        motor.ingresar(self.botiquin, morfina, 10, lote=lote, autor=self.user)
+        with self.assertRaises(motor.ErrorStock) as e:
+            motor.consumir(self.botiquin, morfina, 1, autor=self.user)
+        self.assertIn("controlado", str(e.exception))
+        # Con motivo sale, porque lo que hace falta es que quede explicado.
+        motor.consumir(self.botiquin, morfina, 1, autor=self.user, motivo="Carro de paro 3B")
+        self.assertEqual(motor.disponible(self.botiquin, morfina), 9)
+
 
 class TrazabilidadTests(StockTestCase):
     """La razón por la que el consumo se imputa al caso."""
@@ -189,6 +221,19 @@ class TransferenciaTests(StockTestCase):
         with self.assertRaises(motor.ErrorStock):
             motor.transferir(self.central, self.central, self.dipirona, 10, autor=self.user)
 
+    def test_no_se_manda_un_lote_vencido_al_botiquin(self):
+        """
+        Mandarlo ocupa lugar en el botiquín y engorda el número que la guardia
+        mira a la noche, con unidades que no se pueden usar.
+        """
+        self.lote.vencimiento = timezone.localdate() - timedelta(days=1)
+        self.lote.save()
+        with self.assertRaises(motor.ErrorStock) as e:
+            motor.transferir(self.central, self.botiquin, self.dipirona, 5,
+                             lote=self.lote, autor=self.user)
+        self.assertIn("vencido", str(e.exception))
+        self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 0)
+
 
 class AjusteYBajaTests(StockTestCase):
     def setUp(self):
@@ -226,6 +271,57 @@ class AjusteYBajaTests(StockTestCase):
         motor.dar_de_baja(self.central, self.dipirona, 5, lote=self.lote, autor=self.user,
                           motivo="Ampollas rotas en el traslado")
         self.assertEqual(motor.disponible(self.central, self.dipirona), 95)
+
+    def test_un_recuento_no_inventa_una_partida_sin_lote(self):
+        """
+        Un ajuste sin lote deja unidades que no vencen nunca, que no salen en
+        «Vencen pronto» y que ante un retiro de ANMAT no se pueden atribuir a
+        ninguna partida: «tenemos 40 ampollas y no sabemos de qué lote».
+        """
+        with self.assertRaises(motor.ErrorStock):
+            motor.ajustar(self.central, self.dipirona, 40, autor=self.user, motivo="recuento")
+        self.assertFalse(
+            Existencia.objects.filter(insumo=self.dipirona, lote__isnull=True).exists()
+        )
+
+    def test_un_recuento_no_acepta_un_lote_de_otro_insumo(self):
+        """
+        Si lo aceptara, `lotes_para_sacar` de la gasa terminaría ofreciendo un
+        lote de dipirona: trazabilidad contaminada.
+        """
+        with self.assertRaises(motor.ErrorStock):
+            motor.ajustar(self.central, self.gasa, 50, lote=self.lote, autor=self.user)
+        self.assertEqual(motor.disponible(self.central, self.gasa), 0)
+
+    def test_la_baja_sin_lote_saca_de_las_partidas_que_hay(self):
+        """
+        Dar de baja es la única forma de sacar del sistema algo que no se puede
+        usar. Buscando la fila sin lote —que en un insumo con partidas no
+        existe— fallaba siempre: la pantalla decía «Hay 100» y el sistema
+        contestaba «hay 0», y quien opera no puede saber a cuál creerle.
+        """
+        movs = motor.dar_de_baja(self.central, self.dipirona, 4, autor=self.user,
+                                 motivo="Ampollas rotas en el traslado")
+        self.assertEqual(motor.disponible(self.central, self.dipirona), 96)
+        self.assertEqual([m.lote_id for m in movs], [self.lote.id])
+
+    def test_la_baja_saca_primero_lo_vencido(self):
+        """
+        Es para lo que se usa: vaciar el estante de lo que ya no sirve. Si la
+        baja excluyera lo vencido —como hace el consumo— el vencido quedaría
+        contado como stock para siempre.
+        """
+        vencido = Lote.objects.create(
+            insumo=self.dipirona, numero="V1",
+            vencimiento=timezone.localdate() - timedelta(days=10),
+        )
+        Existencia.objects.create(
+            deposito=self.central, insumo=self.dipirona, lote=vencido, cantidad=6
+        )
+        movs = motor.dar_de_baja(self.central, self.dipirona, 6, autor=self.user,
+                                 motivo="Vencidas: se descartan")
+        self.assertEqual([m.lote_id for m in movs], [vencido.id])
+        self.assertEqual(motor.disponible(self.central, self.dipirona, self.lote), 100)
 
 
 class CoherenciaTests(StockTestCase):
@@ -309,6 +405,25 @@ class AlertasTests(StockTestCase):
         self.assertIn("Botiquín de guardia", depositos)
         self.assertNotIn("Farmacia central", depositos)
 
+    def test_lo_vencido_no_cuenta_como_stock_para_el_minimo(self):
+        """
+        La única lista que contesta «qué me falta para trabajar» no puede
+        saltearse un botiquín donde toda la adrenalina está vencida: enfermería
+        se enteraría en el paro, buscando la ampolla que la pantalla dice tener.
+        """
+        vencido = Lote.objects.create(
+            insumo=self.dipirona, numero="V1",
+            vencimiento=timezone.localdate() - timedelta(days=1),
+        )
+        Existencia.objects.create(
+            deposito=self.botiquin, insumo=self.dipirona, lote=vencido, cantidad=59
+        )  # mínimo 20
+        faltantes = motor.bajo_minimo(self.inst)
+        self.assertEqual([f["insumo"].id for f in faltantes], [self.dipirona.id])
+        self.assertEqual(faltantes[0]["cantidad"], 0)
+        # Aparte, porque no es lo mismo que no tener: hay algo que dar de baja.
+        self.assertEqual(faltantes[0]["vencida"], 59)
+
     def test_avisa_lo_que_vence_pronto(self):
         pronto = self._lote("P1", dias=20)
         lejos = self._lote("L1", dias=400)
@@ -363,3 +478,18 @@ class PedidoTests(StockTestCase):
         with self.assertRaises(motor.ErrorStock):
             motor.entregar_pedido(self.pedido, {self.l1.id: 10}, autor=self.user)
         self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 10)
+
+    def test_una_copia_vieja_del_pedido_no_lo_entrega_de_nuevo(self):
+        """
+        El disparador real no es un ataque: la farmacia entrega, el navegador no
+        contesta y la persona vuelve a apretar. Cada request trae su propia copia
+        del pedido, leída antes de la transacción; si el motor le cree a esa
+        copia, salen 60 ampollas de la central para un pedido de 30 y el renglón
+        sigue diciendo «entregado 30».
+        """
+        copia = Pedido.objects.get(pk=self.pedido.pk)  # como el `get_object()` del otro request
+        motor.entregar_pedido(self.pedido, {self.l1.id: 30}, autor=self.user)
+        with self.assertRaises(motor.ErrorStock):
+            motor.entregar_pedido(copia, {self.l1.id: 30}, autor=self.user)
+        self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 30)
+        self.assertEqual(motor.disponible(self.central, self.dipirona), 70)

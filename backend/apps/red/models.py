@@ -68,6 +68,12 @@ class Traslado(models.Model):
         EN_CAMINO = "en_camino", "En camino"
         RECIBIDO = "recibido", "Recibido"
         CANCELADO = "cancelado", "Cancelado"
+        # El traslado salió mal: el paciente falleció en el viaje, la familia se
+        # lo llevó, el móvil lo desvió a otro efector. Sin este desenlace el
+        # caso de origen queda EN_ESPERA para siempre —no avanza ni cierra— y
+        # las únicas salidas eran peores: cancelar el caso entero o marcar
+        # «recibido» a alguien que nunca llegó.
+        FALLIDO = "fallido", "No llegó"
 
     class Motivo(models.TextChoices):
         COMPLEJIDAD = "complejidad", "Mayor complejidad"
@@ -100,6 +106,16 @@ class Traslado(models.Model):
     # El paciente viaja: es la misma persona. El caso, no.
     ciudadano = models.ForeignKey(
         "registros.Ciudadano", on_delete=models.CASCADE, related_name="traslados"
+    )
+    # La misma persona, pero en el padrón del destino. `Ciudadano` tiene FK a
+    # institución: si el caso del destino colgara del ciudadano del origen, la
+    # ficha del paciente le saldría vacía —404 al pedirlo, cero historias— y
+    # todo lo que su médico firmara quedaría asentado en el legajo del hospital
+    # que derivó, que sí lo lee. Guardar los dos permite seguir a la misma
+    # persona a lo largo de la red.
+    ciudadano_destino = models.ForeignKey(
+        "registros.Ciudadano", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="traslados_como_destino",
     )
     # Área del destino a la que va. Opcional: a veces se deriva «al hospital» y
     # ellos deciden dónde.

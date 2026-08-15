@@ -5,6 +5,8 @@ Plataforma → Institución (autocontenida) → Área → Sub-área.
 Las instituciones son independientes entre sí (no hay jurisdicciones ni redes).
 """
 from django.db import models
+from django.db.models.signals import pre_delete
+from django.utils import timezone
 
 
 class Institucion(models.Model):
@@ -240,3 +242,35 @@ class EstadiaCama(models.Model):
     @property
     def abierta(self):
         return self.hasta is None
+
+
+def liberar_camas_de_un_caso_borrado(sender, instance, **kwargs):
+    """
+    Borrar un caso internado dejaba su cama ocupada por nadie, para siempre.
+
+    `Cama.caso` es SET_NULL y `EstadiaCama` es CASCADE: al borrarse el caso la
+    referencia al ocupante se anula sola pero el `estado` NO, y la estadía
+    abierta desaparece. Desde ahí no hay ninguna salida por la aplicación —
+    cambiar el estado de una cama OCUPADA está prohibido, el egreso necesita una
+    estadía abierta que ya no existe y `estado` no se escribe por PATCH—: la
+    cama se pierde del stock, la ocupación del sector queda inflada de forma
+    permanente y recuperarla exige entrar a la base a mano, en producción, en un
+    hospital. El síntoma ya estaba documentado en el seed de la guardia: «medio
+    sector inutilizable por pacientes que ya no existen».
+
+    Queda en higiene y no libre porque es lo que queda cuando alguien deja una
+    cama: ofrecerla sin higienizar es el error que este módulo existe para
+    evitar.
+    """
+    Cama.objects.filter(caso=instance).update(
+        estado=Cama.Estado.HIGIENE, caso=None, desde=timezone.now(), motivo="",
+    )
+
+
+# Sender por string: `casos` importa `instituciones`, así que importar el modelo
+# acá cerraría el círculo.
+pre_delete.connect(
+    liberar_camas_de_un_caso_borrado,
+    sender="casos.Caso",
+    dispatch_uid="instituciones.liberar_camas_de_un_caso_borrado",
+)

@@ -158,6 +158,90 @@ class AgendaAPITests(APITestCase):
         self.client.patch(f"/api/turnos/{t}/", {"estado": "presente"})
         self.assertEqual(Turno.objects.get(pk=t).estado, Turno.Estado.RESERVADO)
 
+    def test_el_horario_no_se_mueve_por_patch(self):
+        """
+        Reprogramar es lo que más se pide después de dar el turno, y la primera
+        implementación obvia —PATCH a `inicio`— salteaba la grilla, los
+        bloqueos, el chequeo de ocupado y el candado: dejaba el turno a las 3 de
+        la mañana de un día en que la agenda no atiende.
+        """
+        t = self._dar().data["id"]
+        self.client.patch(f"/api/turnos/{t}/", {"inicio": self._iso(3, 0)})
+        self.assertEqual(timezone.localtime(Turno.objects.get(pk=t).inicio).isoformat(), self._iso(8, 0))
+
+    def test_el_turno_no_se_reasigna_a_otro_paciente_por_patch(self):
+        """
+        `ciudadano` no venía acotado a la institución: desde el Hospital A se
+        podía apuntar el turno a un ciudadano del Hospital B, y la respuesta
+        devolvía su nombre y su documento. Es justo lo que el scope por
+        institución del resto de la API evita.
+        """
+        otra_inst = Institucion.objects.create(nombre="Hospital de otro lado")
+        ajeno = Ciudadano.objects.create(
+            institucion=otra_inst, nombre="Zoe", apellido="Ajena", documento="99888777"
+        )
+        t = self._dar().data["id"]
+        r = self.client.patch(f"/api/turnos/{t}/", {"ciudadano": ajeno.id})
+        self.assertEqual(Turno.objects.get(pk=t).ciudadano_id, self.paciente.id)
+        self.assertNotEqual(r.data.get("documento"), "99888777")
+
+    def test_un_turno_no_se_borra(self):
+        """
+        Borrarlo saca de la base la evidencia de un turno que se perdió, que es
+        el dato con el que se calcula el ausentismo del servicio. El turno que
+        no va se cancela.
+        """
+        t = self._dar().data["id"]
+        r = self.client.delete(f"/api/turnos/{t}/")
+        self.assertEqual(r.status_code, 405)
+        self.assertTrue(Turno.objects.filter(pk=t).exists())
+
+    def test_reprogramar_pasa_por_las_reglas_de_la_agenda(self):
+        t = self._dar().data["id"]
+        malo = self.client.post(f"/api/turnos/{t}/reprogramar/", {"inicio": self._iso(3, 0)})
+        self.assertEqual(malo.status_code, 400, malo.data)
+        bueno = self.client.post(f"/api/turnos/{t}/reprogramar/", {"inicio": self._iso(9, 0)})
+        self.assertEqual(bueno.status_code, 200, bueno.data)
+        self.assertEqual(timezone.localtime(Turno.objects.get(pk=t).inicio).isoformat(), self._iso(9, 0))
+
+    def test_bloquear_devuelve_los_turnos_que_pisa(self):
+        """
+        Bloquear no cancela nada: los turnos siguen dados. Sin esta lista nadie
+        se entera de que el bloqueo del día pisó doce turnos, y esos doce
+        pacientes viajan al hospital para nada.
+        """
+        self._dar(8, 0)
+        r = self.client.post("/api/bloqueos-agenda/", {
+            "agenda": self.agenda.id, "desde": self._iso(8, 0), "hasta": self._iso(10, 0),
+            "motivo": "El profesional no viene",
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(len(r.data["turnos_afectados"]), 1)
+        self.assertEqual(r.data["turnos_afectados"][0]["paciente"], "Ana Pérez")
+
+    def test_la_grilla_de_un_dia_bloqueado_sigue_mostrando_los_turnos(self):
+        """La pantalla decía «La agenda no atiende este día» con doce personas citadas."""
+        self._dar(8, 0)
+        self.client.post("/api/bloqueos-agenda/", {
+            "agenda": self.agenda.id, "desde": self._iso(8, 0), "hasta": self._iso(10, 0),
+        })
+        r = self.client.get(f"/api/agendas/{self.agenda.id}/dia/?fecha={self.martes}")
+        conturno = [h for h in r.data["horarios"] if h["ocupado"]]
+        self.assertEqual(len(conturno), 1)
+        self.assertTrue(conturno[0]["bloqueado"])
+
+    def test_los_proximos_libres_arrancan_donde_se_pide(self):
+        """
+        Quien está mirando el 20 y necesita el siguiente hueco no quiere que le
+        ofrezcan el de mañana.
+        """
+        desde = self.martes + timedelta(days=7)
+        r = self.client.get(
+            f"/api/agendas/{self.agenda.id}/proximos-libres/?cuantos=3&desde={desde}"
+        )
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(all(timezone.localdate(h["inicio"]) >= desde for h in r.data["horarios"]))
+
     # --- Listados -------------------------------------------------------------- #
 
     def test_se_filtra_por_rango_de_fechas(self):

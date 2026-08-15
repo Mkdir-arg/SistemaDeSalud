@@ -108,6 +108,75 @@ class FarmaciaAPITests(APITestCase):
         e.refresh_from_db()
         self.assertEqual(e.cantidad, 100)
 
+    def test_la_baja_anda_en_un_insumo_con_lotes(self):
+        """
+        La pantalla no manda lote (el motor reparte por vencimiento). Buscando
+        la fila sin lote la baja fallaba SIEMPRE en los insumos con partidas,
+        que son la mayoría: el modal decía «Hay 100» y el toast «hay 0».
+        """
+        self._ingresar(100)
+        r = self.client.post("/api/movimientos-stock/baja/", {
+            "deposito": self.central.id, "insumo": self.insumo.id,
+            "cantidad": 3, "motivo": "Ampollas rotas en el traslado",
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(
+            Existencia.objects.get(deposito=self.central, lote=self.lote).cantidad, 97
+        )
+
+    def test_un_caso_que_no_existe_no_pasa_como_consumo_sin_paciente(self):
+        """
+        La imputación al caso es la razón de existir del módulo. Si se cae en
+        silencio con un 201, el stock bajó, la pantalla dijo «registrado» y
+        nadie se entera hasta el retiro de lote, cuando ya no hay respuesta.
+        """
+        self._ingresar(10)
+        r = self.client.post("/api/movimientos-stock/consumo/", {
+            "deposito": self.central.id, "insumo": self.insumo.id,
+            "cantidad": 1, "caso": 999999,
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Movimiento.objects.filter(tipo="consumo").count(), 0)
+
+    def test_un_lote_que_no_existe_no_se_descuenta_de_otro(self):
+        """
+        Quien pide un lote puntual lo hace porque es el que tiene abierto en la
+        mesada. Descontar de otro deja el papel y el sistema distintos a nivel
+        lote, que es el único nivel que sirve para trazar.
+        """
+        self._ingresar(10)
+        r = self.client.post("/api/movimientos-stock/consumo/", {
+            "deposito": self.central.id, "insumo": self.insumo.id,
+            "cantidad": 1, "lote": 999999,
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(
+            Existencia.objects.get(deposito=self.central, lote=self.lote).cantidad, 10
+        )
+
+    def test_un_id_que_no_es_numero_no_tira_el_servidor(self):
+        """Un pedido mal armado es un 400, no un 500."""
+        r = self.client.post("/api/movimientos-stock/consumo/", {
+            "deposito": self.central.id, "insumo": self.insumo.id,
+            "cantidad": 1, "lote": "ninguno",
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_los_movimientos_se_filtran_por_deposito_en_el_servidor(self):
+        """
+        Filtrar en el navegador sobre la página traída hacía que un depósito con
+        movimientos apareciera como «Todavía no se registró ninguno».
+        """
+        self._ingresar(10)
+        self.client.post("/api/movimientos-stock/transferencia/", {
+            "origen": self.central.id, "destino": self.botiquin.id,
+            "insumo": self.insumo.id, "cantidad": 4,
+        })
+        r = self.client.get(f"/api/movimientos-stock/?deposito={self.botiquin.id}")
+        self.assertEqual(r.status_code, 200)
+        # La transferencia entró al botiquín; el ingreso a la central, no.
+        self.assertEqual([m["tipo"] for m in r.data["results"]], ["transferencia"])
+
     def test_el_ajuste_que_coincide_lo_dice_en_vez_de_fingir(self):
         """Si dijera «listo», la persona buscaría un movimiento que no existe."""
         self._ingresar()
@@ -233,3 +302,61 @@ class FarmaciaPermisosTests(APITestCase):
             "deposito": self.dep.id, "insumo": self.insumo.id, "cantidad": 1,
         })
         self.assertEqual(r.status_code, 403)
+
+
+class StockDeOtroHospitalTests(APITestCase):
+    """
+    Escritura cruzada entre instituciones.
+
+    En un despliegue provincial hay varios hospitales sobre la misma base. La
+    lectura sí está scopeada, así que el hospital víctima ni siquiera ve de
+    dónde salió el movimiento: sólo ve que el número no coincide con el estante.
+    """
+
+    def setUp(self):
+        self.a = Institucion.objects.create(nombre="Hospital A")
+        self.b = Institucion.objects.create(nombre="Hospital B")
+        self.dep_b = Deposito.objects.create(institucion=self.b, nombre="Farmacia B", central=True)
+        self.insumo_b = Insumo.objects.create(
+            institucion=self.b, nombre="Adrenalina", presentacion="Ampolla 1 mg/ml",
+            requiere_lote=False, unidad="ampolla",
+        )
+        Existencia.objects.create(deposito=self.dep_b, insumo=self.insumo_b, cantidad=30)
+
+        self.enfermera_a = Usuario.objects.create_user("enf.a@test.local", "x")
+        Membresia.objects.create(usuario=self.enfermera_a, institucion=self.a,
+                                 rol="enfermeria", activo=True)
+        self.client.force_authenticate(self.enfermera_a)
+
+    def test_una_enfermera_no_consume_el_stock_de_otro_hospital(self):
+        """
+        Alcanzaba con mandar los ids: el permiso se resolvía contra «¿tiene
+        trabajo en alguna institución?» y el depósito no se validaba contra
+        nada. Es escritura cruzada sobre stock controlado (Ley 19.303).
+        """
+        r = self.client.post("/api/movimientos-stock/consumo/", {
+            "deposito": self.dep_b.id, "insumo": self.insumo_b.id, "cantidad": 30,
+        })
+        self.assertIn(r.status_code, (400, 403), r.data)
+        self.assertEqual(
+            Existencia.objects.get(deposito=self.dep_b, insumo=self.insumo_b).cantidad, 30
+        )
+
+    def test_tampoco_ajusta_ni_da_de_baja_ni_transfiere_lo_ajeno(self):
+        for ruta, cuerpo in [
+            ("ajuste", {"deposito": self.dep_b.id, "insumo": self.insumo_b.id, "contado": 0}),
+            ("baja", {"deposito": self.dep_b.id, "insumo": self.insumo_b.id,
+                      "cantidad": 30, "motivo": "x"}),
+            ("ingreso", {"deposito": self.dep_b.id, "insumo": self.insumo_b.id, "cantidad": 5}),
+        ]:
+            with self.subTest(accion=ruta):
+                r = self.client.post(f"/api/movimientos-stock/{ruta}/", cuerpo)
+                self.assertIn(r.status_code, (400, 403), r.data)
+        self.assertEqual(
+            Existencia.objects.get(deposito=self.dep_b, insumo=self.insumo_b).cantidad, 30
+        )
+
+    def test_tampoco_ve_las_alertas_de_otro_hospital(self):
+        """Qué falta y qué vence en el hospital de al lado no es asunto suyo."""
+        r = self.client.get(f"/api/pedidos-stock/alertas/?institucion={self.b.id}")
+        self.assertEqual(r.status_code, 400, r.data)

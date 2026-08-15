@@ -9,7 +9,26 @@ import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/
 
 import { useToast } from "@/components/ui/toast";
 import { useFiltroUrl } from "@/components/ui/filtros";
+import { cn } from "@/lib/cn";
 import { fechaHora } from "@/lib/format";
+
+/*
+ * Una fecha SIN hora, en dd/mm/aaaa como el resto del expediente.
+ *
+ * `Estudio.fecha` y `Receta.fecha` son DateField: llegan «2026-07-01», y salían
+ * así en pantalla, dos formatos de fecha en la misma pantalla de un registro
+ * legal. Para quien lee en dd/mm, «2026-03-04» puede ser el 4 de marzo o el 3 de
+ * abril, y en un estudio esa diferencia cambia la cronología.
+ *
+ * Se parte el texto en vez de usar `new Date`: `new Date("2026-07-01")` es
+ * medianoche UTC y en Argentina se muestra como el 30 de junio, o sea que
+ * formatear correría todos los estudios un día para atrás.
+ */
+function fecha(iso) {
+  if (!iso) return "—";
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso);
+}
 
 export default function HistoriaDetalle() {
   const { id } = useParams();
@@ -17,6 +36,7 @@ export default function HistoriaDetalle() {
   // La pestaña va en la URL: «mirá los estudios de este paciente» es un link.
   const [tab, setTab] = useFiltroUrl("tab", "evolucion");
   const [nuevaAtencion, setNuevaAtencion] = useState(false);
+  const [editandoAntecedentes, setEditandoAntecedentes] = useState(false);
 
   const paciente = useDetalle("ciudadanos", id);
   // La historia se busca por paciente; puede no existir todavía.
@@ -33,10 +53,16 @@ export default function HistoriaDetalle() {
     { n: hc?.estudios?.length || 0, l: "estudios" },
     { n: (hc?.recetas || []).filter((r) => r.activa).length, l: "recetas activas" },
     {
+      // Con año y en dd/mm/aaaa. Sin el año salía «8/8», que en una fila de
+      // contadores se lee como una razón —8 de 8, el mismo idioma que usa el
+      // panel de integridad al lado— y que además no distingue una paciente
+      // vista la semana pasada de una vista en 2019, en un registro que se
+      // conserva diez años.
       n: hc?.entradas?.length
-        ? new Date(hc.entradas[0].fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+        ? new Date(hc.entradas[0].fecha).toLocaleDateString("es-AR")
         : "—",
       l: "última visita",
+      chico: true,
     },
   ];
 
@@ -82,25 +108,56 @@ export default function HistoriaDetalle() {
             </div>
           )}
         </div>
-        <Button onClick={() => setNuevaAtencion(true)} className="flex items-center gap-2">
+        <Button
+          onClick={() => setNuevaAtencion(true)}
+          // Sin la historia cargada no se sabe si el paciente ya tiene una, y el
+          // alta crearía una segunda.
+          disabled={!!historias.error}
+          className="flex items-center gap-2"
+        >
           <Icon name="plus" size={15} /> Nueva atención
         </Button>
       </Card>
 
       {historias.isLoading ? (
         <SkeletonTabla filas={4} columnas={4} />
+      ) : historias.error ? (
+        /*
+         * Si la historia no se pudo traer, NO se dibuja nada que cuelgue de
+         * ella. Antes esta consulta fallaba en silencio y la pantalla mostraba
+         * «0 consultas», «Sin entradas de evolución» y «Sin alergias
+         * registradas»: no una lista vacía ambigua, una AFIRMACIÓN. Y arriba de
+         * esa afirmación se prescribe un antibiótico.
+         */
+        <EstadoError
+          error={historias.error}
+          onReintentar={historias.refetch}
+          titulo="No se pudo cargar la historia clínica"
+        />
       ) : (
         <>
           <div className="mb-[22px] grid grid-cols-2 gap-3.5 sm:grid-cols-4">
             {metricas.map((m) => (
               <Card key={m.l} className="p-[18px]">
-                <div className="text-cifra-lg font-extrabold leading-none">{m.n}</div>
+                <div className={cn("font-extrabold leading-none", m.chico ? "text-cifra" : "text-cifra-lg")}>
+                  {m.n}
+                </div>
                 <div className="mt-1.5 text-sm text-texto-debil">{m.l}</div>
               </Card>
             ))}
           </div>
 
-          <Tabs tabs={TABS} valor={tab} onChange={setTab} className="mb-5" />
+          {/*
+            El desplazamiento le pertenece a la tira de pestañas, no a la página.
+            A 390 px las cuatro pestañas miden 413 px: sin este contenedor el que
+            se corría para el costado era el panel entero de la app, y eso se lee
+            como pantalla rota y no como pantalla con scroll. `whitespace-nowrap`
+            va en el contenedor de las pestañas porque se hereda: sin él la
+            etiqueta se parte en tres renglones y la tira mide 87 px de alto.
+          */}
+          <div className="mb-5 max-w-full overflow-x-auto">
+            <Tabs tabs={TABS} valor={tab} onChange={setTab} className="whitespace-nowrap" />
+          </div>
 
           {/* Los antecedentes bajan debajo del contenido hasta `lg`: en una tablet
               una columna de 280px al lado deja la evolución ilegible. */}
@@ -113,22 +170,7 @@ export default function HistoriaDetalle() {
             </div>
 
             <div className="flex flex-col gap-3.5 lg:order-last">
-              <Card className="p-[18px]">
-                <h2 className="mb-3 text-xs font-bold tracking-wider text-texto-debil">ANTECEDENTES</h2>
-                <Dato
-                  k="Alergias"
-                  // Una alergia se marca con color Y con palabra: en una historia
-                  // clínica confiar sólo en el rojo es un riesgo, no un detalle.
-                  v={
-                    hc?.alergias
-                      ? <span className="text-danger">⚠ {hc.alergias}</span>
-                      : <span className="text-texto-debil">Sin alergias registradas</span>
-                  }
-                />
-                <div className="h-2.5" />
-                <Dato k="Condiciones" v={hc?.condiciones || "—"} />
-              </Card>
-
+              <Antecedentes hc={hc} onEditar={() => setEditandoAntecedentes(true)} />
               <Consentimiento ciudadanoId={id} estado={c?.consentimiento} />
               {hc && <Integridad hcId={hc.id} />}
             </div>
@@ -139,7 +181,122 @@ export default function HistoriaDetalle() {
       {nuevaAtencion && (
         <NuevaAtencionModal ciudadanoId={id} hcId={hc?.id} onClose={() => setNuevaAtencion(false)} />
       )}
+      {editandoAntecedentes && (
+        <AntecedentesModal hc={hc} onClose={() => setEditandoAntecedentes(false)} />
+      )}
     </div>
+  );
+}
+
+/*
+ * Alergias y condiciones del paciente.
+ *
+ * El estado vacío es lo delicado de este panel. «Sin alergias registradas» se
+ * lee como «este paciente no tiene alergias», y hasta ahora ese texto aparecía
+ * sobre pacientes a los que NUNCA se les preguntó —no había ninguna pantalla
+ * para cargarlos: el campo sólo se llenaba desde el seed de la demo—. En un
+ * hospital eso significa la palabra «sin alergias» arriba de un paciente
+ * alérgico a la penicilina, que es peor que no mostrar el campo.
+ *
+ * Por eso la marca de quién los cargó y cuándo no es un adorno: es lo único que
+ * distingue «se preguntó y no tiene» de «no consta».
+ */
+function Antecedentes({ hc, onEditar }) {
+  const consta = !!hc?.antecedentes_at;
+
+  return (
+    <Card className="p-[18px]">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-xs font-bold tracking-wider text-texto-debil">ANTECEDENTES</h2>
+        {hc && (
+          <button
+            onClick={onEditar}
+            className="text-sm font-semibold text-accent hover:underline"
+          >
+            Editar
+          </button>
+        )}
+      </div>
+
+      <Dato
+        k="Alergias"
+        // Una alergia se marca con color Y con palabra: en una historia
+        // clínica confiar sólo en el rojo es un riesgo, no un detalle.
+        v={
+          hc?.alergias
+            ? <span className="text-danger">⚠ {hc.alergias}</span>
+            : consta
+              ? <span className="text-texto-debil">Sin alergias conocidas</span>
+              : <span className="text-badge-amber-fg">No consta</span>
+        }
+      />
+      <div className="h-2.5" />
+      <Dato
+        k="Condiciones"
+        v={hc?.condiciones || (consta ? "Ninguna" : <span className="text-badge-amber-fg">No consta</span>)}
+      />
+
+      <div className="mt-3 text-xs text-texto-debil">
+        {consta
+          ? `Cargados por ${hc.antecedentes_por_nombre || "el sistema"} · ${fechaHora(hc.antecedentes_at)}`
+          : "Nadie registró los antecedentes de este paciente. «No consta» no quiere decir que no tenga."}
+      </div>
+    </Card>
+  );
+}
+
+function AntecedentesModal({ hc, onClose }) {
+  const toast = useToast();
+  const [alergias, setAlergias] = useState(hc?.alergias || "");
+  const [condiciones, setCondiciones] = useState(hc?.condiciones || "");
+
+  const guardar = useAccion(
+    () => api.patch(`/historias-clinicas/${hc.id}/`, { alergias, condiciones }),
+    {
+      // El padrón muestra la columna «Condiciones / alergias» derivada de acá.
+      invalida: ["lista", "detalle"],
+      onSuccess: () => { toast.ok("Antecedentes actualizados."); onClose(); },
+      onError: (e) => toast.deError(e, "No se pudieron guardar los antecedentes."),
+    },
+  );
+
+  return (
+    <Modal
+      title="Antecedentes del paciente"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={guardar.isPending} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Alergias">
+          <Input
+            value={alergias}
+            onChange={(e) => setAlergias(e.target.value)}
+            autoFocus
+            placeholder="Penicilina, AINEs…"
+          />
+        </Field>
+        <Field label="Condiciones / antecedentes">
+          <Input
+            value={condiciones}
+            onChange={(e) => setCondiciones(e.target.value)}
+            placeholder="HTA, diabetes tipo 2…"
+          />
+        </Field>
+        {/* Guardar vacío es una respuesta, y hay que poder darla: es la
+            diferencia entre «se preguntó y no tiene» y «no se preguntó». */}
+        <div className="text-sm text-texto-debil">
+          Queda asentado quién los cargó y cuándo. Si preguntaste y el paciente no
+          refiere alergias, guardá el campo vacío: eso ya es un dato.
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -190,6 +347,12 @@ function NuevaAtencionModal({ ciudadanoId, hcId, onClose }) {
         <label className="flex cursor-pointer items-center gap-2.5 text-md text-texto-medio">
           <input type="checkbox" checked={firmada} onChange={(e) => setFirmada(e.target.checked)} /> Firmar la entrada
         </label>
+        {/* Se dice ANTES de intentar, no después del error: quien no puede
+            firmar igual necesita dejar el asiento, y destildar es el camino. */}
+        <div className="text-sm text-texto-debil">
+          Firmar la asienta a tu nombre y con tu matrícula, y queda sellada: no se
+          puede editar después. Sin firmar queda como borrador y se puede corregir.
+        </div>
       </div>
     </Modal>
   );
@@ -436,10 +599,42 @@ function Resultado({ r }) {
  * en su historia y no sólo en la pantalla de auditoría porque hay que poder
  * contestarla en el momento en que la pregunta.
  */
-function Accesos({ ciudadanoId }) {
-  const q = useLista("accesos-clinicos/de-paciente", { ciudadano: ciudadanoId, pageSize: 50 });
+/*
+ * El nombre del modelo, dicho como se le dice a un paciente.
+ *
+ * Del lado del registro se guarda el nombre del MODELO a propósito —una ruta se
+ * puede renombrar y el registro tiene que seguir diciendo lo mismo dentro de
+ * diez años—, pero eso es cómo se guarda, no cómo se muestra. Esta lista se lee
+ * en voz alta frente a quien la pidió: «historiaclinica» en monoespaciado no es
+ * una respuesta.
+ */
+const RECURSO = {
+  ciudadano: "datos del paciente",
+  historiaclinica: "historia clínica",
+  entradahistoria: "evolución",
+  estudio: "estudios",
+  receta: "recetas",
+  consentimientodatos: "consentimiento",
+};
 
-  if (q.isLoading) return <SkeletonTabla filas={4} columnas={3} />;
+const POR_PAGINA = 25;
+
+function Accesos({ ciudadanoId }) {
+  const [pagina, setPagina] = useState(1);
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+
+  const q = useLista("accesos-clinicos/de-paciente", {
+    ciudadano: ciudadanoId,
+    page: pagina,
+    pageSize: POR_PAGINA,
+    desde: desde || undefined,
+    hasta: hasta || undefined,
+  });
+
+  const primero = (pagina - 1) * POR_PAGINA + 1;
+  const ultimo = Math.min(pagina * POR_PAGINA, q.total);
+
   // El registro es tan sensible como lo que audita: lo ven conducción y
   // plataforma. A un médico el backend le responde 403, y eso se explica en vez
   // de mostrarle una lista vacía que parecería decir «nadie la miró».
@@ -453,23 +648,76 @@ function Accesos({ ciudadanoId }) {
     );
   }
   if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
-  if (!q.filas.length) {
-    return <EstadoVacio titulo="Nadie consultó esta historia" detalle="Cada consulta a estos datos queda registrada acá." />;
-  }
 
   return (
     <div className="flex flex-col gap-2.5">
-      {q.filas.map((a) => (
-        <Card key={a.id} className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3.5">
-          <div className="min-w-0">
-            <div className="text-md font-semibold">{a.usuario_nombre || a.usuario_email}</div>
-            <div className="text-sm text-texto-debil">
-              {fechaHora(a.momento)} · <Mono>{a.recurso}</Mono>
+      {/*
+        El total va ARRIBA de todo y no como nota al pie. Esta pestaña existe
+        para contestar el art. 14 de la Ley 26.529 en el momento en que el
+        paciente lo pregunta, y antes mostraba los primeros 50 de 553 sin decir
+        que estaba cortada: una respuesta incompleta con cara de completa. Quien
+        atiende el reclamo no tenía manera de saber que faltaban quinientos.
+      */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="text-md text-texto-medio">
+          {q.isLoading
+            ? "Contando accesos…"
+            : q.total
+              ? <>Mostrando <strong>{primero}–{ultimo}</strong> de <strong>{q.total}</strong> accesos registrados</>
+              : "Sin accesos registrados en este período"}
+        </div>
+        <div className="flex items-end gap-2">
+          <Field label="Desde">
+            <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPagina(1); }} />
+          </Field>
+          <Field label="Hasta">
+            <Input type="date" value={hasta} onChange={(e) => { setHasta(e.target.value); setPagina(1); }} />
+          </Field>
+        </div>
+      </div>
+
+      {q.isLoading ? (
+        <SkeletonTabla filas={4} columnas={3} />
+      ) : !q.filas.length ? (
+        <EstadoVacio
+          titulo={desde || hasta ? "Sin accesos en ese rango" : "Nadie consultó esta historia"}
+          detalle="Cada consulta a estos datos queda registrada acá."
+        />
+      ) : (
+        q.filas.map((a) => (
+          <Card key={a.id} className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3.5">
+            <div className="min-w-0">
+              <div className="text-md font-semibold">{a.usuario_nombre || a.usuario_email}</div>
+              <div className="text-sm text-texto-debil">
+                {fechaHora(a.momento)} · {RECURSO[a.recurso] || a.recurso}
+              </div>
             </div>
-          </div>
-          <Badge tone={a.tipo === "detalle" ? "info" : "gray"}>{a.tipo_display}</Badge>
-        </Card>
-      ))}
+            <Badge tone={a.tipo === "detalle" ? "info" : "gray"}>{a.tipo_display}</Badge>
+          </Card>
+        ))
+      )}
+
+      {q.paginas > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-1.5">
+          <Button
+            variant="secondary"
+            className="text-sm"
+            disabled={pagina <= 1}
+            onClick={() => setPagina((p) => p - 1)}
+          >
+            Anterior
+          </Button>
+          <span className="text-sm text-texto-debil">Página {pagina} de {q.paginas}</span>
+          <Button
+            variant="secondary"
+            className="text-sm"
+            disabled={pagina >= q.paginas}
+            onClick={() => setPagina((p) => p + 1)}
+          >
+            Siguiente
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -483,6 +731,29 @@ function Dato({ k, v }) {
   );
 }
 
+/*
+ * El estado de la firma de UNA entrada, dicho donde se lee la historia.
+ *
+ * La API devuelve `integra` por entrada y la evolución la ignoraba: una entrada
+ * alterada después de firmarse se mostraba con el mismo verde «Firmada» que una
+ * intacta. El sistema tenía la información y elegía mostrar verde encima. La
+ * pantalla que el médico lee es ésta, no el panel lateral —que además sólo
+ * calcula a pedido y queda debajo de toda la evolución hasta `lg`—.
+ *
+ * Mismo criterio que el panel de INTEGRIDAD: el verde sólo cuando se puede
+ * probar, porque «en verde se lee como un certificado».
+ */
+function SelloDeFirma({ entrada }) {
+  if (!entrada.firmada) return null;
+  if (entrada.integra === false) {
+    return <Badge tone="error">⚠ Alterada después de firmarse</Badge>;
+  }
+  if (entrada.integra == null) {
+    return <Badge tone="gray">Firmada · no verificable</Badge>;
+  }
+  return <Badge tone="green">Firmada</Badge>;
+}
+
 function Evolucion({ entradas }) {
   if (!entradas.length) {
     return <EstadoVacio titulo="Sin entradas de evolución" detalle="Registrá una atención para empezar la historia." />;
@@ -493,7 +764,7 @@ function Evolucion({ entradas }) {
         <Card key={e.id} className="p-[18px]">
           <div className="mb-1.5 flex items-center justify-between gap-3">
             <h3 className="text-md font-bold">{e.titulo}</h3>
-            {e.firmada && <Badge tone="green">Firmada</Badge>}
+            <SelloDeFirma entrada={e} />
           </div>
           {e.contenido && <div className="mb-2 text-md text-texto-medio">{e.contenido}</div>}
           <div className="text-xs text-texto-debil">
@@ -516,7 +787,7 @@ function Estudios({ estudios }) {
           <div className="min-w-0">
             <div className="text-md font-semibold">{s.tipo}</div>
             <div className="text-sm text-texto-debil">
-              {s.fecha} · {s.autor || "—"} {s.archivo && <Mono className="ml-1.5">{s.archivo}</Mono>}
+              {fecha(s.fecha)} · {s.autor || "—"} {s.archivo && <Mono className="ml-1.5">{s.archivo}</Mono>}
             </div>
           </div>
           {s.resultado && (
@@ -529,6 +800,8 @@ function Estudios({ estudios }) {
 }
 
 function Recetas({ recetas }) {
+  const [suspendiendo, setSuspendiendo] = useState(null);
+
   if (!recetas.length) return <EstadoVacio titulo="Sin recetas" detalle="Las recetas se emiten durante la atención." />;
   return (
     <div className="flex flex-col gap-2.5">
@@ -536,11 +809,77 @@ function Recetas({ recetas }) {
         <Card key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3.5">
           <div className="min-w-0">
             <div className="text-md text-texto-medio">{r.detalle}</div>
-            <div className="text-sm text-texto-debil">{r.fecha}</div>
+            <div className="text-sm text-texto-debil">
+              {fecha(r.fecha)}
+              {r.autor_nombre ? ` · ${r.autor_nombre}` : ""}
+            </div>
           </div>
-          <Badge tone={r.activa ? "green" : "gray"}>{r.activa ? "Activa" : "Inactiva"}</Badge>
+          <div className="flex items-center gap-2.5">
+            <Badge tone={r.activa ? "green" : "gray"}>{r.activa ? "Activa" : "Inactiva"}</Badge>
+            {/* Sin esto el estado sólo podía crecer: a los dos años el paciente
+                crónico tiene veinte recetas «Activas» superpuestas y no hay
+                manera de saber cuál es el tratamiento vigente. */}
+            {r.activa && (
+              <Button variant="secondary" className="text-sm" onClick={() => setSuspendiendo(r)}>
+                Suspender
+              </Button>
+            )}
+          </div>
         </Card>
       ))}
+
+      {suspendiendo && (
+        <SuspenderRecetaModal receta={suspendiendo} onClose={() => setSuspendiendo(null)} />
+      )}
     </div>
+  );
+}
+
+function SuspenderRecetaModal({ receta, onClose }) {
+  const toast = useToast();
+  const [motivo, setMotivo] = useState("");
+
+  const suspender = useAccion(
+    () => api.post(`/recetas/${receta.id}/suspender/`, { motivo }),
+    {
+      invalida: ["lista", "detalle"],
+      onSuccess: () => { toast.ok("Medicación suspendida."); onClose(); },
+      // Emitir y suspender los hace quien puede prescribir: el backend explica
+      // cuál es la regla, así que se muestra su texto en vez de uno genérico.
+      onError: (e) => toast.deError(e, "No se pudo suspender la receta."),
+    },
+  );
+
+  return (
+    <Modal
+      title="Suspender medicación"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={suspender.isPending || !motivo.trim()} onClick={() => suspender.mutate()}>
+            {suspender.isPending ? "Suspendiendo…" : "Suspender"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <div className="rounded-md bg-superficie-2 px-3 py-2.5 text-md text-texto-medio">
+          {receta.detalle}
+        </div>
+        <Field label="Motivo *">
+          <Textarea
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            autoFocus
+            placeholder="Rotación de antibiótico, suspensión prequirúrgica…"
+          />
+        </Field>
+        <div className="text-sm text-texto-debil">
+          Queda un asiento firmado en la evolución. Suspender una medicación es un
+          acto clínico: quien retome el tratamiento tiene que poder leer por qué se cortó.
+        </div>
+      </div>
+    </Modal>
   );
 }

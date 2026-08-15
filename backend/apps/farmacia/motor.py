@@ -46,6 +46,44 @@ def disponible(deposito, insumo, lote=None) -> int:
     return qs.aggregate(t=Sum("cantidad"))["t"] or 0
 
 
+def _filas_por_vencimiento(deposito, insumo):
+    """Las existencias con stock, de la que vence antes a la que vence después."""
+    return list(
+        Existencia.objects.select_related("lote")
+        .filter(deposito=deposito, insumo=insumo, cantidad__gt=0)
+        .order_by(F("lote__vencimiento").asc(nulls_last=True), "lote__numero", "id")
+    )
+
+
+def _esta_vencida(fila, hoy):
+    return bool(fila.lote and fila.lote.vencimiento and fila.lote.vencimiento < hoy)
+
+
+def _repartir(filas, cantidad):
+    """Plan `[(lote, cuánto)]` tomando de `filas` en el orden en que vienen."""
+    plan, resta = [], cantidad
+    for f in filas:
+        if resta <= 0:
+            break
+        toma = min(f.cantidad, resta)
+        plan.append((f.lote, toma))
+        resta -= toma
+    return plan
+
+
+def _validar_lote_explicito(insumo, lote, accion):
+    """Las dos reglas de un lote que alguien nombra a mano.
+
+    Estaban sólo en `ingresar`, así que consumir o transferir indicando el lote
+    dejaba aplicarle a un paciente un medicamento vencido —y quedaba registrado
+    como un consumo cualquiera, imposible de encontrar después en el historial—.
+    """
+    if lote.insumo_id != insumo.id:
+        raise ErrorStock("Ese lote es de otro insumo.")
+    if lote.vencido:
+        raise ErrorStock(f"El lote {lote.numero} está vencido: no se puede {accion}.")
+
+
 def lotes_para_sacar(deposito, insumo, cantidad):
     """
     De qué lotes sacar, en qué orden: primero el que vence antes.
@@ -57,12 +95,8 @@ def lotes_para_sacar(deposito, insumo, cantidad):
     que hay stock pero está vencido, que es una situación distinta a no tener.
     """
     hoy = timezone.localdate()
-    filas = list(
-        Existencia.objects.select_related("lote")
-        .filter(deposito=deposito, insumo=insumo, cantidad__gt=0)
-        .order_by(F("lote__vencimiento").asc(nulls_last=True), "lote__numero", "id")
-    )
-    usables = [f for f in filas if not (f.lote and f.lote.vencimiento and f.lote.vencimiento < hoy)]
+    filas = _filas_por_vencimiento(deposito, insumo)
+    usables = [f for f in filas if not _esta_vencida(f, hoy)]
     total = sum(f.cantidad for f in usables)
     if total < cantidad:
         vencido = sum(f.cantidad for f in filas) - total
@@ -71,15 +105,7 @@ def lotes_para_sacar(deposito, insumo, cantidad):
             f"No alcanza el stock de {insumo} en {deposito}: hay {total} y se piden "
             f"{cantidad}{detalle}."
         )
-
-    plan, resta = [], cantidad
-    for f in usables:
-        if resta <= 0:
-            break
-        toma = min(f.cantidad, resta)
-        plan.append((f.lote, toma))
-        resta -= toma
-    return plan
+    return _repartir(usables, cantidad)
 
 
 @transaction.atomic
@@ -91,10 +117,8 @@ def ingresar(deposito, insumo, cantidad, lote=None, autor=None, motivo="") -> Mo
         # Sin lote no se puede responder un retiro de ANMAT. Es justo el insumo
         # donde eso importa —el que lo declara— así que no se deja pasar.
         raise ErrorStock(f"{insumo} lleva lote: hay que indicar cuál ingresa.")
-    if lote is not None and lote.insumo_id != insumo.id:
-        raise ErrorStock("Ese lote es de otro insumo.")
-    if lote is not None and lote.vencido:
-        raise ErrorStock(f"El lote {lote.numero} está vencido: no se puede ingresar.")
+    if lote is not None:
+        _validar_lote_explicito(insumo, lote, "ingresar")
 
     e = _existencia(deposito, insumo, lote)
     e.cantidad = F("cantidad") + cantidad
@@ -119,10 +143,18 @@ def consumir(deposito, insumo, cantidad, caso=None, autor=None, lote=None, motiv
     """
     if cantidad <= 0:
         raise ErrorStock("La cantidad tiene que ser mayor que cero.")
+    if insumo.controlado and caso is None and not motivo.strip():
+        # Un estupefaciente que sale sin nominar y sin justificar no permite
+        # armar el libro de controlados: ante una inspección el faltante no
+        # tiene respaldo, y ante un retiro de lote esas unidades son «no
+        # sabemos» porque `trazar_lote` sólo ve los consumos con caso.
+        raise ErrorStock(
+            f"{insumo} es un insumo controlado (Ley 19.303): el consumo tiene que quedar "
+            "imputado a un caso, o llevar un motivo que explique a dónde fue."
+        )
 
     if lote is not None:
-        if lote.insumo_id != insumo.id:
-            raise ErrorStock("Ese lote es de otro insumo.")
+        _validar_lote_explicito(insumo, lote, "consumir")
         hay = disponible(deposito, insumo, lote)
         if hay < cantidad:
             raise ErrorStock(
@@ -157,9 +189,15 @@ def transferir(origen, destino, insumo, cantidad, autor=None, lote=None, motivo=
     if cantidad <= 0:
         raise ErrorStock("La cantidad tiene que ser mayor que cero.")
 
-    plan = [(lote, cantidad)] if lote is not None else lotes_para_sacar(origen, insumo, cantidad)
-    if lote is not None and disponible(origen, insumo, lote) < cantidad:
-        raise ErrorStock(f"No alcanza el lote {lote.numero} en {origen}.")
+    if lote is not None:
+        # Sin esto se podía mandar lo vencido al botiquín de guardia, donde ocupa
+        # lugar y engorda el número que la guardia mira a la noche.
+        _validar_lote_explicito(insumo, lote, "transferir")
+        if disponible(origen, insumo, lote) < cantidad:
+            raise ErrorStock(f"No alcanza el lote {lote.numero} en {origen}.")
+        plan = [(lote, cantidad)]
+    else:
+        plan = lotes_para_sacar(origen, insumo, cantidad)
 
     movimientos = []
     for l, cant in plan:
@@ -192,6 +230,14 @@ def ajustar(deposito, insumo, contado, lote=None, autor=None, motivo="") -> Movi
     """
     if contado < 0:
         raise ErrorStock("Lo contado no puede ser negativo.")
+    if insumo.requiere_lote and lote is None:
+        # Un ajuste sin lote deja unidades que no vencen nunca, que no aparecen
+        # en «Vencen pronto» y que ante un retiro de ANMAT no se pueden atribuir
+        # a ninguna partida. El recuento se hace lote por lote, que es como se
+        # cuenta en el estante.
+        raise ErrorStock(f"{insumo} lleva lote: el recuento se hace por lote.")
+    if lote is not None and lote.insumo_id != insumo.id:
+        raise ErrorStock("Ese lote es de otro insumo.")
     e = _existencia(deposito, insumo, lote)
     e.refresh_from_db()
     diferencia = contado - e.cantidad
@@ -211,24 +257,55 @@ def ajustar(deposito, insumo, contado, lote=None, autor=None, motivo="") -> Movi
 
 
 @transaction.atomic
-def dar_de_baja(deposito, insumo, cantidad, lote=None, autor=None, motivo="") -> Movimiento:
-    """Sale stock sin haberse usado: vencido, roto, extraviado."""
+def dar_de_baja(deposito, insumo, cantidad, lote=None, autor=None, motivo=""):
+    """
+    Sale stock sin haberse usado: vencido, roto, extraviado.
+
+    Es la única forma de sacar del sistema un lote vencido, así que acá el
+    vencido SÍ se puede elegir —al revés que en consumo y transferencia—.
+
+    Sin lote no se busca la fila sin lote: en un insumo con partidas esa fila no
+    existe y la baja fallaba siempre con «hay 0» mientras la pantalla mostraba
+    «Hay 3». Se reparte entre las partidas que hay, empezando por la que vence
+    antes (o ya venció), que es lo que uno saca del estante.
+    """
     if cantidad <= 0:
         raise ErrorStock("La cantidad tiene que ser mayor que cero.")
     if not motivo.strip():
         # Una baja sin motivo es indistinguible de un faltante, y en un insumo
         # controlado eso es exactamente lo que hay que poder explicar.
         raise ErrorStock("Una baja necesita un motivo.")
-    e = _existencia(deposito, insumo, lote, crear=False)
-    if e is None or e.cantidad < cantidad:
-        hay = e.cantidad if e else 0
-        raise ErrorStock(f"No alcanza el stock de {insumo} en {deposito}: hay {hay}.")
-    e.cantidad = F("cantidad") - cantidad
-    e.save(update_fields=["cantidad", "actualizado"])
-    return Movimiento.objects.create(
-        tipo=Movimiento.Tipo.BAJA, insumo=insumo, lote=lote, origen=deposito,
-        cantidad=cantidad, autor=autor, motivo=motivo[:200],
-    )
+
+    if lote is not None:
+        if lote.insumo_id != insumo.id:
+            raise ErrorStock("Ese lote es de otro insumo.")
+        hay = disponible(deposito, insumo, lote)
+        if hay < cantidad:
+            raise ErrorStock(
+                f"No alcanza el lote {lote.numero} en {deposito}: hay {hay} y se piden {cantidad}."
+            )
+        plan = [(lote, cantidad)]
+    else:
+        filas = _filas_por_vencimiento(deposito, insumo)
+        total = sum(f.cantidad for f in filas)
+        if total < cantidad:
+            raise ErrorStock(
+                f"No alcanza el stock de {insumo} en {deposito}: hay {total} y se piden {cantidad}."
+            )
+        plan = _repartir(filas, cantidad)
+
+    movimientos = []
+    for l, cant in plan:
+        e = _existencia(deposito, insumo, l, crear=False)
+        if e is None or e.cantidad < cant:
+            raise ErrorStock(f"El stock de {insumo} cambió mientras se registraba. Reintentá.")
+        e.cantidad = F("cantidad") - cant
+        e.save(update_fields=["cantidad", "actualizado"])
+        movimientos.append(Movimiento.objects.create(
+            tipo=Movimiento.Tipo.BAJA, insumo=insumo, lote=l, origen=deposito,
+            cantidad=cant, autor=autor, motivo=motivo[:200],
+        ))
+    return movimientos
 
 
 # --------------------------------------------------------------------------- #
@@ -243,6 +320,11 @@ def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
     falta stock, y guardarlo es lo que después permite ver qué quedó sin cubrir;
     si el sistema sólo guardara lo pedido, el faltante desaparecería.
     """
+    # El estado se relee con candado y no se confía en la copia que trajo la
+    # vista. El caso real no es un ataque sino un timeout: la farmacia entrega,
+    # el navegador no contesta y la persona vuelve a apretar; con las dos copias
+    # diciendo «pendiente» salían 60 ampollas de la central para un pedido de 30.
+    pedido = Pedido.objects.select_for_update().get(pk=pedido.pk)
     if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
         raise ErrorStock("El pedido ya está cerrado.")
 
@@ -256,7 +338,9 @@ def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
             )
         transferir(pedido.destino, pedido.origen, linea.insumo, cant, autor=autor,
                    motivo=f"Pedido #{pedido.pk}")
-        linea.entregado = cant
+        # Se acumula: si alguna vez se entrega en dos veces, pisarlo dejaría el
+        # renglón diciendo lo mismo que la primera entrega y el resto invisible.
+        linea.entregado += cant
         linea.save(update_fields=["entregado"])
 
     pedido.estado = Pedido.Estado.ENTREGADO
@@ -275,17 +359,30 @@ def bajo_minimo(institucion, deposito=None):
     Se compara contra el stock del depósito, no el de la institución: «hay 200
     en el hospital» no le sirve a la guardia a las 3 de la mañana, que necesita
     saber si hay en SU botiquín.
+
+    Lo vencido no cuenta como stock —`lotes_para_sacar` tampoco lo deja usar— y
+    se devuelve aparte: un botiquín con las 59 ampollas de adrenalina vencidas
+    no puede verse igual que uno abastecido, y «0 de 20 · 59 vencidas» es una
+    situación distinta a no tener nada, porque hay algo que dar de baja y
+    alguien a quien reclamarle.
     """
+    hoy = timezone.localdate()
     qs = Existencia.objects.filter(
         deposito__institucion=institucion, insumo__activo=True, insumo__stock_minimo__gt=0
     )
     if deposito is not None:
         qs = qs.filter(deposito=deposito)
     por_clave = {}
-    for e in qs.select_related("insumo", "deposito"):
+    for e in qs.select_related("insumo", "deposito", "lote"):
         clave = (e.deposito_id, e.insumo_id)
-        d = por_clave.setdefault(clave, {"deposito": e.deposito, "insumo": e.insumo, "cantidad": 0})
-        d["cantidad"] += e.cantidad
+        d = por_clave.setdefault(
+            clave,
+            {"deposito": e.deposito, "insumo": e.insumo, "cantidad": 0, "vencida": 0},
+        )
+        if _esta_vencida(e, hoy):
+            d["vencida"] += e.cantidad
+        else:
+            d["cantidad"] += e.cantidad
     return sorted(
         (d for d in por_clave.values() if d["cantidad"] < d["insumo"].stock_minimo),
         key=lambda d: (d["cantidad"] / (d["insumo"].stock_minimo or 1), d["insumo"].nombre),

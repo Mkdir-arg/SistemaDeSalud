@@ -200,11 +200,19 @@ class CamasTests(TestCase):
         apoya en que no se separen: el tablero mira `estado`, el historial mira
         las estadías y la pantalla del paciente mira `caso`.
         """
+        # Las dos internaciones entran por camas de «Clínica médica», que es el
+        # sector que declara el nodo de este flujo. Antes `b` entraba directo a
+        # UTI: dejó de andar cuando el motor pasó a exigir que la cama sea del
+        # sector del paso —una regla nueva y correcta, porque internar en un
+        # sector ajeno deja la cama ocupada en un tablero que no la puede
+        # liberar—. Lo que este test cuida es el invariante, no por dónde entra.
         a, b = self._internar("Ana"), self._internar("Beto")
         motor.asignar_cama(a, self.c101.id, autor=self.jefe)
-        motor.asignar_cama(b, self.uti1.id, autor=self.jefe)
+        motor.asignar_cama(b, self.c102.id, autor=self.jefe)
         a.refresh_from_db()
-        motor.pasar_de_sector(a, self.c102.id, autor=self.jefe)
+        # El pase SÍ cruza de sector: es su función, y así el invariante se
+        # comprueba también sobre una cama de UTI.
+        motor.pasar_de_sector(a, self.uti1.id, autor=self.jefe)
         b.refresh_from_db()
         motor.cancelar_caso(b, autor=self.jefe, motivo="x")
 

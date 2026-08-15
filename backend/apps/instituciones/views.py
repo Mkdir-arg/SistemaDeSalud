@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from django.db.models import Avg, Case, Count, DurationField, ExpressionWrapper, F, IntegerField, Q, When
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -17,6 +18,68 @@ from .serializers import (
     AreaSerializer, BoxSerializer, CamaSerializer, EstadiaCamaSerializer,
     GrupoSerializer, InstitucionSerializer, SubareaSerializer,
 )
+
+
+# Techo del rango que puede pedir un tablero.
+#
+# El costo de la consulta lo fija quien escribe la URL: `?desde=2020-01-01` son
+# seis años de buckets, y el tablero se refresca solo cada minuto contra la misma
+# base en la que se están admitiendo pacientes. Un año es más de lo que cualquier
+# panel operativo mira; lo que exceda se recorta y se informa en `periodo`.
+MAX_DIAS_RANGO = 366
+
+
+def _rango_pedido(request):
+    """Rango del tablero: (desde, hasta) inclusivo, acotado a `MAX_DIAS_RANGO`."""
+    def _fecha(v, por_defecto):
+        try:
+            return date.fromisoformat(v)
+        except (TypeError, ValueError):
+            return por_defecto
+
+    hasta = _fecha(request.query_params.get("hasta"), timezone.localdate())
+    desde = _fecha(request.query_params.get("desde"), hasta - timedelta(days=29))
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    if (hasta - desde).days + 1 > MAX_DIAS_RANGO:
+        desde = hasta - timedelta(days=MAX_DIAS_RANGO - 1)
+    return desde, hasta
+
+
+def _serie_ingresos(en_rango, desde, hasta):
+    """Serie de ingresos del período en UNA consulta agrupada.
+
+    Antes se contaba con un `.count()` por bucket dentro de un bucle: 30
+    consultas para el rango por defecto y cientos para un rango largo, en una
+    pantalla que se refresca sola cada minuto. La cantidad de consultas no puede
+    depender del rango que pida el cliente.
+    """
+    por_dia = {
+        r["f"]: r["n"]
+        for r in en_rango.annotate(f=TruncDate("creado")).values("f").annotate(n=Count("id"))
+    }
+    span = (hasta - desde).days + 1
+    if span <= 45:
+        serie = [
+            {"fecha": (desde + timedelta(days=i)).isoformat(),
+             "casos": por_dia.get(desde + timedelta(days=i), 0)}
+            for i in range(span)
+        ]
+        return serie, "dia"
+    serie = []
+    for w in range((span + 6) // 7):
+        ini = desde + timedelta(weeks=w)
+        fin = min(ini + timedelta(days=6), hasta)
+        serie.append({
+            "fecha": ini.isoformat(),
+            "casos": sum(por_dia.get(ini + timedelta(days=i), 0) for i in range((fin - ini).days + 1)),
+        })
+    return serie, "semana"
+
+
+def _minutos(delta):
+    """Un promedio de duración en minutos; None si no hubo ninguna medición."""
+    return round(delta.total_seconds() / 60, 1) if delta else None
 
 
 class InstitucionViewSet(BaseModelViewSet):
@@ -46,10 +109,12 @@ class InstitucionViewSet(BaseModelViewSet):
     def tablero(self, request, pk=None):
         """Tablero general del hospital: números, tiempos por área y series para gráficos.
 
-        Acepta ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD (por defecto, últimos 30 días).
-        Las métricas de "carga viva" (activos, en cola, urgentes) son siempre del
-        momento; las de período (ingresos, cerrados, espera, atención, resolución y
-        la serie) se acotan al rango. Tiempos:
+        Acepta ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD (por defecto, últimos 30 días;
+        tope `MAX_DIAS_RANGO`, y `periodo` devuelve el rango que se usó de verdad).
+        Las métricas de "carga viva" (activos, en cola, urgentes, top de demoras)
+        son siempre del momento; las de período (ingresos, cerrados, espera,
+        atención, resolución, la serie y la distribución por estado) se acotan al
+        rango. Tiempos:
         - espera   = ItemFila.llamado_at − ingreso
         - atención = ItemFila.atendido_at − llamado_at
         - resolución = Caso.actualizado − Caso.creado (cerrados)
@@ -59,16 +124,7 @@ class InstitucionViewSet(BaseModelViewSet):
         inst = self.get_object()
         now = timezone.now()
 
-        def _fecha(v, por_defecto):
-            try:
-                return date.fromisoformat(v)
-            except (TypeError, ValueError):
-                return por_defecto
-
-        hasta = _fecha(request.query_params.get("hasta"), timezone.localdate())
-        desde = _fecha(request.query_params.get("desde"), hasta - timedelta(days=29))
-        if desde > hasta:
-            desde, hasta = hasta, desde
+        desde, hasta = _rango_pedido(request)
         rango = (desde, hasta)  # inclusivo en ambos extremos (lookups __date__range)
 
         ACTIVO = ~Q(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
@@ -76,32 +132,36 @@ class InstitucionViewSet(BaseModelViewSet):
 
         casos = Caso.objects.filter(institucion=inst)
         activos = casos.filter(ACTIVO)
+        en_rango = casos.filter(creado__date__range=rango)
         items = ItemFila.objects.filter(caso__institucion=inst)
-        cola = list(items.filter(atendido=False).select_related("caso", "caso__ciudadano", "caso__area_actual", "nodo"))
+        # La cola son los que ESPERAN. Quien ya fue llamado a un box sigue con
+        # `atendido=False` a propósito (ver motor.mover_en_fila), así que sin el
+        # `box__isnull=True` la cola cuenta a los que están adentro del
+        # consultorio: infla la dotación que se mira para llamar más personal y
+        # pone primero en «quién espera más» justo al que hace más rato que está
+        # con el médico.
+        cola = list(
+            items.filter(atendido=False, box__isnull=True)
+            .select_related("caso", "caso__ciudadano", "caso__area_actual", "nodo")
+        )
         espera_expr = ExpressionWrapper(F("llamado_at") - F("ingreso"), output_field=DurationField())
         atencion_expr = ExpressionWrapper(F("atendido_at") - F("llamado_at"), output_field=DurationField())
+        medidos_espera = items.filter(llamado_at__isnull=False, ingreso__date__range=rango)
+        medidos_atencion = items.filter(
+            atendido_at__isnull=False, atendido_at__gt=F("llamado_at"), atendido_at__date__range=rango
+        )
+        cerrados_rango = casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango)
 
-        def _avg_min(qs):
-            a = qs.aggregate(a=Avg("w"))["a"]
-            return round(a.total_seconds() / 60, 1) if a else None
-
-        def espera_min(items_qs, cola_items):
-            # Espera real medida (llamado − ingreso) en el rango; si no hay, espera en vivo.
-            v = _avg_min(items_qs.filter(llamado_at__isnull=False, ingreso__date__range=rango).annotate(w=espera_expr))
-            if v is not None:
-                return v
+        def espera_en_vivo(cola_items):
             difs = [(now - it.ingreso).total_seconds() / 60 for it in cola_items]
-            return round(sum(difs) / len(difs), 1) if difs else 0
+            return round(sum(difs) / len(difs), 1) if difs else None
 
-        def atencion_min(items_qs):
-            # Atención real (atendido − llamado); excluye filas clásicas (duración nula).
-            return _avg_min(items_qs.filter(
-                atendido_at__isnull=False, atendido_at__gt=F("llamado_at"), atendido_at__date__range=rango
-            ).annotate(w=atencion_expr)) or 0
-
-        def resol_prom_h(qs):
-            avg = qs.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).annotate(d=dur).aggregate(a=Avg("d"))["a"]
-            return round(avg.total_seconds() / 3600, 1) if avg else 0
+        def espera_min(medida, cola_items):
+            # Espera real medida (llamado − ingreso) en el rango; si no hay, espera
+            # en vivo; si tampoco hay nadie en cola, `None`: «no hay ninguna
+            # medición» no es «cero minutos de espera», y colapsarlo a 0 pintaba de
+            # verde —el mejor color de la tabla— justo a las áreas sin dato.
+            return medida if medida is not None else espera_en_vivo(cola_items)
 
         # Ocupación de camas: se cuenta acá y no con una consulta por sector
         # porque el resumen es una sola foto, y el porcentaje va sobre camas EN
@@ -149,35 +209,57 @@ class InstitucionViewSet(BaseModelViewSet):
             "camas_ocupadas": camas_ocupadas,
             "camas_libres": camas.filter(estado=Cama.Estado.LIBRE).count(),
             "ocupacion_camas": round(100 * camas_ocupadas / operativas) if operativas else 0,
-            "ingresos": casos.filter(creado__date__range=rango).count(),
-            "cerrados": casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).count(),
+            "ingresos": en_rango.count(),
+            "cerrados": cerrados_rango.count(),
             "en_cola": len(cola),
             "urgentes": activos.filter(prioridad=Caso.Prioridad.URGENTE).count(),
-            "espera_prom_min": espera_min(items, cola),
-            "atencion_prom_min": atencion_min(items),
-            "resolucion_prom_h": resol_prom_h(casos),
+            "espera_prom_min": espera_min(_minutos(medidos_espera.aggregate(a=Avg(espera_expr))["a"]), cola),
+            "atencion_prom_min": _minutos(medidos_atencion.aggregate(a=Avg(atencion_expr))["a"]) or 0,
+            "resolucion_prom_h": round(
+                (cerrados_rango.aggregate(a=Avg(dur))["a"] or timedelta()).total_seconds() / 3600, 1
+            ),
         }
+
+        # Una consulta por métrica y no una por área: con ocho áreas el bucle
+        # anterior hacía cuarenta agregaciones en una pantalla que se refresca
+        # sola cada minuto, contra la misma base donde se admiten pacientes.
+        AREA_ITEM = "nodo__version__flujo__area"
+
+        def _por_clave(qs, clave, campo, valor):
+            return {r[clave]: r[valor] for r in qs.values(clave).annotate(**{valor: campo})}
+
+        act_area = _por_clave(activos, "area_actual", Count("id"), "n")
+        aten_area = _por_clave(casos.filter(estado=Caso.Estado.ATENDIDO), "area_actual", Count("id"), "n")
+        esp_area = _por_clave(medidos_espera, AREA_ITEM, Avg(espera_expr), "w")
+        ate_area = _por_clave(medidos_atencion, AREA_ITEM, Avg(atencion_expr), "w")
+        res_area = _por_clave(cerrados_rango, "area_actual", Avg(dur), "d")
 
         por_area = []
         for area in inst.areas.all():
-            a_casos = casos.filter(area_actual=area)
-            a_items = items.filter(nodo__version__flujo__area_id=area.id)
             a_cola = [it for it in cola if it.caso.area_actual_id == area.id]
+            d = res_area.get(area.id)
             por_area.append({
                 "area_id": area.id,
                 "nombre": area.nombre,
-                "activos": a_casos.filter(ACTIVO).count(),
+                "activos": act_area.get(area.id, 0),
                 "en_cola": len(a_cola),
-                "atendidos": a_casos.filter(estado=Caso.Estado.ATENDIDO).count(),
-                "espera_prom_min": espera_min(a_items, a_cola),
-                "atencion_prom_min": atencion_min(a_items),
-                "resolucion_prom_h": resol_prom_h(a_casos),
+                # Foto viva de un estado de paso, no producción del período (ver
+                # el comentario del tablero de área).
+                "atendidos": aten_area.get(area.id, 0),
+                "espera_prom_min": espera_min(_minutos(esp_area.get(area.id)), a_cola),
+                "atencion_prom_min": _minutos(ate_area.get(area.id)) or 0,
+                "resolucion_prom_h": round(d.total_seconds() / 3600, 1) if d else 0,
             })
         por_area.sort(key=lambda x: (x["activos"], x["en_cola"]), reverse=True)
 
+        # Por estado DEL PERÍODO, como el resto del panel. Sobre todos los casos
+        # de la institución la dona no se movía al cambiar el selector de rango
+        # —tres meses y siete días daban lo mismo—, y el total que muestra en el
+        # centro se leía como el volumen de la semana cuando era la historia
+        # entera del hospital.
         por_estado = {
             e["estado"]: e["n"]
-            for e in casos.exclude(estado=Caso.Estado.CANCELADO).values("estado").annotate(n=Count("id"))
+            for e in en_rango.exclude(estado=Caso.Estado.CANCELADO).values("estado").annotate(n=Count("id"))
         }
 
         # Top de demoras: quién está esperando más en cola AHORA (en vivo, no por rango).
@@ -198,24 +280,7 @@ class InstitucionViewSet(BaseModelViewSet):
 
         # Serie de ingresos: diaria si el rango es corto, semanal si es largo.
         span = (hasta - desde).days + 1
-        en_rango = casos.filter(creado__date__range=rango)
-        if span <= 45:
-            serie_ingresos = [
-                {"fecha": (desde + timedelta(days=i)).isoformat(),
-                 "casos": en_rango.filter(creado__date=desde + timedelta(days=i)).count()}
-                for i in range(span)
-            ]
-            agrupacion = "dia"
-        else:
-            serie_ingresos = []
-            for w in range((span + 6) // 7):
-                ini = desde + timedelta(weeks=w)
-                fin = min(ini + timedelta(days=6), hasta)
-                serie_ingresos.append({
-                    "fecha": ini.isoformat(),
-                    "casos": en_rango.filter(creado__date__range=(ini, fin)).count(),
-                })
-            agrupacion = "semana"
+        serie_ingresos, agrupacion = _serie_ingresos(en_rango, desde, hasta)
 
         return Response({
             "periodo": {"desde": desde.isoformat(), "hasta": hasta.isoformat(), "dias": span, "agrupacion": agrupacion},
@@ -246,16 +311,7 @@ class AreaViewSet(BaseModelViewSet):
         area = self.get_object()
         now = timezone.now()
 
-        def _fecha(v, por_defecto):
-            try:
-                return date.fromisoformat(v)
-            except (TypeError, ValueError):
-                return por_defecto
-
-        hasta = _fecha(request.query_params.get("hasta"), timezone.localdate())
-        desde = _fecha(request.query_params.get("desde"), hasta - timedelta(days=29))
-        if desde > hasta:
-            desde, hasta = hasta, desde
+        desde, hasta = _rango_pedido(request)
         rango = (desde, hasta)
 
         ACTIVO = ~Q(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
@@ -265,27 +321,39 @@ class AreaViewSet(BaseModelViewSet):
 
         casos = Caso.objects.filter(area_actual=area)
         activos = casos.filter(ACTIVO)
+        en_rango = casos.filter(creado__date__range=rango)
         items = ItemFila.objects.filter(nodo__version__flujo__area=area)
-        cola = list(items.filter(atendido=False).select_related("caso__ciudadano", "caso__area_actual", "nodo"))
+        # Sin `box__isnull=True` la cola incluye a los que ya están adentro del
+        # box: el jefe lee «12 esperando» cuando la mitad está siendo atendida.
+        cola = list(
+            items.filter(atendido=False, box__isnull=True)
+            .select_related("caso__ciudadano", "caso__area_actual", "nodo")
+        )
 
-        def _avg_min(qs):
-            a = qs.aggregate(a=Avg("w"))["a"]
-            return round(a.total_seconds() / 60, 1) if a else None
-
-        espera_v = _avg_min(items.filter(llamado_at__isnull=False, ingreso__date__range=rango).annotate(w=espera_expr))
+        espera_v = _minutos(
+            items.filter(llamado_at__isnull=False, ingreso__date__range=rango)
+            .aggregate(a=Avg(espera_expr))["a"]
+        )
         if espera_v is None:
+            # `None` y no 0 cuando no hay ni medición ni cola: un 0 se lee como
+            # «acá no se espera» y se pinta del mejor color de la pantalla.
             difs = [(now - it.ingreso).total_seconds() / 60 for it in cola]
-            espera_v = round(sum(difs) / len(difs), 1) if difs else 0
-        atencion_v = _avg_min(items.filter(
+            espera_v = round(sum(difs) / len(difs), 1) if difs else None
+        atencion_v = _minutos(items.filter(
             atendido_at__isnull=False, atendido_at__gt=F("llamado_at"), atendido_at__date__range=rango
-        ).annotate(w=atencion_expr)) or 0
-        resol_avg = casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).annotate(d=dur).aggregate(a=Avg("d"))["a"]
+        ).aggregate(a=Avg(atencion_expr))["a"]) or 0
+        resol_avg = casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).aggregate(a=Avg(dur))["a"]
 
         resumen = {
             "activos": activos.count(),
             "en_cola": len(cola),
+            # OJO: es la foto viva de cuántos casos están parados EN el estado
+            # `atendido`, que es un estado de paso —el motor lo pisa con
+            # `cerrado` en cuanto el caso llega al nodo Fin—. No mide lo que el
+            # área atendió en el período: para eso está `cerrados`, que es lo que
+            # dibuja la pantalla.
             "atendidos": casos.filter(estado=Caso.Estado.ATENDIDO).count(),
-            "ingresos": casos.filter(creado__date__range=rango).count(),
+            "ingresos": en_rango.count(),
             "cerrados": casos.filter(estado=Caso.Estado.CERRADO, actualizado__date__range=rango).count(),
             "espera_prom_min": espera_v,
             "atencion_prom_min": atencion_v,
@@ -309,9 +377,11 @@ class AreaViewSet(BaseModelViewSet):
             .annotate(n=Count("id")).order_by("-n")
         ]
 
+        # Del período, como el resto del panel: sobre todos los casos del área la
+        # dona no se movía al cambiar el selector de rango.
         por_estado = {
             e["estado"]: e["n"]
-            for e in casos.exclude(estado=Caso.Estado.CANCELADO).values("estado").annotate(n=Count("id"))
+            for e in en_rango.exclude(estado=Caso.Estado.CANCELADO).values("estado").annotate(n=Count("id"))
         }
 
         def _paciente(c):
@@ -327,21 +397,7 @@ class AreaViewSet(BaseModelViewSet):
         ]
 
         span = (hasta - desde).days + 1
-        en_rango = casos.filter(creado__date__range=rango)
-        if span <= 45:
-            serie_ingresos = [
-                {"fecha": (desde + timedelta(days=i)).isoformat(),
-                 "casos": en_rango.filter(creado__date=desde + timedelta(days=i)).count()}
-                for i in range(span)
-            ]
-            agrupacion = "dia"
-        else:
-            serie_ingresos = []
-            for w in range((span + 6) // 7):
-                ini = desde + timedelta(weeks=w)
-                fin = min(ini + timedelta(days=6), hasta)
-                serie_ingresos.append({"fecha": ini.isoformat(), "casos": en_rango.filter(creado__date__range=(ini, fin)).count()})
-            agrupacion = "semana"
+        serie_ingresos, agrupacion = _serie_ingresos(en_rango, desde, hasta)
 
         # Casos activos del área (urgentes primero, luego los más antiguos).
         peso = Case(
@@ -509,6 +565,19 @@ class CamaViewSet(BaseModelViewSet):
         estadía del paciente.
         """
         cama = self.get_object()
+        # Cama huérfana: figura ocupada y no hay a quién darle el egreso, porque
+        # el caso se borró y su estadía se fue con él. El motor corta en OCUPADA
+        # —con razón: marcar libre una cama con paciente lo dejaría internado en
+        # ningún lado—, pero acá no hay paciente, y sin esta salida la cama se
+        # pierde del stock del sector para siempre. No es un egreso: es reparar
+        # una inconsistencia, y por eso se hace antes de pedirle nada al motor.
+        if (
+            cama.estado == Cama.Estado.OCUPADA
+            and cama.caso_id is None
+            and not cama.estadias.filter(hasta__isnull=True).exists()
+        ):
+            cama.estado = Cama.Estado.HIGIENE
+            cama.save(update_fields=["estado"])
         try:
             cama = motor.cambiar_estado_cama(
                 cama, request.data.get("estado"), autor=request.user,
@@ -536,6 +605,13 @@ class CamaViewSet(BaseModelViewSet):
                 "sector_id": cama.subarea_id,
                 "area_id": cama.area_id,
                 "sector": cama.sector_nombre,
+                # El área va aparte porque el nombre del sector NO alcanza para
+                # nombrarlo: `Subarea` es única por área, no por institución, así
+                # que «Sala general» de Clínica médica y «Sala general» de
+                # Cirugía conviven. Agrupadas están bien —la clave es el id—,
+                # pero rotuladas igual el jefe de Cirugía lee la ocupación del
+                # otro servicio como si fuera la suya.
+                "area": cama.area.nombre,
                 "total": 0, "ocupadas": 0, "libres": 0, "higiene": 0, "bloqueadas": 0,
             })
             s["total"] += 1
@@ -554,7 +630,7 @@ class CamaViewSet(BaseModelViewSet):
             s["operativas"] = operativas
             s["ocupacion"] = round(100 * s["ocupadas"] / operativas) if operativas else 0
 
-        lista = sorted(sectores.values(), key=lambda s: s["sector"])
+        lista = sorted(sectores.values(), key=lambda s: (s["sector"], s["area"]))
         totales = {
             k: sum(s[k] for s in lista)
             for k in ("total", "operativas", "ocupadas", "libres", "higiene", "bloqueadas")

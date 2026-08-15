@@ -7,7 +7,9 @@ alguien tiene que cargar todo de nuevo a mano.
 """
 from datetime import date, datetime, time, timedelta
 
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.accounts.models import Usuario
@@ -86,6 +88,69 @@ class DisponibilidadTests(AgendaTestCase):
         self.assertEqual([timezone.localtime(x["inicio"]).strftime("%H:%M") for x in h],
                          ["09:00", "09:20", "09:40"])
         self.assertTrue(Disponibilidad.objects.filter(pk=self.disp.pk).exists())
+
+
+class NingunTurnoSeVuelveInvisibleTests(AgendaTestCase):
+    """
+    Un turno vigente tiene que salir en la grilla del día SIEMPRE, aunque su
+    horario esté bloqueado o ya no exista en la agenda.
+
+    Es la lista con la que el mostrador llama a los pacientes para avisarles.
+    Si el turno desaparece de la pantalla nadie tiene a quién llamar, la persona
+    viaja al hospital para nada, y después el turno queda `reservado` para
+    siempre o alguien le carga un ausentismo que fue del hospital.
+    """
+
+    def test_bloquear_el_dia_no_borra_de_la_grilla_los_turnos_ya_dados(self):
+        """
+        Es el escenario más común de la agenda: el profesional avisa a las 7 que
+        no viene y el administrativo bloquea el día. Antes la pantalla pasaba a
+        decir «La agenda no atiende este día» y los pacientes con turno
+        desaparecían.
+        """
+        motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        Bloqueo.objects.create(
+            agenda=self.agenda, desde=self._hora(0, 0), hasta=self._hora(23, 59),
+            motivo="El profesional no viene",
+        )
+        h = motor.horarios_del_dia(self.agenda, self.martes)
+        self.assertEqual(len(h), 1, "el bloqueo tiene que dejar sólo el horario con turno")
+        self.assertEqual(h[0]["paciente"], "Ana Pérez")
+        self.assertTrue(h[0]["bloqueado"], "la grilla tiene que decir que está bloqueado")
+        self.assertFalse(h[0]["admite_sobreturno"], "no se sobreturnea un horario bloqueado")
+
+    def test_desactivar_la_franja_no_esconde_al_que_ya_tiene_el_papel(self):
+        """
+        Desactivar una disponibilidad es cotidiano. Los turnos ya dados dejaban
+        de caer en la grilla y salían de la respuesta sin que nada avisara.
+        """
+        motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        self.disp.activa = False
+        self.disp.save()
+        h = motor.horarios_del_dia(self.agenda, self.martes)
+        self.assertEqual(len(h), 1)
+        self.assertTrue(h[0]["fuera_de_grilla"])
+        self.assertEqual(h[0]["paciente"], "Ana Pérez")
+
+    def test_cambiarle_el_horario_a_la_franja_no_esconde_los_turnos_viejos(self):
+        """
+        Se corre la atención de la mañana a la tarde y los turnos de las 8 dejan
+        de coincidir con ningún horario generado.
+        """
+        motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        self.disp.desde, self.disp.hasta = time(14, 0), time(16, 0)
+        self.disp.save()
+        h = motor.horarios_del_dia(self.agenda, self.martes)
+        sueltos = [x for x in h if x["fuera_de_grilla"]]
+        self.assertEqual([x["paciente"] for x in sueltos], ["Ana Pérez"])
+        self.assertEqual(h[-1], sueltos[0], "los sueltos van al final, después de la grilla")
+
+    def test_los_horarios_bloqueados_sin_turno_siguen_sin_ofrecerse(self):
+        """La contracara: bloquear tiene que seguir cerrando la agenda."""
+        Bloqueo.objects.create(agenda=self.agenda, desde=self._hora(8, 0), hasta=self._hora(9, 0))
+        h = motor.horarios_del_dia(self.agenda, self.martes)
+        self.assertEqual([timezone.localtime(x["inicio"]).strftime("%H:%M") for x in h],
+                         ["09:00", "09:20", "09:40"])
 
 
 class ReservaTests(AgendaTestCase):
@@ -284,6 +349,190 @@ class AusentismoTests(AgendaTestCase):
         self.assertIsNotNone(t.recordado_at)
 
 
+class DosTurnosAlaVezTests(AgendaTestCase):
+    """
+    Una llama por teléfono y otra está en el mostrador, al mismo tiempo y sobre
+    el mismo horario libre.
+
+    Si pasan las dos quedan dos titulares a las 8:00 y la grilla muestra uno
+    solo: el segundo paciente tiene el turno impreso y para el sistema no
+    existe. Llega, discute, y nadie puede explicarle nada.
+    """
+
+    def test_el_candado_de_reservar_agarra_una_fila_que_existe(self):
+        """
+        Con el horario libre no hay ninguna fila de turno para bloquear, y en
+        Postgres un `SELECT ... FOR UPDATE` que no matchea nada no bloquea nada
+        (no hay predicate locking): las dos transacciones leían la lista vacía y
+        las dos insertaban. El candado tiene que ser sobre la agenda.
+        """
+        if connection.vendor != "postgresql":
+            self.skipTest("el candado sólo se puede observar en Postgres")
+        with CaptureQueriesContext(connection) as consultas:
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        candados = [c["sql"] for c in consultas.captured_queries if "FOR UPDATE" in c["sql"]]
+        self.assertTrue(
+            any(Agenda._meta.db_table in sql for sql in candados),
+            "reservar no bloquea ninguna fila que exista: las reservas simultáneas no se serializan",
+        )
+
+    def test_la_base_no_deja_dos_titulares_en_el_mismo_horario(self):
+        """
+        Red de seguridad abajo del candado, para lo que entre por fuera del
+        motor (el admin, una carga masiva, un PATCH nuevo).
+        """
+        otro = Ciudadano.objects.create(institucion=self.inst, nombre="Beto", apellido="T")
+        motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Turno.objects.create(
+                agenda=self.agenda, ciudadano=otro, inicio=self._hora(8, 0), duracion_min=20
+            )
+
+    def test_un_turno_cancelado_no_traba_el_horario(self):
+        """La restricción no puede volverse un candado permanente sobre la hora."""
+        otro = Ciudadano.objects.create(institucion=self.inst, nombre="Beto", apellido="T")
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        motor.cancelar(t, autor=self.user)
+        motor.reservar(self.agenda, otro, self._hora(8, 0), autor=self.user)  # no levanta
+
+    def test_los_sobreturnos_siguen_pudiendo_repetir_horario(self):
+        """El sobreturno es la excepción que la agenda tiene que admitir."""
+        otro = Ciudadano.objects.create(institucion=self.inst, nombre="Beto", apellido="T")
+        tercero = Ciudadano.objects.create(institucion=self.inst, nombre="Caro", apellido="T")
+        motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        motor.reservar(self.agenda, otro, self._hora(8, 0), autor=self.user, sobreturno=True)
+        motor.reservar(self.agenda, tercero, self._hora(8, 0), autor=self.user, sobreturno=True)
+        self.assertEqual(Turno.objects.filter(sobreturno=True).count(), 2)
+
+
+class AccionesSolapadasTests(AgendaTestCase):
+    """
+    El turno llega a las acciones leído fuera de toda transacción. Sin releerlo
+    bajo candado, dos ejecuciones solapadas deciden las dos sobre datos viejos.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.flujo = Flujo.objects.create(
+            institucion=self.inst, area=self.area, titulo="Consulta cardiológica"
+        )
+        ver = VersionFlujo.objects.create(flujo=self.flujo, numero=1, estado="publicada")
+        ini = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        aten = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        fin = Nodo.objects.create(version=ver, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=ver, origen=ini, destino=aten)
+        Conexion.objects.create(version=ver, origen=aten, destino=fin)
+        self.agenda.flujo = self.flujo
+        self.agenda.save()
+        self.turno = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+
+    def test_la_llegada_no_decide_con_una_copia_vieja_del_turno(self):
+        """
+        Es apretar «Llegó» de nuevo porque no respondió, o dos administrativos
+        registrando la misma llegada. Con la copia vieja se abre un SEGUNDO caso
+        y el primero queda huérfano, ya iniciado y circulando por el flujo: lo
+        llaman por altavoz y no aparece nadie.
+        """
+        copia_vieja = Turno.objects.get(pk=self.turno.pk)
+        motor.registrar_llegada(self.turno, autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.registrar_llegada(copia_vieja, autor=self.user)
+        self.assertEqual(Caso.objects.count(), 1)
+
+    def test_no_queda_un_turno_cancelado_con_un_caso_abierto_adentro(self):
+        """
+        Cancelar y registrar la llegada guardan campos distintos, así que
+        ninguno pisa el estado del otro: quedaba un turno `cancelado` con un
+        caso en atención, un estado que no debería poder existir.
+        """
+        copia_vieja = Turno.objects.get(pk=self.turno.pk)
+        motor.cancelar(self.turno, autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.registrar_llegada(copia_vieja, autor=self.user)
+        self.turno.refresh_from_db()
+        self.assertEqual(self.turno.estado, Turno.Estado.CANCELADO)
+        self.assertIsNone(self.turno.caso_id)
+        self.assertEqual(Caso.objects.count(), 0)
+
+    def test_no_se_marca_ausente_con_una_copia_vieja(self):
+        """Le carga al paciente un ausentismo cuando ya se había presentado."""
+        copia_vieja = Turno.objects.get(pk=self.turno.pk)
+        motor.registrar_llegada(self.turno, autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.marcar_ausente(copia_vieja, autor=self.user)
+
+
+class TrazabilidadTests(AgendaTestCase):
+    """
+    «Me cancelaron el turno y nadie me avisó» es el reclamo típico del
+    mostrador, y «no vino» es el estado que perjudica al paciente. Las tres
+    funciones recibían `autor` y lo tiraban a la basura: no había a quién
+    preguntarle.
+    """
+
+    def test_cancelar_deja_anotado_quien_lo_hizo(self):
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        motor.cancelar(t, autor=self.user, motivo="llamó para avisar")
+        t.refresh_from_db()
+        self.assertEqual(t.resuelto_por_id, self.user.id)
+        self.assertIsNotNone(t.resuelto_at)
+
+    def test_marcar_ausente_deja_anotado_quien_lo_hizo(self):
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        motor.marcar_ausente(t, autor=self.user)
+        t.refresh_from_db()
+        self.assertEqual(t.resuelto_por_id, self.user.id)
+
+    def test_confirmar_deja_anotado_quien_atendio_el_telefono(self):
+        """`recordado_at` sólo dice «entró en una lista», no quién llamó."""
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        motor.confirmar(t, autor=self.user)
+        t.refresh_from_db()
+        self.assertEqual(t.resuelto_por_id, self.user.id)
+
+
+class ReprogramarTests(AgendaTestCase):
+    """
+    Reprogramar es lo que más se pide después de dar el turno. Hacerlo con un
+    PATCH a `inicio` no pasaba por ninguna regla.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.turno = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+
+    def test_mover_el_turno_a_otro_horario_de_la_agenda(self):
+        t = motor.reprogramar(self.turno, self._hora(9, 0), autor=self.user)
+        self.assertEqual(t.inicio, self._hora(9, 0))
+        self.assertFalse(motor.horarios_del_dia(self.agenda, self.martes)[0]["ocupado"])
+
+    def test_no_se_reprograma_encima_de_un_horario_tomado(self):
+        """Apilaría dos titulares en la misma hora, invisibles en la grilla."""
+        otro = Ciudadano.objects.create(institucion=self.inst, nombre="Beto", apellido="T")
+        motor.reservar(self.agenda, otro, self._hora(9, 0), autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reprogramar(self.turno, self._hora(9, 0), autor=self.user)
+
+    def test_no_se_reprograma_a_un_horario_que_no_existe(self):
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reprogramar(self.turno, self._hora(3, 0), autor=self.user)
+
+    def test_no_se_reprograma_adentro_de_un_bloqueo(self):
+        Bloqueo.objects.create(agenda=self.agenda, desde=self._hora(9, 0), hasta=self._hora(10, 0))
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reprogramar(self.turno, self._hora(9, 0), autor=self.user)
+
+    def test_queda_escrito_de_donde_venia(self):
+        """Si el paciente llega con el papel viejo, el mostrador tiene qué decirle."""
+        t = motor.reprogramar(self.turno, self._hora(9, 0), autor=self.user)
+        self.assertIn("08:00", t.observaciones)
+
+    def test_un_turno_ya_resuelto_no_se_reprograma(self):
+        motor.marcar_ausente(self.turno, autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reprogramar(self.turno, self._hora(9, 0), autor=self.user)
+
+
 class ProximosLibresTests(AgendaTestCase):
     def test_devuelve_los_proximos_horarios_libres(self):
         """Para dar un turno por teléfono sin ir mirando día por día."""
@@ -297,3 +546,21 @@ class ProximosLibresTests(AgendaTestCase):
     def test_no_ofrece_horarios_ya_pasados(self):
         libres = motor.proximos_libres(self.agenda, cuantos=5)
         self.assertTrue(all(h["inicio"] > timezone.now() for h in libres))
+
+    def test_no_consulta_de_mas_por_cada_dia_que_mira(self):
+        """
+        Miraba 30 días con tres consultas por día: ~90 idas y vueltas a la base
+        por request, contra un Postgres administrado con latencia de red, y del
+        otro lado hay alguien esperando en el teléfono. Ninguna de las tres
+        depende del día.
+        """
+        with self.assertNumQueries(3):
+            motor.proximos_libres(self.agenda, dias=30, cuantos=50)
+
+    def test_no_ofrece_un_horario_bloqueado(self):
+        """Ofrecerlo termina en un turno que la agenda va a rechazar al darlo."""
+        Bloqueo.objects.create(
+            agenda=self.agenda, desde=self._hora(0, 0), hasta=self._hora(23, 59)
+        )
+        libres = motor.proximos_libres(self.agenda, desde=self._hora(0, 1), cuantos=3)
+        self.assertTrue(all(timezone.localdate(h["inicio"]) != self.martes for h in libres))

@@ -1,6 +1,8 @@
-from datetime import date
+from datetime import date, datetime, time
 
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -70,13 +72,27 @@ class AgendaViewSet(BaseModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="proximos-libres")
     def proximos_libres(self, request, pk=None):
-        """Los próximos horarios libres, para dar un turno sin mirar día por día."""
+        """
+        Los próximos horarios libres, para dar un turno sin mirar día por día.
+
+        `?desde=2026-08-20` arranca en esa fecha en vez de hoy: quien está
+        mirando el 20 y necesita el siguiente hueco no quiere que le ofrezcan
+        el de mañana.
+        """
         agenda = self.get_object()
         try:
             cuantos = min(int(request.query_params.get("cuantos", 10)), 50)
         except ValueError:
             cuantos = 10
-        return Response({"horarios": motor.proximos_libres(agenda, cuantos=cuantos)})
+        desde = None
+        if (d := request.query_params.get("desde")):
+            fecha = _fecha(d)
+            arranque = timezone.make_aware(
+                datetime.combine(fecha, time.min), timezone.get_current_timezone()
+            )
+            # Nunca hacia atrás: un hueco de la semana pasada no se puede dar.
+            desde = max(arranque, timezone.now())
+        return Response({"horarios": motor.proximos_libres(agenda, desde=desde, cuantos=cuantos)})
 
 
 class DisponibilidadViewSet(BaseModelViewSet):
@@ -102,6 +118,23 @@ class BloqueoViewSet(BaseModelViewSet):
     institucion_path = "agenda__institucion"
     filter_fields = ("agenda", "agenda__institucion")
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    def create(self, request, *args, **kwargs):
+        """
+        Bloquea un rango y devuelve, en `turnos_afectados`, los turnos que
+        quedan adentro.
+
+        Bloquear NO cancela nada: los turnos siguen dados. Sin esta lista nadie
+        se entera de que el bloqueo de las 7 de la mañana pisó doce turnos, y
+        esos doce pacientes viajan al hospital para nada. La pantalla la usa
+        para pedir confirmación y para tener a quién llamar.
+        """
+        r = super().create(request, *args, **kwargs)
+        bloqueo = Bloqueo.objects.select_related("agenda").get(pk=r.data["id"])
+        afectados = motor.turnos_en_rango(bloqueo.agenda, bloqueo.desde, bloqueo.hasta)
+        r.data["turnos_afectados"] = TurnoSerializer(afectados, many=True).data
+        return r
+
 
 class TurnoViewSet(BaseModelViewSet):
     """
@@ -111,7 +144,16 @@ class TurnoViewSet(BaseModelViewSet):
     acciones, que además abren el caso o liberan el horario.
     """
 
-    queryset = Turno.objects.select_related("agenda__area", "ciudadano", "caso")
+    # Sin DELETE: el turno que no va se cancela, no se borra. Borrarlo saca de
+    # la base la evidencia de un turno que se perdió, que es justo el dato con
+    # el que se calcula el ausentismo del servicio —y deja al paciente que
+    # reclama sin nada que mostrar—.
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
+    # `resuelto_por` va acá porque el serializer muestra quién movió el turno:
+    # sin traerlo, un listado de 30 filas hace 30 consultas más que uno de 3.
+    queryset = Turno.objects.select_related(
+        "agenda__area", "ciudadano", "caso", "resuelto_por"
+    )
     serializer_class = TurnoSerializer
     capacidad_requerida = "trabajo"
     institucion_path = "agenda__institucion"
@@ -199,6 +241,21 @@ class TurnoViewSet(BaseModelViewSet):
     def llegada(self, request, pk=None):
         """Se presentó: abre el caso en el flujo de la agenda."""
         return self._accion(request, motor.registrar_llegada)
+
+    @action(detail=True, methods=["post"])
+    def reprogramar(self, request, pk=None):
+        """
+        Mueve el turno a otro horario: `{"inicio": "2026-08-20T10:00:00"}`.
+
+        Va por acá y no por un PATCH a `inicio` porque reprogramar tiene que
+        pasar por las mismas reglas que dar el turno —grilla, bloqueos,
+        ocupación— y bajo el mismo candado.
+        """
+        inicio = serializers_parse_dt(request.data.get("inicio"))
+        if inicio is None:
+            return Response({"detail": "Falta el horario nuevo del turno."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return self._accion(request, motor.reprogramar, nuevo_inicio=inicio)
 
 
 def serializers_parse_dt(valor):

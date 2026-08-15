@@ -1,12 +1,17 @@
 
+from django.db import transaction
 from django.db.models import IntegerField, OuterRef, Prefetch, Subquery
 from django.db.models.functions import Coalesce
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.auditoria.mixins import AuditaLecturaClinica
 from apps.common import BaseModelViewSet
 
+from . import integridad, reglas
 from .models import (
     Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta,
 )
@@ -93,14 +98,36 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
 
 
 class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):
+    # El autor de cada entrada y de cada receta va en el prefetch. Sin esto era
+    # una consulta a `accounts_usuario` POR entrada de evolución —27 consultas
+    # para una historia de 19 atenciones—, y el costo crece con los años de
+    # historia: el paciente crónico, el que más urgente es leer, es el que más
+    # tarda en abrir. Hay un test que compara las consultas de una historia
+    # corta con las de una larga.
     queryset = HistoriaClinica.objects.select_related("ciudadano").prefetch_related(
-        "entradas", "estudios", "recetas"
+        Prefetch("entradas", queryset=EntradaHistoria.objects.select_related("autor")),
+        "estudios",
+        Prefetch("recetas", queryset=Receta.objects.select_related("autor")),
     )
     serializer_class = HistoriaClinicaSerializer
     capacidad_requerida = "registros"
     protege_lectura = True
     institucion_path = "ciudadano__institucion"
     filter_fields = ("ciudadano",)
+    # Sin DELETE ni PUT. La historia clínica es inviolable y de conservación
+    # obligatoria por diez años (Ley 26.529, art. 15-16): un DELETE acá se
+    # llevaba por cascade todas las entradas, estudios y recetas del paciente,
+    # sin confirmación, sin baja lógica y sin dejar nada que verificar. Si hay
+    # que dar de baja una historia creada por error, eso es una baja lógica con
+    # motivo y autor, no un método HTTP.
+    http_method_names = ["get", "head", "options", "post", "patch"]
+
+    def perform_update(self, serializer):
+        # Los antecedentes son lo único editable de la historia. Se asienta
+        # quién los cargó y cuándo: sin eso, `alergias=""` no distingue «se
+        # preguntó y no tiene» de «nunca se preguntó», y la pantalla resuelve la
+        # duda afirmando lo primero sobre un paciente alérgico.
+        serializer.save(antecedentes_por=self.request.user, antecedentes_at=timezone.now())
 
     @action(detail=True, methods=["get"])
     def verificar(self, request, pk=None):
@@ -119,32 +146,165 @@ class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):
 
 class EntradaHistoriaViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ciudadano_path = "historia__ciudadano"
-    queryset = EntradaHistoria.objects.select_related("historia", "autor", "caso")
+    queryset = EntradaHistoria.objects.select_related(
+        "historia", "historia__ciudadano", "autor", "caso"
+    )
     serializer_class = EntradaHistoriaSerializer
     capacidad_requerida = "registros"
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "autor", "caso", "firmada")
+    # Sin DELETE ni PUT: un asiento de la historia clínica no se borra. Borrar
+    # la ÚLTIMA entrada no rompe la cadena de sellos y no dejaba ningún rastro
+    # —el registro de accesos sólo engancha las lecturas—, así que era la forma
+    # más limpia de hacer desaparecer una atención. La corrección de una entrada
+    # firmada es una entrada NUEVA.
+    http_method_names = ["get", "head", "options", "post", "patch"]
+
+    def perform_create(self, serializer):
+        """
+        Quién atendió sale de la sesión, y firmar exige ser quien puede firmar.
+
+        Éste es el camino del botón «Nueva atención» de la historia, no un rincón
+        raro de la API: antes aceptaba `autor` y `firmada` del cuerpo sin validar
+        nada, así que un administrativo de mesa de entradas dejaba un «Alta
+        médica» firmado a nombre de una médica que nunca vio al paciente. Y como
+        la entrada nacía sin sello, la verificación la clasificaba como
+        «anterior al sellado» y la historia seguía diciendo `ok: true`: la
+        entrada fabricada ayer se disfrazaba de entrada vieja.
+        """
+        historia = serializer.validated_data["historia"]
+        matricula = ""
+        if serializer.validated_data.get("firmada"):
+            matricula = reglas.exigir_firmante(historia.ciudadano.institucion, self.request.user)
+        with transaction.atomic():
+            entrada = serializer.save(autor=self.request.user, matricula=matricula)
+            # Sellar en la misma transacción que el alta: una entrada firmada
+            # que quedara sin sellar es exactamente el disfraz de arriba.
+            integridad.sellar(entrada)
+
+    def perform_update(self, serializer):
+        """
+        El borrador se corrige; lo firmado, no.
+
+        Una entrada sin firmar es un borrador y editarla es lo esperable. Una
+        firmada es el registro legal que se presenta ante un reclamo: pisarla
+        deja `integra=False` para siempre y no hay forma de saber qué decía.
+        """
+        entrada = serializer.instance
+        if entrada.firmada:
+            raise reglas.RegistroInviolable(
+                "Esta atención ya está firmada y no se puede modificar. "
+                "Para corregirla, registrá una atención nueva."
+            )
+        if not serializer.validated_data.get("firmada"):
+            serializer.save()
+            return
+
+        matricula = reglas.exigir_firmante(
+            entrada.historia.ciudadano.institucion, self.request.user
+        )
+        with transaction.atomic():
+            # Firma quien firma, no quien escribió el borrador: la matrícula que
+            # se asienta es la de esta persona, y tiene que ir con su autoría o
+            # el sello certificaría una atribución falsa.
+            obj = serializer.save(autor=self.request.user, matricula=matricula)
+            integridad.sellar(obj)
 
 
 class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ciudadano_path = "historia__ciudadano"
-    queryset = Estudio.objects.select_related("historia")
+    queryset = Estudio.objects.select_related("historia", "historia__ciudadano")
     serializer_class = EstudioSerializer
     capacidad_requerida = "registros"
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "resultado")
 
+    def perform_create(self, serializer):
+        # Solicitar un estudio es un acto clínico, igual que emitirlo desde el
+        # flujo. Y `Estudio.autor` es texto libre: si además viniera del cuerpo,
+        # quién lo pidió sería una cadena que nadie puede verificar.
+        historia = serializer.validated_data["historia"]
+        reglas.exigir_clinico(historia.ciudadano.institucion, self.request.user)
+        serializer.save(autor=self.request.user.nombre_completo)
+
 
 class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ciudadano_path = "historia__ciudadano"
-    queryset = Receta.objects.select_related("historia", "autor")
+    queryset = Receta.objects.select_related("historia", "historia__ciudadano", "autor")
     serializer_class = RecetaSerializer
     capacidad_requerida = "registros"
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "activa")
+    # Una receta emitida no se edita ni se borra: se suspende con motivo, y eso
+    # va por la acción `suspender`, que deja el asiento en la evolución.
+    http_method_names = ["get", "head", "options", "post"]
+
+    def perform_create(self, serializer):
+        # Prescribir es un acto clínico. Sin esto, un administrativo emitía una
+        # receta de un psicofármaco a nombre de una médica que no la prescribió,
+        # y ella no tenía con qué desmentirlo: la receta no lleva sello ni
+        # matrícula.
+        historia = serializer.validated_data["historia"]
+        reglas.exigir_clinico(historia.ciudadano.institucion, self.request.user)
+        serializer.save(autor=self.request.user)
+
+    @extend_schema(
+        summary="Suspende una receta vigente",
+        description="Pone la receta en inactiva y deja un asiento firmado en la evolución.",
+        # El cuerpo no es una receta: es el motivo. Sin declararlo, el esquema
+        # documentaría `RecetaSerializer` y quien integre mandaría lo que no es.
+        request={"application/json": {
+            "type": "object",
+            "properties": {"motivo": {"type": "string"}},
+            "required": ["motivo"],
+        }},
+        responses=RecetaSerializer,
+    )
+    @action(detail=True, methods=["post"])
+    def suspender(self, request, pk=None):
+        """
+        Suspende una medicación vigente y lo asienta en la evolución.
+
+        Sin esto el estado sólo podía crecer: a los dos años el paciente crónico
+        tenía veinte recetas «Activas» superpuestas y no había manera de saber
+        cuál era el tratamiento vigente. Suspender es un acto clínico de todos
+        los días —se rota el antibiótico, se corta el anticoagulante antes de una
+        cirugía—, así que va a la historia y no sólo a un booleano.
+        """
+        receta = self.get_object()
+        motivo = (request.data.get("motivo") or "").strip()
+        if not motivo:
+            raise drf_serializers.ValidationError({
+                "motivo": "Decí por qué se suspende: es lo que va a leer quien retome el tratamiento."
+            })
+        if not receta.activa:
+            raise reglas.ReglaClinica("Esta receta ya estaba suspendida.")
+
+        institucion = receta.historia.ciudadano.institucion
+        reglas.exigir_clinico(institucion, request.user)
+        # La matrícula del legajo si la hay. La entrada se firma igual: es un
+        # asiento que arma el sistema con contenido fijo, no texto que alguien
+        # escribió a nombre de otro, y el sello cubre la matrícula, así que lo
+        # que quedó registrado se puede verificar tal como quedó.
+        matricula = (getattr(getattr(request.user, "legajo", None), "matricula", "") or "").strip()
+
+        with transaction.atomic():
+            receta.activa = False
+            receta.save(update_fields=["activa"])
+            entrada = EntradaHistoria.objects.create(
+                historia=receta.historia,
+                titulo="Medicación suspendida",
+                contenido=f"{receta.detalle}\nMotivo: {motivo}",
+                autor=request.user,
+                firmada=True,
+                matricula=matricula,
+            )
+            integridad.sellar(entrada)
+
+        return Response(self.get_serializer(receta).data)
 
 
 class ConsentimientoDatosViewSet(AuditaLecturaClinica, BaseModelViewSet):

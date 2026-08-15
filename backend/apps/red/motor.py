@@ -20,6 +20,54 @@ class ErrorTraslado(Exception):
     """Regla de traslado incumplida. La API la traduce a un 400 con el texto."""
 
 
+def _bloquear(t: Traslado) -> Traslado:
+    """
+    Relee la fila con candado, ya adentro de la transacción.
+
+    La vista carga el traslado ANTES de abrir la transacción, así que chequear
+    `t.estado` sobre esa instancia es chequear una foto vieja. Dos personas del
+    destino con la pantalla abierta —jefe de área y administrativo tienen las
+    dos el botón «Responder»— pasan las dos validaciones y queda un estado que
+    no se puede reparar desde la app: dos casos abiertos por el mismo paciente,
+    o un traslado «rechazado» con un caso ya abierto del otro lado, con el
+    origen buscando otro efector y el destino esperando una ambulancia.
+    """
+    return Traslado.objects.select_for_update().get(pk=t.pk)
+
+
+def _paciente_en(institucion, base):
+    """
+    El mismo paciente, en el padrón de `institucion`.
+
+    `Ciudadano` tiene FK a institución y el scoping de la API va por ahí: un
+    caso del destino colgado del ciudadano del origen le devuelve 404 al pedir
+    la ficha y cero historias clínicas —la UTI que acepta un paciente crítico no
+    ve alergias, antecedentes ni estudios—, y las evoluciones que firma su
+    médico se asientan en el legajo del hospital que derivó.
+
+    Se busca por documento, que es lo que identifica a una persona en la red. Si
+    no tiene documento NO se busca: un get_or_create con documento='' fusionaría
+    a todos los NN de guardia en una sola persona.
+    """
+    from apps.registros.models import Ciudadano
+
+    if base.documento:
+        existente = Ciudadano.objects.filter(
+            institucion=institucion, documento=base.documento
+        ).order_by("id").first()
+        if existente is not None:
+            return existente
+    return Ciudadano.objects.create(
+        institucion=institucion,
+        nombre=base.nombre,
+        apellido=base.apellido,
+        documento=base.documento,
+        fecha_nacimiento=base.fecha_nacimiento,
+        obra_social=base.obra_social,
+        domicilio=base.domicilio,
+    )
+
+
 def distancia_km(a, b):
     """
     Distancia en línea recta entre dos establecimientos, en kilómetros.
@@ -80,6 +128,10 @@ def solicitar(caso: Caso, destino, motivo, detalle="", area_destino=None, autor=
     paciente sigue siendo responsabilidad de quien lo tiene. Cerrarlo al pedir
     dejaría a alguien sin dueño en el momento más delicado.
     """
+    # Con candado: sin él, dos pedidos simultáneos sobre el mismo caso pasan
+    # los dos el chequeo de «ya tiene un traslado en curso» y el paciente
+    # aparece pedido en dos hospitales a la vez.
+    caso = Caso.objects.select_for_update().get(pk=caso.pk)
     if caso.institucion_id == getattr(destino, "id", destino):
         raise ErrorTraslado("El destino es la misma institución: usá una derivación interna.")
     if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO):
@@ -114,13 +166,18 @@ def solicitar(caso: Caso, destino, motivo, detalle="", area_destino=None, autor=
     return t
 
 
-def _avisar_destino(t: Traslado):
+def _avisar_destino(t: Traslado, titulo=None, detalle=None):
     """
     Avisa a quien puede resolverlo en el establecimiento de destino.
 
     Un traslado que nadie mira es un paciente esperando. Se avisa a los jefes y
     administrativos del área destino, o de toda la institución si no se indicó
     área.
+
+    Sirve para todo el ciclo y no sólo para el pedido: el destino se enteró por
+    esta vía, y si después el móvil sale, el origen cancela o el paciente no
+    llega, tiene que enterarse por el mismo canal. Si no, el equipo que reservó
+    la cama sólo lo sabe si se le ocurre mirar la pantalla.
     """
     from apps.accounts.models import Membresia
     from apps.casos.models import Notificacion
@@ -130,10 +187,18 @@ def _avisar_destino(t: Traslado):
     )
     if t.area_destino_id:
         qs = qs.filter(Q(areas=t.area_destino_id) | Q(rol="admin"))
-    titulo = f"Traslado {'URGENTE ' if t.urgente else ''}desde {t.origen}"
-    detalle = f"{t.ciudadano} · {t.get_motivo_display()}"
-    for m in qs.select_related("usuario").distinct():
-        Notificacion.objects.create(usuario=m.usuario, titulo=titulo, detalle=detalle[:255])
+    destinatarios = {m.usuario for m in qs.select_related("usuario").distinct()}
+    # Quien aceptó el traslado es el que reservó la cama: tiene que enterarse de
+    # que el móvil salió, de que el origen canceló o de que el paciente no llega,
+    # aunque el filtro por área no lo alcance —la membresía de un jefe puede no
+    # tener áreas cargadas y ahí no se enteraría nadie—.
+    if t.resuelto_por_id:
+        destinatarios.add(t.resuelto_por)
+
+    titulo = titulo or f"Traslado {'URGENTE ' if t.urgente else ''}desde {t.origen}"
+    detalle = detalle or f"{t.ciudadano} · {t.get_motivo_display()}"
+    for u in destinatarios:
+        Notificacion.objects.create(usuario=u, titulo=titulo, detalle=detalle[:255])
 
 
 @transaction.atomic
@@ -144,6 +209,7 @@ def aceptar(t: Traslado, autor=None, area_destino=None) -> Traslado:
     El caso nuevo es del destino: su institución, su flujo, su gente. Lo único
     que viaja es el paciente y el resumen que escribió el origen.
     """
+    t = _bloquear(t)
     if t.estado != Traslado.Estado.SOLICITADO:
         raise ErrorTraslado(f"El traslado ya está {t.get_estado_display().lower()}.")
     area = area_destino or t.area_destino
@@ -162,8 +228,13 @@ def aceptar(t: Traslado, autor=None, area_destino=None) -> Traslado:
             f"El área «{area.nombre}» no tiene un flujo publicado para recibir el caso."
         )
 
+    # El paciente se resuelve del lado del destino ANTES de crear el caso: el
+    # ciudadano del origen es un registro de otra institución y dejaría la ficha
+    # vacía para quien lo recibe (ver `_paciente_en`).
+    paciente = t.ciudadano_destino or _paciente_en(t.destino, t.ciudadano)
+
     caso = Caso.objects.create(
-        institucion=t.destino, version=ver, ciudadano=t.ciudadano, area_actual=area,
+        institucion=t.destino, version=ver, ciudadano=paciente, area_actual=area,
         prioridad=Caso.Prioridad.URGENTE if t.urgente else t.caso_origen.prioridad,
     )
     motor_casos._registrar(
@@ -173,11 +244,13 @@ def aceptar(t: Traslado, autor=None, area_destino=None) -> Traslado:
     motor_casos.iniciar(caso, autor=autor)
 
     t.caso_destino = caso
+    t.ciudadano_destino = paciente
     t.area_destino = area
     t.estado = Traslado.Estado.ACEPTADO
     t.resuelto_por = autor
     t.resuelto_at = timezone.now()
-    t.save(update_fields=["caso_destino", "area_destino", "estado", "resuelto_por", "resuelto_at"])
+    t.save(update_fields=["caso_destino", "ciudadano_destino", "area_destino", "estado",
+                          "resuelto_por", "resuelto_at"])
 
     motor_casos._registrar(
         t.caso_origen, f"Traslado aceptado por {t.destino}",
@@ -196,6 +269,7 @@ def rechazar(t: Traslado, motivo: str, autor=None) -> Traslado:
     otro establecimiento o esperar. Y el caso de origen se destraba, porque el
     paciente vuelve a ser responsabilidad de quien lo tiene.
     """
+    t = _bloquear(t)
     if t.estado != Traslado.Estado.SOLICITADO:
         raise ErrorTraslado(f"El traslado ya está {t.get_estado_display().lower()}.")
     if not motivo.strip():
@@ -214,6 +288,7 @@ def rechazar(t: Traslado, motivo: str, autor=None) -> Traslado:
 @transaction.atomic
 def cancelar(t: Traslado, autor=None, motivo="") -> Traslado:
     """El origen se arrepiente: el paciente mejoró, o se consiguió otro lugar."""
+    t = _bloquear(t)
     if not t.abierto:
         raise ErrorTraslado("El traslado ya está cerrado.")
     if t.caso_destino_id:
@@ -226,12 +301,65 @@ def cancelar(t: Traslado, autor=None, motivo="") -> Traslado:
     t.resuelto_por = autor
     t.save(update_fields=["estado", "respuesta", "resuelto_at", "resuelto_por"])
     _destrabar_origen(t, "Traslado cancelado", motivo, autor)
+    # Del otro lado ya reservaron una cama y avisaron al área por la
+    # notificación del pedido: sin ésta, la cama queda bloqueada esperando una
+    # ambulancia que no sale y nadie sabe por qué.
+    _avisar_destino(
+        t, f"Traslado cancelado por {t.origen}",
+        f"{t.ciudadano} · {motivo}".strip(" ·") or str(t.ciudadano),
+    )
+    return t
+
+
+@transaction.atomic
+def no_llego(t: Traslado, motivo: str, autor=None) -> Traslado:
+    """
+    El traslado se aceptó pero el paciente no llegó.
+
+    Los tres desenlaces habituales del traslado que sale mal —se descompensó y
+    falleció en la ambulancia, la familia se lo llevó, el móvil lo desvió a un
+    efector más cercano— no tenían dónde registrarse: después de ACEPTADO no
+    quedaba más transición que «llegó». El caso de origen se congelaba EN_ESPERA
+    sin poder avanzar ni cerrar, con el paciente muchas veces todavía ahí, y en
+    el destino quedaba un caso abierto por alguien que no iba a aparecer.
+
+    Lo puede registrar cualquiera de los dos lados: el que se enteró primero.
+    El motivo es obligatorio porque «falleció en el traslado» y «lo retiró la
+    familia» no son lo mismo para la región.
+    """
+    t = _bloquear(t)
+    if t.estado not in (Traslado.Estado.ACEPTADO, Traslado.Estado.EN_CAMINO):
+        raise ErrorTraslado("Sólo un traslado en curso puede darse por no llegado.")
+    if not motivo.strip():
+        raise ErrorTraslado("Un traslado que no llegó necesita un motivo.")
+
+    t.estado = Traslado.Estado.FALLIDO
+    t.respuesta = motivo[:4000]
+    # `resuelto_at` / `resuelto_por` NO se pisan: son de cuándo y quién contestó
+    # el pedido, y de ahí sale «cuánto tarda este hospital en responder», el
+    # indicador que más le importa a quien deriva. Pisarlos acá lo haría medir
+    # otra cosa, y perdería a quien reservó la cama.
+    t.save(update_fields=["estado", "respuesta"])
+
+    # El caso que abrió el destino se cancela: es trabajo en su bandeja y una
+    # cama comprometida por un paciente que no va a llegar.
+    if t.caso_destino_id and t.caso_destino.estado not in (
+        Caso.Estado.CERRADO, Caso.Estado.CANCELADO
+    ):
+        motor_casos.cancelar_caso(
+            t.caso_destino, autor=autor, motivo=f"Traslado no concretado: {motivo}"[:200]
+        )
+
+    _destrabar_origen(t, "El traslado no se concretó", motivo, autor)
+    _avisar_origen(t, "El traslado no se concretó", motivo)
+    _avisar_destino(t, f"Traslado no concretado desde {t.origen}", f"{t.ciudadano} · {motivo}")
     return t
 
 
 @transaction.atomic
 def marcar_en_camino(t: Traslado, movil="", autor=None) -> Traslado:
     """Salió la ambulancia."""
+    t = _bloquear(t)
     if t.estado != Traslado.Estado.ACEPTADO:
         raise ErrorTraslado("Sólo un traslado aceptado puede salir.")
     t.estado = Traslado.Estado.EN_CAMINO
@@ -241,6 +369,15 @@ def marcar_en_camino(t: Traslado, movil="", autor=None) -> Traslado:
     motor_casos._registrar(
         t.caso_origen, "Paciente en camino", detalle=movil or t.destino.nombre,
         autor=autor, nodo=t.caso_origen.nodo_actual,
+    )
+    # El que reservó la cama necesita saber que salió y en qué móvil viene. La
+    # marca sólo se asienta en el caso de ORIGEN, que el destino no puede leer:
+    # sin este aviso, la única forma de enterarse es el teléfono, que es lo que
+    # este módulo vino a reemplazar.
+    hora = timezone.localtime(t.salida_at).strftime("%H:%M")
+    _avisar_destino(
+        t, f"Paciente en camino desde {t.origen}",
+        f"{t.ciudadano} · salió {hora}" + (f" · {t.movil}" if t.movil else ""),
     )
     return t
 
@@ -254,6 +391,7 @@ def marcar_recibido(t: Traslado, autor=None) -> Traslado:
     responsabilidad de quien lo mandó, y un caso cerrado desaparece de su
     bandeja.
     """
+    t = _bloquear(t)
     if t.estado not in (Traslado.Estado.ACEPTADO, Traslado.Estado.EN_CAMINO):
         raise ErrorTraslado("El traslado no está en curso.")
     t.estado = Traslado.Estado.RECIBIDO
@@ -305,21 +443,40 @@ def camas_en_red(red: Red):
     por teléfono a preguntar si hay lugar, y muchas veces manda la ambulancia a
     un hospital que ya está lleno.
     """
+    from django.db.models import Count
+
     from apps.instituciones.models import Cama
 
+    instituciones = list(red.instituciones.filter(activa=True).order_by("nombre"))
+    # Una sola agregación para toda la red, y no cuatro count() por
+    # establecimiento: esto lo llama `saturadas()`, que a su vez se llama por
+    # cada destino posible del desplegable de derivación. Con cuatro consultas
+    # por efector, una red de 16 hospitales hacía más de mil consultas mientras
+    # hay un paciente esperando adelante.
+    por_inst = {
+        c["area__institucion"]: c
+        for c in Cama.objects.filter(
+            area__institucion__in=[i.id for i in instituciones], activa=True
+        ).values("area__institucion").annotate(
+            total=Count("id"),
+            fuera=Count("id", filter=Q(estado=Cama.Estado.BLOQUEADA)),
+            ocupadas=Count("id", filter=Q(estado=Cama.Estado.OCUPADA)),
+            libres=Count("id", filter=Q(estado=Cama.Estado.LIBRE)),
+        )
+    }
+
     salida = []
-    for inst in red.instituciones.filter(activa=True).order_by("nombre"):
-        camas = Cama.objects.filter(area__institucion=inst, activa=True)
-        total = camas.count()
-        fuera = camas.filter(estado=Cama.Estado.BLOQUEADA).count()
-        ocupadas = camas.filter(estado=Cama.Estado.OCUPADA).count()
-        operativas = total - fuera
+    for inst in instituciones:
+        c = por_inst.get(inst.id) or {}
+        total = c.get("total", 0)
+        ocupadas = c.get("ocupadas", 0)
+        operativas = total - c.get("fuera", 0)
         salida.append({
             "institucion": inst,
             "total": total,
             "operativas": operativas,
             "ocupadas": ocupadas,
-            "libres": camas.filter(estado=Cama.Estado.LIBRE).count(),
+            "libres": c.get("libres", 0),
             "ocupacion": round(100 * ocupadas / operativas) if operativas else 0,
         })
     return salida

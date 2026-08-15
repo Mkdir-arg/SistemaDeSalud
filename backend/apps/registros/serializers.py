@@ -2,6 +2,7 @@ from datetime import datetime
 
 from rest_framework import serializers
 
+from . import reglas
 from .models import Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta
 
 
@@ -23,7 +24,11 @@ class EntradaHistoriaSerializer(serializers.ModelSerializer):
         ]
         # El sello no se escribe desde afuera: lo calcula el sistema al firmar, y
         # poder mandarlo permitiría sellar contenido alterado.
-        read_only_fields = ["fecha", "matricula", "firmada_at", "sello"]
+        #
+        # `autor` tampoco: quién atendió sale de la sesión. Mandarlo en el cuerpo
+        # permitía dejar un «Alta médica» firmado a nombre de una médica que
+        # nunca vio al paciente.
+        read_only_fields = ["fecha", "matricula", "firmada_at", "sello", "autor"]
 
     def get_integra(self, obj) -> bool | None:
         from .integridad import verificar
@@ -37,27 +42,46 @@ class EstudioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Estudio
         fields = ["id", "historia", "tipo", "resultado", "resultado_display", "realizado", "archivo", "autor", "fecha"]
+        # `autor` acá es texto libre: si además se manda desde el cuerpo, quién
+        # pidió el estudio es una cadena que nadie puede verificar. Sale de la
+        # sesión.
+        read_only_fields = ["autor"]
 
 
 class RecetaSerializer(serializers.ModelSerializer):
+    autor_nombre = serializers.CharField(source="autor.nombre_completo", read_only=True, default=None)
+
     class Meta:
         model = Receta
-        fields = ["id", "historia", "detalle", "activa", "autor", "fecha"]
-        read_only_fields = ["fecha"]
+        fields = ["id", "historia", "detalle", "activa", "autor", "autor_nombre", "fecha"]
+        # `autor` sale de la sesión: una receta atribuida a quien no la
+        # prescribió no se puede desmentir, porque la receta no lleva sello ni
+        # matrícula. `activa` no se escribe directo: suspender una medicación es
+        # un acto clínico con motivo, y va por la acción `suspender`.
+        read_only_fields = ["fecha", "autor", "activa"]
 
 
 class HistoriaClinicaSerializer(serializers.ModelSerializer):
     entradas = EntradaHistoriaSerializer(many=True, read_only=True)
     estudios = EstudioSerializer(many=True, read_only=True)
     recetas = RecetaSerializer(many=True, read_only=True)
+    # Quién cargó los antecedentes. Con esto la pantalla puede decir «se
+    # preguntó y no tiene» en vez de afirmar «sin alergias» sobre un paciente al
+    # que nunca se le preguntó.
+    antecedentes_por_nombre = serializers.CharField(
+        source="antecedentes_por.nombre_completo", read_only=True, default=None
+    )
 
     class Meta:
         model = HistoriaClinica
         fields = [
             "id", "ciudadano", "alergias", "condiciones", "creada",
+            "antecedentes_por", "antecedentes_por_nombre", "antecedentes_at",
             "entradas", "estudios", "recetas",
         ]
-        read_only_fields = ["creada"]
+        # Quién y cuándo los cargó lo pone el servidor: un antecedente que se
+        # puede atribuir a cualquiera no contesta «¿quién preguntó?».
+        read_only_fields = ["creada", "antecedentes_por", "antecedentes_at"]
 
 
 class CiudadanoSerializer(serializers.ModelSerializer):
@@ -82,6 +106,44 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             "consentimiento",
         ]
         read_only_fields = ["creado"]
+        # DRF arma solo un `UniqueTogetherValidator` desde la constraint del
+        # modelo, y contesta «Los campos institucion, documento deben formar un
+        # conjunto único» bajo `non_field_errors`. Eso es cierto y no sirve: al
+        # administrativo que está cargando al paciente que volvió no le dice a
+        # quién corresponde ese documento ni adónde ir. Se desactiva para que la
+        # respuesta sea la de `validate`, más abajo.
+        validators = []
+
+    def validate(self, datos):
+        """
+        Frena el alta del mismo documento dos veces en la misma institución.
+
+        La constraint de la base ya lo impide, pero sola devolvería un 500: acá
+        se contesta 400 diciendo A QUIÉN corresponde ese documento, que es lo
+        único que le sirve al administrativo que lo está cargando —el caso real
+        es el paciente que vuelve y no aparece por un error de tipeo del ingreso
+        anterior—.
+
+        El paciente sin documento no entra en esta regla: el NN de guardia tiene
+        que poder anotarse igual, y varios a la vez.
+        """
+        documento = (datos.get("documento") if "documento" in datos else getattr(self.instance, "documento", "")) or ""
+        institucion = datos.get("institucion") or getattr(self.instance, "institucion", None)
+        if not documento.strip() or institucion is None:
+            return datos
+
+        otros = Ciudadano.objects.filter(institucion=institucion, documento=documento)
+        if self.instance is not None:
+            otros = otros.exclude(pk=self.instance.pk)
+        existente = otros.first()
+        if existente is not None:
+            nombre = f"{existente.nombre} {existente.apellido}".strip()
+            raise reglas.RegistroDuplicado(
+                f"El documento {documento} ya es de {nombre} en esta institución. "
+                f"Abrí su historia en vez de crear una copia: cada copia arranca "
+                f"su propia historia clínica y no hay forma de fusionarlas."
+            )
+        return datos
 
     # Los campos derivados salen de ANOTACIONES del queryset, no de una consulta
     # por fila.

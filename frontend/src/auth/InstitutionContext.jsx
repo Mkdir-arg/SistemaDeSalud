@@ -29,7 +29,10 @@ const CAPS_POR_ROL = {
 export const VISTA_CAPS = {
   configurador: ["diseno"],
   administrativo: ["trabajo", "registros"],
-  sistema: ["config", "diseno", "trabajo", "registros", "auditoria"],
+  // «sistema» es la vista completa y espeja al rol admin, que sí tiene
+  // `supervision`. Sin esa capacidad acá, el super admin no ve en el menú ni
+  // Supervisión ni el Tablero: dos pantallas que existen y no se pueden abrir.
+  sistema: ["config", "diseno", "trabajo", "registros", "supervision", "auditoria"],
 };
 
 /*

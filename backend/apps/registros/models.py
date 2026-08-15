@@ -27,6 +27,22 @@ class Ciudadano(models.Model):
         verbose_name = "ciudadano"
         verbose_name_plural = "ciudadanos"
         ordering = ["apellido", "nombre"]
+        constraints = [
+            # El mismo documento no se puede anotar dos veces en la misma
+            # institución: cada copia arranca su propia historia clínica (la HC
+            # es OneToOne), y a partir de ahí el médico abre una de las dos al
+            # azar mientras la alergia está en la otra.
+            #
+            # La condición es indispensable: el paciente sin documento —el NN
+            # que entra a la guardia— tiene que poder anotarse igual, y varios a
+            # la vez. Un unique pelado dejaría afuera exactamente el caso donde
+            # menos se puede frenar el ingreso.
+            models.UniqueConstraint(
+                fields=["institucion", "documento"],
+                condition=~models.Q(documento=""),
+                name="ciudadano_documento_unico_por_institucion",
+            ),
+        ]
 
     def __str__(self):
         nombre = f"{self.nombre} {self.apellido}".strip()
@@ -94,6 +110,18 @@ class HistoriaClinica(models.Model):
     )
     alergias = models.CharField(max_length=255, blank=True)
     condiciones = models.CharField("condiciones / antecedentes", max_length=255, blank=True)
+    # Quién cargó los antecedentes por última vez y cuándo.
+    #
+    # Sin esta marca, `alergias=""` es ambiguo y la pantalla resuelve la
+    # ambigüedad de la peor manera: dice «Sin alergias registradas» sobre un
+    # paciente al que nunca se le preguntó. Con la marca se puede distinguir
+    # «se preguntó y no tiene» de «no consta», que es la diferencia entre
+    # indicar penicilina tranquilo y preguntar antes.
+    antecedentes_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="antecedentes_cargados",
+    )
+    antecedentes_at = models.DateTimeField("antecedentes actualizados el", null=True, blank=True)
     creada = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -149,6 +177,20 @@ class EntradaHistoria(models.Model):
         verbose_name = "entrada de historia clínica"
         verbose_name_plural = "entradas de historia clínica"
         ordering = ["-fecha"]
+        constraints = [
+            # Un eslabón de la cadena tiene UN solo hijo. Si dos atenciones
+            # simultáneas del mismo paciente leen la misma entrada previa —el
+            # médico y la enfermera registrando a la vez—, las dos se encadenan
+            # al mismo sello y `verificar_historia` denuncia una cadena rota que
+            # nadie rompió. Ese falso positivo no se puede deshacer desde la
+            # aplicación y queda pegado diez años: es preferible que la segunda
+            # falle en el momento y se reintente.
+            models.UniqueConstraint(
+                fields=["historia", "sello_previo"],
+                condition=~models.Q(sello_previo=""),
+                name="entrada_un_solo_eslabon_siguiente",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.titulo} · {self.historia.ciudadano}"

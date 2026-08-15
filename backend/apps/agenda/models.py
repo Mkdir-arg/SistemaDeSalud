@@ -217,12 +217,31 @@ class Turno(models.Model):
     # el recordatorio sirve para bajar el ausentismo.
     recordado_at = models.DateTimeField(null=True, blank=True)
     cancelado_at = models.DateTimeField(null=True, blank=True)
+    # Quién movió el turno de `reservado` y cuándo. El reclamo típico del
+    # mostrador es «me cancelaron el turno y nadie me avisó», y el «no vino» es
+    # el estado que perjudica al paciente: sin esto no hay a quién preguntarle.
+    resuelto_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="turnos_resueltos",
+    )
+    resuelto_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "turno"
         verbose_name_plural = "turnos"
         ordering = ["inicio", "id"]
         indexes = [models.Index(fields=["agenda", "inicio"])]
+        constraints = [
+            # Red de seguridad abajo del candado de `motor.reservar`. Dos
+            # titulares en el mismo horario no se ven en ninguna pantalla —la
+            # grilla muestra uno solo—, así que el segundo paciente llega con el
+            # turno impreso y para el mostrador no existe.
+            models.UniqueConstraint(
+                fields=["agenda", "inicio"],
+                condition=models.Q(sobreturno=False) & ~models.Q(estado="cancelado"),
+                name="un_titular_por_horario",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.ciudadano} · {self.agenda} · {self.inicio:%d/%m %H:%M}"

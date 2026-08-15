@@ -706,7 +706,7 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
     elif nodo.tipo == Nodo.Tipo.FIN:
         # Una cama ocupada por un caso cerrado no se libera nunca sola: el sector
         # se queda sin camas y nadie entiende por qué. Se libera acá.
-        _liberar_camas_del_caso(caso, EstadiaCama.Egreso.ALTA, autor=autor)
+        _liberar_camas_del_caso(caso, _egreso_del_nodo(nodo), autor=autor)
         caso.estado = Caso.Estado.CERRADO
         _registrar(caso, f"Estado → Cerrado", detalle=nodo.titulo, autor=autor, nodo=nodo)
         if caso.bloquea_origen and caso.origen_id:
@@ -724,6 +724,20 @@ def _sector_del_nodo(nodo):
     return Subarea.objects.filter(pk=sid).first() if sid else None
 
 
+def _egreso_del_nodo(nodo) -> str:
+    """Motivo de egreso que declara el nodo de cierre; vacío si no declara ninguno.
+
+    Vacío y no «alta»: un caso también se cierra después de un fallecimiento o
+    de una derivación, y escribir «alta» sobre esa estadía no es un dato
+    incompleto sino uno falso. Ese historial es lo que se mira cuando alguien
+    reclama y lo que jefatura reporta como mortalidad y derivaciones por sector;
+    con el motivo en blanco se sabe que falta cargarlo, con «alta» puesto a mano
+    nadie se entera nunca.
+    """
+    motivo = ((nodo.config or {}).get("motivo_egreso") or "").strip()
+    return motivo if motivo in EstadiaCama.Egreso.values else ""
+
+
 def camas_disponibles(nodo):
     """Camas que se le pueden ofrecer a un caso parado en este nodo.
 
@@ -737,6 +751,20 @@ def camas_disponibles(nodo):
         return qs.filter(subarea=sector)
     area_id = nodo.version.flujo.area_id
     return qs.filter(area_id=area_id) if area_id else qs.none()
+
+
+def _bloquear_caso(caso: Caso):
+    """Toma el bloqueo de la fila del caso hasta que termine la transacción.
+
+    Es lo que serializa dos operaciones de cama del MISMO paciente hechas al
+    mismo tiempo. Bloquear la cama no alcanza: si cada operador eligió una cama
+    distinta, cada transacción bloquea una fila distinta y ninguna ve la estadía
+    que la otra todavía no confirmó.
+
+    `order_by()` vacío: `Caso` ordena por `-creado`, que no cuesta nada, pero el
+    orden tampoco aporta cuando se busca por id.
+    """
+    Caso.objects.order_by().select_for_update().filter(pk=caso.pk).first()
 
 
 def _liberar_camas_del_caso(caso: Caso, motivo: str, autor=None, hasta=None) -> int:
@@ -778,6 +806,13 @@ def asignar_cama(caso: Caso, cama_id, autor=None) -> Caso:
         raise ErrorMotor("El caso no está posicionado en ningún nodo.")
     if nodo.tipo != Nodo.Tipo.CAMA:
         raise ErrorMotor("Este paso no es de asignación de cama.")
+    # El bloqueo va sobre el CASO y no sólo sobre la cama: dos operadores que
+    # eligen camas DISTINTAS para el mismo paciente bloquean filas distintas,
+    # ninguno ve la estadía que el otro todavía no confirmó, y el paciente
+    # termina con dos camas ocupadas y dos estadías abiertas. Una de esas camas
+    # está físicamente vacía y figura ocupada todo el turno, y el historial dice
+    # que el paciente estuvo en dos lugares al mismo tiempo.
+    _bloquear_caso(caso)
     if EstadiaCama.objects.filter(caso=caso, hasta__isnull=True).exists():
         raise ErrorMotor("El caso ya está internado en una cama.")
 
@@ -796,6 +831,22 @@ def asignar_cama(caso: Caso, cama_id, autor=None) -> Caso:
     if cama.estado != Cama.Estado.LIBRE:
         raise ErrorMotor(
             f"La cama {cama.nombre} no está libre ({cama.get_estado_display().lower()})."
+        )
+    # Qué camas admite este paso lo decidía solamente el GET (`camas_disponibles`),
+    # o sea la pantalla: un POST con otro `cama_id` internaba al paciente en una
+    # cama de otro sector, de otra área o de otro hospital. Esa cama figura
+    # ocupada en el tablero ajeno por alguien que nunca llegó, y el sector que la
+    # perdió no puede liberarla porque el egreso lo da el caso del otro lado.
+    # Se valida contra el MISMO queryset que se le ofreció al usuario para que la
+    # regla viva en un solo lugar (va después del bloqueo, para no perderlo).
+    if cama.area.institucion_id != caso.institucion_id:
+        raise ErrorMotor(f"La cama {cama.nombre} es de otra institución.")
+    if not camas_disponibles(nodo).filter(pk=cama.pk).exists():
+        sector = _sector_del_nodo(nodo)
+        raise ErrorMotor(
+            f"La cama {cama.nombre} no es de "
+            + (f"«{sector.nombre}»" if sector else "el área de este flujo")
+            + ": este paso no puede internar ahí."
         )
 
     ahora = timezone.now()
@@ -825,6 +876,10 @@ def pasar_de_sector(caso: Caso, cama_id, autor=None, motivo: str = "") -> Caso:
     nueva, así el recorrido del paciente queda completo sin ningún registro
     aparte. La cama que deja va a higiene como cualquier egreso.
     """
+    # Mismo bloqueo y mismo motivo que en `asignar_cama`: sin él, dos pases
+    # concurrentes cierran la misma estadía y abren dos nuevas, y el paciente
+    # queda en dos camas a la vez.
+    _bloquear_caso(caso)
     actual = (
         EstadiaCama.objects.select_related("cama")
         .filter(caso=caso, hasta__isnull=True).first()
@@ -840,6 +895,12 @@ def pasar_de_sector(caso: Caso, cama_id, autor=None, motivo: str = "") -> Caso:
         raise ErrorMotor("El paciente ya está en esa cama.")
     if not destino.activa or destino.estado != Cama.Estado.LIBRE:
         raise ErrorMotor(f"La cama {destino.nombre} no está libre.")
+    # El pase cruza sectores a propósito (UTI ↔ sala), así que no se valida
+    # contra el nodo; la institución sí: mover a un paciente a una cama de otro
+    # hospital la saca del tablero de ese hospital sin que nadie de ahí pueda
+    # liberarla, porque el egreso lo da este caso.
+    if destino.area.institucion_id != caso.institucion_id:
+        raise ErrorMotor(f"La cama {destino.nombre} es de otra institución.")
 
     origen = actual.cama
     ahora = timezone.now()
@@ -876,7 +937,15 @@ def dar_de_alta_cama(caso: Caso, autor=None, motivo: str = "") -> Caso:
     pendiente el resumen de epicrisis, o se lo deriva—. Sin esto, la única
     forma de liberar una cama era cerrar el caso.
     """
-    egreso = motivo if motivo in EstadiaCama.Egreso.values else EstadiaCama.Egreso.ALTA
+    # Un motivo desconocido se degradaba a «alta» en silencio. Si el cliente
+    # manda cualquier cosa, mejor un error que un egreso por fallecimiento
+    # anotado como alta: ese dato no se corrige después porque nadie sabe que
+    # está mal. Sin motivo (el cuerpo vacío que manda hoy la pantalla) sigue
+    # siendo «alta», que es lo que la acción significaba hasta ahora.
+    if motivo and motivo not in EstadiaCama.Egreso.values:
+        opciones = ", ".join(EstadiaCama.Egreso.values)
+        raise ErrorMotor(f"«{motivo}» no es un motivo de egreso. Opciones: {opciones}.")
+    egreso = motivo or EstadiaCama.Egreso.ALTA
     if not _liberar_camas_del_caso(caso, egreso, autor=autor):
         raise ErrorMotor("El caso no está internado en ninguna cama.")
     _registrar(caso, "Egreso de internación",
@@ -896,6 +965,14 @@ def cambiar_estado_cama(cama: Cama, estado: str, autor=None, motivo: str = "") -
     """
     if estado not in (Cama.Estado.LIBRE, Cama.Estado.HIGIENE, Cama.Estado.BLOQUEADA):
         raise ErrorMotor("Ese estado se cambia internando o dando el alta, no a mano.")
+    # La cama llega leída por la vista, ANTES de que empezara esta transacción:
+    # decidir con esa copia deja pasar el caso que el modelo declara imposible
+    # —cama libre con un paciente adentro—. Alcanza con que alguien interne
+    # mientras la pantalla del tablero tenía la foto vieja: la cama queda LIBRE
+    # y el próximo `asignar_cama` la acepta, dos pacientes en la misma cama.
+    # Se relee bloqueando la fila, como hace `asignar_cama` (`order_by()` vacío
+    # porque el orden por defecto arma un outer join y Postgres no lo bloquea).
+    cama = Cama.objects.order_by().select_for_update().get(pk=cama.pk)
     if cama.estado == Cama.Estado.OCUPADA:
         raise ErrorMotor(
             f"La cama {cama.nombre} está ocupada: primero hay que dar el egreso del paciente."
@@ -903,7 +980,11 @@ def cambiar_estado_cama(cama: Cama, estado: str, autor=None, motivo: str = "") -
     cama.estado = estado
     cama.motivo = motivo[:200] if estado == Cama.Estado.BLOQUEADA else ""
     cama.desde = timezone.now()
-    cama.save(update_fields=["estado", "motivo", "desde"])
+    # `caso` va en el update aunque acá siempre sea None: dejarlo afuera es lo
+    # que permitía que quedara una referencia colgada a un paciente en una cama
+    # que el tablero muestra libre.
+    cama.caso = None
+    cama.save(update_fields=["estado", "motivo", "desde", "caso"])
     return cama
 
 
@@ -1078,7 +1159,9 @@ def cancelar_caso(caso: Caso, autor=None, motivo: str = "") -> Caso:
     if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO):
         raise ErrorMotor("El caso ya está finalizado.")
     caso.en_filas.filter(atendido=False).update(atendido=True)  # sale de las colas
-    _liberar_camas_del_caso(caso, EstadiaCama.Egreso.ALTA, autor=autor)
+    # Sin motivo: un caso cancelado no es un alta. Anotarlo como tal ensucia el
+    # recorrido del paciente y las estadísticas de egresos del sector.
+    _liberar_camas_del_caso(caso, "", autor=autor)
     caso.estado = Caso.Estado.CANCELADO
     caso.esperando = False
     caso.save(update_fields=["estado", "esperando", "actualizado"])
@@ -1443,11 +1526,26 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         raise ErrorMotor("El caso está esperando el resultado de un estudio derivado.")
     if nodo.tipo not in TIPOS_DETENCION:
         raise ErrorMotor(f"El nodo actual («{nodo.titulo}») no espera una acción manual.")
+    # Un paso de cama se completa internando, no avanzando. Sin esta guarda el
+    # caso atravesaba la internación sin cama ocupada, sin estadía y sin un solo
+    # evento que lo dijera: el paciente queda en una cama física que el tablero
+    # muestra libre y se la ofrece al próximo, el egreso después responde «no
+    # está internado en ninguna cama», y «¿dónde estuvo este paciente?» no tiene
+    # respuesta. Nadie se entera hasta que hay dos pacientes en la misma pieza.
+    if nodo.tipo == Nodo.Tipo.CAMA:
+        raise ErrorMotor("Este paso se completa asignando una cama.")
 
     # Completar el nodo actual.
     if nodo.tipo == Nodo.Tipo.FORMULARIO:
         valores = datos.get("valores", {})
         _guardar_valores(caso, nodo, valores)
+        # «Requerido» se pintaba con un asterisco y no lo exigía ninguna capa: un
+        # triage se completaba vacío de un clic y el caso avanzaba igual. La
+        # Decisión que viene después evalúa sobre un campo vacío y manda al
+        # paciente por la rama que no era, o lo deja sin salida.
+        faltan = _requeridos_sin_cargar(caso, nodo)
+        if faltan:
+            raise ErrorMotor("Falta completar: " + ", ".join(faltan) + ".")
         _aplicar_prioridad_desde_form(caso, nodo, autor)
         _registrar(caso, f"Formulario «{nodo.titulo}» completado", detalle=f"{len(valores)} campos cargados", autor=autor, nodo=nodo)
 
@@ -1619,6 +1717,28 @@ def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
         )
 
 
+def _requeridos_sin_cargar(caso: Caso, nodo: Nodo) -> list[str]:
+    """Etiquetas de los campos obligatorios del nodo que quedaron sin valor.
+
+    Se mira lo GUARDADO y no lo que vino en el pedido: un campo que ya se cargó
+    en un paso anterior (o precargado desde la historia clínica) está cargado, y
+    exigir que lo reenvíen convertiría la regla en un obstáculo en vez de una
+    garantía.
+    """
+    if not nodo.formulario_id:
+        return []
+    requeridos = list(nodo.formulario.campos.filter(requerido=True).values_list("id", "label"))
+    if not requeridos:
+        return []
+    cargados = {
+        cid for cid, valor in caso.valores
+        .filter(campo_id__in=[cid for cid, _ in requeridos])
+        .values_list("campo_id", "valor")
+        if str(valor).strip()
+    }
+    return [label for cid, label in requeridos if cid not in cargados]
+
+
 def _aplicar_prioridad_desde_form(caso: Caso, nodo: Nodo, autor=None):
     """Si el nodo (p. ej. triage) declara que un campo define la prioridad del caso,
     la aplica según un mapa valor→prioridad. Config del nodo:
@@ -1680,6 +1800,12 @@ def _acciones_posibles(caso: Caso, nodo: Nodo | None) -> list[str]:
     # asignar cama dejaría a un paciente internado en ningún lado.
     if nodo.tipo == Nodo.Tipo.CAMA:
         return ["asignar_cama"]
+    # Un nodo automático no admite «avanzar»: el motor lo rechaza con «no espera
+    # una acción manual». Un caso puede quedar parado en uno igual —una Decisión
+    # donde no se cumplió ninguna rama y no hay «si no»—, y ahí ofrecer el botón
+    # es peor que no ofrecer ninguno: el único camino visible siempre falla.
+    if nodo.tipo not in TIPOS_DETENCION:
+        return []
     # La señal de «todavía no lo llamaron» es `llamado_at`, no el box: se puede
     # llamar sin box asignado y el paciente igual quedó llamado.
     esperando_llamado = caso.en_filas.filter(
@@ -1889,6 +2015,18 @@ def validar_version(version) -> list[dict]:
                                       "titulo": "Regla con un campo inexistente",
                                       "detalle": f"«{n.titulo}» usa un campo que no se carga en ningún formulario del flujo."})
                     break
+
+        # 5 bis) Decisión sin rama por defecto: si ninguna condición se cumple, el
+        #    caso queda PARADO en la decisión, que es un nodo automático. No
+        #    aparece en ninguna bandeja, «avanzar» le responde que ese nodo no
+        #    espera una acción manual, y el único camino que queda es cancelarlo.
+        #    Se detecta al publicar porque en ejecución ya es tarde.
+        if n.tipo == Nodo.Tipo.DECISION and salidas and all(c.condicion for c in salidas):
+            problemas.append({"sev": "error", "nodo_id": n.pk,
+                              "titulo": "Decisión sin rama por defecto",
+                              "detalle": f"Todas las salidas de «{n.titulo}» tienen condición. "
+                                         "Si no se cumple ninguna, el caso queda trabado sin salida: "
+                                         "agregá una conexión sin condición («si no»)."})
 
         # 6) Integración sin URL, o con un destino que la infraestructura no
         #    habilitó. Avisarlo al publicar es mucho mejor que descubrirlo con un

@@ -117,12 +117,19 @@ class TrasladoViewSet(
         p = self.request.query_params
         if (e := p.get("estado")):
             qs = qs.filter(estado=e)
+        abiertos = [
+            Traslado.Estado.SOLICITADO, Traslado.Estado.ACEPTADO, Traslado.Estado.EN_CAMINO,
+        ]
         if p.get("abiertos") == "true":
-            qs = qs.filter(estado__in=[
-                Traslado.Estado.SOLICITADO, Traslado.Estado.ACEPTADO, Traslado.Estado.EN_CAMINO,
-            ])
+            qs = qs.filter(estado__in=abiertos)
+        elif p.get("abiertos") == "false":
+            # La otra mitad. Sin esto, la pantalla tiene que traerse el
+            # histórico entero para separar «en curso» de «resueltos» en el
+            # cliente, y un pedido sin responder se cae de la página.
+            qs = qs.exclude(estado__in=abiertos)
         # De qué lado: quien recibe quiere ver lo que le mandan, no lo que mandó.
-        ids = self._mis_instituciones()
+        actual = self._institucion_actual()
+        ids = [actual] if actual is not None else self._mis_instituciones()
         if p.get("lado") == "entrantes":
             qs = qs.filter(destino_id__in=ids)
         elif p.get("lado") == "salientes":
@@ -135,18 +142,48 @@ class TrasladoViewSet(
             return list(Institucion.objects.values_list("id", flat=True))
         return list(u.membresias.filter(activo=True).values_list("institucion_id", flat=True))
 
+    def _institucion_actual(self):
+        """
+        El establecimiento en el que está parado quien mira, si lo mandó.
+
+        Sin esto, «de qué lado estoy» se resuelve contra el conjunto de mis
+        membresías, y quien tiene dos efectores de la misma red —una dirección
+        de red, una región, un superusuario— sale como origen en TODOS los
+        traslados: la pestaña «Nos derivan» le esconde «Responder» y «Llegó», y
+        el único botón que le queda cancela el pedido del otro hospital.
+        """
+        crudo = self.request.query_params.get("institucion")
+        if crudo in (None, "") and self.request.method != "GET":
+            crudo = self.request.data.get("institucion")
+        try:
+            valor = int(crudo)
+        except (TypeError, ValueError):
+            return None
+        return valor if valor in self._mis_instituciones() else None
+
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         ctx["mis_instituciones"] = set(self._mis_instituciones())
+        ctx["institucion_actual"] = self._institucion_actual()
         return ctx
 
     def _responder(self, t):
         return Response(self.get_serializer(t).data)
 
     def _de_mi_lado(self, t, lado):
-        """¿Puedo actuar de este lado? Origen pide; destino responde."""
-        mis = set(self._mis_instituciones())
-        return (t.origen_id if lado == "origen" else t.destino_id) in mis
+        """
+        ¿Puedo actuar de este lado? Origen pide; destino responde.
+
+        Con la institución actual declarada se decide contra ella: quien tiene
+        los dos efectores no puede quedar habilitado en los dos lados del mismo
+        traslado, que es como termina cancelándole el pedido al otro hospital
+        desde la fila que está leyendo como «me están derivando».
+        """
+        esperado = t.origen_id if lado == "origen" else t.destino_id
+        actual = self._institucion_actual()
+        if actual is not None:
+            return esperado == actual
+        return esperado in set(self._mis_instituciones())
 
     @action(detail=False, methods=["post"])
     def solicitar(self, request):
@@ -240,6 +277,26 @@ class TrasladoViewSet(
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return self._responder(t)
 
+    @action(detail=True, methods=["post"], url_path="no-llego")
+    def no_llego(self, request, pk=None):
+        """
+        El paciente no llegó: {"motivo"}.
+
+        La registran los dos lados —el que se entera primero—: el que falleció
+        en la ambulancia lo sabe el origen, y el que se desvió a otro efector
+        puede saberlo cualquiera. Sin esto el caso de origen queda congelado
+        EN_ESPERA para siempre.
+        """
+        t = self.get_object()
+        if not (self._de_mi_lado(t, "origen") or self._de_mi_lado(t, "destino")):
+            return Response({"detail": "Sólo los establecimientos del traslado pueden registrarlo."},
+                            status=status.HTTP_403_FORBIDDEN)
+        try:
+            t = motor.no_llego(t, request.data.get("motivo") or "", autor=request.user)
+        except motor.ErrorTraslado as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._responder(t)
+
     @action(detail=False, methods=["get"])
     def destinos(self, request):
         """A dónde puedo derivar: `?institucion=<id>`."""
@@ -249,23 +306,41 @@ class TrasladoViewSet(
         # Con la ocupación y la distancia: elegir a dónde derivar sin eso es
         # elegir a ciegas entre opciones que en una lista alfabética se ven
         # iguales, cuando una puede estar llena y la otra a media hora más.
+        from django.db.models import Count, Q
+
         from apps.instituciones.models import Cama
 
-        destinos = []
-        for i in motor.destinos_posibles(inst):
-            camas = Cama.objects.filter(area__institucion=i, activa=True)
-            operativas = camas.exclude(estado=Cama.Estado.BLOQUEADA).count()
-            destinos.append({
-                "id": i.id,
-                "nombre": i.nombre,
-                "km": motor.distancia_km(inst, i),
-                "camas_libres": camas.filter(estado=Cama.Estado.LIBRE).count(),
-                "camas_operativas": operativas,
-                "saturado": i.nombre in [
-                    s["institucion"].nombre
-                    for red in inst.redes.filter(activa=True) for s in motor.saturadas(red)
-                ],
-            })
+        posibles = list(motor.destinos_posibles(inst))
+        # Los saturados, UNA vez y fuera del bucle. Calcularlos por destino
+        # hacía el endpoint cuadrático —`saturadas()` recorre la red entera— y
+        # el resultado es el mismo en cada vuelta. Es el endpoint que se abre
+        # con un paciente esperando adelante.
+        saturados_ids = {
+            s["institucion"].id
+            for red in inst.redes.filter(activa=True) for s in motor.saturadas(red)
+        }
+        # Las camas de todos los destinos en una consulta, no dos por destino.
+        camas = {
+            c["area__institucion"]: c
+            for c in Cama.objects.filter(
+                area__institucion__in=[i.id for i in posibles], activa=True
+            ).values("area__institucion").annotate(
+                libres=Count("id", filter=Q(estado=Cama.Estado.LIBRE)),
+                operativas=Count("id", filter=~Q(estado=Cama.Estado.BLOQUEADA)),
+            )
+        }
+        destinos = [{
+            "id": i.id,
+            "nombre": i.nombre,
+            "km": motor.distancia_km(inst, i),
+            "camas_libres": (camas.get(i.id) or {}).get("libres", 0),
+            "camas_operativas": (camas.get(i.id) or {}).get("operativas", 0),
+            # Por id y no por nombre: `Institucion.nombre` no es único, y dos
+            # «Hospital Municipal» en la misma red hacían que el que tiene camas
+            # libres se marcara SATURADO y cayera al fondo de la lista, en
+            # silencio, detrás de opciones media hora más lejos.
+            "saturado": i.id in saturados_ids,
+        } for i in posibles]
         # Primero los que tienen lugar; entre ellos, el más cerca.
         destinos.sort(key=lambda d: (d["saturado"], d["km"] if d["km"] is not None else 1e9))
         return Response({"destinos": destinos})

@@ -109,6 +109,378 @@ class FiltroEstadoVigenteTests(APITestCase):
         self.assertEqual({f["titulo"] for f in r.data["results"]}, {"Uno", "Dos"})
 
 
+class VersionPublicadaCongeladaTests(APITestCase):
+    """
+    Publicar CONGELA la versión: el grafo deja de ser editable.
+
+    Lo que se rompe si esto falla: el configurador que a las once de la mañana
+    agrega o borra un paso lo está haciendo abajo de los pacientes que ya están
+    adentro del circuito. `Caso.version` apunta a esta fila, así que el cambio es
+    instantáneo para los casos en curso; y borrar un nodo se lleva puesta la fila
+    de espera (ItemFila es CASCADE) y deja a cada caso con `nodo_actual` en NULL,
+    o sea sin lugar en el recorrido.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.user = Usuario.objects.create_user(
+            email="config@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.pub = VersionFlujo.objects.create(
+            flujo=self.flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        self.ini = Nodo.objects.create(version=self.pub, tipo="inicio", titulo="Inicio", x=80, y=220)
+        self.fin = Nodo.objects.create(version=self.pub, tipo="fin", titulo="Cierre", x=400, y=220)
+        self.conex = Conexion.objects.create(version=self.pub, origen=self.ini, destino=self.fin)
+
+    def test_no_se_puede_mover_un_nodo_de_una_version_publicada(self):
+        r = self.client.patch(f"/api/nodos/{self.ini.pk}/", {"x": 999}, format="json")
+        self.assertEqual(r.status_code, 409, r.data)
+        self.ini.refresh_from_db()
+        self.assertEqual(self.ini.x, 80)
+
+    def test_no_se_puede_borrar_un_nodo_de_una_version_publicada(self):
+        """El borrado es el que vacía la sala de espera y traba a los casos."""
+        r = self.client.delete(f"/api/nodos/{self.ini.pk}/")
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertTrue(Nodo.objects.filter(pk=self.ini.pk).exists())
+
+    def test_no_se_puede_agregar_un_nodo_a_una_version_publicada(self):
+        r = self.client.post(
+            "/api/nodos/", {"version": self.pub.pk, "tipo": "form", "titulo": "Nuevo"}, format="json"
+        )
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(self.pub.nodos.count(), 2)
+
+    def test_no_se_puede_tocar_una_conexion_de_una_version_publicada(self):
+        self.assertEqual(
+            self.client.patch(f"/api/conexiones/{self.conex.pk}/", {"etiqueta": "x"}, format="json").status_code,
+            409,
+        )
+        self.assertEqual(self.client.delete(f"/api/conexiones/{self.conex.pk}/").status_code, 409)
+        self.assertTrue(Conexion.objects.filter(pk=self.conex.pk).exists())
+
+    def test_sobre_un_borrador_se_edita_como_siempre(self):
+        """La guarda no puede convertir al diseñador en un visor: el borrador se edita."""
+        borrador = VersionFlujo.objects.create(flujo=self.flujo, numero=2)
+        nodo = Nodo.objects.create(version=borrador, tipo="inicio", titulo="Inicio")
+        self.assertEqual(
+            self.client.patch(f"/api/nodos/{nodo.pk}/", {"x": 40}, format="json").status_code, 200
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/nodos/", {"version": borrador.pk, "tipo": "fin", "titulo": "Cierre"}, format="json"
+            ).status_code,
+            201,
+        )
+        self.assertEqual(self.client.delete(f"/api/nodos/{nodo.pk}/").status_code, 204)
+
+    def test_la_pantalla_de_llamados_se_sigue_generando(self):
+        """Generar la URL del televisor no cambia el grafo: no puede quedar trabada."""
+        r = self.client.post(f"/api/nodos/{self.fin.pk}/pantalla/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data["token"])
+
+
+class NuevaVersionTests(APITestCase):
+    """
+    «Nueva versión» clona el grafo en un borrador y deja correr lo que ya está.
+
+    Sin esto, la única forma de cambiar un circuito publicado era editarlo en
+    vivo. Si el clon pierde condiciones, grupos o configuración, el configurador
+    publica una v2 que rutea distinto que la v1 sin haber tocado nada.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.grupo = Grupo.objects.create(area=self.area, nombre="Turno mañana")
+        self.user = Usuario.objects.create_user(
+            email="config@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+
+        self.formulario = Formulario.objects.create(institucion=self.inst, titulo="Triage")
+        self.campo = Campo.objects.create(
+            formulario=self.formulario, label="Temperatura", tipo="texto_corto", orden=0
+        )
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.v1 = VersionFlujo.objects.create(
+            flujo=self.flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        self.form = Nodo.objects.create(
+            version=self.v1, tipo="form", titulo="Triage", formulario=self.formulario,
+            config={"sla_minutos": 30}, x=80, y=100,
+        )
+        self.form.grupos.set([self.grupo])
+        self.dec = Nodo.objects.create(version=self.v1, tipo="decision", titulo="¿Fiebre?")
+        self.fin = Nodo.objects.create(version=self.v1, tipo="fin", titulo="Cierre")
+        # El flujo del escenario es PUBLICABLE: tiene Inicio y la Decisión tiene
+        # rama por defecto.
+        #
+        # Antes no los tenía y se publicaba igual, porque la validación no
+        # miraba ninguna de las dos cosas. Cuando pasó a mirarlas, este escenario
+        # —que existe para probar el versionado, no la validación— se volvió un
+        # flujo inválido y el test empezó a fallar por algo que no está probando.
+        self.inicio = Nodo.objects.create(version=self.v1, tipo="inicio", titulo="Inicio")
+        Conexion.objects.create(version=self.v1, origen=self.inicio, destino=self.form)
+        Conexion.objects.create(version=self.v1, origen=self.form, destino=self.dec)
+        Conexion.objects.create(
+            version=self.v1, origen=self.dec, destino=self.fin, etiqueta="con fiebre",
+            condicion={"campo": self.campo.pk, "operador": ">", "valor": "38"},
+        )
+        # La rama «si no»: sin ella, un caso que no cumple ninguna condición
+        # queda trabado en la decisión sin salida.
+        Conexion.objects.create(
+            version=self.v1, origen=self.dec, destino=self.fin, etiqueta="si no",
+        )
+
+    def _nueva(self):
+        return self.client.post(f"/api/versiones-flujo/{self.v1.pk}/nueva-version/", {}, format="json")
+
+    def test_clona_nodos_conexiones_condiciones_grupos_y_config(self):
+        r = self._nueva()
+        self.assertEqual(r.status_code, 201, r.data)
+        v2 = VersionFlujo.objects.get(pk=r.data["id"])
+        self.assertEqual((v2.numero, v2.estado), (2, VersionFlujo.Estado.BORRADOR))
+
+        self.assertEqual(v2.nodos.count(), 4)
+        form2 = v2.nodos.get(tipo="form")
+        self.assertEqual(form2.formulario_id, self.formulario.pk)
+        self.assertEqual(form2.config, {"sla_minutos": 30})
+        self.assertEqual([g.pk for g in form2.grupos.all()], [self.grupo.pk])
+
+        conex2 = v2.conexiones.get(etiqueta="con fiebre")
+        self.assertEqual(conex2.condicion, {"campo": self.campo.pk, "operador": ">", "valor": "38"})
+        # Las conexiones apuntan a los nodos NUEVOS, no a los de la v1.
+        self.assertEqual(conex2.origen.version_id, v2.pk)
+        self.assertEqual(conex2.destino.version_id, v2.pk)
+
+    def test_no_copia_el_token_de_la_pantalla_de_llamados(self):
+        """Dos nodos con el mismo token hacen que un televisor muestre la fila del otro."""
+        self.form.pantalla_token = "abc123"
+        self.form.save(update_fields=["pantalla_token"])
+        v2 = VersionFlujo.objects.get(pk=self._nueva().data["id"])
+        self.assertEqual(v2.nodos.get(tipo="form").pantalla_token, "")
+
+    def test_los_casos_en_curso_siguen_con_su_version(self):
+        caso = Caso.objects.create(institucion=self.inst, version=self.v1, nodo_actual=self.form)
+        self._nueva()
+        caso.refresh_from_db()
+        self.assertEqual(caso.version_id, self.v1.pk)
+        self.assertEqual(caso.nodo_actual_id, self.form.pk)
+        self.v1.refresh_from_db()
+        self.assertEqual(self.v1.estado, VersionFlujo.Estado.PUBLICADA)
+
+    def test_no_saca_dos_borradores_del_mismo_flujo(self):
+        """Con dos borradores compitiendo se termina publicando el equivocado."""
+        primera = self._nueva()
+        self.assertEqual(primera.status_code, 201)
+        segunda = self._nueva()
+        self.assertEqual(segunda.status_code, 409, segunda.data)
+        self.assertEqual(segunda.data["borrador"], primera.data["id"])
+        self.assertEqual(self.flujo.versiones.count(), 2)
+
+    def test_publicar_la_nueva_degrada_a_la_anterior(self):
+        v2 = VersionFlujo.objects.get(pk=self._nueva().data["id"])
+        r = self.client.post(f"/api/versiones-flujo/{v2.pk}/publicar/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.v1.refresh_from_db()
+        self.assertEqual(self.v1.estado, VersionFlujo.Estado.REEMPLAZADA)
+        self.assertEqual(
+            self.flujo.versiones.filter(estado=VersionFlujo.Estado.PUBLICADA).count(), 1
+        )
+
+
+class EstadoDeVersionNoEsUnCampoTests(APITestCase):
+    """
+    Publicar es una transición con reglas, no un campo que se escribe.
+
+    Si el estado se puede escribir por PATCH, el único control que impide que una
+    definición rota llegue a producción —`validar_version`, que corre sólo en la
+    acción `publicar`— se saltea entero: una versión sin nodo Inicio queda con el
+    badge verde «Publicado» y cada caso nuevo muere en `iniciar()`.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.user = Usuario.objects.create_user(
+            email="config@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.flujo = Flujo.objects.create(institucion=self.inst, titulo="Ingreso")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+
+    def test_un_patch_no_publica_una_version_sin_inicio(self):
+        r = self.client.patch(
+            f"/api/versiones-flujo/{self.version.pk}/", {"estado": "publicada"}, format="json"
+        )
+        self.assertIn(r.status_code, (200, 400), r.data)
+        self.version.refresh_from_db()
+        self.assertEqual(self.version.estado, VersionFlujo.Estado.BORRADOR)
+
+    def test_la_puerta_es_publicar_y_valida_el_grafo(self):
+        Nodo.objects.create(version=self.version, tipo="derivar", titulo="Derivar")  # sin área
+        r = self.client.post(f"/api/versiones-flujo/{self.version.pk}/publicar/", {}, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.version.refresh_from_db()
+        self.assertEqual(self.version.estado, VersionFlujo.Estado.BORRADOR)
+
+    def test_un_patch_no_mueve_la_version_de_flujo_ni_la_renumera(self):
+        """Renumerarla o cambiarle el flujo deja a los casos corriendo otro proceso."""
+        otro = Flujo.objects.create(institucion=self.inst, titulo="Otro")
+        r = self.client.patch(
+            f"/api/versiones-flujo/{self.version.pk}/",
+            {"flujo": otro.pk, "numero": 7},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.data)
+        self.version.refresh_from_db()
+        self.assertEqual((self.version.flujo_id, self.version.numero), (self.flujo.pk, 1))
+
+
+class DuplicarFlujoTests(APITestCase):
+    """
+    Duplicar copia el proceso, no sólo el título.
+
+    Es la acción con la que una red replica un circuito de 25 nodos en otro
+    hospital. Si copia un lienzo vacío, el flujo resultante pasa la validación
+    igual (falta de Fin y nodo sin salida son avisos), se puede publicar y elegir
+    como destino de una derivación: los casos derivados ahí quedan parados en
+    Inicio con el evento «Caso sin salida».
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.grupo = Grupo.objects.create(area=self.area, nombre="Turno mañana")
+        self.user = Usuario.objects.create_user(
+            email="config@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.v1 = VersionFlujo.objects.create(
+            flujo=self.flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        ini = Nodo.objects.create(version=self.v1, tipo="inicio", titulo="Inicio")
+        aten = Nodo.objects.create(
+            version=self.v1, tipo="atencion", titulo="Atención", config={"con_fila": True}
+        )
+        aten.grupos.set([self.grupo])
+        fin = Nodo.objects.create(version=self.v1, tipo="fin", titulo="Cierre")
+        Conexion.objects.create(version=self.v1, origen=ini, destino=aten)
+        Conexion.objects.create(version=self.v1, origen=aten, destino=fin, etiqueta="listo")
+
+    def test_la_copia_trae_el_grafo_completo(self):
+        r = self.client.post(f"/api/flujos/{self.flujo.pk}/duplicar/", {}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        copia = Flujo.objects.get(pk=r.data["id"])
+        self.assertEqual(copia.titulo, "Ingreso (copia)")
+
+        version = copia.versiones.get()
+        self.assertEqual((version.numero, version.estado), (1, VersionFlujo.Estado.BORRADOR))
+        self.assertEqual(version.nodos.count(), 3)
+        self.assertEqual(version.conexiones.count(), 2)
+        aten = version.nodos.get(tipo="atencion")
+        self.assertEqual(aten.config, {"con_fila": True})
+        self.assertEqual([g.pk for g in aten.grupos.all()], [self.grupo.pk])
+        self.assertEqual(version.conexiones.get(etiqueta="listo").destino.titulo, "Cierre")
+
+    def test_la_copia_no_comparte_nodos_con_el_original(self):
+        """Si compartieran nodos, tocar la copia cambiaría el flujo que está corriendo."""
+        copia = Flujo.objects.get(pk=self.client.post(f"/api/flujos/{self.flujo.pk}/duplicar/", {}, format="json").data["id"])
+        ids_originales = set(self.v1.nodos.values_list("pk", flat=True))
+        ids_copia = set(copia.versiones.get().nodos.values_list("pk", flat=True))
+        self.assertFalse(ids_originales & ids_copia)
+
+    def test_un_flujo_vacio_se_duplica_con_su_nodo_inicio(self):
+        vacio = Flujo.objects.create(institucion=self.inst, titulo="Sin nada")
+        r = self.client.post(f"/api/flujos/{vacio.pk}/duplicar/", {}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        version = Flujo.objects.get(pk=r.data["id"]).versiones.get()
+        self.assertEqual([n.tipo for n in version.nodos.all()], ["inicio"])
+
+
+class VolumenDelDisenoTests(APITestCase):
+    """
+    Ni el listado de flujos ni el mapa pueden hacer más consultas con más flujos.
+
+    Es la propiedad de `apps/casos/tests_volumen.py` aplicada a las dos pantallas
+    que quedaban afuera. `/api/flujos/` no lo abre sólo el diseñador: lo piden
+    también las bandejas y el detalle de caso, que son pantallas de ejecución
+    abiertas todo el día. Con un N+1 acá, la institución que llevó el sistema a
+    diez áreas ve la pantalla tardar y nadie sabe por qué.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.user = Usuario.objects.create_user(
+            email="admin@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+
+    def _poblar(self, cuantos):
+        for i in range(cuantos):
+            flujo = Flujo.objects.create(
+                institucion=self.inst, area=self.area, titulo=f"Proceso {i}"
+            )
+            v1 = VersionFlujo.objects.create(
+                flujo=flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+            )
+            VersionFlujo.objects.create(flujo=flujo, numero=2)
+            ini = Nodo.objects.create(
+                version=v1, tipo="inicio", titulo="Inicio", config={"origen": "ambos"}
+            )
+            der = Nodo.objects.create(
+                version=v1, tipo="derivar", titulo="Derivar", config={"flujo_destino_id": flujo.pk}
+            )
+            Conexion.objects.create(version=v1, origen=ini, destino=der)
+            Caso.objects.create(institucion=self.inst, version=v1, nodo_actual=der)
+
+    def _consultas(self, url, cuantos):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._poblar(cuantos)
+        self.client.get(url)  # calienta lo que se cachea por proceso
+        with CaptureQueriesContext(connection) as ctx:
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        return len(ctx.captured_queries)
+
+    def _no_escala(self, url):
+        pocas = self._consultas(url, 3)
+        muchas = self._consultas(url, 27)  # 3 + 27 = 30
+        self.assertEqual(
+            pocas, muchas,
+            f"{url} hace {pocas} consultas con 3 flujos y {muchas} con 30: hay un N+1.",
+        )
+
+    def test_listado_de_flujos(self):
+        self._no_escala("/api/flujos/?page_size=100")
+
+    def test_mapa_de_flujos(self):
+        self._no_escala("/api/flujos/mapa/")
+
+    def test_el_conteo_de_casos_activos_sigue_siendo_el_correcto(self):
+        """La anotación reemplaza a un `count()` por fila: tiene que dar lo mismo."""
+        flujo = Flujo.objects.create(institucion=self.inst, titulo="Ingreso")
+        v1 = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        v2 = VersionFlujo.objects.create(flujo=flujo, numero=2)
+        Caso.objects.create(institucion=self.inst, version=v1)
+        Caso.objects.create(institucion=self.inst, version=v2)
+        Caso.objects.create(institucion=self.inst, version=v1, estado=Caso.Estado.CERRADO)
+
+        r = self.client.get(f"/api/flujos/{flujo.pk}/")
+        self.assertEqual(r.data["casos_activos"], 2)
+
+
 class EnsayoTests(APITestCase):
     """
     «Probar» un flujo corre el motor REAL y no deja nada en la base.

@@ -38,7 +38,8 @@ class TrasladoSerializer(serializers.ModelSerializer):
         model = Traslado
         fields = [
             "id", "red", "origen", "origen_nombre", "destino", "destino_nombre",
-            "caso_origen", "caso_destino", "ciudadano", "paciente", "documento",
+            "caso_origen", "caso_destino", "ciudadano", "ciudadano_destino",
+            "paciente", "documento",
             "area_destino", "area_destino_nombre", "estado", "estado_display",
             "motivo", "motivo_display", "detalle", "urgente", "respuesta",
             "solicitado_por_nombre", "solicitado_at", "resuelto_at",
@@ -50,8 +51,8 @@ class TrasladoSerializer(serializers.ModelSerializer):
         # sin que el caso de origen se cierre.
         read_only_fields = [
             "id", "red", "origen", "destino", "caso_origen", "caso_destino", "ciudadano",
-            "estado", "respuesta", "solicitado_at", "resuelto_at", "salida_at",
-            "llegada_at", "movil",
+            "ciudadano_destino", "estado", "respuesta", "solicitado_at", "resuelto_at",
+            "salida_at", "llegada_at", "movil",
         ]
 
     def get_paciente(self, obj) -> str:
@@ -62,4 +63,12 @@ class TrasladoSerializer(serializers.ModelSerializer):
         return obj.solicitado_por.nombre_completo if obj.solicitado_por_id else None
 
     def get_soy_origen(self, obj) -> bool:
+        # Contra el establecimiento en el que se está parado, no contra el
+        # conjunto de membresías: quien tiene los dos efectores de la red daba
+        # `true` siempre, y la pantalla le mostraba los traslados entrantes como
+        # si los hubiera pedido él —sin «Responder» ni «Llegó», y con un
+        # «Cancelar» que anula el pedido del otro hospital—.
+        actual = self.context.get("institucion_actual")
+        if actual is not None:
+            return obj.origen_id == actual
         return obj.origen_id in (self.context.get("mis_instituciones") or set())

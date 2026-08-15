@@ -59,13 +59,22 @@ class Command(BaseCommand):
 
             for s in saturados:
                 inst = s["institucion"]
-                titulo = f"{inst.nombre} sin camas ({s['ocupacion']}% de ocupación)"
+                # El título identifica al ESTABLECIMIENTO y nada más. Cuando
+                # llevaba adentro el porcentaje, la ventana de 12 h sólo frenaba
+                # el aviso si la ocupación quedaba clavada en el mismo entero:
+                # una UTI de 20 camas cambia de porcentaje varias veces por
+                # turno, el cron corre cada media hora y toda la red terminaba
+                # recibiendo el mismo aviso varias veces por día. El día que se
+                # satura otro efector, ese aviso cae en la pila que ya se
+                # aprendió a ignorar.
+                titulo = f"{inst.nombre} sin camas"
 
                 # ¿Ya se avisó de este establecimiento hace poco?
                 if Notificacion.objects.filter(titulo=titulo, creada__gte=desde).exists():
                     continue
 
                 detalle = (
+                    f"{s['ocupacion']}% de ocupación: "
                     f"{s['libres']} libres de {s['operativas']} en servicio. "
                     f"Conviene derivar a otro efector de {red.nombre}."
                 )

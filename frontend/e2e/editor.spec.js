@@ -11,14 +11,33 @@ import { entrar } from "./apoyo";
  * el listener se enganchaba en un `useEffect` que corría mientras el flujo
  * todavía cargaba, con el contenedor del lienzo sin existir.
  */
+
+/*
+ * Deja el editor abierto sobre un BORRADOR, listo para modificar.
+ *
+ * El flujo del demo está publicado, y una versión publicada ya no se edita: los
+ * casos en curso están parados sobre esos nodos. Antes el editor dejaba
+ * intentarlo y sólo aparecía «Error al guardar» en la barra; ahora avisa y
+ * ofrece sacar una versión nueva, que es lo que hace esta función.
+ */
+async function abrirBorrador(page) {
+  await entrar(page, "admin");
+  await page.goto("/flujos");
+  await page.locator("tbody tr").first().click();
+  await page.waitForURL(/\/flujos\/\d+/);
+  await expect(page.locator("[data-nodo]").first()).toBeVisible();
+
+  const sacar = page.getByRole("button", { name: "Sacar una versión nueva" });
+  if (await sacar.isVisible().catch(() => false)) {
+    await sacar.click();
+    await expect(sacar).toBeHidden({ timeout: 15000 });
+    await expect(page.locator("[data-nodo]").first()).toBeVisible();
+  }
+}
+
 test.describe("Diseñador de flujos", () => {
   test.beforeEach(async ({ page }) => {
-    await entrar(page, "admin");
-    await page.goto("/flujos");
-    await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/flujos\/\d+/);
-    // El lienzo está listo cuando hay nodos dibujados.
-    await expect(page.locator("[data-nodo]").first()).toBeVisible();
+    await abrirBorrador(page);
   });
 
   /** Escala del lienzo y scroll de su contenedor, leídos del DOM real. */
@@ -211,11 +230,7 @@ test.describe("Diseñador de flujos", () => {
  */
 test.describe("Nodo de integración", () => {
   test.beforeEach(async ({ page }) => {
-    await entrar(page, "admin");
-    await page.goto("/flujos");
-    await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/flujos\/\d+/);
-    await expect(page.locator("[data-nodo]").first()).toBeVisible();
+    await abrirBorrador(page);
     await page.getByTitle("Agregar nodo «Integración»").click();
     await expect(page.getByLabel("Tipo de servicio")).toBeVisible();
   });

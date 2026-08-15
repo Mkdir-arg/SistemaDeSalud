@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -33,6 +33,20 @@ from .serializers import (
 # es pública y cada nombre que sobra es un dato de salud expuesto de más.
 VIGENCIA_LLAMADO_H = 8
 
+# Gravedad de la prioridad como número, para poder ORDENAR por ella.
+#
+# `prioridad` es un CharField, así que `?ordering=prioridad` ordena alfabético:
+# alta < normal < urgente. En la pantalla de Supervisión eso ponía los casos de
+# prioridad **Alta al fondo**, detrás de todos los normales —con 25 filas por
+# página, en la página 3—, que es justo lo contrario de lo que busca quien toca
+# la columna «Prioridad» para hacer triage.
+PRIORIDAD_ORDEN = Case(
+    When(prioridad=Caso.Prioridad.URGENTE, then=0),
+    When(prioridad=Caso.Prioridad.ALTA, then=1),
+    default=2,
+    output_field=IntegerField(),
+)
+
 
 class CasoViewSet(BaseModelViewSet):
     queryset = Caso.objects.select_related(
@@ -60,8 +74,17 @@ class CasoViewSet(BaseModelViewSet):
     # paginación se vuelve inestable (ver `OrdenEstable` en apps/common.py).
     ordering = ("-creado", "-id")
     # Columnas ordenables de la tabla de casos (`?ordering=-creado`).
+    #
+    # `paso_desde` es el reloj del PASO —lo que mide un SLA— y hasta ahora no
+    # estaba acá: Supervisión pedía `?ordering=paso_desde`, DRF lo descartaba en
+    # silencio y la lista volvía ordenada por antigüedad del caso, así que el
+    # paciente frenado hace seis horas quedaba debajo de una internación abierta
+    # hace doce días que se mueve todos los días.
+    # `prioridad_rank` es la prioridad por gravedad (ver `PRIORIDAD_ORDEN`);
+    # `prioridad` queda por compatibilidad, pero ordena alfabético.
     ordering_fields = (
-        "id", "creado", "actualizado", "estado", "prioridad",
+        "id", "creado", "actualizado", "estado", "prioridad", "prioridad_rank",
+        "paso_desde",
         "area_actual__nombre", "version__flujo__titulo", "nodo_actual__titulo",
         "asignado_a__apellido", "ciudadano__apellido",
     )
@@ -72,7 +95,7 @@ class CasoViewSet(BaseModelViewSet):
     )
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().annotate(prioridad_rank=PRIORIDAD_ORDEN)
         # `?supervisables=true` — los casos que el usuario puede supervisar:
         # activos y en un área donde es jefe. Se resuelve en el servidor a
         # propósito: la pantalla de Supervisión traía TODOS los casos de la
@@ -356,10 +379,30 @@ class CasoViewSet(BaseModelViewSet):
         caso = self.get_object()
         if not motor.usuario_supervisa(request.user, caso):
             return Response({"detail": "Solo el jefe del área puede reasignar el caso."}, status=status.HTTP_403_FORBIDDEN)
-        from apps.accounts.models import Usuario
+        from apps.accounts.models import Membresia, Usuario
         u = Usuario.objects.filter(pk=request.data.get("usuario_id")).first()
         if not u:
             return Response({"detail": "Usuario inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        # Una reasignación inválida no falla acá: falla después y en silencio.
+        #
+        # Sin membresía activa —el residente que terminó la rotación— el caso
+        # sale de la bandeja «Sin asignar» de todos (`?tomables=true` exige
+        # `asignado_a__isnull=True`) y queda en la de alguien que no entra más al
+        # sistema: nadie lo ve hasta que el paciente reclama. Y si el paso
+        # declara grupos responsables y la persona no integra ninguno, recibe la
+        # notificación, abre el caso y le rebota 403 en cada botón, sin que el
+        # jefe se entere de que la reasignación fue inútil.
+        if not u.is_superuser:
+            if not Membresia.objects.filter(usuario=u, institucion=caso.institucion, activo=True).exists():
+                return Response(
+                    {"detail": f"{u.nombre_completo} no tiene una membresía activa en esta institución."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not motor.usuario_puede_tomar(u, caso):
+                return Response(
+                    {"detail": f"{u.nombre_completo} no integra ningún grupo responsable de este paso."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         caso.asignado_a = u
         caso.save(update_fields=["asignado_a", "actualizado"])
         EventoCaso.objects.create(caso=caso, titulo="Reasignado", detalle=f"a {u.nombre_completo}", autor=request.user, nodo=caso.nodo_actual)

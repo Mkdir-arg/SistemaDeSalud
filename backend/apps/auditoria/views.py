@@ -80,9 +80,12 @@ class AccesoClinicoViewSet(
         qs = super().get_queryset()
         u = self.request.user
         if not u.is_superuser:
-            # Cada institución audita lo suyo. Los accesos sin institución
-            # —listados que no apuntan a un paciente— quedan para el
-            # superusuario de plataforma.
+            # Cada institución audita lo suyo. Un listado o una exportación no
+            # apuntan a un paciente, así que su institución sale del contexto
+            # del pedido (ver `_institucion_del_pedido`): sin eso, el evento más
+            # grave del registro —alguien se bajó el padrón— era invisible
+            # justo para quien tiene que responder por él. Lo que sigue quedando
+            # sólo para plataforma es lo que no se pudo atribuir a ninguna.
             ids = list(u.membresias.filter(activo=True).values_list("institucion_id", flat=True))
             qs = qs.filter(institucion_id__in=ids)
         p = self.request.query_params

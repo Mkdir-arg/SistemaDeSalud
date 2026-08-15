@@ -76,7 +76,7 @@ class TrasladosAPITests(APITestCase):
         r = self._solicitar()
         t = r.data["id"]
         self._como(self.jefe)
-        for ruta in ["aceptar", "rechazar", "cancelar", "en-camino", "recibido"]:
+        for ruta in ["aceptar", "rechazar", "cancelar", "en-camino", "recibido", "no-llego"]:
             with self.subTest(accion=ruta):
                 self.assertNotEqual(
                     self.client.post(f"/api/traslados/{t}/{ruta}/").status_code, 404,
@@ -143,6 +143,79 @@ class TrasladosAPITests(APITestCase):
         self.assertEqual(self.client.get("/api/traslados/?lado=entrantes").data["count"], 1)
         self.assertEqual(self.client.get("/api/traslados/?lado=salientes").data["count"], 0)
 
+    def test_los_abiertos_y_los_resueltos_se_piden_por_separado(self):
+        """
+        La pantalla existe para responder pedidos y no puede depender de cuántos
+        traslados viejos haya: trayendo el histórico entero para partirlo en el
+        cliente, un pedido de hace diez minutos se cae de la página y del otro
+        lado hay un paciente esperando una respuesta que no va a llegar.
+        """
+        t = self._solicitar().data["id"]
+        self._como(self.jefe)
+        self.client.post(f"/api/traslados/{t}/rechazar/", {"motivo": "Sin camas"})
+        self._solicitar()
+        self._como(self.jefe)
+        self.assertEqual(self.client.get("/api/traslados/?abiertos=true").data["count"], 1)
+        self.assertEqual(self.client.get("/api/traslados/?abiertos=false").data["count"], 1)
+
+    # --- Más de un establecimiento --------------------------------------------- #
+
+    def test_quien_tiene_los_dos_efectores_ve_el_traslado_desde_donde_esta_parado(self):
+        """
+        La dirección de una red y las regiones sanitarias son justamente quienes
+        tienen más de un efector. Resolviendo el lado contra el conjunto de
+        membresías, aparecían como origen en TODOS los traslados: la pestaña
+        «Nos derivan» se quedaba sin «Responder» ni «Llegó» y el paciente seguía
+        esperando en la otra guardia.
+        """
+        Membresia.objects.create(
+            usuario=self.med, institucion=self.centro, rol="jefe_area", activo=True
+        )
+        self._solicitar()
+        self._como(self.med)
+        parado_en_destino = self.client.get(
+            f"/api/traslados/?institucion={self.centro.id}"
+        ).data["results"][0]
+        self.assertFalse(parado_en_destino["soy_origen"])
+        parado_en_origen = self.client.get(
+            f"/api/traslados/?institucion={self.hosp.id}"
+        ).data["results"][0]
+        self.assertTrue(parado_en_origen["soy_origen"])
+
+    def test_desde_el_establecimiento_que_recibe_no_se_cancela_el_pedido_del_otro(self):
+        """
+        Es el botón que le quedaba a mano en la fila que lee como «me están
+        derivando»: un clic anulaba de verdad el pedido del otro hospital.
+        """
+        Membresia.objects.create(
+            usuario=self.med, institucion=self.centro, rol="jefe_area", activo=True
+        )
+        t = self._solicitar().data["id"]
+        self._como(self.med)
+        r = self.client.post(f"/api/traslados/{t}/cancelar/", {"institucion": self.centro.id})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(Traslado.objects.get(pk=t).estado, Traslado.Estado.SOLICITADO)
+
+    def test_el_traslado_que_no_llego_lo_registran_los_dos_lados(self):
+        """
+        Al que falleció en la ambulancia lo sabe el origen; al que se desvió,
+        cualquiera de los dos. Sin esto el caso de origen queda congelado.
+        """
+        t = self._solicitar().data["id"]
+        self._como(self.jefe)
+        self.client.post(f"/api/traslados/{t}/aceptar/", {"area_destino": self.uti.id})
+        self._como(self.ajeno)
+        self.assertEqual(
+            self.client.post(f"/api/traslados/{t}/no-llego/", {"motivo": "x"}).status_code, 404,
+            "un tercero no tiene por qué tocar este traslado",
+        )
+        self._como(self.med)
+        r = self.client.post(f"/api/traslados/{t}/no-llego/", {"motivo": "Falleció en el traslado"})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado"], "fallido")
+        self.caso.refresh_from_db()
+        self.assertFalse(self.caso.esperando)
+
     def test_el_estado_no_se_cambia_por_patch(self):
         """Cada paso mueve además el caso de alguno de los dos lados."""
         t = self._solicitar().data["id"]
@@ -172,6 +245,31 @@ class TrasladosAPITests(APITestCase):
         self._como(self.med)
         r = self.client.get(f"/api/traslados/destinos/?institucion={self.hosp.id}")
         self.assertEqual([d["nombre"] for d in r.data["destinos"]], ["Hospital Interzonal"])
+
+    def test_el_saturado_se_marca_por_establecimiento_y_no_por_nombre(self):
+        """
+        `Institucion.nombre` no es único, y en una región sanitaria los
+        homónimos son comunes: «Hospital Municipal», «Centro de Salud N° 1».
+        Comparando por texto, el que tiene camas libres queda marcado SATURADO y
+        el orden lo manda al fondo del desplegable: la ambulancia sale media
+        hora más lejos por un dato que miente en silencio.
+        """
+        lleno = Institucion.objects.create(nombre="Hospital Municipal")
+        vacio = Institucion.objects.create(nombre="Hospital Municipal")
+        self.red.instituciones.add(lleno, vacio)
+        for inst, estado in ((lleno, Cama.Estado.OCUPADA), (vacio, Cama.Estado.LIBRE)):
+            area = Area.objects.create(institucion=inst, nombre="Internación")
+            sala = Subarea.objects.create(area=area, nombre="Sala")
+            for i in range(4):
+                Cama.objects.create(area=area, subarea=sala, nombre=f"{inst.id}-{i}",
+                                    estado=estado)
+
+        self._como(self.med)
+        r = self.client.get(f"/api/traslados/destinos/?institucion={self.hosp.id}")
+        por_id = {d["id"]: d for d in r.data["destinos"]}
+        self.assertTrue(por_id[lleno.id]["saturado"])
+        self.assertFalse(por_id[vacio.id]["saturado"],
+                         "marcó saturado al homónimo que tiene camas libres")
 
     def test_las_camas_de_la_red_por_establecimiento(self):
         sala = Subarea.objects.create(area=self.uti, nombre="UTI")

@@ -77,6 +77,7 @@ class TurnoSerializer(serializers.ModelSerializer):
     paciente = serializers.SerializerMethodField()
     documento = serializers.CharField(source="ciudadano.documento", read_only=True)
     fin = serializers.DateTimeField(read_only=True)
+    resuelto_por_nombre = serializers.SerializerMethodField()
 
     class Meta:
         model = Turno
@@ -85,15 +86,27 @@ class TurnoSerializer(serializers.ModelSerializer):
             "documento", "inicio", "fin", "duracion_min", "estado", "estado_display",
             "sobreturno", "motivo", "origen", "caso", "observaciones",
             "recordado_at", "cancelado_at", "creado",
+            "resuelto_por", "resuelto_por_nombre", "resuelto_at",
         ]
         # El estado se mueve con las acciones (`cancelar`, `llegada`, `ausente`),
         # que además de cambiarlo abren el caso o liberan el horario. Por PATCH
         # se podría marcar «presente» sin que exista el caso.
+        #
+        # `inicio`, `agenda` y `ciudadano` también: el alta pasa por
+        # `motor.reservar` y el cambio de horario por `motor.reprogramar`, que
+        # validan la grilla, los bloqueos y la ocupación bajo candado. Editables
+        # por PATCH, un «reprogramar» hecho de la forma obvia apilaba dos
+        # titulares en la misma hora —invisibles en la grilla—, y además dejaba
+        # mover el turno a una agenda o a un paciente de OTRA institución, con la
+        # respuesta devolviendo nombre y documento de esa persona.
         read_only_fields = [
-            "estado", "caso", "duracion_min", "sobreturno",
-            "recordado_at", "cancelado_at", "creado",
+            "estado", "agenda", "ciudadano", "inicio", "caso", "duracion_min", "sobreturno",
+            "recordado_at", "cancelado_at", "creado", "resuelto_por", "resuelto_at",
         ]
 
     def get_paciente(self, obj) -> str | None:
         c = obj.ciudadano
         return f"{c.nombre} {c.apellido}".strip() if c else None
+
+    def get_resuelto_por_nombre(self, obj) -> str | None:
+        return obj.resuelto_por.nombre_completo if obj.resuelto_por_id else None

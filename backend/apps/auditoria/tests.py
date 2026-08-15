@@ -98,6 +98,47 @@ class RegistroDeAccesoTests(AuditoriaTestCase):
         self.client.get("/api/ciudadanos/?formato=csv")
         self.assertEqual(AccesoClinico.objects.get().tipo, AccesoClinico.Tipo.EXPORTACION)
 
+    def test_una_exportacion_dice_cuanta_gente_se_llevo(self):
+        """
+        Sin la cantidad, el registro no distingue la descarga de tres pacientes
+        de la del hospital entero, que es la diferencia que importa cuando
+        alguien denuncia una filtración. La exportación se transmite fila por
+        fila y no tiene `.data`, así que contar sobre la respuesta da 0 siempre.
+        """
+        self.client.get("/api/ciudadanos/?formato=csv")
+        a = AccesoClinico.objects.get()
+        self.assertEqual(a.tipo, AccesoClinico.Tipo.EXPORTACION)
+        self.assertEqual(a.resultados, 2)
+
+    def test_un_listado_sin_paciente_igual_se_atribuye_a_una_institucion(self):
+        """
+        Un acceso sin institución no lo puede ver ningún admin de institución
+        (el queryset filtra por las suyas). Sin esto, la exportación del padrón
+        —el evento más grave del registro— quedaba visible sólo para el
+        proveedor del software, y el hospital que responde ante el paciente
+        leía «no hubo exportaciones».
+        """
+        self.client.get("/api/ciudadanos/")
+        a = AccesoClinico.objects.get()
+        self.assertIsNone(a.ciudadano_id)
+        self.assertEqual(a.institucion_id, self.inst.id)
+
+    def test_un_parametro_basura_no_tumba_el_listado_clinico(self):
+        """
+        La regla de oro del módulo: registrar no puede hacer fallar la lectura.
+        Un `?ciudadano=undefined` —un bug del frontend, un link viejo, un
+        integrador que manda `Patient/12`— buscaba ese valor como id DESPUÉS de
+        que la respuesta ya estaba armada y devolvía 500: el padrón de pacientes
+        dejaba de abrir en medio de una guardia por culpa de la auditoría.
+        """
+        r = self.client.get("/api/ciudadanos/?ciudadano=undefined")
+        self.assertEqual(r.status_code, 200)
+        r = self.client.get("/api/entradas-historia/?historia__ciudadano=Patient%2F12")
+        self.assertEqual(r.status_code, 200)
+        # Y la lectura igual queda registrada: el guarda no puede convertirse en
+        # una forma silenciosa de leer sin dejar rastro.
+        self.assertEqual(AccesoClinico.objects.count(), 2)
+
     def test_guarda_desde_dónde_se_consultó(self):
         self.client.get(f"/api/historias-clinicas/{self.hc.id}/")
         self.assertIsNotNone(AccesoClinico.objects.get().ip)

@@ -68,6 +68,28 @@ class SaturacionTests(TestCase):
         self._correr()
         self.assertEqual(Notificacion.objects.count(), antes)
 
+    def test_no_repite_el_aviso_porque_cambio_el_porcentaje(self):
+        """
+        Una UTI cambia de ocupación varias veces por turno y el cron corre cada
+        media hora: si el porcentaje forma parte de la clave para no repetir,
+        toda la red recibe el mismo aviso varias veces por día. A la semana
+        nadie los mira, y el día que se satura otro efector —el aviso que sí
+        cambiaba una decisión de derivación— entra en la pila que ya se aprendió
+        a ignorar.
+        """
+        self._correr()
+        antes = Notificacion.objects.count()
+        self.assertTrue(antes, "no avisó ni la primera vez")
+
+        # Se libera una cama y el establecimiento sigue saturado: 90 %, no 100.
+        cama = Cama.objects.filter(estado=Cama.Estado.OCUPADA).first()
+        cama.estado = Cama.Estado.LIBRE
+        cama.save()
+
+        self._correr()
+        self.assertEqual(Notificacion.objects.count(), antes,
+                         "volvió a avisar de lo mismo porque cambió el porcentaje")
+
     def test_no_avisa_si_nadie_esta_saturado(self):
         Cama.objects.all().update(estado=Cama.Estado.LIBRE)
         self._correr()

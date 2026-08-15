@@ -118,6 +118,7 @@ export default function FlujoEditor() {
   const [guardado, setGuardado] = useState("idle"); // idle | guardando | guardado | error
   const [toast, setToast] = useState(null); // { tipo:'ok'|'error', msg, accion?:{label,fn} }
   const [publicando, setPublicando] = useState(false);
+  const [creandoVersion, setCreandoVersion] = useState(false);
   const [validando, setValidando] = useState(false);
   const guardadoTimer = useRef(null);
   const toastTimer = useRef(null);
@@ -753,6 +754,37 @@ export default function FlujoEditor() {
     } finally { setPublicando(false); }
   }
 
+  /*
+   * Sacar una versión nueva a partir de la publicada.
+   *
+   * Es la salida del callejón: el servidor no deja tocar una versión publicada y
+   * el editor no ofrecía ninguna forma de seguir. El endpoint existía desde
+   * siempre y ninguna pantalla lo usaba, así que la única manera de cambiar un
+   * flujo publicado era desde la API.
+   */
+  async function sacarVersionNueva() {
+    setCreandoVersion(true);
+    try {
+      const nueva = await api.post(`/versiones-flujo/${verId}/nueva-version/`, {});
+      const f = await api.get(`/flujos/${id}/`);
+      setFlujo(f);
+      setVerId(nueva.id);
+      await cargarVersion(nueva.id);
+      mostrarToast({ tipo: "ok", msg: `Versión ${nueva.numero} creada como borrador` });
+    } catch (e) {
+      // Ya hay un borrador abierto: llevarlo ahí es más útil que un error, que
+      // dejaría a la persona sin saber que su borrador existe.
+      const yaHay = e?.status === 409 && e?.data?.borrador;
+      if (yaHay) {
+        setVerId(e.data.borrador);
+        await cargarVersion(e.data.borrador);
+        mostrarToast({ tipo: "ok", msg: "Ya había un borrador abierto: te llevé ahí" });
+      } else {
+        mostrarToast({ tipo: "error", msg: "No se pudo crear la versión nueva." });
+      }
+    } finally { setCreandoVersion(false); }
+  }
+
   /* --- Modo Probar -----------------------------------------------------------
    *
    * Corre contra el MOTOR REAL (`POST /versiones-flujo/:id/ensayo/`), que ejecuta
@@ -1141,6 +1173,20 @@ export default function FlujoEditor() {
   // Sin recorrido posible: deshabilita Probar/Reproducir y explica por qué.
   const sinRecorrido = version.nodos.length < 2 || version.conexiones.length === 0;
 
+  /*
+   * Una versión publicada no se edita, y ahora la pantalla lo dice ANTES.
+   *
+   * El servidor rechaza cualquier escritura sobre el grafo de una versión que ya
+   * no es borrador —los casos en curso están parados sobre esos nodos—, pero el
+   * editor dejaba intentarlo igual: se arrastraba un nodo, se agregaba otro, y
+   * lo único que aparecía era «Error al guardar» en letra chica en la barra. El
+   * trabajo se perdía y el motivo no estaba en ningún lado.
+   *
+   * Con el aviso, además, hay salida: sacar una versión nueva es lo que hay que
+   * hacer, el endpoint existía y ninguna pantalla lo ofrecía.
+   */
+  const soloLectura = version.estado !== "borrador";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Barra superior */}
@@ -1171,6 +1217,25 @@ export default function FlujoEditor() {
           <Button onClick={publicar} disabled={version.estado === "publicada" || publicando}>{publicando ? "Publicando…" : "Publicar"}</Button>
         </div>
       </div>
+
+      {soloLectura && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "10px 24px", borderBottom: `1px solid var(--color-borde)`,
+          background: "var(--color-badge-amber-bg)", color: "var(--color-badge-amber-fg)",
+          fontSize: "var(--text-base)", flex: "none",
+        }}>
+          <Icon name="alert" size={15} />
+          <span style={{ flex: 1, minWidth: 220 }}>
+            Esta versión está <strong>{estV.label.toLowerCase()}</strong> y no se edita:
+            los casos en curso están parados sobre estos nodos. Para cambiar el flujo,
+            sacá una versión nueva.
+          </span>
+          <Button variant="secondary" onClick={sacarVersionNueva} disabled={creandoVersion}>
+            {creandoVersion ? "Creando…" : "Sacar una versión nueva"}
+          </Button>
+        </div>
+      )}
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Paleta (colapsable para pantallas chicas) */}

@@ -21,6 +21,36 @@ def _ip(request):
     return request.META.get("REMOTE_ADDR")
 
 
+def _institucion_del_pedido(request):
+    """
+    De qué institución habla un acceso que NO apunta a una persona.
+
+    Un listado o una exportación no tienen un ciudadano de quien tomar la
+    institución, y sin institución el acceso queda afuera de lo que
+    `AccesoClinicoViewSet` deja leer: el admin del hospital abre el filtro
+    «Exportación a archivo» y ve una lista vacía, o sea que el registro le
+    contesta «acá no pasó nada» el día que alguien se bajó el padrón entero con
+    documento, obra social y alergias. Quien responde ante el paciente y ante la
+    Ley 25.326 es la institución, no el proveedor del software.
+
+    Se toma del contexto del pedido: el `?institucion=` del listado —si el
+    usuario actúa ahí— o su única membresía activa. Con varias membresías y sin
+    filtro, el listado abarcó a más de una y elegir una sería anotar algo que no
+    pasó: queda en nulo, como antes.
+    """
+    u = getattr(request, "user", None)
+    if not (u and u.is_authenticated):
+        return None
+    ids = set(u.membresias.filter(activo=True).values_list("institucion_id", flat=True))
+    pedida = (request.query_params.get("institucion") or "").strip()
+    if pedida.isdigit():
+        pedida = int(pedida)
+        # Sin este chequeo, cualquiera podría ensuciar el registro de otra
+        # institución mandando un id que no le corresponde.
+        return pedida if (u.is_superuser or pedida in ids) else None
+    return next(iter(ids)) if len(ids) == 1 else None
+
+
 def registrar_acceso(request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0):
     """
     Escribe UNA línea del registro de accesos.
@@ -37,7 +67,9 @@ def registrar_acceso(request, tipo, recurso, ciudadano=None, objeto_id="", detal
         AccesoClinico.objects.create(
             usuario=request.user,
             ciudadano=ciudadano,
-            institucion=getattr(ciudadano, "institucion", None),
+            institucion_id=(
+                getattr(ciudadano, "institucion_id", None) or _institucion_del_pedido(request)
+            ),
             tipo=tipo,
             recurso=recurso,
             objeto_id=str(objeto_id or "")[:40],
@@ -96,36 +128,60 @@ class AuditaLecturaClinica:
 
     def list(self, request, *args, **kwargs):
         respuesta = super().list(request, *args, **kwargs)
+        try:
+            self._anotar_listado(request, respuesta)
+        except Exception:
+            # La regla de oro del módulo, que hasta acá no cubría este bloque:
+            # sólo el `create` estaba adentro del guarda. Con `?ciudadano=undefined`
+            # —un bug del frontend, un link viejo, un integrador que manda
+            # `Patient/12`— la búsqueda del paciente levantaba ValueError DESPUÉS
+            # de que la respuesta ya estaba armada, y el padrón dejaba de abrir en
+            # medio de una guardia por culpa del registro de auditoría.
+            log.exception("no se pudo registrar el listado clínico")
+        return respuesta
 
+    def _anotar_listado(self, request, respuesta):
         # Qué se buscó. Es lo que distingue «buscó a una persona por documento»
         # de «abrió el padrón entero», que son dos accesos muy distintos.
         filtros = {
             k: v for k, v in request.query_params.items()
             if k not in ("page", "page_size", "ordering", "formato", "sep")
         }
-        datos = getattr(respuesta, "data", None)
-        cuantos = (
-            datos.get("count", len(datos.get("results", [])))
-            if isinstance(datos, dict) else (len(datos) if isinstance(datos, list) else 0)
-        )
+
+        exportacion = request.query_params.get("formato") == "csv"
+        if exportacion:
+            # La exportación devuelve un `StreamingHttpResponse`, que no tiene
+            # `.data`: contar sobre la respuesta daba 0 SIEMPRE. El acceso más
+            # grave que este registro tiene que poder mostrar —alguien se llevó
+            # el padrón en un archivo— quedaba anotado sin decir si fueron tres
+            # pacientes o cuarenta mil, que es toda la diferencia en un reclamo.
+            cuantos = self.filter_queryset(self.get_queryset()).count()
+        else:
+            datos = getattr(respuesta, "data", None)
+            cuantos = (
+                datos.get("count", len(datos.get("results", [])))
+                if isinstance(datos, dict) else (len(datos) if isinstance(datos, list) else 0)
+            )
 
         # Un listado filtrado a UNA persona se registra como acceso a esa
         # persona: es lo que ocurrió, y si no, buscar por `?ciudadano=X` sería
         # una forma de leer una historia sin dejar rastro a su nombre.
         ciudadano = None
         for clave in ("ciudadano", "historia__ciudadano"):
-            if filtros.get(clave):
+            valor = filtros.get(clave)
+            # Sólo se consulta si el valor puede ser un id. Un `?ciudadano=undefined`
+            # buscado tal cual explota contra la base, y el listado clínico ya
+            # está resuelto: el paciente se queda sin ver su historia porque el
+            # registro no supo qué hacer con un parámetro basura.
+            if valor and str(valor).isdigit():
                 from apps.registros.models import Ciudadano
 
-                ciudadano = Ciudadano.objects.filter(pk=filtros[clave]).first()
+                ciudadano = Ciudadano.objects.filter(pk=valor).first()
                 break
 
         self._anotar(
-            AccesoClinico.Tipo.EXPORTACION
-            if request.query_params.get("formato") == "csv"
-            else AccesoClinico.Tipo.LISTADO,
+            AccesoClinico.Tipo.EXPORTACION if exportacion else AccesoClinico.Tipo.LISTADO,
             ciudadano=ciudadano,
             detalle=" ".join(f"{k}={v}" for k, v in sorted(filtros.items())),
             resultados=cuantos or 0,
         )
-        return respuesta

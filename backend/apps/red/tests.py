@@ -55,10 +55,13 @@ class RedTestCase(TestCase):
         Conexion.objects.create(version=v, origen=aten, destino=fin)
         return v
 
-    def _caso_en(self, inst, area, titulo):
+    def _caso_en(self, inst, area, titulo, documento=None, nombre="Juan"):
         v = self._flujo_publicado(inst, area, titulo)
-        c = Ciudadano.objects.create(institucion=inst, nombre="Juan", apellido="Pérez",
-                                     documento="30111222")
+        # Documento propio por paciente: dos personas distintas del mismo
+        # establecimiento no pueden compartirlo.
+        self._doc = getattr(self, "_doc", 30111221) + 1
+        c = Ciudadano.objects.create(institucion=inst, nombre=nombre, apellido="Pérez",
+                                     documento=str(self._doc) if documento is None else documento)
         caso = Caso.objects.create(institucion=inst, version=v, ciudadano=c, area_actual=area)
         from apps.casos import motor as motor_casos
         motor_casos.iniciar(caso, autor=self.med)
@@ -137,8 +140,59 @@ class RespuestaTests(RedTestCase):
         nuevo = t.caso_destino
         self.assertIsNotNone(nuevo)
         self.assertEqual(nuevo.institucion_id, self.centro.id)
-        self.assertEqual(nuevo.ciudadano_id, self.caso.ciudadano_id)
         self.assertIsNotNone(nuevo.nodo_actual_id, "el caso tiene que quedar posicionado")
+
+    def test_el_caso_del_destino_cuelga_de_un_paciente_del_destino(self):
+        """
+        `Ciudadano` tiene FK a institución y toda la API scopea por ahí. Si el
+        caso del destino colgara del ciudadano del origen, la UTI que acepta un
+        paciente crítico abriría su caso y la ficha le saldría vacía —404 al
+        pedir el paciente, cero historias clínicas: sin alergias, sin
+        antecedentes, sin estudios— y todo lo que firme su médico se asentaría
+        en el legajo del hospital que derivó, que sí lo lee.
+        """
+        t = self._solicitar()
+        motor.aceptar(t, autor=self.jefe, area_destino=self.uti)
+        t.refresh_from_db()
+        paciente = t.caso_destino.ciudadano
+        self.assertEqual(paciente.institucion_id, self.centro.id)
+        self.assertNotEqual(paciente.id, self.caso.ciudadano_id)
+        # Es la misma persona, y el traslado guarda las dos puntas para poder
+        # seguirla a lo largo de la red.
+        self.assertEqual(paciente.documento, self.caso.ciudadano.documento)
+        self.assertEqual(t.ciudadano_destino_id, paciente.id)
+
+    def test_si_el_paciente_ya_esta_en_el_destino_se_usa_su_registro(self):
+        """
+        Duplicarlo partiría su historia en dos legajos del mismo hospital: el
+        que ya tenía y el que abre este traslado.
+        """
+        ya = Ciudadano.objects.create(
+            institucion=self.centro, nombre="Juan", apellido="Pérez",
+            documento=self.caso.ciudadano.documento,
+        )
+        t = self._solicitar()
+        motor.aceptar(t, autor=self.jefe, area_destino=self.uti)
+        t.refresh_from_db()
+        self.assertEqual(t.caso_destino.ciudadano_id, ya.id)
+        self.assertEqual(
+            Ciudadano.objects.filter(institucion=self.centro).count(), 1, "se duplicó el paciente"
+        )
+
+    def test_dos_pacientes_sin_documento_no_se_fusionan_en_una_sola_persona(self):
+        """
+        El NN de guardia es el caso real. Buscar por documento vacío haría que
+        el segundo indocumentado que llega herede el legajo del primero: dos
+        personas distintas con la misma historia clínica.
+        """
+        primero = self._caso_en(self.hosp, self.guardia, "NN uno", documento="", nombre="NN1")
+        segundo = self._caso_en(self.hosp, self.guardia, "NN dos", documento="", nombre="NN2")
+        for caso in (primero, segundo):
+            t = motor.solicitar(caso, self.centro, Traslado.Motivo.CAMA, autor=self.med)
+            motor.aceptar(t, autor=self.jefe, area_destino=self.uti)
+
+        pacientes = Ciudadano.objects.filter(institucion=self.centro, documento="")
+        self.assertEqual(pacientes.count(), 2)
 
     def test_el_caso_de_origen_sigue_abierto_despues_de_aceptar(self):
         """Mientras el paciente no llegó, sigue siendo del que lo tiene."""
@@ -171,11 +225,40 @@ class RespuestaTests(RedTestCase):
         self.assertTrue(any("No hay camas" in n.detalle for n in avisos))
 
     def test_no_se_responde_dos_veces(self):
+        """
+        Dos instancias cargadas por separado, que es lo que hay cuando dos
+        requests llegan juntos: en el destino el jefe de área y el administrativo
+        tienen los dos el botón «Responder» y la pantalla no refresca sola.
+
+        Sin releer la fila con candado adentro de la transacción, el segundo
+        chequea el estado sobre su foto vieja y pasa: queda un traslado
+        «rechazado» con un caso ya abierto del otro lado —el origen sale a
+        buscar otro efector y el destino espera una ambulancia que no sale—,
+        y no hay forma de repararlo desde la app.
+        """
         t = self._solicitar()
-        motor.aceptar(t, autor=self.jefe, area_destino=self.uti)
-        t.refresh_from_db()
+        uno = Traslado.objects.get(pk=t.pk)
+        otro = Traslado.objects.get(pk=t.pk)
+        motor.aceptar(uno, autor=self.jefe, area_destino=self.uti)
         with self.assertRaises(motor.ErrorTraslado):
-            motor.rechazar(t, "tarde", autor=self.jefe)
+            motor.rechazar(otro, "tarde", autor=self.jefe)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Traslado.Estado.ACEPTADO)
+
+    def test_dos_aceptaciones_simultaneas_no_abren_dos_casos_por_el_mismo_paciente(self):
+        """
+        El segundo caso quedaría huérfano —el traslado apunta a uno solo— y
+        abierto para siempre en la bandeja del destino, inflando «casos activos»
+        e «ingresos» del tablero con el que la región decide a dónde mandar
+        recursos.
+        """
+        t = self._solicitar()
+        uno = Traslado.objects.get(pk=t.pk)
+        otro = Traslado.objects.get(pk=t.pk)
+        motor.aceptar(uno, autor=self.jefe, area_destino=self.uti)
+        with self.assertRaises(motor.ErrorTraslado):
+            motor.aceptar(otro, autor=self.jefe, area_destino=self.uti)
+        self.assertEqual(Caso.objects.filter(institucion=self.centro).count(), 1)
 
     def test_sin_flujo_publicado_en_el_area_lo_dice(self):
         vacia = Area.objects.create(institucion=self.centro, nombre="Sin flujo")
@@ -238,6 +321,92 @@ class ViajeTests(RedTestCase):
         motor.cancelar(t2, autor=self.med, motivo="Mejoró")
         otro.refresh_from_db()
         self.assertFalse(otro.esperando)
+
+    def test_al_cancelar_se_le_avisa_al_que_estaba_esperando_al_paciente(self):
+        """
+        Del otro lado ya reservaron una cama y avisaron al área. Sin aviso, la
+        cama queda bloqueada esperando una ambulancia que no sale y el equipo se
+        entera sólo si se le ocurre mirar la pantalla.
+        """
+        otro = self._caso_en(self.hosp, self.guardia, "Otra guardia")
+        t2 = motor.solicitar(otro, self.centro, Traslado.Motivo.CAMA, autor=self.med)
+        Notificacion.objects.all().delete()
+        motor.cancelar(t2, autor=self.med, motivo="Se consiguió lugar más cerca")
+        avisos = Notificacion.objects.filter(usuario=self.jefe)
+        self.assertTrue(avisos.exists(), "el destino no se enteró de la baja")
+        self.assertTrue(any("Se consiguió lugar" in n.detalle for n in avisos))
+
+    def test_avisa_al_destino_cuando_sale_la_ambulancia(self):
+        """
+        La marca «Paciente en camino» sólo se asienta en el caso de ORIGEN, que
+        el destino no puede leer: sin este aviso, el jefe de UTI que reservó la
+        cama no tiene forma de saber si el paciente salió más que el teléfono,
+        que es lo que este módulo vino a reemplazar.
+        """
+        Notificacion.objects.all().delete()
+        motor.marcar_en_camino(self.t, movil="Móvil 7", autor=self.med)
+        avisos = Notificacion.objects.filter(usuario=self.jefe)
+        self.assertTrue(avisos.exists())
+        self.assertTrue(any("Móvil 7" in n.detalle for n in avisos), "no dice en qué móvil viene")
+
+
+class NoLlegoTests(RedTestCase):
+    """
+    El traslado que sale mal: el paciente se descompensa y fallece en la
+    ambulancia, la familia se lo lleva, el móvil lo desvía a otro efector.
+
+    Sin un desenlace para eso, el caso de origen queda EN_ESPERA para siempre
+    —no avanza ni cierra— con el paciente muchas veces todavía ahí.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.t = self._solicitar()
+        motor.aceptar(self.t, autor=self.jefe, area_destino=self.uti)
+        self.t.refresh_from_db()
+
+    def test_un_traslado_que_no_llego_destraba_el_caso_de_origen(self):
+        motor.no_llego(self.t, "Falleció en el traslado", autor=self.med)
+        self.caso.refresh_from_db()
+        self.assertFalse(self.caso.esperando)
+        self.assertNotEqual(self.caso.estado, Caso.Estado.EN_ESPERA)
+        self.assertNotEqual(self.caso.estado, Caso.Estado.CANCELADO,
+                            "cancelar el caso entero le libera la cama a alguien que sigue ahí")
+
+    def test_cierra_el_caso_que_el_destino_habia_abierto(self):
+        """Es una cama comprometida y trabajo en la bandeja por alguien que no va a llegar."""
+        motor.no_llego(self.t, "Lo retiró la familia", autor=self.jefe)
+        self.t.refresh_from_db()
+        self.assertEqual(self.t.caso_destino.estado, Caso.Estado.CANCELADO)
+        self.assertEqual(self.t.estado, Traslado.Estado.FALLIDO)
+        self.assertFalse(self.t.abierto, "sigue apareciendo como en curso en las dos bandejas")
+
+    def test_no_se_da_por_no_llegado_sin_motivo(self):
+        """«Falleció en el traslado» y «lo retiró la familia» no son lo mismo para la región."""
+        with self.assertRaises(motor.ErrorTraslado):
+            motor.no_llego(self.t, "   ", autor=self.med)
+
+    def test_tambien_se_puede_registrar_con_el_movil_ya_en_la_calle(self):
+        motor.marcar_en_camino(self.t, movil="Móvil 3", autor=self.med)
+        self.t.refresh_from_db()
+        motor.no_llego(self.t, "Desviado a un efector más cercano", autor=self.med)
+        self.caso.refresh_from_db()
+        self.assertFalse(self.caso.esperando)
+
+    def test_el_motivo_le_llega_a_los_dos_lados(self):
+        Notificacion.objects.all().delete()
+        motor.no_llego(self.t, "Falleció en el traslado", autor=self.med)
+        for quien, lado in ((self.med, "origen"), (self.jefe, "destino")):
+            with self.subTest(lado=lado):
+                avisos = Notificacion.objects.filter(usuario=quien)
+                self.assertTrue(any("Falleció" in n.detalle for n in avisos))
+
+    def test_un_traslado_ya_recibido_no_se_da_por_no_llegado(self):
+        """El paciente ya está internado del otro lado: deshacerlo sería inventar."""
+        motor.marcar_recibido(self.t, autor=self.jefe)
+        self.t.refresh_from_db()
+        with self.assertRaises(motor.ErrorTraslado):
+            motor.no_llego(self.t, "tarde", autor=self.med)
 
 
 class VisibilidadTests(RedTestCase):

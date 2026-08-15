@@ -6,7 +6,7 @@ import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { Badge, Button, Field, Input, Modal, Select, Tabs, Textarea } from "@/components/ui";
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select, Tabs, Textarea } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad, fechaHora } from "@/lib/format";
@@ -31,7 +31,32 @@ const ESTADOS = {
   en_camino: { label: "En camino", tone: "info" },
   recibido: { label: "Recibido", tone: "success" },
   cancelado: { label: "Cancelado", tone: "gray" },
+  fallido: { label: "No llegó", tone: "error" },
 };
+
+/*
+ * Refresco automático, como en toda pantalla viva del sistema (la fila, mi
+ * trabajo, el tablero). Sin esto, una pantalla abierta y en foco —el caso normal
+ * en jefatura— queda congelada: el `staleTime` global sólo vuelve a pedir al
+ * recuperar el foco de la ventana, así que un pedido que entra a las 14:05 no
+ * aparece hasta que alguien cambia de ventana y vuelve. Un traslado sin
+ * responder es un paciente esperando en otra guardia.
+ */
+const VIVA = { refetchInterval: 30_000, refetchIntervalInBackground: false };
+
+/**
+ * El reloj de la fila sigue al ESTADO, no siempre al pedido.
+ *
+ * «En camino · hace 6 h» sobre un móvil que salió recién es información falsa
+ * para el equipo que espera al paciente, y la única salida que le queda es el
+ * teléfono, que es lo que este módulo vino a reemplazar.
+ */
+function reloj(t) {
+  if (t.estado === "en_camino" && t.salida_at) return { texto: "salió hace", ts: t.salida_at };
+  if (t.estado === "recibido" && t.llegada_at) return { texto: "llegó hace", ts: t.llegada_at };
+  if (t.estado === "solicitado") return { texto: "sin responder hace", ts: t.solicitado_at };
+  return { texto: "hace", ts: t.solicitado_at };
+}
 
 export default function RedTraslados() {
   const { institucion } = useInstitucion();
@@ -48,16 +73,23 @@ export default function RedTraslados() {
    * excepción. Se abre donde hay algo que ver, y sólo se decide una vez —si
    * después la persona cambia de pestaña, se respeta—.
    */
-  const entrantes = useLista("traslados", { lado: "entrantes", pageSize: 1 });
-  const salientes = useLista("traslados", { lado: "salientes", pageSize: 1 });
+  /*
+   * Se cuentan los ABIERTOS: es lo que requiere una decisión, y es el número
+   * que va en la pestaña. Con el total del histórico, un hospital con años de
+   * traslados resueltos mostraría «412» al lado de «Nos derivan» y no diría
+   * nada sobre si hay algo que responder ahora.
+   */
+  const comun = { abiertos: true, institucion: institucion?.id, pageSize: 1 };
+  const entrantes = useLista("traslados", { ...comun, lado: "entrantes" }, VIVA);
+  const salientes = useLista("traslados", { ...comun, lado: "salientes" }, VIVA);
   useEffect(() => {
     if (tab !== null || entrantes.isLoading || salientes.isLoading) return;
     setTab(entrantes.total > 0 || salientes.total === 0 ? "entrantes" : "salientes");
   }, [tab, entrantes.isLoading, entrantes.total, salientes.isLoading, salientes.total]);
 
   const TABS = [
-    { key: "entrantes", label: "Nos derivan" },
-    { key: "salientes", label: "Derivamos" },
+    { key: "entrantes", label: "Nos derivan", cuenta: entrantes.total },
+    { key: "salientes", label: "Derivamos", cuenta: salientes.total },
     { key: "panorama", label: "Panorama de la red" },
   ];
 
@@ -98,29 +130,58 @@ export default function RedTraslados() {
       ) : tab === "panorama" ? (
         <Panorama red={red} institucion={institucion} />
       ) : (
-        <Lista lado={tab} />
+        <Lista lado={tab} institucion={institucion} />
       )}
     </div>
   );
 }
 
-function Lista({ lado }) {
+function Lista({ lado, institucion }) {
   const toast = useToast();
   const navigate = useNavigate();
   const [respondiendo, setRespondiendo] = useState(null);
-  const q = useLista("traslados", { lado, ordering: "-urgente,-solicitado_at", pageSize: 100 });
+  const [confirmando, setConfirmando] = useState(null);
+
+  /*
+   * Los abiertos y los resueltos se piden POR SEPARADO.
+   *
+   * Traer las primeras 100 filas del histórico y partirlas en el cliente
+   * escondía justamente lo que esta pantalla existe para resolver: como
+   * `-urgente` ordena primero, un hospital de referencia con 100 traslados
+   * urgentes acumulados dejaba de ver cualquier pedido no urgente, incluido uno
+   * de hace diez minutos, sin ninguna señal de que faltaban filas. Del otro
+   * lado hay un paciente esperando una respuesta que no iba a llegar.
+   */
+  const comun = { lado, institucion: institucion?.id };
+  const abiertos = useLista(
+    "traslados",
+    { ...comun, abiertos: true, ordering: "-urgente,-solicitado_at", pageSize: 200 },
+    VIVA,
+  );
+  const resueltos = useLista(
+    "traslados", { ...comun, abiertos: false, ordering: "-solicitado_at", pageSize: 20 },
+  );
 
   const accion = useAccion(
-    ({ id, nombre, cuerpo }) => api.post(`/traslados/${id}/${nombre}/`, cuerpo || {}),
+    ({ id, nombre, cuerpo }) => api.post(`/traslados/${id}/${nombre}/`,
+                                         { institucion: institucion?.id, ...(cuerpo || {}) }),
     {
-      onSuccess: (_, { ok }) => { toast.ok(ok); q.refetch(); setRespondiendo(null); },
+      onSuccess: (_, { ok }) => {
+        toast.ok(ok);
+        abiertos.refetch();
+        resueltos.refetch();
+        setRespondiendo(null);
+        setConfirmando(null);
+      },
       onError: (e) => toast.deError(e),
     },
   );
 
-  if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
-  if (q.isLoading) return <Skeleton className="h-64" />;
-  if (!q.filas.length) {
+  if (abiertos.error) {
+    return <EstadoError error={abiertos.error} onReintentar={abiertos.refetch} />;
+  }
+  if (abiertos.isLoading || resueltos.isLoading) return <Skeleton className="h-64" />;
+  if (!abiertos.filas.length && !resueltos.filas.length) {
     return (
       <EstadoVacio
         titulo={lado === "entrantes" ? "No hay traslados hacia acá" : "No derivamos a nadie todavía"}
@@ -135,8 +196,8 @@ function Lista({ lado }) {
   }
 
   // Lo pendiente arriba: es lo único que requiere una decisión.
-  const pendientes = q.filas.filter((t) => t.abierto);
-  const cerrados = q.filas.filter((t) => !t.abierto);
+  const pendientes = abiertos.filas;
+  const cerrados = resueltos.filas;
 
   return (
     <div className="flex flex-col gap-lg">
@@ -148,8 +209,9 @@ function Lista({ lado }) {
           </header>
           <ul className="divide-y divide-division">
             {pendientes.map((t) => (
-              <Fila key={t.id} t={t} accion={accion} navigate={navigate}
-                    onResponder={() => setRespondiendo(t)} />
+              <Fila key={t.id} t={t} accion={accion} navigate={navigate} institucion={institucion}
+                    onResponder={() => setRespondiendo(t)}
+                    onConfirmar={(c) => setConfirmando({ ...c, t })} />
             ))}
           </ul>
         </section>
@@ -157,12 +219,17 @@ function Lista({ lado }) {
 
       {cerrados.length > 0 && (
         <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-          <header className="border-b border-division px-xl py-lg">
-            <h3 className="text-lg font-bold">Resueltos</h3>
+          <header className="flex items-center gap-2 border-b border-division px-xl py-lg">
+            <h3 className="flex-1 text-lg font-bold">Resueltos</h3>
+            {resueltos.total > cerrados.length && (
+              <span className="text-sm text-texto-tenue">
+                últimos {cerrados.length} de {resueltos.total}
+              </span>
+            )}
           </header>
           <ul className="divide-y divide-division">
             {cerrados.map((t) => (
-              <Fila key={t.id} t={t} accion={accion} navigate={navigate} />
+              <Fila key={t.id} t={t} accion={accion} navigate={navigate} institucion={institucion} />
             ))}
           </ul>
         </section>
@@ -175,36 +242,59 @@ function Lista({ lado }) {
           onClose={() => setRespondiendo(null)}
         />
       )}
+
+      {confirmando && (
+        <ConfirmarModal
+          {...confirmando}
+          accion={accion}
+          onClose={() => setConfirmando(null)}
+        />
+      )}
     </div>
   );
 }
 
-function Fila({ t, accion, navigate, onResponder }) {
+function Fila({ t, accion, navigate, institucion, onResponder, onConfirmar }) {
   const est = ESTADOS[t.estado] || { label: t.estado_display, tone: "gray" };
   const ocupado = accion.isPending;
   // El caso propio: el del otro lado no se puede abrir, y ofrecerlo sería
   // prometer algo que el servidor va a rechazar.
   const miCaso = t.soy_origen ? t.caso_origen : t.caso_destino;
+  const { texto, ts } = reloj(t);
+  // Cuando el paciente viene a otro de mis establecimientos, decir a cuál: en
+  // «Nos derivan» no había forma de saber a qué efector propio llega.
+  const otroLado = t.soy_origen
+    ? `a ${t.destino_nombre}`
+    : `desde ${t.origen_nombre}${t.destino_nombre !== institucion?.nombre ? ` → ${t.destino_nombre}` : ""}`;
 
   return (
     <li className="flex flex-wrap items-center gap-x-md gap-y-2 px-xl py-3.5">
       {t.urgente && <Badge tone="error">urgente</Badge>}
-      <span className="min-w-0 flex-1">
+      {/* Ancho completo hasta `sm`: siendo el único ítem que encoge, en un
+          celular cedía todo el espacio a la chapa de estado y a los botones y
+          quedaban cuatro filas de «Luis …» indistinguibles, cada una con su
+          botón azul. No se puede aceptar un traslado sin saber de quién es. */}
+      <span className="w-full min-w-0 sm:w-auto sm:flex-1">
         <span className="block truncate text-md font-semibold">{t.paciente}</span>
-        <span className="block truncate text-sm text-texto-tenue">
-          {t.soy_origen ? `a ${t.destino_nombre}` : `desde ${t.origen_nombre}`}
+        <span className="block text-sm text-texto-tenue sm:truncate">
+          {otroLado}
           {" · "}{t.motivo_display}
           {t.area_destino_nombre && ` · ${t.area_destino_nombre}`}
+          {t.estado === "en_camino" && t.movil && ` · ${t.movil}`}
         </span>
-        {/* El motivo del rechazo es lo que dice si insistir o buscar otro. */}
-        {t.estado === "rechazado" && t.respuesta && (
+        {/* El motivo es lo que dice si insistir, buscar otro o esperar: vale
+            igual para el rechazo, para la baja del origen y para el que no
+            llegó. Sin él, del otro lado sólo queda una chapa gris. */}
+        {["rechazado", "cancelado", "fallido"].includes(t.estado) && t.respuesta && (
           <span className="mt-0.5 block text-sm text-danger">{t.respuesta}</span>
         )}
       </span>
 
       <span className="whitespace-nowrap text-right text-sm text-texto-tenue">
         <Badge tone={est.tone}>{est.label}</Badge>
-        <span className="mt-0.5 block">hace {antiguedad(t.solicitado_at)}</span>
+        <span className="mt-0.5 block" title={`Pedido el ${fechaHora(t.solicitado_at)}`}>
+          {texto} {antiguedad(ts)}
+        </span>
       </span>
 
       <div className="flex flex-wrap gap-1.5">
@@ -217,26 +307,143 @@ function Fila({ t, accion, navigate, onResponder }) {
         {!t.soy_origen && t.estado === "solicitado" && (
           <Button size="sm" disabled={ocupado} onClick={onResponder}>Responder</Button>
         )}
+        {/* «Llegó» cierra el caso del otro hospital como DERIVADO y no se
+            puede deshacer: sobre un traslado que todavía no salió, un clic de
+            más lo saca de su bandeja con el paciente aún en la camilla. */}
         {!t.soy_origen && (t.estado === "aceptado" || t.estado === "en_camino") && (
-          <Button size="sm" disabled={ocupado}
-                  onClick={() => accion.mutate({ id: t.id, nombre: "recibido", ok: "Paciente recibido" })}>
+          <Button size="sm" disabled={ocupado} onClick={() => onConfirmar({
+            nombre: "recibido",
+            titulo: "¿Llegó el paciente?",
+            confirmar: "Sí, llegó",
+            ok: "Paciente recibido",
+            cuerpo: (
+              <>
+                Se cierra el caso de <strong>{t.origen_nombre}</strong> y {t.paciente} pasa a ser
+                responsabilidad de este establecimiento.
+                {t.estado === "aceptado" &&
+                  " Ojo: todavía no registraron la salida de la ambulancia."}
+              </>
+            ),
+          })}>
             Llegó
           </Button>
         )}
         {t.soy_origen && t.estado === "aceptado" && (
-          <Button size="sm" disabled={ocupado}
-                  onClick={() => accion.mutate({ id: t.id, nombre: "en-camino", ok: "Traslado en camino" })}>
+          <Button size="sm" disabled={ocupado} onClick={() => onConfirmar({
+            nombre: "en-camino",
+            titulo: "Salió la ambulancia",
+            confirmar: "Registrar salida",
+            ok: "Traslado en camino",
+            // El móvil es lo que pregunta el que espera al paciente, y el campo
+            // quedaba vacío para siempre porque nadie lo pedía.
+            campo: { clave: "movil", label: "Móvil / ambulancia",
+                     placeholder: "Ej.: Móvil 3", requerido: false },
+            cuerpo: <>Se le avisa a <strong>{t.destino_nombre}</strong> que {t.paciente} salió.</>,
+          })}>
             Salió
           </Button>
         )}
         {t.soy_origen && t.estado === "solicitado" && (
-          <Button size="sm" variant="secondary" disabled={ocupado}
-                  onClick={() => accion.mutate({ id: t.id, nombre: "cancelar", ok: "Traslado cancelado" })}>
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => onConfirmar({
+            nombre: "cancelar",
+            titulo: "Cancelar el pedido de traslado",
+            confirmar: "Cancelar el pedido",
+            peligroso: true,
+            ok: "Traslado cancelado",
+            campo: { clave: "motivo", label: "Motivo",
+                     placeholder: "Ej.: mejoró y no necesita derivarse", requerido: true },
+            cuerpo: (
+              <>
+                <strong>{t.destino_nombre}</strong> ya puede tener una cama reservada para
+                {" "}{t.paciente}. Se le avisa con el motivo.
+              </>
+            ),
+          })}>
             Cancelar
+          </Button>
+        )}
+        {/* La salida para el traslado que sale mal. Sin ella el caso de origen
+            queda congelado esperando a alguien que no va a llegar. */}
+        {(t.estado === "aceptado" || t.estado === "en_camino") && (
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => onConfirmar({
+            nombre: "no-llego",
+            titulo: "El paciente no llegó",
+            confirmar: "Registrar",
+            peligroso: true,
+            ok: "Traslado no concretado",
+            campo: { clave: "motivo", label: "Qué pasó",
+                     placeholder: "Ej.: falleció en el traslado / lo retiró la familia",
+                     requerido: true },
+            cuerpo: (
+              <>
+                Se cierra el traslado, se cancela el caso abierto en
+                {" "}<strong>{t.destino_nombre}</strong> y el caso de {t.origen_nombre} vuelve a
+                poder continuar.
+              </>
+            ),
+          })}>
+            No llegó
           </Button>
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * Confirmación de los pasos que no se pueden deshacer, con el dato que el
+ * backend ya acepta y la pantalla nunca pedía (el motivo, el móvil).
+ *
+ * «Cancelar» disparaba de una y con el cuerpo vacío: del otro lado había una
+ * guardia con una cama reservada que se enteraba —si se enteraba— de una chapa
+ * gris sin texto.
+ */
+function ConfirmarModal({ t, nombre, titulo, cuerpo, confirmar, ok, campo, peligroso, accion, onClose }) {
+  const [valor, setValor] = useState("");
+  const falta = campo?.requerido && !valor.trim();
+  const disparar = () => accion.mutate({
+    id: t.id, nombre, ok, cuerpo: campo ? { [campo.clave]: valor.trim() } : {},
+  });
+
+  // Los tres pasos que necesitan un dato usan `Modal` y no `ConfirmDialog`: el
+  // motivo es obligatorio y el confirmar tiene que quedar deshabilitado hasta
+  // que esté escrito, que es lo único que `ConfirmDialog` no puede hacer sin
+  // que su botón se lea «…». El resto —dos botones, el peligroso en danger, el
+  // que confirma diciendo QUÉ hace— sigue igual que ahí.
+  if (!campo) {
+    return (
+      <ConfirmDialog title={titulo} confirmar={confirmar} peligroso={peligroso}
+                     cargando={accion.isPending} onClose={onClose} onConfirmar={disparar}>
+        {cuerpo}
+      </ConfirmDialog>
+    );
+  }
+
+  return (
+    <Modal
+      title={titulo}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={accion.isPending}>Volver</Button>
+          <Button variant={peligroso ? "danger" : "primary"}
+                  disabled={accion.isPending || falta} onClick={disparar}>
+            {confirmar}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-md text-texto-suave">
+        <p>{cuerpo}</p>
+        <Field
+          label={campo.label}
+          hint={campo.requerido ? "Del otro lado, esto es lo único que explica qué pasó." : undefined}
+        >
+          <Input value={valor} onChange={(e) => setValor(e.target.value)}
+                 placeholder={campo.placeholder} autoFocus />
+        </Field>
+      </div>
+    </Modal>
   );
 }
 
@@ -245,7 +452,24 @@ function ResponderModal({ t, accion, onClose }) {
   const { institucion } = useInstitucion();
   const [area, setArea] = useState(t.area_destino || "");
   const [motivo, setMotivo] = useState("");
-  const areas = useLista("areas", { institucion: institucion?.id, activa: true, pageSize: 100 });
+
+  /*
+   * Sólo las áreas que pueden recibir el caso: `aceptar` lo rechaza si el área
+   * no tiene una versión de flujo PUBLICADA, y el error llegaba como toast rojo
+   * después de apretar «Aceptar», sin decir qué área sí sirve, con el traslado
+   * todavía en «Esperando respuesta». En un establecimiento recién configurado
+   * ése es el camino normal, no la excepción. Misma regla que en el caso.
+   */
+  const flujos = useLista("flujos", { institucion: institucion?.id, pageSize: 100 });
+  const areas = [];
+  const vistas = new Set();
+  for (const f of flujos.filas) {
+    const publicado = (f.versiones || []).some((v) => v.estado === "publicada");
+    if (publicado && f.area && !vistas.has(f.area)) {
+      vistas.add(f.area);
+      areas.push({ id: f.area, nombre: f.area_nombre });
+    }
+  }
 
   return (
     <Modal
@@ -290,11 +514,15 @@ function ResponderModal({ t, accion, onClose }) {
 
         <Field
           label="Área que lo recibe"
-          hint="Se abre un caso en el flujo publicado de esa área."
+          hint={
+            !flujos.isLoading && areas.length === 0
+              ? "Ningún área de este establecimiento tiene un flujo publicado para recibir casos: hasta que lo haya, sólo se puede rechazar."
+              : "Se abre un caso en el flujo publicado de esa área."
+          }
         >
           <Select value={area} onChange={(e) => setArea(e.target.value)}>
             <option value="">Elegir…</option>
-            {areas.filas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            {areas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </Select>
         </Field>
 

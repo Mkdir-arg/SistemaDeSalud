@@ -169,6 +169,63 @@ class CadenaTests(IntegridadTestCase):
         self.assertFalse(integridad.verificar_historia(self.hc)["ok"])
 
 
+class DosAlaVezTests(IntegridadTestCase):
+    """
+    Dos atenciones simultáneas del mismo paciente.
+
+    Guardia y estudio derivado, o el médico y la enfermera registrando a la vez.
+    Si las dos se encadenan al mismo eslabón, `verificar_historia` denuncia «la
+    cadena se rompió» sobre una historia que nadie tocó, y no hay forma de
+    re-sellar desde la aplicación: el falso positivo queda pegado diez años.
+    Es el peor error posible acá —la única prueba que el hospital tiene para
+    decir que la historia está intacta pasa a acusarlo—.
+    """
+
+    def test_sellar_toma_el_candado_de_la_historia(self):
+        """
+        Sin el candado, las dos transacciones leen la misma entrada previa antes
+        de que la otra commitee. Se mira el SQL porque es lo único que distingue
+        «se serializa» de «funciona cuando no hay nadie más».
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._entrada(titulo="Primera")
+        with CaptureQueriesContext(connection) as ctx:
+            self._entrada(titulo="Segunda")
+        sql = " ".join(q["sql"].lower() for q in ctx.captured_queries)
+        self.assertIn("registros_historiaclinica", sql)
+        self.assertIn("for update", sql)
+
+    def test_dos_entradas_no_se_pueden_encadenar_al_mismo_eslabon(self):
+        """
+        La red de seguridad debajo del candado: si igual llegaran a encadenarse
+        dos veces al mismo sello, falla la segunda en el momento —y se reintenta—
+        en vez de dejar la historia marcada como alterada para siempre.
+        """
+        from django.db import IntegrityError, transaction
+
+        a = self._entrada(titulo="Primera")
+        self._entrada(titulo="Segunda")
+
+        gemela = EntradaHistoria.objects.create(
+            historia=self.hc, titulo="Simultánea", autor=self.med,
+            firmada=True, matricula="MP 12345",
+        )
+        gemela.sello_previo = a.sello  # lo que dejaría la lectura sin candado
+        gemela.sello = integridad.calcular(gemela)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                gemela.save(update_fields=["sello", "sello_previo"])
+
+    def test_dos_atenciones_seguidas_dejan_la_historia_sana(self):
+        """El candado no puede volverse una traba: la cadena tiene que cerrar."""
+        for i in range(5):
+            self._entrada(titulo=f"Atención {i}")
+        r = integridad.verificar_historia(self.hc)
+        self.assertTrue(r["ok"], r["problemas"])
+
+
 class DesdeElMotorTests(IntegridadTestCase):
     """Firmar una atención desde el flujo tiene que sellar igual."""
 

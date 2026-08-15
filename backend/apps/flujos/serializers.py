@@ -3,6 +3,28 @@ from rest_framework import serializers
 from .models import Conexion, Flujo, Nodo, VersionFlujo
 
 
+def _publicada_de(flujo):
+    """La versión publicada del flujo, leída de las versiones ya precargadas.
+
+    `Flujo.version_publicada` consulta la base cada vez; acá se recorre lo que el
+    prefetch del viewset ya trajo (ordenado por -numero), que es lo que mantiene
+    el listado en una cantidad fija de consultas."""
+    for v in flujo.versiones.all():
+        if v.estado == VersionFlujo.Estado.PUBLICADA:
+            return v
+    return None
+
+
+def _vigente_de(flujo):
+    """La publicada si existe y, si no, la última por número (la misma regla que
+    muestra el listado). También sobre las versiones precargadas."""
+    versiones = list(flujo.versiones.all())
+    for v in versiones:
+        if v.estado == VersionFlujo.Estado.PUBLICADA:
+            return v
+    return versiones[0] if versiones else None
+
+
 class NodoSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
     # Lectura: grupos responsables con nombre y área (para mostrar "quién hace esto").
@@ -43,7 +65,21 @@ class VersionFlujoSerializer(serializers.ModelSerializer):
             "id", "flujo", "numero", "etiqueta", "estado", "estado_display",
             "nota", "autor", "creada", "nodos", "conexiones",
         ]
-        read_only_fields = ["creada"]
+        # `estado` NO es un campo, es una transición con reglas: la única puerta
+        # para publicar es la acción `publicar`, que valida el grafo y degrada a
+        # la publicada anterior. Con `estado` escribible, un PATCH marcaba como
+        # publicada una versión sin nodo Inicio: el badge decía «Publicado» y
+        # cada caso nuevo moría en `iniciar()`.
+        read_only_fields = ["creada", "estado"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Ya creada, `flujo` y `numero` tampoco se tocan: mover una versión de
+        # flujo o renumerarla deja a los casos en curso —que apuntan a esta
+        # fila— corriendo un proceso que no es el suyo.
+        if self.instance is not None:
+            for campo in ("flujo", "numero"):
+                self.fields[campo].read_only = True
 
 
 class VersionFlujoResumenSerializer(serializers.ModelSerializer):
@@ -77,10 +113,14 @@ class FlujoSerializer(serializers.ModelSerializer):
         read_only_fields = ["creado"]
 
     def get_origen_inicio(self, obj) -> str:
-        ver = obj.version_publicada
+        # Se resuelve sobre las versiones YA precargadas: `obj.version_publicada`
+        # hace `.filter()` sobre el related manager, que arma un queryset nuevo y
+        # anula el prefetch del viewset — una consulta por flujo, y este listado
+        # lo abren también las pantallas de ejecución.
+        ver = _publicada_de(obj)
         if not ver:
             return "ambos"
-        inicio = ver.nodos.filter(tipo="inicio").first()
+        inicio = next(iter(getattr(ver, "nodos_inicio", None) or ver.nodos.filter(tipo="inicio")[:1]), None)
         return (inicio.config or {}).get("origen", "ambos") if inicio else "ambos"
 
     def validate(self, attrs):
@@ -105,5 +145,11 @@ class FlujoSerializer(serializers.ModelSerializer):
         return "Institución"
 
     def get_casos_activos(self, obj) -> int:
+        # El viewset lo trae anotado en la misma consulta del listado. El conteo
+        # suelto queda como salida para los usos fuera del listado (por ejemplo
+        # el flujo recién duplicado, que todavía no pasó por el queryset).
+        anotado = getattr(obj, "casos_activos_anot", None)
+        if anotado is not None:
+            return anotado
         from apps.casos.models import Caso
         return Caso.objects.filter(version__flujo=obj).exclude(estado=Caso.Estado.CERRADO).count()
