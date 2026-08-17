@@ -1,4 +1,7 @@
+from django.db import transaction
+from django.db.models import Q
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.common import BaseModelViewSet
@@ -12,6 +15,21 @@ from .serializers import (
 
 
 class UsuarioViewSet(BaseModelViewSet):
+    """
+    Padrón de personas. **No es un directorio global**: cada institución ve sólo
+    a las suyas.
+
+    `Usuario` no tiene FK a institución (la pertenencia vive en `Membresia`), así
+    que el scope no lo puede dar `institucion_path` y se arma acá a mano. Sin
+    esto, el admin del Hospital A veía nombre y email del padrón completo de la
+    plataforma —incluido el del Hospital B— y podía asignar a un área a alguien
+    de otra institución. Un centro recién creado mostraba un desplegable lleno de
+    gente ajena, que es lo que hizo aparecer el problema.
+
+    El super admin de plataforma sí ve todo: administra el directorio en Cauce
+    Plataforma, que es donde se dan de alta las instituciones y sus admins.
+    """
+
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
     capacidad_requerida = "config"
@@ -21,6 +39,61 @@ class UsuarioViewSet(BaseModelViewSet):
     filter_fields = ("is_active", "is_staff", "is_superuser")
     search_fields = ["email", "nombre", "apellido"]
     ordering_fields = ["apellido", "nombre", "creado", "email"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+
+        # `?institucion=<id>`: el padrón de esa institución (quien tenga allí una
+        # membresía activa). Es lo que necesita cualquier selector de personas de
+        # una pantalla de institución.
+        inst = (self.request.query_params.get("institucion") or "").strip()
+        if inst.isdigit():
+            qs = qs.filter(membresias__institucion_id=int(inst), membresias__activo=True)
+
+        if user.is_authenticated and not user.is_superuser:
+            # Uno mismo entra siempre: si no, quien no tiene membresía activa no
+            # podría ni leer su propia ficha.
+            qs = qs.filter(
+                Q(membresias__institucion__in=self.instituciones_del_usuario()) | Q(pk=user.pk)
+            )
+
+        # Las membresías son varias por persona: sin esto, quien tiene dos roles
+        # sale repetido en la lista y descuadra el total de la paginación.
+        return qs.distinct()
+
+    def perform_create(self, serializer):
+        """Crea la persona y, en el mismo commit, su membresía.
+
+        Una persona sin membresía no pertenece a ninguna institución: con el
+        padrón ya acotado, quien la creó no la vuelve a ver ni puede asignarle
+        acceso. Era un callejón sin salida, así que el alta desde una institución
+        exige decir en qué institución entra y con qué rol.
+        """
+        user = self.request.user
+        datos = self.request.data
+        inst = (str(datos.get("institucion") or "")).strip()
+        rol = str(datos.get("rol") or Membresia.Rol.ADMINISTRATIVO).strip()
+
+        if not inst.isdigit():
+            if user.is_superuser:
+                serializer.save()  # alta desde Plataforma: la membresía se asigna después
+                return
+            propias = self.instituciones_del_usuario()
+            if len(propias) != 1:
+                raise ValidationError({"institucion": ["Indicá en qué institución entra la persona."]})
+            inst_id = propias[0]
+        else:
+            inst_id = int(inst)
+            if not user.is_superuser and inst_id not in self.instituciones_del_usuario():
+                raise ValidationError({"institucion": ["No podés dar de alta personas en esa institución."]})
+
+        if rol not in Membresia.Rol.values:
+            raise ValidationError({"rol": [f"Rol inválido: {rol}."]})
+
+        with transaction.atomic():
+            usuario = serializer.save()
+            Membresia.objects.create(usuario=usuario, institucion_id=inst_id, rol=rol)
 
     @action(detail=False, methods=["get"])
     def me(self, request):
@@ -76,7 +149,45 @@ class MembresiaViewSet(BaseModelViewSet):
 
 
 class LegajoProfesionalViewSet(BaseModelViewSet):
+    """
+    El legajo va con la persona: mismo límite que el padrón.
+
+    Trae especialidad y matrícula —dato profesional identificable— y es
+    escribible. Sin scope, el admin de una institución podía leer y pisar la
+    matrícula de un médico de otra.
+    """
+
     queryset = LegajoProfesional.objects.select_related("usuario")
     serializer_class = LegajoProfesionalSerializer
     capacidad_requerida = "config"
     filter_fields = ("usuario",)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.is_authenticated and not user.is_superuser:
+            qs = qs.filter(
+                Q(usuario__membresias__institucion__in=self.instituciones_del_usuario())
+                | Q(usuario_id=user.pk)
+            ).distinct()
+        return qs
+
+    def perform_create(self, serializer):
+        self._verificar_persona(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        # El objeto ya está acotado por el queryset, pero `usuario` es escribible:
+        # sin este chequeo se podía mover el legajo a una persona de otro centro.
+        self._verificar_persona(serializer)
+        serializer.save()
+
+    def _verificar_persona(self, serializer):
+        user = self.request.user
+        usuario = serializer.validated_data.get("usuario")
+        if not usuario or user.is_superuser or usuario.pk == user.pk:
+            return
+        propias = set(self.instituciones_del_usuario())
+        suyas = set(usuario.membresias.filter(activo=True).values_list("institucion_id", flat=True))
+        if not propias & suyas:
+            raise ValidationError({"usuario": ["Esa persona no pertenece a tu institución."]})

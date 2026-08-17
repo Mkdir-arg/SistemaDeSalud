@@ -866,10 +866,18 @@ function AsignarModal({ area, onClose }) {
   const [usuarioId, setUsuarioId] = useState("");
   const [funcion, setFuncion] = useState("administrativo");
 
+  // Sólo el padrón de ESTA institución: asignar a un área a alguien de otro
+  // hospital no significa nada, y listar el padrón entero de la plataforma le
+  // mostraba a este admin nombre y email de gente ajena.
+  //
   // Se piden 100 y sin superusuarios: con los 25 de la primera página el
   // desplegable ocultaba gente sin decirlo.
-  const usuarios = useLista("usuarios", { is_superuser: false, pageSize: 100, ordering: "apellido" });
-  const elegido = usuarioId || String(usuarios.filas[0]?.id || "");
+  const usuarios = useLista("usuarios", {
+    institucion: area.institucion, is_superuser: false, pageSize: 100, ordering: "apellido",
+  });
+  // Sin preselección: con el primero de la lista ya elegido, un clic distraído en
+  // «Asignar» le daba acceso al área a quien quedó arriba por orden alfabético.
+  const elegido = usuarioId;
 
   const asignar = useAccion(
     async () => {
@@ -912,14 +920,15 @@ function AsignarModal({ area, onClose }) {
         <Skeleton className="h-24" />
       ) : usuarios.filas.length === 0 ? (
         <EstadoVacio
-          titulo="No hay usuarios para asignar"
-          detalle="Creá usuarios desde el directorio de plataforma."
+          titulo="Esta institución todavía no tiene personas"
+          detalle="Creá usuarios en Estructura → Usuarios y después asignalos al área."
           icono="users"
         />
       ) : (
         <div className="flex flex-col gap-3.5">
           <Field label="Persona">
             <Select value={elegido} onChange={(e) => setUsuarioId(e.target.value)}>
+              <option value="">— Elegí una persona —</option>
               {usuarios.filas.map((u) => (
                 <option key={u.id} value={u.id}>{u.nombre_completo || u.email}</option>
               ))}

@@ -138,6 +138,7 @@ export default function Usuarios() {
 
 function UsuarioModal({ usuario, onClose }) {
   const toast = useToast();
+  const { institucion } = useInstitucion();
   const esNuevo = !usuario.id;
   const [form, setForm] = useState({
     email: usuario.email || "",
@@ -145,6 +146,7 @@ function UsuarioModal({ usuario, onClose }) {
     apellido: usuario.apellido || "",
     password: "",
     is_active: usuario.is_active ?? true,
+    rol: "administrativo",
   });
   const [nuevaMemb, setNuevaMemb] = useState({ institucion: "", rol: "administrativo" });
   const [aQuitar, setAQuitar] = useState(null);
@@ -161,7 +163,14 @@ function UsuarioModal({ usuario, onClose }) {
         email: form.email, nombre: form.nombre, apellido: form.apellido, is_active: form.is_active,
       };
       if (form.password) payload.password = form.password;
-      return esNuevo ? api.post("/usuarios/", payload) : api.patch(`/usuarios/${usuario.id}/`, payload);
+      if (esNuevo) {
+        // La membresía va en el mismo alta (el servidor la crea en la misma
+        // transacción): una persona sin membresía no pertenece a ninguna
+        // institución, y con el padrón acotado a la propia no volvía a aparecer
+        // en ninguna lista, ni para darle acceso.
+        return api.post("/usuarios/", { ...payload, institucion: institucion?.id, rol: form.rol });
+      }
+      return api.patch(`/usuarios/${usuario.id}/`, payload);
     },
     {
       onSuccess: () => { toast.ok(esNuevo ? "Usuario creado." : "Usuario actualizado."); onClose(); },
@@ -211,6 +220,15 @@ function UsuarioModal({ usuario, onClose }) {
         <Field label={esNuevo ? "Contraseña" : "Nueva contraseña (dejar vacío para no cambiar)"}>
           <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} />
         </Field>
+        {/* Al crear no se elige institución: entra en esta, la del contexto. Lo
+            único que falta decidir es con qué rol. */}
+        {esNuevo && (
+          <Field label={`Rol en ${institucion?.nombre || "esta institución"} *`}>
+            <Select value={form.rol} onChange={(e) => set("rol", e.target.value)}>
+              {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </Select>
+          </Field>
+        )}
         <label className="flex items-center gap-2.5 text-md">
           <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} /> Activo
         </label>
