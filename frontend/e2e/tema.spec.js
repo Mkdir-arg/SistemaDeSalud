@@ -103,12 +103,21 @@ const DINAMICAS_ADMIN = [
     await page.locator("tbody tr").first().click();
     await page.waitForURL(/\/historia\/\d+/);
   } },
-  // El panel lateral del área es donde vive casi toda la pantalla de estructura,
-  // y no se ve si no se abre.
-  { nombre: "panel lateral de un área", resolver: async (page) => {
+  // La ficha del área es donde vive casi toda la pantalla de estructura, y el
+  // árbol no la abre solo: hay que elegir un área.
+  { nombre: "ficha de un área", resolver: async (page) => {
     await page.goto("/estructura");
-    await page.locator("tbody tr").first().click();
-    await page.getByRole("dialog").waitFor();
+    await page
+      .getByRole("navigation", { name: /Áreas de la institución/ })
+      .locator("li button")
+      .first()
+      .click();
+    await page.waitForURL(/\/estructura\/\d+\/datos/);
+    await page
+      .getByRole("navigation", { name: "Secciones del área" })
+      .getByRole("button", { name: /^Staff/ })
+      .click();
+    await page.waitForURL(/\/staff$/);
   } },
   // El diseñador de flujos, con un nodo abierto: es donde vive el panel de
   // propiedades, que es la mitad de la pantalla.

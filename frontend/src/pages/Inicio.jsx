@@ -62,7 +62,7 @@ export default function Inicio() {
   return (
     <div className="px-lg py-[26px] sm:px-[30px]">
       {/* Cabecera de institución */}
-      <Card className="mb-5 flex flex-wrap items-center gap-lg px-6 py-[22px]">
+      <Card data-tour="inicio-institucion" className="mb-5 flex flex-wrap items-center gap-lg px-6 py-[22px]">
         <div className="flex size-12 flex-none items-center justify-center rounded-lg bg-accent-50 text-accent">
           <Icon name="building" size={24} />
         </div>
@@ -73,6 +73,7 @@ export default function Inicio() {
         <div className="flex-1" />
         <Link
           to="/bandeja"
+          data-tour="inicio-operar"
           className="flex h-10 items-center gap-2 rounded-lg bg-accent-fuerte px-lg text-base font-semibold text-sobre-accent hover:brightness-110"
         >
           <Icon name="enter" size={15} /> Operar
@@ -110,6 +111,7 @@ export default function Inicio() {
           <Link
             key={s.to}
             to={s.to}
+            data-tour={`inicio-${s.to.slice(1)}`}
             className="rounded-lg border border-borde bg-superficie p-5 transition hover:border-accent-100 hover:shadow-float"
           >
             <div className={`mb-3 flex size-10 items-center justify-center rounded-lg ${ACENTO[s.cat]}`}>

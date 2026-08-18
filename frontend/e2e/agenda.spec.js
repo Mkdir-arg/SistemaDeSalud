@@ -120,19 +120,26 @@ test.describe("Agenda", () => {
     const fecha = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
       .toISOString()
       .slice(0, 10);
-    const horario = (hora, sobreturnos, ocupado = true) => ({
-      inicio: `${fecha}T${hora}:00-03:00`,
-      duracion_min: 20,
-      ocupado,
-      turno_id: null,
-      paciente: ocupado ? "Paciente de prueba" : null,
-      estado: ocupado ? "reservado" : null,
-      titulares: ocupado ? 1 : 0,
-      sobreturnos,
-      admite_sobreturno: ocupado && sobreturnos < sobreturnosMax,
-      bloqueado: false,
-      fuera_de_grilla: false,
-    });
+    const horario = (hora, sobreturnos, ocupado = true, cupos = 1, titulares = null) => {
+      const dados = titulares ?? (ocupado ? 1 : 0);
+      const libres = Math.max(0, cupos - dados);
+      return {
+        inicio: `${fecha}T${hora}:00-03:00`,
+        duracion_min: 20,
+        cupos,
+        libres,
+        ocupado: libres === 0,
+        turno_id: null,
+        paciente: dados > 0 ? "Paciente de prueba" : null,
+        estado: dados > 0 ? "reservado" : null,
+        titulares: dados,
+        sobreturnos,
+        sobreturnos_max: sobreturnosMax,
+        admite_sobreturno: libres === 0 && sobreturnos < sobreturnosMax,
+        bloqueado: false,
+        fuera_de_grilla: false,
+      };
+    };
     return {
       agenda: { id: 1, nombre: "Agenda de prueba", sobreturnos_max: sobreturnosMax },
       fecha,
@@ -183,6 +190,94 @@ test.describe("Agenda", () => {
     // Donde todavía entra uno no va el cartelito: ahí la respuesta es el «+».
     const conLugar = page.getByRole("listitem").filter({ hasText: "08:20" }).first();
     await expect(conLugar).not.toContainText("sobreturnos");
+  });
+
+  test("un horario de tres puestos dice cuántos lugares quedan y sigue ofreciendo turno", async ({ page }) => {
+    /*
+     * El vacunatorio y la sala de enfermería atienden a tres personas a las 10.
+     * Con un solo cupo por horario, el renglón con un paciente adentro se
+     * dibujaba «ocupado» y sin botón: los otros dos lugares existían en la agenda
+     * y no había forma de darlos, así que se anotaban en un papel.
+     */
+    const fecha = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10);
+    await abrirConDia(page, {
+      agenda: { id: 1, nombre: "Vacunatorio", sobreturnos_max: 0 },
+      fecha,
+      horarios: [{
+        inicio: `${fecha}T10:00:00-03:00`,
+        duracion_min: 20, cupos: 3, libres: 2, ocupado: false,
+        turno_id: null, paciente: "Paciente de prueba", estado: "reservado",
+        titulares: 1, sobreturnos: 0, sobreturnos_max: 0,
+        admite_sobreturno: false, bloqueado: false, fuera_de_grilla: false,
+      }],
+    });
+    const renglon = page.getByRole("listitem").filter({ hasText: "10:00" }).first();
+    await expect(renglon).toContainText("1 de 3 lugares");
+    await expect(renglon.getByRole("button", { name: "Dar turno" })).toBeVisible();
+  });
+
+  test("la semana se ve de un vistazo, con el bloqueo dibujado encima", async ({ page }) => {
+    /*
+     * «¿Cómo viene la semana?» se contestaba apretando «Día siguiente» siete
+     * veces. Y el bloqueo —vacaciones, un feriado— no tenía ninguna pantalla: la
+     * única forma de cerrar una tarde era borrar la franja, que se lleva el
+     * horario habitual y deja los turnos dados fuera de la grilla.
+     */
+    const lunes = "2026-08-17";
+    await entrar(page, "medico");
+    await page.route(/\/api\/agendas\/\d+\/semana\//, (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          agenda: { id: 1, nombre: "Agenda de prueba", sobreturnos_max: 2 },
+          desde: lunes,
+          dias: [0, 1, 2, 3, 4, 5, 6].map((i) => {
+            const f = new Date(`${lunes}T12:00:00`);
+            f.setDate(f.getDate() + i);
+            const fecha = f.toISOString().slice(0, 10);
+            return {
+              fecha,
+              horarios: i === 1
+                ? [{
+                    inicio: `${fecha}T09:00:00-03:00`, duracion_min: 20, cupos: 1, libres: 0,
+                    ocupado: true, titulares: 1, sobreturnos: 0, sobreturnos_max: 2,
+                    admite_sobreturno: true, bloqueado: false, fuera_de_grilla: false,
+                  }, {
+                    inicio: `${fecha}T09:20:00-03:00`, duracion_min: 20, cupos: 1, libres: 1,
+                    ocupado: false, titulares: 0, sobreturnos: 0, sobreturnos_max: 2,
+                    admite_sobreturno: false, bloqueado: false, fuera_de_grilla: false,
+                  }]
+                : [],
+            };
+          }),
+        }),
+      }),
+    );
+    await page.route(/\/api\/bloqueos-agenda\/\?/, (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          count: 1,
+          results: [{
+            id: 9, agenda: 1, motivo: "Congreso",
+            desde: `${lunes}T14:00:00-03:00`, hasta: `${lunes}T18:00:00-03:00`,
+          }],
+        }),
+      }),
+    );
+    await page.goto("/agenda");
+    await esperarPantalla(page);
+    await page.getByRole("button", { name: "Semana" }).click();
+
+    const semana = page.locator("section").filter({ hasText: "Bloqueos de esta semana" });
+    // El resumen del día es lo que se busca de reojo: cuántos dados y cuántos
+    // quedan, sin abrir el día.
+    await expect(semana).toContainText("1 dados · 1 libres");
+    await expect(semana).toContainText("Congreso");
   });
 
   test("una agenda que no toma sobreturnos lo dice una vez arriba", async ({ page }) => {

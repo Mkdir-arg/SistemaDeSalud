@@ -564,3 +564,272 @@ class ProximosLibresTests(AgendaTestCase):
         )
         libres = motor.proximos_libres(self.agenda, desde=self._hora(0, 1), cuantos=3)
         self.assertTrue(all(timezone.localdate(h["inicio"]) != self.martes for h in libres))
+
+
+class ModalidadTests(AgendaTestCase):
+    """
+    Presencial o virtual.
+
+    Lo que se cuida acá es que la modalidad del turno no pueda contradecir a la
+    de la agenda, y que un turno virtual salga con la sala puesta: las dos cosas
+    terminan en un paciente esperando en el lugar equivocado.
+    """
+
+    def test_por_defecto_el_turno_es_presencial(self):
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        self.assertEqual(t.modalidad, Turno.Modalidad.PRESENCIAL)
+        self.assertEqual(t.enlace, "")
+
+    def test_una_agenda_virtual_da_turnos_virtuales_sin_que_nadie_lo_pida(self):
+        self.agenda.modalidad = Agenda.Modalidad.VIRTUAL
+        self.agenda.enlace_virtual = "https://sala.example.com/suarez"
+        self.agenda.save()
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        self.assertEqual(t.modalidad, Turno.Modalidad.VIRTUAL)
+        # La sala se COPIA al reservar: si mañana cambia la de la agenda, el link
+        # que se le dio a esta persona tiene que seguir siendo el que funcionaba.
+        self.assertEqual(t.enlace, "https://sala.example.com/suarez")
+
+    def test_la_agenda_presencial_no_admite_un_turno_virtual(self):
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           modalidad=Turno.Modalidad.VIRTUAL)
+
+    def test_la_agenda_virtual_no_admite_un_turno_presencial(self):
+        self.agenda.modalidad = Agenda.Modalidad.VIRTUAL
+        self.agenda.save()
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           modalidad=Turno.Modalidad.PRESENCIAL)
+
+    def test_la_agenda_mixta_da_las_dos_y_por_defecto_presencial(self):
+        """
+        Equivocarse hacia presencial deja al paciente viniendo al hospital; hacia
+        virtual lo deja esperando frente a una pantalla a alguien que lo espera
+        en el consultorio.
+        """
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.save()
+        otro = Ciudadano.objects.create(
+            institucion=self.inst, nombre="Luis", apellido="Gomez", documento="30999888"
+        )
+        a = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        b = motor.reservar(self.agenda, otro, self._hora(8, 20), autor=self.user,
+                           modalidad=Turno.Modalidad.VIRTUAL, enlace="https://sala.example.com/l")
+        self.assertEqual(a.modalidad, Turno.Modalidad.PRESENCIAL)
+        self.assertEqual(b.modalidad, Turno.Modalidad.VIRTUAL)
+        self.assertEqual(b.enlace, "https://sala.example.com/l")
+
+    def test_un_turno_presencial_no_se_queda_con_un_enlace(self):
+        """Alguien lo lee y se conecta en vez de venir."""
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           enlace="https://sala.example.com/pegado")
+        self.assertEqual(t.enlace, "")
+
+    def test_pasar_el_turno_a_virtual_no_libera_el_horario(self):
+        """
+        Es el pedido de todos los dias —«no puedo ir, ¿lo hacemos por video?»— y
+        la alternativa era cancelar y volver a dar el turno: en el medio se lo
+        lleva otro paciente.
+        """
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.enlace_virtual = "https://sala.example.com/suarez"
+        self.agenda.save()
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        t = motor.cambiar_modalidad(t, modalidad=Turno.Modalidad.VIRTUAL, autor=self.user)
+        self.assertEqual(t.modalidad, Turno.Modalidad.VIRTUAL)
+        self.assertEqual(t.enlace, "https://sala.example.com/suarez")
+        self.assertEqual(t.inicio, self._hora(8, 0))
+        self.assertEqual(t.estado, Turno.Estado.RESERVADO)
+        self.assertIn("Modalidad", t.observaciones)
+
+    def test_volver_a_presencial_borra_el_enlace(self):
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.enlace_virtual = "https://sala.example.com/suarez"
+        self.agenda.save()
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           modalidad=Turno.Modalidad.VIRTUAL)
+        t = motor.cambiar_modalidad(t, modalidad=Turno.Modalidad.PRESENCIAL, autor=self.user)
+        self.assertEqual(t.modalidad, Turno.Modalidad.PRESENCIAL)
+        self.assertEqual(t.enlace, "")
+
+    def test_no_se_cambia_la_modalidad_de_un_turno_ya_resuelto(self):
+        """Reescribiria lo que paso, y con eso no se puede medir nada."""
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.save()
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        motor.marcar_ausente(t, autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.cambiar_modalidad(t, modalidad=Turno.Modalidad.VIRTUAL, autor=self.user)
+
+    def test_no_se_pasa_a_virtual_un_turno_de_agenda_presencial(self):
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.cambiar_modalidad(t, modalidad=Turno.Modalidad.VIRTUAL, autor=self.user)
+
+    def test_cambiar_la_sala_de_la_agenda_no_toca_los_turnos_dados(self):
+        self.agenda.modalidad = Agenda.Modalidad.VIRTUAL
+        self.agenda.enlace_virtual = "https://sala.example.com/vieja"
+        self.agenda.save()
+        t = motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        self.agenda.enlace_virtual = "https://sala.example.com/nueva"
+        self.agenda.save()
+        t.refresh_from_db()
+        self.assertEqual(t.enlace, "https://sala.example.com/vieja")
+
+    def test_un_enlace_que_no_es_una_direccion_web_se_rechaza(self):
+        """
+        Guardado, el boton «Abrir sala» no abre nada y nadie se entera hasta el
+        dia del turno.
+        """
+        self.agenda.modalidad = Agenda.Modalidad.VIRTUAL
+        self.agenda.save()
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           enlace="sala de la doctora")
+
+    def test_un_enlace_larguisimo_es_un_error_de_agenda_y_no_un_500(self):
+        """La columna guarda 200 caracteres: sin esto, la base cortaba con un 500."""
+        self.agenda.modalidad = Agenda.Modalidad.VIRTUAL
+        self.agenda.save()
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           enlace="https://sala.example.com/" + ("x" * 200))
+
+
+class CuposTests(AgendaTestCase):
+    """
+    Varias personas por horario.
+
+    Uno es el consultorio; mas de uno es el vacunatorio o la sala de enfermeria,
+    donde tres puestos atienden a las 10 en paralelo. Lo que se cuida es que el
+    cupo no se de dos veces y que el sobreturno siga siendo para el horario lleno.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.disp.cupos = 3
+        self.disp.save()
+        self.otros = [
+            Ciudadano.objects.create(
+                institucion=self.inst, nombre=f"P{i}", apellido="X", documento=f"4000000{i}"
+            )
+            for i in range(4)
+        ]
+
+    def test_tres_personas_en_el_mismo_horario(self):
+        for i in range(3):
+            motor.reservar(self.agenda, self.otros[i], self._hora(8, 0), autor=self.user)
+        turnos = Turno.objects.filter(agenda=self.agenda, inicio=self._hora(8, 0), sobreturno=False)
+        self.assertEqual(turnos.count(), 3)
+        # Cada una en un cupo distinto: es lo que la base garantiza.
+        self.assertEqual(sorted(t.posicion for t in turnos), [0, 1, 2])
+
+    def test_la_cuarta_persona_ya_no_entra(self):
+        for i in range(3):
+            motor.reservar(self.agenda, self.otros[i], self._hora(8, 0), autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda) as e:
+            motor.reservar(self.agenda, self.otros[3], self._hora(8, 0), autor=self.user)
+        # El mensaje dice cuantos lugares hay y ofrece el sobreturno: sin eso, la
+        # respuesta al mostrador sale a tanteo.
+        self.assertIn("3 de 3", str(e.exception))
+        self.assertIn("sobreturno", str(e.exception))
+
+    def test_el_cupo_que_se_libera_se_vuelve_a_usar(self):
+        """
+        Cancelar el turno del primer puesto y dar otro tiene que reusar ESE lugar.
+        Tomando `len(titulares)` como posicion, el nuevo caia en el 2 —donde ya
+        habia alguien— y la base lo rechazaba con un error que en la pantalla no
+        queria decir nada.
+        """
+        a = motor.reservar(self.agenda, self.otros[0], self._hora(8, 0), autor=self.user)
+        motor.reservar(self.agenda, self.otros[1], self._hora(8, 0), autor=self.user)
+        motor.reservar(self.agenda, self.otros[2], self._hora(8, 0), autor=self.user)
+        motor.cancelar(a, autor=self.user)
+        nuevo = motor.reservar(self.agenda, self.otros[3], self._hora(8, 0), autor=self.user)
+        self.assertEqual(nuevo.posicion, 0)
+
+    def test_el_sobreturno_recien_va_cuando_no_queda_lugar(self):
+        motor.reservar(self.agenda, self.otros[0], self._hora(8, 0), autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda) as e:
+            motor.reservar(self.agenda, self.otros[1], self._hora(8, 0), autor=self.user,
+                           sobreturno=True)
+        self.assertIn("lugar", str(e.exception))
+
+    def test_la_grilla_informa_los_lugares_del_horario(self):
+        motor.reservar(self.agenda, self.otros[0], self._hora(8, 0), autor=self.user)
+        h = next(x for x in motor.horarios_del_dia(self.agenda, self.martes)
+                 if x["inicio"] == self._hora(8, 0))
+        self.assertEqual(h["cupos"], 3)
+        self.assertEqual(h["libres"], 2)
+        self.assertEqual(h["titulares"], 1)
+        # Con lugar todavia no esta ocupado, y por eso no admite sobreturno.
+        self.assertFalse(h["ocupado"])
+        self.assertFalse(h["admite_sobreturno"])
+
+    def test_un_horario_con_lugar_sigue_apareciendo_en_los_proximos_libres(self):
+        """Si no, la agenda del vacunatorio se ve llena con un solo paciente."""
+        motor.reservar(self.agenda, self.otros[0], self._hora(8, 0), autor=self.user)
+        libres = motor.proximos_libres(self.agenda, desde=self._hora(0, 1), cuantos=3)
+        self.assertEqual(timezone.localtime(libres[0]["inicio"]).strftime("%H:%M"), "08:00")
+
+    def test_los_sobreturnos_de_la_franja_pisan_a_los_de_la_agenda(self):
+        """La franja de la tarde puede no aceptar ninguno: es la que cierra."""
+        self.disp.cupos = 1
+        self.disp.sobreturnos_max = 0
+        self.disp.save()
+        motor.reservar(self.agenda, self.otros[0], self._hora(8, 0), autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.otros[1], self._hora(8, 0), autor=self.user,
+                           sobreturno=True)
+        h = next(x for x in motor.horarios_del_dia(self.agenda, self.martes)
+                 if x["inicio"] == self._hora(8, 0))
+        self.assertEqual(h["sobreturnos_max"], 0)
+        self.assertFalse(h["admite_sobreturno"])
+
+    def test_reprogramar_a_un_horario_con_lugar_toma_el_cupo_libre(self):
+        ocupa = motor.reservar(self.agenda, self.otros[0], self._hora(8, 20), autor=self.user)
+        self.assertEqual(ocupa.posicion, 0)
+        mover = motor.reservar(self.agenda, self.otros[1], self._hora(8, 0), autor=self.user)
+        movido = motor.reprogramar(mover, self._hora(8, 20), autor=self.user)
+        self.assertEqual(movido.inicio, self._hora(8, 20))
+        self.assertEqual(movido.posicion, 1)
+
+    def test_no_se_reprograma_a_un_horario_completo(self):
+        for i in range(3):
+            motor.reservar(self.agenda, self.otros[i], self._hora(8, 20), autor=self.user)
+        mover = motor.reservar(self.agenda, self.otros[3], self._hora(8, 0), autor=self.user)
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reprogramar(mover, self._hora(8, 20), autor=self.user)
+
+    def test_la_franja_dice_cuantos_turnos_ofrece(self):
+        """El numero que quiere ver quien la carga, antes de guardarla."""
+        # 8 a 10 cada 20 minutos son 6 horarios; con 3 puestos, 18 turnos.
+        self.assertEqual(self.disp.cuantos_turnos, 18)
+
+
+class SemanaTests(AgendaTestCase):
+    def test_devuelve_los_siete_dias_con_su_grilla(self):
+        lunes = self.martes - timedelta(days=1)
+        dias = motor.grilla_de_dias(self.agenda, lunes, dias=7)
+        self.assertEqual(len(dias), 7)
+        self.assertEqual([d["fecha"] for d in dias][1], self.martes)
+        # La agenda solo atiende los martes: el resto de los dias viene vacio.
+        self.assertEqual(len(dias[1]["horarios"]), 6)
+        self.assertEqual(len(dias[0]["horarios"]), 0)
+
+    def test_no_consulta_de_mas_por_cada_dia_de_la_semana(self):
+        """
+        Siete dias son tres consultas, no veintiuna: es la misma razon por la que
+        `proximos_libres` no las hace por dia, y ahora las dos comparten el
+        armado del rango.
+        """
+        with self.assertNumQueries(3):
+            motor.grilla_de_dias(self.agenda, self.martes, dias=7)
+
+    def test_un_turno_dado_aparece_en_el_dia_que_le_toca(self):
+        motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+        dias = motor.grilla_de_dias(self.agenda, self.martes - timedelta(days=1), dias=7)
+        martes = dias[1]["horarios"]
+        self.assertEqual(martes[0]["titulares"], 1)
+        self.assertEqual(martes[0]["libres"], 0)

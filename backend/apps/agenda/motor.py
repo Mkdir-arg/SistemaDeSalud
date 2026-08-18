@@ -7,6 +7,8 @@ alguna cuenta.
 """
 from datetime import datetime, timedelta
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import URLValidator
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -24,27 +26,37 @@ def _zona(fecha, hora):
     return timezone.make_aware(datetime.combine(fecha, hora), timezone.get_current_timezone())
 
 
-def _fila(agenda, momento, duracion, ocupantes, extras, bloqueado=False, fuera=False):
+def _fila(momento, duracion, cupos, tope_extras, ocupantes, extras,
+          bloqueado=False, fuera=False):
     ocupante = ocupantes[0] if ocupantes else None
+    # Cuántos lugares quedan en ESTE horario. Con `cupos=1` —el consultorio— es
+    # el «libre / ocupado» de siempre; con tres puestos en paralelo, un horario
+    # con un paciente sigue teniendo dos lugares y la pantalla tiene que poder
+    # ofrecerlos.
+    libres = max(0, cupos - len(ocupantes))
     return {
         "inicio": momento,
         "duracion_min": duracion,
-        "ocupado": ocupante is not None,
+        "cupos": cupos,
+        "libres": libres,
+        "ocupado": libres == 0,
         "turno_id": ocupante.id if ocupante else None,
         "paciente": (
             f"{ocupante.ciudadano.nombre} {ocupante.ciudadano.apellido}".strip()
             if ocupante else None
         ),
         "estado": ocupante.estado if ocupante else None,
-        # Cuántos titulares hay de verdad. Normalmente 1: si alguna vez son 2,
-        # el segundo paciente tiene el papel en la mano y para la pantalla no
-        # existe, así que la grilla tiene que poder decirlo en vez de callarlo.
+        # Cuántos titulares hay de verdad. Si son más que los cupos, alguno de
+        # esos pacientes tiene el papel en la mano y para la pantalla no existe,
+        # así que la grilla tiene que poder decirlo en vez de callarlo.
         "titulares": len(ocupantes),
         "sobreturnos": len(extras),
+        "sobreturnos_max": tope_extras,
         # Sobre un horario bloqueado o fuera de grilla no se apila nada más: lo
-        # que hay que hacer ahí es llamar al paciente, no sumarle otro.
+        # que hay que hacer ahí es llamar al paciente, no sumarle otro. Y
+        # mientras queda cupo tampoco: el sobreturno es para el horario lleno.
         "admite_sobreturno": (
-            not bloqueado and not fuera and len(extras) < agenda.sobreturnos_max
+            not bloqueado and not fuera and libres == 0 and len(extras) < tope_extras
         ),
         "bloqueado": bloqueado,
         "fuera_de_grilla": fuera,
@@ -78,8 +90,8 @@ def _grilla(agenda, fecha, disponibilidades, bloqueos, turnos):
             if bloqueado and not ocupantes and not extras:
                 continue
             emitidos.add(momento)
-            salida.append(_fila(agenda, momento, d.paso_min, ocupantes, extras,
-                                bloqueado=bloqueado))
+            salida.append(_fila(momento, d.paso_min, d.cupos, d.tope_sobreturnos,
+                                ocupantes, extras, bloqueado=bloqueado))
     salida.sort(key=lambda h: h["inicio"])
 
     # Red de seguridad: todo turno vigente cuyo `inicio` no cae en ningún
@@ -93,7 +105,11 @@ def _grilla(agenda, fecha, disponibilidades, bloqueos, turnos):
         ocupantes = normales.get(momento, [])
         extras = sobre.get(momento, [])
         duracion = (ocupantes or extras)[0].duracion_min
-        sueltos.append(_fila(agenda, momento, duracion, ocupantes, extras, fuera=True))
+        # Su franja ya no existe, así que los cupos de ese horario son los que
+        # están usados: la fila está para no perder de vista a esos pacientes, no
+        # para ofrecer lugares que la agenda ya no tiene.
+        sueltos.append(_fila(momento, duracion, len(ocupantes), agenda.sobreturnos_max,
+                             ocupantes, extras, fuera=True))
     return salida + sueltos
 
 
@@ -142,19 +158,77 @@ def turnos_en_rango(agenda, desde, hasta):
 
 
 def _valida_horario(agenda, inicio):
-    """¿Ese horario existe en la agenda y no está bloqueado?"""
+    """
+    ¿Ese horario existe en la agenda y no está bloqueado?
+
+    Devuelve la FRANJA que lo genera, no sólo su duración: de ella salen también
+    los cupos del horario y los sobreturnos que admite, y las tres cosas tienen
+    que venir de la misma franja —la de la mañana puede tener tres puestos y la
+    de la tarde uno—.
+    """
     fecha = timezone.localtime(inicio).date()
     if any(b.cubre(inicio) for b in agenda.bloqueos.all()):
         raise ErrorAgenda("La agenda está bloqueada en ese horario.")
     for d in agenda.disponibilidades.filter(activa=True):
         if inicio in d.horarios(fecha):
-            return d.paso_min
+            return d
     raise ErrorAgenda("Ese horario no está en la agenda.")
+
+
+def _cupo_libre(cupos, titulares):
+    """
+    Qué lugar del horario le toca al turno nuevo.
+
+    Se busca el hueco más bajo y no `len(titulares)`: cancelar el turno del
+    puesto 0 y dar otro dejaba dos turnos en el puesto 1 —el nuevo y el que ya
+    estaba—, y la base rechazaba el segundo con un error que en la pantalla no
+    quería decir nada.
+    """
+    usados = {t.posicion for t in titulares}
+    for i in range(cupos):
+        if i not in usados:
+            return i
+    return None
+
+
+def _resuelve_modalidad(agenda, modalidad, enlace):
+    """
+    Con qué modalidad y con qué sala queda el turno.
+
+    Un turno virtual sin enlace es el equivalente de la agenda sin flujo: se da,
+    pero el día del turno el paciente no tiene por dónde entrar y nadie se
+    enteró. Por eso la sala de la agenda se copia acá, al reservar, y no se
+    resuelve al mostrarlo: si mañana cambia la sala de la agenda, el link que
+    se le dio a la gente esta semana tiene que seguir siendo el que funcionaba.
+    """
+    modalidad = modalidad or agenda.modalidad_por_defecto
+    if not agenda.admite(modalidad):
+        raise ErrorAgenda(
+            f"Esta agenda atiende {agenda.get_modalidad_display().lower()}: "
+            f"no se puede dar un turno {modalidad}."
+        )
+    if modalidad != Turno.Modalidad.VIRTUAL:
+        # Un enlace colgando de un turno presencial es peor que ninguno: alguien
+        # lo lee y se conecta en vez de venir.
+        return modalidad, ""
+    link = (enlace or agenda.enlace_virtual or "").strip()
+    if link:
+        # Se valida acá y no en el serializer porque el turno no se crea por el
+        # serializer. Sin esto, un texto pegado de cualquier lado quedaba
+        # guardado como si fuera una sala —el botón «Abrir sala» no abre nada—, y
+        # uno de más de 200 caracteres reventaba con un 500 en vez de un 400.
+        try:
+            URLValidator()(link)
+        except DjangoValidationError:
+            raise ErrorAgenda("El enlace de la sala no parece una dirección web.")
+        if len(link) > 200:
+            raise ErrorAgenda("El enlace de la sala es demasiado largo (máximo 200 caracteres).")
+    return modalidad, link
 
 
 @transaction.atomic
 def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Origen.MOSTRADOR,
-             sobreturno=False) -> Turno:
+             sobreturno=False, modalidad=None, enlace="") -> Turno:
     """
     Da un turno.
 
@@ -172,7 +246,9 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
     agenda = Agenda.objects.select_for_update().order_by().get(pk=agenda.pk)
     if not agenda.activa:
         raise ErrorAgenda("La agenda no está activa.")
-    duracion = _valida_horario(agenda, inicio)
+    franja = _valida_horario(agenda, inicio)
+    duracion, cupos, tope = franja.paso_min, franja.cupos, franja.tope_sobreturnos
+    modalidad, enlace = _resuelve_modalidad(agenda, modalidad, enlace)
 
     ocupados = list(
         Turno.objects.filter(agenda=agenda, inicio=inicio)
@@ -181,19 +257,29 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
     normales = [t for t in ocupados if not t.sobreturno]
     extras = [t for t in ocupados if t.sobreturno]
 
-    if normales and not sobreturno:
-        raise ErrorAgenda(
-            f"Ese horario ya está tomado. Se puede dar como sobreturno "
-            f"({len(extras)} de {agenda.sobreturnos_max} usados)."
-        )
-    if sobreturno:
-        if not normales:
-            # Pedir sobreturno sobre un horario libre es casi siempre un error
-            # de quien opera; darlo igual desordena la grilla sin motivo.
-            raise ErrorAgenda("Ese horario está libre: no hace falta un sobreturno.")
-        if len(extras) >= agenda.sobreturnos_max:
+    posicion = 0
+    if not sobreturno:
+        posicion = _cupo_libre(cupos, normales)
+        if posicion is None:
+            lleno = (
+                "Ese horario ya está tomado." if cupos == 1
+                else f"Ese horario ya está completo: {len(normales)} de {cupos} lugares."
+            )
             raise ErrorAgenda(
-                f"Ya hay {len(extras)} sobreturnos en ese horario, el máximo de esta agenda."
+                f"{lleno} Se puede dar como sobreturno ({len(extras)} de {tope} usados)."
+            )
+    else:
+        if len(normales) < cupos:
+            # Pedir sobreturno sobre un horario con lugar es casi siempre un
+            # error de quien opera; darlo igual desordena la grilla sin motivo.
+            raise ErrorAgenda(
+                "Ese horario está libre: no hace falta un sobreturno." if cupos == 1
+                else f"Ese horario todavía tiene {cupos - len(normales)} lugar(es): "
+                     "no hace falta un sobreturno."
+            )
+        if len(extras) >= tope:
+            raise ErrorAgenda(
+                f"Ya hay {len(extras)} sobreturnos en ese horario, el máximo de esta franja."
             )
 
     # Un paciente no puede tener dos turnos activos en la misma agenda el mismo
@@ -215,10 +301,11 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
             return Turno.objects.create(
                 agenda=agenda, ciudadano=ciudadano, inicio=inicio, duracion_min=duracion,
                 sobreturno=sobreturno, motivo=motivo[:200], origen=origen, creado_por=autor,
+                modalidad=modalidad, enlace=enlace, posicion=posicion,
             )
     except IntegrityError:
-        # La red de abajo del candado: `un_titular_por_horario`. Llega acá si
-        # alguien crea turnos por fuera de esta función (el admin, una carga).
+        # La red de abajo del candado: `un_turno_por_cupo`. Llega acá si alguien
+        # crea turnos por fuera de esta función (el admin, una carga).
         raise ErrorAgenda("Ese horario ya está tomado.")
 
 
@@ -349,6 +436,46 @@ def registrar_llegada(turno: Turno, autor=None) -> Turno:
 
 
 @transaction.atomic
+def cambiar_modalidad(turno: Turno, modalidad=None, enlace=None, autor=None) -> Turno:
+    """
+    Pasa un turno de presencial a virtual, o al revés.
+
+    Es un pedido de todos los días —«no puedo ir, ¿lo hacemos por video?»— y
+    hasta acá la única salida era cancelar y volver a dar el turno, que libera
+    el horario: entre una cosa y la otra se lo lleva otro paciente y la persona
+    que llamó para arreglar queda sin nada.
+
+    Sólo sobre un turno pendiente: cambiarle la modalidad a uno ya atendido o
+    cancelado reescribe lo que pasó, y con eso no se puede medir nada.
+    """
+    turno = _bajo_candado(turno)
+    if turno.estado not in (Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO):
+        raise ErrorAgenda("Sólo un turno pendiente puede cambiar de modalidad.")
+    agenda = turno.agenda
+    nueva, link = _resuelve_modalidad(
+        agenda,
+        modalidad or turno.modalidad,
+        turno.enlace if enlace is None else enlace,
+    )
+    if nueva == turno.modalidad and link == turno.enlace:
+        return turno
+    # Queda escrito el cambio, igual que en `reprogramar`: el paciente puede
+    # llegar al mostrador con el papel que decía «presencial», y quien lo
+    # atiende tiene que poder ver que el turno se pasó a video.
+    #
+    # No se firma con `resuelto_por`: ese campo responde «quién lo canceló o lo
+    # dio por ausente», y ensuciarlo con esto deja el reclamo sin respuesta.
+    turno.observaciones = (
+        turno.observaciones
+        + f"\nModalidad: {turno.get_modalidad_display()} → {Turno.Modalidad(nueva).label}."
+    ).strip()
+    turno.modalidad = nueva
+    turno.enlace = link
+    turno.save(update_fields=["modalidad", "enlace", "observaciones"])
+    return turno
+
+
+@transaction.atomic
 def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
     """
     Mueve un turno a otro horario de la misma agenda.
@@ -367,7 +494,8 @@ def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
         return turno
     if not agenda.activa:
         raise ErrorAgenda("La agenda no está activa.")
-    duracion = _valida_horario(agenda, nuevo_inicio)
+    franja = _valida_horario(agenda, nuevo_inicio)
+    duracion, cupos, tope = franja.paso_min, franja.cupos, franja.tope_sobreturnos
 
     ocupados = list(
         Turno.objects.filter(agenda=agenda, inicio=nuevo_inicio)
@@ -376,18 +504,30 @@ def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
     )
     titulares = [t for t in ocupados if not t.sobreturno]
     extras = [t for t in ocupados if t.sobreturno]
+    posicion = turno.posicion
     if turno.sobreturno:
-        if not titulares:
-            raise ErrorAgenda("Ese horario está libre: no hace falta un sobreturno.")
-        if len(extras) >= agenda.sobreturnos_max:
+        if len(titulares) < cupos:
             raise ErrorAgenda(
-                f"Ya hay {len(extras)} sobreturnos en ese horario, el máximo de esta agenda."
+                "Ese horario está libre: no hace falta un sobreturno." if cupos == 1
+                else f"Ese horario todavía tiene {cupos - len(titulares)} lugar(es): "
+                     "no hace falta un sobreturno."
             )
-    elif titulares:
-        raise ErrorAgenda(
-            f"Ese horario ya está tomado. Se puede dar como sobreturno "
-            f"({len(extras)} de {agenda.sobreturnos_max} usados)."
-        )
+        if len(extras) >= tope:
+            raise ErrorAgenda(
+                f"Ya hay {len(extras)} sobreturnos en ese horario, el máximo de esta franja."
+            )
+    else:
+        # El lugar se recalcula en el horario nuevo: el que ocupaba en el viejo
+        # puede estar tomado acá, y la franja de destino puede tener menos cupos.
+        posicion = _cupo_libre(cupos, titulares)
+        if posicion is None:
+            lleno = (
+                "Ese horario ya está tomado." if cupos == 1
+                else f"Ese horario ya está completo: {len(titulares)} de {cupos} lugares."
+            )
+            raise ErrorAgenda(
+                f"{lleno} Se puede dar como sobreturno ({len(extras)} de {tope} usados)."
+            )
 
     ya = (
         Turno.objects.filter(
@@ -404,6 +544,7 @@ def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
     anterior = timezone.localtime(turno.inicio)
     turno.inicio = nuevo_inicio
     turno.duracion_min = duracion
+    turno.posicion = posicion
     # Queda escrito de dónde venía: si el paciente llega con el papel del
     # horario viejo, el mostrador tiene con qué explicarle qué pasó.
     turno.observaciones = (
@@ -412,27 +553,23 @@ def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
     _firma(turno, autor)
     try:
         with transaction.atomic():
-            turno.save(update_fields=["inicio", "duracion_min", "observaciones",
+            turno.save(update_fields=["inicio", "duracion_min", "posicion", "observaciones",
                                       "resuelto_por", "resuelto_at"])
     except IntegrityError:
         raise ErrorAgenda("Ese horario ya está tomado.")
     return turno
 
 
-def proximos_libres(agenda, desde=None, dias=30, cuantos=10):
+def _datos_de_rango(agenda, desde_fecha, dias):
     """
-    Los próximos horarios libres. Es lo que se necesita para dar un turno por
-    teléfono sin tener que ir mirando día por día.
+    Los datos de la agenda para un rango de días, en TRES consultas.
 
-    Las tres consultas se hacen UNA vez para todo el rango y no una vez por día:
-    con `dias=30` eran ~90 idas y vueltas a la base por llamada, y del otro lado
-    hay alguien esperando en el teléfono. Ninguna de las tres depende del día.
+    Una por día eran ~90 idas y vueltas a la base para mirar un mes, con alguien
+    esperando en el teléfono del otro lado. Ninguna de las tres depende del día,
+    así que se hacen una vez y la grilla de cada fecha se arma en memoria.
     """
-    ahora = desde or timezone.now()
-    hoy = timezone.localdate(ahora)
-    inicio_rango = _zona(hoy, datetime.min.time())
-    fin_rango = _zona(hoy + timedelta(days=dias), datetime.min.time())
-
+    inicio_rango = _zona(desde_fecha, datetime.min.time())
+    fin_rango = _zona(desde_fecha + timedelta(days=dias), datetime.min.time())
     disponibilidades = list(agenda.disponibilidades.filter(activa=True))
     bloqueos = list(agenda.bloqueos.filter(desde__lt=fin_rango, hasta__gt=inicio_rango))
     por_dia = {}
@@ -442,6 +579,37 @@ def proximos_libres(agenda, desde=None, dias=30, cuantos=10):
         .exclude(estado=Turno.Estado.CANCELADO)
     ):
         por_dia.setdefault(timezone.localdate(t.inicio), []).append(t)
+    return disponibilidades, bloqueos, por_dia
+
+
+def grilla_de_dias(agenda, desde_fecha, dias=7):
+    """
+    La grilla de varios días seguidos, para ver la semana de una agenda.
+
+    Existe porque «¿qué tiene la doctora esta semana?» es la otra pregunta del
+    mostrador, y contestarla apretando «Día siguiente» siete veces son siete
+    pantallas y catorce consultas para algo que se lee de un vistazo.
+    """
+    disponibilidades, bloqueos, por_dia = _datos_de_rango(agenda, desde_fecha, dias)
+    salida = []
+    for i in range(dias):
+        fecha = desde_fecha + timedelta(days=i)
+        salida.append({
+            "fecha": fecha,
+            "horarios": _grilla(agenda, fecha, disponibilidades, bloqueos,
+                                por_dia.get(fecha, [])),
+        })
+    return salida
+
+
+def proximos_libres(agenda, desde=None, dias=30, cuantos=10):
+    """
+    Los próximos horarios libres. Es lo que se necesita para dar un turno por
+    teléfono sin tener que ir mirando día por día.
+    """
+    ahora = desde or timezone.now()
+    hoy = timezone.localdate(ahora)
+    disponibilidades, bloqueos, por_dia = _datos_de_rango(agenda, hoy, dias)
 
     libres = []
     for i in range(dias):

@@ -6,6 +6,7 @@ import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { InstitutionProvider } from "./auth/InstitutionContext";
 import { ToastProvider } from "./components/ui/toast";
+import { TutorialProvider } from "./tutorial/TutorialProvider";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -32,7 +33,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <AuthProvider>
           <InstitutionProvider>
             <ToastProvider>
-              <App />
+              <TutorialProvider>
+                <App />
+              </TutorialProvider>
             </ToastProvider>
           </InstitutionProvider>
         </AuthProvider>

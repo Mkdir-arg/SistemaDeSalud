@@ -216,11 +216,20 @@ class Command(BaseCommand):
                 Box.objects.get_or_create(area=ar, nombre=f"Box {n}")
 
         # --- Formularios ----------------------------------------------------
-        def formulario(titulo, area, campos):
-            form = Formulario.objects.create(institucion=inst, area=area, titulo=titulo)
-            for orden, (label, tipo, opciones, req) in enumerate(campos):
+        # El quinto elemento de cada campo es opcional y lleva lo propio del tipo
+        # NÚMERO: unidad y rango. La descripción del formulario también se
+        # siembra —se ve en el listado y al elegirlo en un paso— porque un demo
+        # con la columna entera en «—» hace parecer que el dato no existe.
+        def formulario(titulo, area, campos, descripcion=""):
+            form = Formulario.objects.create(
+                institucion=inst, area=area, titulo=titulo, descripcion=descripcion
+            )
+            for orden, campo in enumerate(campos):
+                label, tipo, opciones, req = campo[:4]
+                extra = campo[4] if len(campo) > 4 else {}
                 Campo.objects.create(formulario=form, label=label, tipo=tipo,
-                                     opciones=opciones or [], requerido=req, orden=orden)
+                                     opciones=opciones or [], requerido=req, orden=orden,
+                                     **extra)
             return form
 
         NIVELES_TRIAGE = [
@@ -233,23 +242,30 @@ class Command(BaseCommand):
             ("Forma de llegada", T.SELECCION_UNICA, ["Ambulancia", "Por sus medios", "Derivado de otro centro"], False),
             ("Obra social / cobertura", T.TEXTO_CORTO, None, False),
             ("Acompañante", T.TEXTO_CORTO, None, False),
-        ])
+        ], "Datos que se toman en el mostrador cuando el paciente llega a la guardia.")
         form_triage = formulario("Triage de enfermería", guardia, [
+            # La tensión NO es un número: «120/80» son dos, y guardarla como
+            # número obligaría a partirla en dos campos. Los otros tres signos sí,
+            # y el tipo importa: la rama «Temperatura > 38» sobre texto libre no
+            # compara nada y devuelve False en silencio.
             ("Tensión arterial", T.TEXTO_CORTO, None, False),
-            ("Frecuencia cardíaca", T.TEXTO_CORTO, None, False),
-            ("Temperatura", T.TEXTO_CORTO, None, False),
-            ("Saturación de O₂", T.TEXTO_CORTO, None, False),
+            ("Frecuencia cardíaca", T.NUMERO, None, False,
+             {"unidad": "lpm", "minimo": 20, "maximo": 300}),
+            ("Temperatura", T.NUMERO, None, False,
+             {"unidad": "°C", "minimo": 30, "maximo": 45}),
+            ("Saturación de O₂", T.NUMERO, None, False,
+             {"unidad": "%", "minimo": 0, "maximo": 100}),
             ("Escala de dolor", T.SELECCION_UNICA, ["Sin dolor", "Leve", "Moderado", "Severo"], False),
             ("Nivel de triage", T.SELECCION_UNICA, NIVELES_TRIAGE, True),
             ("Observaciones de enfermería", T.TEXTO_LARGO, None, False),
-        ])
+        ], "Signos vitales y clasificación inicial. Define la prioridad del caso.")
         form_conducta_g = formulario("Conducta médica de guardia", guardia, [
             ("Diagnóstico presuntivo", T.TEXTO_LARGO, None, True),
             ("Conducta", T.SELECCION_UNICA,
              ["Alta", "Derivar a especialidad", "Internación", "Observación"], True),
             ("Especialidad de derivación", T.SELECCION_UNICA,
              ["Traumatología", "Cardiología", "Salud mental", "Neurología"], False),
-        ])
+        ], "Qué se resuelve con el paciente: alta, derivación, internación u observación.")
 
         # Conducta por especialidad (diagnóstico + un dato clínico + disposición).
         def form_conducta_esp(titulo, area, campo_clinico):

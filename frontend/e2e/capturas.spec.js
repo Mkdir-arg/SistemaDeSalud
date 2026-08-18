@@ -226,9 +226,9 @@ test.describe("admin", () => {
     await expect(page.locator("[data-nodo]").first()).toBeVisible();
     await foto(page, "10-flujo-editor.png");
 
-    // Un nodo elegido abre el panel de propiedades, que es media pantalla.
-    await page.locator("[data-nodo]").nth(1).click();
-    await expect(page.locator("[data-nodo]").nth(1)).toBeVisible();
+    // La configuración del nodo es una ventana: se abre con doble clic.
+    await page.locator("[data-nodo]").nth(1).dblclick();
+    await expect(page.getByRole("dialog")).toBeVisible();
     await foto(page, "11-flujo-editor-nodo.png");
   });
 

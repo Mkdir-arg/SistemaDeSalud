@@ -549,6 +549,17 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
     return <Card className="flex flex-col gap-3 p-lg sm:p-xxl">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</Card>;
   }
   const campos = form.data?.campos || [];
+  // Un valor fuera del rango del campo lo rechaza el motor: no tiene sentido
+  // mandar el pedido para que vuelva con error, y menos con el paciente delante.
+  const fueraDeRango = campos.some((c) => {
+    if (c.tipo !== "numero") return false;
+    const v = String(valores[c.id] ?? "").trim();
+    if (v === "") return false;
+    const n = Number(v.replace(",", "."));
+    return Number.isNaN(n)
+      || (c.minimo != null && n < c.minimo)
+      || (c.maximo != null && n > c.maximo);
+  });
 
   return (
     <Card className="p-lg sm:p-xxl">
@@ -566,7 +577,7 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
       )}
       <Button
         className="mt-xl"
-        disabled={ocupado}
+        disabled={ocupado || fueraDeRango}
         onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, { valores }), "Paso completado")}
       >
         {ocupado ? "Guardando…" : "Completar y avanzar"}
@@ -578,6 +589,7 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
 function CampoInput({ campo, value, onChange }) {
   if (campo.tipo === "texto_largo") return <Textarea value={value} onChange={(e) => onChange(e.target.value)} />;
   if (campo.tipo === "fecha") return <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "numero") return <CampoNumero campo={campo} value={value} onChange={onChange} />;
   if (campo.tipo === "seleccion_unica") {
     return (
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
@@ -588,6 +600,47 @@ function CampoInput({ campo, value, onChange }) {
   }
   if (campo.tipo === "archivo") return <CampoArchivo value={value} onChange={onChange} />;
   return <Input value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
+/**
+ * Campo numérico: peso, temperatura, tensión, dosis.
+ *
+ * Antes todo era texto libre y «Temperatura» podía quedar con «treinta y ocho» o
+ * con «386» por un punto que no se tipeó. El motor ahora lo rechaza, pero un
+ * error recién al apretar «Completar y avanzar» con el paciente delante es tarde:
+ * `type="number"` con el rango del campo lo dice mientras se escribe, y la unidad
+ * al lado evita el «38» que era en Fahrenheit.
+ */
+function CampoNumero({ campo, value, onChange }) {
+  const fuera =
+    String(value).trim() !== "" &&
+    ((campo.minimo != null && Number(value) < campo.minimo) ||
+      (campo.maximo != null && Number(value) > campo.maximo));
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          step="any"
+          min={campo.minimo ?? undefined}
+          max={campo.maximo ?? undefined}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-invalid={fuera || undefined}
+        />
+        {campo.unidad && <span className="flex-none text-md text-texto-debil">{campo.unidad}</span>}
+      </div>
+      {fuera && (
+        <div className="mt-1 text-sm text-danger">
+          {campo.minimo != null && campo.maximo != null
+            ? `Tiene que estar entre ${campo.minimo} y ${campo.maximo}${campo.unidad ? ` ${campo.unidad}` : ""}.`
+            : campo.minimo != null
+              ? `No puede ser menor que ${campo.minimo}${campo.unidad ? ` ${campo.unidad}` : ""}.`
+              : `No puede ser mayor que ${campo.maximo}${campo.unidad ? ` ${campo.unidad}` : ""}.`}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CampoArchivo({ value, onChange }) {

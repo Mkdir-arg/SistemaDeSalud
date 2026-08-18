@@ -67,11 +67,22 @@ export default function Directorio() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-2.5 border-t border-division p-3.5">
+        <div
+          data-tour="directorio-super-admin"
+          data-demo-trigger="super-admin"
+          title="Tocar 3 veces para iniciar el modo demo"
+          className="flex cursor-pointer items-center gap-2.5 border-t border-division p-3.5"
+        >
           <Avatar nombre={user?.nombre_completo || user?.email} size={34} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{user?.nombre_completo || user?.email}</div>
-            <div className="text-xs text-texto-tenue">Super admin</div>
+            <button
+              type="button"
+              className="block cursor-pointer rounded-sm text-left text-xs text-texto-tenue outline-none hover:text-texto-suave focus-visible:ring-2 focus-visible:ring-accent"
+              title="Super admin"
+            >
+              Super admin
+            </button>
           </div>
           <button
             onClick={() => { logout(); navigate("/login"); }}

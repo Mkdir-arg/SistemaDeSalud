@@ -123,11 +123,37 @@ Pantallas: [`pages/diseno/Formularios.jsx`](../frontend/src/pages/diseno/Formula
 
 - **Qué hace:** define formularios **reutilizables** que un nodo de flujo de tipo
   *Formulario* puede usar para pedir datos.
-- **Tipos de campo:** `texto_corto`, `texto_largo`, `fecha`, `seleccion_unica` (con opciones), `archivo`.
-- **Campos requeridos**, texto de ayuda y **orden**.
-- **Campos vinculados:** un campo puede precargarse desde un origen (`historia_clinica` o `legajo_ciudadano`).
-- **Previsualización en vivo** del formulario mientras se editan los campos.
-- **Dónde (backend):** [`apps/formularios/models.py`](../backend/apps/formularios/models.py) — `Formulario`, `Campo`; endpoints `/api/formularios/`, `/api/campos/`.
+- **Tipos de campo:** `texto_corto`, `texto_largo`, `numero`, `fecha`,
+  `seleccion_unica` (con opciones), `archivo`.
+- **Campos requeridos**, texto de ayuda y **orden** (se arrastran; subir/bajar
+  siguen para teclado). El orden se guarda con un solo pedido atómico
+  (`POST /api/formularios/:id/reordenar/`), que además normaliza los órdenes
+  repetidos de los formularios viejos.
+- **Campo numérico con unidad y rango** (`unidad`, `minimo`, `maximo`): peso,
+  temperatura, tensión. El motor exige un número, valida el rango y **normaliza
+  la coma decimal** («36,8» → `36.8`) — sin eso una Decisión de orden sobre ese
+  valor no compara nada y devuelve `False` en silencio.
+- **Alta y edición completas** del formulario: título, descripción y área
+  (el área tiene que ser de la misma institución). **Duplicar** copia todos los
+  campos; **eliminar** se rechaza si algún flujo vigente lo pide o si sus campos
+  tienen datos cargados.
+- **«Dónde se usa»** (`GET /api/formularios/:id/usos/`): qué pasos de qué flujos
+  lo piden, cuántos casos están parados ahí, y qué ramas de Decisión comparan cada
+  campo. Es lo que permite saber, antes de guardar, que volver obligatorio un
+  campo traba los casos en curso y que quitar uno deja una rama que no se cumple
+  nunca.
+- **Campos vinculados:** `Campo.origen` existe en el modelo pero **la precarga no
+  está implementada**: ningún código lo lee. La pantalla no lo muestra hasta que
+  el motor la implemente (al abrir el nodo Formulario, sin pisar lo ya cargado).
+- **Previsualización en vivo** del formulario mientras se editan los campos,
+  presentada como la pantalla real (marco del paso que lo pide y el botón
+  «Completar y avanzar» apagado) y fija al hacer scroll: es lo único de la
+  pantalla que no se configura, y se veía igual que las tarjetas que sí.
+- **Cabecera con tira de datos** (ámbito · campos y obligatorios · veces
+  completado · pasos que lo piden) y filas de campo con riel de orden —el número
+  es el orden que ve el administrativo, y al pasar el mouse se vuelve el asa de
+  arrastre—, chip de tipo con el color de su categoría, y acciones en iconos.
+- **Dónde (backend):** [`apps/formularios/models.py`](../backend/apps/formularios/models.py) — `Formulario`, `Campo`; endpoints `/api/formularios/`, `/api/campos/`, `/api/formularios/:id/{usos,duplicar,reordenar}/`.
 
 ---
 

@@ -16,7 +16,7 @@ from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import Agenda, Disponibilidad, Turno
+from .models import Agenda, Bloqueo, Disponibilidad, Turno
 
 
 def un_martes(semanas=1):
@@ -355,3 +355,238 @@ class AgendaPermisosTests(APITestCase):
             "tipo": "recurso", "profesional": self.usuarios["admin"].id,
         })
         self.assertEqual(r.status_code, 400)
+
+
+class ModalidadAPITests(APITestCase):
+    """
+    La modalidad por HTTP: al dar el turno, y al pasarlo a video despues.
+
+    Con setUp propio y no heredando de `AgendaAPITests`: subclasificarla vuelve a
+    correr sus treinta y dos tests, y la suite de agenda ya tarda dos minutos.
+    """
+
+    def setUp(self):
+        self.user = Usuario.objects.create_user(
+            "modalidad@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Cardiologia")
+        self.agenda = Agenda.objects.create(
+            institucion=self.inst, area=self.area, nombre="Dra. Suarez",
+            duracion_min=20, sobreturnos_max=2,
+        )
+        Disponibilidad.objects.create(
+            agenda=self.agenda, dia_semana=1, desde=time(8, 0), hasta=time(10, 0)
+        )
+        self.martes = un_martes()
+        self.paciente = Ciudadano.objects.create(
+            institucion=self.inst, nombre="Ana", apellido="Perez", documento="30111222"
+        )
+
+    def _dar(self, **extra):
+        inicio = timezone.make_aware(
+            datetime.combine(self.martes, time(8, 0)), timezone.get_current_timezone()
+        )
+        return self.client.post("/api/turnos/", {
+            "agenda": self.agenda.id, "ciudadano": self.paciente.id,
+            "inicio": inicio.isoformat(), **extra,
+        })
+
+    def test_da_un_turno_virtual_en_una_agenda_mixta(self):
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.enlace_virtual = "https://sala.example.com/suarez"
+        self.agenda.save()
+        r = self._dar(modalidad="virtual")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["modalidad"], "virtual")
+        self.assertEqual(r.data["enlace"], "https://sala.example.com/suarez")
+
+    def test_un_turno_virtual_en_una_agenda_presencial_es_400(self):
+        r = self._dar(modalidad="virtual")
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_la_accion_pasa_el_turno_a_virtual_con_su_propia_sala(self):
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.save()
+        turno_id = self._dar().data["id"]
+        r = self.client.post("/api/turnos/%s/modalidad/" % turno_id, {
+            "modalidad": "virtual", "enlace": "https://sala.example.com/ana",
+        })
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["modalidad"], "virtual")
+        self.assertEqual(r.data["enlace"], "https://sala.example.com/ana")
+
+    def test_una_modalidad_inventada_es_400_y_no_toca_el_turno(self):
+        turno_id = self._dar().data["id"]
+        r = self.client.post("/api/turnos/%s/modalidad/" % turno_id, {"modalidad": "telepatia"})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Turno.objects.get(pk=turno_id).modalidad, "presencial")
+
+    def test_por_patch_no_se_cambia_la_modalidad(self):
+        """
+        Por PATCH quedaba un turno «virtual» sin enlace en una agenda que solo
+        atiende en el consultorio: el paciente no viene y espera una llamada que
+        nadie va a hacer.
+        """
+        turno_id = self._dar().data["id"]
+        r = self.client.patch("/api/turnos/%s/" % turno_id,
+                              {"modalidad": "virtual", "enlace": "https://x.example.com/"})
+        self.assertEqual(r.status_code, 200, r.data)
+        t = Turno.objects.get(pk=turno_id)
+        self.assertEqual(t.modalidad, "presencial")
+        self.assertEqual(t.enlace, "")
+
+    def test_pasar_la_agenda_a_presencial_le_saca_la_sala(self):
+        """Si no, el dia que vuelva a virtual hereda un link que nadie eligio."""
+        self.agenda.modalidad = Agenda.Modalidad.VIRTUAL
+        self.agenda.enlace_virtual = "https://sala.example.com/suarez"
+        self.agenda.save()
+        r = self.client.patch("/api/agendas/%s/" % self.agenda.id, {"modalidad": "presencial"})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.agenda.refresh_from_db()
+        self.assertEqual(self.agenda.enlace_virtual, "")
+
+    def test_el_turno_informa_la_modalidad_de_su_agenda(self):
+        """La pantalla que atiende el telefono decide con esto si ofrece el pase."""
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.save()
+        turno_id = self._dar().data["id"]
+        r = self.client.get("/api/turnos/%s/" % turno_id)
+        self.assertEqual(r.data["agenda_modalidad"], "mixta")
+
+    def test_la_grilla_del_dia_informa_la_modalidad(self):
+        self.agenda.modalidad = Agenda.Modalidad.MIXTA
+        self.agenda.save()
+        r = self.client.get(
+            "/api/agendas/%s/dia/?fecha=%s" % (self.agenda.id, self.martes.isoformat())
+        )
+        self.assertEqual(r.data["agenda"]["modalidad"], "mixta")
+
+
+class FranjasAPITests(APITestCase):
+    """
+    Las franjas por HTTP: es lo que manda el editor grafico del horario semanal.
+
+    setUp propio y no herencia de `AgendaAPITests`: subclasificarla vuelve a
+    correr sus treinta y dos tests.
+    """
+
+    def setUp(self):
+        self.user = Usuario.objects.create_user(
+            "franjas@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Vacunatorio")
+        self.agenda = Agenda.objects.create(
+            institucion=self.inst, area=self.area, nombre="Vacunatorio",
+            duracion_min=20, sobreturnos_max=2,
+        )
+        self.martes = un_martes()
+
+    def _franja(self, **extra):
+        cuerpo = {"agenda": self.agenda.id, "dia_semana": 1, "desde": "10:00", "hasta": "12:00"}
+        cuerpo.update(extra)
+        # JSON, como manda la pantalla. Con el formulario multipart del cliente de
+        # pruebas, DRF trata el `activa` ausente como el checkbox desmarcado de un
+        # form HTML y la franja nace inactiva: el test pasaba a verde por un
+        # camino que el frontend no usa.
+        return self.client.post("/api/disponibilidades/", cuerpo, format="json")
+
+    def test_dos_franjas_del_mismo_dia_con_duraciones_distintas(self):
+        """
+        Lunes de 10 a 12 con turnos de 30 y de 13 a 17 con turnos de 20: es la
+        agenda real de un profesional, y es lo que el formulario viejo no dejaba
+        cargar.
+        """
+        a = self._franja(dia_semana=0, desde="10:00", hasta="12:00", duracion_min=30)
+        b = self._franja(dia_semana=0, desde="13:00", hasta="17:00", duracion_min=20)
+        self.assertEqual(a.status_code, 201, a.data)
+        self.assertEqual(b.status_code, 201, b.data)
+        self.assertEqual(a.data["cuantos_turnos"], 4)
+        self.assertEqual(b.data["cuantos_turnos"], 12)
+
+    def test_una_franja_que_se_pisa_con_otra_es_400(self):
+        """
+        Donde dos franjas se solapan, la grilla usa una sola y la otra no da
+        ningun turno: la agenda ofrece algo distinto de lo que la pantalla de
+        configuracion muestra.
+        """
+        self._franja(desde="10:00", hasta="12:00")
+        r = self._franja(desde="11:00", hasta="13:00")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn("10:00", str(r.data))
+
+    def test_pegadas_no_se_pisan(self):
+        """De 10 a 12 y de 12 a 14 es lo normal, no un choque."""
+        self._franja(desde="10:00", hasta="12:00")
+        r = self._franja(desde="12:00", hasta="14:00")
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_el_mismo_horario_en_otro_dia_no_se_pisa(self):
+        self._franja(dia_semana=1)
+        r = self._franja(dia_semana=2)
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_el_horario_nuevo_puede_convivir_con_el_viejo_por_vigencia(self):
+        """
+        Es para lo que existe la vigencia: cargar el horario que rige desde marzo
+        sin borrar el que rige hasta febrero, que es el que sostiene los turnos ya
+        dados.
+        """
+        self._franja(desde="10:00", hasta="12:00", vigente_hasta="2026-02-28")
+        r = self._franja(desde="09:00", hasta="13:00", vigente_desde="2026-03-01")
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_cero_cupos_se_rechaza(self):
+        """Una franja que se dibuja y no da ningun turno: para eso esta «inactiva»."""
+        r = self._franja(cupos=0)
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_la_franja_editada_no_choca_consigo_misma(self):
+        f = self._franja(desde="10:00", hasta="12:00").data
+        r = self.client.patch(f"/api/disponibilidades/{f['id']}/", {"hasta": "13:00"},
+                              format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["cuantos_turnos"], 9)
+
+    def test_la_grilla_de_la_semana_arranca_siempre_en_lunes(self):
+        """Una semana que empieza un miercoles no se puede comparar con la de al lado."""
+        self._franja(dia_semana=1, cupos=3)
+        r = self.client.get(f"/api/agendas/{self.agenda.id}/semana/?desde={self.martes}")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data["dias"]), 7)
+        self.assertEqual(str(r.data["desde"]), str(self.martes - timedelta(days=1)))
+        martes = r.data["dias"][1]
+        self.assertEqual(martes["horarios"][0]["cupos"], 3)
+        self.assertEqual(martes["horarios"][0]["libres"], 3)
+
+    def test_los_bloqueos_se_filtran_por_rango(self):
+        """
+        La pantalla de la semana los dibuja encima de la grilla: sin el filtro
+        tendria que traerse todas las vacaciones de la historia de la agenda.
+        Cuenta el bloqueo que TOCA la semana, no solo el que empieza adentro.
+        """
+        inicio = timezone.make_aware(
+            datetime.combine(self.martes - timedelta(days=4), time(8, 0)),
+            timezone.get_current_timezone(),
+        )
+        Bloqueo.objects.create(
+            agenda=self.agenda, desde=inicio, hasta=inicio + timedelta(days=6), motivo="Congreso"
+        )
+        lunes = self.martes - timedelta(days=1)
+        r = self.client.get(
+            f"/api/bloqueos-agenda/?agenda={self.agenda.id}&desde={lunes}"
+            f"&hasta={lunes + timedelta(days=6)}"
+        )
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["count"], 1)
+
+        # Una semana posterior al bloqueo no lo trae.
+        lejos = lunes + timedelta(days=28)
+        r2 = self.client.get(
+            f"/api/bloqueos-agenda/?agenda={self.agenda.id}&desde={lejos}"
+            f"&hasta={lejos + timedelta(days=6)}"
+        )
+        self.assertEqual(r2.data["count"], 0)

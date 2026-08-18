@@ -29,6 +29,20 @@ class Agenda(models.Model):
         PROFESIONAL = "profesional", "Profesional"
         RECURSO = "recurso", "Recurso"
 
+    class Modalidad(models.TextChoices):
+        """
+        Cómo se atiende lo que se agenda acá.
+
+        `MIXTA` no es un estado a medio configurar: es la agenda real de un
+        profesional que ve pacientes en el consultorio y hace controles por
+        video. Sin ella habría que duplicar la agenda —dos nombres, dos juegos
+        de franjas— y entonces las dos pueden dar turno a la misma hora.
+        """
+
+        PRESENCIAL = "presencial", "Presencial"
+        VIRTUAL = "virtual", "Virtual"
+        MIXTA = "mixta", "Presencial o virtual"
+
     institucion = models.ForeignKey(
         "instituciones.Institucion", on_delete=models.CASCADE, related_name="agendas"
     )
@@ -51,6 +65,21 @@ class Agenda(models.Model):
         related_name="agendas",
         help_text="Flujo que se abre cuando el paciente se presenta al turno.",
     )
+    # Presencial, virtual, o las dos. Lo que decide es qué puede elegir quien
+    # da el turno: en una agenda presencial no hay nada que elegir, y en una
+    # virtual el turno tiene que salir con la sala puesta o el paciente espera
+    # una llamada que nadie sabe por dónde entra.
+    modalidad = models.CharField(
+        "modalidad", max_length=20, choices=Modalidad.choices, default=Modalidad.PRESENCIAL,
+        help_text="Si es mixta, se elige al dar cada turno.",
+    )
+    # Sala fija de la agenda: el consultorio virtual del profesional. Se copia
+    # al turno virtual que no traiga uno propio, que es el caso normal —nadie
+    # pega el mismo link treinta veces por día—.
+    enlace_virtual = models.URLField(
+        "enlace de la sala", blank=True,
+        help_text="Sala de videollamada de esta agenda. Se copia a cada turno virtual.",
+    )
     duracion_min = models.PositiveIntegerField(
         "duración del turno (minutos)", default=20,
         help_text="Duración por defecto; cada franja puede pisarla.",
@@ -70,6 +99,26 @@ class Agenda(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    def admite(self, modalidad) -> bool:
+        """¿Se puede dar un turno de esa modalidad en esta agenda?"""
+        if self.modalidad == self.Modalidad.MIXTA:
+            return modalidad in Turno.Modalidad.values
+        return modalidad == self.modalidad
+
+    @property
+    def modalidad_por_defecto(self) -> str:
+        """
+        Con qué modalidad sale un turno si quien lo da no elige.
+
+        Una agenda mixta cae en presencial a propósito: es lo que pasa en el
+        mostrador, y equivocarse hacia presencial deja al paciente viniendo al
+        hospital, no esperando frente a una pantalla a alguien que lo espera en
+        el consultorio.
+        """
+        if self.modalidad == self.Modalidad.VIRTUAL:
+            return Turno.Modalidad.VIRTUAL
+        return Turno.Modalidad.PRESENCIAL
 
 
 class Disponibilidad(models.Model):
@@ -97,6 +146,24 @@ class Disponibilidad(models.Model):
         "duración (minutos)", null=True, blank=True,
         help_text="Si se deja vacío, usa la de la agenda.",
     )
+    # Cuántas personas entran en CADA horario de esta franja.
+    #
+    # Uno es el consultorio: la doctora atiende a una persona a la vez. Más de
+    # uno es el vacunatorio, la sala de enfermería, la extracción de sangre: tres
+    # puestos trabajando en paralelo son tres turnos a las 10:00, y sin esto hay
+    # que inventar tres agendas —«Vacunatorio 1/2/3»— que después nadie sabe cuál
+    # elegir, o anotar dos en un papel.
+    cupos = models.PositiveIntegerField(
+        "personas por horario", default=1,
+        help_text="1 es lo normal (un consultorio). Más de 1 para puestos en paralelo.",
+    )
+    # Pisa los sobreturnos de la agenda. La franja de la mañana puede aceptar dos
+    # y la de la tarde ninguno: es la que cierra el consultorio, y un sobreturno
+    # ahí es alguien esperando a que el profesional se vaya.
+    sobreturnos_max = models.PositiveIntegerField(
+        "sobreturnos por horario", null=True, blank=True,
+        help_text="Si se deja vacío, usa los de la agenda.",
+    )
     # Desde y hasta cuándo rige esta franja. Sirve para cargar el horario nuevo
     # sin borrar el viejo, que es lo que permite que los turnos ya dados sigan
     # teniendo sentido.
@@ -115,6 +182,53 @@ class Disponibilidad(models.Model):
     @property
     def paso_min(self):
         return self.duracion_min or self.agenda.duracion_min
+
+    @property
+    def tope_sobreturnos(self):
+        """Sobreturnos que admite cada horario de esta franja."""
+        if self.sobreturnos_max is None:
+            return self.agenda.sobreturnos_max
+        return self.sobreturnos_max
+
+    @property
+    def cuantos_turnos(self):
+        """
+        Turnos que ofrece la franja: horarios × cupos.
+
+        Es el número que quiere ver quien la carga —«de 10 a 12 cada 30 minutos
+        son 4 horarios, y con 3 puestos son 12 turnos»— y calcularlo de cabeza
+        con franjas de 20 minutos es incómodo y se hace mal.
+        """
+        minutos = (
+            (self.hasta.hour * 60 + self.hasta.minute)
+            - (self.desde.hour * 60 + self.desde.minute)
+        )
+        paso = self.paso_min or 0
+        if minutos <= 0 or paso <= 0:
+            return 0
+        return (minutos // paso) * self.cupos
+
+    def choca_con(self, otra) -> bool:
+        """
+        ¿Estas dos franjas se pisan?
+
+        Dos franjas del mismo día que se solapan no dan más turnos: la grilla se
+        queda con la primera que genera cada horario y la otra desaparece sin
+        avisar, así que la agenda ofrece algo distinto de lo que la pantalla de
+        configuración muestra. Se compara también la vigencia: cargar el horario
+        nuevo para marzo mientras el viejo rige hasta febrero es justo el caso
+        que `vigente_desde`/`vigente_hasta` existen para permitir.
+        """
+        if self.dia_semana != otra.dia_semana:
+            return False
+        if self.desde >= otra.hasta or otra.desde >= self.hasta:
+            return False
+        # Vigencias abiertas (sin fecha) rigen siempre para ese lado.
+        if self.vigente_hasta and otra.vigente_desde and self.vigente_hasta < otra.vigente_desde:
+            return False
+        if otra.vigente_hasta and self.vigente_desde and otra.vigente_hasta < self.vigente_desde:
+            return False
+        return True
 
     def rige_el(self, fecha):
         if not self.activa or fecha.weekday() != self.dia_semana:
@@ -185,6 +299,10 @@ class Turno(models.Model):
         AUSENTE = "ausente", "No se presentó"
         CANCELADO = "cancelado", "Cancelado"
 
+    class Modalidad(models.TextChoices):
+        PRESENCIAL = "presencial", "Presencial"
+        VIRTUAL = "virtual", "Virtual"
+
     class Origen(models.TextChoices):
         MOSTRADOR = "mostrador", "Mostrador"
         TELEFONO = "telefono", "Teléfono"
@@ -200,6 +318,21 @@ class Turno(models.Model):
     # Turno de más sobre un horario ya ocupado. Se marca en vez de prohibirse:
     # pasa todos los días, y si el sistema no lo admite se anota en un papel.
     sobreturno = models.BooleanField(default=False)
+    # Cuál de los cupos del horario ocupa: 0 en una agenda de consultorio, 0/1/2
+    # en una franja de tres puestos. No es un dato para mostrar: existe para que
+    # la base pueda seguir garantizando que no se den dos veces el mismo lugar
+    # —ver `un_turno_por_cupo`—, ahora que un horario puede tener más de uno.
+    posicion = models.PositiveSmallIntegerField(default=0)
+    # Se guarda en el turno y no se deduce de la agenda: una agenda mixta da
+    # las dos cosas, y sobre todo el papel que se lleva el paciente tiene que
+    # decir si el martes viene o se conecta. Cambiar después la modalidad de la
+    # agenda no puede reescribir lo que ya se le dijo a la gente.
+    modalidad = models.CharField(
+        "modalidad", max_length=20, choices=Modalidad.choices, default=Modalidad.PRESENCIAL
+    )
+    # Sala de este turno. Normalmente es la de la agenda, copiada al reservar;
+    # se puede pisar cuando el profesional abre una sala por paciente.
+    enlace = models.URLField("enlace de la videollamada", blank=True)
     motivo = models.CharField(max_length=200, blank=True)
     origen = models.CharField(max_length=20, choices=Origen.choices, default=Origen.MOSTRADOR)
     # Caso que se abrió al presentarse. Es lo que conecta el turno con el resto
@@ -232,14 +365,16 @@ class Turno(models.Model):
         ordering = ["inicio", "id"]
         indexes = [models.Index(fields=["agenda", "inicio"])]
         constraints = [
-            # Red de seguridad abajo del candado de `motor.reservar`. Dos
-            # titulares en el mismo horario no se ven en ninguna pantalla —la
-            # grilla muestra uno solo—, así que el segundo paciente llega con el
-            # turno impreso y para el mostrador no existe.
+            # Red de seguridad abajo del candado de `motor.reservar`: un cupo
+            # del horario no se puede dar dos veces. Antes esto era «un titular
+            # por horario»; con franjas de varios puestos eso pasó a ser falso,
+            # pero la garantía sigue siendo necesaria —dos turnos sobre el mismo
+            # lugar no se ven en ninguna pantalla, así que el segundo paciente
+            # llega con el turno impreso y para el mostrador no existe—.
             models.UniqueConstraint(
-                fields=["agenda", "inicio"],
+                fields=["agenda", "inicio", "posicion"],
                 condition=models.Q(sobreturno=False) & ~models.Q(estado="cancelado"),
-                name="un_titular_por_horario",
+                name="un_turno_por_cupo",
             ),
         ]
 
@@ -249,6 +384,10 @@ class Turno(models.Model):
     @property
     def fin(self):
         return self.inicio + timedelta(minutes=self.duracion_min)
+
+    @property
+    def es_virtual(self):
+        return self.modalidad == self.Modalidad.VIRTUAL
 
     @property
     def vigente(self):

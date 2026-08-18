@@ -30,6 +30,12 @@ const PATHS = {
   play: "M6 4.5v15l13-7.5z",
   flask: "M9 3h6M10 3v6.5L5 18a1.5 1.5 0 0 0 1.3 2.3h11.4A1.5 1.5 0 0 0 19 18l-5-8.5V3M8 14h8",
   minus: "M5 12h14",
+  mano: "M8 13V5a1.5 1.5 0 0 1 3 0v6M11 11V3.8a1.5 1.5 0 0 1 3 0V11M14 11.5V5.5a1.5 1.5 0 0 1 3 0V13M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3L5 15.2a1.5 1.5 0 0 1 2.6-1.5l1.4 2.3",
+  cursor: "M4 3l7.5 17 2.4-6.6 6.6-2.4z",
+  rama: "M6 4v11M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM15 5a9 9 0 0 1-9 9",
+  reloj: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6.5V12l3.5 2",
+  enchufe: "M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5",
+  flecha: "M5 12h13M13 6l6 6-6 6",
   download: "M12 3v12M7 11l5 5 5-5M4 19h16",
   maximize: "M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3",
   undo: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-1",
@@ -48,11 +54,16 @@ const PATHS = {
   // Cama de internación: respaldo, colchón y patas.
   // Calendario: marco, anillas y la línea del encabezado.
   calendar: "M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 9h18M8 2v4M16 2v4",
+  // Cámara de video: el cuerpo y la lente. Marca el turno virtual.
+  video: "M4 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM15 10.5l6-3.5v10l-6-3.5z",
   bed: "M3 7v11M3 12h18a2 2 0 0 1 2 2v4M3 18h20M7 12v-2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2",
   luna: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
   sol: "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
   // Densidad de tabla (cómoda / compacta).
   rows: "M3 5h18M3 12h18M3 19h18",
+  // Agarradera de arrastre: seis puntos (con `strokeLinecap="round"` un segmento
+  // de longitud cero se dibuja como punto). Marca qué parte de la fila se agarra.
+  grip: "M9 5h.01M15 5h.01M9 9.5h.01M15 9.5h.01M9 14h.01M15 14h.01M9 18.5h.01M15 18.5h.01",
 };
 
 // Para `users` hace falta un círculo que no entra en el path simple.

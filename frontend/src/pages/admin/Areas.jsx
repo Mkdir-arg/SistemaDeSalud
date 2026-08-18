@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import {
-  Avatar, Badge, Button, Card, ConfirmDialog, Field, Input, Modal, Mono, Select, Tabs, Textarea,
+  Avatar, Badge, Button, Card, ConfirmDialog, Field, IconButton, Input, Modal, Select, Textarea,
 } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
-import { TablaRecurso } from "@/components/ui/tabla";
+import { HorariosModal } from "./HorariosAgenda";
+import { Buscador } from "@/components/ui/filtros";
 import { useToast } from "@/components/ui/toast";
 import { plural } from "@/lib/format";
 
@@ -20,12 +22,38 @@ const FUNCIONES = [
   { value: "medico", label: "Médico / profesional" },
 ];
 
-// Estructura organizativa: tabla de áreas + ficha en panel lateral.
+/** Secciones de la ficha, en el orden en que se apilan. */
+const SECCIONES = [
+  { key: "datos", label: "Datos", icono: "list" },
+  { key: "staff", label: "Staff", icono: "users", accion: "Asignar profesional" },
+  { key: "grupos", label: "Grupos", icono: "users", accion: "Crear grupo" },
+  { key: "boxes", label: "Boxes", icono: "enter", accion: "Crear box" },
+  { key: "agendas", label: "Agendas", icono: "calendar", accion: "Crear agenda" },
+  { key: "subareas", label: "Sub-áreas", icono: "cube", accion: "Crear sub-área" },
+];
+
+const CLAVES = SECCIONES.map((s) => s.key);
+
+/**
+ * Estructura organizativa: árbol de áreas a la izquierda, ficha a la derecha.
+ *
+ * Antes era una tabla que abría un panel lateral de 600 px con seis solapas, y
+ * adentro modales: tres capas apiladas para editar un horario. Ahora el árbol
+ * queda siempre visible —configurar ocho áreas seguidas era abrir y cerrar ocho
+ * veces— y cada sección del área es su propia página.
+ *
+ * Que sean páginas y no solapas de estado importa: «mandame el staff de
+ * Guardia» es un link, el back del navegador vuelve a la sección anterior, y
+ * recargar deja donde estaba. Lo que sí se conserva de la vista de resumen son
+ * los contadores, que viven en Datos: qué falta configurar se ve sin recorrer
+ * las seis.
+ */
 export default function Areas() {
   const { institucion } = useInstitucion();
+  const navigate = useNavigate();
   const toast = useToast();
+  const { areaId, seccion, subId } = useParams();
   const [nuevoArea, setNuevoArea] = useState(false);
-  const [selId, setSelId] = useState(null); // área abierta en el panel lateral
   const [editar, setEditar] = useState(false);
   const [aBorrar, setABorrar] = useState(null);
 
@@ -34,93 +62,95 @@ export default function Areas() {
     { institucion: institucion?.id, pageSize: 100 },
     { enabled: !!institucion },
   );
-  // Se busca por id y no se guarda el objeto: así el panel refleja los cambios
+  // Se busca por id y no se guarda el objeto: así la ficha refleja los cambios
   // (renombrar, sumar sub-áreas) sin quedarse con una copia vieja en el estado.
-  const sel = areas.filas.find((a) => a.id === selId) || null;
+  const sel = areas.filas.find((a) => String(a.id) === areaId) || null;
+  const sub = sel?.subareas?.find((s) => String(s.id) === subId) || null;
+  const activa = CLAVES.includes(seccion) ? seccion : "datos";
+
+  const abrirArea = (a) => navigate(`/estructura/${a.id}/datos`);
+  const abrirSub = (a, s) => navigate(`/estructura/${a.id}/sub/${s.id}`);
+  const abrirSeccion = (k) => navigate(`/estructura/${areaId}/${k}`);
+
+  // Rutas que no llevan a ninguna parte: un área o una sub-área que ya no están
+  // (las borró otro, o son de otra institución) y una sección inventada a mano
+  // en la barra de direcciones. Sin esto las dos primeras dejan la ficha en
+  // blanco sin explicación —o la rompen— y la tercera no muestra sección alguna.
+  const listo = !areas.isLoading && !areas.error && areas.filas.length > 0;
+  useEffect(() => {
+    if (!listo || !areaId) return;
+    if (!sel) navigate("/estructura", { replace: true });
+    else if (subId && !sub) navigate(`/estructura/${areaId}/subareas`, { replace: true });
+    else if (!subId && seccion !== activa) navigate(`/estructura/${areaId}/${activa}`, { replace: true });
+  }, [listo, areaId, sel, subId, sub, seccion, activa, navigate]);
 
   const borrarArea = useAccion((a) => api.del(`/areas/${a.id}/`), {
-    onSuccess: () => { toast.ok("Área eliminada."); setABorrar(null); setSelId(null); },
+    onSuccess: () => {
+      toast.ok("Área eliminada.");
+      setABorrar(null);
+      navigate("/estructura", { replace: true });
+    },
     onError: (e) => toast.deError(e, "No se pudo eliminar. Puede tener elementos asociados."),
   });
 
   return (
-    <div className="px-lg py-[26px] sm:px-[30px]">
-      <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
-        <div>
-          <h1 className="text-cifra-lg font-extrabold tracking-tight">Áreas</h1>
-          <div className="mt-0.5 text-base text-texto-debil">
-            {plural(areas.total, "área", "áreas")} · {institucion?.nombre}
-          </div>
-        </div>
-        <Button onClick={() => setNuevoArea(true)} className="flex items-center gap-2">
-          <Icon name="plus" size={15} /> Nueva área
-        </Button>
-      </div>
-
-      <TablaRecurso
-        clave="areas"
-        recurso="areas"
-        params={{ institucion: institucion?.id }}
-        ordenInicial="nombre"
-        onRowClick={(a) => setSelId(a.id)}
-        vacio={{
-          titulo: "No hay áreas",
-          detalle: "Creá la primera para poder armar flujos, grupos y boxes.",
-          accion: <Button onClick={() => setNuevoArea(true)}>Nueva área</Button>,
-        }}
-        columnas={[
-          {
-            key: "nombre", label: "Área", orden: "nombre", truncar: true,
-            render: (a) => (
-              <div className="flex items-center gap-2.5">
-                <span className="flex size-9 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
-                  <Icon name="cube" size={17} />
-                </span>
-                <span className="truncate font-semibold">{a.nombre}</span>
-              </div>
-            ),
-          },
-          {
-            key: "responsable", label: "Responsable",
-            render: (a) => (
-              <span className={a.responsable ? "text-texto-medio" : "text-texto-tenue"}>
-                {a.responsable || "—"}
-              </span>
-            ),
-          },
-          { key: "staff", label: "Staff", render: (a) => <Mono>{a.staff}</Mono> },
-          { key: "sub", label: "Sub-áreas", render: (a) => <Mono>{a.subareas?.length || 0}</Mono> },
-          {
-            key: "acc", label: "", className: "text-right",
-            render: (a) => (
-              <button
-                onClick={(e) => { e.stopPropagation(); setABorrar(a); }}
-                title={`Eliminar ${a.nombre}`}
-                aria-label={`Eliminar ${a.nombre}`}
-                className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
-              >
-                <Icon name="trash" size={15} />
-              </button>
-            ),
-          },
-        ]}
+    <div className="flex h-full min-h-0">
+      <ArbolAreas
+        areas={areas}
+        institucion={institucion}
+        areaId={areaId}
+        subId={subId}
+        onArea={abrirArea}
+        onSub={abrirSub}
+        onNueva={() => setNuevoArea(true)}
       />
 
-      {sel && (
-        <PanelLateral titulo={sel.nombre} onCerrar={() => setSelId(null)}>
+      <div className="min-w-0 flex-1">
+        {!sel ? (
+          <SinSeleccion
+            cargando={areas.isLoading}
+            error={areas.error}
+            onReintentar={areas.refetch}
+            total={areas.total}
+            onNueva={() => setNuevoArea(true)}
+          />
+        ) : sub ? (
+          <FichaSubarea
+            key={sub.id}
+            area={sel}
+            sub={sub}
+            onVolver={() => navigate(`/estructura/${sel.id}/subareas`)}
+            onChange={areas.refetch}
+          />
+        ) : (
           <FichaArea
             key={sel.id}
             area={sel}
+            seccion={activa}
             institucionNombre={institucion?.nombre}
+            onSeccion={abrirSeccion}
             onEditar={() => setEditar(true)}
+            onBorrar={() => setABorrar(sel)}
+            onAbrirSub={(s) => abrirSub(sel, s)}
             onChange={areas.refetch}
           />
-        </PanelLateral>
-      )}
+        )}
+      </div>
 
-      {nuevoArea && <AreaModal institucionId={institucion?.id} onClose={() => setNuevoArea(false)} />}
+      {nuevoArea && (
+        <AreaModal
+          institucionId={institucion?.id}
+          onClose={() => setNuevoArea(false)}
+          onSaved={(a) => { areas.refetch(); if (a?.id) navigate(`/estructura/${a.id}/datos`); }}
+        />
+      )}
       {editar && sel && (
-        <AreaModal area={sel} institucionId={institucion?.id} onClose={() => setEditar(false)} />
+        <AreaModal
+          area={sel}
+          institucionId={institucion?.id}
+          onClose={() => setEditar(false)}
+          onSaved={areas.refetch}
+        />
       )}
 
       {aBorrar && (
@@ -141,100 +171,235 @@ export default function Areas() {
 }
 
 /**
- * Panel lateral con la ficha del área.
+ * Árbol de áreas y sub-áreas.
  *
- * Es un diálogo: se anuncia como tal, cierra con Escape y bloquea el scroll de
- * atrás. Antes sólo cerraba con clic afuera, así que con el teclado se quedaba
- * atrapado sin salida.
+ * El filtro es en memoria y no contra el servidor: son 100 áreas como mucho, ya
+ * están cargadas, y filtrar acá también encuentra sub-áreas —que el backend no
+ * busca— además de responder mientras se escribe.
  */
-function PanelLateral({ titulo, onCerrar, children }) {
-  useEffect(() => {
-    const alTecla = (e) => { if (e.key === "Escape") onCerrar(); };
-    document.addEventListener("keydown", alTecla);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", alTecla);
-      document.body.style.overflow = overflow;
-    };
-  }, [onCerrar]);
+function ArbolAreas({ areas, institucion, areaId, subId, onArea, onSub, onNueva }) {
+  const [q, setQ] = useState("");
+
+  const filtradas = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return areas.filas;
+    return areas.filas.filter(
+      (a) =>
+        a.nombre.toLowerCase().includes(t) ||
+        (a.subareas || []).some((s) => s.nombre.toLowerCase().includes(t)),
+    );
+  }, [areas.filas, q]);
 
   return (
-    <div
-      onMouseDown={onCerrar}
-      className="fixed inset-0 z-40 flex justify-end bg-ink/35 animate-[fadeIn_.12s_ease]"
+    <nav
+      aria-label="Áreas de la institución"
+      className="flex w-64 flex-none flex-col border-r border-borde bg-superficie"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Área ${titulo}`}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="h-full w-full max-w-[37.5rem] overflow-y-auto bg-superficie shadow-modal"
-      >
-        <div className="flex justify-end px-lg pt-3.5">
-          <button
-            onClick={onCerrar}
-            aria-label="Cerrar panel"
-            className="flex rounded-md p-1 text-texto-debil hover:bg-superficie-2 hover:text-texto-medio"
-          >
-            <Icon name="x" size={18} />
-          </button>
+      <div className="border-b border-division px-3.5 pb-2.5 pt-3.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h1 className="text-lg font-extrabold tracking-tight">Áreas</h1>
+          <span className="text-xs tabular-nums text-texto-tenue">{areas.total}</span>
         </div>
-        <div className="px-7 pb-7">{children}</div>
+        <Buscador
+          valor={q}
+          onChange={setQ}
+          placeholder="Buscar área o sub-área…"
+          aria-label="Buscar área o sub-área"
+          className="mt-2.5"
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 pb-3 pt-1.5">
+        {areas.isLoading && <Skeleton className="m-1 h-40" />}
+        {!areas.isLoading && !filtradas.length && (
+          <p className="px-2 py-6 text-center text-base text-texto-debil">
+            {q ? "Ninguna área coincide." : "Todavía no hay áreas."}
+          </p>
+        )}
+        <ul>
+          {filtradas.map((a) => {
+            const activa = String(a.id) === areaId;
+            const subs = a.subareas || [];
+            return (
+              <li key={a.id}>
+                <NodoArbol
+                  activo={activa && !subId}
+                  seleccionado={activa}
+                  chevron={subs.length ? (activa ? "down" : "right") : null}
+                  nombre={a.nombre}
+                  cuenta={a.staff}
+                  tituloCuenta={plural(a.staff || 0, "persona", "personas")}
+                  onClick={() => onArea(a)}
+                />
+                {activa && subs.length > 0 && (
+                  <ul>
+                    {subs.map((s) => (
+                      <li key={s.id}>
+                        <NodoArbol
+                          hijo
+                          activo={String(s.id) === subId}
+                          nombre={s.nombre}
+                          onClick={() => onSub(a, s)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="border-t border-division p-2.5">
+        <button
+          data-tour="estructura-nueva-area"
+          onClick={onNueva}
+          disabled={!institucion}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-borde px-3 py-2 text-base font-semibold text-texto-suave hover:border-accent-100 hover:text-accent disabled:opacity-40"
+        >
+          <Icon name="plus" size={14} /> Nueva área
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+function NodoArbol({ hijo, activo, seleccionado, chevron, nombre, cuenta, tituloCuenta, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={activo ? "page" : undefined}
+      className={[
+        "flex w-full items-center gap-2 rounded-md py-1.5 pr-2.5 text-left",
+        hijo ? "pl-8" : "pl-2.5",
+        activo
+          ? "bg-accent-50 text-accent"
+          : seleccionado
+            ? "text-texto-medio"
+            : "text-texto-medio hover:bg-superficie-2",
+      ].join(" ")}
+    >
+      {!hijo && (
+        <span className={activo ? "w-3 text-accent" : "w-3 text-texto-tenue"}>
+          {chevron && (
+            <Icon name="back" size={11} className={chevron === "down" ? "-rotate-90" : "rotate-180"} />
+          )}
+        </span>
+      )}
+      <span
+        className={[
+          "min-w-0 flex-1 truncate",
+          hijo ? "text-base" : "text-md",
+          activo ? "font-bold" : hijo ? "font-medium text-texto-suave" : "font-semibold",
+        ].join(" ")}
+      >
+        {nombre}
+      </span>
+      {cuenta != null && (
+        <span
+          title={tituloCuenta}
+          className={activo ? "text-xs tabular-nums text-accent" : "text-xs tabular-nums text-texto-tenue"}
+        >
+          {cuenta}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** Panel derecho cuando todavía no se eligió un área. */
+function SinSeleccion({ cargando, error, onReintentar, total, onNueva }) {
+  if (error) {
+    return (
+      <div className="p-8">
+        <EstadoError error={error} onReintentar={onReintentar} />
+      </div>
+    );
+  }
+  if (cargando) {
+    return (
+      <div className="p-8">
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+  return (
+    <div className="grid h-full place-items-center p-8">
+      <div className="max-w-[24rem] text-center">
+        <span className="mx-auto mb-3.5 flex size-12 items-center justify-center rounded-lg bg-accent-50 text-accent">
+          <Icon name="cube" size={22} />
+        </span>
+        <h2 className="text-xl font-extrabold tracking-tight">
+          {total ? "Elegí un área" : "No hay áreas todavía"}
+        </h2>
+        <p className="mt-1.5 text-md text-texto-debil">
+          {total
+            ? "En la lista de la izquierda. Se abre su staff, grupos, boxes, agendas y sub-áreas."
+            : "Creá la primera para poder armar flujos, grupos y boxes."}
+        </p>
+        {!total && (
+          <Button data-tour="estructura-nueva-area-vacia" onClick={onNueva} className="mt-lg">
+            Nueva área
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function FichaArea({ area, institucionNombre, onEditar, onChange }) {
-  const [tab, setTab] = useState("datos");
+/**
+ * Ficha del área: contadores arriba, secciones apiladas abajo.
+ *
+ * Las consultas viven acá y no en cada sección porque los contadores necesitan
+ * los totales antes de que el usuario baje: pedirlos dos veces sería pedir lo
+ * mismo dos veces.
+ */
+function FichaArea({
+  area, seccion, institucionNombre, onSeccion, onEditar, onBorrar, onAbrirSub, onChange,
+}) {
   const [asignar, setAsignar] = useState(false);
   const [crearSub, setCrearSub] = useState(false);
   const [crearGrupo, setCrearGrupo] = useState(false);
   const [crearBox, setCrearBox] = useState(false);
   const [crearAgenda, setCrearAgenda] = useState(false);
 
-  const TABS = [
-    { key: "datos", label: "Datos" },
-    { key: "staff", label: "Staff" },
-    { key: "grupos", label: "Grupos" },
-    { key: "boxes", label: "Boxes" },
-    { key: "agendas", label: "Agendas" },
-    { key: "subareas", label: "Sub-áreas" },
-  ];
+  const staff = useStaffDeArea(area);
+  const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
+  const boxes = useLista("boxes", { area: area.id, pageSize: 100 });
+  const agendas = useLista("agendas", { area: area.id, pageSize: 100 });
+  const subareas = area.subareas || [];
 
-  // Botón de acción contextual: cambia según la solapa activa.
-  const accion = {
-    staff: { label: "Asignar profesional", on: () => setAsignar(true) },
-    grupos: { label: "Crear grupo", on: () => setCrearGrupo(true) },
-    boxes: { label: "Crear box", on: () => setCrearBox(true) },
-    agendas: { label: "Crear agenda", on: () => setCrearAgenda(true) },
-    subareas: { label: "Crear sub-área", on: () => setCrearSub(true) },
-  }[tab];
+  // Una agenda sin flujo da turnos que no abren nada. Se cuenta acá para poder
+  // avisarlo en el resumen, sin obligar a entrar a la sección.
+  const sinFlujo = agendas.filas.filter((a) => !a.flujo).length;
 
-  return (
-    <div>
-      <div className="mb-1 flex items-center gap-2.5">
-        <h2 className="text-cifra font-extrabold tracking-tight">{area.nombre}</h2>
-        <Badge tone="info">Área</Badge>
-      </div>
-      <div className="mb-lg text-md text-texto-debil">
-        Responsable: <strong className="text-texto-medio">{area.responsable || "—"}</strong>
-      </div>
+  const cuentas = {
+    staff: staff.isLoading ? null : staff.total,
+    grupos: grupos.isLoading ? null : grupos.total,
+    boxes: boxes.isLoading ? null : boxes.total,
+    agendas: agendas.isLoading ? null : agendas.total,
+    subareas: subareas.length,
+  };
 
-      <div className="mb-[22px] flex flex-wrap gap-2.5">
-        <Button variant="secondary" onClick={onEditar}>Editar</Button>
-        {accion && (
-          <Button onClick={accion.on} className="flex items-center gap-1.5">
-            <Icon name="plus" size={15} /> {accion.label}
-          </Button>
-        )}
-      </div>
-
-      <Tabs tabs={TABS} valor={tab} onChange={setTab} className="mb-5" />
-
-      {tab === "datos" && (
-        <Card className="p-[22px]">
+  const paginas = {
+    datos: (
+      <div className="flex flex-col gap-lg">
+        {/* Los contadores viven acá, la sección de entrada, y no repetidos en
+            todas: son el panorama del área, no un encabezado. */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-2.5">
+          {SECCIONES.filter((s) => s.key !== "datos").map((s) => (
+            <Contador
+              key={s.key}
+              icono={s.icono}
+              label={s.label}
+              valor={cuentas[s.key]}
+              aviso={s.key === "agendas" && sinFlujo > 0 ? `${sinFlujo} sin flujo` : null}
+              onClick={() => onSeccion(s.key)}
+            />
+          ))}
+        </div>
+        <Seccion titulo="Datos" icono="list">
           <div className="grid gap-lg sm:grid-cols-2">
             <Dato k="Nombre" v={area.nombre} />
             <Dato k="Responsable / jefe" v={area.responsable || "—"} />
@@ -242,13 +407,72 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
             <Dato k="Pertenece a" v={institucionNombre} />
             <div className="sm:col-span-2"><Dato k="Descripción" v={area.descripcion || "—"} /></div>
           </div>
-        </Card>
-      )}
-      {tab === "staff" && <StaffTab area={area} />}
-      {tab === "grupos" && <GruposTab area={area} />}
-      {tab === "boxes" && <BoxesTab area={area} />}
-      {tab === "agendas" && <AgendasTab area={area} />}
-      {tab === "subareas" && <SubareasTab area={area} onChange={onChange} />}
+        </Seccion>
+      </div>
+    ),
+    staff: (
+      <Seccion titulo="Staff" icono="users" cuenta={cuentas.staff}
+        accion="Asignar profesional" onAccion={() => setAsignar(true)}>
+        <StaffTab area={area} staff={staff} grupos={grupos} />
+      </Seccion>
+    ),
+    grupos: (
+      <Seccion titulo="Grupos" icono="users" cuenta={cuentas.grupos}
+        accion="Crear grupo" onAccion={() => setCrearGrupo(true)}>
+        <GruposTab area={area} grupos={grupos} staff={staff} />
+      </Seccion>
+    ),
+    boxes: (
+      <Seccion titulo="Boxes" icono="enter" cuenta={cuentas.boxes}
+        accion="Crear box" onAccion={() => setCrearBox(true)}>
+        <BoxesTab boxes={boxes} />
+      </Seccion>
+    ),
+    agendas: (
+      <Seccion titulo="Agendas" icono="calendar" cuenta={cuentas.agendas}
+        accion="Crear agenda" onAccion={() => setCrearAgenda(true)}>
+        <AgendasTab agendas={agendas} />
+      </Seccion>
+    ),
+    subareas: (
+      <Seccion titulo="Sub-áreas" icono="cube" cuenta={cuentas.subareas}
+        accion="Crear sub-área" onAccion={() => setCrearSub(true)}>
+        <SubareasLista area={area} onAbrir={onAbrirSub} />
+      </Seccion>
+    ),
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex-none border-b border-borde bg-superficie px-6 pb-0 pt-lg">
+        <div className="mb-1.5 text-xs text-texto-tenue">
+          {institucionNombre} · <span className="font-semibold text-texto-suave">Estructura</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="text-cifra font-extrabold tracking-tight">{area.nombre}</h2>
+          <Badge tone="info">Área</Badge>
+          <Badge tone={area.activa ? "green" : "gray"}>{area.activa ? "Activa" : "Inactiva"}</Badge>
+          <div className="ml-auto flex gap-2">
+            <Button variant="secondary" onClick={onEditar}>Editar</Button>
+            <IconButton
+              icon="trash"
+              label={`Eliminar ${area.nombre}`}
+              onClick={onBorrar}
+              className="hover:bg-badge-error-bg hover:text-danger"
+            />
+          </div>
+        </div>
+        <div className="mt-0.5 text-base text-texto-debil">
+          Responsable: <strong className="text-texto-medio">{area.responsable || "—"}</strong>
+        </div>
+        <SolapasArea activa={seccion} cuentas={cuentas} onSeccion={onSeccion} />
+      </header>
+
+      {/* El scroll es de la sección, no de la ficha: cambiar de solapa no puede
+          dejarte a mitad de camino de la anterior. */}
+      <div key={seccion} className="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-lg">
+        {paginas[seccion]}
+      </div>
 
       {asignar && <AsignarModal area={area} onClose={() => setAsignar(false)} />}
       {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={onChange} />}
@@ -256,6 +480,105 @@ function FichaArea({ area, institucionNombre, onEditar, onChange }) {
       {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} />}
       {crearAgenda && <AgendaModal area={area} onClose={() => setCrearAgenda(false)} />}
     </div>
+  );
+}
+
+/**
+ * Solapas de la ficha. Cada una es una página, así que son navegación y no un
+ * conmutador: se anuncian como tal y la activa lleva `aria-current`.
+ *
+ * Van pegadas al borde de abajo del encabezado —sin separación— porque la
+ * pestaña activa se apoya sobre el contenido: es lo que dice que lo de abajo es
+ * la solapa, y no otra sección más de la misma página.
+ */
+function SolapasArea({ activa, cuentas, onSeccion }) {
+  function alTeclado(e) {
+    const i = CLAVES.indexOf(activa);
+    if (e.key === "ArrowRight") onSeccion(CLAVES[(i + 1) % CLAVES.length]);
+    if (e.key === "ArrowLeft") onSeccion(CLAVES[(i - 1 + CLAVES.length) % CLAVES.length]);
+  }
+
+  return (
+    <div
+      role="navigation"
+      aria-label="Secciones del área"
+      onKeyDown={alTeclado}
+      className="-mx-1 mt-3 flex gap-0.5 overflow-x-auto"
+    >
+      {SECCIONES.map((s) => {
+        const on = s.key === activa;
+        return (
+          <button
+            key={s.key}
+            onClick={() => onSeccion(s.key)}
+            aria-current={on ? "page" : undefined}
+            tabIndex={on ? 0 : -1}
+            className={[
+              "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1.5 text-md font-semibold",
+              on
+                ? "border-accent text-accent"
+                : "border-transparent text-texto-debil hover:text-texto-suave",
+            ].join(" ")}
+          >
+            {s.label}
+            {/* El hueco se reserva aunque el número todavía no esté: entrando
+                directo a una sección los cuatro contadores llegan juntos, y sin
+                esto la barra entera se reacomoda debajo del cursor. */}
+            {s.key in cuentas && (
+              <span className={on ? "text-xs tabular-nums text-accent" : "text-xs tabular-nums text-texto-tenue"}>
+                {cuentas[s.key] ?? "·"}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Tarjeta-contador: resumen y atajo a la sección, en el mismo gesto. */
+function Contador({ icono, label, valor, aviso, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "flex flex-col items-start gap-0.5 rounded-md border bg-superficie px-3.5 py-2.5 text-left shadow-card transition-colors",
+        aviso ? "border-badge-amber-fg/40" : "border-borde",
+        "hover:border-accent-100",
+      ].join(" ")}
+    >
+      <Icon name={icono} size={15} className="mb-0.5 text-accent" />
+      <span className={valor ? "text-cifra font-extrabold tabular-nums leading-tight" : "text-cifra font-extrabold tabular-nums leading-tight text-texto-tenue"}>
+        {valor ?? "—"}
+      </span>
+      <span className="text-xs font-semibold text-texto-debil">{label}</span>
+      {aviso && <span className="text-micro font-bold text-badge-amber-fg">{aviso}</span>}
+    </button>
+  );
+}
+
+/** Una sección de la ficha, con su contador y su propio botón de crear. */
+function Seccion({ titulo, icono, cuenta, accion, onAccion, children }) {
+  return (
+    <section aria-labelledby={`titulo-${titulo}`}>
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-division px-lg py-2.5">
+          <Icon name={icono} size={16} className="text-accent" />
+          <h3 id={`titulo-${titulo}`} className="text-md font-bold">{titulo}</h3>
+          {cuenta != null && (
+            <span className="rounded-pill bg-badge-neutral-bg px-2 text-xs font-bold tabular-nums text-badge-neutral-fg">
+              {cuenta}
+            </span>
+          )}
+          {accion && (
+            <Button size="sm" variant="secondary" onClick={onAccion} className="ml-auto flex items-center gap-1.5">
+              <Icon name="plus" size={13} /> {accion}
+            </Button>
+          )}
+        </div>
+        <div className="p-lg">{children}</div>
+      </Card>
+    </section>
   );
 }
 
@@ -268,9 +591,13 @@ function Dato({ k, v }) {
   );
 }
 
-/** Aviso corto dentro de una pestaña de la ficha (sin datos todavía). */
+/** Aviso corto dentro de una sección de la ficha (sin datos todavía). */
 function Aviso({ children }) {
-  return <Card className="p-6 text-md text-texto-debil">{children}</Card>;
+  return (
+    <p className="rounded-md border border-dashed border-borde px-lg py-3.5 text-md text-texto-debil">
+      {children}
+    </p>
+  );
 }
 
 /**
@@ -285,10 +612,8 @@ function useStaffDeArea(area) {
   return useLista("membresias", { areas: area.id, pageSize: 200 });
 }
 
-function StaffTab({ area }) {
+function StaffTab({ area, staff, grupos }) {
   const toast = useToast();
-  const staff = useStaffDeArea(area);
-  const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
 
   // usuario_id → nombres de los grupos del área que integra.
   const gruposPorUsuario = useMemo(() => {
@@ -354,13 +679,10 @@ function StaffTab({ area }) {
   );
 }
 
-function GruposTab({ area }) {
+function GruposTab({ area, grupos, staff }) {
   const toast = useToast();
   const [gestion, setGestion] = useState(null);
   const [aBorrar, setABorrar] = useState(null);
-
-  const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
-  const staff = useStaffDeArea(area);
 
   const borrar = useAccion((g) => api.del(`/grupos/${g.id}/`), {
     onSuccess: () => { toast.ok("Grupo eliminado."); setABorrar(null); },
@@ -564,10 +886,9 @@ function MiembrosModal({ grupo, staff, grupos = [], onClose }) {
   );
 }
 
-function BoxesTab({ area }) {
+function BoxesTab({ boxes }) {
   const toast = useToast();
   const [aBorrar, setABorrar] = useState(null);
-  const boxes = useLista("boxes", { area: area.id, pageSize: 100 });
 
   const borrar = useAccion((b) => api.del(`/boxes/${b.id}/`), {
     onSuccess: () => { toast.ok("Box eliminado."); setABorrar(null); },
@@ -650,21 +971,15 @@ function BoxModal({ area, onClose }) {
   );
 }
 
-function SubareasTab({ area, onChange }) {
-  const [selId, setSelId] = useState(null);
+/**
+ * Sub-áreas del área, como lista.
+ *
+ * Antes esta lista abría la ficha de la sub-área acá adentro, con su propio
+ * botón «volver»: navegación dentro de un panel dentro de una tabla. Ahora sólo
+ * lleva al nodo del árbol, que es donde el usuario ya las busca.
+ */
+function SubareasLista({ area, onAbrir }) {
   const flujos = useLista("flujos", { institucion: area.institucion, pageSize: 200 });
-
-  const sub = (area.subareas || []).find((s) => s.id === selId);
-  if (sub) {
-    return (
-      <SubareaFicha
-        sub={sub}
-        flujos={flujos.filas.filter((f) => f.subarea === sub.id)}
-        onVolver={() => setSelId(null)}
-        onChange={onChange}
-      />
-    );
-  }
 
   if (!area.subareas?.length) {
     return <Aviso>Sin sub-áreas. Usá «Crear sub-área». (Una sub-área no contiene sub-áreas.)</Aviso>;
@@ -677,7 +992,7 @@ function SubareasTab({ area, onChange }) {
         return (
           <li key={s.id}>
             <button
-              onClick={() => setSelId(s.id)}
+              onClick={() => onAbrir(s)}
               className="flex w-full items-center gap-3 rounded-lg border border-borde bg-superficie px-lg py-3 text-left hover:border-accent-100"
             >
               <span className="flex size-8 flex-none items-center justify-center rounded-md bg-superficie-2 text-texto-debil">
@@ -694,11 +1009,21 @@ function SubareasTab({ area, onChange }) {
   );
 }
 
-function SubareaFicha({ sub, flujos, onVolver, onChange }) {
+/**
+ * Ficha de una sub-área: ocupa el panel derecho, igual que la del área.
+ *
+ * Es deliberadamente flaca —nombre y flujos vinculados— porque una sub-área no
+ * tiene staff, boxes ni agendas propios: los hereda del área. Darle la misma
+ * estructura de secciones sugeriría lo contrario.
+ */
+function FichaSubarea({ area, sub, onVolver, onChange }) {
   const toast = useToast();
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(sub.nombre);
   const [confirmar, setConfirmar] = useState(false);
+
+  const todos = useLista("flujos", { institucion: area.institucion, pageSize: 200 });
+  const flujos = todos.filas.filter((f) => f.subarea === sub.id);
 
   const renombrar = useAccion(() => api.patch(`/subareas/${sub.id}/`, { nombre: nombre.trim() }), {
     onSuccess: () => { toast.ok("Sub-área renombrada."); setEditando(false); onChange(); },
@@ -716,72 +1041,80 @@ function SubareaFicha({ sub, flujos, onVolver, onChange }) {
   }
 
   return (
-    <div>
-      <button
-        onClick={onVolver}
-        className="mb-3.5 flex items-center gap-1.5 text-base text-texto-debil hover:text-texto-medio"
-      >
-        <Icon name="back" size={14} /> Sub-áreas
-      </button>
-
-      <div className="mb-lg flex flex-wrap items-center gap-2.5">
-        {editando ? (
-          <>
-            <Input
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") guardarNombre(); }}
-              autoFocus
-              className="max-w-70"
-              aria-label="Nombre de la sub-área"
-            />
-            <Button disabled={renombrar.isPending} onClick={guardarNombre}>Guardar</Button>
-            <Button variant="secondary" onClick={() => { setNombre(sub.nombre); setEditando(false); }}>
-              Cancelar
-            </Button>
-          </>
-        ) : (
-          <>
-            <h3 className="text-xl font-extrabold tracking-tight">{sub.nombre}</h3>
-            <Badge tone="neutral">Sub-área</Badge>
-            <button onClick={() => setEditando(true)} className="text-base font-semibold text-accent hover:underline">
-              Renombrar
-            </button>
-          </>
-        )}
-      </div>
-
-      <h4 className="mb-2.5 text-base font-bold text-texto-medio">
-        Flujos vinculados <span className="font-medium text-texto-debil">· {flujos.length}</span>
-      </h4>
-      {flujos.length === 0 ? (
-        <Aviso>Ningún flujo usa esta sub-área todavía.</Aviso>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {flujos.map((f) => (
-            <Card key={f.id} className="flex items-center gap-2.5 px-3.5 py-2.5">
-              <Icon name="workflow" size={15} className="text-accent" />
-              <span className="text-md font-semibold">{f.titulo}</span>
-            </Card>
-          ))}
+    <div className="h-full overflow-y-auto">
+      <header className="sticky top-0 z-10 border-b border-borde bg-superficie px-6 pb-3.5 pt-lg">
+        <div className="mb-1.5 text-xs text-texto-tenue">
+          <button onClick={onVolver} className="font-semibold text-texto-suave hover:text-accent hover:underline">
+            {area.nombre}
+          </button>{" "}
+          · Sub-área
         </div>
-      )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {editando ? (
+            <>
+              <Input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") guardarNombre(); }}
+                autoFocus
+                className="max-w-70"
+                aria-label="Nombre de la sub-área"
+              />
+              <Button disabled={renombrar.isPending} onClick={guardarNombre}>Guardar</Button>
+              <Button variant="secondary" onClick={() => { setNombre(sub.nombre); setEditando(false); }}>
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <h2 className="text-cifra font-extrabold tracking-tight">{sub.nombre}</h2>
+              <Badge tone="neutral">Sub-área</Badge>
+              <div className="ml-auto flex gap-2">
+                <Button variant="secondary" onClick={() => setEditando(true)}>Renombrar</Button>
+                <IconButton
+                  icon="trash"
+                  label={`Eliminar ${sub.nombre}`}
+                  onClick={() => setConfirmar(true)}
+                  className="hover:bg-badge-error-bg hover:text-danger"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </header>
 
-      <div className="mt-[22px] border-t border-borde pt-lg">
-        {confirmar ? (
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-base text-texto-medio">¿Eliminar «{sub.nombre}»?</span>
-            <Button variant="danger" disabled={eliminar.isPending} onClick={() => eliminar.mutate()}>
-              {eliminar.isPending ? "…" : "Sí, eliminar"}
-            </Button>
-            <Button variant="secondary" onClick={() => setConfirmar(false)}>No</Button>
-          </div>
-        ) : (
-          <button onClick={() => setConfirmar(true)} className="text-base font-semibold text-danger hover:underline">
-            Eliminar sub-área
-          </button>
-        )}
+      <div className="px-6 pb-10 pt-lg">
+        <Seccion titulo="Flujos vinculados" icono="workflow" cuenta={todos.isLoading ? null : flujos.length}>
+          {todos.isLoading ? (
+            <Skeleton className="h-16" />
+          ) : flujos.length === 0 ? (
+            <Aviso>Ningún flujo usa esta sub-área todavía.</Aviso>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {flujos.map((f) => (
+                <Card key={f.id} className="flex items-center gap-2.5 px-3.5 py-2.5">
+                  <Icon name="workflow" size={15} className="text-accent" />
+                  <span className="text-md font-semibold">{f.titulo}</span>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Seccion>
       </div>
+
+      {confirmar && (
+        <ConfirmDialog
+          title="Eliminar sub-área"
+          confirmar="Eliminar"
+          peligroso
+          cargando={eliminar.isPending}
+          onConfirmar={() => eliminar.mutate()}
+          onClose={() => setConfirmar(false)}
+        >
+          ¿Seguro que querés eliminar <strong>{sub.nombre}</strong>?
+          {flujos.length > 0 && ` La usan ${plural(flujos.length, "flujo", "flujos")}.`}
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
@@ -815,7 +1148,7 @@ function NuevaSubareaModal({ area, onClose, onSaved }) {
   );
 }
 
-function AreaModal({ area, institucionId, onClose }) {
+function AreaModal({ area, institucionId, onClose, onSaved }) {
   const toast = useToast();
   const esNuevo = !area;
   const [f, setF] = useState({
@@ -830,7 +1163,11 @@ function AreaModal({ area, institucionId, onClose }) {
       ? api.post("/areas/", { institucion: institucionId, ...f })
       : api.patch(`/areas/${area.id}/`, f)),
     {
-      onSuccess: () => { toast.ok(esNuevo ? "Área creada." : "Área actualizada."); onClose(); },
+      onSuccess: (creada) => {
+        toast.ok(esNuevo ? "Área creada." : "Área actualizada.");
+        onSaved?.(creada);
+        onClose();
+      },
       onError: (e) => toast.deError(e, "No se pudo guardar el área."),
     },
   );
@@ -959,11 +1296,11 @@ const hhmm = (t) => (t || "").slice(0, 5);
  * de la agenda: una agenda sin horarios no da ningún turno, y crearla sin poder
  * cargarlos en el mismo lugar deja el trabajo a medias.
  */
-function AgendasTab({ area }) {
+function AgendasTab({ agendas }) {
   const toast = useToast();
   const [aBorrar, setABorrar] = useState(null);
   const [franjas, setFranjas] = useState(null); // agenda cuyas franjas se editan
-  const agendas = useLista("agendas", { area: area.id, pageSize: 100 });
+  const [aEditar, setAEditar] = useState(null); // agenda que se está editando
 
   const borrar = useAccion((a) => api.del(`/agendas/${a.id}/`), {
     onSuccess: () => { toast.ok("Agenda eliminada."); setABorrar(null); },
@@ -997,11 +1334,25 @@ function AgendasTab({ area }) {
                 {a.flujo_titulo ? ` · abre «${a.flujo_titulo}»` : " · sin flujo"}
               </div>
             </div>
+            {/* La modalidad se muestra siempre, incluso «presencial»: en una
+                institución donde algunas agendas atienden por video, un renglón
+                sin nada al lado se lee igual que uno sin configurar. */}
+            <Badge tone={a.modalidad === "presencial" ? "gray" : "info"}>
+              {a.modalidad_display || "Presencial"}
+            </Badge>
             <Badge tone={a.tipo === "recurso" ? "gray" : "info"}>{a.tipo_display}</Badge>
             {!a.activa && <Badge tone="gray">inactiva</Badge>}
             <Button size="sm" variant="secondary" onClick={() => setFranjas(a)}>
               Horarios ({a.disponibilidades?.length || 0})
             </Button>
+            <button
+              onClick={() => setAEditar(a)}
+              title={`Editar ${a.nombre}`}
+              aria-label={`Editar ${a.nombre}`}
+              className="inline-flex rounded-md p-1 text-texto-debil hover:bg-division hover:text-texto-medio"
+            >
+              <Icon name="edit" size={15} />
+            </button>
             <button
               onClick={() => setABorrar(a)}
               title={`Eliminar ${a.nombre}`}
@@ -1025,11 +1376,30 @@ function AgendasTab({ area }) {
             </div>
           )}
 
+          {/* Una agenda que atiende por video sin sala cargada da turnos
+              virtuales sin enlace: el paciente no viene y espera una llamada que
+              nadie sabe por dónde entra. Se puede poner el enlace turno por
+              turno, así que se avisa sin bloquear. */}
+          {a.modalidad !== "presencial" && !a.enlace_virtual && (
+            <div className="mt-2 flex items-start gap-2 rounded-md bg-badge-amber-bg px-3 py-2 text-sm text-badge-amber-fg">
+              <Icon name="alert" size={14} className="mt-0.5 flex-none" />
+              <span>
+                Sin enlace de sala: cada turno virtual va a salir sin link, y hay que
+                cargarlo a mano uno por uno.
+              </span>
+            </div>
+          )}
+
           {(a.disponibilidades || []).length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5 pl-11">
+              {/* La duración se dice sólo cuando la franja pisa la de la agenda,
+                  y los cupos sólo cuando hay más de uno: repetidos en cada chip
+                  tapan lo único que se lee de un vistazo, que son los días. */}
               {a.disponibilidades.map((d) => (
                 <span key={d.id} className="rounded-pill bg-division px-2 py-px text-xs font-medium text-texto-suave">
                   {DIAS[d.dia_semana]} {hhmm(d.desde)}–{hhmm(d.hasta)}
+                  {d.duracion_min ? ` · ${d.duracion_min}′` : ""}
+                  {d.cupos > 1 ? ` · ×${d.cupos}` : ""}
                 </span>
               ))}
             </div>
@@ -1037,8 +1407,16 @@ function AgendasTab({ area }) {
         </Card>
       ))}
 
+      {aEditar && (
+        <AgendaModal
+          area={{ id: aEditar.area, institucion: aEditar.institucion, nombre: aEditar.area_nombre }}
+          agenda={aEditar}
+          onClose={() => setAEditar(null)}
+        />
+      )}
+
       {franjas && (
-        <FranjasModal
+        <HorariosModal
           agenda={franjas}
           onClose={() => { setFranjas(null); agendas.refetch(); }}
         />
@@ -1061,46 +1439,69 @@ function AgendasTab({ area }) {
   );
 }
 
-function AgendaModal({ area, onClose }) {
+/**
+ * Alta y edición de una agenda.
+ *
+ * Edita además de crear porque la configuración de una agenda cambia sola con
+ * el tiempo —el profesional pasa a atender por video, se le suma un flujo— y
+ * sin esto la única salida era borrarla y volver a crearla, que se lleva
+ * puestos los turnos ya dados.
+ */
+function AgendaModal({ area, agenda, onClose }) {
   const toast = useToast();
-  const [nombre, setNombre] = useState("");
-  const [tipo, setTipo] = useState("profesional");
-  const [profesional, setProfesional] = useState("");
-  const [flujo, setFlujo] = useState("");
-  const [duracion, setDuracion] = useState(20);
-  const [sobreturnos, setSobreturnos] = useState(2);
+  const esNuevo = !agenda;
+  const [nombre, setNombre] = useState(agenda?.nombre || "");
+  const [tipo, setTipo] = useState(agenda?.tipo || "profesional");
+  const [profesional, setProfesional] = useState(agenda?.profesional || "");
+  const [flujo, setFlujo] = useState(agenda?.flujo || "");
+  const [duracion, setDuracion] = useState(agenda?.duracion_min ?? 20);
+  const [sobreturnos, setSobreturnos] = useState(agenda?.sobreturnos_max ?? 2);
+  const [modalidad, setModalidad] = useState(agenda?.modalidad || "presencial");
+  const [enlace, setEnlace] = useState(agenda?.enlace_virtual || "");
 
   const staff = useLista("membresias", { areas: area.id, activo: true, pageSize: 100 });
   const flujos = useLista("flujos", { area: area.id, pageSize: 100 });
 
-  const crear = useAccion(
-    () => api.post("/agendas/", {
-      institucion: area.institucion,
-      area: area.id,
-      nombre: nombre.trim(),
-      tipo,
-      // Una agenda de recurso no lleva profesional: el backend lo rechaza y
-      // mandarlo igual sería un 400 que la persona no entiende.
-      profesional: tipo === "profesional" && profesional ? Number(profesional) : null,
-      flujo: flujo ? Number(flujo) : null,
-      duracion_min: Number(duracion) || 20,
-      sobreturnos_max: Number(sobreturnos) || 0,
-    }),
+  const cuerpo = () => ({
+    institucion: area.institucion,
+    area: area.id,
+    nombre: nombre.trim(),
+    tipo,
+    // Una agenda de recurso no lleva profesional: el backend lo rechaza y
+    // mandarlo igual sería un 400 que la persona no entiende.
+    profesional: tipo === "profesional" && profesional ? Number(profesional) : null,
+    flujo: flujo ? Number(flujo) : null,
+    duracion_min: Number(duracion) || 20,
+    sobreturnos_max: Number(sobreturnos) || 0,
+    modalidad,
+    // La sala sólo viaja si la agenda atiende por video: en una presencial el
+    // backend la vacía igual, y un link colgando ahí lo hereda sin querer la
+    // próxima persona que cambie la modalidad.
+    enlace_virtual: modalidad === "presencial" ? "" : enlace.trim(),
+  });
+
+  const guardar = useAccion(
+    () => (esNuevo
+      ? api.post("/agendas/", cuerpo())
+      : api.patch(`/agendas/${agenda.id}/`, cuerpo())),
     {
-      onSuccess: () => { toast.ok("Agenda creada."); onClose(); },
-      onError: (e) => toast.deError(e, "No se pudo crear la agenda."),
+      onSuccess: () => {
+        toast.ok(esNuevo ? "Agenda creada." : "Agenda actualizada.");
+        onClose();
+      },
+      onError: (e) => toast.deError(e, "No se pudo guardar la agenda."),
     },
   );
 
   return (
     <Modal
-      title={`Nueva agenda · ${area.nombre}`}
+      title={esNuevo ? `Nueva agenda · ${area.nombre}` : `Editar agenda · ${agenda.nombre}`}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={crear.isPending || !nombre.trim()} onClick={() => crear.mutate()}>
-            {crear.isPending ? "…" : "Crear"}
+          <Button disabled={guardar.isPending || !nombre.trim()} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "…" : esNuevo ? "Crear" : "Guardar"}
           </Button>
         </>
       }
@@ -1124,6 +1525,33 @@ function AgendaModal({ area, onClose }) {
                 <option key={m.id} value={m.usuario}>{m.usuario_nombre || m.usuario_email}</option>
               ))}
             </Select>
+          </Field>
+        )}
+        {/* Presencial, virtual o las dos. «Las dos» no es una agenda a medio
+            configurar: es la del profesional que ve pacientes en el consultorio
+            y hace controles por video. Partirla en dos agendas dejaría que las
+            dos den turno a la misma hora. */}
+        <Field
+          label="Modalidad de los turnos"
+          hint={modalidad === "mixta"
+            ? "Quien da el turno elige, uno por uno, si es presencial o virtual."
+            : modalidad === "virtual"
+              ? "Todos los turnos de esta agenda salen como videollamada."
+              : "Todos los turnos de esta agenda son en el lugar."}
+        >
+          <Select value={modalidad} onChange={(e) => setModalidad(e.target.value)}>
+            <option value="presencial">Presencial</option>
+            <option value="virtual">Virtual (videollamada)</option>
+            <option value="mixta">Presencial o virtual (se elige en cada turno)</option>
+          </Select>
+        </Field>
+        {modalidad !== "presencial" && (
+          <Field
+            label="Enlace de la sala"
+            hint="Se copia a cada turno virtual. Sin esto hay que pegar el link turno por turno."
+          >
+            <Input value={enlace} onChange={(e) => setEnlace(e.target.value)}
+                   placeholder="https://meet.example.com/dra-suarez" />
           </Field>
         )}
         <Field
@@ -1150,92 +1578,3 @@ function AgendaModal({ area, onClose }) {
   );
 }
 
-/** Franjas semanales de una agenda: agregar y quitar. */
-function FranjasModal({ agenda, onClose }) {
-  const toast = useToast();
-  const [dia, setDia] = useState(0);
-  const [desde, setDesde] = useState("08:00");
-  const [hasta, setHasta] = useState("12:00");
-  const lista = useLista("disponibilidades", { agenda: agenda.id, pageSize: 100 });
-
-  const agregar = useAccion(
-    () => api.post("/disponibilidades/", {
-      agenda: agenda.id, dia_semana: Number(dia), desde, hasta,
-    }),
-    {
-      onSuccess: () => { toast.ok("Franja agregada."); lista.refetch(); },
-      onError: (e) => toast.deError(e, "No se pudo agregar la franja."),
-    },
-  );
-  const quitar = useAccion((d) => api.del(`/disponibilidades/${d.id}/`), {
-    onSuccess: () => { toast.ok("Franja quitada."); lista.refetch(); },
-    onError: (e) => toast.deError(e, "No se pudo quitar la franja."),
-  });
-
-  // Cuántos turnos genera la franja: es lo que la persona quiere saber antes de
-  // guardarla, y calcularlo mentalmente con turnos de 15 minutos es incómodo.
-  const cuantos = (() => {
-    const [h1, m1] = desde.split(":").map(Number);
-    const [h2, m2] = hasta.split(":").map(Number);
-    const min = (h2 * 60 + m2) - (h1 * 60 + m1);
-    return min > 0 ? Math.floor(min / agenda.duracion_min) : 0;
-  })();
-
-  return (
-    <Modal
-      title={`Horarios · ${agenda.nombre}`}
-      onClose={onClose}
-      footer={<Button onClick={onClose}>Listo</Button>}
-    >
-      <div className="flex flex-col gap-3.5">
-        {lista.isLoading ? (
-          <Skeleton className="h-16" />
-        ) : lista.filas.length === 0 ? (
-          <Aviso>Sin franjas: esta agenda todavía no genera ningún turno.</Aviso>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {lista.filas.map((d) => (
-              <div key={d.id} className="flex items-center gap-2 rounded-md border border-division px-2.5 py-1.5">
-                <span className="flex-1 text-md">
-                  <strong>{DIAS[d.dia_semana]}</strong> de {hhmm(d.desde)} a {hhmm(d.hasta)}
-                  <span className="text-texto-tenue"> · cada {d.paso_min} min</span>
-                </span>
-                <button
-                  onClick={() => quitar.mutate(d)}
-                  disabled={quitar.isPending}
-                  title="Quitar franja"
-                  aria-label={`Quitar ${DIAS[d.dia_semana]} de ${hhmm(d.desde)} a ${hhmm(d.hasta)}`}
-                  className="inline-flex rounded-md p-1 text-texto-debil hover:bg-badge-error-bg hover:text-danger"
-                >
-                  <Icon name="trash" size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="border-t border-division pt-3.5">
-          <div className="mb-2 text-sm font-semibold text-texto-suave">Agregar una franja</div>
-          <div className="grid gap-2.5 sm:grid-cols-[1fr_auto_auto]">
-            <Select value={dia} onChange={(e) => setDia(e.target.value)} aria-label="Día">
-              {DIAS.map((d, i) => <option key={i} value={i}>{d}</option>)}
-            </Select>
-            <Input type="time" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
-            <Input type="time" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-sm text-texto-tenue">
-              {cuantos > 0
-                ? `Genera ${cuantos} turno${cuantos === 1 ? "" : "s"} de ${agenda.duracion_min} min.`
-                : "La franja tiene que terminar después de empezar."}
-            </span>
-            <Button size="sm" disabled={agregar.isPending || cuantos === 0}
-                    onClick={() => agregar.mutate()}>
-              Agregar
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}

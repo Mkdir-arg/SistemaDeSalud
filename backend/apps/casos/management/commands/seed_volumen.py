@@ -771,7 +771,9 @@ class Command(BaseCommand):
             self.campo("Triage de enfermería", "Tensión arterial"): f"{random.randint(95, 185)}/{random.randint(55, 110)}",
             self.campo("Triage de enfermería", "Frecuencia cardíaca"): str(random.randint(52, 128)),
             self.campo("Triage de enfermería", "Temperatura"): f"{random.uniform(35.8, 39.4):.1f}",
-            self.campo("Triage de enfermería", "Saturación de O₂"): f"{random.randint(88, 99)}%",
+            # Sin el «%»: la unidad ahora es del CAMPO, y dentro del valor lo
+            # volvería no comparable para las Decisiones de orden.
+            self.campo("Triage de enfermería", "Saturación de O₂"): str(random.randint(88, 99)),
             self.campo("Triage de enfermería", "Escala de dolor"): random.choice(DOLOR),
             self.campo("Triage de enfermería", "Nivel de triage"): nivel,
             self.campo("Triage de enfermería", "Observaciones de enfermería"): random.choice(

@@ -154,7 +154,12 @@ export default function App() {
       <Route path="/formularios/:id" element={P(<FormularioDetalle />)} />
 
       {/* SISTEMA */}
+      {/* Cada sección del área es una página: /estructura/12/staff. La ficha de
+          sub-área cuelga aparte porque lleva su propio id y no es una sección. */}
       <Route path="/estructura" element={P(<Areas />)} />
+      <Route path="/estructura/:areaId" element={P(<Areas />)} />
+      <Route path="/estructura/:areaId/sub/:subId" element={P(<Areas />)} />
+      <Route path="/estructura/:areaId/:seccion" element={P(<Areas />)} />
       <Route path="/administracion" element={P(<Usuarios />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />

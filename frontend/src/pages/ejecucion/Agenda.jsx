@@ -6,12 +6,14 @@ import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { Badge, Button, ConfirmDialog, Field, Input } from "@/components/ui";
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { BuscadorPaciente } from "@/components/ui/paciente";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+
+import { SemanaAgenda, lunesDe } from "./AgendaSemana";
 
 /*
  * Grilla del día de una agenda.
@@ -60,6 +62,9 @@ export default function Agenda() {
   const [fecha, setFecha] = useState(() => iso(new Date()));
   const [soloSinConfirmar, setSoloSinConfirmar] = useState(false);
   const [verProximos, setVerProximos] = useState(false);
+  // Día o semana. El día es lo que se opera —los botones que abren el caso o
+  // marcan el ausente viven ahí—; la semana es para ver y para bloquear.
+  const [vista, setVista] = useState("dia");
   // Horario que hay que abrir con el formulario de alta ya desplegado: es a
   // dónde deja parado el salto desde «Próximos libres».
   const [abrir, setAbrir] = useState(null);
@@ -114,6 +119,11 @@ export default function Agenda() {
   // el encabezado dice tienen que salir del mismo lado.
   const sobreturnosMax = dia.data?.agenda?.sobreturnos_max ?? agenda?.sobreturnos_max;
   const sinConfirmar = (turnos.data?.results || []).filter((t) => t.estado === "reservado").length;
+  // Ningún horario del día acepta sobreturnos. Con el día vacío la respuesta la
+  // da el máximo de la agenda, que es lo único que hay.
+  const sinSobreturnosHoy = horarios.length > 0
+    ? horarios.every((h) => (h.sobreturnos_max ?? sobreturnosMax) === 0)
+    : sobreturnosMax === 0;
   const irAFecha = (f) => { setFecha(f); setAbrir(null); };
   const mover = (dias) => {
     const d = new Date(fecha + "T12:00:00");
@@ -175,7 +185,17 @@ export default function Agenda() {
             {agenda?.area_nombre}
             {agenda?.tipo === "recurso" && " · recurso"}
             {agenda?.duracion_min && ` · turnos de ${agenda.duracion_min} min`}
+            {agenda?.modalidad === "virtual" && " · sólo virtual"}
+            {agenda?.modalidad === "mixta" && " · presencial o virtual"}
           </p>
+          {/* Una agenda que atiende por video sin sala configurada da turnos que
+              el paciente no puede usar: hay que pegarle el link a cada uno. Se
+              dice acá porque es donde se están dando los turnos. */}
+          {agenda && agenda.modalidad !== "presencial" && !agenda.enlace_virtual && (
+            <p className="text-sm text-texto-tenue">
+              Esta agenda no tiene sala configurada: cada turno virtual sale sin enlace.
+            </p>
+          )}
           {/* Una agenda sin flujo es un estado real y previsto, pero registrar
               la llegada ahí no abre ningún caso: si no se dice acá, el
               administrativo manda al paciente a esperar que lo llamen y no hay
@@ -187,8 +207,13 @@ export default function Agenda() {
           )}
           {/* Un renglón sin «+» no distingue «esta agenda no toma sobreturnos»
               de «ya se usaron los cupos de ese horario». Dicho una vez acá, la
-              respuesta a «¿me da un sobreturno a las 10?» deja de ser un tanteo. */}
-          {sobreturnosMax === 0 && (
+              respuesta a «¿me da un sobreturno a las 10?» deja de ser un tanteo.
+
+              Se mira horario por horario y no sólo el máximo de la agenda: los
+              sobreturnos ahora se configuran por franja, así que una agenda en
+              cero puede tener la franja de la mañana aceptando dos, y el cartel
+              diría lo contrario de lo que la grilla ofrece. */}
+          {sinSobreturnosHoy && (
             <p className="text-sm text-texto-tenue">Esta agenda no toma sobreturnos.</p>
           )}
         </div>
@@ -235,6 +260,10 @@ export default function Agenda() {
                 onClick={() => setVerProximos(!verProximos)}>
           <Icon name="search" size={14} /> Próximos libres
         </Button>
+        <Button size="sm" variant={vista === "semana" ? "primary" : "secondary"}
+                onClick={() => setVista(vista === "semana" ? "dia" : "semana")}>
+          <Icon name="calendar" size={14} /> Semana
+        </Button>
         <Button
           size="sm"
           variant={soloSinConfirmar ? "primary" : "secondary"}
@@ -254,6 +283,18 @@ export default function Agenda() {
 
       {verProximos && (
         <ProximosLibres consulta={proximos} onElegir={irA} />
+      )}
+
+      {/* La semana no reemplaza al día: se apila arriba. Quien la abre para ver
+          cómo viene la semana sigue teniendo abajo el día en el que está
+          operando, y no pierde de vista al paciente que tiene enfrente. */}
+      {vista === "semana" && agenda && (
+        <SemanaAgenda
+          agenda={agenda}
+          desde={lunesDe(fecha)}
+          toast={toast}
+          onIrAlDia={(f) => { irAFecha(f); setVista("dia"); }}
+        />
       )}
 
       <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
@@ -455,6 +496,18 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
   const titulares = turnos.filter((t) => !t.sobreturno);
   const extras = turnos.filter((t) => t.sobreturno);
   const titular = titulares[0];
+  // Cuántas personas entran en este horario y cuántos lugares quedan. Los
+  // valores por defecto son los de una agenda de consultorio: así la pantalla
+  // sigue funcionando contra una respuesta que no los traiga.
+  const cupos = horario.cupos ?? 1;
+  const libres = horario.libres ?? (horario.ocupado ? 0 : 1);
+  // Los sobreturnos ahora se configuran por franja: la mañana puede aceptar dos
+  // y la tarde ninguno. El de la agenda queda como respaldo.
+  const sobreMax = horario.sobreturnos_max ?? sobreturnosMax;
+  const variosCupos = cupos > 1;
+  // Con varios cupos las fichas van todas debajo, una por línea; con uno, la
+  // primera va en el renglón y sólo bajan las que sobran.
+  const enFila = variosCupos ? titulares : titulares.slice(1);
   // El día dice que está ocupado pero el turno todavía no llegó (o no llegó
   // nunca). Dibujarlo como «libre» con su botón «Dar turno» era operable: se
   // daba un turno encima de uno existente, y ninguno de los pacientes que
@@ -473,7 +526,34 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
           {hhmm(horario.inicio)}
         </span>
         {horario.bloqueado && <Badge tone="error">bloqueado</Badge>}
-        {titular ? (
+        {/* Con varios cupos el renglón no puede tener una ficha adentro: son
+            tres pacientes a las 10:00 y ninguno es «el» del horario. El
+            encabezado dice cuántos lugares quedan y las fichas van debajo, una
+            por línea. */}
+        {variosCupos ? (
+          <>
+            <span className="flex-1 text-base text-texto-tenue">
+              {horario.bloqueado
+                ? "bloqueado"
+                : `${cupos - libres} de ${cupos} lugares`}
+              {/* Los lugares se cuentan con lo que dice la grilla, no con las
+                  fichas que llegaron: son dos consultas distintas y si la de
+                  turnos falla o todavía no volvió, el renglón diría «0 de 3»
+                  arriba de un horario que la agenda tiene lleno. Cuando faltan
+                  fichas se dice, en vez de dibujar lugares que no están. */}
+              {turnosListos && cupos - libres > enFila.length && (
+                <span className="text-texto-tenue"> · falta la ficha de{" "}
+                  {cupos - libres - enFila.length} turno(s)
+                </span>
+              )}
+            </span>
+            {libres > 0 && !horario.bloqueado && (
+              <Button size="sm" variant="secondary" onClick={() => setDando(!dando)}>
+                {dando ? "Cerrar" : "Dar turno"}
+              </Button>
+            )}
+          </>
+        ) : titular ? (
           <FichaTurno turno={titular} onCambio={onCambio} toast={toast} navigate={navigate} />
         ) : ocupadoSinFicha ? (
           <>
@@ -500,7 +580,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
         {/* El sobreturno se ofrece sólo donde tiene sentido —sobre un horario
             ocupado y mientras queden cupos— y sin peso visual: es excepcional, y
             repetido en cada renglón convertía la grilla en una pared de botones. */}
-        {titular && horario.admite_sobreturno && (
+        {titulares.length > 0 && horario.admite_sobreturno && (
           <button
             onClick={() => setDando(!dando)}
             title="Agregar un sobreturno en este horario"
@@ -514,19 +594,20 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
             horario sin botón se lee igual que una agenda que no toma
             sobreturnos, y ahí la respuesta al mostrador sale a tanteo. */}
         {horario.ocupado && !horario.admite_sobreturno && !horario.bloqueado
-          && !horario.fuera_de_grilla && sobreturnosMax > 0 && (
+          && !horario.fuera_de_grilla && sobreMax > 0 && (
           <span className="flex-none text-sm text-texto-tenue">
-            {horario.sobreturnos}/{sobreturnosMax} sobreturnos
+            {horario.sobreturnos}/{sobreMax} sobreturnos
           </span>
         )}
       </div>
 
-      {/* Dos titulares en el mismo horario no deberían existir. Si existen, el
-          segundo paciente tiene el turno impreso: mostrarlo es la diferencia
-          entre poder explicarle qué pasó y no tener nada. */}
-      {titulares.slice(1).map((t) => (
+      {/* Más turnos que cupos en un horario no debería existir. Si existe, ese
+          paciente tiene el turno impreso: mostrarlo es la diferencia entre poder
+          explicarle qué pasó y no tener nada. Con un solo cupo, el segundo
+          titular ya sobra; con tres puestos, el cuarto. */}
+      {enFila.map((t, i) => (
         <div key={t.id} className="mt-2 flex flex-wrap items-center gap-x-md gap-y-2 pl-14">
-          <Badge tone="error">turno duplicado</Badge>
+          {(variosCupos ? i >= cupos : true) && <Badge tone="error">turno duplicado</Badge>}
           <FichaTurno turno={t} onCambio={onCambio} toast={toast} navigate={navigate} />
         </div>
       ))}
@@ -542,7 +623,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
         <DarTurno
           agenda={agenda}
           inicio={horario.inicio}
-          sobreturno={!!titular}
+          sobreturno={libres === 0}
           onListo={() => { setDando(false); onCambio(); }}
           onCerrar={() => setDando(false)}
           toast={toast}
@@ -561,6 +642,19 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
   // libera el horario, que con teléfono y mostrador dando turnos a la vez puede
   // estar tomado en menos de un minuto.
   const [confirmando, setConfirmando] = useState(null);
+  // Pasar el turno a video: el pedido llega por teléfono («no puedo ir, ¿lo
+  // hacemos por videollamada?») y hasta acá la única salida era cancelar y
+  // volver a dar el turno, que libera el horario y se lo puede llevar otro
+  // paciente en el minuto que hay entre las dos cosas.
+  const [aVirtual, setAVirtual] = useState(null); // enlace tipeado, o "" para la sala de la agenda
+  // Mover el turno de horario. Es lo que más se pide después de darlo, y sin
+  // esto la única salida era cancelar y volver a dar: entre las dos cosas el
+  // horario queda libre y se lo puede llevar otro paciente.
+  const [moviendo, setMoviendo] = useState(false);
+  const virtual = turno.modalidad === "virtual";
+  // Sólo una agenda mixta deja elegir: en una presencial o una virtual la
+  // modalidad es de la agenda, y ofrecer el cambio acá sería ofrecer un 400.
+  const puedeCambiar = turno.agenda_modalidad === "mixta";
   const accion = useAccion(({ nombre }) => api.post(`/turnos/${turno.id}/${nombre}/`), {
     onSuccess: (resp, { ok }) => {
       toast.ok(typeof ok === "function" ? ok(resp) : ok);
@@ -569,6 +663,21 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
     },
     onError: (e) => { setConfirmando(null); toast.deError(e); },
   });
+  const cambiarModalidad = useAccion(
+    ({ modalidad, enlace }) => api.post(`/turnos/${turno.id}/modalidad/`, { modalidad, enlace }),
+    {
+      onSuccess: (t) => {
+        toast.ok(
+          t?.modalidad === "virtual"
+            ? (t.enlace ? "Turno pasado a virtual · con sala" : "Turno pasado a virtual · SIN enlace")
+            : "Turno pasado a presencial",
+        );
+        setAVirtual(null);
+        onCambio();
+      },
+      onError: (e) => { setAVirtual(null); toast.deError(e, "No se pudo cambiar la modalidad."); },
+    },
+  );
   const pendiente = ["reservado", "confirmado"].includes(turno.estado);
   // Desde el buscador el turno puede ser de cualquier día: preguntar «¿cancelo
   // el de las 10:20?» a secas deja cancelar el de la semana equivocada, y de eso
@@ -584,6 +693,32 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
         )}
       </span>
       <Badge tone={est.tone}>{est.label}</Badge>
+      {/* Presencial no lleva marca: es la mayoría de los renglones y marcarlos
+          todos deja la grilla sin jerarquía. El virtual sí: es la diferencia
+          entre esperar a alguien en el consultorio y esperarlo en una pantalla. */}
+      {virtual && (
+        <Badge tone="info">
+          <Icon name="video" size={12} /> virtual
+        </Badge>
+      )}
+      {/* La sala se abre desde acá, no se copia a mano de ningún lado: a la hora
+          del turno quien atiende tiene un renglón y treinta segundos. */}
+      {virtual && turno.enlace && (
+        <a
+          href={turno.enlace}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-accent-100 bg-accent-50 px-3 text-base font-semibold text-accent transition-colors hover:bg-accent-100"
+        >
+          <Icon name="video" size={14} /> Abrir sala
+        </a>
+      )}
+      {/* Un turno virtual sin enlace no es un detalle de formato: el día del
+          turno el paciente no tiene por dónde entrar y quien atiende no tiene
+          qué dictarle. Se avisa donde se ve el turno, no en la configuración. */}
+      {virtual && !turno.enlace && pendiente && (
+        <span className="text-sm font-semibold text-badge-amber-fg">sin enlace</span>
+      )}
       {turno.caso && (
         <Button size="sm" variant="secondary" onClick={() => navigate(`/casos/${turno.caso}`)}>
           Ver caso
@@ -608,10 +743,14 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
                     // caso, y decir «caso abierto» igual manda al paciente a
                     // esperar un llamado que no va a existir.
                     ok: (t) => t?.caso
-                      ? `${turno.paciente} llegó · caso abierto`
-                      : `${turno.paciente} llegó · esta agenda no abre caso automáticamente`,
+                      ? `${turno.paciente} ${virtual ? "se conectó" : "llegó"} · caso abierto`
+                      : `${turno.paciente} ${virtual ? "se conectó" : "llegó"} · esta agenda no abre caso automáticamente`,
                   })}>
-            Llegó
+            {/* En un turno virtual nadie «llega»: quien atiende está mirando la
+                pantalla esperando que el paciente entre a la sala, y el botón
+                tiene que ser el de eso. Es la misma acción y abre el mismo
+                caso. */}
+            {virtual ? "Se conectó" : "Llegó"}
           </Button>
           )}
           {/* El circuito de recordatorios se cierra acá: el comando arma la
@@ -628,6 +767,19 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
               Confirmó
             </Button>
           )}
+          {puedeCambiar && (
+            <Button size="sm" variant="secondary"
+                    disabled={accion.isPending || cambiarModalidad.isPending}
+                    onClick={() => (virtual
+                      ? cambiarModalidad.mutate({ modalidad: "presencial", enlace: "" })
+                      : setAVirtual(""))}>
+              {virtual ? "Pasar a presencial" : "Pasar a virtual"}
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" disabled={accion.isPending}
+                  onClick={() => setMoviendo(true)}>
+            Mover
+          </Button>
           {/* Separadas del primario: son las dos que no se pueden deshacer. */}
           <span className="mx-0.5 h-5 w-px bg-division" aria-hidden="true" />
           {!porTelefono && (
@@ -654,6 +806,46 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
           </Button>
         </div>
       )}
+      {moviendo && (
+        <MoverTurno
+          turno={turno}
+          toast={toast}
+          onListo={() => { setMoviendo(false); onCambio(); }}
+          onClose={() => setMoviendo(false)}
+        />
+      )}
+
+      {aVirtual !== null && (
+        <ConfirmDialog
+          title="Pasar el turno a virtual"
+          confirmar="Pasar a virtual"
+          volver="Volver"
+          cargando={cambiarModalidad.isPending}
+          onClose={() => setAVirtual(null)}
+          onConfirmar={() => cambiarModalidad.mutate({ modalidad: "virtual", enlace: aVirtual.trim() })}
+        >
+          <div className="flex flex-col gap-3">
+            <span>
+              El turno de {turno.paciente} ({hora}) pasa a videollamada. Mantiene el
+              horario: no se libera ni se vuelve a dar.
+            </span>
+            {/* Vacío usa la sala de la agenda. Se ofrece igual porque el
+                profesional puede abrir una sala por paciente, y porque si la
+                agenda no tiene ninguna, este es el único lugar donde el link se
+                puede cargar antes de que el paciente cuelgue el teléfono. */}
+            <Field label="Enlace de la sala"
+                   hint="Vacío usa la sala de la agenda, si tiene una configurada.">
+              <Input
+                value={aVirtual}
+                onChange={(e) => setAVirtual(e.target.value)}
+                placeholder="https://meet.example.com/…"
+                autoFocus
+              />
+            </Field>
+          </div>
+        </ConfirmDialog>
+      )}
+
       {confirmando && (
         <ConfirmDialog
           title={confirmando.titulo}
@@ -671,14 +863,142 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
   );
 }
 
+/**
+ * Mover un turno a otro horario de la misma agenda.
+ *
+ * Se elige el día y se muestran los horarios con lugar de ESE día: es la
+ * conversación real —«¿tiene algo el jueves a la tarde?»— y es lo único que el
+ * backend acepta, porque el horario nuevo tiene que existir en la grilla y no
+ * estar bloqueado. Cuando el día elegido no tiene nada, se ofrecen los próximos
+ * libres en vez de dejar a la persona probando fecha por fecha.
+ */
+function MoverTurno({ turno, onListo, onClose, toast }) {
+  const [fecha, setFecha] = useState(() => iso(new Date(turno.inicio)));
+
+  const dia = useQuery({
+    queryKey: ["mover-dia", turno.agenda, fecha],
+    queryFn: () => api.get(`/agendas/${turno.agenda}/dia/?fecha=${fecha}`),
+  });
+  const libres = (dia.data?.horarios || []).filter(
+    (h) => !h.bloqueado && !h.fuera_de_grilla
+      && (h.libres ?? (h.ocupado ? 0 : 1)) > 0
+      && !mismoInstante(h.inicio, turno.inicio),
+  );
+
+  const proximos = useQuery({
+    queryKey: ["mover-proximos", turno.agenda, fecha],
+    queryFn: () => api.get(`/agendas/${turno.agenda}/proximos-libres/?cuantos=8&desde=${fecha}`),
+    // Sólo cuando hacen falta: el día elegido no tiene lugares.
+    enabled: !dia.isLoading && libres.length === 0,
+  });
+
+  const mover = useAccion(
+    (inicio) => api.post(`/turnos/${turno.id}/reprogramar/`, { inicio }),
+    {
+      onSuccess: (t) => {
+        toast.ok(`Turno movido a ${ddmm(t.inicio)} ${hhmm(t.inicio)}`);
+        onListo();
+      },
+      onError: (e) => toast.deError(e, "No se pudo mover el turno."),
+    },
+  );
+
+  const botones = (horarios, conFecha) => (
+    <div className="flex flex-wrap gap-2">
+      {horarios.map((h) => (
+        <button
+          key={h.inicio}
+          disabled={mover.isPending}
+          onClick={() => mover.mutate(h.inicio)}
+          className="rounded-md border border-division bg-superficie-2 px-2.5 py-1.5 text-base hover:border-accent-100 hover:bg-accent-50"
+        >
+          {conFecha && <span className="font-semibold">{ddmm(h.inicio)} </span>}
+          <span className="font-mono tabular-nums">{hhmm(h.inicio)}</span>
+          {(h.cupos ?? 1) > 1 && (
+            <span className="text-sm text-texto-tenue"> · {h.libres} libres</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <Modal
+      title="Mover el turno"
+      onClose={onClose}
+      width={520}
+      footer={<Button variant="secondary" onClick={onClose}>Cancelar</Button>}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-base text-texto-suave">
+          {turno.paciente} · ahora en <strong>{ddmm(turno.inicio)} {hhmm(turno.inicio)}</strong>.
+          Se mantiene el paciente, el motivo y la modalidad; queda anotado de dónde venía.
+        </p>
+        <Field label="Día">
+          <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </Field>
+
+        {dia.isLoading ? (
+          <Skeleton className="h-10" />
+        ) : dia.error ? (
+          <EstadoError error={dia.error} onReintentar={dia.refetch} />
+        ) : libres.length > 0 ? (
+          botones(libres, false)
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-base text-texto-debil">
+              Ese día no tiene lugares libres en esta agenda.
+            </p>
+            {proximos.isLoading ? (
+              <Skeleton className="h-10" />
+            ) : (proximos.data?.horarios || []).length > 0 ? (
+              <>
+                <span className="text-sm font-semibold text-texto-suave">Próximos libres</span>
+                {botones(proximos.data.horarios, true)}
+              </>
+            ) : (
+              <p className="text-base text-texto-debil">
+                Tampoco queda ninguno en los próximos 30 días.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function DarTurno({ agenda, inicio, sobreturno, onListo, onCerrar, toast }) {
   const { institucion } = useInstitucion();
   const [motivo, setMotivo] = useState("");
+  // En una agenda mixta hay algo que elegir; en las otras dos la modalidad ya
+  // está decidida y preguntarla sería una pregunta con una sola respuesta.
+  const mixta = agenda.modalidad === "mixta";
+  const [modalidad, setModalidad] = useState(
+    agenda.modalidad === "virtual" ? "virtual" : "presencial",
+  );
+  const [enlace, setEnlace] = useState("");
+  const virtual = modalidad === "virtual";
 
   const reservar = useAccion(
-    (ciudadano) => api.post("/turnos/", { agenda: agenda.id, ciudadano, inicio, motivo, sobreturno }),
+    (ciudadano) => api.post("/turnos/", {
+      agenda: agenda.id, ciudadano, inicio, motivo, sobreturno,
+      modalidad,
+      // Vacío quiere decir «la sala de la agenda»: el backend la copia. Mandar
+      // el link de la agenda desde acá lo congelaría igual, pero además taparía
+      // en la pantalla el caso de la agenda que todavía no tiene sala.
+      enlace: virtual ? enlace.trim() : "",
+    }),
     {
-      onSuccess: () => { toast.ok(sobreturno ? "Sobreturno dado" : "Turno dado"); onListo(); },
+      onSuccess: (t) => {
+        const que = sobreturno ? "Sobreturno dado" : "Turno dado";
+        toast.ok(
+          t?.modalidad === "virtual"
+            ? (t.enlace ? `${que} · virtual, con sala` : `${que} · virtual, SIN enlace`)
+            : que,
+        );
+        onListo();
+      },
       onError: (e) => toast.deError(e, "No se pudo dar el turno."),
     },
   );
@@ -687,9 +1007,26 @@ function DarTurno({ agenda, inicio, sobreturno, onListo, onCerrar, toast }) {
     <div className="mt-3 flex flex-col gap-2 rounded-md border border-borde bg-superficie-2 p-3">
       <div className="text-sm font-semibold text-texto-suave">
         {sobreturno ? "Sobreturno" : "Dar turno"} · {hhmm(inicio)}
+        {!mixta && virtual && " · virtual"}
       </div>
       <Input value={motivo} onChange={(e) => setMotivo(e.target.value)}
              placeholder="Motivo (opcional)" aria-label="Motivo del turno" />
+      {mixta && (
+        <Select value={modalidad} onChange={(e) => setModalidad(e.target.value)}
+                size="sm" aria-label="Modalidad del turno">
+          <option value="presencial">Presencial · viene al lugar</option>
+          <option value="virtual">Virtual · videollamada</option>
+        </Select>
+      )}
+      {/* El link se pide acá y no después: es lo que hay que dictarle a la
+          persona que está del otro lado del teléfono. Vacío usa la sala de la
+          agenda; si la agenda no tiene, el turno sale sin enlace y el aviso del
+          toast lo dice. */}
+      {virtual && (
+        <Input value={enlace} onChange={(e) => setEnlace(e.target.value)}
+               placeholder={agenda.enlace_virtual || "Enlace de la videollamada"}
+               aria-label="Enlace de la videollamada" />
+      )}
       {/* El buscador compartido en vez de uno propio: busca desde el primer
           caracter, filtra por institución —sin eso, en una red aparecen
           homónimos de otro hospital— y ante «sin coincidencias» ofrece crear al

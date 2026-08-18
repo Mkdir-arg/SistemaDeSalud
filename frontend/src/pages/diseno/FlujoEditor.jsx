@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { Badge, Button, Checkbox, ConfirmDialog, Field, Input, Select, Spinner, Textarea } from "../../components/ui";
+import { Badge, Button, Checkbox, ConfirmDialog, Field, Input, Modal, Select, Spinner, Textarea } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { estadoCaso, estadoVersion } from "../../lib/dominio";
 import { TIPOS_NODO, catDe } from "@/lib/nodos";
 
-const NODO_W = 184;
-const NODO_H = 64;
+const NODO_W = 200;
+// Alto del nodo. Es FIJO, no un mínimo: las conexiones salen y entran a media
+// altura, y con nodos de alto variable las flechas apuntaban al centro de un
+// rectángulo que no era el que se veía. El alto alcanza para el título en dos
+// líneas más una de detalle, que es todo lo que el nodo muestra.
+const NODO_H = 96;
 const GRID = 20; // paso de la grilla de puntos del lienzo (para snap-to-grid)
 // Tamaño MÍNIMO del «mundo» del lienzo. Crece con el contenido: un flujo
 // largo necesita más superficie, y con el mundo fijo los nodos que caían más
@@ -141,9 +145,9 @@ export default function FlujoEditor() {
    * Selección de nodos.
    *
    * El conjunto es la ÚNICA fuente de verdad y `sel` se deriva de él: con dos
-   * estados en paralelo (uno para el panel y otro para las acciones masivas) se
-   * desincronizan a la primera. El panel de propiedades sólo tiene sentido con
-   * un nodo elegido; con varios muestra las acciones del grupo.
+   * estados en paralelo (uno para la ficha y otro para las acciones masivas) se
+   * desincronizan a la primera. La ficha sólo tiene sentido con un nodo elegido;
+   * con varios aparece la barra de acciones del grupo.
    */
   const [seleccion, setSeleccion] = useState(() => new Set());
   const sel = seleccion.size === 1 ? [...seleccion][0] : null;
@@ -152,9 +156,6 @@ export default function FlujoEditor() {
 
   const seleccionarSolo = useCallback((id) => {
     setSeleccion(id == null ? new Set() : new Set([id]));
-    // Ver: `angostoRef`. En pantalla ancha el panel ya está abierto y esto no
-    // hace nada; en una tablet es lo que hace que tocar un nodo muestre algo.
-    if (id != null && angostoRef.current) setPanelAbierto(true);
   }, []);
   const alternarSeleccion = useCallback((id) => setSeleccion((s) => {
     const n = new Set(s);
@@ -166,6 +167,7 @@ export default function FlujoEditor() {
   const setSel = seleccionarSolo;
   const [selConexion, setSelConexion] = useState(null); // id de conexión seleccionada en el lienzo
   const [hoverConn, setHoverConn] = useState(null); // id de conexión bajo el cursor
+  const [hoverNodo, setHoverNodo] = useState(null); // id de nodo bajo el cursor
   const [problemas, setProblemas] = useState(null);
   const [conectarDesde, setConectarDesde] = useState(null);
   const [campos, setCampos] = useState([]); // campos disponibles para reglas
@@ -231,7 +233,13 @@ export default function FlujoEditor() {
       // Campos disponibles para reglas: los de los formularios de la institución.
       const fs = await traerTodo(`/formularios/?institucion=${f.institucion}`);
       const lista = fs.flatMap((form) =>
-        (form.campos || []).map((c) => ({ id: c.id, label: c.label, formulario: form.titulo, formularioId: form.id, opciones: c.opciones, tipo: c.tipo, requerido: c.requerido }))
+        (form.campos || []).map((c) => ({
+          id: c.id, label: c.label, formulario: form.titulo, formularioId: form.id,
+          opciones: c.opciones, tipo: c.tipo, requerido: c.requerido,
+          // Unidad y rango: los usa el ensayo para pedir el número como lo va a
+          // pedir la pantalla real (el motor rechaza lo que se salga del rango).
+          unidad: c.unidad, minimo: c.minimo, maximo: c.maximo,
+        }))
       );
       setCampos(lista);
     } catch (e) {
@@ -277,12 +285,18 @@ export default function FlujoEditor() {
   const zoomRef = useRef(1);
   zoomRef.current = zoom;
   const scrollRef = useRef(null);
+  // Se marca en cuanto la persona toca el zoom o desplaza el lienzo. El encuadre
+  // inicial llega un frame después de que aparecen los nodos, y sin esto un giro
+  // de rueda hecho en ese instante quedaba deshecho por el encuadre que venía
+  // atrás: el lienzo «no respondía» al primer intento.
+  const tocado = useRef(false);
 
   const LIMITE_ZOOM = [0.3, 2];
   const acotarZoom = (z) => Math.min(LIMITE_ZOOM[1], Math.max(LIMITE_ZOOM[0], +z.toFixed(3)));
 
   // Acercar/alejar con los botones de la barra de zoom.
   function zoomBoton(delta) {
+    tocado.current = true;
     setZoom((z) => acotarZoom(z + delta));
   }
 
@@ -303,6 +317,7 @@ export default function FlujoEditor() {
     if (!cont) return;
     e.preventDefault();
 
+    tocado.current = true;
     const z = zoomRef.current;
     // deltaMode 1 = líneas (Firefox); se normaliza para que no salte de golpe.
     const paso = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
@@ -344,6 +359,102 @@ export default function FlujoEditor() {
     scrollRef.current = el;
     if (el) el.addEventListener("wheel", manejarRueda, { passive: false });
   }, [manejarRueda]);
+
+  /* --- Desplazar el lienzo (pan) --------------------------------------------
+   *
+   * Arrastrar el fondo con el botón primario ya dibuja la marquesina de
+   * selección, así que el desplazamiento necesita gestos propios. Se ofrecen los
+   * tres que trae cualquier editor de diagramas, para que ninguno sea el único
+   * camino:
+   *
+   *   · botón del medio, desde donde sea (incluso sobre un nodo);
+   *   · barra espaciadora sostenida + arrastre;
+   *   · herramienta «Mano» (tecla H; V vuelve a Selección), la única visible en
+   *     pantalla y la que descubre quien no conoce las otras dos.
+   *
+   * Se intercepta en la FASE DE CAPTURA del viewport: si esperáramos al burbujeo,
+   * el nodo o la marquesina ya se habrían quedado con el gesto.
+   */
+  const [herramienta, setHerramienta] = useState("sel"); // "sel" | "mano"
+  const [espacio, setEspacio] = useState(false);
+  const [paneando, setPaneando] = useState(false);
+  const panRef = useRef(null);
+  const modoMano = herramienta === "mano" || espacio;
+  const modoManoRef = useRef(false);
+  modoManoRef.current = modoMano;
+
+  function onViewportPointerDown(e) {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const conMano = modoManoRef.current && e.button === 0;
+    const conRueda = e.button === 1;
+    if (!conMano && !conRueda) return;
+    // Cortar el evento acá evita tres cosas a la vez: la marquesina, el arrastre
+    // del nodo que esté debajo y el autoscroll que Windows engancha al botón
+    // del medio.
+    e.preventDefault();
+    e.stopPropagation();
+    tocado.current = true;
+    panRef.current = { x: e.clientX, y: e.clientY, sl: cont.scrollLeft, st: cont.scrollTop };
+    setPaneando(true);
+  }
+
+  useEffect(() => {
+    if (!paneando) return;
+    function onMove(e) {
+      const p = panRef.current, cont = scrollRef.current;
+      if (!p || !cont) return;
+      // El scroll se mueve al revés que el puntero: el lienzo sigue a la mano.
+      cont.scrollLeft = p.sl - (e.clientX - p.x);
+      cont.scrollTop = p.st - (e.clientY - p.y);
+    }
+    function terminar() { panRef.current = null; setPaneando(false); }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", terminar);
+    window.addEventListener("pointercancel", terminar);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", terminar);
+      window.removeEventListener("pointercancel", terminar);
+    };
+  }, [paneando]);
+
+  /*
+   * Espacio sostenido y las teclas de herramienta.
+   *
+   * Va en su propio efecto, montado una sola vez: el bloque grande de atajos se
+   * re-suscribe con cada cambio de selección, y un keyup de espacio que cayera
+   * justo en ese hueco dejaría la mano pegada. `blur` cubre el caso de soltar la
+   * tecla con la ventana en segundo plano (alt-tab), que no dispara keyup.
+   */
+  useEffect(() => {
+    const enTexto = (t) => {
+      const tag = t?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable;
+    };
+    function onDown(e) {
+      if (enTexto(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.code === "Space") {
+        // Sin esto el espacio scrollea la página mientras se arrastra.
+        e.preventDefault();
+        if (!e.repeat) setEspacio(true);
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === "h") setHerramienta("mano");
+      else if (k === "v") setHerramienta("sel");
+    }
+    function onUp(e) { if (e.code === "Space") setEspacio(false); }
+    function soltar() { setEspacio(false); }
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", soltar);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", soltar);
+    };
+  }, []);
   /**
    * Ordena el diagrama solo: columnas por profundidad, filas dentro de cada una.
    *
@@ -456,7 +567,7 @@ export default function FlujoEditor() {
 
   // Ajustar al contenido: calcula el bounding box de los nodos, elige el zoom
   // que lo encuadra y centra el lienzo en esa zona.
-  function ajustar() {
+  function ajustar(topeZoom = 2, pisoZoom = 0.3) {
     const ns = versionRef.current?.nodos || [];
     const cont = scrollRef.current;
     if (!ns.length || !cont) { setZoom(1); return; }
@@ -466,13 +577,45 @@ export default function FlujoEditor() {
     const maxY = Math.max(...ns.map((n) => n.y + NODO_H));
     const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
     const pad = 80;
-    const k = Math.min(2, Math.max(0.3, Math.min((cont.clientWidth - pad) / w, (cont.clientHeight - pad) / h)));
+    const k = Math.min(topeZoom, Math.max(pisoZoom, Math.min((cont.clientWidth - pad) / w, (cont.clientHeight - pad) / h)));
     setZoom(k);
     requestAnimationFrame(() => {
-      cont.scrollLeft = Math.max(0, minX * k - (cont.clientWidth - w * k) / 2);
-      cont.scrollTop = Math.max(0, minY * k - (cont.clientHeight - h * k) / 2);
+      // Si el diagrama entra, se centra; si no entra (hay un piso de zoom para
+      // que los nodos sigan siendo legibles), se alinea al comienzo. Centrar
+      // algo más ancho que la pantalla deja el nodo de inicio cortado contra el
+      // borde izquierdo, que es justo por donde uno empieza a leer.
+      const sobraX = cont.clientWidth - w * k, sobraY = cont.clientHeight - h * k;
+      cont.scrollLeft = Math.max(0, minX * k - (sobraX > 0 ? sobraX / 2 : pad / 2));
+      cont.scrollTop = Math.max(0, minY * k - (sobraY > 0 ? sobraY / 2 : pad / 2));
     });
   }
+  /*
+   * Encuadre inicial.
+   *
+   * El editor abría siempre en el origen al 100 %: un flujo que no arranca
+   * pegado a la esquina superior izquierda —o que es más ancho que la pantalla—
+   * se veía cortado, y lo primero que había que hacer al entrar era buscarlo.
+   * Ahora la vista entra encuadrada sobre el diagrama.
+   *
+   * El tope de 1 es a propósito: sin él, un flujo de tres nodos se abría
+   * ampliado al 200 % y daba la impresión de estar dentro de un nodo.
+   */
+  const encuadrado = useRef(null);
+  useEffect(() => {
+    if (!version || !scrollRef.current) return;
+    const clave = `${flujo?.id}:${verId}`;
+    if (encuadrado.current === clave) return;
+    encuadrado.current = clave;
+    // Un frame de espera: los nodos recién montados todavía no tienen su
+    // posición aplicada y el encuadre saldría del lienzo vacío.
+    // Entre 0.6 y 1: por debajo de 0.6 los títulos de los nodos dejan de leerse
+    // y el encuadre "completo" muestra un diagrama que no se entiende. Un flujo
+    // muy largo entra recortado a propósito, empezando por su inicio.
+    const t = requestAnimationFrame(() => { if (!tocado.current) ajustar(1, 0.6); });
+    return () => cancelAnimationFrame(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flujo?.id, verId, version]);
+
   /**
    * Trae un nodo al centro de la vista y lo selecciona.
    *
@@ -511,10 +654,21 @@ export default function FlujoEditor() {
    * en esta computadora».
    */
   const [paletaAbierta, setPaletaAbierta] = useState(() => !esAngosto());
-  const [panelAbierto, setPanelAbierto] = useState(() => !esAngosto());
-  // En pantalla angosta el panel arranca cerrado, así que elegir un nodo tiene
-  // que abrirlo: si no, tocar un nodo no muestra nada y no hay nada que lo diga.
-  const angostoRef = useRef(esAngosto());
+
+  /*
+   * Ficha del nodo: id del nodo cuya configuración está abierta en la ventana.
+   *
+   * Antes esto vivía en un panel fijo de 300 px a la derecha que estaba SIEMPRE
+   * en pantalla, la mayor parte del tiempo diciendo «seleccioná un nodo». El
+   * lienzo pagaba ese cartel con un tercio de su ancho.
+   */
+  const [fichaId, setFichaId] = useState(null);
+  /** Abre la ficha de un nodo y lo deja como único elegido. */
+  const abrirFicha = useCallback((id) => {
+    if (id == null) return;
+    setSeleccion(new Set([id]));
+    setFichaId(id);
+  }, []);
   // Lo que se está por borrar, a la espera de confirmación:
   // {tipo:"nodos", ids, nodos, conexiones} | {tipo:"conexion", conexion}
   const [aConfirmar, setAConfirmar] = useState(null);
@@ -686,7 +840,10 @@ export default function FlujoEditor() {
     try {
       const n = await api.post("/nodos/", { version: verId, tipo, titulo: cat.name, x, y });
       setVersion((v) => ({ ...v, nodos: [...v.nodos, n] }));
-      setSel(n.id);
+      // Se abre la ficha: el nodo nuevo se llama «Formulario» y no hace nada
+      // hasta que se le asigne uno. Antes eso lo mostraba el panel fijo; ahora
+      // hay que traerlo, o agregar un nodo termina en un rectángulo mudo.
+      abrirFicha(n.id);
       marcarGuardado();
     } catch (e) { marcarError(e); }
   }
@@ -955,17 +1112,17 @@ export default function FlujoEditor() {
   }
 
   /*
-   * Todo el feedback del editor —validación, ensayo y el rechazo de un
-   * Publicar— se dibuja DENTRO del panel de propiedades, y ese panel se cierra
-   * por el motivo más razonable del mundo: ver el diagrama. Con el panel
-   * cerrado, «Validar» era un botón que no hacía nada visible y un Publicar
-   * rechazado por errores no dejaba rastro en ninguna parte: el configurador se
-   * iba convencido de que la versión quedó publicada mientras en la institución
-   * seguía corriendo la anterior. Mostrar feedback abre el panel, siempre.
+   * El feedback del editor —validación, ensayo y el rechazo de un Publicar— se
+   * dibujaba DENTRO del panel de propiedades, que se cerraba por el motivo más
+   * razonable del mundo: ver el diagrama. Con el panel cerrado, «Validar» era un
+   * botón que no hacía nada visible y un Publicar rechazado por errores no
+   * dejaba rastro en ninguna parte: el configurador se iba convencido de que la
+   * versión quedó publicada mientras en la institución seguía corriendo la
+   * anterior. Ahora la validación tiene ventana propia y no depende de que haya
+   * un panel abierto.
    */
   function mostrarProblemas(p) {
     setProblemas(p);
-    setPanelAbierto(true);
   }
 
   async function validar() {
@@ -1063,7 +1220,6 @@ export default function FlujoEditor() {
       // El ensayo deja el editor en modo prueba: sin el panel no hay formulario
       // que completar, ni botón para avanzar, ni forma de salir del modo.
       setSim(estado);
-      setPanelAbierto(true);
       return estado;
     } catch (e) {
       mostrarToast({ tipo: "error", msg: e?.data?.detail || "No se pudo probar el flujo." });
@@ -1154,13 +1310,16 @@ export default function FlujoEditor() {
     if (!pp?.nodos.length) return;
     marcarGuardando();
     try {
-      // Desplazamiento fijo para que la copia no tape al original.
-      const OFFSET = GRID * 2;
+      // La copia baja un nodo entero: con un desplazamiento chico quedaba
+      // encima del original tapándole el centro, y el original dejaba de poder
+      // elegirse con el mouse — el clic se lo comía la copia.
+      const DESP_X = GRID * 2;
+      const DESP_Y = Math.ceil((NODO_H + GRID) / GRID) * GRID;
       const creados = [];
       for (const n of pp.nodos) {
         creados.push(await api.post("/nodos/", {
           version: verId, tipo: n.tipo, titulo: n.titulo, descripcion: n.descripcion || "",
-          x: n.x + OFFSET, y: n.y + OFFSET,
+          x: n.x + DESP_X, y: n.y + DESP_Y,
           config: n.config || {}, formulario: n.formulario || null,
           grupos: n.grupos || [],
         }));
@@ -1309,7 +1468,10 @@ export default function FlujoEditor() {
       const editando = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable;
       // Con un diálogo de confirmación abierto manda el diálogo: si no, Escape
       // limpiaría además la selección y Suprimir volvería a disparar el borrado.
-      if (aConfirmar) return;
+      // Con la ficha de un nodo abierta, igual: los atajos del lienzo actúan
+      // sobre el nodo que se está editando, y Suprimir lo borraría por debajo de
+      // la ventana que lo muestra.
+      if (aConfirmar || fichaId != null) return;
       if (e.key === "Escape") {
         if (conectarDesde) return setConectarDesde(null);
         if (sim) return setSim(null);
@@ -1367,7 +1529,7 @@ export default function FlujoEditor() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seleccion, selConexion, conectarDesde, sim, problemas, version, aConfirmar]);
+  }, [seleccion, selConexion, conectarDesde, sim, problemas, version, aConfirmar, fichaId]);
 
   if (cargando) return <Spinner label="Cargando flujo…" />;
   if (errorCarga)
@@ -1384,6 +1546,9 @@ export default function FlujoEditor() {
   if (!version) return <div style={{ padding: 32 }}>Este flujo no tiene versiones.</div>;
 
   const nodoSel = version.nodos.find((n) => n.id === sel);
+  // El nodo cuya ficha está abierta. Si lo borraron (o cambió de versión), la
+  // ventana se cierra sola en vez de quedar mostrando un nodo que ya no existe.
+  const fichaNodo = fichaId == null ? null : version.nodos.find((n) => n.id === fichaId) || null;
   const estV = estadoVersion[version.estado];
   const nodoEnFoco = repro ? repro.camino[repro.idx] : sim ? sim.current : null;
   const reproNodo = repro ? version.nodos.find((n) => n.id === repro.camino[repro.idx]) : null;
@@ -1472,29 +1637,41 @@ export default function FlujoEditor() {
             <ZoomBtn title="Deshacer (Ctrl+Z)" onClick={deshacer} disabled={undoStack.current.length === 0}><Icon name="undo" size={16} /></ZoomBtn>
             <ZoomBtn title="Rehacer (Ctrl+Shift+Z)" onClick={rehacer} disabled={redoStack.current.length === 0}><Icon name="redo" size={16} /></ZoomBtn>
           </div>
-          <Button variant="secondary" onClick={reproducir} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para reproducir el recorrido" : "Anima el recorrido del flujo"} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Icon name="play" size={13} /> Reproducir
-          </Button>
-          <Button variant="secondary" onClick={iniciarSim} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para probar el flujo" : "Simulá un caso paso a paso"}>Probar</Button>
-          <Button variant="secondary" onClick={validar} disabled={validando}>{validando ? "Validando…" : "Validar"}</Button>
+          {/* Los tres ensayos van juntos y en un peso menor; Publicar es la única
+              acción que cambia lo que ven los casos reales, y es la única que se
+              ve como acción principal. Antes los cuatro eran botones azules del
+              mismo tamaño y la barra no decía cuál era el que importaba. */}
+          <div style={{ display: "flex", alignItems: "center", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+            <Button variant="ghost" onClick={reproducir} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para reproducir el recorrido" : "Anima el recorrido del flujo"} className="rounded-none">
+              <Icon name="play" size={13} /> Reproducir
+            </Button>
+            <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
+            <Button variant="ghost" onClick={iniciarSim} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para probar el flujo" : "Simulá un caso paso a paso"} className="rounded-none">Probar</Button>
+            <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
+            <Button variant="ghost" onClick={validar} disabled={validando} title="Busca problemas en el flujo antes de publicarlo" className="rounded-none">{validando ? "Validando…" : "Validar"}</Button>
+          </div>
           <Button onClick={publicar} disabled={version.estado === "publicada" || publicando}>{publicando ? "Publicando…" : "Publicar"}</Button>
         </div>
       </div>
 
       {soloLectura && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          padding: "10px 24px", borderBottom: `1px solid var(--color-borde)`,
-          background: "var(--color-badge-amber-bg)", color: "var(--color-badge-amber-fg)",
-          fontSize: "var(--text-base)", flex: "none",
-        }}>
-          <Icon name="alert" size={15} />
+        // Franja fina: el aviso se lee una vez y después sólo ocupa lienzo. El
+        // porqué completo —los casos en curso están parados sobre estos nodos—
+        // pasa al `title`, que sigue estando para quien lo busque.
+        <div
+          title="Los casos en curso están parados sobre estos nodos: cambiarlos movería casos reales de lugar."
+          style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            padding: "5px 24px", borderBottom: `1px solid var(--color-borde)`,
+            background: "var(--color-badge-amber-bg)", color: "var(--color-badge-amber-fg)",
+            fontSize: "var(--text-sm)", flex: "none",
+          }}
+        >
+          <Icon name="alert" size={14} />
           <span style={{ flex: 1, minWidth: 220 }}>
-            Esta versión está <strong>{estV.label.toLowerCase()}</strong> y no se edita:
-            los casos en curso están parados sobre estos nodos. Para cambiar el flujo,
-            sacá una versión nueva.
+            Esta versión está <strong>{estV.label.toLowerCase()}</strong> y no se edita.
           </span>
-          <Button variant="secondary" onClick={sacarVersionNueva} disabled={creandoVersion}>
+          <Button size="sm" variant="secondary" onClick={sacarVersionNueva} disabled={creandoVersion}>
             {creandoVersion ? "Creando…" : "Sacar una versión nueva"}
           </Button>
         </div>
@@ -1511,7 +1688,10 @@ export default function FlujoEditor() {
           <div style={{ fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", margin: "0 4px 10px" }}>
             {soloLectura ? "Esta versión no se edita: sacá una versión nueva para agregar nodos." : "Hacé clic para agregar al lienzo"}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {/* Dos columnas: los trece tipos en una sola no entran en pantalla y la
+              mitad de abajo («Notificación», «Integración», «Fin») sólo aparecía
+              scrolleando una columna que no parece tener más. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             {PALETA.map((p) => (
               <button
                 key={p.tipo}
@@ -1520,15 +1700,14 @@ export default function FlujoEditor() {
                 // congelada: cada clic era un 409 y un toast que hablaba de la red.
                 disabled={soloLectura}
                 title={`Agregar nodo «${p.name}»`}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", background: "var(--color-superficie)", cursor: soloLectura ? "not-allowed" : "pointer", opacity: soloLectura ? 0.5 : 1, textAlign: "left", transition: "background .12s, border-color .12s" }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "9px 4px", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", background: "var(--color-superficie)", cursor: soloLectura ? "not-allowed" : "pointer", opacity: soloLectura ? 0.5 : 1, transition: "background .12s, border-color .12s" }}
                 onMouseEnter={(e) => { if (soloLectura) return; e.currentTarget.style.background = p.tint; e.currentTarget.style.borderColor = p.bd; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-superficie)"; e.currentTarget.style.borderColor = "var(--color-borde)"; }}
               >
-                <span style={{ width: 26, height: 26, borderRadius: "var(--radius-sm)", background: p.tint, border: `1px solid ${p.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-                  <span style={{ width: 10, height: 10, borderRadius: p.tipo === "decision" ? 2 : 3, background: p.sol, transform: p.tipo === "decision" ? "rotate(45deg)" : "none" }} />
+                <span style={{ width: 26, height: 26, borderRadius: "var(--radius-sm)", background: p.tint, border: `1px solid ${p.bd}`, color: p.sol, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+                  <Icon name={p.icono} size={14} />
                 </span>
-                <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-texto-medio)", flex: 1 }}>{p.name}</span>
-                <Icon name="plus" size={13} style={{ color: "var(--color-texto-tenue)" }} />
+                <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-texto-medio)", textAlign: "center", lineHeight: 1.2 }}>{p.name}</span>
               </button>
             ))}
           </div>
@@ -1541,7 +1720,14 @@ export default function FlujoEditor() {
 
         {/* Canvas (viewport sin scroll → scrolleable → sizer a escala → capa escalada) */}
         <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          <div ref={montarScroll} style={{ position: "absolute", inset: 0, overflow: "auto", background: "var(--color-fondo)" }}>
+          <div
+            ref={montarScroll}
+            onPointerDownCapture={onViewportPointerDown}
+            style={{
+              position: "absolute", inset: 0, overflow: "auto", background: "var(--color-fondo)",
+              cursor: paneando ? "grabbing" : modoMano ? "grab" : "default",
+            }}
+          >
             <div style={{ width: mundo.w * zoom, height: mundo.h * zoom }}>
               <div
                 ref={canvasRef}
@@ -1549,6 +1735,7 @@ export default function FlujoEditor() {
                 // del DOM sin adivinarlo por el `style`, que es frágil.
                 data-lienzo=""
                 onPointerDown={onLienzoPointerDown}
+
                 onClick={(e) => {
                   // Sólo el fondo limpia la selección; un clic sobre un nodo no
                   // debe llegar acá (los nodos ya cortan la propagación).
@@ -1564,6 +1751,10 @@ export default function FlujoEditor() {
                   transformOrigin: "top left",
                   backgroundImage: "radial-gradient(circle, var(--color-borde) 1.1px, transparent 1.1px)",
                   backgroundSize: `${GRID}px ${GRID}px`,
+                  // Con la mano activa el lienzo entero es superficie de
+                  // arrastre: nodos y conexiones dejan de responder al puntero
+                  // para que rozar uno no interrumpa el desplazamiento.
+                  pointerEvents: modoMano ? "none" : "auto",
                 }}
               >
             {/* Conexiones */}
@@ -1580,19 +1771,33 @@ export default function FlujoEditor() {
                 const o = version.nodos.find((n) => n.id === c.origen);
                 const d = version.nodos.find((n) => n.id === c.destino);
                 if (!o || !d) return null;
-                const x1 = o.x + NODO_W, y1 = o.y + NODO_H / 2;
-                const x2 = d.x, y2 = d.y + NODO_H / 2;
+                // La línea arranca y termina separada del nodo: pegada al borde,
+                // la punta de la flecha se confundía con el marco del nodo y no
+                // se veía de qué lado entra la conexión.
+                const HUECO = 7;
+                const x1 = o.x + NODO_W + HUECO, y1 = o.y + NODO_H / 2;
+                const x2 = d.x - HUECO, y2 = d.y + NODO_H / 2;
                 const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
                 const activo = edgesActivos.has(`${c.origen}->${c.destino}`);
                 const seleccionada = c.id === selConexion;
                 const resaltada = seleccionada || activo || c.id === hoverConn;
                 const stroke = seleccionada || activo ? "var(--color-accent)" : c.id === hoverConn ? "var(--color-texto-debil)" : "var(--color-texto-tenue)";
-                const path = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+                // Con un nodo elegido, lo que no lo toca se atenúa: en un flujo
+                // con ramas, seguir el camino de un nodo entre veinte líneas del
+                // mismo gris es justo lo que no se podía hacer.
+                const hayFoco = seleccion.size > 0;
+                const suya = seleccion.has(c.origen) || seleccion.has(c.destino);
+                const opacidad = !hayFoco || suya || resaltada ? 1 : 0.28;
+                // Salidas y entradas horizontales: los tiradores de la curva se
+                // separan con la distancia, así una conexión larga sale plana en
+                // vez de con una ese pronunciada.
+                const tira = Math.max(40, Math.min(160, Math.abs(x2 - x1) * 0.5));
+                const path = `M ${x1} ${y1} C ${x1 + tira} ${y1}, ${x2 - tira} ${y2}, ${x2} ${y2}`;
                 const etiqueta = etiquetaRama(c, o);
                 return (
                   <g
                     key={c.id}
-                    style={{ pointerEvents: "auto", cursor: "pointer" }}
+                    style={{ pointerEvents: "auto", cursor: "pointer", opacity: opacidad, transition: "opacity .18s" }}
                     onMouseEnter={() => setHoverConn(c.id)}
                     onMouseLeave={() => setHoverConn((h) => (h === c.id ? null : h))}
                     onClick={(e) => { e.stopPropagation(); setSelConexion(c.id); setSel(null); }}
@@ -1618,7 +1823,10 @@ export default function FlujoEditor() {
               {/* Línea-fantasma mientras se arrastra una conexión nueva */}
               {ghost && (
                 <path
-                  d={`M ${ghost.x1} ${ghost.y1} C ${(ghost.x1 + ghost.x2) / 2} ${ghost.y1}, ${(ghost.x1 + ghost.x2) / 2} ${ghost.y2}, ${ghost.x2} ${ghost.y2}`}
+                  d={(() => {
+                    const t = Math.max(40, Math.min(160, Math.abs(ghost.x2 - ghost.x1) * 0.5));
+                    return `M ${ghost.x1} ${ghost.y1} C ${ghost.x1 + t} ${ghost.y1}, ${ghost.x2 - t} ${ghost.y2}, ${ghost.x2} ${ghost.y2}`;
+                  })()}
                   stroke={"var(--color-accent)"} strokeWidth="2" strokeDasharray="5 4" fill="none" markerEnd="url(#arrow-activo)" style={{ pointerEvents: "none" }}
                 />
               )}
@@ -1646,14 +1854,25 @@ export default function FlujoEditor() {
                   // tabIndex el focus dispara junto con el pointerdown, así que
                   // sin esto un shift+clic quedaba reducido a un solo nodo.
                   onFocus={() => { if (!seleccion.has(n.id)) setSel(n.id); }}
+                  onPointerEnter={() => setHoverNodo(n.id)}
+                  onPointerLeave={() => setHoverNodo((h) => (h === n.id ? null : h))}
                   onPointerDown={(e) => onNodoPointerDown(e, n)}
                   onClick={(e) => { e.stopPropagation(); clickNodo(n, e); }}
+                  // Un clic elige, dos configuran: con un solo clic la ventana
+                  // se abría también cuando lo único que se quería era agarrar
+                  // el nodo para moverlo o sumarlo a una selección.
+                  onDoubleClick={(e) => { e.stopPropagation(); abrirFicha(n.id); }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || e.target !== e.currentTarget) return;
+                    e.preventDefault();
+                    abrirFicha(n.id);
+                  }}
                   style={{
                     position: "absolute",
                     left: n.x,
                     top: n.y,
                     width: NODO_W,
-                    minHeight: NODO_H,
+                    height: NODO_H,
                     boxSizing: "border-box",
                     background: cat.tint,
                     border: `1.5px solid ${seleccionado || esOrigenConexion || enFoco ? cat.sol : cat.bd}`,
@@ -1661,33 +1880,65 @@ export default function FlujoEditor() {
                     padding: "11px 13px",
                     cursor: soloLectura ? "default" : arrastrando ? "grabbing" : "grab",
                     touchAction: "none",
+                    // Sin esto, shift+clic —el gesto para sumar nodos a la
+                    // selección— pinta de azul el texto de los nodos que hay en
+                    // el medio, como si se estuviera copiando un párrafo.
+                    userSelect: "none",
                     boxShadow: enFoco ? `0 0 0 4px ${cat.sol}55, var(--shadow-float)` : arrastrando ? "var(--shadow-float)" : seleccionado ? `0 0 0 3px ${cat.sol}33` : "var(--shadow-card)",
                     transform: arrastrando ? "scale(1.02)" : "none",
                     transition: arrastrando ? "none" : "box-shadow .2s, border-color .2s, transform .12s",
                     zIndex: arrastrando ? 4 : 1,
                     display: "flex",
-                    alignItems: "center",
+                    alignItems: "flex-start",
                     gap: 10,
+                    overflow: "hidden",
                   }}
                 >
-                  <span style={{ width: 11, height: 11, borderRadius: n.tipo === "decision" ? 2 : 3, background: cat.sol, transform: n.tipo === "decision" ? "rotate(45deg)" : "none", flex: "none" }} />
+                  {/* El icono dice el tipo sin gastar una línea de texto en
+                      decirlo. Antes la fila «FORMULARIO» en mayúsculas se comía
+                      el alto que necesitaba el título, y el título —que es el
+                      único dato propio del nodo— quedaba cortado a media
+                      palabra: «Admision administr…». */}
+                  <span
+                    title={cat.name}
+                    style={{ width: 26, height: 26, borderRadius: "var(--radius-sm)", background: "var(--color-superficie)", border: `1px solid ${cat.bd}`, color: cat.sol, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
+                  >
+                    <Icon name={cat.icono} size={15} strokeWidth={2} />
+                  </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    {/* La categoría va en un gris legible, NO en el color del nodo: esa paleta
-                        está pensada para bordes y rellenos, y como texto no llega a
-                        4.5:1 («Decisión» daba 2.64:1). El cuadradito de la izquierda,
-                        el borde y el tinte ya identifican el tipo. */}
-                    <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", color: "var(--color-texto-suave)" }}>{cat.name.toUpperCase()}</div>
-                    <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--color-texto-fuerte)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.titulo}</div>
+                    {/* Hasta dos líneas: los títulos reales («Admisión administrativa»,
+                        «Triage de enfermería») no entran en una sola y truncarlos deja
+                        dos nodos distintos con el mismo texto en pantalla. */}
+                    <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--color-texto-fuerte)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.25, wordBreak: "break-word" }}>{n.titulo}</div>
+                    {/* Configuración y responsables en UNA línea: eran dos, y con
+                        el título en dos el nodo pasaba a tener cuatro renglones de
+                        texto de cuerpo diminuto, que a la distancia de trabajo es
+                        una mancha gris. */}
                     {sub && (
                       <div style={{ fontSize: "var(--text-xs)", color: subFalta ? "var(--color-danger)" : "var(--color-texto-suave)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{sub}</div>
                     )}
                     {n.grupos_detalle?.length > 0 && (
-                      <div title={`Responsable: ${n.grupos_detalle.map((g) => g.nombre).join(", ")}`} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: "var(--text-xs)", color: "var(--color-texto-suave)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div title={`Responsable: ${n.grupos_detalle.map((g) => g.nombre).join(", ")}`} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: "var(--text-xs)", color: "var(--color-texto-suave)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         <Icon name="users" size={11} />
                         {n.grupos_detalle.length === 1 ? n.grupos_detalle[0].nombre : `${n.grupos_detalle.length} grupos`}
                       </div>
                     )}
                   </div>
+                  {/* Atajo visible a la ficha: sin él, «doble clic» es una
+                      convención que hay que saber de antemano. Aparece con el
+                      nodo elegido o bajo el mouse para no ensuciar el diagrama. */}
+                  {(seleccionado || n.id === hoverNodo) && (
+                    <button
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); abrirFicha(n.id); }}
+                      title="Configurar este nodo (doble clic)"
+                      aria-label={`Configurar ${n.titulo}`}
+                      style={{ position: "absolute", right: 6, top: 6, width: 22, height: 22, borderRadius: "var(--radius-sm)", border: `1px solid ${cat.bd}`, background: "var(--color-superficie)", color: "var(--color-texto-suave)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3 }}
+                    >
+                      <Icon name="edit" size={12} />
+                    </button>
+                  )}
+
                   {/* Handle de entrada (visual) */}
                   {n.tipo !== "inicio" && (
                     <span style={{ position: "absolute", left: -5, top: NODO_H / 2 - 4, width: 9, height: 9, borderRadius: "50%", background: "var(--color-superficie)", border: `2px solid ${cat.bd}`, pointerEvents: "none" }} />
@@ -1737,11 +1988,22 @@ export default function FlujoEditor() {
 
           {/* Controles de zoom (fijos sobre el viewport, no scrollean) */}
           <div style={{ position: "absolute", left: 14, bottom: 14, display: "flex", alignItems: "center", gap: 4, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-card)", padding: 3, zIndex: 7 }}>
+            {/* Selección / Mano. El desplazamiento del lienzo tenía tres gestos y
+                ninguno se veía: sin este par de botones, quien no probara la
+                rueda del mouse o la barra espaciadora se quedaba encerrado en la
+                porción visible del flujo. */}
+            <ZoomBtn title="Seleccionar (V)" onClick={() => setHerramienta("sel")} activo={herramienta === "sel"}>
+              <Icon name="cursor" size={15} />
+            </ZoomBtn>
+            <ZoomBtn title="Mano: arrastrar para desplazar (H · o espacio · o botón del medio)" onClick={() => setHerramienta("mano")} activo={herramienta === "mano"}>
+              <Icon name="mano" size={15} />
+            </ZoomBtn>
+            <div style={{ width: 1, height: 18, background: "var(--color-division)", margin: "0 2px" }} />
             <ZoomBtn title="Alejar" onClick={() => zoomBoton(-0.1)}><Icon name="minus" size={15} /></ZoomBtn>
             <button onClick={() => setZoom(1)} title="Restablecer zoom (100%)" style={{ border: "none", background: "none", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-texto-suave)", minWidth: 42, fontVariantNumeric: "tabular-nums" }}>{Math.round(zoom * 100)}%</button>
             <ZoomBtn title="Acercar" onClick={() => zoomBoton(0.1)}><Icon name="plus" size={15} /></ZoomBtn>
             <div style={{ width: 1, height: 18, background: "var(--color-division)", margin: "0 2px" }} />
-            <ZoomBtn title="Ajustar al contenido" onClick={ajustar}><Icon name="maximize" size={15} /></ZoomBtn>
+            <ZoomBtn title="Ajustar al contenido" onClick={() => ajustar()}><Icon name="maximize" size={15} /></ZoomBtn>
             <ZoomBtn
               title="Ordenar el diagrama automáticamente (se puede deshacer)"
               onClick={ordenar}
@@ -1754,14 +2016,9 @@ export default function FlujoEditor() {
           {/* Minimapa (abajo a la derecha, del lado opuesto al zoom).
               En un lienzo angosto el mapa (168px) le tapa la mitad inferior y se
               encima con la barra de zoom: ahí deja de orientar y sólo estorba. */}
-          {version.nodos.length > 3 && (anchoLienzo == null || anchoLienzo >= LIENZO_MIN_MINIMAPA) && (
-            <MiniMapa nodos={version.nodos} seleccion={seleccion} vista={vista} mundo={mundo} onIr={centrarEn} />
+          {version.nodos.length > 3 && !sim && !problemas && (anchoLienzo == null || anchoLienzo >= LIENZO_MIN_MINIMAPA) && (
+            <MiniMapa nodos={version.nodos} conexiones={version.conexiones} seleccion={seleccion} vista={vista} onIr={centrarEn} />
           )}
-
-          {/* Mostrar/ocultar el panel de propiedades */}
-          <button onClick={() => setPanelAbierto((v) => !v)} title={panelAbierto ? "Ocultar propiedades" : "Mostrar propiedades"} aria-label={panelAbierto ? "Ocultar panel de propiedades" : "Mostrar panel de propiedades"} style={{ position: "absolute", right: 10, top: 12, zIndex: 7, width: 30, height: 30, borderRadius: "var(--radius-sm)", border: `1px solid var(--color-borde)`, background: "var(--color-superficie)", boxShadow: "var(--shadow-card)", cursor: "pointer", color: "var(--color-texto-suave)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon name="back" size={15} style={{ transform: panelAbierto ? "rotate(180deg)" : "none" }} />
-          </button>
 
           {/* Onboarding del lienzo vacío */}
           {flujoVacio && (
@@ -1784,51 +2041,76 @@ export default function FlujoEditor() {
             </div>
           )}
 
+          {/* Ensayo y validación: ventana flotante SOBRE el lienzo, no un panel
+              que lo angosta. Flotante y no modal a propósito: los dos hablan de
+              nodos concretos —el paso actual del ensayo, el nodo con el problema—
+              y con el lienzo tapado por una capa oscura no se ve de cuál hablan. */}
+          {(sim || problemas) && (
+            <div style={{ position: "absolute", right: 14, top: 12, width: 320, maxWidth: "calc(100% - 28px)", maxHeight: "calc(100% - 90px)", overflow: "auto", background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-dropdown)", zIndex: 8, animation: "fadeUp .16s ease" }}>
+              {sim ? (
+                <PanelSimulacion sim={sim} version={version} campos={campos} onAvanzar={avanzarSim} onReiniciar={iniciarSim} onCerrar={() => setSim(null)} />
+              ) : (
+                <PanelValidacion problemas={problemas} onCerrar={() => setProblemas(null)} onFocus={(nid) => { setSel(nid); setProblemas(null); abrirFicha(nid); }} />
+              )}
+            </div>
+          )}
+
+          {/* Varios nodos elegidos: barra al pie, no ventana. Con varios lo que
+              se hace es moverlos y acomodarlos, y un diálogo encima del lienzo
+              impediría justo eso. */}
+          {seleccion.size > 1 && !sim && (
+            <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-pill)", boxShadow: "var(--shadow-dropdown)", zIndex: 8 }}>
+              <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-texto-fuerte)", padding: "0 4px" }}>{seleccion.size} nodos elegidos</span>
+              <span style={{ width: 1, height: 18, background: "var(--color-division)" }} />
+              {!soloLectura && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => { copiar(); pegar(); }}
+                    title="Se copian también las conexiones entre los nodos elegidos. Las que entran o salen del grupo no, porque apuntarían a nodos que la copia no reprodujo."
+                  >
+                    Duplicar (Ctrl+D)
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => pedirBorrarNodos([...seleccion])}>Eliminar los {seleccion.size}</Button>
+                </>
+              )}
+              <button onClick={() => setSeleccion(new Set())} aria-label="Quitar la selección" title="Quitar la selección" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", padding: 4 }}>
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+          )}
+
           {conectarDesde && (
             <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "var(--color-ink)", color: "var(--color-white)", padding: "8px 16px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-sm)", boxShadow: "var(--shadow-dropdown)", zIndex: 40 }}>
               Hacé clic en el nodo destino · <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setConectarDesde(null)}>cancelar</span>
             </div>
           )}
         </div>
-
-        {/* Panel de propiedades (colapsable) */}
-        {panelAbierto && (
-        <div style={{ width: 300, borderLeft: `1px solid var(--color-borde)`, background: "var(--color-superficie)", overflow: "auto", flex: "none" }}>
-          {sim ? (
-            <PanelSimulacion sim={sim} version={version} campos={campos} onAvanzar={avanzarSim} onReiniciar={iniciarSim} onCerrar={() => setSim(null)} />
-          ) : problemas ? (
-            <PanelValidacion problemas={problemas} onCerrar={() => setProblemas(null)} onFocus={(nid) => { setSel(nid); setProblemas(null); }} />
-          ) : seleccion.size > 1 ? (
-            <PanelSeleccion
-              cantidad={seleccion.size}
-              soloLectura={soloLectura}
-              onDuplicar={() => { copiar(); pegar(); }}
-              onBorrar={() => pedirBorrarNodos([...seleccion])}
-              onLimpiar={() => setSeleccion(new Set())}
-            />
-          ) : nodoSel ? (
-            <PanelNodo
-              key={nodoSel.id}
-              nodo={nodoSel}
-              version={version}
-              soloLectura={soloLectura}
-              flujoInstId={flujo.institucion}
-              flujoAreaId={flujo.area}
-              campos={campos}
-              onActualizar={actualizarNodo}
-              onBorrar={borrarNodo}
-              onConectar={() => setConectarDesde(nodoSel.id)}
-              onBorrarConexion={pedirBorrarConexion}
-              onActualizarConexion={actualizarConexion}
-            />
-          ) : (
-            <div style={{ padding: 22, fontSize: "var(--text-base)", color: "var(--color-texto-debil)" }}>
-              Seleccioná un nodo para editar sus propiedades, o agregá uno desde la paleta.
-            </div>
-          )}
-        </div>
-        )}
       </div>
+
+      {/* Ficha del nodo: ventana, no panel. Se abre con doble clic sobre el
+          nodo, con Enter sobre el nodo elegido, con el botón de configuración
+          que aparece al pasar el mouse, y sola al agregar un nodo nuevo. */}
+      {fichaNodo && (
+        <Modal title={fichaNodo.titulo || catDe(fichaNodo.tipo).name} width={620} onClose={() => setFichaId(null)}>
+          <PanelNodo
+            key={fichaNodo.id}
+            nodo={fichaNodo}
+            version={version}
+            enVentana
+            soloLectura={soloLectura}
+            flujoInstId={flujo.institucion}
+            flujoAreaId={flujo.area}
+            campos={campos}
+            onActualizar={actualizarNodo}
+            onBorrar={(id) => { setFichaId(null); return borrarNodo(id); }}
+            onConectar={() => { setFichaId(null); setConectarDesde(fichaNodo.id); }}
+            onBorrarConexion={pedirBorrarConexion}
+            onActualizarConexion={actualizarConexion}
+          />
+        </Modal>
+      )}
 
       {aConfirmar?.tipo === "nodos" && (
         <ConfirmDialog
@@ -1871,16 +2153,21 @@ export default function FlujoEditor() {
 }
 
 // Botón cuadrado e ícono (barra de zoom y deshacer/rehacer).
-function ZoomBtn({ title, onClick, children, disabled }) {
+function ZoomBtn({ title, onClick, children, disabled, activo }) {
+  // `activo` marca la herramienta en uso: sin ese estado los dos botones se ven
+  // igual y no dicen en qué modo está el lienzo, que es justo lo que explica por
+  // qué arrastrar selecciona o desplaza.
+  const fondo = activo ? "var(--color-accent-50)" : "none";
   return (
     <button
       onClick={onClick}
       title={title}
       aria-label={title}
+      aria-pressed={activo == null ? undefined : activo}
       disabled={disabled}
-      style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", border: "none", background: "none", color: disabled ? "var(--color-texto-tenue)" : "var(--color-texto-suave)", opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--color-division)"; }}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+      style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", border: "none", background: fondo, color: disabled ? "var(--color-texto-tenue)" : activo ? "var(--color-accent)" : "var(--color-texto-suave)", opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+      onMouseEnter={(e) => { if (!disabled && !activo) e.currentTarget.style.background = "var(--color-division)"; }}
+      onMouseLeave={(e) => (e.currentTarget.style.background = fondo)}
     >
       {children}
     </button>
@@ -1982,12 +2269,14 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
       ) : nodo ? (
         <>
           <div style={{ border: `1px solid ${cat.bd}`, background: cat.tint, borderRadius: "var(--radius-md)", padding: 13, marginBottom: 14 }}>
-            {/* La categoría va en un gris legible, NO en el color del nodo: esa paleta
-                        está pensada para bordes y rellenos, y como texto no llega a
-                        4.5:1 («Decisión» daba 2.64:1). El cuadradito de la izquierda,
-                        el borde y el tinte ya identifican el tipo. */}
-                    <div style={{ fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", color: "var(--color-texto-suave)" }}>{cat.name.toUpperCase()}</div>
-            <div style={{ fontSize: "var(--text-md)", fontWeight: 700, color: "var(--color-texto-fuerte)" }}>{nodo.titulo}</div>
+            {/* La categoría va en un gris legible, NO en el color del nodo: esa
+                paleta está pensada para bordes y rellenos, y como texto no llega
+                a 4.5:1 («Decisión» daba 2.64:1). */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: ".4px", color: "var(--color-texto-suave)" }}>
+              <Icon name={cat.icono} size={13} />
+              {cat.name.toUpperCase()}
+            </div>
+            <div style={{ fontSize: "var(--text-md)", fontWeight: 700, color: "var(--color-texto-fuerte)", marginTop: 2 }}>{nodo.titulo}</div>
           </div>
 
           {nodo.tipo === "form" && (
@@ -2003,7 +2292,18 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
                       {(c.opciones || []).map((o) => <option key={o} value={o}>{o}</option>)}
                     </Select>
                   ) : (
-                    <Input size="sm" type={c.tipo === "fecha" ? "date" : "text"} value={valores[c.id] || ""} onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))} />
+                    <Input
+                      size="sm"
+                      type={c.tipo === "fecha" ? "date" : c.tipo === "numero" ? "number" : "text"}
+                      // El rango del campo también rige en el ensayo: el motor es
+                      // el mismo y rechaza el valor que se salga de él.
+                      step={c.tipo === "numero" ? "any" : undefined}
+                      min={c.tipo === "numero" && c.minimo != null ? c.minimo : undefined}
+                      max={c.tipo === "numero" && c.maximo != null ? c.maximo : undefined}
+                      placeholder={c.tipo === "numero" && c.unidad ? c.unidad : undefined}
+                      value={valores[c.id] || ""}
+                      onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}
+                    />
                   )}
                 </div>
               ))}
@@ -2080,20 +2380,52 @@ function operadoresDe(campo) {
  * Se oculta con flujos de pocos nodos: ahí no orienta, sólo tapa lienzo.
  */
 const MAPA_W = 168;
+// Alto máximo del mapa: más que esto y deja de ser una referencia al costado
+// para pasar a tapar el lienzo que pretende resumir.
+const MAPA_H_MAX = 132;
 
-function MiniMapa({ nodos, seleccion, vista, mundo, onIr }) {
+function MiniMapa({ nodos, conexiones, seleccion, vista, onIr }) {
   const ref = useRef(null);
   const arrastrando = useRef(false);
-  // Misma escala en los dos ejes, y el alto sale de la proporción del mundo:
-  // así el mapa acompaña cuando el lienzo crece con el flujo.
-  const k = MAPA_W / mundo.w;
-  const MAPA_H = Math.round(mundo.h * k);
+
+  /*
+   * El mapa encuadra el CONTENIDO, no el mundo.
+   *
+   * El lienzo mide varios miles de píxeles para que siempre haya lugar donde
+   * seguir armando, pero un flujo ocupa una fracción de eso: escalando el mundo
+   * entero, el diagrama quedaba como un puñado de puntos de dos píxeles pegados
+   * a un borde y el resto del recuadro era superficie blanca. Un mapa así no
+   * orienta, que es lo único que tiene que hacer.
+   *
+   * Se encuadra la unión de los nodos con el rectángulo de la vista: si sólo se
+   * tomaran los nodos, al alejarse la vista se saldría del mapa y el recuadro
+   * quedaría recortado contra el borde sin decir hacia dónde.
+   */
+  const caja = (() => {
+    const xs = [], ys = [], xf = [], yf = [];
+    for (const n of nodos) { xs.push(n.x); ys.push(n.y); xf.push(n.x + NODO_W); yf.push(n.y + NODO_H); }
+    if (vista) { xs.push(vista.x); ys.push(vista.y); xf.push(vista.x + vista.w); yf.push(vista.y + vista.h); }
+    if (!xs.length) return { x: 0, y: 0, w: 1, h: 1 };
+    const pad = 60;
+    const x = Math.min(...xs) - pad, y = Math.min(...ys) - pad;
+    return { x, y, w: Math.max(1, Math.max(...xf) + pad - x), h: Math.max(1, Math.max(...yf) + pad - y) };
+  })();
+
+  // Misma escala en los dos ejes (si no, el diagrama sale deformado y deja de
+  // parecerse a lo que se ve en el lienzo) y alto acotado, para que un flujo
+  // muy vertical no tape media pantalla.
+  const k = Math.min(MAPA_W / caja.w, MAPA_H_MAX / caja.h);
+  const ancho = Math.max(60, Math.round(caja.w * k));
+  const alto = Math.max(48, Math.round(caja.h * k));
+  const aMapa = (x, y) => ({ x: (x - caja.x) * k, y: (y - caja.y) * k });
 
   function irDesdeEvento(e) {
-    const caja = ref.current?.getBoundingClientRect();
-    if (!caja) return;
-    onIr((e.clientX - caja.left) / k, (e.clientY - caja.top) / k);
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    onIr(caja.x + (e.clientX - r.left) / k, caja.y + (e.clientY - r.top) / k);
   }
+
+  const vp = vista && aMapa(vista.x, vista.y);
 
   return (
     <div
@@ -2105,41 +2437,57 @@ function MiniMapa({ nodos, seleccion, vista, mundo, onIr }) {
       }}
       onPointerMove={(e) => arrastrando.current && irDesdeEvento(e)}
       onPointerUp={() => { arrastrando.current = false; }}
-      title="Mapa del flujo · hacé clic para ir a esa zona"
+      title="Mapa del flujo · hacé clic o arrastrá para ir a esa zona"
       style={{
-        position: "absolute", right: 14, bottom: 14, width: MAPA_W, height: MAPA_H,
+        position: "absolute", right: 14, bottom: 14, width: ancho, height: alto,
         background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)",
         boxShadow: "var(--shadow-card)", overflow: "hidden", cursor: "pointer", zIndex: 7,
         touchAction: "none",
       }}
     >
-      {nodos.map((n) => (
-        <span
-          key={n.id}
-          style={{
-            position: "absolute",
-            left: n.x * k,
-            top: n.y * k,
-            width: Math.max(3, NODO_W * k),
-            height: Math.max(2, NODO_H * k),
-            borderRadius: 1,
-            background: catDe(n.tipo).sol,
-            // Lo elegido se destaca: el minimapa también sirve para ubicar dónde
-            // quedó lo que se acaba de seleccionar o pegar.
-            outline: seleccion.has(n.id) ? `1.5px solid var(--color-accent)` : "none",
-          }}
-        />
-      ))}
+      {/* Las conexiones, en gris muy tenue: sin ellas el mapa es una nube de
+          rectángulos sueltos y no se lee la forma del proceso, que es
+          justamente lo que uno reconoce de un vistazo. */}
+      <svg width={ancho} height={alto} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {conexiones.map((c) => {
+          const o = nodos.find((n) => n.id === c.origen);
+          const d = nodos.find((n) => n.id === c.destino);
+          if (!o || !d) return null;
+          const a = aMapa(o.x + NODO_W, o.y + NODO_H / 2);
+          const b = aMapa(d.x, d.y + NODO_H / 2);
+          return <line key={c.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--color-texto-tenue)" strokeWidth="1" />;
+        })}
+      </svg>
+      {nodos.map((n) => {
+        const p = aMapa(n.x, n.y);
+        return (
+          <span
+            key={n.id}
+            style={{
+              position: "absolute",
+              left: p.x,
+              top: p.y,
+              width: Math.max(4, NODO_W * k),
+              height: Math.max(3, NODO_H * k),
+              borderRadius: 2,
+              background: catDe(n.tipo).sol,
+              // Lo elegido se destaca: el minimapa también sirve para ubicar dónde
+              // quedó lo que se acaba de seleccionar o pegar.
+              outline: seleccion.has(n.id) ? `1.5px solid var(--color-accent)` : "none",
+            }}
+          />
+        );
+      })}
 
-      {vista && (
+      {vp && (
         <span
           aria-hidden="true"
           style={{
             position: "absolute",
-            left: vista.x * k,
-            top: vista.y * k,
-            width: Math.min(MAPA_W, vista.w * k),
-            height: Math.min(MAPA_H, vista.h * k),
+            left: vp.x,
+            top: vp.y,
+            width: Math.min(ancho, vista.w * k),
+            height: Math.min(alto, vista.h * k),
             border: `1.5px solid var(--color-accent)`,
             background: `var(--color-accent)12`,
             borderRadius: 2,
@@ -2147,39 +2495,6 @@ function MiniMapa({ nodos, seleccion, vista, mundo, onIr }) {
           }}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * Panel de varios nodos elegidos.
- *
- * Con más de uno no hay propiedades que editar —son de distinto tipo—, así que
- * el panel pasa a ofrecer lo que sí aplica al grupo. Dejarlo vacío haría pensar
- * que la selección múltiple no sirve para nada.
- */
-function PanelSeleccion({ cantidad, soloLectura, onDuplicar, onBorrar, onLimpiar }) {
-  return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: "var(--text-md)", fontWeight: 700 }}>{cantidad} nodos elegidos</div>
-        <button onClick={onLimpiar} aria-label="Quitar la selección" title="Quitar la selección" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", padding: 4 }}>
-          <Icon name="x" size={18} />
-        </button>
-      </div>
-      <div style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", marginBottom: 16 }}>
-        {soloLectura
-          ? "Esta versión está publicada: los nodos se pueden ver, no mover ni eliminar."
-          : "Arrastrá cualquiera de ellos para mover el grupo, o usá las flechas del teclado."}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Button variant="secondary" onClick={onDuplicar} disabled={soloLectura}>Duplicar (Ctrl+D)</Button>
-        <Button variant="danger" onClick={onBorrar} disabled={soloLectura}>Eliminar los {cantidad}</Button>
-      </div>
-      <div style={{ marginTop: 16, fontSize: "var(--text-xs)", color: "var(--color-texto-tenue)", lineHeight: 1.5 }}>
-        Al duplicar se copian también las conexiones entre los nodos elegidos. Las que
-        entran o salen del grupo no, porque apuntarían a nodos que la copia no reprodujo.
-      </div>
     </div>
   );
 }
@@ -2422,7 +2737,7 @@ const AYUDA_NODO = {
   fin: "Cierra el caso: marca el estado como Cerrado y termina el recorrido. Un flujo puede tener varios nodos Fin.",
 };
 
-function PanelNodo({ nodo, version, soloLectura, flujoInstId, flujoAreaId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
+function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAreaId, campos, onActualizar, onBorrar, onConectar, onBorrarConexion, onActualizarConexion }) {
   const [titulo, setTitulo] = useState(nodo.titulo);
   // La preferencia de ayuda se recuerda entre nodos (localStorage) en vez de
   // resetearse cada vez que se selecciona otro nodo.
@@ -2474,10 +2789,10 @@ function PanelNodo({ nodo, version, soloLectura, flujoInstId, flujoAreaId, campo
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: enVentana ? 0 : 20 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <span style={{ width: 28, height: 28, borderRadius: 8, background: cat.tint, border: `1px solid ${cat.bd}`, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-          <span style={{ width: 11, height: 11, borderRadius: 3, background: cat.sol }} />
+        <span style={{ width: 28, height: 28, borderRadius: 8, background: cat.tint, border: `1px solid ${cat.bd}`, color: cat.sol, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+          <Icon name={cat.icono} size={15} />
         </span>
         <div style={{ flex: 1, fontSize: "var(--text-sm)", fontWeight: 700, letterSpacing: ".5px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
         <button

@@ -49,6 +49,7 @@ class Campo(models.Model):
     class Tipo(models.TextChoices):
         TEXTO_CORTO = "texto_corto", "Texto corto"
         TEXTO_LARGO = "texto_largo", "Texto largo"
+        NUMERO = "numero", "Número"
         FECHA = "fecha", "Fecha"
         SELECCION_UNICA = "seleccion_unica", "Selección única"
         ARCHIVO = "archivo", "Archivo adjunto"
@@ -66,6 +67,14 @@ class Campo(models.Model):
     ayuda = models.CharField("texto de ayuda", max_length=255, blank=True)
     # Opciones para SELECCION_UNICA (lista de strings).
     opciones = models.JSONField(default=list, blank=True)
+    # Sólo para NUMERO. La unidad se muestra al lado del casillero (no se guarda
+    # dentro del valor: si el valor fuera «36.8 °C» dejaría de ser comparable, y
+    # las Decisiones de orden hacen float sobre el texto guardado).
+    unidad = models.CharField("unidad", max_length=20, blank=True)
+    # Rango admitido, inclusive. Ninguno de los dos es obligatorio: «peso» tiene
+    # piso y techo razonables, «dosis» a veces no tiene techo.
+    minimo = models.FloatField("mínimo", null=True, blank=True)
+    maximo = models.FloatField("máximo", null=True, blank=True)
     # Si el campo se precarga desde un registro existente.
     origen = models.CharField(max_length=20, choices=Origen.choices, blank=True)
     orden = models.PositiveIntegerField(default=0)

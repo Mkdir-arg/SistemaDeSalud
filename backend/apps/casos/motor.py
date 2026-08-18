@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import math
 import re
 import unicodedata
 from contextlib import contextmanager
@@ -1578,6 +1579,7 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     # Completar el nodo actual.
     if nodo.tipo == Nodo.Tipo.FORMULARIO:
         valores = datos.get("valores", {})
+        valores = _validar_valores(nodo, valores)
         _guardar_valores(caso, nodo, valores)
         # «Requerido» se pintaba con un asterisco y no lo exigía ninguna capa: un
         # triage se completaba vacío de un clic y el caso avanzaba igual. La
@@ -1746,6 +1748,66 @@ def _exigir_clinico(caso: Caso, autor):
     ).exists()
     if not permitido:
         raise ErrorMotor("Solo un médico o enfermería puede emitir recetas o solicitar estudios.")
+
+
+def _validar_valores(nodo: Nodo, valores: dict) -> dict:
+    """Valida los campos numéricos y devuelve los valores NORMALIZADOS.
+
+    Los valores se guardan como texto, así que nada impedía que «Temperatura»
+    quedara con «treinta y ocho» o con «386» por un punto que no se tipeó. Eso no
+    falla acá: falla en la Decisión que viene después, donde `_comparables()`
+    devuelve None y la rama «> 38» da False en silencio —el paciente febril sigue
+    por el circuito del paciente sin fiebre—, y falla en el detalle del caso, que
+    muestra un dato clínico que nadie puede interpretar. El rango es del campo
+    (`minimo`/`maximo`) y lo definió quien diseñó el formulario.
+
+    La normalización no es cosmética: «36,8» es lo que se tipea sin pensarlo en
+    Argentina y guardado con la coma vuelve al mismo `_comparables()` None que la
+    validación acaba de evitar. Se guarda con punto.
+    """
+    def texto(n: float) -> str:
+        # `%g` no sirve: recorta a 6 dígitos significativos y un valor grande
+        # se guardaría como «1.23457e+06», que ninguna Decisión puede comparar.
+        return str(int(n)) if n == int(n) else repr(n)
+
+    if not nodo.formulario_id or not valores:
+        return valores
+    por_id = {c.id: c for c in nodo.formulario.campos.filter(tipo="numero")}
+    if not por_id:
+        return valores
+
+    limpios, problemas = dict(valores), []
+    for clave, crudo in valores.items():
+        campo = por_id.get(_entero(clave))
+        if campo is None or crudo is None or str(crudo).strip() == "":
+            continue  # el vacío lo resuelve la regla de «requerido», no ésta
+        try:
+            n = float(str(crudo).strip().replace(",", "."))
+        except ValueError:
+            problemas.append(f"«{campo.label}» tiene que ser un número")
+            continue
+        if not math.isfinite(n):
+            # «nan» e «inf» son floats válidos para Python y no son un dato clínico.
+            problemas.append(f"«{campo.label}» tiene que ser un número")
+            continue
+        unidad = f" {campo.unidad}" if campo.unidad else ""
+        if campo.minimo is not None and n < campo.minimo:
+            problemas.append(f"«{campo.label}» no puede ser menor que {texto(campo.minimo)}{unidad}")
+        elif campo.maximo is not None and n > campo.maximo:
+            problemas.append(f"«{campo.label}» no puede ser mayor que {texto(campo.maximo)}{unidad}")
+        else:
+            limpios[clave] = texto(n)
+    if problemas:
+        raise ErrorMotor("; ".join(problemas) + ".")
+    return limpios
+
+
+def _entero(valor):
+    """El id de campo viaja como clave de un JSON, o sea como texto."""
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return None
 
 
 def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):

@@ -18,8 +18,32 @@ export const TIPOS_NODO = [
 
 const CONOCIDO = new Set(TIPOS_NODO);
 
+/*
+ * Icono de cada tipo, del set de `components/icons`.
+ *
+ * El color solo no alcanza para decir qué hace un nodo: son trece tipos y varios
+ * comparten familia cromática, así que a golpe de vista «Derivar» y «Estado» se
+ * veían iguales. El icono lo dice sin leer, y sobre todo lo dice al 60 % de zoom,
+ * que es como se ve un flujo entero.
+ */
+const ICONOS = {
+  inicio: "play",
+  form: "form",
+  decision: "rama",
+  accion: "activity",
+  derivar: "flecha",
+  espera: "users",
+  tiempo: "reloj",
+  atencion: "clipboard",
+  cama: "bed",
+  estado: "layers",
+  notificar: "bell",
+  integracion: "enchufe",
+  fin: "power",
+};
+
 /**
- * `catDe(tipo)` → `{ name, sol, tint, bd }`.
+ * `catDe(tipo)` → `{ name, icono, sol, tint, bd }`.
  *
  * Un tipo desconocido cae en «form»: el backend puede sumar un tipo de nodo
  * antes que el frontend, y componer un `var(--color-nodo-loquesea-sol)` que no
@@ -29,6 +53,7 @@ export function catDe(tipo) {
   const t = CONOCIDO.has(tipo) ? tipo : "form";
   return {
     name: nombreNodo(tipo),
+    icono: ICONOS[t],
     sol: `var(--color-nodo-${t}-sol)`,
     tint: `var(--color-nodo-${t}-tint)`,
     bd: `var(--color-nodo-${t}-bd)`,

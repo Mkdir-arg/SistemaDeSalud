@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -39,13 +39,14 @@ class AgendaViewSet(BaseModelViewSet):
     serializer_class = AgendaSerializer
     capacidad_requerida = "config"
     institucion_path = "institucion"
-    filter_fields = ("institucion", "area", "tipo", "profesional", "activa")
+    filter_fields = ("institucion", "area", "tipo", "profesional", "activa", "modalidad")
     search_fields = ("nombre",)
     ordering_fields = ("nombre", "creada")
     nombre_csv = "agendas"
     columnas_csv = [
         ("nombre", "Agenda"),
         ("tipo_display", "Tipo"),
+        ("modalidad_display", "Modalidad"),
         ("area_nombre", "Área"),
         ("profesional_nombre", "Profesional"),
         ("duracion_min", "Duración (min)"),
@@ -65,9 +66,34 @@ class AgendaViewSet(BaseModelViewSet):
         fecha = _fecha(request.query_params.get("fecha"))
         return Response({
             "agenda": {"id": agenda.id, "nombre": agenda.nombre,
-                       "sobreturnos_max": agenda.sobreturnos_max},
+                       "sobreturnos_max": agenda.sobreturnos_max,
+                       "modalidad": agenda.modalidad,
+                       "enlace_virtual": agenda.enlace_virtual},
             "fecha": fecha,
             "horarios": motor.horarios_del_dia(agenda, fecha),
+        })
+
+    @action(detail=True, methods=["get"])
+    def semana(self, request, pk=None):
+        """
+        Grilla de siete días: `?desde=2026-08-17`. Sin fecha, el lunes de esta semana.
+
+        Es «¿qué tiene la doctora esta semana?», que con la grilla de un día se
+        contesta apretando «Día siguiente» siete veces. Va en una sola respuesta
+        y con tres consultas, no siete pedidos.
+        """
+        agenda = self.get_object()
+        pedida = _fecha(request.query_params.get("desde"))
+        # Siempre arranca en lunes: una semana que empieza un miércoles no se
+        # puede comparar con la de al lado ni con el horario semanal cargado.
+        lunes = pedida - timedelta(days=pedida.weekday())
+        return Response({
+            "agenda": {"id": agenda.id, "nombre": agenda.nombre,
+                       "sobreturnos_max": agenda.sobreturnos_max,
+                       "modalidad": agenda.modalidad,
+                       "enlace_virtual": agenda.enlace_virtual},
+            "desde": lunes,
+            "dias": motor.grilla_de_dias(agenda, lunes, dias=7),
         })
 
     @action(detail=True, methods=["get"], url_path="proximos-libres")
@@ -118,6 +144,21 @@ class BloqueoViewSet(BaseModelViewSet):
     institucion_path = "agenda__institucion"
     filter_fields = ("agenda", "agenda__institucion")
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Rango de fechas, como en los turnos: la pantalla de la semana dibuja
+        # los bloqueos encima de la grilla y sin esto tendría que traerse todas
+        # las vacaciones de la historia de la agenda para descartarlas en el
+        # cliente. Un bloqueo cuenta si TOCA el rango, no si empieza adentro: el
+        # que arranca el viernes anterior y termina el martes es el que tapa el
+        # lunes que se está mirando.
+        p = self.request.query_params
+        if (d := p.get("desde")):
+            qs = qs.filter(hasta__date__gte=_fecha(d))
+        if (h := p.get("hasta")):
+            qs = qs.filter(desde__date__lte=_fecha(h))
+        return qs
+
     @extend_schema(responses=OpenApiTypes.OBJECT)
     def create(self, request, *args, **kwargs):
         """
@@ -159,6 +200,7 @@ class TurnoViewSet(BaseModelViewSet):
     institucion_path = "agenda__institucion"
     filter_fields = (
         "agenda", "agenda__institucion", "agenda__area", "ciudadano", "estado", "sobreturno",
+        "modalidad",
     )
     search_fields = ("ciudadano__nombre", "ciudadano__apellido", "ciudadano__documento")
     ordering_fields = ("inicio", "creado", "estado")
@@ -170,6 +212,7 @@ class TurnoViewSet(BaseModelViewSet):
         ("agenda_nombre", "Agenda"),
         ("area_nombre", "Área"),
         ("estado_display", "Estado"),
+        ("modalidad_display", "Modalidad"),
         ("sobreturno", "Sobreturno"),
         ("motivo", "Motivo"),
     ]
@@ -209,6 +252,8 @@ class TurnoViewSet(BaseModelViewSet):
                 motivo=(request.data.get("motivo") or "").strip(),
                 origen=request.data.get("origen") or Turno.Origen.MOSTRADOR,
                 sobreturno=bool(request.data.get("sobreturno")),
+                modalidad=request.data.get("modalidad") or None,
+                enlace=str(request.data.get("enlace") or "").strip(),
             )
         except motor.ErrorAgenda as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -241,6 +286,28 @@ class TurnoViewSet(BaseModelViewSet):
     def llegada(self, request, pk=None):
         """Se presentó: abre el caso en el flujo de la agenda."""
         return self._accion(request, motor.registrar_llegada)
+
+    @action(detail=True, methods=["post"])
+    def modalidad(self, request, pk=None):
+        """
+        Pasa el turno a virtual o a presencial: `{"modalidad": "virtual"}`.
+
+        Cuerpo opcional `{"enlace": "https://…"}` para usar una sala distinta a
+        la de la agenda. Va por acá y no por un PATCH porque hay que comprobar
+        que la agenda atienda de esa forma y copiar la sala: un turno virtual sin
+        enlace deja al paciente esperando una llamada que nadie va a hacer.
+        """
+        pedida = request.data.get("modalidad")
+        if pedida not in Turno.Modalidad.values:
+            return Response({"detail": "Modalidad inválida: presencial o virtual."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        enlace = request.data.get("enlace")
+        return self._accion(
+            request, motor.cambiar_modalidad, modalidad=pedida,
+            # `str()` porque el cuerpo lo arma un cliente: un número suelto acá
+            # rompía con un 500 en vez de contestar qué está mal.
+            enlace=None if enlace is None else str(enlace).strip(),
+        )
 
     @action(detail=True, methods=["post"])
     def reprogramar(self, request, pk=None):

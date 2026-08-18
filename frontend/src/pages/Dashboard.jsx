@@ -291,7 +291,13 @@ function Kpis({ kpis }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-3.5">
       {kpis.map((k) => (
-        <Card key={k.l} className="flex flex-col gap-3 p-lg">
+        <Card
+          key={k.l}
+          className={cn(
+            "flex flex-col gap-3 p-lg",
+            k.destacado && "border-danger-fuerte bg-badge-error-bg",
+          )}
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="text-base font-semibold text-texto-debil">{k.l}</span>
             <span
@@ -316,6 +322,18 @@ function Kpis({ kpis }) {
   );
 }
 
+function GrupoMetricas({ titulo, subtitulo, children }) {
+  return (
+    <section className="flex flex-col gap-3.5">
+      <div>
+        <h2 className="text-base font-bold uppercase tracking-[.04em] text-texto-debil">{titulo}</h2>
+        {subtitulo && <p className="mt-1 text-sm text-texto-tenue">{subtitulo}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 // --------------------------------------------------------------------------- //
 // Solapa general
 // --------------------------------------------------------------------------- //
@@ -326,6 +344,27 @@ function TableroGeneral({ d, navigate }) {
   // con la prolijidad administrativa y no con cuánta gente faltó—, así que el
   // porcentaje no se puede leer sin saber sobre cuántos turnos se calculó.
   const resueltos = (r.turnos_presentes || 0) + (r.turnos_ausentes || 0);
+  const requiereAtencion = [
+    ...(r.urgentes > 0
+      ? [{ l: "Urgentes", v: r.urgentes, icon: "activity", c: "var(--color-danger)", destacado: true }]
+      : []),
+    ...(r.espera_prom_min >= 30
+      ? [{ l: "Espera prom.", ...espera(r.espera_prom_min), icon: "refresh", c: "var(--color-danger)", destacado: true }]
+      : []),
+    ...(r.turnos_sin_registrar
+      ? [{
+          l: "Turnos sin registrar",
+          v: r.turnos_sin_registrar,
+          icon: "calendar",
+          c: "var(--color-badge-amber-fg)",
+          sub: (
+            <button onClick={() => navigate("/agenda")} className="font-semibold text-accent hover:underline">
+              Cerrarlos en la agenda
+            </button>
+          ),
+        }]
+      : []),
+  ];
   const kpis = [
     { l: "Casos activos", v: r.casos_activos, icon: "fileText", c: "var(--color-accent)" },
     // Ámbar y no el teal de la categoría «espera de fila»: ese teal es un color
@@ -394,7 +433,15 @@ function TableroGeneral({ d, navigate }) {
   ];
   return (
     <>
-      <Kpis kpis={kpis} />
+      {requiereAtencion.length > 0 && (
+        <GrupoMetricas titulo="Requiere atención" subtitulo="Indicadores que conviene resolver antes de mirar el análisis.">
+          <Kpis kpis={requiereAtencion} />
+        </GrupoMetricas>
+      )}
+
+      <GrupoMetricas titulo="Pulso operativo" subtitulo="Carga actual y producción del período seleccionado.">
+        <Kpis kpis={kpis} />
+      </GrupoMetricas>
 
       {/* Debajo de `lg` las dos columnas se apilan: un gráfico aplastado no
           informa nada. */}

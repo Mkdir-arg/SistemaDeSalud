@@ -43,10 +43,12 @@ test.describe("Diseñador de flujos", () => {
   /** Escala del lienzo y scroll de su contenedor, leídos del DOM real. */
   const estado = (page) =>
     page.evaluate(() => {
-      const cont = [...document.querySelectorAll("div")].find(
-        (d) => getComputedStyle(d).overflow === "auto" && d.scrollWidth > d.clientWidth + 50,
-      );
       const capa = document.querySelector("[data-lienzo]");
+      // El viewport es el abuelo de la capa escalada. Antes se lo buscaba por
+      // «el div con overflow auto que scrollea»: al sacar el panel de la derecha
+      // el lienzo pasó a entrar entero y ese div dejó de existir, así que el
+      // helper devolvía undefined y los tests morían lejos de la causa.
+      const cont = capa?.parentElement?.parentElement;
       const m = capa && getComputedStyle(capa).transform.match(/matrix\(([\d.]+)/);
       const caja = cont.getBoundingClientRect();
       return {
@@ -59,8 +61,10 @@ test.describe("Diseñador de flujos", () => {
     });
 
   test("la rueda acerca y aleja el lienzo", async ({ page }) => {
+    // El editor abre encuadrado sobre el diagrama, así que el zoom inicial
+    // depende del flujo: se compara contra el que haya, no contra el 100 %.
     const inicial = await estado(page);
-    expect(inicial.zoom).toBeCloseTo(1, 1);
+    expect(inicial.zoom).toBeGreaterThan(0);
 
     await page.mouse.move(inicial.cx, inicial.cy);
     await page.mouse.wheel(0, -300);
@@ -86,6 +90,11 @@ test.describe("Diseñador de flujos", () => {
   });
 
   test("Ctrl+F busca un nodo y lo trae al centro", async ({ page }) => {
+    // Se acerca hasta que el flujo no entre en la pantalla, que es la situación
+    // en la que buscar un nodo sirve para algo: con el diagrama entero a la
+    // vista no hay adónde desplazarse y el test pasaría sin probar nada.
+    await page.getByTitle("Restablecer zoom (100%)").click();
+    for (let i = 0; i < 5; i++) await page.getByTitle("Acercar").click();
     const antes = await estado(page);
 
     await page.keyboard.press("Control+f");
@@ -144,11 +153,102 @@ test.describe("Diseñador de flujos", () => {
     await expect.poll(posiciones).toEqual(antes);
   });
 
+  /*
+   * Desplazar el lienzo.
+   *
+   * Arrastrar el fondo dibuja la marquesina, así que mover la vista tiene sus
+   * propios gestos. No los cubría nada y no existían: en un flujo más ancho que
+   * la pantalla la única salida era la barra de scroll, que en un lienzo con
+   * zoom nadie busca.
+   */
+  test.describe("desplazar el lienzo", () => {
+    /** Scroll del viewport del lienzo, leído del DOM real. */
+    const scroll = (page) =>
+      page.evaluate(() => {
+        const c = document.querySelector("[data-lienzo]").parentElement.parentElement;
+        return { l: c.scrollLeft, t: c.scrollTop };
+      });
+
+    /*
+     * Un punto del lienzo donde NO haya un nodo.
+     *
+     * Con coordenadas fijas, un arrastre podía caer sobre un nodo y moverlo en
+     * vez de probar el desplazamiento: el test seguía pasando pero dejaba el
+     * flujo corrido, y los que venían después fallaban por eso.
+     */
+    const puntoVacio = (page) =>
+      page.evaluate(() => {
+        const c = document.querySelector("[data-lienzo]").parentElement.parentElement;
+        const r = c.getBoundingClientRect();
+        for (let y = r.top + 30; y < r.bottom - 30; y += 25) {
+          for (let x = r.left + 30; x < r.right - 30; x += 25) {
+            const e = document.elementFromPoint(x, y);
+            if (e && !e.closest("[data-nodo]") && c.contains(e)) return { x, y };
+          }
+        }
+        throw new Error("No hay lugar vacío en el lienzo para arrastrar");
+      });
+
+    // Deja margen de scroll en los dos ejes: desde el origen, arrastrar hacia
+    // abajo y a la derecha no puede mover nada y el test pasaría en falso.
+    test.beforeEach(async ({ page }) => {
+      // A media distancia en los dos ejes: contra un tope, el navegador recorta
+      // el scroll y el desplazamiento medido sale menor que el arrastre.
+      await page.getByTitle("Restablecer zoom (100%)").click();
+      await page.evaluate(() => {
+        const c = document.querySelector("[data-lienzo]").parentElement.parentElement;
+        c.scrollLeft = Math.round((c.scrollWidth - c.clientWidth) / 2);
+        c.scrollTop = Math.round((c.scrollHeight - c.clientHeight) / 2);
+      });
+    });
+
+    test("el botón del medio arrastra la vista", async ({ page }) => {
+      const antes = await scroll(page);
+      const p = await puntoVacio(page);
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down({ button: "middle" });
+      await page.mouse.move(p.x - 100, p.y - 60, { steps: 8 });
+      await page.mouse.up({ button: "middle" });
+      expect(await scroll(page)).toEqual({ l: antes.l + 100, t: antes.t + 60 });
+    });
+
+    test("la herramienta «Mano» arrastra la vista con el botón primario", async ({ page }) => {
+      await page.getByRole("button", { name: /^Mano:/ }).click();
+      const antes = await scroll(page);
+      const p = await puntoVacio(page);
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down();
+      await page.mouse.move(p.x + 80, p.y + 60, { steps: 8 });
+      await page.mouse.up();
+      expect(await scroll(page)).toEqual({ l: antes.l - 80, t: antes.t - 60 });
+    });
+
+    test("con la barra espaciadora sostenida el arrastre desplaza", async ({ page }) => {
+      const antes = await scroll(page);
+      const p = await puntoVacio(page);
+      await page.keyboard.down("Space");
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down();
+      await page.mouse.move(p.x - 50, p.y - 20, { steps: 6 });
+      await page.mouse.up();
+      await page.keyboard.up("Space");
+      expect(await scroll(page)).toEqual({ l: antes.l + 50, t: antes.t + 20 });
+    });
+
+    test("en modo selección el arrastre NO desplaza (sigue siendo marquesina)", async ({ page }) => {
+      const antes = await scroll(page);
+      const p = await puntoVacio(page);
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down();
+      await page.mouse.move(p.x + 120, p.y + 90, { steps: 8 });
+      await page.mouse.up();
+      expect(await scroll(page)).toEqual(antes);
+    });
+  });
+
   test("la marquesina encierra nodos", async ({ page }) => {
     const caja = await page.evaluate(() => {
-      const c = [...document.querySelectorAll("div")].find(
-        (d) => getComputedStyle(d).overflow === "auto" && d.scrollWidth > d.clientWidth + 50,
-      );
+      const c = document.querySelector("[data-lienzo]").parentElement.parentElement;
       const r = c.getBoundingClientRect();
       return { x: r.left, y: r.top, w: r.width, h: r.height };
     });
@@ -237,8 +337,11 @@ test.describe("Diseñador de flujos", () => {
     await page.keyboard.press("Control+d");
     await expect.poll(contar).toBe(inicial + 2);
 
-    // Se abre el panel de uno de los nodos pegados y se quita su salida.
-    await page.locator("[data-nodo]").nth(inicial).click();
+    // Se abre la ficha de uno de los nodos pegados y se quita su salida. Antes
+    // se limpia la selección: con varios nodos elegidos hay una barra al pie del
+    // lienzo que puede quedar entre el mouse y el nodo.
+    await page.keyboard.press("Escape");
+    await page.locator("[data-nodo]").nth(inicial).dblclick();
     const quitar = page.getByRole("button", { name: "quitar" }).first();
     test.skip(!(await quitar.isVisible().catch(() => false)), "los nodos copiados no quedaron conectados");
 
@@ -250,7 +353,10 @@ test.describe("Diseñador de flujos", () => {
     await page.getByRole("button", { name: "Deshacer", exact: true }).click();
     await expect(page.getByRole("button", { name: "quitar" }).first()).toBeVisible();
 
-    // Limpieza: se borran los dos nodos copiados.
+    // Limpieza: se borran los dos nodos copiados. Primero se cierra la ficha: es
+    // una ventana modal y su fondo se queda con los clics dirigidos al lienzo.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.locator("[data-nodo]").nth(inicial).click();
     await page.locator("[data-nodo]").nth(inicial + 1).click({ modifiers: ["Shift"] });
     await page.keyboard.press("Delete");
@@ -279,20 +385,23 @@ test.describe("Diseñador de flujos", () => {
     await page.keyboard.press("ArrowUp");
   });
 
-  test("con el panel de propiedades cerrado, Validar muestra el resultado igual", async ({ page }) => {
+  test("Validar muestra el resultado en una ventana sobre el lienzo", async ({ page }) => {
     /*
-     * Todo el feedback del editor se dibuja adentro del panel, y ese panel se
-     * cierra por el motivo más razonable del mundo: ver el diagrama. Con el
-     * panel cerrado, «Validar» pasaba a «Validando…», volvía, y la pantalla
-     * quedaba idéntica — y un Publicar rechazado por errores no dejaba rastro
-     * en ningún lado.
+     * El feedback del editor —validación, ensayo, un Publicar rechazado— vivía
+     * en el panel de la derecha, que se cerraba por el motivo más razonable del
+     * mundo: ver el diagrama. Cerrado, «Validar» pasaba a «Validando…», volvía y
+     * la pantalla quedaba idéntica. Ahora abre su propia ventana, que no depende
+     * de que haya un panel abierto.
      */
-    await page.getByRole("button", { name: "Ocultar panel de propiedades" }).click();
     await expect(page.getByText("Validación")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Validar" }).click();
     await expect(page.getByText("Validación")).toBeVisible();
     await expect(page.getByText(/errores/)).toBeVisible();
+
+    // Y se puede cerrar para volver al diagrama.
+    await page.getByRole("button", { name: "Cerrar" }).first().click();
+    await expect(page.getByText("Validación")).toHaveCount(0);
   });
 
   test("una versión publicada no se puede editar desde la pantalla", async ({ page }) => {
@@ -308,10 +417,10 @@ test.describe("Diseñador de flujos", () => {
 
     // Las versiones se listan de mayor a menor: la última opción es la v1.
     await versiones.selectOption({ label: opciones[opciones.length - 1] });
-    await expect(page.getByText(/los casos en curso están parados/)).toBeVisible();
+    await expect(page.getByText(/Esta versión está .* y no se edita/)).toBeVisible();
 
     await expect(page.getByTitle("Agregar nodo «Formulario»")).toBeDisabled();
-    await page.locator("[data-nodo]").first().click();
+    await page.locator("[data-nodo]").first().dblclick();
     await expect(page.getByRole("button", { name: "Eliminar nodo" })).toHaveCount(0);
   });
 
@@ -443,7 +552,7 @@ test.describe("Prioridad del caso desde un formulario", () => {
     // Se recarga y se vuelve a abrir el nodo: lo elegido tiene que haber
     // quedado guardado en el servidor, no sólo en la pantalla.
     await page.reload();
-    await page.locator("[data-nodo]").last().click();
+    await page.locator("[data-nodo]").last().dblclick();
     await expect(page.getByLabel(/Prioridad para «Rojo/)).toHaveValue("urgente");
   });
 });

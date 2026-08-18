@@ -38,7 +38,7 @@ evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
 | Frontend — administración (instituciones, áreas, usuarios) | ✅ Completo + verificado |
 | Frontend — registros (historia clínica) | ✅ Completo + verificado |
 | Camas e internación (modelo, motor, tablero, pases) | ✅ Completo + 41 tests |
-| Turnos y agenda (agendas, franjas, sobreturnos, ausentismo) | ✅ Completo + 62 tests |
+| Turnos y agenda (editor gráfico de horarios, cupos por franja, bloqueos, vista semanal, reprogramar, sobreturnos, ausentismo, presencial/virtual) | ✅ Completo + 135 tests |
 | Farmacia e insumos (stock, lotes, trazabilidad, pedidos) | ✅ Completo + 48 tests |
 | Red multicentro (traslados, panorama, saturación) | ✅ Completo + 55 tests |
 | Auditoría de accesos clínicos (Ley 26.529) | ✅ Backend + pantalla `/accesos` |
@@ -102,7 +102,7 @@ curl http://127.0.0.1:8000/api/instituciones/ \
 |---|---|
 | `accounts` | `Usuario` (login por email, `AUTH_USER_MODEL`), `Membresia` (rol por institución: admin / configurador / administrativo), `LegajoProfesional` |
 | `instituciones` | `Institucion` → `Area` → `Subarea` (instituciones autocontenidas) |
-| `formularios` | `Formulario`, `Campo` (tipos: texto_corto/largo, fecha, selección única, archivo; con `origen` HC/legajo) |
+| `formularios` | `Formulario`, `Campo` (tipos: texto_corto/largo, número con unidad y rango, fecha, selección única, archivo; `origen` HC/legajo declarado pero sin precarga implementada) |
 | `flujos` | `Flujo`, `VersionFlujo` (v1/v2/v3; estados borrador/publicada/reemplazada/archivada), `Nodo` (10 tipos: inicio, form, decision, accion, atencion, derivar, espera, tiempo, estado, fin), `Conexion` |
 | `casos` | `Caso` (instancia de `VersionFlujo`), `ValorCampo`, `ItemFila` (cola FIFO + urgentes), `EventoCaso` (trazabilidad) |
 | `registros` | `Ciudadano`, `HistoriaClinica`, `EntradaHistoria`, `Estudio`, `Receta` |

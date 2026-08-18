@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "./Logo";
-import { Avatar } from "./ui";
+import { Avatar, IconButton, Popover } from "./ui";
 import { Icon } from "./icons";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -53,6 +53,7 @@ const TITULOS_DETALLE = [
   ["/puesto/", "Detalle del paso"],
   ["/formularios/", "Constructor de formulario"],
   ["/historia/", "Historia clínica"],
+  ["/estructura/", "Estructura organizativa"],
 ];
 
 function tituloDeRuta(pathname) {
@@ -87,45 +88,51 @@ function Campana() {
   async function marcarTodas() { await api.post("/notificaciones/leer/", {}); recargar(); }
 
   return (
-    <div style={{ position: "relative", flex: "none" }}>
-      <button onClick={() => setAbierto((v) => !v)} title="Notificaciones"
-        style={{ position: "relative", border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-debil)", display: "flex", padding: 6 }}>
-        <Icon name="bell" size={19} />
-        {data.no_leidas > 0 && (
-          <span style={{ position: "absolute", top: -1, right: -1, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8, background: "var(--color-danger-fuerte)", color: "var(--color-sobre-danger)", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
-            {data.no_leidas > 9 ? "9+" : data.no_leidas}
-          </span>
-        )}
-      </button>
+    <div className="relative flex-none">
+      <IconButton
+        icon="bell"
+        label="Notificaciones"
+        badge={data.no_leidas}
+        onClick={() => setAbierto((v) => !v)}
+      />
       {abierto && (
-        <>
-          <div onClick={() => setAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
-          <div style={{ position: "absolute", top: 42, right: 0, width: 324, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 12, boxShadow: "0 12px 32px rgba(16,24,40,.18)", zIndex: 31, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid var(--color-division)` }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Notificaciones</span>
-              {data.no_leidas > 0 && <button onClick={marcarTodas} style={{ border: "none", background: "none", color: "var(--color-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Marcar todas</button>}
-            </div>
-            <div style={{ maxHeight: 360, overflowY: "auto" }}>
-              {data.items.length === 0 ? (
-                <div style={{ padding: "24px 14px", textAlign: "center", fontSize: 12.5, color: "var(--color-texto-tenue)" }}>Sin notificaciones</div>
-              ) : data.items.map((n) => (
-                <div key={n.id} onClick={() => abrir(n)}
-                  style={{ display: "flex", gap: 10, padding: "11px 14px", borderTop: `1px solid var(--color-division)`, cursor: "pointer", background: n.leida ? "var(--color-superficie)" : "var(--color-accent-50)" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{n.titulo}</div>
-                    {n.detalle && <div style={{ fontSize: 12, color: "var(--color-texto-debil)" }}>{n.detalle}</div>}
-                    <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", marginTop: 2 }}>hace {antiguedad(n.creada)}</div>
-                  </div>
-                  {!n.leida && <span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--color-accent)", flex: "none", marginTop: 5 }} />}
-                </div>
-              ))}
-            </div>
-            <button onClick={() => { setAbierto(false); navigate("/notificaciones"); }}
-              style={{ width: "100%", padding: "10px 14px", border: "none", borderTop: `1px solid var(--color-division)`, background: "var(--color-superficie)", color: "var(--color-accent)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-              Ver todas
-            </button>
+        <Popover className="w-[324px]" onClose={() => setAbierto(false)}>
+          <div className="flex items-center justify-between border-b border-division px-3.5 py-3">
+            <span className="text-md font-bold">Notificaciones</span>
+            {data.no_leidas > 0 && (
+              <button onClick={marcarTodas} className="text-base font-semibold text-accent hover:underline">
+                Marcar todas
+              </button>
+            )}
           </div>
-        </>
+          <div className="max-h-[360px] overflow-y-auto">
+            {data.items.length === 0 ? (
+              <div className="px-3.5 py-6 text-center text-base text-texto-tenue">Sin notificaciones</div>
+            ) : data.items.map((n) => (
+              <button
+                key={n.id}
+                onClick={() => abrir(n)}
+                className={cn(
+                  "flex w-full gap-2.5 border-t border-division px-3.5 py-2.5 text-left hover:bg-superficie-2",
+                  !n.leida && "bg-accent-50",
+                )}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-md font-semibold">{n.titulo}</span>
+                  {n.detalle && <span className="block truncate text-base text-texto-debil">{n.detalle}</span>}
+                  <span className="mt-0.5 block text-xs text-texto-tenue">hace {antiguedad(n.creada)}</span>
+                </span>
+                {!n.leida && <span className="mt-1.5 size-2 shrink-0 rounded-pill bg-accent" />}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => { setAbierto(false); navigate("/notificaciones"); }}
+            className="w-full border-t border-division px-3.5 py-2.5 text-base font-semibold text-accent hover:bg-superficie-2"
+          >
+            Ver todas
+          </button>
+        </Popover>
       )}
     </div>
   );
@@ -159,8 +166,8 @@ function BuscadorPacientes() {
   }
 
   return (
-    <div style={{ position: "relative", width: "100%", maxWidth: 420 }}>
-      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-texto-tenue)", display: "flex" }}>
+    <div className="relative w-full max-w-[420px]">
+      <span className="absolute left-3 top-1/2 flex -translate-y-1/2 text-texto-tenue">
         <Icon name="search" size={16} />
       </span>
       <input
@@ -169,12 +176,14 @@ function BuscadorPacientes() {
         onChange={(e) => { setQ(e.target.value); setAbierto(true); }}
         onFocus={() => setAbierto(true)}
         onKeyDown={(e) => { if (e.key === "Enter" && res[0]) ir(res[0]); if (e.key === "Escape") setAbierto(false); }}
-        style={{ width: "100%", height: 38, border: `1px solid var(--color-campo-borde)`, borderRadius: 9, padding: "0 12px 0 34px", fontSize: 13.5, background: "var(--color-superficie-2)", outline: "none", boxSizing: "border-box" }}
+        role="combobox"
+        aria-expanded={abierto && !!q.trim()}
+        aria-controls="buscador-pacientes-resultados"
+        className="h-[38px] w-full rounded-md border border-campo-borde bg-superficie-2 px-3 pl-8.5 text-md outline-none placeholder:text-texto-tenue focus:border-accent"
       />
       {abierto && q.trim() && (
-        <>
-          <div onClick={() => setAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
-          <div style={{ position: "absolute", top: 44, left: 0, right: 0, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 10, boxShadow: "0 12px 32px rgba(16,24,40,.16)", zIndex: 21, overflow: "hidden", maxHeight: 360, overflowY: "auto" }}>
+        <Popover align="left" className="right-0 max-h-[360px] overflow-y-auto" onClose={() => setAbierto(false)}>
+          <div id="buscador-pacientes-resultados" role="listbox">
             {buscando ? (
               <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando⬦</div>
             ) : res.length === 0 ? (
@@ -192,7 +201,7 @@ function BuscadorPacientes() {
               </div>
             ))}
           </div>
-        </>
+        </Popover>
       )}
     </div>
   );
@@ -205,14 +214,11 @@ const BOTON_BARRA =
 function BotonTema() {
   const { oscuro, alternar } = useTema();
   return (
-    <button
+    <IconButton
+      icon={oscuro ? "sol" : "luna"}
       onClick={alternar}
-      aria-label={oscuro ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
-      title={oscuro ? "Tema claro" : "Tema oscuro"}
-      className="flex shrink-0 items-center rounded-md p-1.5 text-texto-debil hover:bg-superficie-2 hover:text-texto-suave"
-    >
-      <Icon name={oscuro ? "sol" : "luna"} size={18} />
-    </button>
+      label={oscuro ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+    />
   );
 }
 
@@ -536,7 +542,14 @@ export function Shell({ children }) {
                   : <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: "var(--color-texto-tenue)", padding: "12px 12px 6px" }}>{g.label}</div>}
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {items.map((n) => (
-                    <NavLink key={n.to} to={n.to} className={itemClase(colapsado)} end={n.to === "/flujos"} title={n.label}>
+                    <NavLink
+                      key={n.to}
+                      to={n.to}
+                      data-tour={`menu-${n.to.slice(1)}`}
+                      className={itemClase(colapsado)}
+                      end={n.to === "/flujos"}
+                      title={n.label}
+                    >
                       <Icon name={n.icon} size={17} />
                       {!colapsado && n.label}
                     </NavLink>
@@ -548,12 +561,36 @@ export function Shell({ children }) {
         </nav>
 
         {/* Usuario */}
-        <div style={{ flex: "none", borderTop: `1px solid var(--color-division)`, padding: colapsado ? "12px 0" : 14, display: "flex", flexDirection: colapsado ? "column" : "row", alignItems: "center", gap: colapsado ? 8 : 11 }}>
+        <div
+          data-demo-trigger={user?.is_superuser ? "super-admin" : undefined}
+          title={user?.is_superuser ? "Tocar 3 veces para iniciar el modo demo" : undefined}
+          style={{ flex: "none", borderTop: `1px solid var(--color-division)`, padding: colapsado ? "12px 0" : 14, display: "flex", flexDirection: colapsado ? "column" : "row", alignItems: "center", gap: colapsado ? 8 : 11, cursor: user?.is_superuser ? "pointer" : "default" }}
+        >
           <Avatar nombre={user?.nombre_completo || user?.email} size={34} />
           {!colapsado && (
             <div style={{ minWidth: 0, flex: 1, lineHeight: 1.25 }}>
               <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.nombre_completo || user?.email}</div>
-              <div style={{ fontSize: 11, color: "var(--color-texto-tenue)" }}>{rolLabel}</div>
+              {user?.is_superuser ? (
+                <button
+                  type="button"
+                  data-tour="shell-super-admin"
+                  title="Super admin"
+                  style={{
+                    display: "block",
+                    padding: 0,
+                    border: "none",
+                    background: "none",
+                    color: "var(--color-texto-tenue)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  {rolLabel}
+                </button>
+              ) : (
+                <div style={{ fontSize: 11, color: "var(--color-texto-tenue)" }}>{rolLabel}</div>
+              )}
             </div>
           )}
           <button onClick={() => { logout(); navigate("/login"); }} title="Cerrar sesión" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-tenue)", display: "flex" }}>

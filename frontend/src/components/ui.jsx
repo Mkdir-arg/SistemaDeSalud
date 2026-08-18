@@ -41,6 +41,67 @@ export function Button({ variant = "primary", size = "md", className, children, 
   );
 }
 
+export function IconButton({
+  icon,
+  label,
+  size = "md",
+  variant = "ghost",
+  className,
+  badge,
+  children,
+  ...props
+}) {
+  const lado = size === "sm" ? "size-8" : "size-9";
+  const estilo =
+    variant === "soft"
+      ? "border border-accent-100 bg-accent-50 text-accent hover:bg-accent-100"
+      : "text-texto-debil hover:bg-superficie-2 hover:text-texto-suave";
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "relative inline-flex shrink-0 items-center justify-center rounded-md transition-colors",
+        lado,
+        estilo,
+        className,
+      )}
+      {...props}
+    >
+      {children || <Icon name={icon} size={size === "sm" ? 16 : 18} />}
+      {badge != null && badge !== 0 && (
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-pill bg-danger-fuerte px-1 text-micro font-bold text-sobre-danger">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+export function Popover({ children, className, align = "right", onClose }) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Cerrar"
+        className="fixed inset-0 z-20 cursor-default"
+        onClick={onClose}
+        tabIndex={-1}
+      />
+      <div
+        className={cn(
+          "absolute top-11 z-30 overflow-hidden rounded-lg border border-borde bg-superficie shadow-dropdown",
+          align === "right" ? "right-0" : "left-0",
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
 // --------------------------------------------------------------------------- //
 // Indicadores
 // --------------------------------------------------------------------------- //
