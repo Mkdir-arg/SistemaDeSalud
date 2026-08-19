@@ -148,16 +148,46 @@ export const api = {
   put: (path, body) => request("PUT", path, body),
   del: (path) => request("DELETE", path),
 
-  // Sube un archivo (multipart) y devuelve {nombre, url}.
-  async upload(file) {
+  // Sube un archivo (multipart) y devuelve {nombre, ruta, url}.
+  async upload(file, { institucion } = {}) {
     const fd = new FormData();
     fd.append("archivo", file);
+    if (institucion) fd.append("institucion", String(institucion));
     const headers = {};
     if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`;
     const res = await fetch(`${BASE}/archivos/`, { method: "POST", headers, body: fd });
     const data = await parse(res);
     if (!res.ok) throw new ApiError(res.status, data);
     return data;
+  },
+
+  async downloadArchivo(ref, nombre = "archivo") {
+    const s = String(ref || "");
+    const url = /^https?:\/\//.test(s) || s.startsWith("/api/")
+      ? s
+      : `${BASE}/archivos/descargar/${s.replace(/^\/+/, "")}`;
+    const headers = {};
+    if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`;
+    let res = await fetch(url, { headers });
+    if (res.status === 401 && tokens.refresh) {
+      const ok = await refreshAccess();
+      if (ok) {
+        const retryHeaders = {};
+        if (tokens.access) retryHeaders.Authorization = `Bearer ${tokens.access}`;
+        res = await fetch(url, { headers: retryHeaders });
+      }
+    }
+    const data = res.ok ? null : await parse(res);
+    if (!res.ok) throw new ApiError(res.status, data);
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = (res.headers.get("Content-Disposition") || "").match(/filename="?([^"]+)"?/)?.[1] || nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(href);
   },
 
   async login(email, password, { recordar = true } = {}) {

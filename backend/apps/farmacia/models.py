@@ -226,6 +226,7 @@ class Pedido(models.Model):
     class Estado(models.TextChoices):
         PENDIENTE = "pendiente", "Pendiente"
         PREPARADO = "preparado", "Preparado"
+        PARCIAL = "parcial", "Parcial"
         ENTREGADO = "entregado", "Entregado"
         RECHAZADO = "rechazado", "Rechazado"
 

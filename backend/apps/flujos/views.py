@@ -6,6 +6,7 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
 from apps.casos import motor
+from apps.casos.models import Caso
 from apps.common import BaseModelViewSet
 
 from .models import Conexion, Flujo, Nodo, VersionFlujo
@@ -116,13 +117,13 @@ class FlujoViewSet(BaseModelViewSet):
         .annotate(
             casos_activos_anot=Count(
                 "versiones__casos",
-                filter=~Q(versiones__casos__estado="cerrado"),
+                filter=~Q(versiones__casos__estado__in=Caso.ESTADOS_FINALIZADOS),
                 distinct=True,
             )
         )
     )
     serializer_class = FlujoSerializer
-    capacidad_requerida = "diseno"
+    capacidad_requerida = "diseno_flujos"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area", "subarea")
     search_fields = ["titulo"]
@@ -254,7 +255,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
         "nodos", "conexiones"
     )
     serializer_class = VersionFlujoSerializer
-    capacidad_requerida = "diseno"
+    capacidad_requerida = "diseno_flujos"
     institucion_path = "flujo__institucion"
     filter_fields = ("flujo", "estado")
 
@@ -347,7 +348,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
 
         activos = (
             Caso.objects.filter(version=version)
-            .exclude(estado=Caso.Estado.CERRADO)
+            .exclude(estado__in=Caso.ESTADOS_FINALIZADOS)
             .count()
         )
         if activos:
@@ -411,7 +412,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
 class NodoViewSet(SoloSobreBorrador, BaseModelViewSet):
     queryset = Nodo.objects.select_related("version", "formulario").prefetch_related("grupos__area")
     serializer_class = NodoSerializer
-    capacidad_requerida = "diseno"
+    capacidad_requerida = "diseno_flujos"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")
 
@@ -433,6 +434,6 @@ class NodoViewSet(SoloSobreBorrador, BaseModelViewSet):
 class ConexionViewSet(SoloSobreBorrador, BaseModelViewSet):
     queryset = Conexion.objects.select_related("version", "origen", "destino")
     serializer_class = ConexionSerializer
-    capacidad_requerida = "diseno"
+    capacidad_requerida = "diseno_flujos"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version",)

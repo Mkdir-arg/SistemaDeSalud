@@ -6,9 +6,9 @@ un reclamo de una tabla más: que quede claro QUIÉN firmó cada asiento, que lo
 firmado no se pueda reescribir ni hacer desaparecer, y que el mismo paciente no
 termine con dos historias paralelas.
 
-Todo se prueba pegándole a la API con el rol que lo haría en la vida real —el
-administrativo de mesa de entradas, que tiene capacidad `registros`—, porque lo
-que importa no es que una función devuelva False sino que el pedido HTTP muera.
+Todo se prueba pegándole a la API con el rol que lo haría en la vida real:
+mesa de entradas maneja padrón/admisión, y el equipo clínico escribe la historia.
+Lo que importa no es que una función devuelva False sino que el pedido HTTP muera.
 """
 from rest_framework.test import APITestCase
 
@@ -32,13 +32,21 @@ class RegistrosAPITestCase(APITestCase):
         m.areas.set([self.area])
         LegajoProfesional.objects.create(usuario=self.med, matricula="MP 12345")
 
-        # Mesa de entradas: tiene capacidad `registros` y por eso llega a estos
-        # endpoints. Es el usuario del que hablan estos tests.
+        # Mesa de entradas: carga padrón/admisión, pero no lee ni escribe la
+        # historia clínica.
         self.adm = Usuario.objects.create_user("adm@test.local", "x", nombre="Sofía", apellido="Gómez")
         ma = Membresia.objects.create(
             usuario=self.adm, institucion=self.inst, rol="administrativo", activo=True
         )
         ma.areas.set([self.area])
+
+        # Enfermería integra el equipo clínico y puede dejar borradores o cargar
+        # antecedentes, pero no firma una atención médica ni prescribe.
+        self.enf = Usuario.objects.create_user("enf@test.local", "x", nombre="Eva", apellido="Paz")
+        me = Membresia.objects.create(
+            usuario=self.enf, institucion=self.inst, rol="enfermeria", activo=True
+        )
+        me.areas.set([self.area])
 
         self.paciente = Ciudadano.objects.create(
             institucion=self.inst, nombre="Juan", apellido="Pérez", documento="30111222"
@@ -47,6 +55,49 @@ class RegistrosAPITestCase(APITestCase):
 
     def como(self, usuario):
         self.client.force_authenticate(usuario)
+
+
+class PermisosGranularesRegistrosTests(RegistrosAPITestCase):
+    def test_administrativo_lee_padron_sin_resumen_clinico(self):
+        self.hc.alergias = "Penicilina"
+        self.hc.condiciones = "HTA"
+        self.hc.save(update_fields=["alergias", "condiciones"])
+        EntradaHistoria.objects.create(historia=self.hc, titulo="Consulta", autor=self.med)
+        Receta.objects.create(historia=self.hc, detalle="Amoxicilina", autor=self.med)
+
+        self.como(self.adm)
+        r = self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["alergias"], "")
+        self.assertEqual(r.data["condiciones"], "")
+        self.assertEqual(r.data["entradas"], 0)
+        self.assertEqual(r.data["recetas_activas"], 0)
+        self.assertIsNone(r.data["ultima"])
+
+    def test_administrativo_no_lee_la_historia_clinica(self):
+        self.como(self.adm)
+        self.assertEqual(
+            self.client.get(f"/api/historias-clinicas/{self.hc.id}/").status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.get(f"/api/entradas-historia/?historia={self.hc.id}").status_code,
+            403,
+        )
+
+    def test_medico_lee_el_resumen_clinico_del_padron(self):
+        self.hc.alergias = "Penicilina"
+        self.hc.condiciones = "HTA"
+        self.hc.save(update_fields=["alergias", "condiciones"])
+        EntradaHistoria.objects.create(historia=self.hc, titulo="Consulta", autor=self.med)
+
+        self.como(self.med)
+        r = self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["alergias"], "Penicilina")
+        self.assertEqual(r.data["condiciones"], "HTA")
+        self.assertEqual(r.data["entradas"], 1)
+        self.assertIsNotNone(r.data["ultima"])
 
 
 class AutoriaDeLaAtencionTests(RegistrosAPITestCase):
@@ -58,8 +109,8 @@ class AutoriaDeLaAtencionTests(RegistrosAPITestCase):
     la chapa verde «Firmada» y el nombre de ella.
     """
 
-    def test_un_administrativo_no_puede_firmar_una_atencion(self):
-        self.como(self.adm)
+    def test_enfermeria_no_puede_firmar_una_atencion_medica(self):
+        self.como(self.enf)
         r = self.client.post("/api/entradas-historia/", {
             "historia": self.hc.id, "titulo": "Alta médica",
             "contenido": "Paciente en condiciones de alta.",
@@ -74,13 +125,13 @@ class AutoriaDeLaAtencionTests(RegistrosAPITestCase):
         El `autor` sale de la sesión. Mandarlo en el cuerpo era la forma de
         atribuirle a una profesional una atención que no hizo.
         """
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.post("/api/entradas-historia/", {
-            "historia": self.hc.id, "titulo": "Nota administrativa",
+            "historia": self.hc.id, "titulo": "Nota de enfermería",
             "firmada": False, "autor": self.med.id,
         })
         self.assertEqual(r.status_code, 201, r.data)
-        self.assertEqual(EntradaHistoria.objects.get().autor_id, self.adm.id)
+        self.assertEqual(EntradaHistoria.objects.get().autor_id, self.enf.id)
 
     def test_un_medico_firma_y_la_entrada_queda_sellada_con_su_matricula(self):
         """
@@ -115,7 +166,7 @@ class AutoriaDeLaAtencionTests(RegistrosAPITestCase):
 
     def test_un_borrador_sin_firmar_lo_puede_dejar_cualquiera_del_equipo(self):
         """Anotar no es firmar: frenar el borrador sería frenar la atención."""
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.post("/api/entradas-historia/", {
             "historia": self.hc.id, "titulo": "Ingresó por guardia", "firmada": False,
         })
@@ -126,8 +177,8 @@ class AutoriaDeLaAtencionTests(RegistrosAPITestCase):
 class HistoriaInviolableTests(RegistrosAPITestCase):
     """
     Ley 26.529, art. 15-16: la historia clínica es inviolable y se conserva diez
-    años. Si esto falla, cualquiera con capacidad `registros` la hace desaparecer
-    con un DELETE, sin confirmación y sin dejar constancia de que existió.
+    años. Si esto falla, alguien con acceso clínico la hace desaparecer con un
+    DELETE, sin confirmación y sin dejar constancia de que existió.
     """
 
     def _firmada(self, titulo="Consulta", contenido="Todo normal."):
@@ -139,7 +190,7 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
 
     def test_una_entrada_firmada_no_se_puede_editar(self):
         e = self._firmada(contenido="Paciente estable.")
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"contenido": "Paciente descompensado."})
         self.assertEqual(r.status_code, 409, r.data)
         e.refresh_from_db()
@@ -151,7 +202,7 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
         rastro: era la forma más limpia de hacer desaparecer una atención.
         """
         e = self._firmada()
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.delete(f"/api/entradas-historia/{e.id}/")
         self.assertEqual(r.status_code, 405, r.data)
         self.assertTrue(EntradaHistoria.objects.filter(pk=e.pk).exists())
@@ -160,7 +211,7 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
         """Por cascade se llevaba entradas, estudios y recetas del paciente."""
         self._firmada()
         Estudio.objects.create(historia=self.hc, tipo="TAC", fecha="2026-07-01")
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.delete(f"/api/historias-clinicas/{self.hc.id}/")
         self.assertEqual(r.status_code, 405, r.data)
         self.assertTrue(HistoriaClinica.objects.filter(pk=self.hc.pk).exists())
@@ -178,7 +229,7 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
         self._firmada()
         Estudio.objects.create(historia=self.hc, tipo="TAC", fecha="2026-07-01")
         Receta.objects.create(historia=self.hc, detalle="Amoxicilina", autor=self.med)
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.delete(f"/api/ciudadanos/{self.paciente.id}/")
         self.assertEqual(r.status_code, 405, getattr(r, "data", r))
         self.assertTrue(Ciudadano.objects.filter(pk=self.paciente.pk).exists())
@@ -199,7 +250,7 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
         otro = Ciudadano.objects.create(
             institucion=self.inst, nombre="María", apellido="Cabrera", documento="27418305"
         )
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.patch(f"/api/historias-clinicas/{self.hc.id}/", {"ciudadano": otro.id})
         self.assertEqual(r.status_code, 400, r.data)
         self.hc.refresh_from_db()
@@ -219,9 +270,9 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
             )
         )
         e = EntradaHistoria.objects.create(
-            historia=self.hc, titulo="Ingresó por guardia", autor=self.adm
+            historia=self.hc, titulo="Ingresó por guardia", autor=self.enf
         )
-        self.como(self.adm)
+        self.como(self.enf)
         r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"historia": otra_hc.id})
         self.assertEqual(r.status_code, 400, r.data)
         e.refresh_from_db()
@@ -229,15 +280,15 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
 
     def test_un_borrador_sin_firmar_si_se_puede_corregir(self):
         """Corregir un borrador es lo esperable; trabarlo sería trabar el trabajo."""
-        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Nota", autor=self.adm)
-        self.como(self.adm)
+        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Nota", autor=self.enf)
+        self.como(self.enf)
         r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"contenido": "corregido"})
         self.assertEqual(r.status_code, 200, r.data)
         e.refresh_from_db()
         self.assertEqual(e.contenido, "corregido")
 
     def test_firmar_un_borrador_lo_sella_a_nombre_de_quien_firma(self):
-        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Consulta", autor=self.adm)
+        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Consulta", autor=self.enf)
         self.como(self.med)
         r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"firmada": True})
         self.assertEqual(r.status_code, 200, r.data)
@@ -280,12 +331,12 @@ class AntecedentesTests(RegistrosAPITestCase):
         self.assertIsNotNone(self.hc.antecedentes_at)
 
     def test_el_autor_de_los_antecedentes_no_se_puede_mandar_desde_afuera(self):
-        self.como(self.adm)
+        self.como(self.enf)
         self.client.patch(f"/api/historias-clinicas/{self.hc.id}/", {
             "alergias": "Ninguna", "antecedentes_por": self.med.id,
         })
         self.hc.refresh_from_db()
-        self.assertEqual(self.hc.antecedentes_por_id, self.adm.id)
+        self.assertEqual(self.hc.antecedentes_por_id, self.enf.id)
 
 
 class RecetasTests(RegistrosAPITestCase):
@@ -302,8 +353,15 @@ class RecetasTests(RegistrosAPITestCase):
         r = self.client.post("/api/recetas/", {
             "historia": self.hc.id, "detalle": "Clonazepam 2mg x 30", "autor": self.med.id,
         })
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn("médico", str(r.data["detail"]).lower())
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertFalse(Receta.objects.exists())
+
+    def test_enfermeria_no_puede_emitir_una_receta(self):
+        self.como(self.enf)
+        r = self.client.post("/api/recetas/", {
+            "historia": self.hc.id, "detalle": "Clonazepam 2mg x 30", "autor": self.med.id,
+        })
+        self.assertEqual(r.status_code, 403, r.data)
         self.assertFalse(Receta.objects.exists())
 
     def test_la_receta_queda_a_nombre_de_quien_la_emitio(self):
@@ -349,7 +407,15 @@ class RecetasTests(RegistrosAPITestCase):
         receta = Receta.objects.create(historia=self.hc, detalle="Enoxaparina", autor=self.med)
         self.como(self.adm)
         r = self.client.post(f"/api/recetas/{receta.id}/suspender/", {"motivo": "porque sí"})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 403, r.data)
+        receta.refresh_from_db()
+        self.assertTrue(receta.activa)
+
+    def test_enfermeria_no_puede_suspender_una_medicacion(self):
+        receta = Receta.objects.create(historia=self.hc, detalle="Enoxaparina", autor=self.med)
+        self.como(self.enf)
+        r = self.client.post(f"/api/recetas/{receta.id}/suspender/", {"motivo": "porque sí"})
+        self.assertEqual(r.status_code, 403, r.data)
         receta.refresh_from_db()
         self.assertTrue(receta.activa)
 
@@ -360,8 +426,16 @@ class EstudiosTests(RegistrosAPITestCase):
         r = self.client.post("/api/estudios/", {
             "historia": self.hc.id, "tipo": "TAC de cerebro", "fecha": "2026-07-01",
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 403, r.data)
         self.assertFalse(Estudio.objects.exists())
+
+    def test_enfermeria_si_puede_solicitar_un_estudio(self):
+        self.como(self.enf)
+        r = self.client.post("/api/estudios/", {
+            "historia": self.hc.id, "tipo": "TAC de cerebro", "fecha": "2026-07-01",
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Estudio.objects.get().autor, self.enf.nombre_completo)
 
     def test_el_autor_del_estudio_sale_de_la_sesion(self):
         """`Estudio.autor` es texto libre: si viene del cuerpo, no lo verifica nadie."""
@@ -390,7 +464,7 @@ class EstudiosTests(RegistrosAPITestCase):
         e = self._estudio()
         self.como(self.adm)
         r = self.client.patch(f"/api/estudios/{e.id}/", {"resultado": "normal", "tipo": "Rx normal"})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 403, r.data)
         e.refresh_from_db()
         self.assertEqual(e.resultado, "alterado")
         self.assertEqual(e.tipo, "Rx de tórax")

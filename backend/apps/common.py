@@ -1,8 +1,10 @@
 """Utilidades compartidas por la capa API."""
+from pathlib import PurePosixPath
 import re
 import uuid
 
 from django.core.files.storage import default_storage
+from django.http import FileResponse
 from rest_framework import status, viewsets
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -14,21 +16,61 @@ from rest_framework.views import APIView
 
 
 # --- Autorización por rol --------------------------------------------------- #
-# Fuente de verdad de las capacidades de cada rol (espeja CAPS_POR_ROL del
-# frontend). Un rol habilita un conjunto de capacidades; cada viewset declara la
-# capacidad que requiere para escribir (`capacidad_requerida`).
+# Fuente de verdad de las capacidades de cada rol. Un rol habilita un conjunto
+# de capacidades; cada viewset declara la capacidad que requiere para escribir
+# (`capacidad_requerida`) y la UI consume estas mismas capacidades desde
+# `/usuarios/me/`.
 #   config    → estructura organizativa, administración (usuarios/membresías)
 #   diseno    → flujos, versiones, nodos, conexiones, formularios
 #   trabajo   → casos y su operación (tomar/llamar/avanzar), filas
 #   registros → historia clínica, estudios, recetas, ciudadanos
-TODAS_LAS_CAPACIDADES = {"config", "diseno", "trabajo", "registros", "supervision"}
+CAPACIDADES_LEGADAS = {"config", "diseno", "trabajo", "registros", "supervision"}
+CAPACIDADES_DOMINIO = {
+    "padron_admision",
+    "historia_clinica",
+    "prescripcion",
+    "solicitud_estudios",
+    "turnos",
+    "casos_operar",
+    "filas",
+    "internacion",
+    "farmacia_stock",
+    "traslados_red",
+    "config_institucional",
+    "diseno_flujos",
+    "gobierno_plataforma",
+}
+CAPACIDADES_UI = {"auditoria"}
+TODAS_LAS_CAPACIDADES = CAPACIDADES_LEGADAS | CAPACIDADES_DOMINIO | CAPACIDADES_UI
 ROL_CAPACIDADES = {
-    "admin": TODAS_LAS_CAPACIDADES,
-    "configurador": {"diseno"},
-    "jefe_area": {"trabajo", "registros", "supervision"},  # supervisa su área
-    "administrativo": {"trabajo", "registros"},
-    "enfermeria": {"trabajo", "registros"},      # opera, pero no firma atención (regla del motor)
-    "medico": {"trabajo", "registros"},
+    "admin": CAPACIDADES_LEGADAS | (CAPACIDADES_DOMINIO - {"gobierno_plataforma"}),
+    "configurador": {"diseno", "diseno_flujos"},
+    "jefe_area": {
+        "trabajo", "registros", "supervision",
+        "padron_admision", "historia_clinica", "prescripcion",
+        "solicitud_estudios", "turnos", "casos_operar", "filas",
+        "internacion", "farmacia_stock", "traslados_red",
+    },
+    "administrativo": {
+        "trabajo", "registros",
+        "padron_admision", "turnos", "casos_operar", "filas", "traslados_red",
+    },
+    "enfermeria": {
+        "trabajo", "registros",
+        "padron_admision", "historia_clinica", "solicitud_estudios",
+        "turnos", "casos_operar", "filas", "internacion", "farmacia_stock",
+        "traslados_red",
+    },
+    "medico": {
+        "trabajo", "registros",
+        "padron_admision", "historia_clinica", "prescripcion",
+        "solicitud_estudios", "turnos", "casos_operar", "filas",
+        "internacion", "traslados_red",
+    },
+}
+ROL_CAPACIDADES_UI = {
+    "admin": {"auditoria"},
+    "jefe_area": {"auditoria"},
 }
 
 
@@ -47,6 +89,42 @@ def capacidades_de(user, institucion_id=None):
     for rol in qs.values_list("rol", flat=True):
         caps |= ROL_CAPACIDADES.get(rol, set())
     return caps
+
+
+def capacidades_efectivas_de(user, institucion_id=None):
+    """Capacidades para sesion/UI, incluyendo reglas especiales de menu."""
+    if getattr(user, "is_superuser", False):
+        return set(TODAS_LAS_CAPACIDADES)
+    qs = user.membresias.filter(activo=True)
+    if institucion_id is not None:
+        qs = qs.filter(institucion_id=institucion_id)
+    caps = set()
+    for rol in qs.values_list("rol", flat=True):
+        caps |= ROL_CAPACIDADES.get(rol, set())
+        caps |= ROL_CAPACIDADES_UI.get(rol, set())
+    return caps
+
+
+def roles_por_institucion_de(user):
+    """Roles activos agrupados por institucion."""
+    if getattr(user, "is_superuser", False):
+        return {}
+    por_inst = {}
+    for inst_id, rol in user.membresias.filter(activo=True).values_list("institucion_id", "rol"):
+        por_inst.setdefault(str(inst_id), []).append(rol)
+    return {inst: sorted(set(roles)) for inst, roles in por_inst.items()}
+
+
+def capacidades_por_institucion_de(user):
+    """Capacidades efectivas agrupadas por institucion."""
+    if getattr(user, "is_superuser", False):
+        return {}
+    por_inst = {}
+    for inst_id, rol in user.membresias.filter(activo=True).values_list("institucion_id", "rol"):
+        caps = por_inst.setdefault(str(inst_id), set())
+        caps |= ROL_CAPACIDADES.get(rol, set())
+        caps |= ROL_CAPACIDADES_UI.get(rol, set())
+    return {inst: sorted(caps) for inst, caps in por_inst.items()}
 
 
 def _institucion_de_objeto(obj, path):
@@ -248,8 +326,8 @@ class PuedeVerElEsquema(BasePermission):
 @extend_schema(
     tags=["registros"],
     summary="Sube un archivo",
-    description="Devuelve el nombre y la URL del archivo guardado, para referenciarlo desde un campo de formulario.",
-    request={"multipart/form-data": {"type": "object", "properties": {"archivo": {"type": "string", "format": "binary"}}}},
+    description="Devuelve el nombre, la ruta interna y la URL protegida del archivo guardado.",
+    request={"multipart/form-data": {"type": "object", "properties": {"archivo": {"type": "string", "format": "binary"}, "institucion": {"type": "integer"}}}},
     responses=OpenApiTypes.OBJECT,
 )
 class SubirArchivoView(APIView):
@@ -257,22 +335,73 @@ class SubirArchivoView(APIView):
     Sube un archivo y devuelve su nombre y URL. Usado por los campos de tipo
     «Archivo adjunto» y por los estudios de la historia clínica.
 
-    POST multipart/form-data con campo `archivo`. → {"nombre": ..., "url": ...}
+    POST multipart/form-data con campos `archivo` e `institucion`. → {"nombre": ..., "ruta": ..., "url": ...}
     """
 
     parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         archivo = request.FILES.get("archivo")
         if not archivo:
             return Response({"detail": "Falta el archivo."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            institucion_id = int(request.data.get("institucion") or 0)
+        except (TypeError, ValueError):
+            institucion_id = 0
+        if not institucion_id:
+            return Response({"detail": "Indica la institucion del archivo."}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.instituciones.models import Institucion
+
+        if not Institucion.objects.filter(pk=institucion_id).exists():
+            return Response({"detail": "La institucion indicada no existe."}, status=status.HTTP_400_BAD_REQUEST)
+        if "historia_clinica" not in capacidades_de(request.user, institucion_id):
+            return Response(
+                {"detail": "No tenes permiso para subir archivos clinicos en esta institucion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         # Nombre único conservando la extensión.
-        ext = archivo.name.rsplit(".", 1)[-1] if "." in archivo.name else ""
-        nombre = f"uploads/{uuid.uuid4().hex}{('.' + ext) if ext else ''}"
+        original = PurePosixPath(archivo.name or "archivo").name
+        ext = PurePosixPath(original).suffix.lower()
+        if ext and not re.fullmatch(r"\.[a-z0-9]{1,12}", ext):
+            ext = ""
+        nombre = f"uploads/{institucion_id}/{uuid.uuid4().hex}{ext}"
         guardado = default_storage.save(nombre, archivo)
+        url = request.build_absolute_uri(f"/api/archivos/descargar/{guardado}")
         return Response(
-            {"nombre": archivo.name, "url": request.build_absolute_uri(default_storage.url(guardado))},
+            {"nombre": original, "ruta": guardado, "url": url},
             status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(
+    tags=["registros"],
+    summary="Descarga un archivo clinico",
+    description="Sirve un archivo subido solo si el usuario tiene historia_clinica en la institucion del archivo.",
+    responses=OpenApiTypes.BINARY,
+)
+class DescargarArchivoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, ruta):
+        partes = PurePosixPath(ruta).parts
+        if len(partes) < 3 or partes[0] != "uploads" or not partes[1].isdigit():
+            return Response({"detail": "Archivo invalido."}, status=status.HTTP_404_NOT_FOUND)
+        if any(p in ("", ".", "..") for p in partes):
+            return Response({"detail": "Archivo invalido."}, status=status.HTTP_404_NOT_FOUND)
+
+        institucion_id = int(partes[1])
+        if "historia_clinica" not in capacidades_de(request.user, institucion_id):
+            return Response(
+                {"detail": "No tenes permiso para descargar este archivo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not default_storage.exists(ruta):
+            return Response({"detail": "Archivo no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        return FileResponse(
+            default_storage.open(ruta, "rb"),
+            as_attachment=False,
+            filename=partes[-1],
         )
 
 

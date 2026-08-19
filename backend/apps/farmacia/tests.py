@@ -511,7 +511,10 @@ class PedidoTests(StockTestCase):
         guardara lo pedido, el faltante desaparecería.
         """
         motor.entregar_pedido(self.pedido, {self.l1.id: 30, self.l2.id: 20}, autor=self.user)
+        self.pedido.refresh_from_db()
         self.l2.refresh_from_db()
+        self.assertEqual(self.pedido.estado, Pedido.Estado.PARCIAL)
+        self.assertIsNone(self.pedido.resuelto)
         self.assertEqual(self.l2.entregado, 20)
         self.assertEqual(self.l2.faltante, 30)
 
@@ -519,11 +522,41 @@ class PedidoTests(StockTestCase):
         with self.assertRaises(motor.ErrorStock):
             motor.entregar_pedido(self.pedido, {self.l1.id: 90}, autor=self.user)
 
-    def test_un_pedido_cerrado_no_se_entrega_dos_veces(self):
-        motor.entregar_pedido(self.pedido, {self.l1.id: 10}, autor=self.user)
-        self.pedido.refresh_from_db()
+    def test_una_entrega_vacia_no_cierra_el_pedido(self):
         with self.assertRaises(motor.ErrorStock):
-            motor.entregar_pedido(self.pedido, {self.l1.id: 10}, autor=self.user)
+            motor.entregar_pedido(self.pedido, {}, autor=self.user)
+        self.pedido.refresh_from_db()
+        self.assertEqual(self.pedido.estado, Pedido.Estado.PENDIENTE)
+        self.assertIsNone(self.pedido.resuelto)
+
+    def test_no_se_entrega_mas_de_lo_pendiente(self):
+        motor.entregar_pedido(self.pedido, {self.l1.id: 20}, autor=self.user)
+        parcial = Pedido.objects.get(pk=self.pedido.pk)
+        with self.assertRaises(motor.ErrorStock):
+            motor.entregar_pedido(parcial, {self.l1.id: 20}, autor=self.user)
+        self.l1.refresh_from_db()
+        self.assertEqual(self.l1.entregado, 20)
+        self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 20)
+
+    def test_una_entrega_parcial_se_puede_completar_despues(self):
+        motor.entregar_pedido(self.pedido, {self.l1.id: 20}, autor=self.user)
+        motor.ingresar(self.central, self.gasa, 30, autor=self.user)
+        parcial = Pedido.objects.get(pk=self.pedido.pk)
+        motor.entregar_pedido(parcial, {self.l1.id: 10, self.l2.id: 50}, autor=self.user)
+        self.pedido.refresh_from_db()
+        self.l1.refresh_from_db()
+        self.l2.refresh_from_db()
+        self.assertEqual(self.pedido.estado, Pedido.Estado.ENTREGADO)
+        self.assertIsNotNone(self.pedido.resuelto)
+        self.assertEqual((self.l1.entregado, self.l2.entregado), (30, 50))
+
+    def test_un_pedido_cerrado_no_se_entrega_dos_veces(self):
+        pedido = Pedido.objects.create(origen=self.botiquin, destino=self.central, creado_por=self.user)
+        linea = LineaPedido.objects.create(pedido=pedido, insumo=self.dipirona, pedido_cant=10)
+        motor.entregar_pedido(pedido, {linea.id: 10}, autor=self.user)
+        pedido.refresh_from_db()
+        with self.assertRaises(motor.ErrorStock):
+            motor.entregar_pedido(pedido, {linea.id: 10}, autor=self.user)
         self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 10)
 
     def test_una_copia_vieja_del_pedido_no_lo_entrega_de_nuevo(self):

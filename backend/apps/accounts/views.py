@@ -4,7 +4,11 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.common import BaseModelViewSet
+from apps.common import (
+    BaseModelViewSet,
+    capacidades_por_institucion_de,
+    roles_por_institucion_de,
+)
 
 from .models import LegajoProfesional, Membresia, Usuario
 from .serializers import (
@@ -32,7 +36,7 @@ class UsuarioViewSet(BaseModelViewSet):
 
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     # `is_superuser` se filtra en el servidor porque el directorio lista sólo
     # candidatos a admin de institución. Excluirlos en el cliente descontaba de la
     # página ya paginada: el total quedaba mal y podían faltar usuarios reales.
@@ -98,7 +102,10 @@ class UsuarioViewSet(BaseModelViewSet):
     @action(detail=False, methods=["get"])
     def me(self, request):
         """Datos del usuario autenticado."""
-        return Response(self.get_serializer(request.user).data)
+        data = self.get_serializer(request.user).data
+        data["roles_por_institucion"] = roles_por_institucion_de(request.user)
+        data["capacidades_por_institucion"] = capacidades_por_institucion_de(request.user)
+        return Response(data)
 
     @action(detail=True, methods=["get"])
     def legajo(self, request, pk=None):
@@ -139,7 +146,7 @@ class UsuarioViewSet(BaseModelViewSet):
 class MembresiaViewSet(BaseModelViewSet):
     queryset = Membresia.objects.select_related("usuario", "institucion").prefetch_related("areas")
     serializer_class = MembresiaSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     # `areas` filtra por la M2M: `?areas=3` devuelve el staff de esa área, que es
     # lo que necesita el selector de «reasignar» sin traerse todas las membresías.
@@ -159,7 +166,7 @@ class LegajoProfesionalViewSet(BaseModelViewSet):
 
     queryset = LegajoProfesional.objects.select_related("usuario")
     serializer_class = LegajoProfesionalSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     filter_fields = ("usuario",)
 
     def get_queryset(self):

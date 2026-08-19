@@ -9,6 +9,7 @@ Cauce = constructor y motor de flujos para procesos de salud / Estado. Ver
 fidelidad — fuente del modelo de datos).
 
 Catálogo completo de funcionalidades (todos los módulos) en
+[`funcionalidades/README.md`](funcionalidades/README.md). Indice compatible en
 [`FUNCIONALIDADES.md`](FUNCIONALIDADES.md). Funcionalidades incrementales de
 estructura organizativa y flujos en
 [`FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md`](FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md)

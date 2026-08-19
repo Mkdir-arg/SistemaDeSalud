@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db.models import Q, Sum
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -79,7 +80,7 @@ class InsumoViewSet(BaseModelViewSet):
 
     queryset = Insumo.objects.all()
     serializer_class = InsumoSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "tipo", "activo", "controlado")
     search_fields = ("nombre", "generico", "codigo")
@@ -103,7 +104,7 @@ class InsumoViewSet(BaseModelViewSet):
 class DepositoViewSet(BaseModelViewSet):
     queryset = Deposito.objects.select_related("area")
     serializer_class = DepositoSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area", "central", "activo")
 
@@ -113,7 +114,7 @@ class LoteViewSet(BaseModelViewSet):
 
     queryset = Lote.objects.select_related("insumo")
     serializer_class = LoteSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "farmacia_stock"
     institucion_path = "insumo__institucion"
     filter_fields = ("insumo", "insumo__institucion")
     search_fields = ("numero",)
@@ -128,7 +129,7 @@ class ExistenciaViewSet(BaseModelViewSet):
 
     queryset = Existencia.objects.select_related("deposito", "insumo", "lote")
     serializer_class = ExistenciaSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "farmacia_stock"
     institucion_path = "deposito__institucion"
     filter_fields = ("deposito", "deposito__institucion", "insumo", "lote")
     search_fields = ("insumo__nombre", "insumo__generico", "lote__numero")
@@ -163,7 +164,7 @@ class MovimientoViewSet(BaseModelViewSet):
         "insumo", "lote", "origen", "destino", "caso__ciudadano", "autor"
     )
     serializer_class = MovimientoSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "farmacia_stock"
     institucion_path = "insumo__institucion"
     filter_fields = ("tipo", "insumo", "lote", "origen", "destino", "caso", "insumo__institucion")
     search_fields = ("insumo__nombre", "lote__numero", "motivo")
@@ -373,7 +374,7 @@ class MovimientoViewSet(BaseModelViewSet):
 class PedidoViewSet(BaseModelViewSet):
     queryset = Pedido.objects.select_related("origen", "destino").prefetch_related("lineas__insumo")
     serializer_class = PedidoSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "farmacia_stock"
     institucion_path = "origen__institucion"
     filter_fields = ("origen", "destino", "estado", "urgente", "origen__institucion")
     ordering_fields = ("creado", "urgente")
@@ -404,7 +405,8 @@ class PedidoViewSet(BaseModelViewSet):
         pedido.observaciones = (
             pedido.observaciones + "\n" + (request.data.get("motivo") or "")
         ).strip()
-        pedido.save(update_fields=["estado", "observaciones"])
+        pedido.resuelto = timezone.now()
+        pedido.save(update_fields=["estado", "observaciones", "resuelto"])
         return Response(self.get_serializer(pedido).data)
 
     @action(detail=False, methods=["get"])

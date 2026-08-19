@@ -8,6 +8,11 @@ class SubareaSerializer(serializers.ModelSerializer):
         model = Subarea
         fields = ["id", "area", "nombre", "activa"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["area"].read_only = True
+
 
 class BoxSerializer(serializers.ModelSerializer):
     area_nombre = serializers.CharField(source="area.nombre", read_only=True)
@@ -17,6 +22,11 @@ class BoxSerializer(serializers.ModelSerializer):
         model = Box
         fields = ["id", "area", "area_nombre", "nombre", "activo", "ocupado_por", "ocupado_por_nombre", "ocupado_desde", "creado"]
         read_only_fields = ["creado", "ocupado_por", "ocupado_desde"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["area"].read_only = True
 
 
 class GrupoSerializer(serializers.ModelSerializer):
@@ -29,6 +39,11 @@ class GrupoSerializer(serializers.ModelSerializer):
         fields = ["id", "area", "area_nombre", "nombre", "descripcion", "miembros", "integrantes", "activo", "creado"]
         read_only_fields = ["creado"]
         extra_kwargs = {"miembros": {"write_only": True, "required": False}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["area"].read_only = True
 
     def get_integrantes(self, obj) -> list[dict]:
         return [
@@ -63,6 +78,11 @@ class AreaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Area
         fields = ["id", "institucion", "nombre", "responsable", "descripcion", "activa", "subareas", "staff"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["institucion"].read_only = True
 
     def get_staff(self, obj) -> list[dict]:
         return obj.miembros.values("usuario").distinct().count()
@@ -100,6 +120,21 @@ class CamaSerializer(serializers.ModelSerializer):
         # paciente. Marcar «libre» una cama ocupada dejaría a alguien internado
         # en ningún lado. Se cambia por la acción `estado`, que valida.
         read_only_fields = ["estado", "caso", "desde"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["area"].read_only = True
+            self.fields["subarea"].read_only = True
+
+    def validate(self, attrs):
+        area = attrs.get("area", getattr(self.instance, "area", None))
+        subarea = attrs.get("subarea", getattr(self.instance, "subarea", None))
+        if area and subarea and subarea.area_id != area.id:
+            raise serializers.ValidationError(
+                {"subarea": "La subarea/sector debe pertenecer al area de la cama."}
+            )
+        return attrs
 
     def get_sector(self, obj) -> str:
         return obj.sector_nombre

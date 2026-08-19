@@ -1,49 +1,27 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { api } from "../api/client";
 import { useAuth } from "./AuthContext";
 
 const InstitutionContext = createContext(null);
 const KEY = "cauce.institucion";
 
-// Capacidades que habilita cada rol. El menú gatea por capacidad (no por grupo),
-// porque SISTEMA mezcla ítems de configuración (admin) con ítems de diseño (configurador).
-//   config    → Estructura organizativa, Administración
-//   diseno    → Flujos, Mapa de flujos, Formularios
-//   trabajo   → Bandeja, Filas, Casos
-//   registros → Historia clínica, Legajo
-//   auditoria → Registro de accesos
-//
-// `auditoria` copia exacto a `PuedeAuditar` del backend (apps/auditoria/views.py):
-// admin y jefe de área, nadie más. Si acá se abriera de más, el menú ofrecería
-// un link que responde 403, que es peor que no mostrarlo.
-const CAPS_POR_ROL = {
-  admin: ["config", "diseno", "trabajo", "registros", "supervision", "auditoria"],
-  configurador: ["diseno"],
-  jefe_area: ["trabajo", "registros", "supervision", "auditoria"], // supervisa su área
-  administrativo: ["trabajo", "registros"],
-  enfermeria: ["trabajo", "registros"], // opera, pero no firma atenciones (regla del motor)
-  medico: ["trabajo", "registros"], // un médico no audita a sus colegas
-};
+// Solo aplica al super admin cuando usa "ver como". Para usuarios reales, las
+// capacidades vienen de /usuarios/me/ y el frontend no replica la matriz de roles.
+const CAPS_SISTEMA = [
+  "config", "diseno", "trabajo", "registros", "supervision", "auditoria",
+  "padron_admision", "historia_clinica", "prescripcion", "solicitud_estudios",
+  "turnos", "casos_operar", "filas", "internacion", "farmacia_stock",
+  "traslados_red", "config_institucional", "diseno_flujos", "gobierno_plataforma",
+];
 
-// Vista "ver como rol" (selector de la barra superior, sólo super admin).
 export const VISTA_CAPS = {
-  configurador: ["diseno"],
-  administrativo: ["trabajo", "registros"],
-  // «sistema» es la vista completa y espeja al rol admin, que sí tiene
-  // `supervision`. Sin esa capacidad acá, el super admin no ve en el menú ni
-  // Supervisión ni el Tablero: dos pantallas que existen y no se pueden abrir.
-  sistema: ["config", "diseno", "trabajo", "registros", "supervision", "auditoria"],
+  configurador: ["diseno", "diseno_flujos"],
+  administrativo: [
+    "trabajo", "registros", "padron_admision", "turnos", "casos_operar",
+    "filas", "traslados_red",
+  ],
+  sistema: CAPS_SISTEMA,
 };
 
-/*
- * La institución guardada, leída ANTES del primer render.
- *
- * Estaba en un `useEffect`, que corre un render tarde: en esa primera pasada
- * `institucion` era null y las rutas protegidas ya habían redirigido a «/»,
- * aunque el dato estuviera en localStorage todo el tiempo. En la práctica eso
- * significaba que recargar la página estando en Filas —o abrir el link a un
- * caso que te pasaron— te dejaba en Inicio, perdiendo dónde estabas.
- */
 function institucionGuardada() {
   try {
     return JSON.parse(localStorage.getItem(KEY)) || null;
@@ -52,38 +30,27 @@ function institucionGuardada() {
   }
 }
 
-export function InstitutionProvider({ children }) {
-  const { user } = useAuth();
-  const [institucion, setInstitucionState] = useState(institucionGuardada);
-  const [roles, setRoles] = useState([]); // roles del usuario en la institución actual
-  const [vista, setVista] = useState("sistema"); // vista del super admin
-  const [cargandoRoles, setCargandoRoles] = useState(false);
+function listaDe(mapa, institucionId) {
+  if (!mapa || !institucionId) return [];
+  return mapa[String(institucionId)] || mapa[institucionId] || [];
+}
 
-  // Carga los roles del usuario en la institución seleccionada.
-  useEffect(() => {
-    if (!institucion || !user) {
-      setRoles([]);
-      return;
-    }
-    if (user.is_superuser) {
-      setRoles(["admin"]); // el super admin actúa como admin dentro de cualquier institución
-      return;
-    }
-    let activo = true;
-    setCargandoRoles(true);
-    (async () => {
-      try {
-        const d = await api.get(`/membresias/?usuario=${user.id}&institucion=${institucion.id}`);
-        const lista = d.results || d;
-        if (activo) setRoles(lista.map((m) => m.rol));
-      } finally {
-        if (activo) setCargandoRoles(false);
-      }
-    })();
-    return () => {
-      activo = false;
-    };
-  }, [institucion, user]);
+export function InstitutionProvider({ children }) {
+  const { user, loading } = useAuth();
+  const [institucion, setInstitucionState] = useState(institucionGuardada);
+  const [vista, setVista] = useState("sistema");
+
+  const roles = user?.is_superuser
+    ? ["admin"]
+    : listaDe(user?.roles_por_institucion, institucion?.id);
+
+  const capacidades = user?.is_superuser
+    ? (VISTA_CAPS[vista] || VISTA_CAPS.sistema)
+    : listaDe(user?.capacidades_por_institucion, institucion?.id);
+
+  const cargandoRoles = Boolean(
+    institucion && user && !user.is_superuser && !user.capacidades_por_institucion
+  );
 
   function setInstitucion(inst) {
     setInstitucionState(inst);
@@ -91,14 +58,36 @@ export function InstitutionProvider({ children }) {
     else localStorage.removeItem(KEY);
   }
 
-  // ¿El usuario tiene esta capacidad en la institución actual?
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      setVista("sistema");
+      setInstitucion(null);
+      return;
+    }
+    if (user.is_superuser || !institucion) return;
+    const mapa = user.capacidades_por_institucion;
+    if (!mapa) return;
+    const permitida = Object.prototype.hasOwnProperty.call(mapa, String(institucion.id))
+      || Object.prototype.hasOwnProperty.call(mapa, institucion.id);
+    if (!permitida) setInstitucion(null);
+  }, [loading, user, institucion?.id]);
+
   function puedeVer(cap) {
-    if (user?.is_superuser) return (VISTA_CAPS[vista] || VISTA_CAPS.sistema).includes(cap);
-    return roles.some((r) => (CAPS_POR_ROL[r] || []).includes(cap));
+    return capacidades.includes(cap);
   }
 
   return (
-    <InstitutionContext.Provider value={{ institucion, setInstitucion, roles, puedeVer, cargandoRoles, vista, setVista }}>
+    <InstitutionContext.Provider value={{
+      institucion,
+      setInstitucion,
+      roles,
+      capacidades,
+      puedeVer,
+      cargandoRoles,
+      vista,
+      setVista,
+    }}>
       {children}
     </InstitutionContext.Provider>
   );

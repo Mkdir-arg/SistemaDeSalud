@@ -18,6 +18,7 @@ from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
 
 from .serializers import (
+    CasoCreateSerializer,
     CasoDetalleSerializer,
     CasoSerializer,
     EventoCasoSerializer,
@@ -53,8 +54,11 @@ class CasoViewSet(BaseModelViewSet):
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
     ).prefetch_related("valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo", "en_filas")
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "casos_operar"
     institucion_path = "institucion"
+    # El caso se crea por API, pero su estado, paso, asignacion y trazabilidad se
+    # modifican exclusivamente por acciones del motor.
+    http_method_names = ["get", "head", "options", "post"]
     filter_fields = ("institucion", "version", "estado", "prioridad", "area_actual", "asignado_a", "ciudadano")
     # Exportación del listado de casos, con las mismas columnas que la pantalla.
     nombre_csv = "casos"
@@ -130,6 +134,8 @@ class CasoViewSet(BaseModelViewSet):
         return qs
 
     def get_serializer_class(self):
+        if self.action == "create":
+            return CasoCreateSerializer
         if self.action == "retrieve":
             return CasoDetalleSerializer
         return CasoSerializer
@@ -1073,15 +1079,16 @@ class PantallaLlamadosView(APIView):
 class ValorCampoViewSet(BaseModelViewSet):
     queryset = ValorCampo.objects.select_related("caso", "campo", "nodo")
     serializer_class = ValorCampoSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "casos_operar"
     institucion_path = "caso__institucion"
+    http_method_names = ["get", "head", "options"]
     filter_fields = ("caso", "campo")
 
 
 class ItemFilaViewSet(BaseModelViewSet):
     queryset = ItemFila.objects.select_related("caso__ciudadano", "nodo__version__flujo__area", "box")
     serializer_class = ItemFilaSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "filas"
     institucion_path = "caso__institucion"
     # La cola se lee por acá y se OPERA por el motor: llamar, devolver, ausente,
     # mover. Sin este recorte, un PATCH cambiaba el orden, el box o el
@@ -1128,6 +1135,12 @@ class ItemFilaViewSet(BaseModelViewSet):
         ("box_nombre", "Box"),
     ]
 
+    def create(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "La cola se modifica solo por acciones del motor."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
     @action(detail=True, methods=["post"])
     def mover(self, request, pk=None):
         """Mueve el ítem a una posición de la cola (cuerpo: {"posicion": <0-based>}).
@@ -1157,8 +1170,9 @@ class ItemFilaViewSet(BaseModelViewSet):
 class EventoCasoViewSet(BaseModelViewSet):
     queryset = EventoCaso.objects.select_related("caso", "autor", "nodo")
     serializer_class = EventoCasoSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "casos_operar"
     institucion_path = "caso__institucion"
+    http_method_names = ["get", "head", "options"]
     filter_fields = ("caso", "autor")
 
 

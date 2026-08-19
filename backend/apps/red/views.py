@@ -21,7 +21,7 @@ class RedViewSet(BaseModelViewSet):
 
     queryset = Red.objects.prefetch_related("instituciones")
     serializer_class = RedSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "gobierno_plataforma"
     # Por institución también: un hospital puede estar en la región sanitaria y
     # además en una red de patología (trauma, perinatal, quemados). Sin este
     # filtro la pantalla sólo puede quedarse con la primera de TODAS mis redes
@@ -112,7 +112,7 @@ class TrasladoViewSet(
 
     serializer_class = TrasladoSerializer
     permission_classes = [IsAuthenticated, CapacidadPermission]
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "traslados_red"
     filter_backends = [OrdenEstable, SearchFilter]
     search_fields = ("ciudadano__nombre", "ciudadano__apellido", "ciudadano__documento")
     ordering_fields = ("solicitado_at", "urgente", "estado")

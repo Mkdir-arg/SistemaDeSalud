@@ -140,16 +140,17 @@ function Campana() {
 
 // Buscador de pacientes (barra superior): nombre o documento �  su historia clínica.
 function BuscadorPacientes() {
-  const { institucion } = useInstitucion();
+  const { institucion, puedeVer } = useInstitucion();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [res, setRes] = useState([]);
   const [buscando, setBuscando] = useState(false);
   const [abierto, setAbierto] = useState(false);
+  const puedeBuscarPacientes = puedeVer("historia_clinica");
 
   useEffect(() => {
     const term = q.trim();
-    if (!term || !institucion) { setRes([]); return; }
+    if (!term || !institucion || !puedeBuscarPacientes) { setRes([]); return; }
     setBuscando(true);
     const t = setTimeout(async () => {
       try {
@@ -158,12 +159,14 @@ function BuscadorPacientes() {
       } catch { /* silencioso */ } finally { setBuscando(false); }
     }, 250);
     return () => clearTimeout(t);
-  }, [q, institucion]);
+  }, [q, institucion, puedeBuscarPacientes]);
 
   function ir(c) {
     setQ(""); setRes([]); setAbierto(false);
     navigate(`/historia/${c.id}`);
   }
+
+  if (!puedeBuscarPacientes) return null;
 
   return (
     <div className="relative w-full max-w-[420px]">
@@ -273,11 +276,11 @@ const GRUPOS = [
   {
     label: "SISTEMA",
     items: [
-      { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config" },
-      { to: "/administracion", label: "Administración", icon: "users", cap: "config" },
-      { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno" },
-      { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno" },
-      { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno" },
+      { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config_institucional" },
+      { to: "/administracion", label: "Administración", icon: "users", cap: "config_institucional" },
+      { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno_flujos" },
+      { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno_flujos" },
+      { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno_flujos" },
     ],
   },
   {
@@ -294,17 +297,17 @@ const GRUPOS = [
       // Estructura y Administración: el jefe de Guardia dando de alta usuarios
       // del hospital para poder mirar su propia espera promedio.
       { to: "/dashboard", label: "Tablero", icon: "activity", cap: "supervision" },
-      { to: "/agenda", label: "Turnos programados", icon: "calendar", cap: "trabajo" },
-      { to: "/internacion", label: "Internación", icon: "bed", cap: "trabajo" },
-      { to: "/farmacia", label: "Farmacia e insumos", icon: "cube", cap: "trabajo" },
-      { to: "/red", label: "Red y traslados", icon: "map", cap: "trabajo" },
+      { to: "/agenda", label: "Turnos programados", icon: "calendar", cap: "turnos" },
+      { to: "/internacion", label: "Internación", icon: "bed", cap: "internacion" },
+      { to: "/farmacia", label: "Farmacia e insumos", icon: "cube", cap: "farmacia_stock" },
+      { to: "/red", label: "Red y traslados", icon: "map", cap: "traslados_red" },
       { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
     ],
   },
   {
     label: "REGISTROS",
     items: [
-      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "registros" },
+      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "historia_clinica" },
       { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
       // Quién consultó datos clínicos. Va en REGISTROS y no en SISTEMA: es la
       // contracara de la historia clínica, no una opción de configuración.
@@ -325,6 +328,12 @@ const ROL_LABEL = {
 // Clases del ítem de menú. Migrado de estilos inline a tokens semánticos porque
 // con el literal `slate600` sobre la superficie oscura el menú quedaba en 2,22:1
 // �ilegible� y es el marco que se ve en todas las pantallas.
+const VISTA_LABEL = {
+  sistema: "Sistema",
+  configurador: "Configurador",
+  administrativo: "Administrativo",
+};
+
 const itemClase = (col) => ({ isActive }) =>
   cn(
     "flex items-center gap-2.5 rounded-md text-md font-semibold",
@@ -336,7 +345,7 @@ const itemClase = (col) => ({ isActive }) =>
 
 export function Shell({ children }) {
   const { user, logout } = useAuth();
-  const { institucion, setInstitucion, roles, puedeVer } = useInstitucion();
+  const { institucion, setInstitucion, roles, puedeVer, vista, setVista } = useInstitucion();
   const navigate = useNavigate();
 
   // "�altima actualización" que publica la pantalla activa (lo muestra la TopBar).
@@ -374,7 +383,7 @@ export function Shell({ children }) {
 
   // Contador de tareas pendientes para roles operativos (el "Inicio" es su worklist).
   // Se refresca solo cada 30s y se pausa con la pestaña oculta.
-  const operativo = puedeVer("trabajo") && !puedeVer("config") && !puedeVer("diseno");
+  const operativo = puedeVer("casos_operar") && !puedeVer("config_institucional") && !puedeVer("diseno_flujos");
   const [pendientes, setPendientes] = useState(0);
   useEffect(() => {
     if (!operativo || !institucion) { setPendientes(0); return; }
@@ -493,6 +502,7 @@ export function Shell({ children }) {
         {!colapsado && (
           <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid var(--color-division)` }}>
             {user?.is_superuser ? (
+              <>
               <button
                 onClick={() => { setInstitucion(null); navigate("/"); }}
                 // El gris estaba hardcodeado (#F2F3F6) y en tema oscuro dejaba
@@ -501,6 +511,23 @@ export function Shell({ children }) {
               >
                 <Icon name="back" size={14} /> Volver al directorio
               </button>
+              {institucion && (
+                <label style={{ display: "block", marginTop: 10 }}>
+                  <span style={{ display: "block", marginBottom: 5, fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-tenue)" }}>
+                    VER COMO
+                  </span>
+                  <select
+                    value={vista}
+                    onChange={(e) => setVista(e.target.value)}
+                    style={{ width: "100%", height: 34, borderRadius: 8, border: "1px solid var(--color-campo-borde)", background: "var(--color-superficie)", color: "var(--color-texto)", padding: "0 9px", fontSize: 12, fontWeight: 600 }}
+                  >
+                    {Object.entries(VISTA_LABEL).map(([valor, label]) => (
+                      <option key={valor} value={valor}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              </>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--color-texto-tenue)", padding: "4px 2px" }}>
                 <Icon name="power" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}

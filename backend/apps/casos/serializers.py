@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.flujos.models import VersionFlujo
+
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
 
 
@@ -75,6 +77,34 @@ class EventoCasoSerializer(serializers.ModelSerializer):
         return obj.autor.nombre_completo if obj.autor else "Sistema"
 
 
+class CasoCreateSerializer(serializers.ModelSerializer):
+    """Alta minima de un caso; la ejecucion se modifica solo por acciones del motor."""
+
+    class Meta:
+        model = Caso
+        fields = ["id", "institucion", "version", "ciudadano", "prioridad", "creado", "actualizado"]
+        read_only_fields = ["id", "creado", "actualizado"]
+
+    def validate(self, attrs):
+        institucion = attrs.get("institucion")
+        version = attrs.get("version")
+        ciudadano = attrs.get("ciudadano")
+        errores = {}
+
+        if ciudadano is None:
+            errores["ciudadano"] = "El caso debe asociarse a un paciente."
+        if version is not None and version.estado != VersionFlujo.Estado.PUBLICADA:
+            errores["version"] = "Solo se pueden iniciar casos sobre una version publicada."
+        if institucion is not None and version is not None and version.flujo.institucion_id != institucion.id:
+            errores["version"] = "La version indicada no pertenece a la institucion del caso."
+        if institucion is not None and ciudadano is not None and ciudadano.institucion_id != institucion.id:
+            errores["ciudadano"] = "El paciente indicado no pertenece a la institucion del caso."
+
+        if errores:
+            raise serializers.ValidationError(errores)
+        return attrs
+
+
 class CasoSerializer(serializers.ModelSerializer):
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     prioridad_display = serializers.CharField(source="get_prioridad_display", read_only=True)
@@ -108,7 +138,11 @@ class CasoSerializer(serializers.ModelSerializer):
             "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "puede_supervisar", "esperando",
             "origen", "origen_flujo", "estudio", "estudio_tipo", "creado", "actualizado",
         ]
-        read_only_fields = ["creado", "actualizado"]
+        read_only_fields = [
+            "id", "institucion", "version", "ciudadano", "estado", "prioridad",
+            "nodo_actual", "area_actual", "asignado_a", "esperando", "origen",
+            "estudio", "creado", "actualizado",
+        ]
 
     def get_nodo_con_fila(self, obj) -> bool:
         return bool(obj.nodo_actual and (obj.nodo_actual.config or {}).get("con_fila"))

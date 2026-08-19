@@ -21,6 +21,8 @@ class Caso(models.Model):
         CERRADO = "cerrado", "Cerrado"
         CANCELADO = "cancelado", "Cancelado"
 
+    ESTADOS_FINALIZADOS = (Estado.CERRADO, Estado.CANCELADO)
+
     class Prioridad(models.TextChoices):
         NORMAL = "normal", "Normal"
         ALTA = "alta", "Alta"

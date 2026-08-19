@@ -85,7 +85,7 @@ def _minutos(delta):
 class InstitucionViewSet(BaseModelViewSet):
     queryset = Institucion.objects.all()
     serializer_class = InstitucionSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "id"
     filter_fields = ("activa",)
     search_fields = ["nombre", "cuit"]
@@ -102,7 +102,7 @@ class InstitucionViewSet(BaseModelViewSet):
             "areas": inst.areas.count(),
             "subareas": Subarea.objects.filter(area__institucion=inst).count(),
             "staff": Membresia.objects.filter(institucion=inst).values("usuario").distinct().count(),
-            "casos_activos": Caso.objects.filter(institucion=inst).exclude(estado=Caso.Estado.CERRADO).count(),
+            "casos_activos": Caso.objects.filter(institucion=inst).exclude(estado__in=Caso.ESTADOS_FINALIZADOS).count(),
         })
 
     @action(detail=True, methods=["get"])
@@ -304,7 +304,7 @@ class InstitucionViewSet(BaseModelViewSet):
 class AreaViewSet(BaseModelViewSet):
     queryset = Area.objects.select_related("institucion").prefetch_related("subareas")
     serializer_class = AreaSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "activa")
 
@@ -502,7 +502,7 @@ class AreaViewSet(BaseModelViewSet):
 class SubareaViewSet(BaseModelViewSet):
     queryset = Subarea.objects.select_related("area")
     serializer_class = SubareaSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "activa")
 
@@ -510,7 +510,7 @@ class SubareaViewSet(BaseModelViewSet):
 class GrupoViewSet(BaseModelViewSet):
     queryset = Grupo.objects.select_related("area").prefetch_related("miembros")
     serializer_class = GrupoSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "activo")
 
@@ -518,7 +518,7 @@ class GrupoViewSet(BaseModelViewSet):
 class BoxViewSet(BaseModelViewSet):
     queryset = Box.objects.select_related("area", "ocupado_por")
     serializer_class = BoxSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "activo", "ocupado_por")
 
@@ -562,8 +562,8 @@ class CamaViewSet(BaseModelViewSet):
 
     queryset = Cama.objects.select_related("area", "subarea", "caso__ciudadano")
     serializer_class = CamaSerializer
-    capacidad_requerida = "config"
-    capacidad_por_accion = {"estado": "trabajo"}
+    capacidad_requerida = "config_institucional"
+    capacidad_por_accion = {"estado": "internacion"}
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "subarea", "estado", "activa")
     search_fields = ("nombre",)
@@ -672,7 +672,7 @@ class EstadiaCamaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     queryset = EstadiaCama.objects.select_related("cama__subarea", "cama__area")
     serializer_class = EstadiaCamaSerializer
     permission_classes = [IsAuthenticated, CapacidadPermission]
-    capacidad_requerida = "registros"
+    capacidad_requerida = "internacion"
     institucion_path = "cama__area__institucion"
     filter_fields = ("cama", "caso", "cama__subarea")
 

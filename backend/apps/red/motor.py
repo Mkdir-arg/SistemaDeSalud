@@ -11,8 +11,6 @@ from django.utils import timezone
 
 from apps.casos import motor as motor_casos
 from apps.casos.models import Caso
-from apps.flujos.models import VersionFlujo
-
 from .models import Red, Traslado
 
 
@@ -227,15 +225,10 @@ def aceptar(t: Traslado, autor=None, area_destino=None) -> Traslado:
     if area.institucion_id != t.destino_id:
         raise ErrorTraslado("El área no pertenece a este establecimiento.")
 
-    ver = (
-        VersionFlujo.objects
-        .filter(flujo__area=area, estado=VersionFlujo.Estado.PUBLICADA)
-        .order_by("-flujo_id", "-numero").first()
-    )
-    if ver is None:
-        raise ErrorTraslado(
-            f"El área «{area.nombre}» no tiene un flujo publicado para recibir el caso."
-        )
+    try:
+        ver = motor_casos.version_receptora_para_area(area, institucion=t.destino)
+    except motor_casos.ErrorMotor as exc:
+        raise ErrorTraslado(str(exc)) from exc
 
     # El paciente se resuelve del lado del destino ANTES de crear el caso: el
     # ciudadano del origen es un registro de otra institución y dejaría la ficha

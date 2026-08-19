@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.accounts.models import Membresia
+
 from .models import Agenda, Bloqueo, Disponibilidad, Turno
 
 
@@ -20,6 +22,11 @@ class DisponibilidadSerializer(serializers.ModelSerializer):
             "cuantos_turnos", "vigente_desde", "vigente_hasta", "activa",
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["agenda"].read_only = True
+
     def validate_cupos(self, valor):
         # Cero cupos es una franja que se dibuja en la pantalla y no da ningún
         # turno: para eso está `activa=False`, que además lo dice.
@@ -35,6 +42,14 @@ class DisponibilidadSerializer(serializers.ModelSerializer):
         if desde and hasta and hasta <= desde:
             raise serializers.ValidationError(
                 {"hasta": "La franja tiene que terminar después de empezar."}
+            )
+        duracion = dato("duracion_min")
+        if duracion is not None and duracion < 1:
+            raise serializers.ValidationError({"duracion_min": "La duracion debe ser mayor que cero."})
+        vigente_desde, vigente_hasta = dato("vigente_desde"), dato("vigente_hasta")
+        if vigente_desde and vigente_hasta and vigente_hasta < vigente_desde:
+            raise serializers.ValidationError(
+                {"vigente_hasta": "La vigencia hasta no puede ser anterior a la vigencia desde."}
             )
         agenda = dato("agenda")
         if agenda and desde and hasta:
@@ -68,6 +83,11 @@ class BloqueoSerializer(serializers.ModelSerializer):
         fields = ["id", "agenda", "desde", "hasta", "motivo", "creado"]
         read_only_fields = ["creado"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["agenda"].read_only = True
+
     def validate(self, attrs):
         desde = attrs.get("desde", getattr(self.instance, "desde", None))
         hasta = attrs.get("hasta", getattr(self.instance, "hasta", None))
@@ -94,6 +114,12 @@ class AgendaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creada"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["institucion"].read_only = True
+            self.fields["area"].read_only = True
+
     def get_profesional_nombre(self, obj) -> str | None:
         return obj.profesional.nombre_completo if obj.profesional_id else None
 
@@ -102,11 +128,29 @@ class AgendaSerializer(serializers.ModelSerializer):
         # sin nadie, son configuraciones que después no se pueden operar: el
         # caso no sabría a quién asignarse.
         tipo = attrs.get("tipo", getattr(self.instance, "tipo", Agenda.Tipo.PROFESIONAL))
+        institucion = attrs.get("institucion", getattr(self.instance, "institucion", None))
+        area = attrs.get("area", getattr(self.instance, "area", None))
+        if area and institucion and area.institucion_id != institucion.id:
+            raise serializers.ValidationError({"area": "El area de la agenda debe pertenecer a la institucion."})
         prof = attrs.get("profesional", getattr(self.instance, "profesional", None))
+        activa = attrs.get("activa", getattr(self.instance, "activa", True))
         if tipo == Agenda.Tipo.RECURSO and prof:
             raise serializers.ValidationError(
                 {"profesional": "Una agenda de recurso no lleva profesional."}
             )
+        if tipo == Agenda.Tipo.PROFESIONAL and activa and not prof:
+            raise serializers.ValidationError(
+                {"profesional": "Una agenda profesional necesita un profesional asignado."}
+            )
+        if prof and institucion and not Membresia.objects.filter(
+            usuario=prof, institucion=institucion, activo=True
+        ).exists():
+            raise serializers.ValidationError(
+                {"profesional": "El profesional no pertenece a esta institucion."}
+            )
+        flujo = attrs.get("flujo", getattr(self.instance, "flujo", None))
+        if flujo and institucion and flujo.institucion_id != institucion.id:
+            raise serializers.ValidationError({"flujo": "El flujo no pertenece a esta institucion."})
         # Una sala guardada en una agenda presencial no se muestra en ninguna
         # pantalla y no se copia a ningún turno, pero queda ahí: el día que
         # alguien pase la agenda a virtual hereda un link viejo sin haberlo

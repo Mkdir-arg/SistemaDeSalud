@@ -59,7 +59,7 @@ class FormularioViewSet(BaseModelViewSet):
         )
     )
     serializer_class = FormularioSerializer
-    capacidad_requerida = "diseno"
+    capacidad_requerida = "diseno_flujos"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area")
     # La descripción también se busca: el listado la muestra como columna, así que
@@ -296,7 +296,7 @@ class CampoViewSet(BaseModelViewSet):
         .order_by("formulario", "orden", "id")
     )
     serializer_class = CampoSerializer
-    capacidad_requerida = "diseno"
+    capacidad_requerida = "diseno_flujos"
     institucion_path = "formulario__institucion"
     filter_fields = ("formulario", "tipo", "requerido", "origen")
 

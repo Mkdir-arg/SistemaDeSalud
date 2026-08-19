@@ -244,6 +244,8 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
     el segundo paciente tiene el turno impreso y para el mostrador no existe—.
     """
     agenda = Agenda.objects.select_for_update().order_by().get(pk=agenda.pk)
+    if ciudadano.institucion_id != agenda.institucion_id:
+        raise ErrorAgenda("El paciente no pertenece a la institucion de la agenda.")
     if not agenda.activa:
         raise ErrorAgenda("La agenda no está activa.")
     franja = _valida_horario(agenda, inicio)

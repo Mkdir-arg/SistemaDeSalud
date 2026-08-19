@@ -9,7 +9,7 @@ padrón completo de la plataforma, con nombre y email».
 """
 from rest_framework.test import APITestCase
 
-from apps.instituciones.models import Institucion
+from apps.instituciones.models import Area, Institucion
 
 from .models import LegajoProfesional, Membresia, Usuario
 
@@ -60,6 +60,7 @@ class PadronPorInstitucionTests(APITestCase):
         r = self.client.get(f"/api/usuarios/{self.huerfano.id}/")
         self.assertEqual(r.status_code, 200)
 
+
     def test_no_se_puede_leer_ni_editar_la_ficha_de_otra_institucion(self):
         self.client.force_authenticate(self.admin_hosp)
         self.assertEqual(self.client.get(f"/api/usuarios/{self.medico_clin.id}/").status_code, 404)
@@ -84,6 +85,37 @@ class PadronPorInstitucionTests(APITestCase):
         ids = [u["id"] for u in r.data["results"]]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(r.data["count"], len(ids))
+
+
+class PerfilConCapacidadesTests(APITestCase):
+    def setUp(self):
+        self.hospital = Institucion.objects.create(nombre="Hospital Central")
+        self.clinica = Institucion.objects.create(nombre="Clinica Sur")
+        self.user = Usuario.objects.create_user("multi@cauce.local", "x", nombre="Multi")
+        Membresia.objects.create(
+            usuario=self.user, institucion=self.hospital,
+            rol=Membresia.Rol.ADMINISTRATIVO, activo=True,
+        )
+        Membresia.objects.create(
+            usuario=self.user, institucion=self.clinica,
+            rol=Membresia.Rol.JEFE_AREA, activo=True,
+        )
+
+    def test_me_devuelve_roles_y_capacidades_por_institucion(self):
+        self.client.force_authenticate(self.user)
+        r = self.client.get("/api/usuarios/me/")
+        self.assertEqual(r.status_code, 200)
+
+        hosp = str(self.hospital.id)
+        clin = str(self.clinica.id)
+        self.assertEqual(r.data["roles_por_institucion"][hosp], ["administrativo"])
+        self.assertEqual(r.data["roles_por_institucion"][clin], ["jefe_area"])
+        self.assertIn("turnos", r.data["capacidades_por_institucion"][hosp])
+        self.assertIn("casos_operar", r.data["capacidades_por_institucion"][hosp])
+        self.assertNotIn("historia_clinica", r.data["capacidades_por_institucion"][hosp])
+        self.assertIn("historia_clinica", r.data["capacidades_por_institucion"][clin])
+        self.assertIn("auditoria", r.data["capacidades_por_institucion"][clin])
+        self.assertNotIn("auditoria", r.data["capacidades_por_institucion"][hosp])
 
 
 class LegajoAjenoTests(APITestCase):
@@ -185,3 +217,44 @@ class AltaDePersonaTests(APITestCase):
         r = self._alta()
         self.assertEqual(r.status_code, 201, r.data)
         self.assertFalse(Membresia.objects.filter(usuario_id=r.data["id"]).exists())
+
+
+class ConfiguracionDeAccesosTests(APITestCase):
+    def setUp(self):
+        self.hospital = Institucion.objects.create(nombre="Hospital Central")
+        self.clinica = Institucion.objects.create(nombre="Clinica Norte")
+        self.area = Area.objects.create(institucion=self.hospital, nombre="Guardia")
+        self.area_ajena = Area.objects.create(institucion=self.clinica, nombre="Guardia")
+        self.root = Usuario.objects.create_user(
+            "root@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.usuario = Usuario.objects.create_user("persona@test.local", "x")
+        self.client.force_authenticate(self.root)
+
+    def test_la_membresia_no_toma_areas_de_otra_institucion(self):
+        r = self.client.post("/api/membresias/", {
+            "usuario": self.usuario.pk,
+            "institucion": self.hospital.pk,
+            "rol": Membresia.Rol.JEFE_AREA,
+            "areas": [self.area_ajena.pk],
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Membresia.objects.filter(usuario=self.usuario).exists())
+
+    def test_patch_no_mueve_membresia_de_persona_ni_institucion(self):
+        m = Membresia.objects.create(
+            usuario=self.usuario, institucion=self.hospital, rol=Membresia.Rol.ADMINISTRATIVO
+        )
+        otro = Usuario.objects.create_user("otra@test.local", "x")
+        r = self.client.patch(f"/api/membresias/{m.pk}/", {
+            "usuario": otro.pk, "institucion": self.clinica.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        m.refresh_from_db()
+        self.assertEqual((m.usuario_id, m.institucion_id), (self.usuario.pk, self.hospital.pk))
+
+    def test_no_se_escala_a_staff_desde_la_api_de_usuarios(self):
+        r = self.client.patch(f"/api/usuarios/{self.usuario.pk}/", {"is_staff": True}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.is_staff)

@@ -16,6 +16,11 @@ class CampoSerializer(serializers.ModelSerializer):
             "vinculado", "valores_cargados",
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["formulario"].read_only = True
+
     def get_valores_cargados(self, obj) -> int:
         """Cuántos datos de casos reales dependen de este campo.
 
@@ -116,6 +121,11 @@ class FormularioSerializer(serializers.ModelSerializer):
             "creado", "campos", "usos_n",
         ]
         read_only_fields = ["creado"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["institucion"].read_only = True
 
     def get_area_nombre(self, obj) -> str:
         return obj.area.nombre if obj.area_id else "Toda la institución"

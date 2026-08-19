@@ -19,6 +19,11 @@ class InsumoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creado"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["institucion"].read_only = True
+
 
 class DepositoSerializer(serializers.ModelSerializer):
     area_nombre = serializers.CharField(source="area.nombre", read_only=True, default=None)
@@ -26,6 +31,21 @@ class DepositoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Deposito
         fields = ["id", "institucion", "area", "area_nombre", "nombre", "central", "activo"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["institucion"].read_only = True
+            self.fields["area"].read_only = True
+
+    def validate(self, attrs):
+        institucion = attrs.get("institucion", getattr(self.instance, "institucion", None))
+        area = attrs.get("area", getattr(self.instance, "area", None))
+        if area and institucion and area.institucion_id != institucion.id:
+            raise serializers.ValidationError(
+                {"area": "El area del deposito debe pertenecer a la institucion."}
+            )
+        return attrs
 
 
 class LoteSerializer(serializers.ModelSerializer):
@@ -35,6 +55,11 @@ class LoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lote
         fields = ["id", "insumo", "insumo_nombre", "numero", "vencimiento", "vencido"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["insumo"].read_only = True
 
 
 class ExistenciaSerializer(serializers.ModelSerializer):
@@ -127,6 +152,12 @@ class PedidoSerializer(serializers.ModelSerializer):
             "lineas", "items",
         ]
         read_only_fields = ["estado", "creado", "resuelto"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["origen"].read_only = True
+            self.fields["destino"].read_only = True
 
     @transaction.atomic
     def create(self, validated):

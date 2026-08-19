@@ -74,7 +74,7 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         )
     )
     serializer_class = CiudadanoSerializer
-    capacidad_requerida = "registros"
+    capacidad_requerida = "padron_admision"
     protege_lectura = True
     institucion_path = "institucion"
     filter_fields = ("institucion", "obra_social")
@@ -126,7 +126,7 @@ class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):
         Prefetch("recetas", queryset=Receta.objects.select_related("autor")),
     )
     serializer_class = HistoriaClinicaSerializer
-    capacidad_requerida = "registros"
+    capacidad_requerida = "historia_clinica"
     protege_lectura = True
     institucion_path = "ciudadano__institucion"
     filter_fields = ("ciudadano",)
@@ -166,7 +166,7 @@ class EntradaHistoriaViewSet(AuditaLecturaClinica, BaseModelViewSet):
         "historia", "historia__ciudadano", "autor", "caso"
     )
     serializer_class = EntradaHistoriaSerializer
-    capacidad_requerida = "registros"
+    capacidad_requerida = "historia_clinica"
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "autor", "caso", "firmada")
@@ -232,7 +232,12 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ciudadano_path = "historia__ciudadano"
     queryset = Estudio.objects.select_related("historia", "historia__ciudadano")
     serializer_class = EstudioSerializer
-    capacidad_requerida = "registros"
+    capacidad_requerida = "historia_clinica"
+    capacidad_por_accion = {
+        "create": "solicitud_estudios",
+        "update": "solicitud_estudios",
+        "partial_update": "solicitud_estudios",
+    }
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "resultado")
@@ -267,7 +272,11 @@ class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ciudadano_path = "historia__ciudadano"
     queryset = Receta.objects.select_related("historia", "historia__ciudadano", "autor")
     serializer_class = RecetaSerializer
-    capacidad_requerida = "registros"
+    capacidad_requerida = "historia_clinica"
+    capacidad_por_accion = {
+        "create": "prescripcion",
+        "suspender": "prescripcion",
+    }
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
     filter_fields = ("historia", "activa")
@@ -351,7 +360,7 @@ class ConsentimientoDatosViewSet(AuditaLecturaClinica, BaseModelViewSet):
 
     queryset = ConsentimientoDatos.objects.select_related("ciudadano", "tomado_por")
     serializer_class = ConsentimientoDatosSerializer
-    capacidad_requerida = "registros"
+    capacidad_requerida = "padron_admision"
     protege_lectura = True
     institucion_path = "ciudadano__institucion"
     filter_fields = ("ciudadano", "otorgado", "modo")

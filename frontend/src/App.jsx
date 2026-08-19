@@ -1,39 +1,40 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 import { useInstitucion } from "./auth/InstitutionContext";
 import { Shell } from "./components/Shell";
-import { Spinner } from "./components/ui";
+import { Card, Spinner } from "./components/ui";
 import { EstadoError } from "./components/ui/estados";
-import Login from "./pages/Login";
-import PantallaLlamados from "./pages/PantallaLlamados";
-import Directorio from "./pages/Directorio";
-import Inicio from "./pages/Inicio";
-import Dashboard from "./pages/Dashboard";
-import MiTrabajo from "./pages/MiTrabajo";
-import PuestoDetalle from "./pages/PuestoDetalle";
-import Supervision from "./pages/Supervision";
-import Notificaciones from "./pages/Notificaciones";
-import Bandejas from "./pages/ejecucion/Bandejas";
-import Casos from "./pages/ejecucion/Casos";
-import CasoDetalle from "./pages/ejecucion/CasoDetalle";
-import Fila from "./pages/ejecucion/Fila";
-import Internacion from "./pages/ejecucion/Internacion";
-import Agenda from "./pages/ejecucion/Agenda";
-import Farmacia from "./pages/ejecucion/Farmacia";
-import RedTraslados from "./pages/ejecucion/RedTraslados";
-import Flujos from "./pages/diseno/Flujos";
-import FlujoEditor from "./pages/diseno/FlujoEditor";
-import MapaFlujos from "./pages/diseno/MapaFlujos";
-import Formularios from "./pages/diseno/Formularios";
-import FormularioDetalle from "./pages/diseno/FormularioDetalle";
-import Areas from "./pages/admin/Areas";
-import Usuarios from "./pages/admin/Usuarios";
-import Registros from "./pages/registros/Registros";
-import HistoriaDetalle from "./pages/registros/HistoriaDetalle";
-import Legajo from "./pages/registros/Legajo";
-import Accesos from "./pages/auditoria/Accesos";
+
+const Login = lazy(() => import("./pages/Login"));
+const PantallaLlamados = lazy(() => import("./pages/PantallaLlamados"));
+const Directorio = lazy(() => import("./pages/Directorio"));
+const Inicio = lazy(() => import("./pages/Inicio"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const MiTrabajo = lazy(() => import("./pages/MiTrabajo"));
+const PuestoDetalle = lazy(() => import("./pages/PuestoDetalle"));
+const Supervision = lazy(() => import("./pages/Supervision"));
+const Notificaciones = lazy(() => import("./pages/Notificaciones"));
+const Bandejas = lazy(() => import("./pages/ejecucion/Bandejas"));
+const Casos = lazy(() => import("./pages/ejecucion/Casos"));
+const CasoDetalle = lazy(() => import("./pages/ejecucion/CasoDetalle"));
+const Fila = lazy(() => import("./pages/ejecucion/Fila"));
+const Internacion = lazy(() => import("./pages/ejecucion/Internacion"));
+const Agenda = lazy(() => import("./pages/ejecucion/Agenda"));
+const Farmacia = lazy(() => import("./pages/ejecucion/Farmacia"));
+const RedTraslados = lazy(() => import("./pages/ejecucion/RedTraslados"));
+const Flujos = lazy(() => import("./pages/diseno/Flujos"));
+const FlujoEditor = lazy(() => import("./pages/diseno/FlujoEditor"));
+const MapaFlujos = lazy(() => import("./pages/diseno/MapaFlujos"));
+const Formularios = lazy(() => import("./pages/diseno/Formularios"));
+const FormularioDetalle = lazy(() => import("./pages/diseno/FormularioDetalle"));
+const Areas = lazy(() => import("./pages/admin/Areas"));
+const Usuarios = lazy(() => import("./pages/admin/Usuarios"));
+const Registros = lazy(() => import("./pages/registros/Registros"));
+const HistoriaDetalle = lazy(() => import("./pages/registros/HistoriaDetalle"));
+const Legajo = lazy(() => import("./pages/registros/Legajo"));
+const Accesos = lazy(() => import("./pages/auditoria/Accesos"));
 
 // Landing: el super admin ve el directorio; el resto entra a su institución.
 function Landing() {
@@ -72,7 +73,7 @@ function Landing() {
 // en su worklist "Mi trabajo"; los roles de configuración/diseño ven el panel.
 function InicioHome() {
   const { puedeVer } = useInstitucion();
-  const operativo = puedeVer("trabajo") && !puedeVer("config") && !puedeVer("diseno");
+  const operativo = puedeVer("casos_operar") && !puedeVer("config_institucional") && !puedeVer("diseno_flujos");
   return operativo ? <MiTrabajo /> : <Inicio />;
 }
 
@@ -100,24 +101,48 @@ function usePuerta() {
 }
 
 // Ruta protegida que además requiere una institución en contexto.
-function Protected({ children }) {
+function AccesoDenegado() {
+  return (
+    <div className="p-lg sm:p-[30px]">
+      <Card className="max-w-[36rem] p-6">
+        <h2 className="text-lg font-bold">Acceso denegado</h2>
+        <p className="mt-2 text-md text-texto-debil">
+          Tu rol en esta institucion no habilita esta seccion.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+function PantallaCargando() {
+  return (
+    <div className="flex min-h-[280px] items-center justify-center">
+      <Spinner label="Cargando pantalla..." />
+    </div>
+  );
+}
+
+function Protected({ children, cap }) {
   const puerta = usePuerta();
-  const { institucion } = useInstitucion();
+  const { institucion, puedeVer, cargandoRoles } = useInstitucion();
   const loc = useLocation();
   if (puerta) return puerta;
   // Se recuerda a dónde iba: el Landing elige institución y lo devuelve ahí.
   if (!institucion) return <Navigate to="/" state={{ desde: loc.pathname + loc.search }} replace />;
-  return <Shell>{children}</Shell>;
+  if (cargandoRoles) return <Spinner label="Cargando permisos..." />;
+  if (cap && !puedeVer(cap)) return <Shell><AccesoDenegado /></Shell>;
+  return <Shell><Suspense fallback={<PantallaCargando />}>{children}</Suspense></Shell>;
 }
 
 function AuthOnly({ children }) {
   return usePuerta() ?? children;
 }
 
-const P = (el) => <Protected>{el}</Protected>;
+const P = (el, cap) => <Protected cap={cap}>{el}</Protected>;
 
 export default function App() {
   return (
+    <Suspense fallback={<PantallaCargando />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
@@ -125,44 +150,45 @@ export default function App() {
       <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />
-      <Route path="/dashboard" element={P(<Dashboard />)} />
+      <Route path="/dashboard" element={P(<Dashboard />, "supervision")} />
       <Route path="/notificaciones" element={P(<Notificaciones />)} />
-      <Route path="/puesto/:id" element={P(<PuestoDetalle />)} />
+      <Route path="/puesto/:id" element={P(<PuestoDetalle />, "casos_operar")} />
 
       {/* TRABAJO */}
-      <Route path="/supervision" element={P(<Supervision />)} />
-      <Route path="/bandeja" element={P(<Bandejas />)} />
-      <Route path="/filas" element={P(<Fila />)} />
-      <Route path="/internacion" element={P(<Internacion />)} />
-      <Route path="/agenda" element={P(<Agenda />)} />
-      <Route path="/farmacia" element={P(<Farmacia />)} />
-      <Route path="/red" element={P(<RedTraslados />)} />
-      <Route path="/casos" element={P(<Casos />)} />
-      <Route path="/casos/:id" element={P(<CasoDetalle />)} />
+      <Route path="/supervision" element={P(<Supervision />, "supervision")} />
+      <Route path="/bandeja" element={P(<Bandejas />, "casos_operar")} />
+      <Route path="/filas" element={P(<Fila />, "filas")} />
+      <Route path="/internacion" element={P(<Internacion />, "internacion")} />
+      <Route path="/agenda" element={P(<Agenda />, "turnos")} />
+      <Route path="/farmacia" element={P(<Farmacia />, "farmacia_stock")} />
+      <Route path="/red" element={P(<RedTraslados />, "traslados_red")} />
+      <Route path="/casos" element={P(<Casos />, "casos_operar")} />
+      <Route path="/casos/:id" element={P(<CasoDetalle />, "casos_operar")} />
 
       {/* REGISTROS */}
-      <Route path="/historia" element={P(<Registros />)} />
-      <Route path="/historia/:id" element={P(<HistoriaDetalle />)} />
+      <Route path="/historia" element={P(<Registros />, "historia_clinica")} />
+      <Route path="/historia/:id" element={P(<HistoriaDetalle />, "historia_clinica")} />
       <Route path="/legajo" element={P(<Legajo />)} />
-      <Route path="/accesos" element={P(<Accesos />)} />
+      <Route path="/accesos" element={P(<Accesos />, "auditoria")} />
 
       {/* DISEÑO */}
-      <Route path="/flujos" element={P(<Flujos />)} />
-      <Route path="/flujos/:id" element={P(<FlujoEditor />)} />
-      <Route path="/mapa" element={P(<MapaFlujos />)} />
-      <Route path="/formularios" element={P(<Formularios />)} />
-      <Route path="/formularios/:id" element={P(<FormularioDetalle />)} />
+      <Route path="/flujos" element={P(<Flujos />, "diseno_flujos")} />
+      <Route path="/flujos/:id" element={P(<FlujoEditor />, "diseno_flujos")} />
+      <Route path="/mapa" element={P(<MapaFlujos />, "diseno_flujos")} />
+      <Route path="/formularios" element={P(<Formularios />, "diseno_flujos")} />
+      <Route path="/formularios/:id" element={P(<FormularioDetalle />, "diseno_flujos")} />
 
       {/* SISTEMA */}
       {/* Cada sección del área es una página: /estructura/12/staff. La ficha de
           sub-área cuelga aparte porque lleva su propio id y no es una sección. */}
-      <Route path="/estructura" element={P(<Areas />)} />
-      <Route path="/estructura/:areaId" element={P(<Areas />)} />
-      <Route path="/estructura/:areaId/sub/:subId" element={P(<Areas />)} />
-      <Route path="/estructura/:areaId/:seccion" element={P(<Areas />)} />
-      <Route path="/administracion" element={P(<Usuarios />)} />
+      <Route path="/estructura" element={P(<Areas />, "config_institucional")} />
+      <Route path="/estructura/:areaId" element={P(<Areas />, "config_institucional")} />
+      <Route path="/estructura/:areaId/sub/:subId" element={P(<Areas />, "config_institucional")} />
+      <Route path="/estructura/:areaId/:seccion" element={P(<Areas />, "config_institucional")} />
+      <Route path="/administracion" element={P(<Usuarios />, "config_institucional")} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }

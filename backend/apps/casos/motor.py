@@ -52,6 +52,108 @@ class ErrorMotor(Exception):
     """Error de negocio del motor (estado inválido, datos faltantes, etc.)."""
 
 
+ORIGENES_DERIVADOS = {"derivado", "ambos"}
+
+
+def _id_institucion(obj):
+    return getattr(obj, "id", obj)
+
+
+def _config_inicio(version):
+    inicio = version.nodos.filter(tipo=Nodo.Tipo.INICIO).order_by("id").first()
+    if inicio is None:
+        return {}
+    return inicio.config if isinstance(inicio.config, dict) else {}
+
+
+def _acepta_derivados(version):
+    return (_config_inicio(version).get("origen") or "ambos") in ORIGENES_DERIVADOS
+
+
+def _publicadas_receptoras_de_area(area_destino):
+    publicadas = (
+        VersionFlujo.objects.select_related("flujo", "flujo__area")
+        .filter(
+            flujo__area=area_destino,
+            flujo__institucion=area_destino.institucion_id,
+            estado=VersionFlujo.Estado.PUBLICADA,
+        )
+        .order_by("flujo_id", "-numero")
+    )
+    ultimas_por_flujo = []
+    vistos = set()
+    for version in publicadas:
+        if version.flujo_id in vistos:
+            continue
+        vistos.add(version.flujo_id)
+        ultimas_por_flujo.append(version)
+    return [version for version in ultimas_por_flujo if _acepta_derivados(version)]
+
+
+def version_receptora_para_area(area_destino, *, institucion=None):
+    """Version publicada que puede recibir una derivacion en un area."""
+    if area_destino is None:
+        raise ErrorMotor("Hay que indicar el area destino.")
+    if institucion is not None and area_destino.institucion_id != _id_institucion(institucion):
+        raise ErrorMotor("El area elegida no pertenece a la institucion destino.")
+
+    publicadas = (
+        VersionFlujo.objects
+        .filter(
+            flujo__area=area_destino,
+            flujo__institucion=area_destino.institucion_id,
+            estado=VersionFlujo.Estado.PUBLICADA,
+        )
+        .exists()
+    )
+    if not publicadas:
+        raise ErrorMotor(f"El area «{area_destino.nombre}» no tiene un flujo publicado para recibir el caso.")
+
+    receptoras = _publicadas_receptoras_de_area(area_destino)
+    if not receptoras:
+        raise ErrorMotor(
+            f"El area «{area_destino.nombre}» no tiene un flujo publicado configurado "
+            "para recibir derivaciones."
+        )
+    if len(receptoras) > 1:
+        nombres = ", ".join(v.flujo.titulo for v in receptoras)
+        raise ErrorMotor(
+            f"El area «{area_destino.nombre}» tiene mas de un flujo receptor "
+            f"publicado ({nombres}). Deja uno solo con Inicio/origen derivado o ambos."
+        )
+    return receptoras[0]
+
+
+def _area_destino_configurada(caso: Caso, cfg: dict):
+    area_id = cfg.get("area_destino_id")
+    if not area_id:
+        return None
+    area = Area.objects.filter(pk=area_id).first()
+    if area is None:
+        raise ErrorMotor("El area de destino configurada no existe.")
+    if area.institucion_id != caso.institucion_id:
+        raise ErrorMotor("El area de destino pertenece a otra institucion.")
+    return area
+
+
+def _version_publicada_destino(flujo_destino_id, *, caso: Caso, area_destino=None):
+    ver_destino = (
+        VersionFlujo.objects.select_related("flujo", "flujo__area")
+        .filter(flujo_id=flujo_destino_id, estado=VersionFlujo.Estado.PUBLICADA)
+        .order_by("-numero")
+        .first()
+    )
+    if ver_destino is None:
+        raise ErrorMotor("El flujo de destino no tiene una version publicada.")
+    if ver_destino.flujo.institucion_id != caso.institucion_id:
+        raise ErrorMotor("El flujo de destino pertenece a otra institucion.")
+    if area_destino is not None and ver_destino.flujo.area_id != area_destino.id:
+        raise ErrorMotor("El flujo de destino no pertenece al area derivada.")
+    if not _acepta_derivados(ver_destino):
+        raise ErrorMotor("El flujo de destino no esta configurado para recibir derivaciones.")
+    return ver_destino
+
+
 # --------------------------------------------------------------------------- #
 # Traza: por qué nodos pasó el motor
 # --------------------------------------------------------------------------- #
@@ -639,11 +741,9 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
 
     elif nodo.tipo == Nodo.Tipo.DERIVAR:
         cfg = nodo.config or {}
-        area_id = cfg.get("area_destino_id")
-        if area_id:
-            area = Area.objects.filter(pk=area_id).first()
-            if area:
-                caso.area_actual = area
+        area = _area_destino_configurada(caso, cfg)
+        if area:
+            caso.area_actual = area
         caso.estado = Caso.Estado.DERIVADO
         destino = caso.area_actual.nombre if caso.area_actual else nodo.titulo
         _registrar(caso, f"Derivado a {destino}", detalle="regla del flujo", autor=autor, nodo=nodo)
@@ -652,11 +752,8 @@ def _aplicar_efecto_entrada(caso: Caso, nodo: Nodo, autor=None):
         # vinculado al caso origen para poder trazar el recorrido completo.
         flujo_destino_id = cfg.get("flujo_destino_id")
         if flujo_destino_id:
-            ver_destino = (
-                VersionFlujo.objects
-                .filter(flujo_id=flujo_destino_id, estado=VersionFlujo.Estado.PUBLICADA)
-                .order_by("-numero")
-                .first()
+            ver_destino = _version_publicada_destino(
+                flujo_destino_id, caso=caso, area_destino=area
             )
             if ver_destino:
                 nuevo = Caso.objects.create(
@@ -1124,13 +1221,7 @@ def _derivar_subproceso(caso: Caso, area_destino, autor=None, estudio=None,
     ligado al `caso` (que queda ESPERANDO), y al cerrarse el sub-caso reactiva al origen.
     Sirve para estudios derivados e interconsultas.
     """
-    ver = (
-        VersionFlujo.objects
-        .filter(flujo__area=area_destino, estado=VersionFlujo.Estado.PUBLICADA)
-        .order_by("-flujo_id", "-numero").first()
-    )
-    if ver is None:
-        raise ErrorMotor(f"El área «{area_destino}» no tiene un flujo publicado para recibir el caso.")
+    ver = version_receptora_para_area(area_destino, institucion=caso.institucion)
 
     sub = Caso.objects.create(
         institucion=caso.institucion, version=ver, ciudadano=caso.ciudadano,
@@ -1179,7 +1270,7 @@ def _retornar_al_origen(sub: Caso, autor=None):
         sub.estudio.save(update_fields=["realizado"])
     pendientes = (
         parent.derivados.filter(bloquea_origen=True)
-        .exclude(pk=sub.pk).exclude(estado=Caso.Estado.CERRADO).exists()
+        .exclude(pk=sub.pk).exclude(estado__in=Caso.ESTADOS_FINALIZADOS).exists()
     )
     if not pendientes and parent.esperando:
         parent.esperando = False
@@ -1770,6 +1861,8 @@ def _validar_valores(nodo: Nodo, valores: dict) -> dict:
         # se guardaría como «1.23457e+06», que ninguna Decisión puede comparar.
         return str(int(n)) if n == int(n) else repr(n)
 
+    if not isinstance(valores, dict):
+        raise ErrorMotor("Los valores del formulario deben enviarse como objeto.")
     if not nodo.formulario_id or not valores:
         return valores
     por_id = {c.id: c for c in nodo.formulario.campos.filter(tipo="numero")}
@@ -1811,7 +1904,27 @@ def _entero(valor):
 
 
 def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
+    if not valores:
+        return
+    if not nodo.formulario_id:
+        raise ErrorMotor("Este paso no tiene formulario para cargar valores.")
+
+    campos_permitidos = set(nodo.formulario.campos.values_list("id", flat=True))
+    normalizados, invalidos = {}, []
     for campo_id, valor in valores.items():
+        campo_id_normalizado = _entero(campo_id)
+        if campo_id_normalizado is None or campo_id_normalizado not in campos_permitidos:
+            invalidos.append(str(campo_id))
+            continue
+        normalizados[campo_id_normalizado] = valor
+    if invalidos:
+        raise ErrorMotor(
+            "El formulario de este paso no incluye los campos: "
+            + ", ".join(invalidos)
+            + "."
+        )
+
+    for campo_id, valor in normalizados.items():
         ValorCampo.objects.update_or_create(
             caso=caso,
             campo_id=campo_id,

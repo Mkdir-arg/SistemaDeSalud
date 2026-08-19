@@ -116,6 +116,17 @@ class AgendaAPITests(APITestCase):
         })
         self.assertEqual(r.status_code, 400)
 
+    def test_no_da_turno_a_un_paciente_de_otra_institucion(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        ajeno = Ciudadano.objects.create(
+            institucion=otra, nombre="Zoe", apellido="Ajena", documento="99888777"
+        )
+        r = self.client.post("/api/turnos/", {
+            "agenda": self.agenda.id, "ciudadano": ajeno.id, "inicio": self._iso(8, 0),
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Turno.objects.filter(ciudadano=ajeno).exists())
+
     # --- Acciones ------------------------------------------------------------- #
 
     def test_las_acciones_existen_donde_las_pide_la_pantalla(self):
@@ -344,8 +355,50 @@ class AgendaPermisosTests(APITestCase):
         self._como("admin")
         r = self.client.post("/api/agendas/", {
             "institucion": self.inst.id, "area": self.area.id, "nombre": "Nueva",
+            "profesional": self.usuarios["admin"].id,
         })
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_no_crea_agenda_con_area_de_otra_institucion(self):
+        self._como("admin")
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        area_ajena = Area.objects.create(institucion=otra, nombre="Guardia")
+        r = self.client.post("/api/agendas/", {
+            "institucion": self.inst.id, "area": area_ajena.id, "nombre": "Cruzada",
+            "profesional": self.usuarios["admin"].id,
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Agenda.objects.filter(nombre="Cruzada").exists())
+
+    def test_no_crea_agenda_con_flujo_de_otra_institucion(self):
+        self._como("admin")
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        flujo_ajeno = Flujo.objects.create(institucion=otra, titulo="Ingreso ajeno")
+        r = self.client.post("/api/agendas/", {
+            "institucion": self.inst.id, "area": self.area.id, "nombre": "Cruzada",
+            "profesional": self.usuarios["admin"].id, "flujo": flujo_ajeno.id,
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Agenda.objects.filter(nombre="Cruzada").exists())
+
+    def test_puede_desactivar_agenda_legacy_sin_profesional(self):
+        self._como("admin")
+        r = self.client.patch(f"/api/agendas/{self.agenda.pk}/", {"activa": False}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.agenda.refresh_from_db()
+        self.assertFalse(self.agenda.activa)
+
+    def test_no_asigna_profesional_ajeno_a_agenda_inactiva(self):
+        self._como("admin")
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        ajeno = Usuario.objects.create_user("medico@norte.local", "x")
+        Membresia.objects.create(usuario=ajeno, institucion=otra, rol=Membresia.Rol.MEDICO, activo=True)
+        r = self.client.patch(f"/api/agendas/{self.agenda.pk}/", {
+            "activa": False, "profesional": ajeno.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.agenda.refresh_from_db()
+        self.assertIsNone(self.agenda.profesional_id)
 
     def test_una_agenda_de_recurso_no_lleva_profesional(self):
         """Un caso abierto desde ahí no sabría a quién asignarse."""
@@ -372,9 +425,12 @@ class ModalidadAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Cardiologia")
+        Membresia.objects.create(
+            usuario=self.user, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
         self.agenda = Agenda.objects.create(
             institucion=self.inst, area=self.area, nombre="Dra. Suarez",
-            duracion_min=20, sobreturnos_max=2,
+            duracion_min=20, sobreturnos_max=2, profesional=self.user,
         )
         Disponibilidad.objects.create(
             agenda=self.agenda, dia_semana=1, desde=time(8, 0), hasta=time(10, 0)

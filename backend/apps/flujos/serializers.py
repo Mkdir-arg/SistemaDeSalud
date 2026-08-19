@@ -40,6 +40,28 @@ class NodoSerializer(serializers.ModelSerializer):
         extra_kwargs = {"grupos": {"required": False}}
         read_only_fields = ["pantalla_token"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["version"].read_only = True
+
+    def validate(self, attrs):
+        version = attrs.get("version", getattr(self.instance, "version", None))
+        formulario = attrs.get("formulario", getattr(self.instance, "formulario", None))
+        if version and formulario and formulario.institucion_id != version.flujo.institucion_id:
+            raise serializers.ValidationError(
+                {"formulario": "El formulario no pertenece a la institucion del flujo."}
+            )
+
+        grupos = attrs.get("grupos")
+        if version and grupos:
+            fuera = [g.id for g in grupos if g.area.institucion_id != version.flujo.institucion_id]
+            if fuera:
+                raise serializers.ValidationError(
+                    {"grupos": "Todos los grupos del nodo deben pertenecer a la institucion del flujo."}
+                )
+        return attrs
+
     def get_grupos_detalle(self, obj) -> list[dict]:
         return [
             {"id": g.id, "nombre": g.nombre, "area": g.area_id, "area_nombre": g.area.nombre}
@@ -51,6 +73,21 @@ class ConexionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conexion
         fields = ["id", "version", "origen", "destino", "etiqueta", "condicion"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["version"].read_only = True
+
+    def validate(self, attrs):
+        version = attrs.get("version", getattr(self.instance, "version", None))
+        origen = attrs.get("origen", getattr(self.instance, "origen", None))
+        destino = attrs.get("destino", getattr(self.instance, "destino", None))
+        if version and origen and origen.version_id != version.id:
+            raise serializers.ValidationError({"origen": "El nodo origen no pertenece a esta version."})
+        if version and destino and destino.version_id != version.id:
+            raise serializers.ValidationError({"destino": "El nodo destino no pertenece a esta version."})
+        return attrs
 
 
 class VersionFlujoSerializer(serializers.ModelSerializer):
@@ -112,6 +149,12 @@ class FlujoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creado"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            for campo in ("institucion", "area", "subarea"):
+                self.fields[campo].read_only = True
+
     def get_origen_inicio(self, obj) -> str:
         # Se resuelve sobre las versiones YA precargadas: `obj.version_publicada`
         # hace `.filter()` sobre el related manager, que arma un queryset nuevo y
@@ -131,8 +174,15 @@ class FlujoSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         # `area` se deriva de `subarea`; si vienen ambas, deben ser coherentes.
+        institucion = attrs.get("institucion", getattr(self.instance, "institucion", None))
         subarea = attrs.get("subarea", getattr(self.instance, "subarea", None))
         area = attrs.get("area", getattr(self.instance, "area", None))
+        if area and institucion and area.institucion_id != institucion.id:
+            raise serializers.ValidationError({"area": "El area no pertenece a esta institucion."})
+        if subarea and institucion and subarea.area.institucion_id != institucion.id:
+            raise serializers.ValidationError(
+                {"subarea": "La subarea no pertenece a esta institucion."}
+            )
         if subarea and area and subarea.area_id != area.id:
             raise serializers.ValidationError({"subarea": "La sub-área no pertenece al área indicada."})
         return attrs
@@ -158,4 +208,4 @@ class FlujoSerializer(serializers.ModelSerializer):
         if anotado is not None:
             return anotado
         from apps.casos.models import Caso
-        return Caso.objects.filter(version__flujo=obj).exclude(estado=Caso.Estado.CERRADO).count()
+        return Caso.objects.filter(version__flujo=obj).exclude(estado__in=Caso.ESTADOS_FINALIZADOS).count()

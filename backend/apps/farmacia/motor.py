@@ -332,17 +332,26 @@ def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
     # vista. El caso real no es un ataque sino un timeout: la farmacia entrega,
     # el navegador no contesta y la persona vuelve a apretar; con las dos copias
     # diciendo «pendiente» salían 60 ampollas de la central para un pedido de 30.
+    estado_entrada = pedido.estado
     pedido = Pedido.objects.select_for_update().get(pk=pedido.pk)
+    if pedido.estado != estado_entrada:
+        raise ErrorStock("El pedido cambio mientras se registraba. Recarga y volve a intentar.")
     if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
         raise ErrorStock("El pedido ya está cerrado.")
 
-    for linea in pedido.lineas.select_related("insumo"):
-        cant = int(entregas.get(linea.id, entregas.get(str(linea.id), 0)) or 0)
+    lineas = list(pedido.lineas.select_related("insumo"))
+    algo_entregado = False
+    for linea in lineas:
+        try:
+            cant = int(entregas.get(linea.id, entregas.get(str(linea.id), 0)) or 0)
+        except (TypeError, ValueError):
+            raise ErrorStock(f"La cantidad de {linea.insumo} no es valida.")
         if cant <= 0:
             continue
-        if cant > linea.pedido_cant:
+        pendiente = linea.pedido_cant - linea.entregado
+        if cant > pendiente:
             raise ErrorStock(
-                f"No se puede entregar {cant} de {linea.insumo}: se pidieron {linea.pedido_cant}."
+                f"No se puede entregar {cant} de {linea.insumo}: quedan {pendiente} por entregar."
             )
         transferir(pedido.destino, pedido.origen, linea.insumo, cant, autor=autor,
                    motivo=f"Pedido #{pedido.pk}")
@@ -350,9 +359,17 @@ def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
         # renglón diciendo lo mismo que la primera entrega y el resto invisible.
         linea.entregado += cant
         linea.save(update_fields=["entregado"])
+        algo_entregado = True
 
-    pedido.estado = Pedido.Estado.ENTREGADO
-    pedido.resuelto = timezone.now()
+    if not algo_entregado:
+        raise ErrorStock("Indica al menos una cantidad a entregar.")
+
+    if all(linea.entregado >= linea.pedido_cant for linea in lineas):
+        pedido.estado = Pedido.Estado.ENTREGADO
+        pedido.resuelto = timezone.now()
+    else:
+        pedido.estado = Pedido.Estado.PARCIAL
+        pedido.resuelto = None
     pedido.save(update_fields=["estado", "resuelto"])
     return pedido
 

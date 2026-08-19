@@ -570,7 +570,12 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
         <div className="flex flex-col gap-3.5">
           {campos.map((c) => (
             <Field key={c.id} label={c.label + (c.requerido ? " *" : "")} hint={c.ayuda}>
-              <CampoInput campo={c} value={valores[c.id] || ""} onChange={(v) => setValores((p) => ({ ...p, [c.id]: v }))} />
+              <CampoInput
+                campo={c}
+                value={valores[c.id] || ""}
+                institucionId={caso.institucion}
+                onChange={(v) => setValores((p) => ({ ...p, [c.id]: v }))}
+              />
             </Field>
           ))}
         </div>
@@ -586,7 +591,7 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
   );
 }
 
-function CampoInput({ campo, value, onChange }) {
+function CampoInput({ campo, value, onChange, institucionId }) {
   if (campo.tipo === "texto_largo") return <Textarea value={value} onChange={(e) => onChange(e.target.value)} />;
   if (campo.tipo === "fecha") return <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
   if (campo.tipo === "numero") return <CampoNumero campo={campo} value={value} onChange={onChange} />;
@@ -598,7 +603,7 @@ function CampoInput({ campo, value, onChange }) {
       </Select>
     );
   }
-  if (campo.tipo === "archivo") return <CampoArchivo value={value} onChange={onChange} />;
+  if (campo.tipo === "archivo") return <CampoArchivo value={value} onChange={onChange} institucionId={institucionId} />;
   return <Input value={value} onChange={(e) => onChange(e.target.value)} />;
 }
 
@@ -643,9 +648,15 @@ function CampoNumero({ campo, value, onChange }) {
   );
 }
 
-function CampoArchivo({ value, onChange }) {
+function nombreArchivo(ref) {
+  const s = String(ref || "");
+  return s.split(/[\\/]/).filter(Boolean).pop() || s;
+}
+
+function CampoArchivo({ value, onChange, institucionId }) {
   const toast = useToast();
-  const subir = useAccion((file) => api.upload(file), {
+  const [nombreVisible, setNombreVisible] = useState("");
+  const subir = useAccion((file) => api.upload(file, { institucion: institucionId }), {
     invalida: [],
     onError: (e) => toast.deError(e, "No se pudo subir el archivo."),
   });
@@ -656,12 +667,19 @@ function CampoArchivo({ value, onChange }) {
         disabled={subir.isPending}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) subir.mutate(file, { onSuccess: (r) => onChange(r.nombre) });
+          if (file) {
+            subir.mutate(file, {
+              onSuccess: (r) => {
+                setNombreVisible(r.nombre || nombreArchivo(r.ruta));
+                onChange(r.ruta || r.url || r.nombre);
+              },
+            });
+          }
         }}
         className="text-md file:mr-2 file:rounded-md file:border file:border-accent-100 file:bg-accent-50 file:px-2.5 file:py-1 file:text-base file:font-semibold file:text-accent"
       />
       {subir.isPending && <span className="text-sm text-texto-tenue">Subiendo…</span>}
-      {value && !subir.isPending && <span className="text-base text-texto-suave">✓ {value}</span>}
+      {value && !subir.isPending && <span className="text-base text-texto-suave">✓ {nombreVisible || nombreArchivo(value)}</span>}
     </div>
   );
 }
@@ -811,7 +829,7 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
             </Select>
           </Field>
           <Field label="Archivo del estudio (opcional)">
-            <CampoArchivo value={archivo} onChange={setArchivo} />
+            <CampoArchivo value={archivo} onChange={setArchivo} institucionId={caso.institucion} />
           </Field>
         </div>
       ) : (

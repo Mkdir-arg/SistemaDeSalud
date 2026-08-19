@@ -314,6 +314,20 @@ class EstudioDerivadoTests(TestCase):
         self.caso = Caso.objects.create(institucion=self.inst, version=v_card, ciudadano=self.ciud)
         motor.iniciar(self.caso, autor=self.jefe)  # queda en la atención
 
+    def _flujo_receptor(self, area, titulo="Receptor", origen="ambos"):
+        flujo = Flujo.objects.create(institucion=area.institucion, area=area, titulo=titulo)
+        version = VersionFlujo.objects.create(
+            flujo=flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        inicio = Nodo.objects.create(
+            version=version, tipo=Nodo.Tipo.INICIO, titulo="Inicio", config={"origen": origen}
+        )
+        atencion = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Atencion")
+        fin = Nodo.objects.create(version=version, tipo=Nodo.Tipo.FIN, titulo="Fin")
+        Conexion.objects.create(version=version, origen=inicio, destino=atencion)
+        Conexion.objects.create(version=version, origen=atencion, destino=fin)
+        return flujo
+
     def test_round_trip(self):
         sub = motor.solicitar_estudio_derivado(self.caso, "Resonancia", self.imagenes, autor=self.jefe)
         self.caso.refresh_from_db()
@@ -350,6 +364,52 @@ class EstudioDerivadoTests(TestCase):
         self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
 
 
+    def test_no_deriva_estudio_a_area_de_otra_institucion(self):
+        from apps.registros.models import Estudio
+
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        area_ajena = Area.objects.create(institucion=otra, nombre="Imagenes")
+        estudios_antes = Estudio.objects.count()
+
+        with self.assertRaises(motor.ErrorMotor):
+            motor.solicitar_estudio_derivado(self.caso, "TAC", area_ajena, autor=self.jefe)
+
+        self.caso.refresh_from_db()
+        self.assertFalse(self.caso.esperando)
+        self.assertEqual(Estudio.objects.count(), estudios_antes)
+
+    def test_interconsulta_no_usa_flujos_solo_manual(self):
+        Nodo.objects.filter(
+            version__flujo__area=self.imagenes, tipo=Nodo.Tipo.INICIO
+        ).update(config={"origen": "manual"})
+
+        with self.assertRaises(motor.ErrorMotor) as err:
+            motor.solicitar_interconsulta(self.caso, self.imagenes, "Ver", autor=self.jefe)
+
+        self.assertIn("derivaciones", str(err.exception))
+
+    def test_interconsulta_falla_si_hay_mas_de_un_receptor(self):
+        self._flujo_receptor(self.imagenes, titulo="Segundo receptor", origen="derivado")
+
+        with self.assertRaises(motor.ErrorMotor) as err:
+            motor.solicitar_interconsulta(self.caso, self.imagenes, "Ver", autor=self.jefe)
+
+        self.assertIn("mas de un flujo receptor", str(err.exception))
+
+    def test_subcaso_cancelado_no_bloquea_el_retorno_del_origen(self):
+        sub_cancelado = motor.solicitar_interconsulta(self.caso, self.imagenes, "Primera opinion", autor=self.jefe)
+        sub_pendiente = motor.solicitar_interconsulta(self.caso, self.imagenes, "Segunda opinion", autor=self.jefe)
+
+        motor.cancelar_caso(sub_cancelado, autor=self.jefe, motivo="No corresponde")
+        self.caso.refresh_from_db()
+        self.assertTrue(self.caso.esperando)
+
+        motor.avanzar(sub_pendiente, {"titulo": "Opinion", "contenido": "ok", "firmada": True}, autor=self.jefe)
+        self.caso.refresh_from_db()
+        self.assertFalse(self.caso.esperando)
+        self.assertEqual(self.caso.estado, Caso.Estado.EN_EVALUACION)
+
+
 class DerivacionEntreFlujosTests(TestCase):
     """Un nodo `derivar` con `flujo_destino_id` instancia y arranca un caso allí."""
 
@@ -379,6 +439,20 @@ class DerivacionEntreFlujosTests(TestCase):
         Conexion.objects.create(version=self.vi, origen=ii, destino=idd)
         Conexion.objects.create(version=self.vi, origen=idd, destino=iff)
 
+    def _flujo_publicado(self, area, titulo="Destino", origen="ambos"):
+        flujo = Flujo.objects.create(institucion=area.institucion, area=area, titulo=titulo)
+        version = VersionFlujo.objects.create(
+            flujo=flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        inicio = Nodo.objects.create(
+            version=version, tipo=Nodo.Tipo.INICIO, titulo="Inicio", config={"origen": origen}
+        )
+        atencion = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Atencion")
+        fin = Nodo.objects.create(version=version, tipo=Nodo.Tipo.FIN, titulo="Cierre")
+        Conexion.objects.create(version=version, origen=inicio, destino=atencion)
+        Conexion.objects.create(version=version, origen=atencion, destino=fin)
+        return flujo
+
     def test_derivar_instancia_caso_en_destino(self):
         caso = Caso.objects.create(institucion=self.inst, version=self.vi)
         motor.iniciar(caso, autor=None)
@@ -392,6 +466,47 @@ class DerivacionEntreFlujosTests(TestCase):
         self.assertEqual(d.nodo_actual.tipo, Nodo.Tipo.ATENCION)
         # El caso origen quedó marcado como derivado en su recorrido.
         self.assertTrue(caso.eventos.filter(titulo="Derivado a otro flujo").exists())
+
+
+    def test_no_deriva_a_area_de_otra_institucion(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        area_ajena = Area.objects.create(institucion=otra, nombre="Cardiologia")
+        nodo = Nodo.objects.get(version=self.vi, tipo=Nodo.Tipo.DERIVAR)
+        nodo.config = {"area_destino_id": area_ajena.id}
+        nodo.save(update_fields=["config"])
+
+        caso = Caso.objects.create(institucion=self.inst, version=self.vi)
+        with self.assertRaises(motor.ErrorMotor):
+            motor.iniciar(caso, autor=None)
+
+        caso.refresh_from_db()
+        self.assertIsNone(caso.nodo_actual_id)
+        self.assertFalse(caso.eventos.exists())
+
+    def test_no_deriva_a_flujo_de_otra_institucion(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        area_ajena = Area.objects.create(institucion=otra, nombre="Cardiologia")
+        flujo_ajeno = self._flujo_publicado(area_ajena, titulo="Cardio Norte")
+        nodo = Nodo.objects.get(version=self.vi, tipo=Nodo.Tipo.DERIVAR)
+        nodo.config = {"area_destino_id": self.cardio.id, "flujo_destino_id": flujo_ajeno.id}
+        nodo.save(update_fields=["config"])
+
+        caso = Caso.objects.create(institucion=self.inst, version=self.vi)
+        with self.assertRaises(motor.ErrorMotor):
+            motor.iniciar(caso, autor=None)
+
+        self.assertEqual(Caso.objects.filter(origen=caso).count(), 0)
+
+    def test_no_deriva_a_flujo_solo_manual(self):
+        Nodo.objects.filter(
+            version__flujo=self.f_cardio, tipo=Nodo.Tipo.INICIO
+        ).update(config={"origen": "manual"})
+
+        caso = Caso.objects.create(institucion=self.inst, version=self.vi)
+        with self.assertRaises(motor.ErrorMotor) as err:
+            motor.iniciar(caso, autor=None)
+
+        self.assertIn("recibir derivaciones", str(err.exception))
 
 
 class CondicionesTests(TestCase):

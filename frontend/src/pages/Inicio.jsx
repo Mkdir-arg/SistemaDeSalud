@@ -19,12 +19,12 @@ import { EstadoError } from "@/components/ui/estados";
  * al contraste AA como texto y ya rompió tres veces por usarla así.
  */
 const SECCIONES = [
-  { label: "Flujos", hint: "Diseñar y publicar procesos", icon: "workflow", to: "/flujos", cap: "diseno", cat: "form" },
-  { label: "Formularios", hint: "Biblioteca de formularios", icon: "form", to: "/formularios", cap: "diseno", cat: "derivar" },
-  { label: "Bandeja de tareas", hint: "Operar casos del día", icon: "inbox", to: "/bandeja", cap: "trabajo", cat: "decision" },
-  { label: "Historia clínica", hint: "Expedientes de pacientes", icon: "clipboard", to: "/historia", cap: "registros", cat: "atencion" },
-  { label: "Estructura organizativa", hint: "Áreas, sub-áreas y staff", icon: "cube", to: "/estructura", cap: "config", cat: "tiempo" },
-  { label: "Administración", hint: "Usuarios y accesos", icon: "users", to: "/administracion", cap: "config", cat: "estado" },
+  { label: "Flujos", hint: "Diseñar y publicar procesos", icon: "workflow", to: "/flujos", cap: "diseno_flujos", cat: "form" },
+  { label: "Formularios", hint: "Biblioteca de formularios", icon: "form", to: "/formularios", cap: "diseno_flujos", cat: "derivar" },
+  { label: "Bandeja de tareas", hint: "Operar casos del día", icon: "inbox", to: "/bandeja", cap: "casos_operar", cat: "decision" },
+  { label: "Historia clínica", hint: "Expedientes de pacientes", icon: "clipboard", to: "/historia", cap: "historia_clinica", cat: "atencion" },
+  { label: "Estructura organizativa", hint: "Áreas, sub-áreas y staff", icon: "cube", to: "/estructura", cap: "config_institucional", cat: "tiempo" },
+  { label: "Administración", hint: "Usuarios y accesos", icon: "users", to: "/administracion", cap: "config_institucional", cat: "estado" },
 ];
 
 // Clases completas por categoría: Tailwind no puede resolver `bg-nodo-${cat}-tint`

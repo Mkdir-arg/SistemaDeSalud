@@ -19,7 +19,7 @@ import logging
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.urls import include, path
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
@@ -29,8 +29,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.casos.views import MisTareasView, PantallaLlamadosView, PuestoDetalleView
-from apps.common import SubirArchivoView
+from apps.common import DescargarArchivoView, SubirArchivoView
 from cauce.api import router
+
+
+def media_clinica_no_publica(_request, ruta):
+    """Los uploads clinicos se sirven solo por /api/archivos/descargar/."""
+    raise Http404
 
 
 def health(_request):
@@ -131,6 +136,8 @@ urlpatterns = [
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/archivos/", SubirArchivoView.as_view(), name="subir_archivo"),
+    path("api/archivos/descargar/<path:ruta>", DescargarArchivoView.as_view(), name="descargar_archivo"),
+    path("media/uploads/<path:ruta>", media_clinica_no_publica, name="media_clinica_no_publica"),
     path("api/mis-tareas/", MisTareasView.as_view(), name="mis_tareas"),
     path("api/puestos/<int:nodo_id>/", PuestoDetalleView.as_view(), name="puesto_detalle"),
     path("api/pantalla/<str:token>/", PantallaLlamadosView.as_view(), name="pantalla_llamados"),

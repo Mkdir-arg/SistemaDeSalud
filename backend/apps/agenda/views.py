@@ -5,9 +5,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from apps.common import BaseModelViewSet
+from apps.common import BaseModelViewSet, capacidades_de
 from apps.registros.models import Ciudadano
 
 from . import motor
@@ -37,7 +38,7 @@ class AgendaViewSet(BaseModelViewSet):
         "disponibilidades"
     )
     serializer_class = AgendaSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area", "tipo", "profesional", "activa", "modalidad")
     search_fields = ("nombre",)
@@ -124,7 +125,7 @@ class AgendaViewSet(BaseModelViewSet):
 class DisponibilidadViewSet(BaseModelViewSet):
     queryset = Disponibilidad.objects.select_related("agenda")
     serializer_class = DisponibilidadSerializer
-    capacidad_requerida = "config"
+    capacidad_requerida = "config_institucional"
     institucion_path = "agenda__institucion"
     filter_fields = ("agenda", "agenda__institucion", "dia_semana", "activa")
 
@@ -140,7 +141,7 @@ class BloqueoViewSet(BaseModelViewSet):
 
     queryset = Bloqueo.objects.select_related("agenda")
     serializer_class = BloqueoSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "turnos"
     institucion_path = "agenda__institucion"
     filter_fields = ("agenda", "agenda__institucion")
 
@@ -196,7 +197,7 @@ class TurnoViewSet(BaseModelViewSet):
         "agenda__area", "ciudadano", "caso", "resuelto_por"
     )
     serializer_class = TurnoSerializer
-    capacidad_requerida = "trabajo"
+    capacidad_requerida = "turnos"
     institucion_path = "agenda__institucion"
     filter_fields = (
         "agenda", "agenda__institucion", "agenda__area", "ciudadano", "estado", "sobreturno",
@@ -241,7 +242,8 @@ class TurnoViewSet(BaseModelViewSet):
         if agenda is None or ciudadano is None:
             return Response({"detail": "Falta la agenda o el paciente."},
                             status=status.HTTP_400_BAD_REQUEST)
-        self.check_object_permissions(request, agenda)
+        if "turnos" not in capacidades_de(request.user, agenda.institucion_id):
+            raise PermissionDenied("No tenes permiso para operar turnos de esa institucion.")
         inicio = serializers_parse_dt(request.data.get("inicio"))
         if inicio is None:
             return Response({"detail": "Falta el horario del turno."},

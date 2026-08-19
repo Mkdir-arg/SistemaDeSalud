@@ -53,6 +53,10 @@ class BarridaDePermisosTests(TestCase):
         c.force_authenticate(self.usuarios[rol])
         return c
 
+    def _capacidad_de(self, viewset, accion=None):
+        por_accion = getattr(viewset, "capacidad_por_accion", None) or {}
+        return por_accion.get(accion) or getattr(viewset, "capacidad_requerida", None)
+
     def test_cada_rol_escribe_solo_donde_su_capacidad_lo_habilita(self):
         """
         Un POST con el cuerpo vacío alcanza: interesa si el pedido muere en el
@@ -61,7 +65,7 @@ class BarridaDePermisosTests(TestCase):
         """
         fallas = []
         for prefijo, viewset, _ in router.registry:
-            cap = getattr(viewset, "capacidad_requerida", None)
+            cap = self._capacidad_de(viewset, "create")
             if not cap:
                 continue
             for rol, caps in ROL_CAPACIDADES.items():
@@ -113,7 +117,7 @@ class BarridaDePermisosTests(TestCase):
         for prefijo, viewset, _ in router.registry:
             if not getattr(viewset, "protege_lectura", False):
                 continue
-            cap = getattr(viewset, "capacidad_requerida", None)
+            cap = self._capacidad_de(viewset, "list")
             for rol, caps in ROL_CAPACIDADES.items():
                 r = self._cliente(rol).get(f"/api/{prefijo}/")
                 prohibido = r.status_code == 403

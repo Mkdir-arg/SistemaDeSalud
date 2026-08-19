@@ -1,12 +1,17 @@
 """Tests de la capa API: scope por institución y acciones del motor."""
+import shutil
+import tempfile
+
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
+from apps.formularios.models import Campo, Formulario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Box, Institucion
 from apps.registros.models import Ciudadano
 from apps.casos import motor
-from apps.casos.models import Caso, ItemFila
+from apps.casos.models import Caso, EventoCaso, ItemFila, ValorCampo
 
 
 class ScopeInstitucionTest(APITestCase):
@@ -52,6 +57,169 @@ class ScopeInstitucionTest(APITestCase):
         r = self.client.get("/api/instituciones/")
         nombres = {i["nombre"] for i in r.data["results"]}
         self.assertEqual(nombres, {"Hospital A"})
+
+
+class MutacionesDirectasCasoTests(APITestCase):
+    """
+    Los casos se crean por API, pero su ejecucion se modifica por acciones del
+    motor. Estos tests cierran los endpoints genericos que saltean trazabilidad.
+    """
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.otra = Institucion.objects.create(nombre="Hospital Norte")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.version = VersionFlujo.objects.create(
+            flujo=self.flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        self.inicio = Nodo.objects.create(version=self.version, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.ciudadano = Ciudadano.objects.create(
+            institucion=self.inst, nombre="Ana", apellido="Perez", documento="30111222"
+        )
+        self.user = Usuario.objects.create_user("adm@test.local", "x", nombre="Ada")
+        Membresia.objects.create(
+            usuario=self.user, institucion=self.inst, rol=Membresia.Rol.ADMINISTRATIVO, activo=True
+        )
+        self.client.force_authenticate(self.user)
+
+    def _caso(self):
+        return Caso.objects.create(institucion=self.inst, version=self.version, ciudadano=self.ciudadano)
+
+    def test_alta_de_caso_ignora_estado_y_posicion_operativa(self):
+        r = self.client.post("/api/casos/", {
+            "institucion": self.inst.id,
+            "version": self.version.id,
+            "ciudadano": self.ciudadano.id,
+            "prioridad": Caso.Prioridad.ALTA,
+            "estado": Caso.Estado.CERRADO,
+            "nodo_actual": self.inicio.id,
+            "asignado_a": self.user.id,
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        caso = Caso.objects.get(pk=r.data["id"])
+        self.assertEqual(caso.estado, Caso.Estado.RECIBIDO)
+        self.assertEqual(caso.prioridad, Caso.Prioridad.ALTA)
+        self.assertIsNone(caso.nodo_actual_id)
+        self.assertIsNone(caso.asignado_a_id)
+
+    def test_no_se_puede_parchar_un_caso_por_api_generica(self):
+        caso = self._caso()
+        r = self.client.patch(f"/api/casos/{caso.id}/", {
+            "estado": Caso.Estado.CERRADO,
+            "nodo_actual": self.inicio.id,
+        })
+        self.assertEqual(r.status_code, 405)
+        caso.refresh_from_db()
+        self.assertEqual(caso.estado, Caso.Estado.RECIBIDO)
+        self.assertIsNone(caso.nodo_actual_id)
+
+    def test_no_se_puede_crear_caso_sobre_version_no_publicada(self):
+        borrador = VersionFlujo.objects.create(flujo=self.flujo, numero=2)
+        r = self.client.post("/api/casos/", {
+            "institucion": self.inst.id,
+            "version": borrador.id,
+            "ciudadano": self.ciudadano.id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("version", r.data)
+
+    def test_no_se_puede_mezclar_institucion_con_version_o_paciente_ajenos(self):
+        otro_flujo = Flujo.objects.create(institucion=self.otra, titulo="Otro")
+        otra_version = VersionFlujo.objects.create(
+            flujo=otro_flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        otro_ciudadano = Ciudadano.objects.create(institucion=self.otra, nombre="Luis", apellido="Diaz")
+
+        r = self.client.post("/api/casos/", {
+            "institucion": self.inst.id,
+            "version": otra_version.id,
+            "ciudadano": self.ciudadano.id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("version", r.data)
+
+        r = self.client.post("/api/casos/", {
+            "institucion": self.inst.id,
+            "version": self.version.id,
+            "ciudadano": otro_ciudadano.id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("ciudadano", r.data)
+
+    def test_valores_de_campo_son_solo_lectura_en_api(self):
+        form = Formulario.objects.create(institucion=self.inst, titulo="Triage")
+        campo = Campo.objects.create(formulario=form, label="Temperatura", tipo=Campo.Tipo.NUMERO)
+        caso = self._caso()
+        valor = ValorCampo.objects.create(caso=caso, campo=campo, nodo=self.inicio, valor="36.5")
+
+        r = self.client.post("/api/valores-campo/", {
+            "caso": caso.id,
+            "campo": campo.id,
+            "nodo": self.inicio.id,
+            "valor": "39",
+        })
+        self.assertEqual(r.status_code, 405)
+
+        r = self.client.patch(f"/api/valores-campo/{valor.id}/", {"valor": "39"})
+        self.assertEqual(r.status_code, 405)
+        valor.refresh_from_db()
+        self.assertEqual(valor.valor, "36.5")
+
+    def test_eventos_de_caso_son_solo_lectura_en_api(self):
+        caso = self._caso()
+        evento = EventoCaso.objects.create(caso=caso, titulo="Creado", detalle="x", nodo=self.inicio)
+
+        r = self.client.post("/api/eventos-caso/", {
+            "caso": caso.id,
+            "titulo": "Falso cierre",
+            "detalle": "sin motor",
+        })
+        self.assertEqual(r.status_code, 405)
+
+        r = self.client.patch(f"/api/eventos-caso/{evento.id}/", {"titulo": "Editado"})
+        self.assertEqual(r.status_code, 405)
+        evento.refresh_from_db()
+        self.assertEqual(evento.titulo, "Creado")
+
+    def test_items_de_fila_no_se_crean_por_endpoint_generico(self):
+        caso = self._caso()
+        r = self.client.post("/api/items-fila/", {
+            "caso": caso.id,
+            "nodo": self.inicio.id,
+            "orden": 99,
+        })
+        self.assertEqual(r.status_code, 405)
+        self.assertFalse(ItemFila.objects.filter(caso=caso).exists())
+
+    def test_motor_no_guarda_campos_ajenos_al_formulario_del_paso(self):
+        form = Formulario.objects.create(institucion=self.inst, titulo="Triage")
+        campo = Campo.objects.create(formulario=form, label="Temperatura", tipo=Campo.Tipo.NUMERO)
+        otro_form = Formulario.objects.create(institucion=self.inst, titulo="Laboratorio")
+        campo_ajeno = Campo.objects.create(formulario=otro_form, label="Hemoglobina", tipo=Campo.Tipo.NUMERO)
+        nodo = Nodo.objects.create(
+            version=self.version, tipo=Nodo.Tipo.FORMULARIO, titulo="Triage", formulario=form
+        )
+        caso = self._caso()
+        caso.nodo_actual = nodo
+        caso.save(update_fields=["nodo_actual"])
+
+        r = self.client.post(
+            f"/api/casos/{caso.id}/avanzar/",
+            {"valores": {str(campo_ajeno.id): "12"}},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("formulario de este paso", r.data["detail"])
+
+        self.assertFalse(ValorCampo.objects.filter(caso=caso, campo=campo_ajeno).exists())
+        r = self.client.post(
+            f"/api/casos/{caso.id}/avanzar/",
+            {"valores": {str(campo.id): "36.5"}},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(ValorCampo.objects.get(caso=caso, campo=campo).valor, "36.5")
 
 
 class ListadoTest(APITestCase):
@@ -150,22 +318,108 @@ class ListadoTest(APITestCase):
         self.assertEqual(r.data["count"], 0, "el caso de Quiroga es urgente")
 
 
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class SubirArchivoTest(APITestCase):
-    def test_subir_archivo_devuelve_nombre_y_url(self):
+    @classmethod
+    def tearDownClass(cls):
+        from django.conf import settings
+
+        media_root = settings.MEDIA_ROOT
+        super().tearDownClass()
+        shutil.rmtree(media_root, ignore_errors=True)
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.otra = Institucion.objects.create(nombre="Hospital Norte")
+        self.user = Usuario.objects.create_user("f@x.com", "x", nombre="F")
+        Membresia.objects.create(
+            usuario=self.user, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        self.client.force_authenticate(self.user)
+
+    def _archivo(self, nombre="estudio.pdf", contenido=b"%PDF-1.4 demo"):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        user = Usuario.objects.create_user("f@x.com", "x", nombre="F")
-        self.client.force_authenticate(user)
-        archivo = SimpleUploadedFile("estudio.pdf", b"%PDF-1.4 demo", content_type="application/pdf")
-        r = self.client.post("/api/archivos/", {"archivo": archivo}, format="multipart")
-        self.assertEqual(r.status_code, 201)
+        return SimpleUploadedFile(nombre, contenido, content_type="application/pdf")
+
+    def test_subir_archivo_devuelve_url_protegida_y_ruta_interna(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(), "institucion": self.inst.id},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data["nombre"], "estudio.pdf")
-        self.assertIn("/media/uploads/", r.data["url"])
+        self.assertIn(f"/api/archivos/descargar/uploads/{self.inst.id}/", r.data["url"])
+        self.assertNotIn("/media/uploads/", r.data["url"])
+        self.assertTrue(r.data["ruta"].startswith(f"uploads/{self.inst.id}/"))
+
+    def test_descarga_el_archivo_solo_con_permiso_clinico_en_la_institucion(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(contenido=b"resultado"), "institucion": self.inst.id},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 201, r.data)
+
+        descarga = self.client.get(r.data["url"])
+        self.assertEqual(descarga.status_code, 200)
+        self.assertEqual(b"".join(descarga.streaming_content), b"resultado")
+
+    def test_no_expone_el_archivo_por_media_uploads(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(contenido=b"privado"), "institucion": self.inst.id},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 201, r.data)
+
+        directa = self.client.get(f"/media/{r.data['ruta']}")
+        self.assertEqual(directa.status_code, 404)
+
+    def test_no_sube_archivo_sin_institucion(self):
+        r = self.client.post("/api/archivos/", {"archivo": self._archivo()}, format="multipart")
+        self.assertEqual(r.status_code, 400)
+
+    def test_no_sube_archivo_con_institucion_inexistente(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(), "institucion": 999999},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_usuario_sin_historia_clinica_no_sube(self):
+        administrativo = Usuario.objects.create_user("adm@x.com", "x", nombre="Adm")
+        Membresia.objects.create(
+            usuario=administrativo, institucion=self.inst, rol=Membresia.Rol.ADMINISTRATIVO, activo=True
+        )
+        self.client.force_authenticate(administrativo)
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(), "institucion": self.inst.id},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 403)
+
+    def test_no_descarga_archivo_de_otra_institucion(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(contenido=b"norte"), "institucion": self.inst.id},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 201, r.data)
+        medico_otro = Usuario.objects.create_user("otro@x.com", "x", nombre="Otro")
+        Membresia.objects.create(
+            usuario=medico_otro, institucion=self.otra, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        self.client.force_authenticate(medico_otro)
+
+        descarga = self.client.get(r.data["url"])
+        self.assertEqual(descarga.status_code, 403)
 
     def test_subir_sin_archivo_da_400(self):
-        user = Usuario.objects.create_user("g@x.com", "x", nombre="G")
-        self.client.force_authenticate(user)
-        r = self.client.post("/api/archivos/", {}, format="multipart")
+        r = self.client.post("/api/archivos/", {"institucion": self.inst.id}, format="multipart")
         self.assertEqual(r.status_code, 400)
 
 

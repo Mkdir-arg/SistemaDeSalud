@@ -2,6 +2,8 @@ from datetime import datetime
 
 from rest_framework import serializers
 
+from apps.common import capacidades_de
+
 from . import reglas
 from .models import (
     Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta,
@@ -231,7 +233,22 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             "alcance": c.alcance,
         }
 
+    def _puede_ver_historia(self, obj) -> bool:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated):
+            return False
+        cache = getattr(self, "_caps_por_inst", None)
+        if cache is None:
+            cache = self._caps_por_inst = {}
+        inst_id = obj.institucion_id
+        if inst_id not in cache:
+            cache[inst_id] = capacidades_de(user, inst_id)
+        return "historia_clinica" in cache[inst_id]
+
     def _hc(self, obj):
+        if not self._puede_ver_historia(obj):
+            return None
         return getattr(obj, "historia_clinica", None)
 
     def _anotado(self, obj, nombre, calcular):
@@ -247,14 +264,20 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         return hc.alergias if hc else ""
 
     def get_entradas(self, obj) -> int:
+        if not self._puede_ver_historia(obj):
+            return 0
         hc = self._hc(obj)
         return self._anotado(obj, "_entradas", lambda: hc.entradas.count() if hc else 0)
 
     def get_estudios(self, obj) -> int:
+        if not self._puede_ver_historia(obj):
+            return 0
         hc = self._hc(obj)
         return self._anotado(obj, "_estudios", lambda: hc.estudios.count() if hc else 0)
 
     def get_recetas_activas(self, obj) -> int:
+        if not self._puede_ver_historia(obj):
+            return 0
         hc = self._hc(obj)
         return self._anotado(
             obj, "_recetas_activas",
@@ -262,6 +285,8 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         )
 
     def get_ultima(self, obj) -> datetime | None:
+        if not self._puede_ver_historia(obj):
+            return None
         if hasattr(obj, "_ultima"):
             return obj._ultima
         hc = self._hc(obj)

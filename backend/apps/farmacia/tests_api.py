@@ -320,9 +320,30 @@ class FarmaciaAPITests(APITestCase):
         r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
                              {"entregas": {str(linea.id): 10}}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado"], Pedido.Estado.PARCIAL)
+        self.assertIsNone(r.data["resuelto"])
         linea.refresh_from_db()
         self.assertEqual(linea.entregado, 10)
         self.assertEqual(linea.faltante, 20)
+
+    def test_entrega_parcial_y_luego_completa_el_pedido(self):
+        self._ingresar(10)
+        p = Pedido.objects.create(origen=self.botiquin, destino=self.central)
+        linea = LineaPedido.objects.create(pedido=p, insumo=self.insumo, pedido_cant=30)
+
+        r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
+                             {"entregas": {str(linea.id): 10}}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado"], Pedido.Estado.PARCIAL)
+
+        self._ingresar(20)
+        r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
+                             {"entregas": {str(linea.id): 20}}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado"], Pedido.Estado.ENTREGADO)
+        self.assertIsNotNone(r.data["resuelto"])
+        linea.refresh_from_db()
+        self.assertEqual(linea.entregado, 30)
 
 
 class FarmaciaPermisosTests(APITestCase):
@@ -368,6 +389,60 @@ class FarmaciaPermisosTests(APITestCase):
             "deposito": self.dep.id, "insumo": self.insumo.id, "cantidad": 1,
         })
         self.assertEqual(r.status_code, 403)
+
+
+class ConfiguracionDeFarmaciaTests(APITestCase):
+    def setUp(self):
+        self.user = Usuario.objects.create_user(
+            "root-farmacia@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.otra = Institucion.objects.create(nombre="Hospital Norte")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.area_ajena = Area.objects.create(institucion=self.otra, nombre="Guardia")
+        self.central = Deposito.objects.create(institucion=self.inst, nombre="Central", central=True)
+        self.botiquin = Deposito.objects.create(institucion=self.inst, area=self.area, nombre="Botiquin")
+        self.dep_ajeno = Deposito.objects.create(institucion=self.otra, nombre="Central norte")
+        self.insumo = Insumo.objects.create(
+            institucion=self.inst, nombre="Gasa", requiere_lote=False, unidad="unidad"
+        )
+        self.insumo_ajeno = Insumo.objects.create(
+            institucion=self.otra, nombre="Gasa norte", requiere_lote=False, unidad="unidad"
+        )
+
+    def test_no_crea_deposito_con_area_de_otra_institucion(self):
+        r = self.client.post("/api/depositos/", {
+            "institucion": self.inst.pk, "area": self.area_ajena.pk, "nombre": "Cruzado",
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Deposito.objects.filter(nombre="Cruzado").exists())
+
+    def test_patch_no_mueve_deposito_de_institucion_ni_area(self):
+        r = self.client.patch(f"/api/depositos/{self.botiquin.pk}/", {
+            "institucion": self.otra.pk, "area": self.area_ajena.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.botiquin.refresh_from_db()
+        self.assertEqual((self.botiquin.institucion_id, self.botiquin.area_id), (self.inst.pk, self.area.pk))
+
+    def test_patch_no_mueve_lote_de_insumo(self):
+        lote = Lote.objects.create(insumo=self.insumo, numero="A1")
+        r = self.client.patch(f"/api/lotes/{lote.pk}/", {
+            "insumo": self.insumo_ajeno.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        lote.refresh_from_db()
+        self.assertEqual(lote.insumo_id, self.insumo.pk)
+
+    def test_patch_no_mueve_pedido_de_origen_ni_destino(self):
+        pedido = Pedido.objects.create(origen=self.botiquin, destino=self.central)
+        r = self.client.patch(f"/api/pedidos-stock/{pedido.pk}/", {
+            "origen": self.dep_ajeno.pk, "destino": self.dep_ajeno.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        pedido.refresh_from_db()
+        self.assertEqual((pedido.origen_id, pedido.destino_id), (self.botiquin.pk, self.central.pk))
 
 
 class StockDeOtroHospitalTests(APITestCase):

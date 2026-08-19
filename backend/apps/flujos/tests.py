@@ -55,6 +55,73 @@ class NodoGruposTests(TestCase):
         self.assertEqual(data["grupos_detalle"][0]["area_nombre"], "Guardia")
 
 
+class ConfiguracionDeGrafoTests(APITestCase):
+    """El grafo no puede mezclar definiciones de distintas instituciones."""
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.otra = Institucion.objects.create(nombre="Hospital Norte")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.area_ajena = Area.objects.create(institucion=self.otra, nombre="Guardia")
+        self.grupo_ajeno = Grupo.objects.create(area=self.area_ajena, nombre="Equipo norte")
+        self.form_ajeno = Formulario.objects.create(institucion=self.otra, titulo="Admision norte")
+        self.user = Usuario.objects.create_user(
+            email="root@test.local", password="x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.version = VersionFlujo.objects.create(flujo=self.flujo, numero=1)
+
+    def test_no_asigna_formulario_de_otra_institucion_a_un_nodo(self):
+        r = self.client.post("/api/nodos/", {
+            "version": self.version.pk, "tipo": "form", "titulo": "Datos",
+            "formulario": self.form_ajeno.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Nodo.objects.filter(titulo="Datos").exists())
+
+    def test_no_asigna_grupos_de_otra_institucion_a_un_nodo(self):
+        r = self.client.post("/api/nodos/", {
+            "version": self.version.pk, "tipo": "atencion", "titulo": "Atender",
+            "grupos": [self.grupo_ajeno.pk],
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Nodo.objects.filter(titulo="Atender").exists())
+
+    def test_no_conecta_nodos_de_distintas_versiones(self):
+        origen = Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+        otra_version = VersionFlujo.objects.create(flujo=self.flujo, numero=2)
+        destino = Nodo.objects.create(version=otra_version, tipo="fin", titulo="Fin")
+        r = self.client.post("/api/conexiones/", {
+            "version": self.version.pk, "origen": origen.pk, "destino": destino.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Conexion.objects.exists())
+
+    def test_no_crea_flujo_con_area_de_otra_institucion(self):
+        r = self.client.post("/api/flujos/", {
+            "institucion": self.inst.pk, "area": self.area_ajena.pk, "titulo": "Cruzado",
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Flujo.objects.filter(titulo="Cruzado").exists())
+
+    def test_patch_no_mueve_el_alcance_del_flujo(self):
+        r = self.client.patch(f"/api/flujos/{self.flujo.pk}/", {
+            "institucion": self.otra.pk, "area": self.area_ajena.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.flujo.refresh_from_db()
+        self.assertEqual((self.flujo.institucion_id, self.flujo.area_id), (self.inst.pk, self.area.pk))
+
+    def test_patch_no_mueve_el_nodo_de_version(self):
+        nodo = Nodo.objects.create(version=self.version, tipo="inicio", titulo="Inicio")
+        otra_version = VersionFlujo.objects.create(flujo=self.flujo, numero=2)
+        r = self.client.patch(f"/api/nodos/{nodo.pk}/", {"version": otra_version.pk}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        nodo.refresh_from_db()
+        self.assertEqual(nodo.version_id, self.version.pk)
+
+
 class FiltroEstadoVigenteTests(APITestCase):
     """`?estado=` filtra por la versión VIGENTE, que no es un campo del flujo.
 
@@ -401,6 +468,13 @@ class ArchivarFlujoTests(APITestCase):
         r = self.client.post(f"/api/versiones-flujo/{self.version.pk}/archivar/", {}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
 
+    def test_un_caso_cancelado_no_impide_retirarlo(self):
+        Caso.objects.create(
+            institucion=self.inst, version=self.version, estado=Caso.Estado.CANCELADO
+        )
+        r = self.client.post(f"/api/versiones-flujo/{self.version.pk}/archivar/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_no_se_archiva_un_borrador(self):
         """Archivar un borrador lo escondería en una pestaña sin haber publicado nada."""
         borrador = VersionFlujo.objects.create(flujo=self.flujo, numero=2)
@@ -567,6 +641,7 @@ class VolumenDelDisenoTests(APITestCase):
         Caso.objects.create(institucion=self.inst, version=v1)
         Caso.objects.create(institucion=self.inst, version=v2)
         Caso.objects.create(institucion=self.inst, version=v1, estado=Caso.Estado.CERRADO)
+        Caso.objects.create(institucion=self.inst, version=v2, estado=Caso.Estado.CANCELADO)
 
         r = self.client.get(f"/api/flujos/{flujo.pk}/")
         self.assertEqual(r.data["casos_activos"], 2)

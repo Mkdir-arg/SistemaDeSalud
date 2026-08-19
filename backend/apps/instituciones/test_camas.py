@@ -129,6 +129,69 @@ class CamaHuerfanaAPITests(APITestCase):
         self.assertEqual(self.cama.estado, Cama.Estado.OCUPADA)
 
 
+class ConfiguracionDeCamasTests(APITestCase):
+    def setUp(self):
+        self.user = Usuario.objects.create_user(
+            "root-camas@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.otra = Institucion.objects.create(nombre="Hospital Norte")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Internacion")
+        self.area_ajena = Area.objects.create(institucion=self.otra, nombre="Internacion")
+        self.sala = Subarea.objects.create(area=self.area, nombre="Sala 1")
+        self.sala_ajena = Subarea.objects.create(area=self.area_ajena, nombre="Sala 1")
+
+    def test_no_crea_cama_con_sector_de_otra_area(self):
+        r = self.client.post("/api/camas/", {
+            "area": self.area.pk, "subarea": self.sala_ajena.pk, "nombre": "101-A",
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Cama.objects.filter(nombre="101-A").exists())
+
+    def test_patch_no_mueve_cama_de_area_ni_sector(self):
+        cama = Cama.objects.create(area=self.area, subarea=self.sala, nombre="101-A")
+        r = self.client.patch(f"/api/camas/{cama.pk}/", {
+            "area": self.area_ajena.pk, "subarea": self.sala_ajena.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        cama.refresh_from_db()
+        self.assertEqual((cama.area_id, cama.subarea_id), (self.area.pk, self.sala.pk))
+
+    def test_patch_no_mueve_area_de_institucion(self):
+        r = self.client.patch(f"/api/areas/{self.area.pk}/", {
+            "institucion": self.otra.pk,
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.area.refresh_from_db()
+        self.assertEqual(self.area.institucion_id, self.inst.pk)
+
+
+class MetricasInstitucionTests(APITestCase):
+    def setUp(self):
+        self.user = Usuario.objects.create_user(
+            "root-metricas@test.local", "x", is_superuser=True, is_staff=True
+        )
+        self.client.force_authenticate(self.user)
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Ingreso")
+        self.version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+
+    def test_los_casos_cancelados_no_cuentan_como_activos(self):
+        Caso.objects.create(institucion=self.inst, version=self.version)
+        Caso.objects.create(
+            institucion=self.inst, version=self.version, estado=Caso.Estado.CERRADO
+        )
+        Caso.objects.create(
+            institucion=self.inst, version=self.version, estado=Caso.Estado.CANCELADO
+        )
+
+        r = self.client.get(f"/api/instituciones/{self.inst.pk}/metricas/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["casos_activos"], 1)
+
+
 class TableroPorSectorTests(APITestCase):
     """
     Dos sectores que se llaman igual son dos sectores.

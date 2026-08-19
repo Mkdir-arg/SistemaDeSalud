@@ -309,6 +309,17 @@ class RespuestaTests(RedTestCase):
         with self.assertRaises(motor.ErrorTraslado):
             motor.aceptar(t, autor=self.jefe, area_destino=self.guardia)
 
+    def test_no_acepta_traslado_en_flujo_solo_manual(self):
+        Nodo.objects.filter(
+            version__flujo__area=self.uti, tipo=Nodo.Tipo.INICIO
+        ).update(config={"origen": "manual"})
+        t = self._solicitar()
+
+        with self.assertRaises(motor.ErrorTraslado) as err:
+            motor.aceptar(t, autor=self.jefe, area_destino=self.uti)
+
+        self.assertIn("derivaciones", str(err.exception))
+
 
 class ViajeTests(RedTestCase):
     def setUp(self):

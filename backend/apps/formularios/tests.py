@@ -73,6 +73,15 @@ class EditarCampoTests(APITestCase):
         r = self.client.get(f"/api/formularios/{self.form.pk}/")
         self.assertEqual([c["label"] for c in r.data["campos"]], ["Documento", "Obra social"])
 
+    def test_no_se_mueve_un_campo_a_otro_formulario_por_patch(self):
+        otro_form = Formulario.objects.create(institucion=self.inst, titulo="Historia")
+        r = self.client.patch(
+            f"/api/campos/{self.campo.pk}/", {"formulario": otro_form.pk}, format="json"
+        )
+        self.assertEqual(r.status_code, 200, r.data)
+        self.campo.refresh_from_db()
+        self.assertEqual(self.campo.formulario_id, self.form.pk)
+
     def test_no_se_le_cambia_el_tipo_a_un_campo_que_ya_tiene_datos(self):
         """Los valores se guardan como texto y quedarían sin significado.
 
@@ -182,6 +191,14 @@ class FormularioEnUsoTests(APITestCase):
         self.assertIsNone(self.form.area_id)
 
     # --- dónde se usa ---------------------------------------------------- #
+    def test_no_se_mueve_el_formulario_de_institucion_por_patch(self):
+        r = self.client.patch(
+            f"/api/formularios/{self.form.pk}/", {"institucion": self.otra.pk}, format="json"
+        )
+        self.assertEqual(r.status_code, 200, r.data)
+        self.form.refresh_from_db()
+        self.assertEqual(self.form.institucion_id, self.inst.pk)
+
     def test_usos_dice_en_que_paso_de_que_flujo_se_pide_y_cuantos_casos_hay_ahi(self):
         """Es lo que faltaba para tocar un campo requerido con criterio: los casos
         parados en ese paso no pueden avanzar hasta que alguien lo complete."""

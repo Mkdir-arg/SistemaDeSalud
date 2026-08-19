@@ -35,6 +35,16 @@ function fecha(iso) {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso);
 }
 
+function esArchivoProtegido(ref) {
+  const s = String(ref || "");
+  return s.startsWith("uploads/") || s.includes("/api/archivos/descargar/uploads/");
+}
+
+function nombreArchivo(ref) {
+  const s = String(ref || "");
+  return s.split(/[\\/]/).filter(Boolean).pop() || "archivo";
+}
+
 /*
  * La edad, al lado de la fecha de nacimiento.
  *
@@ -1186,6 +1196,20 @@ function EstadoEstudio({ estudio }) {
 }
 
 function Estudios({ estudios }) {
+  const toast = useToast();
+  const [descargando, setDescargando] = useState(null);
+
+  async function descargar(estudio) {
+    setDescargando(estudio.id);
+    try {
+      await api.downloadArchivo(estudio.archivo, nombreArchivo(estudio.archivo));
+    } catch (e) {
+      toast.deError(e, "No se pudo descargar el archivo.");
+    } finally {
+      setDescargando(null);
+    }
+  }
+
   if (!estudios.length) return <EstadoVacio titulo="Sin estudios" detalle="Los estudios se cargan desde el flujo de diagnóstico." />;
   return (
     <div className="flex flex-col gap-2.5">
@@ -1194,7 +1218,21 @@ function Estudios({ estudios }) {
           <div className="min-w-0">
             <div className="text-md font-semibold">{s.tipo}</div>
             <div className="text-sm text-texto-debil">
-              {fecha(s.fecha)} · {s.autor || "—"} {s.archivo && <Mono className="ml-1.5">{s.archivo}</Mono>}
+              {fecha(s.fecha)} · {s.autor || "—"}{" "}
+              {s.archivo && (esArchivoProtegido(s.archivo) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-1 h-7 px-2 align-middle text-sm"
+                  disabled={descargando === s.id}
+                  onClick={() => descargar(s)}
+                >
+                  <Icon name="download" size={14} />
+                  {descargando === s.id ? "Descargando..." : "Archivo"}
+                </Button>
+              ) : (
+                <Mono className="ml-1.5">{s.archivo}</Mono>
+              ))}
             </div>
           </div>
           <EstadoEstudio estudio={s} />
