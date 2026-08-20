@@ -337,6 +337,23 @@ class QuienLoPuedeVerTests(AuditoriaTestCase):
         self.assertEqual(r.status_code, 400)
         self.assertIn("paciente", r.data["detail"].lower())
 
+    def test_auditor_y_plataforma_tienen_alcance_estatal(self):
+        otra = Institucion.objects.create(nombre="Hospital regional")
+        ajeno = Ciudadano.objects.create(
+            institucion=otra, nombre="Cala", apellido="Diaz", documento="31222333"
+        )
+        AccesoClinico.objects.create(
+            usuario=self.med, ciudadano=ajeno, institucion=otra,
+            tipo="detalle", recurso="historiaclinica",
+        )
+        for rol in (Membresia.Rol.AUDITOR, Membresia.Rol.PLATAFORMA):
+            with self.subTest(rol=rol):
+                u = self._usuario(f"{rol}@test.local", rol)
+                self.client.force_authenticate(u)
+                r = self.client.get("/api/accesos-clinicos/")
+                self.assertEqual(r.status_code, 200, r.data)
+                self.assertEqual(r.data["count"], 2)
+
 
 class DobleCargoTests(AuditoriaTestCase):
     """

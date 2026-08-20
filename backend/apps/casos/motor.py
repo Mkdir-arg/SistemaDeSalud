@@ -38,11 +38,12 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, Max, Value, When
+from django.db.models import Case, F, IntegerField, Max, Value, When
 from django.utils import timezone
 
+from apps.formularios.models import Campo
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
-from apps.instituciones.models import Area, Cama, EstadiaCama
+from apps.instituciones.models import Area, Cama, EstadiaCama, Grupo
 from apps.registros.models import EntradaHistoria, HistoriaClinica
 
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -217,12 +218,14 @@ def grupos_responsables_ids(caso):
 
 def areas_que_supervisa(usuario):
     """IDs de áreas donde `usuario` es jefe/supervisor (membresía activa)."""
-    if not getattr(usuario, "is_authenticated", False):
+    if not getattr(usuario, "is_authenticated", False) or not getattr(usuario, "is_active", True):
         return set()
     from apps.accounts.models import Membresia
     return set(
         Area.objects.filter(
+            activa=True,
             miembros__usuario=usuario,
+            miembros__institucion=F("institucion"),
             miembros__rol=Membresia.Rol.JEFE_AREA,
             miembros__activo=True,
         ).values_list("id", flat=True)
@@ -237,6 +240,29 @@ def usuario_supervisa(usuario, caso):
     return area_id is not None and area_id in areas_que_supervisa(usuario)
 
 
+def grupos_operativos_de(usuario, institucion_id=None):
+    """
+    Grupos donde el usuario cuenta operativamente.
+
+    La relacion directa `Usuario.grupos` puede quedar vieja cuando termina una
+    rotacion o se desactiva una membresia. Para operar casos debe existir grupo
+    activo, usuario activo y membresia activa para el area del grupo.
+    """
+    if not getattr(usuario, "is_authenticated", False) or not getattr(usuario, "is_active", True):
+        return Grupo.objects.none()
+    qs = Grupo.objects.filter(
+        miembros=usuario,
+        activo=True,
+        area__activa=True,
+        area__miembros__usuario=usuario,
+        area__miembros__institucion=F("area__institucion"),
+        area__miembros__activo=True,
+    )
+    if institucion_id is not None:
+        qs = qs.filter(area__institucion_id=institucion_id)
+    return qs.distinct()
+
+
 def usuario_puede_tomar(usuario, caso):
     """
     ¿`usuario` puede tomar/ejecutar el paso actual del `caso`?
@@ -249,7 +275,7 @@ def usuario_puede_tomar(usuario, caso):
     gids = grupos_responsables_ids(caso)
     if not gids:
         return True
-    return usuario.grupos.filter(id__in=gids).exists()
+    return grupos_operativos_de(usuario, caso.institucion_id).filter(id__in=gids).exists()
 
 
 # Nodos que el motor atraviesa solos, sin intervención.
@@ -271,6 +297,8 @@ TIPOS_DETENCION = {
     Nodo.Tipo.CAMA,
     Nodo.Tipo.FIN,
 }
+
+ROLES_FIRMA_VALIDOS = {"medico", "enfermeria", "administrativo", "jefe_area"}
 
 
 # --------------------------------------------------------------------------- #
@@ -475,8 +503,15 @@ def _notificar_grupo(nodo: Nodo | None, titulo: str, detalle: str = "", caso: Ca
     if nodo is None:
         return
     user_ids = set()
-    for g in nodo.grupos.all():
-        user_ids |= set(g.miembros.values_list("id", flat=True))
+    for g in nodo.grupos.filter(activo=True).select_related("area"):
+        user_ids |= set(
+            g.miembros.filter(
+                is_active=True,
+                membresias__institucion=g.area.institucion,
+                membresias__areas=g.area,
+                membresias__activo=True,
+            ).values_list("id", flat=True)
+        )
     user_ids.discard(getattr(excluir, "id", None))
     Notificacion.objects.bulk_create([
         Notificacion(usuario_id=uid, titulo=titulo, detalle=detalle[:255], caso=caso) for uid in user_ids
@@ -705,6 +740,12 @@ def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
 
     campo_id = cfg.get("guardar_en")
     if campo_id:
+        try:
+            campo_id = int(campo_id)
+        except (TypeError, ValueError):
+            return fallar("el campo destino de la integracion no es valido")
+        if not Campo.objects.filter(pk=campo_id, formulario__institucion_id=caso.institucion_id).exists():
+            return fallar("el campo destino de la integracion no pertenece a la institucion del caso")
         valor = _extraer(respuesta, cfg.get("ruta", ""))
         ValorCampo.objects.update_or_create(
             caso=caso, campo_id=campo_id,
@@ -1777,11 +1818,14 @@ def quien_firma(nodo: Nodo | None) -> tuple[list[str], bool]:
     roles = cfg.get("firma_roles")
     if not isinstance(roles, list) or not roles:
         roles = ["medico"]
+    roles = [str(r) for r in roles if str(r) in ROLES_FIRMA_VALIDOS]
+    if not roles:
+        roles = ["medico"]
     # La matrícula es lo que convierte a la firma en un acto profesional
     # registrable. Se puede apagar donde el rol no la tiene (un administrativo),
     # pero por defecto se exige, que es la regla clínica.
     exige_matricula = cfg.get("firma_matricula", True) is not False
-    return [str(r) for r in roles], bool(exige_matricula)
+    return roles, bool(exige_matricula)
 
 
 def _exigir_firmante(caso: Caso, nodo: Nodo | None, autor, requiere_matricula: bool = True) -> str:
@@ -2206,6 +2250,11 @@ def validar_version(version) -> list[dict]:
 
     # Campos cargados por formularios "antes" de cada nodo (aproximación: cualquier
     # campo de cualquier formulario del flujo se considera disponible).
+    campos_por_id = {
+        c.id: c
+        for c in Campo.objects.filter(formulario__institucion=version.flujo.institucion)
+        .select_related("formulario")
+    }
     campos_disponibles = set()
     for n in por_tipo.get(Nodo.Tipo.FORMULARIO, []):
         if n.formulario_id:
@@ -2219,12 +2268,29 @@ def validar_version(version) -> list[dict]:
         campo_id = (n.config or {}).get("guardar_en")
         try:
             if campo_id:
-                campos_disponibles.add(int(campo_id))
+                campo_id = int(campo_id)
+                if campo_id not in campos_por_id:
+                    problemas.append({"sev": "error", "nodo_id": n.pk,
+                                      "titulo": "Integracion con campo destino invalido",
+                                      "detalle": f"«{n.titulo}» guarda la respuesta en un campo que no existe "
+                                                 "o no pertenece a la institucion del flujo."})
+                else:
+                    campos_disponibles.add(campo_id)
         except (TypeError, ValueError):
-            pass
+            problemas.append({"sev": "error", "nodo_id": n.pk,
+                              "titulo": "Integracion con campo destino invalido",
+                              "detalle": f"«{n.titulo}» tiene un `guardar_en` que no es un id de campo."})
 
     for n in nodos:
         salidas = salidas_por_nodo.get(n.pk, [])
+        grupos_inactivos = [
+            g.nombre for g in n.grupos.all() if not g.activo or not g.area.activa
+        ]
+        if grupos_inactivos:
+            problemas.append({"sev": "error", "nodo_id": n.pk,
+                              "titulo": "Grupo responsable inactivo",
+                              "detalle": f"{n.titulo} usa grupos inactivos: "
+                                         f"{', '.join(grupos_inactivos)}."})
 
         # 3) Nodos que no son Fin deberían tener salida.
         if n.tipo != Nodo.Tipo.FIN and not salidas:
@@ -2273,6 +2339,44 @@ def validar_version(version) -> list[dict]:
                               "detalle": f"Todas las salidas de «{n.titulo}» tienen condición. "
                                          "Si no se cumple ninguna, el caso queda trabado sin salida: "
                                          "agregá una conexión sin condición («si no»)."})
+
+        # 5 ter) Rol de firma inexistente. La UI ofrece una lista cerrada, pero
+        # la API sigue aceptando `config` JSON. Si alguien escribe un rol que no
+        # existe, el paso queda imposible de ejecutar y recien se descubre con el
+        # paciente parado ahi. Publicar tiene que decirlo.
+        if n.tipo == Nodo.Tipo.ATENCION and "firma_roles" in (n.config or {}):
+            roles = (n.config or {}).get("firma_roles")
+            invalidos = (
+                [str(r) for r in roles if str(r) not in ROLES_FIRMA_VALIDOS]
+                if isinstance(roles, list) else ["firma_roles"]
+            )
+            if not isinstance(roles, list) or not roles or invalidos:
+                problemas.append({"sev": "error", "nodo_id": n.pk,
+                                  "titulo": "Firma con rol invalido",
+                                  "detalle": f"«{n.titulo}» declara roles de firma que el sistema no reconoce. "
+                                             "Elegí médico, enfermería, administrativo o jefe de área."})
+
+        # 5 quater) Campo de prioridad fuera del formulario del nodo. La prioridad
+        # se calcula al completar ESTE formulario; si apunta a otro campo, el mapa
+        # queda silenciosamente sin efecto y triage cree haber marcado urgencia.
+        if n.tipo == Nodo.Tipo.FORMULARIO and "prioridad_campo" in (n.config or {}):
+            cfg = n.config or {}
+            campo_id = cfg.get("prioridad_campo")
+            try:
+                campo_id = int(campo_id) if campo_id else None
+            except (TypeError, ValueError):
+                campo_id = None
+            campo = campos_por_id.get(campo_id)
+            if not campo or not n.formulario_id or campo.formulario_id != n.formulario_id:
+                problemas.append({"sev": "error", "nodo_id": n.pk,
+                                  "titulo": "Prioridad con campo invalido",
+                                  "detalle": f"«{n.titulo}» intenta calcular prioridad con un campo "
+                                             "que no pertenece al formulario del nodo."})
+            elif campo.tipo != Campo.Tipo.SELECCION_UNICA:
+                problemas.append({"sev": "error", "nodo_id": n.pk,
+                                  "titulo": "Prioridad con campo no seleccionable",
+                                  "detalle": f"«{n.titulo}» usa un campo que no tiene opciones cerradas "
+                                             "para mapearlas a prioridades."})
 
         # 6) Integración sin URL, o con un destino que la infraestructura no
         #    habilitó. Avisarlo al publicar es mucho mejor que descubrirlo con un

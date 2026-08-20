@@ -26,7 +26,7 @@ from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Box, Cama, Grupo, Institucion, Subarea
 from apps.red import motor as motor_red
 from apps.red.models import Red, Traslado
-from apps.registros.models import Ciudadano
+from apps.registros.models import Ciudadano, EntradaHistoria
 
 MOTIVOS = [
     (Traslado.Motivo.COMPLEJIDAD, "Requiere UTI, no disponible en el establecimiento."),
@@ -128,6 +128,19 @@ class Command(BaseCommand):
         # que la pantalla del hospital grande tenga algo que resolver. Con sólo
         # unos u otros, media pantalla queda vacía.
         Traslado.objects.filter(origen=chico).delete()
+        # Y los CASOS del hospital chico, que hasta ahora no se borraban: este
+        # bloque crea 14 en cada corrida, así que se acumulaban sin techo. Con
+        # `seed_volumen --rehacer` corriéndose una vez por demo, Villa Real
+        # llegó a 672 casos activos con una mediana de 4 días frenados —en una
+        # guardia de 6 camas—, y eso es exactamente lo que el tablero de red
+        # muestra del efector chico. Es el mismo problema que ya tuvieron el
+        # stock y las camas en `seed_guardia`.
+        #
+        # `EntradaHistoria.caso` es SET_NULL, así que las entradas sobreviven al
+        # borrado del caso y hay que bajarlas aparte o quedan huérfanas sumando
+        # en la historia clínica en cada corrida.
+        EntradaHistoria.objects.filter(historia__ciudadano__institucion=chico).delete()
+        Caso.objects.filter(institucion=chico).delete()
         version = flujo.versiones.filter(estado=VersionFlujo.Estado.PUBLICADA).first()
         area_destino = Area.objects.filter(institucion=principal, nombre="Internación").first()
 

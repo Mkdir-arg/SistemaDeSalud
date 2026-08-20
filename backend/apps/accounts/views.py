@@ -6,8 +6,10 @@ from rest_framework.response import Response
 
 from apps.common import (
     BaseModelViewSet,
+    _coerce,
     capacidades_por_institucion_de,
     roles_por_institucion_de,
+    tiene_capacidad,
 )
 
 from .models import LegajoProfesional, Membresia, Usuario
@@ -15,6 +17,7 @@ from .serializers import (
     LegajoProfesionalSerializer,
     MembresiaSerializer,
     UsuarioSerializer,
+    validar_rol_asignable,
 )
 
 
@@ -36,7 +39,7 @@ class UsuarioViewSet(BaseModelViewSet):
 
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
-    capacidad_requerida = "config_institucional"
+    capacidad_requerida = ("config_institucional", "gobierno_plataforma")
     # `is_superuser` se filtra en el servidor porque el directorio lista sólo
     # candidatos a admin de institución. Excluirlos en el cliente descontaba de la
     # página ya paginada: el total quedaba mal y podían faltar usuarios reales.
@@ -55,7 +58,7 @@ class UsuarioViewSet(BaseModelViewSet):
         if inst.isdigit():
             qs = qs.filter(membresias__institucion_id=int(inst), membresias__activo=True)
 
-        if user.is_authenticated and not user.is_superuser:
+        if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
             # Uno mismo entra siempre: si no, quien no tiene membresía activa no
             # podría ni leer su propia ficha.
             qs = qs.filter(
@@ -80,7 +83,7 @@ class UsuarioViewSet(BaseModelViewSet):
         rol = str(datos.get("rol") or Membresia.Rol.ADMINISTRATIVO).strip()
 
         if not inst.isdigit():
-            if user.is_superuser:
+            if user.is_superuser or tiene_capacidad(user, "gobierno_plataforma"):
                 serializer.save()  # alta desde Plataforma: la membresía se asigna después
                 return
             propias = self.instituciones_del_usuario()
@@ -89,11 +92,16 @@ class UsuarioViewSet(BaseModelViewSet):
             inst_id = propias[0]
         else:
             inst_id = int(inst)
-            if not user.is_superuser and inst_id not in self.instituciones_del_usuario():
+            if (
+                not user.is_superuser
+                and not tiene_capacidad(user, "gobierno_plataforma")
+                and inst_id not in self.instituciones_del_usuario()
+            ):
                 raise ValidationError({"institucion": ["No podés dar de alta personas en esa institución."]})
 
         if rol not in Membresia.Rol.values:
             raise ValidationError({"rol": [f"Rol inválido: {rol}."]})
+        validar_rol_asignable(rol, user)
 
         with transaction.atomic():
             usuario = serializer.save()
@@ -146,13 +154,24 @@ class UsuarioViewSet(BaseModelViewSet):
 class MembresiaViewSet(BaseModelViewSet):
     queryset = Membresia.objects.select_related("usuario", "institucion").prefetch_related("areas")
     serializer_class = MembresiaSerializer
-    capacidad_requerida = "config_institucional"
+    capacidad_requerida = ("config_institucional", "gobierno_plataforma")
     institucion_path = "institucion"
     # `areas` filtra por la M2M: `?areas=3` devuelve el staff de esa área, que es
     # lo que necesita el selector de «reasignar» sin traerse todas las membresías.
     filter_fields = ("usuario", "institucion", "rol", "activo", "areas")
     search_fields = ("usuario__nombre", "usuario__apellido", "usuario__email")
     ordering_fields = ("usuario__apellido", "rol", "creado")
+
+    def get_queryset(self):
+        qs = self.queryset
+        user = self.request.user
+        if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
+            qs = qs.filter(institucion__in=self.instituciones_del_usuario())
+        for field in self.filter_fields:
+            value = self.request.query_params.get(field)
+            if value not in (None, ""):
+                qs = qs.filter(**{field: _coerce(value)})
+        return qs
 
 
 class LegajoProfesionalViewSet(BaseModelViewSet):

@@ -380,6 +380,20 @@ class PedidoViewSet(BaseModelViewSet):
     ordering_fields = ("creado", "urgente")
 
     @action(detail=True, methods=["post"])
+    def preparar(self, request, pk=None):
+        """
+        Picking/preparacion: valida que el destino pueda cubrir lo pendiente y
+        marca el pedido como listo para despacho. No mueve stock; eso lo hace
+        `entregar`.
+        """
+        pedido = self.get_object()
+        try:
+            pedido = motor.preparar_pedido(pedido, autor=request.user)
+        except motor.ErrorStock as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(pedido).data)
+
+    @action(detail=True, methods=["post"])
     def entregar(self, request, pk=None):
         """
         Entrega: {"entregas": {"<linea_id>": cantidad}}.

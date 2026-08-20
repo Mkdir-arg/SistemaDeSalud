@@ -320,6 +320,43 @@ def dar_de_baja(deposito, insumo, cantidad, lote=None, autor=None, motivo=""):
 # Pedidos de reposición
 # --------------------------------------------------------------------------- #
 @transaction.atomic
+def preparar_pedido(pedido: Pedido, autor=None) -> Pedido:
+    """
+    Marca un pedido como preparado para despacho.
+
+    Preparar no mueve stock: es la validacion operativa de picking antes de
+    entregar. La transferencia real sigue ocurriendo en `entregar_pedido`, donde
+    queda el movimiento auditable. Si no alcanza para cubrir lo pendiente, no se
+    promete un pedido listo.
+    """
+    estado_entrada = pedido.estado
+    pedido = Pedido.objects.select_for_update().get(pk=pedido.pk)
+    if pedido.estado != estado_entrada:
+        raise ErrorStock("El pedido cambio mientras se preparaba. Recarga y volve a intentar.")
+    if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
+        raise ErrorStock("El pedido ya esta cerrado.")
+    if pedido.estado == Pedido.Estado.PREPARADO:
+        return pedido
+
+    lineas = list(pedido.lineas.select_related("insumo"))
+    if not lineas:
+        raise ErrorStock("El pedido no tiene renglones para preparar.")
+
+    pendientes = [linea for linea in lineas if linea.faltante > 0]
+    if not pendientes:
+        raise ErrorStock("El pedido no tiene cantidades pendientes.")
+    for linea in pendientes:
+        # Valida stock usable y FEFO sin modificar existencias. Si hay vencido,
+        # el error lo distingue de un faltante real.
+        lotes_para_sacar(pedido.destino, linea.insumo, linea.faltante)
+
+    pedido.estado = Pedido.Estado.PREPARADO
+    pedido.resuelto = None
+    pedido.save(update_fields=["estado", "resuelto"])
+    return pedido
+
+
+@transaction.atomic
 def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
     """
     Entrega un pedido: transfiere lo que hay y deja registrado lo que faltó.

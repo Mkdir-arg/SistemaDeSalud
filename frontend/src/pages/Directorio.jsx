@@ -30,6 +30,7 @@ const NAV = [
 export default function Directorio() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const rolPlataforma = user?.is_superuser ? "Super admin" : "Autoridad de plataforma";
   // En la URL: así «mandame el listado de usuarios» es un link.
   const [vista, setVista] = useFiltroUrl("vista", "instituciones");
 
@@ -79,9 +80,9 @@ export default function Directorio() {
             <button
               type="button"
               className="block cursor-pointer rounded-sm text-left text-xs text-texto-tenue outline-none hover:text-texto-suave focus-visible:ring-2 focus-visible:ring-accent"
-              title="Super admin"
+              title={rolPlataforma}
             >
-              Super admin
+              {rolPlataforma}
             </button>
           </div>
           <button
@@ -146,7 +147,7 @@ function InstitucionesView() {
     <>
       <Encabezado
         titulo="Instituciones"
-        detalle={`${plural(total, "institución", "instituciones")} en la plataforma · super admin`}
+        detalle={`${plural(total, "institución", "instituciones")} en la plataforma`}
       >
         <Buscador
           valor={texto}

@@ -19,6 +19,7 @@ Gestionar stock sanitario por institucion y deposito, con trazabilidad por lote 
 - Existencias acumuladas por deposito, insumo y lote.
 - Movimientos inmutables de stock.
 - Pedidos entre depositos.
+- Preparacion/picking de pedidos antes del despacho.
 - Entrega total o parcial.
 - Rechazo de pedidos.
 - Alertas de faltantes y proximos vencimientos.
@@ -39,6 +40,8 @@ Gestionar stock sanitario por institucion y deposito, con trazabilidad por lote 
 - Los insumos con lote obligatorio deben operar con lote.
 - Un lote vencido o proximo a vencer debe ser visible para resolucion operativa.
 - La entrega de pedido puede ser parcial; lo pendiente queda visible.
+- Un pedido puede marcarse como `preparado` solo si el deposito destino tiene stock usable para cubrir lo pendiente.
+- Preparar no mueve stock ni cierra el pedido; la transferencia auditable ocurre al entregar.
 - Los depositos y el insumo deben pertenecer a la misma institucion.
 
 ## Pantallas y rutas
@@ -49,7 +52,7 @@ Gestionar stock sanitario por institucion y deposito, con trazabilidad por lote 
 ## Entidades y endpoints
 
 - `insumos`, `depositos`, `lotes`, `stock`, `movimientos-stock`, `pedidos-stock`
-- Acciones funcionales: `ingreso`, `consumo`, `transferencia`, `ajuste`, `baja`, `trazar-lote`, `entregar`, `rechazar`, `alertas`.
+- Acciones funcionales: `ingreso`, `consumo`, `transferencia`, `ajuste`, `baja`, `trazar-lote`, `preparar`, `entregar`, `rechazar`, `alertas`.
 
 ## Integraciones
 

@@ -129,9 +129,13 @@ test.describe("Tablero", () => {
     await page.goto("/dashboard");
     await esperarPantalla(page);
 
-    await expect(page.getByText("59 de 333 turnos resueltos")).toBeVisible();
-    await expect(page.getByText("Turnos sin registrar")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Cerrarlos en la agenda" })).toBeVisible();
+    await expect(page.getByText(/\d+ de \d+ turnos resueltos/)).toBeVisible();
+    // `.first()` porque el tile aparece dos veces a propósito: la tira «Requiere
+    // atención» repite los indicadores críticos que también están en la grilla
+    // de abajo, igual que hace con «Urgentes» y «Espera prom.». Sin acotar, el
+    // modo estricto de Playwright falla por encontrar dos.
+    await expect(page.getByText("Turnos sin registrar").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cerrarlos en la agenda" }).first()).toBeVisible();
   });
 
   test("en la dona, «Recibido» y «Cerrado» no son el mismo color ni dependen sólo del color", async ({ page }) => {

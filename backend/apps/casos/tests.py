@@ -23,6 +23,7 @@ from apps.registros.models import Ciudadano, EntradaHistoria
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
+from .serializers import CasoSerializer
 
 
 class MotorTestCase(TestCase):
@@ -195,6 +196,14 @@ class ResponsabilidadTests(TestCase):
         self.miembro = Usuario.objects.create_user("m@cauce.local", "x", nombre="Miembro")
         self.ajeno = Usuario.objects.create_user("a@cauce.local", "x", nombre="Ajeno")
         self.jefe = Usuario.objects.create_superuser("j@cauce.local", "x", nombre="Jefe")
+        self.mem_miembro = Membresia.objects.create(
+            usuario=self.miembro, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        self.mem_miembro.areas.add(self.area)
+        self.mem_ajeno = Membresia.objects.create(
+            usuario=self.ajeno, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        self.mem_ajeno.areas.add(self.area)
         self.grupo.miembros.add(self.miembro)
 
         flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Triage")
@@ -213,6 +222,39 @@ class ResponsabilidadTests(TestCase):
     def test_superusuario_siempre_puede(self):
         self.nodo.grupos.add(self.grupo)
         self.assertTrue(motor.usuario_puede_tomar(self.jefe, self.caso))
+
+    def test_miembro_con_membresia_inactiva_no_puede_tomar(self):
+        self.nodo.grupos.add(self.grupo)
+        self.mem_miembro.activo = False
+        self.mem_miembro.save(update_fields=["activo"])
+        self.assertFalse(motor.usuario_puede_tomar(self.miembro, self.caso))
+
+    def test_grupo_inactivo_no_habilita_tomar(self):
+        self.nodo.grupos.add(self.grupo)
+        self.grupo.activo = False
+        self.grupo.save(update_fields=["activo"])
+        self.assertFalse(motor.usuario_puede_tomar(self.miembro, self.caso))
+
+    def test_membresia_de_otra_institucion_no_habilita_tomar(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        usuario = Usuario.objects.create_user("mal-config@test.local", "x", nombre="Mal")
+        membresia = Membresia.objects.create(
+            usuario=usuario, institucion=otra, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        membresia.areas.add(self.area)
+        self.grupo.miembros.add(usuario)
+        self.nodo.grupos.add(self.grupo)
+
+        self.assertFalse(motor.usuario_puede_tomar(usuario, self.caso))
+
+    def test_serializer_no_muestra_responsables_inactivos(self):
+        self.nodo.grupos.add(self.grupo)
+        self.grupo.activo = False
+        self.grupo.save(update_fields=["activo"])
+
+        data = CasoSerializer(self.caso).data
+
+        self.assertEqual(data["responsables"], [])
 
 
 class AtencionConFilaTests(TestCase):
@@ -813,6 +855,10 @@ class NotificacionNodoTests(TestCase):
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.grupo = Grupo.objects.create(area=self.area, nombre="Médicos de guardia")
         self.medico = Usuario.objects.create_user(email="med@test.local", password="x")
+        mem = Membresia.objects.create(
+            usuario=self.medico, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        mem.areas.add(self.area)
         self.grupo.miembros.add(self.medico)
 
         self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="F")
@@ -836,6 +882,18 @@ class NotificacionNodoTests(TestCase):
         # {paciente} se reemplaza: un aviso que dice a quién se refiere sirve.
         self.assertEqual(aviso.detalle, "Ana Pérez necesita atención")
         self.assertEqual(aviso.caso_id, self.caso.pk)
+
+    def test_no_avisa_a_integrante_con_membresia_inactiva(self):
+        Membresia.objects.filter(usuario=self.medico, institucion=self.inst).update(activo=False)
+        nodo = Nodo.objects.create(
+            version=self.version, tipo="notificar", titulo="Avisar a guardia",
+            config={"titulo": "Paciente critico"},
+        )
+        nodo.grupos.add(self.grupo)
+
+        motor._aplicar_efecto_entrada(self.caso, nodo)
+
+        self.assertFalse(Notificacion.objects.filter(usuario=self.medico).exists())
 
     def test_puede_avisar_solo_a_quien_tiene_el_caso(self):
         self.caso.asignado_a = self.medico
@@ -867,6 +925,10 @@ class TiemposTests(TestCase):
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.grupo = Grupo.objects.create(area=self.area, nombre="Médicos")
         self.medico = Usuario.objects.create_user(email="med@t.local", password="x")
+        mem_medico = Membresia.objects.create(
+            usuario=self.medico, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        mem_medico.areas.add(self.area)
         self.jefe = Usuario.objects.create_user(email="jefe@t.local", password="x")
         self.grupo.miembros.add(self.medico)
         m = Membresia.objects.create(
@@ -1143,8 +1205,22 @@ class FirmaConfigurableTests(TestCase):
         contrario —dejar pasar a cualquiera— sería un agujero abierto por un
         error de tipeo en el diseñador.
         """
-        for config in [{"firma_roles": []}, {"firma_roles": "medico"}, {"firma_roles": None}]:
+        for config in [
+            {"firma_roles": []},
+            {"firma_roles": "medico"},
+            {"firma_roles": None},
+            {"firma_roles": ["director_general"]},
+        ]:
             self.assertEqual(motor.quien_firma(self._nodo(**config))[0], ["medico"])
+
+    def test_validar_version_avisa_roles_de_firma_invalidos(self):
+        nodo = self._nodo(firma_roles=["director_general"])
+        problemas = motor.validar_version(self.version)
+
+        self.assertTrue(
+            any(p["nodo_id"] == nodo.id and p["titulo"] == "Firma con rol invalido" for p in problemas),
+            problemas,
+        )
 
 
 class OperacionDeFilaTests(TestCase):

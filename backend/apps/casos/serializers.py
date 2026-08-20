@@ -168,7 +168,14 @@ class CasoSerializer(serializers.ModelSerializer):
     def get_responsables(self, obj) -> list[dict]:
         if not obj.nodo_actual_id:
             return []
-        return [{"id": g.id, "nombre": g.nombre} for g in obj.nodo_actual.grupos.all()]
+        # `grupos_vigentes` lo deja el Prefetch del viewset. Filtrar acá contra la
+        # relación sin filtro no aprovecha la caché del prefetch y cuesta una
+        # consulta por caso; el fallback es para las vistas que serializan un caso
+        # suelto y no arman el prefetch.
+        vigentes = getattr(obj.nodo_actual, "grupos_vigentes", None)
+        if vigentes is None:
+            vigentes = obj.nodo_actual.grupos.filter(activo=True, area__activa=True)
+        return [{"id": g.id, "nombre": g.nombre} for g in vigentes]
 
     def get_puede_tomar(self, obj) -> bool:
         # Abierto a todos si el paso no declara grupos; si los declara, el usuario

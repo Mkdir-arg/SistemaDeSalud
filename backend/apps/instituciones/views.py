@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+from django.db import transaction
 from django.db.models import Avg, Case, Count, DurationField, ExpressionWrapper, F, IntegerField, Q, When
 from django.db.models.functions import TruncDate
 from django.utils import timezone
@@ -9,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.casos import motor
-from apps.common import BaseModelViewSet, CapacidadPermission
+from apps.common import BaseModelViewSet, CapacidadPermission, _coerce, tiene_capacidad
 
 from apps.agenda.models import Turno
 
@@ -27,6 +28,10 @@ from .serializers import (
 # base en la que se están admitiendo pacientes. Un año es más de lo que cualquier
 # panel operativo mira; lo que exceda se recorta y se informa en `periodo`.
 MAX_DIAS_RANGO = 366
+
+# La institución de capacitación del recorrido guiado. Es el único nombre que
+# `reset-escuela` acepta vaciar: ver InstitucionViewSet.reset_escuela.
+NOMBRE_ESCUELA = "Hospital Escuela Cauce"
 
 
 def _rango_pedido(request):
@@ -85,11 +90,22 @@ def _minutos(delta):
 class InstitucionViewSet(BaseModelViewSet):
     queryset = Institucion.objects.all()
     serializer_class = InstitucionSerializer
-    capacidad_requerida = "config_institucional"
+    capacidad_requerida = "gobierno_plataforma"
     institucion_path = "id"
     filter_fields = ("activa",)
     search_fields = ["nombre", "cuit"]
     ordering_fields = ["nombre", "creada"]
+
+    def get_queryset(self):
+        qs = Institucion.objects.all()
+        user = self.request.user
+        if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
+            qs = qs.filter(id__in=self.instituciones_del_usuario())
+        for field in self.filter_fields:
+            value = self.request.query_params.get(field)
+            if value not in (None, ""):
+                qs = qs.filter(**{field: _coerce(value)})
+        return qs
 
     @action(detail=True, methods=["get"])
     def metricas(self, request, pk=None):
@@ -298,6 +314,80 @@ class InstitucionViewSet(BaseModelViewSet):
             "por_estado": por_estado,
             "serie_ingresos": serie_ingresos,
             "top_demoras": top_demoras,
+        })
+
+    @action(detail=True, methods=["post"], url_path="reset-escuela")
+    def reset_escuela(self, request, pk=None):
+        """Vacía la institución de capacitación para que el recorrido guiado
+        pueda volver a construirla desde cero.
+
+        El recorrido dejó de sembrar por API: ahora completa los formularios de
+        la propia app. Eso le quita la red de `crear_si_falta` —el segundo
+        recorrido se comería un «ya existe un área con ese nombre»—, así que
+        necesita poder arrancar de una institución limpia.
+
+        Sólo super admin, y sólo sobre la institución escuela: es un borrado en
+        cascada, y apuntarlo a un hospital real vaciaría el hospital. El nombre
+        es el candado, no una convención.
+        """
+        from django.db.models import ProtectedError
+
+        from apps.auditoria.models import AccesoClinico
+        from apps.casos.models import Caso
+        from apps.farmacia.models import Movimiento
+
+        inst = self.get_object()
+
+        if not request.user.is_superuser:
+            return Response(
+                {"detail": "Vaciar una institución es exclusivo de super admin."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if inst.nombre != NOMBRE_ESCUELA:
+            return Response(
+                {"detail": f"Sólo se puede vaciar «{NOMBRE_ESCUELA}», la institución de capacitación."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Las tres tablas que hay que borrar a mano, y por qué.
+            #
+            # PROTECT aborta el borrado SIEMPRE, incluso cuando lo que protege se
+            # está borrando en la misma operación —esa tolerancia es de RESTRICT,
+            # no de PROTECT—. Así que no alcanza con que todo cuelgue de la
+            # institución por CASCADE: hay que sacar a los protectores primero, y
+            # en orden.
+            #
+            # - AccesoClinico.institucion y .ciudadano: quién miró una historia
+            #   clínica no se borra por arrastre. Acá sí, son pacientes de práctica.
+            # - Movimiento.insumo: Movimiento no cuelga de nada que se borre, así
+            #   que protege a los insumos de la escuela.
+            # - Caso.version protege a VersionFlujo, que sí cuelga de la
+            #   institución (Institucion → Flujo → VersionFlujo). Los casos tienen
+            #   que irse ANTES que el flujo que los originó.
+            accesos, _ = AccesoClinico.objects.filter(
+                Q(institucion=inst) | Q(ciudadano__institucion=inst)
+            ).delete()
+            movimientos, _ = Movimiento.objects.filter(insumo__institucion=inst).delete()
+            casos, _ = Caso.objects.filter(
+                Q(institucion=inst) | Q(version__flujo__institucion=inst)
+            ).delete()
+            try:
+                borrados, detalle = inst.delete()
+            except ProtectedError as e:
+                # Si el grafo gana un PROTECT nuevo, que se vea qué lo frenó en
+                # vez de un 500 opaco.
+                modelos = sorted({type(o)._meta.label for o in e.protected_objects})
+                return Response(
+                    {"detail": "No se pudo vaciar la escuela: hay datos protegidos.",
+                     "protegido_por": modelos},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        return Response({
+            "vaciada": NOMBRE_ESCUELA,
+            "borrados": borrados + accesos + movimientos + casos,
+            "detalle": detalle,
         })
 
 

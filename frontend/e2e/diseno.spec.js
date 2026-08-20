@@ -111,7 +111,10 @@ test.describe("Listado de flujos", () => {
 
     const dialogo = page.getByRole("dialog");
     await expect(dialogo).toBeVisible();
-    await expect(dialogo).toContainText(/Nuevo caso|casos activos/);
+    // Singular y plural: el diálogo pluraliza («1 caso activo» / «3 casos
+    // activos») y cuántos activos tenga el flujo depende de la siembra, así que
+    // exigir sólo el plural hace que el test falle según el día.
+    await expect(dialogo).toContainText(/Nuevo caso|casos? activos?/);
     await dialogo.getByRole("button", { name: "Volver", exact: true }).click();
   });
 

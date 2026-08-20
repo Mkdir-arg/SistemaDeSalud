@@ -1,6 +1,6 @@
 # Roles, responsabilidades y permisos
 
-Actualizado: 2026-08-18
+Actualizado: 2026-08-20
 
 Este documento describe el modelo funcional de autoridad de Cauce: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
 
@@ -44,6 +44,67 @@ Riesgos:
 
 - Puede atravesar todos los limites institucionales.
 - Requiere controles fuertes de credenciales, trazabilidad y uso excepcional.
+
+### Autoridad estatal / plataforma
+
+Es una membresia institucional con rol `plataforma`. No equivale a `is_superuser`: es un rol funcional para gobierno estatal de la red.
+
+Responsabilidades:
+
+- Crear y actualizar instituciones.
+- Definir redes sanitarias entre establecimientos.
+- Administrar el directorio estatal de usuarios y membresias necesarias para el alta institucional.
+- Asignar roles estatales (`plataforma` y `auditor`) cuando corresponda.
+- Auditar accesos clinicos con alcance estatal.
+
+Funcionalidades:
+
+- Directorio de plataforma.
+- ABM de instituciones.
+- ABM de redes sanitarias.
+- Usuarios y membresias del directorio estatal.
+- Registro de accesos clinicos.
+
+Limites:
+
+- No recibe permisos clinicos u operativos por ser plataforma.
+- No reemplaza a los roles asistenciales dentro de un hospital.
+- No convierte al usuario en superusuario Django ni en staff tecnico.
+
+### Auditor estatal
+
+Es una membresia institucional con rol `auditor`, orientada a control y cumplimiento.
+
+Responsabilidades:
+
+- Leer el registro de accesos clinicos con alcance estatal.
+- Responder auditorias, reclamos o requerimientos de control.
+- Ver trazabilidad sin modificar datos asistenciales ni configuracion.
+
+Funcionalidades:
+
+- Registro de accesos clinicos.
+
+Limites:
+
+- No crea, edita ni borra registros de auditoria.
+- No administra instituciones, usuarios ni redes.
+- No opera casos ni accede a historia clinica por este rol.
+
+### Reportes / solo lectura
+
+Rol `reportes`, pensado para consulta pasiva de indicadores no nominales.
+
+Responsabilidades:
+
+- Consultar reportes o tableros agregados cuando existan pantallas no nominales.
+- Acompanhar gestion sanitaria sin operar procesos.
+
+Limites:
+
+- No opera casos, turnos, farmacia, internacion ni red.
+- No habilita historia clinica ni auditoria de accesos por si mismo.
+- Los reportes que muestren datos nominales deben exigir una capacidad mas especifica.
 
 ### Admin de institucion
 
@@ -234,22 +295,29 @@ Las capacidades son permisos funcionales que habilitan bloques de la aplicacion.
 | `diseno` | Flujos, versiones, nodos, conexiones, formularios, campos | Configuracion de procesos |
 | `trabajo` | Casos, filas, agenda operativa, farmacia, red, internacion y acciones de proceso | Operacion diaria |
 | `registros` | Ciudadanos, historia clinica, entradas, estudios, recetas, consentimientos | Datos clinicos protegidos |
+| `padron_admision` | Alta, busqueda y ficha administrativa de pacientes | No habilita evolucion, alergias, estudios ni recetas |
+| `historia_clinica` | Historia clinica, antecedentes, evolucion, estudios y recetas como lectura clinica | Requiere auditoria de acceso |
 | `supervision` | Tablero, supervision, reasignacion, prioridad y cancelacion de casos | Conduccion por area |
-| `auditoria` | Registro de accesos clinicos | En backend se resuelve por regla especifica: admin y jefe de area |
+| `auditoria` | Registro de accesos clinicos | Admin, jefe de area, auditor estatal, plataforma y superusuario |
+| `reportes` | Reportes agregados / solo lectura | No debe exponer datos clinicos nominales sin otra capacidad |
+| `gobierno_plataforma` | Instituciones, redes sanitarias y directorio estatal | Capacidad global, no acotada a un hospital puntual |
 
 ## 4. Matriz rol-capacidad
 
-| Rol | config | diseno | trabajo | registros | supervision | auditoria |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Superusuario plataforma | Si | Si | Si | Si | Si | Si |
-| Admin institucion | Si | Si | Si | Si | Si | Si |
-| Configurador | No | Si | No | No | No | No |
-| Jefe / Supervisor de area | No | No | Si | Si | Si | Si |
-| Administrativo | No | No | Si | Si | No | No |
-| Enfermeria | No | No | Si | Si | No | No |
-| Medico / profesional | No | No | Si | Si | No | No |
+| Rol | config | diseno | trabajo | registros | supervision | auditoria | reportes | gobierno_plataforma |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Superusuario plataforma | Si | Si | Si | Si | Si | Si | Si | Si |
+| Autoridad estatal / plataforma | No | No | No | No | No | Si | Si | Si |
+| Auditor estatal | No | No | No | No | No | Si | No | No |
+| Reportes / solo lectura | No | No | No | No | No | No | Si | No |
+| Admin institucion | Si | Si | Si | Si | Si | Si | Si | No |
+| Configurador | No | Si | No | No | No | No | No | No |
+| Jefe / Supervisor de area | No | No | Si | Si | Si | Si | No | No |
+| Administrativo | No | No | Si | Si | No | No | No | No |
+| Enfermeria | No | No | Si | Si | No | No | No | No |
+| Medico / profesional | No | No | Si | Si | No | No | No | No |
 
-Nota tecnica: en backend `auditoria` no forma parte de `ROL_CAPACIDADES`; se implementa con `PuedeAuditar`, que permite superusuario, admin y jefe de area. En frontend se refleja como capacidad de menu para no ofrecer pantallas que luego responderian 403.
+Nota tecnica: `gobierno_plataforma` es global. `auditoria` se expone como capacidad efectiva para menu/ruta, pero el backend conserva una regla especifica de alcance en `PuedeAuditar`.
 
 ## 5. Matriz por funcionalidad
 
@@ -268,7 +336,8 @@ Nota tecnica: en backend `auditoria` no forma parte de `ROL_CAPACIDADES`; se imp
 | Tomar/avanzar caso | Si | No | Si* | Si* | Si* | Si* |
 | Llamar/rellamar/ausente | Si | No | Si* | Si* | Si* | Si* |
 | Reasignar/priorizar/cancelar caso | Si | No | Si** | No | No | No |
-| Ver historia clinica | Si | No | Si | Si | Si | Si |
+| Gestionar padron/admision | Si | No | Si | Si | Si | Si |
+| Ver historia clinica | Si | No | Si | No | Si | Si |
 | Firmar entrada/atencion medica | Si | No | Segun rol/nodo | No | Segun nodo | Si |
 | Emitir receta | Si | No | Si* | No/segun flujo | Si* | Si* |
 | Solicitar estudio/interconsulta | Si | No | Si* | Segun flujo | Si* | Si* |
@@ -281,7 +350,7 @@ Notas:
 
 - `Si*`: requiere pertenecer al grupo responsable del nodo actual si el nodo declara grupos.
 - `Si**`: requiere supervisar el area del caso.
-- La lectura de datos clinicos esta protegida por `registros`.
+- La ficha administrativa usa `padron_admision`; la lectura clinica usa `historia_clinica`.
 - La escritura de cada recurso se valida contra la institucion implicada.
 
 ## 6. Interaccion por modulo
@@ -628,13 +697,13 @@ Fuente frontend:
 
 ## 13. Roles que podrian aparecer en futuras versiones
 
-Estos roles no estan implementados como roles separados. Hoy se resuelven combinando roles, areas y grupos.
+Estos roles no estan implementados como roles separados. Hoy se resuelven combinando roles, areas y grupos, salvo los roles estatales ya incorporados (`plataforma`, `auditor`, `reportes`).
 
 - Farmacia: actualmente puede operar con `trabajo`; configuracion de catalogo/depositos requiere `config`.
 - Regulador de red/derivaciones: hoy se opera con `trabajo` dentro de instituciones.
 - Camillero/traslado interno: hoy podria modelarse como grupo dentro de un area.
-- Auditor central estatal: hoy auditoria se limita a admin/jefe_area y superusuario.
-- Solo lectura/reportes: hoy no existe rol de consulta pasiva.
+- Auditor central estatal: implementado como `auditor`, con alcance estatal de auditoria y sin operacion clinica.
+- Solo lectura/reportes: implementado como `reportes`; requiere pantallas agregadas no nominales para tener uso pleno.
 - Profesional externo/interconsulta externa: hoy se modela con membresia institucional.
 
 Recomendacion funcional:
@@ -647,28 +716,30 @@ Recomendacion funcional:
 
 ### Firma configurable por nodo
 
-El flujo ya distingue quien puede operar un paso mediante grupos, pero la firma profesional sigue siendo una decision sensible que debe quedar clara por nodo y por tipo de acto.
+El flujo distingue quien puede operar un paso mediante grupos y quien puede firmar mediante configuracion del nodo. En nodos de atencion, `Nodo.config` puede declarar:
 
-Necesidad funcional:
+- `firma_roles`: roles habilitados para firmar, actualmente `medico`, `enfermeria`, `administrativo` y `jefe_area`.
+- `firma_matricula`: si la firma exige legajo/matricula profesional.
 
-- Permitir que un nodo declare que roles pueden firmar.
-- Distinguir completar un formulario de firmar un acto clinico.
-- Exigir matricula cuando corresponda.
-- Permitir flujos donde firma medico, enfermeria, trabajo social u otro perfil profesional definido por la institucion.
+Regla implementada:
 
-Criterio recomendado:
+- La capacidad operativa habilita trabajar en el caso.
+- El grupo responsable habilita tomar el paso.
+- La configuracion del nodo decide quien firma y si necesita matricula.
+- Si no hay configuracion valida, el sistema conserva el default seguro: firma de `medico` con matricula.
+- La validacion de version advierte roles de firma desconocidos antes de publicar o ensayar el flujo.
 
-- La capacidad `trabajo` habilita operar.
-- El grupo habilita tomar el paso.
-- La configuracion del nodo debe decidir quien firma y con que requisitos.
+Pendiente posible:
+
+- Si el alcance legal lo requiere, agregar firma digital/certificado como capa separada de esta autorizacion funcional.
 
 ### Auditor central estatal
 
-Hoy auditan superusuario, admin de institucion y jefe de area. Para un despliegue estatal puede requerirse un rol separado con alcance regional/provincial y permisos de solo auditoria.
+Implementado como rol `auditor`. Audita accesos clinicos con alcance estatal y no puede modificar el registro ni operar datos asistenciales.
 
 ### Rol de solo lectura/reportes
 
-No existe un rol pasivo para consultar indicadores sin operar ni ver datos clinicos nominales. Puede ser necesario para gestion sanitaria.
+Implementado como rol `reportes`. La capacidad existe, pero debe usarse con pantallas agregadas no nominales; si un reporte muestra pacientes, historia o profesionales identificables, necesita una capacidad mas especifica.
 
 ## 15. Criterios para asignar roles
 

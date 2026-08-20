@@ -110,6 +110,14 @@ class AgendaAPITests(APITestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertTrue(r.data["sobreturno"])
 
+    def test_sobreturno_false_en_texto_no_se_toma_como_true(self):
+        r = self.client.post("/api/turnos/", {
+            "agenda": self.agenda.id, "ciudadano": self.paciente.id,
+            "inicio": self._iso(8, 0), "sobreturno": "false",
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertFalse(r.data["sobreturno"])
+
     def test_sin_horario_lo_dice(self):
         r = self.client.post("/api/turnos/", {
             "agenda": self.agenda.id, "ciudadano": self.paciente.id,
@@ -126,6 +134,14 @@ class AgendaAPITests(APITestCase):
         })
         self.assertEqual(r.status_code, 400, r.data)
         self.assertFalse(Turno.objects.filter(ciudadano=ajeno).exists())
+
+    def test_no_guarda_turno_con_origen_invalido(self):
+        r = self.client.post("/api/turnos/", {
+            "agenda": self.agenda.id, "ciudadano": self.paciente.id,
+            "inicio": self._iso(8, 0), "origen": "whatsapp",
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Turno.objects.exists())
 
     # --- Acciones ------------------------------------------------------------- #
 
@@ -225,6 +241,16 @@ class AgendaAPITests(APITestCase):
         r = self.client.post("/api/bloqueos-agenda/", {
             "agenda": self.agenda.id, "desde": self._iso(8, 0), "hasta": self._iso(10, 0),
             "motivo": "El profesional no viene",
+        })
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(len(r.data["turnos_afectados"]), 1)
+        self.assertEqual(r.data["turnos_afectados"][0]["paciente"], "Ana Pérez")
+
+    def test_bloquear_parcial_devuelve_los_turnos_que_solapan(self):
+        self._dar(8, 0)
+        r = self.client.post("/api/bloqueos-agenda/", {
+            "agenda": self.agenda.id, "desde": self._iso(8, 10), "hasta": self._iso(8, 15),
+            "motivo": "Corte breve",
         })
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(len(r.data["turnos_afectados"]), 1)

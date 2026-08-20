@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Case, Count, IntegerField, Q, When
+from django.db.models import Case, Count, IntegerField, Prefetch, Q, When
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -10,9 +10,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
-from apps.common import BaseModelViewSet
+from apps.common import BaseModelViewSet, tiene_capacidad
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
-from apps.instituciones.models import Box
+from apps.instituciones.models import Box, Grupo
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -53,7 +53,19 @@ class CasoViewSet(BaseModelViewSet):
     queryset = Caso.objects.select_related(
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
-    ).prefetch_related("valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo", "en_filas")
+    ).prefetch_related(
+        "valores", "eventos", "nodo_actual__grupos", "derivados__version__flujo", "en_filas",
+        # Dos prefetch sobre la misma relación, a propósito: `puede_tomar` necesita
+        # TODOS los grupos del nodo —si el único grupo responsable está inactivo el
+        # paso no se abre a cualquiera— y `responsables` sólo los vigentes.
+        # Filtrar en el serializer sobre el prefetch sin filtro no reusa la caché:
+        # emite una consulta por fila, que es el N+1 que mide `tests_volumen`.
+        Prefetch(
+            "nodo_actual__grupos",
+            queryset=Grupo.objects.filter(activo=True, area__activa=True),
+            to_attr="grupos_vigentes",
+        ),
+    )
     capacidad_requerida = "casos_operar"
     institucion_path = "institucion"
     # El caso se crea por API, pero su estado, paso, asignacion y trazabilidad se
@@ -123,11 +135,12 @@ class CasoViewSet(BaseModelViewSet):
             )
             u = self.request.user
             if not u.is_superuser:
+                grupos = motor.grupos_operativos_de(u)
                 # Paso sin grupos declarados = abierto a cualquiera; con grupos,
                 # solo si integra alguno.
                 qs = qs.filter(
                     Q(nodo_actual__grupos__isnull=True)
-                    | Q(nodo_actual__grupos__in=u.grupos.values("id"))
+                    | Q(nodo_actual__grupos__in=grupos)
                 )
             # Los dos filtros anteriores atraviesan M2M y pueden duplicar filas.
             qs = qs.distinct()
@@ -146,7 +159,7 @@ class CasoViewSet(BaseModelViewSet):
         u = self.request.user
         if u and u.is_authenticated:
             ctx["es_superuser"] = u.is_superuser
-            ctx["user_grupo_ids"] = set(u.grupos.values_list("id", flat=True))
+            ctx["user_grupo_ids"] = set(motor.grupos_operativos_de(u).values_list("id", flat=True))
             ctx["areas_supervisadas"] = motor.areas_que_supervisa(u)
         return ctx
 
@@ -511,6 +524,7 @@ class MisTareasView(APIView):
     Query param: ``?institucion=<id>`` (si falta, toma la 1ª membresía activa).
     """
 
+    permission_classes = [IsAuthenticated]
     VACIO = {"iniciar": [], "tareas": [], "filas": [], "esperando": []}
 
     def get(self, request):
@@ -521,9 +535,15 @@ class MisTareasView(APIView):
             inst_id = mem.institucion_id if mem else None
         if not inst_id:
             return Response(self.VACIO)
+        try:
+            inst_id = int(inst_id)
+        except (TypeError, ValueError):
+            return Response(self.VACIO)
+        if not user.is_superuser and not tiene_capacidad(user, "casos_operar", inst_id):
+            return Response(self.VACIO)
 
         # Grupos del usuario en la institución → nodos publicados de los que es responsable.
-        grupos = user.grupos.filter(area__institucion_id=inst_id)
+        grupos = motor.grupos_operativos_de(user, inst_id)
         mis_grupo_ids = set(grupos.values_list("id", flat=True))
         mis_nodos = list(
             Nodo.objects.filter(
@@ -914,6 +934,8 @@ class PuestoDetalleView(APIView):
     """Detalle de un **paso** (nodo) del que soy responsable: indicadores del
     momento + la tabla de casos parados ahí. Lo abre cada tarjeta de «Mis puestos»."""
 
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, nodo_id):
         user = request.user
         nodo = (
@@ -922,14 +944,18 @@ class PuestoDetalleView(APIView):
         )
         if nodo is None:
             return Response({"detail": "El paso no existe."}, status=status.HTTP_404_NOT_FOUND)
-        # Seguridad: tenés que ser responsable del paso (o super admin).
-        if not user.is_superuser and not nodo.grupos.filter(miembros=user).exists():
-            return Response({"detail": "No sos responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
-
         flujo = nodo.version.flujo
+        # Seguridad: tenés que ser responsable del paso (o super admin).
+        if not user.is_superuser:
+            if not tiene_capacidad(user, "casos_operar", flujo.institucion_id):
+                return Response({"detail": "No sos responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
+            grupos = motor.grupos_operativos_de(user, flujo.institucion_id)
+            if not nodo.grupos.filter(id__in=grupos.values("id")).exists():
+                return Response({"detail": "No sos responsable de este paso."}, status=status.HTTP_403_FORBIDDEN)
+
         con_fila = nodo.tipo == Nodo.Tipo.ATENCION and (nodo.config or {}).get("con_fila")
         casos = list(
-            Caso.objects.filter(nodo_actual=nodo)
+            Caso.objects.filter(institucion_id=flujo.institucion_id, nodo_actual=nodo)
             .exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
             .select_related("ciudadano", "asignado_a", "area_actual")
             .prefetch_related("en_filas")

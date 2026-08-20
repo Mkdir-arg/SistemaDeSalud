@@ -219,6 +219,8 @@ Recomendacion:
 - Definir si crear instituciones es solo superusuario/plataforma.
 - Si es asi, sobreescribir `create` o permission para `InstitucionViewSet`.
 
+Estado 2026-08-20: cerrado en Bloque 2. `InstitucionViewSet` exige `gobierno_plataforma` para escritura, conserva lectura acotada para usuarios institucionales y permite alcance global solo a superusuario o autoridad de plataforma.
+
 ### 10. Casos cancelados cuentan como activos en algunos modulos
 
 Severidad: media.
@@ -474,6 +476,8 @@ Recomendacion:
 - Agregar ignores para dumps y backups.
 - Definir politica de backups fuera del repositorio.
 
+Estado 2026-08-19: corregido en Bloque 1. El archivo `.sql.gz` fue eliminado del working tree y queda como baja en el diff. Se agregaron reglas `.gitignore` para dumps SQL, respaldos, temporales y rutas `backend/C*/Users/`. Si el archivo contenia datos reales, sigue pendiente limpiar historial Git remoto/local antes de publicar.
+
 ## Hallazgos altos adicionales
 
 ### 23. Agenda permite referencias incompatibles
@@ -630,6 +634,8 @@ Recomendacion:
 
 - Crear capacidad `traslados_red` y separar permisos de origen/destino.
 
+Estado 2026-08-20: mitigado. Los traslados ya usan `traslados_red`; el ABM de redes sanitarias queda reservado a `gobierno_plataforma`, mientras los establecimientos conservan lectura de las redes donde participan.
+
 ### 32. Rutas frontend se protegen por institucion, no por capacidad
 
 Severidad: alta UX/privacidad.
@@ -734,6 +740,8 @@ Impacto funcional:
 Recomendacion:
 
 - Confirmar si tiene uso real y eliminarla si es accidental.
+
+Estado 2026-08-19: corregido en Bloque 1. Los dos `__init__.py` vacios bajo `backend/backend/apps/agenda/management/...` fueron eliminados y `/backend/backend/` queda ignorado para evitar nuevas copias accidentales.
 
 ### 38. Pantalla publica por token no tiene politica de expiracion/rotacion
 
@@ -902,6 +910,228 @@ Pendientes relacionados:
 - Definir modelo persistente de archivo clinico con `institucion`, usuario, proposito y objeto propietario.
 - Agregar validacion MIME/tamanio por tipo documental y antivirus.
 - Revisar archivos historicos ya generados bajo `/media` y decidir migracion u ocultamiento fuera del servidor publico de desarrollo.
+
+## Avance de implementacion - Bloque 1 higiene de repositorio y respaldos
+
+Fecha: 2026-08-19.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Hallazgo 22 - Backup SQL comprimido dentro del arbol del backend.** El dump `backend/C.../Users/.../Temp/.../cauce-20260814-133512.sql.gz` fue eliminado del working tree y queda como baja en el diff.
+- **Hallazgo 37 - Carpeta accidental `backend/backend`.** Se eliminaron los archivos vacios trackeados bajo esa copia accidental.
+- **Prevencion de recaidas.** `.gitignore` ahora excluye dumps SQL, backups, temporales, `backend/C*/Users/` y `/backend/backend/`.
+
+Review del bloque:
+
+- `git check-ignore -v` confirma cobertura para `.sql`, `.sql.gz`, `.dump`, `.backup`, `.bak`, `.sqlite3.gz` y rutas `backend/C*/Users/`.
+- `git diff --check` no reporta errores; solo avisos CRLF normales del entorno Windows.
+- Nota: `git ls-files` sigue listando archivos eliminados hasta que se haga commit; despues del commit de baja ya no apareceran en el arbol versionado.
+
+Pendientes relacionados:
+
+- Si el dump contenia datos reales, limpiar historial Git antes de compartir/publicar el repositorio.
+- Definir destino externo de respaldos operativos y responsables de restauracion.
+
+## Avance de implementacion - Bloque 2 gobierno estatal/plataforma
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Hallazgo 9 - Institucionales podian crear instituciones nuevas.** La escritura de instituciones exige `gobierno_plataforma`; un admin institucional ya no crea ni edita establecimientos desde su permiso local.
+- **Gobierno de redes sanitarias.** El ABM de redes queda reservado a plataforma; los hospitales siguen viendo las redes donde participan.
+- **Roles estatales explicitos.** `Membresia.Rol` incorpora `plataforma`, `auditor` y `reportes`; solo superusuario o autoridad de plataforma puede asignar `plataforma`/`auditor`.
+- **Directorio estatal.** La autoridad de plataforma puede listar usuarios, crear usuarios sin membresia institucional inmediata y asignar membresias de alta institucional.
+- **Auditoria estatal.** `auditor` y `plataforma` tienen alcance global sobre registros de acceso clinico, sin permisos clinicos u operativos adicionales.
+- **Frontend de plataforma.** El landing envia a directorio a usuarios con `gobierno_plataforma`; el contexto permite que esa capacidad global no dependa de estar parado en el mismo efector de su membresia.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/common.py apps/accounts/views.py apps/accounts/serializers.py apps/instituciones/views.py apps/red/views.py apps/auditoria/views.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.accounts.tests.GobiernoPlataformaTests apps.instituciones.tests.GobiernoPlataformaInstitucionTests apps.red.tests_api.TrasladosAPITests.test_un_admin_institucional_no_crea_redes_sanitarias apps.red.tests_api.TrasladosAPITests.test_plataforma_crea_y_ve_todas_las_redes apps.auditoria.tests.QuienLoPuedeVerTests.test_auditor_y_plataforma_tienen_alcance_estatal` - OK, 13 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.accounts.tests` - OK, 25 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.instituciones.tests` - OK, 7 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.red.tests_api` - OK, 24 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.auditoria.tests` - OK, 33 tests.
+- `.venv\\Scripts\\python.exe manage.py makemigrations --check --dry-run` - OK, sin cambios pendientes.
+- `git diff --check` - OK; solo avisos CRLF normales del entorno Windows.
+- `npm run build` - OK.
+- `npm run auditar` - OK, 234 clases revisadas.
+
+Pendientes relacionados:
+
+- Definir pantallas reales de `reportes` para indicadores agregados no nominales.
+- Decidir si habra niveles regional/provincial dentro de `gobierno_plataforma` o si alcanza con alcance estatal unico.
+- El cambio agrega una migracion de choices de rol; debe aplicarse antes de usar los nuevos roles en datos reales.
+
+## Avance de implementacion - Bloque 3 firma profesional configurable por nodo
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Firma profesional por configuracion del nodo.** Los nodos de atencion pueden declarar `config.firma_roles` con los roles habilitados para firmar y `config.firma_matricula` para exigir o no matricula.
+- **Compatibilidad hacia atras.** Si la configuracion no existe, viene vacia o llega rota en tiempo de ejecucion, el sistema vuelve al criterio historico: firma de `medico` con matricula.
+- **Validacion previa a publicar/ensayar.** `validar_version` informa error cuando un nodo declara roles de firma desconocidos, evitando que una mala configuracion quede oculta hasta la atencion.
+- **Control asistencial efectivo.** El motor sigue validando rol, pertenencia al area del caso y matricula cuando corresponde; el superusuario conserva bypass tecnico para soporte.
+- **Editor visual.** El disenador de flujos ya expone seleccion de roles firmantes y switch de exigencia de matricula para nodos de atencion.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/casos/motor.py apps/casos/tests.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests.FirmaConfigurableTests` - OK, 11 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.flujos.tests.EnsayoTests.test_un_limite_del_motor_se_informa_con_el_nodo_donde_pasa apps.flujos.tests.EnsayoTests.test_una_atencion_con_fila_pide_llamar_antes_de_atender` - OK, 2 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests` - OK, 95 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.flujos.tests` - OK, 47 tests.
+
+Pendientes relacionados:
+
+- Definir si se agregaran otros perfiles profesionales firmantes mas alla de `medico`, `enfermeria`, `administrativo` y `jefe_area`.
+- Si el producto requiere firma digital legal/certificado, modelarla como una capa separada de esta autorizacion funcional de firma.
+
+## Avance de implementacion - Bloque 4 padron administrativo separado de historia clinica
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Hallazgo 35 - Buscador global no distinguia padron de historia clinica.** El buscador superior ahora funciona con `historia_clinica` o con `padron_admision`; si el usuario no tiene historia, navega a `/padron/<id>` y no a la historia clinica.
+- **Ficha administrativa de padron.** Se agregaron `/padron` y `/padron/:id` como superficie separada para admision: identidad, documento, cobertura, domicilio y consentimiento.
+- **Historia clinica protegida.** La ficha de padron no renderiza evolucion, alergias, estudios ni recetas; el boton de historia solo aparece si la persona tiene `historia_clinica`.
+- **CSV por permiso.** La exportacion de `CiudadanoViewSet` usa columnas administrativas cuando el usuario no tiene `historia_clinica`, sin columnas de condiciones, alergias, entradas ni ultima atencion.
+- **FK de alcance.** `Ciudadano.institucion` ya no se puede mover por PATCH comun; una migracion real de padron queda fuera como accion funcional explicita.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/common.py apps/registros/views.py apps/registros/serializers.py apps/registros/tests_api.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.registros.tests_api.PermisosGranularesRegistrosTests` - OK, 5 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.registros.tests_api` - OK, 43 tests.
+- `.venv\\Scripts\\python.exe manage.py makemigrations --check --dry-run` - OK, sin cambios pendientes.
+- `npm run build` - OK.
+- `npm run auditar` - OK, 235 clases revisadas.
+- `git diff --check` - OK; solo avisos CRLF normales del entorno Windows.
+
+Pendientes relacionados:
+
+- Si el negocio necesita fusionar duplicados o mover pacientes entre instituciones, crear una accion auditada con motivo y validacion de origen/destino.
+- Evaluar si `registros` legacy puede retirarse totalmente cuando todas las rutas consuman capacidades granulares.
+
+## Avance de implementacion - Bloque 5 metadata y validaciones de archivos clinicos
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Metadata persistente.** Se agrego `ArchivoClinico` con institucion, ruta, nombre original, content type, tamano, SHA-256, proposito, objeto propietario opcional, usuario que subio y fecha.
+- **Validacion de adjuntos.** `POST /api/archivos/` rechaza archivos vacios, demasiado grandes, tipos no permitidos, extension incompatible y contenido que no coincide con el tipo declarado.
+- **Tipos permitidos.** Se admiten PDF, JPEG, PNG, WebP y texto plano. El maximo por defecto es 10 MB y puede configurarse con `ARCHIVO_CLINICO_MAX_BYTES`.
+- **Descarga con metadata.** `GET /api/archivos/descargar/...` usa la metadata cuando existe para resolver institucion, nombre original y content type; conserva fallback por ruta para archivos historicos.
+- **Trazabilidad.** La respuesta de subida devuelve `content_type`, `tamano` y `sha256`, ademas de `nombre`, `ruta` y `url` protegida.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/common.py apps/registros/models.py apps/registros/admin.py apps/casos/tests_api.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests_api.SubirArchivoTest` - OK, 11 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests_api` - OK, 52 tests.
+- `.venv\\Scripts\\python.exe manage.py makemigrations --check --dry-run` - OK, sin cambios pendientes.
+- `git diff --check` - OK; solo avisos CRLF normales del entorno Windows.
+
+Pendientes relacionados:
+
+- Integrar antivirus/escaneo asincronico si el entorno productivo lo requiere.
+- Migrar u ocultar archivos historicos sin metadata que ya existan bajo `/media`.
+- Definir politica de retencion y purga para archivos clinicos segun normativa local.
+
+## Avance de implementacion - Bloque 6 IDs embebidos en Nodo.config e integraciones
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Integraciones con `guardar_en` invalido.** `validar_version` ahora rechaza integraciones que guardan en un campo inexistente, mal tipado o de otra institucion.
+- **Disponibilidad de campos real.** Una decision solo considera disponible un campo cargado por formularios del flujo o por una integracion valida de la misma institucion.
+- **Defensa en ejecucion.** Flujos historicos ya publicados con `guardar_en` roto no generan `ValorCampo` contra FKs invalidas; el motor registra falla de integracion.
+- **Prioridad por formulario.** `prioridad_campo` debe pertenecer al formulario del nodo y ser `seleccion_unica`; si no, la version muestra error antes de publicar/ensayar.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/casos/motor.py apps/casos/test_validacion_y_ensayo.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.test_validacion_y_ensayo` - OK, 14 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.flujos.tests` - OK, 47 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests apps.casos.test_validacion_y_ensayo` - OK, 109 tests.
+- `.venv\\Scripts\\python.exe manage.py makemigrations --check --dry-run` - OK, sin cambios pendientes.
+- `git diff --check` - OK; solo avisos CRLF normales del entorno Windows.
+
+Pendientes relacionados:
+
+- Si se agregan nuevos tipos de nodo con IDs en `config`, deben declararse en `validar_version` con la misma regla: existencia, institucion y compatibilidad funcional.
+- Evaluar si `objeto_tipo/objeto_id` de archivos clinicos debe validarse contra propietarios concretos cuando el upload empiece a recibir ese dato desde la UI.
+
+## Avance de implementacion - Bloque 7 agenda, bloqueos y reserva de turnos
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Bloqueos parciales de agenda.** Los bloqueos ahora se evaluan por solape entre el rango bloqueado y la duracion completa del turno, no solo por la hora de inicio.
+- **Grilla coherente.** `horarios_del_dia` oculta horarios libres que solapan un bloqueo parcial y mantiene visibles los turnos ya dados en horarios bloqueados para que el mostrador pueda reprogramarlos o avisar.
+- **Lista de turnos afectados.** `turnos_en_rango` devuelve turnos vigentes que solapan el bloqueo aunque hayan empezado antes del rango bloqueado.
+- **Reserva/reprogramacion.** `_valida_horario` rechaza reservas que empiezan antes del bloqueo pero terminan dentro del rango bloqueado.
+- **Origen de turno controlado.** El motor rechaza valores de `origen` fuera de `mostrador`, `telefono` o `derivacion`, evitando indicadores de demanda con categorias libres.
+- **Parsing de sobreturno por API.** `POST /api/turnos/` interpreta correctamente `sobreturno=false` cuando llega como texto de formulario y rechaza valores ambiguos.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/agenda/models.py apps/agenda/motor.py apps/agenda/views.py apps/agenda/tests.py apps/agenda/tests_api.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.agenda.tests.DisponibilidadTests apps.agenda.tests.ReservaTests apps.agenda.tests_api.AgendaAPITests.test_bloquear_parcial_devuelve_los_turnos_que_solapan apps.agenda.tests_api.AgendaAPITests.test_sobreturno_false_en_texto_no_se_toma_como_true apps.agenda.tests_api.AgendaAPITests.test_no_guarda_turno_con_origen_invalido` - OK, 18 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.agenda` - OK, 146 tests, 1 omitido esperado.
+- `.venv\\Scripts\\python.exe manage.py makemigrations --check --dry-run` - OK, sin cambios pendientes.
+
+Pendientes relacionados:
+
+- Si se agregan turnos de duracion excepcionalmente larga fuera del modelo de agenda diaria, revisar la ventana de busqueda de turnos afectados por bloqueo.
+- Definir si `origen` debe ampliarse con canales digitales formales; si se agrega, debe entrar como choice y no como texto libre.
+
+## Avance de implementacion - Bloque 8 puestos, grupos y membresia activa
+
+Fecha: 2026-08-20.
+
+Estado: implementado y revisado.
+
+Hallazgos cerrados o mitigados:
+
+- **Regla operativa comun de grupos.** Se agrego `grupos_operativos_de(usuario, institucion)` para no depender de la relacion directa `Usuario.grupos`, que puede quedar vieja cuando se desactiva una membresia o un grupo.
+- **Tomar, llamar y operar casos.** `usuario_puede_tomar` exige usuario activo, grupo activo, area activa, membresia activa y coincidencia entre institucion de la membresia e institucion real del area.
+- **Mis tareas y puestos.** `MisTareasView` y `PuestoDetalleView` ahora exigen autenticacion, capacidad `casos_operar` en la institucion y pertenencia operativa al grupo responsable.
+- **Notificaciones a equipos.** Los avisos por grupo solo llegan a usuarios activos con membresia activa en el area/institucion del grupo.
+- **Configuracion de grupos.** `GrupoSerializer` rechaza miembros sin membresia activa en el area, oculta integrantes no operativos y los contadores de staff solo cuentan usuarios activos con membresia activa.
+- **Diseno de flujos.** `NodoSerializer` rechaza grupos inactivos o de areas inactivas; `validar_version` impide publicar versiones con grupos responsables inactivos. Los detalles de responsables no muestran grupos inactivos heredados.
+- **Datos inconsistentes por carga directa.** El motor cruza la institucion de la membresia con la institucion del area, evitando que una membresia mal vinculada desde otra institucion habilite operar un puesto.
+
+Review del bloque:
+
+- `.venv\\Scripts\\python.exe -m py_compile apps/casos/motor.py apps/casos/serializers.py apps/casos/views.py apps/casos/tests.py apps/casos/tests_api.py apps/instituciones/serializers.py apps/instituciones/tests.py apps/flujos/serializers.py apps/flujos/tests.py apps/casos/test_validacion_y_ensayo.py` - OK.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests.ResponsabilidadTests apps.casos.tests.NotificacionNodoTests apps.casos.tests.TiemposTests apps.casos.tests_api.PuestosConMembresiaActivaTests apps.instituciones.tests.GruposOperativosTests apps.flujos.tests.NodoGruposTests apps.casos.test_validacion_y_ensayo.GruposResponsablesTests` - OK, 32 tests.
+- `.venv\\Scripts\\python.exe manage.py test apps.casos.tests apps.casos.tests_api apps.casos.test_validacion_y_ensayo apps.instituciones.tests apps.flujos.tests` - OK, 229 tests.
+
+Pendientes relacionados:
+
+- Definir una accion administrativa auditada para limpiar miembros historicos de grupos cuando se da de baja una membresia.
+- Revisar reportes historicos si producto necesita diferenciar "miembro historico del grupo" de "operador vigente".
 
 ## Modulos sin hallazgo logico fuerte luego del barrido ampliado
 

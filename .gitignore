@@ -12,6 +12,19 @@ __pycache__/
 *.sqlite3
 backend/db.sqlite3
 
+# Dumps, respaldos y temporales con posible informacion sensible
+*.sql
+*.sql.gz
+*.dump
+*.backup
+*.bak
+*.sqlite3.gz
+backend/C*/Users/
+backend/**/Temp/
+
+# Copias accidentales de paquetes dentro del backend real
+/backend/backend/
+
 # Estáticos recolectados y archivos subidos por usuarios
 backend/staticfiles/
 backend/media/

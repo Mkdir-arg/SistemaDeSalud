@@ -137,6 +137,12 @@ Solucion propuesta:
 - Reservar `InstitucionViewSet.create` y, probablemente, cambios criticos como `estado`, `tipo`, `cuit`, a esa capacidad.
 - Mantener `config` institucional para areas, boxes, camas, grupos y parametros internos.
 
+Estado 2026-08-20:
+
+- Implementado como capacidad global `gobierno_plataforma`.
+- `InstitucionViewSet` exige esa capacidad para crear/editar instituciones.
+- Admin institucional conserva lectura de su institucion y configuracion interna por otros viewsets, pero no gobierna el padron de establecimientos.
+
 Tests:
 
 - Admin de Hospital A no puede crear Hospital B.
@@ -216,6 +222,75 @@ Tests:
 - Nodo con formulario de otra institucion devuelve 400.
 - Nodo con grupo de otra institucion devuelve 400.
 - Nodo derivar a area de otra institucion devuelve 400.
+
+### Problema: grupos responsables sin membresia operativa vigente
+
+Regla funcional:
+
+- Estar cargado en un grupo no alcanza para operar un puesto sanitario.
+- Un integrante cuenta operativamente solo si el usuario esta activo, el grupo esta activo, el area esta activa y existe membresia activa en la institucion/area del grupo.
+- Un grupo inactivo no debe poder quedar como responsable de un nodo publicable.
+
+Estado 2026-08-20 - Bloque 8:
+
+- Implementado `grupos_operativos_de(usuario, institucion)` como regla comun para tomar casos, listar mis tareas y abrir detalle de puesto.
+- `usuario_puede_tomar` ya no usa `Usuario.grupos` directo.
+- `MisTareasView` y `PuestoDetalleView` exigen `casos_operar` en la institucion y pertenencia operativa al grupo.
+- `GrupoSerializer` rechaza miembros sin membresia activa en el area, oculta integrantes no operativos y los contadores de staff filtran usuarios/membresias inactivas.
+- `NodoSerializer` y `validar_version` rechazan grupos responsables inactivos o de areas inactivas.
+- Las notificaciones por grupo se envian solo a integrantes operativos vigentes.
+
+Tests:
+
+- Usuario con membresia inactiva no puede tomar ni abrir el puesto.
+- Usuario activo en `Usuario.grupos`, pero sin membresia activa vigente, no aparece en mis tareas.
+- Grupo inactivo no habilita tomar casos ni publicar una version.
+- Integrante con membresia de otra institucion mal vinculada al area no queda habilitado.
+- La API de grupos no permite agregar usuarios inactivos o sin membresia activa en el area.
+
+### Problema: IDs embebidos en `Nodo.config` sin validacion completa
+
+Regla funcional:
+
+- Todo ID guardado en `Nodo.config` debe existir, pertenecer a la institucion del flujo y ser compatible con el uso.
+- Un campo usado para guardar una integracion debe ser un `Campo` de la misma institucion.
+- Un campo usado para prioridad debe pertenecer al formulario del nodo y ser de seleccion unica.
+
+Estado 2026-08-20:
+
+- Implementado en Bloque 6: `guardar_en` se valida antes de publicar y tambien de forma defensiva al ejecutar integraciones.
+- Implementado en Bloque 6: `prioridad_campo` se valida contra el formulario del nodo y su tipo.
+- Implementado en Bloque 6: las decisiones solo consideran disponibles campos cargados por formularios del flujo o por integraciones validas.
+
+Tests:
+
+- Integracion con `guardar_en` de otra institucion devuelve error de validacion.
+- Integracion con `guardar_en` no numerico devuelve error de validacion.
+- `prioridad_campo` de otro formulario devuelve error.
+- `prioridad_campo` no seleccionable devuelve error.
+
+### Problema: firma profesional rigida por rol medico
+
+Regla funcional:
+
+- Operar un paso, pertenecer al grupo responsable y firmar un acto clinico no son la misma responsabilidad.
+- Cada nodo de atencion debe declarar que roles pueden firmar y si la firma exige matricula.
+- Si no hay configuracion, el comportamiento historico debe seguir siendo seguro: firma medica con matricula.
+
+Estado 2026-08-20:
+
+- Implementado en `Nodo.config` mediante `firma_roles` y `firma_matricula`.
+- Implementado en el motor: valida rol firmante, area del caso y matricula segun configuracion.
+- Implementado en el editor visual de flujos para nodos de atencion.
+- Implementado en validacion de version: roles de firma desconocidos generan error antes de publicar/ensayar.
+- Pendiente solo si el alcance legal lo exige: firma digital/certificado como capa criptografica o normativa separada.
+
+Tests:
+
+- Nodo con `firma_roles=["enfermeria"]` permite firma de enfermeria habilitada y rechaza medico si no esta declarado.
+- Nodo con `firma_matricula=false` permite firmar sin legajo profesional.
+- Configuracion vacia, mal tipada o con rol desconocido cae al default seguro en runtime.
+- `validar_version` reporta rol de firma invalido para que el disenador lo corrija.
 
 ### Problema: flujo con area ajena a la institucion
 
@@ -369,6 +444,15 @@ Tests:
 - Agenda profesional con usuario sin membresia activa devuelve 400.
 - Llegada de turno abre caso en institucion/area/flujo coherentes.
 
+Estado 2026-08-20 - Bloque 7:
+
+- Implementado: los bloqueos de agenda se calculan por solape de intervalos (`bloqueo.desde < turno.fin` y `bloqueo.hasta > turno.inicio`), no solo por hora de inicio.
+- Implementado: la grilla no ofrece horarios libres que solapan bloqueos parciales y conserva visibles los turnos ya dados que quedan afectados.
+- Implementado: la reserva y reprogramacion rechazan horarios que empiezan antes del bloqueo pero terminan dentro del rango bloqueado.
+- Implementado: la lista `turnos_afectados` de un bloqueo incluye turnos vigentes que solapan aunque hayan empezado antes del bloqueo.
+- Implementado: `origen` de turno queda limitado a choices funcionales y `sobreturno=false` como texto ya no se interpreta como verdadero.
+- Cubierto con tests de motor, API de agenda, `apps.agenda` completo y `makemigrations --check --dry-run`.
+
 ## 7. Internacion y camas
 
 ### Problema: cama configurada en sector incoherente
@@ -469,6 +553,12 @@ Recomendacion:
 - Crear capacidad `gobierno_red` o `plataforma`.
 - Dejar `config` institucional para configuracion interna del efector.
 
+Estado 2026-08-20:
+
+- Implementado con `gobierno_plataforma`.
+- `RedViewSet` reserva escritura a plataforma.
+- Los hospitales consultan las redes donde participa alguna de sus instituciones; plataforma ve todas.
+
 Tests:
 
 - Admin institucional no crea red con otros efectores.
@@ -495,6 +585,29 @@ Tests:
 - Area destino con dos receptores exige seleccion.
 
 ## 10. Registros clinicos, historia, estudios, recetas y consentimiento
+
+### Problema: padron administrativo mezclado con historia clinica
+
+Regla funcional:
+
+- Alta, busqueda y correccion administrativa de identidad/cobertura no deben requerir permiso de historia clinica.
+- La ficha administrativa no debe mostrar evolucion, antecedentes clinicos, estudios ni recetas.
+- El buscador global debe respetar la mejor capacidad disponible: historia clinica si existe, padron administrativo si no.
+
+Estado 2026-08-20:
+
+- Implementado: `/padron` y `/padron/:id` usan `padron_admision` y muestran datos administrativos, domicilio, cobertura y consentimiento.
+- Implementado: `/historia` y `/historia/:id` conservan `historia_clinica`.
+- Implementado: el buscador superior navega a `/historia/:id` cuando hay permiso clinico y a `/padron/:id` cuando solo hay padron.
+- Implementado: la exportacion CSV de ciudadanos no incluye columnas clinicas cuando el usuario no tiene `historia_clinica`.
+- Implementado: `Ciudadano.institucion` no puede cambiar por PATCH comun.
+
+Tests:
+
+- Administrativo lee padron sin resumen clinico.
+- Administrativo no lee historia clinica.
+- Administrativo exporta padron sin columnas clinicas.
+- PATCH intentando mover un paciente a otra institucion devuelve 400.
 
 ### Riesgo residual: consentimiento con institucion del payload
 
@@ -525,8 +638,13 @@ Regla funcional:
 
 - La auditoria se escribe automaticamente.
 - Nadie debe editar o borrar accesos clinicos desde API.
-- La lectura de auditoria corresponde a conduccion, auditoria institucional o plataforma.
+- La lectura de auditoria corresponde a conduccion, auditoria institucional, auditor estatal o plataforma.
 - Si falla el registro de auditoria, no se bloquea la atencion clinica, pero debe quedar log tecnico.
+
+Estado 2026-08-20:
+
+- Implementados roles `auditor` y `plataforma` con alcance estatal sobre `AccesoClinico`.
+- El alcance institucional de admin/jefe de area se conserva.
 
 Solucion preventiva:
 
@@ -540,6 +658,13 @@ Archivos clinicos - estado 2026-08-19:
 - Implementado en Fase 7: `/media/uploads/...` queda bloqueado en desarrollo para adjuntos clinicos.
 - Implementado en Fase 7: el frontend sube adjuntos con la institucion del caso y descarga estudios mediante `fetch` con token.
 - Pendiente: metadatos persistentes de archivo, validacion MIME/tamanio, antivirus y migracion/ocultamiento de historicos servidos por `/media`.
+
+Archivos clinicos - estado 2026-08-20:
+
+- Implementado en Bloque 5: `ArchivoClinico` persiste metadata de institucion, ruta, nombre original, MIME, tamano, SHA-256, proposito, propietario opcional, usuario y fecha.
+- Implementado en Bloque 5: la subida valida archivo no vacio, maximo configurable, MIME permitido, extension compatible y firma/magic bytes basica.
+- Implementado en Bloque 5: la descarga usa metadata cuando existe y conserva fallback para rutas historicas.
+- Pendiente: antivirus/escaneo asincronico, politica de retencion y migracion/ocultamiento de archivos historicos sin metadata.
 
 Tests:
 
@@ -727,9 +852,16 @@ Solucion propuesta:
 - Usar storage privado o endpoint autenticado para archivos clinicos. Fase 7 implemento endpoint protegido para nuevas subidas/descargas clinicas.
 - Revisar y eliminar la carpeta duplicada `backend/backend` si no tiene uso real.
 
+Estado 2026-08-19:
+
+- Implementado en Bloque 1: el dump `.sql.gz` versionado queda eliminado en el diff.
+- Implementado en Bloque 1: los archivos vacios bajo `backend/backend/...` quedan eliminados en el diff.
+- Implementado en Bloque 1: `.gitignore` cubre dumps, respaldos, temporales, `backend/C*/Users/` y `/backend/backend/`.
+- Pendiente operativo: limpiar historial Git si el dump contenia datos reales.
+
 Tests:
 
-- `git ls-files` no lista dumps SQL ni carpetas duplicadas accidentales.
+- El diff elimina dumps SQL y carpetas duplicadas accidentales; despues del commit, `git ls-files` no debe listarlos.
 - Archivo clinico se descarga solo por endpoint autenticado y autorizado.
 
 ## Orden de implementacion recomendado
@@ -739,7 +871,7 @@ Tests:
 3. **Validaciones de configuracion institucional.** Membresias, camas, depositos y agendas.
 4. **Subcasos cancelados.** Bug puntual de continuidad asistencial.
 5. **Caso activo unico.** Corrige metricas y decisiones de archivado.
-6. **Gobierno estatal/plataforma.** Instituciones, redes y legajos.
+6. **Gobierno estatal/plataforma.** Implementado en Bloque 2 para instituciones, redes, roles estatales, directorio y auditoria global; queda pendiente definir legajo profesional por efector/nodo.
 7. **Farmacia parcial.** Requiere decision funcional antes del codigo.
 8. **Archivos clinicos protegidos.** Mitigado en Fase 7 para nuevas subidas/descargas; quedan politicas avanzadas de archivo.
 

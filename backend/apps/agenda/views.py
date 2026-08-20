@@ -249,11 +249,16 @@ class TurnoViewSet(BaseModelViewSet):
             return Response({"detail": "Falta el horario del turno."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
+            sobreturno = serializers_parse_bool(request.data.get("sobreturno"))
+        except ValueError:
+            return Response({"detail": "Sobreturno debe ser verdadero o falso."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
             turno = motor.reservar(
                 agenda, ciudadano, inicio, autor=request.user,
                 motivo=(request.data.get("motivo") or "").strip(),
                 origen=request.data.get("origen") or Turno.Origen.MOSTRADOR,
-                sobreturno=bool(request.data.get("sobreturno")),
+                sobreturno=sobreturno,
                 modalidad=request.data.get("modalidad") or None,
                 enlace=str(request.data.get("enlace") or "").strip(),
             )
@@ -339,3 +344,16 @@ def serializers_parse_dt(valor):
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
+
+
+def serializers_parse_bool(valor):
+    if valor in (None, ""):
+        return False
+    if isinstance(valor, bool):
+        return valor
+    texto = str(valor).strip().lower()
+    if texto in ("1", "true", "si", "yes", "on"):
+        return True
+    if texto in ("0", "false", "no", "off"):
+        return False
+    raise ValueError

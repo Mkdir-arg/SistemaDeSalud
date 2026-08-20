@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import URLValidator
 from django.db import IntegrityError, transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from apps.casos import motor as motor_casos
@@ -81,7 +82,8 @@ def _grilla(agenda, fecha, disponibilidades, bloqueos, turnos):
                 continue
             ocupantes = normales.get(momento, [])
             extras = sobre.get(momento, [])
-            bloqueado = any(b.cubre(momento) for b in bloqueos)
+            fin = momento + timedelta(minutes=d.paso_min)
+            bloqueado = any(b.solapa(momento, fin) for b in bloqueos)
             # Un horario bloqueado SIN turnos no se ofrece: la agenda no atiende.
             # Pero uno bloqueado CON turnos dados se emite igual, marcado.
             # Saltearlo borraba de la pantalla a los doce pacientes que ya
@@ -149,12 +151,19 @@ def turnos_en_rango(agenda, desde, hasta):
     """
     # Con los relacionados que serializa `TurnoSerializer`: la lista puede tener
     # doce turnos y sin esto son doce consultas más por cada campo.
-    return list(
+    max_duracion = (
+        agenda.turnos.filter(inicio__lt=hasta)
+        .aggregate(max_duracion=Max("duracion_min"))
+        .get("max_duracion")
+        or 0
+    )
+    candidatos = (
         agenda.turnos.select_related("ciudadano", "agenda__area", "resuelto_por")
-        .filter(inicio__gte=desde, inicio__lt=hasta)
+        .filter(inicio__gte=desde - timedelta(minutes=max_duracion), inicio__lt=hasta)
         .exclude(estado=Turno.Estado.CANCELADO)
         .order_by("inicio")
     )
+    return [t for t in candidatos if t.fin > desde]
 
 
 def _valida_horario(agenda, inicio):
@@ -167,10 +176,12 @@ def _valida_horario(agenda, inicio):
     de la tarde uno—.
     """
     fecha = timezone.localtime(inicio).date()
-    if any(b.cubre(inicio) for b in agenda.bloqueos.all()):
-        raise ErrorAgenda("La agenda está bloqueada en ese horario.")
+    bloqueos = list(agenda.bloqueos.all())
     for d in agenda.disponibilidades.filter(activa=True):
         if inicio in d.horarios(fecha):
+            fin = inicio + timedelta(minutes=d.paso_min)
+            if any(b.solapa(inicio, fin) for b in bloqueos):
+                raise ErrorAgenda("La agenda está bloqueada en ese horario.")
             return d
     raise ErrorAgenda("Ese horario no está en la agenda.")
 
@@ -226,6 +237,13 @@ def _resuelve_modalidad(agenda, modalidad, enlace):
     return modalidad, link
 
 
+def _resuelve_origen(origen):
+    origen = origen or Turno.Origen.MOSTRADOR
+    if origen not in Turno.Origen.values:
+        raise ErrorAgenda("Origen de turno invalido.")
+    return origen
+
+
 @transaction.atomic
 def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Origen.MOSTRADOR,
              sobreturno=False, modalidad=None, enlace="") -> Turno:
@@ -251,6 +269,7 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
     franja = _valida_horario(agenda, inicio)
     duracion, cupos, tope = franja.paso_min, franja.cupos, franja.tope_sobreturnos
     modalidad, enlace = _resuelve_modalidad(agenda, modalidad, enlace)
+    origen = _resuelve_origen(origen)
 
     ocupados = list(
         Turno.objects.filter(agenda=agenda, inicio=inicio)

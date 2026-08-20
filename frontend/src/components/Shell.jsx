@@ -36,6 +36,7 @@ const TITULOS = {
   "/farmacia": "Farmacia e insumos",
   "/red": "Red de establecimientos",
   "/casos": "Casos",
+  "/padron": "Padrón de pacientes",
   "/historia": "Historia clínica",
   "/legajo": "Legajo profesional",
   "/flujos": "Flujos",
@@ -49,6 +50,7 @@ const TITULOS = {
 // está — que es justamente para lo que sirve el título.
 const TITULOS_DETALLE = [
   ["/casos/", "Detalle del caso"],
+  ["/padron/", "Ficha administrativa"],
   ["/flujos/", "Diseñador de flujos"],
   ["/puesto/", "Detalle del paso"],
   ["/formularios/", "Constructor de formulario"],
@@ -146,7 +148,8 @@ function BuscadorPacientes() {
   const [res, setRes] = useState([]);
   const [buscando, setBuscando] = useState(false);
   const [abierto, setAbierto] = useState(false);
-  const puedeBuscarPacientes = puedeVer("historia_clinica");
+  const puedeAbrirHistoria = puedeVer("historia_clinica");
+  const puedeBuscarPacientes = puedeAbrirHistoria || puedeVer("padron_admision");
 
   useEffect(() => {
     const term = q.trim();
@@ -163,7 +166,7 @@ function BuscadorPacientes() {
 
   function ir(c) {
     setQ(""); setRes([]); setAbierto(false);
-    navigate(`/historia/${c.id}`);
+    navigate(`${puedeAbrirHistoria ? "/historia" : "/padron"}/${c.id}`);
   }
 
   if (!puedeBuscarPacientes) return null;
@@ -307,6 +310,7 @@ const GRUPOS = [
   {
     label: "REGISTROS",
     items: [
+      { to: "/padron", label: "Padrón de pacientes", icon: "idCard", cap: "padron_admision" },
       { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "historia_clinica" },
       { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
       // Quién consultó datos clínicos. Va en REGISTROS y no en SISTEMA: es la
@@ -317,6 +321,9 @@ const GRUPOS = [
 ];
 
 const ROL_LABEL = {
+  plataforma: "Autoridad estatal / plataforma",
+  auditor: "Auditor estatal",
+  reportes: "Reportes / solo lectura",
   admin: "Admin de institución",
   configurador: "Configurador",
   jefe_area: "Jefe / Supervisor de área",

@@ -1,4 +1,5 @@
 """Tests de la capa API: scope por institución y acciones del motor."""
+import hashlib
 import shutil
 import tempfile
 
@@ -8,8 +9,8 @@ from rest_framework.test import APITestCase
 from apps.accounts.models import Membresia, Usuario
 from apps.formularios.models import Campo, Formulario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
-from apps.instituciones.models import Area, Box, Institucion
-from apps.registros.models import Ciudadano
+from apps.instituciones.models import Area, Box, Grupo, Institucion
+from apps.registros.models import ArchivoClinico, Ciudadano
 from apps.casos import motor
 from apps.casos.models import Caso, EventoCaso, ItemFila, ValorCampo
 
@@ -57,6 +58,62 @@ class ScopeInstitucionTest(APITestCase):
         r = self.client.get("/api/instituciones/")
         nombres = {i["nombre"] for i in r.data["results"]}
         self.assertEqual(nombres, {"Hospital A"})
+
+
+class PuestosConMembresiaActivaTests(APITestCase):
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
+        self.user = Usuario.objects.create_user("medico-puesto@test.local", "x", nombre="Medico")
+        self.membresia = Membresia.objects.create(
+            usuario=self.user, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
+        )
+        self.membresia.areas.add(self.area)
+        self.grupo = Grupo.objects.create(area=self.area, nombre="Medicos de guardia")
+        self.grupo.miembros.add(self.user)
+
+        self.flujo = Flujo.objects.create(institucion=self.inst, area=self.area, titulo="Guardia")
+        self.version = VersionFlujo.objects.create(
+            flujo=self.flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA
+        )
+        inicio = Nodo.objects.create(version=self.version, tipo=Nodo.Tipo.INICIO, titulo="Inicio")
+        self.paso = Nodo.objects.create(version=self.version, tipo=Nodo.Tipo.ATENCION, titulo="Atencion")
+        fin = Nodo.objects.create(version=self.version, tipo=Nodo.Tipo.FIN, titulo="Fin")
+        Conexion.objects.create(version=self.version, origen=inicio, destino=self.paso)
+        Conexion.objects.create(version=self.version, origen=self.paso, destino=fin)
+        self.paso.grupos.add(self.grupo)
+        ciudadano = Ciudadano.objects.create(institucion=self.inst, nombre="Ana", apellido="Perez")
+        self.caso = Caso.objects.create(
+            institucion=self.inst,
+            version=self.version,
+            ciudadano=ciudadano,
+            nodo_actual=self.paso,
+            area_actual=self.area,
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_mis_tareas_no_usa_grupo_con_membresia_inactiva(self):
+        activo = self.client.get(f"/api/mis-tareas/?institucion={self.inst.id}")
+        self.assertEqual(activo.status_code, 200, activo.data)
+        self.assertEqual(len(activo.data["puestos"]), 1)
+        self.assertEqual(len(activo.data["tareas"]), 1)
+
+        self.membresia.activo = False
+        self.membresia.save(update_fields=["activo"])
+
+        baja = self.client.get(f"/api/mis-tareas/?institucion={self.inst.id}")
+        self.assertEqual(baja.status_code, 200, baja.data)
+        self.assertEqual(baja.data, {"iniciar": [], "tareas": [], "filas": [], "esperando": []})
+
+    def test_puesto_detalle_requiere_membresia_activa(self):
+        activo = self.client.get(f"/api/puestos/{self.paso.id}/")
+        self.assertEqual(activo.status_code, 200, activo.data)
+
+        self.membresia.activo = False
+        self.membresia.save(update_fields=["activo"])
+
+        baja = self.client.get(f"/api/puestos/{self.paso.id}/")
+        self.assertEqual(baja.status_code, 403, baja.data)
 
 
 class MutacionesDirectasCasoTests(APITestCase):
@@ -337,10 +394,10 @@ class SubirArchivoTest(APITestCase):
         )
         self.client.force_authenticate(self.user)
 
-    def _archivo(self, nombre="estudio.pdf", contenido=b"%PDF-1.4 demo"):
+    def _archivo(self, nombre="estudio.pdf", contenido=b"%PDF-1.4 demo", content_type="application/pdf"):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        return SimpleUploadedFile(nombre, contenido, content_type="application/pdf")
+        return SimpleUploadedFile(nombre, contenido, content_type=content_type)
 
     def test_subir_archivo_devuelve_url_protegida_y_ruta_interna(self):
         r = self.client.post(
@@ -353,23 +410,68 @@ class SubirArchivoTest(APITestCase):
         self.assertIn(f"/api/archivos/descargar/uploads/{self.inst.id}/", r.data["url"])
         self.assertNotIn("/media/uploads/", r.data["url"])
         self.assertTrue(r.data["ruta"].startswith(f"uploads/{self.inst.id}/"))
+        self.assertEqual(r.data["content_type"], "application/pdf")
+        self.assertEqual(r.data["tamano"], len(b"%PDF-1.4 demo"))
+        self.assertEqual(r.data["sha256"], hashlib.sha256(b"%PDF-1.4 demo").hexdigest())
+
+        meta = ArchivoClinico.objects.get(ruta=r.data["ruta"])
+        self.assertEqual(meta.institucion_id, self.inst.id)
+        self.assertEqual(meta.nombre_original, "estudio.pdf")
+        self.assertEqual(meta.content_type, "application/pdf")
+        self.assertEqual(meta.tamano, len(b"%PDF-1.4 demo"))
+        self.assertEqual(meta.sha256, r.data["sha256"])
+        self.assertEqual(meta.subido_por_id, self.user.id)
+
+    def test_no_sube_tipo_de_archivo_no_permitido(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {
+                "archivo": self._archivo("malware.exe", b"MZ", content_type="application/octet-stream"),
+                "institucion": self.inst.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(ArchivoClinico.objects.exists())
+
+    def test_no_sube_pdf_con_contenido_incompatible(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {
+                "archivo": self._archivo("estudio.pdf", b"MZ ejecutable", content_type="application/pdf"),
+                "institucion": self.inst.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(ArchivoClinico.objects.exists())
+
+    @override_settings(ARCHIVO_CLINICO_MAX_BYTES=8)
+    def test_no_sube_archivo_demasiado_grande(self):
+        r = self.client.post(
+            "/api/archivos/",
+            {"archivo": self._archivo(contenido=b"%PDF-1.4 muy grande"), "institucion": self.inst.id},
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(ArchivoClinico.objects.exists())
 
     def test_descarga_el_archivo_solo_con_permiso_clinico_en_la_institucion(self):
         r = self.client.post(
             "/api/archivos/",
-            {"archivo": self._archivo(contenido=b"resultado"), "institucion": self.inst.id},
+            {"archivo": self._archivo(contenido=b"%PDF-1.4 resultado"), "institucion": self.inst.id},
             format="multipart",
         )
         self.assertEqual(r.status_code, 201, r.data)
 
         descarga = self.client.get(r.data["url"])
         self.assertEqual(descarga.status_code, 200)
-        self.assertEqual(b"".join(descarga.streaming_content), b"resultado")
+        self.assertEqual(b"".join(descarga.streaming_content), b"%PDF-1.4 resultado")
 
     def test_no_expone_el_archivo_por_media_uploads(self):
         r = self.client.post(
             "/api/archivos/",
-            {"archivo": self._archivo(contenido=b"privado"), "institucion": self.inst.id},
+            {"archivo": self._archivo(contenido=b"%PDF-1.4 privado"), "institucion": self.inst.id},
             format="multipart",
         )
         self.assertEqual(r.status_code, 201, r.data)
@@ -405,7 +507,7 @@ class SubirArchivoTest(APITestCase):
     def test_no_descarga_archivo_de_otra_institucion(self):
         r = self.client.post(
             "/api/archivos/",
-            {"archivo": self._archivo(contenido=b"norte"), "institucion": self.inst.id},
+            {"archivo": self._archivo(contenido=b"%PDF-1.4 norte"), "institucion": self.inst.id},
             format="multipart",
         )
         self.assertEqual(r.status_code, 201, r.data)

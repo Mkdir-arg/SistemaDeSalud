@@ -60,12 +60,17 @@ class NodoSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"grupos": "Todos los grupos del nodo deben pertenecer a la institucion del flujo."}
                 )
+            inactivos = [g.id for g in grupos if not g.activo or not g.area.activa]
+            if inactivos:
+                raise serializers.ValidationError(
+                    {"grupos": "Todos los grupos del nodo deben estar activos."}
+                )
         return attrs
 
     def get_grupos_detalle(self, obj) -> list[dict]:
         return [
             {"id": g.id, "nombre": g.nombre, "area": g.area_id, "area_nombre": g.area.nombre}
-            for g in obj.grupos.all()
+            for g in obj.grupos.filter(activo=True, area__activa=True)
         ]
 
 

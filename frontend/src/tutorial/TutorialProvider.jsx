@@ -1,170 +1,22 @@
-﻿import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Button } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
 
-const TutorialContext = createContext(null);
-const ESCUELA_NOMBRE = "Hospital Escuela Cauce";
-const ESCUELA_TAG = "[escuela-cauce]";
+import { Cancelado, crearActor } from "./actor";
+import {
+  ESCUELA_NOMBRE, YA_HECHO, escuelaTieneDatos, institucionEscuela, resetearEscuela, sembrar,
+} from "./escenario";
+import { DEMO_STEPS } from "./pasos";
 
-const DEMO_STEPS = [
-  {
-    route: "/inicio",
-    target: '[data-tour="inicio-institucion"]',
-    prepare: "institucion",
-    title: "Modo escuela: sistema desde cero",
-    body: "Creamos una institucion de capacitacion separada: Hospital Escuela Cauce. La vamos a poblar paso a paso, como si estuvieras implementando el sistema desde el primer dia.",
-    actions: ["Crear Hospital Escuela Cauce", "Entrar al contexto de capacitacion", "Preparar el recorrido guiado"],
-  },
-  {
-    route: "/estructura",
-    target: '[data-tour="menu-estructura"]',
-    actorTarget: '[data-tour="estructura-nueva-area"], [data-tour="estructura-nueva-area-vacia"]',
-    actorScript: "area",
-    prepare: "areas",
-    title: "Estructura organizativa",
-    body: "Primero cargamos las areas reales de trabajo: Guardia, Laboratorio, Imagenes, Internacion y Farmacia. Sin estructura no hay roles, colas ni circuitos operables.",
-    actions: ["Tocar Nueva area", "Escribir Guardia escuela", "Guardar area Guardia", "Repetir con Laboratorio e Imagenes", "Repetir con Internacion y Farmacia"],
-    demoFormTitle: "Nueva area",
-    demoSubmitLabel: "Guardar area",
-    demoEntries: [
-      ["Area", "Guardia escuela"],
-      ["Area", "Laboratorio escuela"],
-      ["Area", "Imagenes escuela"],
-      ["Area", "Internacion escuela"],
-      ["Area", "Farmacia escuela"],
-    ],
-  },
-  {
-    route: "/administracion",
-    target: '[data-tour="menu-administracion"]',
-    prepare: "usuarios",
-    title: "Usuarios y accesos",
-    body: "Ahora creamos usuarios de entrenamiento y les asignamos roles: administrativo, enfermeria, medico y jefe de area. Cada rol habilita una parte distinta del sistema.",
-    actions: ["Crear usuarios escuela", "Asignar roles por institucion", "Acotar permisos al area Guardia", "Crear grupos de Admision, Triage y Medicos"],
-    demoFormTitle: "Nuevo usuario",
-    demoSubmitLabel: "Cargar usuario",
-    demoEntries: [
-      ["Usuario", "escuela.adm@cauce.local"],
-      ["Rol", "Administrativo en Guardia"],
-      ["Usuario", "escuela.enf@cauce.local"],
-      ["Rol", "Enfermeria en Guardia"],
-      ["Usuario", "escuela.med@cauce.local"],
-      ["Rol", "Medico en Guardia"],
-    ],
-  },
-  {
-    route: "/flujos",
-    target: '[data-tour="menu-flujos"]',
-    prepare: "flujo",
-    title: "Diseno de procesos",
-    body: "Construimos un flujo de guardia publicable: admision administrativa, triage, espera de fila, atencion medica y cierre. Es simple, pero ya usa responsabilidades reales.",
-    actions: ["Crear flujo Guardia escuela", "Agregar nodos de admision y triage", "Conectar sala de espera y atencion", "Publicar version v1"],
-    demoEntries: [
-      ["Flujo", "Guardia escuela"],
-      ["Nodo", "Admision administrativa"],
-      ["Nodo", "Triage de enfermeria"],
-      ["Nodo", "Atencion medica"],
-      ["Version", "Publicada v1"],
-    ],
-  },
-  {
-    route: "/formularios",
-    target: '[data-tour="menu-formularios"]',
-    prepare: "formularios",
-    title: "Formularios clinicos y operativos",
-    body: "El escenario crea formularios para admision y triage: motivo de consulta, cobertura, dolor, temperatura, presion y prioridad.",
-    actions: ["Crear formulario de admision", "Agregar motivo y cobertura", "Crear formulario de triage", "Agregar dolor, temperatura y prioridad"],
-    demoEntries: [
-      ["Formulario", "Admision escuela"],
-      ["Campo", "Motivo de consulta"],
-      ["Campo", "Cobertura"],
-      ["Formulario", "Triage escuela"],
-      ["Campo", "Prioridad"],
-    ],
-  },
-  {
-    route: "/agenda",
-    target: '[data-tour="menu-agenda"]',
-    prepare: "agenda",
-    title: "Turnos programados",
-    body: "Despues cargamos una agenda de consultorio, horarios semanales y turnos de ejemplo. Al registrar llegada, esa agenda abre el flujo de guardia.",
-    actions: ["Crear agenda Consultorio escuela", "Asignar profesional y flujo", "Cargar franja de atencion", "Reservar un turno de ejemplo"],
-    demoEntries: [
-      ["Agenda", "Consultorio escuela"],
-      ["Profesional", "Santiago Vera"],
-      ["Horario", "08:00 a 12:00"],
-      ["Turno", "Ana Escuela"],
-    ],
-  },
-  {
-    route: "/inicio",
-    target: '[data-tour="inicio-operar"]',
-    prepare: "casos",
-    title: "Mi trabajo",
-    body: "Ahora generamos pacientes y casos de practica. La pantalla de trabajo deja de estar vacia: hay tareas reales para admitir, hacer triage y atender.",
-    actions: ["Crear pacientes de practica", "Abrir un caso de guardia", "Iniciar el recorrido del caso", "Dejar tareas listas para operar"],
-    demoEntries: [
-      ["Paciente", "Ana Escuela"],
-      ["Paciente", "Luis Simulado"],
-      ["Caso", "Guardia escuela"],
-      ["Paso actual", "Admision administrativa"],
-    ],
-  },
-  {
-    route: "/internacion",
-    target: '[data-tour="menu-internacion"]',
-    title: "Internacion",
-    body: "Internacion muestra camas, estadias y disponibilidad. Sirve para seguir ocupacion y movimientos del paciente dentro del hospital.",
-  },
-  {
-    route: "/farmacia",
-    target: '[data-tour="menu-farmacia"]',
-    title: "Farmacia e insumos",
-    body: "Farmacia permite consultar stock, lotes, depositos, pedidos y movimientos. Es el modulo operativo de insumos.",
-  },
-  {
-    route: "/red",
-    target: '[data-tour="menu-red"]',
-    title: "Red y traslados",
-    body: "Red coordina traslados entre establecimientos: solicitud, respuesta, viaje, recepcion y seguimiento de demoras.",
-  },
-  {
-    route: "/historia",
-    target: '[data-tour="menu-historia"]',
-    title: "Historia clinica",
-    body: "Aca se busca el paciente y se consulta su historia: atenciones, estudios, recetas y eventos clinicos registrados.",
-  },
-  {
-    route: "/legajo",
-    target: '[data-tour="menu-legajo"]',
-    title: "Legajo profesional",
-    body: "El legajo concentra la informacion profesional del usuario y su trazabilidad dentro de la institucion.",
-  },
-  {
-    route: "/dashboard",
-    target: '[data-tour="menu-dashboard"]',
-    title: "Tablero",
-    body: "El tablero es para jefatura y administracion: volumen de casos, demoras, ausentismo de turnos, saturacion y salud de procesos.",
-  },
-  {
-    route: "/supervision",
-    target: '[data-tour="menu-supervision"]',
-    title: "Supervision",
-    body: "Supervision permite mirar el trabajo del area, detectar demoras y ordenar la operacion sin entrar caso por caso.",
-  },
-  {
-    route: "/accesos",
-    target: '[data-tour="menu-accesos"]',
-    title: "Auditoria",
-    body: "El registro de accesos muestra quien consulto datos clinicos. Es la contracara necesaria de una historia clinica seria.",
-  },
-];
+const TutorialContext = createContext(null);
+
+/** Cuánto se queda en una pantalla que no tiene nada que actuar. */
+const ESPERA_LECTURA = 4200;
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -179,262 +31,13 @@ function textoNarracion(step, error) {
   return `${step?.title || "Recorrido guiado"}. ${step?.body || ""}`;
 }
 
-const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-async function lista(recurso, params = {}) {
-  const qs = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") qs.set(k, v);
-  });
-  const d = await api.get(`/${recurso}/${qs.toString() ? `?${qs}` : ""}`);
-  return d.results || d;
-}
-
-async function primero(recurso, params) {
-  return (await lista(recurso, { ...params, page_size: 50 }))[0] || null;
-}
-
-async function crearSiFalta(recurso, buscarParams, payload) {
-  const existe = await primero(recurso, buscarParams);
-  if (existe) return existe;
-  return api.post(`/${recurso}/`, payload);
-}
-
-async function crearPorCampoExacto(recurso, params, campo, valor, payload) {
-  const existentes = await lista(recurso, { ...params, page_size: 200 });
-  const existe = existentes.find((x) => String(x[campo] || "").toLowerCase() === String(valor).toLowerCase());
-  if (existe) return existe;
-  return api.post(`/${recurso}/`, payload);
-}
-
-async function contextoEscuela() {
-  const inst = await crearSiFalta(
-    "instituciones",
-    { search: ESCUELA_NOMBRE },
-    {
-      nombre: ESCUELA_NOMBRE,
-      tipo: "Hospital general de capacitacion",
-      cuit: "30-00000000-7",
-      estado: "en_alta",
-    },
-  );
-  return { inst };
-}
-
-async function prepararAreas(ctx) {
-  const area = async (nombre, responsable, descripcion = "") =>
-    crearPorCampoExacto("areas", { institucion: ctx.inst.id }, "nombre", nombre, {
-      institucion: ctx.inst.id,
-      nombre,
-      responsable,
-      descripcion: `${ESCUELA_TAG} ${descripcion}`.trim(),
-      activa: true,
-    });
-
-  const guardia = await area("Guardia escuela", "Jefatura de guardia", "Puerta de entrada de urgencias y demanda espontanea.");
-  const laboratorio = await area("Laboratorio escuela", "Bioquimica de guardia", "Procesa estudios solicitados desde guardia.");
-  const imagenes = await area("Imagenes escuela", "Diagnostico por imagenes", "Radiologia y ecografia de entrenamiento.");
-  const internacion = await area("Internacion escuela", "Coordinacion de camas", "Camas para observar el pase desde guardia.");
-  const farmacia = await area("Farmacia escuela", "Deposito central", "Stock inicial para capacitacion.");
-  return { ...ctx, areas: { guardia, laboratorio, imagenes, internacion, farmacia } };
-}
-
-async function prepararUsuarios(ctx) {
-  const usuario = async (email, nombre, apellido) =>
-    crearPorCampoExacto("usuarios", { search: email }, "email", email, {
-      email, nombre, apellido, password: "demo1234", is_active: true,
-    });
-  const membresia = async (u, rol, areas = []) => {
-    const m = await primero("membresias", { usuario: u.id, institucion: ctx.inst.id, rol });
-    if (m) return m;
-    return api.post("/membresias/", {
-      usuario: u.id,
-      institucion: ctx.inst.id,
-      rol,
-      areas: areas.map((a) => a.id),
-      activo: true,
-    });
-  };
-
-  const jefe = await usuario("escuela.jefe@cauce.local", "Julia", "Molina");
-  const adm = await usuario("escuela.adm@cauce.local", "Rafael", "Paz");
-  const enf = await usuario("escuela.enf@cauce.local", "Camila", "Rojas");
-  const med = await usuario("escuela.med@cauce.local", "Santiago", "Vera");
-  await membresia(jefe, "jefe_area", [ctx.areas.guardia]);
-  await membresia(adm, "administrativo", [ctx.areas.guardia]);
-  await membresia(enf, "enfermeria", [ctx.areas.guardia]);
-  await membresia(med, "medico", [ctx.areas.guardia]);
-
-  const grupo = async (nombre, descripcion, miembros) =>
-    crearPorCampoExacto("grupos", { area: ctx.areas.guardia.id }, "nombre", nombre, {
-      area: ctx.areas.guardia.id,
-      nombre,
-      descripcion: `${ESCUELA_TAG} ${descripcion}`,
-      miembros: miembros.map((u) => u.id),
-      activo: true,
-    });
-  const admision = await grupo("Admision escuela", "Mostrador de ingreso de pacientes.", [adm]);
-  const triage = await grupo("Triage escuela", "Enfermeria que clasifica prioridad.", [enf]);
-  const medicos = await grupo("Medicos guardia escuela", "Profesionales que firman atenciones.", [med]);
-  return { ...ctx, usuarios: { jefe, adm, enf, med }, grupos: { admision, triage, medicos } };
-}
-
-async function prepararFormularios(ctx) {
-  const formulario = async (titulo, descripcion) =>
-    crearPorCampoExacto("formularios", { institucion: ctx.inst.id, area: ctx.areas.guardia.id }, "titulo", titulo, {
-      institucion: ctx.inst.id,
-      area: ctx.areas.guardia.id,
-      titulo,
-      descripcion: `${ESCUELA_TAG} ${descripcion}`,
-    });
-  const campo = async (form, label, tipo, orden, extra = {}) =>
-    (await lista("campos", { formulario: form.id, page_size: 100 })).find((c) => c.label === label)
-    || api.post("/campos/", {
-      formulario: form.id,
-      label,
-      tipo,
-      orden,
-      requerido: true,
-      ...extra,
-    });
-
-  const admision = await formulario("Admision escuela", "Datos minimos de ingreso.");
-  await campo(admision, "Motivo de consulta", "texto_largo", 1);
-  await campo(admision, "Cobertura", "seleccion_unica", 2, { opciones: ["Publica", "Obra social", "Prepaga"] });
-  const triage = await formulario("Triage escuela", "Clasificacion inicial de enfermeria.");
-  await campo(triage, "Dolor", "seleccion_unica", 1, { opciones: ["Leve", "Moderado", "Severo"] });
-  // Temperatura es un NÚMERO con rango: es el campo que la escuela usa para
-  // mostrar por qué el tipo importa —una Decisión «> 38» sobre texto libre no
-  // compara nada y manda al paciente febril por el circuito del que no tiene fiebre.
-  await campo(triage, "Temperatura", "numero", 2, { unidad: "°C", minimo: 30, maximo: 45 });
-  await campo(triage, "Prioridad", "seleccion_unica", 3, { opciones: ["Baja", "Media", "Alta", "Urgente"] });
-  return { ...ctx, formularios: { admision, triage } };
-}
-
-async function prepararFlujo(ctx) {
-  ctx = await prepararFormularios(ctx);
-  const flujo = await crearPorCampoExacto("flujos", { institucion: ctx.inst.id, area: ctx.areas.guardia.id }, "titulo", "Guardia escuela", {
-    institucion: ctx.inst.id,
-    area: ctx.areas.guardia.id,
-    titulo: "Guardia escuela",
-    descripcion: `${ESCUELA_TAG} Flujo base de capacitacion: admision, triage, fila medica y cierre.`,
-  });
-  let version = await primero("versiones-flujo", { flujo: flujo.id });
-  if (!version) version = await api.post("/versiones-flujo/", { flujo: flujo.id, numero: 1, nota: ESCUELA_TAG });
-  if (version.estado !== "borrador") return { ...ctx, flujo, version };
-
-  const nodosExistentes = await lista("nodos", { version: version.id, page_size: 100 });
-  const porTitulo = new Map(nodosExistentes.map((n) => [n.titulo, n]));
-  const nodo = async (titulo, tipo, x, y, payload = {}) => {
-    if (porTitulo.has(titulo)) return porTitulo.get(titulo);
-    const n = await api.post("/nodos/", { version: version.id, titulo, tipo, x, y, ...payload });
-    porTitulo.set(titulo, n);
-    return n;
-  };
-  const inicio = await nodo("Ingreso", "inicio", 80, 260, { config: { origen: "ambos" } });
-  const admision = await nodo("Admision administrativa", "form", 300, 260, {
-    formulario: ctx.formularios.admision.id,
-    grupos: [ctx.grupos.admision.id],
-  });
-  const triage = await nodo("Triage de enfermeria", "form", 540, 260, {
-    formulario: ctx.formularios.triage.id,
-    grupos: [ctx.grupos.triage.id],
-  });
-  const espera = await nodo("Sala de espera", "espera", 780, 260, { config: { con_fila: true } });
-  const atencion = await nodo("Atencion medica", "atencion", 1020, 260, {
-    grupos: [ctx.grupos.medicos.id],
-    config: { con_fila: true, plantilla: "Evaluacion clinica, conducta y cierre." },
-  });
-  const fin = await nodo("Alta / cierre", "fin", 1260, 260);
-
-  const conexiones = await lista("conexiones", { version: version.id, page_size: 100 });
-  const ya = new Set(conexiones.map((c) => `${c.origen}-${c.destino}`));
-  const conectar = async (origen, destino, etiqueta = "") => {
-    const k = `${origen.id}-${destino.id}`;
-    if (ya.has(k)) return;
-    await api.post("/conexiones/", { version: version.id, origen: origen.id, destino: destino.id, etiqueta, condicion: {} });
-    ya.add(k);
-  };
-  await conectar(inicio, admision);
-  await conectar(admision, triage);
-  await conectar(triage, espera);
-  await conectar(espera, atencion);
-  await conectar(atencion, fin);
-  version = await api.post(`/versiones-flujo/${version.id}/publicar/`);
-  return { ...ctx, flujo, version };
-}
-
-async function prepararAgenda(ctx) {
-  ctx = await prepararFlujo(ctx);
-  const agenda = await crearPorCampoExacto("agendas", { institucion: ctx.inst.id, area: ctx.areas.guardia.id }, "nombre", "Consultorio escuela", {
-    institucion: ctx.inst.id,
-    area: ctx.areas.guardia.id,
-    tipo: "profesional",
-    nombre: "Consultorio escuela",
-    profesional: ctx.usuarios.med.id,
-    flujo: ctx.flujo.id,
-    duracion_min: 20,
-    sobreturnos_max: 2,
-    activa: true,
-  });
-  const manana = new Date();
-  manana.setDate(manana.getDate() + 1);
-  const diaSemana = (manana.getDay() + 6) % 7;
-  const disp = await primero("disponibilidades", { agenda: agenda.id, dia_semana: diaSemana });
-  if (!disp) {
-    await api.post("/disponibilidades/", { agenda: agenda.id, dia_semana: diaSemana, desde: "08:00", hasta: "12:00" });
-  }
-  return { ...ctx, agenda, manana };
-}
-
-async function prepararCasos(ctx) {
-  ctx = await prepararAgenda(ctx);
-  const paciente = async (nombre, apellido, documento) =>
-    crearPorCampoExacto("ciudadanos", { institucion: ctx.inst.id, search: documento }, "documento", documento, {
-      institucion: ctx.inst.id,
-      nombre,
-      apellido,
-      documento,
-      obra_social: "Publica",
-      domicilio: "Escenario de capacitacion",
-    });
-  const ana = await paciente("Ana", "Escuela", "90000001");
-  const luis = await paciente("Luis", "Simulado", "90000002");
-  const fecha = ctx.manana.toISOString().slice(0, 10);
-  const inicio = `${fecha}T08:00:00`;
-  const turnoExistente = await primero("turnos", { agenda: ctx.agenda.id, ciudadano: ana.id, desde: fecha, hasta: fecha });
-  if (!turnoExistente) {
-    await api.post("/turnos/", { agenda: ctx.agenda.id, ciudadano: ana.id, inicio, motivo: "Control post guardia" });
-  }
-  const casoExistente = await primero("casos", { institucion: ctx.inst.id, ciudadano: luis.id });
-  if (!casoExistente && ctx.version?.estado === "publicada") {
-    const caso = await api.post("/casos/", {
-      institucion: ctx.inst.id,
-      version: ctx.version.id,
-      ciudadano: luis.id,
-      area_actual: ctx.areas.guardia.id,
-      prioridad: "normal",
-    });
-    await api.post(`/casos/${caso.id}/iniciar/`);
-  }
-  return { ...ctx, pacientes: { ana, luis } };
-}
-
-async function prepararEscuela(nombre) {
-  let ctx = await contextoEscuela();
-  if (["areas", "usuarios", "formularios", "flujo", "agenda", "casos"].includes(nombre)) {
-    ctx = await prepararAreas(ctx);
-  }
-  if (["usuarios", "formularios", "flujo", "agenda", "casos"].includes(nombre)) {
-    ctx = await prepararUsuarios(ctx);
-  }
-  if (nombre === "formularios") return prepararFormularios(ctx);
-  if (nombre === "flujo") return prepararFlujo(ctx);
-  if (nombre === "agenda") return prepararAgenda(ctx);
-  if (nombre === "casos") return prepararCasos(ctx);
-  return ctx;
-}
-
+/**
+ * El rectángulo del elemento que el recorrido está señalando.
+ *
+ * Sólo se usa en los pasos de sólo mirar. Mientras el actor trabaja, el foco lo
+ * marca el cursor sobre el control que está tocando, y un recuadro fijo en el
+ * menú lateral competía con él.
+ */
 function useTarget(selector, activo, pathname) {
   const [rect, setRect] = useState(null);
 
@@ -471,88 +74,60 @@ function useTarget(selector, activo, pathname) {
   return rect;
 }
 
-function setInputValue(input, value) {
-  if (!input) return;
-  const setter = Object.getOwnPropertyDescriptor(input.constructor.prototype, "value")?.set;
-  setter?.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-async function ejecutarActorScript(script, step) {
-  if (script !== "area") return;
-  const yaExiste = document.body.textContent?.includes("Guardia escuela");
-  const botonNuevo = document.querySelector(step.actorTarget);
-  botonNuevo?.click();
-  await sleep(550);
-
-  const modal = document.querySelector('[role="dialog"], [aria-modal="true"]') || document.body;
-  const inputNombre = modal.querySelector("input");
-  setInputValue(inputNombre, "Guardia escuela");
-  await sleep(650);
-
-  const botones = Array.from(modal.querySelectorAll("button"));
-  const guardar = botones.find((b) => /guardar/i.test(b.textContent || ""));
-  const cancelar = botones.find((b) => /cancelar/i.test(b.textContent || ""));
-  (yaExiste ? cancelar : guardar)?.click();
-  await sleep(900);
-}
-
 export function TutorialProvider({ children }) {
   const { user } = useAuth();
   const { institucion, setInstitucion, setVista } = useInstitucion();
   const navigate = useNavigate();
   const location = useLocation();
+
   const [activo, setActivo] = useState(false);
+  const [arranque, setArranque] = useState(null); // null | "preguntando" | "preparando"
   const [paso, setPaso] = useState(0);
+  // Sube para volver a lanzar el motor sobre el MISMO paso (retomar el control).
+  const [intento, setIntento] = useState(0);
   const [errorDemo, setErrorDemo] = useState("");
-  const [preparando, setPreparando] = useState("");
-  const [accionesDemo, setAccionesDemo] = useState([]);
-  const [accionActiva, setAccionActiva] = useState(-1);
+  const [estado, setEstado] = useState("mirando"); // mirando | actuando | sembrando | saltado | listo
+  const [accionActual, setAccionActual] = useState("");
+  const [noActuadas, setNoActuadas] = useState(0);
+  const [modo, setModo] = useState("actuado"); // actuado | rapido
+  const [velocidad, setVelocidad] = useState(1);
+  const [autoAvance, setAutoAvance] = useState(true);
   const [cursorDemo, setCursorDemo] = useState({ visible: false, x: 28, y: 28, click: false });
   const [vozActiva, setVozActiva] = useState(false);
   const [vozPausada, setVozPausada] = useState(false);
-  const [autoAvance, setAutoAvance] = useState(true);
-  const clicksDemo = useRef({ n: 0, timer: 0 });
-  const preparados = useRef(new Set());
+  const [tomoElControl, setTomoElControl] = useState(false);
+
   const step = DEMO_STEPS[paso];
-  const targetRect = useTarget(step?.target, activo, location.pathname);
-  const actorRect = useTarget(step?.actorTarget, activo && Boolean(step?.actorTarget), location.pathname);
-  const rect = preparando && actorRect ? actorRect : targetRect;
+  const actuando = estado === "actuando" || estado === "sembrando";
+  const targetRect = useTarget(step?.target, activo && !actuando, location.pathname);
 
-  useEffect(() => {
-    if (!activo || !rect) return;
-    setCursorDemo((c) => ({
-      ...c,
-      visible: true,
-      x: rect.left + Math.min(rect.width - 10, Math.max(14, rect.width * 0.42)),
-      y: rect.top + Math.min(rect.height - 8, Math.max(14, rect.height * 0.55)),
-      click: false,
-    }));
-    const t = window.setTimeout(() => {
-      setCursorDemo((c) => ({ ...c, click: true }));
-      window.setTimeout(() => setCursorDemo((c) => ({ ...c, click: false })), 260);
-    }, 620);
-    return () => window.clearTimeout(t);
-  }, [activo, rect, paso]);
+  // Refs porque el actor corre dentro de un async que no se vuelve a crear en
+  // cada render: leer el state directo le daría el valor del render en que
+  // arrancó, y «pausar» no pausaría nada.
+  const corrida = useRef(0);
+  const pausadoRef = useRef(false);
+  const velocidadRef = useRef(1);
+  const saltearRef = useRef(false);
+  const clicksDemo = useRef({ n: 0, timer: 0 });
+  const hechos = useRef(new Set());
 
+  useEffect(() => { pausadoRef.current = !autoAvance; }, [autoAvance]);
+  useEffect(() => { velocidadRef.current = velocidad; }, [velocidad]);
+
+  // ----------------------------------------------------------------------- //
+  // Narración
+  // ----------------------------------------------------------------------- //
   const narrar = useCallback((texto) => {
     if (!puedeNarrar()) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
     u.lang = "es-AR";
     u.rate = 0.95;
-    u.pitch = 1;
     u.onend = () => setVozPausada(false);
     u.onerror = () => setVozPausada(false);
     window.speechSynthesis.speak(u);
     setVozPausada(false);
   }, []);
-
-  useEffect(() => {
-    if (!activo || !step?.route || location.pathname === step.route) return;
-    navigate(step.route);
-  }, [activo, step, location.pathname, navigate]);
 
   useEffect(() => {
     if (!activo || !vozActiva) return;
@@ -565,65 +140,288 @@ export function TutorialProvider({ children }) {
     setVozPausada(false);
   }, [activo]);
 
-  async function iniciarDemo() {
-    if (!user?.is_superuser) return;
-    setErrorDemo("");
-    setPreparando("Creando institucion escuela...");
-    try {
-      const ctx = await contextoEscuela();
-      setInstitucion(ctx.inst);
-      setVista?.("sistema");
-      preparados.current = new Set(["institucion"]);
-      setPaso(0);
-      setActivo(true);
-      navigate("/inicio");
-    } catch {
-      setErrorDemo("No pude preparar el modo escuela. Revisemos que el backend este levantado y que el usuario sea super admin.");
-      setActivo(true);
-      setPaso(0);
-    } finally {
-      setPreparando("");
-    }
-  }
+  // ----------------------------------------------------------------------- //
+  // El cursor de demo
+  // ----------------------------------------------------------------------- //
+  const mover = useCallback((x, y, click) => {
+    setCursorDemo((c) => ({
+      visible: true,
+      x: x == null ? c.x : clamp(x, 8, window.innerWidth - 24),
+      y: y == null ? c.y : clamp(y, 8, window.innerHeight - 24),
+      click: !!click,
+    }));
+    if (click) window.setTimeout(() => setCursorDemo((c) => ({ ...c, click: false })), 420);
+  }, []);
 
+  // En los pasos de sólo mirar el cursor acompaña al recuadro, como antes.
   useEffect(() => {
-    if (!activo || !step?.prepare || preparados.current.has(step.prepare)) return;
-    let cancelado = false;
-    (async () => {
-      setPreparando(`Preparando: ${step.title}`);
-      setAccionesDemo(step.actions || []);
-      setAccionActiva(-1);
-      try {
-        for (let i = 0; i < (step.actions || []).length; i += 1) {
-          if (cancelado) return;
-          setAccionActiva(i);
-          setCursorDemo((c) => ({ ...c, click: true }));
-          await sleep(260);
-          setCursorDemo((c) => ({ ...c, click: false }));
-          if (i === 0 && step.actorScript) {
-            await ejecutarActorScript(step.actorScript, step);
-          }
-          await sleep(520);
-        }
-        const ctx = await prepararEscuela(step.prepare);
-        if (cancelado) return;
-        if (ctx?.inst) setInstitucion(ctx.inst);
-        preparados.current.add(step.prepare);
-        setErrorDemo("");
-      } catch (e) {
-        if (!cancelado) {
-          setErrorDemo(`No pude preparar este paso: ${e?.message || "error inesperado"}`);
-        }
-      } finally {
-        if (!cancelado) {
-          setPreparando("");
-          setAccionActiva((step.actions || []).length);
+    if (!activo || actuando || !targetRect) return undefined;
+    const r = targetRect;
+    mover(r.left + Math.min(r.width - 10, Math.max(14, r.width * 0.42)), r.top + r.height * 0.55, false);
+    const t = window.setTimeout(() => mover(null, null, true), 620);
+    return () => window.clearTimeout(t);
+  }, [activo, actuando, targetRect, mover]);
+
+  // ----------------------------------------------------------------------- //
+  // Arranque
+  // ----------------------------------------------------------------------- //
+  const cancelar = useCallback(() => { corrida.current += 1; }, []);
+
+  const cerrar = useCallback(() => {
+    cancelar();
+    if (puedeNarrar()) window.speechSynthesis.cancel();
+    setVozActiva(false);
+    setVozPausada(false);
+    setActivo(false);
+    setArranque(null);
+    setErrorDemo("");
+    setTomoElControl(false);
+    setCursorDemo((c) => ({ ...c, visible: false }));
+  }, [cancelar]);
+
+  /**
+   * Arranca el recorrido.
+   *
+   * `desdeCero` vacía la institución escuela. Es un borrado en cascada, así que
+   * nunca se decide acá: lo elige quien mira la demo, en el diálogo de arranque.
+   */
+  const empezar = useCallback(async ({ desdeCero }) => {
+    cancelar();
+    setArranque("preparando");
+    setActivo(true);
+    setErrorDemo("");
+    hechos.current = new Set();
+    saltearRef.current = !desdeCero;
+    try {
+      if (desdeCero) {
+        await resetearEscuela();
+        saltearRef.current = false;
+      } else {
+        // Continuando sobre una escuela ya cargada, el primer paso se saltea; sin
+        // entrar acá al contexto, los pasos que siguen actuarían sobre la
+        // institución en la que estaba parado el super admin.
+        const inst = await institucionEscuela();
+        if (inst) {
+          setInstitucion(inst);
+          setVista?.("sistema");
         }
       }
-    })();
-    return () => { cancelado = true; };
-  }, [activo, paso, step, setInstitucion]);
+      setPaso(0);
+      setIntento((n) => n + 1);
+      setEstado("mirando");
+      setAccionActual("");
+      setNoActuadas(0);
+      setAutoAvance(true);
+      pausadoRef.current = false;
+    } catch (e) {
+      setErrorDemo(`No pude preparar el modo escuela: ${e?.message || "error inesperado"}`);
+    } finally {
+      setArranque(null);
+    }
+  }, [cancelar, setInstitucion, setVista]);
 
+  /** Abre el recorrido. Si la escuela ya tiene datos, pregunta antes de borrar. */
+  const iniciarDemo = useCallback(async () => {
+    if (!user?.is_superuser) return;
+    setErrorDemo("");
+    setTomoElControl(false);
+    try {
+      if (await escuelaTieneDatos()) {
+        setArranque("preguntando");
+        setActivo(true);
+        return;
+      }
+    } catch {
+      // Si no se puede ni consultar, que lo diga el primer paso y no el arranque.
+    }
+    empezar({ desdeCero: false });
+  }, [user, empezar]);
+
+  // ----------------------------------------------------------------------- //
+  // Navegación entre pasos
+  // ----------------------------------------------------------------------- //
+  useEffect(() => {
+    // En los pasos actuados la ruta la maneja el guion: navegar acá le pisaría
+    // la pantalla al actor en medio de un formulario.
+    if (!activo || arranque || step?.guion) return;
+    if (!step?.route || location.pathname === step.route) return;
+    navigate(step.route);
+  }, [activo, arranque, step, location.pathname, navigate]);
+
+  const avanzar = useCallback(() => {
+    cancelar();
+    setPaso((p) => {
+      if (p >= DEMO_STEPS.length - 1) {
+        cerrar();
+        return p;
+      }
+      return p + 1;
+    });
+  }, [cancelar, cerrar]);
+
+  const volver = useCallback(() => {
+    cancelar();
+    setPaso((p) => Math.max(0, p - 1));
+  }, [cancelar]);
+
+  // ----------------------------------------------------------------------- //
+  // El motor: ejecuta el guion del paso, o lo siembra si el modo es rápido
+  // ----------------------------------------------------------------------- //
+  const salirAlDirectorio = useCallback(async () => {
+    setInstitucion(null);
+    navigate("/");
+  }, [setInstitucion, navigate]);
+
+  const entrarAEscuela = useCallback(async () => {
+    const inst = await institucionEscuela();
+    if (!inst) return false;
+    setInstitucion(inst);
+    setVista?.("sistema");
+    navigate("/inicio");
+    return true;
+  }, [setInstitucion, setVista, navigate]);
+
+  useEffect(() => {
+    if (!activo || arranque || errorDemo) return undefined;
+    if (!step) return undefined;
+
+    const mia = corrida.current + 1;
+    corrida.current = mia;
+    let vivo = true;
+
+    const ctl = {
+      vigente: () => vivo && corrida.current === mia,
+      pausado: () => pausadoRef.current,
+      velocidad: () => velocidadRef.current,
+      mover,
+      contar: setAccionActual,
+      navegar: navigate,
+      salirAlDirectorio,
+      entrarAEscuela,
+    };
+    const actor = crearActor(ctl);
+
+    (async () => {
+      try {
+        // --- paso de sólo mirar -----------------------------------------
+        if (!step.guion) {
+          setEstado("mirando");
+          setAccionActual("");
+          await actor.pausa(ESPERA_LECTURA);
+          if (ctl.vigente() && !pausadoRef.current) avanzar();
+          return;
+        }
+
+        // --- ya estaba hecho: se muestra, no se vuelve a cargar ----------
+        if (saltearRef.current && !hechos.current.has(step.prepare)) {
+          const inst = await institucionEscuela();
+          // Sin institución no hay nada hecho. Consultar igual sería peor que no
+          // consultar: `?institucion=` vacío no filtra, y el primer área de
+          // cualquier hospital daría el paso por cargado.
+          const yaEsta = (inst || step.prepare === "institucion")
+            && YA_HECHO[step.prepare]
+            && await YA_HECHO[step.prepare](inst || {});
+          if (!ctl.vigente()) return;
+          if (yaEsta) {
+            hechos.current.add(step.prepare);
+            setEstado("saltado");
+            setAccionActual("Esto ya estaba cargado: lo dejamos como está");
+            if (step.route && window.location.pathname !== step.route) navigate(step.route);
+            await actor.pausa(ESPERA_LECTURA);
+            if (ctl.vigente() && !pausadoRef.current) avanzar();
+            return;
+          }
+        }
+
+        // --- modo rápido: los datos sin la actuación ---------------------
+        if (modo === "rapido") {
+          setEstado("sembrando");
+          setAccionActual("Cargando el escenario por sistema");
+          const ctx = await sembrar(step.prepare);
+          if (!ctl.vigente()) return;
+          if (ctx?.inst) setInstitucion(ctx.inst);
+          hechos.current.add(step.prepare);
+          setEstado("listo");
+          await actor.pausa(1200);
+          if (ctl.vigente() && !pausadoRef.current) avanzar();
+          return;
+        }
+
+        // --- actuado ----------------------------------------------------
+        let fallidas = 0;
+        setNoActuadas(0);
+        for (const accion of step.guion) {
+          if (!ctl.vigente()) return;
+          if (accion.t === "sembrar") {
+            setEstado("sembrando");
+            setAccionActual(accion.decir || "Cargando el resto por sistema");
+            const ctx = await sembrar(step.prepare);
+            if (!ctl.vigente()) return;
+            if (ctx?.inst) setInstitucion(ctx.inst);
+            await actor.pausa(900);
+            continue;
+          }
+          setEstado("actuando");
+          const r = await actor.ejecutar(accion);
+          if (r === "no-actuado") fallidas += 1;
+          setNoActuadas(fallidas);
+        }
+
+        // La red: el sembrado se corre siempre al cerrar el paso. Es idempotente,
+        // así que sobre lo que el actor ya cargó no hace nada; y cuando una
+        // acción no encontró su botón, deja el paso completo igual. Un recorrido
+        // que se corta a la mitad y deja la institución a medio construir es
+        // peor que uno que avisa que tuvo que completar por sistema.
+        setEstado("sembrando");
+        if (fallidas) setAccionActual("Completamos por sistema lo que no se pudo actuar");
+        const ctx = await sembrar(step.prepare);
+        if (!ctl.vigente()) return;
+        if (ctx?.inst) setInstitucion(ctx.inst);
+        hechos.current.add(step.prepare);
+
+        setEstado("listo");
+        setAccionActual(fallidas ? `${fallidas} acción(es) se completaron por sistema` : "Paso terminado");
+        await actor.pausa(1100);
+        if (ctl.vigente() && !pausadoRef.current) avanzar();
+      } catch (e) {
+        if (e instanceof Cancelado || !ctl.vigente()) return;
+        setErrorDemo(`No pude completar este paso: ${e?.message || "error inesperado"}`);
+      }
+    })();
+
+    return () => { vivo = false; };
+    // `location.pathname` queda afuera a propósito: el guion navega, y volver a
+    // arrancar el motor en cada navegación reiniciaría el paso desde el principio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activo, arranque, errorDemo, paso, modo, intento]);
+
+  // ----------------------------------------------------------------------- //
+  // Si alguien toca la app, el actor suelta el volante
+  // ----------------------------------------------------------------------- //
+  useEffect(() => {
+    if (!activo || !actuando) return undefined;
+    const alTocar = (e) => {
+      // El actor llama a `el.click()`, que genera un evento no confiable y no
+      // dispara pointerdown: `isTrusted` separa limpio a la persona del actor.
+      if (!e.isTrusted) return;
+      if (e.target?.closest?.("[data-tour-panel]")) return;
+      cancelar();
+      setTomoElControl(true);
+      setAutoAvance(false);
+      setEstado("mirando");
+      setAccionActual("Tomaste el control");
+    };
+    document.addEventListener("pointerdown", alTocar, true);
+    document.addEventListener("keydown", alTocar, true);
+    return () => {
+      document.removeEventListener("pointerdown", alTocar, true);
+      document.removeEventListener("keydown", alTocar, true);
+    };
+  }, [activo, actuando, cancelar]);
+
+  // ----------------------------------------------------------------------- //
+  // Disparador: tres clics del super admin
+  // ----------------------------------------------------------------------- //
   useEffect(() => {
     function alClick(e) {
       if (!user?.is_superuser) return;
@@ -635,7 +433,6 @@ export function TutorialProvider({ children }) {
         iniciarDemo();
         return;
       }
-
       clicksDemo.current.n += 1;
       window.clearTimeout(clicksDemo.current.timer);
       if (clicksDemo.current.n >= 3) {
@@ -643,44 +440,14 @@ export function TutorialProvider({ children }) {
         iniciarDemo();
         return;
       }
-      clicksDemo.current.timer = window.setTimeout(() => {
-        clicksDemo.current.n = 0;
-      }, 2500);
+      clicksDemo.current.timer = window.setTimeout(() => { clicksDemo.current.n = 0; }, 2500);
     }
-
     document.addEventListener("click", alClick, true);
     return () => {
       document.removeEventListener("click", alClick, true);
       window.clearTimeout(clicksDemo.current.timer);
     };
-  }, [user, institucion]);
-
-  const value = useMemo(() => ({ iniciarDemo, activo }), [activo]);
-
-  const cerrar = () => {
-    if (puedeNarrar()) window.speechSynthesis.cancel();
-    setVozActiva(false);
-    setVozPausada(false);
-    setActivo(false);
-    setErrorDemo("");
-  };
-  const avanzar = () => {
-    if (paso >= DEMO_STEPS.length - 1) {
-      cerrar();
-      return;
-    }
-    setPaso((p) => p + 1);
-  };
-  const volver = () => setPaso((p) => Math.max(0, p - 1));
-  useEffect(() => {
-    if (!activo || errorDemo || preparando || !autoAvance) return undefined;
-    const espera = step?.prepare ? 2600 : 4200;
-    const t = window.setTimeout(() => {
-      if (paso >= DEMO_STEPS.length - 1) cerrar();
-      else setPaso((p) => p + 1);
-    }, espera);
-    return () => window.clearTimeout(t);
-  }, [activo, errorDemo, preparando, autoAvance, paso, step]);
+  }, [user, iniciarDemo]);
 
   const alternarVoz = () => {
     if (!puedeNarrar()) return;
@@ -693,6 +460,7 @@ export function TutorialProvider({ children }) {
     setVozActiva(true);
     narrar(textoNarracion(step, errorDemo));
   };
+
   const pausarVoz = () => {
     if (!puedeNarrar()) return;
     if (window.speechSynthesis.paused) {
@@ -704,92 +472,199 @@ export function TutorialProvider({ children }) {
     }
   };
 
+  const retomar = () => {
+    setTomoElControl(false);
+    setAutoAvance(true);
+    // Relanza el motor sobre el mismo paso, que reejecuta el guion desde el
+    // principio: es lo correcto, porque el formulario quedó a medio llenar.
+    corrida.current += 1;
+    setEstado("actuando");
+    setIntento((n) => n + 1);
+  };
+
+  const value = useMemo(() => ({ iniciarDemo, activo }), [iniciarDemo, activo]);
+
   return (
     <TutorialContext.Provider value={value}>
       {children}
-      {activo && (
+      {activo && arranque === "preguntando" && (
+        <DialogoArranque
+          onDesdeCero={() => empezar({ desdeCero: true })}
+          onContinuar={() => empezar({ desdeCero: false })}
+          onCerrar={cerrar}
+        />
+      )}
+      {activo && arranque !== "preguntando" && (
         <TutorialOverlay
           step={step}
-          rect={rect}
+          rect={actuando ? null : targetRect}
           paso={paso}
           total={DEMO_STEPS.length}
           error={errorDemo}
+          estado={arranque === "preparando" ? "preparando" : estado}
+          accion={accionActual}
+          noActuadas={noActuadas}
+          modo={modo}
+          velocidad={velocidad}
+          tomoElControl={tomoElControl}
           vozActiva={vozActiva}
           vozPausada={vozPausada}
           vozDisponible={puedeNarrar()}
-          preparando={preparando}
-          acciones={accionesDemo}
-          accionActiva={accionActiva}
-          autoAvance={autoAvance}
+          enMarcha={autoAvance}
           onCerrar={cerrar}
           onVolver={volver}
           onAvanzar={avanzar}
-          onToggleAuto={() => setAutoAvance((v) => !v)}
+          onPausar={() => setAutoAvance((v) => !v)}
+          onModo={() => setModo((m) => (m === "actuado" ? "rapido" : "actuado"))}
+          onVelocidad={() => setVelocidad((v) => (v === 1 ? 2 : 1))}
+          onRetomar={retomar}
           onAlternarVoz={alternarVoz}
           onPausarVoz={pausarVoz}
         />
       )}
-      {activo && <CursorDemo cursor={cursorDemo} />}
+      {activo && arranque !== "preguntando" && <CursorDemo cursor={cursorDemo} />}
     </TutorialContext.Provider>
   );
 }
 
+/**
+ * Lo primero que ve quien arranca el recorrido con la escuela ya cargada.
+ *
+ * El actor completa los formularios de la app, así que no tiene la red del
+ * sembrado: sobre un área que ya existe, el alta se come un «ya existe un área
+ * con ese nombre». Las dos salidas honestas son vaciar o saltear, y ninguna de
+ * las dos la puede decidir el sistema solo: vaciar borra en cascada.
+ */
+function DialogoArranque({ onDesdeCero, onContinuar, onCerrar }) {
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-ink/45 p-lg" data-tour-panel>
+      <div role="dialog" aria-modal="true" aria-label="Empezar el recorrido guiado"
+           className="w-[min(520px,100%)] rounded-lg bg-superficie shadow-modal">
+        <div className="flex items-center justify-between border-b border-division px-xl py-lg">
+          <div className="text-lg font-bold">Recorrido guiado</div>
+          <button onClick={onCerrar} aria-label="Cerrar" className="flex rounded-sm p-1 text-texto-debil hover:text-texto">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="flex flex-col gap-3 p-xl">
+          <p className="text-md text-texto-suave">
+            «{ESCUELA_NOMBRE}» ya tiene datos cargados. El recorrido completa los formularios de la
+            app de verdad, así que sobre lo que ya existe no puede volver a darlo de alta.
+          </p>
+          <p className="text-md text-texto-suave">
+            <b className="text-texto">Empezar de cero</b> vacía la institución de capacitación —áreas,
+            usuarios, flujos, pacientes y casos— y la construye de nuevo delante tuyo.{" "}
+            <b className="text-texto">Continuar</b> deja lo cargado y sólo actúa lo que falta.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2.5 border-t border-division px-xl py-lg">
+          <Button variant="secondary" onClick={onContinuar}>Continuar donde quedó</Button>
+          <Button onClick={onDesdeCero}>Empezar de cero</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ETIQUETA_ESTADO = {
+  preparando: "Preparando",
+  actuando: "Actuando",
+  sembrando: "Sembrando",
+  saltado: "Ya estaba",
+  listo: "Listo",
+  mirando: "Viendo",
+};
+
 function TutorialOverlay({
-  step, rect, paso, total, error, vozActiva, vozPausada, vozDisponible,
-  preparando, acciones, accionActiva, autoAvance, onCerrar, onVolver, onAvanzar, onToggleAuto, onAlternarVoz, onPausarVoz,
+  step, rect, paso, total, error, estado, accion, noActuadas, modo, velocidad, tomoElControl,
+  vozActiva, vozPausada, vozDisponible, enMarcha,
+  onCerrar, onVolver, onAvanzar, onPausar, onModo, onVelocidad, onRetomar, onAlternarVoz, onPausarVoz,
 }) {
-  const actual = acciones?.[accionActiva] || (preparando ? "Cargando datos de practica" : "Mostrando pantalla");
+  const trabajando = estado === "actuando" || estado === "sembrando" || estado === "preparando";
+  const detalle = accion || (trabajando ? "Cargando" : "Mostrando pantalla");
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[80]">
       {rect && (
         <div
           className="absolute rounded-lg border-2 border-accent bg-accent-50/10 shadow-[0_0_0_4px_rgba(72,79,210,.12)]"
-          style={{
-            top: rect.top - 6,
-            left: rect.left - 6,
-            width: rect.width + 12,
-            height: rect.height + 12,
-          }}
+          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12 }}
         />
       )}
       <section
         role="status"
         aria-live="polite"
         aria-label="Recorrido guiado"
-        className="pointer-events-auto fixed bottom-4 left-1/2 w-[min(980px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-borde bg-superficie/95 p-3 shadow-modal backdrop-blur"
+        data-tour-panel
+        className="pointer-events-auto fixed bottom-4 left-1/2 w-[min(1040px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-borde bg-superficie/95 p-3 shadow-modal backdrop-blur"
       >
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <div className="min-w-0">
             <div className="mb-1 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-pill bg-accent-50 px-3 py-1 text-sm font-bold text-accent">
-                <Icon name={preparando ? "refresh" : "play"} size={13} className={cn(preparando && "animate-spin")} />
+                <Icon name={trabajando ? "refresh" : "play"} size={13} className={cn(trabajando && "animate-spin")} />
                 Recorrido guiado
               </span>
               <span className="text-sm font-semibold text-texto-tenue">{paso + 1} de {total}</span>
-              {autoAvance && !error && <span className="text-sm font-semibold text-badge-green-fg">automatico</span>}
+              <span className="rounded-pill bg-superficie-2 px-2 py-0.5 text-sm font-semibold text-texto-suave">
+                {modo === "actuado" ? "actuado" : "rápido"}
+              </span>
+              {enMarcha && !error && !tomoElControl && (
+                <span className="text-sm font-semibold text-badge-green-fg">automático</span>
+              )}
+              {tomoElControl && <span className="text-sm font-bold text-badge-amber-fg">en tus manos</span>}
             </div>
+
             <div className="flex min-w-0 flex-col gap-1 md:flex-row md:items-baseline md:gap-3">
               <h2 className="shrink-0 text-base font-bold">{error || step?.title}</h2>
               <p className="min-w-0 truncate text-sm text-texto-suave">{error || step?.body}</p>
             </div>
+
             {!error && (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-bold text-accent">{preparando ? "Ejecutando" : "Viendo"}</span>
-                <span className="rounded-md bg-superficie-2 px-2 py-1 font-semibold text-texto-suave">{actual}</span>
+                <span className={cn("font-bold", estado === "saltado" ? "text-texto-tenue" : "text-accent")}>
+                  {ETIQUETA_ESTADO[estado] || "Viendo"}
+                </span>
+                <span className="rounded-md bg-superficie-2 px-2 py-1 font-semibold text-texto-suave">{detalle}</span>
+                {noActuadas > 0 && (
+                  <span className="rounded-md bg-badge-amber-bg px-2 py-1 font-semibold text-badge-amber-fg">
+                    {noActuadas} sin actuar
+                  </span>
+                )}
               </div>
             )}
+
             {!error && (
               <div className="mt-2 h-1.5 overflow-hidden rounded-pill bg-division">
                 <div className="h-full rounded-pill bg-accent transition-all" style={{ width: `${((paso + 1) / total) * 100}%` }} />
               </div>
             )}
           </div>
+
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" size="sm" variant="secondary" onClick={onToggleAuto}>
-              {autoAvance ? "Pausar recorrido" : "Reanudar"}
+            {tomoElControl ? (
+              <Button type="button" size="sm" onClick={onRetomar}>Que siga el recorrido</Button>
+            ) : (
+              <Button type="button" size="sm" variant="secondary" onClick={onPausar}>
+                {enMarcha ? "Pausar" : "Reanudar"}
+              </Button>
+            )}
+            <Button type="button" size="sm" variant="secondary" onClick={onVelocidad} title="Velocidad del recorrido">
+              {velocidad === 1 ? "1×" : "2×"}
             </Button>
-            <Button type="button" size="sm" variant={vozActiva ? "primary" : "secondary"} disabled={!vozDisponible} onClick={onAlternarVoz} title={vozDisponible ? "Leer en voz alta este recorrido" : "Este navegador no tiene narrador disponible"}>
+            <Button
+              type="button" size="sm" variant="secondary" onClick={onModo}
+              title={modo === "actuado"
+                ? "Cargar el escenario sin actuarlo, para ir más rápido"
+                : "Volver a completar los formularios en pantalla"}
+            >
+              {modo === "actuado" ? "Ir rápido" : "Actuar"}
+            </Button>
+            <Button
+              type="button" size="sm" variant={vozActiva ? "primary" : "secondary"}
+              disabled={!vozDisponible} onClick={onAlternarVoz}
+              title={vozDisponible ? "Leer en voz alta este recorrido" : "Este navegador no tiene narrador disponible"}
+            >
               <Icon name={vozActiva ? "x" : "play"} size={13} />
               {vozActiva ? "Silenciar" : "Narrar"}
             </Button>
@@ -799,7 +674,7 @@ function TutorialOverlay({
               </Button>
             )}
             {!error && paso > 0 && <Button variant="secondary" size="sm" onClick={onVolver}>Anterior</Button>}
-            <Button size="sm" disabled={!!preparando} onClick={error ? onCerrar : onAvanzar} className={cn(error && "bg-accent-fuerte")}>
+            <Button size="sm" onClick={error ? onCerrar : onAvanzar} className={cn(error && "bg-accent-fuerte")}>
               {error ? "Cerrar" : paso === total - 1 ? "Finalizar" : "Siguiente"}
             </Button>
             <button onClick={onCerrar} aria-label="Cerrar recorrido" className="rounded-sm p-2 text-texto-debil hover:text-texto">
@@ -821,12 +696,7 @@ function CursorDemo({ cursor }) {
       aria-hidden="true"
     >
       <div className="relative">
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 28 28"
-          className="drop-shadow-[0_3px_8px_rgba(16,24,40,.35)]"
-        >
+        <svg width="28" height="28" viewBox="0 0 28 28" className="drop-shadow-[0_3px_8px_rgba(16,24,40,.35)]">
           <path
             d="M5 3l15 13-8 1.5L8.5 25 5 3z"
             fill="var(--color-superficie)"

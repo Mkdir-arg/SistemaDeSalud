@@ -58,6 +58,11 @@ class RegistrosAPITestCase(APITestCase):
 
 
 class PermisosGranularesRegistrosTests(RegistrosAPITestCase):
+    def _csv(self, ruta):
+        r = self.client.get(ruta)
+        self.assertEqual(r.status_code, 200, getattr(r, "data", r))
+        return b"".join(r.streaming_content).decode("utf-8")
+
     def test_administrativo_lee_padron_sin_resumen_clinico(self):
         self.hc.alergias = "Penicilina"
         self.hc.condiciones = "HTA"
@@ -98,6 +103,32 @@ class PermisosGranularesRegistrosTests(RegistrosAPITestCase):
         self.assertEqual(r.data["condiciones"], "HTA")
         self.assertEqual(r.data["entradas"], 1)
         self.assertIsNotNone(r.data["ultima"])
+
+    def test_administrativo_exporta_padron_sin_columnas_clinicas(self):
+        self.hc.alergias = "Penicilina"
+        self.hc.condiciones = "HTA"
+        self.hc.save(update_fields=["alergias", "condiciones"])
+
+        self.como(self.adm)
+        texto = self._csv(f"/api/ciudadanos/?institucion={self.inst.id}&formato=csv")
+        encabezado = texto.splitlines()[0]
+        self.assertIn("Documento", encabezado)
+        self.assertIn("Domicilio", encabezado)
+        self.assertNotIn("Condiciones", encabezado)
+        self.assertNotIn("Alergias", encabezado)
+        self.assertNotIn("Entradas de historia", encabezado)
+        self.assertNotIn("Penicilina", texto)
+
+    def test_el_padron_no_se_mueve_de_institucion_por_patch(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        Membresia.objects.create(usuario=self.adm, institucion=otra, rol="administrativo", activo=True)
+
+        self.como(self.adm)
+        r = self.client.patch(f"/api/ciudadanos/{self.paciente.id}/", {"institucion": otra.id})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn("institucion", r.data)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.institucion_id, self.inst.id)
 
 
 class AutoriaDeLaAtencionTests(RegistrosAPITestCase):

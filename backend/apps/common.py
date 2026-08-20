@@ -1,5 +1,6 @@
 """Utilidades compartidas por la capa API."""
 from pathlib import PurePosixPath
+import hashlib
 import re
 import uuid
 
@@ -26,6 +27,7 @@ from rest_framework.views import APIView
 #   registros → historia clínica, estudios, recetas, ciudadanos
 CAPACIDADES_LEGADAS = {"config", "diseno", "trabajo", "registros", "supervision"}
 CAPACIDADES_DOMINIO = {
+    "reportes",
     "padron_admision",
     "historia_clinica",
     "prescripcion",
@@ -42,7 +44,11 @@ CAPACIDADES_DOMINIO = {
 }
 CAPACIDADES_UI = {"auditoria"}
 TODAS_LAS_CAPACIDADES = CAPACIDADES_LEGADAS | CAPACIDADES_DOMINIO | CAPACIDADES_UI
+CAPACIDADES_GLOBALES = {"gobierno_plataforma"}
 ROL_CAPACIDADES = {
+    "plataforma": {"gobierno_plataforma", "reportes"},
+    "auditor": set(),
+    "reportes": {"reportes"},
     "admin": CAPACIDADES_LEGADAS | (CAPACIDADES_DOMINIO - {"gobierno_plataforma"}),
     "configurador": {"diseno", "diseno_flujos"},
     "jefe_area": {
@@ -69,6 +75,8 @@ ROL_CAPACIDADES = {
     },
 }
 ROL_CAPACIDADES_UI = {
+    "plataforma": {"auditoria"},
+    "auditor": {"auditoria"},
     "admin": {"auditoria"},
     "jefe_area": {"auditoria"},
 }
@@ -89,6 +97,23 @@ def capacidades_de(user, institucion_id=None):
     for rol in qs.values_list("rol", flat=True):
         caps |= ROL_CAPACIDADES.get(rol, set())
     return caps
+
+
+def tiene_capacidad(user, capacidad, institucion_id=None):
+    """Verdadero si la capacidad aplica en el alcance pedido.
+
+    Las capacidades sanitarias son institucionales. `gobierno_plataforma`, en
+    cambio, es deliberadamente global: crear una institucion o definir una red no
+    pertenece a ningun hospital puntual.
+    """
+    if capacidad in CAPACIDADES_GLOBALES:
+        return capacidad in capacidades_de(user)
+    return capacidad in capacidades_de(user, institucion_id)
+
+
+def tiene_alguna_capacidad(user, capacidades, institucion_id=None):
+    """Verdadero si alguna capacidad alcanza para el mismo objeto/alcance."""
+    return any(tiene_capacidad(user, capacidad, institucion_id) for capacidad in capacidades)
 
 
 def capacidades_efectivas_de(user, institucion_id=None):
@@ -190,27 +215,36 @@ class CapacidadPermission(BasePermission):
         por_accion = getattr(view, "capacidad_por_accion", None) or {}
         return por_accion.get(getattr(view, "action", None)) or getattr(view, "capacidad_requerida", None)
 
+    @classmethod
+    def _capacidades(cls, view):
+        capacidad = cls._capacidad(view)
+        if not capacidad:
+            return ()
+        if isinstance(capacidad, str):
+            return (capacidad,)
+        return tuple(capacidad)
+
     def has_permission(self, request, view):
         user = request.user
         if not (user and user.is_authenticated):
             return False
         if user.is_superuser:
             return True
-        cap = self._capacidad(view)
+        caps = self._capacidades(view)
         es_lectura = request.method in SAFE_METHODS
         if es_lectura and not getattr(view, "protege_lectura", False):
             return True
-        if not cap:
+        if not caps:
             return True
         # Alta (create): resolvemos la institución del objeto (o de su padre) desde
         # el cuerpo; si no se puede, se exige la capacidad en alguna membresía activa.
         if getattr(view, "action", None) == "create":
-            return cap in capacidades_de(user, _institucion_de_payload(view, request.data))
+            return tiene_alguna_capacidad(user, caps, _institucion_de_payload(view, request.data))
         # Lectura protegida de lista: se exige la capacidad en alguna institución
         # del usuario (el queryset ya filtra por institución). El detalle se
         # re-valida contra el objeto en has_object_permission.
         if es_lectura:
-            return cap in capacidades_de(user)
+            return tiene_alguna_capacidad(user, caps)
         # Detalle de escritura (update/delete/acciones): se valida con el objeto.
         return True
 
@@ -218,13 +252,13 @@ class CapacidadPermission(BasePermission):
         user = request.user
         if user.is_superuser:
             return True
-        cap = self._capacidad(view)
+        caps = self._capacidades(view)
         if request.method in SAFE_METHODS and not getattr(view, "protege_lectura", False):
             return True
-        if not cap:
+        if not caps:
             return True
         inst_id = _institucion_de_objeto(obj, getattr(view, "institucion_path", None))
-        return cap in capacidades_de(user, inst_id)
+        return tiene_alguna_capacidad(user, caps, inst_id)
 
 
 class OrdenEstable(OrderingFilter):
@@ -323,6 +357,82 @@ class PuedeVerElEsquema(BasePermission):
         return bool(request.user and request.user.is_authenticated)
 
 
+ARCHIVO_CLINICO_TIPOS = {
+    "application/pdf": {".pdf"},
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "image/webp": {".webp"},
+    "text/plain": {".txt"},
+}
+ARCHIVO_CLINICO_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _archivo_max_bytes():
+    from django.conf import settings
+
+    return int(getattr(settings, "ARCHIVO_CLINICO_MAX_BYTES", ARCHIVO_CLINICO_MAX_BYTES))
+
+
+def _tipo_archivo(archivo):
+    return (getattr(archivo, "content_type", "") or "").split(";")[0].strip().lower()
+
+
+def _muestra_archivo(archivo, n=512):
+    try:
+        data = archivo.read(n)
+        archivo.seek(0)
+        return data or b""
+    except Exception:
+        return b""
+
+
+def _firma_coherente(content_type, muestra):
+    if content_type == "application/pdf":
+        return muestra.startswith(b"%PDF-")
+    if content_type == "image/jpeg":
+        return muestra.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return muestra.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/webp":
+        return muestra.startswith(b"RIFF") and muestra[8:12] == b"WEBP"
+    if content_type == "text/plain":
+        return b"\x00" not in muestra
+    return False
+
+
+def _validar_archivo_clinico(archivo, original):
+    max_bytes = _archivo_max_bytes()
+    tamano = int(getattr(archivo, "size", 0) or 0)
+    if tamano <= 0:
+        return Response({"detail": "El archivo esta vacio."}, status=status.HTTP_400_BAD_REQUEST)
+    if tamano > max_bytes:
+        mb = max_bytes // (1024 * 1024)
+        return Response({"detail": f"El archivo supera el maximo permitido de {mb} MB."}, status=status.HTTP_400_BAD_REQUEST)
+
+    content_type = _tipo_archivo(archivo)
+    extensiones = ARCHIVO_CLINICO_TIPOS.get(content_type)
+    if not extensiones:
+        return Response({"detail": "Tipo de archivo no permitido para adjuntos clinicos."}, status=status.HTTP_400_BAD_REQUEST)
+
+    ext = PurePosixPath(original).suffix.lower()
+    if ext and ext not in extensiones:
+        return Response({"detail": "La extension no coincide con el tipo de archivo declarado."}, status=status.HTTP_400_BAD_REQUEST)
+    if not _firma_coherente(content_type, _muestra_archivo(archivo)):
+        return Response({"detail": "El contenido del archivo no coincide con el tipo declarado."}, status=status.HTTP_400_BAD_REQUEST)
+    return content_type, ext or sorted(extensiones)[0], tamano
+
+
+def _sha256_archivo(archivo):
+    digest = hashlib.sha256()
+    for chunk in archivo.chunks():
+        digest.update(chunk)
+    try:
+        archivo.seek(0)
+    except Exception:
+        pass
+    return digest.hexdigest()
+
+
 @extend_schema(
     tags=["registros"],
     summary="Sube un archivo",
@@ -362,14 +472,50 @@ class SubirArchivoView(APIView):
             )
         # Nombre único conservando la extensión.
         original = PurePosixPath(archivo.name or "archivo").name
-        ext = PurePosixPath(original).suffix.lower()
-        if ext and not re.fullmatch(r"\.[a-z0-9]{1,12}", ext):
-            ext = ""
+        validacion = _validar_archivo_clinico(archivo, original)
+        if isinstance(validacion, Response):
+            return validacion
+        content_type, ext, tamano = validacion
+        sha256 = _sha256_archivo(archivo)
+
         nombre = f"uploads/{institucion_id}/{uuid.uuid4().hex}{ext}"
         guardado = default_storage.save(nombre, archivo)
+        from apps.registros.models import ArchivoClinico
+
+        proposito = request.data.get("proposito") or ArchivoClinico.Proposito.ADJUNTO_CASO
+        if proposito not in {v for v, _ in ArchivoClinico.Proposito.choices}:
+            default_storage.delete(guardado)
+            return Response({"detail": "Proposito de archivo invalido."}, status=status.HTTP_400_BAD_REQUEST)
+        objeto_id = request.data.get("objeto_id") or None
+        if objeto_id is not None:
+            try:
+                objeto_id = int(objeto_id)
+            except (TypeError, ValueError):
+                default_storage.delete(guardado)
+                return Response({"detail": "objeto_id debe ser numerico."}, status=status.HTTP_400_BAD_REQUEST)
+
+        meta = ArchivoClinico.objects.create(
+            institucion_id=institucion_id,
+            ruta=guardado,
+            nombre_original=original,
+            content_type=content_type,
+            tamano=tamano,
+            sha256=sha256,
+            proposito=proposito,
+            objeto_tipo=(request.data.get("objeto_tipo") or "")[:80],
+            objeto_id=objeto_id,
+            subido_por=request.user,
+        )
         url = request.build_absolute_uri(f"/api/archivos/descargar/{guardado}")
         return Response(
-            {"nombre": original, "ruta": guardado, "url": url},
+            {
+                "nombre": original,
+                "ruta": guardado,
+                "url": url,
+                "content_type": meta.content_type,
+                "tamano": meta.tamano,
+                "sha256": meta.sha256,
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -390,7 +536,10 @@ class DescargarArchivoView(APIView):
         if any(p in ("", ".", "..") for p in partes):
             return Response({"detail": "Archivo invalido."}, status=status.HTTP_404_NOT_FOUND)
 
-        institucion_id = int(partes[1])
+        from apps.registros.models import ArchivoClinico
+
+        meta = ArchivoClinico.objects.filter(ruta=ruta).first()
+        institucion_id = meta.institucion_id if meta else int(partes[1])
         if "historia_clinica" not in capacidades_de(request.user, institucion_id):
             return Response(
                 {"detail": "No tenes permiso para descargar este archivo."},
@@ -398,11 +547,14 @@ class DescargarArchivoView(APIView):
             )
         if not default_storage.exists(ruta):
             return Response({"detail": "Archivo no encontrado."}, status=status.HTTP_404_NOT_FOUND)
-        return FileResponse(
+        respuesta = FileResponse(
             default_storage.open(ruta, "rb"),
             as_attachment=False,
-            filename=partes[-1],
+            filename=meta.nombre_original if meta else partes[-1],
         )
+        if meta and meta.content_type:
+            respuesta["Content-Type"] = meta.content_type
+        return respuesta
 
 
 class ExportaCSV:
@@ -437,8 +589,12 @@ class ExportaCSV:
     # en singular («caso-2026-08-02.csv»), que queda raro para un listado.
     nombre_csv: str = ""
 
+    def get_columnas_csv(self, request):
+        return self.columnas_csv
+
     def list(self, request, *args, **kwargs):
-        if request.query_params.get("formato") != "csv" or not self.columnas_csv:
+        columnas = self.get_columnas_csv(request)
+        if request.query_params.get("formato") != "csv" or not columnas:
             return super().list(request, *args, **kwargs)
         return self.exportar_csv(request)
 
@@ -448,7 +604,8 @@ class ExportaCSV:
         from django.utils import timezone
 
         qs = self.filter_queryset(self.get_queryset())
-        claves = [c for c, _ in self.columnas_csv]
+        columnas = self.get_columnas_csv(request)
+        claves = [c for c, _ in columnas]
         sep = "," if request.query_params.get("sep") == "," else ";"
 
         class Buffer:
@@ -461,7 +618,7 @@ class ExportaCSV:
         def filas():
             # El BOM va primero para que Excel reconozca UTF-8.
             yield "﻿"
-            yield escritor.writerow([e for _, e in self.columnas_csv])
+            yield escritor.writerow([e for _, e in columnas])
             serializer = self.get_serializer_class()
             contexto = self.get_serializer_context()
             # `iterator()` no arma la lista completa en memoria.

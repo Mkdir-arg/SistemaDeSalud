@@ -77,6 +77,9 @@ class Membresia(models.Model):
     """
 
     class Rol(models.TextChoices):
+        PLATAFORMA = "plataforma", "Autoridad estatal / plataforma"
+        AUDITOR = "auditor", "Auditor estatal"
+        REPORTES = "reportes", "Reportes / solo lectura"
         ADMIN_INSTITUCION = "admin", "Admin de institución"
         CONFIGURADOR = "configurador", "Configurador"
         JEFE_AREA = "jefe_area", "Jefe / Supervisor de área"

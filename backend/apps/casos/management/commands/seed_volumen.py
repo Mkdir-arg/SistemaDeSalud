@@ -162,13 +162,24 @@ def sin_tildes(s):
 
 
 class Reloj:
-    """Tiempo simulado del recorrido de un caso."""
+    """
+    Tiempo simulado del recorrido de un caso.
 
-    def __init__(self, t0):
+    Tiene techo en «ahora» porque el recorrido consume más minutos simulados que
+    los que el punto de detención tiene de ventana: un activo de «admisión»
+    arranca en `ahora - 2..40 min` (ver `PARADAS`) y el paseo por el motor le
+    suma varios pasos, así que se pasaba de la hora actual. El síntoma es un
+    paciente que ingresó a la cola dentro de 75 minutos, y en la pantalla de
+    llamados eso se lee como una espera negativa.
+    """
+
+    def __init__(self, t0, tope=None):
         self.t = t0
+        self.tope = tope or timezone.now()
 
     def mas(self, minimo, maximo=None):
-        self.t += timedelta(minutes=random.randint(minimo, maximo if maximo is not None else minimo))
+        avance = timedelta(minutes=random.randint(minimo, maximo if maximo is not None else minimo))
+        self.t = min(self.t + avance, self.tope)
         return self.t
 
 

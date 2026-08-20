@@ -1,6 +1,20 @@
 from rest_framework import serializers
 
+from apps.common import tiene_capacidad
+
 from .models import LegajoProfesional, Membresia, Usuario
+
+
+ROLES_GOBIERNO = {Membresia.Rol.PLATAFORMA, Membresia.Rol.AUDITOR}
+
+
+def validar_rol_asignable(rol, actor):
+    if rol in ROLES_GOBIERNO and not (
+        actor and (getattr(actor, "is_superuser", False) or tiene_capacidad(actor, "gobierno_plataforma"))
+    ):
+        raise serializers.ValidationError({
+            "rol": "Solo una autoridad de plataforma puede asignar roles estatales."
+        })
 
 
 class LegajoProfesionalSerializer(serializers.ModelSerializer):
@@ -52,6 +66,9 @@ class MembresiaSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"areas": "Todas las areas de la membresia deben pertenecer a la institucion."}
                 )
+        rol = attrs.get("rol", getattr(self.instance, "rol", None))
+        request = self.context.get("request")
+        validar_rol_asignable(rol, getattr(request, "user", None))
         return attrs
 
 

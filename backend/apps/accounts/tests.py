@@ -258,3 +258,84 @@ class ConfiguracionDeAccesosTests(APITestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.usuario.refresh_from_db()
         self.assertFalse(self.usuario.is_staff)
+
+
+class GobiernoPlataformaTests(APITestCase):
+    def setUp(self):
+        self.base = Institucion.objects.create(nombre="Direccion provincial")
+        self.hospital = Institucion.objects.create(nombre="Hospital Central")
+        self.clinica = Institucion.objects.create(nombre="Clinica Norte")
+        self.plataforma = Usuario.objects.create_user("plataforma@test.local", "x", nombre="Plataforma")
+        Membresia.objects.create(
+            usuario=self.plataforma, institucion=self.base, rol=Membresia.Rol.PLATAFORMA, activo=True
+        )
+        self.admin = Usuario.objects.create_user("admin@test.local", "x", nombre="Admin")
+        Membresia.objects.create(
+            usuario=self.admin, institucion=self.hospital, rol=Membresia.Rol.ADMIN_INSTITUCION, activo=True
+        )
+        self.ajeno = Usuario.objects.create_user("ajeno@test.local", "x", nombre="Ajeno")
+        Membresia.objects.create(
+            usuario=self.ajeno, institucion=self.clinica, rol=Membresia.Rol.MEDICO, activo=True
+        )
+
+    def test_plataforma_ve_el_directorio_de_usuarios_completo(self):
+        self.client.force_authenticate(self.plataforma)
+        r = self.client.get("/api/usuarios/?page_size=100")
+        self.assertEqual(r.status_code, 200, r.data)
+        emails = {u["email"] for u in r.data["results"]}
+        self.assertIn("ajeno@test.local", emails)
+
+    def test_plataforma_crea_usuario_sin_membresia_institucional(self):
+        self.client.force_authenticate(self.plataforma)
+        r = self.client.post("/api/usuarios/", {
+            "email": "nuevo@test.local", "nombre": "Nuevo",
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertFalse(
+            Membresia.objects.filter(usuario_id=r.data["id"]).exists(),
+            "el alta de plataforma no debe enganchar al usuario a la institucion base",
+        )
+
+    def test_admin_institucional_no_asigna_roles_estatales(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.post("/api/membresias/", {
+            "usuario": self.ajeno.id,
+            "institucion": self.hospital.id,
+            "rol": Membresia.Rol.PLATAFORMA,
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(
+            Membresia.objects.filter(usuario=self.ajeno, rol=Membresia.Rol.PLATAFORMA).exists()
+        )
+
+    def test_plataforma_asigna_roles_estatales(self):
+        self.client.force_authenticate(self.plataforma)
+        r = self.client.post("/api/membresias/", {
+            "usuario": self.ajeno.id,
+            "institucion": self.base.id,
+            "rol": Membresia.Rol.AUDITOR,
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(
+            Membresia.objects.filter(usuario=self.ajeno, rol=Membresia.Rol.AUDITOR).exists()
+        )
+
+    def test_admin_institucional_no_crea_usuario_con_rol_estatal(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.post("/api/usuarios/", {
+            "email": "escalado@test.local",
+            "nombre": "Escalado",
+            "institucion": self.hospital.id,
+            "rol": Membresia.Rol.PLATAFORMA,
+        }, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Usuario.objects.filter(email="escalado@test.local").exists())
+
+    def test_me_expone_las_capacidades_de_gobierno(self):
+        self.client.force_authenticate(self.plataforma)
+        r = self.client.get("/api/usuarios/me/")
+        self.assertEqual(r.status_code, 200, r.data)
+        caps = r.data["capacidades_por_institucion"][str(self.base.id)]
+        self.assertIn("gobierno_plataforma", caps)
+        self.assertIn("auditoria", caps)
+        self.assertIn("reportes", caps)

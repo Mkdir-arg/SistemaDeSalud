@@ -15,7 +15,8 @@ from .models import AccesoClinico
 # mismo: cuando cada mitad usó su propio criterio, quien era jefe en un hospital
 # y médico en otro pasaba el portero por el primero y se llevaba el registro
 # entero del segundo.
-ROLES_QUE_AUDITAN = ("admin", "jefe_area")
+ROLES_QUE_AUDITAN = ("admin", "jefe_area", "auditor", "plataforma")
+ROLES_AUDITORIA_GLOBAL = ("auditor", "plataforma")
 
 
 def _instituciones_que_audita(usuario):
@@ -26,6 +27,10 @@ def _instituciones_que_audita(usuario):
     hospital no da derecho a leer quiénes se atendieron ahí —con nombre y
     documento— ni a preguntarle al buscador si tal DNI es paciente de la casa.
     """
+    if usuario.membresias.filter(activo=True, rol__in=ROLES_AUDITORIA_GLOBAL).exists():
+        from apps.instituciones.models import Institucion
+
+        return list(Institucion.objects.values_list("id", flat=True))
     return list(
         usuario.membresias.filter(activo=True, rol__in=ROLES_QUE_AUDITAN)
         .values_list("institucion_id", flat=True)

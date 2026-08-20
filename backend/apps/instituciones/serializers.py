@@ -46,9 +46,15 @@ class GrupoSerializer(serializers.ModelSerializer):
             self.fields["area"].read_only = True
 
     def get_integrantes(self, obj) -> list[dict]:
+        miembros = obj.miembros.filter(
+            is_active=True,
+            membresias__institucion=obj.area.institucion,
+            membresias__areas=obj.area,
+            membresias__activo=True,
+        ).distinct()
         return [
             {"id": u.id, "nombre": u.nombre_completo, "email": u.email}
-            for u in obj.miembros.all()
+            for u in miembros
         ]
 
     def validate(self, attrs):
@@ -60,7 +66,12 @@ class GrupoSerializer(serializers.ModelSerializer):
         miembros = attrs.get("miembros")
         if area and miembros:
             permitidos = set(
-                Membresia.objects.filter(institucion=area.institucion, areas=area)
+                Membresia.objects.filter(
+                    institucion=area.institucion,
+                    areas=area,
+                    activo=True,
+                    usuario__is_active=True,
+                )
                 .values_list("usuario_id", flat=True)
             )
             fuera = [u.id for u in miembros if u.id not in permitidos]
@@ -84,8 +95,8 @@ class AreaSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             self.fields["institucion"].read_only = True
 
-    def get_staff(self, obj) -> list[dict]:
-        return obj.miembros.values("usuario").distinct().count()
+    def get_staff(self, obj) -> int:
+        return obj.miembros.filter(activo=True, usuario__is_active=True).values("usuario").distinct().count()
 
 
 class InstitucionSerializer(serializers.ModelSerializer):
@@ -93,8 +104,8 @@ class InstitucionSerializer(serializers.ModelSerializer):
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     staff = serializers.SerializerMethodField()
 
-    def get_staff(self, obj) -> list[dict]:
-        return obj.membresias.values("usuario").distinct().count()
+    def get_staff(self, obj) -> int:
+        return obj.membresias.filter(activo=True, usuario__is_active=True).values("usuario").distinct().count()
 
     class Meta:
         model = Institucion

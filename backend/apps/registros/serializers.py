@@ -192,6 +192,15 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         """
         documento = (datos.get("documento") if "documento" in datos else getattr(self.instance, "documento", "")) or ""
         institucion = datos.get("institucion") or getattr(self.instance, "institucion", None)
+        if (
+            self.instance is not None
+            and "institucion" in datos
+            and institucion.pk != self.instance.institucion_id
+        ):
+            raise serializers.ValidationError({
+                "institucion": "Un registro de padron no se mueve de institucion por edicion comun."
+            })
+
         if not documento.strip() or institucion is None:
             return datos
 

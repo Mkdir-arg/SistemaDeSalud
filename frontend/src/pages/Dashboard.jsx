@@ -299,7 +299,15 @@ function Kpis({ kpis }) {
           )}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-base font-semibold text-texto-debil">{k.l}</span>
+            {/* En el tile destacado el fondo pasa a `badge-error-bg`, y el gris
+                de `texto-debil` —calibrado contra la superficie blanca— cae a
+                4,32:1 sobre ese tinte: por debajo del 4,5 de AA. El par
+                bg/fg del badge existe justamente para contrastar entre sí, en
+                claro y en oscuro. */}
+            <span className={cn("text-base font-semibold",
+                                k.destacado ? "text-badge-error-fg" : "text-texto-debil")}>
+              {k.l}
+            </span>
             <span
               className="flex size-8 shrink-0 items-center justify-center rounded-md"
               // Fondo del icono: el mismo color al 12% sobre la superficie, así

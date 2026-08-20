@@ -505,6 +505,48 @@ class PedidoTests(StockTestCase):
         self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 30)
         self.assertEqual(motor.disponible(self.botiquin, self.gasa), 20)
 
+    def test_preparar_verifica_stock_y_no_mueve_existencias(self):
+        pedido = Pedido.objects.create(origen=self.botiquin, destino=self.central, creado_por=self.user)
+        LineaPedido.objects.create(pedido=pedido, insumo=self.dipirona, pedido_cant=30)
+
+        motor.preparar_pedido(pedido, autor=self.user)
+
+        pedido.refresh_from_db()
+        self.assertEqual(pedido.estado, Pedido.Estado.PREPARADO)
+        self.assertEqual(motor.disponible(self.central, self.dipirona), 100)
+        self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 0)
+
+    def test_no_prepara_si_no_alcanza_para_lo_pendiente(self):
+        with self.assertRaises(motor.ErrorStock):
+            motor.preparar_pedido(self.pedido, autor=self.user)
+        self.pedido.refresh_from_db()
+        self.assertEqual(self.pedido.estado, Pedido.Estado.PENDIENTE)
+
+    def test_un_pedido_preparado_se_entrega(self):
+        pedido = Pedido.objects.create(origen=self.botiquin, destino=self.central, creado_por=self.user)
+        linea = LineaPedido.objects.create(pedido=pedido, insumo=self.dipirona, pedido_cant=30)
+
+        motor.preparar_pedido(pedido, autor=self.user)
+        preparado = Pedido.objects.get(pk=pedido.pk)
+        motor.entregar_pedido(preparado, {linea.id: 30}, autor=self.user)
+
+        preparado.refresh_from_db()
+        self.assertEqual(preparado.estado, Pedido.Estado.ENTREGADO)
+        self.assertEqual(motor.disponible(self.botiquin, self.dipirona), 30)
+
+    def test_preparar_un_parcial_valida_solo_el_faltante(self):
+        motor.entregar_pedido(self.pedido, {self.l1.id: 30, self.l2.id: 20}, autor=self.user)
+        parcial = Pedido.objects.get(pk=self.pedido.pk)
+        with self.assertRaises(motor.ErrorStock):
+            motor.preparar_pedido(parcial, autor=self.user)
+
+        motor.ingresar(self.central, self.gasa, 30, autor=self.user)
+        parcial = Pedido.objects.get(pk=self.pedido.pk)
+        motor.preparar_pedido(parcial, autor=self.user)
+
+        parcial.refresh_from_db()
+        self.assertEqual(parcial.estado, Pedido.Estado.PREPARADO)
+
     def test_lo_que_se_entrego_de_menos_queda_visible(self):
         """
         Entregar de menos es lo normal cuando falta stock. Si el sistema sólo

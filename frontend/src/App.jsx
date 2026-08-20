@@ -33,6 +33,7 @@ const Areas = lazy(() => import("./pages/admin/Areas"));
 const Usuarios = lazy(() => import("./pages/admin/Usuarios"));
 const Registros = lazy(() => import("./pages/registros/Registros"));
 const HistoriaDetalle = lazy(() => import("./pages/registros/HistoriaDetalle"));
+const PadronDetalle = lazy(() => import("./pages/registros/PadronDetalle"));
 const Legajo = lazy(() => import("./pages/registros/Legajo"));
 const Accesos = lazy(() => import("./pages/auditoria/Accesos"));
 
@@ -47,7 +48,9 @@ function Landing() {
 
   useEffect(() => {
     if (institucion) return;
-    if (user?.is_superuser) {
+    const esPlataforma = user?.is_superuser || Object.values(user?.capacidades_por_institucion || {})
+      .some((caps) => (caps || []).includes("gobierno_plataforma"));
+    if (esPlataforma) {
       setEstado("directorio");
       return;
     }
@@ -166,6 +169,8 @@ export default function App() {
       <Route path="/casos/:id" element={P(<CasoDetalle />, "casos_operar")} />
 
       {/* REGISTROS */}
+      <Route path="/padron" element={P(<Registros modo="padron" />, "padron_admision")} />
+      <Route path="/padron/:id" element={P(<PadronDetalle />, "padron_admision")} />
       <Route path="/historia" element={P(<Registros />, "historia_clinica")} />
       <Route path="/historia/:id" element={P(<HistoriaDetalle />, "historia_clinica")} />
       <Route path="/legajo" element={P(<Legajo />)} />

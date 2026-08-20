@@ -89,6 +89,15 @@ class DisponibilidadTests(AgendaTestCase):
                          ["09:00", "09:20", "09:40"])
         self.assertTrue(Disponibilidad.objects.filter(pk=self.disp.pk).exists())
 
+    def test_un_bloqueo_parcial_saca_horarios_que_solapan(self):
+        """Un turno de 8:00 a 8:20 tambien queda pisado por un bloqueo 8:10-8:15."""
+        Bloqueo.objects.create(
+            agenda=self.agenda, desde=self._hora(8, 10), hasta=self._hora(8, 15)
+        )
+        h = motor.horarios_del_dia(self.agenda, self.martes)
+        self.assertEqual([timezone.localtime(x["inicio"]).strftime("%H:%M") for x in h],
+                         ["08:20", "08:40", "09:00", "09:20", "09:40"])
+
 
 class NingunTurnoSeVuelveInvisibleTests(AgendaTestCase):
     """
@@ -159,6 +168,12 @@ class ReservaTests(AgendaTestCase):
         self.assertEqual(t.estado, Turno.Estado.RESERVADO)
         self.assertEqual(t.duracion_min, 20)
 
+    def test_no_guarda_un_origen_inventado(self):
+        """El origen alimenta indicadores de demanda; un valor libre rompe la serie."""
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user,
+                           origen="whatsapp")
+
     def test_el_horario_dado_figura_ocupado_con_el_paciente(self):
         """
         La grilla muestra los ocupados, no sólo lo que queda: quien atiende el
@@ -183,6 +198,11 @@ class ReservaTests(AgendaTestCase):
 
     def test_no_se_da_un_horario_bloqueado(self):
         Bloqueo.objects.create(agenda=self.agenda, desde=self._hora(8, 0), hasta=self._hora(9, 0))
+        with self.assertRaises(motor.ErrorAgenda):
+            motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
+
+    def test_no_se_da_un_horario_que_solapa_un_bloqueo(self):
+        Bloqueo.objects.create(agenda=self.agenda, desde=self._hora(8, 10), hasta=self._hora(8, 15))
         with self.assertRaises(motor.ErrorAgenda):
             motor.reservar(self.agenda, self.paciente, self._hora(8, 0), autor=self.user)
 

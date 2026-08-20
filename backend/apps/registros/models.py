@@ -253,6 +253,44 @@ class Estudio(models.Model):
         return f"{self.tipo} · {self.fecha}"
 
 
+class ArchivoClinico(models.Model):
+    """Metadata persistente de un archivo clinico guardado en storage privado."""
+
+    class Proposito(models.TextChoices):
+        ADJUNTO_CASO = "adjunto_caso", "Adjunto de caso"
+        ESTUDIO = "estudio", "Estudio"
+        OTRO = "otro", "Otro"
+
+    institucion = models.ForeignKey(
+        "instituciones.Institucion", on_delete=models.CASCADE, related_name="archivos_clinicos"
+    )
+    ruta = models.CharField(max_length=255, unique=True)
+    nombre_original = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=120)
+    tamano = models.PositiveBigIntegerField()
+    sha256 = models.CharField(max_length=64)
+    proposito = models.CharField(max_length=30, choices=Proposito.choices, default=Proposito.ADJUNTO_CASO)
+    objeto_tipo = models.CharField(max_length=80, blank=True)
+    objeto_id = models.PositiveIntegerField(null=True, blank=True)
+    subido_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="archivos_clinicos_subidos",
+    )
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "archivo clinico"
+        verbose_name_plural = "archivos clinicos"
+        ordering = ["-creado", "-id"]
+        indexes = [
+            models.Index(fields=["institucion", "creado"]),
+            models.Index(fields=["objeto_tipo", "objeto_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.nombre_original} ({self.institucion})"
+
+
 class Receta(models.Model):
     """Receta emitida en el marco de una historia clínica."""
 

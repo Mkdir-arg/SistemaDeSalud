@@ -13,7 +13,7 @@ from django.test import TestCase, override_settings
 
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
-from apps.instituciones.models import Area, Institucion
+from apps.instituciones.models import Area, Grupo, Institucion
 
 from . import motor
 
@@ -86,6 +86,22 @@ class SalidasAmbiguasTests(BaseFlujo):
 
         self.assertEqual(self._errores(), [])
         self.assertTrue(motor.puede_publicar(self.ver))
+
+
+class GruposResponsablesTests(BaseFlujo):
+    def test_un_grupo_inactivo_asignado_a_un_nodo_no_se_puede_publicar(self):
+        grupo = Grupo.objects.create(area=self.area, nombre="Turno tarde", activo=False)
+        ini = self._nodo(Nodo.Tipo.INICIO, "Inicio")
+        paso = self._nodo(Nodo.Tipo.ATENCION, "Atender")
+        fin = self._nodo(Nodo.Tipo.FIN, "Fin")
+        paso.grupos.add(grupo)
+        self._unir(ini, paso)
+        self._unir(paso, fin)
+
+        titulos = [p["titulo"] for p in self._errores()]
+
+        self.assertIn("Grupo responsable inactivo", titulos)
+        self.assertFalse(motor.puede_publicar(self.ver))
 
 
 class DuracionDeEsperaTests(BaseFlujo):
@@ -169,6 +185,77 @@ class CampoDeIntegracionTests(BaseFlujo):
             condicion={"campo": 999999, "operador": "=", "valor": "PAMI"}
         )
         self.assertIn("Regla con un campo inexistente", [p["titulo"] for p in self._errores()])
+
+
+@override_settings(INTEGRACIONES_PERMITIDAS=["padron.gob.ar"])
+class IntegracionGuardarEnConfigTests(BaseFlujo):
+    def setUp(self):
+        super().setUp()
+        self.form = Formulario.objects.create(institucion=self.inst, titulo="Cobertura")
+        self.campo = Campo.objects.create(formulario=self.form, label="Plan", tipo="texto_corto", orden=0)
+        ini = self._nodo(Nodo.Tipo.INICIO, "Inicio")
+        self.integ = self._nodo(
+            Nodo.Tipo.INTEGRACION, "Padron",
+            url="https://padron.gob.ar/api", guardar_en=self.campo.id, ruta="cobertura.plan",
+        )
+        fin = self._nodo(Nodo.Tipo.FIN, "Cierre")
+        self._unir(ini, self.integ)
+        self._unir(self.integ, fin)
+
+    def test_guardar_en_de_integracion_debe_existir_en_la_institucion(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        form_ajeno = Formulario.objects.create(institucion=otra, titulo="Cobertura")
+        campo_ajeno = Campo.objects.create(formulario=form_ajeno, label="Plan", tipo="texto_corto", orden=0)
+        self.integ.config["guardar_en"] = campo_ajeno.id
+        self.integ.save(update_fields=["config"])
+
+        self.assertIn("Integracion con campo destino invalido", [p["titulo"] for p in self._errores()])
+
+    def test_guardar_en_de_integracion_debe_ser_un_id(self):
+        self.integ.config["guardar_en"] = "plan"
+        self.integ.save(update_fields=["config"])
+
+        self.assertIn("Integracion con campo destino invalido", [p["titulo"] for p in self._errores()])
+
+
+class PrioridadDesdeFormularioConfigTests(BaseFlujo):
+    def setUp(self):
+        super().setUp()
+        self.form = Formulario.objects.create(institucion=self.inst, titulo="Triage")
+        self.nivel = Campo.objects.create(
+            formulario=self.form, label="Nivel", tipo=Campo.Tipo.SELECCION_UNICA,
+            opciones=["Rojo", "Verde"], orden=0,
+        )
+        self.texto = Campo.objects.create(
+            formulario=self.form, label="Observaciones", tipo=Campo.Tipo.TEXTO_CORTO, orden=1
+        )
+
+    def _armar(self, campo_id):
+        ini = self._nodo(Nodo.Tipo.INICIO, "Inicio")
+        form = Nodo.objects.create(
+            version=self.ver, tipo=Nodo.Tipo.FORMULARIO, titulo="Triage", formulario=self.form,
+            config={"prioridad_campo": campo_id, "prioridad_mapa": {"Rojo": "urgente"}},
+        )
+        fin = self._nodo(Nodo.Tipo.FIN, "Cierre")
+        self._unir(ini, form)
+        self._unir(form, fin)
+
+    def test_prioridad_campo_valido_publica(self):
+        self._armar(self.nivel.id)
+        self.assertEqual(self._errores(), [])
+
+    def test_prioridad_campo_de_otro_formulario_falla(self):
+        otro_form = Formulario.objects.create(institucion=self.inst, titulo="Otro")
+        otro_campo = Campo.objects.create(
+            formulario=otro_form, label="Nivel", tipo=Campo.Tipo.SELECCION_UNICA,
+            opciones=["Rojo"], orden=0,
+        )
+        self._armar(otro_campo.id)
+        self.assertIn("Prioridad con campo invalido", [p["titulo"] for p in self._errores()])
+
+    def test_prioridad_campo_no_seleccionable_falla(self):
+        self._armar(self.texto.id)
+        self.assertIn("Prioridad con campo no seleccionable", [p["titulo"] for p in self._errores()])
 
 
 class _RespuestaFalsa:

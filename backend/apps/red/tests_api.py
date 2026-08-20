@@ -347,3 +347,31 @@ class TrasladosAPITests(APITestCase):
         self.assertEqual(todas[0], "Aa Red de trauma", "sin filtro decide el orden alfabético")
         de_lomas = self.client.get(f"/api/redes/?instituciones={self.hosp.id}").data["results"]
         self.assertEqual([r["nombre"] for r in de_lomas], ["Región VI"])
+
+    def test_un_admin_institucional_no_crea_redes_sanitarias(self):
+        admin = self._usuario("admin-red@lomas.gob.ar", self.hosp, "admin")
+        self._como(admin)
+        r = self.client.post("/api/redes/", {
+            "nombre": "Red creada por hospital",
+            "instituciones": [self.hosp.id, self.centro.id],
+        }, format="json")
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertFalse(Red.objects.filter(nombre="Red creada por hospital").exists())
+
+    def test_plataforma_crea_y_ve_todas_las_redes(self):
+        base = Institucion.objects.create(nombre="Direccion provincial")
+        plataforma = self._usuario("plataforma-red@gob.ar", base, Membresia.Rol.PLATAFORMA)
+        Red.objects.create(nombre="Red sin mis efectores")
+
+        self._como(plataforma)
+        r = self.client.post("/api/redes/", {
+            "nombre": "Red provincial",
+            "instituciones": [self.hosp.id, self.centro.id],
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+
+        listado = self.client.get("/api/redes/?page_size=100")
+        self.assertEqual(listado.status_code, 200, listado.data)
+        nombres = {red["nombre"] for red in listado.data["results"]}
+        self.assertIn("Red sin mis efectores", nombres)
+        self.assertIn("Red provincial", nombres)

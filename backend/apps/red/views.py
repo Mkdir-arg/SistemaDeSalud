@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.casos.models import Caso
-from apps.common import BaseModelViewSet, CapacidadPermission, OrdenEstable, capacidades_de
+from apps.common import BaseModelViewSet, CapacidadPermission, OrdenEstable, capacidades_de, tiene_capacidad
 from apps.instituciones.models import Area, Institucion
 from rest_framework.filters import SearchFilter
 
@@ -33,7 +33,7 @@ class RedViewSet(BaseModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.is_authenticated and not user.is_superuser:
+        if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
             # Sólo las redes donde participa alguna de mis instituciones.
             ids = user.membresias.filter(activo=True).values_list("institucion_id", flat=True)
             qs = qs.filter(instituciones__in=list(ids)).distinct()

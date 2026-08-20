@@ -57,6 +57,20 @@ class BarridaDePermisosTests(TestCase):
         por_accion = getattr(viewset, "capacidad_por_accion", None) or {}
         return por_accion.get(accion) or getattr(viewset, "capacidad_requerida", None)
 
+    @staticmethod
+    def _habilita(cap, caps):
+        """
+        ¿Las capacidades del rol alcanzan para `cap`?
+
+        `capacidad_requerida` puede declarar varias capacidades alternativas
+        (usuarios y membresías admiten `config_institucional` o
+        `gobierno_plataforma`): cualquiera de ellas habilita. Comparar la tupla
+        entera contra la lista de capacidades da siempre False, y entonces la
+        barrida reporta como agujero justo el recurso más sensible que hay.
+        """
+        requeridas = cap if isinstance(cap, (tuple, list, set)) else (cap,)
+        return any(c in caps for c in requeridas)
+
     def test_cada_rol_escribe_solo_donde_su_capacidad_lo_habilita(self):
         """
         Un POST con el cuerpo vacío alcanza: interesa si el pedido muere en el
@@ -73,7 +87,7 @@ class BarridaDePermisosTests(TestCase):
                 if r.status_code == 405:
                     continue  # solo lectura
                 prohibido = r.status_code == 403
-                deberia_poder = cap in caps
+                deberia_poder = self._habilita(cap, caps)
                 if prohibido == deberia_poder:
                     fallas.append(
                         f"{rol} → POST /api/{prefijo}/ (requiere «{cap}»): "
@@ -121,7 +135,7 @@ class BarridaDePermisosTests(TestCase):
             for rol, caps in ROL_CAPACIDADES.items():
                 r = self._cliente(rol).get(f"/api/{prefijo}/")
                 prohibido = r.status_code == 403
-                if prohibido == (cap in caps):
+                if prohibido == self._habilita(cap, caps):
                     fallas.append(f"{rol} → GET /api/{prefijo}/ [HTTP {r.status_code}]")
         self.assertEqual(fallas, [], "\n" + "\n".join(fallas))
 

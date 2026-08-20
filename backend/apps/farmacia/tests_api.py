@@ -313,6 +313,42 @@ class FarmaciaAPITests(APITestCase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertEqual(Pedido.objects.count(), 0)
 
+    def test_preparar_pedido_por_http_no_mueve_stock(self):
+        self._ingresar(30)
+        p = Pedido.objects.create(origen=self.botiquin, destino=self.central)
+        LineaPedido.objects.create(pedido=p, insumo=self.insumo, pedido_cant=30)
+
+        r = self.client.post(f"/api/pedidos-stock/{p.id}/preparar/")
+
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado"], Pedido.Estado.PREPARADO)
+        self.assertEqual(Existencia.objects.get(deposito=self.central, lote=self.lote).cantidad, 30)
+        self.assertFalse(Existencia.objects.filter(deposito=self.botiquin).exists())
+
+    def test_preparar_pedido_sin_stock_devuelve_400(self):
+        p = Pedido.objects.create(origen=self.botiquin, destino=self.central)
+        LineaPedido.objects.create(pedido=p, insumo=self.insumo, pedido_cant=30)
+
+        r = self.client.post(f"/api/pedidos-stock/{p.id}/preparar/")
+
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn("No alcanza", r.data["detail"])
+        p.refresh_from_db()
+        self.assertEqual(p.estado, Pedido.Estado.PENDIENTE)
+
+    def test_entregar_pedido_preparado_por_http(self):
+        self._ingresar(30)
+        p = Pedido.objects.create(origen=self.botiquin, destino=self.central)
+        linea = LineaPedido.objects.create(pedido=p, insumo=self.insumo, pedido_cant=30)
+        self.client.post(f"/api/pedidos-stock/{p.id}/preparar/")
+
+        r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
+                             {"entregas": {str(linea.id): 30}}, format="json")
+
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado"], Pedido.Estado.ENTREGADO)
+        self.assertEqual(Existencia.objects.get(deposito=self.botiquin, lote=self.lote).cantidad, 30)
+
     def test_entregar_mueve_el_stock_y_deja_ver_el_faltante(self):
         self._ingresar(10)
         p = Pedido.objects.create(origen=self.botiquin, destino=self.central)

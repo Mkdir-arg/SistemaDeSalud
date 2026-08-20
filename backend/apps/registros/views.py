@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.auditoria.mixins import AuditaLecturaClinica
-from apps.common import BaseModelViewSet
+from apps.common import BaseModelViewSet, capacidades_de
 
 from . import integridad, reglas
 from .models import (
@@ -111,6 +111,25 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         ("entradas", "Entradas de historia"),
         ("ultima", "Última atención"),
     ]
+    columnas_csv_padron = [
+        ("documento", "Documento"),
+        ("apellido", "Apellido"),
+        ("nombre", "Nombre"),
+        ("fecha_nacimiento", "Fecha de nacimiento"),
+        ("obra_social", "Obra social"),
+        ("domicilio", "Domicilio"),
+        ("consentimiento", "Consentimiento"),
+    ]
+
+    def get_columnas_csv(self, request):
+        inst = request.query_params.get("institucion")
+        try:
+            inst = int(inst) if inst else None
+        except (TypeError, ValueError):
+            inst = None
+        if "historia_clinica" not in capacidades_de(request.user, inst):
+            return self.columnas_csv_padron
+        return self.columnas_csv
 
 
 class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):

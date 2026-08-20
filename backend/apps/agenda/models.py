@@ -280,6 +280,9 @@ class Bloqueo(models.Model):
     def cubre(self, momento):
         return self.desde <= momento < self.hasta
 
+    def solapa(self, desde, hasta):
+        return self.desde < hasta and self.hasta > desde
+
 
 class Turno(models.Model):
     """

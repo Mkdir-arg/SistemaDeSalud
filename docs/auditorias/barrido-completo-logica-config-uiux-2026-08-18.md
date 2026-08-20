@@ -648,6 +648,8 @@ Solucion logica:
 - Agregar patrones a `.gitignore`: dumps, `.sql`, `.sql.gz`, backups temporales.
 - Definir politica de backup fuera del repo: cifrado, retencion, acceso y auditoria.
 
+Estado 2026-08-19: corregido en Bloque 1. El dump `.sql.gz` fue eliminado del working tree y queda como baja en el diff; `.gitignore` cubre dumps SQL, respaldos, temporales y rutas `backend/C*/Users/`. Si tuvo datos reales, queda pendiente limpiar historial Git antes de publicar o compartir el repositorio.
+
 ### 6.2. Carpeta accidental `backend/backend`
 
 Severidad: media.
@@ -665,6 +667,8 @@ Solucion logica:
 
 - Verificar si tiene uso real. Si no, eliminarla.
 - Agregar test/check de estructura para detectar carpetas duplicadas.
+
+Estado 2026-08-19: corregido en Bloque 1. Se eliminaron los archivos vacios trackeados bajo `backend/backend/...` y se agrego `/backend/backend/` a `.gitignore`.
 
 ### 6.3. Media files en desarrollo y URLs absolutas
 
@@ -717,7 +721,17 @@ Avance 2026-08-19:
 - Implementado: registros se separo por responsabilidad. Padron/admision permite buscar o cargar pacientes y consentimientos; historia clinica protege historia, entradas, estudios y recetas; prescripcion protege emitir/suspender recetas; solicitud de estudios protege alta/informe de estudios.
 - Implementado: el serializer de pacientes oculta alergias, condiciones, conteos, recetas activas y ultima atencion cuando el usuario solo tiene `padron_admision`.
 - Cubierto con tests: perfil con capacidades por institucion, barrida global de permisos por accion, registros con frontera padron/historia/prescripcion/estudios, auditoria de accesos, FHIR, agenda, farmacia, red, instituciones/camas y build frontend.
-- Pendiente de esta fase: revisar si `registros` legacy puede retirarse totalmente de la matriz, definir una pantalla administrativa de padron que no dependa de la pantalla de historia, y evaluar code splitting para reducir el bundle principal.
+- Pendiente de esta fase: revisar si `registros` legacy puede retirarse totalmente de la matriz y evaluar code splitting para reducir el bundle principal. La pantalla administrativa de padron separada se implemento en Bloque 4.
+
+Avance 2026-08-20 - Bloque 2:
+
+- Implementado: roles estatales `plataforma`, `auditor` y `reportes`.
+- Implementado: `gobierno_plataforma` funciona como capacidad global para gobierno de instituciones, redes sanitarias y directorio estatal.
+- Implementado: la escritura de instituciones y redes queda reservada a plataforma/superusuario.
+- Implementado: solo superusuario o autoridad de plataforma puede asignar roles estatales `plataforma` y `auditor`.
+- Implementado: `auditor` y `plataforma` auditan accesos clinicos con alcance estatal, sin recibir permisos clinicos u operativos.
+- Implementado: el frontend reconoce autoridad de plataforma para entrar al Directorio y trata `gobierno_plataforma`/auditoria estatal como capacidades globales.
+- Cubierto con tests: `apps.accounts.tests`, `apps.instituciones.tests`, `apps.red.tests_api`, `apps.auditoria.tests`, `makemigrations --check --dry-run`, `npm run build` y `npm run auditar`.
 
 ### Fase 3 - Validadores de configuracion
 
@@ -741,6 +755,25 @@ Avance 2026-08-19:
 - Cubierto con tests: `apps.agenda`, `apps.flujos`, `apps.formularios`, `apps.accounts`, `apps.instituciones.test_camas` y `apps.farmacia.tests_api`.
 - Pendiente fuera de esta fase: acciones explicitas de mudanza si el negocio las necesita; validacion profunda de ids dentro de `Nodo.config` para derivaciones internas ya corresponde a la fase de motor de casos/traslados.
 
+Avance 2026-08-20 - Bloque 3:
+
+- Implementado/revisado: los nodos de atencion pueden configurar `firma_roles` y `firma_matricula`.
+- Implementado/revisado: el motor valida rol, pertenencia al area y matricula segun la configuracion del nodo.
+- Implementado/revisado: configuraciones vacias o mal tipadas caen al default seguro de firma medica con matricula.
+- Implementado: `validar_version` marca como error los roles de firma desconocidos para que no queden ocultos hasta la atencion real.
+- Implementado/revisado: el editor visual de flujos expone roles firmantes y exigencia de matricula en nodos de atencion.
+- Cubierto con tests: `apps.casos.tests.FirmaConfigurableTests`, tests focalizados de ensayo, `apps.casos.tests` y `apps.flujos.tests`.
+- Pendiente fuera de este bloque: firma digital legal/certificado si el alcance normativo del producto lo requiere.
+
+Avance 2026-08-20 - Bloque 7:
+
+- Implementado/revisado: agenda calcula bloqueos por solape completo entre bloqueo y turno, no solo por hora de inicio.
+- Implementado/revisado: la grilla no ofrece horarios libres que solapan bloqueos parciales y mantiene visibles los turnos afectados ya dados.
+- Implementado/revisado: reserva y reprogramacion rechazan horarios que pisan parcialmente un bloqueo.
+- Implementado/revisado: la respuesta de bloqueo lista turnos afectados por solape aunque el turno haya empezado antes del rango bloqueado.
+- Implementado/revisado: `origen` de turno se valida contra choices y `sobreturno=false` como texto no se interpreta como verdadero.
+- Cubierto con tests: focalizados de motor/API, `apps.agenda` completo, `py_compile` y `makemigrations --check --dry-run`.
+
 ### Fase 4 - UX y performance
 
 - Guard de rutas por capacidad.
@@ -758,7 +791,17 @@ Avance 2026-08-19:
 - Implementado: el buscador superior de pacientes queda condicionado por `historia_clinica`; usuarios sin esa capacidad no disparan consultas clinicas desde la topbar.
 - Implementado: el super admin tiene selector visible `Ver como` dentro del contexto institucional para alternar entre vista completa, configurador y administrativo.
 - Cubierto con checks: `npm run build` OK y `npm run auditar` OK, 233 clases revisadas, sin clases huerfanas ni colisiones.
-- Pendiente: si se define una pantalla administrativa de padron separada de historia clinica, el buscador superior puede degradar a busqueda administrativa con `padron_admision` y navegar a ficha no clinica.
+- Cerrado en Bloque 4: la pantalla administrativa de padron separada de historia clinica existe y el buscador superior degrada a busqueda administrativa con `padron_admision`, navegando a ficha no clinica.
+
+Avance 2026-08-20 - Bloque 4:
+
+- Implementado: rutas `/padron` y `/padron/:id` con guard `padron_admision`.
+- Implementado: la lista de padron usa columnas administrativas y navega a ficha administrativa; `/historia` conserva columnas clinicas y guard `historia_clinica`.
+- Implementado: la ficha administrativa permite editar identidad/cobertura/domicilio y gestionar consentimiento sin renderizar evolucion, estudios, recetas ni alergias.
+- Implementado: el buscador superior busca pacientes con `padron_admision`; si no hay `historia_clinica`, abre `/padron/:id`.
+- Implementado: la exportacion CSV del padron no muestra columnas clinicas cuando falta `historia_clinica`.
+- Implementado: `Ciudadano.institucion` queda bloqueado por PATCH comun.
+- Cubierto con tests/checks: `apps.registros.tests_api.PermisosGranularesRegistrosTests`, `apps.registros.tests_api`, `makemigrations --check --dry-run`, `npm run build`, `npm run auditar` y `git diff --check`.
 
 ### Fase 5 - Derivaciones, subprocesos y casos activos
 
@@ -779,7 +822,15 @@ Avance 2026-08-19:
 - Cubierto con tests: derivacion interna a area ajena, derivacion a flujo ajeno, flujo destino solo manual, interconsulta con receptor manual/ambiguo, estudio derivado a area ajena, subproceso cancelado que no bloquea retorno, traslado aceptado contra flujo solo manual, archivo con casos cancelados y conteo de activos sin cancelados.
 - Checks ejecutados: `apps.casos.tests.EstudioDerivadoTests apps.casos.tests.DerivacionEntreFlujosTests` OK, `apps.red.tests.RespuestaTests` OK, `apps.flujos.tests.ArchivarFlujoTests apps.flujos.tests.VolumenDelDisenoTests apps.instituciones.test_camas.MetricasInstitucionTests` OK, `apps.casos.tests apps.casos.tests_api` OK, `apps.red.tests.RespuestaTests apps.red.tests.SolicitudTests apps.red.tests.DestinosTests` OK, `apps.instituciones.test_camas` OK y `apps.flujos` OK.
 - Nota de verificacion: la corrida monolitica `apps.casos apps.flujos apps.red apps.instituciones.test_camas` y las corridas completas separadas de `apps.casos`/`apps.red` excedieron el timeout del comando; se reemplazaron por lotes focalizados y por archivos/clases de la superficie tocada.
-- Pendiente fuera de esta fase: validar otros IDs embebidos en `Nodo.config` que no sean derivacion (`guardar_en` de integraciones ya tiene validacion parcial por motor; quedan politicas de integraciones externas y archivos clinicos).
+- Cerrado en Bloque 6: `guardar_en` de integraciones y `prioridad_campo` se validan contra campos reales, institucion y compatibilidad funcional. Quedan politicas de integraciones externas nuevas y propietarios de archivos clinicos cuando la UI envie ese dato.
+
+Avance 2026-08-20 - Bloque 6:
+
+- Implementado: `validar_version` rechaza `guardar_en` inexistente, mal tipado o de otra institucion.
+- Implementado: las decisiones solo consideran disponible un campo si lo carga un formulario del flujo o una integracion valida.
+- Implementado: `_llamar_externo` valida defensivamente el campo destino antes de crear `ValorCampo`.
+- Implementado: `prioridad_campo` debe pertenecer al formulario del nodo y ser de seleccion unica.
+- Cubierto con tests: `apps.casos.test_validacion_y_ensayo`, `apps.flujos.tests`, `apps.casos.tests apps.casos.test_validacion_y_ensayo`, `makemigrations --check --dry-run` y `git diff --check`.
 
 ### Fase 6 - Farmacia: entregas parciales y pedidos
 
@@ -818,7 +869,47 @@ Avance 2026-08-19:
 - Implementado: `HistoriaDetalle` descarga archivos internos mediante `api.downloadArchivo`, enviando `Authorization` y evitando enlaces directos que fallan con JWT.
 - Cubierto con tests: upload con URL protegida, descarga autorizada, bloqueo de `/media/uploads/...`, bloqueo por falta de institucion, bloqueo por institucion inexistente, bloqueo a usuario sin `historia_clinica`, bloqueo de descarga desde otra institucion y subida sin archivo.
 - Checks ejecutados: `apps.casos.tests_api.SubirArchivoTest` OK, 8 tests; `apps.casos.tests_api` OK, 49 tests; `npm run build` OK; `npm run auditar` OK.
-- Pendiente fuera de esta fase: modelo de metadatos de archivo clinico con propietario/proposito, validacion MIME/tamanio por tipo documental, antivirus y migracion/ocultamiento de archivos historicos que ya existan bajo `/media`.
+- Cerrado en Bloque 5: modelo de metadatos de archivo clinico con propietario/proposito opcional, validacion MIME/tamanio/extension/firma y SHA-256.
+- Pendiente fuera de esta fase: antivirus y migracion/ocultamiento de archivos historicos que ya existan bajo `/media`.
+
+Avance 2026-08-20 - Bloque 5:
+
+- Implementado: `ArchivoClinico` persiste institucion, ruta, nombre original, content type, tamano, SHA-256, proposito, propietario opcional, usuario y fecha.
+- Implementado: la subida de archivos rechaza archivos vacios, mayores al maximo, tipos no permitidos, extension incompatible y contenido que no coincide con el tipo declarado.
+- Implementado: tipos permitidos PDF, JPEG, PNG, WebP y texto plano; maximo configurable con `ARCHIVO_CLINICO_MAX_BYTES`.
+- Implementado: la descarga usa metadata cuando existe y mantiene fallback para rutas historicas `uploads/<institucion>/...`.
+- Cubierto con tests: `apps.casos.tests_api.SubirArchivoTest`, `apps.casos.tests_api`, `makemigrations --check --dry-run` y `git diff --check`.
+
+### Bloque 1 - Higiene de repositorio y respaldos
+
+- Eliminar dump SQL versionado bajo ruta temporal.
+- Eliminar archivos vacios de la carpeta accidental `backend/backend`.
+- Agregar `.gitignore` preventivo para dumps, respaldos, temporales y copias anidadas.
+- Revisar el diff y confirmar que no queden errores de whitespace.
+
+Avance 2026-08-19:
+
+- Implementado: baja del dump `backend/C.../Users/.../Temp/.../cauce-20260814-133512.sql.gz`.
+- Implementado: baja de `backend/backend/apps/agenda/management/__init__.py` y `backend/backend/apps/agenda/management/commands/__init__.py`.
+- Implementado: `.gitignore` excluye `*.sql`, `*.sql.gz`, `*.dump`, `*.backup`, `*.bak`, `*.sqlite3.gz`, `backend/C*/Users/`, `backend/**/Temp/` y `/backend/backend/`.
+- Review ejecutada: `git check-ignore -v` confirma reglas preventivas; `git diff --check` no reporta errores.
+- Pendiente fuera del codigo: si el dump tenia datos reales, limpiar historial Git antes de compartir/publicar el repo.
+
+### Bloque 8 - Puestos, grupos y membresia activa
+
+- Centralizar la regla de grupo operativo para no usar `Usuario.grupos` directo en bandejas, acciones ni permisos de puesto.
+- Exigir usuario activo, grupo activo, area activa y membresia activa en la institucion/area del grupo.
+- Evitar que bajas de membresia sigan habilitando `MisTareasView`, `PuestoDetalleView`, acciones de caso o notificaciones.
+- Validar en diseno que un nodo no quede asignado a grupos inactivos.
+- Ocultar de serializers operativos los integrantes/responsables que ya no cuentan como vigentes.
+
+Avance 2026-08-20:
+
+- Implementado: `motor.grupos_operativos_de` es la regla comun para tomar casos, listar mis tareas y abrir detalle de puesto.
+- Implementado: notificaciones, `GrupoSerializer`, `NodoSerializer`, `CasoSerializer` y `validar_version` filtran o rechazan grupos/miembros inactivos segun corresponda.
+- Implementado: los contadores de staff por area/institucion solo cuentan usuarios activos con membresia activa.
+- Cubierto con tests: `ResponsabilidadTests`, `NotificacionNodoTests`, `PuestosConMembresiaActivaTests`, `GruposOperativosTests`, `NodoGruposTests`, `GruposResponsablesTests` y suite amplia de casos/instituciones/flujos.
+- Checks ejecutados: py_compile OK; set enfocado OK, 32 tests; set amplio OK, 229 tests.
 
 ## 8. Checklist de pruebas funcionales nuevas
 

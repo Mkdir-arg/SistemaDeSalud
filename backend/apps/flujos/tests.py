@@ -54,6 +54,20 @@ class NodoGruposTests(TestCase):
         self.assertEqual(data["grupos_detalle"][0]["nombre"], "Turno mañana")
         self.assertEqual(data["grupos_detalle"][0]["area_nombre"], "Guardia")
 
+    def test_no_asigna_grupo_inactivo(self):
+        self.grupo.activo = False
+        self.grupo.save(update_fields=["activo"])
+        s = NodoSerializer(self.nodo, data={"grupos": [self.grupo.id]}, partial=True)
+        self.assertFalse(s.is_valid())
+        self.assertIn("grupos", s.errors)
+
+    def test_no_detalla_grupos_inactivos_heredados(self):
+        self.nodo.grupos.add(self.grupo)
+        self.grupo.activo = False
+        self.grupo.save(update_fields=["activo"])
+        data = NodoSerializer(self.nodo).data
+        self.assertEqual(data["grupos_detalle"], [])
+
 
 class ConfiguracionDeGrafoTests(APITestCase):
     """El grafo no puede mezclar definiciones de distintas instituciones."""
