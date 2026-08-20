@@ -416,11 +416,21 @@ export async function sembrar(nombre, avisar) {
   return ctx;
 }
 
-/** Vacía la escuela para volver a construirla desde cero. */
+/**
+ * Vacía la escuela para volver a construirla desde cero.
+ *
+ * Borra TODAS las que se llamen así, no la primera. Un recorrido interrumpido a
+ * mitad del primer paso deja una institución escuela vacía, y con dos en la base
+ * el resto del recorrido es una lotería: `primero()` devuelve una, la pantalla
+ * está parada en la otra, y los pasos siguientes cargan datos en una institución
+ * que nadie está mirando.
+ */
 export async function resetearEscuela() {
-  const inst = await institucionEscuela();
-  if (!inst) return;
-  await api.post(`/instituciones/${inst.id}/reset-escuela/`, {});
+  const escuelas = (await lista("instituciones", { search: ESCUELA_NOMBRE, page_size: 50 }))
+    .filter((i) => i.nombre === ESCUELA_NOMBRE);
+  for (const inst of escuelas) {
+    await api.post(`/instituciones/${inst.id}/reset-escuela/`, {});
+  }
 }
 
 /**

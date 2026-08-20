@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/auth/AuthContext";
 import { useInstitucion } from "@/auth/InstitutionContext";
@@ -117,6 +118,7 @@ export function TutorialProvider({ children }) {
   const { institucion, setInstitucion, setVista } = useInstitucion();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   const [activo, setActivo] = useState(false);
   const [arranque, setArranque] = useState(null); // null | "preguntando" | "preparando"
@@ -206,6 +208,23 @@ export function TutorialProvider({ children }) {
   // ----------------------------------------------------------------------- //
   // Arranque
   // ----------------------------------------------------------------------- //
+  /**
+   * Tira la caché de consultas.
+   *
+   * Sin esto el recorrido trabajaba sobre datos que ya no existen, y de dos
+   * formas distintas:
+   *
+   *  - Después de vaciar la escuela, los desplegables seguían mostrando las áreas
+   *    de la institución borrada. El actor elegía una, y el POST del flujo
+   *    reventaba con una violación de clave ajena contra un área que ya no está.
+   *  - Después de sembrar, la pantalla que se estaba mostrando ya había pedido su
+   *    lista vacía y no volvía a pedirla en 30 segundos: Internación y Farmacia
+   *    se veían vacías con las camas y los insumos ya cargados.
+   */
+  const refrescarDatos = useCallback(() => {
+    queryClient.invalidateQueries();
+  }, [queryClient]);
+
   const cancelar = useCallback(() => { corrida.current += 1; }, []);
 
   const cerrar = useCallback(() => {
@@ -236,6 +255,7 @@ export function TutorialProvider({ children }) {
     try {
       if (desdeCero) {
         await resetearEscuela();
+        refrescarDatos();
         saltearRef.current = false;
       } else {
         // Continuando sobre una escuela ya cargada, el primer paso se saltea; sin
@@ -259,7 +279,7 @@ export function TutorialProvider({ children }) {
     } finally {
       setArranque(null);
     }
-  }, [cancelar, setInstitucion, setVista]);
+  }, [cancelar, setInstitucion, setVista, refrescarDatos]);
 
   /** Abre el recorrido. Si la escuela ya tiene datos, pregunta antes de borrar. */
   const iniciarDemo = useCallback(async () => {
@@ -362,6 +382,7 @@ export function TutorialProvider({ children }) {
             if (!ctl.vigente()) return;
             if (ctx?.inst) setInstitucion(ctx.inst);
             hechos.current.add(step.prepare);
+            refrescarDatos();
           }
           setEstado("mirando");
           setAccionActual("");
@@ -399,6 +420,7 @@ export function TutorialProvider({ children }) {
           if (!ctl.vigente()) return;
           if (ctx?.inst) setInstitucion(ctx.inst);
           hechos.current.add(step.prepare);
+          refrescarDatos();
           setEstado("listo");
           await actor.pausa(1600);
           if (ctl.vigente() && !pausadoRef.current) avanzar();
@@ -417,6 +439,7 @@ export function TutorialProvider({ children }) {
             const ctx = await sembrar(step.prepare, (que) => setAccionActual(que));
             if (!ctl.vigente()) return;
             if (ctx?.inst) setInstitucion(ctx.inst);
+            refrescarDatos();
             await actor.pausa(1100);
             setSembrado("");
             continue;
@@ -438,6 +461,7 @@ export function TutorialProvider({ children }) {
         if (!ctl.vigente()) return;
         if (ctx?.inst) setInstitucion(ctx.inst);
         hechos.current.add(step.prepare);
+        refrescarDatos();
 
         setEstado("listo");
         setAccionActual(fallidas ? `${fallidas} acción(es) se completaron por sistema` : "Paso terminado");
