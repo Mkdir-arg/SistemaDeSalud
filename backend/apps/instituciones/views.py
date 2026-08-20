@@ -33,6 +33,12 @@ MAX_DIAS_RANGO = 366
 # `reset-escuela` acepta vaciar: ver InstitucionViewSet.reset_escuela.
 NOMBRE_ESCUELA = "Hospital Escuela Cauce"
 
+# Los usuarios de práctica del escenario: `escuela.med@cauce.local` y compañía.
+# `reset-escuela` los borra junto con la institución, y el prefijo más el dominio
+# son lo que evita que se lleve puesto a nadie más.
+PREFIJO_USUARIO_ESCUELA = "escuela."
+DOMINIO_USUARIO_ESCUELA = "@cauce.local"
+
 
 def _rango_pedido(request):
     """Rango del tablero: (desde, hasta) inclusivo, acotado a `MAX_DIAS_RANGO`."""
@@ -332,6 +338,7 @@ class InstitucionViewSet(BaseModelViewSet):
         """
         from django.db.models import ProtectedError
 
+        from apps.accounts.models import Usuario
         from apps.auditoria.models import AccesoClinico
         from apps.casos.models import Caso
         from apps.farmacia.models import Movimiento
@@ -365,13 +372,24 @@ class InstitucionViewSet(BaseModelViewSet):
             # - Caso.version protege a VersionFlujo, que sí cuelga de la
             #   institución (Institucion → Flujo → VersionFlujo). Los casos tienen
             #   que irse ANTES que el flujo que los originó.
+            # Los usuarios de práctica no cuelgan de la institución —una persona
+            # puede tener membresías en varias—, así que vaciar la escuela los
+            # dejaba vivos y el recorrido siguiente se comía un «ese email ya
+            # existe» al querer darlos de alta de nuevo. Se van con la escuela,
+            # acotados a los del escenario por prefijo y dominio.
+            del_usuarios = Usuario.objects.filter(
+                email__startswith=PREFIJO_USUARIO_ESCUELA,
+                email__endswith=DOMINIO_USUARIO_ESCUELA,
+                is_superuser=False,
+            )
             accesos, _ = AccesoClinico.objects.filter(
-                Q(institucion=inst) | Q(ciudadano__institucion=inst)
+                Q(institucion=inst) | Q(ciudadano__institucion=inst) | Q(usuario__in=del_usuarios)
             ).delete()
             movimientos, _ = Movimiento.objects.filter(insumo__institucion=inst).delete()
             casos, _ = Caso.objects.filter(
                 Q(institucion=inst) | Q(version__flujo__institucion=inst)
             ).delete()
+            usuarios, _ = del_usuarios.delete()
             try:
                 borrados, detalle = inst.delete()
             except ProtectedError as e:
@@ -386,7 +404,7 @@ class InstitucionViewSet(BaseModelViewSet):
 
         return Response({
             "vaciada": NOMBRE_ESCUELA,
-            "borrados": borrados + accesos + movimientos + casos,
+            "borrados": borrados + accesos + movimientos + casos + usuarios,
             "detalle": detalle,
         })
 

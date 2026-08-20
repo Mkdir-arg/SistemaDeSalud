@@ -234,3 +234,20 @@ class ResetEscuelaTests(APITestCase):
         self.assertFalse(Institucion.objects.filter(pk=self.escuela.pk).exists())
         self.assertFalse(Caso.objects.exists())
         self.assertFalse(VersionFlujo.objects.exists())
+
+    def test_se_lleva_los_usuarios_de_practica_pero_no_a_los_demas(self):
+        """Los usuarios no cuelgan de la institución. Si el reset los dejaba
+        vivos, el recorrido siguiente moría al darlos de alta de nuevo: el email
+        es único. El prefijo y el dominio son lo que acota el borrado."""
+        practica = Usuario.objects.create_user("escuela.med@cauce.local", "x")
+        ajeno = Usuario.objects.create_user("medico@hospital.gob.ar", "x")
+        parecido = Usuario.objects.create_user("escuela.med@hospital.gob.ar", "x")
+        self.client.force_authenticate(self.super)
+
+        r = self.client.post(f"/api/instituciones/{self.escuela.id}/reset-escuela/")
+
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(Usuario.objects.filter(pk=practica.pk).exists())
+        self.assertTrue(Usuario.objects.filter(pk=ajeno.pk).exists())
+        self.assertTrue(Usuario.objects.filter(pk=parecido.pk).exists())
+        self.assertTrue(Usuario.objects.filter(pk=self.super.pk).exists())

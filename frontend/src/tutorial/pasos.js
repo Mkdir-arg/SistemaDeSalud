@@ -29,7 +29,7 @@ export const DEMO_STEPS = [
     route: "/inicio",
     target: '[data-tour="inicio-institucion"]',
     title: "Modo escuela: el sistema desde cero",
-    body: "Creamos una institución de capacitación aparte, Hospital Escuela Cauce, y la vamos a poblar paso a paso como si estuvieras implementando el sistema el primer día.",
+    body: "Se crea una institución aparte, Hospital Escuela Cauce, y se la puebla paso a paso como el primer día de una implementación. No es un modo de prueba: son las mismas pantallas, los mismos formularios y la misma base que en producción, sobre un establecimiento que se puede vaciar y volver a construir.",
     guion: [
       { t: "salir", decir: "Salimos al directorio de la plataforma" },
       { t: "click", boton: "Nueva institución", abreDialogo: true, decir: "Tocamos Nueva institución" },
@@ -46,7 +46,7 @@ export const DEMO_STEPS = [
     route: "/estructura",
     target: '[data-tour="menu-estructura"]',
     title: "Estructura organizativa",
-    body: "Primero las áreas reales de trabajo: Guardia, Laboratorio, Imágenes, Internación y Farmacia. Sin estructura no hay roles, ni colas, ni circuitos operables.",
+    body: "El área es la unidad de la que cuelga todo lo demás: los permisos se dan por área, las colas de espera son de un área, y un flujo y una agenda pertenecen a un área. Por eso va primero — antes de esto no hay a quién darle un rol ni dónde poner una fila. Cargamos cinco: Guardia, Laboratorio, Imágenes, Internación y Farmacia.",
     guion: [
       { t: "ir", ruta: "/estructura", menu: '[data-tour="menu-estructura"]', decir: "Vamos a Estructura" },
       { t: "click", boton: "Nueva área", abreDialogo: true, decir: "Tocamos Nueva área" },
@@ -63,10 +63,10 @@ export const DEMO_STEPS = [
     route: "/administracion",
     target: '[data-tour="menu-administracion"]',
     title: "Usuarios y accesos",
-    body: "Ahora el equipo: administrativo, enfermería, médico y jefe de área. Cada rol habilita una parte distinta del sistema, y la membresía lo ata al área Guardia.",
+    body: "Dar de alta a una persona son dos decisiones en un solo formulario: el rol, que define qué partes del sistema se le abren, y la institución, que sale del contexto en el que estamos. La membresía además la ata al área: el staff de Guardia es quien tiene membresía en Guardia, y de ahí sale después la lista de profesionales de una agenda.",
     guion: [
       { t: "ir", ruta: "/administracion", menu: '[data-tour="menu-administracion"]', decir: "Vamos a Administración" },
-      { t: "click", boton: "Nuevo usuario", abreDialogo: true, decir: "Tocamos Nuevo usuario" },
+      { t: "click", boton: "Crear usuario", abreDialogo: true, decir: "Tocamos Crear usuario" },
       { t: "escribir", campo: "Email", valor: "escuela.med@cauce.local", decir: "Con qué mail entra" },
       { t: "escribir", campo: "Nombre", valor: "Santiago", decir: "Nombre" },
       { t: "escribir", campo: "Apellido", valor: "Vera", decir: "Apellido" },
@@ -82,7 +82,7 @@ export const DEMO_STEPS = [
     route: "/formularios",
     target: '[data-tour="menu-formularios"]',
     title: "Formularios clínicos",
-    body: "El formulario de triage. El campo Temperatura va como número con rango, no como texto: es la diferencia entre una decisión «> 38» que compara y una que no compara nada.",
+    body: "El formulario de triage, y el campo que explica por qué el tipo de dato importa. Temperatura va como número con mínimo y máximo, no como texto libre: sobre texto, una decisión «mayor a 38» no compara nada, da falso en silencio, y manda al paciente con fiebre por el circuito del que no tiene fiebre. Nadie ve el error hasta que ya pasó.",
     guion: [
       { t: "ir", ruta: "/formularios", menu: '[data-tour="menu-formularios"]', decir: "Vamos a Formularios" },
       { t: "click", boton: "Nuevo formulario", abreDialogo: true, decir: "Tocamos Nuevo formulario" },
@@ -107,7 +107,7 @@ export const DEMO_STEPS = [
     route: "/flujos",
     target: '[data-tour="menu-flujos"]',
     title: "Diseño del proceso",
-    body: "El circuito de guardia: ingreso, admisión administrativa, triage, sala de espera, atención médica y cierre. Publicarlo es lo que lo vuelve operable.",
+    body: "El circuito de guardia, de punta a punta: ingreso, admisión administrativa, triage de enfermería, sala de espera, atención médica y cierre. Cada paso tiene un grupo responsable, y por eso la tarea le aparece a la persona correcta y no a todos. Publicar es lo que lo vuelve operable: en borrador se puede diseñar, pero no abre ningún caso.",
     guion: [
       { t: "ir", ruta: "/flujos", menu: '[data-tour="menu-flujos"]', decir: "Vamos a Flujos" },
       { t: "click", boton: "Nuevo flujo", abreDialogo: true, decir: "Tocamos Nuevo flujo" },
@@ -127,11 +127,17 @@ export const DEMO_STEPS = [
     ],
   },
   {
+    route: "/mapa",
+    target: '[data-tour="menu-mapa"]',
+    title: "Cómo se encadenan los procesos",
+    body: "Un flujo publicado no vive solo. El mapa muestra cómo los circuitos se llaman entre sí a través de los pasos de derivación: guardia que pide un estudio al laboratorio, laboratorio que devuelve. Recién armamos uno, así que el mapa tiene un solo nodo — y ese vacío es informativo, porque es lo que se ve antes de que la institución tenga varios procesos conectados.",
+  },
+  {
     prepare: "agenda",
     route: "/estructura",
     target: '[data-tour="menu-estructura"]',
     title: "Turnos programados",
-    body: "La agenda del consultorio, con su profesional y con el flujo que se abre cuando el paciente se presenta. Una agenda sin flujo da turnos que no abren ningún caso.",
+    body: "Una agenda define a quién o a qué se le pueden dar turnos: un profesional, o un recurso como un tomógrafo. Los dos campos que la conectan con el resto son el profesional y el flujo que se abre al presentarse. Sin ese flujo la agenda sigue dando turnos, pero cuando el paciente llega no se abre ningún caso y el turno no lleva a nada.",
     guion: [
       { t: "ir", ruta: "/estructura", menu: '[data-tour="menu-estructura"]', decir: "Volvemos a Estructura" },
       { t: "click", boton: "Guardia escuela", decir: "Entramos al área Guardia escuela" },
@@ -151,7 +157,7 @@ export const DEMO_STEPS = [
     prepare: "casos",
     route: "/padron",
     title: "Pacientes y casos",
-    body: "Por último, gente. Se carga un paciente en el padrón y el escenario deja un caso abierto en guardia, así la pantalla de trabajo tiene tareas reales para admitir, clasificar y atender.",
+    body: "Por último, personas. El padrón es la identidad —quién es, cómo se lo encuentra—, separado de la historia clínica, que es lo que le pasó. Con el paciente cargado y el flujo publicado se puede abrir un caso, que es lo que recorre el circuito paso por paso y le va apareciendo a cada responsable.",
     guion: [
       { t: "ir", ruta: "/padron", decir: "Vamos al padrón" },
       { t: "click", boton: "Crear registro", abreDialogo: true, decir: "Tocamos Crear registro" },
@@ -164,60 +170,68 @@ export const DEMO_STEPS = [
     ],
   },
 
-  // A partir de acá no hay nada que construir: son pantallas que muestran lo que
-  // los pasos anteriores dejaron cargado.
+  // A partir de acá no hay nada que construir. Estas pantallas se miran, y el
+  // texto es todo lo que se lleva quien las mira: dice qué decisión permite
+  // tomar la pantalla y quién la usa, no qué datos contiene. «Muestra camas,
+  // estadías y disponibilidad» era la versión anterior de este archivo, y no
+  // dice nada que no se adivine del título.
+  //
+  // Dos de ellas traen `prepare`: la app no tiene por dónde cargar camas ni
+  // insumos, y sin datos son un cartel de vacío.
   {
     route: "/inicio",
     target: '[data-tour="inicio-operar"]',
     title: "Mi trabajo",
-    body: "La pantalla de trabajo dejó de estar vacía: hay tareas reales para admitir, hacer triage y atender.",
+    body: "La worklist de quien opera. No lista «los casos del hospital»: lista lo que le toca a esta persona, separado por el paso del que es responsable —lo asignado, lo que está en sus grupos sin que nadie lo haya tomado, y las esperas que se vencieron—. Un administrativo y un médico abren la misma pantalla y ven cosas distintas.",
   },
   {
+    prepare: "internacion",
     route: "/internacion",
     target: '[data-tour="menu-internacion"]',
     title: "Internación",
-    body: "Internación muestra camas, estadías y disponibilidad. Sirve para seguir ocupación y movimientos del paciente dentro del hospital.",
+    body: "El tablero de camas por sector, con la ocupación arriba a la derecha. Sirve para la pregunta que se hace en la guardia cuando un paciente tiene que quedarse: si hay dónde, y desde cuándo está ocupada la que no. Cargamos seis camas en el área de internación de la escuela.",
   },
   {
+    prepare: "farmacia",
     route: "/farmacia",
     target: '[data-tour="menu-farmacia"]',
     title: "Farmacia e insumos",
-    body: "Farmacia permite consultar stock, lotes, depósitos, pedidos y movimientos. Es el módulo operativo de insumos.",
+    body: "La primera pestaña no es el stock: es «Qué resolver», y trae sólo lo que está por debajo de su mínimo o vence en los próximos dos meses. Un listado completo de mil insumos no dice qué hacer; esta lista sí. Dejamos la gasa estéril por debajo del mínimo para que se vea funcionando.",
   },
   {
     route: "/red",
     target: '[data-tour="menu-red"]',
     title: "Red y traslados",
-    body: "Red coordina traslados entre establecimientos: solicitud, respuesta, viaje, recepción y seguimiento de demoras.",
+    body: "Coordina el traslado de un paciente a otro establecimiento: se pide, el otro lado responde, el paciente viaja, y del otro lado lo reciben. Las dos pestañas son las dos puntas —«Nos derivan» y «Derivamos»— porque el mismo hospital hace las dos cosas. La escuela todavía no está en ninguna red, así que muestra el vacío que ve una institución nueva.",
   },
   {
     route: "/historia",
     target: '[data-tour="menu-historia"]',
     title: "Historia clínica",
-    body: "Acá se busca el paciente y se consulta su historia: atenciones, estudios, recetas y eventos clínicos registrados.",
+    body: "Se busca a la persona y se lee lo que le pasó: atenciones, estudios, recetas y eventos, en orden. Es distinto del padrón, que son los datos de identidad y contacto: acá está lo clínico, y por eso cada consulta a esta pantalla queda registrada en Auditoría.",
   },
   {
     route: "/legajo",
     target: '[data-tour="menu-legajo"]',
     title: "Legajo profesional",
-    body: "El legajo concentra la información profesional del usuario y su trazabilidad dentro de la institución.",
+    body: "La contracara de la historia clínica, del lado del equipo: quién es cada profesional en esta institución y qué viene haciendo. «Actividad reciente» es lo que permite responder por una atención meses después, cuando ya nadie se acuerda quién estaba de guardia.",
   },
   {
     route: "/dashboard",
     target: '[data-tour="menu-dashboard"]',
     title: "Tablero",
-    body: "El tablero es para jefatura y administración: volumen de casos, demoras, ausentismo de turnos, saturación y salud de procesos.",
+    body: "Para jefatura, y está partido en dos a propósito. Arriba «Requiere atención», que son los indicadores que conviene resolver antes de sentarse a analizar nada; abajo «Pulso operativo», la carga de ahora y la producción del período —7, 30 o 90 días—. Un tablero que mezcla las dos cosas se mira y no se hace nada.",
   },
   {
     route: "/supervision",
     target: '[data-tour="menu-supervision"]',
     title: "Supervisión",
-    body: "Supervisión permite mirar el trabajo del área, detectar demoras y ordenar la operación sin entrar caso por caso.",
+    body: "Lo que ve el jefe de área: los casos activos de su área y las acciones para ordenarlos —reasignar, priorizar, desatascar— sin tener que entrar caso por caso. El filtro lo hace el servidor: trae los que esta persona puede supervisar, no los del hospital entero recortados a la primera página.",
   },
   {
     route: "/accesos",
     target: '[data-tour="menu-accesos"]',
     title: "Auditoría",
-    body: "El registro de accesos muestra quién consultó datos clínicos. Es la contracara necesaria de una historia clínica seria.",
+    body: "Quién consultó, cuándo, y de quién. Registra las tres formas de ver datos clínicos que existen —abrir un registro, listar, y exportar a un archivo— porque las tres son un acceso, y la exportación es la que se lleva los datos afuera. Es la condición para que la historia clínica del módulo anterior sea seria.",
   },
 ];

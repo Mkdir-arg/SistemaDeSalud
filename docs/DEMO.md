@@ -99,9 +99,12 @@ Medido después del reset:
   la de estado. Si molestan en cámara, entrar directo a Hospital Central en vez de
   pasar por el directorio.
 - **«Hospital Escuela Cauce» NO se toca**: no es un resto de pruebas, es el
-  escenario que construye el **recorrido guiado** (`src/tutorial/`, tres clics en la
-  ficha del super admin). Si se lo da de baja, el tutorial integrado deja de
-  funcionar. Queda en estado *En alta* a propósito.
+  escenario del **recorrido guiado** (`src/tutorial/`, tres clics en la ficha del
+  super admin). Después de sembrar **no existe, y así corresponde**: el recorrido la
+  crea desde cero en vivo, que es justamente lo que demuestra. Si quedó de una
+  corrida anterior, el recorrido pregunta antes y conviene elegir «Empezar de cero».
+  Lo único que la rompe es **darla de baja**: el recorrido la encuentra inactiva, no
+  puede entrar y queda colgado. Nunca desactivarla.
 - **Rol `reportes`**: la capacidad existe pero no hay pantallas de indicadores
   agregados no nominales. Entrar con ese usuario muestra una app casi vacía.
 - **Firma digital con certificado** (Ley 25.506): el enganche está, el certificador

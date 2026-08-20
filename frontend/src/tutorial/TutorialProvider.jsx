@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/auth/AuthContext";
 import { useInstitucion } from "@/auth/InstitutionContext";
-import { Button } from "@/components/ui";
+import { Button, Select } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
 
@@ -15,8 +15,17 @@ import { DEMO_STEPS } from "./pasos";
 
 const TutorialContext = createContext(null);
 
-/** Cuánto se queda en una pantalla que no tiene nada que actuar. */
-const ESPERA_LECTURA = 4200;
+/**
+ * Las velocidades del recorrido.
+ *
+ * Multiplican el ritmo: 0,25× tarda cuatro veces más que 1×. Abajo de 1 sirve
+ * para mostrárselo a alguien y poder hablar encima; arriba de 1, para quien ya
+ * lo vio y quiere llegar al final.
+ */
+const VELOCIDADES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
+/** «0,5×» — con coma, que es como se escribe un decimal acá. */
+const rotuloVelocidad = (v) => `${String(v).replace(".", ",")}×`;
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -47,6 +56,17 @@ function useTarget(selector, activo, pathname) {
       return;
     }
     let raf = 0;
+
+    // Medir y acercar son dos cosas distintas, y mezclarlas colgaba la app.
+    //
+    // Antes `medir` hacía las dos, y estaba suscripta al evento `scroll`: un
+    // `scrollIntoView` suave emite decenas de eventos de scroll mientras anima,
+    // cada uno volvía a llamar a `medir`, y `medir` volvía a arrancar el scroll
+    // suave desde el principio. El scroll nunca terminaba y el bucle
+    // rAF + scrollIntoView se comía el hilo principal: en las pantallas pesadas
+    // —el tablero, el editor— el recorrido se veía congelado.
+    //
+    // Ahora se acerca UNA vez por paso, y el rectángulo se recalcula solo.
     const medir = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
@@ -55,16 +75,19 @@ function useTarget(selector, activo, pathname) {
           setRect(null);
           return;
         }
-        el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
         const r = el.getBoundingClientRect();
         setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
       });
     };
-    const t = setTimeout(medir, 180);
+    const acercar = window.setTimeout(() => {
+      document.querySelector(selector)?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      medir();
+    }, 180);
+
     window.addEventListener("resize", medir);
     window.addEventListener("scroll", medir, true);
     return () => {
-      clearTimeout(t);
+      window.clearTimeout(acercar);
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", medir);
       window.removeEventListener("scroll", medir, true);
@@ -72,6 +95,21 @@ function useTarget(selector, activo, pathname) {
   }, [selector, activo, pathname]);
 
   return rect;
+}
+
+/**
+ * Cuánto se queda en una pantalla que no tiene nada que actuar.
+ *
+ * Era fijo en 4,2 segundos para cualquier texto, y por eso el recorrido «iba
+ * muy rápido»: los párrafos de estas pantallas tienen 200 y 300 caracteres, y
+ * cuatro segundos no alcanzan ni para leer la mitad. Ahora sale del largo del
+ * texto, a un ritmo de lectura tranquilo —unos 200 caracteres por cada 12
+ * segundos— con piso y techo para que ni el título más corto pase de golpe ni
+ * el párrafo más largo se eternice.
+ */
+function tiempoDeLectura(step) {
+  const largo = `${step?.title || ""} ${step?.body || ""}`.trim().length;
+  return clamp(2400 + largo * 58, 6000, 24000);
 }
 
 export function TutorialProvider({ children }) {
@@ -89,6 +127,9 @@ export function TutorialProvider({ children }) {
   const [estado, setEstado] = useState("mirando"); // mirando | actuando | sembrando | saltado | listo
   const [accionActual, setAccionActual] = useState("");
   const [noActuadas, setNoActuadas] = useState(0);
+  // Qué está sembrando, para no perder el «las otras cuatro áreas van igual que
+  // esta» cuando la línea de acción pasa a nombrar cada cosa que entra.
+  const [sembrado, setSembrado] = useState("");
   const [modo, setModo] = useState("actuado"); // actuado | rapido
   const [velocidad, setVelocidad] = useState(1);
   const [autoAvance, setAutoAvance] = useState(true);
@@ -281,8 +322,13 @@ export function TutorialProvider({ children }) {
     return true;
   }, [setInstitucion, setVista, navigate]);
 
+  // El motor. Ojo con `errorDemo`: NO es una condición de arranque ni una
+  // dependencia. Cuando lo era, un paso que fallaba dejaba el recorrido clavado
+  // para siempre —el efecto no volvía a correr y nadie avanzaba—, y eso es lo
+  // que se ve como que el recorrido se tildó. Un paso que falla ahora se avisa
+  // y se sigue: el sembrado ya dejó los datos completos igual.
   useEffect(() => {
-    if (!activo || arranque || errorDemo) return undefined;
+    if (!activo || arranque) return undefined;
     if (!step) return undefined;
 
     const mia = corrida.current + 1;
@@ -305,9 +351,21 @@ export function TutorialProvider({ children }) {
       try {
         // --- paso de sólo mirar -----------------------------------------
         if (!step.guion) {
+          // Hay pantallas que sólo se miran pero que no tienen nada que mostrar
+          // hasta que alguien cargue sus datos, y la app no tiene por dónde
+          // cargarlos —camas, insumos—. Se siembran acá, antes de mostrarlas:
+          // explicar una pantalla vacía es lo que hacía que la explicación
+          // sonara a folleto.
+          if (step.prepare && !hechos.current.has(step.prepare)) {
+            setEstado("sembrando");
+            const ctx = await sembrar(step.prepare, (que) => setAccionActual(que));
+            if (!ctl.vigente()) return;
+            if (ctx?.inst) setInstitucion(ctx.inst);
+            hechos.current.add(step.prepare);
+          }
           setEstado("mirando");
           setAccionActual("");
-          await actor.pausa(ESPERA_LECTURA);
+          await actor.pausa(tiempoDeLectura(step));
           if (ctl.vigente() && !pausadoRef.current) avanzar();
           return;
         }
@@ -327,7 +385,7 @@ export function TutorialProvider({ children }) {
             setEstado("saltado");
             setAccionActual("Esto ya estaba cargado: lo dejamos como está");
             if (step.route && window.location.pathname !== step.route) navigate(step.route);
-            await actor.pausa(ESPERA_LECTURA);
+            await actor.pausa(tiempoDeLectura(step));
             if (ctl.vigente() && !pausadoRef.current) avanzar();
             return;
           }
@@ -337,12 +395,12 @@ export function TutorialProvider({ children }) {
         if (modo === "rapido") {
           setEstado("sembrando");
           setAccionActual("Cargando el escenario por sistema");
-          const ctx = await sembrar(step.prepare);
+          const ctx = await sembrar(step.prepare, (que) => setAccionActual(`Cargando ${que}`));
           if (!ctl.vigente()) return;
           if (ctx?.inst) setInstitucion(ctx.inst);
           hechos.current.add(step.prepare);
           setEstado("listo");
-          await actor.pausa(1200);
+          await actor.pausa(1600);
           if (ctl.vigente() && !pausadoRef.current) avanzar();
           return;
         }
@@ -354,11 +412,13 @@ export function TutorialProvider({ children }) {
           if (!ctl.vigente()) return;
           if (accion.t === "sembrar") {
             setEstado("sembrando");
+            setSembrado(accion.decir || "Cargando el resto por sistema");
             setAccionActual(accion.decir || "Cargando el resto por sistema");
-            const ctx = await sembrar(step.prepare);
+            const ctx = await sembrar(step.prepare, (que) => setAccionActual(que));
             if (!ctl.vigente()) return;
             if (ctx?.inst) setInstitucion(ctx.inst);
-            await actor.pausa(900);
+            await actor.pausa(1100);
+            setSembrado("");
             continue;
           }
           setEstado("actuando");
@@ -374,18 +434,28 @@ export function TutorialProvider({ children }) {
         // peor que uno que avisa que tuvo que completar por sistema.
         setEstado("sembrando");
         if (fallidas) setAccionActual("Completamos por sistema lo que no se pudo actuar");
-        const ctx = await sembrar(step.prepare);
+        const ctx = await sembrar(step.prepare, fallidas ? (que) => setAccionActual(que) : undefined);
         if (!ctl.vigente()) return;
         if (ctx?.inst) setInstitucion(ctx.inst);
         hechos.current.add(step.prepare);
 
         setEstado("listo");
         setAccionActual(fallidas ? `${fallidas} acción(es) se completaron por sistema` : "Paso terminado");
-        await actor.pausa(1100);
+        await actor.pausa(1800);
         if (ctl.vigente() && !pausadoRef.current) avanzar();
       } catch (e) {
         if (e instanceof Cancelado || !ctl.vigente()) return;
-        setErrorDemo(`No pude completar este paso: ${e?.message || "error inesperado"}`);
+        setErrorDemo(`En este paso falló algo: ${e?.message || "error inesperado"}`);
+        setEstado("mirando");
+        setAccionActual("");
+        try {
+          await actor.pausa(9000);
+        } catch {
+          return; // se canceló mientras mostraba el aviso
+        }
+        if (!ctl.vigente()) return;
+        setErrorDemo("");
+        if (!pausadoRef.current) avanzar();
       }
     })();
 
@@ -393,7 +463,7 @@ export function TutorialProvider({ children }) {
     // `location.pathname` queda afuera a propósito: el guion navega, y volver a
     // arrancar el motor en cada navegación reiniciaría el paso desde el principio.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activo, arranque, errorDemo, paso, modo, intento]);
+  }, [activo, arranque, paso, modo, intento]);
 
   // ----------------------------------------------------------------------- //
   // Si alguien toca la app, el actor suelta el volante
@@ -503,6 +573,7 @@ export function TutorialProvider({ children }) {
           error={errorDemo}
           estado={arranque === "preparando" ? "preparando" : estado}
           accion={accionActual}
+          sembrado={sembrado}
           noActuadas={noActuadas}
           modo={modo}
           velocidad={velocidad}
@@ -516,7 +587,7 @@ export function TutorialProvider({ children }) {
           onAvanzar={avanzar}
           onPausar={() => setAutoAvance((v) => !v)}
           onModo={() => setModo((m) => (m === "actuado" ? "rapido" : "actuado"))}
-          onVelocidad={() => setVelocidad((v) => (v === 1 ? 2 : 1))}
+          onVelocidad={setVelocidad}
           onRetomar={retomar}
           onAlternarVoz={alternarVoz}
           onPausarVoz={pausarVoz}
@@ -576,7 +647,7 @@ const ETIQUETA_ESTADO = {
 };
 
 function TutorialOverlay({
-  step, rect, paso, total, error, estado, accion, noActuadas, modo, velocidad, tomoElControl,
+  step, rect, paso, total, error, estado, accion, sembrado, noActuadas, modo, velocidad, tomoElControl,
   vozActiva, vozPausada, vozDisponible, enMarcha,
   onCerrar, onVolver, onAvanzar, onPausar, onModo, onVelocidad, onRetomar, onAlternarVoz, onPausarVoz,
 }) {
@@ -615,30 +686,46 @@ function TutorialOverlay({
               {tomoElControl && <span className="text-sm font-bold text-badge-amber-fg">en tus manos</span>}
             </div>
 
-            <div className="flex min-w-0 flex-col gap-1 md:flex-row md:items-baseline md:gap-3">
-              <h2 className="shrink-0 text-base font-bold">{error || step?.title}</h2>
-              <p className="min-w-0 truncate text-sm text-texto-suave">{error || step?.body}</p>
+            {/* El título arriba y la explicación abajo, entera.
+                Estaban uno al lado del otro y el párrafo llevaba `truncate`: se
+                veía la primera línea y tres puntos. Toda la explicación de la
+                pantalla quedaba escrita y sin leerse, que es la peor forma de
+                que un recorrido guiado parezca vago. */}
+            <h2 className="text-base font-bold">{step?.title}</h2>
+            {step?.body && (
+              <p className="mt-0.5 max-w-[85ch] text-sm leading-relaxed text-texto-suave">{step.body}</p>
+            )}
+            {/* El error va como aviso al lado de la explicación, no en lugar de
+                ella: el paso falló pero el recorrido sigue, y la pantalla que
+                está mostrando se sigue explicando igual. */}
+            {error && (
+              <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-badge-amber-bg px-2 py-1 text-sm font-semibold text-badge-amber-fg">
+                <Icon name="alert" size={14} className="mt-0.5 flex-none" />
+                {error}
+              </p>
+            )}
+
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <span className={cn("font-bold", estado === "saltado" ? "text-texto-tenue" : "text-accent")}>
+                {ETIQUETA_ESTADO[estado] || "Viendo"}
+              </span>
+              {/* Sembrando, el renglón de acción va nombrando cada cosa que
+                  entra, así que el «las otras cuatro áreas van igual que esta»
+                  se muestra al lado y no se pierde. */}
+              {sembrado && (
+                <span className="font-semibold text-texto-suave">{sembrado} ·</span>
+              )}
+              <span className="rounded-md bg-superficie-2 px-2 py-1 font-semibold text-texto-suave">{detalle}</span>
+              {noActuadas > 0 && (
+                <span className="rounded-md bg-badge-amber-bg px-2 py-1 font-semibold text-badge-amber-fg">
+                  {noActuadas} sin actuar
+                </span>
+              )}
             </div>
 
-            {!error && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                <span className={cn("font-bold", estado === "saltado" ? "text-texto-tenue" : "text-accent")}>
-                  {ETIQUETA_ESTADO[estado] || "Viendo"}
-                </span>
-                <span className="rounded-md bg-superficie-2 px-2 py-1 font-semibold text-texto-suave">{detalle}</span>
-                {noActuadas > 0 && (
-                  <span className="rounded-md bg-badge-amber-bg px-2 py-1 font-semibold text-badge-amber-fg">
-                    {noActuadas} sin actuar
-                  </span>
-                )}
-              </div>
-            )}
-
-            {!error && (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-pill bg-division">
-                <div className="h-full rounded-pill bg-accent transition-all" style={{ width: `${((paso + 1) / total) * 100}%` }} />
-              </div>
-            )}
+            <div className="mt-2 h-1.5 overflow-hidden rounded-pill bg-division">
+              <div className="h-full rounded-pill bg-accent transition-all" style={{ width: `${((paso + 1) / total) * 100}%` }} />
+            </div>
           </div>
 
           <div className="flex flex-wrap justify-end gap-2">
@@ -649,9 +736,21 @@ function TutorialOverlay({
                 {enMarcha ? "Pausar" : "Reanudar"}
               </Button>
             )}
-            <Button type="button" size="sm" variant="secondary" onClick={onVelocidad} title="Velocidad del recorrido">
-              {velocidad === 1 ? "1×" : "2×"}
-            </Button>
+            {/* Ocho pasos y no un botón que alterna 1×/2×: mostrarle esto a
+                alguien y poder hablar encima necesita bajar de 1, y cada persona
+                lee a su ritmo. */}
+            <Select
+              size="sm"
+              aria-label="Velocidad del recorrido"
+              title="Velocidad del recorrido"
+              value={velocidad}
+              onChange={(e) => onVelocidad(Number(e.target.value))}
+              className="w-24"
+            >
+              {VELOCIDADES.map((v) => (
+                <option key={v} value={v}>{rotuloVelocidad(v)}</option>
+              ))}
+            </Select>
             <Button
               type="button" size="sm" variant="secondary" onClick={onModo}
               title={modo === "actuado"
@@ -673,9 +772,9 @@ function TutorialOverlay({
                 {vozPausada ? "Seguir voz" : "Pausar voz"}
               </Button>
             )}
-            {!error && paso > 0 && <Button variant="secondary" size="sm" onClick={onVolver}>Anterior</Button>}
-            <Button size="sm" onClick={error ? onCerrar : onAvanzar} className={cn(error && "bg-accent-fuerte")}>
-              {error ? "Cerrar" : paso === total - 1 ? "Finalizar" : "Siguiente"}
+            {paso > 0 && <Button variant="secondary" size="sm" onClick={onVolver}>Anterior</Button>}
+            <Button size="sm" onClick={onAvanzar}>
+              {paso === total - 1 ? "Finalizar" : "Siguiente"}
             </Button>
             <button onClick={onCerrar} aria-label="Cerrar recorrido" className="rounded-sm p-2 text-texto-debil hover:text-texto">
               <Icon name="x" size={17} />
