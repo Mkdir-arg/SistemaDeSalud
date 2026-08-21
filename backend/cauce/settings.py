@@ -68,6 +68,19 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = env_bool("DJANGO_SSL_REDIRECT", True)
 
+    # El chequeo de salud queda afuera del redirect.
+    #
+    # La sonda de la plataforma no entra por el proxy: le pega al contenedor
+    # directo, por http y sin X-Forwarded-Proto. Con el redirect puesto recibe un
+    # 301, el orquestador lo cuenta como caído y el despliegue no llega a estar
+    # sano NUNCA —con la aplicación andando bien—. Después reinicia, vuelve a
+    # fallar, y el diagnóstico se va a buscar a la base o a gunicorn, que están
+    # perfectos.
+    #
+    # Se exime sólo `/api/health/`, que a propósito no cuenta nada del sistema:
+    # `ok` o `error` a secas. Todo el resto sigue redirigido a https.
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
+
     # Un año, con subdominios. HSTS es difícil de revertir —el navegador lo
     # recuerda—, así que se puede bajar por entorno para el primer despliegue.
     SECURE_HSTS_SECONDS = int(env("DJANGO_HSTS_SECONDS", 31536000))
