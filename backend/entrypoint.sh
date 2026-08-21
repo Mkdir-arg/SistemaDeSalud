@@ -27,8 +27,24 @@ sys.exit(1)
 PY
 fi
 
-echo "Aplicando migraciones..."
-python manage.py migrate --noinput
+# Las migraciones las aplica UN solo contenedor.
+#
+# La misma imagen corre como servidor web, como reloj del motor y como respaldo.
+# Si los tres migran, en cada despliegue hay tres `migrate` concurrentes sobre la
+# misma base tomando locks de DDL en distinto orden: en el mejor caso uno espera,
+# en el peor se trepan y la migración queda a mitad de camino —con la tabla
+# `django_migrations` diciendo que terminó—.
+#
+# Por defecto migra, que es lo que corresponde en docker compose (un solo
+# servicio con la base) y lo que espera cualquiera que corra esta imagen a mano.
+# Los procesos de fondo se despliegan con EJECUTAR_MIGRACIONES=0 y arrancan sobre
+# el esquema que dejó el web.
+if [ "${EJECUTAR_MIGRACIONES:-1}" = "1" ]; then
+  echo "Aplicando migraciones..."
+  python manage.py migrate --noinput
+else
+  echo "EJECUTAR_MIGRACIONES=0: no migro, uso el esquema existente."
+fi
 
 # Carga datos de demostración si SEED_DEMO=1 (idempotente del lado del comando).
 if [ "$SEED_DEMO" = "1" ]; then
