@@ -25,6 +25,7 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.finanzas.api_calendario import ExpectativaGastoViewSet
 from apps.finanzas.views import (
     AjusteCostoViewSet,
     AjusteGastoViewSet,
@@ -130,3 +131,4 @@ router.register("valores-componentes", ValorComponenteViewSet)
 router.register("ajustes-costo", AjusteCostoViewSet, basename="ajuste-costo")
 router.register("gastos", GastoViewSet, basename="gasto")
 router.register("ajustes-gasto", AjusteGastoViewSet, basename="ajuste-gasto")
+router.register("expectativas-gasto", ExpectativaGastoViewSet, basename="expectativa-gasto")

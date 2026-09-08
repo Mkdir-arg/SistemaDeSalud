@@ -96,3 +96,16 @@ referencia central del módulo.
 - Las reintentos y ejecuciones concurrentes no deben producir dos aprobaciones.
 - Un cambio posterior de sensibilidad de catálogo no debe ampliar lectura de
   gastos ya registrados.
+
+## Checkpoint: calendario por API
+
+Implementados el alta/versionado de expectativas, la indicación administrativa,
+su historial paginado y el calendario mensual con pendientes/aprobados visibles.
+La consulta conserva versiones anteriores hasta la vigencia de su sucesora;
+permite actualizar indicaciones tardías de esos meses. La indicación y el
+versionado usan el bloqueo del mismo concepto para serializar sus escrituras.
+
+Guía y evidencia: `2026-09-08-calendario-gastos-prueba-api.md`.
+Faltan la pantalla de gastos/calendario, prueba manual con ambos perfiles y
+terminar la revisión de auditoría/regresión transversal del bloque 5 antes de
+considerar #36 completo. El issue permanece en In progress.

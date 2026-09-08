@@ -337,9 +337,9 @@ class IndicacionCargaGasto(models.Model):
         expectativa = self.expectativa
         if ExpectativaGasto.objects.filter(
             pk=expectativa.pk,
-            reemplazada_por__isnull=False,
+            reemplazada_por__vigente_desde__lte=self.periodo_economico,
         ).exists():
-            raise ValidationError("Una expectativa reemplazada no admite nuevas indicaciones.")
+            raise ValidationError("La expectativa fue reemplazada para ese mes.")
         if self.periodo_economico < expectativa.vigente_desde or (
             expectativa.vigente_hasta is not None
             and self.periodo_economico >= expectativa.vigente_hasta

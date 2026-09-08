@@ -373,7 +373,10 @@ def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por):
 def indicar_carga_esperada(expectativa_id, periodo_economico, estado, registrado_por):
     """Agrega una indicación mensual, conservando las anteriores como historia."""
     with transaction.atomic():
-        expectativa = ExpectativaGasto.objects.select_for_update().get(pk=expectativa_id)
+        expectativa = ExpectativaGasto.objects.get(pk=expectativa_id)
+        # El reemplazo de expectativas toma este mismo bloqueo: la validación
+        # de vigencia y la inserción de la indicación forman una sola operación.
+        ConceptoGasto.objects.select_for_update().get(pk=expectativa.concepto_id)
         if not tiene_concesion_financiera(
             registrado_por,
             ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
@@ -390,3 +393,22 @@ def indicar_carga_esperada(expectativa_id, periodo_economico, estado, registrado
         )
         indicacion.save()
         return indicacion
+
+
+def registrar_expectativa_gasto(*, registrado_por, **datos):
+    with transaction.atomic():
+        concepto = ConceptoGasto.objects.select_for_update().get(pk=datos["concepto"].pk)
+        datos["concepto"] = concepto
+        area = datos.get("area")
+        if not tiene_concesion_financiera(
+            registrado_por, ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            datos["institucion"].pk, area.pk if area else None, sensible=concepto.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para configurar esta expectativa.")
+        anterior = datos.get("reemplaza")
+        if anterior and not tiene_concesion_financiera(
+            registrado_por, ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            anterior.institucion_id, anterior.area_id, sensible=anterior.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización sobre la expectativa anterior.")
+        return ExpectativaGasto.objects.create(registrado_por=registrado_por, **datos)
