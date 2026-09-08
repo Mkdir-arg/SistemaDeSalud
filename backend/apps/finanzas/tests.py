@@ -148,6 +148,16 @@ class CosteoAtencionTests(TestCase):
             ).resuelto
         )
 
+    def test_un_fallo_al_marcar_el_error_no_se_propaga_a_la_atencion(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        with (
+            patch("apps.finanzas.services.procesar_hecho_atencion", side_effect=RuntimeError("fuente temporalmente caída")),
+            patch("apps.finanzas.services.registrar_error_recuperable", side_effect=RuntimeError("base temporalmente caída")),
+        ):
+            self.assertFalse(intentar_costeo_directo(hecho.id))
+        self.assertTrue(HechoAtencionCosteable.objects.filter(pk=hecho.id).exists())
+
     def test_un_pendiente_sin_componente_no_se_duplica(self):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)

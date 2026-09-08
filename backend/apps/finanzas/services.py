@@ -90,7 +90,10 @@ def intentar_costeo_directo(hecho_id):
         procesar_hecho_atencion(hecho_id)
     except Exception:  # noqa: BLE001 - la recuperación posterior es deliberada.
         logger.exception("No se pudo costear de inmediato el hecho %s", hecho_id)
-        registrar_error_recuperable(hecho_id)
+        try:
+            registrar_error_recuperable(hecho_id)
+        except Exception:  # noqa: BLE001 - el hecho durable sigue siendo recuperable.
+            logger.exception("No se pudo marcar el error recuperable del hecho %s", hecho_id)
         return False
     return True
 

@@ -41,7 +41,10 @@ class Command(BaseCommand):
                 procesados += 1
             except Exception:  # noqa: BLE001
                 logger.exception("No se pudo reprocesar el hecho de atención costeable %s", hecho_id)
-                registrar_error_recuperable(hecho_id)
+                try:
+                    registrar_error_recuperable(hecho_id)
+                except Exception:  # noqa: BLE001
+                    logger.exception("No se pudo marcar el error recuperable del hecho %s", hecho_id)
                 self.stderr.write(f"  hecho #{hecho_id}: no se pudo procesar; quedará para recuperar")
         resumen = f"{procesados} hecho(s) procesado(s)"
         self.stdout.write(("[en seco] " if seco else "") + resumen)
