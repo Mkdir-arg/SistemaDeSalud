@@ -301,6 +301,193 @@ class ExpectativaGasto(models.Model):
         raise ValidationError("Una expectativa de gasto no se elimina.")
 
 
+class Gasto(models.Model):
+    """Fuente real de gasto, separada de su reparto y de cualquier pago."""
+
+    class Estado(models.TextChoices):
+        PENDIENTE_APROBACION = "pendiente_aprobacion", "Pendiente de aprobación"
+        APROBADO = "aprobado", "Aprobado"
+        RECHAZADO = "rechazado", "Rechazado"
+
+    class Origen(models.TextChoices):
+        CENTRAL = "central", "Administración central"
+        AREA = "area", "Área"
+
+    concepto = models.ForeignKey(
+        ConceptoGasto,
+        on_delete=models.PROTECT,
+        related_name="gastos",
+    )
+    concepto_codigo = models.CharField(max_length=60, editable=False)
+    concepto_nombre = models.CharField(max_length=160, editable=False)
+    institucion = models.ForeignKey(
+        "instituciones.Institucion",
+        on_delete=models.PROTECT,
+        related_name="gastos",
+    )
+    area = models.ForeignKey(
+        "instituciones.Area",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="gastos",
+    )
+    importe = models.DecimalField(max_digits=14, decimal_places=2)
+    moneda = models.CharField(max_length=3, default="ARS", editable=False)
+    periodo_economico = models.DateField()
+    origen = models.CharField(max_length=20, choices=Origen.choices)
+    estado = models.CharField(
+        max_length=30,
+        choices=Estado.choices,
+        default=Estado.PENDIENTE_APROBACION,
+    )
+    sensible = models.BooleanField(default=False, editable=False)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gastos_registrados",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+    aprobado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gastos_aprobados",
+    )
+    aprobado_en = models.DateTimeField(null=True, blank=True)
+    rechazado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gastos_rechazados",
+    )
+    rechazado_en = models.DateTimeField(null=True, blank=True)
+    motivo_rechazo = models.CharField(max_length=255, blank=True)
+    reemplaza = models.OneToOneField(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reemplazado_por",
+    )
+
+    class Meta:
+        ordering = ["periodo_economico", "institucion_id", "area_id", "id"]
+        constraints = [
+            models.CheckConstraint(condition=Q(importe__gt=0), name="gasto_importe_positivo"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.periodo_economico and self.periodo_economico.day != 1:
+            raise ValidationError("El período económico de un gasto empieza el primer día del mes.")
+        if self.moneda != "ARS":
+            raise ValidationError("Los gastos de V1 se registran exclusivamente en ARS.")
+        if self.concepto_id and self.institucion_id and self.concepto.institucion_id != self.institucion_id:
+            raise ValidationError("El concepto debe pertenecer a la institución del gasto.")
+        if self.area_id and self.institucion_id and self.area.institucion_id != self.institucion_id:
+            raise ValidationError("El área debe pertenecer a la institución del gasto.")
+        if self.origen == self.Origen.CENTRAL and self.estado != self.Estado.APROBADO:
+            raise ValidationError("Una carga central debe registrarse aprobada.")
+        if self.estado == self.Estado.PENDIENTE_APROBACION:
+            if any((
+                self.aprobado_por_id, self.aprobado_en, self.rechazado_por_id,
+                self.rechazado_en, self.motivo_rechazo,
+            )):
+                raise ValidationError("Un gasto pendiente no tiene decisión registrada.")
+        elif self.estado == self.Estado.APROBADO:
+            if self.aprobado_por_id is None or self.aprobado_en is None:
+                raise ValidationError("Un gasto aprobado requiere autor y fecha de aprobación.")
+            if any((self.rechazado_por_id, self.rechazado_en, self.motivo_rechazo)):
+                raise ValidationError("Un gasto aprobado no puede conservar datos de rechazo.")
+        elif self.estado == self.Estado.RECHAZADO:
+            if self.rechazado_por_id is None or self.rechazado_en is None or not self.motivo_rechazo.strip():
+                raise ValidationError("Un gasto rechazado requiere autor, fecha y motivo.")
+            if self.aprobado_por_id is not None or self.aprobado_en is not None:
+                raise ValidationError("Un gasto rechazado no puede conservar una aprobación.")
+        if self.reemplaza_id:
+            if self.reemplaza.institucion_id != self.institucion_id:
+                raise ValidationError("Un gasto sucesor debe pertenecer a la misma institución.")
+            if self.reemplaza.estado == self.Estado.APROBADO:
+                raise ValidationError("Un gasto aprobado se corrige mediante un ajuste, no se reemplaza.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            original = type(self).objects.get(pk=self.pk)
+            campos_inmutables = (
+                "concepto_id", "concepto_codigo", "concepto_nombre", "institucion_id",
+                "area_id", "importe", "moneda", "periodo_economico", "origen",
+                "sensible", "registrado_por_id", "registrado", "reemplaza_id",
+            )
+            if any(getattr(self, campo) != getattr(original, campo) for campo in campos_inmutables):
+                raise ValidationError("Un gasto no edita su carga original; registrá un reemplazo o ajuste.")
+            if original.estado != self.Estado.PENDIENTE_APROBACION:
+                raise ValidationError("Un gasto ya decidido no se edita.")
+            if self.estado not in {self.Estado.APROBADO, self.Estado.RECHAZADO}:
+                raise ValidationError("Un gasto pendiente sólo puede aprobarse o rechazarse.")
+            self.full_clean()
+            return super().save(*args, **kwargs)
+
+        if self.origen == self.Origen.AREA and self.estado != self.Estado.PENDIENTE_APROBACION:
+            raise ValidationError("Una carga de área nace pendiente de aprobación.")
+        if self.concepto_id is None:
+            self.full_clean()
+            return super().save(*args, **kwargs)
+        with transaction.atomic(using=kwargs.get("using")):
+            concepto = ConceptoGasto.objects.select_for_update().get(pk=self.concepto_id)
+            self.concepto = concepto
+            self.concepto_codigo = concepto.codigo
+            self.concepto_nombre = concepto.nombre
+            self.sensible = concepto.sensible
+            self.full_clean()
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un gasto no se elimina.")
+
+
+class AjusteGasto(models.Model):
+    """Corrección aditiva de una fuente aprobada, sin alterar el gasto original."""
+
+    gasto = models.ForeignKey(Gasto, on_delete=models.PROTECT, related_name="ajustes")
+    importe = models.DecimalField(max_digits=14, decimal_places=2)
+    motivo = models.CharField(max_length=255)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ajustes_gasto_registrados",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["registrado", "id"]
+        constraints = [
+            models.CheckConstraint(condition=~Q(importe=0), name="ajuste_gasto_no_cero"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.gasto_id and self.gasto.estado != Gasto.Estado.APROBADO:
+            raise ValidationError("Sólo se ajusta un gasto aprobado.")
+        if not self.motivo.strip():
+            raise ValidationError("Un ajuste de gasto requiere un motivo.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Un ajuste de gasto no se edita; se registra otro ajuste.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un ajuste de gasto no se elimina.")
+
+
 class HechoAtencionCosteable(models.Model):
     """Atención completada: origen durable, sin narrativa clínica."""
     institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT, related_name="hechos_atencion_costeables")

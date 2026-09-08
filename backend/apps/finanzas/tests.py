@@ -20,7 +20,7 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import AjusteCosto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
 from .services import corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, registrar_ajuste_costo, registrar_atencion_completada
 
@@ -1446,3 +1446,105 @@ class ExpectativaGastoTests(TestCase):
         original.vigente_hasta = date(2026, 11, 1)
         with self.assertRaises(ValidationError):
             original.save()
+
+
+class GastoTests(TestCase):
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user("gastos@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="ELECTRICIDAD",
+            nombre="Electricidad",
+            sensible=True,
+        )
+
+    def crear_gasto_central(self, **overrides):
+        datos = {
+            "concepto": self.concepto,
+            "institucion": self.institucion,
+            "area": self.area,
+            "importe": Decimal("100.00"),
+            "periodo_economico": date(2026, 8, 1),
+            "origen": Gasto.Origen.CENTRAL,
+            "estado": Gasto.Estado.APROBADO,
+            "registrado_por": self.usuario,
+            "aprobado_por": self.usuario,
+            "aprobado_en": timezone.now(),
+        }
+        datos.update(overrides)
+        return Gasto.objects.create(**datos)
+
+    def crear_gasto_area(self, **overrides):
+        datos = {
+            "concepto": self.concepto,
+            "institucion": self.institucion,
+            "area": self.area,
+            "importe": Decimal("100.00"),
+            "periodo_economico": date(2026, 8, 1),
+            "origen": Gasto.Origen.AREA,
+            "registrado_por": self.usuario,
+        }
+        datos.update(overrides)
+        return Gasto.objects.create(**datos)
+
+    def test_gasto_central_congela_concepto_y_no_edita_su_carga(self):
+        gasto = self.crear_gasto_central()
+        self.concepto.nombre = "Servicio eléctrico"
+        self.concepto.sensible = False
+        self.concepto.save()
+
+        gasto.refresh_from_db()
+        self.assertEqual(gasto.concepto_codigo, "ELECTRICIDAD")
+        self.assertEqual(gasto.concepto_nombre, "Electricidad")
+        self.assertTrue(gasto.sensible)
+        gasto.importe = Decimal("120.00")
+        with self.assertRaises(ValidationError):
+            gasto.save()
+        with self.assertRaises(ValidationError):
+            gasto.delete()
+
+    def test_gasto_de_area_se_decide_una_vez_y_solo_acepta_ajustes_aprobados(self):
+        pendiente = self.crear_gasto_area()
+        with self.assertRaises(ValidationError):
+            AjusteGasto.objects.create(
+                gasto=pendiente,
+                importe=Decimal("-10.00"),
+                motivo="Corrección",
+                registrado_por=self.usuario,
+            )
+        pendiente.estado = Gasto.Estado.APROBADO
+        pendiente.aprobado_por = self.usuario
+        pendiente.aprobado_en = timezone.now()
+        pendiente.save()
+        ajuste = AjusteGasto.objects.create(
+            gasto=pendiente,
+            importe=Decimal("-10.00"),
+            motivo="Corrección",
+            registrado_por=self.usuario,
+        )
+
+        self.assertEqual(ajuste.gasto, pendiente)
+        pendiente.estado = Gasto.Estado.RECHAZADO
+        pendiente.rechazado_por = self.usuario
+        pendiente.rechazado_en = timezone.now()
+        pendiente.motivo_rechazo = "Tardío"
+        with self.assertRaises(ValidationError):
+            pendiente.save()
+
+    def test_reemplazo_no_sobrescribe_rechazado_ni_admite_aprobado(self):
+        rechazado = self.crear_gasto_area()
+        rechazado.estado = Gasto.Estado.RECHAZADO
+        rechazado.rechazado_por = self.usuario
+        rechazado.rechazado_en = timezone.now()
+        rechazado.motivo_rechazo = "Importe incorrecto"
+        rechazado.save()
+        sucesor = self.crear_gasto_area(
+            importe=Decimal("120.00"),
+            reemplaza=rechazado,
+        )
+
+        self.assertEqual(sucesor.reemplaza, rechazado)
+        with self.assertRaises(ValidationError):
+            self.crear_gasto_area(reemplaza=self.crear_gasto_central())
