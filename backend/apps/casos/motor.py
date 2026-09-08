@@ -2046,7 +2046,10 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricu
     from apps.finanzas.services import intentar_costeo_directo, registrar_atencion_completada
 
     hecho = registrar_atencion_completada(caso, nodo, evento=evento, autor=autor)
-    intentar_costeo_directo(hecho.id)
+    # El hecho ya quedó en la transacción clínica. El intento rápido es una
+    # optimización posterior al commit; el worker de costos recupera cualquier
+    # resultado que no llegue a escribirse en esta pasada.
+    transaction.on_commit(lambda hecho_id=hecho.id: intentar_costeo_directo(hecho_id))
 
 
 # --------------------------------------------------------------------------- #

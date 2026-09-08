@@ -168,12 +168,16 @@ class MotorTestCase(TestCase):
             vigente_desde=timezone.now() - timedelta(days=1),
         )
         caso = self._hasta_atencion()
-        motor.avanzar(
-            caso,
-            {"titulo": "Evaluación", "contenido": "OK", "firmada": False},
-            autor=self._sin_legajo(),
-        )
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            motor.avanzar(
+                caso,
+                {"titulo": "Evaluación", "contenido": "OK", "firmada": False},
+                autor=self._sin_legajo(),
+            )
         hecho = HechoAtencionCosteable.objects.get(caso=caso)
+        self.assertFalse(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
+        self.assertEqual(len(callbacks), 1)
+        callbacks[0]()
         self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
 
     def test_la_firma_asienta_la_matricula(self):
