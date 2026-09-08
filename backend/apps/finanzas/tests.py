@@ -1,6 +1,8 @@
 from decimal import Decimal
 from datetime import timedelta
+from io import StringIO
 
+from django.core.management import call_command
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -86,3 +88,14 @@ class CosteoAtencionTests(TestCase):
             motivo_correccion="Valor cargado por error",
         )
         self.assertEqual(correccion.reemplaza, valor)
+
+    def test_el_comando_recupera_un_hecho_pendiente_sin_tocar_la_atencion(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(componente=componente, importe=Decimal("100.00"), vigente_desde=timezone.now() - timedelta(days=1))
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        salida = StringIO()
+        call_command("procesar_costos", "--limite", "1", stdout=salida)
+        self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
+        self.assertIn("1 hecho(s) procesado(s)", salida.getvalue())
