@@ -20,7 +20,7 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
 from .services import aprobar_gasto, corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_gasto
 
@@ -1500,6 +1500,83 @@ class ExpectativaGastoTests(TestCase):
         original.vigente_hasta = date(2026, 11, 1)
         with self.assertRaises(ValidationError):
             original.save()
+
+
+class IndicacionCargaGastoTests(TestCase):
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user("indicaciones@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="ELECTRICIDAD",
+            nombre="Electricidad",
+        )
+        self.expectativa = ExpectativaGasto.objects.create(
+            concepto=self.concepto,
+            institucion=self.institucion,
+            area=self.area,
+            vigente_desde=date(2026, 8, 1),
+        )
+
+    def indicar(self, **overrides):
+        datos = {
+            "expectativa": self.expectativa,
+            "periodo_economico": date(2026, 8, 1),
+            "estado": IndicacionCargaGasto.Estado.FALTA_CARGAR,
+            "registrado_por": self.usuario,
+        }
+        datos.update(overrides)
+        return IndicacionCargaGasto.objects.create(**datos)
+
+    def test_conserva_historia_del_mismo_mes_sin_generar_gasto(self):
+        primera = self.indicar()
+        ultima = self.indicar(estado=IndicacionCargaGasto.Estado.CARGA_COMPLETA)
+
+        self.assertEqual(
+            list(
+                IndicacionCargaGasto.objects.filter(
+                    expectativa=self.expectativa,
+                    periodo_economico=date(2026, 8, 1),
+                ).values_list("estado", flat=True)
+            ),
+            [IndicacionCargaGasto.Estado.FALTA_CARGAR, IndicacionCargaGasto.Estado.CARGA_COMPLETA],
+        )
+        self.assertLess(primera.id, ultima.id)
+        self.assertEqual(Gasto.objects.count(), 0)
+
+    def test_valida_mes_y_vigencia_y_no_edita_la_indicacion(self):
+        with self.assertRaises(ValidationError):
+            self.indicar(periodo_economico=date(2026, 8, 2))
+        with self.assertRaises(ValidationError):
+            self.indicar(periodo_economico=date(2026, 7, 1))
+
+        indicacion = self.indicar(estado=IndicacionCargaGasto.Estado.NO_CORRESPONDE)
+        indicacion.estado = IndicacionCargaGasto.Estado.CARGA_COMPLETA
+        with self.assertRaises(ValidationError):
+            indicacion.save()
+        with self.assertRaises(ValidationError):
+            indicacion.delete()
+
+    def test_expectativa_reemplazada_no_acepta_indicaciones_nuevas(self):
+        correccion = ExpectativaGasto.objects.create(
+            concepto=self.concepto,
+            institucion=self.institucion,
+            area=self.area,
+            vigente_desde=date(2026, 8, 1),
+            reemplaza=self.expectativa,
+            motivo_correccion="Alcance corregido",
+        )
+
+        with self.assertRaises(ValidationError):
+            self.indicar()
+        nueva = IndicacionCargaGasto.objects.create(
+            expectativa=correccion,
+            periodo_economico=date(2026, 8, 1),
+            estado=IndicacionCargaGasto.Estado.NO_CORRESPONDE,
+            registrado_por=self.usuario,
+        )
+        self.assertEqual(nueva.estado, IndicacionCargaGasto.Estado.NO_CORRESPONDE)
 
 
 class GastoTests(TestCase):

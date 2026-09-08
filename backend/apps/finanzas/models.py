@@ -301,6 +301,61 @@ class ExpectativaGasto(models.Model):
         raise ValidationError("Una expectativa de gasto no se elimina.")
 
 
+class IndicacionCargaGasto(models.Model):
+    """Estado declarado de una expectativa mensual, sin generar un gasto."""
+
+    class Estado(models.TextChoices):
+        FALTA_CARGAR = "falta_cargar", "Falta cargar"
+        CARGA_COMPLETA = "carga_completa", "Carga completa"
+        NO_CORRESPONDE = "no_corresponde", "No corresponde"
+
+    expectativa = models.ForeignKey(
+        ExpectativaGasto,
+        on_delete=models.PROTECT,
+        related_name="indicaciones_carga",
+    )
+    periodo_economico = models.DateField()
+    estado = models.CharField(max_length=30, choices=Estado.choices)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="indicaciones_carga_gasto_registradas",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["periodo_economico", "registrado", "id"]
+
+    def clean(self):
+        super().clean()
+        if self.periodo_economico and self.periodo_economico.day != 1:
+            raise ValidationError("El período económico de una indicación empieza el primer día del mes.")
+        if not self.expectativa_id or not self.periodo_economico:
+            return
+        expectativa = self.expectativa
+        if ExpectativaGasto.objects.filter(
+            pk=expectativa.pk,
+            reemplazada_por__isnull=False,
+        ).exists():
+            raise ValidationError("Una expectativa reemplazada no admite nuevas indicaciones.")
+        if self.periodo_economico < expectativa.vigente_desde or (
+            expectativa.vigente_hasta is not None
+            and self.periodo_economico >= expectativa.vigente_hasta
+        ):
+            raise ValidationError("La indicación debe pertenecer a la vigencia de su expectativa.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una indicación de carga no se edita; registrá una nueva indicación.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Una indicación de carga no se elimina.")
+
+
 class Gasto(models.Model):
     """Fuente real de gasto, separada de su reparto y de cualquier pago."""
 
