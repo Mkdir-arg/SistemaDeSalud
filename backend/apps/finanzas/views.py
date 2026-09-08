@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import action
@@ -306,11 +307,14 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
         """Reconstruye sólo un snapshot fallido, con autorización y motivo."""
         serializer = CorreccionSnapshotCosteoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        correccion = corregir_snapshot_componentes(
-            pk,
-            serializer.validated_data["motivo"],
-            request.user,
-        )
+        try:
+            correccion = corregir_snapshot_componentes(
+                pk,
+                serializer.validated_data["motivo"],
+                request.user,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(error.messages) from error
         return Response(
             CorreccionSnapshotCosteoSerializer(correccion).data,
             status=status.HTTP_201_CREATED,

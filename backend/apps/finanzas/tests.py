@@ -566,6 +566,15 @@ class HechoCostoApiTests(APITestCase):
             ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists()
         )
 
+        repetida = self.client.post(
+            f"/api/hechos-costo/{hecho.id}/corregir-snapshot/",
+            {"motivo": "Segundo intento"},
+            format="json",
+        )
+
+        self.assertEqual(repetida.status_code, 400)
+        self.assertEqual(CorreccionSnapshotCosteo.objects.filter(hecho=hecho).count(), 1)
+
     def test_sin_concesion_no_puede_corregir_un_snapshot_pendiente(self):
         evento = EventoCaso.objects.create(
             caso=self.hecho.caso,
