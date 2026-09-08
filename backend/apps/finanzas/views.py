@@ -1,7 +1,7 @@
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import MethodNotAllowed, PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
@@ -315,6 +315,10 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
             CorreccionSnapshotCosteoSerializer(correccion).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def create(self, request, *args, **kwargs):
+        # El hecho nace sólo al completar la atención en el motor clínico.
+        raise MethodNotAllowed("POST")
 
     def get_queryset(self):
         qs = super().get_queryset()

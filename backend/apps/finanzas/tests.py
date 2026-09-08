@@ -367,6 +367,25 @@ class HechoCostoApiTests(APITestCase):
         response = self.client.get("/api/hechos-costo/")
         self.assertEqual(response.status_code, 403)
 
+    def test_no_se_puede_crear_un_hecho_de_costo_por_la_api(self):
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.client.force_authenticate(self.usuario)
+
+        response = self.client.post("/api/hechos-costo/", {}, format="json")
+
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(HechoAtencionCosteable.objects.count(), 1)
+
     def test_concesion_sensible_muestra_faltantes_sin_convertirlos_en_cero(self):
         membresia = Membresia.objects.create(
             usuario=self.usuario,
