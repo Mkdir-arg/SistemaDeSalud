@@ -407,3 +407,7 @@ el destino de la membresía y la combinación admin A/operador B, no sólo la UI
 #36 pasa a **In review**, no Done. #10 sigue In progress por el alcance mayor
 de catálogo/valores. #37 entra en preparación técnica; no tiene implementación
 de reparto autorizada: ver `2026-09-08-reparto-primera-base-propuesta.md`.
+
+Actualización posterior (2026-09-08): el responsable aprobó las tres condiciones
+del primer reparto. El siguiente paso es precisar el esquema mínimo de cobertura,
+regla y versiones antes de migraciones; no repetir esas decisiones ya confirmadas.

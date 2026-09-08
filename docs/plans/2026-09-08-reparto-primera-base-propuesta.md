@@ -1,8 +1,11 @@
-# Primer reparto por actividad: propuesta pendiente de aprobación
+# Primer reparto por actividad: condiciones aprobadas
 
 Referencia: #37; módulo central #33, contratos #10/#12 y fuentes #36.
-Esta es una recomendación del agente, no una decisión humana retrospectiva ni
-autorización de modelos, migraciones, reglas económicas o infraestructura.
+El responsable aprobó el 2026-09-08 las tres condiciones propuestas a continuación.
+La fundamentación y las alternativas conservadas son recomendaciones del agente;
+no se atribuye al responsable una explicación retrospectiva de esas alternativas.
+La aprobación permite avanzar al diseño técnico concreto, no autoriza un esquema
+todavía no presentado ni migraciones o infraestructura nuevas.
 
 ## Evidencia y límite actual
 
@@ -18,7 +21,7 @@ autorización de modelos, migraciones, reglas económicas o infraestructura.
   personas con permisos distintos deben consultar el mismo reparto, no calcular
   resultados distintos por ver menos filas.
 
-## Tres decisiones materiales para continuar
+## Tres condiciones aprobadas para continuar
 
 ### 1. Primera regla y fuente elegible
 
@@ -64,7 +67,7 @@ con los mismos insumos no genera otra versión. Sin cierres mensuales obligatori
 Alternativa: congelar el primer resultado y distribuir sólo diferencias; evita
 revisar partes previas, pero exige más reglas para no sesgar los destinos.
 
-## Plan después de resolver estas decisiones
+## Plan siguiente a la aprobación
 
 1. Precisar la evidencia de cobertura y el contrato de regla/versiones, con
    permisos de configuración y lectura separados. Presentar el mínimo esquema
@@ -79,6 +82,8 @@ revisar partes previas, pero exige más reglas para no sesgar los destinos.
 5. Pruebas de concurrencia, dato tardío, permisos y comparación clínica;
    medición con volumen representativo antes de fijar plazos o disponibilidad.
 
-No comienza implementación de #37 en este checkpoint. Comprensión y aceptación
-de estos costos/alternativas pendientes del responsable. Reconsiderar la regla
-inicial al incorporar bases que representen mejor el consumo real de recursos.
+No comienza implementación de #37 en este checkpoint. La aprobación de las tres
+condiciones queda registrada; no equivale a revisión del esquema aún pendiente,
+aceptación del módulo completo ni comprobación de comprensión técnica.
+Reconsiderar la regla inicial al incorporar bases que representen mejor el
+consumo real de recursos.
