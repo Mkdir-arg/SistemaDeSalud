@@ -447,6 +447,47 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual([fila["id"] for fila in respuesta_lista.data["results"]], [self.hecho.id])
         self.assertEqual(respuesta_detalle.status_code, 404)
 
+    def test_el_costo_conserva_el_area_de_la_atencion_si_el_caso_se_mueve(self):
+        otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")
+        self.hecho.caso.area_actual = otra_area
+        self.hecho.caso.save(update_fields=["area_actual"])
+
+        membresia_origen = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        concesion_origen = ConcesionFinanciera.objects.create(
+            membresia=membresia_origen,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            permite_sensibles=True,
+        )
+        concesion_origen.areas.add(self.area)
+        self.client.force_authenticate(self.usuario)
+
+        respuesta_origen = self.client.get(f"/api/hechos-costo/{self.hecho.id}/")
+
+        self.assertEqual(respuesta_origen.status_code, 200)
+        self.assertEqual(respuesta_origen.data["area"], self.area.id)
+
+        usuario_destino = Usuario.objects.create_user("finanzas-destino@cauce.local", "x")
+        membresia_destino = Membresia.objects.create(
+            usuario=usuario_destino,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        concesion_destino = ConcesionFinanciera.objects.create(
+            membresia=membresia_destino,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            permite_sensibles=True,
+        )
+        concesion_destino.areas.add(otra_area)
+        self.client.force_authenticate(usuario_destino)
+
+        respuesta_destino = self.client.get(f"/api/hechos-costo/{self.hecho.id}/")
+
+        self.assertEqual(respuesta_destino.status_code, 404)
+
     def test_concesion_sensible_muestra_el_total_directo_cuando_esta_completo(self):
         prestacion = Prestacion.objects.create(
             institucion=self.institucion,
