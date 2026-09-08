@@ -21,6 +21,7 @@ from .models import (
     ValorComponente,
 )
 from .permisos import concesiones_financieras_de, tiene_concesion_financiera
+from .auditoria import AuditaLecturaFinanciera
 from .serializers import (
     AjusteCostoSerializer,
     AjusteGastoSerializer,
@@ -304,7 +305,7 @@ class DefinicionComponenteViewSet(CatalogoCostosInstitucionalMixin, BaseModelVie
         serializer.save()
 
 
-class ConceptoGastoViewSet(BaseModelViewSet):
+class ConceptoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     """Catálogo institucional que antecede a cualquier carga real de gasto."""
 
     queryset = ConceptoGasto.objects.select_related("institucion", "registrado_por")
@@ -361,7 +362,7 @@ class ConceptoGastoViewSet(BaseModelViewSet):
         serializer.save()
 
 
-class GastoViewSet(BaseModelViewSet):
+class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     """Fuentes de gasto sin reparto clínico, cargos ni movimientos de dinero."""
 
     queryset = Gasto.objects.select_related(

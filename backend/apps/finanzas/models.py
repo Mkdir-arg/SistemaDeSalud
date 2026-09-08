@@ -16,6 +16,7 @@ class ConcesionFinanciera(models.Model):
         APROBAR_GASTOS = "aprobar_gastos", "Aprobar gastos"
         CORREGIR_GASTOS = "corregir_gastos", "Corregir gastos"
         CONFIGURAR_GASTOS_ESPERADOS = "configurar_gastos_esperados", "Configurar gastos esperados"
+        AUDITAR_FINANZAS = "auditar_finanzas", "Auditar accesos financieros"
 
     membresia = models.ForeignKey(
         "accounts.Membresia",
@@ -43,6 +44,7 @@ class ConcesionFinanciera(models.Model):
             cls.Accion.APROBAR_GASTOS,
             cls.Accion.CORREGIR_GASTOS,
             cls.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            cls.Accion.AUDITAR_FINANZAS,
         }
 
     def clean(self):
@@ -59,6 +61,32 @@ class ConcesionFinanciera(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class AccesoFinanciero(models.Model):
+    """Metadatos de una lectura financiera; nunca copia importes ni texto libre."""
+
+    usuario = models.ForeignKey("accounts.Usuario", on_delete=models.PROTECT)
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT, null=True)
+    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT, null=True)
+    sensible = models.BooleanField(default=False)
+    recurso = models.CharField(max_length=60)
+    accion = models.CharField(max_length=30)
+    objeto_id = models.PositiveBigIntegerField(null=True)
+    periodo_economico = models.DateField(null=True)
+    resultados = models.PositiveIntegerField(default=0)
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-registrado", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Un acceso financiero no se modifica.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un acceso financiero no se elimina.")
 
 
 class Prestacion(models.Model):

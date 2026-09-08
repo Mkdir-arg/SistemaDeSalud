@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common import BaseModelViewSet
+from .auditoria import AuditaLecturaFinanciera
 from .calendario import calendario_mensual, en_alcance_financiero
 from .models import ConcesionFinanciera, ExpectativaGasto, IndicacionCargaGasto
 from .services import indicar_carga_esperada, registrar_expectativa_gasto
@@ -64,7 +65,7 @@ class PuedeConfigurarGastosEsperados(PuedeRegistrarGastos):
     accion = ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS
 
 
-class ExpectativaGastoViewSet(BaseModelViewSet):
+class ExpectativaGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     queryset = ExpectativaGasto.objects.select_related("concepto", "institucion", "area")
     serializer_class = ExpectativaSerializer
     institucion_path = "institucion"
@@ -110,8 +111,10 @@ class ExpectativaGastoViewSet(BaseModelViewSet):
         historial = expectativa.indicaciones_carga.order_by("-registrado", "-id")
         pagina = self.paginate_queryset(historial)
         if pagina is not None:
-            return self.get_paginated_response(IndicacionSerializer(pagina, many=True).data)
-        return Response(IndicacionSerializer(historial, many=True).data)
+            respuesta = self.get_paginated_response(IndicacionSerializer(pagina, many=True).data)
+        else:
+            respuesta = Response(IndicacionSerializer(historial, many=True).data)
+        return self.auditar_respuesta(respuesta, contexto=expectativa)
 
     @action(detail=False, methods=["get"])
     def calendario(self, request):
@@ -127,4 +130,4 @@ class ExpectativaGastoViewSet(BaseModelViewSet):
             limites="Sólo expectativas configuradas y gastos visibles según tus permisos. "
             "Carga completa no implica aprobación, distribución ni cobertura de gastos no declarados.",
         )
-        return respuesta
+        return self.auditar_respuesta(respuesta)

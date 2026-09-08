@@ -168,7 +168,11 @@ a gastos no resuelve las acciones personalizadas ni define quién debe poder
 auditar esos accesos; además copiaría filtros de consulta sin una selección
 específica de metadatos financieros. No se aplicó ese cambio mecánicamente.
 
-### Decisión material pendiente, propuesta del agente (no aprobada)
+### Decisión material aprobada: auditoría financiera separada
+
+El responsable aprobó la propuesta y pidió mantenerla simple. La implementación
+se limita a una tabla, una acción de concesión, un adaptador compartido de lectura
+y un endpoint de consulta; sin infraestructura, tareas de fondo ni nuevos roles.
 
 **Recomendación:** registro `AccesoFinanciero` separado para las consultas de
 gastos, catálogo de gastos, expectativas, calendario e historial. Reutilizar
@@ -178,8 +182,8 @@ esa acción automáticamente a administradores ni auditores clínicos.
 
 - Registrar actor, fecha, recurso/acción, institución, área, sensibilidad,
   identificador cuando corresponda y cantidad de registros; sin importes,
-  motivos libres ni narrativa clínica. Los filtros admitidos serán una lista
-  cerrada de identificadores/períodos, no la URL arbitraria.
+  motivos libres ni narrativa clínica. Se toman identificadores/períodos de la
+  respuesta autorizada, no se copia la URL ni los filtros arbitrarios del pedido.
 - Registros inmutables y sin borrado en API/admin, con referencias protegidas.
   No implementar purgas ni fijar un nuevo plazo de retención en este corte.
 - Para estas consultas financieras, si no se logra persistir su auditoría,
@@ -196,9 +200,53 @@ agrega una tabla/migración y una acción de permiso, a cambio de aislar ese rie
 **Costo operativo de la recomendación:** durante una falla del registro no se
 podrán consultar estos datos financieros. La alternativa de seguir mostrando
 datos y avisar sólo en logs preserva disponibilidad, pero deja accesos sin
-rastro durable. Esta elección requiere confirmación antes de programar.
+rastro durable. El responsable aprobó bloquear sólo estas consultas financieras.
 
-Tras aprobar la decisión: implementar registro/permiso, integrar las lecturas
-incluidas y cubrir acceso cruzado, sensibles, paginación, acciones personalizadas,
+La validación cubre acceso cruzado, sensibles, paginación, acciones personalizadas,
 fallo de persistencia e independencia clínica. Reconsiderar la separación sólo
 si el sistema adopta una auditoría general con permisos equivalentes verificados.
+
+### Implementación y evidencia
+
+- `AccesoFinanciero` guarda actor, fecha, institución, área, sensibilidad,
+  recurso/acción, ID cuando aplica, período disponible y cantidad. Los listados
+  registran la página devuelta, agrupada por ámbito/sensibilidad/período; no el
+  total de filas existentes. El historial identifica su expectativa, aun vacío.
+- Sin resultados se registra cantidad cero (no un importe), sin inventar área
+  ni sensibilidad. La institución se obtiene del contexto validado existente;
+  si no puede atribuirse, queda nula y sólo plataforma puede consultar ese acceso.
+- `GET /api/accesos-financieros/` y detalle requieren `auditar_finanzas`:
+  membresía administrativa activa y el alcance de la misma concesión. Crear
+  gastos, administrar la institución o auditar clínicamente no otorga esta acción.
+  El superusuario conserva el tratamiento existente del módulo.
+- Se auditan lecturas de gastos, catálogo, expectativas, calendario e historial.
+  No se agrega auditoría recursiva al propio registro ni se cambian las respuestas
+  de escritura, los hechos de costo o los recorridos clínicos.
+- Un fallo de escritura revierte todos los registros de esa consulta y responde
+  503 sin entregar sus datos. El log contiene sólo el tipo de error, no su texto
+  ni el payload. Los rechazos 400/403/404 no se anotan como lecturas exitosas.
+- La migración `0017_acceso_financiero` agrega la tabla y la opción de permiso;
+  no concede accesos automáticamente ni modifica gastos existentes. Sólo se
+  aplicó mediante las bases temporales de tests, nunca en una base real.
+
+**Pruebas ejecutadas:** ocho casos nuevos en `apps.finanzas.test_auditoria`,
+incluidos fallo en varios endpoints, reversión de escritura parcial, aislamiento
+de ámbitos, democión/suspensión de membresía, consulta vacía e inmutabilidad por
+API/modelo. Regresión conjunta: 140 casos, 138 correctos y 2 omitidos por requerir
+PostgreSQL. `makemigrations finanzas --check --dry-run`: sin cambios pendientes.
+
+**Chequeo adicional con fallo:** el test de generación OpenAPI falla con 12
+advertencias de tipos en los serializers existentes de costos/gastos; ninguno
+de esos serializers fue modificado en este checkpoint. No hay errores de
+generación ni advertencias del nuevo serializer de accesos. Se conserva como
+siguiente corrección focalizada, sin declarar toda la validación verde.
+
+No se repitieron navegador/build ni PostgreSQL ni mediciones de volumen. La
+consulta de accesos está disponible por API, sin nueva pantalla. La aceptación
+funcional del usuario continúa pendiente.
+
+**Conservación y reversión:** API sin alta/edición/borrado, modelo sin edición ni
+borrado por instancia y referencias `PROTECT`; no se registra en Django admin.
+Esto no pretende impedir SQL ni operaciones ORM masivas de mantenimiento
+privilegiado. No deshacer la migración sobre registros reales: eliminaría la
+tabla de auditoría. Un rollback debe conservar esa tabla y su evidencia.
