@@ -225,9 +225,17 @@ class ValorComponenteViewSet(BaseModelViewSet):
 
     def perform_create(self, serializer):
         componente = serializer.validated_data["componente"]
+        reemplaza = serializer.validated_data.get("reemplaza")
+        es_correccion = reemplaza and (
+            reemplaza.vigente_desde,
+            reemplaza.vigente_hasta,
+        ) == (
+            serializer.validated_data["vigente_desde"],
+            serializer.validated_data.get("vigente_hasta"),
+        )
         accion = (
             ConcesionFinanciera.Accion.CORREGIR_COSTOS
-            if serializer.validated_data.get("reemplaza")
+            if es_correccion
             else ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES
         )
         if not tiene_concesion_financiera(

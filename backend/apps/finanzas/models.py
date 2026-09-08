@@ -1,6 +1,6 @@
 """Hechos e importes internos de finanzas y costos."""
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 
 
@@ -83,7 +83,7 @@ class ValorComponente(models.Model):
     fuente = models.CharField(max_length=255, blank=True)
     registrado_por = models.ForeignKey("accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="valores_costo_registrados")
     registrado = models.DateTimeField(auto_now_add=True)
-    reemplaza = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="reemplazado_por")
+    reemplaza = models.OneToOneField("self", on_delete=models.PROTECT, null=True, blank=True, related_name="reemplazado_por")
     motivo_correccion = models.CharField(max_length=255, blank=True)
     class Meta:
         ordering = ["componente_id", "vigente_desde", "id"]
@@ -96,11 +96,14 @@ class ValorComponente(models.Model):
         super().clean()
         if self.reemplaza_id:
             if self.reemplaza.componente_id != self.componente_id:
-                raise ValidationError("Una corrección debe pertenecer al mismo componente.")
-            if (self.reemplaza.vigente_desde, self.reemplaza.vigente_hasta) != (self.vigente_desde, self.vigente_hasta):
-                raise ValidationError("Una corrección conserva la vigencia del valor corregido.")
-            if not self.motivo_correccion:
-                raise ValidationError("Una corrección requiere un motivo.")
+                raise ValidationError("Un valor sucesor debe pertenecer al mismo componente.")
+            if self.vigente_desde < self.reemplaza.vigente_desde:
+                raise ValidationError("Un valor sucesor no puede empezar antes del valor reemplazado.")
+            if self.vigente_desde == self.reemplaza.vigente_desde:
+                if self.vigente_hasta != self.reemplaza.vigente_hasta:
+                    raise ValidationError("Una corrección conserva la vigencia del valor corregido.")
+                if not self.motivo_correccion:
+                    raise ValidationError("Una corrección requiere un motivo.")
         solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
         if self.vigente_hasta is not None:
             solapa &= Q(vigente_desde__lt=self.vigente_hasta)
@@ -113,8 +116,13 @@ class ValorComponente(models.Model):
     def save(self, *args, **kwargs):
         if self.pk and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError("Un valor de componente no se edita; se corrige con una nueva versión.")
-        self.full_clean()
-        return super().save(*args, **kwargs)
+        if self.componente_id is None:
+            self.full_clean()
+            return super().save(*args, **kwargs)
+        with transaction.atomic(using=kwargs.get("using")):
+            DefinicionComponente.objects.select_for_update().get(pk=self.componente_id)
+            self.full_clean()
+            return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Un valor de componente no se elimina.")

@@ -122,6 +122,26 @@ class CosteoAtencionTests(TestCase):
         )
         self.assertEqual(correccion.reemplaza, valor)
 
+    def test_un_valor_futuro_sucede_al_abierto_sin_reescribirlo(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ahora = timezone.now()
+        anterior = ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("100.00"),
+            vigente_desde=ahora,
+        )
+        siguiente = ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("120.00"),
+            vigente_desde=ahora + timedelta(days=30),
+            reemplaza=anterior,
+        )
+
+        anterior.refresh_from_db()
+        self.assertIsNone(anterior.vigente_hasta)
+        self.assertEqual(siguiente.reemplaza, anterior)
+
     def test_el_comando_recupera_un_hecho_pendiente_sin_tocar_la_atencion(self):
         prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
         componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
@@ -619,6 +639,39 @@ class CatalogoCostosApiTests(APITestCase):
         response = self.client.post("/api/valores-componentes/", datos, format="json")
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ValorComponente.objects.get(pk=response.data["id"]).reemplaza, valor)
+
+    def test_configurador_programa_un_valor_futuro_sin_permiso_de_correccion(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        anterior = ValorComponente.objects.create(
+            componente=componente,
+            importe="100.00",
+            vigente_desde="2026-09-01T00:00:00Z",
+        )
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            "/api/valores-componentes/",
+            {
+                "componente": componente.id,
+                "importe": "120.00",
+                "vigente_desde": "2026-10-01T00:00:00Z",
+                "reemplaza": anterior.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(ValorComponente.objects.get(pk=response.data["id"]).reemplaza, anterior)
 
 
 class AjusteCostoApiTests(APITestCase):
