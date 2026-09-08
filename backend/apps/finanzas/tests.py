@@ -68,6 +68,16 @@ class CosteoAtencionTests(TestCase):
             ).exists()
         )
 
+    def test_un_fallo_al_congelar_componentes_no_revierte_el_hecho(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+
+        with patch("apps.finanzas.services._congelar_componentes", side_effect=RuntimeError("catálogo no disponible")):
+            hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+
+        hecho.refresh_from_db()
+        self.assertFalse(hecho.componentes_congelados)
+        self.assertFalse(PendienteCosteo.objects.filter(hecho=hecho).exists())
+
     def test_valor_vigente_genera_una_sola_imputacion_al_reintentar(self):
         prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
         componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")

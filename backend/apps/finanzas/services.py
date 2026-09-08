@@ -32,7 +32,13 @@ def registrar_atencion_completada(caso, nodo, evento, autor=None):
         },
     )
     if creado:
-        _congelar_componentes(hecho)
+        try:
+            # La captura de catálogo es financiera; un error suyo no debe
+            # deshacer la atención ni el hecho durable recién creado.
+            with transaction.atomic():
+                _congelar_componentes(hecho)
+        except Exception:  # noqa: BLE001 - el worker detecta el snapshot incompleto.
+            logger.exception("No se pudieron congelar los componentes del hecho %s", hecho.id)
     return hecho
 
 
