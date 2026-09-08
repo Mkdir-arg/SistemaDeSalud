@@ -40,6 +40,34 @@ class CosteoAtencionTests(TestCase):
         self.assertEqual(ImputacionCosto.objects.filter(hecho=hecho).count(), 0)
         self.assertTrue(PendienteCosteo.objects.filter(hecho=hecho, motivo=PendienteCosteo.Motivo.SIN_PRESTACION, resuelto=False).exists())
 
+    def test_una_prestacion_configurada_despues_no_completa_el_hecho_anterior(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("100.00"),
+            vigente_desde=hecho.ocurrida_en - timedelta(days=1),
+        )
+
+        procesar_hecho_atencion(hecho.id)
+
+        self.assertFalse(ComponenteEsperadoHecho.objects.filter(hecho=hecho).exists())
+        self.assertFalse(ImputacionCosto.objects.filter(hecho=hecho).exists())
+        self.assertTrue(
+            PendienteCosteo.objects.filter(
+                hecho=hecho,
+                motivo=PendienteCosteo.Motivo.SIN_PRESTACION,
+                resuelto=False,
+            ).exists()
+        )
+
     def test_valor_vigente_genera_una_sola_imputacion_al_reintentar(self):
         prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
         componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
@@ -110,6 +138,8 @@ class CosteoAtencionTests(TestCase):
             call_command("procesar_costos", "--limite", "0")
 
     def test_el_comando_registra_el_error_recuperable_del_hecho(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
         with patch(
@@ -126,6 +156,8 @@ class CosteoAtencionTests(TestCase):
         )
 
     def test_un_error_en_el_intento_directo_no_borra_el_hecho_y_queda_pendiente(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
         with patch("apps.finanzas.services.procesar_hecho_atencion", side_effect=RuntimeError("fuente temporalmente caída")):
@@ -137,8 +169,6 @@ class CosteoAtencionTests(TestCase):
                 resuelto=False,
             ).exists()
         )
-        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
-        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
         ValorComponente.objects.create(componente=componente, importe=Decimal("100.00"), vigente_desde=hecho.ocurrida_en - timedelta(days=1))
         procesar_hecho_atencion(hecho.id)
         self.assertTrue(
@@ -161,7 +191,6 @@ class CosteoAtencionTests(TestCase):
     def test_un_pendiente_sin_componente_no_se_duplica(self):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
-        PendienteCosteo.objects.create(hecho=hecho, motivo=PendienteCosteo.Motivo.SIN_PRESTACION)
         with self.assertRaises(IntegrityError), transaction.atomic():
             PendienteCosteo.objects.create(hecho=hecho, motivo=PendienteCosteo.Motivo.SIN_PRESTACION)
 
@@ -335,7 +364,14 @@ class HechoCostoApiTests(APITestCase):
             importe=Decimal("1250.50"),
             vigente_desde=self.hecho.ocurrida_en - timedelta(days=1),
         )
-        procesar_hecho_atencion(self.hecho.id)
+        evento = EventoCaso.objects.create(
+            caso=self.hecho.caso,
+            nodo=self.hecho.nodo,
+            autor=self.usuario,
+            titulo="Atención registrada",
+        )
+        hecho = registrar_atencion_completada(self.hecho.caso, self.hecho.nodo, evento, self.usuario)
+        procesar_hecho_atencion(hecho.id)
         membresia = Membresia.objects.create(
             usuario=self.usuario,
             institucion=self.institucion,
@@ -354,13 +390,13 @@ class HechoCostoApiTests(APITestCase):
             permite_sensibles=True,
         )
         registrar_ajuste_costo(
-            ImputacionCosto.objects.get(hecho=self.hecho, componente=componente),
+            ImputacionCosto.objects.get(hecho=hecho, componente=componente),
             Decimal("-50.00"),
             "Corrección de importe",
             self.usuario,
         )
         self.client.force_authenticate(self.usuario)
-        response = self.client.get(f"/api/hechos-costo/{self.hecho.id}/")
+        response = self.client.get(f"/api/hechos-costo/{hecho.id}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["total_conocido"], "1200.50")
         self.assertTrue(response.data["total_es_completo"])

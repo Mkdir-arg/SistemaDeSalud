@@ -136,6 +136,7 @@ class HechoAtencionCosteable(models.Model):
     autor = models.ForeignKey("accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="hechos_costo")
     ocurrida_en = models.DateTimeField()
     creado = models.DateTimeField(auto_now_add=True)
+    componentes_congelados = models.BooleanField(default=False)
     class Meta:
         ordering = ["ocurrida_en", "id"]
 

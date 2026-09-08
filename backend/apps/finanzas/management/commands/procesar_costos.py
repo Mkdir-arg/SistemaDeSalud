@@ -6,7 +6,7 @@ from django.db.models import Q
 
 from apps.auditoria.latidos import latir
 
-from ...models import HechoAtencionCosteable
+from ...models import HechoAtencionCosteable, PendienteCosteo
 from ...services import procesar_hecho_atencion, registrar_error_recuperable
 
 
@@ -27,7 +27,15 @@ class Command(BaseCommand):
         seco = opciones["seco"]
         ids = list(
             HechoAtencionCosteable.objects.filter(
-                Q(pendientes__resuelto=False) | Q(componentes_esperados__isnull=True)
+                Q(componentes_congelados=False)
+                | Q(componentes_esperados__isnull=False, imputaciones__isnull=True)
+                | Q(
+                    pendientes__resuelto=False,
+                    pendientes__motivo__in=[
+                        PendienteCosteo.Motivo.ERROR_RECUPERABLE,
+                        PendienteCosteo.Motivo.SIN_VALOR,
+                    ],
+                )
             ).order_by("ocurrida_en", "id").distinct().values_list("id", flat=True)[:limite]
         )
         procesados = 0

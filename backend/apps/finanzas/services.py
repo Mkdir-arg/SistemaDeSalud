@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def registrar_atencion_completada(caso, nodo, evento, autor=None):
     """Crea una vez el hecho económico para el evento clínico ya confirmado."""
-    hecho, _ = HechoAtencionCosteable.objects.get_or_create(
+    hecho, creado = HechoAtencionCosteable.objects.get_or_create(
         evento_origen_id=evento.id,
         defaults={
             "institucion": caso.institucion,
@@ -31,6 +31,8 @@ def registrar_atencion_completada(caso, nodo, evento, autor=None):
             "ocurrida_en": timezone.now(),
         },
     )
+    if creado:
+        _congelar_componentes(hecho)
     return hecho
 
 
@@ -46,6 +48,36 @@ def _resolver(hecho, motivo, componente=None):
     PendienteCosteo.objects.filter(hecho=hecho, componente=componente, motivo=motivo, resuelto=False).update(resuelto=True, resuelto_en=timezone.now())
 
 
+def _congelar_componentes(hecho):
+    """Sella los componentes aplicables al momento de la atención."""
+    prestaciones = Prestacion.objects.filter(
+        institucion=hecho.institucion,
+        nodo_id=hecho.nodo_origen_id,
+        activo=True,
+    )
+    if not prestaciones.exists():
+        _pendiente(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
+    else:
+        _resolver(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
+        componentes = list(
+            DefinicionComponente.objects.filter(
+                prestacion__in=prestaciones,
+                activo=True,
+                fuente=DefinicionComponente.Fuente.ATENCION_DIRECTA,
+            )
+        )
+        if not componentes:
+            _pendiente(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
+        else:
+            ComponenteEsperadoHecho.objects.bulk_create(
+                [ComponenteEsperadoHecho(hecho=hecho, componente=componente) for componente in componentes],
+                ignore_conflicts=True,
+            )
+            _resolver(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
+    HechoAtencionCosteable.objects.filter(pk=hecho.pk).update(componentes_congelados=True)
+    hecho.componentes_congelados = True
+
+
 def procesar_hecho_atencion(hecho_id):
     """Calcula sólo componentes directos disponibles; es seguro reintentarlo."""
     with transaction.atomic():
@@ -54,19 +86,14 @@ def procesar_hecho_atencion(hecho_id):
         # ser el faltante vigente: puede quedar otro pendiente de datos, pero
         # no corresponde mostrar ambos como si el error siguiera activo.
         _resolver(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
-        esperados = ComponenteEsperadoHecho.objects.filter(hecho=hecho).select_related("componente")
-        if esperados.exists():
-            componentes = [esperado.componente for esperado in esperados]
-        else:
-            prestaciones = Prestacion.objects.filter(institucion=hecho.institucion, nodo_id=hecho.nodo_origen_id, activo=True)
-            if not prestaciones.exists():
-                return _pendiente(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
-            _resolver(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
-            componentes = list(DefinicionComponente.objects.filter(prestacion__in=prestaciones, activo=True, fuente=DefinicionComponente.Fuente.ATENCION_DIRECTA))
-            if not componentes:
-                return _pendiente(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
-            ComponenteEsperadoHecho.objects.bulk_create([ComponenteEsperadoHecho(hecho=hecho, componente=componente) for componente in componentes], ignore_conflicts=True)
-            _resolver(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
+        if not hecho.componentes_congelados:
+            _congelar_componentes(hecho)
+        componentes = list(
+            ComponenteEsperadoHecho.objects.filter(hecho=hecho).select_related("componente")
+        )
+        if not componentes:
+            return hecho
+        componentes = [esperado.componente for esperado in componentes]
         for componente in componentes:
             valor = ValorComponente.objects.filter(componente=componente, vigente_desde__lte=hecho.ocurrida_en).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=hecho.ocurrida_en)).order_by("-vigente_desde", "-id").first()
             if valor is None:
