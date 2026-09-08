@@ -1,7 +1,7 @@
 from rest_framework import serializers
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
 
-from .models import AjusteCosto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, HechoAtencionCosteable, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, Prestacion, ValorComponente
 
 
 class ConcesionFinancieraSerializer(serializers.ModelSerializer):
@@ -116,6 +116,62 @@ class AjusteCostoSerializer(serializers.ModelSerializer):
         model = AjusteCosto
         fields = ["id", "imputacion", "importe", "motivo", "registrado_por", "registrado"]
         read_only_fields = ["id", "registrado_por", "registrado"]
+
+
+class AjusteGastoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AjusteGasto
+        fields = ["id", "gasto", "importe", "motivo", "registrado_por", "registrado"]
+        read_only_fields = ["id", "registrado_por", "registrado"]
+
+
+class GastoSerializer(serializers.ModelSerializer):
+    reemplazado_por = serializers.SerializerMethodField()
+    estado_operativo = serializers.SerializerMethodField()
+    ajustes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Gasto
+        fields = [
+            "id", "concepto", "concepto_codigo", "concepto_nombre", "institucion", "area",
+            "importe", "moneda", "periodo_economico", "origen", "estado", "estado_operativo",
+            "sensible", "registrado_por", "registrado", "aprobado_por", "aprobado_en",
+            "rechazado_por", "rechazado_en", "motivo_rechazo", "reemplaza", "reemplazado_por",
+            "ajustes",
+        ]
+        read_only_fields = [
+            "id", "concepto_codigo", "concepto_nombre", "moneda", "origen", "estado",
+            "estado_operativo", "sensible", "registrado_por", "registrado", "aprobado_por",
+            "aprobado_en", "rechazado_por", "rechazado_en", "motivo_rechazo", "reemplazado_por",
+            "ajustes",
+        ]
+
+    @staticmethod
+    def get_reemplazado_por(obj):
+        try:
+            return obj.reemplazado_por.id
+        except ObjectDoesNotExist:
+            return None
+
+    def get_estado_operativo(self, obj):
+        return "reemplazado" if self.get_reemplazado_por(obj) is not None else obj.estado
+
+    @staticmethod
+    def get_ajustes(obj):
+        return [
+            {
+                "id": ajuste.id,
+                "importe": str(ajuste.importe),
+                "motivo": ajuste.motivo,
+                "registrado_por": ajuste.registrado_por_id,
+                "registrado": ajuste.registrado,
+            }
+            for ajuste in obj.ajustes.all()
+        ]
+
+
+class RechazoGastoSerializer(serializers.Serializer):
+    motivo = serializers.CharField(max_length=255)
 
 
 class CorreccionSnapshotCosteoSerializer(serializers.ModelSerializer):

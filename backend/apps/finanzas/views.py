@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import MethodNotAllowed, PermissionDenied, ValidationError
+from rest_framework.exceptions import MethodNotAllowed, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
@@ -11,9 +11,11 @@ from apps.common import BaseModelViewSet
 
 from .models import (
     AjusteCosto,
+    AjusteGasto,
     ConceptoGasto,
     ConcesionFinanciera,
     DefinicionComponente,
+    Gasto,
     HechoAtencionCosteable,
     Prestacion,
     ValorComponente,
@@ -21,15 +23,18 @@ from .models import (
 from .permisos import concesiones_financieras_de, tiene_concesion_financiera
 from .serializers import (
     AjusteCostoSerializer,
+    AjusteGastoSerializer,
     ConceptoGastoSerializer,
     ConcesionFinancieraSerializer,
     CorreccionSnapshotCosteoSerializer,
     DefinicionComponenteSerializer,
+    GastoSerializer,
     HechoAtencionCosteableSerializer,
     PrestacionSerializer,
+    RechazoGastoSerializer,
     ValorComponenteSerializer,
 )
-from .services import corregir_snapshot_componentes, registrar_ajuste_costo
+from .services import aprobar_gasto, corregir_snapshot_componentes, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_gasto
 
 
 class PuedeVerCostosPaciente(BasePermission):
@@ -158,6 +163,40 @@ class PuedeGestionarConceptosGasto(BasePermission):
                 ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
             )
         )
+
+
+class PuedeVerGastos(BasePermission):
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario and usuario.is_authenticated and (
+                usuario.is_superuser
+                or concesiones_financieras_de(
+                    usuario,
+                    ConcesionFinanciera.Accion.VER_GASTOS,
+                ).exists()
+            )
+        )
+
+
+class PuedeRegistrarGastos(BasePermission):
+    accion = ConcesionFinanciera.Accion.REGISTRAR_GASTOS
+
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario and usuario.is_authenticated and (
+                usuario.is_superuser or concesiones_financieras_de(usuario, self.accion).exists()
+            )
+        )
+
+
+class PuedeAprobarGastos(PuedeRegistrarGastos):
+    accion = ConcesionFinanciera.Accion.APROBAR_GASTOS
+
+
+class PuedeCorregirGastos(PuedeRegistrarGastos):
+    accion = ConcesionFinanciera.Accion.CORREGIR_GASTOS
 
 
 def _institucion_catalogo(obj):
@@ -301,6 +340,121 @@ class ConceptoGastoViewSet(BaseModelViewSet):
             serializer.instance.sensible or serializer.validated_data.get("sensible", False),
         )
         serializer.save()
+
+
+class GastoViewSet(BaseModelViewSet):
+    """Fuentes de gasto sin reparto clínico, cargos ni movimientos de dinero."""
+
+    queryset = Gasto.objects.select_related(
+        "concepto", "institucion", "area", "registrado_por", "aprobado_por", "rechazado_por",
+        "reemplazado_por",
+    ).prefetch_related("ajustes__registrado_por")
+    serializer_class = GastoSerializer
+    permission_classes = [IsAuthenticated, PuedeVerGastos]
+    institucion_path = "institucion"
+    http_method_names = ["get", "head", "options", "post"]
+    filter_fields = ("institucion", "area", "concepto", "estado", "origen", "periodo_economico", "sensible")
+    ordering_fields = ("periodo_economico", "registrado", "id")
+
+    def get_permissions(self):
+        permisos = [IsAuthenticated()]
+        if self.action == "create":
+            permisos.append(PuedeRegistrarGastos())
+        elif self.action in {"aprobar", "rechazar"}:
+            permisos.append(PuedeAprobarGastos())
+        else:
+            permisos.append(PuedeVerGastos())
+        return permisos
+
+    @staticmethod
+    def _error_validacion(error):
+        return getattr(error, "message_dict", error.messages)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        usuario = self.request.user
+        if usuario.is_superuser:
+            return qs
+        alcance = Q(pk__in=[])
+        concesiones = concesiones_financieras_de(usuario, ConcesionFinanciera.Accion.VER_GASTOS)
+        for institucion_id, permite_sensibles in concesiones.filter(todas_las_areas=True).values_list(
+            "membresia__institucion_id", "permite_sensibles"
+        ):
+            scope = Q(institucion_id=institucion_id)
+            if not permite_sensibles:
+                scope &= ~Q(sensible=True)
+            alcance |= scope
+        for institucion_id, area_id, permite_sensibles in concesiones.filter(todas_las_areas=False).values_list(
+            "membresia__institucion_id", "areas__id", "permite_sensibles"
+        ):
+            if area_id is not None:
+                scope = Q(institucion_id=institucion_id, area_id=area_id)
+                if not permite_sensibles:
+                    scope &= ~Q(sensible=True)
+                alcance |= scope
+        return qs.filter(alcance).distinct()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            gasto = registrar_gasto(
+                serializer.validated_data["concepto"],
+                serializer.validated_data["institucion"],
+                serializer.validated_data.get("area"),
+                serializer.validated_data["importe"],
+                serializer.validated_data["periodo_economico"],
+                request.user,
+                serializer.validated_data.get("reemplaza"),
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(self._error_validacion(error)) from error
+        return Response(self.get_serializer(gasto).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="aprobar")
+    def aprobar(self, request, pk=None):
+        try:
+            gasto = aprobar_gasto(pk, request.user)
+        except Gasto.DoesNotExist as error:
+            raise NotFound() from error
+        except DjangoValidationError as error:
+            raise ValidationError(self._error_validacion(error)) from error
+        return Response(self.get_serializer(gasto).data)
+
+    @action(detail=True, methods=["post"], url_path="rechazar")
+    def rechazar(self, request, pk=None):
+        serializer = RechazoGastoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            gasto = rechazar_gasto(pk, serializer.validated_data["motivo"], request.user)
+        except Gasto.DoesNotExist as error:
+            raise NotFound() from error
+        except DjangoValidationError as error:
+            raise ValidationError(self._error_validacion(error)) from error
+        return Response(self.get_serializer(gasto).data)
+
+
+class AjusteGastoViewSet(BaseModelViewSet):
+    queryset = AjusteGasto.objects.none()
+    serializer_class = AjusteGastoSerializer
+    permission_classes = [IsAuthenticated, PuedeCorregirGastos]
+    http_method_names = ["post", "options"]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            ajuste = registrar_ajuste_gasto(
+                serializer.validated_data["gasto"].id,
+                serializer.validated_data["importe"],
+                serializer.validated_data["motivo"],
+                request.user,
+            )
+        except Gasto.DoesNotExist as error:
+            raise NotFound() from error
+        except DjangoValidationError as error:
+            raise ValidationError(GastoViewSet._error_validacion(error)) from error
+        return Response(self.get_serializer(ajuste).data, status=status.HTTP_201_CREATED)
 
 
 class ValorComponenteViewSet(BaseModelViewSet):

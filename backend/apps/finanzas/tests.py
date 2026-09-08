@@ -1808,3 +1808,125 @@ class ConceptoGastoApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(ConceptoGasto.objects.filter(codigo="SUELDOS").exists())
+
+
+class GastoApiTests(APITestCase):
+    def setUp(self):
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="LIMPIEZA",
+            nombre="Limpieza",
+        )
+        self.sensible = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="SUELDOS",
+            nombre="Sueldos",
+            sensible=True,
+        )
+        self.admin = Usuario.objects.create_user("admin-api-gastos@cauce.local", "x")
+        self.delegado = Usuario.objects.create_user("delegado-api-gastos@cauce.local", "x")
+        self.lector_restringido = Usuario.objects.create_user("lector-api-gastos@cauce.local", "x")
+
+        membresia_admin = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        for accion in (
+            ConcesionFinanciera.Accion.VER_GASTOS,
+            ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+        ):
+            ConcesionFinanciera.objects.create(
+                membresia=membresia_admin,
+                accion=accion,
+                todas_las_areas=True,
+                permite_sensibles=True,
+            )
+
+        membresia_delegado = Membresia.objects.create(
+            usuario=self.delegado,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        concesion_delegado = ConcesionFinanciera.objects.create(
+            membresia=membresia_delegado,
+            accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        )
+        concesion_delegado.areas.add(self.area)
+
+        membresia_lector = Membresia.objects.create(
+            usuario=self.lector_restringido,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia_lector,
+            accion=ConcesionFinanciera.Accion.VER_GASTOS,
+            todas_las_areas=True,
+        )
+
+    def carga(self, concepto=None, **overrides):
+        datos = {
+            "concepto": (concepto or self.concepto).id,
+            "institucion": self.institucion.id,
+            "area": self.area.id,
+            "importe": "100.00",
+            "periodo_economico": "2026-08-01",
+        }
+        datos.update(overrides)
+        return datos
+
+    def test_alta_de_area_nace_pendiente_y_aprobacion_es_idempotente(self):
+        self.client.force_authenticate(self.delegado)
+        alta = self.client.post("/api/gastos/", self.carga(estado="aprobado"), format="json")
+
+        self.assertEqual(alta.status_code, 201)
+        self.assertEqual(alta.data["origen"], Gasto.Origen.AREA)
+        self.assertEqual(alta.data["estado"], Gasto.Estado.PENDIENTE_APROBACION)
+        gasto_id = alta.data["id"]
+        self.assertEqual(self.client.get(f"/api/gastos/{gasto_id}/").status_code, 403)
+
+        self.client.force_authenticate(self.admin)
+        primera = self.client.post(f"/api/gastos/{gasto_id}/aprobar/", {}, format="json")
+        segunda = self.client.post(f"/api/gastos/{gasto_id}/aprobar/", {}, format="json")
+
+        self.assertEqual(primera.status_code, 200)
+        self.assertEqual(segunda.status_code, 200)
+        self.assertEqual(primera.data["estado"], Gasto.Estado.APROBADO)
+        self.assertEqual(primera.data["id"], segunda.data["id"])
+        self.assertEqual(Gasto.objects.filter(pk=gasto_id).count(), 1)
+
+    def test_alta_central_y_ajuste_no_crean_hechos_ni_cargos(self):
+        self.client.force_authenticate(self.admin)
+        alta = self.client.post("/api/gastos/", self.carga(), format="json")
+
+        self.assertEqual(alta.status_code, 201)
+        self.assertEqual(alta.data["origen"], Gasto.Origen.CENTRAL)
+        self.assertEqual(alta.data["estado"], Gasto.Estado.APROBADO)
+        ajuste = self.client.post(
+            "/api/ajustes-gasto/",
+            {"gasto": alta.data["id"], "importe": "-10.00", "motivo": "Descuento acordado"},
+            format="json",
+        )
+
+        self.assertEqual(ajuste.status_code, 201)
+        self.assertEqual(ajuste.data["importe"], "-10.00")
+        self.assertEqual(HechoAtencionCosteable.objects.count(), 0)
+        self.assertEqual(AjusteGasto.objects.count(), 1)
+
+    def test_lectura_sensible_exige_concesion_expresa(self):
+        self.client.force_authenticate(self.admin)
+        alta = self.client.post("/api/gastos/", self.carga(self.sensible), format="json")
+        self.assertEqual(alta.status_code, 201)
+
+        self.client.force_authenticate(self.lector_restringido)
+        listado = self.client.get("/api/gastos/")
+        detalle = self.client.get(f"/api/gastos/{alta.data['id']}/")
+
+        self.assertEqual(listado.status_code, 200)
+        self.assertEqual(listado.data["count"], 0)
+        self.assertEqual(detalle.status_code, 404)
