@@ -1,4 +1,7 @@
+import hashlib
+import json
 import logging
+from datetime import date, datetime, time
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
@@ -7,7 +10,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Membresia
 
-from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, AtribucionReparto, CoberturaActividadCosteable, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ReglaRepartoActividad, RepartoGasto, ValorComponente
 from .permisos import concesiones_financieras_en_alcance, tiene_concesion_financiera
 
 
@@ -412,3 +415,171 @@ def registrar_expectativa_gasto(*, registrado_por, **datos):
         ):
             raise PermissionDenied("No tenés autorización sobre la expectativa anterior.")
         return ExpectativaGasto.objects.create(registrado_por=registrado_por, **datos)
+
+
+def _inicio_mes(fecha):
+    return fecha.replace(day=1)
+
+
+def _mes_siguiente(fecha):
+    return date(fecha.year + (fecha.month == 12), 1 if fecha.month == 12 else fecha.month + 1, 1)
+
+
+def _vigente_en(queryset, periodo):
+    return queryset.filter(
+        vigente_desde__lte=periodo,
+    ).filter(
+        Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=periodo),
+    ).exclude(
+        reemplazada_por__vigente_desde__lte=periodo,
+    )
+
+
+def registrar_cobertura_actividad(*, institucion, area, vigente_desde, registrado_por, **datos):
+    """Habilita prospectivamente la fuente atómica de hechos de atención."""
+    if vigente_desde < _inicio_mes(timezone.localdate()):
+        raise ValidationError("La cobertura prospectiva no puede habilitar meses anteriores.")
+    if not tiene_concesion_financiera(
+        registrado_por,
+        ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+        institucion.pk,
+        area.pk,
+    ):
+        raise PermissionDenied("No tenés autorización para configurar repartos.")
+    return CoberturaActividadCosteable.objects.create(
+        institucion=institucion,
+        area=area,
+        vigente_desde=vigente_desde,
+        registrado_por=registrado_por,
+        **datos,
+    )
+
+
+def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, registrado_por, **datos):
+    """Registra una versión de la única regla inicial de reparto por atención."""
+    with transaction.atomic():
+        concepto = ConceptoGasto.objects.select_for_update().get(pk=concepto.pk)
+        if not tiene_concesion_financiera(
+            registrado_por,
+            ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+            institucion.pk,
+            area.pk,
+            sensible=concepto.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para configurar esta regla de reparto.")
+        return ReglaRepartoActividad.objects.create(
+            concepto=concepto,
+            institucion=institucion,
+            area=area,
+            vigente_desde=vigente_desde,
+            registrado_por=registrado_por,
+            **datos,
+        )
+
+
+def _centavos(importe):
+    return int(importe * 100)
+
+
+def _huella_reparto(*, gasto, regla, cobertura, hechos, importe_ajustes, estado, motivo=""):
+    insumos = {
+        "gasto": gasto.id,
+        "importe": str(gasto.importe),
+        "ajustes": [(ajuste.id, str(ajuste.importe)) for ajuste in gasto.ajustes.order_by("id")],
+        "regla": regla.id if regla else None,
+        "cobertura": cobertura.id if cobertura else None,
+        "hechos": [hecho.id for hecho in hechos],
+        "importe_ajustes": importe_ajustes,
+        "estado": estado,
+        "motivo": motivo,
+    }
+    return hashlib.sha256(json.dumps(insumos, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+
+
+def _crear_reparto(*, gasto, regla, cobertura, hechos, estado, motivo=""):
+    importe_fuente = _centavos(gasto.importe)
+    importe_ajustes = sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all())
+    saldo = importe_fuente + importe_ajustes
+    huella = _huella_reparto(
+        gasto=gasto, regla=regla, cobertura=cobertura, hechos=hechos,
+        importe_ajustes=importe_ajustes, estado=estado, motivo=motivo,
+    )
+    existente = RepartoGasto.objects.filter(gasto=gasto, huella_insumos=huella).first()
+    if existente:
+        return existente
+    anterior = RepartoGasto.objects.filter(gasto=gasto).order_by("-version").first()
+    reparto = RepartoGasto.objects.create(
+        gasto=gasto,
+        regla=regla,
+        cobertura=cobertura,
+        version=(anterior.version + 1) if anterior else 1,
+        huella_insumos=huella,
+        importe_fuente_centavos=importe_fuente,
+        importe_ajustes_centavos=importe_ajustes,
+        saldo_centavos=saldo,
+        saldo_no_atribuido_centavos=saldo if estado == RepartoGasto.Estado.SIN_ACTIVIDAD else 0,
+        estado=estado,
+        motivo=motivo,
+        reemplaza=anterior,
+    )
+    if estado != RepartoGasto.Estado.DISTRIBUIDO:
+        return reparto
+    divisor = len(hechos)
+    magnitud, residual = divmod(abs(saldo), divisor)
+    signo = -1 if saldo < 0 else 1
+    AtribucionReparto.objects.bulk_create([
+        AtribucionReparto(
+            reparto=reparto,
+            hecho=hecho,
+            importe_centavos=signo * (magnitud + (indice < residual)),
+        )
+        for indice, hecho in enumerate(hechos)
+    ])
+    return reparto
+
+
+def procesar_reparto_gasto(gasto_id):
+    """Calcula una versión idempotente sin bloquear ni alterar la atención."""
+    with transaction.atomic():
+        gasto = Gasto.objects.select_for_update().select_related("concepto", "area").get(pk=gasto_id)
+        gasto_ajustes = gasto.ajustes.select_related("registrado_por")
+        list(gasto_ajustes)
+        if gasto.estado != Gasto.Estado.APROBADO or gasto.area_id is None:
+            return _crear_reparto(
+                gasto=gasto, regla=None, cobertura=None, hechos=[],
+                estado=RepartoGasto.Estado.PENDIENTE,
+                motivo=RepartoGasto.Motivo.FUENTE_NO_ELEGIBLE,
+            )
+        periodo = gasto.periodo_economico
+        regla = _vigente_en(
+            ReglaRepartoActividad.objects.filter(
+                concepto_id=gasto.concepto_id, institucion_id=gasto.institucion_id, area_id=gasto.area_id,
+            ), periodo,
+        ).first()
+        if regla is None:
+            return _crear_reparto(
+                gasto=gasto, regla=None, cobertura=None, hechos=[],
+                estado=RepartoGasto.Estado.PENDIENTE, motivo=RepartoGasto.Motivo.SIN_REGLA,
+            )
+        cobertura = _vigente_en(
+            CoberturaActividadCosteable.objects.filter(
+                institucion_id=gasto.institucion_id, area_id=gasto.area_id,
+            ), periodo,
+        ).first()
+        if cobertura is None:
+            return _crear_reparto(
+                gasto=gasto, regla=regla, cobertura=None, hechos=[],
+                estado=RepartoGasto.Estado.PENDIENTE, motivo=RepartoGasto.Motivo.SIN_COBERTURA,
+            )
+        inicio = timezone.make_aware(datetime.combine(periodo, time.min))
+        fin = timezone.make_aware(datetime.combine(_mes_siguiente(periodo), time.min))
+        hechos = list(HechoAtencionCosteable.objects.filter(
+            institucion_id=gasto.institucion_id,
+            area_origen_id=gasto.area_id,
+            ocurrida_en__gte=inicio,
+            ocurrida_en__lt=fin,
+        ).order_by("id"))
+        estado = RepartoGasto.Estado.DISTRIBUIDO if hechos else RepartoGasto.Estado.SIN_ACTIVIDAD
+        return _crear_reparto(
+            gasto=gasto, regla=regla, cobertura=cobertura, hechos=hechos, estado=estado,
+        )

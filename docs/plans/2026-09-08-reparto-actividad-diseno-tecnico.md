@@ -1,7 +1,7 @@
 # Diseño técnico aprobado: primer reparto por actividad
 
-Estado: diseño aprobado para planificar. No autoriza todavía modelos, migraciones
-ni ejecución sobre datos reales.
+Estado: diseño aprobado; primer checkpoint backend implementado. No autoriza
+ejecución sobre datos reales.
 
 Referencia: #37, módulo #33, contratos #10/#12 y fuentes #36. Complementa
 `2026-09-08-reparto-primera-base-propuesta.md`: no reemplaza las condiciones
@@ -114,6 +114,14 @@ reparto inter-área, bases de consumo/ocupación, pagos, cobros ni reportería.
 
 ## Próximo paso
 
-Convertir este contrato en un plan de implementación detallado antes de crear
-la migración de `finanzas`. La elección de esquema está aprobada; siguen sin
-autorizarse datos reales, despliegues o cambios de infraestructura.
+Implementado en el primer checkpoint: modelos inmutables, migración `0018`,
+servicios de cobertura/regla/cálculo idempotente y `procesar_repartos`. La
+primera pasada sigue sin API ni UI: no se expone una configuración parcial a
+usuarios hospitalarios. El siguiente bloque debe incorporar API de
+configuración y explicación, conservando los permisos y contratos anteriores.
+
+Validación local del checkpoint, sólo con SQLite efímero: cinco pruebas de
+reparto correctas (centavos, reversa, inactividad, pendientes y permiso),
+`manage.py check` correcto y `makemigrations finanzas --check --dry-run` sin
+cambios. No se ejecutó PostgreSQL, navegador, medición de volumen, despliegue
+ni migración sobre una base real.

@@ -17,6 +17,7 @@ class ConcesionFinanciera(models.Model):
         CORREGIR_GASTOS = "corregir_gastos", "Corregir gastos"
         CONFIGURAR_GASTOS_ESPERADOS = "configurar_gastos_esperados", "Configurar gastos esperados"
         AUDITAR_FINANZAS = "auditar_finanzas", "Auditar accesos financieros"
+        CONFIGURAR_REPARTOS = "configurar_repartos", "Configurar repartos"
 
     membresia = models.ForeignKey(
         "accounts.Membresia",
@@ -45,6 +46,7 @@ class ConcesionFinanciera(models.Model):
             cls.Accion.CORREGIR_GASTOS,
             cls.Accion.CONFIGURAR_GASTOS_ESPERADOS,
             cls.Accion.AUDITAR_FINANZAS,
+            cls.Accion.CONFIGURAR_REPARTOS,
         }
 
     def clean(self):
@@ -770,3 +772,235 @@ class PendienteCosteo(models.Model):
                 name="pendiente_con_componente_unico",
             ),
         ]
+
+
+class CoberturaActividadCosteable(models.Model):
+    """Habilitación prospectiva e inmutable de hechos de atención por ámbito."""
+
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
+    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT)
+    vigente_desde = models.DateField()
+    vigente_hasta = models.DateField(null=True, blank=True)
+    reemplaza = models.OneToOneField(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reemplazada_por"
+    )
+    motivo_correccion = models.CharField(max_length=255, blank=True)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="coberturas_actividad_registradas",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["institucion_id", "area_id", "vigente_desde", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=models.F("vigente_desde")),
+                name="vigencia_cobertura_actividad_valida",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.vigente_desde and self.vigente_desde.day != 1:
+            raise ValidationError("La cobertura de actividad empieza el primer día del mes.")
+        if self.vigente_hasta and self.vigente_hasta.day != 1:
+            raise ValidationError("La cobertura de actividad termina el primer día de un mes.")
+        if self.area_id and self.institucion_id and self.area.institucion_id != self.institucion_id:
+            raise ValidationError("El área debe pertenecer a la institución de la cobertura.")
+        if self.reemplaza_id and (
+            self.reemplaza.institucion_id != self.institucion_id
+            or self.reemplaza.area_id != self.area_id
+        ):
+            raise ValidationError("Una cobertura sucesora conserva institución y área.")
+        if self.reemplaza_id and self.vigente_desde < self.reemplaza.vigente_desde:
+            raise ValidationError("Una cobertura sucesora no puede empezar antes de la reemplazada.")
+        if not (self.institucion_id and self.area_id and self.vigente_desde):
+            return
+        solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
+        if self.vigente_hasta is not None:
+            solapa &= Q(vigente_desde__lt=self.vigente_hasta)
+        existentes = type(self).objects.filter(
+            institucion_id=self.institucion_id, area_id=self.area_id,
+            reemplazada_por__isnull=True,
+        ).exclude(pk=self.pk)
+        if self.reemplaza_id:
+            existentes = existentes.exclude(pk=self.reemplaza_id)
+        if existentes.filter(solapa).exists():
+            raise ValidationError("Ya existe una cobertura vigente para ese intervalo.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una cobertura de actividad no se edita; registrá una versión.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Una cobertura de actividad no se elimina.")
+
+
+class ReglaRepartoActividad(models.Model):
+    """Regla versionada de reparto por cantidad de atenciones del mismo ámbito."""
+
+    concepto = models.ForeignKey(ConceptoGasto, on_delete=models.PROTECT)
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
+    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT)
+    vigente_desde = models.DateField()
+    vigente_hasta = models.DateField(null=True, blank=True)
+    sensible = models.BooleanField(default=False, editable=False)
+    reemplaza = models.OneToOneField(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reemplazada_por"
+    )
+    motivo_correccion = models.CharField(max_length=255, blank=True)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reglas_reparto_registradas",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["institucion_id", "area_id", "concepto_id", "vigente_desde", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=models.F("vigente_desde")),
+                name="vigencia_regla_reparto_valida",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.vigente_desde and self.vigente_desde.day != 1:
+            raise ValidationError("La regla de reparto empieza el primer día del mes.")
+        if self.vigente_hasta and self.vigente_hasta.day != 1:
+            raise ValidationError("La regla de reparto termina el primer día de un mes.")
+        if self.concepto_id and self.institucion_id and self.concepto.institucion_id != self.institucion_id:
+            raise ValidationError("El concepto debe pertenecer a la institución de la regla.")
+        if self.area_id and self.institucion_id and self.area.institucion_id != self.institucion_id:
+            raise ValidationError("El área debe pertenecer a la institución de la regla.")
+        if self.reemplaza_id and (
+            self.reemplaza.concepto_id != self.concepto_id
+            or self.reemplaza.institucion_id != self.institucion_id
+            or self.reemplaza.area_id != self.area_id
+        ):
+            raise ValidationError("Una regla sucesora conserva concepto, institución y área.")
+        if self.reemplaza_id and self.vigente_desde < self.reemplaza.vigente_desde:
+            raise ValidationError("Una regla sucesora no puede empezar antes de la reemplazada.")
+        if not (self.concepto_id and self.institucion_id and self.area_id and self.vigente_desde):
+            return
+        solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
+        if self.vigente_hasta is not None:
+            solapa &= Q(vigente_desde__lt=self.vigente_hasta)
+        existentes = type(self).objects.filter(
+            concepto_id=self.concepto_id, institucion_id=self.institucion_id,
+            area_id=self.area_id, reemplazada_por__isnull=True,
+        ).exclude(pk=self.pk)
+        if self.reemplaza_id:
+            existentes = existentes.exclude(pk=self.reemplaza_id)
+        if existentes.filter(solapa).exists():
+            raise ValidationError("Ya existe una regla vigente para ese intervalo.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una regla de reparto no se edita; registrá una versión.")
+        if self.concepto_id:
+            self.sensible = self.concepto.sensible
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Una regla de reparto no se elimina.")
+
+
+class RepartoGasto(models.Model):
+    """Versión explicable de un reparto o de un pendiente de reparto."""
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        DISTRIBUIDO = "distribuido", "Distribuido"
+        SIN_ACTIVIDAD = "sin_actividad", "Sin actividad acreditada"
+
+    class Motivo(models.TextChoices):
+        SIN_REGLA = "sin_regla", "Sin regla aplicable"
+        SIN_COBERTURA = "sin_cobertura", "Sin cobertura acreditada"
+        FUENTE_NO_ELEGIBLE = "fuente_no_elegible", "Fuente no elegible"
+
+    gasto = models.ForeignKey(Gasto, on_delete=models.PROTECT, related_name="repartos")
+    regla = models.ForeignKey(ReglaRepartoActividad, on_delete=models.PROTECT, null=True, blank=True)
+    cobertura = models.ForeignKey(CoberturaActividadCosteable, on_delete=models.PROTECT, null=True, blank=True)
+    version = models.PositiveIntegerField()
+    huella_insumos = models.CharField(max_length=64)
+    importe_fuente_centavos = models.BigIntegerField()
+    importe_ajustes_centavos = models.BigIntegerField()
+    saldo_centavos = models.BigIntegerField()
+    saldo_no_atribuido_centavos = models.BigIntegerField(default=0)
+    estado = models.CharField(max_length=20, choices=Estado.choices)
+    motivo = models.CharField(max_length=30, choices=Motivo.choices, blank=True)
+    reemplaza = models.OneToOneField(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reemplazado_por"
+    )
+    calculado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["gasto_id", "version"]
+        constraints = [
+            models.UniqueConstraint(fields=["gasto", "version"], name="version_reparto_gasto_unica"),
+            models.UniqueConstraint(fields=["gasto", "huella_insumos"], name="insumos_reparto_gasto_unicos"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.regla_id and self.gasto_id and (
+            self.regla.concepto_id != self.gasto.concepto_id
+            or self.regla.institucion_id != self.gasto.institucion_id
+            or self.regla.area_id != self.gasto.area_id
+        ):
+            raise ValidationError("La regla debe coincidir con el ámbito del gasto.")
+        if self.cobertura_id and self.gasto_id and (
+            self.cobertura.institucion_id != self.gasto.institucion_id
+            or self.cobertura.area_id != self.gasto.area_id
+        ):
+            raise ValidationError("La cobertura debe coincidir con el ámbito del gasto.")
+        if self.estado == self.Estado.PENDIENTE and not self.motivo:
+            raise ValidationError("Un reparto pendiente requiere motivo.")
+        if self.estado != self.Estado.PENDIENTE and self.motivo:
+            raise ValidationError("Sólo un reparto pendiente conserva motivo.")
+        if self.estado == self.Estado.SIN_ACTIVIDAD and self.saldo_no_atribuido_centavos != self.saldo_centavos:
+            raise ValidationError("Sin actividad, todo el saldo queda sin atribuir.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Un reparto de gasto no se edita; se genera una versión.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un reparto de gasto no se elimina.")
+
+
+class AtribucionReparto(models.Model):
+    reparto = models.ForeignKey(RepartoGasto, on_delete=models.PROTECT, related_name="atribuciones")
+    hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="atribuciones_reparto")
+    importe_centavos = models.BigIntegerField()
+
+    class Meta:
+        ordering = ["reparto_id", "hecho_id"]
+        constraints = [
+            models.UniqueConstraint(fields=["reparto", "hecho"], name="atribucion_reparto_hecho_unica"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.reparto_id and self.hecho_id and (
+            self.reparto.gasto.institucion_id != self.hecho.institucion_id
+            or self.reparto.gasto.area_id != self.hecho.area_origen_id
+        ):
+            raise ValidationError("El hecho debe pertenecer al mismo ámbito del reparto.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una atribución de reparto no se edita.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Una atribución de reparto no se elimina.")

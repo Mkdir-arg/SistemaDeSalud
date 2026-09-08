@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from threading import Barrier
@@ -22,7 +22,7 @@ from apps.registros.models import Ciudadano
 
 from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
-from .services import aprobar_gasto, corregir_snapshot_componentes, indicar_carga_esperada, intentar_costeo_directo, procesar_hecho_atencion, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_gasto
+from .services import aprobar_gasto, corregir_snapshot_componentes, indicar_carga_esperada, intentar_costeo_directo, procesar_hecho_atencion, procesar_reparto_gasto, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_cobertura_actividad, registrar_gasto, registrar_regla_reparto
 
 
 class CosteoAtencionTests(TestCase):
@@ -2259,3 +2259,114 @@ class GastoApiTests(APITestCase):
         self.assertEqual(listado.status_code, 200)
         self.assertEqual(listado.data["count"], 0)
         self.assertEqual(detalle.status_code, 404)
+
+
+class RepartoActividadTests(TestCase):
+    def setUp(self):
+        self.mes = timezone.localdate().replace(day=1)
+        self.usuario = Usuario.objects.create_user("repartos@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital de prueba")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.membresia = Membresia.objects.create(
+            usuario=self.usuario, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        for accion in (
+            ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+            ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+        ):
+            ConcesionFinanciera.objects.create(
+                membresia=self.membresia, accion=accion, todas_las_areas=True,
+            )
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion, codigo="LUZ", nombre="Electricidad"
+        )
+        registrar_cobertura_actividad(
+            institucion=self.institucion, area=self.area, vigente_desde=self.mes,
+            registrado_por=self.usuario,
+        )
+        registrar_regla_reparto(
+            concepto=self.concepto, institucion=self.institucion, area=self.area,
+            vigente_desde=self.mes, registrado_por=self.usuario,
+        )
+        self.gasto = registrar_gasto(
+            self.concepto, self.institucion, self.area, Decimal("100.00"), self.mes, self.usuario,
+        )
+
+    def crear_hechos(self, cantidad):
+        return [
+            HechoAtencionCosteable.objects.create(
+                institucion=self.institucion, area=self.area, area_origen_id=self.area.id,
+                evento_origen_id=9000 + indice, caso_origen_id=8000 + indice, nodo_origen_id=7000 + indice,
+                ocurrida_en=timezone.make_aware(datetime.combine(self.mes, datetime.min.time())),
+            )
+            for indice in range(cantidad)
+        ]
+
+    def test_centavos_deterministas_y_reintento_no_duplica_version(self):
+        self.crear_hechos(3)
+
+        primero = procesar_reparto_gasto(self.gasto.id)
+        segundo = procesar_reparto_gasto(self.gasto.id)
+
+        self.assertEqual(primero.id, segundo.id)
+        self.assertEqual(primero.estado, "distribuido")
+        self.assertEqual(
+            list(primero.atribuciones.order_by("hecho_id").values_list("importe_centavos", flat=True)),
+            [3334, 3333, 3333],
+        )
+        self.assertEqual(primero.atribuciones.count(), 3)
+
+    def test_ajuste_negativo_crea_reversion_exacta(self):
+        self.crear_hechos(3)
+        original = procesar_reparto_gasto(self.gasto.id)
+        registrar_ajuste_gasto(self.gasto.id, Decimal("-200.00"), "Nota de crédito", self.usuario)
+
+        reversa = procesar_reparto_gasto(self.gasto.id)
+
+        self.assertEqual(reversa.version, original.version + 1)
+        self.assertEqual(reversa.saldo_centavos, -10000)
+        self.assertEqual(
+            list(reversa.atribuciones.order_by("hecho_id").values_list("importe_centavos", flat=True)),
+            [-3334, -3333, -3333],
+        )
+
+    def test_sin_actividad_acreditada_conserva_el_saldo_sin_atribuir(self):
+        reparto = procesar_reparto_gasto(self.gasto.id)
+
+        self.assertEqual(reparto.estado, "sin_actividad")
+        self.assertEqual(reparto.saldo_no_atribuido_centavos, 10000)
+        self.assertFalse(reparto.atribuciones.exists())
+
+    def test_sin_regla_o_cobertura_permanece_pendiente(self):
+        otra_area = Area.objects.create(institucion=self.institucion, nombre="Clínica")
+        otro_concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion, codigo="AGUA", nombre="Agua"
+        )
+        gasto = registrar_gasto(
+            otro_concepto, self.institucion, otra_area, Decimal("50.00"), self.mes, self.usuario,
+        )
+
+        sin_regla = procesar_reparto_gasto(gasto.id)
+        registrar_regla_reparto(
+            concepto=otro_concepto, institucion=self.institucion, area=otra_area,
+            vigente_desde=self.mes, registrado_por=self.usuario,
+        )
+        sin_cobertura = procesar_reparto_gasto(gasto.id)
+
+        self.assertEqual((sin_regla.estado, sin_regla.motivo), ("pendiente", "sin_regla"))
+        self.assertEqual((sin_cobertura.estado, sin_cobertura.motivo), ("pendiente", "sin_cobertura"))
+        self.assertEqual(sin_cobertura.reemplaza_id, sin_regla.id)
+
+    def test_configurar_repartos_exige_membresia_administrativa(self):
+        operador = Usuario.objects.create_user("operador-repartos@cauce.local", "x")
+        miembro = Membresia.objects.create(
+            usuario=operador, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
+        )
+
+        with self.assertRaises(ValidationError):
+            ConcesionFinanciera.objects.create(
+                membresia=miembro,
+                accion=ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+                todas_las_areas=True,
+            )
