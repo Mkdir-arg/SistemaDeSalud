@@ -97,7 +97,14 @@ def _congelar_componentes(hecho):
             _pendiente(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
         else:
             ComponenteEsperadoHecho.objects.bulk_create(
-                [ComponenteEsperadoHecho(hecho=hecho, componente=componente) for componente in componentes],
+                [
+                    ComponenteEsperadoHecho(
+                        hecho=hecho,
+                        componente=componente,
+                        sensible=componente.sensible,
+                    )
+                    for componente in componentes
+                ],
                 ignore_conflicts=True,
             )
             _resolver(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)

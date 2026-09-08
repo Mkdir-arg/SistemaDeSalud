@@ -31,7 +31,7 @@ from .services import corregir_snapshot_componentes, registrar_ajuste_costo
 
 
 class PuedeVerCostosPaciente(BasePermission):
-    """Todo costo asociado a un paciente es sensible en este incremento."""
+    """El detalle se habilita por área y por sensibilidad congelada."""
 
     def has_permission(self, request, view):
         usuario = request.user
@@ -41,18 +41,27 @@ class PuedeVerCostosPaciente(BasePermission):
                 or concesiones_financieras_de(
                     usuario,
                     ConcesionFinanciera.Accion.VER_COSTOS,
-                    sensible=True,
                 ).exists()
             )
         )
 
     def has_object_permission(self, request, view, obj):
-        return tiene_concesion_financiera(
+        if tiene_concesion_financiera(
             request.user,
             ConcesionFinanciera.Accion.VER_COSTOS,
             obj.institucion_id,
             obj.area_origen_id,
             sensible=True,
+        ):
+            return True
+        return (
+            tiene_concesion_financiera(
+                request.user,
+                ConcesionFinanciera.Accion.VER_COSTOS,
+                obj.institucion_id,
+                obj.area_origen_id,
+            )
+            and not obj.componentes_esperados.filter(sensible=True).exists()
         )
 
 
@@ -105,6 +114,7 @@ class PuedeGestionarValoresComponentes(BasePermission):
                 request.user,
                 accion,
                 _institucion_catalogo(obj),
+                sensible=obj.componente.sensible,
             )
             for accion in self.ACCIONES
         )
@@ -196,13 +206,18 @@ class DefinicionComponenteViewSet(CatalogoCostosInstitucionalMixin, BaseModelVie
     serializer_class = DefinicionComponenteSerializer
     institucion_path = "prestacion__institucion"
     http_method_names = ["get", "head", "options", "post", "patch"]
-    filter_fields = ("prestacion", "fuente", "activo")
+    filter_fields = ("prestacion", "fuente", "activo", "sensible")
     ordering_fields = ("codigo", "nombre", "orden", "id")
 
     def perform_create(self, serializer):
         self.verificar_institucion_configurable(
             serializer.validated_data["prestacion"].institucion_id
         )
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if not set(serializer.validated_data) <= {"activo", "sensible"}:
+            raise ValidationError({"detail": "Sólo podés cambiar el estado activo o la sensibilidad del componente."})
         serializer.save()
 
 
@@ -222,14 +237,16 @@ class ValorComponenteViewSet(BaseModelViewSet):
         usuario = self.request.user
         if usuario.is_superuser:
             return qs
-        instituciones = set()
+        alcance = Q(pk__in=[])
         for accion in PuedeGestionarValoresComponentes.ACCIONES:
-            instituciones.update(
-                concesiones_financieras_de(usuario, accion)
-                .filter(todas_las_areas=True)
-                .values_list("membresia__institucion_id", flat=True)
-            )
-        return qs.filter(componente__prestacion__institucion_id__in=instituciones).distinct()
+            for institucion_id, permite_sensibles in concesiones_financieras_de(usuario, accion).filter(
+                todas_las_areas=True
+            ).values_list("membresia__institucion_id", "permite_sensibles"):
+                scope = Q(componente__prestacion__institucion_id=institucion_id)
+                if not permite_sensibles:
+                    scope &= ~Q(componente__sensible=True)
+                alcance |= scope
+        return qs.filter(alcance).distinct()
 
     def perform_create(self, serializer):
         componente = serializer.validated_data["componente"]
@@ -250,6 +267,7 @@ class ValorComponenteViewSet(BaseModelViewSet):
             self.request.user,
             accion,
             componente.prestacion.institucion_id,
+            sensible=componente.sensible,
         ):
             raise PermissionDenied("No tenés autorización para registrar este valor.")
         serializer.save(registrado_por=self.request.user)
@@ -331,18 +349,20 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
             return qs
 
         alcance = Q(pk__in=[])
-        concesiones = concesiones_financieras_de(
-            usuario,
-            ConcesionFinanciera.Accion.VER_COSTOS,
-            sensible=True,
-        )
-        for institucion_id in concesiones.filter(todas_las_areas=True).values_list(
-            "membresia__institucion_id", flat=True
+        concesiones = concesiones_financieras_de(usuario, ConcesionFinanciera.Accion.VER_COSTOS)
+        for institucion_id, permite_sensibles in concesiones.filter(todas_las_areas=True).values_list(
+            "membresia__institucion_id", "permite_sensibles"
         ):
-            alcance |= Q(institucion_id=institucion_id)
-        for institucion_id, area_id in concesiones.filter(todas_las_areas=False).values_list(
-            "membresia__institucion_id", "areas__id"
+            scope = Q(institucion_id=institucion_id)
+            if not permite_sensibles:
+                scope &= ~Q(componentes_esperados__sensible=True)
+            alcance |= scope
+        for institucion_id, area_id, permite_sensibles in concesiones.filter(todas_las_areas=False).values_list(
+            "membresia__institucion_id", "areas__id", "permite_sensibles"
         ):
             if area_id is not None:
-                alcance |= Q(institucion_id=institucion_id, area_origen_id=area_id)
+                scope = Q(institucion_id=institucion_id, area_origen_id=area_id)
+                if not permite_sensibles:
+                    scope &= ~Q(componentes_esperados__sensible=True)
+                alcance |= scope
         return qs.filter(alcance).distinct()

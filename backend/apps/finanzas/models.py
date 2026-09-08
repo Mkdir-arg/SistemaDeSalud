@@ -69,6 +69,7 @@ class DefinicionComponente(models.Model):
     nombre = models.CharField(max_length=160)
     fuente = models.CharField(max_length=40, choices=Fuente.choices, default=Fuente.ATENCION_DIRECTA)
     activo = models.BooleanField(default=True)
+    sensible = models.BooleanField(default=False)
     orden = models.PositiveSmallIntegerField(default=0)
     class Meta:
         unique_together = [("prestacion", "codigo")]
@@ -252,6 +253,7 @@ class ComponenteEsperadoHecho(models.Model):
     """Congela los componentes que podían costear una atención al resolverla."""
     hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="componentes_esperados")
     componente = models.ForeignKey(DefinicionComponente, on_delete=models.PROTECT, related_name="hechos_esperados")
+    sensible = models.BooleanField(default=False)
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:

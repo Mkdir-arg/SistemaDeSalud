@@ -71,7 +71,7 @@ class PrestacionSerializer(serializers.ModelSerializer):
 class DefinicionComponenteSerializer(serializers.ModelSerializer):
     class Meta:
         model = DefinicionComponente
-        fields = ["id", "prestacion", "codigo", "nombre", "fuente", "activo", "orden"]
+        fields = ["id", "prestacion", "codigo", "nombre", "fuente", "activo", "sensible", "orden"]
         read_only_fields = ["id"]
 
 

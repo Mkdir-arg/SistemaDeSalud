@@ -364,10 +364,95 @@ class HechoCostoApiTests(APITestCase):
         self.hecho = registrar_atencion_completada(caso, nodo, evento, self.usuario)
         procesar_hecho_atencion(self.hecho.id)
 
+    def crear_hecho_costeado(self, sensible=False):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.hecho.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+            sensible=sensible,
+        )
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("1250.50"),
+            vigente_desde=self.hecho.ocurrida_en - timedelta(days=1),
+        )
+        evento = EventoCaso.objects.create(
+            caso=self.hecho.caso,
+            nodo=self.hecho.nodo,
+            autor=self.usuario,
+            titulo="Atención registrada",
+        )
+        hecho = registrar_atencion_completada(self.hecho.caso, self.hecho.nodo, evento, self.usuario)
+        procesar_hecho_atencion(hecho.id)
+        return hecho
+
     def test_sin_concesion_no_expone_costos_del_paciente(self):
         self.client.force_authenticate(self.usuario)
         response = self.client.get("/api/hechos-costo/")
         self.assertEqual(response.status_code, 403)
+
+    def test_concesion_no_sensible_ve_un_costo_no_sensible_de_su_area(self):
+        hecho = self.crear_hecho_costeado()
+        usuario = Usuario.objects.create_user("finanzas-area@cauce.local", "x")
+        membresia = Membresia.objects.create(
+            usuario=usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        concesion = ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+        )
+        concesion.areas.add(self.area)
+        self.client.force_authenticate(usuario)
+
+        response = self.client.get(f"/api/hechos-costo/{hecho.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total_conocido"], "1250.50")
+
+    def test_concesion_no_sensible_no_ve_un_costo_sensible(self):
+        hecho = self.crear_hecho_costeado(sensible=True)
+        usuario_restringido = Usuario.objects.create_user("finanzas-restringida@cauce.local", "x")
+        membresia_restringida = Membresia.objects.create(
+            usuario=usuario_restringido,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        concesion_restringida = ConcesionFinanciera.objects.create(
+            membresia=membresia_restringida,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+        )
+        concesion_restringida.areas.add(self.area)
+        self.client.force_authenticate(usuario_restringido)
+
+        respuesta_restringida = self.client.get(f"/api/hechos-costo/{hecho.id}/")
+
+        self.assertEqual(respuesta_restringida.status_code, 404)
+
+        usuario_sensible = Usuario.objects.create_user("finanzas-sensible@cauce.local", "x")
+        membresia_sensible = Membresia.objects.create(
+            usuario=usuario_sensible,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        concesion_sensible = ConcesionFinanciera.objects.create(
+            membresia=membresia_sensible,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            permite_sensibles=True,
+        )
+        concesion_sensible.areas.add(self.area)
+        self.client.force_authenticate(usuario_sensible)
+
+        respuesta_sensible = self.client.get(f"/api/hechos-costo/{hecho.id}/")
+
+        self.assertEqual(respuesta_sensible.status_code, 200)
 
     def test_no_se_puede_crear_un_hecho_de_costo_por_la_api(self):
         membresia = Membresia.objects.create(
@@ -833,6 +918,15 @@ class CatalogoCostosApiTests(APITestCase):
             ).status_code,
             400,
         )
+        self.assertEqual(
+            self.client.patch(
+                f"/api/componentes-costo/{componente.id}/",
+                {"sensible": True},
+                format="json",
+            ).status_code,
+            200,
+        )
+        self.assertTrue(DefinicionComponente.objects.get(pk=componente.id).sensible)
 
     def test_configurador_da_de_baja_logica_prestacion_y_componente(self):
         prestacion = Prestacion.objects.create(
@@ -898,6 +992,42 @@ class CatalogoCostosApiTests(APITestCase):
             ).status_code,
             405,
         )
+
+    def test_configurador_sin_habilitacion_sensible_no_ve_ni_registra_valores_sensibles(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo sensible",
+            sensible=True,
+        )
+        valor = ValorComponente.objects.create(
+            componente=componente,
+            importe="100.00",
+            vigente_desde="2026-09-01T00:00:00Z",
+        )
+        self.client.force_authenticate(self.admin)
+
+        lista = self.client.get("/api/valores-componentes/")
+        alta = self.client.post(
+            "/api/valores-componentes/",
+            {
+                "componente": componente.id,
+                "importe": "120.00",
+                "vigente_desde": "2026-10-01T00:00:00Z",
+                "reemplaza": valor.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(lista.status_code, 200)
+        self.assertNotIn(valor.id, [fila["id"] for fila in lista.data["results"]])
+        self.assertEqual(alta.status_code, 403)
 
     def test_corregir_un_valor_requiere_concesion_especifica(self):
         prestacion = Prestacion.objects.create(
