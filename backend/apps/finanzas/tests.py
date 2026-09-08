@@ -1,13 +1,16 @@
 from decimal import Decimal
 from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
+from threading import Barrier
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, connections, close_old_connections, transaction
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -383,6 +386,69 @@ class CosteoAtencionTests(TestCase):
         self.assertEqual(ajuste.importe, Decimal("-10.00"))
         with self.assertRaises(ValidationError):
             ajuste.delete()
+
+
+@skipUnless(connection.vendor == "postgresql", "Requiere bloqueo de fila PostgreSQL.")
+class CosteoAtencionConcurrentePostgreSQLTests(TransactionTestCase):
+    """Verifica el bloqueo que evita duplicar costos ante dos recuperadores."""
+
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user("concurrencia@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.institucion, area=area, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        self.nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        ciudadano = Ciudadano.objects.create(institucion=self.institucion, nombre="Ana", apellido="Paz")
+        caso = Caso.objects.create(
+            institucion=self.institucion,
+            version=version,
+            ciudadano=ciudadano,
+            area_actual=area,
+        )
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        self.componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        ValorComponente.objects.create(
+            componente=self.componente,
+            importe=Decimal("1250.50"),
+            vigente_desde=timezone.now() - timedelta(days=1),
+        )
+        evento = EventoCaso.objects.create(
+            caso=caso,
+            nodo=self.nodo,
+            autor=self.usuario,
+            titulo="Atención registrada",
+        )
+        self.hecho = registrar_atencion_completada(caso, self.nodo, evento, self.usuario)
+
+    def test_dos_recuperadores_concurrentes_crean_una_sola_imputacion(self):
+        inicio = Barrier(2)
+
+        def procesar_en_paralelo():
+            close_old_connections()
+            try:
+                inicio.wait(timeout=5)
+                return procesar_hecho_atencion(self.hecho.id).id
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as ejecutores:
+            resultados = list(ejecutores.map(lambda _indice: procesar_en_paralelo(), range(2)))
+
+        self.assertEqual(resultados, [self.hecho.id, self.hecho.id])
+        self.assertEqual(
+            ImputacionCosto.objects.filter(hecho=self.hecho, componente=self.componente).count(),
+            1,
+        )
 
 
 class HechoCostoApiTests(APITestCase):
