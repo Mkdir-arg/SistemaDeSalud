@@ -32,7 +32,12 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
             return None
         # Igual que `importe` en las imputaciones: texto decimal para no perder
         # precisión al cruzar JSON, y `null` reservado para lo desconocido.
-        return str(sum((imputacion.importe for imputacion in imputaciones), start=0))
+        total = sum((imputacion.importe for imputacion in imputaciones), start=0)
+        total += sum(
+            (ajuste.importe for imputacion in imputaciones for ajuste in imputacion.ajustes.all()),
+            start=0,
+        )
+        return str(total)
 
     def get_total_es_completo(self, obj):
         return bool(obj.componentes_esperados.all()) and not self._pendientes(obj)
@@ -60,7 +65,16 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
                 "componente": imputacion.componente_id,
                 "componente_codigo": imputacion.componente.codigo,
                 "componente_nombre": imputacion.componente.nombre,
-                "importe": imputacion.importe,
+                "importe": str(imputacion.importe),
+                "ajustes": [
+                    {
+                        "id": ajuste.id,
+                        "importe": str(ajuste.importe),
+                        "motivo": ajuste.motivo,
+                        "registrado": ajuste.registrado,
+                    }
+                    for ajuste in imputacion.ajustes.all()
+                ],
             }
             for imputacion in obj.imputaciones.all()
         ]

@@ -159,6 +159,49 @@ class ImputacionCosto(models.Model):
         constraints = [models.CheckConstraint(condition=Q(importe__gte=0), name="imputacion_costo_no_negativa")]
 
 
+class AjusteCosto(models.Model):
+    """Corrección histórica sin sobrescribir la imputación que la originó."""
+
+    imputacion = models.ForeignKey(
+        ImputacionCosto,
+        on_delete=models.PROTECT,
+        related_name="ajustes",
+    )
+    importe = models.DecimalField(max_digits=14, decimal_places=2)
+    motivo = models.CharField(max_length=255)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ajustes_costo_registrados",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["registrado", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(importe=0),
+                name="ajuste_costo_no_cero",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.motivo.strip():
+            raise ValidationError("Un ajuste de costo requiere un motivo.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Un ajuste de costo no se edita; se registra otro ajuste.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un ajuste de costo no se elimina.")
+
+
 class ComponenteEsperadoHecho(models.Model):
     """Congela los componentes que podían costear una atención al resolverla."""
     hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="componentes_esperados")

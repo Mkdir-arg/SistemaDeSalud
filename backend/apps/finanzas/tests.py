@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import TestCase
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -15,9 +15,9 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
-from .services import intentar_costeo_directo, procesar_hecho_atencion, registrar_atencion_completada
+from .services import intentar_costeo_directo, procesar_hecho_atencion, registrar_ajuste_costo, registrar_atencion_completada
 
 
 class CosteoAtencionTests(TestCase):
@@ -162,6 +162,34 @@ class CosteoAtencionTests(TestCase):
             )
         )
 
+    def test_ajuste_conserva_la_imputacion_original_y_exige_concesion(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(componente=componente, importe=Decimal("100.00"), vigente_desde=timezone.now() - timedelta(days=1))
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        procesar_hecho_atencion(hecho.id)
+        imputacion = ImputacionCosto.objects.get(hecho=hecho, componente=componente)
+        with self.assertRaises(PermissionDenied):
+            registrar_ajuste_costo(imputacion, Decimal("-10.00"), "Descuento posterior", self.usuario)
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        ajuste = registrar_ajuste_costo(imputacion, Decimal("-10.00"), "Descuento posterior", self.usuario)
+        imputacion.refresh_from_db()
+        self.assertEqual(imputacion.importe, Decimal("100.00"))
+        self.assertEqual(ajuste.importe, Decimal("-10.00"))
+        with self.assertRaises(ValidationError):
+            ajuste.delete()
+
 
 class HechoCostoApiTests(APITestCase):
     def setUp(self):
@@ -232,10 +260,23 @@ class HechoCostoApiTests(APITestCase):
             todas_las_areas=True,
             permite_sensibles=True,
         )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        registrar_ajuste_costo(
+            ImputacionCosto.objects.get(hecho=self.hecho, componente=componente),
+            Decimal("-50.00"),
+            "Corrección de importe",
+            self.usuario,
+        )
         self.client.force_authenticate(self.usuario)
         response = self.client.get(f"/api/hechos-costo/{self.hecho.id}/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["total_conocido"], "1250.50")
+        self.assertEqual(response.data["total_conocido"], "1200.50")
         self.assertTrue(response.data["total_es_completo"])
         self.assertEqual(response.data["estado_costo"], "disponible")
         self.assertEqual(response.data["faltantes"], [])
+        self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")

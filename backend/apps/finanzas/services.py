@@ -1,10 +1,12 @@
 import logging
 
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import ComponenteEsperadoHecho, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .permisos import tiene_concesion_financiera
 
 
 logger = logging.getLogger(__name__)
@@ -89,3 +91,26 @@ def intentar_costeo_directo(hecho_id):
             _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
         return False
     return True
+
+
+def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por):
+    """Corrige un importe histórico con un asiento nuevo y autorizado."""
+    if not tiene_concesion_financiera(
+        registrado_por,
+        ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+        imputacion.hecho.institucion_id,
+        imputacion.hecho.area_origen_id,
+        sensible=True,
+    ):
+        raise PermissionDenied("No tenés autorización para corregir este costo.")
+    ajuste = AjusteCosto(
+        imputacion=imputacion,
+        importe=importe,
+        motivo=motivo,
+        registrado_por=registrado_por,
+    )
+    try:
+        ajuste.save()
+    except ValidationError:
+        raise
+    return ajuste

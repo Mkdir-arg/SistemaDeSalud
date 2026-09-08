@@ -45,6 +45,7 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
             "componentes_esperados",
             "pendientes__componente",
             "imputaciones__componente",
+            "imputaciones__ajustes",
         )
     )
     serializer_class = HechoAtencionCosteableSerializer
