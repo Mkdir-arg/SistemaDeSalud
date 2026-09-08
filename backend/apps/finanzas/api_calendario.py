@@ -33,10 +33,13 @@ class IndicacionSerializer(serializers.ModelSerializer):
 
 
 class ExpectativaSerializer(serializers.ModelSerializer):
+    concepto_nombre = serializers.CharField(source="concepto.nombre", read_only=True)
+    area_nombre = serializers.CharField(source="area.nombre", read_only=True, default=None)
+
     class Meta:
         model = ExpectativaGasto
         fields = [
-            "id", "concepto", "institucion", "area", "vigente_desde", "vigente_hasta",
+            "id", "concepto", "concepto_nombre", "institucion", "area", "area_nombre", "vigente_desde", "vigente_hasta",
             "sensible", "reemplaza", "motivo_correccion", "registrado_por", "registrado",
         ]
         read_only_fields = ["id", "sensible", "registrado_por", "registrado"]

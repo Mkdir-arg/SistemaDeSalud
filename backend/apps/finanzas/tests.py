@@ -1060,6 +1060,45 @@ class ConcesionFinancieraApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_consulta_propia_no_expone_otras_concesiones_ni_otorga_permisos(self):
+        propia = ConcesionFinanciera.objects.create(
+            membresia=self.membresia_operador, accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS
+        )
+        propia.areas.add(self.area)
+        ConcesionFinanciera.objects.create(
+            membresia=self.membresia_admin, accion=ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            todas_las_areas=True, permite_sensibles=True,
+        )
+        self.client.force_authenticate(self.operador)
+        respuesta = self.client.get("/api/concesiones-financieras/mias/")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertFalse(respuesta.data["superusuario"])
+        self.assertEqual(respuesta.data["concesiones"], [{
+            "institucion": self.institucion.id, "accion": "registrar_gastos",
+            "areas": [self.area.id], "todas_las_areas": False,
+            "administrativa": False, "permite_sensibles": False,
+        }])
+        self.assertEqual(self.client.get("/api/concesiones-financieras/").status_code, 403)
+        self.assertEqual(self.client.get("/api/gastos/").status_code, 403)
+        self.membresia_operador.activo = False
+        self.membresia_operador.save()
+        self.assertEqual(self.client.get("/api/concesiones-financieras/mias/").data["concesiones"], [])
+
+    def test_consulta_propia_descarta_privilegios_admin_tras_cambio_de_rol(self):
+        for accion in (ConcesionFinanciera.Accion.VER_GASTOS, ConcesionFinanciera.Accion.APROBAR_GASTOS):
+            ConcesionFinanciera.objects.create(
+                membresia=self.membresia_admin, accion=accion,
+                todas_las_areas=True, permite_sensibles=True,
+            )
+        self.membresia_admin.rol = Membresia.Rol.MEDICO
+        self.membresia_admin.save()
+        self.client.force_authenticate(self.admin)
+        filas = self.client.get("/api/concesiones-financieras/mias/").data["concesiones"]
+        self.assertEqual(len(filas), 1)
+        self.assertEqual(filas[0]["accion"], "ver_gastos")
+        self.assertFalse(filas[0]["permite_sensibles"])
+        self.assertFalse(filas[0]["administrativa"])
+
 
 class CatalogoCostosApiTests(APITestCase):
     def setUp(self):

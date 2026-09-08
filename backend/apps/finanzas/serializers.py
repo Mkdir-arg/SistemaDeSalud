@@ -126,6 +126,7 @@ class AjusteGastoSerializer(serializers.ModelSerializer):
 
 
 class GastoSerializer(serializers.ModelSerializer):
+    area_nombre = serializers.CharField(source="area.nombre", read_only=True, default=None)
     reemplazado_por = serializers.SerializerMethodField()
     estado_operativo = serializers.SerializerMethodField()
     ajustes = serializers.SerializerMethodField()
@@ -133,7 +134,7 @@ class GastoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Gasto
         fields = [
-            "id", "concepto", "concepto_codigo", "concepto_nombre", "institucion", "area",
+            "id", "concepto", "concepto_codigo", "concepto_nombre", "institucion", "area", "area_nombre",
             "importe", "moneda", "periodo_economico", "origen", "estado", "estado_operativo",
             "sensible", "registrado_por", "registrado", "aprobado_por", "aprobado_en",
             "rechazado_por", "rechazado_en", "motivo_rechazo", "reemplaza", "reemplazado_por",

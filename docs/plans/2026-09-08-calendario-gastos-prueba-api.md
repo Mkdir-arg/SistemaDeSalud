@@ -3,8 +3,9 @@
 ## Estado del corte
 
 La API permite configurar expectativas, consultar el calendario de un mes y
-registrar indicaciones conservando su historial. Todavía no hay pantalla de
-Finanzas en el frontend. Este recorrido requiere un entorno de prueba con las
+registrar indicaciones conservando su historial. La pantalla `/finanzas` permite
+recorrer la carga, revisión y calendario con permisos explícitos. Este recorrido
+requiere un entorno de prueba con las
 migraciones del PR aplicadas allí, usuarios autenticados y datos sintéticos.
 No se aplicaron migraciones ni se prepararon usuarios en bases reales.
 
@@ -68,7 +69,7 @@ requiriendo `registrar_gastos`; aprobar requiere `aprobar_gastos`.
   mes y ámbito exacto. El detalle y los rechazados siguen en la API de gastos.
 - Aprobar o indicar carga completa todavía no reparte gastos a pacientes (#37).
 
-## Evidencia de este corte
+## Evidencia del checkpoint de API (anterior)
 
 - `manage.py test apps.finanzas`: 72 pruebas, 70 correctas y 2 omitidas por
   requerir PostgreSQL en el entorno local SQLite.
@@ -79,7 +80,55 @@ requiriendo `registrar_gastos`; aprobar requiere `aprobar_gastos`.
 - Falta validación manual de interfaz y medición con volumen representativo.
   Los tests PostgreSQL de este corte no son una nueva prueba de concurrencia.
 
-Para una prueba funcional por parte del usuario conviene completar la pantalla
-de gastos y calendario y preparar un entorno demostrable con usuarios de ambos
-perfiles. No hace falta esperar a reparto, pagos y reportería para probar este
-recorrido completo.
+## Checkpoint de interfaz
+
+La entrada **Finanzas y costos** aparece sólo para quien tiene una concesión de
+gastos efectiva en la institución seleccionada. El frontend consulta
+`GET /api/concesiones-financieras/mias/`; este endpoint describe permisos propios,
+no administra concesiones ni reemplaza los controles de autorización de cada API.
+
+La pantalla permite registrar, aprobar, rechazar, reemplazar cargas no aprobadas
+y ajustar aprobadas, consultar el original y los ajustes, crear conceptos y
+expectativas iniciales e indicar la carga mensual. Cada formulario identifica la
+institución y el mes; el ámbito debe elegirse expresamente. No agrega campos
+clínicos, pacientes, repartos, cargos ni pagos.
+
+### Validación ejecutada el 8 de septiembre de 2026
+
+- `manage.py test apps.finanzas`: 74 pruebas, 72 correctas y 2 omitidas por
+  requerir PostgreSQL. SQLite en memoria y entorno virtual de Finanzas. Un primer
+  intento con Python global no pudo iniciar por faltar `rest_framework_simplejwt`;
+  no se modificaron dependencias para resolverlo.
+- `manage.py makemigrations finanzas --check --dry-run`: sin cambios pendientes.
+- `npm run build`: correcto, pantalla separada mediante carga diferida.
+- `npm run auditar`: 235 clases, sin clases huérfanas ni colisiones.
+- Navegador real con Playwright, Vite y Django del worktree aislado, SQLite
+  temporal recién migrado y usuarios/datos exclusivamente sintéticos:
+  - administración indica carga completa y aprueba una carga delegada;
+  - ajuste de ARS -25,50 conserva el importe original de ARS 300;
+  - operador de Guardia registra ARS 140,25 como pendiente; no ve Remuneraciones
+    sensibles, otras áreas ni acciones de aprobación/configuración;
+  - carga completa conserva por separado el nuevo pendiente de aprobación;
+  - alta de concepto y expectativa inicial aparece como faltante en calendario;
+  - selector recupera opciones posteriores a los primeros 25 registros;
+  - otra institución sin concesión financiera deniega la pantalla;
+  - escritorio y móvil de 390 px inspeccionados; sin desborde horizontal de la
+    página, con desplazamiento contenido en la tabla.
+
+### Límites pendientes
+
+La prueba de navegador fue ejecutada por el agente: no equivale a aceptación
+funcional del usuario. No se volvió a ejecutar PostgreSQL en este checkpoint, no
+se midió volumen representativo ni se desplegó. Rechazo, reemplazo y permisos de
+registro sin lectura tienen cobertura backend y comprobación estática de UI, no
+un nuevo recorrido completo de navegador en este corte.
+
+La interfaz no ofrece todavía nuevas versiones de expectativas ni administración
+de concesiones. Queda la revisión de auditoría/regresión transversal de #36.
+Ante una respuesta de escritura incierta, el formulario impide reenviar desde
+ese diálogo y pide comprobar los registros antes de repetir; no es una garantía
+de idempotencia global de altas entre pestañas. La pérdida de respuesta de red
+no fue simulada en navegador en este checkpoint.
+
+El flujo de gastos ya puede probarse en un entorno aislado sin esperar a reparto,
+pagos y reportería. No requiere preparar cuentas ni datos reales.

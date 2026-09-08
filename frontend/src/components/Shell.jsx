@@ -10,6 +10,7 @@ import { antiguedad } from "../lib/format";
 import { cn } from "../lib/cn";
 import { useEsEscritorio } from "../lib/media";
 import { useTema } from "../lib/tema";
+import { usePermisosFinanzas } from "../api/finanzas";
 
 // Estado de "última actualización" que una pantalla publica para mostrarlo en la
 // barra superior (al lado de la campana). Null cuando no aplica.
@@ -44,6 +45,7 @@ const TITULOS = {
   "/formularios": "Formularios",
   "/estructura": "Estructura organizativa",
   "/administracion": "Administración",
+  "/finanzas": "Finanzas y costos",
 };
 // Rutas con parámetro: llevan prefijo, así que no entran por el mapa de arriba.
 // Faltando una, la barra dice «Cauce» y la persona pierde la referencia de dónde
@@ -351,6 +353,7 @@ const itemClase = (col) => ({ isActive }) =>
   );
 
 export function Shell({ children }) {
+  const permisosFinanzas = usePermisosFinanzas();
   const { user, logout } = useAuth();
   const { institucion, setInstitucion, roles, puedeVer, vista, setVista } = useInstitucion();
   const navigate = useNavigate();
@@ -592,6 +595,12 @@ export function Shell({ children }) {
               </div>
             );
           })}
+          {permisosFinanzas.acceso && !permisosFinanzas.error && (
+            <NavLink to="/finanzas" className={itemClase(colapsado)} title="Finanzas y costos">
+              <Icon name="calendar" size={17} />
+              {!colapsado && "Finanzas y costos"}
+            </NavLink>
+          )}
         </nav>
 
         {/* Usuario */}

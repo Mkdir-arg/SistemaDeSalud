@@ -106,6 +106,13 @@ permite actualizar indicaciones tardías de esos meses. La indicación y el
 versionado usan el bloqueo del mismo concepto para serializar sus escrituras.
 
 Guía y evidencia: `2026-09-08-calendario-gastos-prueba-api.md`.
-Faltan la pantalla de gastos/calendario, prueba manual con ambos perfiles y
-terminar la revisión de auditoría/regresión transversal del bloque 5 antes de
-considerar #36 completo. El issue permanece en In progress.
+La pantalla de gastos/calendario se incorporó en el checkpoint siguiente, con
+prueba de navegador ejecutada por el agente sobre usuarios administrativos y
+delegados sintéticos. Incluye alta, revisión, ajustes, configuración inicial e
+historial; no administración de concesiones ni versionado de expectativas desde
+UI. La guía anterior distingue cobertura backend, navegador y límites.
+
+El siguiente paso es terminar la revisión de auditoría de lectura financiera y
+regresión transversal del bloque 5, antes de ampliar el reparto por actividad.
+Después queda completar la operación de expectativas versionadas desde UI.
+#36 permanece en In progress; no se considera completo ni aceptado por el usuario.

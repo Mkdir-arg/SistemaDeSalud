@@ -251,6 +251,25 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
     institucion_path = "membresia__institucion"
     filter_fields = ("membresia", "accion", "todas_las_areas", "permite_sensibles", "areas")
 
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def mias(self, request):
+        """Describe permisos propios para UI; nunca concede autorización nueva."""
+        filas = []
+        for accion in ConcesionFinanciera.Accion.values:
+            for concesion in concesiones_financieras_de(request.user, accion).select_related(
+                "membresia"
+            ).prefetch_related("areas"):
+                administrativa = concesion.membresia.rol == "admin"
+                filas.append({
+                    "institucion": concesion.membresia.institucion_id,
+                    "accion": accion,
+                    "todas_las_areas": concesion.todas_las_areas,
+                    "areas": [area.pk for area in concesion.areas.all()],
+                    "permite_sensibles": administrativa and concesion.permite_sensibles,
+                    "administrativa": administrativa,
+                })
+        return Response({"superusuario": request.user.is_superuser, "concesiones": filas})
+
 
 class PrestacionViewSet(CatalogoCostosInstitucionalMixin, BaseModelViewSet):
     queryset = Prestacion.objects.select_related("institucion", "nodo")
