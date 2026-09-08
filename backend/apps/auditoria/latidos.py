@@ -61,6 +61,8 @@ def latir(servicio: str, detalle: str = ""):
 # y entonces no sirve el día que el proceso se muere de verdad.
 ESPERADOS = {
     "correr_tiempos": 15 * 60,
+    # Detecta un worker caído; no promete que todos sus costos estén calculados.
+    "procesar_costos": 15 * 60,
     "recordar_turnos": 60 * 60,
     "alertar_saturacion": 60 * 60,
     "respaldar": 36 * 60 * 60,
