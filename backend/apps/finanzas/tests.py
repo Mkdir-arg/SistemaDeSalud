@@ -7,6 +7,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
 from apps.casos.models import Caso, EventoCaso
@@ -160,3 +161,81 @@ class CosteoAtencionTests(TestCase):
                 sensible=True,
             )
         )
+
+
+class HechoCostoApiTests(APITestCase):
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user("admin-finanzas@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.institucion, area=self.area, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        ciudadano = Ciudadano.objects.create(institucion=self.institucion, nombre="Ana", apellido="Paz")
+        caso = Caso.objects.create(institucion=self.institucion, version=version, ciudadano=ciudadano, area_actual=self.area)
+        evento = EventoCaso.objects.create(caso=caso, nodo=nodo, autor=self.usuario, titulo="Atención registrada")
+        self.hecho = registrar_atencion_completada(caso, nodo, evento, self.usuario)
+        procesar_hecho_atencion(self.hecho.id)
+
+    def test_sin_concesion_no_expone_costos_del_paciente(self):
+        self.client.force_authenticate(self.usuario)
+        response = self.client.get("/api/hechos-costo/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_concesion_sensible_muestra_faltantes_sin_convertirlos_en_cero(self):
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.client.force_authenticate(self.usuario)
+        response = self.client.get(f"/api/hechos-costo/?ciudadano={self.hecho.ciudadano_id}")
+        self.assertEqual(response.status_code, 200)
+        fila = response.data["results"][0]
+        self.assertIsNone(fila["total_conocido"])
+        self.assertFalse(fila["total_es_completo"])
+        self.assertEqual(fila["estado_costo"], "pendiente")
+        self.assertEqual(fila["faltantes"][0]["motivo"], PendienteCosteo.Motivo.SIN_PRESTACION)
+
+    def test_concesion_sensible_muestra_el_total_directo_cuando_esta_completo(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.hecho.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("1250.50"),
+            vigente_desde=self.hecho.ocurrida_en - timedelta(days=1),
+        )
+        procesar_hecho_atencion(self.hecho.id)
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.client.force_authenticate(self.usuario)
+        response = self.client.get(f"/api/hechos-costo/{self.hecho.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total_conocido"], "1250.50")
+        self.assertTrue(response.data["total_es_completo"])
+        self.assertEqual(response.data["estado_costo"], "disponible")
+        self.assertEqual(response.data["faltantes"], [])

@@ -25,6 +25,7 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.finanzas.views import HechoAtencionCosteableViewSet
 from apps.auditoria.views import AccesoClinicoViewSet
 from apps.red.views import RedViewSet, TrasladoViewSet
 from apps.farmacia.views import (
@@ -108,3 +109,6 @@ router.register("traslados", TrasladoViewSet, basename="traslado")
 # Auditoría de accesos a datos clínicos (Ley 26.529).
 router.register("accesos-clinicos", AccesoClinicoViewSet, basename="acceso-clinico")
 router.register("consentimientos", ConsentimientoDatosViewSet)
+
+# Finanzas: separado de la API clínica porque sus permisos son propios.
+router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-costo")
