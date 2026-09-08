@@ -7,6 +7,7 @@ tests no revisan que el esquema sea lindo, sino que sea CIERTO y que no se
 degrade solo cuando alguien agregue un endpoint.
 """
 import io
+import yaml
 
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -63,6 +64,31 @@ class EsquemaTests(TestCase):
         ]:
             with self.subTest(ruta=ruta):
                 self.assertIn(f"  {ruta}:", yaml, f"{ruta} no está en el esquema")
+
+    def test_finanzas_publica_tipos_reales_sin_convertir_desconocidos_en_cero(self):
+        contenido, _ = self._generar()
+        esquemas = yaml.safe_load(contenido)["components"]["schemas"]
+        hecho = esquemas["HechoAtencionCosteable"]["properties"]
+        self.assertEqual(hecho["total_conocido"]["type"], "string")
+        self.assertTrue(hecho["total_conocido"]["nullable"])
+        for campo in ("total_directo_es_completo", "total_es_completo"):
+            self.assertEqual(hecho[campo]["type"], "boolean")
+        faltante = hecho["faltantes"]["items"]["properties"]
+        self.assertTrue(faltante["componente"]["nullable"])
+        self.assertTrue(faltante["componente_codigo"]["nullable"])
+        self.assertEqual(hecho["alcance"]["properties"]["incluye"]["items"]["type"], "string")
+        imputacion = hecho["imputaciones"]["items"]["properties"]
+        self.assertEqual(imputacion["importe"]["type"], "string")
+        ajuste = imputacion["ajustes"]["items"]["properties"]
+        self.assertEqual(ajuste["importe"]["type"], "string")
+        self.assertEqual(ajuste["registrado"]["format"], "date-time")
+        gasto = esquemas["Gasto"]["properties"]
+        self.assertEqual(gasto["reemplazado_por"]["type"], "integer")
+        self.assertTrue(gasto["reemplazado_por"]["nullable"])
+        self.assertEqual(gasto["estado_operativo"]["type"], "string")
+        ajuste_gasto = gasto["ajustes"]["items"]["properties"]
+        self.assertEqual(ajuste_gasto["importe"]["type"], "string")
+        self.assertTrue(ajuste_gasto["registrado_por"]["nullable"])
 
     def test_dice_que_hace_falta_un_token(self):
         yaml, _ = self._generar()

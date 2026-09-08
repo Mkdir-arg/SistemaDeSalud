@@ -112,9 +112,9 @@ delegados sintéticos. Incluye alta, revisión, ajustes, configuración inicial 
 historial; no administración de concesiones ni versionado de expectativas desde
 UI. La guía anterior distingue cobertura backend, navegador y límites.
 
-El siguiente paso es terminar la revisión de auditoría de lectura financiera y
-regresión transversal del bloque 5, antes de ampliar el reparto por actividad.
-Después queda completar la operación de expectativas versionadas desde UI.
+La auditoría financiera y la regresión transversal ya tienen evidencia en
+PostgreSQL (ver checkpoints posteriores). El siguiente paso es completar la
+operación de expectativas versionadas desde UI, antes del reparto por actividad.
 #36 permanece en In progress; no se considera completo ni aceptado por el usuario.
 
 ## Checkpoint: regresión transversal y límite de auditoría
@@ -250,3 +250,41 @@ borrado por instancia y referencias `PROTECT`; no se registra en Django admin.
 Esto no pretende impedir SQL ni operaciones ORM masivas de mantenimiento
 privilegiado. No deshacer la migración sobre registros reales: eliminaría la
 tabla de auditoría. Un rollback debe conservar esa tabla y su evidencia.
+
+## Checkpoint: contrato OpenAPI y regresión PostgreSQL
+
+Se corrigieron las 12 advertencias mediante anotaciones de retorno en los
+serializers de gastos/costos y `TypedDict` de la biblioteca estándar para sus
+estructuras anidadas. No cambian cuerpos de métodos, respuestas, cálculos,
+permisos, modelos ni migraciones; no se agregan dependencias.
+
+Una nueva prueba de contrato falló antes de corregirlo: `total_conocido` no
+publicaba su posibilidad de ser nulo. Ahora comprueba importes como texto
+decimal, desconocidos nulos, booleanos reales, listas/objetos anidados y fechas
+de ajustes. Las nueve pruebas de esquema/documentación pasan en SQLite sin
+errores ni advertencias de generación OpenAPI.
+
+Validación conjunta ejecutada sobre PostgreSQL 16.15 aislado: **149 pruebas
+correctas, sin omisiones**. Comando desde `backend`:
+
+```text
+python manage.py test apps.finanzas apps.auditoria.tests apps.casos.tests.MotorTestCase apps.casos.tests.FirmaConfigurableTests apps.casos.test_esquema --verbosity 0
+```
+
+Incluye los ocho casos de auditoría financiera y las dos pruebas de concurrencia
+de recuperación/aprobación omitidas en SQLite. El resultado demuestra esos
+escenarios, no rendimiento con volumen representativo ni aceptación funcional.
+`makemigrations finanzas --check --dry-run`: sin cambios pendientes.
+
+El entorno usó la imagen de backend existente, el checkout montado en sólo
+lectura, red interna sin puertos publicados y PostgreSQL en almacenamiento
+temporal de memoria. Las migraciones se aplicaron únicamente a la base de tests;
+sin tocar bases reales. No se repitió navegador/build al no cambiar la UI.
+La ausencia de `staticfiles` produjo un aviso del entorno de tests, distinto de
+OpenAPI; los 4xx/503 y errores de fuentes simulados corresponden a pruebas
+negativas. No se ocultaron fallos del runner.
+
+Próximo resultado: versionar expectativas desde la pantalla existente, usando
+la API ya implementada y conservando consultas/indicaciones de meses anteriores.
+#36 sigue en curso; auditoría por API sin pantalla nueva, aceptación del usuario
+y medición de volumen pendientes. No se recomienda merge ni despliegue aquí.

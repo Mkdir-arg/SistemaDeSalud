@@ -1,7 +1,49 @@
+from datetime import datetime
+from typing import TypedDict
+
 from rest_framework import serializers
 from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
 
 from .models import AjusteCosto, AjusteGasto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, Prestacion, ValorComponente
+
+
+class DetalleAjusteGasto(TypedDict):
+    id: int
+    importe: str
+    motivo: str
+    registrado_por: int | None
+    registrado: datetime
+
+
+class FaltanteCosto(TypedDict):
+    motivo: str
+    motivo_display: str
+    componente: int | None
+    componente_codigo: str | None
+
+
+class AlcanceCosto(TypedDict):
+    incluye: list[str]
+    pendiente_de_integracion: list[str]
+
+
+class DetalleAjusteCosto(TypedDict):
+    id: int
+    importe: str
+    moneda: str
+    motivo: str
+    registrado: datetime
+
+
+class DetalleImputacionCosto(TypedDict):
+    componente: int
+    componente_codigo: str
+    componente_nombre: str
+    importe: str
+    unidad: str
+    base_calculo: str
+    moneda: str
+    ajustes: list[DetalleAjusteCosto]
 
 
 class ConcesionFinancieraSerializer(serializers.ModelSerializer):
@@ -148,17 +190,17 @@ class GastoSerializer(serializers.ModelSerializer):
         ]
 
     @staticmethod
-    def get_reemplazado_por(obj):
+    def get_reemplazado_por(obj) -> int | None:
         try:
             return obj.reemplazado_por.id
         except ObjectDoesNotExist:
             return None
 
-    def get_estado_operativo(self, obj):
+    def get_estado_operativo(self, obj) -> str:
         return "reemplazado" if self.get_reemplazado_por(obj) is not None else obj.estado
 
     @staticmethod
-    def get_ajustes(obj):
+    def get_ajustes(obj) -> list[DetalleAjusteGasto]:
         return [
             {
                 "id": ajuste.id,
@@ -210,7 +252,7 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     def _pendientes(obj):
         return [p for p in obj.pendientes.all() if not p.resuelto]
 
-    def get_total_conocido(self, obj):
+    def get_total_conocido(self, obj) -> str | None:
         imputaciones = list(obj.imputaciones.all())
         if not imputaciones:
             return None
@@ -224,10 +266,10 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         return str(total)
 
     @staticmethod
-    def get_moneda(_obj):
+    def get_moneda(_obj) -> str:
         return ValorComponente.Moneda.ARS
 
-    def get_total_directo_es_completo(self, obj):
+    def get_total_directo_es_completo(self, obj) -> bool:
         componentes_esperados = {
             esperado.componente_id for esperado in obj.componentes_esperados.all()
         }
@@ -241,15 +283,15 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         )
 
     @staticmethod
-    def get_total_es_completo(_obj):
+    def get_total_es_completo(_obj) -> bool:
         # Los gastos compartidos y otras fuentes todavía no integradas impiden
         # declarar un costo total de paciente en este incremento.
         return False
 
-    def get_estado_costo(self, obj):
+    def get_estado_costo(self, obj) -> str:
         return "parcial" if obj.imputaciones.all() else "pendiente"
 
-    def get_faltantes(self, obj):
+    def get_faltantes(self, obj) -> list[FaltanteCosto]:
         faltantes = [
             {
                 "motivo": pendiente.motivo,
@@ -270,13 +312,13 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         return faltantes
 
     @staticmethod
-    def get_alcance(_obj):
+    def get_alcance(_obj) -> AlcanceCosto:
         return {
             "incluye": ["componentes_directos_configurados"],
             "pendiente_de_integracion": ["gastos_compartidos", "otras_fuentes_de_costo"],
         }
 
-    def get_imputaciones(self, obj):
+    def get_imputaciones(self, obj) -> list[DetalleImputacionCosto]:
         return [
             {
                 "componente": imputacion.componente_id,
@@ -301,5 +343,5 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         ]
 
     @staticmethod
-    def get_limite(_obj):
+    def get_limite(_obj) -> str:
         return "Sólo componentes directos configurados; no incluye aranceles, cargos ni dinero cobrado."
