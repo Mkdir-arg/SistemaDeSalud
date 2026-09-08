@@ -109,6 +109,22 @@ class CosteoAtencionTests(TestCase):
         with self.assertRaisesMessage(CommandError, "--limite debe ser mayor que cero"):
             call_command("procesar_costos", "--limite", "0")
 
+    def test_el_comando_registra_el_error_recuperable_del_hecho(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        with patch(
+            "apps.finanzas.management.commands.procesar_costos.procesar_hecho_atencion",
+            side_effect=RuntimeError("fuente temporalmente caída"),
+        ):
+            call_command("procesar_costos", "--limite", "1", stderr=StringIO())
+        self.assertTrue(
+            PendienteCosteo.objects.filter(
+                hecho=hecho,
+                motivo=PendienteCosteo.Motivo.ERROR_RECUPERABLE,
+                resuelto=False,
+            ).exists()
+        )
+
     def test_un_error_en_el_intento_directo_no_borra_el_hecho_y_queda_pendiente(self):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)

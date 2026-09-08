@@ -90,11 +90,16 @@ def intentar_costeo_directo(hecho_id):
         procesar_hecho_atencion(hecho_id)
     except Exception:  # noqa: BLE001 - la recuperación posterior es deliberada.
         logger.exception("No se pudo costear de inmediato el hecho %s", hecho_id)
-        with transaction.atomic():
-            hecho = HechoAtencionCosteable.objects.get(pk=hecho_id)
-            _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
+        registrar_error_recuperable(hecho_id)
         return False
     return True
+
+
+def registrar_error_recuperable(hecho_id):
+    """Marca un fallo técnico bajo el mismo bloqueo del cálculo recuperable."""
+    with transaction.atomic():
+        hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=hecho_id)
+        return _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
 
 
 def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por):

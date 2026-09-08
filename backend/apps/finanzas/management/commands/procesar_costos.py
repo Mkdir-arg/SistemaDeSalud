@@ -6,8 +6,8 @@ from django.db.models import Q
 
 from apps.auditoria.latidos import latir
 
-from ...models import HechoAtencionCosteable, PendienteCosteo
-from ...services import procesar_hecho_atencion
+from ...models import HechoAtencionCosteable
+from ...services import procesar_hecho_atencion, registrar_error_recuperable
 
 
 logger = logging.getLogger(__name__)
@@ -41,11 +41,7 @@ class Command(BaseCommand):
                 procesados += 1
             except Exception:  # noqa: BLE001
                 logger.exception("No se pudo reprocesar el hecho de atención costeable %s", hecho_id)
-                PendienteCosteo.objects.get_or_create(
-                    hecho_id=hecho_id,
-                    componente=None,
-                    motivo=PendienteCosteo.Motivo.ERROR_RECUPERABLE,
-                )
+                registrar_error_recuperable(hecho_id)
                 self.stderr.write(f"  hecho #{hecho_id}: no se pudo procesar; quedará para recuperar")
         resumen = f"{procesados} hecho(s) procesado(s)"
         self.stdout.write(("[en seco] " if seco else "") + resumen)
