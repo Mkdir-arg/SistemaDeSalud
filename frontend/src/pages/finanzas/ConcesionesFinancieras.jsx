@@ -18,6 +18,7 @@ const ACCIONES = [
   ["corregir_gastos", "Corregir gastos", true],
   ["configurar_gastos_esperados", "Configurar gastos esperados", true],
   ["auditar_finanzas", "Auditar accesos financieros", true],
+  ["configurar_repartos", "Configurar repartos", true],
 ];
 const nombreAccion = (accion) => ACCIONES.find(([valor]) => valor === accion)?.[1] || accion;
 

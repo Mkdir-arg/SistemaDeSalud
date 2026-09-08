@@ -9,8 +9,10 @@ import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
 import { fechaHora } from "@/lib/format";
 import FormularioGasto from "./FormularioGasto";
+import FormularioReparto from "./FormularioReparto";
 
 const CONFIGURAR = "configurar_gastos_esperados";
+const CONFIGURAR_REPARTOS = "configurar_repartos";
 const mesActual = () => {
   const hoy = new Date();
   return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
@@ -20,6 +22,13 @@ function Estado({ valor, calendario = false }) {
   const datos = (calendario ? ESTADOS_CARGA : ESTADOS_GASTO)[valor];
   return <Badge tone={datos?.tone || "gray"}>{datos?.label || "Estado no disponible"}</Badge>;
 }
+
+const importeCentavos = (centavos) => {
+  const valor = BigInt(String(centavos || 0));
+  const signo = valor < 0n ? "-" : "";
+  const absoluto = valor < 0n ? -valor : valor;
+  return importeARS(`${signo}${absoluto / 100n}.${String(absoluto % 100n).padStart(2, "0")}`);
+};
 
 function TablaFinanciera({ consulta, tabla, columnas, vacio }) {
   return <DataTable columnas={columnas} filas={consulta.filas} total={consulta.total} paginas={consulta.paginas}
@@ -83,8 +92,9 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const [, setSearchParams] = useSearchParams();
   const calendarioTabla = useTablaUrl("calendario");
   const gastosTabla = useTablaUrl("gastos");
+  const repartosTabla = useTablaUrl("repartos");
   const puedeLeer = permisos.tiene("ver_gastos");
-  const puedeCatalogo = permisos.tiene("registrar_gastos") || permisos.tiene(CONFIGURAR);
+  const puedeCatalogo = permisos.tiene("registrar_gastos") || permisos.tiene(CONFIGURAR) || permisos.tiene(CONFIGURAR_REPARTOS);
   const tieneMes = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);
   const filtro = { institucion: institucion.id, area: area || undefined, periodo_economico: `${mes}-01` };
   const opciones = (recurso, tabla, habilitada) => ({
@@ -99,6 +109,14 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const gastos = useLista("gastos", {
     ...filtro, page: gastosTabla.pagina, pageSize: gastosTabla.tamano, ordering: gastosTabla.orden,
   }, opciones("gastos", gastosTabla, puedeLeer && tab === "gastos"));
+  const repartos = useLista("repartos-gasto", {
+    gasto__institucion: institucion.id,
+    gasto__area: area === "null" ? -1 : area || undefined,
+    gasto__periodo_economico: `${mes}-01`,
+    page: repartosTabla.pagina,
+    pageSize: repartosTabla.tamano,
+    ordering: "-calculado,-version,-id",
+  }, opciones("repartos", repartosTabla, puedeLeer && tab === "repartos"));
   const areas = useQuery({
     queryKey: ["finanzas", permisos.usuarioId, institucion.id, "areas"],
     queryFn: () => opcionesFinanzas("areas", institucion.id),
@@ -112,13 +130,14 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const catalogoListo = !areas.isLoading && !areas.error && !conceptos.isLoading && !conceptos.error;
   const abrir = (tipo, fila) => setModal({ tipo, fila });
   const habilitada = (accion, fila) => !permisos.isFetching && permisos.permite(accion, fila.area, fila.sensible);
-  const areasVisibles = (areas.data || []).filter((a) => ["ver_gastos", "registrar_gastos", CONFIGURAR].some((accion) => permisos.permite(accion, a.id)));
+  const areasVisibles = (areas.data || []).filter((a) => ["ver_gastos", "registrar_gastos", CONFIGURAR, CONFIGURAR_REPARTOS].some((accion) => permisos.permite(accion, a.id)));
   function cambiarFiltro(set, valor) {
     set(valor);
     setSearchParams((previos) => {
       const siguientes = new URLSearchParams(previos);
       siguientes.delete("calendario_pag");
       siguientes.delete("gastos_pag");
+      siguientes.delete("repartos_pag");
       return siguientes;
     }, { replace: true });
     setModal(null);
@@ -152,6 +171,13 @@ function ContenidoFinanzas({ institucion, permisos }) {
       {r.estado_operativo === "aprobado" && habilitada("corregir_gastos", r) && <Button size="sm" variant="secondary" onClick={() => abrir("ajuste", r)}>Ajustar</Button>}
     </div> },
   ];
+  const columnasRepartos = [
+    { key: "gasto", label: "Gasto repartido", render: (r) => <div><strong>{r.concepto_nombre}</strong><p className="text-sm text-texto-debil">{r.area_nombre || "Institucional"} · Gasto #{r.gasto} · Versión {r.version}{r.vigente ? " · Vigente" : " · Histórica"}</p></div> },
+    { key: "periodo_economico", label: "Mes", render: (r) => r.periodo_economico.slice(0, 7) },
+    { key: "estado", label: "Resultado", render: (r) => <div><Badge tone={r.estado === "distribuido" ? "green" : r.estado === "sin_actividad" ? "blue" : "amber"}>{r.estado === "distribuido" ? "Distribuido" : r.estado === "sin_actividad" ? "Sin actividad" : "Pendiente"}</Badge>{r.motivo && <p className="mt-1 text-sm text-texto-debil">{r.motivo === "sin_regla" ? "Falta una regla" : r.motivo === "sin_cobertura" ? "Falta habilitar actividad" : "Fuente no elegible"}</p>}</div> },
+    { key: "saldo_centavos", label: "Importe", render: (r) => <span className="whitespace-nowrap font-mono">{importeCentavos(r.saldo_centavos)}</span> },
+    { key: "atribuciones", label: "Atenciones", render: (r) => <div className="tabular-nums">{r.atribuciones} atribución(es){r.saldo_no_atribuido_centavos !== 0 && <p className="text-sm text-texto-debil">Sin atribuir: {importeCentavos(r.saldo_no_atribuido_centavos)}</p>}</div> },
+  ];
 
   return <div className="space-y-5 p-lg sm:p-xxl">
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -163,6 +189,8 @@ function ContenidoFinanzas({ institucion, permisos }) {
         {permisos.tiene("registrar_gastos") && <Button disabled={!catalogoListo || permisos.isFetching} onClick={() => abrir("gasto")}>Registrar gasto</Button>}
         {permisos.tiene(CONFIGURAR) && <Button variant="secondary" disabled={!catalogoListo || permisos.isFetching} onClick={() => abrir("expectativa")}>Configurar esperado</Button>}
         {permisos.permite(CONFIGURAR, null) && <Button variant="ghost" onClick={() => abrir("concepto")}>Nuevo concepto</Button>}
+        {permisos.tiene(CONFIGURAR_REPARTOS) && <Button variant="secondary" disabled={areas.isLoading} onClick={() => abrir("cobertura-reparto")}>Habilitar actividad</Button>}
+        {permisos.tiene(CONFIGURAR_REPARTOS) && <Button variant="ghost" disabled={!catalogoListo} onClick={() => abrir("regla-reparto")}>Agregar regla</Button>}
       </div>
     </div>
     <Card className="p-4">
@@ -173,23 +201,26 @@ function ContenidoFinanzas({ institucion, permisos }) {
           {permisos.permite("ver_gastos", null) && <option value="null">Sólo institucional</option>}
           {areasVisibles.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
         </Select></Field></div>
-        <Button variant="ghost" disabled={!tieneMes} onClick={() => { permisos.refetch(); if (puedeLeer) (tab === "calendario" ? calendario : gastos).refetch(); }}>Actualizar</Button>
+        <Button variant="ghost" disabled={!tieneMes} onClick={() => { permisos.refetch(); if (puedeLeer) (tab === "calendario" ? calendario : tab === "gastos" ? gastos : repartos).refetch(); }}>Actualizar</Button>
       </div>
-      <p className="mt-3 text-sm text-texto-debil">Carga completa indica que terminó la carga del concepto. La aprobación se revisa por separado. Los gastos todavía no se reparten a pacientes ni registran pagos.</p>
+      <p className="mt-3 text-sm text-texto-debil">Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p>
     </Card>
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!puedeLeer ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
-      <Tabs tabs={[{ key: "calendario", label: "Carga esperada" }, { key: "gastos", label: "Gastos registrados" }]} valor={tab} onChange={setTab} />
+      <Tabs tabs={[{ key: "calendario", label: "Carga esperada" }, { key: "gastos", label: "Gastos registrados" }, { key: "repartos", label: "Repartos" }]} valor={tab} onChange={setTab} />
       {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "calendario"
         ? <TablaFinanciera consulta={calendario} tabla={calendarioTabla} columnas={columnasCalendario} vacio={{ titulo: "Sin expectativas para este mes y ámbito", detalle: "Esto no significa que no haya gastos: sólo se muestran conceptos configurados." }} />
-        : <TablaFinanciera consulta={gastos} tabla={gastosTabla} columnas={columnasGastos} vacio={{ titulo: "Sin gastos visibles para este mes y ámbito", detalle: "Sólo se muestran registros incluidos en tus permisos." }} />}
+        : tab === "gastos"
+          ? <TablaFinanciera consulta={gastos} tabla={gastosTabla} columnas={columnasGastos} vacio={{ titulo: "Sin gastos visibles para este mes y ámbito", detalle: "Sólo se muestran registros incluidos en tus permisos." }} />
+          : <TablaFinanciera consulta={repartos} tabla={repartosTabla} columnas={columnasRepartos} vacio={{ titulo: "Todavía no hay repartos para este mes", detalle: "Los gastos sin regla o cobertura aparecerán como pendientes después del procesamiento." }} />}
       <p className="text-sm text-texto-debil">Las cantidades corresponden a registros visibles. No expresan un costo total ni cubren gastos que aún no fueron declarados.</p>
     </>}
     {modal?.tipo === "historial" && <HistorialCarga fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} />}
     {modal?.tipo === "versiones" && <VersionesEsperado fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} onHistorial={(fila) => abrir("historial", fila)} />}
     {modal?.tipo === "detalle" && <DetalleGasto fila={modal.fila} onClose={() => setModal(null)} />}
-    {modal && !["historial", "detalle", "versiones"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
+    {["cobertura-reparto", "regla-reparto"].includes(modal?.tipo) && <FormularioReparto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
+    {modal && !["historial", "detalle", "versiones", "cobertura-reparto", "regla-reparto"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
   </div>;
 }
 

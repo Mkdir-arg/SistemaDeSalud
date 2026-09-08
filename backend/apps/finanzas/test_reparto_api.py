@@ -98,6 +98,8 @@ class RepartoActividadApiTests(APITestCase):
         self.assertEqual(listado.status_code, 200, listado.data)
         self.assertEqual(listado.data["count"], 1)
         self.assertEqual(listado.data["results"][0]["id"], reparto.id)
+        self.assertEqual(listado.data["results"][0]["concepto_nombre"], "Electricidad")
+        self.assertEqual(listado.data["results"][0]["area_nombre"], "Guardia")
         self.assertEqual(listado.data["results"][0]["atribuciones"], 3)
         self.assertTrue(listado.data["results"][0]["vigente"])
         self.assertEqual(detalle.status_code, 200, detalle.data)

@@ -112,7 +112,7 @@ reparto inter-área, bases de consumo/ocupación, pagos, cobros ni reportería.
 - separación de `ImputacionCosto` y de cualquier cargo o pago; y
 - recuperación por comando sobre datos sintéticos, sin afectar la atención.
 
-## Próximo paso
+## Estado de implementación
 
 Implementado: modelos inmutables, migración `0018`, servicios de
 cobertura/regla/cálculo idempotente, `procesar_repartos` y API mínima. Las rutas
@@ -122,9 +122,26 @@ pacientes. El detalle de costo clínico muestra por separado la atribución
 vigente y exige lectura sensible cuando el gasto de origen lo es. No se altera
 el total directo ni se concede lectura por configurar.
 
-Validación local, sólo con SQLite efímero: cinco pruebas de dominio y cuatro
-pruebas API correctas (configuración, explicación, inmutabilidad, alcance por
-área y sensibilidad),
-`manage.py check` correcto y `makemigrations finanzas --check --dry-run` sin
-cambios. No se ejecutó PostgreSQL, navegador, medición de volumen, despliegue
-ni migración sobre una base real.
+La operación administrativa ya está integrada en Finanzas con dos acciones:
+`Habilitar actividad` y `Agregar regla`. La pestaña `Repartos` diferencia
+resultados distribuidos y pendientes, muestra concepto, área, importe y cantidad
+de atenciones, y mantiene el identificador técnico como trazabilidad secundaria.
+Los textos aclaran que carga, aprobación y reparto son estados separados y que
+el flujo no crea cargos, pagos ni tareas para personal clínico.
+
+Validación local sobre SQLite efímero:
+
+- 107 pruebas correctas (`apps.finanzas` y regresión de
+  `apps.casos.test_esquema`), con dos pruebas PostgreSQL omitidas por motor;
+- `manage.py check` correcto y
+  `makemigrations finanzas --check --dry-run` sin cambios;
+- build Vite correcto y auditoría de 235 clases sin huérfanas ni colisiones;
+- prueba real de navegador en escritorio y 390 px, sin errores de consola:
+  alta de cobertura y regla, ejecución de `procesar_repartos`, un gasto
+  distribuido entre tres atenciones y otro pendiente por falta de regla; y
+- la tabla y los formularios usan datos administrativos y no solicitan carga al
+  personal clínico.
+
+Sigue pendiente validar las dos pruebas de bloqueo/concurrencia con PostgreSQL
+aislado. No se ejecutó despliegue, migración sobre una base real ni medición de
+volumen.

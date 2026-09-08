@@ -108,7 +108,9 @@ class ReglaRepartoSerializer(serializers.ModelSerializer):
 class RepartoGastoSerializer(serializers.ModelSerializer):
     institucion = serializers.IntegerField(source="gasto.institucion_id", read_only=True)
     area = serializers.IntegerField(source="gasto.area_id", read_only=True)
+    area_nombre = serializers.CharField(source="gasto.area.nombre", read_only=True)
     concepto = serializers.IntegerField(source="gasto.concepto_id", read_only=True)
+    concepto_nombre = serializers.CharField(source="gasto.concepto.nombre", read_only=True)
     periodo_economico = serializers.DateField(source="gasto.periodo_economico", read_only=True)
     sensible = serializers.BooleanField(source="gasto.sensible", read_only=True)
     atribuciones = serializers.IntegerField(source="atribuciones.count", read_only=True)
@@ -117,7 +119,8 @@ class RepartoGastoSerializer(serializers.ModelSerializer):
     class Meta:
         model = RepartoGasto
         fields = [
-            "id", "gasto", "concepto", "institucion", "area", "periodo_economico",
+            "id", "gasto", "concepto", "concepto_nombre", "institucion", "area", "area_nombre",
+            "periodo_economico",
             "sensible", "regla", "cobertura", "version", "estado", "motivo",
             "importe_fuente_centavos", "importe_ajustes_centavos", "saldo_centavos",
             "saldo_no_atribuido_centavos", "atribuciones", "reemplaza", "vigente", "calculado",
@@ -170,13 +173,17 @@ class ReglaRepartoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
 
 class RepartoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     queryset = RepartoGasto.objects.select_related(
-        "gasto", "regla", "cobertura", "reemplaza", "reemplazado_por",
+        "gasto", "gasto__concepto", "gasto__area", "regla", "cobertura", "reemplaza",
+        "reemplazado_por",
     ).prefetch_related("atribuciones")
     serializer_class = RepartoGastoSerializer
     permission_classes = [IsAuthenticated, PuedeVerRepartos]
     institucion_path = "gasto__institucion"
     http_method_names = ["get", "head", "options"]
-    filter_fields = ("gasto", "gasto__institucion", "gasto__area", "estado", "motivo")
+    filter_fields = (
+        "gasto", "gasto__institucion", "gasto__area", "gasto__periodo_economico",
+        "estado", "motivo",
+    )
     ordering_fields = ("calculado", "version", "id")
 
     def get_queryset(self):

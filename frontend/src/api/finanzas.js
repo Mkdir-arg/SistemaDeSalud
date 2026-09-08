@@ -4,7 +4,7 @@ import { useInstitucion } from "@/auth/InstitutionContext";
 import { api } from "./client";
 import { query } from "./queries";
 
-const ACCIONES_GASTOS = ["ver_gastos", "registrar_gastos", "aprobar_gastos", "corregir_gastos", "configurar_gastos_esperados"];
+const ACCIONES_GASTOS = ["ver_gastos", "registrar_gastos", "aprobar_gastos", "corregir_gastos", "configurar_gastos_esperados", "configurar_repartos"];
 
 export function usePermisosFinanzas() {
   const { user } = useAuth();
