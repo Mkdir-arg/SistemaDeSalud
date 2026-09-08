@@ -132,3 +132,44 @@ no fue simulada en navegador en este checkpoint.
 
 El flujo de gastos ya puede probarse en un entorno aislado sin esperar a reparto,
 pagos y reportería. No requiere preparar cuentas ni datos reales.
+
+## Checkpoint posterior: versiones y escenarios de error en navegador
+
+La UI ya ofrece `Nueva versión` y `Ver versiones` en cada concepto del calendario.
+El detalle técnico y las ocho pruebas API focalizadas están en el plan de gastos.
+Reutiliza exclusivamente endpoints y permisos existentes.
+
+Recorrido real ejecutado con Playwright CLI, Vite y Django sobre una base SQLite
+temporal nueva, sin datos reales:
+
+- Versión de Electricidad/Guardia desde octubre hasta noviembre exclusivo:
+  septiembre mantiene versión e indicación `Carga completa`; octubre usa la
+  sucesora y `Falta cargar`; noviembre ya no muestra esa expectativa.
+- El historial de la versión anterior continúa accesible desde `Ver versiones`.
+  El formulario rechaza un intervalo vacío y el servidor un segundo sucesor
+  de la misma versión; no se duplican registros.
+- Administración rechaza el gasto delegado de ARS 300 con motivo. Luego crea
+  un reemplazo central de ARS 275,50: queda aprobado según la regla existente.
+  El original mantiene importe, motivo de rechazo y vínculo a la carga nueva.
+- Se interceptó exclusivamente ese POST local: `route.fetch()` lo envió al
+  servidor y `route.abort()` descartó la respuesta antes de entregarla a la UI.
+  El formulario mostró resultado incierto y deshabilitó `Confirmar`. Tras cerrar
+  y actualizar, apareció una sola carga nueva. Esto verifica el bloqueo del
+  mismo diálogo; no demuestra idempotencia global entre pestañas.
+- Ingreso como operador de Guardia: sólo Electricidad/Guardia, sin Remuneraciones
+  sensibles ni acciones de configuración/versionado/aprobación. Puede consultar
+  versiones por su permiso de lectura. La carga completa sigue separada de las
+  cantidades aprobadas y no incorpora el gasto reemplazado como otro aprobado.
+- Capturas de versiones en escritorio y del formulario a 390 px inspeccionadas;
+  sin desborde horizontal global. No se cambió el sistema visual existente.
+
+Build correcto y auditoría de 235 clases sin incidencias. No hubo cambios
+productivos durante la verificación de rechazo/reemplazo/red. El navegador
+registró el 400 y fallo de red deliberados, además de un favicon ausente y los
+avisos de desarrollo ya existentes de React Router. Una reapertura de sesión
+del CLI descartó la autenticación: se repitió el ingreso; no se contó esa
+interrupción del instrumento como fallo del producto ni como prueba aprobada.
+
+Persisten: administración de concesiones por UI, volumen representativo y
+aceptación funcional del responsable. No se aplicaron migraciones reales ni
+se realizó despliegue. Las pruebas del agente no sustituyen aceptación humana.
