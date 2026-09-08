@@ -44,6 +44,26 @@ function HistorialCarga({ fila, usuarioId, onClose }) {
   </Modal>;
 }
 
+function VersionesEsperado({ fila, usuarioId, onClose, onHistorial }) {
+  const tabla = useTablaUrl("versiones");
+  const params = { institucion: fila.institucion, concepto: fila.concepto,
+    area: fila.area ?? "null", ordering: "-vigente_desde,-id", page: tabla.pagina, pageSize: tabla.tamano };
+  const consulta = useLista("expectativas-gasto", params, {
+    queryKey: ["finanzas", usuarioId, fila.institucion, "versiones", params],
+    placeholderData: undefined, gcTime: 0,
+  });
+  return <Modal title={`Versiones · ${fila.concepto_nombre}`} onClose={onClose} width={820}>
+    <p className="mb-4 text-md text-texto-debil">{fila.area_nombre || "Ámbito institucional"} · Intervalos registrados, con fin exclusivo. Una versión sucesora limita la anterior desde su inicio. Sólo se muestran versiones incluidas en tus permisos.</p>
+    <TablaFinanciera consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
+      { key: "id", label: "Versión", render: (r) => <div>#{r.id}{r.reemplaza && <p className="text-sm text-texto-debil">Reemplaza #{r.reemplaza}</p>}</div> },
+      { key: "vigente_desde", label: "Desde", render: (r) => r.vigente_desde.slice(0, 7) },
+      { key: "vigente_hasta", label: "Hasta (exclusivo)", render: (r) => r.vigente_hasta?.slice(0, 7) || "Sin fin declarado" },
+      { key: "motivo_correccion", label: "Registro", render: (r) => <div>{r.motivo_correccion || "Configuración inicial"}<p className="text-sm text-texto-debil">{fechaHora(r.registrado)}</p></div> },
+      { key: "acciones", label: "Acciones", render: (r) => <Button size="sm" variant="ghost" onClick={() => onHistorial(r)}>Historial de carga</Button> },
+    ]} />
+  </Modal>;
+}
+
 export default function Finanzas() {
   const permisos = usePermisosFinanzas();
   const { institucion } = useInstitucion();
@@ -105,7 +125,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
   }
 
   const columnasCalendario = [
-    { key: "concepto_nombre", label: "Concepto esperado", render: (r) => <div><strong>{r.concepto_nombre}</strong>{r.sensible && <div className="text-sm text-texto-debil">Sensible</div>}</div> },
+    { key: "concepto_nombre", label: "Concepto esperado", render: (r) => <div><strong>{r.concepto_nombre}</strong><p className="text-sm text-texto-debil">Versión #{r.id}{r.reemplaza ? ` · Reemplaza #${r.reemplaza}` : ""}</p>{r.sensible && <div className="text-sm text-texto-debil">Sensible</div>}</div> },
     { key: "area_nombre", label: "Ámbito", render: (r) => r.area_nombre || "Institucional" },
     { key: "estado_carga", label: "Estado de carga", render: (r) => <div className="space-y-1"><Estado valor={r.estado_carga} calendario /><p className="text-sm text-texto-debil">{r.indicacion_id == null ? "Sin indicación registrada" : fechaHora(r.indicacion_registrada)}</p></div> },
     { key: "gastos_pendientes", label: "Por aprobar", render: (r) => <span className="font-semibold tabular-nums">{r.gastos_pendientes} registro(s)</span> },
@@ -113,6 +133,8 @@ function ContenidoFinanzas({ institucion, permisos }) {
     { key: "acciones", label: "Acciones", render: (r) => <div className="flex flex-wrap gap-2">
       {habilitada(CONFIGURAR, r) && <Button size="sm" variant="secondary" onClick={() => abrir("indicar", r)}>Indicar carga</Button>}
       <Button size="sm" variant="ghost" onClick={() => abrir("historial", r)}>Historial</Button>
+      <Button size="sm" variant="ghost" onClick={() => abrir("versiones", r)}>Ver versiones</Button>
+      {habilitada(CONFIGURAR, r) && <Button size="sm" variant="ghost" onClick={() => abrir("version", r)}>Nueva versión</Button>}
     </div> },
   ];
   const columnasGastos = [
@@ -165,8 +187,9 @@ function ContenidoFinanzas({ institucion, permisos }) {
       <p className="text-sm text-texto-debil">Las cantidades corresponden a registros visibles. No expresan un costo total ni cubren gastos que aún no fueron declarados.</p>
     </>}
     {modal?.tipo === "historial" && <HistorialCarga fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} />}
+    {modal?.tipo === "versiones" && <VersionesEsperado fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} onHistorial={(fila) => abrir("historial", fila)} />}
     {modal?.tipo === "detalle" && <DetalleGasto fila={modal.fila} onClose={() => setModal(null)} />}
-    {modal && !["historial", "detalle"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
+    {modal && !["historial", "detalle", "versiones"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
   </div>;
 }
 

@@ -284,7 +284,41 @@ La ausencia de `staticfiles` produjo un aviso del entorno de tests, distinto de
 OpenAPI; los 4xx/503 y errores de fuentes simulados corresponden a pruebas
 negativas. No se ocultaron fallos del runner.
 
-Próximo resultado: versionar expectativas desde la pantalla existente, usando
+Próximo resultado de aquel checkpoint: versionar expectativas desde la pantalla existente, usando
 la API ya implementada y conservando consultas/indicaciones de meses anteriores.
 #36 sigue en curso; auditoría por API sin pantalla nueva, aceptación del usuario
 y medición de volumen pendientes. No se recomienda merge ni despliegue aquí.
+
+## Checkpoint: versiones de expectativas desde la pantalla
+
+Implementación del siguiente resultado aprobado: dos acciones en el calendario,
+`Nueva versión` y `Ver versiones`, reutilizando el alta y listado existentes de
+expectativas. No se agregan endpoints, permisos, modelos ni migraciones.
+
+- El formulario conserva concepto/ámbito, exige elegir inicio y motivo, permite
+  fin mensual exclusivo y explica que no copia indicaciones ni crea gastos.
+  El alta inicial también permite un fin opcional; vacío conserva el contrato
+  de vigencia abierta. Las validaciones de intervalo, sucesora única y permisos
+  permanecen en el servidor; se anticipan intervalo vacío y motivo blanco en UI.
+- La consulta de versiones está paginada y filtra el concepto, institución y
+  ámbito exactos. Expone intervalos registrados, no afirma una vigencia efectiva
+  que podría estar limitada por sucesoras. Desde cada fila se abre su historial.
+- Se mantienen los componentes/tokens visuales, invalidación de caché financiera,
+  aislamiento por usuario/institución y bloqueo de reenvío ante respuesta incierta.
+
+Validación: build y auditoría de clases (235, sin incidencias) correctos. Ocho
+pruebas de calendario por API correctas, incluidas dos nuevas de sucesión,
+reenvío, conservación del historial, ámbito y permiso sensible histórico.
+Antes de agregarlas pasaron también las 14 pruebas de calendario/auditoría.
+
+Navegador real sobre Vite/Django local y una base SQLite temporal nueva:
+septiembre conserva versión/indicación, octubre usa la sucesora sin copiar el
+estado, noviembre respeta el fin exclusivo, historial anterior accesible y
+reenvío rechazado sin duplicación. Intervalo vacío rechazado por el formulario.
+Escritorio y formulario móvil de 390 px inspeccionados, sin desborde horizontal.
+No se repitió PostgreSQL en este cambio de interfaz; su evidencia anterior es
+149/149. Los datos reales y el checkout original permanecen intactos.
+
+Siguiente verificación del flujo ya implementado: rechazo/reemplazo y pérdida
+de respuesta de red en navegador. Administración de concesiones y medición de
+volumen siguen pendientes; #36 no se considera aceptado ni cerrado.

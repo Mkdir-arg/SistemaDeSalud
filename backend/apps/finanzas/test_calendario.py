@@ -114,6 +114,52 @@ class CalendarioGastoApiTests(APITestCase):
         self.assertEqual(filas[self.expectativa.id]["gastos_aprobados"], 1)
         self.assertEqual(filas[otra.id]["gastos_aprobados"], 0)
 
+    def test_version_por_api_conserva_historial_y_rechaza_reenvio(self):
+        self.assertEqual(self.indicar("carga_completa").status_code, 201)
+        datos = {
+            "concepto": self.concepto.id, "institucion": self.institucion.id,
+            "area": self.area.id, "vigente_desde": "2026-09-01",
+            "vigente_hasta": "2026-10-01", "reemplaza": self.expectativa.id,
+            "motivo_correccion": "Servicio previsto hasta septiembre",
+        }
+        nueva = self.client.post("/api/expectativas-gasto/", datos, format="json")
+        self.assertEqual(nueva.status_code, 201, nueva.data)
+        self.assertEqual(self.client.post("/api/expectativas-gasto/", datos, format="json").status_code, 400)
+        self.assertEqual(ExpectativaGasto.objects.count(), 2)
+        anterior = self.calendario()["results"][0]
+        self.assertEqual(anterior["id"], self.expectativa.id)
+        self.assertEqual(anterior["estado_carga"], "carga_completa")
+        septiembre = self.calendario("2026-09-01")["results"][0]
+        self.assertEqual(septiembre["id"], nueva.data["id"])
+        self.assertIsNone(septiembre["indicacion_id"])
+        self.assertEqual(septiembre["estado_carga"], "falta_cargar")
+        self.assertEqual(self.calendario("2026-10-01")["results"], [])
+        versiones = self.client.get("/api/expectativas-gasto/", {
+            "institucion": self.institucion.id, "concepto": self.concepto.id,
+            "area": self.area.id, "ordering": "-vigente_desde,-id",
+        })
+        self.assertEqual(versiones.status_code, 200)
+        self.assertEqual([f["id"] for f in versiones.data["results"]], [nueva.data["id"], self.expectativa.id])
+        historial = self.client.get(f"/api/expectativas-gasto/{self.expectativa.id}/indicaciones/")
+        self.assertEqual(historial.status_code, 200)
+        self.assertEqual(historial.data["results"][0]["estado"], "carga_completa")
+        self.assertFalse(Gasto.objects.exists())
+
+    def test_version_por_api_no_cambia_ambito_ni_omite_permiso_anterior(self):
+        datos = {
+            "concepto": self.concepto.id, "institucion": self.institucion.id,
+            "area": self.otra_area.id, "vigente_desde": "2026-09-01",
+            "reemplaza": self.expectativa.id, "motivo_correccion": "Cambio inválido",
+        }
+        self.assertEqual(self.client.post("/api/expectativas-gasto/", datos, format="json").status_code, 400)
+        # Aunque el catálogo ya no sea sensible, el permiso sobre la versión
+        # histórica sigue siendo necesario para reemplazarla.
+        ExpectativaGasto.objects.filter(pk=self.expectativa.pk).update(sensible=True)
+        ConcesionFinanciera.objects.filter(membresia=self.miembro).update(permite_sensibles=False)
+        datos["area"] = self.area.id
+        self.assertEqual(self.client.post("/api/expectativas-gasto/", datos, format="json").status_code, 403)
+        self.assertEqual(ExpectativaGasto.objects.count(), 1)
+
     def test_permisos_por_area_sensibilidad_institucion_y_accion(self):
         self.crear_expectativa(self.otra_area)
         self.crear_expectativa(None)
