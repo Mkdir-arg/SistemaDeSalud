@@ -541,7 +541,7 @@ def _crear_reparto(*, gasto, regla, cobertura, hechos, estado, motivo=""):
 def procesar_reparto_gasto(gasto_id):
     """Calcula una versión idempotente sin bloquear ni alterar la atención."""
     with transaction.atomic():
-        gasto = Gasto.objects.select_for_update().select_related("concepto", "area").get(pk=gasto_id)
+        gasto = Gasto.objects.select_for_update(of=("self",)).select_related("concepto", "area").get(pk=gasto_id)
         gasto_ajustes = gasto.ajustes.select_related("registrado_por")
         list(gasto_ajustes)
         if gasto.estado != Gasto.Estado.APROBADO or gasto.area_id is None:

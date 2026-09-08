@@ -20,7 +20,7 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, RepartoGasto, ValorComponente
 from .permisos import tiene_concesion_financiera
 from .services import aprobar_gasto, corregir_snapshot_componentes, indicar_carga_esperada, intentar_costeo_directo, procesar_hecho_atencion, procesar_reparto_gasto, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_cobertura_actividad, registrar_gasto, registrar_regla_reparto
 
@@ -2370,3 +2370,62 @@ class RepartoActividadTests(TestCase):
                 accion=ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
                 todas_las_areas=True,
             )
+
+
+@skipUnless(connection.vendor == "postgresql", "Requiere bloqueo de fila PostgreSQL.")
+class RepartoActividadConcurrentePostgreSQLTests(TransactionTestCase):
+    """Dos procesadores de la misma fuente conservan una sola versión."""
+
+    def setUp(self):
+        mes = timezone.localdate().replace(day=1)
+        usuario = Usuario.objects.create_user("reparto-concurrente@cauce.local", "x")
+        institucion = Institucion.objects.create(nombre="Hospital concurrente")
+        area = Area.objects.create(institucion=institucion, nombre="Guardia")
+        membresia = Membresia.objects.create(
+            usuario=usuario, institucion=institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        for accion in (
+            ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+            ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        ):
+            ConcesionFinanciera.objects.create(
+                membresia=membresia, accion=accion, todas_las_areas=True,
+            )
+        concepto = ConceptoGasto.objects.create(
+            institucion=institucion, codigo="LUZ-CONC", nombre="Electricidad",
+        )
+        registrar_cobertura_actividad(
+            institucion=institucion, area=area, vigente_desde=mes, registrado_por=usuario,
+        )
+        registrar_regla_reparto(
+            concepto=concepto, institucion=institucion, area=area,
+            vigente_desde=mes, registrado_por=usuario,
+        )
+        self.gasto = registrar_gasto(
+            concepto, institucion, area, Decimal("100.00"), mes, usuario,
+        )
+        momento = timezone.make_aware(datetime.combine(mes, datetime.min.time()))
+        for indice in range(3):
+            HechoAtencionCosteable.objects.create(
+                institucion=institucion, area=area, area_origen_id=area.id,
+                evento_origen_id=12000 + indice, caso_origen_id=11000 + indice,
+                nodo_origen_id=10000 + indice, ocurrida_en=momento,
+            )
+
+    def test_dos_procesadores_concurrentes_no_duplican_reparto_ni_atribuciones(self):
+        inicio = Barrier(2)
+
+        def procesar_en_paralelo():
+            close_old_connections()
+            try:
+                inicio.wait(timeout=5)
+                return procesar_reparto_gasto(self.gasto.id).id
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as ejecutores:
+            resultados = list(ejecutores.map(lambda _indice: procesar_en_paralelo(), range(2)))
+
+        self.assertEqual(resultados[0], resultados[1])
+        reparto = RepartoGasto.objects.get(gasto=self.gasto)
+        self.assertEqual(reparto.atribuciones.count(), 3)

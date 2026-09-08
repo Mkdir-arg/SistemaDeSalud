@@ -131,8 +131,12 @@ el flujo no crea cargos, pagos ni tareas para personal clínico.
 
 Validación local sobre SQLite efímero:
 
-- 107 pruebas correctas (`apps.finanzas` y regresión de
-  `apps.casos.test_esquema`), con dos pruebas PostgreSQL omitidas por motor;
+- 108 pruebas correctas (`apps.finanzas` y regresión de
+  `apps.casos.test_esquema`), con tres pruebas PostgreSQL omitidas por motor;
+- 99 pruebas financieras correctas sobre PostgreSQL 16 aislado, incluidas las
+  tres pruebas de concurrencia para costeo directo, aprobación de gastos y
+  reparto; la prueba detectó y permitió limitar el bloqueo del reparto a la fila
+  fuente, sin intentar bloquear el área opcional;
 - `manage.py check` correcto y
   `makemigrations finanzas --check --dry-run` sin cambios;
 - build Vite correcto y auditoría de 235 clases sin huérfanas ni colisiones;
@@ -142,6 +146,4 @@ Validación local sobre SQLite efímero:
 - la tabla y los formularios usan datos administrativos y no solicitan carga al
   personal clínico.
 
-Sigue pendiente validar las dos pruebas de bloqueo/concurrencia con PostgreSQL
-aislado. No se ejecutó despliegue, migración sobre una base real ni medición de
-volumen.
+No se ejecutó despliegue, migración sobre una base real ni medición de volumen.
