@@ -119,9 +119,11 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     """Detalle económico sin narrativa ni valores clínicos del paciente."""
 
     total_conocido = serializers.SerializerMethodField()
+    total_directo_es_completo = serializers.SerializerMethodField()
     total_es_completo = serializers.SerializerMethodField()
     estado_costo = serializers.SerializerMethodField()
     faltantes = serializers.SerializerMethodField()
+    alcance = serializers.SerializerMethodField()
     imputaciones = serializers.SerializerMethodField()
     limite = serializers.SerializerMethodField()
     actualizado_en = serializers.DateTimeField(source="ultimo_costeo_en", read_only=True)
@@ -130,7 +132,8 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         model = HechoAtencionCosteable
         fields = [
             "id", "institucion", "caso", "ciudadano", "area", "ocurrida_en",
-            "actualizado_en", "total_conocido", "total_es_completo", "estado_costo", "faltantes",
+            "actualizado_en", "total_conocido", "total_directo_es_completo", "total_es_completo",
+            "estado_costo", "faltantes", "alcance",
             "imputaciones", "limite",
         ]
         read_only_fields = fields
@@ -152,17 +155,20 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         )
         return str(total)
 
-    def get_total_es_completo(self, obj):
+    def get_total_directo_es_completo(self, obj):
         return bool(obj.componentes_esperados.all()) and not self._pendientes(obj)
 
+    @staticmethod
+    def get_total_es_completo(_obj):
+        # Los gastos compartidos y otras fuentes todavía no integradas impiden
+        # declarar un costo total de paciente en este incremento.
+        return False
+
     def get_estado_costo(self, obj):
-        pendientes = self._pendientes(obj)
-        if pendientes:
-            return "parcial" if obj.imputaciones.all() else "pendiente"
-        return "disponible" if obj.componentes_esperados.all() else "pendiente"
+        return "parcial" if obj.imputaciones.all() else "pendiente"
 
     def get_faltantes(self, obj):
-        return [
+        faltantes = [
             {
                 "motivo": pendiente.motivo,
                 "motivo_display": pendiente.get_motivo_display(),
@@ -171,6 +177,22 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
             }
             for pendiente in self._pendientes(obj)
         ]
+        faltantes.append(
+            {
+                "motivo": "fuentes_no_integradas",
+                "motivo_display": "Fuentes de costo aún no integradas",
+                "componente": None,
+                "componente_codigo": None,
+            }
+        )
+        return faltantes
+
+    @staticmethod
+    def get_alcance(_obj):
+        return {
+            "incluye": ["componentes_directos_configurados"],
+            "pendiente_de_integracion": ["gastos_compartidos", "otras_fuentes_de_costo"],
+        }
 
     def get_imputaciones(self, obj):
         return [

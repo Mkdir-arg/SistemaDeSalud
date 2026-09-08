@@ -405,9 +405,11 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         fila = response.data["results"][0]
         self.assertIsNone(fila["total_conocido"])
+        self.assertFalse(fila["total_directo_es_completo"])
         self.assertFalse(fila["total_es_completo"])
         self.assertEqual(fila["estado_costo"], "pendiente")
         self.assertEqual(fila["faltantes"][0]["motivo"], PendienteCosteo.Motivo.SIN_PRESTACION)
+        self.assertEqual(fila["faltantes"][-1]["motivo"], "fuentes_no_integradas")
 
     def test_concesion_por_area_no_expone_costos_de_otra_area(self):
         otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")
@@ -540,10 +542,15 @@ class HechoCostoApiTests(APITestCase):
         response = self.client.get(f"/api/hechos-costo/{hecho.id}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["total_conocido"], "1200.50")
-        self.assertTrue(response.data["total_es_completo"])
-        self.assertEqual(response.data["estado_costo"], "disponible")
+        self.assertTrue(response.data["total_directo_es_completo"])
+        self.assertFalse(response.data["total_es_completo"])
+        self.assertEqual(response.data["estado_costo"], "parcial")
         self.assertIsNotNone(response.data["actualizado_en"])
-        self.assertEqual(response.data["faltantes"], [])
+        self.assertEqual(response.data["faltantes"][-1]["motivo"], "fuentes_no_integradas")
+        self.assertEqual(
+            response.data["alcance"]["pendiente_de_integracion"],
+            ["gastos_compartidos", "otras_fuentes_de_costo"],
+        )
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
 
     def test_correccion_de_snapshot_requiere_accion_explicita_y_deja_traza(self):
