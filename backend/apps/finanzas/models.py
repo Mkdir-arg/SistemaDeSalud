@@ -46,6 +46,33 @@ class ValorComponente(models.Model):
             models.CheckConstraint(condition=Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=models.F("vigente_desde")), name="vigencia_componente_valida"),
         ]
 
+    def clean(self):
+        super().clean()
+        if self.reemplaza_id:
+            if self.reemplaza.componente_id != self.componente_id:
+                raise ValidationError("Una corrección debe pertenecer al mismo componente.")
+            if (self.reemplaza.vigente_desde, self.reemplaza.vigente_hasta) != (self.vigente_desde, self.vigente_hasta):
+                raise ValidationError("Una corrección conserva la vigencia del valor corregido.")
+            if not self.motivo_correccion:
+                raise ValidationError("Una corrección requiere un motivo.")
+        solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
+        if self.vigente_hasta is not None:
+            solapa &= Q(vigente_desde__lt=self.vigente_hasta)
+        existentes = ValorComponente.objects.filter(componente=self.componente, reemplazado_por__isnull=True).exclude(pk=self.pk)
+        if self.reemplaza_id:
+            existentes = existentes.exclude(pk=self.reemplaza_id)
+        if existentes.filter(solapa).exists():
+            raise ValidationError("Ya existe un valor vigente para ese intervalo; corregilo explícitamente.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Un valor de componente no se edita; se corrige con una nueva versión.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un valor de componente no se elimina.")
+
 
 class HechoAtencionCosteable(models.Model):
     """Atención completada: origen durable, sin narrativa clínica."""
@@ -86,9 +113,20 @@ class ImputacionCosto(models.Model):
         constraints = [models.CheckConstraint(condition=Q(importe__gte=0), name="imputacion_costo_no_negativa")]
 
 
+class ComponenteEsperadoHecho(models.Model):
+    """Congela los componentes que podían costear una atención al resolverla."""
+    hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="componentes_esperados")
+    componente = models.ForeignKey(DefinicionComponente, on_delete=models.PROTECT, related_name="hechos_esperados")
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("hecho", "componente")]
+
+
 class PendienteCosteo(models.Model):
     class Motivo(models.TextChoices):
         SIN_PRESTACION = "sin_prestacion", "Sin prestación configurada"
+        SIN_COMPONENTES = "sin_componentes", "Sin componentes configurados"
         SIN_VALOR = "sin_valor", "Sin valor vigente"
         ERROR_RECUPERABLE = "error_recuperable", "Error recuperable"
     hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="pendientes")

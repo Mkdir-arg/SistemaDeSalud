@@ -11,7 +11,7 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import ComponenteEsperadoHecho, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .services import procesar_hecho_atencion, registrar_atencion_completada
 
 
@@ -57,3 +57,32 @@ class CosteoAtencionTests(TestCase):
         hecho.nodo_origen_id = 999
         with self.assertRaises(ValidationError):
             hecho.save()
+
+    def test_un_componente_agregado_despues_no_recostea_un_hecho_completo(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        base = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(componente=base, importe=Decimal("100.00"), vigente_desde=timezone.now() - timedelta(days=1))
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        procesar_hecho_atencion(hecho.id)
+        adicional = DefinicionComponente.objects.create(prestacion=prestacion, codigo="ADIC", nombre="Componente agregado")
+        ValorComponente.objects.create(componente=adicional, importe=Decimal("50.00"), vigente_desde=timezone.now() - timedelta(days=1))
+        procesar_hecho_atencion(hecho.id)
+        self.assertEqual(ImputacionCosto.objects.filter(hecho=hecho).count(), 1)
+        self.assertEqual(ComponenteEsperadoHecho.objects.filter(hecho=hecho).count(), 1)
+
+    def test_un_valor_solapado_exige_correccion_explicita(self):
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        desde = timezone.now() - timedelta(days=1)
+        valor = ValorComponente.objects.create(componente=componente, importe=Decimal("100.00"), vigente_desde=desde)
+        with self.assertRaises(ValidationError):
+            ValorComponente.objects.create(componente=componente, importe=Decimal("120.00"), vigente_desde=desde)
+        correccion = ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("120.00"),
+            vigente_desde=desde,
+            reemplaza=valor,
+            motivo_correccion="Valor cargado por error",
+        )
+        self.assertEqual(correccion.reemplaza, valor)

@@ -2,7 +2,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import ComponenteEsperadoHecho, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 
 
 def registrar_atencion_completada(caso, nodo, evento, autor=None):
@@ -43,11 +43,19 @@ def procesar_hecho_atencion(hecho_id):
     """Calcula sólo componentes directos disponibles; es seguro reintentarlo."""
     with transaction.atomic():
         hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=hecho_id)
-        prestaciones = Prestacion.objects.filter(institucion=hecho.institucion, nodo_id=hecho.nodo_origen_id, activo=True)
-        if not prestaciones.exists():
-            return _pendiente(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
-        _resolver(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
-        componentes = DefinicionComponente.objects.filter(prestacion__in=prestaciones, activo=True, fuente=DefinicionComponente.Fuente.ATENCION_DIRECTA)
+        esperados = ComponenteEsperadoHecho.objects.filter(hecho=hecho).select_related("componente")
+        if esperados.exists():
+            componentes = [esperado.componente for esperado in esperados]
+        else:
+            prestaciones = Prestacion.objects.filter(institucion=hecho.institucion, nodo_id=hecho.nodo_origen_id, activo=True)
+            if not prestaciones.exists():
+                return _pendiente(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
+            _resolver(hecho, PendienteCosteo.Motivo.SIN_PRESTACION)
+            componentes = list(DefinicionComponente.objects.filter(prestacion__in=prestaciones, activo=True, fuente=DefinicionComponente.Fuente.ATENCION_DIRECTA))
+            if not componentes:
+                return _pendiente(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
+            ComponenteEsperadoHecho.objects.bulk_create([ComponenteEsperadoHecho(hecho=hecho, componente=componente) for componente in componentes], ignore_conflicts=True)
+            _resolver(hecho, PendienteCosteo.Motivo.SIN_COMPONENTES)
         for componente in componentes:
             valor = ValorComponente.objects.filter(componente=componente, vigente_desde__lte=hecho.ocurrida_en).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=hecho.ocurrida_en)).order_by("-vigente_desde", "-id").first()
             if valor is None:
