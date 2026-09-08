@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { useAuth } from "@/auth/AuthContext";
+import ConcesionesFinancieras from "../finanzas/ConcesionesFinancieras";
 import { Icon } from "@/components/icons";
 import { Avatar, Badge, Button, Card, ConfirmDialog, Field, Input, Modal, Select } from "@/components/ui";
 import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
@@ -19,8 +21,11 @@ const ROLES = [
 ];
 
 export default function Usuarios() {
-  const { institucion } = useInstitucion();
+  const { institucion, puedeVer } = useInstitucion();
+  const { user } = useAuth();
   const [editando, setEditando] = useState(null);
+  const [permisosAbiertos, setPermisosAbiertos] = useState(null);
+  const ambito = `${user?.id}:${institucion?.id}`;
 
   /*
    * Las personas salen de las membresías de ESTA institución.
@@ -70,9 +75,12 @@ export default function Usuarios() {
               {plural(filas.length, "persona con acceso", "personas con acceso")} al sistema
             </div>
           </div>
+          <div className="flex flex-wrap gap-2">
+          {puedeVer("config_institucional") && <Button variant="secondary" onClick={() => setPermisosAbiertos(ambito)}>Permisos financieros</Button>}
           <Button onClick={() => setEditando({})} className="flex items-center gap-2">
             <Icon name="plus" size={15} /> Crear usuario
           </Button>
+          </div>
         </div>
 
         {membresias.error ? (
@@ -132,6 +140,7 @@ export default function Usuarios() {
       </Card>
 
       {editando && <UsuarioModal usuario={editando} onClose={() => setEditando(null)} />}
+      {permisosAbiertos === ambito && puedeVer("config_institucional") && <ConcesionesFinancieras key={ambito} institucion={institucion} usuarioId={user.id} onClose={() => setPermisosAbiertos(null)} />}
     </div>
   );
 }

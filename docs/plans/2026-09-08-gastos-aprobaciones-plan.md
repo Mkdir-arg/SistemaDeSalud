@@ -1,5 +1,10 @@
 # Plan implementable: gastos y aprobaciones
 
+Estado actual: #36 In review; gastos, calendario, versiones y operación de
+concesiones disponibles para revisión. Evidencia final: 154/154 en PostgreSQL
+aislado y recorridos de navegador. Reparto #37 pendiente de decisiones en
+`2026-09-08-reparto-primera-base-propuesta.md`; no hay aceptación ni despliegue.
+
 ## Alcance del incremento
 
 Incorporar gastos institucionales aprobables como fuente financiera aislada.
@@ -358,3 +363,47 @@ No se declara una auditoría general de todos los viewsets: el control común
 podría requerir una revisión separada en otros recursos modificables. No hubo
 migraciones ni cambios de datos reales. Revertir este arreglo reabriría las dos
 brechas; ante un problema de UI, retirar sólo la UI y conservar estos controles.
+
+## Checkpoint: operación de concesiones y validación final del corte
+
+`Administración → Usuarios → Permisos financieros` permite consultar, otorgar,
+editar el alcance y revocar concesiones usando la API existente. La entrada
+requiere `config_institucional`; no depende de que el administrador se haya
+otorgado lectura de gastos. Persona y acción se eligen explícitamente; editar
+alcance no cambia su membresía ni acción. No hay permisos por defecto.
+
+Los selectores recorren todas las páginas y se limitan a la institución actual.
+Consultas y formularios se aíslan por usuario/institución; las mutaciones
+invalidan permisos propios y datos financieros. Se bloquea doble envío y una
+respuesta incierta exige volver a consultar. La revocación tiene confirmación
+de persona/acción/ámbito, sin borrar gastos, costos ni auditorías. Una membresía
+inactiva no recibe ampliaciones por UI; concesiones incompatibles con su rol
+actual advierten que la parte administrativa/sensible no aplica y permiten
+revocación. El servidor vuelve a validar cada acción.
+
+Pruebas de navegador sobre base sintética: alta por área, rechazo de alcance
+vacío, edición Guardia→Cirugía, revocación sólo de `ver_gastos` y nuevo ingreso
+del operador. Conserva registrar gastos, pero no puede consultar el listado;
+no se muestran acciones administrativas ni la opción sensible para su rol.
+Modal móvil de 390 px inspeccionado sin desborde. El comportamiento de una
+concesión incompatible tras cambiar el rol tiene pruebas backend y verificación
+estática de UI; no otro recorrido específico de navegador en este corte.
+
+Validación conjunta final: **154 pruebas correctas, sin omisiones**, sobre
+PostgreSQL 16.15 en contenedores aislados, código actual en bind mount sólo
+lectura, red interna sin puertos y base efímera. Comando de regresión: el mismo
+del checkpoint OpenAPI anterior. Incluye Finanzas (89), auditoría, motor/firma,
+OpenAPI y concurrencia de recuperación/aprobación. Las 32 pruebas focalizadas
+también pasaron en SQLite. Build y auditoría de 235 clases correctos;
+`makemigrations finanzas --check --dry-run`: sin cambios.
+
+Se retiraron únicamente el contenedor y la red PostgreSQL de esta validación.
+No hubo despliegues ni bases reales. No se midió rendimiento con volumen
+representativo ni se realizó una revisión técnica integral del PR acumulativo.
+La validación automatizada/navegador del agente no demuestra aceptación o
+comprensión del responsable. La revisión del arreglo de permisos debe incluir
+el destino de la membresía y la combinación admin A/operador B, no sólo la UI.
+
+#36 pasa a **In review**, no Done. #10 sigue In progress por el alcance mayor
+de catálogo/valores. #37 entra en preparación técnica; no tiene implementación
+de reparto autorizada: ver `2026-09-08-reparto-primera-base-propuesta.md`.

@@ -29,10 +29,10 @@ export function usePermisosFinanzas() {
 
 // Los selectores deben recorrer todas las páginas: una opción fuera de la
 // primera página no puede desaparecer del formulario silenciosamente.
-export async function opcionesFinanzas(recurso, institucion) {
+export async function opcionesFinanzas(recurso, institucion, filtros = {}) {
   const filas = [];
   for (let page = 1; ; page += 1) {
-    const datos = await api.get(`/${recurso}/${query({ institucion, page })}`);
+    const datos = await api.get(`/${recurso}/${query({ ...filtros, institucion, page })}`);
     filas.push(...(Array.isArray(datos) ? datos : datos.results));
     if (!datos.next) return filas;
   }
