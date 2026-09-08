@@ -1,4 +1,6 @@
 """Recupera costos directos pendientes sin entrar en el recorrido clínico."""
+import logging
+
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 
@@ -6,6 +8,9 @@ from apps.auditoria.latidos import latir
 
 from ...models import HechoAtencionCosteable, PendienteCosteo
 from ...services import procesar_hecho_atencion
+
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -33,6 +38,7 @@ class Command(BaseCommand):
                 procesar_hecho_atencion(hecho_id)
                 procesados += 1
             except Exception:  # noqa: BLE001
+                logger.exception("No se pudo reprocesar el hecho de atención costeable %s", hecho_id)
                 PendienteCosteo.objects.get_or_create(
                     hecho_id=hecho_id,
                     componente=None,

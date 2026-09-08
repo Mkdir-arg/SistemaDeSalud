@@ -224,5 +224,17 @@ class PendienteCosteo(models.Model):
     resuelto = models.BooleanField(default=False)
     creado = models.DateTimeField(auto_now_add=True)
     resuelto_en = models.DateTimeField(null=True, blank=True)
+
     class Meta:
-        unique_together = [("hecho", "componente", "motivo")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["hecho", "motivo"],
+                condition=Q(componente__isnull=True),
+                name="pendiente_sin_componente_unico",
+            ),
+            models.UniqueConstraint(
+                fields=["hecho", "componente", "motivo"],
+                condition=Q(componente__isnull=False),
+                name="pendiente_con_componente_unico",
+            ),
+        ]

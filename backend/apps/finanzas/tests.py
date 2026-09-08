@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.test import TestCase
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -115,6 +116,23 @@ class CosteoAtencionTests(TestCase):
                 resuelto=False,
             ).exists()
         )
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(componente=componente, importe=Decimal("100.00"), vigente_desde=hecho.ocurrida_en - timedelta(days=1))
+        procesar_hecho_atencion(hecho.id)
+        self.assertTrue(
+            PendienteCosteo.objects.get(
+                hecho=hecho,
+                motivo=PendienteCosteo.Motivo.ERROR_RECUPERABLE,
+            ).resuelto
+        )
+
+    def test_un_pendiente_sin_componente_no_se_duplica(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        PendienteCosteo.objects.create(hecho=hecho, motivo=PendienteCosteo.Motivo.SIN_PRESTACION)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            PendienteCosteo.objects.create(hecho=hecho, motivo=PendienteCosteo.Motivo.SIN_PRESTACION)
 
     def test_la_concesion_financiera_no_une_areas_de_otras_membresias(self):
         otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")

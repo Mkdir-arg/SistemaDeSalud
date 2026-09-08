@@ -50,6 +50,10 @@ def procesar_hecho_atencion(hecho_id):
     """Calcula sólo componentes directos disponibles; es seguro reintentarlo."""
     with transaction.atomic():
         hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=hecho_id)
+        # Si el reproceso llegó a ejecutar, el fallo técnico anterior dejó de
+        # ser el faltante vigente: puede quedar otro pendiente de datos, pero
+        # no corresponde mostrar ambos como si el error siguiera activo.
+        _resolver(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
         esperados = ComponenteEsperadoHecho.objects.filter(hecho=hecho).select_related("componente")
         if esperados.exists():
             componentes = [esperado.componente for esperado in esperados]
