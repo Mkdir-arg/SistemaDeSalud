@@ -254,6 +254,44 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(fila["estado_costo"], "pendiente")
         self.assertEqual(fila["faltantes"][0]["motivo"], PendienteCosteo.Motivo.SIN_PRESTACION)
 
+    def test_concesion_por_area_no_expone_costos_de_otra_area(self):
+        otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")
+        otro_flujo = Flujo.objects.create(institucion=self.institucion, area=otra_area, titulo="Internación")
+        otra_version = VersionFlujo.objects.create(flujo=otro_flujo, numero=1)
+        otro_nodo = Nodo.objects.create(version=otra_version, tipo=Nodo.Tipo.ATENCION, titulo="Pase de sala")
+        otro_caso = Caso.objects.create(
+            institucion=self.institucion,
+            version=otra_version,
+            ciudadano=self.hecho.ciudadano,
+            area_actual=otra_area,
+        )
+        otro_evento = EventoCaso.objects.create(
+            caso=otro_caso,
+            nodo=otro_nodo,
+            autor=self.usuario,
+            titulo="Atención registrada",
+        )
+        oculto = registrar_atencion_completada(otro_caso, otro_nodo, otro_evento, self.usuario)
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        concesion = ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            permite_sensibles=True,
+        )
+        concesion.areas.add(self.area)
+        self.client.force_authenticate(self.usuario)
+
+        respuesta_lista = self.client.get("/api/hechos-costo/")
+        respuesta_detalle = self.client.get(f"/api/hechos-costo/{oculto.id}/")
+
+        self.assertEqual(respuesta_lista.status_code, 200)
+        self.assertEqual([fila["id"] for fila in respuesta_lista.data["results"]], [self.hecho.id])
+        self.assertEqual(respuesta_detalle.status_code, 404)
+
     def test_concesion_sensible_muestra_el_total_directo_cuando_esta_completo(self):
         prestacion = Prestacion.objects.create(
             institucion=self.institucion,
