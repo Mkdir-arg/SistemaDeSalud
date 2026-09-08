@@ -25,7 +25,11 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
-from apps.finanzas.views import HechoAtencionCosteableViewSet
+from apps.finanzas.views import (
+    ConcesionFinancieraViewSet,
+    HechoAtencionCosteableViewSet,
+    PrestacionViewSet,
+)
 from apps.auditoria.views import AccesoClinicoViewSet
 from apps.red.views import RedViewSet, TrasladoViewSet
 from apps.farmacia.views import (
@@ -112,3 +116,5 @@ router.register("consentimientos", ConsentimientoDatosViewSet)
 
 # Finanzas: separado de la API clínica porque sus permisos son propios.
 router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-costo")
+router.register("concesiones-financieras", ConcesionFinancieraViewSet)
+router.register("prestaciones-costo", PrestacionViewSet)

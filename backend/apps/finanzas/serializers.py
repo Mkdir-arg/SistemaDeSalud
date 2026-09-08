@@ -1,6 +1,70 @@
 from rest_framework import serializers
 
-from .models import HechoAtencionCosteable
+from .models import ConcesionFinanciera, HechoAtencionCosteable, Prestacion
+
+
+class ConcesionFinancieraSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConcesionFinanciera
+        fields = [
+            "id", "membresia", "accion", "todas_las_areas", "permite_sensibles", "areas",
+        ]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        membresia = attrs.get("membresia", getattr(self.instance, "membresia", None))
+        accion = attrs.get("accion", getattr(self.instance, "accion", None))
+        todas_las_areas = attrs.get(
+            "todas_las_areas", getattr(self.instance, "todas_las_areas", False)
+        )
+        permite_sensibles = attrs.get(
+            "permite_sensibles", getattr(self.instance, "permite_sensibles", False)
+        )
+        areas = attrs.get("areas")
+        if areas is None and self.instance is not None:
+            areas = self.instance.areas.all()
+
+        if membresia and areas:
+            fuera = [area.id for area in areas if area.institucion_id != membresia.institucion_id]
+            if fuera:
+                raise serializers.ValidationError(
+                    {"areas": "Todas las áreas deben pertenecer a la institución de la membresía."}
+                )
+        if todas_las_areas and areas:
+            raise serializers.ValidationError(
+                {"areas": "No indiques áreas si la concesión alcanza a toda la institución."}
+            )
+        if not todas_las_areas and not areas:
+            raise serializers.ValidationError(
+                {"areas": "Indicá al menos un área o marcá alcance para toda la institución."}
+            )
+        if membresia and (
+            accion in {
+                ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES,
+                ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            }
+            or permite_sensibles
+        ) and membresia.rol != "admin":
+            raise serializers.ValidationError(
+                {"membresia": "Esta acción requiere una membresía administrativa."}
+            )
+        return attrs
+
+
+class PrestacionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prestacion
+        fields = ["id", "institucion", "nodo", "codigo", "nombre", "activo"]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        institucion = attrs.get("institucion", getattr(self.instance, "institucion", None))
+        nodo = attrs.get("nodo", getattr(self.instance, "nodo", None))
+        if nodo and institucion and nodo.version.flujo.institucion_id != institucion.id:
+            raise serializers.ValidationError(
+                {"nodo": "El nodo debe pertenecer a la institución de la prestación."}
+            )
+        return attrs
 
 
 class HechoAtencionCosteableSerializer(serializers.ModelSerializer):

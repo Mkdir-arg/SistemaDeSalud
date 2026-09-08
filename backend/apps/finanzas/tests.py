@@ -280,3 +280,116 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(response.data["estado_costo"], "disponible")
         self.assertEqual(response.data["faltantes"], [])
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
+
+
+class ConcesionFinancieraApiTests(APITestCase):
+    def setUp(self):
+        self.admin = Usuario.objects.create_user("admin@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.membresia_admin = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        self.operador = Usuario.objects.create_user("operador@cauce.local", "x")
+        self.membresia_operador = Membresia.objects.create(
+            usuario=self.operador,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        self.membresia_operador.areas.add(self.area)
+
+    def test_admin_institucional_otorga_concesion_acotada_a_un_area(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/concesiones-financieras/",
+            {
+                "membresia": self.membresia_operador.id,
+                "accion": ConcesionFinanciera.Accion.VER_COSTOS,
+                "areas": [self.area.id],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            ConcesionFinanciera.objects.filter(
+                membresia=self.membresia_operador,
+                accion=ConcesionFinanciera.Accion.VER_COSTOS,
+                areas=self.area,
+            ).exists()
+        )
+
+    def test_admin_no_puede_otorgar_concesion_en_otra_institucion(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        ajena = Membresia.objects.create(
+            usuario=self.operador,
+            institucion=otra,
+            rol=Membresia.Rol.MEDICO,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/concesiones-financieras/",
+            {
+                "membresia": ajena.id,
+                "accion": ConcesionFinanciera.Accion.VER_COSTOS,
+                "todas_las_areas": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+class CatalogoCostosApiTests(APITestCase):
+    def setUp(self):
+        self.admin = Usuario.objects.create_user("catalogo@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.institucion, area=self.area, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        self.nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        membresia = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES,
+            todas_las_areas=True,
+        )
+
+    def test_configurador_financiero_crea_prestacion_del_nodo_de_su_institucion(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/prestaciones-costo/",
+            {
+                "institucion": self.institucion.id,
+                "nodo": self.nodo.id,
+                "codigo": "CONS",
+                "nombre": "Consulta",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Prestacion.objects.filter(institucion=self.institucion, codigo="CONS").exists())
+
+    def test_membresia_sin_concesion_no_crea_prestaciones(self):
+        sin_concesion = Usuario.objects.create_user("sin-concesion@cauce.local", "x")
+        Membresia.objects.create(
+            usuario=sin_concesion,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        self.client.force_authenticate(sin_concesion)
+        response = self.client.post(
+            "/api/prestaciones-costo/",
+            {
+                "institucion": self.institucion.id,
+                "nodo": self.nodo.id,
+                "codigo": "CONS",
+                "nombre": "Consulta",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
