@@ -116,3 +116,89 @@ El siguiente paso es terminar la revisión de auditoría de lectura financiera y
 regresión transversal del bloque 5, antes de ampliar el reparto por actividad.
 Después queda completar la operación de expectativas versionadas desde UI.
 #36 permanece en In progress; no se considera completo ni aceptado por el usuario.
+
+## Checkpoint: regresión transversal y límite de auditoría
+
+Se agregaron dos regresiones por API en `HechoCostoApiTests`, sin modificar
+comportamiento productivo:
+
+- Una carga delegada, su aprobación, un ajuste y la indicación de carga completa
+  conservan exactamente el listado económico previo del paciente: un hecho con
+  ARS 1250,50 y otro con importe desconocido y faltantes. Tampoco convierten el
+  costo parcial en completo. Se compara después de cada operación.
+- Consultar detalle/listado de costos conserva usuario, paciente e institución
+  en auditoría. Un jefe de área sin concesión financiera puede auditar quién
+  consultó, pero no abrir el costo; la lectura denegada no se anota como exitosa
+  ni se copian importes a ese registro en el recorrido probado.
+
+**Validación ejecutada:**
+
+```powershell
+$env:DATABASE_URL='sqlite:///:memory:'
+$env:DATABASE_SSL='false'
+& C:\Users\Juanito\AppData\Local\Temp\sistemadesalud-finanzas-venv\Scripts\python.exe manage.py test apps.finanzas apps.auditoria.tests apps.casos.tests.MotorTestCase apps.casos.tests.FirmaConfigurableTests --verbosity 0
+```
+
+Desde `backend` del worktree aislado: 132 pruebas, 130 correctas y 2 omitidas
+por requerir PostgreSQL; resultado final tras corregir la clasificación del
+test indicada abajo. Las dos pruebas nuevas también pasaron individualmente.
+No se repitieron navegador/build ni PostgreSQL: sólo cambiaron tests y este
+plan. No hubo migraciones, nuevas dependencias ni cambios de datos reales.
+`git diff --check` sin errores. Esto no cierra la auditoría pendiente ni acredita
+aceptación funcional por parte del usuario.
+
+### Evidencia estática
+
+La primera ejecución conjunta detectó un fallo del test de cobertura clínica:
+interpretaba toda `protege_lectura=True` como dato clínico, incluyendo las
+concesiones financieras. Se corrigió sólo el test con una excepción explícita
+para configuración de concesiones y la inclusión explícita del recurso de
+costos de pacientes. No se quitó protección de lectura ni se excluyó toda la
+app financiera. El reensayo focalizado de cobertura y concesiones pasó 6 pruebas.
+
+`HechoAtencionCosteableViewSet` usa `AuditaLecturaClinica`. En cambio,
+`GastoViewSet` y `ExpectativaGastoViewSet` no registran sus consultas, incluidas
+las acciones de calendario e historial. Autor/fecha de una carga o de su ajuste
+prueban la escritura, no quién leyó esos datos posteriormente.
+
+El registro existente `AccesoClinico` fue diseñado para pacientes. Su lectura
+admite roles de auditoría clínica sin concesiones financieras, y un fallo al
+registrar se informa en log pero no bloquea la consulta clínica. Agregar el mixin
+a gastos no resuelve las acciones personalizadas ni define quién debe poder
+auditar esos accesos; además copiaría filtros de consulta sin una selección
+específica de metadatos financieros. No se aplicó ese cambio mecánicamente.
+
+### Decisión material pendiente, propuesta del agente (no aprobada)
+
+**Recomendación:** registro `AccesoFinanciero` separado para las consultas de
+gastos, catálogo de gastos, expectativas, calendario e historial. Reutilizar
+`ConcesionFinanciera` con una acción administrativa explícita de auditoría,
+manteniendo institución, área y sensibilidad en la misma concesión. No conceder
+esa acción automáticamente a administradores ni auditores clínicos.
+
+- Registrar actor, fecha, recurso/acción, institución, área, sensibilidad,
+  identificador cuando corresponda y cantidad de registros; sin importes,
+  motivos libres ni narrativa clínica. Los filtros admitidos serán una lista
+  cerrada de identificadores/períodos, no la URL arbitraria.
+- Registros inmutables y sin borrado en API/admin, con referencias protegidas.
+  No implementar purgas ni fijar un nuevo plazo de retención en este corte.
+- Para estas consultas financieras, si no se logra persistir su auditoría,
+  responder un error recuperable sin entregar los datos. No aplicar esa regla
+  al motor de atención ni cambiar la auditoría clínica existente.
+- Mantener las escrituras financieras y los costos de pacientes bajo sus
+  contratos actuales; no cambiar cómo se aprueba, costea o atiende.
+
+**Alternativa:** extender el registro clínico con alcance financiero y separar
+sus permisos. Evita una tabla, pero obliga a cambiar esquema, consultas y
+políticas de fallo de una pieza transversal clínica. El registro separado
+agrega una tabla/migración y una acción de permiso, a cambio de aislar ese riesgo.
+
+**Costo operativo de la recomendación:** durante una falla del registro no se
+podrán consultar estos datos financieros. La alternativa de seguir mostrando
+datos y avisar sólo en logs preserva disponibilidad, pero deja accesos sin
+rastro durable. Esta elección requiere confirmación antes de programar.
+
+Tras aprobar la decisión: implementar registro/permiso, integrar las lecturas
+incluidas y cubrir acceso cruzado, sensibles, paginación, acciones personalizadas,
+fallo de persistencia e independencia clínica. Reconsiderar la separación sólo
+si el sistema adopta una auditoría general con permisos equivalentes verificados.

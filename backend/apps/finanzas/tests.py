@@ -614,6 +614,121 @@ class HechoCostoApiTests(APITestCase):
         response = self.client.get("/api/hechos-costo/")
         self.assertEqual(response.status_code, 403)
 
+    def test_lectura_de_costos_deja_rastro_sin_copiar_importes_a_auditoria(self):
+        hecho = self.crear_hecho_costeado()
+        membresia = Membresia.objects.create(
+            usuario=self.usuario, institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia, accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            todas_las_areas=True,
+        )
+        self.client.force_authenticate(self.usuario)
+        self.assertEqual(self.client.get(f"/api/hechos-costo/{hecho.id}/").status_code, 200)
+        self.assertEqual(self.client.get("/api/hechos-costo/", {
+            "ciudadano": hecho.ciudadano_id,
+        }).status_code, 200)
+
+        auditor = Usuario.objects.create_user("auditor-transversal@cauce.local", "x")
+        Membresia.objects.create(
+            usuario=auditor, institucion=self.institucion, rol=Membresia.Rol.JEFE_AREA,
+        )
+        self.client.force_authenticate(auditor)
+        # Poder auditar quién consultó no habilita a leer el costo consultado.
+        self.assertEqual(self.client.get(f"/api/hechos-costo/{hecho.id}/").status_code, 403)
+        accesos = self.client.get("/api/accesos-clinicos/", {
+            "recurso": "hechoatencioncosteable", "ciudadano": hecho.ciudadano_id,
+        })
+        self.assertEqual(accesos.status_code, 200)
+        self.assertEqual(accesos.data["count"], 2)
+        por_tipo = {fila["tipo"]: fila for fila in accesos.data["results"]}
+        self.assertEqual(por_tipo["detalle"]["objeto_id"], str(hecho.id))
+        self.assertEqual(por_tipo["listado"]["resultados"], 2)
+        for acceso in accesos.data["results"]:
+            self.assertEqual(acceso["usuario"], self.usuario.id)
+            self.assertEqual(acceso["ciudadano"], hecho.ciudadano_id)
+            self.assertEqual(acceso["institucion"], self.institucion.id)
+            self.assertNotIn("1250.50", str(acceso))
+            self.assertNotIn("total_conocido", acceso)
+
+    def test_gastos_aprobacion_ajustes_y_calendario_no_alteran_costos_del_paciente(self):
+        costeado = self.crear_hecho_costeado()
+        membresia = Membresia.objects.create(
+            usuario=self.usuario, institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        for accion in (
+            ConcesionFinanciera.Accion.VER_COSTOS,
+            ConcesionFinanciera.Accion.VER_GASTOS,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+            ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+        ):
+            ConcesionFinanciera.objects.create(
+                membresia=membresia, accion=accion, todas_las_areas=True,
+            )
+        self.client.force_authenticate(self.usuario)
+        url = f"/api/hechos-costo/?ciudadano={self.hecho.ciudadano_id}"
+        antes = self.client.get(url)
+        self.assertEqual(antes.status_code, 200)
+        por_id = {fila["id"]: fila for fila in antes.data["results"]}
+        self.assertEqual(antes.data["count"], 2)
+        self.assertEqual(por_id[costeado.id]["total_conocido"], "1250.50")
+        self.assertIsNone(por_id[self.hecho.id]["total_conocido"])
+        self.assertTrue(por_id[self.hecho.id]["faltantes"])
+        self.assertFalse(por_id[costeado.id]["total_es_completo"])
+
+        delegado = Usuario.objects.create_user("carga-transversal@cauce.local", "x")
+        membresia_area = Membresia.objects.create(
+            usuario=delegado, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
+        )
+        concesion = ConcesionFinanciera.objects.create(
+            membresia=membresia_area, accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        )
+        concesion.areas.add(self.area)
+        concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion, codigo="LUZ", nombre="Electricidad",
+        )
+        periodo = costeado.ocurrida_en.date().replace(day=1).isoformat()
+        self.client.force_authenticate(delegado)
+        alta = self.client.post("/api/gastos/", {
+            "institucion": self.institucion.id, "area": self.area.id,
+            "concepto": concepto.id, "importe": "8000.00", "periodo_economico": periodo,
+        }, format="json")
+        self.assertEqual(alta.status_code, 201)
+        self.assertEqual(alta.data["estado"], "pendiente_aprobacion")
+        self.client.force_authenticate(self.usuario)
+        self.assertEqual(self.client.get(url).data, antes.data)
+
+        aprobacion = self.client.post(f"/api/gastos/{alta.data['id']}/aprobar/", {}, format="json")
+        self.assertEqual(aprobacion.status_code, 200)
+        self.assertEqual(aprobacion.data["estado"], "aprobado")
+        self.assertEqual(self.client.get(url).data, antes.data)
+
+        ajuste = self.client.post("/api/ajustes-gasto/", {
+            "gasto": alta.data["id"], "importe": "-250.00", "motivo": "Descuento",
+        }, format="json")
+        self.assertEqual(ajuste.status_code, 201)
+        self.assertEqual(self.client.get(url).data, antes.data)
+
+        expectativa = self.client.post("/api/expectativas-gasto/", {
+            "institucion": self.institucion.id, "area": self.area.id,
+            "concepto": concepto.id, "vigente_desde": periodo,
+        }, format="json")
+        self.assertEqual(expectativa.status_code, 201)
+        indicacion = self.client.post(f"/api/expectativas-gasto/{expectativa.data['id']}/indicar/", {
+            "periodo_economico": periodo, "estado": "carga_completa",
+        }, format="json")
+        self.assertEqual(indicacion.status_code, 201)
+        calendario = self.client.get("/api/expectativas-gasto/calendario/", {
+            "institucion": self.institucion.id, "periodo_economico": periodo,
+        })
+        self.assertEqual(calendario.status_code, 200)
+        self.assertEqual(calendario.data["results"][0]["estado_carga"], "carga_completa")
+        self.assertEqual(calendario.data["results"][0]["gastos_aprobados"], 1)
+        self.assertEqual(self.client.get(url).data, antes.data)
+
     def test_concesion_no_sensible_ve_un_costo_no_sensible_de_su_area(self):
         hecho = self.crear_hecho_costeado()
         usuario = Usuario.objects.create_user("finanzas-area@cauce.local", "x")
