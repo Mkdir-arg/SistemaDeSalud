@@ -227,6 +227,7 @@ class PendienteCosteo(models.Model):
         SIN_COMPONENTES = "sin_componentes", "Sin componentes configurados"
         SIN_VALOR = "sin_valor", "Sin valor vigente"
         ERROR_RECUPERABLE = "error_recuperable", "Error recuperable"
+        SNAPSHOT_INCOMPLETO = "snapshot_incompleto", "No se pudo congelar el catálogo aplicable"
     hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="pendientes")
     componente = models.ForeignKey(DefinicionComponente, on_delete=models.PROTECT, null=True, blank=True, related_name="pendientes")
     motivo = models.CharField(max_length=40, choices=Motivo.choices)

@@ -39,6 +39,11 @@ def registrar_atencion_completada(caso, nodo, evento, autor=None):
                 _congelar_componentes(hecho)
         except Exception:  # noqa: BLE001 - el worker detecta el snapshot incompleto.
             logger.exception("No se pudieron congelar los componentes del hecho %s", hecho.id)
+            try:
+                with transaction.atomic():
+                    _marcar_snapshot_incompleto(hecho)
+            except Exception:  # noqa: BLE001 - el hecho sigue durable aunque la base falle por completo.
+                logger.exception("No se pudo marcar el snapshot incompleto del hecho %s", hecho.id)
     return hecho
 
 
@@ -52,6 +57,13 @@ def _pendiente(hecho, motivo, componente=None):
 
 def _resolver(hecho, motivo, componente=None):
     PendienteCosteo.objects.filter(hecho=hecho, componente=componente, motivo=motivo, resuelto=False).update(resuelto=True, resuelto_en=timezone.now())
+
+
+def _marcar_snapshot_incompleto(hecho):
+    """Evita reutilizar en silencio un catálogo modificado después del hecho."""
+    _pendiente(hecho, PendienteCosteo.Motivo.SNAPSHOT_INCOMPLETO)
+    HechoAtencionCosteable.objects.filter(pk=hecho.pk).update(componentes_congelados=True)
+    hecho.componentes_congelados = True
 
 
 def _congelar_componentes(hecho):

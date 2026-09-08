@@ -75,8 +75,14 @@ class CosteoAtencionTests(TestCase):
             hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
 
         hecho.refresh_from_db()
-        self.assertFalse(hecho.componentes_congelados)
-        self.assertFalse(PendienteCosteo.objects.filter(hecho=hecho).exists())
+        self.assertTrue(hecho.componentes_congelados)
+        self.assertTrue(
+            PendienteCosteo.objects.filter(
+                hecho=hecho,
+                motivo="snapshot_incompleto",
+                resuelto=False,
+            ).exists()
+        )
 
     def test_valor_vigente_genera_una_sola_imputacion_al_reintentar(self):
         prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
