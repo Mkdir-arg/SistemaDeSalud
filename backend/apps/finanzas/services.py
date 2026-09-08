@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Membresia
 
-from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import concesiones_financieras_en_alcance, tiene_concesion_financiera
 
 
@@ -368,3 +368,25 @@ def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por):
         )
         ajuste.save()
         return ajuste
+
+
+def indicar_carga_esperada(expectativa_id, periodo_economico, estado, registrado_por):
+    """Agrega una indicación mensual, conservando las anteriores como historia."""
+    with transaction.atomic():
+        expectativa = ExpectativaGasto.objects.select_for_update().get(pk=expectativa_id)
+        if not tiene_concesion_financiera(
+            registrado_por,
+            ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            expectativa.institucion_id,
+            expectativa.area_id,
+            sensible=expectativa.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para indicar la carga esperada.")
+        indicacion = IndicacionCargaGasto(
+            expectativa=expectativa,
+            periodo_economico=periodo_economico,
+            estado=estado,
+            registrado_por=registrado_por,
+        )
+        indicacion.save()
+        return indicacion

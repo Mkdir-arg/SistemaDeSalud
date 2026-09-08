@@ -22,7 +22,7 @@ from apps.registros.models import Ciudadano
 
 from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
-from .services import aprobar_gasto, corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_gasto
+from .services import aprobar_gasto, corregir_snapshot_componentes, indicar_carga_esperada, intentar_costeo_directo, procesar_hecho_atencion, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_gasto
 
 
 class CosteoAtencionTests(TestCase):
@@ -1577,6 +1577,34 @@ class IndicacionCargaGastoTests(TestCase):
             registrado_por=self.usuario,
         )
         self.assertEqual(nueva.estado, IndicacionCargaGasto.Estado.NO_CORRESPONDE)
+
+    def test_servicio_exige_concesion_administrativa_del_ambito(self):
+        admin = Usuario.objects.create_user("admin-indicaciones@cauce.local", "x")
+        membresia = Membresia.objects.create(
+            usuario=admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        concesion = ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+        )
+        concesion.areas.add(self.area)
+
+        indicacion = indicar_carga_esperada(
+            self.expectativa.id,
+            date(2026, 8, 1),
+            IndicacionCargaGasto.Estado.CARGA_COMPLETA,
+            admin,
+        )
+        self.assertEqual(indicacion.registrado_por, admin)
+        with self.assertRaises(PermissionDenied):
+            indicar_carga_esperada(
+                self.expectativa.id,
+                date(2026, 9, 1),
+                IndicacionCargaGasto.Estado.NO_CORRESPONDE,
+                self.usuario,
+            )
 
 
 class GastoTests(TestCase):
