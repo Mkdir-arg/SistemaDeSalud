@@ -553,6 +553,50 @@ class HechoCostoApiTests(APITestCase):
         )
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
 
+    def test_componentes_congelados_sin_calcular_no_marcan_el_directo_completo(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.hecho.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("1250.50"),
+            vigente_desde=self.hecho.ocurrida_en - timedelta(days=1),
+        )
+        evento = EventoCaso.objects.create(
+            caso=self.hecho.caso,
+            nodo=self.hecho.nodo,
+            autor=self.usuario,
+            titulo="Atención registrada",
+        )
+        hecho = registrar_atencion_completada(self.hecho.caso, self.hecho.nodo, evento, self.usuario)
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.client.force_authenticate(self.usuario)
+
+        response = self.client.get(f"/api/hechos-costo/{hecho.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["total_conocido"])
+        self.assertFalse(response.data["total_directo_es_completo"])
+        self.assertEqual(response.data["estado_costo"], "pendiente")
+
     def test_correccion_de_snapshot_requiere_accion_explicita_y_deja_traza(self):
         evento = EventoCaso.objects.create(
             caso=self.hecho.caso,

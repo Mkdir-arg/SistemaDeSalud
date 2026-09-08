@@ -156,7 +156,17 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         return str(total)
 
     def get_total_directo_es_completo(self, obj):
-        return bool(obj.componentes_esperados.all()) and not self._pendientes(obj)
+        componentes_esperados = {
+            esperado.componente_id for esperado in obj.componentes_esperados.all()
+        }
+        componentes_imputados = {
+            imputacion.componente_id for imputacion in obj.imputaciones.all()
+        }
+        return (
+            bool(componentes_esperados)
+            and componentes_esperados <= componentes_imputados
+            and not self._pendientes(obj)
+        )
 
     @staticmethod
     def get_total_es_completo(_obj):
