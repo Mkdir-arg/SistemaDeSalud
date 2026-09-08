@@ -54,7 +54,6 @@ services:
                python manage.py correr_tiempos || true;
                python manage.py recordar_turnos || true;
                python manage.py alertar_saturacion || true;
-               python manage.py procesar_costos --limite ${COSTOS_LOTE:-100} || true;
                sleep ${INTERVALO_TIEMPOS:-120};
              done"
     environment:
@@ -63,6 +62,26 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       # No siembra: de eso se ocupa `backend`.
+      SEED_DEMO: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Recuperación económica separada del reloj clínico: un lote de costos lento
+  # no puede retrasar reactivaciones, recordatorios ni alertas del paciente.
+  # La cadencia es operativa y configurable; no expresa un SLA de costeo.
+  costos:
+    build: ./backend
+    command: >
+      sh -c "while true; do
+               python manage.py procesar_costos --limite ${COSTOS_LOTE:-100} || true;
+               sleep ${INTERVALO_COSTOS:-120};
+             done"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cauce}:${POSTGRES_PASSWORD:-cauce}@db:5432/${POSTGRES_DB:-cauce}
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       SEED_DEMO: "0"
     depends_on:
       db:
