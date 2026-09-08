@@ -1,5 +1,6 @@
 from django.db.models import Q
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -19,12 +20,13 @@ from .permisos import concesiones_financieras_de, tiene_concesion_financiera
 from .serializers import (
     AjusteCostoSerializer,
     ConcesionFinancieraSerializer,
+    CorreccionSnapshotCosteoSerializer,
     DefinicionComponenteSerializer,
     HechoAtencionCosteableSerializer,
     PrestacionSerializer,
     ValorComponenteSerializer,
 )
-from .services import registrar_ajuste_costo
+from .services import corregir_snapshot_componentes, registrar_ajuste_costo
 
 
 class PuedeVerCostosPaciente(BasePermission):
@@ -289,10 +291,30 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
     permission_classes = [IsAuthenticated, PuedeVerCostosPaciente]
     institucion_path = "institucion"
     ciudadano_path = "ciudadano"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head", "options", "post"]
     filter_fields = ("institucion", "ciudadano", "caso", "area")
     ordering = ("-ocurrida_en", "-id")
     ordering_fields = ("id", "ocurrida_en")
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="corregir-snapshot",
+        permission_classes=[IsAuthenticated, PuedeCorregirCosto],
+    )
+    def corregir_snapshot(self, request, pk=None):
+        """Reconstruye sólo un snapshot fallido, con autorización y motivo."""
+        serializer = CorreccionSnapshotCosteoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        correccion = corregir_snapshot_componentes(
+            pk,
+            serializer.validated_data["motivo"],
+            request.user,
+        )
+        return Response(
+            CorreccionSnapshotCosteoSerializer(correccion).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     def get_queryset(self):
         qs = super().get_queryset()

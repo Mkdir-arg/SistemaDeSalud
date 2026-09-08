@@ -211,6 +211,42 @@ class AjusteCosto(models.Model):
         raise ValidationError("Un ajuste de costo no se elimina.")
 
 
+class CorreccionSnapshotCosteo(models.Model):
+    """Autoriza y explica aplicar catálogo actual a un snapshot fallido."""
+
+    hecho = models.ForeignKey(
+        HechoAtencionCosteable,
+        on_delete=models.PROTECT,
+        related_name="correcciones_snapshot",
+    )
+    motivo = models.CharField(max_length=255)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="correcciones_snapshot_registradas",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["registrado", "id"]
+
+    def clean(self):
+        super().clean()
+        if not self.motivo.strip():
+            raise ValidationError("Una corrección de snapshot requiere un motivo.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una corrección de snapshot no se edita; se registra otra corrección.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Una corrección de snapshot no se elimina.")
+
+
 class ComponenteEsperadoHecho(models.Model):
     """Congela los componentes que podían costear una atención al resolverla."""
     hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="componentes_esperados")

@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
 
 
@@ -148,6 +148,37 @@ def registrar_error_recuperable(hecho_id):
     with transaction.atomic():
         hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=hecho_id)
         return _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
+
+
+def corregir_snapshot_componentes(hecho_id, motivo, registrado_por):
+    """Aplica catálogo actual sólo después de una decisión financiera trazable."""
+    with transaction.atomic():
+        hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=hecho_id)
+        if not tiene_concesion_financiera(
+            registrado_por,
+            ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            hecho.institucion_id,
+            hecho.area_origen_id,
+            sensible=True,
+        ):
+            raise PermissionDenied("No tenés autorización para corregir este snapshot de costos.")
+        pendiente = PendienteCosteo.objects.filter(
+            hecho=hecho,
+            motivo=PendienteCosteo.Motivo.SNAPSHOT_INCOMPLETO,
+            resuelto=False,
+        )
+        if not pendiente.exists():
+            raise ValidationError("El hecho no tiene un snapshot de componentes pendiente de corrección.")
+        correccion = CorreccionSnapshotCosteo(
+            hecho=hecho,
+            motivo=motivo,
+            registrado_por=registrado_por,
+        )
+        correccion.save()
+        _congelar_componentes(hecho)
+        _resolver(hecho, PendienteCosteo.Motivo.SNAPSHOT_INCOMPLETO)
+    intentar_costeo_directo(hecho.id)
+    return correccion
 
 
 def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por):

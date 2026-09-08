@@ -17,9 +17,9 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
-from .services import intentar_costeo_directo, procesar_hecho_atencion, registrar_ajuste_costo, registrar_atencion_completada
+from .services import corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, registrar_ajuste_costo, registrar_atencion_completada
 
 
 class CosteoAtencionTests(TestCase):
@@ -82,6 +82,49 @@ class CosteoAtencionTests(TestCase):
                 motivo="snapshot_incompleto",
                 resuelto=False,
             ).exists()
+        )
+
+    def test_una_correccion_explicita_recongela_el_snapshot_y_deja_traza(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        with patch("apps.finanzas.services._congelar_componentes", side_effect=RuntimeError("catálogo no disponible")):
+            hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("100.00"),
+            vigente_desde=hecho.ocurrida_en - timedelta(days=1),
+        )
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+
+        correccion = corregir_snapshot_componentes(
+            hecho.id,
+            "Se verificó el catálogo aplicable al hecho.",
+            self.usuario,
+        )
+
+        self.assertEqual(CorreccionSnapshotCosteo.objects.get(pk=correccion.id).hecho, hecho)
+        self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
+        self.assertTrue(
+            PendienteCosteo.objects.get(
+                hecho=hecho,
+                motivo=PendienteCosteo.Motivo.SNAPSHOT_INCOMPLETO,
+            ).resuelto
         )
 
     def test_valor_vigente_genera_una_sola_imputacion_al_reintentar(self):
@@ -439,6 +482,92 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(response.data["estado_costo"], "disponible")
         self.assertEqual(response.data["faltantes"], [])
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
+
+    def test_correccion_de_snapshot_requiere_accion_explicita_y_deja_traza(self):
+        evento = EventoCaso.objects.create(
+            caso=self.hecho.caso,
+            nodo=self.hecho.nodo,
+            autor=self.usuario,
+            titulo="Atención con catálogo no disponible",
+        )
+        with patch(
+            "apps.finanzas.services._congelar_componentes",
+            side_effect=RuntimeError("catálogo no disponible"),
+        ):
+            hecho = registrar_atencion_completada(
+                self.hecho.caso, self.hecho.nodo, evento, self.usuario
+            )
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.hecho.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("1250.00"),
+            vigente_desde=hecho.ocurrida_en - timedelta(days=1),
+        )
+        membresia = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.client.force_authenticate(self.usuario)
+
+        response = self.client.post(
+            f"/api/hechos-costo/{hecho.id}/corregir-snapshot/",
+            {"motivo": "Se recuperó el catálogo aplicable"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["hecho"], hecho.id)
+        self.assertTrue(
+            CorreccionSnapshotCosteo.objects.filter(
+                hecho=hecho,
+                motivo="Se recuperó el catálogo aplicable",
+            ).exists()
+        )
+        self.assertTrue(
+            ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists()
+        )
+
+    def test_sin_concesion_no_puede_corregir_un_snapshot_pendiente(self):
+        evento = EventoCaso.objects.create(
+            caso=self.hecho.caso,
+            nodo=self.hecho.nodo,
+            autor=self.usuario,
+            titulo="Atención con catálogo no disponible",
+        )
+        with patch(
+            "apps.finanzas.services._congelar_componentes",
+            side_effect=RuntimeError("catálogo no disponible"),
+        ):
+            hecho = registrar_atencion_completada(
+                self.hecho.caso, self.hecho.nodo, evento, self.usuario
+            )
+        self.client.force_authenticate(self.usuario)
+
+        response = self.client.post(
+            f"/api/hechos-costo/{hecho.id}/corregir-snapshot/",
+            {"motivo": "No autorizado"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(CorreccionSnapshotCosteo.objects.filter(hecho=hecho).exists())
 
 
 class ConcesionFinancieraApiTests(APITestCase):
