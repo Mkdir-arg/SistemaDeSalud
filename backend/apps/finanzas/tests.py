@@ -4,6 +4,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
@@ -103,6 +104,10 @@ class CosteoAtencionTests(TestCase):
         call_command("procesar_costos", "--limite", "1", stdout=salida)
         self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
         self.assertIn("1 hecho(s) procesado(s)", salida.getvalue())
+
+    def test_el_comando_rechaza_un_lote_no_positivo(self):
+        with self.assertRaisesMessage(CommandError, "--limite debe ser mayor que cero"):
+            call_command("procesar_costos", "--limite", "0")
 
     def test_un_error_en_el_intento_directo_no_borra_el_hecho_y_queda_pendiente(self):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")

@@ -1,7 +1,7 @@
 """Recupera costos directos pendientes sin entrar en el recorrido clínico."""
 import logging
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 
 from apps.auditoria.latidos import latir
@@ -22,6 +22,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opciones):
         limite = opciones["limite"]
+        if limite <= 0:
+            raise CommandError("--limite debe ser mayor que cero")
         seco = opciones["seco"]
         ids = list(
             HechoAtencionCosteable.objects.filter(

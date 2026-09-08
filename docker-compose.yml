@@ -54,6 +54,7 @@ services:
                python manage.py correr_tiempos || true;
                python manage.py recordar_turnos || true;
                python manage.py alertar_saturacion || true;
+               python manage.py procesar_costos --limite ${COSTOS_LOTE:-100} || true;
                sleep ${INTERVALO_TIEMPOS:-120};
              done"
     environment:
