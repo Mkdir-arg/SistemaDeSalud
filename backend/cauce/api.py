@@ -27,6 +27,7 @@ from apps.flujos.views import (
 from apps.formularios.views import CampoViewSet, FormularioViewSet
 from apps.finanzas.api_calendario import ExpectativaGastoViewSet
 from apps.finanzas.api_auditoria import AccesoFinancieroViewSet
+from apps.finanzas.api_repartos import CoberturaActividadViewSet, ReglaRepartoViewSet, RepartoGastoViewSet
 from apps.finanzas.views import (
     AjusteCostoViewSet,
     AjusteGastoViewSet,
@@ -134,3 +135,6 @@ router.register("ajustes-costo", AjusteCostoViewSet, basename="ajuste-costo")
 router.register("gastos", GastoViewSet, basename="gasto")
 router.register("ajustes-gasto", AjusteGastoViewSet, basename="ajuste-gasto")
 router.register("expectativas-gasto", ExpectativaGastoViewSet, basename="expectativa-gasto")
+router.register("coberturas-actividad", CoberturaActividadViewSet, basename="cobertura-actividad")
+router.register("reglas-reparto", ReglaRepartoViewSet, basename="regla-reparto")
+router.register("repartos-gasto", RepartoGastoViewSet, basename="reparto-gasto")

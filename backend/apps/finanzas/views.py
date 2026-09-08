@@ -1,5 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, NotFound, PermissionDenied, ValidationError
@@ -12,6 +12,7 @@ from apps.common import BaseModelViewSet, tiene_capacidad
 from .models import (
     AjusteCosto,
     AjusteGasto,
+    AtribucionReparto,
     ConceptoGasto,
     ConcesionFinanciera,
     DefinicionComponente,
@@ -70,6 +71,10 @@ class PuedeVerCostosPaciente(BasePermission):
                 obj.area_origen_id,
             )
             and not obj.componentes_esperados.filter(sensible=True).exists()
+            and not obj.atribuciones_reparto.filter(
+                reparto__gasto__sensible=True,
+                reparto__reemplazado_por__isnull=True,
+            ).exists()
         )
 
 
@@ -587,6 +592,12 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
             "pendientes__componente",
             "imputaciones__componente",
             "imputaciones__ajustes",
+            Prefetch(
+                "atribuciones_reparto",
+                queryset=AtribucionReparto.objects.select_related(
+                    "reparto__gasto", "reparto__reemplazado_por",
+                ),
+            ),
         )
     )
     serializer_class = HechoAtencionCosteableSerializer
@@ -639,6 +650,10 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
             scope = Q(institucion_id=institucion_id)
             if not permite_sensibles:
                 scope &= ~Q(componentes_esperados__sensible=True)
+                scope &= ~Q(
+                    atribuciones_reparto__reparto__gasto__sensible=True,
+                    atribuciones_reparto__reparto__reemplazado_por__isnull=True,
+                )
             alcance |= scope
         for institucion_id, area_id, permite_sensibles in concesiones.filter(todas_las_areas=False).values_list(
             "membresia__institucion_id", "areas__id", "permite_sensibles"
@@ -647,5 +662,9 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
                 scope = Q(institucion_id=institucion_id, area_origen_id=area_id)
                 if not permite_sensibles:
                     scope &= ~Q(componentes_esperados__sensible=True)
+                    scope &= ~Q(
+                        atribuciones_reparto__reparto__gasto__sensible=True,
+                        atribuciones_reparto__reparto__reemplazado_por__isnull=True,
+                    )
                 alcance |= scope
         return qs.filter(alcance).distinct()

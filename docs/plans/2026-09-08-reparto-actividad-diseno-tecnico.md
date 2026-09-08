@@ -114,14 +114,17 @@ reparto inter-área, bases de consumo/ocupación, pagos, cobros ni reportería.
 
 ## Próximo paso
 
-Implementado en el primer checkpoint: modelos inmutables, migración `0018`,
-servicios de cobertura/regla/cálculo idempotente y `procesar_repartos`. La
-primera pasada sigue sin API ni UI: no se expone una configuración parcial a
-usuarios hospitalarios. El siguiente bloque debe incorporar API de
-configuración y explicación, conservando los permisos y contratos anteriores.
+Implementado: modelos inmutables, migración `0018`, servicios de
+cobertura/regla/cálculo idempotente, `procesar_repartos` y API mínima. Las rutas
+de cobertura y reglas sólo admiten consulta/alta bajo `configurar_repartos`;
+los resultados financieros explican versiones y pendientes sin exponer
+pacientes. El detalle de costo clínico muestra por separado la atribución
+vigente y exige lectura sensible cuando el gasto de origen lo es. No se altera
+el total directo ni se concede lectura por configurar.
 
-Validación local del checkpoint, sólo con SQLite efímero: cinco pruebas de
-reparto correctas (centavos, reversa, inactividad, pendientes y permiso),
+Validación local, sólo con SQLite efímero: cinco pruebas de dominio y cuatro
+pruebas API correctas (configuración, explicación, inmutabilidad, alcance por
+área y sensibilidad),
 `manage.py check` correcto y `makemigrations finanzas --check --dry-run` sin
 cambios. No se ejecutó PostgreSQL, navegador, medición de volumen, despliegue
 ni migración sobre una base real.

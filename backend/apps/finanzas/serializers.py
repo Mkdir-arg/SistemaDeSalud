@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import TypedDict
 
 from rest_framework import serializers
@@ -236,6 +237,8 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     imputaciones = serializers.SerializerMethodField()
     limite = serializers.SerializerMethodField()
     moneda = serializers.SerializerMethodField()
+    total_compartido_conocido = serializers.SerializerMethodField()
+    repartos_compartidos = serializers.SerializerMethodField()
     actualizado_en = serializers.DateTimeField(source="ultimo_costeo_en", read_only=True)
 
     class Meta:
@@ -244,9 +247,41 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
             "id", "institucion", "caso", "ciudadano", "area", "ocurrida_en",
             "actualizado_en", "total_conocido", "total_directo_es_completo", "total_es_completo",
             "estado_costo", "faltantes", "alcance", "moneda",
-            "imputaciones", "limite",
+            "imputaciones", "limite", "total_compartido_conocido", "repartos_compartidos",
         ]
         read_only_fields = fields
+
+    @staticmethod
+    def _atribuciones_vigentes(obj):
+        vigentes = []
+        for atribucion in obj.atribuciones_reparto.all():
+            try:
+                atribucion.reparto.reemplazado_por
+            except ObjectDoesNotExist:
+                vigentes.append(atribucion)
+        return vigentes
+
+    @classmethod
+    def get_total_compartido_conocido(cls, obj) -> str:
+        centavos = sum(a.importe_centavos for a in cls._atribuciones_vigentes(obj))
+        return str((Decimal(centavos) / Decimal("100")).quantize(Decimal("0.01")))
+
+    @classmethod
+    def get_repartos_compartidos(cls, obj) -> list[dict]:
+        return [
+            {
+                "reparto": atribucion.reparto_id,
+                "version": atribucion.reparto.version,
+                "gasto": atribucion.reparto.gasto_id,
+                "concepto": atribucion.reparto.gasto.concepto_nombre,
+                "periodo_economico": atribucion.reparto.gasto.periodo_economico,
+                "importe": str(
+                    (Decimal(atribucion.importe_centavos) / Decimal("100")).quantize(Decimal("0.01"))
+                ),
+                "moneda": "ARS",
+            }
+            for atribucion in cls._atribuciones_vigentes(obj)
+        ]
 
     @staticmethod
     def _pendientes(obj):
