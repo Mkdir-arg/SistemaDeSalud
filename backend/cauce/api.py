@@ -27,6 +27,7 @@ from apps.flujos.views import (
 from apps.formularios.views import CampoViewSet, FormularioViewSet
 from apps.finanzas.views import (
     AjusteCostoViewSet,
+    ConceptoGastoViewSet,
     ConcesionFinancieraViewSet,
     DefinicionComponenteViewSet,
     HechoAtencionCosteableViewSet,
@@ -122,5 +123,6 @@ router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-c
 router.register("concesiones-financieras", ConcesionFinancieraViewSet)
 router.register("prestaciones-costo", PrestacionViewSet)
 router.register("componentes-costo", DefinicionComponenteViewSet)
+router.register("conceptos-gasto", ConceptoGastoViewSet)
 router.register("valores-componentes", ValorComponenteViewSet)
 router.register("ajustes-costo", AjusteCostoViewSet, basename="ajuste-costo")

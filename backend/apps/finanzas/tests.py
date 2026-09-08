@@ -1697,3 +1697,114 @@ class GastoServiciosTests(TestCase):
 
         with self.assertRaises(PermissionDenied):
             self.registrar(self.delegado, concepto=concepto_desactualizado)
+
+
+class ConceptoGastoApiTests(APITestCase):
+    def setUp(self):
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.admin = Usuario.objects.create_user("config-gastos@cauce.local", "x")
+        self.delegado = Usuario.objects.create_user("carga-gastos@cauce.local", "x")
+        self.admin_restringido = Usuario.objects.create_user("sin-sensible-gastos@cauce.local", "x")
+        membresia_admin = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia_admin,
+            accion=ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        membresia_delegado = Membresia.objects.create(
+            usuario=self.delegado,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        concesion_delegado = ConcesionFinanciera.objects.create(
+            membresia=membresia_delegado,
+            accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        )
+        concesion_delegado.areas.add(self.area)
+        membresia_restringido = Membresia.objects.create(
+            usuario=self.admin_restringido,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia_restringido,
+            accion=ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            todas_las_areas=True,
+        )
+
+    def test_admin_configura_concepto_y_solo_altera_estado_o_sensibilidad(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/conceptos-gasto/",
+            {
+                "institucion": self.institucion.id,
+                "codigo": "ELECTRICIDAD",
+                "nombre": "Electricidad",
+                "sensible": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        concepto = ConceptoGasto.objects.get(pk=response.data["id"])
+        self.assertEqual(concepto.registrado_por, self.admin)
+        self.assertTrue(concepto.sensible)
+        respuesta_invalida = self.client.patch(
+            f"/api/conceptos-gasto/{concepto.id}/",
+            {"nombre": "Servicio eléctrico"},
+            format="json",
+        )
+        self.assertEqual(respuesta_invalida.status_code, 400)
+
+    def test_delegado_solo_ve_conceptos_no_sensibles_y_no_configura(self):
+        visible = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="LIMPIEZA",
+            nombre="Limpieza",
+        )
+        sensible = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="SUELDOS",
+            nombre="Sueldos",
+            sensible=True,
+        )
+        self.client.force_authenticate(self.delegado)
+
+        listado = self.client.get("/api/conceptos-gasto/")
+        self.assertEqual(listado.status_code, 200)
+        self.assertEqual([fila["id"] for fila in listado.data["results"]], [visible.id])
+        detalle_sensible = self.client.get(f"/api/conceptos-gasto/{sensible.id}/")
+        self.assertEqual(detalle_sensible.status_code, 404)
+        alta = self.client.post(
+            "/api/conceptos-gasto/",
+            {
+                "institucion": self.institucion.id,
+                "codigo": "AGUA",
+                "nombre": "Agua",
+            },
+            format="json",
+        )
+        self.assertEqual(alta.status_code, 403)
+
+    def test_configurador_sin_sensibles_no_crea_concepto_sensible(self):
+        self.client.force_authenticate(self.admin_restringido)
+
+        response = self.client.post(
+            "/api/conceptos-gasto/",
+            {
+                "institucion": self.institucion.id,
+                "codigo": "SUELDOS",
+                "nombre": "Sueldos",
+                "sensible": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(ConceptoGasto.objects.filter(codigo="SUELDOS").exists())

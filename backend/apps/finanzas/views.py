@@ -11,6 +11,7 @@ from apps.common import BaseModelViewSet
 
 from .models import (
     AjusteCosto,
+    ConceptoGasto,
     ConcesionFinanciera,
     DefinicionComponente,
     HechoAtencionCosteable,
@@ -20,6 +21,7 @@ from .models import (
 from .permisos import concesiones_financieras_de, tiene_concesion_financiera
 from .serializers import (
     AjusteCostoSerializer,
+    ConceptoGastoSerializer,
     ConcesionFinancieraSerializer,
     CorreccionSnapshotCosteoSerializer,
     DefinicionComponenteSerializer,
@@ -135,6 +137,29 @@ class PuedeCorregirCosto(BasePermission):
         )
 
 
+class PuedeGestionarConceptosGasto(BasePermission):
+    """El catálogo se consulta para cargar gastos y se administra aparte."""
+
+    def has_permission(self, request, view):
+        usuario = request.user
+        if not (usuario and usuario.is_authenticated):
+            return False
+        if usuario.is_superuser:
+            return True
+        if getattr(view, "action", None) in {"create", "partial_update"}:
+            return concesiones_financieras_de(
+                usuario,
+                ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            ).filter(todas_las_areas=True).exists()
+        return any(
+            concesiones_financieras_de(usuario, accion).exists()
+            for accion in (
+                ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+                ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            )
+        )
+
+
 def _institucion_catalogo(obj):
     if getattr(obj, "institucion_id", None) is not None:
         return obj.institucion_id
@@ -218,6 +243,63 @@ class DefinicionComponenteViewSet(CatalogoCostosInstitucionalMixin, BaseModelVie
     def perform_update(self, serializer):
         if not set(serializer.validated_data) <= {"activo", "sensible"}:
             raise ValidationError({"detail": "Sólo podés cambiar el estado activo o la sensibilidad del componente."})
+        serializer.save()
+
+
+class ConceptoGastoViewSet(BaseModelViewSet):
+    """Catálogo institucional que antecede a cualquier carga real de gasto."""
+
+    queryset = ConceptoGasto.objects.select_related("institucion", "registrado_por")
+    serializer_class = ConceptoGastoSerializer
+    permission_classes = [IsAuthenticated, PuedeGestionarConceptosGasto]
+    institucion_path = "institucion"
+    http_method_names = ["get", "head", "options", "post", "patch"]
+    filter_fields = ("institucion", "activo", "sensible")
+    ordering_fields = ("codigo", "nombre", "id")
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        usuario = self.request.user
+        if usuario.is_superuser:
+            return qs
+        alcance = Q(pk__in=[])
+        for accion in (
+            ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        ):
+            for institucion_id, permite_sensibles in concesiones_financieras_de(
+                usuario,
+                accion,
+            ).values_list("membresia__institucion_id", "permite_sensibles"):
+                scope = Q(institucion_id=institucion_id)
+                if not permite_sensibles:
+                    scope &= ~Q(sensible=True)
+                alcance |= scope
+        return qs.filter(alcance).distinct()
+
+    def _verificar_configuracion(self, institucion_id, sensible):
+        if not tiene_concesion_financiera(
+            self.request.user,
+            ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+            institucion_id,
+            sensible=sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para configurar conceptos de gasto.")
+
+    def perform_create(self, serializer):
+        self._verificar_configuracion(
+            serializer.validated_data["institucion"].id,
+            serializer.validated_data.get("sensible", False),
+        )
+        serializer.save(registrado_por=self.request.user)
+
+    def perform_update(self, serializer):
+        if not set(serializer.validated_data) <= {"activo", "sensible"}:
+            raise ValidationError({"detail": "Sólo podés cambiar el estado activo o la sensibilidad del concepto."})
+        self._verificar_configuracion(
+            serializer.instance.institucion_id,
+            serializer.instance.sensible or serializer.validated_data.get("sensible", False),
+        )
         serializer.save()
 
 
