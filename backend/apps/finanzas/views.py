@@ -1,11 +1,14 @@
 from django.db.models import Q
+from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.response import Response
 
 from apps.auditoria.mixins import AuditaLecturaClinica
 from apps.common import BaseModelViewSet
 
 from .models import (
+    AjusteCosto,
     ConcesionFinanciera,
     DefinicionComponente,
     HechoAtencionCosteable,
@@ -14,12 +17,14 @@ from .models import (
 )
 from .permisos import concesiones_financieras_de, tiene_concesion_financiera
 from .serializers import (
+    AjusteCostoSerializer,
     ConcesionFinancieraSerializer,
     DefinicionComponenteSerializer,
     HechoAtencionCosteableSerializer,
     PrestacionSerializer,
     ValorComponenteSerializer,
 )
+from .services import registrar_ajuste_costo
 
 
 class PuedeVerCostosPaciente(BasePermission):
@@ -99,6 +104,21 @@ class PuedeGestionarValoresComponentes(BasePermission):
                 _institucion_catalogo(obj),
             )
             for accion in self.ACCIONES
+        )
+
+
+class PuedeCorregirCosto(BasePermission):
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario and usuario.is_authenticated and (
+                usuario.is_superuser
+                or concesiones_financieras_de(
+                    usuario,
+                    ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+                    sensible=True,
+                ).exists()
+            )
         )
 
 
@@ -217,6 +237,26 @@ class ValorComponenteViewSet(BaseModelViewSet):
         ):
             raise PermissionDenied("No tenés autorización para registrar este valor.")
         serializer.save(registrado_por=self.request.user)
+
+
+class AjusteCostoViewSet(BaseModelViewSet):
+    """Alta de correcciones históricas; se leen dentro del hecho costeable."""
+
+    queryset = AjusteCosto.objects.none()
+    serializer_class = AjusteCostoSerializer
+    permission_classes = [IsAuthenticated, PuedeCorregirCosto]
+    http_method_names = ["post", "options"]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ajuste = registrar_ajuste_costo(
+            serializer.validated_data["imputacion"],
+            serializer.validated_data["importe"],
+            serializer.validated_data["motivo"],
+            request.user,
+        )
+        return Response(self.get_serializer(ajuste).data, status=status.HTTP_201_CREATED)
 
 
 class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):

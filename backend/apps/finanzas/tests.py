@@ -496,3 +496,73 @@ class CatalogoCostosApiTests(APITestCase):
         response = self.client.post("/api/valores-componentes/", datos, format="json")
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ValorComponente.objects.get(pk=response.data["id"]).reemplaza, valor)
+
+
+class AjusteCostoApiTests(APITestCase):
+    def setUp(self):
+        self.admin = Usuario.objects.create_user("correccion@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.institucion, area=area, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        ciudadano = Ciudadano.objects.create(institucion=self.institucion, nombre="Ana", apellido="Paz")
+        caso = Caso.objects.create(institucion=self.institucion, version=version, ciudadano=ciudadano, area_actual=area)
+        prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=nodo, codigo="CONS", nombre="Consulta")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")
+        ValorComponente.objects.create(componente=componente, importe="100.00", vigente_desde=timezone.now() - timedelta(days=1))
+        evento = EventoCaso.objects.create(caso=caso, nodo=nodo, autor=self.admin, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(caso, nodo, evento, self.admin)
+        procesar_hecho_atencion(hecho.id)
+        self.imputacion = ImputacionCosto.objects.get(hecho=hecho, componente=componente)
+        membresia = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+
+    def test_correccion_autorizada_registra_ajuste_sin_mutar_el_importe_original(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/ajustes-costo/",
+            {
+                "imputacion": self.imputacion.id,
+                "importe": "-10.00",
+                "motivo": "Descuento posterior",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.imputacion.refresh_from_db()
+        self.assertEqual(self.imputacion.importe, Decimal("100.00"))
+        self.assertTrue(AjusteCosto.objects.filter(imputacion=self.imputacion, importe="-10.00").exists())
+
+    def test_correccion_sin_acceso_sensible_no_ajusta_un_costo_del_paciente(self):
+        restringido = Usuario.objects.create_user("sin-sensible@cauce.local", "x")
+        membresia = Membresia.objects.create(
+            usuario=restringido,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+        )
+        self.client.force_authenticate(restringido)
+        response = self.client.post(
+            "/api/ajustes-costo/",
+            {
+                "imputacion": self.imputacion.id,
+                "importe": "-10.00",
+                "motivo": "Descuento posterior",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)

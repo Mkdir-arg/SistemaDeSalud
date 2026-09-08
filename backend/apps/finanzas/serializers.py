@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, Prestacion, ValorComponente
+from .models import AjusteCosto, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, Prestacion, ValorComponente
 
 
 class ConcesionFinancieraSerializer(serializers.ModelSerializer):
@@ -99,6 +99,13 @@ class ValorComponenteSerializer(serializers.ModelSerializer):
         except DjangoValidationError as error:
             raise serializers.ValidationError(error.message_dict) from error
         return attrs
+
+
+class AjusteCostoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AjusteCosto
+        fields = ["id", "imputacion", "importe", "motivo", "registrado_por", "registrado"]
+        read_only_fields = ["id", "registrado_por", "registrado"]
 
 
 class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
