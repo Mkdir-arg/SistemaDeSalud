@@ -124,12 +124,13 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     faltantes = serializers.SerializerMethodField()
     imputaciones = serializers.SerializerMethodField()
     limite = serializers.SerializerMethodField()
+    actualizado_en = serializers.DateTimeField(source="ultimo_costeo_en", read_only=True)
 
     class Meta:
         model = HechoAtencionCosteable
         fields = [
             "id", "institucion", "caso", "ciudadano", "area", "ocurrida_en",
-            "total_conocido", "total_es_completo", "estado_costo", "faltantes",
+            "actualizado_en", "total_conocido", "total_es_completo", "estado_costo", "faltantes",
             "imputaciones", "limite",
         ]
         read_only_fields = fields

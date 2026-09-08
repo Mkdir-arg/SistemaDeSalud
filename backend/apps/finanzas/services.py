@@ -66,6 +66,15 @@ def _marcar_snapshot_incompleto(hecho):
     hecho.componentes_congelados = True
 
 
+def _marcar_costeo_actualizado(hecho):
+    """Anota una ejecución que pudo dejar un resultado completo o parcial."""
+    actualizado_en = timezone.now()
+    HechoAtencionCosteable.objects.filter(pk=hecho.pk).update(
+        ultimo_costeo_en=actualizado_en,
+    )
+    hecho.ultimo_costeo_en = actualizado_en
+
+
 def _congelar_componentes(hecho):
     """Sella los componentes aplicables al momento de la atención."""
     prestaciones = Prestacion.objects.filter(
@@ -110,6 +119,7 @@ def procesar_hecho_atencion(hecho_id):
             ComponenteEsperadoHecho.objects.filter(hecho=hecho).select_related("componente")
         )
         if not componentes:
+            _marcar_costeo_actualizado(hecho)
             return hecho
         componentes = [esperado.componente for esperado in componentes]
         for componente in componentes:
@@ -122,6 +132,7 @@ def procesar_hecho_atencion(hecho_id):
             except IntegrityError:
                 pass
             _resolver(hecho, PendienteCosteo.Motivo.SIN_VALOR, componente)
+        _marcar_costeo_actualizado(hecho)
         return hecho
 
 

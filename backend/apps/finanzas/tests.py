@@ -37,7 +37,9 @@ class CosteoAtencionTests(TestCase):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
         procesar_hecho_atencion(hecho.id)
+        hecho.refresh_from_db()
         self.assertEqual(ImputacionCosto.objects.filter(hecho=hecho).count(), 0)
+        self.assertIsNotNone(hecho.ultimo_costeo_en)
         self.assertTrue(PendienteCosteo.objects.filter(hecho=hecho, motivo=PendienteCosteo.Motivo.SIN_PRESTACION, resuelto=False).exists())
 
     def test_una_prestacion_configurada_despues_no_completa_el_hecho_anterior(self):
@@ -499,6 +501,7 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(response.data["total_conocido"], "1200.50")
         self.assertTrue(response.data["total_es_completo"])
         self.assertEqual(response.data["estado_costo"], "disponible")
+        self.assertIsNotNone(response.data["actualizado_en"])
         self.assertEqual(response.data["faltantes"], [])
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
 

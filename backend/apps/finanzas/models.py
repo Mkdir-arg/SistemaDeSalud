@@ -145,6 +145,7 @@ class HechoAtencionCosteable(models.Model):
     ocurrida_en = models.DateTimeField()
     creado = models.DateTimeField(auto_now_add=True)
     componentes_congelados = models.BooleanField(default=False)
+    ultimo_costeo_en = models.DateTimeField(null=True, blank=True)
     class Meta:
         ordering = ["ocurrida_en", "id"]
 
