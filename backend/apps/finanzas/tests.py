@@ -1030,7 +1030,9 @@ class CatalogoCostosApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["moneda"], ValorComponente.Moneda.ARS)
         valor = ValorComponente.objects.get(componente=componente)
+        self.assertEqual(valor.moneda, ValorComponente.Moneda.ARS)
         self.assertEqual(valor.registrado_por, self.admin)
         self.assertEqual(
             self.client.patch(
@@ -1040,6 +1042,34 @@ class CatalogoCostosApiTests(APITestCase):
             ).status_code,
             405,
         )
+
+    def test_configurador_no_puede_registrar_un_valor_en_otra_moneda_en_v1(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            "/api/valores-componentes/",
+            {
+                "componente": componente.id,
+                "importe": "1250.50",
+                "moneda": "USD",
+                "vigente_desde": "2026-09-01T00:00:00Z",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(ValorComponente.objects.filter(componente=componente).exists())
 
     def test_configurador_sin_habilitacion_sensible_no_ve_ni_registra_valores_sensibles(self):
         prestacion = Prestacion.objects.create(
