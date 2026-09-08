@@ -1175,6 +1175,76 @@ class ConcesionFinancieraApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_admin_modifica_y_revoca_solo_la_concesion_elegida(self):
+        lectura = ConcesionFinanciera.objects.create(
+            membresia=self.membresia_operador, accion=ConcesionFinanciera.Accion.VER_GASTOS
+        )
+        lectura.areas.add(self.area)
+        registro = ConcesionFinanciera.objects.create(
+            membresia=self.membresia_operador, accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS
+        )
+        registro.areas.add(self.area)
+        self.client.force_authenticate(self.admin)
+        ruta = f"/api/concesiones-financieras/{lectura.id}/"
+        cambio = self.client.patch(ruta, {"todas_las_areas": True, "areas": []}, format="json")
+        self.assertEqual(cambio.status_code, 200, cambio.data)
+        self.assertTrue(cambio.data["todas_las_areas"])
+        self.assertEqual(cambio.data["areas"], [])
+        self.assertEqual(self.client.delete(ruta).status_code, 204)
+        self.assertFalse(ConcesionFinanciera.objects.filter(pk=lectura.id).exists())
+        self.assertTrue(ConcesionFinanciera.objects.filter(pk=registro.id).exists())
+        self.assertTrue(Membresia.objects.filter(pk=self.membresia_operador.id).exists())
+        self.client.force_authenticate(self.operador)
+        propias = self.client.get("/api/concesiones-financieras/mias/").data["concesiones"]
+        self.assertEqual([c["accion"] for c in propias], ["registrar_gastos"])
+        self.assertEqual(self.client.get("/api/gastos/").status_code, 403)
+
+    def test_editar_concesion_no_traslada_institucion_ni_otorga_sensibles_a_operador(self):
+        permiso = ConcesionFinanciera.objects.create(
+            membresia=self.membresia_operador, accion=ConcesionFinanciera.Accion.VER_GASTOS
+        )
+        permiso.areas.add(self.area)
+        ajena = Membresia.objects.create(
+            usuario=self.operador, institucion=Institucion.objects.create(nombre="Ajena"), rol="admin"
+        )
+        self.client.force_authenticate(self.admin)
+        ruta = f"/api/concesiones-financieras/{permiso.id}/"
+        self.assertEqual(self.client.patch(ruta, {"permite_sensibles": True}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(ruta, {"accion": "auditar_finanzas"}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(ruta, {
+            "membresia": ajena.id, "todas_las_areas": True, "areas": []
+        }, format="json").status_code, 403)
+        permiso.refresh_from_db()
+        self.assertEqual(permiso.membresia_id, self.membresia_operador.id)
+        self.assertFalse(permiso.permite_sensibles)
+        self.assertEqual(permiso.accion, "ver_gastos")
+        self.client.force_authenticate(self.operador)
+        # El queryset ahora oculta la concesión fuera del alcance administrativo.
+        self.assertEqual(self.client.delete(ruta).status_code, 404)
+
+    def test_listado_no_mezcla_capacidad_admin_y_membresia_operativa_ajena(self):
+        propia = ConcesionFinanciera.objects.create(
+            membresia=self.membresia_operador, accion="ver_gastos", todas_las_areas=True
+        )
+        otra = Institucion.objects.create(nombre="Hospital operativo")
+        miembro_ajeno = Membresia.objects.create(usuario=self.admin, institucion=otra, rol="medico")
+        ajena = ConcesionFinanciera.objects.create(
+            membresia=miembro_ajeno, accion="ver_gastos", todas_las_areas=True
+        )
+        self.client.force_authenticate(self.admin)
+        listado = self.client.get("/api/concesiones-financieras/")
+        self.assertEqual(listado.status_code, 200)
+        self.assertEqual([c["id"] for c in listado.data["results"]], [propia.id])
+        self.assertEqual(self.client.get(f"/api/concesiones-financieras/{ajena.id}/").status_code, 404)
+        self.assertEqual(self.client.delete(f"/api/concesiones-financieras/{ajena.id}/").status_code, 404)
+        self.assertEqual(self.client.patch(f"/api/concesiones-financieras/{propia.id}/", {
+            # Evitar que la unicidad con la concesión ajena rechace antes
+            # de llegar a la comprobación institucional que estamos probando.
+            "membresia": miembro_ajeno.id, "accion": "registrar_gastos",
+        }, format="json").status_code, 403)
+        # Consultar los permisos propios sigue disponible en ambas instituciones.
+        self.assertEqual(self.client.get("/api/concesiones-financieras/mias/").data["concesiones"][0]["institucion"], otra.id)
+
     def test_consulta_propia_no_expone_otras_concesiones_ni_otorga_permisos(self):
         propia = ConcesionFinanciera.objects.create(
             membresia=self.membresia_operador, accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS

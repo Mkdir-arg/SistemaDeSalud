@@ -7,7 +7,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.auditoria.mixins import AuditaLecturaClinica
-from apps.common import BaseModelViewSet
+from apps.common import BaseModelViewSet, tiene_capacidad
 
 from .models import (
     AjusteCosto,
@@ -251,6 +251,33 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
     protege_lectura = True
     institucion_path = "membresia__institucion"
     filter_fields = ("membresia", "accion", "todas_las_areas", "permite_sensibles", "areas")
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.user.is_superuser:
+            return qs
+        # Tener config en A y una membresía operativa en B no permite
+        # administrar (ni listar) las concesiones de B.
+        instituciones = [
+            institucion_id for institucion_id in set(self.instituciones_del_usuario())
+            if tiene_capacidad(self.request.user, self.capacidad_requerida, institucion_id)
+        ]
+        return qs.filter(membresia__institucion_id__in=instituciones)
+
+    def perform_create(self, serializer):
+        self._guardar_en_institucion_autorizada(serializer)
+
+    def perform_update(self, serializer):
+        # El permiso sobre el objeto original no autoriza una FK de destino.
+        self._guardar_en_institucion_autorizada(serializer)
+
+    def _guardar_en_institucion_autorizada(self, serializer):
+        membresia = serializer.validated_data.get("membresia")
+        if membresia is None:
+            membresia = serializer.instance.membresia
+        if not tiene_capacidad(self.request.user, self.capacidad_requerida, membresia.institucion_id):
+            raise PermissionDenied("No podés administrar concesiones de esa institución.")
+        serializer.save()
 
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def mias(self, request):

@@ -322,3 +322,39 @@ No se repitió PostgreSQL en este cambio de interfaz; su evidencia anterior es
 Siguiente verificación del flujo ya implementado: rechazo/reemplazo y pérdida
 de respuesta de red en navegador. Administración de concesiones y medición de
 volumen siguen pendientes; #36 no se considera aceptado ni cerrado.
+
+## Checkpoint: aislamiento de la administración de concesiones
+
+Al verificar la UI pendiente de concesiones (#10), dos pruebas nuevas revelaron
+brechas del endpoint existente. No se observaron accesos reales: toda la
+reproducción se hizo en bases sintéticas.
+
+1. `PATCH` validaba capacidad en la institución de la concesión original, pero
+   aceptaba cambiar `membresia` a otra institución no administrable (200).
+2. El listado exigía capacidad administrativa en alguna institución y filtraba
+   por cualquier membresía activa. Un admin en A/operador en B podía enumerar
+   concesiones de B. La prueba devolvió dos IDs cuando sólo correspondía uno.
+
+La causa está en la combinación de controles comunes: autorización sobre el
+objeto original y scope por membresías no comprueban por sí mismos el destino
+de una FK modificable ni el ámbito administrativo de cada fila del listado.
+
+Corrección acotada a `ConcesionFinancieraViewSet`: reutiliza `tiene_capacidad`
+con `config_institucional` para limitar el queryset y validar la membresía de
+destino antes de guardar. No se toca `apps.common`, no se agregan permisos ni
+roles, ni se restringe la consulta propia `/mias/` por ser operador. El objeto
+original sigue sujeto a autorización. Un recurso no administrable se oculta
+con 404; un destino no autorizado se deniega con 403.
+
+Las dos reproducciones fallaron antes del arreglo. Verificación posterior:
+32 pruebas correctas de concesiones/calendario/auditoría/OpenAPI. Las pruebas
+nuevas incluyen editar/revocar sin borrar otras concesiones ni la membresía,
+rechazar sensibles/acciones administrativas en un operador, impedir traslado
+institucional y no mezclar capacidades de instituciones distintas.
+Se ajustó el caso de prueba de destino para no chocar antes con unicidad y
+ejercitar realmente la autorización; no se relajaron rechazos como aceptación.
+
+No se declara una auditoría general de todos los viewsets: el control común
+podría requerir una revisión separada en otros recursos modificables. No hubo
+migraciones ni cambios de datos reales. Revertir este arreglo reabriría las dos
+brechas; ante un problema de UI, retirar sólo la UI y conservar estos controles.
