@@ -7,13 +7,14 @@ from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from apps.accounts.models import Usuario
+from apps.accounts.models import Membresia, Usuario
 from apps.casos.models import Caso, EventoCaso
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import ComponenteEsperadoHecho, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .permisos import tiene_concesion_financiera
 from .services import procesar_hecho_atencion, registrar_atencion_completada
 
 
@@ -99,3 +100,49 @@ class CosteoAtencionTests(TestCase):
         call_command("procesar_costos", "--limite", "1", stdout=salida)
         self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
         self.assertIn("1 hecho(s) procesado(s)", salida.getvalue())
+
+    def test_la_concesion_financiera_no_une_areas_de_otras_membresias(self):
+        otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")
+        financiera = Membresia.objects.create(usuario=self.usuario, institucion=self.institucion, rol=Membresia.Rol.MEDICO)
+        financiera.areas.add(self.area)
+        clinica = Membresia.objects.create(usuario=self.usuario, institucion=self.institucion, rol=Membresia.Rol.ENFERMERIA)
+        clinica.areas.add(otra_area)
+        concesion = ConcesionFinanciera.objects.create(membresia=financiera, accion=ConcesionFinanciera.Accion.VER_COSTOS)
+        concesion.areas.add(self.area)
+        self.assertTrue(tiene_concesion_financiera(self.usuario, ConcesionFinanciera.Accion.VER_COSTOS, self.institucion.id, self.area.id))
+        self.assertFalse(tiene_concesion_financiera(self.usuario, ConcesionFinanciera.Accion.VER_COSTOS, self.institucion.id, otra_area.id))
+
+    def test_los_costos_sensibles_y_las_correcciones_exigen_admin_explicito(self):
+        miembro = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        miembro.areas.add(self.area)
+        with self.assertRaises(ValidationError):
+            ConcesionFinanciera.objects.create(
+                membresia=miembro,
+                accion=ConcesionFinanciera.Accion.VER_COSTOS,
+                permite_sensibles=True,
+            )
+
+        admin = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        concesion = ConcesionFinanciera.objects.create(
+            membresia=admin,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.assertTrue(
+            tiene_concesion_financiera(
+                self.usuario,
+                concesion.accion,
+                self.institucion.id,
+                self.area.id,
+                sensible=True,
+            )
+        )

@@ -4,6 +4,52 @@ from django.db import models
 from django.db.models import Q
 
 
+class ConcesionFinanciera(models.Model):
+    """Permiso explícito de finanzas, ligado a una membresía institucional."""
+
+    class Accion(models.TextChoices):
+        VER_COSTOS = "ver_costos", "Ver costos"
+        CONFIGURAR_COMPONENTES = "configurar_componentes", "Configurar componentes"
+        CORREGIR_COSTOS = "corregir_costos", "Corregir costos"
+
+    membresia = models.ForeignKey(
+        "accounts.Membresia",
+        on_delete=models.CASCADE,
+        related_name="concesiones_financieras",
+    )
+    accion = models.CharField(max_length=40, choices=Accion.choices)
+    todas_las_areas = models.BooleanField(default=False)
+    permite_sensibles = models.BooleanField(default=False)
+    areas = models.ManyToManyField(
+        "instituciones.Area",
+        blank=True,
+        related_name="concesiones_financieras",
+    )
+
+    class Meta:
+        unique_together = [("membresia", "accion")]
+        ordering = ["membresia_id", "accion", "id"]
+
+
+    def clean(self):
+        super().clean()
+        if self.accion in {
+            self.Accion.CONFIGURAR_COMPONENTES,
+            self.Accion.CORREGIR_COSTOS,
+        } and self.membresia.rol != "admin":
+            raise ValidationError(
+                "La configuración y corrección de costos requieren una membresía administrativa."
+            )
+        if self.permite_sensibles and self.membresia.rol != "admin":
+            raise ValidationError(
+                "El acceso a costos sensibles requiere una membresía administrativa."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
 class Prestacion(models.Model):
     institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.CASCADE, related_name="prestaciones_costo")
     nodo = models.ForeignKey("flujos.Nodo", on_delete=models.SET_NULL, null=True, blank=True, related_name="prestaciones_costo")
