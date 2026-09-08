@@ -393,3 +393,106 @@ class CatalogoCostosApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_configurador_financiero_agrega_componente_directo_a_su_prestacion(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/componentes-costo/",
+            {
+                "prestacion": prestacion.id,
+                "codigo": "BASE",
+                "nombre": "Costo directo",
+                "fuente": DefinicionComponente.Fuente.ATENCION_DIRECTA,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        componente = DefinicionComponente.objects.get(prestacion=prestacion, codigo="BASE")
+        self.assertEqual(
+            self.client.patch(
+                f"/api/componentes-costo/{componente.id}/",
+                {"codigo": "OTRO"},
+                format="json",
+            ).status_code,
+            405,
+        )
+
+    def test_configurador_financiero_agrega_valor_vigente_que_no_admite_patch(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/valores-componentes/",
+            {
+                "componente": componente.id,
+                "importe": "1250.50",
+                "vigente_desde": "2026-09-01T00:00:00Z",
+                "fuente": "Resolución interna",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        valor = ValorComponente.objects.get(componente=componente)
+        self.assertEqual(valor.registrado_por, self.admin)
+        self.assertEqual(
+            self.client.patch(
+                f"/api/valores-componentes/{valor.id}/",
+                {"importe": "1300.00"},
+                format="json",
+            ).status_code,
+            405,
+        )
+
+    def test_corregir_un_valor_requiere_concesion_especifica(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        valor = ValorComponente.objects.create(
+            componente=componente,
+            importe="100.00",
+            vigente_desde="2026-09-01T00:00:00Z",
+        )
+        datos = {
+            "componente": componente.id,
+            "importe": "120.00",
+            "vigente_desde": "2026-09-01T00:00:00Z",
+            "reemplaza": valor.id,
+            "motivo_correccion": "Importe cargado por error",
+        }
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(
+            self.client.post("/api/valores-componentes/", datos, format="json").status_code,
+            403,
+        )
+        membresia = Membresia.objects.get(usuario=self.admin, institucion=self.institucion)
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CORREGIR_COSTOS,
+            todas_las_areas=True,
+        )
+        response = self.client.post("/api/valores-componentes/", datos, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(ValorComponente.objects.get(pk=response.data["id"]).reemplaza, valor)

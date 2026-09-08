@@ -1,6 +1,7 @@
 from rest_framework import serializers
+from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import ConcesionFinanciera, HechoAtencionCosteable, Prestacion
+from .models import ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, Prestacion, ValorComponente
 
 
 class ConcesionFinancieraSerializer(serializers.ModelSerializer):
@@ -64,6 +65,39 @@ class PrestacionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"nodo": "El nodo debe pertenecer a la institución de la prestación."}
             )
+        return attrs
+
+
+class DefinicionComponenteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DefinicionComponente
+        fields = ["id", "prestacion", "codigo", "nombre", "fuente", "activo", "orden"]
+        read_only_fields = ["id"]
+
+
+class ValorComponenteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ValorComponente
+        fields = [
+            "id", "componente", "importe", "vigente_desde", "vigente_hasta", "fuente",
+            "registrado_por", "registrado", "reemplaza", "motivo_correccion",
+        ]
+        read_only_fields = ["id", "registrado_por", "registrado"]
+
+    def validate(self, attrs):
+        candidato = ValorComponente(
+            componente=attrs.get("componente"),
+            importe=attrs.get("importe"),
+            vigente_desde=attrs.get("vigente_desde"),
+            vigente_hasta=attrs.get("vigente_hasta"),
+            fuente=attrs.get("fuente", ""),
+            reemplaza=attrs.get("reemplaza"),
+            motivo_correccion=attrs.get("motivo_correccion", ""),
+        )
+        try:
+            candidato.full_clean()
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.message_dict) from error
         return attrs
 
 

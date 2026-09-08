@@ -27,8 +27,10 @@ from apps.flujos.views import (
 from apps.formularios.views import CampoViewSet, FormularioViewSet
 from apps.finanzas.views import (
     ConcesionFinancieraViewSet,
+    DefinicionComponenteViewSet,
     HechoAtencionCosteableViewSet,
     PrestacionViewSet,
+    ValorComponenteViewSet,
 )
 from apps.auditoria.views import AccesoClinicoViewSet
 from apps.red.views import RedViewSet, TrasladoViewSet
@@ -118,3 +120,5 @@ router.register("consentimientos", ConsentimientoDatosViewSet)
 router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-costo")
 router.register("concesiones-financieras", ConcesionFinancieraViewSet)
 router.register("prestaciones-costo", PrestacionViewSet)
+router.register("componentes-costo", DefinicionComponenteViewSet)
+router.register("valores-componentes", ValorComponenteViewSet)
