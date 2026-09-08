@@ -2043,8 +2043,10 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricu
     # El origen económico es parte de la misma transacción que confirma la
     # atención. El cálculo posterior puede fallar o demorarse sin perderlo.
     evento = _registrar(caso, f"Atención «{titulo}» registrada", detalle=detalle, autor=autor, nodo=nodo)
-    from apps.finanzas.services import registrar_atencion_completada
-    registrar_atencion_completada(caso, nodo, evento=evento, autor=autor)
+    from apps.finanzas.services import intentar_costeo_directo, registrar_atencion_completada
+
+    hecho = registrar_atencion_completada(caso, nodo, evento=evento, autor=autor)
+    intentar_costeo_directo(hecho.id)
 
 
 # --------------------------------------------------------------------------- #

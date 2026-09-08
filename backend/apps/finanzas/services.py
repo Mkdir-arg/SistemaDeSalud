@@ -1,8 +1,13 @@
+import logging
+
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from .models import ComponenteEsperadoHecho, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+
+
+logger = logging.getLogger(__name__)
 
 
 def registrar_atencion_completada(caso, nodo, evento, autor=None):
@@ -67,3 +72,20 @@ def procesar_hecho_atencion(hecho_id):
                 pass
             _resolver(hecho, PendienteCosteo.Motivo.SIN_VALOR, componente)
         return hecho
+
+
+def intentar_costeo_directo(hecho_id):
+    """Intenta el costo local sin convertir una falla económica en clínica.
+
+    Las fuentes pesadas o fallidas quedan para recuperación; la atención ya
+    completada no se revierte ni se bloquea por ese trabajo.
+    """
+    try:
+        procesar_hecho_atencion(hecho_id)
+    except Exception:  # noqa: BLE001 - la recuperación posterior es deliberada.
+        logger.exception("No se pudo costear de inmediato el hecho %s", hecho_id)
+        with transaction.atomic():
+            hecho = HechoAtencionCosteable.objects.get(pk=hecho_id)
+            _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
+        return False
+    return True

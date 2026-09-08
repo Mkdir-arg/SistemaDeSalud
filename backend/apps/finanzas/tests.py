@@ -1,6 +1,7 @@
 from decimal import Decimal
 from datetime import timedelta
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import TestCase
@@ -15,7 +16,7 @@ from apps.registros.models import Ciudadano
 
 from .models import ComponenteEsperadoHecho, ConcesionFinanciera, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
-from .services import procesar_hecho_atencion, registrar_atencion_completada
+from .services import intentar_costeo_directo, procesar_hecho_atencion, registrar_atencion_completada
 
 
 class CosteoAtencionTests(TestCase):
@@ -100,6 +101,19 @@ class CosteoAtencionTests(TestCase):
         call_command("procesar_costos", "--limite", "1", stdout=salida)
         self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
         self.assertIn("1 hecho(s) procesado(s)", salida.getvalue())
+
+    def test_un_error_en_el_intento_directo_no_borra_el_hecho_y_queda_pendiente(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        with patch("apps.finanzas.services.procesar_hecho_atencion", side_effect=RuntimeError("fuente temporalmente caída")):
+            self.assertFalse(intentar_costeo_directo(hecho.id))
+        self.assertTrue(
+            PendienteCosteo.objects.filter(
+                hecho=hecho,
+                motivo=PendienteCosteo.Motivo.ERROR_RECUPERABLE,
+                resuelto=False,
+            ).exists()
+        )
 
     def test_la_concesion_financiera_no_une_areas_de_otras_membresias(self):
         otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")
