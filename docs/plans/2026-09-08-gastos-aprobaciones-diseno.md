@@ -46,6 +46,9 @@ autor, origen y sensibilidad congelada del concepto.
 - Un error previo a la aprobación o un gasto rechazado se reemplaza mediante
   una nueva carga enlazada al registro original; no se sobrescribe el registro
   revisado.
+- Si una carga pendiente tiene reemplazo, se muestra como reemplazada y ya no
+  puede aprobarse ni rechazarse; la relación, no un importe inventado, explica
+  cuál es la carga vigente para revisión.
 - Un gasto aprobado no se edita. `AjusteGasto` agrega un importe no nulo con
   motivo, autor y fecha, igual que `AjusteCosto` preserva su imputación.
 

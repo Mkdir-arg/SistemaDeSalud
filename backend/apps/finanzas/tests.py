@@ -22,7 +22,7 @@ from apps.registros.models import Ciudadano
 
 from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
-from .services import corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, registrar_ajuste_costo, registrar_atencion_completada
+from .services import aprobar_gasto, corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_gasto
 
 
 class CosteoAtencionTests(TestCase):
@@ -511,6 +511,60 @@ class CosteoAtencionConcurrentePostgreSQLTests(TransactionTestCase):
             ImputacionCosto.objects.filter(hecho=self.hecho, componente=self.componente).count(),
             1,
         )
+
+
+@skipUnless(connection.vendor == "postgresql", "Requiere bloqueo de fila PostgreSQL.")
+class AprobacionGastoConcurrentePostgreSQLTests(TransactionTestCase):
+    """La aprobación de una carga delegada conserva un único gasto aprobado."""
+
+    def setUp(self):
+        self.admin = Usuario.objects.create_user("aprobar-gasto@cauce.local", "x")
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="LIMPIEZA",
+            nombre="Limpieza",
+        )
+        membresia = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            todas_las_areas=True,
+        )
+        self.gasto = Gasto.objects.create(
+            concepto=self.concepto,
+            institucion=self.institucion,
+            area=self.area,
+            importe=Decimal("100.00"),
+            periodo_economico=date(2026, 8, 1),
+            origen=Gasto.Origen.AREA,
+            registrado_por=self.admin,
+        )
+
+    def test_dos_aprobadores_reintentando_no_duplican_el_gasto(self):
+        inicio = Barrier(2)
+
+        def aprobar_en_paralelo():
+            close_old_connections()
+            try:
+                inicio.wait(timeout=5)
+                usuario = Usuario.objects.get(pk=self.admin.pk)
+                return aprobar_gasto(self.gasto.id, usuario).id
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as ejecutores:
+            resultados = list(ejecutores.map(lambda _indice: aprobar_en_paralelo(), range(2)))
+
+        self.assertEqual(resultados, [self.gasto.id, self.gasto.id])
+        gasto = Gasto.objects.get(pk=self.gasto.id)
+        self.assertEqual(gasto.estado, Gasto.Estado.APROBADO)
+        self.assertEqual(Gasto.objects.filter(pk=self.gasto.id).count(), 1)
 
 
 class HechoCostoApiTests(APITestCase):
@@ -1548,3 +1602,98 @@ class GastoTests(TestCase):
         self.assertEqual(sucesor.reemplaza, rechazado)
         with self.assertRaises(ValidationError):
             self.crear_gasto_area(reemplaza=self.crear_gasto_central())
+
+
+class GastoServiciosTests(TestCase):
+    def setUp(self):
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="LIMPIEZA",
+            nombre="Limpieza",
+        )
+        self.admin = Usuario.objects.create_user("admin-gastos@cauce.local", "x")
+        self.delegado = Usuario.objects.create_user("area-gastos@cauce.local", "x")
+        membresia_admin = Membresia.objects.create(
+            usuario=self.admin,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        for accion in (
+            ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+        ):
+            ConcesionFinanciera.objects.create(
+                membresia=membresia_admin,
+                accion=accion,
+                todas_las_areas=True,
+                permite_sensibles=True,
+            )
+        membresia_delegado = Membresia.objects.create(
+            usuario=self.delegado,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        concesion_delegado = ConcesionFinanciera.objects.create(
+            membresia=membresia_delegado,
+            accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        )
+        concesion_delegado.areas.add(self.area)
+
+    def registrar(self, usuario, **overrides):
+        datos = {
+            "concepto": self.concepto,
+            "institucion": self.institucion,
+            "area": self.area,
+            "importe": Decimal("100.00"),
+            "periodo_economico": date(2026, 8, 1),
+            "registrado_por": usuario,
+        }
+        datos.update(overrides)
+        return registrar_gasto(**datos)
+
+    def test_central_aprueba_directo_y_area_requiere_aprobacion_idempotente(self):
+        central = self.registrar(self.admin)
+        pendiente = self.registrar(self.delegado)
+
+        self.assertEqual(central.origen, Gasto.Origen.CENTRAL)
+        self.assertEqual(central.estado, Gasto.Estado.APROBADO)
+        self.assertEqual(pendiente.origen, Gasto.Origen.AREA)
+        self.assertEqual(pendiente.estado, Gasto.Estado.PENDIENTE_APROBACION)
+        self.assertEqual(aprobar_gasto(pendiente.id, self.admin).id, pendiente.id)
+        self.assertEqual(aprobar_gasto(pendiente.id, self.admin).id, pendiente.id)
+        self.assertEqual(Gasto.objects.filter(pk=pendiente.id).count(), 1)
+        self.assertEqual(Gasto.objects.get(pk=pendiente.id).estado, Gasto.Estado.APROBADO)
+
+    def test_rechazo_y_reemplazo_no_permiten_aprobar_la_carga_anterior(self):
+        pendiente = self.registrar(self.delegado)
+        rechazado = rechazar_gasto(pendiente.id, "Importe incorrecto", self.admin)
+        sucesor = self.registrar(self.delegado, importe=Decimal("120.00"), reemplaza=rechazado)
+
+        self.assertEqual(sucesor.reemplaza, rechazado)
+        with self.assertRaises(ValidationError):
+            aprobar_gasto(rechazado.id, self.admin)
+
+    def test_sensibilidad_y_correccion_exigen_la_concesion_correcta(self):
+        self.concepto.sensible = True
+        self.concepto.save()
+        with self.assertRaises(PermissionDenied):
+            self.registrar(self.delegado)
+
+        gasto = self.registrar(self.admin)
+        ajuste = registrar_ajuste_gasto(
+            gasto.id,
+            Decimal("-10.00"),
+            "Descuento acordado",
+            self.admin,
+        )
+        self.assertEqual(ajuste.gasto, gasto)
+
+    def test_registro_relee_sensibilidad_antes_de_autorizar(self):
+        concepto_desactualizado = ConceptoGasto.objects.get(pk=self.concepto.pk)
+        ConceptoGasto.objects.filter(pk=self.concepto.pk).update(sensible=True)
+
+        with self.assertRaises(PermissionDenied):
+            self.registrar(self.delegado, concepto=concepto_desactualizado)

@@ -25,18 +25,27 @@ def concesiones_financieras_de(usuario, accion, sensible=False):
     return concesiones
 
 
-def tiene_concesion_financiera(usuario, accion, institucion_id, area_id=None, sensible=False):
-    """Indica si el usuario tiene una concesión explícita para ese alcance.
+def concesiones_financieras_en_alcance(usuario, accion, institucion_id, area_id=None, sensible=False):
+    """Devuelve las concesiones explícitas que alcanzan institución y área.
 
     El alcance se resuelve sobre la misma membresía que recibió la concesión;
     nunca se combinan áreas de otras membresías del usuario.
     """
-    if getattr(usuario, "is_superuser", False):
-        return True
-
     concesiones = concesiones_financieras_de(usuario, accion, sensible=sensible).filter(
         membresia__institucion_id=institucion_id,
     )
     if area_id is None:
-        return concesiones.filter(todas_las_areas=True).exists()
-    return concesiones.filter(Q(todas_las_areas=True) | Q(areas__id=area_id)).exists()
+        return concesiones.filter(todas_las_areas=True)
+    return concesiones.filter(Q(todas_las_areas=True) | Q(areas__id=area_id)).distinct()
+
+
+def tiene_concesion_financiera(usuario, accion, institucion_id, area_id=None, sensible=False):
+    if getattr(usuario, "is_superuser", False):
+        return True
+    return concesiones_financieras_en_alcance(
+        usuario,
+        accion,
+        institucion_id,
+        area_id,
+        sensible=sensible,
+    ).exists()

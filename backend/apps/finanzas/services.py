@@ -5,8 +5,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
-from .permisos import tiene_concesion_financiera
+from apps.accounts.models import Membresia
+
+from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .permisos import concesiones_financieras_en_alcance, tiene_concesion_financiera
 
 
 logger = logging.getLogger(__name__)
@@ -232,3 +234,137 @@ def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por):
     except ValidationError:
         raise
     return ajuste
+
+
+def _concesiones_para_gasto(usuario, accion, institucion_id, area_id, sensible):
+    return concesiones_financieras_en_alcance(
+        usuario,
+        accion,
+        institucion_id,
+        area_id,
+        sensible=sensible,
+    )
+
+
+def registrar_gasto(concepto, institucion, area, importe, periodo_economico, registrado_por, reemplaza=None):
+    """Registra una fuente central aprobada o una carga de área pendiente."""
+    es_superusuario = getattr(registrado_por, "is_superuser", False)
+    with transaction.atomic():
+        concepto = ConceptoGasto.objects.select_for_update().get(pk=concepto.pk)
+        concesiones = _concesiones_para_gasto(
+            registrado_por,
+            ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            institucion.id,
+            getattr(area, "id", None),
+            concepto.sensible,
+        )
+        if not es_superusuario and not concesiones.exists():
+            raise PermissionDenied("No tenés autorización para registrar este gasto.")
+        if reemplaza is not None:
+            reemplaza = Gasto.objects.select_for_update().get(pk=reemplaza.pk)
+            if not es_superusuario and not _concesiones_para_gasto(
+                registrado_por,
+                ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+                reemplaza.institucion_id,
+                reemplaza.area_id,
+                reemplaza.sensible,
+            ).exists():
+                raise PermissionDenied("No tenés autorización sobre el gasto que querés reemplazar.")
+            if reemplaza.estado == Gasto.Estado.APROBADO:
+                raise ValidationError("Un gasto aprobado se corrige mediante un ajuste, no se reemplaza.")
+            if Gasto.objects.filter(reemplaza=reemplaza).exists():
+                raise ValidationError("El gasto ya tiene un reemplazo registrado.")
+
+        es_central = es_superusuario or concesiones.filter(
+            membresia__rol=Membresia.Rol.ADMIN_INSTITUCION,
+        ).exists()
+        datos = {
+            "concepto": concepto,
+            "institucion": institucion,
+            "area": area,
+            "importe": importe,
+            "periodo_economico": periodo_economico,
+            "origen": Gasto.Origen.CENTRAL if es_central else Gasto.Origen.AREA,
+            "registrado_por": registrado_por,
+            "reemplaza": reemplaza,
+        }
+        if es_central:
+            datos.update(
+                estado=Gasto.Estado.APROBADO,
+                aprobado_por=registrado_por,
+                aprobado_en=timezone.now(),
+            )
+        return Gasto.objects.create(**datos)
+
+
+def aprobar_gasto(gasto_id, aprobado_por):
+    """Aprueba una sola vez una carga de área; es seguro ante reintentos."""
+    with transaction.atomic():
+        gasto = Gasto.objects.select_for_update().get(pk=gasto_id)
+        if not tiene_concesion_financiera(
+            aprobado_por,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            gasto.institucion_id,
+            gasto.area_id,
+            sensible=gasto.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para aprobar este gasto.")
+        if gasto.estado == Gasto.Estado.APROBADO:
+            return gasto
+        if gasto.estado == Gasto.Estado.RECHAZADO:
+            raise ValidationError("Un gasto rechazado no puede aprobarse.")
+        if Gasto.objects.filter(reemplaza=gasto).exists():
+            raise ValidationError("Un gasto reemplazado no puede aprobarse.")
+        gasto.estado = Gasto.Estado.APROBADO
+        gasto.aprobado_por = aprobado_por
+        gasto.aprobado_en = timezone.now()
+        gasto.save(update_fields=["estado", "aprobado_por", "aprobado_en"])
+        return gasto
+
+
+def rechazar_gasto(gasto_id, motivo, rechazado_por):
+    """Rechaza una carga pendiente sin perder su importe ni autor originales."""
+    with transaction.atomic():
+        gasto = Gasto.objects.select_for_update().get(pk=gasto_id)
+        if not tiene_concesion_financiera(
+            rechazado_por,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            gasto.institucion_id,
+            gasto.area_id,
+            sensible=gasto.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para rechazar este gasto.")
+        if gasto.estado == Gasto.Estado.RECHAZADO:
+            return gasto
+        if gasto.estado == Gasto.Estado.APROBADO:
+            raise ValidationError("Un gasto aprobado no puede rechazarse.")
+        if Gasto.objects.filter(reemplaza=gasto).exists():
+            raise ValidationError("Un gasto reemplazado no puede rechazarse.")
+        gasto.estado = Gasto.Estado.RECHAZADO
+        gasto.rechazado_por = rechazado_por
+        gasto.rechazado_en = timezone.now()
+        gasto.motivo_rechazo = motivo
+        gasto.save(update_fields=["estado", "rechazado_por", "rechazado_en", "motivo_rechazo"])
+        return gasto
+
+
+def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por):
+    """Agrega una corrección histórica a un gasto aprobado y autorizado."""
+    with transaction.atomic():
+        gasto = Gasto.objects.select_for_update().get(pk=gasto_id)
+        if not tiene_concesion_financiera(
+            registrado_por,
+            ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+            gasto.institucion_id,
+            gasto.area_id,
+            sensible=gasto.sensible,
+        ):
+            raise PermissionDenied("No tenés autorización para corregir este gasto.")
+        ajuste = AjusteGasto(
+            gasto=gasto,
+            importe=importe,
+            motivo=motivo,
+            registrado_por=registrado_por,
+        )
+        ajuste.save()
+        return ajuste
