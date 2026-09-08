@@ -64,10 +64,23 @@ class Prestacion(models.Model):
 class DefinicionComponente(models.Model):
     class Fuente(models.TextChoices):
         ATENCION_DIRECTA = "atencion_directa", "Atención directa"
+
+    class Unidad(models.TextChoices):
+        ATENCION = "atencion", "Atención"
+
+    class BaseCalculo(models.TextChoices):
+        POR_ATENCION = "por_atencion", "Por atención"
+
     prestacion = models.ForeignKey(Prestacion, on_delete=models.PROTECT, related_name="componentes")
     codigo = models.CharField(max_length=60)
     nombre = models.CharField(max_length=160)
     fuente = models.CharField(max_length=40, choices=Fuente.choices, default=Fuente.ATENCION_DIRECTA)
+    unidad = models.CharField(max_length=30, choices=Unidad.choices, default=Unidad.ATENCION)
+    base_calculo = models.CharField(
+        max_length=30,
+        choices=BaseCalculo.choices,
+        default=BaseCalculo.POR_ATENCION,
+    )
     activo = models.BooleanField(default=True)
     sensible = models.BooleanField(default=False)
     orden = models.PositiveSmallIntegerField(default=0)
@@ -77,8 +90,12 @@ class DefinicionComponente(models.Model):
 
 
 class ValorComponente(models.Model):
+    class Moneda(models.TextChoices):
+        ARS = "ARS", "Peso argentino"
+
     componente = models.ForeignKey(DefinicionComponente, on_delete=models.PROTECT, related_name="valores")
     importe = models.DecimalField(max_digits=14, decimal_places=2)
+    moneda = models.CharField(max_length=3, choices=Moneda.choices, default=Moneda.ARS)
     vigente_desde = models.DateTimeField()
     vigente_hasta = models.DateTimeField(null=True, blank=True)
     fuente = models.CharField(max_length=255, blank=True)
@@ -164,10 +181,41 @@ class ImputacionCosto(models.Model):
     componente = models.ForeignKey(DefinicionComponente, on_delete=models.PROTECT, related_name="imputaciones")
     valor = models.ForeignKey(ValorComponente, on_delete=models.PROTECT, related_name="imputaciones")
     importe = models.DecimalField(max_digits=14, decimal_places=2)
+    unidad = models.CharField(
+        max_length=30,
+        choices=DefinicionComponente.Unidad.choices,
+        default=DefinicionComponente.Unidad.ATENCION,
+    )
+    base_calculo = models.CharField(
+        max_length=30,
+        choices=DefinicionComponente.BaseCalculo.choices,
+        default=DefinicionComponente.BaseCalculo.POR_ATENCION,
+    )
+    moneda = models.CharField(max_length=3, choices=ValorComponente.Moneda.choices, default=ValorComponente.Moneda.ARS)
     creado = models.DateTimeField(auto_now_add=True)
     class Meta:
         unique_together = [("hecho", "componente")]
         constraints = [models.CheckConstraint(condition=Q(importe__gte=0), name="imputacion_costo_no_negativa")]
+
+    def clean(self):
+        super().clean()
+        if self.valor_id and self.moneda != self.valor.moneda:
+            raise ValidationError("La imputación conserva la moneda del valor aplicado.")
+        if self.hecho_id and self.componente_id:
+            esperado = ComponenteEsperadoHecho.objects.filter(
+                hecho_id=self.hecho_id,
+                componente_id=self.componente_id,
+            ).first()
+            if esperado is None:
+                raise ValidationError("La imputación requiere un componente congelado para el hecho.")
+            if (self.unidad, self.base_calculo) != (esperado.unidad, esperado.base_calculo):
+                raise ValidationError("La imputación conserva la unidad y base congeladas del componente.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una imputación de costo no se edita; se registra un ajuste.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class AjusteCosto(models.Model):
@@ -254,6 +302,16 @@ class ComponenteEsperadoHecho(models.Model):
     hecho = models.ForeignKey(HechoAtencionCosteable, on_delete=models.PROTECT, related_name="componentes_esperados")
     componente = models.ForeignKey(DefinicionComponente, on_delete=models.PROTECT, related_name="hechos_esperados")
     sensible = models.BooleanField(default=False)
+    unidad = models.CharField(
+        max_length=30,
+        choices=DefinicionComponente.Unidad.choices,
+        default=DefinicionComponente.Unidad.ATENCION,
+    )
+    base_calculo = models.CharField(
+        max_length=30,
+        choices=DefinicionComponente.BaseCalculo.choices,
+        default=DefinicionComponente.BaseCalculo.POR_ATENCION,
+    )
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:

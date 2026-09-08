@@ -102,6 +102,8 @@ def _congelar_componentes(hecho):
                         hecho=hecho,
                         componente=componente,
                         sensible=componente.sensible,
+                        unidad=componente.unidad,
+                        base_calculo=componente.base_calculo,
                     )
                     for componente in componentes
                 ],
@@ -128,14 +130,24 @@ def procesar_hecho_atencion(hecho_id):
         if not componentes:
             _marcar_costeo_actualizado(hecho)
             return hecho
-        componentes = [esperado.componente for esperado in componentes]
-        for componente in componentes:
+        for esperado in componentes:
+            componente = esperado.componente
             valor = ValorComponente.objects.filter(componente=componente, vigente_desde__lte=hecho.ocurrida_en).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=hecho.ocurrida_en)).order_by("-vigente_desde", "-id").first()
             if valor is None:
                 _pendiente(hecho, PendienteCosteo.Motivo.SIN_VALOR, componente)
                 continue
             try:
-                ImputacionCosto.objects.get_or_create(hecho=hecho, componente=componente, defaults={"valor": valor, "importe": valor.importe})
+                ImputacionCosto.objects.get_or_create(
+                    hecho=hecho,
+                    componente=componente,
+                    defaults={
+                        "valor": valor,
+                        "importe": valor.importe,
+                        "unidad": esperado.unidad,
+                        "base_calculo": esperado.base_calculo,
+                        "moneda": valor.moneda,
+                    },
+                )
             except IntegrityError:
                 pass
             _resolver(hecho, PendienteCosteo.Motivo.SIN_VALOR, componente)

@@ -71,7 +71,10 @@ class PrestacionSerializer(serializers.ModelSerializer):
 class DefinicionComponenteSerializer(serializers.ModelSerializer):
     class Meta:
         model = DefinicionComponente
-        fields = ["id", "prestacion", "codigo", "nombre", "fuente", "activo", "sensible", "orden"]
+        fields = [
+            "id", "prestacion", "codigo", "nombre", "fuente", "unidad", "base_calculo",
+            "activo", "sensible", "orden",
+        ]
         read_only_fields = ["id"]
 
 
@@ -79,7 +82,7 @@ class ValorComponenteSerializer(serializers.ModelSerializer):
     class Meta:
         model = ValorComponente
         fields = [
-            "id", "componente", "importe", "vigente_desde", "vigente_hasta", "fuente",
+            "id", "componente", "importe", "moneda", "vigente_desde", "vigente_hasta", "fuente",
             "registrado_por", "registrado", "reemplaza", "motivo_correccion",
         ]
         read_only_fields = ["id", "registrado_por", "registrado"]
@@ -126,6 +129,7 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     alcance = serializers.SerializerMethodField()
     imputaciones = serializers.SerializerMethodField()
     limite = serializers.SerializerMethodField()
+    moneda = serializers.SerializerMethodField()
     actualizado_en = serializers.DateTimeField(source="ultimo_costeo_en", read_only=True)
 
     class Meta:
@@ -133,7 +137,7 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         fields = [
             "id", "institucion", "caso", "ciudadano", "area", "ocurrida_en",
             "actualizado_en", "total_conocido", "total_directo_es_completo", "total_es_completo",
-            "estado_costo", "faltantes", "alcance",
+            "estado_costo", "faltantes", "alcance", "moneda",
             "imputaciones", "limite",
         ]
         read_only_fields = fields
@@ -154,6 +158,10 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
             start=0,
         )
         return str(total)
+
+    @staticmethod
+    def get_moneda(_obj):
+        return ValorComponente.Moneda.ARS
 
     def get_total_directo_es_completo(self, obj):
         componentes_esperados = {
@@ -211,10 +219,14 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
                 "componente_codigo": imputacion.componente.codigo,
                 "componente_nombre": imputacion.componente.nombre,
                 "importe": str(imputacion.importe),
+                "unidad": imputacion.unidad,
+                "base_calculo": imputacion.base_calculo,
+                "moneda": imputacion.moneda,
                 "ajustes": [
                     {
                         "id": ajuste.id,
                         "importe": str(ajuste.importe),
+                        "moneda": imputacion.moneda,
                         "motivo": ajuste.motivo,
                         "registrado": ajuste.registrado,
                     }

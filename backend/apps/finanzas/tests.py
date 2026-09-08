@@ -139,7 +139,42 @@ class CosteoAtencionTests(TestCase):
         procesar_hecho_atencion(hecho.id)
         imputacion = ImputacionCosto.objects.get(hecho=hecho, componente=componente)
         self.assertEqual(imputacion.importe, Decimal("1250.50"))
+        self.assertEqual(imputacion.unidad, DefinicionComponente.Unidad.ATENCION)
+        self.assertEqual(imputacion.base_calculo, DefinicionComponente.BaseCalculo.POR_ATENCION)
+        self.assertEqual(imputacion.moneda, ValorComponente.Moneda.ARS)
+        esperado = ComponenteEsperadoHecho.objects.get(hecho=hecho, componente=componente)
+        self.assertEqual(esperado.unidad, DefinicionComponente.Unidad.ATENCION)
+        self.assertEqual(esperado.base_calculo, DefinicionComponente.BaseCalculo.POR_ATENCION)
+        with self.assertRaises(ValidationError):
+            ImputacionCosto(
+                hecho=hecho,
+                componente=componente,
+                valor=imputacion.valor,
+                importe=imputacion.importe,
+                moneda="USD",
+            ).save()
         self.assertEqual(ImputacionCosto.objects.filter(hecho=hecho).count(), 1)
+
+    def test_un_valor_de_costo_directo_no_admite_otra_moneda_en_v1(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+
+        with self.assertRaises(ValidationError):
+            ValorComponente(
+                componente=componente,
+                importe=Decimal("1250.50"),
+                moneda="USD",
+                vigente_desde=timezone.now(),
+            ).full_clean()
 
     def test_el_hecho_sobrevive_al_borrado_del_caso_y_no_se_edita(self):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
@@ -627,6 +662,7 @@ class HechoCostoApiTests(APITestCase):
         response = self.client.get(f"/api/hechos-costo/{hecho.id}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["total_conocido"], "1200.50")
+        self.assertEqual(response.data["moneda"], ValorComponente.Moneda.ARS)
         self.assertTrue(response.data["total_directo_es_completo"])
         self.assertFalse(response.data["total_es_completo"])
         self.assertEqual(response.data["estado_costo"], "parcial")
@@ -637,6 +673,13 @@ class HechoCostoApiTests(APITestCase):
             ["gastos_compartidos", "otras_fuentes_de_costo"],
         )
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
+        self.assertEqual(response.data["imputaciones"][0]["unidad"], DefinicionComponente.Unidad.ATENCION)
+        self.assertEqual(
+            response.data["imputaciones"][0]["base_calculo"],
+            DefinicionComponente.BaseCalculo.POR_ATENCION,
+        )
+        self.assertEqual(response.data["imputaciones"][0]["moneda"], ValorComponente.Moneda.ARS)
+        self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["moneda"], ValorComponente.Moneda.ARS)
 
     def test_componentes_congelados_sin_calcular_no_marcan_el_directo_completo(self):
         prestacion = Prestacion.objects.create(
@@ -909,6 +952,11 @@ class CatalogoCostosApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["unidad"], DefinicionComponente.Unidad.ATENCION)
+        self.assertEqual(
+            response.data["base_calculo"],
+            DefinicionComponente.BaseCalculo.POR_ATENCION,
+        )
         componente = DefinicionComponente.objects.get(prestacion=prestacion, codigo="BASE")
         self.assertEqual(
             self.client.patch(
