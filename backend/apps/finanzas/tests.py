@@ -563,8 +563,38 @@ class CatalogoCostosApiTests(APITestCase):
                 {"codigo": "OTRO"},
                 format="json",
             ).status_code,
-            405,
+            400,
         )
+
+    def test_configurador_da_de_baja_logica_prestacion_y_componente(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion,
+            nodo=self.nodo,
+            codigo="CONS",
+            nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        self.client.force_authenticate(self.admin)
+
+        baja_prestacion = self.client.patch(
+            f"/api/prestaciones-costo/{prestacion.id}/",
+            {"activo": False},
+            format="json",
+        )
+        baja_componente = self.client.patch(
+            f"/api/componentes-costo/{componente.id}/",
+            {"activo": False},
+            format="json",
+        )
+
+        self.assertEqual(baja_prestacion.status_code, 200)
+        self.assertEqual(baja_componente.status_code, 200)
+        self.assertFalse(Prestacion.objects.get(pk=prestacion.id).activo)
+        self.assertFalse(DefinicionComponente.objects.get(pk=componente.id).activo)
 
     def test_configurador_financiero_agrega_valor_vigente_que_no_admite_patch(self):
         prestacion = Prestacion.objects.create(

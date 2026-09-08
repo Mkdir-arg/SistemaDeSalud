@@ -1,6 +1,6 @@
 from django.db.models import Q
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
@@ -156,6 +156,11 @@ class CatalogoCostosInstitucionalMixin:
         ):
             raise PermissionDenied("No tenés autorización para configurar costos en esta institución.")
 
+    def perform_update(self, serializer):
+        if set(serializer.validated_data) != {"activo"}:
+            raise ValidationError({"detail": "Sólo podés cambiar el estado activo del catálogo."})
+        serializer.save()
+
 
 class ConcesionFinancieraViewSet(BaseModelViewSet):
     """Administración institucional de los permisos propios de Finanzas."""
@@ -174,7 +179,7 @@ class PrestacionViewSet(CatalogoCostosInstitucionalMixin, BaseModelViewSet):
     queryset = Prestacion.objects.select_related("institucion", "nodo")
     serializer_class = PrestacionSerializer
     institucion_path = "institucion"
-    http_method_names = ["get", "head", "options", "post"]
+    http_method_names = ["get", "head", "options", "post", "patch"]
     filter_fields = ("institucion", "nodo", "activo")
     ordering_fields = ("codigo", "nombre", "id")
 
@@ -187,7 +192,7 @@ class DefinicionComponenteViewSet(CatalogoCostosInstitucionalMixin, BaseModelVie
     queryset = DefinicionComponente.objects.select_related("prestacion__institucion", "prestacion__nodo")
     serializer_class = DefinicionComponenteSerializer
     institucion_path = "prestacion__institucion"
-    http_method_names = ["get", "head", "options", "post"]
+    http_method_names = ["get", "head", "options", "post", "patch"]
     filter_fields = ("prestacion", "fuente", "activo")
     ordering_fields = ("codigo", "nombre", "orden", "id")
 
