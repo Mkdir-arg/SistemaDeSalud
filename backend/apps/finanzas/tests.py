@@ -359,6 +359,68 @@ class CosteoAtencionTests(TestCase):
             )
         )
 
+    def test_las_acciones_de_gastos_reutilizan_alcance_y_admin_explicito(self):
+        otra_area = Area.objects.create(institucion=self.institucion, nombre="Internación")
+        delegado = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.MEDICO,
+        )
+        for accion in (
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+            ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+        ):
+            with self.assertRaises(ValidationError):
+                ConcesionFinanciera.objects.create(
+                    membresia=delegado,
+                    accion=accion,
+                    todas_las_areas=True,
+                )
+
+        registro = ConcesionFinanciera.objects.create(
+            membresia=delegado,
+            accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+        )
+        registro.areas.add(self.area)
+        self.assertTrue(
+            tiene_concesion_financiera(
+                self.usuario,
+                ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+                self.institucion.id,
+                self.area.id,
+            )
+        )
+        self.assertFalse(
+            tiene_concesion_financiera(
+                self.usuario,
+                ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+                self.institucion.id,
+                otra_area.id,
+            )
+        )
+
+        admin = Membresia.objects.create(
+            usuario=self.usuario,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        lectura_sensible = ConcesionFinanciera.objects.create(
+            membresia=admin,
+            accion=ConcesionFinanciera.Accion.VER_GASTOS,
+            todas_las_areas=True,
+            permite_sensibles=True,
+        )
+        self.assertTrue(
+            tiene_concesion_financiera(
+                self.usuario,
+                lectura_sensible.accion,
+                self.institucion.id,
+                self.area.id,
+                sensible=True,
+            )
+        )
+
     def test_ajuste_conserva_la_imputacion_original_y_exige_concesion(self):
         prestacion = Prestacion.objects.create(institucion=self.institucion, nodo=self.nodo, codigo="CONS", nombre="Consulta")
         componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="BASE", nombre="Costo directo")

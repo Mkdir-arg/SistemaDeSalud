@@ -11,6 +11,11 @@ class ConcesionFinanciera(models.Model):
         VER_COSTOS = "ver_costos", "Ver costos"
         CONFIGURAR_COMPONENTES = "configurar_componentes", "Configurar componentes"
         CORREGIR_COSTOS = "corregir_costos", "Corregir costos"
+        VER_GASTOS = "ver_gastos", "Ver gastos"
+        REGISTRAR_GASTOS = "registrar_gastos", "Registrar gastos"
+        APROBAR_GASTOS = "aprobar_gastos", "Aprobar gastos"
+        CORREGIR_GASTOS = "corregir_gastos", "Corregir gastos"
+        CONFIGURAR_GASTOS_ESPERADOS = "configurar_gastos_esperados", "Configurar gastos esperados"
 
     membresia = models.ForeignKey(
         "accounts.Membresia",
@@ -30,15 +35,21 @@ class ConcesionFinanciera(models.Model):
         unique_together = [("membresia", "accion")]
         ordering = ["membresia_id", "accion", "id"]
 
+    @classmethod
+    def accion_requiere_administracion(cls, accion):
+        return accion in {
+            cls.Accion.CONFIGURAR_COMPONENTES,
+            cls.Accion.CORREGIR_COSTOS,
+            cls.Accion.APROBAR_GASTOS,
+            cls.Accion.CORREGIR_GASTOS,
+            cls.Accion.CONFIGURAR_GASTOS_ESPERADOS,
+        }
 
     def clean(self):
         super().clean()
-        if self.accion in {
-            self.Accion.CONFIGURAR_COMPONENTES,
-            self.Accion.CORREGIR_COSTOS,
-        } and self.membresia.rol != "admin":
+        if self.accion_requiere_administracion(self.accion) and self.membresia.rol != "admin":
             raise ValidationError(
-                "La configuración y corrección de costos requieren una membresía administrativa."
+                "Esta acción financiera requiere una membresía administrativa."
             )
         if self.permite_sensibles and self.membresia.rol != "admin":
             raise ValidationError(

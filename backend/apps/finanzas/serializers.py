@@ -40,10 +40,7 @@ class ConcesionFinancieraSerializer(serializers.ModelSerializer):
                 {"areas": "Indicá al menos un área o marcá alcance para toda la institución."}
             )
         if membresia and (
-            accion in {
-                ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES,
-                ConcesionFinanciera.Accion.CORREGIR_COSTOS,
-            }
+            ConcesionFinanciera.accion_requiere_administracion(accion)
             or permite_sensibles
         ) and membresia.rol != "admin":
             raise serializers.ValidationError(

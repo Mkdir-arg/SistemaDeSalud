@@ -6,12 +6,6 @@ from apps.accounts.models import Membresia
 from .models import ConcesionFinanciera
 
 
-ACCIONES_ADMINISTRATIVAS = {
-    ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES,
-    ConcesionFinanciera.Accion.CORREGIR_COSTOS,
-}
-
-
 def concesiones_financieras_de(usuario, accion, sensible=False):
     """Consulta base de concesiones activas para una acción financiera."""
     if not (getattr(usuario, "is_authenticated", False) and not usuario.is_superuser):
@@ -22,7 +16,7 @@ def concesiones_financieras_de(usuario, accion, sensible=False):
         membresia__activo=True,
         accion=accion,
     )
-    if accion in ACCIONES_ADMINISTRATIVAS or sensible:
+    if ConcesionFinanciera.accion_requiere_administracion(accion) or sensible:
         concesiones = concesiones.filter(
             membresia__rol=Membresia.Rol.ADMIN_INSTITUCION,
         )
