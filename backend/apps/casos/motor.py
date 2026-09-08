@@ -483,7 +483,7 @@ def _siguiente_nodo(nodo: Nodo, caso: Caso) -> Nodo | None:
 # Efectos al entrar a un nodo
 # --------------------------------------------------------------------------- #
 def _registrar(caso: Caso, titulo: str, detalle: str = "", autor=None, nodo: Nodo | None = None):
-    EventoCaso.objects.create(
+    return EventoCaso.objects.create(
         caso=caso, titulo=titulo, detalle=detalle, autor=autor, nodo=nodo
     )
 
@@ -2040,7 +2040,11 @@ def _registrar_atencion(caso: Caso, nodo: Nodo, datos: dict, autor=None, matricu
     else:
         detalle = "sin ciudadano asociado"
     caso.estado = Caso.Estado.ATENDIDO
-    _registrar(caso, f"Atención «{titulo}» registrada", detalle=detalle, autor=autor, nodo=nodo)
+    # El origen económico es parte de la misma transacción que confirma la
+    # atención. El cálculo posterior puede fallar o demorarse sin perderlo.
+    evento = _registrar(caso, f"Atención «{titulo}» registrada", detalle=detalle, autor=autor, nodo=nodo)
+    from apps.finanzas.services import registrar_atencion_completada
+    registrar_atencion_completada(caso, nodo, evento=evento, autor=autor)
 
 
 # --------------------------------------------------------------------------- #

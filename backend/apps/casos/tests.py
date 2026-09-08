@@ -20,6 +20,7 @@ from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
 from apps.instituciones.models import Area, Box, Grupo, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria
+from apps.finanzas.models import HechoAtencionCosteable
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -143,6 +144,10 @@ class MotorTestCase(TestCase):
         entrada = EntradaHistoria.objects.get(caso=caso)
         self.assertFalse(entrada.firmada)
         self.assertEqual(entrada.matricula, "")
+        hecho = HechoAtencionCosteable.objects.get(caso=caso)
+        self.assertEqual(hecho.nodo, self.n_atencion)
+        self.assertEqual(hecho.ciudadano, self.ciudadano)
+        self.assertEqual(HechoAtencionCosteable.objects.filter(caso=caso).count(), 1)
 
     def test_la_firma_asienta_la_matricula(self):
         """La matrícula queda como snapshot en la entrada (puede cambiar después)."""
