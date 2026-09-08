@@ -146,6 +146,150 @@ class ValorComponente(models.Model):
         raise ValidationError("Un valor de componente no se elimina.")
 
 
+class ConceptoGasto(models.Model):
+    """Catálogo institucional de conceptos para gastos reales y esperados."""
+
+    institucion = models.ForeignKey(
+        "instituciones.Institucion",
+        on_delete=models.PROTECT,
+        related_name="conceptos_gasto",
+    )
+    codigo = models.CharField(max_length=60)
+    nombre = models.CharField(max_length=160)
+    activo = models.BooleanField(default=True)
+    sensible = models.BooleanField(default=False)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="conceptos_gasto_registrados",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("institucion", "codigo")]
+        ordering = ["institucion_id", "codigo", "id"]
+
+    def clean(self):
+        super().clean()
+        if not self.codigo.strip():
+            raise ValidationError("Un concepto de gasto requiere un código.")
+        if not self.nombre.strip():
+            raise ValidationError("Un concepto de gasto requiere un nombre.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class ExpectativaGasto(models.Model):
+    """Vigencia trazable de un concepto cuya carga se espera en un ámbito."""
+
+    concepto = models.ForeignKey(
+        ConceptoGasto,
+        on_delete=models.PROTECT,
+        related_name="expectativas",
+    )
+    institucion = models.ForeignKey(
+        "instituciones.Institucion",
+        on_delete=models.PROTECT,
+        related_name="expectativas_gasto",
+    )
+    area = models.ForeignKey(
+        "instituciones.Area",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="expectativas_gasto",
+    )
+    vigente_desde = models.DateField()
+    vigente_hasta = models.DateField(null=True, blank=True)
+    sensible = models.BooleanField(default=False, editable=False)
+    reemplaza = models.OneToOneField(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reemplazada_por",
+    )
+    motivo_correccion = models.CharField(max_length=255, blank=True)
+    registrado_por = models.ForeignKey(
+        "accounts.Usuario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expectativas_gasto_registradas",
+    )
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["institucion_id", "concepto_id", "area_id", "vigente_desde", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=models.F("vigente_desde")),
+                name="vigencia_expectativa_gasto_valida",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.vigente_desde and self.vigente_desde.day != 1:
+            raise ValidationError("La vigencia de una expectativa empieza el primer día del mes.")
+        if self.vigente_hasta and self.vigente_hasta.day != 1:
+            raise ValidationError("La vigencia de una expectativa termina el primer día de un mes.")
+        if self.concepto_id and self.institucion_id and self.concepto.institucion_id != self.institucion_id:
+            raise ValidationError("El concepto debe pertenecer a la institución de la expectativa.")
+        if self.area_id and self.institucion_id and self.area.institucion_id != self.institucion_id:
+            raise ValidationError("El área debe pertenecer a la institución de la expectativa.")
+        if self.reemplaza_id:
+            if (
+                self.reemplaza.concepto_id != self.concepto_id
+                or self.reemplaza.institucion_id != self.institucion_id
+                or self.reemplaza.area_id != self.area_id
+            ):
+                raise ValidationError("Una expectativa sucesora conserva concepto y ámbito.")
+            if self.vigente_desde < self.reemplaza.vigente_desde:
+                raise ValidationError("Una expectativa sucesora no puede empezar antes de la reemplazada.")
+            if self.vigente_desde == self.reemplaza.vigente_desde:
+                if self.vigente_hasta != self.reemplaza.vigente_hasta:
+                    raise ValidationError("Una corrección conserva la vigencia de la expectativa corregida.")
+                if not self.motivo_correccion.strip():
+                    raise ValidationError("Una corrección de expectativa requiere un motivo.")
+
+        if not (self.concepto_id and self.institucion_id and self.vigente_desde):
+            return
+        solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
+        if self.vigente_hasta is not None:
+            solapa &= Q(vigente_desde__lt=self.vigente_hasta)
+        existentes = ExpectativaGasto.objects.filter(
+            concepto_id=self.concepto_id,
+            institucion_id=self.institucion_id,
+            area_id=self.area_id,
+            reemplazada_por__isnull=True,
+        ).exclude(pk=self.pk)
+        if self.reemplaza_id:
+            existentes = existentes.exclude(pk=self.reemplaza_id)
+        if existentes.filter(solapa).exists():
+            raise ValidationError("Ya existe una expectativa vigente para ese intervalo; corregila explícitamente.")
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Una expectativa de gasto no se edita; se corrige con una nueva versión.")
+        if self.concepto_id is None:
+            self.full_clean()
+            return super().save(*args, **kwargs)
+        with transaction.atomic(using=kwargs.get("using")):
+            concepto = ConceptoGasto.objects.select_for_update().get(pk=self.concepto_id)
+            self.concepto = concepto
+            self.sensible = concepto.sensible
+            self.full_clean()
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Una expectativa de gasto no se elimina.")
+
+
 class HechoAtencionCosteable(models.Model):
     """Atención completada: origen durable, sin narrativa clínica."""
     institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT, related_name="hechos_atencion_costeables")

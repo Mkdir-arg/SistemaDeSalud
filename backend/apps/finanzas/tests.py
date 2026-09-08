@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import timedelta
+from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from threading import Barrier
@@ -20,7 +20,7 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import AjusteCosto, ComponenteEsperadoHecho, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
+from .models import AjusteCosto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, HechoAtencionCosteable, ImputacionCosto, PendienteCosteo, Prestacion, ValorComponente
 from .permisos import tiene_concesion_financiera
 from .services import corregir_snapshot_componentes, intentar_costeo_directo, procesar_hecho_atencion, registrar_ajuste_costo, registrar_atencion_completada
 
@@ -1314,3 +1314,73 @@ class AjusteCostoApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class ExpectativaGastoTests(TestCase):
+    def setUp(self):
+        self.institucion = Institucion.objects.create(nombre="Hospital Central")
+        self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
+        self.concepto = ConceptoGasto.objects.create(
+            institucion=self.institucion,
+            codigo="ELECTRICIDAD",
+            nombre="Electricidad",
+        )
+
+    def crear_expectativa(self, **overrides):
+        datos = {
+            "concepto": self.concepto,
+            "institucion": self.institucion,
+            "area": self.area,
+            "vigente_desde": date(2026, 9, 1),
+        }
+        datos.update(overrides)
+        return ExpectativaGasto.objects.create(**datos)
+
+    def test_exige_concepto_y_area_del_mismo_ambito_mensual(self):
+        otra_institucion = Institucion.objects.create(nombre="Hospital Norte")
+        otra_area = Area.objects.create(institucion=otra_institucion, nombre="Clínica")
+        otro_concepto = ConceptoGasto.objects.create(
+            institucion=otra_institucion,
+            codigo="LIMPIEZA",
+            nombre="Limpieza",
+        )
+
+        with self.assertRaises(ValidationError):
+            self.crear_expectativa(area=otra_area)
+        with self.assertRaises(ValidationError):
+            self.crear_expectativa(concepto=otro_concepto)
+        with self.assertRaises(ValidationError):
+            self.crear_expectativa(vigente_desde=date(2026, 9, 2))
+
+    def test_congela_sensibilidad_y_no_permite_solapamientos(self):
+        self.concepto.sensible = True
+        self.concepto.save()
+        expectativa = self.crear_expectativa()
+        self.concepto.sensible = False
+        self.concepto.save()
+
+        expectativa.refresh_from_db()
+        self.assertTrue(expectativa.sensible)
+        with self.assertRaises(ValidationError):
+            self.crear_expectativa(vigente_desde=date(2026, 10, 1))
+
+    def test_correccion_reemplaza_sin_editar_la_expectativa_original(self):
+        original = self.crear_expectativa(vigente_hasta=date(2026, 10, 1))
+
+        with self.assertRaises(ValidationError):
+            self.crear_expectativa(
+                vigente_hasta=date(2026, 10, 1),
+                reemplaza=original,
+            )
+        correccion = self.crear_expectativa(
+            vigente_hasta=date(2026, 10, 1),
+            reemplaza=original,
+            motivo_correccion="Corrección de expectativa",
+        )
+
+        self.assertEqual(correccion.reemplaza, original)
+        with self.assertRaises(ValidationError):
+            original.delete()
+        original.vigente_hasta = date(2026, 11, 1)
+        with self.assertRaises(ValidationError):
+            original.save()
