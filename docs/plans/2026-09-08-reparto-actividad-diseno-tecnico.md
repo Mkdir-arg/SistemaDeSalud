@@ -147,3 +147,20 @@ Validación local sobre SQLite efímero:
   personal clínico.
 
 No se ejecutó despliegue, migración sobre una base real ni medición de volumen.
+
+### Actualización de seguridad y claridad del 2026-09-09
+
+La cobertura ahora exige dos evidencias separadas: conciliación técnica de las
+atenciones completadas contra `HechoAtencionCosteable` y confirmación operativa
+de que el área registra toda su actividad desde el mes indicado. Una diferencia
+técnica bloquea la habilitación y conserva el importe completo como pendiente.
+
+La interfaz explica esta diferencia en lenguaje administrativo y muestra, antes
+de confirmar, el importe aprobado visible, el total de atenciones y el estimado
+por atención. La tabla principal contiene sólo repartos vigentes y el historial
+se consulta por separado. Las correcciones requieren motivo y conservan ámbito
+y vigencia.
+
+La validación complementaria sobre PostgreSQL 16 ejecutó correctamente las 109
+pruebas de `apps.finanzas`; el build Vite y la auditoría de 235 clases también
+fueron correctos. No se ejecutó despliegue ni migración sobre datos reales.

@@ -815,6 +815,14 @@ class CoberturaActividadCosteable(models.Model):
             raise ValidationError("Una cobertura sucesora conserva institución y área.")
         if self.reemplaza_id and self.vigente_desde < self.reemplaza.vigente_desde:
             raise ValidationError("Una cobertura sucesora no puede empezar antes de la reemplazada.")
+        if self.reemplaza_id:
+            if not self.motivo_correccion.strip():
+                raise ValidationError("Una corrección de cobertura requiere un motivo.")
+            if (
+                self.vigente_desde == self.reemplaza.vigente_desde
+                and self.vigente_hasta != self.reemplaza.vigente_hasta
+            ):
+                raise ValidationError("Una corrección conserva la vigencia de la cobertura corregida.")
         if not (self.institucion_id and self.area_id and self.vigente_desde):
             return
         solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
@@ -832,8 +840,16 @@ class CoberturaActividadCosteable(models.Model):
     def save(self, *args, **kwargs):
         if self.pk and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError("Una cobertura de actividad no se edita; registrá una versión.")
-        self.full_clean()
-        return super().save(*args, **kwargs)
+        # Toda vía de alta, incluida administración o scripts, toma el mismo
+        # bloqueo. Dos confirmaciones simultáneas del área no pueden validar
+        # contra el mismo estado vacío y crear intervalos superpuestos.
+        using = kwargs.get("using")
+        area_model = self._meta.get_field("area").remote_field.model
+        with transaction.atomic(using=using):
+            if self.area_id:
+                area_model.objects.select_for_update().get(pk=self.area_id)
+            self.full_clean()
+            return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Una cobertura de actividad no se elimina.")
@@ -885,6 +901,14 @@ class ReglaRepartoActividad(models.Model):
             raise ValidationError("Una regla sucesora conserva concepto, institución y área.")
         if self.reemplaza_id and self.vigente_desde < self.reemplaza.vigente_desde:
             raise ValidationError("Una regla sucesora no puede empezar antes de la reemplazada.")
+        if self.reemplaza_id:
+            if not self.motivo_correccion.strip():
+                raise ValidationError("Una corrección de regla requiere un motivo.")
+            if (
+                self.vigente_desde == self.reemplaza.vigente_desde
+                and self.vigente_hasta != self.reemplaza.vigente_hasta
+            ):
+                raise ValidationError("Una corrección conserva la vigencia de la regla corregida.")
         if not (self.concepto_id and self.institucion_id and self.area_id and self.vigente_desde):
             return
         solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
@@ -922,6 +946,7 @@ class RepartoGasto(models.Model):
     class Motivo(models.TextChoices):
         SIN_REGLA = "sin_regla", "Sin regla aplicable"
         SIN_COBERTURA = "sin_cobertura", "Sin cobertura acreditada"
+        ACTIVIDAD_INCOMPLETA = "actividad_incompleta", "Actividad técnicamente incompleta"
         FUENTE_NO_ELEGIBLE = "fuente_no_elegible", "Fuente no elegible"
 
     gasto = models.ForeignKey(Gasto, on_delete=models.PROTECT, related_name="repartos")

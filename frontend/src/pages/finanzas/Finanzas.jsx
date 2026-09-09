@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { useLista } from "@/api/queries";
-import { ESTADOS_CARGA, ESTADOS_GASTO, importeARS, opcionesFinanzas, usePermisosFinanzas } from "@/api/finanzas";
+import { ESTADOS_CARGA, ESTADOS_GASTO, importeARS, importeCentavos, opcionesFinanzas, usePermisosFinanzas } from "@/api/finanzas";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Badge, Button, Card, Field, Input, Modal, Select, Spinner, Tabs } from "@/components/ui";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
@@ -23,17 +23,73 @@ function Estado({ valor, calendario = false }) {
   return <Badge tone={datos?.tone || "gray"}>{datos?.label || "Estado no disponible"}</Badge>;
 }
 
-const importeCentavos = (centavos) => {
-  const valor = BigInt(String(centavos || 0));
-  const signo = valor < 0n ? "-" : "";
-  const absoluto = valor < 0n ? -valor : valor;
-  return importeARS(`${signo}${absoluto / 100n}.${String(absoluto % 100n).padStart(2, "0")}`);
-};
-
 function TablaFinanciera({ consulta, tabla, columnas, vacio }) {
   return <DataTable columnas={columnas} filas={consulta.filas} total={consulta.total} paginas={consulta.paginas}
     tabla={tabla} vacio={vacio} estado={{ cargando: consulta.isLoading, refrescando: consulta.refrescando,
       error: consulta.error, reintentar: consulta.refetch }} />;
+}
+
+function HistorialRepartos({ institucion, area, mes, usuarioId, columnas, onClose }) {
+  const tabla = useTablaUrl("historial_repartos");
+  const params = {
+    gasto__institucion: institucion.id,
+    gasto__area: area === "null" ? -1 : area || undefined,
+    gasto__periodo_economico: `${mes}-01`,
+    vigente: false,
+    page: tabla.pagina,
+    pageSize: tabla.tamano,
+    ordering: "-calculado,-version,-id",
+  };
+  const consulta = useLista("repartos-gasto", params, {
+    queryKey: ["finanzas", usuarioId, institucion.id, "historial-repartos", params],
+    placeholderData: undefined,
+    gcTime: 0,
+  });
+  return <Modal title="Historial de repartos" onClose={onClose} width={920}>
+    <p className="mb-4 text-sm text-texto-debil">Estas versiones explican cambios anteriores. No están vigentes y no deben sumarse al total actual.</p>
+    <TablaFinanciera consulta={consulta} tabla={tabla} columnas={columnas} vacio={{ titulo: "No hay versiones históricas para este filtro" }} />
+  </Modal>;
+}
+
+function ConfiguracionRepartos({ institucion, usuarioId, onNuevo, onCorregir, onClose }) {
+  const coberturas = useQuery({
+    queryKey: ["finanzas", usuarioId, institucion.id, "coberturas-vigentes"],
+    queryFn: () => opcionesFinanzas("coberturas-actividad", institucion.id, { vigente: true }),
+    gcTime: 0,
+  });
+  const reglas = useQuery({
+    queryKey: ["finanzas", usuarioId, institucion.id, "reglas-vigentes"],
+    queryFn: () => opcionesFinanzas("reglas-reparto", institucion.id, { vigente: true }),
+    gcTime: 0,
+  });
+  const error = coberturas.error || reglas.error;
+  return <Modal title="Configuración vigente de repartos" onClose={onClose} width={820}>
+    <div className="mb-5 flex flex-wrap gap-2">
+      <Button variant="secondary" onClick={() => onNuevo("cobertura-reparto")}>Verificar un área</Button>
+      <Button variant="ghost" onClick={() => onNuevo("regla-reparto")}>Agregar regla</Button>
+    </div>
+    <p className="mb-4 text-sm text-texto-debil">La verificación del área confirma la integridad técnica y la cobertura operativa. La regla indica qué gasto se distribuye.</p>
+    {error && <EstadoError error={error} titulo="No se pudo consultar la configuración" onReintentar={() => { coberturas.refetch(); reglas.refetch(); }} />}
+    {!error && (coberturas.isLoading || reglas.isLoading) && <Spinner label="Consultando configuración…" />}
+    {!error && !coberturas.isLoading && !reglas.isLoading && <div className="grid gap-4 md:grid-cols-2">
+      <Card className="p-4"><h3 className="font-semibold">Áreas verificadas</h3>
+        <div className="mt-3 space-y-3">{(coberturas.data || []).length === 0
+          ? <p className="text-sm text-texto-debil">Todavía no hay áreas verificadas.</p>
+          : coberturas.data.map((item) => <div key={item.id} className="border-t border-division pt-3 first:border-0 first:pt-0">
+            <p className="font-medium">{item.area_nombre}</p><p className="text-sm text-texto-debil">Desde {item.vigente_desde.slice(0, 7)}</p>
+            <Button size="sm" variant="ghost" onClick={() => onCorregir("cobertura-reparto", item)}>Corregir</Button>
+          </div>)}</div>
+      </Card>
+      <Card className="p-4"><h3 className="font-semibold">Reglas activas</h3>
+        <div className="mt-3 space-y-3">{(reglas.data || []).length === 0
+          ? <p className="text-sm text-texto-debil">Todavía no hay reglas activas.</p>
+          : reglas.data.map((item) => <div key={item.id} className="border-t border-division pt-3 first:border-0 first:pt-0">
+            <p className="font-medium">{item.concepto_nombre}</p><p className="text-sm text-texto-debil">{item.area_nombre} · Desde {item.vigente_desde.slice(0, 7)}</p>
+            <Button size="sm" variant="ghost" onClick={() => onCorregir("regla-reparto", item)}>Corregir</Button>
+          </div>)}</div>
+      </Card>
+    </div>}
+  </Modal>;
 }
 
 function HistorialCarga({ fila, usuarioId, onClose }) {
@@ -113,6 +169,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     gasto__institucion: institucion.id,
     gasto__area: area === "null" ? -1 : area || undefined,
     gasto__periodo_economico: `${mes}-01`,
+    vigente: true,
     page: repartosTabla.pagina,
     pageSize: repartosTabla.tamano,
     ordering: "-calculado,-version,-id",
@@ -174,7 +231,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const columnasRepartos = [
     { key: "gasto", label: "Gasto repartido", render: (r) => <div><strong>{r.concepto_nombre}</strong><p className="text-sm text-texto-debil">{r.area_nombre || "Institucional"} · Gasto #{r.gasto} · Versión {r.version}{r.vigente ? " · Vigente" : " · Histórica"}</p></div> },
     { key: "periodo_economico", label: "Mes", render: (r) => r.periodo_economico.slice(0, 7) },
-    { key: "estado", label: "Resultado", render: (r) => <div><Badge tone={r.estado === "distribuido" ? "green" : r.estado === "sin_actividad" ? "blue" : "amber"}>{r.estado === "distribuido" ? "Distribuido" : r.estado === "sin_actividad" ? "Sin actividad" : "Pendiente"}</Badge>{r.motivo && <p className="mt-1 text-sm text-texto-debil">{r.motivo === "sin_regla" ? "Falta una regla" : r.motivo === "sin_cobertura" ? "Falta habilitar actividad" : "Fuente no elegible"}</p>}</div> },
+    { key: "estado", label: "Resultado", render: (r) => <div><Badge tone={r.estado === "distribuido" ? "green" : r.estado === "sin_actividad" ? "blue" : "amber"}>{r.estado === "distribuido" ? "Distribuido" : r.estado === "sin_actividad" ? "Sin actividad" : "Pendiente"}</Badge>{r.motivo && <p className="mt-1 text-sm text-texto-debil">{r.motivo === "sin_regla" ? "Falta una regla" : r.motivo === "sin_cobertura" ? "Falta confirmar cobertura operativa" : r.motivo === "actividad_incompleta" ? "La verificación técnica encontró diferencias" : "Fuente no elegible"}</p>}</div> },
     { key: "saldo_centavos", label: "Importe", render: (r) => <span className="whitespace-nowrap font-mono">{importeCentavos(r.saldo_centavos)}</span> },
     { key: "atribuciones", label: "Atenciones", render: (r) => <div className="tabular-nums">{r.atribuciones} atribución(es){r.saldo_no_atribuido_centavos !== 0 && <p className="text-sm text-texto-debil">Sin atribuir: {importeCentavos(r.saldo_no_atribuido_centavos)}</p>}</div> },
   ];
@@ -189,8 +246,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
         {permisos.tiene("registrar_gastos") && <Button disabled={!catalogoListo || permisos.isFetching} onClick={() => abrir("gasto")}>Registrar gasto</Button>}
         {permisos.tiene(CONFIGURAR) && <Button variant="secondary" disabled={!catalogoListo || permisos.isFetching} onClick={() => abrir("expectativa")}>Configurar esperado</Button>}
         {permisos.permite(CONFIGURAR, null) && <Button variant="ghost" onClick={() => abrir("concepto")}>Nuevo concepto</Button>}
-        {permisos.tiene(CONFIGURAR_REPARTOS) && <Button variant="secondary" disabled={areas.isLoading} onClick={() => abrir("cobertura-reparto")}>Habilitar actividad</Button>}
-        {permisos.tiene(CONFIGURAR_REPARTOS) && <Button variant="ghost" disabled={!catalogoListo} onClick={() => abrir("regla-reparto")}>Agregar regla</Button>}
+        {permisos.tiene(CONFIGURAR_REPARTOS) && <Button variant="secondary" disabled={!catalogoListo} onClick={() => abrir("configuracion-repartos")}>Configurar repartos</Button>}
       </div>
     </div>
     <Card className="p-4">
@@ -205,6 +261,14 @@ function ContenidoFinanzas({ institucion, permisos }) {
       </div>
       <p className="mt-3 text-sm text-texto-debil">Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p>
     </Card>
+    {puedeLeer && tab === "repartos" && <Card className="border-l-[3px] border-l-accent p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3 className="font-semibold">Cómo leer un reparto</h3>
+          <p className="mt-1 max-w-[52rem] text-sm text-texto-debil"><strong>Actividad verificada</strong> significa dos cosas distintas: el control técnico no encontró diferencias y el área confirmó que toda su actividad se registra aquí. El importe muestra el total aprobado incluido en tus permisos; “Atenciones” es la cantidad entre la que se distribuye. Las versiones históricas no se suman.</p>
+        </div>
+        <Button variant="ghost" onClick={() => abrir("historial-repartos")}>Ver historial separado</Button>
+      </div>
+    </Card>}
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!puedeLeer ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
@@ -219,8 +283,10 @@ function ContenidoFinanzas({ institucion, permisos }) {
     {modal?.tipo === "historial" && <HistorialCarga fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} />}
     {modal?.tipo === "versiones" && <VersionesEsperado fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} onHistorial={(fila) => abrir("historial", fila)} />}
     {modal?.tipo === "detalle" && <DetalleGasto fila={modal.fila} onClose={() => setModal(null)} />}
+    {modal?.tipo === "historial-repartos" && <HistorialRepartos institucion={institucion} area={area} mes={mes} usuarioId={permisos.usuarioId} columnas={columnasRepartos} onClose={() => setModal(null)} />}
+    {modal?.tipo === "configuracion-repartos" && <ConfiguracionRepartos institucion={institucion} usuarioId={permisos.usuarioId} onNuevo={(tipo) => abrir(tipo)} onCorregir={(tipo, fila) => abrir(tipo, fila)} onClose={() => setModal(null)} />}
     {["cobertura-reparto", "regla-reparto"].includes(modal?.tipo) && <FormularioReparto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
-    {modal && !["historial", "detalle", "versiones", "cobertura-reparto", "regla-reparto"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
+    {modal && !["historial", "detalle", "versiones", "historial-repartos", "configuracion-repartos", "cobertura-reparto", "regla-reparto"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
   </div>;
 }
 

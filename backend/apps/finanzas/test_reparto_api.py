@@ -5,7 +5,10 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
+from apps.casos.models import Caso, EventoCaso
+from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
+from apps.registros.models import Ciudadano
 
 from .models import ConceptoGasto, ConcesionFinanciera, HechoAtencionCosteable
 from .services import procesar_reparto_gasto, registrar_gasto
@@ -48,6 +51,7 @@ class RepartoActividadApiTests(APITestCase):
                 "institucion": self.institucion.id,
                 "area": self.area.id,
                 "vigente_desde": self.mes.isoformat(),
+                "confirmacion_operativa": True,
             },
             format="json",
         )
@@ -66,14 +70,15 @@ class RepartoActividadApiTests(APITestCase):
 
     def crear_hechos(self, cantidad=3):
         momento = timezone.make_aware(datetime.combine(self.mes, datetime.min.time()))
+        inicio = HechoAtencionCosteable.objects.count()
         return [
             HechoAtencionCosteable.objects.create(
                 institucion=self.institucion,
                 area=self.area,
                 area_origen_id=self.area.id,
-                evento_origen_id=5000 + indice,
-                caso_origen_id=4000 + indice,
-                nodo_origen_id=3000 + indice,
+                evento_origen_id=5000 + inicio + indice,
+                caso_origen_id=4000 + inicio + indice,
+                nodo_origen_id=3000 + inicio + indice,
                 ocurrida_en=momento,
             )
             for indice in range(cantidad)
@@ -126,11 +131,106 @@ class RepartoActividadApiTests(APITestCase):
                 "institucion": self.institucion.id,
                 "area": self.otra_area.id,
                 "vigente_desde": self.mes.isoformat(),
+                "confirmacion_operativa": True,
             },
             format="json",
         )
 
         self.assertEqual(respuesta.status_code, 403)
+
+    def test_permiso_exclusivo_de_repartos_puede_consultar_el_catalogo(self):
+        restringido = Usuario.objects.create_user("solo-repartos@cauce.local", "x")
+        membresia = Membresia.objects.create(
+            usuario=restringido,
+            institucion=self.institucion,
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia,
+            accion=ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+            todas_las_areas=True,
+        )
+        self.client.force_authenticate(restringido)
+
+        respuesta = self.client.get(
+            f"/api/conceptos-gasto/?institucion={self.institucion.id}"
+        )
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual([item["id"] for item in respuesta.data["results"]], [self.concepto.id])
+
+    def test_verificacion_explica_diferencia_y_ambos_totales(self):
+        hechos = self.crear_hechos(2)
+        registrar_gasto(
+            self.concepto, self.institucion, self.area,
+            Decimal("100.01"), self.mes, self.admin,
+        )
+
+        respuesta = self.client.get(
+            "/api/coberturas-actividad/verificacion/",
+            {
+                "institucion": self.institucion.id,
+                "area": self.area.id,
+                "periodo_economico": self.mes.isoformat(),
+                "concepto": self.concepto.id,
+            },
+        )
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertTrue(respuesta.data["integridad_tecnica"])
+        self.assertEqual(respuesta.data["diferencias"], 0)
+        self.assertEqual(respuesta.data["atenciones_registradas"], len(hechos))
+        self.assertEqual(respuesta.data["importe_total_centavos"], 10001)
+        self.assertEqual(respuesta.data["importe_estimado_por_atencion_centavos"], 5000)
+
+    def test_no_habilita_una_cobertura_si_el_control_tecnico_encuentra_diferencias(self):
+        flujo = Flujo.objects.create(
+            institucion=self.institucion, area=self.otra_area, titulo="Clínica",
+        )
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        ciudadano = Ciudadano.objects.create(
+            institucion=self.institucion, nombre="Ana", apellido="Prueba",
+        )
+        caso = Caso.objects.create(
+            institucion=self.institucion, version=version, ciudadano=ciudadano,
+            area_actual=self.otra_area,
+        )
+        EventoCaso.objects.create(
+            caso=caso, nodo=nodo, autor=self.admin,
+            titulo="Atención «Consulta» registrada",
+        )
+
+        respuesta = self.client.post(
+            "/api/coberturas-actividad/",
+            {
+                "institucion": self.institucion.id,
+                "area": self.otra_area.id,
+                "vigente_desde": self.mes.isoformat(),
+                "confirmacion_operativa": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)
+        self.assertIn("actividad está incompleta", str(respuesta.data).lower())
+
+    def test_listado_separa_vigente_de_historial(self):
+        self.configurar()
+        self.crear_hechos(1)
+        gasto = registrar_gasto(
+            self.concepto, self.institucion, self.area,
+            Decimal("20.00"), self.mes, self.admin,
+        )
+        primera = procesar_reparto_gasto(gasto.id)
+        self.crear_hechos(2)
+        vigente = procesar_reparto_gasto(gasto.id)
+
+        actuales = self.client.get("/api/repartos-gasto/?vigente=true")
+        historicos = self.client.get("/api/repartos-gasto/?vigente=false")
+
+        self.assertEqual([item["id"] for item in actuales.data["results"]], [vigente.id])
+        self.assertEqual([item["id"] for item in historicos.data["results"]], [primera.id])
 
     def test_no_permite_editar_ni_borrar_configuracion_o_resultados(self):
         self.configurar()

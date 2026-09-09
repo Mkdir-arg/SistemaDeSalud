@@ -34,7 +34,8 @@ Antes de confirmar se mostrará:
 - área, concepto y mes;
 - estado `Actividad verificada` o `Actividad incompleta`;
 - diferencia encontrada, si existe;
-- importe total aprobado que se distribuirá o quedará pendiente;
+- importe aprobado visible para sus permisos, que se distribuirá o quedará
+  pendiente;
 - cantidad total de atenciones incluidas;
 - importe estimado por atención cuando el divisor sea mayor que cero.
 
@@ -64,3 +65,20 @@ anteriores quedarán en un historial separado para evitar sumas aparentes.
 - La suma de centavos vigentes coincide exactamente con el importe del gasto y
   sus ajustes.
 
+## Resultado implementado
+
+La explicación quedó visible en Finanzas y en el formulario de configuración.
+La pantalla distingue expresamente el control técnico de la confirmación
+operativa, muestra la diferencia, el importe aprobado visible, la cantidad de
+atenciones y el estimado por atención. También separa los resultados vigentes
+del historial para que no parezcan acumulables.
+
+La conciliación bloquea la habilitación y el reparto si falta un hecho
+financiero o si una atención aparece asociada a otra institución, área o mes.
+Los gastos institucionales sin área quedan pendientes y el procesamiento por
+lotes recorre todos los gastos, no sólo los primeros cien.
+
+Validación del 2026-09-09: 109 pruebas de `apps.finanzas` correctas sobre
+PostgreSQL 16 aislado, incluidas concurrencia, diferencias técnicas, separación
+por ámbito, cierre exacto en centavos y lote de 102 gastos; migraciones sin
+cambios pendientes; build Vite y auditoría de 235 clases correctos.

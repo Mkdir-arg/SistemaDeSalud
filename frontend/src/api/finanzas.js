@@ -56,3 +56,10 @@ export function importeARS(valor) {
   const [entero, decimales = "00"] = String(valor).split(".");
   return `ARS ${entero.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${decimales.padEnd(2, "0")}`;
 }
+
+export function importeCentavos(centavos) {
+  const valor = BigInt(String(centavos || 0));
+  const signo = valor < 0n ? "-" : "";
+  const absoluto = valor < 0n ? -valor : valor;
+  return importeARS(`${signo}${absoluto / 100n}.${String(absoluto % 100n).padStart(2, "0")}`);
+}

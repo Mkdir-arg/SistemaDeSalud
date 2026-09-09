@@ -20,7 +20,7 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
-from .models import AjusteCosto, AjusteGasto, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, RepartoGasto, ValorComponente
+from .models import AjusteCosto, AjusteGasto, CoberturaActividadCosteable, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ReglaRepartoActividad, RepartoGasto, ValorComponente
 from .permisos import tiene_concesion_financiera
 from .services import aprobar_gasto, corregir_snapshot_componentes, indicar_carga_esperada, intentar_costeo_directo, procesar_hecho_atencion, procesar_reparto_gasto, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_atencion_completada, registrar_cobertura_actividad, registrar_gasto, registrar_regla_reparto
 
@@ -2283,7 +2283,7 @@ class RepartoActividadTests(TestCase):
         )
         registrar_cobertura_actividad(
             institucion=self.institucion, area=self.area, vigente_desde=self.mes,
-            registrado_por=self.usuario,
+            registrado_por=self.usuario, confirmacion_operativa=True,
         )
         registrar_regla_reparto(
             concepto=self.concepto, institucion=self.institucion, area=self.area,
@@ -2358,6 +2358,117 @@ class RepartoActividadTests(TestCase):
         self.assertEqual((sin_cobertura.estado, sin_cobertura.motivo), ("pendiente", "sin_cobertura"))
         self.assertEqual(sin_cobertura.reemplaza_id, sin_regla.id)
 
+    def test_una_diferencia_tecnica_deja_todo_el_importe_pendiente(self):
+        flujo = Flujo.objects.create(
+            institucion=self.institucion, area=self.area, titulo="Control de guardia",
+        )
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        ciudadano = Ciudadano.objects.create(
+            institucion=self.institucion, nombre="Paciente", apellido="Control",
+        )
+        caso = Caso.objects.create(
+            institucion=self.institucion, version=version, ciudadano=ciudadano,
+            area_actual=self.area,
+        )
+        EventoCaso.objects.create(
+            caso=caso, nodo=nodo, autor=self.usuario,
+            titulo="Atención «Consulta» registrada",
+        )
+
+        reparto = procesar_reparto_gasto(self.gasto.id)
+
+        self.assertEqual((reparto.estado, reparto.motivo), ("pendiente", "actividad_incompleta"))
+        self.assertEqual(reparto.saldo_centavos, 10000)
+        self.assertEqual(reparto.atribuciones.count(), 0)
+
+    def test_solo_atribuye_atenciones_de_la_misma_institucion_area_y_mes(self):
+        propios = self.crear_hechos(2)
+        otra_area = Area.objects.create(institucion=self.institucion, nombre="Clínica")
+        otra_institucion = Institucion.objects.create(nombre="Hospital ajeno")
+        area_ajena = Area.objects.create(institucion=otra_institucion, nombre="Guardia ajena")
+        momento = timezone.make_aware(datetime.combine(self.mes, datetime.min.time()))
+        contaminantes = [
+            HechoAtencionCosteable.objects.create(
+                institucion=self.institucion, area=otra_area, area_origen_id=otra_area.id,
+                evento_origen_id=9501, caso_origen_id=8501, nodo_origen_id=7501,
+                ocurrida_en=momento,
+            ),
+            HechoAtencionCosteable.objects.create(
+                institucion=otra_institucion, area=area_ajena, area_origen_id=area_ajena.id,
+                evento_origen_id=9502, caso_origen_id=8502, nodo_origen_id=7502,
+                ocurrida_en=momento,
+            ),
+            HechoAtencionCosteable.objects.create(
+                institucion=self.institucion, area=self.area, area_origen_id=self.area.id,
+                evento_origen_id=9503, caso_origen_id=8503, nodo_origen_id=7503,
+                ocurrida_en=timezone.make_aware(datetime.combine(
+                    (self.mes.replace(day=28) + timedelta(days=4)).replace(day=1),
+                    datetime.min.time(),
+                )),
+            ),
+        ]
+
+        reparto = procesar_reparto_gasto(self.gasto.id)
+
+        self.assertEqual(
+            set(reparto.atribuciones.values_list("hecho_id", flat=True)),
+            {hecho.id for hecho in propios},
+        )
+        self.assertFalse(reparto.atribuciones.filter(hecho_id__in=[h.id for h in contaminantes]).exists())
+        self.assertEqual(sum(reparto.atribuciones.values_list("importe_centavos", flat=True)), 10000)
+
+    def test_gasto_institucional_queda_visible_como_pendiente(self):
+        institucional = registrar_gasto(
+            self.concepto, self.institucion, None, Decimal("75.00"), self.mes, self.usuario,
+        )
+
+        reparto = procesar_reparto_gasto(institucional.id)
+
+        self.assertEqual((reparto.estado, reparto.motivo), ("pendiente", "fuente_no_elegible"))
+        self.assertEqual(reparto.saldo_centavos, 7500)
+
+    def test_el_comando_recorre_mas_de_un_lote_e_incluye_institucionales(self):
+        extras = []
+        for indice in range(101):
+            area = None if indice == 100 else self.area
+            extras.append(Gasto(
+                concepto=self.concepto,
+                concepto_codigo=self.concepto.codigo,
+                concepto_nombre=self.concepto.nombre,
+                institucion=self.institucion,
+                area=area,
+                importe=Decimal("1.00"),
+                periodo_economico=self.mes,
+                origen=Gasto.Origen.CENTRAL if area is None else Gasto.Origen.AREA,
+                estado=Gasto.Estado.APROBADO,
+                sensible=False,
+            ))
+        Gasto.objects.bulk_create(extras)
+        salida = StringIO()
+
+        call_command("procesar_repartos", "--limite", "100", "--seco", stdout=salida)
+
+        self.assertIn("102 gasto(s) procesado(s)", salida.getvalue())
+
+    def test_correcciones_de_cobertura_y_regla_exigen_motivo_y_vigencia_coherente(self):
+        cobertura = CoberturaActividadCosteable.objects.get(area=self.area)
+        regla = ReglaRepartoActividad.objects.get(area=self.area, concepto=self.concepto)
+        mes_siguiente = (self.mes.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+        with self.assertRaisesMessage(ValidationError, "corrección de cobertura requiere un motivo"):
+            registrar_cobertura_actividad(
+                institucion=self.institucion, area=self.area, vigente_desde=mes_siguiente,
+                registrado_por=self.usuario, confirmacion_operativa=True, reemplaza=cobertura,
+            )
+        with self.assertRaisesMessage(ValidationError, "conserva la vigencia de la regla"):
+            ReglaRepartoActividad.objects.create(
+                concepto=self.concepto, institucion=self.institucion, area=self.area,
+                vigente_desde=regla.vigente_desde, vigente_hasta=mes_siguiente,
+                reemplaza=regla, motivo_correccion="Corregir configuración",
+                registrado_por=self.usuario,
+            )
+
     def test_configurar_repartos_exige_membresia_administrativa(self):
         operador = Usuario.objects.create_user("operador-repartos@cauce.local", "x")
         miembro = Membresia.objects.create(
@@ -2381,6 +2492,9 @@ class RepartoActividadConcurrentePostgreSQLTests(TransactionTestCase):
         usuario = Usuario.objects.create_user("reparto-concurrente@cauce.local", "x")
         institucion = Institucion.objects.create(nombre="Hospital concurrente")
         area = Area.objects.create(institucion=institucion, nombre="Guardia")
+        self.mes = mes
+        self.usuario = usuario
+        self.institucion = institucion
         membresia = Membresia.objects.create(
             usuario=usuario, institucion=institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
         )
@@ -2396,6 +2510,7 @@ class RepartoActividadConcurrentePostgreSQLTests(TransactionTestCase):
         )
         registrar_cobertura_actividad(
             institucion=institucion, area=area, vigente_desde=mes, registrado_por=usuario,
+            confirmacion_operativa=True,
         )
         registrar_regla_reparto(
             concepto=concepto, institucion=institucion, area=area,
@@ -2429,3 +2544,31 @@ class RepartoActividadConcurrentePostgreSQLTests(TransactionTestCase):
         self.assertEqual(resultados[0], resultados[1])
         reparto = RepartoGasto.objects.get(gasto=self.gasto)
         self.assertEqual(reparto.atribuciones.count(), 3)
+
+    def test_dos_confirmaciones_concurrentes_dejan_una_sola_cobertura(self):
+        area = Area.objects.create(institucion=self.institucion, nombre="Clínica")
+        inicio = Barrier(2)
+
+        def confirmar_en_paralelo():
+            close_old_connections()
+            try:
+                inicio.wait(timeout=5)
+                try:
+                    cobertura = registrar_cobertura_actividad(
+                        institucion=self.institucion,
+                        area=area,
+                        vigente_desde=self.mes,
+                        registrado_por=self.usuario,
+                        confirmacion_operativa=True,
+                    )
+                    return cobertura.id
+                except ValidationError:
+                    return None
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as ejecutores:
+            resultados = list(ejecutores.map(lambda _indice: confirmar_en_paralelo(), range(2)))
+
+        self.assertEqual(sum(resultado is not None for resultado in resultados), 1)
+        self.assertEqual(CoberturaActividadCosteable.objects.filter(area=area).count(), 1)

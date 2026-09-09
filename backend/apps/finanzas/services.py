@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 from datetime import date, datetime, time
+from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
@@ -435,24 +436,84 @@ def _vigente_en(queryset, periodo):
     )
 
 
-def registrar_cobertura_actividad(*, institucion, area, vigente_desde, registrado_por, **datos):
-    """Habilita prospectivamente la fuente atómica de hechos de atención."""
-    if vigente_desde < _inicio_mes(timezone.localdate()):
-        raise ValidationError("La cobertura prospectiva no puede habilitar meses anteriores.")
-    if not tiene_concesion_financiera(
-        registrado_por,
-        ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
-        institucion.pk,
-        area.pk,
-    ):
-        raise PermissionDenied("No tenés autorización para configurar repartos.")
-    return CoberturaActividadCosteable.objects.create(
-        institucion=institucion,
-        area=area,
-        vigente_desde=vigente_desde,
-        registrado_por=registrado_por,
-        **datos,
+def verificar_integridad_actividad(*, institucion_id, area_id, periodo):
+    """Contrasta atenciones confirmadas con su hecho durable, sin usar narrativa clínica."""
+    from apps.casos.models import EventoCaso
+    from apps.flujos.models import Nodo
+
+    inicio = timezone.make_aware(datetime.combine(periodo, time.min))
+    fin = timezone.make_aware(datetime.combine(_mes_siguiente(periodo), time.min))
+    # El motor genera este prefijo sólo al completar una atención. Se usa para
+    # conciliación; el hecho durable continúa siendo la fuente financiera.
+    eventos = EventoCaso.objects.filter(
+        caso__institucion_id=institucion_id,
+        nodo__tipo=Nodo.Tipo.ATENCION,
+        nodo__version__flujo__area_id=area_id,
+        fecha__gte=inicio,
+        fecha__lt=fin,
+        titulo__startswith="Atención «",
     )
+    hechos = HechoAtencionCosteable.objects.filter(
+        institucion_id=institucion_id,
+        area_origen_id=area_id,
+        ocurrida_en__gte=inicio,
+        ocurrida_en__lt=fin,
+    )
+    eventos_sin_hecho = eventos.exclude(
+        pk__in=HechoAtencionCosteable.objects.values("evento_origen_id")
+    ).count()
+    hechos_fuera_de_ambito = hechos.filter(evento__isnull=False).exclude(
+        evento_id__in=eventos.values("id")
+    ).count()
+    diferencias = eventos_sin_hecho + hechos_fuera_de_ambito
+    return {
+        "integridad_tecnica": diferencias == 0,
+        "atenciones_contrastables": eventos.count(),
+        "atenciones_registradas": hechos.count(),
+        "eventos_sin_hecho": eventos_sin_hecho,
+        "hechos_fuera_de_ambito": hechos_fuera_de_ambito,
+        "diferencias": diferencias,
+    }
+
+
+def registrar_cobertura_actividad(
+    *, institucion, area, vigente_desde, registrado_por, confirmacion_operativa=False, **datos
+):
+    """Habilita prospectivamente la fuente atómica de hechos de atención."""
+    reemplaza = datos.get("reemplaza")
+    corrige_misma_vigencia = bool(
+        reemplaza and vigente_desde == reemplaza.vigente_desde
+    )
+    if vigente_desde < _inicio_mes(timezone.localdate()) and not corrige_misma_vigencia:
+        raise ValidationError("La cobertura prospectiva no puede habilitar meses anteriores.")
+    if not confirmacion_operativa:
+        raise ValidationError(
+            "Confirmá que, desde ese mes, el área registra todas sus atenciones en el sistema."
+        )
+    with transaction.atomic():
+        area_model = area._meta.model
+        area = area_model.objects.select_for_update().get(pk=area.pk)
+        if not tiene_concesion_financiera(
+            registrado_por,
+            ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
+            institucion.pk,
+            area.pk,
+        ):
+            raise PermissionDenied("No tenés autorización para configurar repartos.")
+        verificacion = verificar_integridad_actividad(
+            institucion_id=institucion.pk, area_id=area.pk, periodo=vigente_desde,
+        )
+        if not verificacion["integridad_tecnica"]:
+            raise ValidationError(
+                "La actividad está incompleta: corregí las diferencias técnicas antes de habilitar el reparto."
+            )
+        return CoberturaActividadCosteable.objects.create(
+            institucion=institucion,
+            area=area,
+            vigente_desde=vigente_desde,
+            registrado_por=registrado_por,
+            **datos,
+        )
 
 
 def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, registrado_por, **datos):
@@ -479,6 +540,52 @@ def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, regis
 
 def _centavos(importe):
     return int(importe * 100)
+
+
+def resumen_actividad_reparto(
+    *, institucion_id, area_id, periodo, concepto_id=None, incluir_sensibles=False
+):
+    verificacion = verificar_integridad_actividad(
+        institucion_id=institucion_id, area_id=area_id, periodo=periodo,
+    )
+    gastos = Gasto.objects.filter(
+        institucion_id=institucion_id,
+        area_id=area_id,
+        periodo_economico=periodo,
+        estado=Gasto.Estado.APROBADO,
+        reemplazado_por__isnull=True,
+    ).prefetch_related("ajustes")
+    if concepto_id is not None:
+        gastos = gastos.filter(concepto_id=concepto_id)
+    if not incluir_sensibles:
+        gastos = gastos.filter(sensible=False)
+    importe_total = sum(
+        _centavos(gasto.importe) + sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all())
+        for gasto in gastos
+    )
+    cobertura_confirmada = _vigente_en(
+        CoberturaActividadCosteable.objects.filter(
+            institucion_id=institucion_id, area_id=area_id,
+        ),
+        periodo,
+    ).exists()
+    if not verificacion["integridad_tecnica"]:
+        estado = "incompleta"
+    elif cobertura_confirmada:
+        estado = "verificada"
+    else:
+        estado = "lista_para_confirmar"
+    cantidad = verificacion["atenciones_registradas"]
+    return {
+        **verificacion,
+        "estado": estado,
+        "cobertura_operativa_confirmada": cobertura_confirmada,
+        "importe_total_centavos": importe_total,
+        "importe_pendiente_centavos": importe_total if estado != "verificada" else 0,
+        "importe_estimado_por_atencion_centavos": (
+            int(Decimal(importe_total) / Decimal(cantidad)) if cantidad else None
+        ),
+    }
 
 
 def _huella_reparto(*, gasto, regla, cobertura, hechos, importe_ajustes, estado, motivo=""):
@@ -570,6 +677,17 @@ def procesar_reparto_gasto(gasto_id):
             return _crear_reparto(
                 gasto=gasto, regla=regla, cobertura=None, hechos=[],
                 estado=RepartoGasto.Estado.PENDIENTE, motivo=RepartoGasto.Motivo.SIN_COBERTURA,
+            )
+        verificacion = verificar_integridad_actividad(
+            institucion_id=gasto.institucion_id,
+            area_id=gasto.area_id,
+            periodo=periodo,
+        )
+        if not verificacion["integridad_tecnica"]:
+            return _crear_reparto(
+                gasto=gasto, regla=regla, cobertura=cobertura, hechos=[],
+                estado=RepartoGasto.Estado.PENDIENTE,
+                motivo=RepartoGasto.Motivo.ACTIVIDAD_INCOMPLETA,
             )
         inicio = timezone.make_aware(datetime.combine(periodo, time.min))
         fin = timezone.make_aware(datetime.combine(_mes_siguiente(periodo), time.min))

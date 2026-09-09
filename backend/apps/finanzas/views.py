@@ -167,6 +167,7 @@ class PuedeGestionarConceptosGasto(BasePermission):
             for accion in (
                 ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
                 ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+                ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
             )
         )
 
@@ -357,6 +358,7 @@ class ConceptoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
         for accion in (
             ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
             ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
         ):
             for institucion_id, permite_sensibles in concesiones_financieras_de(
                 usuario,
