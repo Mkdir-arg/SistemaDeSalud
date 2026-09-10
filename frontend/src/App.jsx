@@ -36,6 +36,7 @@ const HistoriaDetalle = lazy(() => import("./pages/registros/HistoriaDetalle"));
 const PadronDetalle = lazy(() => import("./pages/registros/PadronDetalle"));
 const Legajo = lazy(() => import("./pages/registros/Legajo"));
 const Accesos = lazy(() => import("./pages/auditoria/Accesos"));
+const Finanzas = lazy(() => import("./pages/finanzas/Finanzas"));
 
 // Landing: el super admin ve el directorio; el resto entra a su institución.
 function Landing() {
@@ -175,6 +176,7 @@ export default function App() {
       <Route path="/historia/:id" element={P(<HistoriaDetalle />, "historia_clinica")} />
       <Route path="/legajo" element={P(<Legajo />)} />
       <Route path="/accesos" element={P(<Accesos />, "auditoria")} />
+      <Route path="/finanzas" element={P(<Finanzas />)} />
 
       {/* DISEÑO */}
       <Route path="/flujos" element={P(<Flujos />, "diseno_flujos")} />

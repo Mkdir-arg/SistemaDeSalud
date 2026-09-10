@@ -25,6 +25,20 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.finanzas.api_calendario import ExpectativaGastoViewSet
+from apps.finanzas.api_auditoria import AccesoFinancieroViewSet
+from apps.finanzas.api_repartos import CoberturaActividadViewSet, ReglaRepartoViewSet, RepartoGastoViewSet
+from apps.finanzas.views import (
+    AjusteCostoViewSet,
+    AjusteGastoViewSet,
+    ConceptoGastoViewSet,
+    ConcesionFinancieraViewSet,
+    DefinicionComponenteViewSet,
+    HechoAtencionCosteableViewSet,
+    GastoViewSet,
+    PrestacionViewSet,
+    ValorComponenteViewSet,
+)
 from apps.auditoria.views import AccesoClinicoViewSet
 from apps.red.views import RedViewSet, TrasladoViewSet
 from apps.farmacia.views import (
@@ -108,3 +122,19 @@ router.register("traslados", TrasladoViewSet, basename="traslado")
 # Auditoría de accesos a datos clínicos (Ley 26.529).
 router.register("accesos-clinicos", AccesoClinicoViewSet, basename="acceso-clinico")
 router.register("consentimientos", ConsentimientoDatosViewSet)
+
+# Finanzas: separado de la API clínica porque sus permisos son propios.
+router.register("accesos-financieros", AccesoFinancieroViewSet, basename="acceso-financiero")
+router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-costo")
+router.register("concesiones-financieras", ConcesionFinancieraViewSet)
+router.register("prestaciones-costo", PrestacionViewSet)
+router.register("componentes-costo", DefinicionComponenteViewSet)
+router.register("conceptos-gasto", ConceptoGastoViewSet)
+router.register("valores-componentes", ValorComponenteViewSet)
+router.register("ajustes-costo", AjusteCostoViewSet, basename="ajuste-costo")
+router.register("gastos", GastoViewSet, basename="gasto")
+router.register("ajustes-gasto", AjusteGastoViewSet, basename="ajuste-gasto")
+router.register("expectativas-gasto", ExpectativaGastoViewSet, basename="expectativa-gasto")
+router.register("coberturas-actividad", CoberturaActividadViewSet, basename="cobertura-actividad")
+router.register("reglas-reparto", ReglaRepartoViewSet, basename="regla-reparto")
+router.register("repartos-gasto", RepartoGastoViewSet, basename="reparto-gasto")
