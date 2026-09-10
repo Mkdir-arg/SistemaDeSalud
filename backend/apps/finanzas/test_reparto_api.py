@@ -228,9 +228,15 @@ class RepartoActividadApiTests(APITestCase):
 
         actuales = self.client.get("/api/repartos-gasto/?vigente=true")
         historicos = self.client.get("/api/repartos-gasto/?vigente=false")
+        coberturas = self.client.get("/api/coberturas-actividad/?vigente=true")
+        reglas = self.client.get("/api/reglas-reparto/?vigente=true")
 
         self.assertEqual([item["id"] for item in actuales.data["results"]], [vigente.id])
         self.assertEqual([item["id"] for item in historicos.data["results"]], [primera.id])
+        self.assertEqual(coberturas.status_code, 200, coberturas.data)
+        self.assertEqual(coberturas.data["count"], 1)
+        self.assertEqual(reglas.status_code, 200, reglas.data)
+        self.assertEqual(reglas.data["count"], 1)
 
     def test_no_permite_editar_ni_borrar_configuracion_o_resultados(self):
         self.configurar()

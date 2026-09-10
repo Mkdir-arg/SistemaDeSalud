@@ -69,11 +69,13 @@ def _alcance(queryset, usuario, accion, *, sensible_path=None):
     return queryset.filter(alcance).distinct()
 
 
-def _filtrar_vigencia(queryset, valor):
+def _filtrar_vigencia(queryset, valor, *, relacion_sucesora="reemplazado_por"):
+    filtro = {f"{relacion_sucesora}__isnull": valor in {"1", "true", "True"}}
     if valor in {"1", "true", "True"}:
-        return queryset.filter(reemplazado_por__isnull=True)
+        return queryset.filter(**filtro)
     if valor in {"0", "false", "False"}:
-        return queryset.filter(reemplazado_por__isnull=False)
+        filtro[f"{relacion_sucesora}__isnull"] = False
+        return queryset.filter(**filtro)
     return queryset
 
 
@@ -197,7 +199,11 @@ class CoberturaActividadViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
             super().get_queryset(), self.request.user,
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
         )
-        return _filtrar_vigencia(queryset, self.request.query_params.get("vigente"))
+        return _filtrar_vigencia(
+            queryset,
+            self.request.query_params.get("vigente"),
+            relacion_sucesora="reemplazada_por",
+        )
 
     @action(detail=False, methods=["get"])
     def verificacion(self, request):
@@ -248,7 +254,11 @@ class ReglaRepartoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
             sensible_path="sensible",
         )
-        return _filtrar_vigencia(queryset, self.request.query_params.get("vigente"))
+        return _filtrar_vigencia(
+            queryset,
+            self.request.query_params.get("vigente"),
+            relacion_sucesora="reemplazada_por",
+        )
 
 
 class RepartoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
