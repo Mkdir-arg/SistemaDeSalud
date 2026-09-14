@@ -16,6 +16,7 @@ El catalogo monolitico anterior quedo reemplazado porque mezclaba funcionalidade
 - [Agenda y turnos programados](funcionalidades/agenda-turnos/README.md)
 - [Internacion y camas](funcionalidades/internacion-camas/README.md)
 - [Farmacia e insumos](funcionalidades/farmacia-insumos/README.md)
+- [Finanzas y costos](funcionalidades/finanzas-costos/README.md)
 - [Red estatal y traslados](funcionalidades/red-traslados/README.md)
 - [Registros clinicos e historia clinica](funcionalidades/registros-clinicos/README.md)
 - [Auditoria, consentimiento e integridad](funcionalidades/auditoria-consentimiento/README.md)
