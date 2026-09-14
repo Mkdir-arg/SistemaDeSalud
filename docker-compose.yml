@@ -67,6 +67,30 @@ services:
       db:
         condition: service_healthy
 
+  # Repartos por eventos: la fuente y su solicitud se confirman juntas.
+  # El proceso recibe NOTIFY después del commit; la cola sobrevive a reinicios.
+  repartos:
+    build: ./backend
+    entrypoint: ["python"]
+    command: ["manage.py", "escuchar_repartos"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cauce}:${POSTGRES_PASSWORD:-cauce}@db:5432/${POSTGRES_DB:-cauce}
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "shell", "-c", "from datetime import timedelta; from django.utils import timezone; from apps.auditoria.latidos import Latido; import sys; sys.exit(0 if Latido.objects.filter(servicio='repartos_eventos', momento__gte=timezone.now()-timedelta(minutes=2)).exists() else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
   # Recuperación económica separada del reloj clínico: un lote de costos lento
   # no puede retrasar reactivaciones, recordatorios ni alertas del paciente.
   # La cadencia es operativa y configurable; no expresa un SLA de costeo.
@@ -83,6 +107,8 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+      EJECUTAR_MIGRACIONES: "0"
     depends_on:
       db:
         condition: service_healthy
