@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from apps.common import BaseModelViewSet
 from .auditoria import AuditaLecturaFinanciera
 from .calendario import calendario_mensual, en_alcance_financiero
+from .filtros import filtrar_rangos
 from .models import ConcesionFinanciera, ExpectativaGasto, IndicacionCargaGasto
 from .services import indicar_carga_esperada, registrar_expectativa_gasto
 from .views import PuedeRegistrarGastos, PuedeVerGastos
@@ -36,12 +37,13 @@ class IndicacionSerializer(serializers.ModelSerializer):
 class ExpectativaSerializer(serializers.ModelSerializer):
     concepto_nombre = serializers.CharField(source="concepto.nombre", read_only=True)
     area_nombre = serializers.CharField(source="area.nombre", read_only=True, default=None)
+    monto_referencia = serializers.DecimalField(max_digits=18, decimal_places=2, min_value=0, allow_null=True, required=False)
 
     class Meta:
         model = ExpectativaGasto
         fields = [
             "id", "concepto", "concepto_nombre", "institucion", "area", "area_nombre", "vigente_desde", "vigente_hasta",
-            "sensible", "reemplaza", "motivo_correccion", "registrado_por", "registrado",
+            "sensible", "reemplaza", "motivo_correccion", "registrado_por", "registrado", "monto_referencia",
         ]
         read_only_fields = ["id", "sensible", "registrado_por", "registrado"]
 
@@ -52,11 +54,13 @@ class CalendarioSerializer(ExpectativaSerializer):
     indicacion_registrada = serializers.DateTimeField(read_only=True, allow_null=True)
     gastos_pendientes = serializers.IntegerField(read_only=True)
     gastos_aprobados = serializers.IntegerField(read_only=True)
+    importe_aprobado = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)
+    diferencia_referencia = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True, allow_null=True)
 
     class Meta(ExpectativaSerializer.Meta):
         fields = ExpectativaSerializer.Meta.fields + [
             "indicacion_id", "estado_carga", "indicacion_registrada",
-            "gastos_pendientes", "gastos_aprobados",
+            "gastos_pendientes", "gastos_aprobados", "importe_aprobado", "diferencia_referencia",
         ]
         read_only_fields = fields
 
@@ -71,7 +75,27 @@ class ExpectativaGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     institucion_path = "institucion"
     http_method_names = ["get", "head", "options", "post"]
     filter_fields = ("institucion", "area", "concepto")
-    ordering_fields = ("vigente_desde", "id")
+    @property
+    def ordering_fields(self):
+        campos = ("vigente_desde", "vigente_hasta", "id", "concepto__nombre", "area__nombre")
+        if self.action == "calendario":
+            campos += ("estado_carga", "gastos_pendientes", "gastos_aprobados", "monto_referencia", "importe_aprobado", "diferencia_referencia")
+        return campos
+
+    def filter_queryset(self, queryset):
+        if self.action == "calendario":
+            estado = self.request.query_params.get("estado_carga")
+            if estado:
+                estado = serializers.ChoiceField(
+                    choices=IndicacionCargaGasto.Estado.choices,
+                ).run_validation(estado)
+                queryset = queryset.filter(estado_carga=estado)
+            queryset = filtrar_rangos(
+                queryset, self.request.query_params,
+                cantidades=("gastos_pendientes", "gastos_aprobados"),
+                importes=("monto_referencia", "importe_aprobado", "diferencia_referencia"),
+            )
+        return super().filter_queryset(queryset)
 
     def get_permissions(self):
         permiso = PuedeConfigurarGastosEsperados if self.action in {"create", "indicar"} else PuedeVerGastos

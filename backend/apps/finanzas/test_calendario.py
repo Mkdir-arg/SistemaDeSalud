@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
 from apps.instituciones.models import Area, Institucion
-from .models import ConceptoGasto, ConcesionFinanciera, ExpectativaGasto, Gasto, IndicacionCargaGasto
+from .models import AjusteGasto, ConceptoGasto, ConcesionFinanciera, ExpectativaGasto, Gasto, IndicacionCargaGasto
 from .services import registrar_gasto
 
 
@@ -50,6 +50,115 @@ class CalendarioGastoApiTests(APITestCase):
             f"/api/expectativas-gasto/{(expectativa or self.expectativa).id}/indicar/",
             {"periodo_economico": mes, "estado": estado}, format="json"
         )
+
+    def test_conteos_navegan_a_gastos_vigentes_del_area_exacta_incluido_nulo(self):
+        institucional = self.crear_expectativa(None)
+        for area in (self.area, None):
+            original = Gasto.objects.create(
+                concepto=self.concepto, institucion=self.institucion, area=area,
+                concepto_codigo="LUZ", concepto_nombre="Electricidad", importe="10.00",
+                periodo_economico=date(2026, 8, 1), estado=Gasto.Estado.PENDIENTE_APROBACION,
+                origen=Gasto.Origen.AREA,
+            )
+            Gasto.objects.create(
+                concepto=self.concepto, institucion=self.institucion, area=area,
+                concepto_codigo="LUZ", concepto_nombre="Electricidad", importe="20.00",
+                periodo_economico=date(2026, 8, 1), estado=Gasto.Estado.PENDIENTE_APROBACION,
+                reemplaza=original, origen=Gasto.Origen.AREA,
+            )
+            registrar_gasto(self.concepto, self.institucion, area, Decimal("30"), date(2026, 8, 1), self.admin)
+        filas = {fila["id"]: fila for fila in self.calendario()["results"]}
+        for expectativa in (self.expectativa, institucional):
+            for estado, columna in (("aprobado", "gastos_aprobados"), ("pendiente_aprobacion", "gastos_pendientes")):
+                respuesta = self.client.get("/api/gastos/", {
+                    "institucion": self.institucion.pk,
+                    "area": expectativa.area_id if expectativa.area_id else "null",
+                    "concepto": self.concepto.pk, "periodo_economico": "2026-08-01",
+                    "estado_operativo": estado,
+                })
+                self.assertEqual(respuesta.status_code, 200, respuesta.data)
+                self.assertEqual(respuesta.data["count"], filas[expectativa.pk][columna])
+                self.assertEqual(respuesta.data["count"], 1)
+                self.assertEqual(respuesta.data["results"][0]["area"], expectativa.area_id)
+                self.assertIsNone(respuesta.data["results"][0]["reemplazado_por"])
+        reemplazados = self.client.get("/api/gastos/", {"estado_operativo": "reemplazado"})
+        self.assertEqual(reemplazados.data["count"], 2)
+
+    def test_orden_y_rangos_de_calendario_y_gastos_se_aplican_antes_de_paginar(self):
+        self.crear_expectativa(self.otra_area)
+        for area, cantidad in ((self.area, 2), (self.otra_area, 1)):
+            for indice in range(cantidad):
+                registrar_gasto(self.concepto, self.institucion, area, Decimal(10 + indice), date(2026, 8, 1), self.admin)
+        pagina = self.calendario(ordering="-gastos_aprobados", page_size=1, page=2)
+        self.assertEqual(pagina["count"], 2)
+        self.assertEqual(pagina["results"][0]["area"], self.otra_area.pk)
+        filtrado = self.calendario(gastos_aprobados_min=2, estado_carga="falta_cargar")
+        self.assertEqual(filtrado["count"], 1)
+        self.assertEqual(filtrado["results"][0]["area"], self.area.pk)
+        gasto = Gasto.objects.filter(area=self.otra_area).get()
+        for valor in (Decimal("0.01"), Decimal("0.02")):
+            AjusteGasto.objects.create(gasto=gasto, importe=valor, motivo="Centavos", registrado_por=self.admin)
+        resultado = self.client.get("/api/gastos/", {
+            "ordering": "-importe_resultante", "page_size": 1, "page": 2,
+        })
+        self.assertEqual(resultado.status_code, 200, resultado.data)
+        self.assertEqual(resultado.data["count"], 3)
+        self.assertEqual(resultado.data["results"][0]["id"], gasto.pk)
+        self.assertEqual(resultado.data["results"][0]["total_ajustes"], "0.03")
+        self.assertEqual(resultado.data["results"][0]["importe_resultante"], "10.03")
+        filtrado = self.client.get("/api/gastos/", {
+            "importe_resultante_min": "10.03", "importe_resultante_max": "10.03",
+            "total_ajustes_min": "0.03", "importe_max": "10.00",
+        })
+        self.assertEqual(filtrado.data["count"], 1)
+        self.assertEqual(filtrado.data["results"][0]["id"], gasto.pk)
+
+    def test_empates_del_calendario_y_gastos_tienen_desempate_unico_entre_paginas(self):
+        otras = [self.crear_expectativa(self.otra_area), self.crear_expectativa(None)]
+        gastos = [registrar_gasto(
+            self.concepto, self.institucion, area, Decimal("10.01"), date(2026, 8, 1), self.admin,
+        ) for area in (self.area, self.otra_area, None)]
+        recibidos_calendario, recibidos_gastos = [], []
+        for pagina in (1, 2, 3):
+            calendario = self.calendario(ordering="concepto__nombre", page_size=1, page=pagina)
+            recibidos_calendario.append(calendario["results"][0]["id"])
+            respuesta = self.client.get("/api/gastos/", {
+                "ordering": "importe_resultante", "page_size": 1, "page": pagina,
+            })
+            self.assertEqual(respuesta.status_code, 200, respuesta.data)
+            recibidos_gastos.append(respuesta.data["results"][0]["id"])
+        self.assertEqual(recibidos_calendario, sorted([self.expectativa.pk, *[fila.pk for fila in otras]], reverse=True))
+        self.assertEqual(recibidos_gastos, sorted([gasto.pk for gasto in gastos], reverse=True))
+
+    def test_filtros_de_columna_invalidos_responden_400(self):
+        for ruta, datos in (
+            ("/api/gastos/", {"importe_min": "NaN"}),
+            ("/api/gastos/", {"registrado_desde": "ayer"}),
+            ("/api/gastos/", {"estado_operativo": "inexistente"}),
+            ("/api/expectativas-gasto/calendario/", {"periodo_economico": "2026-08-01", "gastos_aprobados_min": "x"}),
+        ):
+            respuesta = self.client.get(ruta, datos)
+            self.assertEqual(respuesta.status_code, 400, respuesta.data)
+
+    def test_lector_solo_recibe_conceptos_usados_en_su_area_y_no_puede_escribir(self):
+        oculto = ConceptoGasto.objects.create(institucion=self.institucion, codigo="OTRO", nombre="Otra área")
+        sin_uso = ConceptoGasto.objects.create(institucion=self.institucion, codigo="NUEVO", nombre="Sin uso")
+        sensible = ConceptoGasto.objects.create(institucion=self.institucion, codigo="HON", nombre="Honorarios", sensible=True)
+        registrar_gasto(oculto, self.institucion, self.otra_area, Decimal("20"), date(2026, 8, 1), self.admin)
+        registrar_gasto(sensible, self.institucion, self.area, Decimal("30"), date(2026, 8, 1), self.admin)
+        lector = Usuario.objects.create_user("lector-filtros@cauce.local", "x")
+        membresia = Membresia.objects.create(usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
+        permiso = ConcesionFinanciera.objects.create(membresia=membresia, accion=ConcesionFinanciera.Accion.VER_GASTOS)
+        permiso.areas.add(self.area)
+        self.client.force_authenticate(lector)
+        lista = self.client.get("/api/conceptos-gasto/")
+        self.assertEqual(lista.status_code, 200, lista.data)
+        self.assertEqual([fila["id"] for fila in lista.data["results"]], [self.concepto.pk])
+        for concepto in (oculto, sensible, sin_uso):
+            self.assertEqual(self.client.get(f"/api/conceptos-gasto/{concepto.pk}/").status_code, 404)
+        self.assertEqual(self.client.post("/api/conceptos-gasto/", {
+            "institucion": self.institucion.pk, "codigo": "SIN", "nombre": "Sin permiso",
+        }, format="json").status_code, 403)
 
     def test_flujo_faltante_carga_parcial_indicacion_y_dato_tardio(self):
         fila = self.calendario()["results"][0]
@@ -183,6 +292,10 @@ class CalendarioGastoApiTests(APITestCase):
         sensible = self.crear_expectativa(self.otra_area, reemplaza=ExpectativaGasto.objects.get(area=self.otra_area), motivo_correccion="Sensibilidad")
         self.client.force_authenticate(self.admin)
         ConcesionFinanciera.objects.filter(membresia=self.miembro).update(permite_sensibles=False)
+        # Las restricciones explícitas se prueban con contador, no con lectura
+        # sensible predeterminada del rol administrador.
+        self.miembro.rol = Membresia.Rol.ADMINISTRATIVO
+        self.miembro.save()
         self.assertNotIn(sensible.id, [f["id"] for f in self.calendario()["results"]])
         self.assertEqual(self.client.get(f"/api/expectativas-gasto/{sensible.id}/").status_code, 404)
         self.assertEqual(self.indicar("carga_completa", sensible).status_code, 404)
@@ -202,3 +315,57 @@ class CalendarioGastoApiTests(APITestCase):
         for entrada in ({}, {"periodo_economico": "2026-08-02"}, {"periodo_economico": "inválido"}):
             self.assertEqual(self.client.get("/api/expectativas-gasto/calendario/", entrada).status_code, 400)
         self.assertFalse(IndicacionCargaGasto.objects.exists())
+
+    def test_referencia_compara_neto_aprobado_sin_cerrar_carga_ni_sumar_otras_areas(self):
+        respuesta = self.client.post("/api/expectativas-gasto/", {
+            "concepto": self.concepto.pk, "institucion": self.institucion.pk,
+            "area": self.area.pk, "vigente_desde": "2026-08-01",
+            "reemplaza": self.expectativa.pk, "motivo_correccion": "Incluir referencia",
+            "monto_referencia": "90.00",
+        }, format="json")
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        gasto = registrar_gasto(self.concepto, self.institucion, self.area, Decimal("100"), date(2026, 8, 1), self.admin)
+        AjusteGasto.objects.create(gasto=gasto, importe=Decimal("-10"), motivo="Corrección", registrado_por=self.admin)
+        registrar_gasto(self.concepto, self.institucion, self.otra_area, Decimal("999"), date(2026, 8, 1), self.admin)
+        registrar_gasto(self.concepto, self.institucion, None, Decimal("999"), date(2026, 8, 1), self.admin)
+        fila = self.calendario()["results"][0]
+        self.assertEqual(fila["importe_aprobado"], "90.00")
+        self.assertEqual(fila["diferencia_referencia"], "0.00")
+        self.assertEqual(fila["estado_carga"], "falta_cargar")
+        self.assertFalse(IndicacionCargaGasto.objects.exists())
+        original = self.client.get(f"/api/expectativas-gasto/{self.expectativa.pk}/").data
+        self.assertIsNone(original["monto_referencia"])
+
+    def test_referencia_opcional_rechaza_negativos_y_preserva_centavos(self):
+        self.assertIsNone(self.calendario()["results"][0]["diferencia_referencia"])
+        datos = {"concepto": self.concepto.pk, "institucion": self.institucion.pk,
+                 "area": self.otra_area.pk, "vigente_desde": "2026-08-01"}
+        for importe in ("-0.01", "0.001"):
+            respuesta = self.client.post("/api/expectativas-gasto/", {**datos, "monto_referencia": importe}, format="json")
+            self.assertEqual(respuesta.status_code, 400)
+        respuesta = self.client.post("/api/expectativas-gasto/", {**datos, "monto_referencia": "0.01"}, format="json")
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        fila = self.calendario(area=self.otra_area.pk)["results"][0]
+        self.assertEqual(fila["monto_referencia"], "0.01")
+        self.assertEqual(fila["importe_aprobado"], "0.00")
+        self.assertEqual(fila["diferencia_referencia"], "0.01")
+        self.assertEqual(self.calendario(monto_referencia_min="0.02")["results"], [])
+        self.assertEqual(len(self.calendario(diferencia_referencia_min="0.01")["results"]), 1)
+        self.assertEqual(self.client.get("/api/expectativas-gasto/calendario/", {
+            "periodo_economico": "2026-08-01", "importe_aprobado_min": "NaN",
+        }).status_code, 400)
+
+    def test_aprobado_suma_fuentes_iguales_una_vez_y_omite_pendientes(self):
+        for _ in range(2):
+            gasto = registrar_gasto(self.concepto, self.institucion, self.area, Decimal("100"), date(2026, 8, 1), self.admin)
+            AjusteGasto.objects.create(gasto=gasto, importe=Decimal("-10"), motivo="Ajuste uno", registrado_por=self.admin)
+            AjusteGasto.objects.create(gasto=gasto, importe=Decimal("5"), motivo="Ajuste dos", registrado_por=self.admin)
+        Gasto.objects.create(
+            concepto=self.concepto, institucion=self.institucion, area=self.area,
+            concepto_codigo=self.concepto.codigo, concepto_nombre=self.concepto.nombre,
+            importe="999", periodo_economico=date(2026, 8, 1), origen=Gasto.Origen.AREA,
+        )
+        fila = self.calendario()["results"][0]
+        self.assertEqual(fila["importe_aprobado"], "190.00")
+        self.assertEqual(fila["gastos_aprobados"], 2)
+        self.assertEqual(fila["gastos_pendientes"], 1)

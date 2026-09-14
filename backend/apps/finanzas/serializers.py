@@ -4,8 +4,11 @@ from typing import TypedDict
 
 from rest_framework import serializers
 from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
+from django.db.models import F
+from django.utils import timezone
+from apps.accounts.models import Membresia
 
-from .models import AjusteCosto, AjusteGasto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, Prestacion, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, Prestacion, TrabajoReparto, ValorComponente
 
 
 class DetalleAjusteGasto(TypedDict):
@@ -57,12 +60,8 @@ class ConcesionFinancieraSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         membresia = attrs.get("membresia", getattr(self.instance, "membresia", None))
-        accion = attrs.get("accion", getattr(self.instance, "accion", None))
         todas_las_areas = attrs.get(
             "todas_las_areas", getattr(self.instance, "todas_las_areas", False)
-        )
-        permite_sensibles = attrs.get(
-            "permite_sensibles", getattr(self.instance, "permite_sensibles", False)
         )
         areas = attrs.get("areas")
         if areas is None and self.instance is not None:
@@ -82,14 +81,25 @@ class ConcesionFinancieraSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"areas": "Indicá al menos un área o marcá alcance para toda la institución."}
             )
-        if membresia and (
-            ConcesionFinanciera.accion_requiere_administracion(accion)
-            or permite_sensibles
-        ) and membresia.rol != "admin":
-            raise serializers.ValidationError(
-                {"membresia": "Esta acción requiere una membresía administrativa."}
-            )
+        if membresia and not membresia.activo:
+            raise serializers.ValidationError({"membresia": "La membresía debe estar activa."})
         return attrs
+
+
+class ConcesionesMultiplesSerializer(serializers.Serializer):
+    membresia = serializers.PrimaryKeyRelatedField(queryset=Membresia.objects.all())
+    acciones = serializers.ListField(
+        child=serializers.ChoiceField(choices=ConcesionFinanciera.Accion.choices),
+        allow_empty=False, max_length=len(ConcesionFinanciera.Accion.values),
+    )
+    todas_las_areas = serializers.BooleanField(default=False)
+    permite_sensibles = serializers.BooleanField(default=False)
+    areas = ConcesionFinancieraSerializer().fields["areas"]
+
+    def validate_acciones(self, acciones):
+        if len(acciones) != len(set(acciones)):
+            raise serializers.ValidationError("No repitas acciones financieras.")
+        return acciones
 
 
 class PrestacionSerializer(serializers.ModelSerializer):
@@ -173,6 +183,8 @@ class GastoSerializer(serializers.ModelSerializer):
     reemplazado_por = serializers.SerializerMethodField()
     estado_operativo = serializers.SerializerMethodField()
     ajustes = serializers.SerializerMethodField()
+    total_ajustes = serializers.SerializerMethodField()
+    importe_resultante = serializers.SerializerMethodField()
 
     class Meta:
         model = Gasto
@@ -181,13 +193,13 @@ class GastoSerializer(serializers.ModelSerializer):
             "importe", "moneda", "periodo_economico", "origen", "estado", "estado_operativo",
             "sensible", "registrado_por", "registrado", "aprobado_por", "aprobado_en",
             "rechazado_por", "rechazado_en", "motivo_rechazo", "reemplaza", "reemplazado_por",
-            "ajustes",
+            "ajustes", "total_ajustes", "importe_resultante",
         ]
         read_only_fields = [
             "id", "concepto_codigo", "concepto_nombre", "moneda", "origen", "estado",
             "estado_operativo", "sensible", "registrado_por", "registrado", "aprobado_por",
             "aprobado_en", "rechazado_por", "rechazado_en", "motivo_rechazo", "reemplazado_por",
-            "ajustes",
+            "ajustes", "total_ajustes", "importe_resultante",
         ]
 
     @staticmethod
@@ -199,6 +211,18 @@ class GastoSerializer(serializers.ModelSerializer):
 
     def get_estado_operativo(self, obj) -> str:
         return "reemplazado" if self.get_reemplazado_por(obj) is not None else obj.estado
+
+    @staticmethod
+    def _total_ajustes(obj):
+        if hasattr(obj, "total_ajustes"):
+            return obj.total_ajustes
+        return sum((ajuste.importe for ajuste in obj.ajustes.all()), Decimal("0.00"))
+
+    def get_total_ajustes(self, obj) -> str:
+        return format(self._total_ajustes(obj), ".2f")
+
+    def get_importe_resultante(self, obj) -> str:
+        return format(obj.importe + self._total_ajustes(obj), ".2f")
 
     @staticmethod
     def get_ajustes(obj) -> list[DetalleAjusteGasto]:
@@ -239,6 +263,7 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     moneda = serializers.SerializerMethodField()
     total_compartido_conocido = serializers.SerializerMethodField()
     repartos_compartidos = serializers.SerializerMethodField()
+    reparto_actualizando = serializers.SerializerMethodField()
     actualizado_en = serializers.DateTimeField(source="ultimo_costeo_en", read_only=True)
 
     class Meta:
@@ -247,9 +272,20 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
             "id", "institucion", "caso", "ciudadano", "area", "ocurrida_en",
             "actualizado_en", "total_conocido", "total_directo_es_completo", "total_es_completo",
             "estado_costo", "faltantes", "alcance", "moneda",
-            "imputaciones", "limite", "total_compartido_conocido", "repartos_compartidos",
+            "imputaciones", "limite", "total_compartido_conocido", "repartos_compartidos", "reparto_actualizando",
         ]
         read_only_fields = fields
+
+    @staticmethod
+    def get_reparto_actualizando(obj) -> bool:
+        # Incluye fuentes recién registradas que todavía no tienen atribución.
+        if hasattr(obj, "reparto_actualizando"):
+            return obj.reparto_actualizando
+        return TrabajoReparto.objects.filter(
+            gasto__institucion_id=obj.institucion_id, gasto__area_id=obj.area_origen_id,
+            gasto__periodo_economico=timezone.localtime(obj.ocurrida_en).date().replace(day=1),
+            gasto__reemplazado_por__isnull=True, revision__gt=F("revision_procesada"),
+        ).exists()
 
     @staticmethod
     def _atribuciones_vigentes(obj):

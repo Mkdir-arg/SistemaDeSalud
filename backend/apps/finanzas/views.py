@@ -1,5 +1,9 @@
+from datetime import date, datetime, time
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Prefetch, Q
+from django.db import transaction
+from django.utils import timezone
+from django.db.models import Case, CharField, DateField, DecimalField, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, TruncMonth
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, NotFound, PermissionDenied, ValidationError
@@ -8,6 +12,8 @@ from rest_framework.response import Response
 
 from apps.auditoria.mixins import AuditaLecturaClinica
 from apps.common import BaseModelViewSet, tiene_capacidad
+from apps.accounts.models import Membresia
+from apps.flujos.models import Nodo, VersionFlujo
 
 from .models import (
     AjusteCosto,
@@ -16,18 +22,23 @@ from .models import (
     ConceptoGasto,
     ConcesionFinanciera,
     DefinicionComponente,
+    ExpectativaGasto,
     Gasto,
     HechoAtencionCosteable,
     Prestacion,
+    TrabajoReparto,
     ValorComponente,
 )
-from .permisos import concesiones_financieras_de, tiene_concesion_financiera
+from .permisos import concesiones_financieras_de, hechos_en_alcance_financiero, tiene_concesion_financiera, tiene_accion_financiera, instituciones_admin_financiero, gastos_en_alcance_financiero
 from .auditoria import AuditaLecturaFinanciera
+from .filtros import filtrar_rangos
+from .calendario import gastos_de_control_mensual
 from .serializers import (
     AjusteCostoSerializer,
     AjusteGastoSerializer,
     ConceptoGastoSerializer,
     ConcesionFinancieraSerializer,
+    ConcesionesMultiplesSerializer,
     CorreccionSnapshotCosteoSerializer,
     DefinicionComponenteSerializer,
     GastoSerializer,
@@ -47,10 +58,7 @@ class PuedeVerCostosPaciente(BasePermission):
         return bool(
             usuario and usuario.is_authenticated and (
                 usuario.is_superuser
-                or concesiones_financieras_de(
-                    usuario,
-                    ConcesionFinanciera.Accion.VER_COSTOS,
-                ).exists()
+                or tiene_accion_financiera(usuario, ConcesionFinanciera.Accion.VER_COSTOS)
             )
         )
 
@@ -163,8 +171,9 @@ class PuedeGestionarConceptosGasto(BasePermission):
                 ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
             ).filter(todas_las_areas=True).exists()
         return any(
-            concesiones_financieras_de(usuario, accion).exists()
+            tiene_accion_financiera(usuario, accion)
             for accion in (
+                ConcesionFinanciera.Accion.VER_GASTOS,
                 ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
                 ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
                 ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
@@ -178,10 +187,7 @@ class PuedeVerGastos(BasePermission):
         return bool(
             usuario and usuario.is_authenticated and (
                 usuario.is_superuser
-                or concesiones_financieras_de(
-                    usuario,
-                    ConcesionFinanciera.Accion.VER_GASTOS,
-                ).exists()
+                or tiene_accion_financiera(usuario, ConcesionFinanciera.Accion.VER_GASTOS)
             )
         )
 
@@ -283,7 +289,37 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
             membresia = serializer.instance.membresia
         if not tiene_capacidad(self.request.user, self.capacidad_requerida, membresia.institucion_id):
             raise PermissionDenied("No podés administrar concesiones de esa institución.")
-        serializer.save()
+        with transaction.atomic():
+            # Coordina con el alta múltiple para no dejar una carrera de altas
+            # concurrentes contra la unicidad membresía/acción.
+            membresia = Membresia.objects.select_for_update().get(pk=membresia.pk)
+            try:
+                serializer.save(membresia=membresia)
+            except DjangoValidationError as error:
+                raise ValidationError(getattr(error, "message_dict", error.messages)) from error
+
+    @action(detail=False, methods=["post"], url_path="otorgar-multiples")
+    def otorgar_multiples(self, request):
+        entrada = ConcesionesMultiplesSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = entrada.validated_data
+        if not tiene_capacidad(request.user, self.capacidad_requerida, datos["membresia"].institucion_id):
+            raise PermissionDenied("No podés administrar concesiones de esa institución.")
+        with transaction.atomic():
+            # Serializa altas para la misma persona, incluida la comprobación de duplicados.
+            membresia = Membresia.objects.select_for_update().get(pk=datos["membresia"].pk)
+            comunes = {
+                "membresia": membresia.pk,
+                "todas_las_areas": datos["todas_las_areas"],
+                "permite_sensibles": datos["permite_sensibles"],
+                "areas": [area.pk for area in datos.get("areas", [])],
+            }
+            entradas = [self.get_serializer(data={**comunes, "accion": accion}) for accion in datos["acciones"]]
+            for serializer in entradas:
+                serializer.is_valid(raise_exception=True)
+            for serializer in entradas:
+                serializer.save()
+            return Response([serializer.data for serializer in entradas], status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def mias(self, request):
@@ -299,8 +335,14 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
                     "accion": accion,
                     "todas_las_areas": concesion.todas_las_areas,
                     "areas": [area.pk for area in concesion.areas.all()],
-                    "permite_sensibles": administrativa and concesion.permite_sensibles,
+                    "permite_sensibles": concesion.permite_sensibles,
                     "administrativa": administrativa,
+                })
+            for institucion_id in instituciones_admin_financiero(request.user, accion).distinct():
+                filas.append({
+                    "institucion": institucion_id, "accion": accion,
+                    "todas_las_areas": True, "areas": [], "permite_sensibles": True,
+                    "administrativa": True, "origen": "rol_admin",
                 })
         return Response({"superusuario": request.user.is_superuser, "concesiones": filas})
 
@@ -312,6 +354,24 @@ class PrestacionViewSet(CatalogoCostosInstitucionalMixin, BaseModelViewSet):
     http_method_names = ["get", "head", "options", "post", "patch"]
     filter_fields = ("institucion", "nodo", "activo")
     ordering_fields = ("codigo", "nombre", "id")
+
+    @action(detail=False, methods=["get"], url_path="atenciones-disponibles")
+    def atenciones_disponibles(self, request):
+        try:
+            institucion_id = int(request.query_params.get("institucion", ""))
+        except (TypeError, ValueError):
+            raise ValidationError({"institucion": "Indicá una institución válida."})
+        self.verificar_institucion_configurable(institucion_id)
+        nodos = Nodo.objects.filter(
+            version__flujo__institucion_id=institucion_id,
+            version__estado=VersionFlujo.Estado.PUBLICADA, tipo=Nodo.Tipo.ATENCION,
+        ).select_related("version__flujo__area").order_by("version__flujo__titulo", "version__numero", "id")
+        return Response([{
+            "id": nodo.pk, "titulo": nodo.titulo,
+            "flujo_nombre": nodo.version.flujo.titulo, "version_numero": nodo.version.numero,
+            "area": nodo.version.flujo.area_id,
+            "area_nombre": nodo.version.flujo.area.nombre if nodo.version.flujo.area_id else None,
+        } for nodo in nodos])
 
     def perform_create(self, serializer):
         self.verificar_institucion_configurable(serializer.validated_data["institucion"].id)
@@ -335,6 +395,14 @@ class DefinicionComponenteViewSet(CatalogoCostosInstitucionalMixin, BaseModelVie
     def perform_update(self, serializer):
         if not set(serializer.validated_data) <= {"activo", "sensible"}:
             raise ValidationError({"detail": "Sólo podés cambiar el estado activo o la sensibilidad del componente."})
+        # Desclasificar expone los valores existentes: requiere permiso sobre
+        # la sensibilidad original, no sólo sobre el resultado del PATCH.
+        if serializer.instance.sensible and serializer.validated_data.get("sensible") is False:
+            if not tiene_concesion_financiera(
+                self.request.user, ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES,
+                serializer.instance.prestacion.institucion_id, sensible=True,
+            ):
+                raise PermissionDenied("No tenés autorización para quitar la protección sensible de este componente.")
         serializer.save()
 
 
@@ -368,6 +436,25 @@ class ConceptoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
                 if not permite_sensibles:
                     scope &= ~Q(sensible=True)
                 alcance |= scope
+        if self.action in {"list", "retrieve"}:
+            alcance |= Q(institucion_id__in=instituciones_admin_financiero(usuario, ConcesionFinanciera.Accion.VER_GASTOS))
+            # Los lectores pueden elegir conceptos ya presentes en registros de
+            # su área; no reciben todo el catálogo por tener permiso de lectura.
+            for sensible in (False, True):
+                for institucion_id, todas, area_id in concesiones_financieras_de(
+                    usuario, ConcesionFinanciera.Accion.VER_GASTOS, sensible=sensible,
+                ).values_list("membresia__institucion_id", "todas_las_areas", "areas__id"):
+                    if not todas and area_id is None:
+                        continue
+                    origen = Q(institucion_id=institucion_id)
+                    if not todas:
+                        origen &= Q(area_id=area_id)
+                    if not sensible:
+                        origen &= Q(sensible=False)
+                    presentes = Q(pk__in=Gasto.objects.filter(origen).values("concepto_id")) | Q(
+                        pk__in=ExpectativaGasto.objects.filter(origen).values("concepto_id"),
+                    )
+                    alcance |= Q(institucion_id=institucion_id, sensible=sensible) & presentes
         return qs.filter(alcance).distinct()
 
     def _verificar_configuracion(self, institucion_id, sensible):
@@ -407,8 +494,45 @@ class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     permission_classes = [IsAuthenticated, PuedeVerGastos]
     institucion_path = "institucion"
     http_method_names = ["get", "head", "options", "post"]
-    filter_fields = ("institucion", "area", "concepto", "estado", "origen", "periodo_economico", "sensible")
-    ordering_fields = ("periodo_economico", "registrado", "id")
+    filter_fields = ("id", "institucion", "area", "concepto", "estado", "origen", "periodo_economico", "sensible")
+    ordering_fields = (
+        "periodo_economico", "registrado", "id", "concepto_nombre", "area__nombre",
+        "importe", "total_ajustes", "importe_resultante", "estado_operativo", "origen",
+    )
+
+    def filter_queryset(self, queryset):
+        # Subconsulta independiente: otros joins de permisos o filtros nunca
+        # multiplican los ajustes monetarios de un gasto.
+        moneda = DecimalField(max_digits=22, decimal_places=2)
+        ajustes = AjusteGasto.objects.filter(gasto_id=OuterRef("pk")).order_by().values(
+            "gasto_id",
+        ).annotate(total=Sum("importe")).values("total")[:1]
+        queryset = queryset.annotate(
+            total_ajustes=Coalesce(Subquery(ajustes), Value(0), output_field=moneda),
+            estado_operativo=Case(
+                When(reemplazado_por__isnull=False, then=Value("reemplazado")),
+                default=F("estado"), output_field=CharField(),
+            ),
+        ).annotate(importe_resultante=F("importe") + F("total_ajustes"))
+        estado = self.request.query_params.get("estado_operativo")
+        if estado:
+            if estado not in {"reemplazado", *Gasto.Estado.values}:
+                raise ValidationError({"estado_operativo": "Estado de gasto no válido."})
+            queryset = queryset.filter(estado_operativo=estado)
+        vigente = self.request.query_params.get("vigente")
+        control = self.request.query_params.get("control_mensual")
+        if control:
+            if control != "true":
+                raise ValidationError({"control_mensual": "Usá true para consultar sólo gastos incluidos en Control mensual."})
+            queryset = gastos_de_control_mensual(queryset, self.request.user)
+        if vigente in {"true", "1", "false", "0"}:
+            queryset = queryset.filter(reemplazado_por__isnull=vigente in {"true", "1"})
+        queryset = filtrar_rangos(
+            queryset, self.request.query_params,
+            importes=("importe", "total_ajustes", "importe_resultante"),
+            fechas=("registrado",),
+        )
+        return super().filter_queryset(queryset)
 
     def get_permissions(self):
         permisos = [IsAuthenticated()]
@@ -427,26 +551,7 @@ class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         usuario = self.request.user
-        if usuario.is_superuser:
-            return qs
-        alcance = Q(pk__in=[])
-        concesiones = concesiones_financieras_de(usuario, ConcesionFinanciera.Accion.VER_GASTOS)
-        for institucion_id, permite_sensibles in concesiones.filter(todas_las_areas=True).values_list(
-            "membresia__institucion_id", "permite_sensibles"
-        ):
-            scope = Q(institucion_id=institucion_id)
-            if not permite_sensibles:
-                scope &= ~Q(sensible=True)
-            alcance |= scope
-        for institucion_id, area_id, permite_sensibles in concesiones.filter(todas_las_areas=False).values_list(
-            "membresia__institucion_id", "areas__id", "permite_sensibles"
-        ):
-            if area_id is not None:
-                scope = Q(institucion_id=institucion_id, area_id=area_id)
-                if not permite_sensibles:
-                    scope &= ~Q(sensible=True)
-                alcance |= scope
-        return qs.filter(alcance).distinct()
+        return gastos_en_alcance_financiero(qs, usuario)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -611,6 +716,27 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
     ordering = ("-ocurrida_en", "-id")
     ordering_fields = ("id", "ocurrida_en")
 
+    def filter_queryset(self, queryset):
+        periodo = self.request.query_params.get("periodo_economico")
+        if periodo:
+            try:
+                inicio = date.fromisoformat(periodo)
+                if inicio.day != 1:
+                    raise ValueError
+                fin = date(inicio.year + (inicio.month == 12), inicio.month % 12 + 1, 1)
+            except (ValueError, OverflowError):
+                raise ValidationError({"periodo_economico": "Indicá el primer día del mes (AAAA-MM-01)."})
+            queryset = queryset.filter(
+                ocurrida_en__gte=timezone.make_aware(datetime.combine(inicio, time.min)),
+                ocurrida_en__lt=timezone.make_aware(datetime.combine(fin, time.min)),
+            )
+        sin_area = self.request.query_params.get("area_sin_asignar")
+        if sin_area:
+            if sin_area not in {"true", "false"}:
+                raise ValidationError({"area_sin_asignar": "Usá true o false."})
+            queryset = queryset.filter(area_origen_id__isnull=sin_area == "true")
+        return super().filter_queryset(queryset)
+
     @action(
         detail=True,
         methods=["post"],
@@ -639,34 +765,15 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
         raise MethodNotAllowed("POST")
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        usuario = self.request.user
-        if usuario.is_superuser:
-            return qs
-
-        alcance = Q(pk__in=[])
-        concesiones = concesiones_financieras_de(usuario, ConcesionFinanciera.Accion.VER_COSTOS)
-        for institucion_id, permite_sensibles in concesiones.filter(todas_las_areas=True).values_list(
-            "membresia__institucion_id", "permite_sensibles"
-        ):
-            scope = Q(institucion_id=institucion_id)
-            if not permite_sensibles:
-                scope &= ~Q(componentes_esperados__sensible=True)
-                scope &= ~Q(
-                    atribuciones_reparto__reparto__gasto__sensible=True,
-                    atribuciones_reparto__reparto__reemplazado_por__isnull=True,
-                )
-            alcance |= scope
-        for institucion_id, area_id, permite_sensibles in concesiones.filter(todas_las_areas=False).values_list(
-            "membresia__institucion_id", "areas__id", "permite_sensibles"
-        ):
-            if area_id is not None:
-                scope = Q(institucion_id=institucion_id, area_origen_id=area_id)
-                if not permite_sensibles:
-                    scope &= ~Q(componentes_esperados__sensible=True)
-                    scope &= ~Q(
-                        atribuciones_reparto__reparto__gasto__sensible=True,
-                        atribuciones_reparto__reparto__reemplazado_por__isnull=True,
-                    )
-                alcance |= scope
-        return qs.filter(alcance).distinct()
+        trabajos = TrabajoReparto.objects.filter(
+            gasto__institucion_id=OuterRef("institucion_id"),
+            gasto__periodo_economico=OuterRef("_periodo_reparto"),
+            gasto__reemplazado_por__isnull=True, revision__gt=F("revision_procesada"),
+        )
+        queryset = super().get_queryset().alias(
+            _periodo_reparto=TruncMonth("ocurrida_en", tzinfo=timezone.get_current_timezone(), output_field=DateField()),
+        ).annotate(reparto_actualizando=Case(
+            When(area_origen_id__isnull=True, then=Exists(trabajos.filter(gasto__area_id__isnull=True))),
+            default=Exists(trabajos.filter(gasto__area_id=OuterRef("area_origen_id"))),
+        ))
+        return hechos_en_alcance_financiero(queryset, self.request.user)

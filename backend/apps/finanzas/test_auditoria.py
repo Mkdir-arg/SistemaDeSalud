@@ -211,12 +211,12 @@ class AuditoriaFinancieraTests(APITestCase):
             self.usuario.delete()
         self.assertIn(acceso, error.exception.protected_objects)
 
-    def test_no_concede_auditoria_al_demover_o_suspender_membresia(self):
+    def test_conserva_auditoria_explicita_al_cambiar_rol_y_revoca_al_suspender(self):
         self.habilitar_auditoria(sensible=True)
         self.client.get(f"/api/gastos/{self.gasto.pk}/")
         self.membresia.rol = "medico"
         self.membresia.save()
-        self.assertEqual(self.client.get("/api/accesos-financieros/").status_code, 403)
+        self.assertEqual(self.client.get("/api/accesos-financieros/").status_code, 200)
         self.membresia.rol = "admin"
         self.membresia.activo = False
         self.membresia.save()

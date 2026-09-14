@@ -24,24 +24,25 @@ class AuditaLecturaFinanciera:
     def retrieve(self, request, *args, **kwargs):
         return self.auditar_respuesta(super().retrieve(request, *args, **kwargs))
 
-    def auditar_respuesta(self, respuesta, contexto=None):
+    def auditar_respuesta(self, respuesta, contexto=None, objeto_id=None, grupos=None):
         """Usa la página ya autorizada/serializada, no repite la consulta de datos."""
         try:
             datos = respuesta.data
             filas = datos.get("results", [datos]) if isinstance(datos, dict) else datos
             periodo = datos.get("periodo_economico") if isinstance(datos, dict) else None
-            if contexto is not None:
-                grupos = {(contexto.institucion_id, contexto.area_id, contexto.sensible, periodo): len(filas)}
-            else:
-                grupos = Counter(
-                    (fila["institucion"], fila.get("area"), fila["sensible"], fila.get("periodo_economico", periodo))
-                    for fila in filas
-                )
+            # Los resúmenes pueden aportar los grupos de fuentes autorizadas.
+            if grupos is None:
+                if contexto is not None:
+                    grupos = {(contexto.institucion_id, contexto.area_id, contexto.sensible, periodo): len(filas)}
+                else:
+                    grupos = Counter(
+                        (fila["institucion"], fila.get("area"), fila["sensible"], fila.get("periodo_economico", periodo))
+                        for fila in filas
+                    )
             if not grupos:
                 # Sin filas no se inventa área/sensibilidad desde filtros del usuario.
                 grupos = {(_institucion_del_pedido(self.request), None, False, periodo): 0}
-            objeto_id = None
-            if contexto is not None:
+            if contexto is not None and objeto_id is None:
                 objeto_id = contexto.pk
             elif self.action == "retrieve":
                 objeto_id = datos["id"]

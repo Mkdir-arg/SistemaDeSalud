@@ -36,6 +36,24 @@ class CosteoAtencionTests(TestCase):
         ciudadano = Ciudadano.objects.create(institucion=self.institucion, nombre="Ana", apellido="Paz")
         self.caso = Caso.objects.create(institucion=self.institucion, version=version, ciudadano=ciudadano, area_actual=self.area)
 
+    def test_nueva_atencion_solicita_reparto_solo_una_vez_y_en_su_area_y_mes(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        with patch("apps.finanzas.services.solicitar_en_area") as solicitar:
+            hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+            repetido = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        self.assertEqual(hecho.pk, repetido.pk)
+        solicitar.assert_called_once_with(
+            self.institucion.pk, self.area.pk,
+            periodo=timezone.localtime(hecho.ocurrida_en).date().replace(day=1),
+        )
+
+    def test_falla_del_aviso_financiero_no_deshace_la_atencion(self):
+        evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
+        with patch("apps.finanzas.services.solicitar_en_area", side_effect=RuntimeError("no disponible")):
+            hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
+        self.assertTrue(HechoAtencionCosteable.objects.filter(pk=hecho.pk).exists())
+        self.assertTrue(EventoCaso.objects.filter(pk=evento.pk).exists())
+
     def test_sin_prestacion_deja_faltante_y_no_inventa_cero(self):
         evento = EventoCaso.objects.create(caso=self.caso, nodo=self.nodo, autor=self.usuario, titulo="Atención registrada")
         hecho = registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
@@ -324,19 +342,19 @@ class CosteoAtencionTests(TestCase):
         self.assertTrue(tiene_concesion_financiera(self.usuario, ConcesionFinanciera.Accion.VER_COSTOS, self.institucion.id, self.area.id))
         self.assertFalse(tiene_concesion_financiera(self.usuario, ConcesionFinanciera.Accion.VER_COSTOS, self.institucion.id, otra_area.id))
 
-    def test_los_costos_sensibles_y_las_correcciones_exigen_admin_explicito(self):
+    def test_los_costos_sensibles_y_las_correcciones_admiten_concesion_explicita_no_admin(self):
         miembro = Membresia.objects.create(
             usuario=self.usuario,
             institucion=self.institucion,
             rol=Membresia.Rol.MEDICO,
         )
         miembro.areas.add(self.area)
-        with self.assertRaises(ValidationError):
-            ConcesionFinanciera.objects.create(
-                membresia=miembro,
-                accion=ConcesionFinanciera.Accion.VER_COSTOS,
-                permite_sensibles=True,
-            )
+        lectura = ConcesionFinanciera.objects.create(
+            membresia=miembro, accion=ConcesionFinanciera.Accion.VER_COSTOS,
+            permite_sensibles=True,
+        )
+        lectura.areas.add(self.area)
+        self.assertTrue(tiene_concesion_financiera(self.usuario, lectura.accion, self.institucion.pk, self.area.pk, sensible=True))
 
         admin = Membresia.objects.create(
             usuario=self.usuario,
@@ -371,12 +389,10 @@ class CosteoAtencionTests(TestCase):
             ConcesionFinanciera.Accion.CORREGIR_GASTOS,
             ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
         ):
-            with self.assertRaises(ValidationError):
-                ConcesionFinanciera.objects.create(
-                    membresia=delegado,
-                    accion=accion,
-                    todas_las_areas=True,
-                )
+            ConcesionFinanciera.objects.create(
+                membresia=delegado, accion=accion, todas_las_areas=True,
+            )
+            self.assertTrue(tiene_concesion_financiera(self.usuario, accion, self.institucion.pk))
 
         registro = ConcesionFinanciera.objects.create(
             membresia=delegado,
@@ -679,6 +695,14 @@ class HechoCostoApiTests(APITestCase):
         self.assertTrue(por_id[self.hecho.id]["faltantes"])
         self.assertFalse(por_id[costeado.id]["total_es_completo"])
 
+        def contenido_economico(datos):
+            # Los datos económicos siguen iguales; la nueva cola sí informa
+            # que hay un reparto pendiente de actualización para el área/mes.
+            return {**datos, "results": [
+                {clave: valor for clave, valor in fila.items() if clave != "reparto_actualizando"}
+                for fila in datos["results"]
+            ]}
+
         delegado = Usuario.objects.create_user("carga-transversal@cauce.local", "x")
         membresia_area = Membresia.objects.create(
             usuario=delegado, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
@@ -699,18 +723,18 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(alta.status_code, 201)
         self.assertEqual(alta.data["estado"], "pendiente_aprobacion")
         self.client.force_authenticate(self.usuario)
-        self.assertEqual(self.client.get(url).data, antes.data)
+        self.assertEqual(contenido_economico(self.client.get(url).data), contenido_economico(antes.data))
 
         aprobacion = self.client.post(f"/api/gastos/{alta.data['id']}/aprobar/", {}, format="json")
         self.assertEqual(aprobacion.status_code, 200)
         self.assertEqual(aprobacion.data["estado"], "aprobado")
-        self.assertEqual(self.client.get(url).data, antes.data)
+        self.assertEqual(contenido_economico(self.client.get(url).data), contenido_economico(antes.data))
 
         ajuste = self.client.post("/api/ajustes-gasto/", {
             "gasto": alta.data["id"], "importe": "-250.00", "motivo": "Descuento",
         }, format="json")
         self.assertEqual(ajuste.status_code, 201)
-        self.assertEqual(self.client.get(url).data, antes.data)
+        self.assertEqual(contenido_economico(self.client.get(url).data), contenido_economico(antes.data))
 
         expectativa = self.client.post("/api/expectativas-gasto/", {
             "institucion": self.institucion.id, "area": self.area.id,
@@ -727,7 +751,7 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(calendario.status_code, 200)
         self.assertEqual(calendario.data["results"][0]["estado_carga"], "carga_completa")
         self.assertEqual(calendario.data["results"][0]["gastos_aprobados"], 1)
-        self.assertEqual(self.client.get(url).data, antes.data)
+        self.assertEqual(contenido_economico(self.client.get(url).data), contenido_economico(antes.data))
 
     def test_concesion_no_sensible_ve_un_costo_no_sensible_de_su_area(self):
         hecho = self.crear_hecho_costeado()
@@ -849,7 +873,7 @@ class HechoCostoApiTests(APITestCase):
         membresia = Membresia.objects.create(
             usuario=self.usuario,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         concesion = ConcesionFinanciera.objects.create(
             membresia=membresia,
@@ -874,7 +898,7 @@ class HechoCostoApiTests(APITestCase):
         membresia_origen = Membresia.objects.create(
             usuario=self.usuario,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         concesion_origen = ConcesionFinanciera.objects.create(
             membresia=membresia_origen,
@@ -893,7 +917,7 @@ class HechoCostoApiTests(APITestCase):
         membresia_destino = Membresia.objects.create(
             usuario=usuario_destino,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         concesion_destino = ConcesionFinanciera.objects.create(
             membresia=membresia_destino,
@@ -1199,7 +1223,7 @@ class ConcesionFinancieraApiTests(APITestCase):
         self.assertEqual([c["accion"] for c in propias], ["registrar_gastos"])
         self.assertEqual(self.client.get("/api/gastos/").status_code, 403)
 
-    def test_editar_concesion_no_traslada_institucion_ni_otorga_sensibles_a_operador(self):
+    def test_editar_concesion_no_traslada_institucion_y_admite_sensibles_explicitos_a_operador(self):
         permiso = ConcesionFinanciera.objects.create(
             membresia=self.membresia_operador, accion=ConcesionFinanciera.Accion.VER_GASTOS
         )
@@ -1209,15 +1233,15 @@ class ConcesionFinancieraApiTests(APITestCase):
         )
         self.client.force_authenticate(self.admin)
         ruta = f"/api/concesiones-financieras/{permiso.id}/"
-        self.assertEqual(self.client.patch(ruta, {"permite_sensibles": True}, format="json").status_code, 400)
-        self.assertEqual(self.client.patch(ruta, {"accion": "auditar_finanzas"}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(ruta, {"permite_sensibles": True}, format="json").status_code, 200)
+        self.assertEqual(self.client.patch(ruta, {"accion": "auditar_finanzas"}, format="json").status_code, 200)
         self.assertEqual(self.client.patch(ruta, {
             "membresia": ajena.id, "todas_las_areas": True, "areas": []
         }, format="json").status_code, 403)
         permiso.refresh_from_db()
         self.assertEqual(permiso.membresia_id, self.membresia_operador.id)
-        self.assertFalse(permiso.permite_sensibles)
-        self.assertEqual(permiso.accion, "ver_gastos")
+        self.assertTrue(permiso.permite_sensibles)
+        self.assertEqual(permiso.accion, "auditar_finanzas")
         self.client.force_authenticate(self.operador)
         # El queryset ahora oculta la concesión fuera del alcance administrativo.
         self.assertEqual(self.client.delete(ruta).status_code, 404)
@@ -1243,7 +1267,7 @@ class ConcesionFinancieraApiTests(APITestCase):
             "membresia": miembro_ajeno.id, "accion": "registrar_gastos",
         }, format="json").status_code, 403)
         # Consultar los permisos propios sigue disponible en ambas instituciones.
-        self.assertEqual(self.client.get("/api/concesiones-financieras/mias/").data["concesiones"][0]["institucion"], otra.id)
+        self.assertIn(otra.id, [c["institucion"] for c in self.client.get("/api/concesiones-financieras/mias/").data["concesiones"]])
 
     def test_consulta_propia_no_expone_otras_concesiones_ni_otorga_permisos(self):
         propia = ConcesionFinanciera.objects.create(
@@ -1269,7 +1293,7 @@ class ConcesionFinancieraApiTests(APITestCase):
         self.membresia_operador.save()
         self.assertEqual(self.client.get("/api/concesiones-financieras/mias/").data["concesiones"], [])
 
-    def test_consulta_propia_descarta_privilegios_admin_tras_cambio_de_rol(self):
+    def test_consulta_propia_conserva_concesiones_explicitas_tras_cambio_de_rol(self):
         for accion in (ConcesionFinanciera.Accion.VER_GASTOS, ConcesionFinanciera.Accion.APROBAR_GASTOS):
             ConcesionFinanciera.objects.create(
                 membresia=self.membresia_admin, accion=accion,
@@ -1279,10 +1303,9 @@ class ConcesionFinancieraApiTests(APITestCase):
         self.membresia_admin.save()
         self.client.force_authenticate(self.admin)
         filas = self.client.get("/api/concesiones-financieras/mias/").data["concesiones"]
-        self.assertEqual(len(filas), 1)
-        self.assertEqual(filas[0]["accion"], "ver_gastos")
-        self.assertFalse(filas[0]["permite_sensibles"])
-        self.assertFalse(filas[0]["administrativa"])
+        self.assertEqual({fila["accion"] for fila in filas}, {"ver_gastos", "aprobar_gastos"})
+        self.assertTrue(all(fila["permite_sensibles"] for fila in filas))
+        self.assertTrue(all(not fila["administrativa"] for fila in filas))
 
 
 class CatalogoCostosApiTests(APITestCase):
@@ -1512,6 +1535,31 @@ class CatalogoCostosApiTests(APITestCase):
         self.assertEqual(lista.status_code, 200)
         self.assertNotIn(valor.id, [fila["id"] for fila in lista.data["results"]])
         self.assertEqual(alta.status_code, 403)
+
+    def test_quitar_sensibilidad_exige_configuracion_sensible_y_no_expone_valores(self):
+        Membresia.objects.filter(usuario=self.admin).update(rol=Membresia.Rol.ADMINISTRATIVO)
+        prestacion = Prestacion.objects.create(
+            institucion=self.institucion, nodo=self.nodo, codigo="PRIV", nombre="Consulta",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion, codigo="PRIV", nombre="Componente privado", sensible=True,
+        )
+        valor = ValorComponente.objects.create(
+            componente=componente, importe="123.45", vigente_desde="2026-09-01T00:00:00Z",
+        )
+        self.client.force_authenticate(self.admin)
+        url = f"/api/componentes-costo/{componente.pk}/"
+        self.assertEqual(self.client.patch(url, {"sensible": False}, format="json").status_code, 403)
+        self.assertNotIn(valor.pk, [fila["id"] for fila in self.client.get("/api/valores-componentes/").data["results"]])
+        self.assertEqual(self.client.post("/api/valores-componentes/", {
+            "componente": componente.pk, "importe": "200.00", "vigente_desde": "2026-10-01T00:00:00Z",
+            "reemplaza": valor.pk,
+        }, format="json").status_code, 403)
+        ConcesionFinanciera.objects.filter(
+            membresia__usuario=self.admin, accion=ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES,
+        ).update(permite_sensibles=True)
+        self.assertEqual(self.client.patch(url, {"sensible": False}, format="json").status_code, 200)
+        self.assertFalse(self.client.get(url).data["sensible"])
 
     def test_corregir_un_valor_requiere_concesion_especifica(self):
         prestacion = Prestacion.objects.create(
@@ -1983,6 +2031,28 @@ class GastoServiciosTests(TestCase):
         datos.update(overrides)
         return registrar_gasto(**datos)
 
+    def test_cambios_financieros_solicitan_reparto_y_no_pierden_reemplazado(self):
+        from .models import TrabajoReparto
+        central = self.registrar(self.admin)
+        self.assertEqual(TrabajoReparto.objects.get(gasto=central).revision, 1)
+        registrar_ajuste_gasto(central.pk, Decimal("-10.00"), "Bonificación", self.admin)
+        self.assertEqual(TrabajoReparto.objects.get(gasto=central).revision, 2)
+        pendiente = self.registrar(self.delegado)
+        aprobar_gasto(pendiente.pk, self.admin)
+        aprobar_gasto(pendiente.pk, self.admin)
+        self.assertEqual(TrabajoReparto.objects.get(gasto=pendiente).revision, 2)
+        rechazado = self.registrar(self.delegado)
+        rechazar_gasto(rechazado.pk, "Corregir importe", self.admin)
+        sucesor = self.registrar(self.delegado, reemplaza=rechazado)
+        self.assertEqual(TrabajoReparto.objects.get(gasto=rechazado).revision, 3)
+        self.assertEqual(TrabajoReparto.objects.get(gasto=sucesor).revision, 1)
+
+    def test_falla_al_encolar_revierte_el_gasto_no_deja_fuente_sin_aviso(self):
+        with patch("apps.finanzas.services.solicitar_reparto", side_effect=RuntimeError("no disponible")):
+            with self.assertRaises(RuntimeError):
+                self.registrar(self.admin)
+        self.assertFalse(Gasto.objects.exists())
+
     def test_central_aprueba_directo_y_area_requiere_aprobacion_idempotente(self):
         central = self.registrar(self.admin)
         pendiente = self.registrar(self.delegado)
@@ -2252,6 +2322,7 @@ class GastoApiTests(APITestCase):
         alta = self.client.post("/api/gastos/", self.carga(self.sensible), format="json")
         self.assertEqual(alta.status_code, 201)
 
+        Membresia.objects.filter(usuario=self.lector_restringido).update(rol=Membresia.Rol.ADMINISTRATIVO)
         self.client.force_authenticate(self.lector_restringido)
         listado = self.client.get("/api/gastos/")
         detalle = self.client.get(f"/api/gastos/{alta.data['id']}/")
@@ -2469,18 +2540,16 @@ class RepartoActividadTests(TestCase):
                 registrado_por=self.usuario,
             )
 
-    def test_configurar_repartos_exige_membresia_administrativa(self):
+    def test_configurar_repartos_admite_concesion_a_personal_no_admin(self):
         operador = Usuario.objects.create_user("operador-repartos@cauce.local", "x")
         miembro = Membresia.objects.create(
             usuario=operador, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
         )
 
-        with self.assertRaises(ValidationError):
-            ConcesionFinanciera.objects.create(
-                membresia=miembro,
-                accion=ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
-                todas_las_areas=True,
-            )
+        ConcesionFinanciera.objects.create(
+            membresia=miembro, accion=ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS, todas_las_areas=True,
+        )
+        self.assertTrue(tiene_concesion_financiera(operador, "configurar_repartos", self.institucion.pk))
 
 
 @skipUnless(connection.vendor == "postgresql", "Requiere bloqueo de fila PostgreSQL.")

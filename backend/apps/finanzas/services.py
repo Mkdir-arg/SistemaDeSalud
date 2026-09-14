@@ -13,6 +13,7 @@ from apps.accounts.models import Membresia
 
 from .models import AjusteCosto, AjusteGasto, AtribucionReparto, CoberturaActividadCosteable, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ReglaRepartoActividad, RepartoGasto, ValorComponente
 from .permisos import concesiones_financieras_en_alcance, tiene_concesion_financiera
+from .procesamiento import solicitar_en_area, solicitar_reparto
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,17 @@ def registrar_atencion_completada(caso, nodo, evento, autor=None):
                     _marcar_snapshot_incompleto(hecho)
             except Exception:  # noqa: BLE001 - el hecho sigue durable aunque la base falle por completo.
                 logger.exception("No se pudo marcar el snapshot incompleto del hecho %s", hecho.id)
+    if creado and hecho.area_origen_id is not None:
+        try:
+            with transaction.atomic():
+                solicitar_en_area(
+                    hecho.institucion_id, hecho.area_origen_id,
+                    periodo=timezone.localtime(hecho.ocurrida_en).date().replace(day=1),
+                )
+        except Exception as error:
+            # La conciliación del worker recupera este aviso. No se deshace una
+            # atención clínica confirmada por un problema del cálculo financiero.
+            logger.error("No se pudo solicitar el reparto de actividad (%s).", type(error).__name__)
     return hecho
 
 
@@ -298,7 +310,11 @@ def registrar_gasto(concepto, institucion, area, importe, periodo_economico, reg
                 aprobado_por=registrado_por,
                 aprobado_en=timezone.now(),
             )
-        return Gasto.objects.create(**datos)
+        gasto = Gasto.objects.create(**datos)
+        solicitar_reparto(gasto.pk)
+        if reemplaza is not None:
+            solicitar_reparto(reemplaza.pk)
+        return gasto
 
 
 def aprobar_gasto(gasto_id, aprobado_por):
@@ -323,6 +339,7 @@ def aprobar_gasto(gasto_id, aprobado_por):
         gasto.aprobado_por = aprobado_por
         gasto.aprobado_en = timezone.now()
         gasto.save(update_fields=["estado", "aprobado_por", "aprobado_en"])
+        solicitar_reparto(gasto.pk)
         return gasto
 
 
@@ -349,6 +366,7 @@ def rechazar_gasto(gasto_id, motivo, rechazado_por):
         gasto.rechazado_en = timezone.now()
         gasto.motivo_rechazo = motivo
         gasto.save(update_fields=["estado", "rechazado_por", "rechazado_en", "motivo_rechazo"])
+        solicitar_reparto(gasto.pk)
         return gasto
 
 
@@ -371,6 +389,7 @@ def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por):
             registrado_por=registrado_por,
         )
         ajuste.save()
+        solicitar_reparto(gasto.pk)
         return ajuste
 
 
@@ -507,13 +526,15 @@ def registrar_cobertura_actividad(
             raise ValidationError(
                 "La actividad está incompleta: corregí las diferencias técnicas antes de habilitar el reparto."
             )
-        return CoberturaActividadCosteable.objects.create(
+        cobertura = CoberturaActividadCosteable.objects.create(
             institucion=institucion,
             area=area,
             vigente_desde=vigente_desde,
             registrado_por=registrado_por,
             **datos,
         )
+        solicitar_en_area(institucion.pk, area.pk, desde=vigente_desde)
+        return cobertura
 
 
 def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, registrado_por, **datos):
@@ -528,7 +549,7 @@ def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, regis
             sensible=concepto.sensible,
         ):
             raise PermissionDenied("No tenés autorización para configurar esta regla de reparto.")
-        return ReglaRepartoActividad.objects.create(
+        regla = ReglaRepartoActividad.objects.create(
             concepto=concepto,
             institucion=institucion,
             area=area,
@@ -536,6 +557,8 @@ def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, regis
             registrado_por=registrado_por,
             **datos,
         )
+        solicitar_en_area(institucion.pk, area.pk, desde=vigente_desde, concepto_id=concepto.pk)
+        return regla
 
 
 def _centavos(importe):
@@ -543,7 +566,7 @@ def _centavos(importe):
 
 
 def resumen_actividad_reparto(
-    *, institucion_id, area_id, periodo, concepto_id=None, incluir_sensibles=False
+    *, institucion_id, area_id, periodo, concepto_id=None, incluir_sensibles=False, incluir_importes=True
 ):
     verificacion = verificar_integridad_actividad(
         institucion_id=institucion_id, area_id=area_id, periodo=periodo,
@@ -562,7 +585,7 @@ def resumen_actividad_reparto(
     importe_total = sum(
         _centavos(gasto.importe) + sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all())
         for gasto in gastos
-    )
+    ) if incluir_importes else None
     cobertura_confirmada = _vigente_en(
         CoberturaActividadCosteable.objects.filter(
             institucion_id=institucion_id, area_id=area_id,
@@ -580,10 +603,11 @@ def resumen_actividad_reparto(
         **verificacion,
         "estado": estado,
         "cobertura_operativa_confirmada": cobertura_confirmada,
+        "incluye_importes": incluir_importes,
         "importe_total_centavos": importe_total,
-        "importe_pendiente_centavos": importe_total if estado != "verificada" else 0,
+        "importe_pendiente_centavos": (importe_total if estado != "verificada" else 0) if incluir_importes else None,
         "importe_estimado_por_atencion_centavos": (
-            int(Decimal(importe_total) / Decimal(cantidad)) if cantidad else None
+            int(Decimal(importe_total) / Decimal(cantidad)) if cantidad and incluir_importes else None
         ),
     }
 
@@ -611,10 +635,17 @@ def _crear_reparto(*, gasto, regla, cobertura, hechos, estado, motivo=""):
         gasto=gasto, regla=regla, cobertura=cobertura, hechos=hechos,
         importe_ajustes=importe_ajustes, estado=estado, motivo=motivo,
     )
-    existente = RepartoGasto.objects.filter(gasto=gasto, huella_insumos=huella).first()
-    if existente:
-        return existente
     anterior = RepartoGasto.objects.filter(gasto=gasto).order_by("-version").first()
+    if anterior:
+        # Sólo el último resultado puede resolver un reintento. Las huellas
+        # antiguas (sin predecesor) siguen siendo válidas si aún son vigentes.
+        huella_reintento = hashlib.sha256(f"{huella}:{anterior.reemplaza_id}".encode()).hexdigest()
+        if anterior.huella_insumos in {huella, huella_reintento}:
+            return anterior
+        # A -> B -> A es una nueva versión, no la reactivación de la primera.
+        # El predecesor distingue esa transición sin cambiar el esquema ni
+        # borrar historia; el bloqueo del gasto serializa estas decisiones.
+        huella = hashlib.sha256(f"{huella}:{anterior.pk}".encode()).hexdigest()
     reparto = RepartoGasto.objects.create(
         gasto=gasto,
         regla=regla,

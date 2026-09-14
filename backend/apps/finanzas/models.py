@@ -39,30 +39,43 @@ class ConcesionFinanciera(models.Model):
 
     @classmethod
     def accion_requiere_administracion(cls, accion):
-        return accion in {
-            cls.Accion.CONFIGURAR_COMPONENTES,
-            cls.Accion.CORREGIR_COSTOS,
-            cls.Accion.APROBAR_GASTOS,
-            cls.Accion.CORREGIR_GASTOS,
-            cls.Accion.CONFIGURAR_GASTOS_ESPERADOS,
-            cls.Accion.AUDITAR_FINANZAS,
-            cls.Accion.CONFIGURAR_REPARTOS,
-        }
+        # La administración concede; el receptor puede tener cualquier rol.
+        return False
 
     def clean(self):
         super().clean()
-        if self.accion_requiere_administracion(self.accion) and self.membresia.rol != "admin":
-            raise ValidationError(
-                "Esta acción financiera requiere una membresía administrativa."
-            )
-        if self.permite_sensibles and self.membresia.rol != "admin":
-            raise ValidationError(
-                "El acceso a costos sensibles requiere una membresía administrativa."
-            )
+        if self.membresia_id and not self.membresia.activo:
+            raise ValidationError("La membresía debe estar activa para recibir permisos financieros.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class TrabajoReparto(models.Model):
+    """Una solicitud durable por fuente; una generación nueva nunca se pierde."""
+
+    gasto = models.OneToOneField("Gasto", on_delete=models.CASCADE, related_name="trabajo_reparto")
+    revision = models.PositiveBigIntegerField(default=1)
+    revision_procesada = models.PositiveBigIntegerField(default=0)
+    solicitado_en = models.DateTimeField(auto_now_add=True)
+    procesado_en = models.DateTimeField(null=True)
+    iniciado_en = models.DateTimeField(null=True)
+    reserva = models.UUIDField(null=True)
+    intentos = models.PositiveIntegerField(default=0)
+    reintentar_en = models.DateTimeField()
+    ultimo_error = models.CharField(max_length=200, blank=True)
+
+    @property
+    def estado(self):
+        if self.revision <= self.revision_procesada:
+            return "actualizado"
+        if self.reserva:
+            return "procesando"
+        return "error" if self.ultimo_error else "pendiente"
+
+    class Meta:
+        indexes = [models.Index(fields=["reintentar_en"], name="reparto_reintento_idx")]
 
 
 class AccesoFinanciero(models.Model):
@@ -246,6 +259,7 @@ class ExpectativaGasto(models.Model):
     )
     vigente_desde = models.DateField()
     vigente_hasta = models.DateField(null=True, blank=True)
+    monto_referencia = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     sensible = models.BooleanField(default=False, editable=False)
     reemplaza = models.OneToOneField(
         "self",
@@ -271,10 +285,16 @@ class ExpectativaGasto(models.Model):
                 condition=Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=models.F("vigente_desde")),
                 name="vigencia_expectativa_gasto_valida",
             ),
+            models.CheckConstraint(
+                condition=Q(monto_referencia__isnull=True) | Q(monto_referencia__gte=0),
+                name="referencia_expectativa_no_negativa",
+            ),
         ]
 
     def clean(self):
         super().clean()
+        if self.monto_referencia is not None and self.monto_referencia < 0:
+            raise ValidationError({"monto_referencia": "El monto de referencia no puede ser negativo."})
         if self.vigente_desde and self.vigente_desde.day != 1:
             raise ValidationError("La vigencia de una expectativa empieza el primer día del mes.")
         if self.vigente_hasta and self.vigente_hasta.day != 1:
@@ -289,7 +309,7 @@ class ExpectativaGasto(models.Model):
                 or self.reemplaza.institucion_id != self.institucion_id
                 or self.reemplaza.area_id != self.area_id
             ):
-                raise ValidationError("Una expectativa sucesora conserva concepto y ámbito.")
+                raise ValidationError("Una expectativa sucesora conserva concepto, institución y área.")
             if self.vigente_desde < self.reemplaza.vigente_desde:
                 raise ValidationError("Una expectativa sucesora no puede empezar antes de la reemplazada.")
             if self.vigente_desde == self.reemplaza.vigente_desde:
@@ -979,12 +999,12 @@ class RepartoGasto(models.Model):
             or self.regla.institucion_id != self.gasto.institucion_id
             or self.regla.area_id != self.gasto.area_id
         ):
-            raise ValidationError("La regla debe coincidir con el ámbito del gasto.")
+            raise ValidationError("La regla debe coincidir con la institución y el área del gasto.")
         if self.cobertura_id and self.gasto_id and (
             self.cobertura.institucion_id != self.gasto.institucion_id
             or self.cobertura.area_id != self.gasto.area_id
         ):
-            raise ValidationError("La cobertura debe coincidir con el ámbito del gasto.")
+            raise ValidationError("La cobertura debe coincidir con la institución y el área del gasto.")
         if self.estado == self.Estado.PENDIENTE and not self.motivo:
             raise ValidationError("Un reparto pendiente requiere motivo.")
         if self.estado != self.Estado.PENDIENTE and self.motivo:
@@ -1019,7 +1039,7 @@ class AtribucionReparto(models.Model):
             self.reparto.gasto.institucion_id != self.hecho.institucion_id
             or self.reparto.gasto.area_id != self.hecho.area_origen_id
         ):
-            raise ValidationError("El hecho debe pertenecer al mismo ámbito del reparto.")
+            raise ValidationError("La atención debe pertenecer a la misma institución y área del reparto.")
 
     def save(self, *args, **kwargs):
         if self.pk and type(self).objects.filter(pk=self.pk).exists():
