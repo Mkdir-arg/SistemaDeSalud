@@ -142,7 +142,7 @@ El recorrido autenticado `frontend/e2e/finanzas-feedback.spec.js` requiere `FINA
 Seleccioná **Hospital Demo Finanzas**, área **Consultorio escuela**, mes **septiembre de 2026**, y abrí **Resumen → Evolución mensual → 12 meses**. Se muestran todos los conceptos visibles juntos, incluidos **Demo histórico · Electricidad / Limpieza / Mantenimiento**. Desde **Conceptos** podés buscar y elegir cuáles comparar.
 
 - Octubre de 2025 a septiembre de 2026: 36 gastos aprobados y uno pendiente, identificados por esos conceptos; no son gastos reales del hospital.
-- Electricidad tiene subas y bajas; **Comparar con referencia** permite ver el cambio de referencia de abril de 2026 (12.000 → 13.500 ARS).
+- Electricidad tiene subas y bajas; **Comparar con referencias** permite ver el cambio de referencia de abril de 2026 (12.000 → 13.500 ARS).
 - Mantenimiento en agosto tiene 3.200 ARS aprobados y 1.800 ARS por aprobar: se muestra provisional, no como un ahorro confirmado. Septiembre permanece provisional por ser el mes abierto.
 - Al seleccionar un punto se abren sus gastos aprobados. Para ver el pendiente de agosto, quitá el filtro de aprobación o entrá desde Control mensual.
 - No se crearon atenciones ni reglas para este lote: sus gastos aprobados quedan **sin distribuir, por falta de regla**. Eso no impide estudiar su evolución y no significa que el proceso automático esté detenido.
@@ -153,7 +153,11 @@ Se preservaron tus fuentes existentes, usuarios y permisos. Las configuraciones 
 
 El gráfico comienza con **todos los conceptos visibles seleccionados**, sin limitar su cantidad. Cada concepto tiene una línea y un color estable: no cambia al variar el importe, el período o la selección. Usa el importe aprobado, incluidos sus ajustes, sólo de áreas con control vigente en cada mes y dentro de tus permisos. Todas las líneas comparten la escala en pesos; un concepto de mucho mayor importe puede hacer que los demás se vean más planos.
 
-**Conceptos** permite buscar, marcar/desmarcar, **Mostrar todos** y **Quitar todos**. Las etiquetas permiten quitar un concepto con × o destacarlo pulsando su nombre; los demás se atenúan, no se suman ni desaparecen. Volver a pulsarlo restaura el énfasis normal. Pasar por un mes muestra los importes y estados de todos los seleccionados. **Comparar con referencia** agrega una sola línea discontinua, del concepto que elijas en su selector; si falta referencia en alguno de sus controles, no se inventa un total parcial.
+**Conceptos** permite buscar, marcar/desmarcar, **Mostrar todos** y **Quitar todos**. Las etiquetas permiten quitar un concepto con × o destacarlo pulsando su nombre; los demás se atenúan, no se suman ni desaparecen. Volver a pulsarlo restaura el énfasis normal.
+
+**Estado de los meses** permite ver carga y aprobación completas, meses incompletos/abiertos, o ambos (por defecto). Se evalúa por concepto y mes: agosto puede estar completo para Electricidad y provisional para Mantenimiento. El gráfico, su detalle al pasar por un mes y **Ver importes mensuales** respetan el filtro; no se suman importes pendientes de aprobación. Los meses sin carga siguen sin dibujarse como cero, aunque su situación pueda consultarse en el listado.
+
+**Comparar con referencias** muestra las de todos los conceptos seleccionados que tengan alguna referencia en el período, sin selector individual. Se distinguen por el mismo color y trazo discontinuo; un punto pequeño permite ver una referencia aislada. **Las referencias siempre conservan todo el período**, aunque el filtro oculte gastos de algunos meses. Cero es válido; donde falta referencia no se inventa ni arrastra un valor. Si ningún concepto seleccionado tiene referencia, el botón está deshabilitado. Un concepto sin referencia conserva sus gastos. Si se oculta el importe de un mes por estado, el detalle y listado lo indican y conservan su referencia cuando corresponde.
 
 Cambiar entre 6 y 12 meses conserva la selección explícita. Si un concepto no está disponible en el nuevo período, se informa sin reemplazarlo; al ampliar nuevamente, recupera su selección. En modo **Mostrar todos** se incluyen también los conceptos que aparezcan al ampliar. Cambiar institución, área o mes económico reinicia la vista con todos los conceptos del nuevo contexto.
 

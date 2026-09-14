@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, Ref
 import { decimalACentavos, importeARS } from "@/api/finanzas";
 import { Select } from "@/components/ui";
 import { AyudaFinanzas } from "./ControlesFinanzas";
+import { coincideEstadoMes, tieneReferencia } from "./evolucion";
 
 const medidas = {
   aprobados: { nombre: "Aprobado", color: "var(--color-badge-green-fg)" },
@@ -30,7 +31,7 @@ const porImporte = (a, b) => a.centavos == null ? (b.centavos == null ? porNombr
 // El ángulo áureo separa los identificadores consecutivos sin limitar categorías.
 const colorConcepto = (id) => `hsl(${(Number(id) * 137.508) % 360} 65% 43%)`;
 
-export function GraficoEvolucion({ series, referencia, onMes, onQuitar }) {
+export function GraficoEvolucion({ series, estado, referencia, onMes, onQuitar }) {
   const contenedor = useRef(null);
   const [destacado, setDestacado] = useState(null);
   const [ayudaActiva, setAyudaActiva] = useState(false);
@@ -42,13 +43,13 @@ export function GraficoEvolucion({ series, referencia, onMes, onQuitar }) {
       const fila = s.meses[indice];
       return [
         [`mes_${s.id}`, fila],
-        [`confirmado_${s.id}`, fila.estado === "completo" && fila.importe_aprobado != null ? Number(fila.importe_aprobado) : null],
-        [`provisional_${s.id}`, ["incompleto", "mes_abierto"].includes(fila.estado) && fila.importe_aprobado != null ? Number(fila.importe_aprobado) : null],
+        [`confirmado_${s.id}`, coincideEstadoMes(fila, estado) && fila.estado === "completo" && fila.importe_aprobado != null ? Number(fila.importe_aprobado) : null],
+        [`provisional_${s.id}`, coincideEstadoMes(fila, estado) && ["incompleto", "mes_abierto"].includes(fila.estado) && fila.importe_aprobado != null ? Number(fila.importe_aprobado) : null],
         [`referencia_${s.id}`, fila.monto_referencia == null ? null : Number(fila.monto_referencia)],
       ];
     })),
-  })), [series]);
-  const serieReferencia = series.find((s) => String(s.id) === referencia);
+  })), [series, estado]);
+  const seriesReferencia = referencia ? series.filter(tieneReferencia) : [];
   const opacidad = (id) => foco == null || foco === id ? 1 : 0.2;
   const punto = (serie) => ({ cx, cy, payload, value }) => {
     const fila = payload?.[`mes_${serie.id}`];
@@ -63,24 +64,24 @@ export function GraficoEvolucion({ series, referencia, onMes, onQuitar }) {
       <button type="button" aria-label={`Destacar ${s.nombre}`} aria-pressed={foco === s.id} onClick={() => setDestacado(foco === s.id ? null : s.id)} className="flex min-w-0 items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-superficie-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><span aria-hidden="true" className="h-0.5 w-5 shrink-0" style={{ background: colorConcepto(s.id), opacity: opacidad(s.id) }} /><span className="min-w-0 break-words">{s.nombre}</span></button>
       <button type="button" aria-label={`Quitar concepto ${s.nombre}`} onClick={() => onQuitar(s.id)} className="shrink-0 rounded px-2 py-1 text-texto-debil hover:bg-superficie-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">×</button>
     </li>)}</ul>
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-texto-debil"><span>● Carga y aprobación completas</span><span>○ Mes incompleto o abierto</span>{serieReferencia && <span>┄ Referencia: {serieReferencia.nombre}</span>}</div>
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-texto-debil">{estado !== "provisional" && <span>● Carga y aprobación completas</span>}{estado !== "completo" && <span>○ Mes incompleto o abierto</span>}{seriesReferencia.length > 0 && <span>┄ Referencias · todo el período</span>}</div>
     </div>
     <div ref={contenedor} role="region" aria-label="Gráfico de evolución del control mensual" className="finance-chart-canvas finance-evolution-space min-w-0"><ResponsiveContainer width="100%" height="100%"><LineChart data={datos} margin={{ top: 12, right: 12, bottom: 8, left: 0 }} accessibilityLayer>
       <CartesianGrid vertical={false} stroke="var(--color-division)" /><XAxis dataKey="nombre" tick={{ fill: "var(--color-texto-debil)", fontSize: 12 }} minTickGap={20} /><YAxis width={60} tickFormatter={(valor) => compacto.format(valor)} tick={{ fill: "var(--color-texto-debil)", fontSize: 12 }} />
       <ReferenceLine y={0} stroke="var(--color-texto-debil)" />
-      <Tooltip active={ayudaActiva || undefined} filterNull={false} portal={document.body} wrapperStyle={{ position: "fixed", zIndex: 100, top: 0, left: 0 }} content={<DetalleEvolucion datos={datos} series={series} referencia={referencia} contenedor={contenedor} mantener={setAyudaActiva} />} />
+      <Tooltip active={ayudaActiva || undefined} filterNull={false} portal={document.body} wrapperStyle={{ position: "fixed", zIndex: 100, top: 0, left: 0 }} content={<DetalleEvolucion datos={datos} series={series} estado={estado} referencia={referencia} contenedor={contenedor} mantener={setAyudaActiva} />} />
       {series.flatMap((serie) => [
         <Line key={`confirmado_${serie.id}`} type="linear" dataKey={`confirmado_${serie.id}`} name={serie.nombre} stroke={colorConcepto(serie.id)} strokeOpacity={opacidad(serie.id)} strokeWidth={foco === serie.id ? 3 : 2} connectNulls={false} dot={punto(serie)} activeDot={punto(serie)} isAnimationActive="auto" animationBegin={0} animationDuration={350} animationEasing="ease-out" />,
         <Line key={`provisional_${serie.id}`} type="linear" dataKey={`provisional_${serie.id}`} name={`${serie.nombre} · provisional`} stroke="none" connectNulls={false} dot={punto(serie)} activeDot={punto(serie)} isAnimationActive={false} />,
       ])}
-      {serieReferencia && <Line type="linear" dataKey={`referencia_${serieReferencia.id}`} name={`Referencia · ${serieReferencia.nombre}`} stroke={colorConcepto(serieReferencia.id)} strokeDasharray="5 4" connectNulls={false} dot={false} activeDot={false} isAnimationActive="auto" animationBegin={0} animationDuration={350} animationEasing="ease-out" />}
+      {seriesReferencia.map((s) => <Line key={`referencia_${s.id}`} type="linear" dataKey={`referencia_${s.id}`} name={`Referencia · ${s.nombre}`} stroke={colorConcepto(s.id)} strokeOpacity={opacidad(s.id)} strokeDasharray="5 4" connectNulls={false} dot={{ r: 2, fill: "var(--color-superficie)" }} activeDot={false} isAnimationActive="auto" animationBegin={0} animationDuration={350} animationEasing="ease-out" />)}
     </LineChart></ResponsiveContainer></div>
   </>;
 }
 
 // El portal de Recharts conserva cierre con Escape. La ayuda se mide dentro
 // del viewport para no cortarse en la tarjeta, incluso con muchos conceptos.
-function DetalleEvolucion({ active, label, coordinate, datos, series, referencia, contenedor, mantener }) {
+function DetalleEvolucion({ active, label, coordinate, datos, series, estado, referencia, contenedor, mantener }) {
   const panel = useRef(null);
   const [posicion, setPosicion] = useState({ left: 8, top: 8 });
   useLayoutEffect(() => {
@@ -99,13 +100,16 @@ function DetalleEvolucion({ active, label, coordinate, datos, series, referencia
     window.addEventListener("resize", ubicar);
     window.addEventListener("scroll", ubicar, true);
     return () => { window.removeEventListener("resize", ubicar); window.removeEventListener("scroll", ubicar, true); };
-  }, [active, label, coordinate?.x, coordinate?.y, series, referencia, contenedor]);
+  }, [active, label, coordinate?.x, coordinate?.y, series, estado, referencia, contenedor]);
   const mes = datos.find((m) => m.nombre === label);
   if (!active || !mes) return null;
   return <div ref={panel} role="tooltip" style={posicion} onMouseEnter={() => mantener(true)} onMouseLeave={() => mantener(false)} onMouseMove={(e) => e.stopPropagation()} className="fixed max-h-[60vh] w-[300px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-md border border-borde bg-superficie p-3 text-sm text-texto shadow-card">
     <strong>{mes.periodo_economico.slice(0, 7)}</strong>{series.map((s) => {
       const fila = mes[`mes_${s.id}`];
-      return <div key={s.id} className="mt-2 border-t border-division pt-2"><strong className="break-words">{s.nombre}</strong><p className="break-words tabular-nums">Aprobado: {fila.importe_aprobado == null ? "Sin datos" : importeARS(fila.importe_aprobado)}</p><p className="text-xs text-texto-debil">{fila.estado === "completo" ? "Carga y aprobación completas" : fila.estado === "sin_control" ? "Sin control vigente" : fila.estado === "sin_carga" ? "Carga sin completar: no equivale a cero" : "Provisional: no interpretar como ahorro"}</p>{String(s.id) === referencia && <p>Referencia: {fila.monto_referencia == null ? "No disponible" : importeARS(fila.monto_referencia)}</p>}</div>;
+      const visible = coincideEstadoMes(fila, estado);
+      const mostrarReferencia = referencia && tieneReferencia(s);
+      if (!visible && !mostrarReferencia) return null;
+      return <div key={s.id} className="mt-2 border-t border-division pt-2"><strong className="break-words">{s.nombre}</strong>{visible ? <><p className="break-words tabular-nums">Aprobado: {fila.importe_aprobado == null ? "Sin datos" : importeARS(fila.importe_aprobado)}</p><p className="text-xs text-texto-debil">{fila.estado === "completo" ? "Carga y aprobación completas" : fila.estado === "sin_control" ? "Sin control vigente" : fila.estado === "sin_carga" ? "Carga sin completar: no equivale a cero" : "Provisional: no interpretar como ahorro"}</p></> : <p className="text-xs text-texto-debil">Gasto oculto por el filtro de estado</p>}{mostrarReferencia && <p>Referencia: {fila.monto_referencia == null ? "No disponible" : importeARS(fila.monto_referencia)}</p>}</div>;
     })}
   </div>;
 }

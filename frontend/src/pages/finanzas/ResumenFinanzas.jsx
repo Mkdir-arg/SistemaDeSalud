@@ -7,6 +7,7 @@ import { Badge, Button, Card, Input, Select, Spinner } from "@/components/ui";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { fechaHora } from "@/lib/format";
 import { AyudaFinanzas, PanelFlotante } from "./ControlesFinanzas";
+import { coincideEstadoMes, tieneReferencia } from "./evolucion";
 
 const GraficoFinanzas = lazy(() => import("./GraficoFinanzas"));
 const GraficoEvolucion = lazy(() => import("./GraficoFinanzas").then((modulo) => ({ default: modulo.GraficoEvolucion })));
@@ -29,7 +30,8 @@ function EvolucionMensual({ institucion, usuarioId, mes, area, onGastos }) {
   // null significa todos, incluso los que aparecen al ampliar el período.
   const [seleccion, setSeleccion] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [referencia, setReferencia] = useState("");
+  const [referencia, setReferencia] = useState(false);
+  const [estado, setEstado] = useState("ambos");
   const [verImportes, setVerImportes] = useState(false);
   const filtros = { ...parametros(institucion, mes, area), meses };
   const consulta = useQuery({ queryKey: ["finanzas", usuarioId, institucion.id, "evolucion", filtros], queryFn: () => api.get(`/reportes-finanzas/evolucion/${query(filtros)}`), gcTime: 0 });
@@ -39,7 +41,9 @@ function EvolucionMensual({ institucion, usuarioId, mes, area, onGastos }) {
   const ids = new Set(elegidos.map((c) => c.id));
   const series = useMemo(() => (datos?.series || []).filter((s) => seleccion === null || seleccion.some((c) => c.id === s.id)), [datos?.series, seleccion]);
   const ausentes = elegidos.filter((c) => !opciones.some((o) => o.id === c.id));
-  const referenciaVisible = series.some((s) => String(s.id) === referencia) ? referencia : "";
+  const hayReferencias = series.some(tieneReferencia);
+  const referenciaVisible = referencia && hayReferencias;
+  const hayImportes = series.some((s) => s.meses.some((fila) => coincideEstadoMes(fila, estado) && fila.importe_aprobado != null && !["sin_control", "sin_carga"].includes(fila.estado)));
   const errorConsulta = Array.isArray(consulta.error?.data) ? { status: consulta.error.status, message: consulta.error.data.join(" ") } : consulta.error;
   const abrir = (fila, concepto) => onGastos({ concepto }, "aprobado", fila.periodo_economico);
   const quitar = (id) => setSeleccion(elegidos.filter((c) => c.id !== id));
@@ -54,21 +58,25 @@ function EvolucionMensual({ institucion, usuarioId, mes, area, onGastos }) {
       </PanelFlotante>}
       <Select className="w-[130px]" aria-label="Período de evolución" value={meses} onChange={(e) => setMeses(Number(e.target.value))}><option value="6">6 meses</option><option value="12">12 meses</option></Select>
       {!consulta.error && series.length > 0 && <>
-        <Button size="sm" variant="ghost" aria-pressed={Boolean(referenciaVisible)} onClick={() => setReferencia(referenciaVisible ? "" : String(series[0].id))}>{referenciaVisible ? "Ocultar referencia" : "Comparar con referencia"}</Button>
-        {referenciaVisible && <Select className="w-[240px] max-w-full" aria-label="Concepto de referencia" value={referenciaVisible} onChange={(e) => setReferencia(e.target.value)}>{series.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}</Select>}
+        <Select className="w-[230px] max-w-full" aria-label="Estado de los meses" value={estado} onChange={(e) => setEstado(e.target.value)}><option value="ambos">Completos y provisionales</option><option value="completo">Carga y aprobación completas</option><option value="provisional">Mes incompleto o abierto</option></Select>
+        <Button size="sm" variant="ghost" disabled={!hayReferencias} title={!hayReferencias ? "Los conceptos seleccionados no tienen referencias en este período" : undefined} aria-pressed={referenciaVisible} onClick={() => setReferencia((valor) => !valor)}>{referenciaVisible ? "Ocultar referencias" : "Comparar con referencias"}</Button>
         <Button size="sm" variant="ghost" aria-expanded={verImportes} onClick={() => setVerImportes((valor) => !valor)}>{verImportes ? "Ocultar importes mensuales" : "Ver importes mensuales"}</Button>
       </>}
-      <AyudaFinanzas titulo="Cómo leer la evolución mensual"><p>Se muestran todos los conceptos visibles de Control mensual. Elegí cuáles comparar o destacá uno desde su nombre. Cada concepto conserva su color; el color no indica aprobación ni ahorro.</p><p>Incluye sólo áreas con control vigente en cada mes. Si cambia la cantidad de áreas con control, cambia la cobertura del total comparado. Los importes son gastos aprobados, incluidos sus ajustes, no el costo total del hospital.</p><p>La línea une meses con carga y aprobación completas. Los puntos huecos muestran importes provisionales: faltan cargas o aprobaciones, o el mes sigue abierto. Una baja aparente no prueba un ahorro. Sin control o sin carga no equivale a cero.</p><p>Podés comparar con la referencia de un concepto a la vez. Es orientativa, no dinero gastado ni presupuesto aprobado; sólo se muestra cuando todos sus controles del mes tienen referencia. Son pesos de cada mes, sin ajuste por inflación.</p></AyudaFinanzas>
+      <AyudaFinanzas titulo="Cómo leer la evolución mensual"><p>Se muestran todos los conceptos visibles de Control mensual. Elegí cuáles comparar o destacá uno desde su nombre. Cada concepto conserva su color; el color no indica aprobación ni ahorro.</p><p>Incluye sólo áreas con control vigente en cada mes. Si cambia la cantidad de áreas con control, cambia la cobertura del total comparado. Los importes son gastos aprobados, incluidos sus ajustes, no el costo total del hospital.</p><p>La línea une meses con carga y aprobación completas. Los puntos huecos muestran importes provisionales: faltan cargas o aprobaciones, o el mes sigue abierto. Una baja aparente no prueba un ahorro. Sin control o sin carga no equivale a cero.</p><p>El filtro de estado se aplica por concepto y mes a los gastos, al detalle y al listado. Las referencias conservan todo el período, aunque ocultes gastos por su estado. Se muestran las de todos los conceptos seleccionados con alguna referencia; cero es válido y los meses sin referencia quedan vacíos. Son orientativas, no dinero gastado ni presupuesto aprobado; cada referencia mensual requiere que todos sus controles tengan referencia. Son pesos de cada mes, sin ajuste por inflación.</p></AyudaFinanzas>
     </div>
     {consulta.error ? <EstadoError error={errorConsulta} onReintentar={consulta.refetch} titulo="No se pudo consultar la evolución mensual" /> : !datos ? <Spinner label="Consultando evolución mensual…" /> : <>
       {ausentes.length > 0 && <p role="status" className="mb-2 text-sm text-texto-debil">Hay {ausentes.length} conceptos seleccionados sin controles visibles en este período. Se conservan para cuando vuelvas a ampliarlo.</p>}
       {ausentes.length > 0 && <div className="mb-2 flex flex-wrap gap-2">{ausentes.map((c) => <Button key={c.id} size="sm" variant="ghost" aria-label={`Quitar concepto no disponible ${c.nombre}`} onClick={() => quitar(c.id)}>{c.nombre} · no disponible ×</Button>)}</div>}
       {!opciones.length ? <p className="mt-4 text-sm text-texto-debil">No hay controles mensuales visibles en este período. Configurá un gasto esperado o revisá mes y área.</p> : !series.length ? <div className="py-6 text-center"><p>No hay conceptos seleccionados disponibles para comparar.</p><Button className="mt-3" variant="secondary" onClick={() => setSeleccion(null)}>Mostrar todos los conceptos</Button></div> : <>
-        <RespaldoGrafico mensaje="No se pudo mostrar la evolución. Abrí Ver importes mensuales para consultar los datos."><Suspense fallback={<p role="status">Preparando gráfico… Los importes están disponibles debajo.</p>}><GraficoEvolucion series={series} referencia={referenciaVisible} onMes={abrir} onQuitar={quitar} /></Suspense></RespaldoGrafico>
+        {!hayImportes && <p role="status" className="my-2 text-sm text-texto-debil">No hay importes aprobados para graficar con este filtro.{referenciaVisible ? " Se mantienen las referencias de todo el período." : ""}</p>}
+        <RespaldoGrafico mensaje="No se pudo mostrar la evolución. Abrí Ver importes mensuales para consultar los datos."><Suspense fallback={<p role="status">Preparando gráfico… Los importes están disponibles debajo.</p>}><GraficoEvolucion series={series} estado={estado} referencia={referenciaVisible} onMes={abrir} onQuitar={quitar} /></Suspense></RespaldoGrafico>
         {verImportes && <ul aria-label="Importes mensuales" className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{series[0].meses.map((mesFila, indice) => <li key={mesFila.periodo_economico} className="min-w-0 rounded-md border border-division p-3 text-sm"><strong>{mesFila.periodo_economico.slice(0, 7)}</strong>{series.map((serie) => {
           const fila = serie.meses[indice];
-          return <div key={serie.id} className="mt-3 border-t border-division pt-2"><strong className="break-words">{serie.nombre}</strong><p className="mt-1 text-texto-debil">{fila.controles} controles incluidos · {estadosMes[fila.estado]}</p>{fila.importe_aprobado == null || fila.estado === "sin_carga" ? <p className="mt-2">{fila.importe_aprobado == null ? "Sin importe" : `Aprobado registrado: ${importeARS(fila.importe_aprobado)} · carga pendiente`}</p> : <button className="mt-2 break-all text-accent underline underline-offset-2 tabular-nums" onClick={() => abrir(fila, serie.id)} aria-label={`Ver gastos aprobados de ${fila.periodo_economico.slice(0, 7)} · ${serie.nombre}`}>{importeARS(fila.importe_aprobado)}</button>}{String(serie.id) === referenciaVisible && <p className="mt-1 break-all">Referencia: {fila.monto_referencia == null ? "No disponible para todo el mes" : importeARS(fila.monto_referencia)}</p>}</div>;
-        })}</li>)}</ul>}
+          const visible = coincideEstadoMes(fila, estado);
+          const mostrarReferencia = referenciaVisible && tieneReferencia(serie);
+          if (!visible && !mostrarReferencia) return null;
+          return <div key={serie.id} className="mt-3 border-t border-division pt-2"><strong className="break-words">{serie.nombre}</strong><p className="mt-1 text-texto-debil">{visible ? `${fila.controles} controles incluidos · ${estadosMes[fila.estado]}` : "Gasto oculto por el filtro de estado"}</p>{!visible ? null : fila.importe_aprobado == null || fila.estado === "sin_carga" ? <p className="mt-2">{fila.importe_aprobado == null ? "Sin importe" : `Aprobado registrado: ${importeARS(fila.importe_aprobado)} · carga pendiente`}</p> : <button className="mt-2 break-all text-accent underline underline-offset-2 tabular-nums" onClick={() => abrir(fila, serie.id)} aria-label={`Ver gastos aprobados de ${fila.periodo_economico.slice(0, 7)} · ${serie.nombre}`}>{importeARS(fila.importe_aprobado)}</button>}{mostrarReferencia && <p className="mt-1 break-all">Referencia: {fila.monto_referencia == null ? "No disponible para todo el mes" : importeARS(fila.monto_referencia)}</p>}</div>;
+        })}{!series.some((s) => coincideEstadoMes(s.meses[indice], estado) || (referenciaVisible && tieneReferencia(s))) && <p className="mt-2 text-texto-debil">Sin registros con este estado.</p>}</li>)}</ul>}
       </>}
     </>}
   </section>;

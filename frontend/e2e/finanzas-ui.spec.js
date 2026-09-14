@@ -70,7 +70,7 @@ test("evolución distingue faltantes, referencia e incompletos y abre sólo gast
   await expect(grafico.getByRole("button")).toHaveCount(4);
   await expect(grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-07" })).toHaveCount(0);
   await expect(grafico.locator(".recharts-line")).toHaveCount(2);
-  await page.getByRole("button", { name: "Comparar con referencia", exact: true }).click();
+  await page.getByRole("button", { name: "Comparar con referencias", exact: true }).click();
   await expect(grafico.locator(".recharts-line")).toHaveCount(3);
   await page.getByText("Ver importes mensuales", { exact: true }).click();
   await expect(page.getByRole("list", { name: "Importes mensuales" }).getByText(/Sin control vigente/)).toBeVisible();
@@ -409,7 +409,7 @@ test("evolución conserva selección múltiple al cambiar rango y señala ausent
   expect(escrituras).toHaveLength(0);
 });
 
-test("evolución muestra todas, filtra localmente, destaca sin cambiar colores y usa una sola referencia", async ({ page }, testInfo) => {
+test("evolución muestra todas, filtra localmente, destaca sin cambiar colores y compara todas las referencias", async ({ page }, testInfo) => {
   const { db, peticiones, escrituras } = await escenario(page);
   db.evolucion.conceptos = [{ id: 1, nombre: "Electricidad" }, { id: 2, nombre: "Limpieza" }, { id: 3, nombre: "Mantenimiento" }];
   db.evolucion.series = db.evolucion.conceptos.map((c, i) => ({ ...c, meses: ["04", "05", "06", "07", "08", "09"].map((mes, m) => ({
@@ -441,9 +441,9 @@ test("evolución muestra todas, filtra localmente, destaca sin cambiar colores y
   await page.screenshot({ path: testInfo.outputPath("evolucion-ayuda-completa.png"), animations: "disabled" });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("tooltip")).toBeHidden();
-  await page.getByRole("button", { name: "Comparar con referencia", exact: true }).click();
-  await page.getByRole("combobox", { name: "Concepto de referencia" }).selectOption("2");
-  await expect(grafico.locator(".recharts-line")).toHaveCount(7);
+  await page.getByRole("button", { name: "Comparar con referencias", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Concepto de referencia" })).toHaveCount(0);
+  await expect(grafico.locator(".recharts-line")).toHaveCount(8);
   await page.getByRole("button", { name: "Quitar concepto Electricidad", exact: true }).click();
   await expect(punto).toHaveAttribute("stroke", color);
   await expect(leyenda.getByRole("listitem")).toHaveCount(2);
@@ -507,6 +507,81 @@ test("evolución muestra 24 conceptos sin recorte de selección y deja consultar
   await expect.poll(() => page.locator(".finance-page").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
   await expect.poll(() => leyenda.evaluate((e) => e.scrollHeight <= e.clientHeight)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("evolucion-24-conceptos-movil.png"), animations: "disabled" });
+});
+
+test("evolución filtra estados por concepto y conserva referencias completas, parciales y cero", async ({ page }, testInfo) => {
+  const { db, peticiones, escrituras } = await escenario(page);
+  const fila = (mes, importe, estado, referencia) => ({ periodo_economico: `2026-${mes}-01`, controles: 1, importe_aprobado: importe, estado, monto_referencia: referencia });
+  db.evolucion.series = [
+    { id: 1, nombre: "Electricidad", meses: [fila("07", "101.01", "completo", "120.00"), fila("08", "111.01", "incompleto", "130.00"), fila("09", "121.01", "mes_abierto", "140.00")] },
+    { id: 2, nombre: "Limpieza", meses: [fila("07", "202.02", "incompleto", null), fila("08", "212.02", "completo", "0.00"), fila("09", "0.00", "sin_carga", null)] },
+    { id: 3, nombre: "Mantenimiento", meses: [fila("07", null, "sin_control", null), fila("08", "303.03", "completo", null), fila("09", "313.03", "mes_abierto", null)] },
+  ];
+  db.evolucion.conceptos = db.evolucion.series.map(({ id, nombre }) => ({ id, nombre }));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/finanzas?mes=2026-09&area=3");
+  await page.getByRole("button", { name: "Evolución mensual", exact: true }).click();
+  const grafico = page.getByRole("region", { name: "Gráfico de evolución del control mensual" });
+  const filtro = page.getByRole("combobox", { name: "Estado de los meses" });
+  await expect(filtro).toHaveValue("ambos");
+  await expect(grafico.getByRole("button")).toHaveCount(7);
+  await page.getByRole("button", { name: "Comparar con referencias", exact: true }).click();
+  const colorLuz = await grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-07 · Electricidad", exact: true }).getAttribute("stroke");
+  const colorLimpieza = await grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Limpieza", exact: true }).getAttribute("stroke");
+  const refLuz = grafico.locator(`circle.recharts-line-dot[stroke="${colorLuz}"]`);
+  const refLimpieza = grafico.locator(`circle.recharts-line-dot[stroke="${colorLimpieza}"]`);
+  // La referencia aislada en cero debe tener un punto aunque no forme un segmento.
+  await expect(refLuz).toHaveCount(3);
+  await expect(refLimpieza).toHaveCount(1);
+  await expect(grafico.locator(".recharts-line")).toHaveCount(8);
+  await filtro.selectOption("completo");
+  await expect(grafico.getByRole("button")).toHaveCount(3);
+  await expect(grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Electricidad", exact: true })).toHaveCount(0);
+  await expect(grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Limpieza", exact: true })).toHaveCount(1);
+  await expect(refLuz).toHaveCount(3);
+  await expect(refLimpieza).toHaveCount(1);
+  await grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Limpieza", exact: true }).hover();
+  const ayuda = page.getByRole("tooltip");
+  await expect(ayuda).toContainText("Referencia: ARS 130,00");
+  await expect(ayuda).toContainText("Referencia: ARS 0,00");
+  await expect(ayuda).not.toContainText("111,01");
+  await expect(ayuda).toContainText("212,02");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Ver importes mensuales", exact: true }).click();
+  const listaMeses = page.getByRole("list", { name: "Importes mensuales" });
+  await expect(listaMeses.getByRole("button")).toHaveCount(3);
+  await expect(listaMeses).not.toContainText("111,01");
+  await expect(listaMeses).toContainText("Referencia: ARS 140,00");
+  await filtro.selectOption("provisional");
+  await expect(grafico.getByRole("button")).toHaveCount(4);
+  await expect(listaMeses.getByRole("button")).toHaveCount(4);
+  await expect(listaMeses).not.toContainText("212,02");
+  await expect(listaMeses).toContainText("Referencia: ARS 0,00");
+  await expect(refLuz).toHaveCount(3);
+  await page.getByRole("button", { name: "Ocultar importes mensuales", exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("evolucion-estados-referencias.png"), animations: "disabled" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.locator(".finance-page").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await grafico.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("evolucion-estados-referencias-movil.png"), animations: "disabled" });
+  await page.getByRole("button", { name: "Quitar concepto Electricidad", exact: true }).click();
+  await page.getByRole("button", { name: "Quitar concepto Limpieza", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Comparar con referencias", exact: true })).toBeDisabled();
+  await expect(grafico.locator(".recharts-line")).toHaveCount(2);
+  await page.getByRole("button", { name: "Elegir conceptos de evolución" }).click();
+  const selector = page.getByRole("dialog", { name: "Elegir conceptos de evolución" });
+  await selector.getByRole("checkbox", { name: "Limpieza", exact: true }).check();
+  await selector.getByRole("checkbox", { name: "Mantenimiento", exact: true }).uncheck();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Ocultar referencias", exact: true })).toBeEnabled();
+  await expect(grafico.locator(".recharts-line")).toHaveCount(3);
+  expect(peticiones.filter((u) => u.pathname.endsWith("/evolucion/"))).toHaveLength(1);
+  db.evolucion.series[1].meses[0].estado = "completo";
+  await page.getByRole("combobox", { name: "Período de evolución" }).selectOption("6");
+  await expect(page.getByText("No hay importes aprobados para graficar con este filtro. Se mantienen las referencias de todo el período.", { exact: true })).toBeVisible();
+  await expect(grafico.getByRole("button")).toHaveCount(0);
+  await expect(refLimpieza).toHaveCount(1);
+  expect(escrituras).toHaveLength(0);
 });
 
 test("sin distribuir abre sólo fuentes con saldo y conserva filtros territoriales", async ({ page }) => {
