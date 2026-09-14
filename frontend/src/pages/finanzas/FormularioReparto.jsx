@@ -5,6 +5,7 @@ import { importeCentavos } from "@/api/finanzas";
 import { query } from "@/api/queries";
 import { Button, Field, Modal, Select, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
+import { AyudaFinanzas } from "./ControlesFinanzas";
 
 const ACCION = "configurar_repartos";
 
@@ -25,13 +26,15 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
   const areaElegida = areas.find((item) => String(item.id) === area);
   const conceptoElegido = conceptos.find((item) => String(item.id) === concepto);
   const datosCompletos = Boolean(area && desde && (esCobertura || conceptoElegido));
+  const puedeVerImportes = permisos.permite("ver_gastos", Number(area), conceptoElegido?.sensible);
   const verificacion = useQuery({
-    queryKey: ["finanzas", permisos.usuarioId, institucion.id, "verificacion-reparto", area, concepto, desde],
+    queryKey: ["finanzas", permisos.usuarioId, institucion.id, "verificacion-reparto", area, concepto, desde, puedeVerImportes],
     queryFn: () => api.get(`/coberturas-actividad/verificacion/${query({
       institucion: institucion.id,
       area,
       periodo_economico: `${desde}-01`,
       concepto: esCobertura ? undefined : concepto,
+      incluir_importes: puedeVerImportes,
     })}`),
     enabled: datosCompletos,
     staleTime: 0,
@@ -40,6 +43,7 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
   const puedeGuardar = datosCompletos
     && permisos.permite(ACCION, Number(area), conceptoElegido?.sensible)
     && verificacion.data?.integridad_tecnica
+    && !verificacion.error
     && (!esCobertura || confirmacionOperativa)
     && (!esCorreccion || motivo.trim());
 
@@ -81,7 +85,7 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
     }
   }
 
-  const resumen = verificacion.data;
+  const resumen = verificacion.error ? null : verificacion.data;
   const estadoTitulo = !resumen?.integridad_tecnica
     ? "Actividad incompleta"
     : resumen?.cobertura_operativa_confirmada
@@ -93,9 +97,9 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
     : esCobertura ? "Habilitar actividad para reparto" : "Agregar regla de reparto"}
   onClose={() => { if (!enCurso.current) onClose(); }} width={640}>
     <form onSubmit={guardar} className="space-y-4">
-      <p className="text-md text-texto-debil">{esCobertura
+      <AyudaFinanzas titulo={esCobertura ? "Cómo verificar la actividad" : "Cómo funciona la regla"}><p>{esCobertura
         ? "Primero comprobamos los registros del sistema. Después confirmás desde qué mes el área carga aquí toda su actividad."
-        : "Elegí qué concepto se distribuye entre las atenciones completadas del área. Antes de confirmar verás cantidades e importe."}</p>
+        : "Elegí qué concepto se distribuye entre las atenciones completadas del área. Antes de confirmar verás cantidades y, si tu permiso lo incluye, importes."}</p><p>El control técnico comprueba que cada atención completada tenga su registro financiero correcto. La confirmación del área indica que no quedan atenciones registradas sólo en papel u otro sistema.</p></AyudaFinanzas>
       <Field label="Área"><Select required value={area} disabled={esCorreccion} onChange={(e) => setArea(e.target.value)}>
         <option value="">Elegí un área</option>
         {areasPermitidas.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
@@ -111,14 +115,17 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
       {resumen && <section className={`rounded-lg border p-4 ${resumen.integridad_tecnica ? "border-badge-green-fg/40 bg-badge-green-bg" : "border-danger/40 bg-badge-error-bg"}`}>
         <h3 className="font-semibold">{estadoTitulo}</h3>
         <p className="mt-1 text-sm text-texto-debil">
-          Control técnico: {resumen.atenciones_contrastables} atención(es) completada(s), {resumen.atenciones_registradas} hecho(s) financiero(s), diferencia {resumen.diferencias}.
+          Control de registros: {resumen.atenciones_contrastables} atenciones completadas, {resumen.atenciones_registradas} registros financieros, diferencia {resumen.diferencias}.
         </p>
         <dl className="mt-3 grid gap-2 sm:grid-cols-3">
           <div><dt className="text-sm text-texto-debil">Total de atenciones</dt><dd className="font-semibold tabular-nums">{resumen.atenciones_registradas}</dd></div>
-          <div><dt className="text-sm text-texto-debil">Importe aprobado visible</dt><dd className="font-semibold whitespace-nowrap">{importeCentavos(resumen.importe_total_centavos)}</dd></div>
-          <div><dt className="text-sm text-texto-debil">Estimado por atención</dt><dd className="font-semibold whitespace-nowrap">{resumen.importe_estimado_por_atencion_centavos == null ? "Sin actividad" : importeCentavos(resumen.importe_estimado_por_atencion_centavos)}</dd></div>
+          {puedeVerImportes && resumen.incluye_importes !== false && <>
+            <div><dt className="text-sm text-texto-debil">Importe aprobado visible</dt><dd className="font-semibold whitespace-nowrap">{importeCentavos(resumen.importe_total_centavos)}</dd></div>
+            <div><dt className="text-sm text-texto-debil">Estimado por atención</dt><dd className="font-semibold whitespace-nowrap">{resumen.importe_estimado_por_atencion_centavos == null ? "Sin actividad" : importeCentavos(resumen.importe_estimado_por_atencion_centavos)}</dd></div>
+          </>}
         </dl>
-        {!resumen.integridad_tecnica && <p className="mt-3 text-sm text-danger">Hay {resumen.diferencias} diferencia(s). El total de {importeCentavos(resumen.importe_total_centavos)} quedará pendiente hasta corregirlas.</p>}
+        {(!puedeVerImportes || resumen.incluye_importes === false) && <p className="mt-3 text-sm text-texto-debil">Podés configurar el reparto sin consultar importes. Tu permiso no incluye la lectura de gastos.</p>}
+        {!resumen.integridad_tecnica && <p className="mt-3 text-sm text-danger">Hay {resumen.diferencias} diferencia(s). El reparto quedará pendiente hasta corregirlas.</p>}
         {resumen.integridad_tecnica && !resumen.cobertura_operativa_confirmada && !esCobertura && <p className="mt-3 text-sm text-texto-debil">La regla puede registrarse, pero el importe no se repartirá hasta confirmar la cobertura operativa del área.</p>}
       </section>}
 
@@ -127,7 +134,7 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
         <span>Confirmo que desde {desde || "el mes elegido"} {areaElegida?.nombre || "el área"} registra todas sus atenciones en este sistema. Esta confirmación es distinta del control técnico mostrado arriba.</span>
       </label>}
       {esCorreccion && <Field label="Motivo de la corrección"><Input required value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Explicá brevemente por qué cambia" /></Field>}
-      <p className="text-sm text-texto-debil">Esta configuración distribuye costos internos. No crea cargos, pagos ni tareas para el personal clínico.</p>
+      <AyudaFinanzas titulo="Qué cambia al confirmar"><p>Esta configuración distribuye costos internos. No crea cargos, pagos ni tareas para el personal clínico.</p></AyudaFinanzas>
       {error && <p role="alert" className="text-md text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" disabled={guardando} onClick={onClose}>Cancelar</Button>

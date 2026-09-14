@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { opcionesFinanzas } from "@/api/finanzas";
@@ -32,6 +32,15 @@ export default function ConcesionesFinancieras({ institucion, usuarioId, onClose
   const [guardando, setGuardando] = useState(false);
   const [incierto, setIncierto] = useState(false);
   const [error, setError] = useState("");
+  const listadoRef = useRef(null);
+  const formularioRef = useRef(null);
+  const posicionLista = useRef(0);
+  useEffect(() => {
+    if (form) {
+      formularioRef.current?.focus();
+      formularioRef.current?.closest('[role="dialog"]')?.scrollTo({ top: 0 });
+    } else if (listadoRef.current) listadoRef.current.scrollTop = posicionLista.current;
+  }, [form?.id, Boolean(form)]);
   const opciones = (recurso, filtros = {}) => ({
     queryKey: ["finanzas", usuarioId, institucion.id, "administrar-permisos", recurso, filtros],
     queryFn: () => opcionesFinanzas(recurso, institucion.id, filtros), gcTime: 0,
@@ -47,8 +56,7 @@ export default function ConcesionesFinancieras({ institucion, usuarioId, onClose
   const set = (campo, valor) => setForm((anterior) => ({ ...anterior, [campo]: valor }));
   const close = () => { if (!enCurso.current) onClose(); };
   const nombreArea = (id) => (areas.data || []).find((a) => a.id === id)?.nombre || `Área #${id}`;
-  const alcance = (c) => c.todas_las_areas ? "Toda la institución (incluye el ámbito sin área)" : c.areas.map(nombreArea).join(", ");
-  const incompatible = (c) => !administrativa && (c.permite_sensibles || ACCIONES.find(([valor]) => valor === c.accion)?.[2]);
+  const alcance = (c) => c.todas_las_areas ? "Todas las áreas e institucional" : c.areas.map(nombreArea).join(", ");
 
   async function refrescar() {
     await qc.invalidateQueries({ queryKey: ["permisos-finanzas"] });
@@ -81,58 +89,56 @@ export default function ConcesionesFinancieras({ institucion, usuarioId, onClose
 
   function guardar(e) {
     e.preventDefault();
-    if (!puedeGuardar || !form.accion) return;
+    if (!puedeGuardar || !(form.id ? form.accion : form.acciones.length)) return;
     if (!form.todas_las_areas && !form.areas.length) {
       setError("Elegí al menos un área o el alcance institucional explícito.");
       return;
     }
     const datos = { membresia: miembro.id, accion: form.accion, todas_las_areas: form.todas_las_areas,
       areas: form.todas_las_areas ? [] : form.areas, permite_sensibles: form.permite_sensibles };
-    ejecutar(() => form.id ? api.patch(`/concesiones-financieras/${form.id}/`, datos) : api.post("/concesiones-financieras/", datos));
+    ejecutar(() => form.id ? api.patch(`/concesiones-financieras/${form.id}/`, datos) : api.post("/concesiones-financieras/otorgar-multiples/", { ...datos, accion: undefined, acciones: form.acciones }));
   }
 
   return <Modal title="Permisos financieros" onClose={close} width={760}>
     <div className="space-y-4">
-      <p className="text-md text-texto-debil">{institucion.nombre} · Cada concesión habilita una acción y un alcance concretos. Registrar no concede lectura; auditar clínicamente no concede auditoría financiera.</p>
+      <p className="text-md text-texto-debil">{institucion.nombre} · Elegí qué puede hacer esta persona y en qué áreas. Registrar no concede lectura.</p>
       {miembros.isLoading || areas.isLoading ? <Spinner label="Consultando miembros y áreas…" /> : <Field label="Persona y membresía">
-        <Select value={membresiaId} disabled={guardando || incierto} onChange={(e) => { setMembresiaId(e.target.value); setForm(null); setError(""); }}>
+        <Select value={membresiaId} disabled={guardando || incierto || Boolean(form)} onChange={(e) => { setMembresiaId(e.target.value); setForm(null); setError(""); }}>
           <option value="">Elegí una membresía</option>
           {(miembros.data || []).map((m) => <option key={m.id} value={m.id}>{m.usuario_nombre || m.usuario_email} · {m.rol_display || m.rol}{m.activo ? "" : " · Inactiva"}</option>)}
         </Select>
       </Field>}
       {errorConsulta && <EstadoError error={errorConsulta} onReintentar={refrescar} />}
       {miembro && !miembro.activo && <p className="text-md text-texto-debil">Membresía inactiva: sus concesiones no otorgan acceso. Podés revocarlas, pero no ampliarlas desde esta pantalla.</p>}
-      {miembro && !errorConsulta && <>
-        {concesiones.isLoading ? <Spinner label="Consultando concesiones…" /> : <div className="space-y-3">
+      {miembro && administrativa && <p className="text-md text-texto-debil">El administrador tiene lectura de costos y gastos, incluidos los sensibles, en toda esta institución por su rol. Las demás acciones requieren permiso explícito.</p>}
+      {miembro && !errorConsulta && !form && <>
+        {concesiones.isLoading ? <Spinner label="Consultando concesiones…" /> : <div ref={listadoRef} onScroll={(e) => { posicionLista.current = e.currentTarget.scrollTop; }} className="max-h-[45vh] space-y-3 overflow-y-auto">
           {!concesiones.data?.length && <p className="text-md text-texto-debil">Sin concesiones financieras registradas.</p>}
           {(concesiones.data || []).map((c) => <div key={c.id} className="rounded-md border border-borde p-3">
             <strong className="text-md">{nombreAccion(c.accion)}</strong>
             <p className="text-md text-texto-debil">{alcance(c)} · {c.permite_sensibles ? "Incluye sensibles" : "Sin sensibles"}</p>
-            {incompatible(c) && <p className="mt-2 text-sm text-texto-debil">La parte administrativa o sensible no se aplica al rol actual. Revocá esta concesión y configurá una compatible si corresponde.</p>}
             <div className="mt-2 flex gap-2">
-              <Button size="sm" variant="secondary" disabled={!puedeGuardar || incompatible(c)} onClick={() => { setForm({ ...c }); setError(""); }}>Editar alcance</Button>
+              <Button size="sm" variant="secondary" disabled={!puedeGuardar} onClick={() => { setForm({ ...c }); setError(""); }}>Editar alcance</Button>
               <Button size="sm" variant="ghost" disabled={guardando || incierto || cargando} onClick={() => setRevocar(c)}>Revocar</Button>
             </div>
           </div>)}
         </div>}
-        {!form && <Button variant="secondary" disabled={!puedeGuardar} onClick={() => { setForm({ accion: "", areas: [], todas_las_areas: false, permite_sensibles: false }); setError(""); }}>Otorgar permiso</Button>}
+        <Button variant="secondary" disabled={!puedeGuardar} onClick={() => { setForm({ acciones: [], areas: [], todas_las_areas: false, permite_sensibles: false }); setError(""); }}>Otorgar permisos</Button>
       </>}
       {form && miembro && <form onSubmit={guardar} className="space-y-4 border-t border-division pt-4">
-        <h3 className="font-semibold">{form.id ? "Editar alcance del permiso" : "Nueva concesión explícita"}</h3>
+        <h3 ref={formularioRef} tabIndex={-1} className="font-semibold outline-none">{form.id ? "Editar alcance del permiso" : "Nueva concesión explícita"}</h3>
         <fieldset disabled={!puedeGuardar} className="space-y-3">
-          <Field label="Acción financiera"><Select required disabled={Boolean(form.id)} value={form.accion} onChange={(e) => set("accion", e.target.value)}>
-            <option value="">Elegí una acción</option>
-            {ACCIONES.filter(([valor, , admin]) => form.id ? valor === form.accion : (!admin || administrativa) && !concesiones.data?.some((c) => c.accion === valor)).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}
-          </Select></Field>
-          <Checkbox label="Toda la institución, incluido el ámbito sin área" checked={form.todas_las_areas} onChange={(e) => { set("todas_las_areas", e.target.checked); set("areas", []); }} />
+          {form.id ? <p className="font-semibold">{nombreAccion(form.accion)}</p> : <fieldset className="grid gap-2 sm:grid-cols-2"><legend className="mb-2 font-semibold">Acciones financieras</legend>
+            {ACCIONES.map(([valor, nombre]) => { const existente = concesiones.data?.some((c) => c.accion === valor); return <Checkbox key={valor} className={existente ? "cursor-not-allowed text-texto-debil opacity-50 [&_input]:cursor-not-allowed" : undefined} title={existente ? "Este permiso ya existe. Usá Editar alcance para modificarlo." : undefined} label={`${nombre}${existente ? " · Ya otorgado" : ""}`} disabled={existente} checked={form.acciones.includes(valor)} onChange={(e) => set("acciones", e.target.checked ? [...form.acciones, valor] : form.acciones.filter((a) => a !== valor))} />; })}
+          </fieldset>}
+          <Checkbox label="Todas las áreas e institucional (sin área asignada)" checked={form.todas_las_areas} onChange={(e) => { set("todas_las_areas", e.target.checked); set("areas", []); }} />
           {!form.todas_las_areas && <fieldset className="space-y-2"><legend className="mb-2 text-md font-semibold">Áreas autorizadas</legend>
             {(areas.data || []).map((a) => <Checkbox key={a.id} label={a.nombre} checked={form.areas.includes(a.id)} onChange={(e) => set("areas", e.target.checked ? [...form.areas, a.id] : form.areas.filter((id) => id !== a.id))} />)}
           </fieldset>}
-          {administrativa && <Checkbox label="Permitir información sensible para esta acción y alcance" checked={form.permite_sensibles} onChange={(e) => set("permite_sensibles", e.target.checked)} />}
-          {!administrativa && <p className="text-sm text-texto-debil">Esta membresía no admite acciones administrativas ni información sensible.</p>}
+          <Checkbox label="Permitir información sensible para las acciones y áreas seleccionadas" checked={form.permite_sensibles} onChange={(e) => set("permite_sensibles", e.target.checked)} />
         </fieldset>
-        {form.accion && <p className="text-md text-texto-debil">Confirmás {nombreAccion(form.accion)} para {miembro.usuario_nombre || miembro.usuario_email}: {form.todas_las_areas || form.areas.length ? alcance(form) : "falta elegir alcance"} · {form.permite_sensibles ? "incluye sensibles" : "sin sensibles"}.</p>}
-        <div className="flex justify-end gap-2">
+        <p className="text-md text-texto-debil">Confirmás {form.id ? nombreAccion(form.accion) : form.acciones.map(nombreAccion).join(", ") || "ninguna acción seleccionada"} para {miembro.usuario_nombre || miembro.usuario_email}: {form.todas_las_areas || form.areas.length ? alcance(form) : "falta elegir alcance"} · {form.permite_sensibles ? "incluye sensibles" : "sin sensibles"}. Los permisos existentes no se amplían.</p>
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-division bg-superficie py-3">
           <Button type="button" variant="ghost" disabled={guardando} onClick={() => setForm(null)}>Cancelar edición</Button>
           <Button type="submit" disabled={!puedeGuardar}>{guardando ? "Guardando…" : "Confirmar permiso"}</Button>
         </div>

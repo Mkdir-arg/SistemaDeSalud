@@ -4,12 +4,13 @@ import { api } from "@/api/client";
 import { ESTADOS_CARGA, importeARS } from "@/api/finanzas";
 import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
+import { AyudaFinanzas } from "./ControlesFinanzas";
 
 const CONFIGURAR = "configurar_gastos_esperados";
 const TITULOS = {
   gasto: "Registrar gasto", reemplazo: "Reemplazar carga", concepto: "Nuevo concepto de gasto",
-  expectativa: "Configurar gasto esperado", indicar: "Indicar estado de carga",
-  version: "Nueva versión del gasto esperado",
+  expectativa: "Agregar gasto esperado", indicar: "Indicar estado de carga",
+  version: "Modificar configuración del control mensual",
   aprobar: "Aprobar gasto", rechazar: "Rechazar gasto", ajuste: "Ajustar gasto aprobado",
 };
 
@@ -24,6 +25,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
     area: fila ? (fila.area == null ? "null" : String(fila.area)) : "",
     concepto: fila?.concepto ? String(fila.concepto) : "",
     importe: tipo === "reemplazo" ? fila.importe : "",
+    monto_referencia: fila?.monto_referencia ?? "",
     mes: tipo === "version" ? "" : mes,
     hasta: tipo === "version" ? (fila.vigente_hasta?.slice(0, 7) || "") : "",
     codigo: "", nombre: "", sensible: false, motivo: "",
@@ -44,11 +46,11 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
     if (guardandoRef.current || incierto) return;
     setError("");
     if (configuraAmbito && (!concepto || datos.area === "" || !permisos.permite(accion, area, concepto.sensible))) {
-      setError("Elegí un concepto y un ámbito habilitados por tus permisos.");
+      setError("Elegí un concepto y un área habilitados por tus permisos.");
       return;
     }
     if (tipo === "version" && !permisos.permite(CONFIGURAR, fila.area, fila.sensible)) {
-      setError("No tenés permiso para versionar esta expectativa.");
+      setError("No tenés permiso para modificar este control mensual.");
       return;
     }
     if (esExpectativa && datos.hasta && datos.hasta <= datos.mes) {
@@ -56,7 +58,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
       return;
     }
     if (tipo === "version" && !datos.motivo.trim()) {
-      setError("Explicá el motivo de la nueva versión.");
+      setError("Explicá el motivo del cambio de vigencia.");
       return;
     }
     guardandoRef.current = true;
@@ -75,6 +77,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
         institucion: institucion.id, concepto: tipo === "version" ? fila.concepto : concepto.id,
         area: tipo === "version" ? fila.area : area, vigente_desde: `${datos.mes}-01`,
         vigente_hasta: datos.hasta ? `${datos.hasta}-01` : null,
+        monto_referencia: datos.monto_referencia === "" ? null : String(datos.monto_referencia).replace(",", "."),
         ...(tipo === "version" ? { reemplaza: fila.id, motivo_correccion: datos.motivo.trim() } : {}),
       });
       if (tipo === "indicar") await api.post(`/expectativas-gasto/${fila.id}/indicar/`, {
@@ -101,9 +104,9 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
 
   return <Modal title={TITULOS[tipo]} onClose={close} width={540}>
     <form onSubmit={guardar} className="space-y-4">
-      <p className="text-md text-texto-debil">{institucion.nombre} · {tipo === "version" ? `Versionando #${fila.id}` : `Período ${configuraAmbito ? datos.mes : mes}`}</p>
+      <p className="text-md text-texto-debil">{institucion.nombre} · {tipo === "version" ? "Cambio de vigencia" : `Período ${configuraAmbito ? datos.mes : mes}`}</p>
       {fila && <div className="rounded-md border border-borde bg-superficie-2 p-3 text-md">
-        <strong>{fila.concepto_nombre}</strong><br />{fila.area_nombre || "Ámbito institucional"}
+        <strong>{fila.concepto_nombre}</strong><br />{fila.area_nombre || "Institucional — sin área asignada"}
         {fila.importe != null && <div className="mt-1 font-mono">Original: {importeARS(fila.importe)}</div>}
       </div>}
       <fieldset disabled={guardando} className="space-y-4">
@@ -113,21 +116,22 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
           {permisos.permite(CONFIGURAR, null, true) && <Checkbox label="Concepto sensible" checked={datos.sensible} onChange={(e) => set("sensible", e.target.checked)} />}
         </>}
         {configuraAmbito && <>
-          <Field label="Ámbito del gasto"><Select required value={datos.area} onChange={(e) => { set("area", e.target.value); set("concepto", ""); }}>
-            <option value="">Elegí un ámbito</option>
-            {permisos.permite(accion, null) && <option value="null">Institucional (sin área)</option>}
+          <Field label="Área del gasto"><Select required value={datos.area} onChange={(e) => { set("area", e.target.value); set("concepto", ""); }}>
+            <option value="">Elegí un área</option>
+            {permisos.permite(accion, null) && <option value="null">Institucional — sin área asignada</option>}
             {areas.filter((a) => permisos.permite(accion, a.id)).map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </Select></Field>
-          <Field label="Concepto"><Select required value={datos.concepto} onChange={(e) => set("concepto", e.target.value)}>
+          <Field label="Concepto" hint="Catálogo compartido de esta institución, no un catálogo propio del área."><Select required value={datos.concepto} onChange={(e) => set("concepto", e.target.value)}>
             <option value="">Elegí un concepto</option>
             {conceptos.filter((c) => c.activo && datos.area !== "" && permisos.permite(accion, area, c.sensible)).map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.sensible ? " · Sensible" : ""}</option>)}
           </Select></Field>
           <Field label={esCarga ? "Período económico" : "Se espera desde"}><Input type="month" required value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>
         </>}
-        {tipo === "version" && <Field label="Nueva versión desde"><Input type="month" required min={fila.vigente_desde.slice(0, 7)} value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>}
+        {tipo === "version" && <Field label="Aplicar el cambio desde"><Input type="month" required min={fila.vigente_desde.slice(0, 7)} value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>}
         {esExpectativa && <Field label="Se deja de esperar desde (opcional)" hint="Fin exclusivo: ese mes ya no se incluye. Vacío significa sin fin declarado.">
           <Input type="month" value={datos.hasta} onChange={(e) => set("hasta", e.target.value)} />
         </Field>}
+        {esExpectativa && <Field label="Monto de referencia mensual en ARS (opcional)" hint="Se compara con lo aprobado. Alcanzarlo no declara la carga completa ni aprueba gastos."><Input inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={datos.monto_referencia} onChange={(e) => set("monto_referencia", e.target.value)} /></Field>}
         {(esCarga || tipo === "ajuste") && <Field label={tipo === "ajuste" ? "Ajuste en ARS (positivo o negativo)" : "Importe en ARS"} hint="Hasta dos decimales, sin separador de miles.">
           <Input required inputMode="decimal" pattern={tipo === "ajuste" ? "-?[0-9]+([.,][0-9]{1,2})?" : "[0-9]+([.,][0-9]{1,2})?"} value={datos.importe} onChange={(e) => set("importe", e.target.value)} />
         </Field>}
@@ -136,10 +140,10 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
           {Object.entries(ESTADOS_CARGA).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
         </Select></Field>}
       </fieldset>
-      {esCarga && datos.area !== "" && <p className="text-md text-texto-suave">{central ? "Tu carga quedará aprobada al registrarla." : "Tu carga quedará pendiente de aprobación central."} No registra un pago ni asigna costos a pacientes.</p>}
-      {tipo === "indicar" && <p className="text-md text-texto-debil">La indicación describe la carga de este concepto y mes. Los gastos pendientes conservan su aprobación separada.</p>}
-      {tipo === "version" && <p className="text-md text-texto-debil">Conserva concepto y ámbito. Desde el inicio elegido se usará esta versión; los meses anteriores y su historial no se borran. Si elegís el mismo inicio de la versión original, debés conservar su fin. No copia las indicaciones de carga ni crea gastos o pagos.</p>}
-      {tipo === "aprobar" && <p className="text-md text-texto-debil">La fuente quedará aprobada. Su importe original se conservará; las correcciones posteriores se harán mediante ajustes.</p>}
+      {esCarga && datos.area !== "" && <div className="flex items-center gap-2"><p className="text-md text-texto-suave">{central ? "Tu carga quedará aprobada al registrarla." : "Tu carga quedará pendiente de aprobación central."}</p><AyudaFinanzas titulo="Qué registra este gasto"><p>Registrar un gasto no registra un pago ni asigna costos a pacientes.</p></AyudaFinanzas></div>}
+      {tipo === "indicar" && <AyudaFinanzas titulo="Qué significa el estado de carga"><p>La indicación describe si el área terminó de informar los gastos de este concepto y mes. Los gastos pendientes conservan su aprobación separada. No verifica las atenciones ni habilita un reparto.</p></AyudaFinanzas>}
+      {esExpectativa && <AyudaFinanzas titulo="Cómo funciona el control mensual"><p>Indica qué concepto debe informar el área cada mes. Permite detectar un gasto olvidado aunque todavía no se haya registrado. No es una factura ni un importe automático. No necesitás configurarlo nuevamente cada mes.</p>{tipo === "version" && <p>Conserva concepto y área. Desde el inicio elegido se usará esta configuración; los meses anteriores y su historial no se borran. Si elegís el mismo inicio original, debés conservar su fin. No copia indicaciones de carga ni crea gastos o pagos.</p>}</AyudaFinanzas>}
+      {tipo === "aprobar" && <div className="flex items-center gap-2"><p className="text-md text-texto-suave">El gasto quedará aprobado.</p><AyudaFinanzas titulo="Después de aprobar"><p>Su importe original se conserva. Las correcciones posteriores se registran mediante ajustes.</p></AyudaFinanzas></div>}
       {error && <p role="alert" className="text-md text-danger">{error}</p>}
       <div className="flex justify-end gap-2 border-t border-division pt-4">
         <Button type="button" variant="ghost" disabled={guardando} onClick={close}>Cancelar</Button>

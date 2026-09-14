@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { tokens } from "@/api/client";
@@ -80,7 +80,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
   if (!col.orden) {
     return (
       <th scope="col" className={clases}>
-        {col.label}
+        {col.label}{col.filtro}
       </th>
     );
   }
@@ -90,7 +90,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
       className={cn(clases, "p-0")}
       aria-sort={activo ? (desc ? "descending" : "ascending") : "none"}
     >
-      <button
+      <div className="flex items-center"><button
         type="button"
         onClick={() => ordenarPor(col.orden)}
         className={cn(
@@ -110,7 +110,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
           size={13}
           className={activo ? "" : "opacity-0 transition-opacity group-hover:opacity-60"}
         />
-      </button>
+      </button>{col.filtro}</div>
     </th>
   );
 }
@@ -166,7 +166,13 @@ export function DataTable({
   barra,
   onExportar,
   exportando,
+  detalleFila,
+  detalleSinRelleno = false,
+  mantenerEncabezados = false,
+  adaptable = false,
 }) {
+  const [controlesAbiertos, setControlesAbiertos] = useState(false);
+  const encabezadoId = useId();
   const { pagina, orden, tamano, densidad, setDensidad, irA, ordenarPor, cambiarTamano } = tabla;
   const compacta = densidad === "compacta";
   const { cargando, refrescando, error, reintentar } = estado;
@@ -175,7 +181,7 @@ export function DataTable({
   const hasta = Math.min(pagina * tamano, total);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-borde bg-superficie">
+    <div className={cn("overflow-hidden rounded-lg border border-borde bg-superficie", adaptable && "finance-table")}>
       {/* La barra existe siempre: aunque no haya filtros, aloja la densidad. */}
       <div className="flex flex-wrap items-center justify-between gap-md border-b border-division px-lg py-2.5">
         <div className="flex flex-wrap items-center gap-md">{barra}</div>
@@ -204,17 +210,18 @@ export function DataTable({
         </div>
       </div>
 
-      {error ? (
+      {error && !mantenerEncabezados ? (
         <EstadoError error={error} onReintentar={reintentar} />
-      ) : cargando ? (
+      ) : cargando && !mantenerEncabezados ? (
         <SkeletonTabla filas={Math.min(tamano, 10)} columnas={columnas.length} />
-      ) : filas.length === 0 ? (
+      ) : filas.length === 0 && !mantenerEncabezados ? (
         <EstadoVacio titulo={vacio.titulo || "Sin resultados"} detalle={vacio.detalle} accion={vacio.accion} />
       ) : (
         <>
           {/* El scroll horizontal vive acá dentro: el body de la página nunca
               debe desplazarse en horizontal. */}
-          <div className="overflow-x-auto">
+          {adaptable && <button type="button" className="finance-table-toggle px-4 py-3 text-sm font-medium text-accent" aria-expanded={controlesAbiertos} aria-controls={encabezadoId} onClick={() => setControlesAbiertos((abierto) => !abierto)}>Ordenar y filtrar columnas {controlesAbiertos ? "−" : "+"}</button>}
+          <div className={adaptable ? "finance-table-content" : "overflow-x-auto"}>
             <table
               className={cn(
                 "w-full border-collapse text-md",
@@ -223,7 +230,7 @@ export function DataTable({
                 refrescando && "opacity-60 transition-opacity",
               )}
             >
-              <thead className="sticky top-0 z-10 bg-superficie-2">
+              <thead id={encabezadoId} data-abierto={controlesAbiertos} className="sticky top-0 z-10 bg-superficie-2">
                 <tr>
                   {columnas.map((c) => (
                     <Encabezado key={c.key} col={c} orden={orden} ordenarPor={ordenarPor} compacta={compacta} />
@@ -231,7 +238,10 @@ export function DataTable({
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => (
+                {error ? <tr><td colSpan={columnas.length}><EstadoError error={error} onReintentar={reintentar} /></td></tr>
+                  : cargando ? <tr><td colSpan={columnas.length}><SkeletonTabla filas={Math.min(tamano, 10)} columnas={columnas.length} /></td></tr>
+                  : filas.length === 0 ? <tr><td colSpan={columnas.length}><EstadoVacio titulo={vacio.titulo || "Sin resultados"} detalle={vacio.detalle} accion={vacio.accion} /></td></tr> : filas.map((f) => (
+                  <Fragment key={f.id}>
                   <tr
                     key={f.id}
                     onClick={onRowClick ? () => onRowClick(f) : undefined}
@@ -251,6 +261,7 @@ export function DataTable({
                       return (
                         <td
                           key={c.key}
+                          data-label={adaptable ? c.label : undefined}
                           className={cn(
                             "px-lg align-middle",
                             compacta ? "py-2" : "py-3.5",
@@ -272,6 +283,8 @@ export function DataTable({
                       );
                     })}
                   </tr>
+                  {detalleFila?.(f) && <tr className={detalleSinRelleno ? "bg-superficie-2" : "border-t border-division bg-superficie-2"}><td colSpan={columnas.length} className={detalleSinRelleno ? "p-0" : "p-lg"}>{detalleFila(f)}</td></tr>}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

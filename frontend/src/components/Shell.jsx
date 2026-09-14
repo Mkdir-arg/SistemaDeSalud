@@ -597,7 +597,7 @@ export function Shell({ children }) {
           })}
           {permisosFinanzas.acceso && !permisosFinanzas.error && (
             <NavLink to="/finanzas" className={itemClase(colapsado)} title="Finanzas y costos">
-              <Icon name="calendar" size={17} />
+              <span aria-hidden="true" className="inline-flex w-[17px] shrink-0 justify-center text-lg font-semibold">$</span>
               {!colapsado && "Finanzas y costos"}
             </NavLink>
           )}

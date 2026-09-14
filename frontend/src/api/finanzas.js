@@ -4,7 +4,7 @@ import { useInstitucion } from "@/auth/InstitutionContext";
 import { api } from "./client";
 import { query } from "./queries";
 
-const ACCIONES_GASTOS = ["ver_gastos", "registrar_gastos", "aprobar_gastos", "corregir_gastos", "configurar_gastos_esperados", "configurar_repartos"];
+const ACCIONES_GASTOS = ["ver_costos", "configurar_componentes", "ver_gastos", "registrar_gastos", "aprobar_gastos", "corregir_gastos", "configurar_gastos_esperados", "configurar_repartos"];
 
 export function usePermisosFinanzas() {
   const { user } = useAuth();
@@ -62,4 +62,14 @@ export function importeCentavos(centavos) {
   const signo = valor < 0n ? "-" : "";
   const absoluto = valor < 0n ? -valor : valor;
   return importeARS(`${signo}${absoluto / 100n}.${String(absoluto % 100n).padStart(2, "0")}`);
+}
+
+export function decimalACentavos(valor) {
+  // Un rango inválido debe fallar de forma visible, nunca omitirse y mostrar
+  // gastos como si estuvieran filtrados. El servidor devuelve un 400 explícito.
+  const texto = String(valor);
+  if (!/^-?\d+(\.\d{0,2})?$/.test(texto)) return "importe_invalido";
+  const negativo = texto.startsWith("-");
+  const [entero, decimal = ""] = texto.replace("-", "").split(".");
+  return String((BigInt(entero) * 100n + BigInt(decimal.padEnd(2, "0"))) * (negativo ? -1n : 1n));
 }
