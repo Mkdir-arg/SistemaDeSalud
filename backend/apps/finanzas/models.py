@@ -11,6 +11,7 @@ class ConcesionFinanciera(models.Model):
         VER_COSTOS = "ver_costos", "Ver costos"
         CONFIGURAR_COMPONENTES = "configurar_componentes", "Configurar componentes"
         CORREGIR_COSTOS = "corregir_costos", "Corregir costos"
+        APROBAR_COSTOS = "aprobar_costos", "Aprobar ajustes de costos"
         VER_GASTOS = "ver_gastos", "Ver gastos"
         REGISTRAR_GASTOS = "registrar_gastos", "Registrar gastos"
         APROBAR_GASTOS = "aprobar_gastos", "Aprobar gastos"
@@ -18,6 +19,11 @@ class ConcesionFinanciera(models.Model):
         CONFIGURAR_GASTOS_ESPERADOS = "configurar_gastos_esperados", "Configurar gastos esperados"
         AUDITAR_FINANZAS = "auditar_finanzas", "Auditar accesos financieros"
         CONFIGURAR_REPARTOS = "configurar_repartos", "Configurar repartos"
+        VER_DINERO = "ver_dinero", "Ver pagos y cobros"
+        REGISTRAR_DINERO = "registrar_dinero", "Registrar pagos y cobros"
+        APROBAR_DINERO = "aprobar_dinero", "Aprobar pagos, cobros y correcciones"
+        CORREGIR_DINERO = "corregir_dinero", "Reducir obligaciones y reintegrar dinero"
+        CONFIGURAR_COBROS = "configurar_cobros", "Configurar cobros"
 
     membresia = models.ForeignKey(
         "accounts.Membresia",
@@ -50,6 +56,166 @@ class ConcesionFinanciera(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class EstadoAprobacion(models.TextChoices):
+    PENDIENTE = "pendiente_aprobacion", "Pendiente de aprobación"
+    APROBADO = "aprobado", "Aprobado"
+    RECHAZADO = "rechazado", "Rechazado"
+
+
+class RegistroFinancieroAprobable(models.Model):
+    """Decisión separada del importe inmutable; la transición vive en servicios."""
+
+    Estado = EstadoAprobacion
+    # Las filas históricas ya impactaban importes: conservar ese efecto sin
+    # inventar quién las aprobó. Los servicios registran autoría en nuevas filas.
+    estado = models.CharField(max_length=30, choices=Estado.choices, default=Estado.APROBADO)
+    aprobado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="%(app_label)s_%(class)s_aprobados",
+    )
+    aprobado_en = models.DateTimeField(null=True, blank=True)
+    rechazado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="%(app_label)s_%(class)s_rechazados",
+    )
+    rechazado_en = models.DateTimeField(null=True, blank=True)
+    motivo_rechazo = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        abstract = True
+
+    @property
+    def aprobado(self):
+        return self.estado == self.Estado.APROBADO
+
+
+class RegistroDineroInmutable(models.Model):
+    """Los errores se corrigen con nuevos registros, nunca reescribiendo historia."""
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Un registro de dinero no se modifica.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Un registro de dinero no se elimina.")
+
+
+class ObligacionFinanciera(RegistroDineroInmutable):
+    class Tipo(models.TextChoices):
+        PAGAR = "pagar", "A pagar"
+        COBRAR = "cobrar", "A cobrar"
+
+    tipo = models.CharField(max_length=6, choices=Tipo.choices)
+    gasto = models.OneToOneField("Gasto", on_delete=models.PROTECT, null=True, blank=True, related_name="obligacion")
+    hecho = models.ForeignKey("HechoAtencionCosteable", on_delete=models.PROTECT, null=True, blank=True, related_name="obligaciones")
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
+    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT, null=True, blank=True)
+    sensible = models.BooleanField(default=False)
+    importe_original = models.DecimalField(max_digits=14, decimal_places=2)
+    moneda = models.CharField(max_length=3, default="ARS", editable=False)
+    periodo_economico = models.DateField()
+    contraparte_nombre = models.CharField(max_length=160)
+    contraparte_referencia = models.CharField(max_length=160, blank=True)
+    clave = models.UUIDField()
+    solicitud = models.JSONField(default=dict)
+    creado_por = models.ForeignKey("accounts.Usuario", on_delete=models.PROTECT, null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["institucion", "clave"], name="obligacion_clave_unica"),
+            models.CheckConstraint(condition=Q(importe_original__gt=0), name="obligacion_importe_positivo"),
+            models.CheckConstraint(condition=(Q(tipo="pagar", gasto__isnull=False, hecho__isnull=True) | Q(tipo="cobrar", gasto__isnull=True, hecho__isnull=False)), name="obligacion_fuente_valida"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.moneda != "ARS":
+            raise ValidationError("Las obligaciones se registran exclusivamente en ARS.")
+        if self.periodo_economico and self.periodo_economico.day != 1:
+            raise ValidationError("El período económico empieza el primer día del mes.")
+        fuente = self.gasto if self.gasto_id else self.hecho if self.hecho_id else None
+        if fuente is not None:
+            area_id = fuente.area_id if self.gasto_id else fuente.area_origen_id
+            if self.institucion_id != fuente.institucion_id or self.area_id != area_id:
+                raise ValidationError("La obligación debe conservar la institución y el área de su fuente.")
+            if self.gasto_id and fuente.sensible and not self.sensible:
+                raise ValidationError("La obligación debe conservar la sensibilidad del gasto.")
+
+
+class AjusteObligacion(RegistroDineroInmutable, RegistroFinancieroAprobable):
+    obligacion = models.ForeignKey(ObligacionFinanciera, on_delete=models.PROTECT, related_name="ajustes")
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
+    importe = models.DecimalField(max_digits=14, decimal_places=2)
+    motivo = models.CharField(max_length=255)
+    clave = models.UUIDField()
+    solicitud = models.JSONField(default=dict)
+    autor = models.ForeignKey("accounts.Usuario", on_delete=models.PROTECT)
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["registrado", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["institucion", "clave"], name="ajuste_obligacion_clave_unica"),
+            models.CheckConstraint(condition=Q(importe__lt=0), name="ajuste_obligacion_negativo"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.obligacion_id and self.institucion_id != self.obligacion.institucion_id:
+            raise ValidationError("La reducción debe pertenecer a la institución de la obligación.")
+        if not self.motivo.strip():
+            raise ValidationError("La reducción requiere un motivo.")
+
+
+class MovimientoDinero(RegistroDineroInmutable, RegistroFinancieroAprobable):
+    class Tipo(models.TextChoices):
+        PAGO = "pago", "Pago"
+        COBRO = "cobro", "Cobro"
+        REINTEGRO = "reintegro", "Reintegro"
+
+    obligacion = models.ForeignKey(ObligacionFinanciera, on_delete=models.PROTECT, related_name="movimientos")
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    original = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="reintegros")
+    ajuste = models.ForeignKey(AjusteObligacion, on_delete=models.PROTECT, null=True, blank=True, related_name="reintegros")
+    importe = models.DecimalField(max_digits=14, decimal_places=2)
+    fecha = models.DateField()
+    referencia = models.CharField(max_length=160, blank=True)
+    motivo = models.CharField(max_length=255, blank=True)
+    clave = models.UUIDField()
+    solicitud = models.JSONField(default=dict)
+    autor = models.ForeignKey("accounts.Usuario", on_delete=models.PROTECT)
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "-registrado", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["institucion", "clave"], name="movimiento_dinero_clave_unica"),
+            models.CheckConstraint(condition=Q(importe__gt=0), name="movimiento_importe_positivo"),
+            models.CheckConstraint(condition=(Q(tipo="reintegro", original__isnull=False) | Q(tipo__in=["pago", "cobro"], original__isnull=True, ajuste__isnull=True)), name="movimiento_original_valido"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.obligacion_id:
+            if self.institucion_id != self.obligacion.institucion_id:
+                raise ValidationError("El movimiento debe pertenecer a la institución de la obligación.")
+            tipo_esperado = "pago" if self.obligacion.tipo == "pagar" else "cobro"
+            if self.tipo != "reintegro" and self.tipo != tipo_esperado:
+                raise ValidationError("El tipo de movimiento no corresponde a la obligación.")
+        if self.original_id and (self.original.obligacion_id != self.obligacion_id or self.original.tipo == "reintegro"):
+            raise ValidationError("El reintegro debe vincularse a un pago o cobro de la misma obligación.")
+        if self.ajuste_id and self.ajuste.obligacion_id != self.obligacion_id:
+            raise ValidationError("La reducción debe pertenecer a la misma obligación.")
 
 
 class TrabajoReparto(models.Model):
@@ -409,6 +575,10 @@ class IndicacionCargaGasto(models.Model):
 class Gasto(models.Model):
     """Fuente real de gasto, separada de su reparto y de cualquier pago."""
 
+    @property
+    def aprobado(self):
+        return self.estado == self.Estado.APROBADO
+
     class Estado(models.TextChoices):
         PENDIENTE_APROBACION = "pendiente_aprobacion", "Pendiente de aprobación"
         APROBADO = "aprobado", "Aprobado"
@@ -496,8 +666,6 @@ class Gasto(models.Model):
             raise ValidationError("El concepto debe pertenecer a la institución del gasto.")
         if self.area_id and self.institucion_id and self.area.institucion_id != self.institucion_id:
             raise ValidationError("El área debe pertenecer a la institución del gasto.")
-        if self.origen == self.Origen.CENTRAL and self.estado != self.Estado.APROBADO:
-            raise ValidationError("Una carga central debe registrarse aprobada.")
         if self.estado == self.Estado.PENDIENTE_APROBACION:
             if any((
                 self.aprobado_por_id, self.aprobado_en, self.rechazado_por_id,
@@ -537,8 +705,6 @@ class Gasto(models.Model):
             self.full_clean()
             return super().save(*args, **kwargs)
 
-        if self.origen == self.Origen.AREA and self.estado != self.Estado.PENDIENTE_APROBACION:
-            raise ValidationError("Una carga de área nace pendiente de aprobación.")
         if self.concepto_id is None:
             self.full_clean()
             return super().save(*args, **kwargs)
@@ -555,7 +721,7 @@ class Gasto(models.Model):
         raise ValidationError("Un gasto no se elimina.")
 
 
-class AjusteGasto(models.Model):
+class AjusteGasto(RegistroFinancieroAprobable):
     """Corrección aditiva de una fuente aprobada, sin alterar el gasto original."""
 
     gasto = models.ForeignKey(Gasto, on_delete=models.PROTECT, related_name="ajustes")
@@ -665,7 +831,7 @@ class ImputacionCosto(models.Model):
         return super().save(*args, **kwargs)
 
 
-class AjusteCosto(models.Model):
+class AjusteCosto(RegistroFinancieroAprobable):
     """Corrección histórica sin sobrescribir la imputación que la originó."""
 
     imputacion = models.ForeignKey(
@@ -1049,3 +1215,7 @@ class AtribucionReparto(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Una atribución de reparto no se elimina.")
+
+
+# Mantener los modelos de políticas separados del historial de dinero.
+from .models_cobros import PendienteCobro, PoliticaCobro, SnapshotCobroAtencion  # noqa: E402,F401

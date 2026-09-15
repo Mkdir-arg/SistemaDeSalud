@@ -15,6 +15,7 @@ Se prueba pegándole a la API, no llamando al permiso: lo que importa no es que
 la clase devuelva False sino que el pedido HTTP termine en 403.
 """
 from django.test import TestCase
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Membresia, Usuario
@@ -36,6 +37,36 @@ SIN_CAPACIDAD_A_PROPOSITO = {
     # lectura, así que no hay escritura que gatear.
     "accesos-clinicos",
 }
+
+# Finanzas no hereda escritura por rol clínico: combina concesión explícita,
+# institución, área y sensibilidad. La lectura administrativa de costos/gastos
+# es una excepción de rol deliberada, cubierta en apps.finanzas.tests.
+# None identifica vistas que validan el alcance en get_queryset/list/fuentes,
+# no una ausencia de control. El test inferior verifica también su rechazo HTTP
+# sin concesiones, por lo que quitar esa barrera no pasa sólo por estar acá.
+PERMISOS_FINANCIEROS = {
+    "prestaciones-costo": None,
+    "componentes-costo": "PuedeConfigurarCatalogoCostos",
+    "valores-componentes": "PuedeGestionarValoresComponentes",
+    "conceptos-gasto": "PuedeGestionarConceptosGasto",
+    "gastos": "PuedeVerGastos",
+    "ajustes-gasto": "PuedeVerGastos",
+    "ajustes-costo": "PuedeVerAjustesCosto",
+    "hechos-costo": "PuedeVerCostosPaciente",
+    "expectativas-gasto": "PuedeVerGastos",
+    "coberturas-actividad": "PuedeConfigurarRepartos",
+    "reglas-reparto": "PuedeConfigurarRepartos",
+    "repartos-gasto": "PuedeVerRepartos",
+    "accesos-financieros": "PuedeAuditarFinanzas",
+    "politicas-cobro": "PermisoCobros",
+    "pendientes-cobro": "PermisoCobros",
+    "obligaciones-financieras": None,
+    "movimientos-dinero": None,
+    "reportes-finanzas": None,
+    "procesamiento-finanzas": None,
+    "reportes-dinero": None,
+}
+SIN_CAPACIDAD_A_PROPOSITO |= set(PERMISOS_FINANCIEROS)
 
 
 class BarridaDePermisosTests(TestCase):
@@ -138,6 +169,28 @@ class BarridaDePermisosTests(TestCase):
                 if prohibido == self._habilita(cap, caps):
                     fallas.append(f"{rol} → GET /api/{prefijo}/ [HTTP {r.status_code}]")
         self.assertEqual(fallas, [], "\n" + "\n".join(fallas))
+
+    def test_exenciones_financieras_conservan_autenticacion_y_barrera_propia(self):
+        registrados = {prefijo: viewset for prefijo, viewset, _ in router.registry}
+        cliente = self._cliente("administrativo")
+        contexto = {"institucion": self.inst.pk, "periodo_economico": "2026-09-01",
+                    "fecha_desde": "2026-09-01", "fecha_hasta": "2026-09-15"}
+        for prefijo, nombre_permiso in PERMISOS_FINANCIEROS.items():
+            with self.subTest(recurso=prefijo):
+                viewset = registrados[prefijo]
+                self.assertTrue(viewset.__module__.startswith("apps.finanzas."))
+                vista = viewset()
+                vista.action = "list"
+                permisos = vista.get_permissions()
+                self.assertTrue(any(isinstance(p, IsAuthenticated) for p in permisos))
+                if nombre_permiso:
+                    self.assertTrue(any(type(p).__name__ == nombre_permiso and
+                                        type(p).__module__.startswith("apps.finanzas.") for p in permisos),
+                                    f"{prefijo} perdió su clase financiera {nombre_permiso}")
+                # Un miembro con capacidad administrativa de padrón no obtiene
+                # datos financieros ni altas por esa capacidad de otro dominio.
+                self.assertEqual(cliente.get(f"/api/{prefijo}/", contexto).status_code, 403)
+                self.assertIn(cliente.post(f"/api/{prefijo}/", {}, format="json").status_code, (403, 405))
 
     def test_sin_sesion_no_se_lee_nada(self):
         anon = APIClient()

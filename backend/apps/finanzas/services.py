@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Membresia
 
-from .models import AjusteCosto, AjusteGasto, AtribucionReparto, CoberturaActividadCosteable, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ReglaRepartoActividad, RepartoGasto, ValorComponente
+from .models import AjusteCosto, AjusteGasto, AtribucionReparto, CoberturaActividadCosteable, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, EstadoAprobacion, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ReglaRepartoActividad, RepartoGasto, ValorComponente
 from .permisos import concesiones_financieras_en_alcance, tiene_concesion_financiera
 from .procesamiento import solicitar_en_area, solicitar_reparto
 
@@ -51,6 +51,21 @@ def registrar_atencion_completada(caso, nodo, evento, autor=None):
                     _marcar_snapshot_incompleto(hecho)
             except Exception:  # noqa: BLE001 - el hecho sigue durable aunque la base falle por completo.
                 logger.exception("No se pudo marcar el snapshot incompleto del hecho %s", hecho.id)
+    if creado:
+        # El intento automático sólo acompaña atenciones nuevas; no recorre
+        # históricos. Una captura fallida se recupera desde el hecho durable.
+        try:
+            from .models_cobros import SnapshotCobroAtencion
+            from .cobros import capturar_cobros_atencion
+
+            with transaction.atomic():
+                SnapshotCobroAtencion.objects.get_or_create(hecho=hecho)
+            with transaction.atomic():
+                capturar_cobros_atencion(hecho.pk)
+        except Exception as error:
+            # El hecho permite recuperación aun si no llegó a nacer el ancla;
+            # ni importes ni datos de pacientes se imprimen en el log.
+            logger.error("No se pudo capturar el cobro del hecho %s (%s).", hecho.pk, type(error).__name__)
     if creado and hecho.area_origen_id is not None:
         try:
             with transaction.atomic():
@@ -85,7 +100,7 @@ def _marcar_snapshot_incompleto(hecho):
 
 
 def _marcar_costeo_actualizado(hecho):
-    """Anota una ejecución que pudo dejar un resultado completo o parcial."""
+    """Anota la revisión del costo, incluso si quedó un faltante o error."""
     actualizado_en = timezone.now()
     HechoAtencionCosteable.objects.filter(pk=hecho.pk).update(
         ultimo_costeo_en=actualizado_en,
@@ -195,7 +210,9 @@ def registrar_error_recuperable(hecho_id):
     """Marca un fallo técnico bajo el mismo bloqueo del cálculo recuperable."""
     with transaction.atomic():
         hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=hecho_id)
-        return _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
+        pendiente = _pendiente(hecho, PendienteCosteo.Motivo.ERROR_RECUPERABLE)
+        _marcar_costeo_actualizado(hecho)
+        return pendiente
 
 
 def corregir_snapshot_componentes(hecho_id, motivo, registrado_por):
@@ -229,8 +246,31 @@ def corregir_snapshot_componentes(hecho_id, motivo, registrado_por):
     return correccion
 
 
-def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por):
+def _datos_aprobacion(usuario, accion, institucion_id, area_id, sensible, aprobado):
+    if aprobado is not None and not isinstance(aprobado, bool):
+        raise ValidationError({"aprobado": "Indicá verdadero o falso."})
+    puede_aprobar = tiene_concesion_financiera(usuario, accion, institucion_id, area_id, sensible=sensible)
+    if aprobado is True and not puede_aprobar:
+        raise PermissionDenied("No tenés autorización para marcar este registro como aprobado.")
+    aplicar = puede_aprobar if aprobado is None else aprobado
+    return {
+        "estado": EstadoAprobacion.APROBADO if aplicar else EstadoAprobacion.PENDIENTE,
+        "aprobado_por": usuario if aplicar else None,
+        "aprobado_en": timezone.now() if aplicar else None,
+    }
+
+
+def _hecho_sensible(hecho):
+    return hecho.componentes_esperados.filter(sensible=True).exists() or hecho.atribuciones_reparto.filter(
+        reparto__gasto__sensible=True, reparto__reemplazado_por__isnull=True,
+    ).exists()
+
+
+@transaction.atomic
+def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por, aprobado=None):
     """Corrige un importe histórico con un asiento nuevo y autorizado."""
+    HechoAtencionCosteable.objects.select_for_update().get(pk=imputacion.hecho_id)
+    imputacion = ImputacionCosto.objects.select_for_update().get(pk=imputacion.pk)
     if not tiene_concesion_financiera(
         registrado_por,
         ConcesionFinanciera.Accion.CORREGIR_COSTOS,
@@ -244,6 +284,11 @@ def registrar_ajuste_costo(imputacion, importe, motivo, registrado_por):
         importe=importe,
         motivo=motivo,
         registrado_por=registrado_por,
+        **_datos_aprobacion(
+            registrado_por, ConcesionFinanciera.Accion.APROBAR_COSTOS,
+            imputacion.hecho.institucion_id, imputacion.hecho.area_origen_id,
+            _hecho_sensible(imputacion.hecho), aprobado,
+        ),
     )
     try:
         ajuste.save()
@@ -262,8 +307,8 @@ def _concesiones_para_gasto(usuario, accion, institucion_id, area_id, sensible):
     )
 
 
-def registrar_gasto(concepto, institucion, area, importe, periodo_economico, registrado_por, reemplaza=None):
-    """Registra una fuente central aprobada o una carga de área pendiente."""
+def registrar_gasto(concepto, institucion, area, importe, periodo_economico, registrado_por, reemplaza=None, aprobado=None):
+    """El permiso de aprobación, no el origen o rol, determina el estado inicial."""
     es_superusuario = getattr(registrado_por, "is_superuser", False)
     with transaction.atomic():
         concepto = ConceptoGasto.objects.select_for_update().get(pk=concepto.pk)
@@ -304,12 +349,10 @@ def registrar_gasto(concepto, institucion, area, importe, periodo_economico, reg
             "registrado_por": registrado_por,
             "reemplaza": reemplaza,
         }
-        if es_central:
-            datos.update(
-                estado=Gasto.Estado.APROBADO,
-                aprobado_por=registrado_por,
-                aprobado_en=timezone.now(),
-            )
+        datos.update(_datos_aprobacion(
+            registrado_por, ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            institucion.id, getattr(area, "id", None), concepto.sensible, aprobado,
+        ))
         gasto = Gasto.objects.create(**datos)
         solicitar_reparto(gasto.pk)
         if reemplaza is not None:
@@ -318,7 +361,7 @@ def registrar_gasto(concepto, institucion, area, importe, periodo_economico, reg
 
 
 def aprobar_gasto(gasto_id, aprobado_por):
-    """Aprueba una sola vez una carga de área; es seguro ante reintentos."""
+    """Aprueba una sola vez un gasto pendiente, cualquiera sea su origen."""
     with transaction.atomic():
         gasto = Gasto.objects.select_for_update().get(pk=gasto_id)
         if not tiene_concesion_financiera(
@@ -370,7 +413,7 @@ def rechazar_gasto(gasto_id, motivo, rechazado_por):
         return gasto
 
 
-def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por):
+def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por, aprobado=None):
     """Agrega una corrección histórica a un gasto aprobado y autorizado."""
     with transaction.atomic():
         gasto = Gasto.objects.select_for_update().get(pk=gasto_id)
@@ -387,9 +430,55 @@ def registrar_ajuste_gasto(gasto_id, importe, motivo, registrado_por):
             importe=importe,
             motivo=motivo,
             registrado_por=registrado_por,
+            **_datos_aprobacion(
+                registrado_por, ConcesionFinanciera.Accion.APROBAR_GASTOS,
+                gasto.institucion_id, gasto.area_id, gasto.sensible, aprobado,
+            ),
         )
         ajuste.save()
-        solicitar_reparto(gasto.pk)
+        if ajuste.estado == EstadoAprobacion.APROBADO:
+            solicitar_reparto(gasto.pk)
+        return ajuste
+
+
+def decidir_ajuste(ajuste_id, *, modelo, usuario, aprobar, motivo=""):
+    """Decide una vez sin editar importe/origen; bloquea padre antes que ajuste."""
+    with transaction.atomic():
+        anterior = modelo.objects.get(pk=ajuste_id)
+        es_gasto = modelo is AjusteGasto
+        if es_gasto:
+            padre = Gasto.objects.select_for_update().get(pk=anterior.gasto_id)
+            institucion_id, area_id, sensible = padre.institucion_id, padre.area_id, padre.sensible
+            accion = ConcesionFinanciera.Accion.APROBAR_GASTOS
+        else:
+            HechoAtencionCosteable.objects.select_for_update().get(pk=anterior.imputacion.hecho_id)
+            padre = ImputacionCosto.objects.select_for_update().get(pk=anterior.imputacion_id)
+            hecho = padre.hecho
+            institucion_id, area_id, sensible = hecho.institucion_id, hecho.area_origen_id, _hecho_sensible(hecho)
+            accion = ConcesionFinanciera.Accion.APROBAR_COSTOS
+        ajuste = modelo.objects.select_for_update().get(pk=ajuste_id)
+        if not tiene_concesion_financiera(usuario, accion, institucion_id, area_id, sensible=sensible):
+            raise PermissionDenied("No tenés autorización para decidir este ajuste.")
+        estado = EstadoAprobacion.APROBADO if aprobar else EstadoAprobacion.RECHAZADO
+        if ajuste.estado == estado:
+            if not aprobar and ajuste.motivo_rechazo != motivo.strip():
+                raise ValidationError("El ajuste ya fue rechazado con otro motivo.")
+            return ajuste
+        if ajuste.estado != EstadoAprobacion.PENDIENTE:
+            raise ValidationError("El ajuste ya fue decidido. No se modifica su historia.")
+        if aprobar:
+            datos = {"estado": estado, "aprobado_por": usuario, "aprobado_en": timezone.now()}
+        else:
+            motivo = motivo.strip()
+            if not motivo or len(motivo) > 255:
+                raise ValidationError("Indicá un motivo de rechazo de hasta 255 caracteres.")
+            datos = {"estado": estado, "rechazado_por": usuario, "rechazado_en": timezone.now(), "motivo_rechazo": motivo}
+        # El modelo es inmutable para sus datos económicos. Sólo se actualiza
+        # metadata de decisión bajo el bloqueo del registro y su padre.
+        modelo.objects.filter(pk=ajuste.pk).update(**datos)
+        ajuste.refresh_from_db()
+        if es_gasto and aprobar:
+            solicitar_reparto(padre.pk)
         return ajuste
 
 
@@ -583,7 +672,7 @@ def resumen_actividad_reparto(
     if not incluir_sensibles:
         gastos = gastos.filter(sensible=False)
     importe_total = sum(
-        _centavos(gasto.importe) + sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all())
+        _centavos(gasto.importe) + sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all() if ajuste.estado == EstadoAprobacion.APROBADO)
         for gasto in gastos
     ) if incluir_importes else None
     cobertura_confirmada = _vigente_en(
@@ -616,7 +705,7 @@ def _huella_reparto(*, gasto, regla, cobertura, hechos, importe_ajustes, estado,
     insumos = {
         "gasto": gasto.id,
         "importe": str(gasto.importe),
-        "ajustes": [(ajuste.id, str(ajuste.importe)) for ajuste in gasto.ajustes.order_by("id")],
+        "ajustes": [(ajuste.id, str(ajuste.importe)) for ajuste in gasto.ajustes.filter(estado=EstadoAprobacion.APROBADO).order_by("id")],
         "regla": regla.id if regla else None,
         "cobertura": cobertura.id if cobertura else None,
         "hechos": [hecho.id for hecho in hechos],
@@ -629,7 +718,7 @@ def _huella_reparto(*, gasto, regla, cobertura, hechos, importe_ajustes, estado,
 
 def _crear_reparto(*, gasto, regla, cobertura, hechos, estado, motivo=""):
     importe_fuente = _centavos(gasto.importe)
-    importe_ajustes = sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all())
+    importe_ajustes = sum(_centavos(ajuste.importe) for ajuste in gasto.ajustes.all() if ajuste.estado == EstadoAprobacion.APROBADO)
     saldo = importe_fuente + importe_ajustes
     huella = _huella_reparto(
         gasto=gasto, regla=regla, cobertura=cobertura, hechos=hechos,
@@ -680,7 +769,7 @@ def procesar_reparto_gasto(gasto_id):
     """Calcula una versión idempotente sin bloquear ni alterar la atención."""
     with transaction.atomic():
         gasto = Gasto.objects.select_for_update(of=("self",)).select_related("concepto", "area").get(pk=gasto_id)
-        gasto_ajustes = gasto.ajustes.select_related("registrado_por")
+        gasto_ajustes = gasto.ajustes.filter(estado=EstadoAprobacion.APROBADO).select_related("registrado_por")
         list(gasto_ajustes)
         if gasto.estado != Gasto.Estado.APROBADO or gasto.area_id is None:
             return _crear_reparto(

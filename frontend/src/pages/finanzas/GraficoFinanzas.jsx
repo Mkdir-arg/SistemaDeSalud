@@ -66,7 +66,7 @@ export function GraficoEvolucion({ series, estado, referencia, onMes, onQuitar }
     </li>)}</ul>
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-texto-debil">{estado !== "provisional" && <span>● Carga y aprobación completas</span>}{estado !== "completo" && <span>○ Mes incompleto o abierto</span>}{seriesReferencia.length > 0 && <span>┄ Referencias · todo el período</span>}</div>
     </div>
-    <div ref={contenedor} role="region" aria-label="Gráfico de evolución del control mensual" className="finance-chart-canvas finance-evolution-space min-w-0"><ResponsiveContainer width="100%" height="100%"><LineChart data={datos} margin={{ top: 12, right: 12, bottom: 8, left: 0 }} accessibilityLayer>
+    <div ref={contenedor} role="region" aria-label="Gráfico de evolución de gastos mensuales" className="finance-chart-canvas finance-evolution-space min-w-0"><ResponsiveContainer width="100%" height="100%"><LineChart data={datos} margin={{ top: 12, right: 12, bottom: 8, left: 0 }} accessibilityLayer>
       <CartesianGrid vertical={false} stroke="var(--color-division)" /><XAxis dataKey="nombre" tick={{ fill: "var(--color-texto-debil)", fontSize: 12 }} minTickGap={20} /><YAxis width={60} tickFormatter={(valor) => compacto.format(valor)} tick={{ fill: "var(--color-texto-debil)", fontSize: 12 }} />
       <ReferenceLine y={0} stroke="var(--color-texto-debil)" />
       <Tooltip active={ayudaActiva || undefined} filterNull={false} portal={document.body} wrapperStyle={{ position: "fixed", zIndex: 100, top: 0, left: 0 }} content={<DetalleEvolucion datos={datos} series={series} estado={estado} referencia={referencia} contenedor={contenedor} mantener={setAyudaActiva} />} />
@@ -109,7 +109,7 @@ function DetalleEvolucion({ active, label, coordinate, datos, series, estado, re
       const visible = coincideEstadoMes(fila, estado);
       const mostrarReferencia = referencia && tieneReferencia(s);
       if (!visible && !mostrarReferencia) return null;
-      return <div key={s.id} className="mt-2 border-t border-division pt-2"><strong className="break-words">{s.nombre}</strong>{visible ? <><p className="break-words tabular-nums">Aprobado: {fila.importe_aprobado == null ? "Sin datos" : importeARS(fila.importe_aprobado)}</p><p className="text-xs text-texto-debil">{fila.estado === "completo" ? "Carga y aprobación completas" : fila.estado === "sin_control" ? "Sin control vigente" : fila.estado === "sin_carga" ? "Carga sin completar: no equivale a cero" : "Provisional: no interpretar como ahorro"}</p></> : <p className="text-xs text-texto-debil">Gasto oculto por el filtro de estado</p>}{mostrarReferencia && <p>Referencia: {fila.monto_referencia == null ? "No disponible" : importeARS(fila.monto_referencia)}</p>}</div>;
+      return <div key={s.id} className="mt-2 border-t border-division pt-2"><strong className="break-words">{s.nombre}</strong>{visible ? <><p className="break-words tabular-nums">Aprobado: {fila.importe_aprobado == null ? "Sin datos" : importeARS(fila.importe_aprobado)}</p><p className="text-xs text-texto-debil">{fila.estado === "completo" ? "Carga y aprobación completas" : fila.estado === "sin_control" ? "Sin configuración mensual vigente" : fila.estado === "sin_carga" ? "Carga sin completar: no equivale a cero" : "Provisional: no interpretar como ahorro"}</p></> : <p className="text-xs text-texto-debil">Gasto oculto por el filtro de estado</p>}{mostrarReferencia && <p>Referencia: {fila.monto_referencia == null ? "No disponible" : importeARS(fila.monto_referencia)}</p>}</div>;
     })}
   </div>;
 }

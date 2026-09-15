@@ -1,6 +1,8 @@
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict
+from uuid import uuid4
 
 from rest_framework import serializers
 from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
@@ -8,7 +10,19 @@ from django.db.models import F
 from django.utils import timezone
 from apps.accounts.models import Membresia
 
-from .models import AjusteCosto, AjusteGasto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, Gasto, HechoAtencionCosteable, Prestacion, TrabajoReparto, ValorComponente
+from .models import AjusteCosto, AjusteGasto, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, EstadoAprobacion, Gasto, HechoAtencionCosteable, Prestacion, TrabajoReparto, ValorComponente
+
+
+CAMPOS_APROBACION = ["estado", "aprobado_por", "aprobado_en", "rechazado_por", "rechazado_en", "motivo_rechazo"]
+
+
+def _decision_serializada(obj):
+    return {
+        "estado": obj.estado, "aprobado": obj.estado == EstadoAprobacion.APROBADO,
+        "aprobado_por": obj.aprobado_por_id, "aprobado_en": obj.aprobado_en,
+        "rechazado_por": obj.rechazado_por_id, "rechazado_en": obj.rechazado_en,
+        "motivo_rechazo": obj.motivo_rechazo,
+    }
 
 
 class DetalleAjusteGasto(TypedDict):
@@ -37,6 +51,9 @@ class DetalleAjusteCosto(TypedDict):
     moneda: str
     motivo: str
     registrado: datetime
+    registrado_por: int | None
+    area: int | None
+    sensible: bool
 
 
 class DetalleImputacionCosto(TypedDict):
@@ -102,7 +119,26 @@ class ConcesionesMultiplesSerializer(serializers.Serializer):
         return acciones
 
 
-class PrestacionSerializer(serializers.ModelSerializer):
+class CatalogoConCodigoSerializer(serializers.ModelSerializer):
+    """Genera referencias internas sólo en altas; conserva las manuales."""
+
+    codigo = serializers.CharField(max_length=60, required=False)
+
+    def to_internal_value(self, data):
+        if self.instance is None and isinstance(data, Mapping):
+            codigo = data.get("codigo", serializers.empty)
+            if codigo is serializers.empty or (isinstance(codigo, str) and not codigo.strip()):
+                data = data.copy()
+                # UUID evita una secuencia calculada por COUNT/MAX que colisione
+                # con altas simultáneas. La restricción única del catálogo sigue
+                # validándose, incluidos los códigos ingresados manualmente.
+                data["codigo"] = f"{self.prefijo_codigo}-{uuid4().hex.upper()}"
+        return super().to_internal_value(data)
+
+
+class PrestacionSerializer(CatalogoConCodigoSerializer):
+    prefijo_codigo = "PRE"
+
     class Meta:
         model = Prestacion
         fields = ["id", "institucion", "nodo", "codigo", "nombre", "activo"]
@@ -118,7 +154,9 @@ class PrestacionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class DefinicionComponenteSerializer(serializers.ModelSerializer):
+class DefinicionComponenteSerializer(CatalogoConCodigoSerializer):
+    prefijo_codigo = "CMP"
+
     class Meta:
         model = DefinicionComponente
         fields = [
@@ -128,7 +166,9 @@ class DefinicionComponenteSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-class ConceptoGastoSerializer(serializers.ModelSerializer):
+class ConceptoGastoSerializer(CatalogoConCodigoSerializer):
+    prefijo_codigo = "GAS"
+
     class Meta:
         model = ConceptoGasto
         fields = [
@@ -165,20 +205,38 @@ class ValorComponenteSerializer(serializers.ModelSerializer):
 
 
 class AjusteCostoSerializer(serializers.ModelSerializer):
+    aprobado = serializers.BooleanField(required=False)
+    institucion = serializers.IntegerField(source="imputacion.hecho.institucion_id", read_only=True)
+    area = serializers.IntegerField(source="imputacion.hecho.area_origen_id", read_only=True, allow_null=True)
+    sensible = serializers.SerializerMethodField()
+
+    @staticmethod
+    def get_sensible(obj) -> bool:
+        from .services import _hecho_sensible
+        return _hecho_sensible(obj.imputacion.hecho)
+
     class Meta:
         model = AjusteCosto
-        fields = ["id", "imputacion", "importe", "motivo", "registrado_por", "registrado"]
-        read_only_fields = ["id", "registrado_por", "registrado"]
+        fields = ["id", "imputacion", "importe", "motivo", "registrado_por", "registrado", "institucion", "area", "sensible", "aprobado", *CAMPOS_APROBACION]
+        read_only_fields = ["id", "registrado_por", "registrado", "institucion", "area", "sensible", *CAMPOS_APROBACION]
 
 
 class AjusteGastoSerializer(serializers.ModelSerializer):
+    aprobado = serializers.BooleanField(required=False)
+    institucion = serializers.IntegerField(source="gasto.institucion_id", read_only=True)
+    area = serializers.IntegerField(source="gasto.area_id", read_only=True, allow_null=True)
+    sensible = serializers.BooleanField(source="gasto.sensible", read_only=True)
+    periodo_economico = serializers.DateField(source="gasto.periodo_economico", read_only=True)
+
     class Meta:
         model = AjusteGasto
-        fields = ["id", "gasto", "importe", "motivo", "registrado_por", "registrado"]
-        read_only_fields = ["id", "registrado_por", "registrado"]
+        fields = ["id", "gasto", "importe", "motivo", "registrado_por", "registrado", "institucion", "area", "sensible", "periodo_economico", "aprobado", *CAMPOS_APROBACION]
+        read_only_fields = ["id", "registrado_por", "registrado", "institucion", "area", "sensible", "periodo_economico", *CAMPOS_APROBACION]
 
 
 class GastoSerializer(serializers.ModelSerializer):
+    aprobado = serializers.BooleanField(required=False)
+    cuenta_por_pagar = serializers.IntegerField(read_only=True, default=None)
     area_nombre = serializers.CharField(source="area.nombre", read_only=True, default=None)
     reemplazado_por = serializers.SerializerMethodField()
     estado_operativo = serializers.SerializerMethodField()
@@ -193,7 +251,7 @@ class GastoSerializer(serializers.ModelSerializer):
             "importe", "moneda", "periodo_economico", "origen", "estado", "estado_operativo",
             "sensible", "registrado_por", "registrado", "aprobado_por", "aprobado_en",
             "rechazado_por", "rechazado_en", "motivo_rechazo", "reemplaza", "reemplazado_por",
-            "ajustes", "total_ajustes", "importe_resultante",
+            "ajustes", "total_ajustes", "importe_resultante", "aprobado", "cuenta_por_pagar",
         ]
         read_only_fields = [
             "id", "concepto_codigo", "concepto_nombre", "moneda", "origen", "estado",
@@ -216,7 +274,7 @@ class GastoSerializer(serializers.ModelSerializer):
     def _total_ajustes(obj):
         if hasattr(obj, "total_ajustes"):
             return obj.total_ajustes
-        return sum((ajuste.importe for ajuste in obj.ajustes.all()), Decimal("0.00"))
+        return sum((ajuste.importe for ajuste in obj.ajustes.all() if ajuste.estado == EstadoAprobacion.APROBADO), Decimal("0.00"))
 
     def get_total_ajustes(self, obj) -> str:
         return format(self._total_ajustes(obj), ".2f")
@@ -233,6 +291,7 @@ class GastoSerializer(serializers.ModelSerializer):
                 "motivo": ajuste.motivo,
                 "registrado_por": ajuste.registrado_por_id,
                 "registrado": ajuste.registrado,
+                **_decision_serializada(ajuste),
             }
             for ajuste in obj.ajustes.all()
         ]
@@ -331,7 +390,7 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
         # precisión al cruzar JSON, y `null` reservado para lo desconocido.
         total = sum((imputacion.importe for imputacion in imputaciones), start=0)
         total += sum(
-            (ajuste.importe for imputacion in imputaciones for ajuste in imputacion.ajustes.all()),
+            (ajuste.importe for imputacion in imputaciones for ajuste in imputacion.ajustes.all() if ajuste.estado == EstadoAprobacion.APROBADO),
             start=0,
         )
         return str(total)
@@ -385,11 +444,16 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
     @staticmethod
     def get_alcance(_obj) -> AlcanceCosto:
         return {
-            "incluye": ["componentes_directos_configurados"],
-            "pendiente_de_integracion": ["gastos_compartidos", "otras_fuentes_de_costo"],
+            "incluye": ["componentes_directos_configurados", "gastos_compartidos_atribuidos"],
+            "pendiente_de_integracion": ["otras_fuentes_de_costo"],
         }
 
     def get_imputaciones(self, obj) -> list[DetalleImputacionCosto]:
+        # Mismo alcance que la decisión del servicio; reutiliza el prefetch
+        # del hecho, sin consultar un endpoint por cada ajuste del historial.
+        sensible = any(c.sensible for c in obj.componentes_esperados.all()) or any(
+            a.reparto.gasto.sensible for a in self._atribuciones_vigentes(obj)
+        )
         return [
             {
                 "componente": imputacion.componente_id,
@@ -406,6 +470,10 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
                         "moneda": imputacion.moneda,
                         "motivo": ajuste.motivo,
                         "registrado": ajuste.registrado,
+                        "registrado_por": ajuste.registrado_por_id,
+                        "area": obj.area_origen_id,
+                        "sensible": sensible,
+                        **_decision_serializada(ajuste),
                     }
                     for ajuste in imputacion.ajustes.all()
                 ],
@@ -415,4 +483,4 @@ class HechoAtencionCosteableSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def get_limite(_obj) -> str:
-        return "Sólo componentes directos configurados; no incluye aranceles, cargos ni dinero cobrado."
+        return "Componentes directos configurados y gastos compartidos atribuidos; no es el costo total del hospital ni incluye aranceles, cargos o dinero cobrado."

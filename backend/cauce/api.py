@@ -26,6 +26,9 @@ from apps.flujos.views import (
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
 from apps.finanzas.api_calendario import ExpectativaGastoViewSet
+from apps.finanzas.api_cobros import PoliticaCobroViewSet, PendienteCobroViewSet
+from apps.finanzas.api_dinero import ObligacionFinancieraViewSet, MovimientoDineroViewSet
+from apps.finanzas.api_reportes_dinero import ReporteDineroViewSet
 from apps.finanzas.api_auditoria import AccesoFinancieroViewSet
 from apps.finanzas.api_reportes import ReporteFinanzasViewSet, ProcesamientoFinanzasViewSet
 from apps.finanzas.api_repartos import CoberturaActividadViewSet, ReglaRepartoViewSet, RepartoGastoViewSet
@@ -125,6 +128,11 @@ router.register("accesos-clinicos", AccesoClinicoViewSet, basename="acceso-clini
 router.register("consentimientos", ConsentimientoDatosViewSet)
 
 # Finanzas: separado de la API clínica porque sus permisos son propios.
+router.register("obligaciones-financieras", ObligacionFinancieraViewSet, basename="obligacion-financiera")
+router.register("movimientos-dinero", MovimientoDineroViewSet, basename="movimiento-dinero")
+router.register("politicas-cobro", PoliticaCobroViewSet, basename="politica-cobro")
+router.register("pendientes-cobro", PendienteCobroViewSet, basename="pendiente-cobro")
+router.register("reportes-dinero", ReporteDineroViewSet, basename="reporte-dinero")
 router.register("accesos-financieros", AccesoFinancieroViewSet, basename="acceso-financiero")
 router.register("reportes-finanzas", ReporteFinanzasViewSet, basename="reporte-finanzas")
 router.register("procesamiento-finanzas", ProcesamientoFinanzasViewSet, basename="procesamiento-finanzas")

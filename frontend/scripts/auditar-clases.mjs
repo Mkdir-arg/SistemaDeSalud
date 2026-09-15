@@ -65,6 +65,7 @@ const usadas = new Map(); // clase → [archivos]
 // volver atrás y perder la detección que sí importa.
 const NO_SON_CLASES = new Set([
   "stroke-width",  // propiedad CSS dentro de un `transition`, en el editor de flujos
+  "fill-opacity",  // propiedad CSS en el bloque <style> del gráfico de finanzas
 ]);
 
 /*

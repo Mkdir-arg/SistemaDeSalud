@@ -89,6 +89,20 @@ class EsquemaTests(TestCase):
         ajuste_gasto = gasto["ajustes"]["items"]["properties"]
         self.assertEqual(ajuste_gasto["importe"]["type"], "string")
         self.assertTrue(ajuste_gasto["registrado_por"]["nullable"])
+        movimiento = esquemas["MovimientoDinero"]["properties"]
+        reduccion = esquemas["AjusteObligacion"]["properties"]
+        for propiedades in (movimiento, reduccion):
+            self.assertEqual(propiedades["aprobado"]["type"], "boolean")
+            self.assertEqual(propiedades["disponible_reintegro"]["type"], "string")
+        self.assertEqual(reduccion["movimiento_vinculado"]["type"], "integer")
+        self.assertTrue(reduccion["movimiento_vinculado"]["nullable"])
+        self.assertEqual(esquemas["AjusteCosto"]["properties"]["sensible"]["type"], "boolean")
+        cargo = esquemas["PendienteCobro"]["properties"]
+        self.assertEqual(cargo["estado"]["type"], "string")
+        self.assertEqual(cargo["motivo"]["type"], "string")
+        self.assertEqual(cargo["periodo_economico"]["format"], "date")
+        self.assertEqual(set(esquemas["EstadoAprobacionFinancieraEnum"]["enum"]),
+                         {"pendiente_aprobacion", "aprobado", "rechazado"})
 
     def test_dice_que_hace_falta_un_token(self):
         yaml, _ = self._generar()

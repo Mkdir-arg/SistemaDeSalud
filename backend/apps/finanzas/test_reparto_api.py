@@ -30,6 +30,7 @@ class RepartoActividadApiTests(APITestCase):
         for accion in (
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
             ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
             ConcesionFinanciera.Accion.VER_GASTOS,
             ConcesionFinanciera.Accion.VER_COSTOS,
         ):
@@ -582,13 +583,15 @@ class RepartoActividadApiTests(APITestCase):
 
     def test_verificacion_sensible_requiere_ambos_permisos_y_audita_el_alcance(self):
         ConcesionFinanciera.objects.filter(
-            membresia__usuario=self.admin, accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            membresia__usuario=self.admin,
+            accion__in=[ConcesionFinanciera.Accion.REGISTRAR_GASTOS, ConcesionFinanciera.Accion.APROBAR_GASTOS],
         ).update(permite_sensibles=True)
         sensible = ConceptoGasto.objects.create(
             institucion=self.institucion, codigo="SUELDOS", nombre="Sueldos", sensible=True,
         )
         for concepto, importe in ((self.concepto, "100.01"), (sensible, "200.02")):
-            registrar_gasto(concepto, self.institucion, self.area, Decimal(importe), self.mes, self.admin)
+            gasto = registrar_gasto(concepto, self.institucion, self.area, Decimal(importe), self.mes, self.admin)
+            self.assertTrue(gasto.aprobado, "La verificación de lectura requiere una fuente ya aprobada.")
         Membresia.objects.filter(usuario=self.admin).update(rol=Membresia.Rol.ADMINISTRATIVO)
         parametros = {
             "institucion": self.institucion.pk, "area": self.area.pk,
@@ -728,6 +731,7 @@ class RepartoActividadApiTests(APITestCase):
             accion__in=[
                 ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
                 ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+                ConcesionFinanciera.Accion.APROBAR_GASTOS,
             ],
         ).update(permite_sensibles=True)
         self.configurar()
@@ -736,6 +740,7 @@ class RepartoActividadApiTests(APITestCase):
             self.concepto, self.institucion, self.area,
             Decimal("25.00"), self.mes, self.admin,
         )
+        self.assertTrue(gasto.aprobado, "La lectura sensible se prueba sobre un gasto apto para repartir.")
         procesar_reparto_gasto(gasto.id)
         restringido = Usuario.objects.create_user("lector-costos-reparto@cauce.local", "x")
         membresia = Membresia.objects.create(

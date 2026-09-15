@@ -44,6 +44,19 @@ class ReportesFinanzasTests(APITestCase):
         self.assertEqual(self.consultar(area=self.area.pk).data["aprobados"], "100.00")
         self.assertTrue(AccesoFinanciero.objects.filter(usuario=self.usuario).exists())
 
+    def test_ajuste_pendiente_se_informa_sin_alterar_el_aprobado(self):
+        gasto = self.gasto("100.00")
+        AjusteGasto.objects.create(
+            gasto=gasto, importe=Decimal("-40.00"), motivo="En revisión",
+            registrado_por=self.usuario, estado="pendiente_aprobacion",
+        )
+        respuesta = self.consultar()
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["aprobados"], "100.00")
+        self.assertEqual(respuesta.data["pendientes_aprobacion"], "0.00")
+        self.assertEqual(respuesta.data.get("ajustes_pendientes"), 1)
+        self.assertEqual(respuesta.data["agrupaciones"][0].get("ajustes_pendientes"), 1)
+
     def test_marca_actualizacion_no_publica_importes_viejos_y_recupera_estado(self):
         gasto = self.gasto()
         solicitar_reparto(gasto.pk)
@@ -59,6 +72,31 @@ class ReportesFinanzasTests(APITestCase):
         procesar_siguiente()
         self.assertFalse(self.consultar().data["actualizando"])
         self.assertEqual(self.consultar().data["sin_distribuir"], "100.01")
+
+    def test_conteo_de_ajustes_respeta_area_sensibilidad_mes_e_institucion(self):
+        visible = self.gasto("100.00")
+        secreto = ConceptoGasto.objects.create(institucion=self.institucion, codigo="SECRETO", nombre="Reservado", sensible=True)
+        for fuente in (visible, visible, self.gasto(area=self.otra), self.gasto(concepto=secreto)):
+            AjusteGasto.objects.create(gasto=fuente, importe=Decimal("-1"), motivo="Pendiente", estado="pendiente_aprobacion")
+        AjusteGasto.objects.create(gasto=visible, importe=Decimal("-20"), motivo="Descartado", estado="rechazado")
+        otro_mes = self.gasto("999.00")
+        Gasto.objects.filter(pk=otro_mes.pk).update(periodo_economico="2020-01-01")
+        AjusteGasto.objects.create(gasto=otro_mes, importe=Decimal("-1"), motivo="Otro mes", estado="pendiente_aprobacion")
+        ajena = Institucion.objects.create(nombre="Hospital ajeno")
+        concepto_ajeno = ConceptoGasto.objects.create(institucion=ajena, codigo="LUZ", nombre="Electricidad")
+        gasto_ajeno = Gasto.objects.create(institucion=ajena, concepto=concepto_ajeno, importe=Decimal("50"),
+            periodo_economico=self.mes, estado="aprobado", origen="central", registrado_por=self.usuario,
+            aprobado_por=self.usuario, aprobado_en=timezone.now())
+        AjusteGasto.objects.create(gasto=gasto_ajeno, importe=Decimal("-1"), motivo="Ajeno", estado="pendiente_aprobacion")
+        self.membresia.rol = Membresia.Rol.ADMINISTRATIVO
+        self.membresia.save()
+        permiso = ConcesionFinanciera.objects.create(membresia=self.membresia, accion="ver_gastos")
+        permiso.areas.add(self.area)
+        respuesta = self.consultar()
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual((respuesta.data["aprobados"], respuesta.data["ajustes_pendientes"]), ("100.00", 2))
+        self.assertEqual(len(respuesta.data["agrupaciones"]), 1)
+        self.assertEqual(respuesta.data["agrupaciones"][0]["ajustes_pendientes"], 2)
 
     def test_solo_permisos_del_area_y_sensibilidad(self):
         self.gasto()

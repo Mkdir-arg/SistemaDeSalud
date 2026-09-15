@@ -1,12 +1,112 @@
 import { expect, test } from "@playwright/test";
 test.beforeEach(async ({ page }) => { page.on("pageerror", (error) => { console.error("Error de página:", error.message); }); });
 
+async function escenarioAjusteCosto(page, { aprobar = true, sensible = false, alcanceSensible = true, areaAprobacion = 3 } = {}) {
+  await escenario(page, { permisos: ["ver_costos", ...(aprobar ? ["aprobar_costos"] : [])] });
+  const escrituras = [];
+  let lecturas = 0;
+  const ajuste = { id: 77, importe: "10.00", motivo: "Corrección manual", estado: "pendiente_aprobacion", aprobado: false,
+    area: 3, sensible, registrado_por: 7, registrado: "2026-09-14T12:00:00Z" };
+  await page.route("**/api/concesiones-financieras/mias/", (route) => route.fulfill({ json: { superusuario: false, concesiones: [
+    { institucion: 2, accion: "ver_costos", todas_las_areas: true, areas: [], permite_sensibles: true },
+    ...(aprobar ? [{ institucion: 2, accion: "aprobar_costos", todas_las_areas: false, areas: [areaAprobacion], permite_sensibles: alcanceSensible }] : []),
+  ] } }));
+  await page.route("**/api/hechos-costo/**", (route) => {
+    lecturas += 1;
+    return route.fulfill({ json: lista([{ id: 17, institucion: 2, area: 3, caso: 21, ocurrida_en: "2026-09-14T10:00:00Z",
+      total_conocido: ajuste.estado === "aprobado" ? "110.00" : "100.00", total_compartido_conocido: "0.00", total_directo_es_completo: true,
+      imputaciones: [{ componente: 1, componente_nombre: "Materiales", importe: "100.00", ajustes: [ajuste] }],
+      repartos_compartidos: [], faltantes: [], limite: "Componentes directos configurados.", actualizado_en: "2026-09-14T12:00:00Z" }]) });
+  });
+  await page.route("**/api/ajustes-costo/77/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const body = route.request().postDataJSON(); escrituras.push({ path, body });
+    ajuste.estado = path.endsWith("/aprobar/") ? "aprobado" : "rechazado";
+    ajuste.aprobado = ajuste.estado === "aprobado";
+    return route.fulfill({ json: ajuste });
+  });
+  return { escrituras, lecturas: () => lecturas };
+}
+
+for (const rechazar of [false, true]) {
+  test(`ajuste de costo se ${rechazar ? "rechaza con motivo" : "aprueba"} desde su composición y refresca el costo`, async ({ page }) => {
+    const escenarioCosto = await escenarioAjusteCosto(page);
+    await page.goto("/finanzas?tab=costos&mes=2026-09");
+    await page.getByRole("button", { name: "Ver composición", exact: true }).click();
+    await page.getByRole("button", { name: rechazar ? "Rechazar ajuste de costo" : "Aprobar ajuste de costo", exact: true }).click();
+    if (rechazar) {
+      await expect(page.getByRole("button", { name: "Confirmar rechazo", exact: true })).toBeDisabled();
+      await page.getByLabel("Motivo del rechazo").fill("El valor no corresponde");
+    }
+    await page.getByRole("button", { name: rechazar ? "Confirmar rechazo" : "Confirmar aprobación", exact: true }).click();
+    await expect.poll(() => escenarioCosto.escrituras.length).toBe(1);
+    expect(escenarioCosto.escrituras[0]).toEqual({ path: `/api/ajustes-costo/77/${rechazar ? "rechazar" : "aprobar"}/`, body: rechazar ? { motivo: "El valor no corresponde" } : {} });
+    await expect.poll(escenarioCosto.lecturas).toBeGreaterThan(1);
+    await expect(page.getByRole("dialog").getByText(rechazar ? "Rechazado" : "Aprobado", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Aprobar ajuste de costo", exact: true })).toHaveCount(0);
+  });
+}
+
+for (const [nombre, permisos] of [
+  ["sin permiso", { aprobar: false }],
+  ["sin alcance sensible", { sensible: true, alcanceSensible: false }],
+  ["en otra área", { areaAprobacion: 4 }],
+]) {
+  test(`ajuste de costo no ofrece decisiones ${nombre}`, async ({ page }) => {
+    await escenarioAjusteCosto(page, permisos);
+    await page.goto("/finanzas?tab=costos&mes=2026-09");
+    await page.getByRole("button", { name: "Ver composición", exact: true }).click();
+    await expect(page.getByRole("dialog").getByText("Pendiente de aprobación", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Aprobar ajuste de costo", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Rechazar ajuste de costo", exact: true })).toHaveCount(0);
+  });
+}
+
 const inst = { id: 2, nombre: "Hospital Escuela" };
 const area = { id: 3, nombre: "Consultorios Escuela", institucion: 2 };
 const lista = (results) => ({ count: results.length, results, next: null, previous: null });
 const acciones = ["ver_gastos", "ver_costos", "registrar_gastos", "aprobar_gastos", "configurar_componentes", "configurar_gastos_esperados", "configurar_repartos"];
 const calendario = { id: 1, institucion: 2, concepto: 1, concepto_nombre: "Electricidad", area: 3, area_nombre: area.nombre, sensible: false, estado_carga: "falta_cargar", gastos_pendientes: 1, gastos_aprobados: 1, monto_referencia: "12000.00", importe_aprobado: "10000.01", diferencia_referencia: "1999.99", vigente_desde: "2026-09-01", vigente_hasta: null };
 const reporte = { aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", moneda: "ARS", actualizando: false, alcance: "Gastos registrados visibles según tus permisos; no equivale al costo total del hospital", agrupaciones: [{ area: 3, area_nombre: area.nombre, concepto: 1, concepto_nombre: "Electricidad", aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", actualizando: false }] };
+
+test("ajustes pendientes se distinguen en resumen, control y evolución sin cambiar el aprobado", async ({ page }, testInfo) => {
+  const { db, peticiones } = await escenario(page);
+  db.reporte.aprobados = "100.00";
+  db.reporte.pendientes_aprobacion = "0.00";
+  db.reporte.ajustes_pendientes = 1;
+  db.reporte.distribuido = "100.00";
+  Object.assign(db.reporte.agrupaciones[0], { aprobados: "100.00", pendientes_aprobacion: "0.00", distribuido: "100.00", ajustes_pendientes: 1 });
+  db.evolucion = { conceptos: [{ id: 1, nombre: "Electricidad" }], concepto: 1, moneda: "ARS", meses: [{
+    periodo_economico: "2026-08-01", importe_aprobado: "100.00", estado: "incompleto", controles: 1,
+    gastos_pendientes: 0, gastos_aprobados: 1, ajustes_pendientes: 1, monto_referencia: null,
+  }] };
+  await page.route("**/api/expectativas-gasto/calendario/**", (route) => route.fulfill({ json: lista([
+    { ...calendario, estado_carga: "carga_completa", gastos_pendientes: 0, ajustes_pendientes: 1, importe_aprobado: "100.00" },
+  ]) }));
+  await page.goto("/finanzas?mes=2026-08");
+  const resumen = page.getByRole("region", { name: "Resumen de gastos", exact: true });
+  await expect(resumen.getByText("1 ajuste por aprobar", { exact: false })).toBeVisible();
+  await expect(resumen.getByRole("button", { name: "Revisar gastos con ajustes", exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("ajustes-resumen.png"), animations: "disabled" });
+  await page.getByRole("button", { name: "Evolución mensual", exact: true }).click();
+  const evolucion = page.getByRole("region", { name: "Evolución de gastos mensuales", exact: true });
+  await expect(evolucion.getByText("1 ajuste por aprobar", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Ver importes mensuales", exact: true }).click();
+  await expect(evolucion.getByText("1 configuraciones incluidas · Carga o aprobación incompleta", { exact: true })).toBeVisible();
+  await expect(evolucion.getByText("Ajustes por aprobar: 1", { exact: true })).toBeVisible();
+  await expect(evolucion.getByRole("list", { name: "Importes mensuales", exact: true }).getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Electricidad", exact: true })).toHaveText("ARS 100,00");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await evolucion.getByText("1 ajuste por aprobar", { exact: false }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("ajustes-evolucion-movil.png"), animations: "disabled" });
+  await page.getByRole("tab", { name: "Gastos mensuales", exact: true }).click();
+  await expect(page.getByRole("button", { name: "1 ajuste por aprobar", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "1 ajuste por aprobar", exact: true }).click();
+  await expect.poll(() => peticiones.some((url) => url.pathname === "/api/gastos/"
+    && url.searchParams.get("concepto") === "1" && url.searchParams.get("area") === "3"
+    && url.searchParams.get("periodo_economico") === "2026-08-01"
+    && url.searchParams.get("estado_operativo") === "aprobado")).toBe(true);
+});
 
 async function escenario(page, { permisos = acciones, pendientes = false, concesiones = [], clinico = false } = {}) {
   const peticiones = [];
@@ -22,17 +122,19 @@ async function escenario(page, { permisos = acciones, pendientes = false, conces
       const body = req.postDataJSON(); escrituras.push({ path, body });
       const coleccion = { "/prestaciones-costo/": "prestaciones", "/componentes-costo/": "componentes", "/valores-componentes/": "valores" }[path];
       if (coleccion) { data = { id: db[coleccion].length + 1, ...body }; db[coleccion].push(data); }
-      else if (path === "/concesiones-financieras/otorgar-multiples/") { data = body.acciones.map((accion, n) => ({ ...body, accion, id: 20 + n })); db.concesiones.push(...data); }
+      else if (path === "/concesiones-financieras/editar-membresia/") { db.concesiones = body.concesiones.map((c, n) => ({ ...c, membresia: 8, id: 20 + n })); data = { membresia: 8, activo: true, concesiones: db.concesiones, heredadas: [], otras_membresias: [], version_esperada: "b".repeat(64) }; }
       else if (path === "/expectativas-gasto/") data = { id: 2, ...body };
       else return route.fulfill({ status: 400, json: { detail: "Escritura no prevista bloqueada por la prueba" } });
       return route.fulfill({ status: 201, json: data });
     }
     if (path === "/usuarios/me/") data = { id: 7, nombre: "Administración Escuela", email: "admin@mock.local", is_superuser: false, capacidades_por_institucion: { 2: ["config_institucional", ...(clinico ? ["casos_operar"] : [])] }, roles_por_institucion: { 2: ["admin"] } };
+    if (path === "/usuarios/8/") data = { id: 8, nombre: "Contabilidad", apellido: "Escuela", email: "contador@mock.local", is_active: true };
     if (path === "/instituciones/") data = lista([inst]);
     if (path === "/areas/") data = lista([area]);
     if (path === "/notificaciones/resumen/") data = { no_leidas: 0, recientes: [] };
     if (path === "/concesiones-financieras/mias/") data = { superusuario: false, concesiones: permisos.map((accion) => ({ institucion: 2, accion, todas_las_areas: true, areas: [], permite_sensibles: true, administrativa: true })) };
     if (path === "/concesiones-financieras/") data = lista(db.concesiones);
+    if (path === "/concesiones-financieras/editar-membresia/") data = { membresia: 8, activo: true, concesiones: db.concesiones, heredadas: [], otras_membresias: [], version_esperada: "a".repeat(64) };
     if (path === "/membresias/") data = lista([{ id: 8, usuario: 8, usuario_nombre: "Contabilidad Escuela", usuario_email: "contador@mock.local", institucion: 2, rol: "administrativo", activo: true, areas: [] }]);
     if (path === "/conceptos-gasto/") data = lista([{ id: 1, institucion: 2, nombre: "Electricidad", codigo: "ELEC", activo: true, sensible: false }]);
     if (path === "/expectativas-gasto/calendario/") data = lista([calendario]);
@@ -63,7 +165,7 @@ test("evolución distingue faltantes, referencia e incompletos y abre sólo gast
   ] };
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/finanzas?mes=2026-09&area=3");
-  const grafico = page.getByRole("region", { name: "Gráfico de evolución del control mensual" });
+  const grafico = page.getByRole("region", { name: "Gráfico de evolución de gastos mensuales" });
   await expect(grafico).toHaveCount(0);
   expect(peticiones.some((u) => u.pathname === "/api/reportes-finanzas/evolucion/")).toBe(false);
   await page.getByRole("button", { name: "Evolución mensual", exact: true }).click();
@@ -73,7 +175,7 @@ test("evolución distingue faltantes, referencia e incompletos y abre sólo gast
   await page.getByRole("button", { name: "Comparar con referencias", exact: true }).click();
   await expect(grafico.locator(".recharts-line")).toHaveCount(3);
   await page.getByText("Ver importes mensuales", { exact: true }).click();
-  await expect(page.getByRole("list", { name: "Importes mensuales" }).getByText(/Sin control vigente/)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Importes mensuales" }).getByText(/Sin configuración mensual vigente/)).toBeVisible();
   await expect(page.getByText("Aprobado registrado: ARS 0,00 · carga pendiente", { exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "Período de evolución" }).selectOption("6");
   await expect.poll(() => peticiones.some((u) => u.pathname === "/api/reportes-finanzas/evolucion/" && u.searchParams.get("meses") === "6")).toBe(true);
@@ -89,7 +191,7 @@ test("evolución distingue faltantes, referencia e incompletos y abre sólo gast
   await expect(page).toHaveURL(/gastos_f_control_mensual=true/);
   await expect(page).toHaveURL(/gastos_f_concepto=1/);
   await expect.poll(() => peticiones.some((u) => u.pathname === "/api/gastos/" && u.searchParams.get("control_mensual") === "true" && u.searchParams.get("periodo_economico") === "2026-08-01")).toBe(true);
-  await expect(page.getByRole("button", { name: "Quitar filtro Control mensual", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Quitar filtro Gastos mensuales", exact: true })).toBeVisible();
   expect(escrituras).toHaveLength(0);
 });
 
@@ -155,10 +257,10 @@ test("evolución sigue accesible sin gastos del mes y ocupa una sola vista", asy
   await expect(page.getByText("Todavía no hay gastos para estos filtros", { exact: true })).toBeVisible();
   expect(peticiones.some((u) => u.pathname === "/api/reportes-finanzas/evolucion/")).toBe(false);
   await page.getByRole("button", { name: "Evolución mensual", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Gráfico de evolución del control mensual" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Gráfico de evolución de gastos mensuales" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Comparar", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Listado", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Evolución mensual del control", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Evolución de gastos mensuales", exact: true })).toHaveCount(0);
 });
 
 test("participación ordena azul a rojo, resalta ambos niveles y no reinicia el llenado", async ({ page }, testInfo) => {
@@ -258,7 +360,7 @@ test("barras ordenan por la suma exacta de la comparación y dos niveles ordenan
 
 test("gastos simplificados conservan detalle y filtros guardados; diferencias distinguen ausencia y signo", async ({ page }, testInfo) => {
   const { escrituras } = await escenario(page);
-  const gasto = { id: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", estado: "aprobado", importe: "100.01", total_ajustes: "-20.00", importe_resultante: "80.01", registrado: "2026-09-14T12:00:00Z", ajustes: [{ id: 1, importe: "-20.00", motivo: "Corrección de factura", registrado: "2026-09-14T12:10:00Z" }], reemplazado_por: null };
+  const gasto = { id: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", estado: "aprobado", importe: "100.01", total_ajustes: "-20.00", importe_resultante: "80.01", registrado: "2026-09-14T12:00:00Z", ajustes: [{ id: 1, estado: "aprobado", aprobado: true, importe: "-20.00", motivo: "Corrección de factura", registrado: "2026-09-14T12:10:00Z" }], reemplazado_por: null };
   await page.route("**/api/gastos/**", (route) => route.fulfill({ json: lista([gasto]) }));
   await page.route("**/api/expectativas-gasto/calendario/**", (route) => route.fulfill({ json: lista(["1.00", "-1.00", "0.00", null].map((valor, i) => ({ ...calendario, id: i + 1, concepto_nombre: `Control ${i}`, importe_aprobado: ["99.00", "101.00", "100.00", "50.00"][i], diferencia_referencia: valor, monto_referencia: valor == null ? null : "100.00" }))) }));
   await page.goto("/finanzas?mes=2026-09&tab=gastos&gastos_ord=-total_ajustes&gastos_f_importe_min=20");
@@ -277,7 +379,7 @@ test("gastos simplificados conservan detalle y filtros guardados; diferencias di
   await expect(page.getByRole("dialog")).toContainText("ARS -20,00");
   await expect(page.getByRole("dialog")).toContainText("Corrección de factura");
   await page.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
-  await page.getByRole("tab", { name: "Control mensual", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos mensuales", exact: true }).click();
   const diferencias = tabla.locator('td[data-label="Diferencia"]');
   await expect(diferencias).toHaveText(["ARS +1,00", "ARS -1,00", "ARS 0,00", "-"]);
   await expect(diferencias.nth(0).locator("span")).toHaveClass(/text-badge-green-fg/);
@@ -400,8 +502,8 @@ test("evolución conserva selección múltiple al cambiar rango y señala ausent
   await page.getByRole("button", { name: "Quitar concepto Electricidad", exact: true }).click();
   await expect(conceptos.getByRole("listitem")).toHaveCount(1);
   await page.getByRole("combobox", { name: "Período de evolución" }).selectOption("6");
-  await expect(page.getByText("Hay 1 conceptos seleccionados sin controles visibles", { exact: false })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Gráfico de evolución del control mensual" })).toHaveCount(0);
+  await expect(page.getByText("Hay 1 conceptos seleccionados sin configuración mensual visible", { exact: false })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Gráfico de evolución de gastos mensuales" })).toHaveCount(0);
   await page.getByRole("combobox", { name: "Período de evolución" }).selectOption("12");
   await expect(conceptos.getByRole("listitem")).toHaveCount(1);
   await expect(conceptos.getByRole("button", { name: "Destacar Mantenimiento" })).toBeVisible();
@@ -420,7 +522,7 @@ test("evolución muestra todas, filtra localmente, destaca sin cambiar colores y
   await page.goto("/finanzas?mes=2026-09&area=3");
   await page.getByRole("button", { name: "Evolución mensual", exact: true }).click();
   const leyenda = page.getByRole("list", { name: "Conceptos comparados" });
-  const grafico = page.getByRole("region", { name: "Gráfico de evolución del control mensual" });
+  const grafico = page.getByRole("region", { name: "Gráfico de evolución de gastos mensuales" });
   await expect(leyenda.getByRole("listitem")).toHaveCount(3);
   await expect(grafico.locator(".recharts-line")).toHaveCount(6);
   const punto = grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Limpieza", exact: true });
@@ -485,7 +587,7 @@ test("evolución muestra 24 conceptos sin recorte de selección y deja consultar
   const leyenda = page.getByRole("list", { name: "Conceptos comparados" });
   await expect(leyenda.getByRole("listitem")).toHaveCount(24);
   await expect(page.getByRole("button", { name: "Elegir conceptos de evolución" })).toContainText("24/24");
-  const grafico = page.getByRole("region", { name: "Gráfico de evolución del control mensual" });
+  const grafico = page.getByRole("region", { name: "Gráfico de evolución de gastos mensuales" });
   await expect(grafico.locator(".recharts-line")).toHaveCount(48);
   await grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Concepto mensual 24", exact: true }).hover();
   const ayuda = page.getByRole("tooltip");
@@ -521,7 +623,7 @@ test("evolución filtra estados por concepto y conserva referencias completas, p
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/finanzas?mes=2026-09&area=3");
   await page.getByRole("button", { name: "Evolución mensual", exact: true }).click();
-  const grafico = page.getByRole("region", { name: "Gráfico de evolución del control mensual" });
+  const grafico = page.getByRole("region", { name: "Gráfico de evolución de gastos mensuales" });
   const filtro = page.getByRole("combobox", { name: "Estado de los meses" });
   await expect(filtro).toHaveValue("ambos");
   await expect(grafico.getByRole("button")).toHaveCount(7);
@@ -632,7 +734,7 @@ test("listas financieras sin scroll interno conservan importes, filtros y accion
   await page.goto("/finanzas?mes=2026-09");
   for (const ancho of [1440, 1024, 390]) {
     await page.setViewportSize({ width: ancho, height: 1100 });
-    for (const tab of ["Control mensual", "Gastos registrados", "Repartos", "Costos por atención", "Resumen"]) {
+    for (const tab of ["Gastos mensuales", "Gastos registrados", "Repartos", "Costos por atención", "Resumen"]) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       if (tab === "Resumen") await page.getByRole("button", { name: "Listado", exact: true }).click();
       await expect(page.locator(".finance-table-content")).toHaveCount(1);
@@ -640,7 +742,7 @@ test("listas financieras sin scroll interno conservan importes, filtros y accion
       await expect.poll(() => page.locator(".finance-table-content table").evaluateAll((nodos) => nodos.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
     }
   }
-  await page.getByRole("tab", { name: "Control mensual", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos mensuales", exact: true }).click();
   await page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false }).click();
   await page.getByRole("button", { name: "Ordenar por Importe aprobado", exact: true }).click();
   await expect(page).toHaveURL(/calendario_ord=importe_aprobado/);
@@ -667,6 +769,8 @@ test("filtros y tabs comparten fila, cabecera estable y límite explicado en ayu
   await page.goto("/finanzas?mes=2026-09&area=3");
   const grupo = page.getByRole("group", { name: "Filtros y secciones de finanzas" });
   await expect(grupo.getByRole("tablist")).toBeVisible();
+  // Comparar vistas con la misma fuente, no fallback contra Inter recién cargada.
+  await page.evaluate(() => document.fonts.ready);
   const filtro = await grupo.getByRole("combobox", { name: "Área", exact: true }).boundingBox();
   const tabs = await grupo.getByRole("tablist").boundingBox();
   expect(Math.abs(tabs.y + tabs.height - filtro.y - filtro.height)).toBeLessThan(3);
@@ -692,29 +796,28 @@ test("filtros y tabs comparten fila, cabecera estable y límite explicado en ayu
   await page.screenshot({ path: testInfo.outputPath("filtros-movil.png") });
 });
 
-test("permiso ya otorgado se ve deshabilitado y no se agrega a la selección", async ({ page }, testInfo) => {
-  const { escrituras } = await escenario(page, { concesiones: [{ id: 1, membresia: 8, accion: "ver_gastos", areas: [3], todas_las_areas: false, permite_sensibles: false }] });
+async function abrirEditorPermisos(page) {
   await page.goto("/administracion");
-  await page.getByRole("button", { name: "Permisos financieros", exact: true }).click();
-  await page.getByLabel("Persona y membresía").selectOption("8");
-  await page.getByRole("button", { name: "Otorgar permisos", exact: true }).click();
-  const check = page.getByRole("checkbox", { name: "Ver gastos · Ya otorgado", exact: true });
-  const label = page.locator("label").filter({ has: check });
-  await expect(check).toBeDisabled();
-  await expect(check).toHaveCSS("cursor", "not-allowed");
-  await expect(label).toHaveCSS("opacity", "0.5");
-  // Un clic físico permite comprobar el control deshabilitado sin pedirle
-  // a Playwright que espere a que se habilite.
-  const caja = await label.boundingBox();
-  await page.mouse.click(caja.x + 10, caja.y + caja.height / 2);
-  await expect(check).not.toBeChecked();
+  await page.getByRole("row").filter({ hasText: "Contabilidad Escuela" }).click();
+  await page.getByRole("region", { name: "Permisos financieros", exact: true }).locator("summary").filter({ hasText: /^Permisos financieros$/ }).click();
+}
+
+test("permiso existente aparece marcado sin modificar su alcance", async ({ page }, testInfo) => {
+  const { escrituras } = await escenario(page, { concesiones: [{ id: 1, membresia: 8, accion: "ver_gastos", areas: [3], todas_las_areas: false, permite_sensibles: false }] });
+  await abrirEditorPermisos(page);
+  const check = page.getByRole("checkbox", { name: "Ver gastos", exact: true });
+  await expect(check).toBeEnabled();
+  await expect(check).toBeChecked();
+  await page.getByText("Alcance de Ver gastos", { exact: true }).click();
+  await expect(page.getByLabel("Consultorios Escuela · Ver gastos", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("Incluir información sensible · Ver gastos", { exact: true })).not.toBeChecked();
   expect(escrituras).toHaveLength(0);
-  await page.screenshot({ path: testInfo.outputPath("permiso-deshabilitado.png"), fullPage: true, animations: "disabled" });
+  await page.screenshot({ path: testInfo.outputPath("permisos-checklist.png"), fullPage: true, animations: "disabled" });
 });
 
 test("detalles separan importes, contexto e historial sin cambiar cálculos", async ({ page }, testInfo) => {
   const { escrituras } = await escenario(page);
-  const gasto = { id: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", estado: "aprobado", importe: "100.01", total_ajustes: "-20.00", importe_resultante: "80.01", registrado: "2026-09-14T12:00:00Z", aprobado_en: "2026-09-14T12:05:00Z", ajustes: [{ id: 1, importe: "-20.00", motivo: "Corrección de factura", registrado: "2026-09-14T12:10:00Z" }], reemplazado_por: null };
+  const gasto = { id: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", estado: "aprobado", importe: "100.01", total_ajustes: "-20.00", importe_resultante: "80.01", registrado: "2026-09-14T12:00:00Z", aprobado_en: "2026-09-14T12:05:00Z", ajustes: [{ id: 1, estado: "aprobado", aprobado: true, importe: "-20.00", motivo: "Corrección de factura", registrado: "2026-09-14T12:10:00Z" }], reemplazado_por: null };
   await page.route("**/api/gastos/**", (route) => route.fulfill({ json: lista([gasto]) }));
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto("/finanzas?mes=2026-09&tab=gastos");
@@ -729,9 +832,9 @@ test("detalles separan importes, contexto e historial sin cambiar cálculos", as
   await expect.poll(() => modal.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("detalle-gasto-movil.png"), animations: "disabled" });
   await page.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
-  await page.getByRole("tab", { name: "Control mensual", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos mensuales", exact: true }).click();
   await page.getByRole("button", { name: "Administrar Electricidad · Consultorios Escuela", exact: true }).click();
-  await expect(modal.getByRole("region", { name: "Importes del control mensual" })).toContainText("ARS 1.999,99");
+  await expect(modal.getByRole("region", { name: "Importes de gastos mensuales" })).toContainText("ARS 1.999,99");
   await expect(modal.getByRole("heading", { name: "Consultar historial" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("detalle-control-movil.png"), animations: "disabled" });
   await page.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
@@ -938,7 +1041,7 @@ test("procesamiento detenido no convierte distribución desconocida en cero y se
 test("control mensual agrupa acciones en modal y referencia no declara carga completa", async ({ page }) => {
   const { escrituras } = await escenario(page);
   await page.goto("/finanzas?mes=2026-09&tab=calendario");
-  await expect(page.getByRole("tab", { name: "Control mensual" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Gastos mensuales" })).toBeVisible();
   await expect(page.getByText("ARS +1.999,99", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Historial de configuración", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Administrar Electricidad" }).click();
@@ -955,30 +1058,29 @@ test("control mensual agrupa acciones en modal y referencia no declara carga com
 
 test("contable recibe múltiples acciones y sensible en una sola operación", async ({ page }, testInfo) => {
   const { escrituras } = await escenario(page);
-  await page.goto("/administracion");
-  await page.getByRole("button", { name: "Permisos financieros", exact: true }).click();
-  await page.getByLabel("Persona y membresía").selectOption("8");
-  await page.getByRole("button", { name: "Otorgar permisos", exact: true }).click();
+  await abrirEditorPermisos(page);
   await page.getByLabel("Ver gastos", { exact: true }).check();
   await page.getByLabel("Aprobar gastos", { exact: true }).check();
-  await page.getByLabel("Consultorios Escuela", { exact: true }).check();
-  await page.getByLabel("Permitir información sensible", { exact: false }).check();
+  for (const accion of ["Ver gastos", "Aprobar gastos"]) {
+    await page.getByLabel(`Consultorios Escuela · ${accion}`, { exact: true }).check();
+    await page.getByLabel(`Incluir información sensible · ${accion}`, { exact: true }).check();
+  }
   await page.screenshot({ path: testInfo.outputPath("permisos.png"), fullPage: true });
-  await page.getByRole("button", { name: "Confirmar permiso", exact: true }).click();
+  await page.getByRole("button", { name: "Guardar permisos financieros", exact: true }).click();
   await expect.poll(() => escrituras.length).toBe(1);
-  expect(escrituras[0]).toEqual({ path: "/concesiones-financieras/otorgar-multiples/", body: { membresia: 8, acciones: ["ver_gastos", "aprobar_gastos"], areas: [3], todas_las_areas: false, permite_sensibles: true } });
+  expect(escrituras[0]).toEqual({ path: "/concesiones-financieras/editar-membresia/", body: { membresia: 8, version_esperada: "a".repeat(64), concesiones: ["ver_gastos", "aprobar_gastos"].map((accion) => ({ accion, areas: [3], todas_las_areas: false, permite_sensibles: true })) } });
 });
 
-test("editar un permiso reemplaza listado y lleva el foco al formulario", async ({ page }) => {
+test("checklist reúne las acciones existentes y conserva sus alcances separados", async ({ page }) => {
   await escenario(page, { concesiones: acciones.map((accion, n) => ({ id: n + 1, membresia: 8, accion, areas: [3], todas_las_areas: false, permite_sensibles: true })) });
-  await page.goto("/administracion"); await page.getByRole("button", { name: "Permisos financieros", exact: true }).click();
-  await page.getByLabel("Persona y membresía").selectOption("8");
-  await page.getByRole("button", { name: "Editar alcance", exact: true }).last().click();
-  const titulo = page.getByRole("heading", { name: "Editar alcance del permiso" });
-  await expect(titulo).toBeVisible(); await expect(titulo).toBeFocused();
+  await abrirEditorPermisos(page);
+  await expect(page.getByRole("checkbox", { name: "Ver gastos", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Aprobar gastos", exact: true })).toBeChecked();
+  await page.getByText("Alcance de Ver gastos", { exact: true }).click();
+  await expect(page.getByLabel("Consultorios Escuela · Ver gastos", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("Incluir información sensible · Ver gastos", { exact: true })).toBeChecked();
   await expect(page.getByRole("button", { name: "Revocar", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Cancelar edición" }).click();
-  await expect(page.getByRole("button", { name: "Editar alcance", exact: true })).toHaveCount(acciones.length);
+  await expect(page.getByRole("button", { name: "Guardar permisos financieros", exact: true })).toBeVisible();
 });
 
 test("solo ver costos permite entrar sin consultar gastos ni configuración", async ({ page }) => {
@@ -1006,15 +1108,13 @@ test("el detalle se retira cuando el servidor deja de devolver una atención", a
 
 test("configuración completa prestación componente y valor desde pantallas", async ({ page }) => {
   const { escrituras } = await escenario(page);
-  await page.goto("/finanzas?mes=2026-09");
+  await page.goto("/finanzas?mes=2026-09&tab=costos");
   await page.getByRole("button", { name: "Configurar costos por atención", exact: true }).click();
   await page.getByRole("button", { name: "Configurar otra atención" }).click();
   await page.getByLabel("Atención del flujo publicado").selectOption("44");
-  await page.getByLabel("Código de referencia", { exact: false }).fill("CONSULTA-ESCUELA");
   await page.getByRole("button", { name: "Guardar este paso" }).click();
   await page.getByRole("button", { name: "Agregar componente", exact: true }).click();
   await page.getByLabel("Nombre", { exact: true }).fill("Materiales");
-  await page.getByLabel("Código de referencia", { exact: false }).fill("MATERIALES");
   await page.getByRole("button", { name: "Guardar este paso" }).click();
   await expect(page.getByText("Falta el valor de este componente", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Agregar intervalo de valor" }).click();
@@ -1029,7 +1129,7 @@ test("configuración completa prestación componente y valor desde pantallas", a
 test("resumen y control mensual no desbordan el ancho móvil", async ({ page }) => {
   await escenario(page); await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/finanzas?mes=2026-09");
-  for (const tab of ["Resumen", "Control mensual", "Costos por atención"]) {
+  for (const tab of ["Resumen", "Gastos mensuales", "Costos por atención"]) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }

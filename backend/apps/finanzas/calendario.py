@@ -48,8 +48,17 @@ def calendario_mensual(expectativas, usuario, periodo):
             output_field=IntegerField(),
         ), Value(0))
 
+    def cantidad_ajustes_pendientes(institucional):
+        fuentes = gastos.filter(ajustes__estado="pendiente_aprobacion")
+        fuentes = fuentes.filter(area_id__isnull=True) if institucional else fuentes.filter(area_id=OuterRef("area_id"))
+        # Cuenta registros, no sus importes: una corrección negativa pendiente
+        # tampoco disminuye el gasto confirmado ni cancela otra revisión.
+        return fuentes.order_by().values("concepto_id").annotate(
+            cantidad=Count("ajustes", distinct=True),
+        ).values("cantidad")[:1]
+
     moneda = DecimalField(max_digits=22, decimal_places=2)
-    ajustes = AjusteGasto.objects.filter(gasto_id=OuterRef("pk")).order_by().values("gasto_id").annotate(
+    ajustes = AjusteGasto.objects.filter(gasto_id=OuterRef("pk"), estado="aprobado").order_by().values("gasto_id").annotate(
         total=Sum("importe"),
     ).values("total")[:1]
 
@@ -69,6 +78,10 @@ def calendario_mensual(expectativas, usuario, periodo):
         indicacion_registrada=Subquery(ultima.values("registrado")[:1]),
         gastos_pendientes=cantidad_por_ambito(Gasto.Estado.PENDIENTE_APROBACION),
         gastos_aprobados=cantidad_por_ambito(Gasto.Estado.APROBADO),
+        ajustes_pendientes=Coalesce(Case(
+            When(area_id__isnull=True, then=Subquery(cantidad_ajustes_pendientes(True))),
+            default=Subquery(cantidad_ajustes_pendientes(False)), output_field=IntegerField(),
+        ), Value(0)),
         importe_aprobado=Coalesce(Case(
             When(area_id__isnull=True, then=Subquery(importe_aprobado(True))),
             default=Subquery(importe_aprobado(False)), output_field=moneda,

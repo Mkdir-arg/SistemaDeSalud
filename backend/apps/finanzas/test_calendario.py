@@ -25,6 +25,7 @@ class CalendarioGastoApiTests(APITestCase):
             ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
             ConcesionFinanciera.Accion.VER_GASTOS,
             ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
         ):
             ConcesionFinanciera.objects.create(
                 membresia=self.miembro, accion=accion, todas_las_areas=True, permite_sensibles=True
@@ -50,6 +51,38 @@ class CalendarioGastoApiTests(APITestCase):
             f"/api/expectativas-gasto/{(expectativa or self.expectativa).id}/indicar/",
             {"periodo_economico": mes, "estado": estado}, format="json"
         )
+
+    def test_ajuste_pendiente_hace_provisional_el_mes_y_la_decision_actualiza_conteos(self):
+        gasto = registrar_gasto(self.concepto, self.institucion, self.area, Decimal("100"), date(2026, 8, 1), self.admin)
+        self.assertEqual(self.indicar("carga_completa").status_code, 201)
+        ajuste = AjusteGasto.objects.create(
+            gasto=gasto, importe=Decimal("-40"), motivo="Revisar factura",
+            registrado_por=self.admin, estado="pendiente_aprobacion",
+        )
+
+        def verificar(importe, cantidad, estado):
+            fila = self.calendario()["results"][0]
+            self.assertEqual(fila["importe_aprobado"], importe)
+            self.assertEqual(fila["gastos_pendientes"], 0)
+            self.assertEqual(fila.get("ajustes_pendientes"), cantidad)
+            respuesta = self.client.get("/api/reportes-finanzas/evolucion/", {
+                "institucion": self.institucion.pk, "periodo_economico": "2026-08-01", "meses": 6,
+            })
+            self.assertEqual(respuesta.status_code, 200, respuesta.data)
+            mes = respuesta.data["meses"][-1]
+            self.assertEqual((mes["importe_aprobado"], mes.get("ajustes_pendientes"), mes["estado"]), (importe, cantidad, estado))
+
+        verificar("100.00", 1, "incompleto")
+        self.assertEqual(self.client.post(f"/api/ajustes-gasto/{ajuste.pk}/aprobar/", {}, format="json").status_code, 200)
+        verificar("60.00", 0, "completo")
+        rechazado = AjusteGasto.objects.create(
+            gasto=gasto, importe=Decimal("-5"), motivo="Otra revisión",
+            registrado_por=self.admin, estado="pendiente_aprobacion",
+        )
+        verificar("60.00", 1, "incompleto")
+        respuesta = self.client.post(f"/api/ajustes-gasto/{rechazado.pk}/rechazar/", {"motivo": "No corresponde"}, format="json")
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        verificar("60.00", 0, "completo")
 
     def test_conteos_navegan_a_gastos_vigentes_del_area_exacta_incluido_nulo(self):
         institucional = self.crear_expectativa(None)
@@ -83,6 +116,18 @@ class CalendarioGastoApiTests(APITestCase):
                 self.assertIsNone(respuesta.data["results"][0]["reemplazado_por"])
         reemplazados = self.client.get("/api/gastos/", {"estado_operativo": "reemplazado"})
         self.assertEqual(reemplazados.data["count"], 2)
+
+    def test_ajustes_pendientes_no_se_multiplican_entre_area_e_institucional(self):
+        institucional = self.crear_expectativa(None)
+        for area, cantidad in ((self.area, 2), (None, 1), (self.otra_area, 3)):
+            fuente = registrar_gasto(self.concepto, self.institucion, area, Decimal("100"), date(2026, 8, 1), self.admin)
+            for numero in range(cantidad):
+                AjusteGasto.objects.create(gasto=fuente, importe=Decimal("-1"), motivo=f"Revisión {numero}", estado="pendiente_aprobacion")
+        filas = {fila["id"]: fila for fila in self.calendario()["results"]}
+        self.assertEqual(filas[self.expectativa.pk]["ajustes_pendientes"], 2)
+        self.assertEqual(filas[institucional.pk]["ajustes_pendientes"], 1)
+        self.assertEqual(filas[self.expectativa.pk]["importe_aprobado"], "100.00")
+        self.assertEqual(filas[institucional.pk]["importe_aprobado"], "100.00")
 
     def test_orden_y_rangos_de_calendario_y_gastos_se_aplican_antes_de_paginar(self):
         self.crear_expectativa(self.otra_area)

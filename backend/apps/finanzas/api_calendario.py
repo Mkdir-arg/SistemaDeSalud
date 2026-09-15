@@ -54,13 +54,14 @@ class CalendarioSerializer(ExpectativaSerializer):
     indicacion_registrada = serializers.DateTimeField(read_only=True, allow_null=True)
     gastos_pendientes = serializers.IntegerField(read_only=True)
     gastos_aprobados = serializers.IntegerField(read_only=True)
+    ajustes_pendientes = serializers.IntegerField(read_only=True)
     importe_aprobado = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)
     diferencia_referencia = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True, allow_null=True)
 
     class Meta(ExpectativaSerializer.Meta):
         fields = ExpectativaSerializer.Meta.fields + [
             "indicacion_id", "estado_carga", "indicacion_registrada",
-            "gastos_pendientes", "gastos_aprobados", "importe_aprobado", "diferencia_referencia",
+            "gastos_pendientes", "gastos_aprobados", "ajustes_pendientes", "importe_aprobado", "diferencia_referencia",
         ]
         read_only_fields = fields
 

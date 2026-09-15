@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 from django.db.models import Case, CharField, DateField, DecimalField, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
 from rest_framework import status
@@ -25,14 +26,16 @@ from .models import (
     ExpectativaGasto,
     Gasto,
     HechoAtencionCosteable,
+    ObligacionFinanciera,
     Prestacion,
     TrabajoReparto,
     ValorComponente,
 )
-from .permisos import concesiones_financieras_de, hechos_en_alcance_financiero, tiene_concesion_financiera, tiene_accion_financiera, instituciones_admin_financiero, gastos_en_alcance_financiero
+from .permisos import alcance_financiero_q, concesiones_financieras_de, hechos_en_alcance_financiero, tiene_concesion_financiera, tiene_accion_financiera, instituciones_admin_financiero, gastos_en_alcance_financiero
 from .auditoria import AuditaLecturaFinanciera
 from .filtros import filtrar_rangos
 from .calendario import gastos_de_control_mensual
+from .editor_permisos import EditorPermisosSerializer, version_editor
 from .serializers import (
     AjusteCostoSerializer,
     AjusteGastoSerializer,
@@ -47,7 +50,7 @@ from .serializers import (
     RechazoGastoSerializer,
     ValorComponenteSerializer,
 )
-from .services import aprobar_gasto, corregir_snapshot_componentes, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_gasto
+from .services import aprobar_gasto, corregir_snapshot_componentes, decidir_ajuste, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_gasto
 
 
 class PuedeVerCostosPaciente(BasePermission):
@@ -212,6 +215,15 @@ class PuedeCorregirGastos(PuedeRegistrarGastos):
     accion = ConcesionFinanciera.Accion.CORREGIR_GASTOS
 
 
+class PuedeAprobarCostos(PuedeRegistrarGastos):
+    accion = ConcesionFinanciera.Accion.APROBAR_COSTOS
+
+
+class PuedeVerAjustesCosto(BasePermission):
+    def has_permission(self, request, view):
+        return tiene_accion_financiera(request.user, ConcesionFinanciera.Accion.VER_COSTOS)
+
+
 def _institucion_catalogo(obj):
     if getattr(obj, "institucion_id", None) is not None:
         return obj.institucion_id
@@ -290,13 +302,105 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
         if not tiene_capacidad(self.request.user, self.capacidad_requerida, membresia.institucion_id):
             raise PermissionDenied("No podés administrar concesiones de esa institución.")
         with transaction.atomic():
-            # Coordina con el alta múltiple para no dejar una carrera de altas
-            # concurrentes contra la unicidad membresía/acción.
-            membresia = Membresia.objects.select_for_update().get(pk=membresia.pk)
+            # También bloquea el origen si un PATCH traslada una concesión.
+            # Todos los caminos de escritura coordinan sobre la membresía.
+            ids = {membresia.pk}
+            if serializer.instance is not None:
+                ids.add(serializer.instance.membresia_id)
+            bloqueadas = {m.pk: m for m in Membresia.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
+            if membresia.pk not in bloqueadas:
+                raise NotFound("La membresía ya no existe.")
+            membresia = bloqueadas[membresia.pk]
+            if not tiene_capacidad(self.request.user, self.capacidad_requerida, membresia.institucion_id):
+                raise PermissionDenied("No podés administrar concesiones de esa institución.")
+            actual = None
+            if serializer.instance is not None:
+                actual = get_object_or_404(self.get_queryset(), pk=serializer.instance.pk)
+                if actual.membresia_id != serializer.instance.membresia_id:
+                    raise ValidationError("La concesión cambió de membresía. Volvé a consultarla.")
+                self.check_object_permissions(self.request, actual)
+            # La validación previa al lock no alcanza: otro administrador pudo
+            # cambiar la acción, el alcance o la vigencia de la membresía.
+            vigente = self.get_serializer(actual, data=self.request.data, partial=serializer.partial)
+            vigente.is_valid(raise_exception=True)
             try:
-                serializer.save(membresia=membresia)
+                serializer.instance = vigente.save(membresia=membresia)
             except DjangoValidationError as error:
                 raise ValidationError(getattr(error, "message_dict", error.messages)) from error
+
+    def perform_destroy(self, instance):
+        with transaction.atomic():
+            get_object_or_404(Membresia.objects.select_for_update(), pk=instance.membresia_id)
+            actual = get_object_or_404(self.get_queryset(), pk=instance.pk)
+            if actual.membresia_id != instance.membresia_id:
+                raise ValidationError("La concesión cambió de membresía. Volvé a consultarla.")
+            self.check_object_permissions(self.request, actual)
+            actual.delete()
+
+    def _estado_editor(self, membresia):
+        concesiones = list(self.get_serializer(
+            self.queryset.filter(membresia=membresia).order_by("accion"), many=True,
+        ).data)
+        heredadas = [accion for accion in ("ver_costos", "ver_gastos") if
+                     instituciones_admin_financiero(membresia.usuario, accion).filter(institucion_id=membresia.institucion_id).exists()]
+        otras = list(self.get_serializer(self.queryset.filter(
+            membresia__usuario_id=membresia.usuario_id,
+            membresia__institucion_id=membresia.institucion_id, membresia__activo=True,
+        ).exclude(membresia=membresia).order_by("membresia_id", "accion"), many=True).data)
+        return {
+            "membresia": membresia.pk, "activo": membresia.activo,
+            "concesiones": concesiones, "heredadas": heredadas,
+            "otras_membresias": otras,
+            "version_esperada": version_editor(membresia, concesiones, heredadas),
+        }
+
+    @action(detail=False, methods=["get", "put"], url_path="editar-membresia")
+    def editar_membresia(self, request):
+        """Reemplaza sólo el bloque explícito elegido, sin sumar otros alcances."""
+        if request.method == "PUT":
+            entrada = EditorPermisosSerializer(data=request.data)
+            entrada.is_valid(raise_exception=True)
+            datos = entrada.validated_data
+            membresia_id = datos["membresia"]
+        else:
+            valor = str(request.query_params.get("membresia", ""))
+            if not valor.isdigit() or int(valor) < 1:
+                raise ValidationError({"membresia": "Elegí una membresía válida."})
+            membresia_id = int(valor)
+        with transaction.atomic():
+            membresia = get_object_or_404(Membresia.objects.select_for_update(), pk=membresia_id)
+            if not tiene_capacidad(request.user, self.capacidad_requerida, membresia.institucion_id):
+                raise PermissionDenied("No podés administrar concesiones de esa institución.")
+            estado = self._estado_editor(membresia)
+            if request.method == "GET":
+                return Response(estado)
+            if datos["version_esperada"] != estado["version_esperada"]:
+                return Response({"detail": "Los permisos cambiaron mientras editabas. Volvé a consultarlos antes de guardar."}, status=status.HTTP_409_CONFLICT)
+            actuales = {c.accion: c for c in self.queryset.filter(membresia=membresia)}
+            entradas = []
+            conservar = set()
+            for fila in datos["concesiones"]:
+                actual = actuales.get(fila["accion"])
+                conservar.add(fila["accion"])
+                if not membresia.activo:
+                    # En una membresía inactiva se permite conservar o revocar,
+                    # nunca otorgar ni cambiar alcances.
+                    iguales = actual is not None and all((
+                        actual.todas_las_areas == fila["todas_las_areas"],
+                        actual.permite_sensibles == fila["permite_sensibles"],
+                        sorted(a.pk for a in actual.areas.all()) == sorted(fila["areas"]),
+                    ))
+                    if not iguales:
+                        raise ValidationError({"membresia": "La membresía está inactiva: sólo podés conservar o revocar sus permisos."})
+                    continue
+                serializer = self.get_serializer(actual, data={**fila, "membresia": membresia.pk})
+                serializer.is_valid(raise_exception=True)
+                entradas.append(serializer)
+            # Nada se escribe hasta que el bloque completo pasó validación.
+            self.queryset.filter(membresia=membresia).exclude(accion__in=conservar).delete()
+            for serializer in entradas:
+                serializer.save(membresia=membresia)
+            return Response(self._estado_editor(membresia))
 
     @action(detail=False, methods=["post"], url_path="otorgar-multiples")
     def otorgar_multiples(self, request):
@@ -307,7 +411,9 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
             raise PermissionDenied("No podés administrar concesiones de esa institución.")
         with transaction.atomic():
             # Serializa altas para la misma persona, incluida la comprobación de duplicados.
-            membresia = Membresia.objects.select_for_update().get(pk=datos["membresia"].pk)
+            membresia = get_object_or_404(Membresia.objects.select_for_update(), pk=datos["membresia"].pk)
+            if not tiene_capacidad(request.user, self.capacidad_requerida, membresia.institucion_id):
+                raise PermissionDenied("No podés administrar concesiones de esa institución.")
             comunes = {
                 "membresia": membresia.pk,
                 "todas_las_areas": datos["todas_las_areas"],
@@ -354,6 +460,28 @@ class PrestacionViewSet(CatalogoCostosInstitucionalMixin, BaseModelViewSet):
     http_method_names = ["get", "head", "options", "post", "patch"]
     filter_fields = ("institucion", "nodo", "activo")
     ordering_fields = ("codigo", "nombre", "id")
+
+    def get_permissions(self):
+        # Configurar cobros necesita identificar prestaciones, no sus costos.
+        # Sólo esta lectura amplía el catálogo: no habilita cambios ni valores.
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        if self.action not in ("list", "retrieve"):
+            return super().get_queryset()
+        usuario = self.request.user
+        if usuario.is_active and usuario.is_superuser:
+            return BaseModelViewSet.get_queryset(self)
+        instituciones = set()
+        for accion in (ConcesionFinanciera.Accion.CONFIGURAR_COMPONENTES, ConcesionFinanciera.Accion.CONFIGURAR_COBROS):
+            instituciones.update(concesiones_financieras_de(usuario, accion).filter(
+                todas_las_areas=True,
+            ).values_list("membresia__institucion_id", flat=True))
+        if not instituciones:
+            raise PermissionDenied("No tenés autorización para consultar el catálogo de prestaciones.")
+        return BaseModelViewSet.get_queryset(self).filter(institucion_id__in=instituciones)
 
     @action(detail=False, methods=["get"], url_path="atenciones-disponibles")
     def atenciones_disponibles(self, request):
@@ -484,7 +612,7 @@ class ConceptoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
 
 
 class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
-    """Fuentes de gasto sin reparto clínico, cargos ni movimientos de dinero."""
+    """Fuentes de gasto; el vínculo autorizado a su cuenta no duplica importes."""
 
     queryset = Gasto.objects.select_related(
         "concepto", "institucion", "area", "registrado_por", "aprobado_por", "rechazado_por",
@@ -504,7 +632,7 @@ class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
         # Subconsulta independiente: otros joins de permisos o filtros nunca
         # multiplican los ajustes monetarios de un gasto.
         moneda = DecimalField(max_digits=22, decimal_places=2)
-        ajustes = AjusteGasto.objects.filter(gasto_id=OuterRef("pk")).order_by().values(
+        ajustes = AjusteGasto.objects.filter(gasto_id=OuterRef("pk"), estado="aprobado").order_by().values(
             "gasto_id",
         ).annotate(total=Sum("importe")).values("total")[:1]
         queryset = queryset.annotate(
@@ -551,7 +679,13 @@ class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         usuario = self.request.user
-        return gastos_en_alcance_financiero(qs, usuario)
+        cuentas = ObligacionFinanciera.objects.filter(
+            alcance_financiero_q(usuario, ConcesionFinanciera.Accion.VER_DINERO),
+            gasto_id=OuterRef("pk"),
+        ).order_by()
+        return gastos_en_alcance_financiero(qs, usuario).annotate(
+            cuenta_por_pagar=Subquery(cuentas.values("pk")[:1]),
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -565,6 +699,7 @@ class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
                 serializer.validated_data["periodo_economico"],
                 request.user,
                 serializer.validated_data.get("reemplaza"),
+                aprobado=serializer.validated_data.get("aprobado"),
             )
         except DjangoValidationError as error:
             raise ValidationError(self._error_validacion(error)) from error
@@ -593,11 +728,41 @@ class GastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
         return Response(self.get_serializer(gasto).data)
 
 
-class AjusteGastoViewSet(BaseModelViewSet):
-    queryset = AjusteGasto.objects.none()
+class RevisionAjusteMixin:
+    @action(detail=True, methods=["post"])
+    def aprobar(self, request, pk=None):
+        return self._decidir(request, aprobar=True)
+
+    @action(detail=True, methods=["post"])
+    def rechazar(self, request, pk=None):
+        entrada = RechazoGastoSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        return self._decidir(request, aprobar=False, motivo=entrada.validated_data["motivo"])
+
+    def _decidir(self, request, *, aprobar, motivo=""):
+        ajuste = self.get_object()
+        try:
+            ajuste = decidir_ajuste(ajuste.pk, modelo=type(ajuste), usuario=request.user, aprobar=aprobar, motivo=motivo)
+        except DjangoValidationError as error:
+            raise ValidationError(GastoViewSet._error_validacion(error)) from error
+        return Response(self.get_serializer(ajuste).data)
+
+
+class AjusteGastoViewSet(RevisionAjusteMixin, AuditaLecturaFinanciera, BaseModelViewSet):
+    queryset = AjusteGasto.objects.select_related("gasto")
     serializer_class = AjusteGastoSerializer
     permission_classes = [IsAuthenticated, PuedeCorregirGastos]
-    http_method_names = ["post", "options"]
+    institucion_path = "gasto__institucion"
+    filter_fields = ("id", "gasto", "estado")
+    http_method_names = ["get", "head", "post", "options"]
+
+    def get_permissions(self):
+        permiso = PuedeCorregirGastos if self.action == "create" else PuedeAprobarGastos if self.action in {"aprobar", "rechazar"} else PuedeVerGastos
+        return [IsAuthenticated(), permiso()]
+
+    def get_queryset(self):
+        fuentes = gastos_en_alcance_financiero(Gasto.objects.all(), self.request.user)
+        return super().get_queryset().filter(gasto__in=fuentes)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -608,6 +773,7 @@ class AjusteGastoViewSet(BaseModelViewSet):
                 serializer.validated_data["importe"],
                 serializer.validated_data["motivo"],
                 request.user,
+                aprobado=serializer.validated_data.get("aprobado"),
             )
         except Gasto.DoesNotExist as error:
             raise NotFound() from error
@@ -668,23 +834,37 @@ class ValorComponenteViewSet(BaseModelViewSet):
         serializer.save(registrado_por=self.request.user)
 
 
-class AjusteCostoViewSet(BaseModelViewSet):
+class AjusteCostoViewSet(RevisionAjusteMixin, AuditaLecturaFinanciera, BaseModelViewSet):
     """Alta de correcciones históricas; se leen dentro del hecho costeable."""
 
-    queryset = AjusteCosto.objects.none()
+    queryset = AjusteCosto.objects.select_related("imputacion__hecho")
     serializer_class = AjusteCostoSerializer
     permission_classes = [IsAuthenticated, PuedeCorregirCosto]
-    http_method_names = ["post", "options"]
+    institucion_path = "imputacion__hecho__institucion"
+    filter_fields = ("id", "imputacion", "estado")
+    http_method_names = ["get", "head", "post", "options"]
+
+    def get_permissions(self):
+        permiso = PuedeCorregirCosto if self.action == "create" else PuedeAprobarCostos if self.action in {"aprobar", "rechazar"} else PuedeVerAjustesCosto
+        return [IsAuthenticated(), permiso()]
+
+    def get_queryset(self):
+        hechos = hechos_en_alcance_financiero(HechoAtencionCosteable.objects.all(), self.request.user)
+        return super().get_queryset().filter(imputacion__hecho__in=hechos)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        ajuste = registrar_ajuste_costo(
-            serializer.validated_data["imputacion"],
-            serializer.validated_data["importe"],
-            serializer.validated_data["motivo"],
-            request.user,
-        )
+        try:
+            ajuste = registrar_ajuste_costo(
+                serializer.validated_data["imputacion"],
+                serializer.validated_data["importe"],
+                serializer.validated_data["motivo"],
+                request.user,
+                aprobado=serializer.validated_data.get("aprobado"),
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(GastoViewSet._error_validacion(error)) from error
         return Response(self.get_serializer(ajuste).data, status=status.HTTP_201_CREATED)
 
 

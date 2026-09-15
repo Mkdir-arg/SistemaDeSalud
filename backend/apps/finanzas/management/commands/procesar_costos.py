@@ -2,7 +2,7 @@
 import logging
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import Q
+from django.db.models import F, Q
 
 from apps.auditoria.latidos import latir
 
@@ -36,7 +36,9 @@ class Command(BaseCommand):
                         PendienteCosteo.Motivo.SIN_VALOR,
                     ],
                 )
-            ).order_by("ocurrida_en", "id").distinct().values_list("id", flat=True)[:limite]
+            # Primero los nunca revisados, luego los menos recientemente
+            # revisados. Un faltante persistente no monopoliza cada lote.
+            ).order_by(F("ultimo_costeo_en").asc(nulls_first=True), "ocurrida_en", "id").distinct().values_list("id", flat=True)[:limite]
         )
         procesados = 0
         for hecho_id in ids:

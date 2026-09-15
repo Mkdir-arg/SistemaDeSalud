@@ -5,12 +5,13 @@ import { ESTADOS_CARGA, importeARS } from "@/api/finanzas";
 import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { AyudaFinanzas } from "./ControlesFinanzas";
+import { CampoAprobado } from "./AprobacionFinanzas";
 
 const CONFIGURAR = "configurar_gastos_esperados";
 const TITULOS = {
   gasto: "Registrar gasto", reemplazo: "Reemplazar carga", concepto: "Nuevo concepto de gasto",
-  expectativa: "Agregar gasto esperado", indicar: "Indicar estado de carga",
-  version: "Modificar configuración del control mensual",
+  expectativa: "Agregar gasto mensual", indicar: "Indicar estado de carga",
+  version: "Modificar configuración de gastos mensuales",
   aprobar: "Aprobar gasto", rechazar: "Rechazar gasto", ajuste: "Ajustar gasto aprobado",
 };
 
@@ -21,6 +22,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [incierto, setIncierto] = useState(false);
+  const [eleccionAprobado, setEleccionAprobado] = useState(true);
   const [datos, setDatos] = useState({
     area: fila ? (fila.area == null ? "null" : String(fila.area)) : "",
     concepto: fila?.concepto ? String(fila.concepto) : "",
@@ -38,7 +40,10 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
   const accion = esCarga ? "registrar_gastos" : CONFIGURAR;
   const area = datos.area === "null" ? null : Number(datos.area);
   const concepto = conceptos.find((c) => String(c.id) === datos.concepto);
-  const central = datos.area !== "" && permisos.permite("registrar_gastos", area, concepto?.sensible, true);
+  const puedeAprobar = !permisos.isFetching && (tipo === "ajuste"
+    ? permisos.permite("aprobar_gastos", fila.area, fila.sensible)
+    : datos.area !== "" && Boolean(concepto) && permisos.permite("aprobar_gastos", area, concepto.sensible));
+  const aprobado = puedeAprobar && eleccionAprobado;
   const close = () => { if (!guardandoRef.current) onClose(); };
 
   async function guardar(e) {
@@ -50,7 +55,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
       return;
     }
     if (tipo === "version" && !permisos.permite(CONFIGURAR, fila.area, fila.sensible)) {
-      setError("No tenés permiso para modificar este control mensual.");
+      setError("No tenés permiso para modificar este gasto mensual.");
       return;
     }
     if (esExpectativa && datos.hasta && datos.hasta <= datos.mes) {
@@ -67,11 +72,12 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
       let resultado;
       if (esCarga) resultado = await api.post("/gastos/", {
         institucion: institucion.id, concepto: concepto.id, area,
-        importe: datos.importe.replace(",", "."), periodo_economico: `${datos.mes}-01`,
+        importe: datos.importe.replace(",", "."), periodo_economico: `${datos.mes}-01`, aprobado,
         ...(tipo === "reemplazo" ? { reemplaza: fila.id } : {}),
       });
       if (tipo === "concepto") await api.post("/conceptos-gasto/", {
-        institucion: institucion.id, codigo: datos.codigo, nombre: datos.nombre, sensible: datos.sensible,
+        institucion: institucion.id, nombre: datos.nombre, sensible: datos.sensible,
+        ...(datos.codigo.trim() ? { codigo: datos.codigo.trim() } : {}),
       });
       if (esExpectativa) await api.post("/expectativas-gasto/", {
         institucion: institucion.id, concepto: tipo === "version" ? fila.concepto : concepto.id,
@@ -86,7 +92,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
       if (tipo === "aprobar") await api.post(`/gastos/${fila.id}/aprobar/`, {});
       if (tipo === "rechazar") await api.post(`/gastos/${fila.id}/rechazar/`, { motivo: datos.motivo });
       if (tipo === "ajuste") await api.post("/ajustes-gasto/", {
-        gasto: fila.id, importe: datos.importe.replace(",", "."), motivo: datos.motivo,
+        gasto: fila.id, importe: datos.importe.replace(",", "."), motivo: datos.motivo, aprobado,
       });
       await qc.invalidateQueries({ queryKey: ["finanzas"] });
       toast.ok(esCarga ? `Gasto #${resultado.id} registrado: ${resultado.estado === "aprobado" ? "aprobado" : "pendiente de aprobación"}.` : "Operación registrada.");
@@ -111,8 +117,11 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
       </div>}
       <fieldset disabled={guardando} className="space-y-4">
         {tipo === "concepto" && <>
-          <Field label="Código"><Input required maxLength={60} value={datos.codigo} onChange={(e) => set("codigo", e.target.value)} /></Field>
           <Field label="Nombre"><Input required maxLength={160} value={datos.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
+          <details className="rounded-md border border-borde p-3">
+            <summary className="cursor-pointer font-medium">Opciones avanzadas</summary>
+            <div className="mt-3"><Field label="Código de referencia (opcional)" hint="Se genera automáticamente si lo dejás vacío. Usá uno propio sólo si necesitás identificarlo con un código existente."><Input maxLength={60} value={datos.codigo} onChange={(e) => set("codigo", e.target.value)} /></Field></div>
+          </details>
           {permisos.permite(CONFIGURAR, null, true) && <Checkbox label="Concepto sensible" checked={datos.sensible} onChange={(e) => set("sensible", e.target.checked)} />}
         </>}
         {configuraAmbito && <>
@@ -125,10 +134,10 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
             <option value="">Elegí un concepto</option>
             {conceptos.filter((c) => c.activo && datos.area !== "" && permisos.permite(accion, area, c.sensible)).map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.sensible ? " · Sensible" : ""}</option>)}
           </Select></Field>
-          <Field label={esCarga ? "Período económico" : "Se espera desde"}><Input type="month" required value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>
+          <Field label={esCarga ? "Período económico" : "Vigente desde"}><Input type="month" required value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>
         </>}
         {tipo === "version" && <Field label="Aplicar el cambio desde"><Input type="month" required min={fila.vigente_desde.slice(0, 7)} value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>}
-        {esExpectativa && <Field label="Se deja de esperar desde (opcional)" hint="Fin exclusivo: ese mes ya no se incluye. Vacío significa sin fin declarado.">
+        {esExpectativa && <Field label="Vigente hasta (opcional)" hint="Fin exclusivo: ese mes ya no se incluye. Vacío significa sin fin declarado.">
           <Input type="month" value={datos.hasta} onChange={(e) => set("hasta", e.target.value)} />
         </Field>}
         {esExpectativa && <Field label="Monto de referencia mensual en ARS (opcional)" hint="Se compara con lo aprobado. Alcanzarlo no declara la carga completa ni aprueba gastos."><Input inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={datos.monto_referencia} onChange={(e) => set("monto_referencia", e.target.value)} /></Field>}
@@ -140,9 +149,10 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
           {Object.entries(ESTADOS_CARGA).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
         </Select></Field>}
       </fieldset>
-      {esCarga && datos.area !== "" && <div className="flex items-center gap-2"><p className="text-md text-texto-suave">{central ? "Tu carga quedará aprobada al registrarla." : "Tu carga quedará pendiente de aprobación central."}</p><AyudaFinanzas titulo="Qué registra este gasto"><p>Registrar un gasto no registra un pago ni asigna costos a pacientes.</p></AyudaFinanzas></div>}
+      {(esCarga || tipo === "ajuste") && <CampoAprobado puedeAprobar={puedeAprobar} aprobado={aprobado} onChange={setEleccionAprobado} disabled={guardando || incierto} />}
+      {esCarga && datos.area !== "" && <AyudaFinanzas titulo="Qué registra este gasto"><p>Registrar un gasto no registra un pago ni asigna costos a pacientes. Su aprobación se decide con el campo Aprobado.</p></AyudaFinanzas>}
       {tipo === "indicar" && <AyudaFinanzas titulo="Qué significa el estado de carga"><p>La indicación describe si el área terminó de informar los gastos de este concepto y mes. Los gastos pendientes conservan su aprobación separada. No verifica las atenciones ni habilita un reparto.</p></AyudaFinanzas>}
-      {esExpectativa && <AyudaFinanzas titulo="Cómo funciona el control mensual"><p>Indica qué concepto debe informar el área cada mes. Permite detectar un gasto olvidado aunque todavía no se haya registrado. No es una factura ni un importe automático. No necesitás configurarlo nuevamente cada mes.</p>{tipo === "version" && <p>Conserva concepto y área. Desde el inicio elegido se usará esta configuración; los meses anteriores y su historial no se borran. Si elegís el mismo inicio original, debés conservar su fin. No copia indicaciones de carga ni crea gastos o pagos.</p>}</AyudaFinanzas>}
+      {esExpectativa && <AyudaFinanzas titulo="Cómo funcionan los gastos mensuales"><p>La configuración indica qué concepto debe informar el área cada mes. Permite detectar un gasto olvidado aunque todavía no se haya registrado. No genera gastos, cuentas ni pagos automáticamente. No necesitás configurarlo nuevamente cada mes.</p>{tipo === "version" && <p>Conserva concepto y área. Desde el inicio elegido se usará esta configuración; los meses anteriores y su historial no se borran. Si elegís el mismo inicio original, debés conservar su fin. No copia indicaciones de carga ni crea gastos o pagos.</p>}</AyudaFinanzas>}
       {tipo === "aprobar" && <div className="flex items-center gap-2"><p className="text-md text-texto-suave">El gasto quedará aprobado.</p><AyudaFinanzas titulo="Después de aprobar"><p>Su importe original se conserva. Las correcciones posteriores se registran mediante ajustes.</p></AyudaFinanzas></div>}
       {error && <p role="alert" className="text-md text-danger">{error}</p>}
       <div className="flex justify-end gap-2 border-t border-division pt-4">

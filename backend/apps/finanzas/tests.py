@@ -973,6 +973,10 @@ class HechoCostoApiTests(APITestCase):
             todas_las_areas=True,
             permite_sensibles=True,
         )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia, accion=ConcesionFinanciera.Accion.APROBAR_COSTOS,
+            todas_las_areas=True, permite_sensibles=True,
+        )
         registrar_ajuste_costo(
             ImputacionCosto.objects.get(hecho=hecho, componente=componente),
             Decimal("-50.00"),
@@ -991,8 +995,10 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(response.data["faltantes"][-1]["motivo"], "fuentes_no_integradas")
         self.assertEqual(
             response.data["alcance"]["pendiente_de_integracion"],
-            ["gastos_compartidos", "otras_fuentes_de_costo"],
+            ["otras_fuentes_de_costo"],
         )
+        self.assertIn("gastos_compartidos_atribuidos", response.data["alcance"]["incluye"])
+        self.assertIn("gastos compartidos atribuidos", response.data["limite"])
         self.assertEqual(response.data["imputaciones"][0]["ajustes"][0]["importe"], "-50.00")
         self.assertEqual(response.data["imputaciones"][0]["unidad"], DefinicionComponente.Unidad.ATENCION)
         self.assertEqual(
@@ -2345,6 +2351,7 @@ class RepartoActividadTests(TestCase):
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
             ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
             ConcesionFinanciera.Accion.CORREGIR_GASTOS,
+            ConcesionFinanciera.Accion.APROBAR_GASTOS,
         ):
             ConcesionFinanciera.objects.create(
                 membresia=self.membresia, accion=accion, todas_las_areas=True,
@@ -2574,6 +2581,10 @@ class RepartoActividadConcurrentePostgreSQLTests(TransactionTestCase):
             ConcesionFinanciera.objects.create(
                 membresia=membresia, accion=accion, todas_las_areas=True,
             )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia, accion=ConcesionFinanciera.Accion.APROBAR_GASTOS,
+            todas_las_areas=True,
+        )
         concepto = ConceptoGasto.objects.create(
             institucion=institucion, codigo="LUZ-CONC", nombre="Electricidad",
         )

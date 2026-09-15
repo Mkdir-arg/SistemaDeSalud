@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { useLista } from "@/api/queries";
 import { api } from "@/api/client";
@@ -15,7 +15,10 @@ import FormularioReparto from "./FormularioReparto";
 import ResumenFinanzas, { ProcesamientoFinanzas } from "./ResumenFinanzas";
 import "./finanzas.css";
 import CostosAtencion, { ConfiguracionCostos } from "./CostosAtencion";
-import { AyudaFinanzas, FiltroColumna, FiltrosActivos, useFiltrosFinanzas } from "./ControlesFinanzas";
+import DineroFinanzas, { CrearCuentaPorPagar, DetalleCuenta } from "./DineroFinanzas";
+import ConfiguracionCobros from "./ConfiguracionCobros";
+import { DecisionAprobacion, EstadoAprobacion, TrazaAprobacion } from "./AprobacionFinanzas";
+import { AyudaFinanzas, FiltroColumna, FiltrosActivos, PanelFlotante, useFiltrosFinanzas } from "./ControlesFinanzas";
 
 const CONFIGURAR = "configurar_gastos_esperados";
 const CONFIGURAR_REPARTOS = "configurar_repartos";
@@ -115,7 +118,7 @@ function HistorialCarga({ fila, usuarioId, onClose }) {
     gcTime: 0,
   });
   return <Modal title={`Historial · ${fila.concepto_nombre}`} onClose={onClose} width={720}>
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Declaraciones de carga por mes · Control #{fila.id}</p></div><Badge tone="gray">Historial de carga</Badge></div>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Declaraciones de carga por mes · Gasto mensual #{fila.id}</p></div><Badge tone="gray">Historial de carga</Badge></div>
     <TablaFinanciera consulta={consulta} tabla={tabla} vacio={{ titulo: "Todavía no hay indicaciones" }} columnas={[
       { key: "periodo_economico", label: "Mes", render: (r) => r.periodo_economico.slice(0, 7) },
       { key: "estado", label: "Carga", render: (r) => <Estado valor={r.estado} calendario /> },
@@ -133,7 +136,7 @@ function VersionesEsperado({ fila, usuarioId, onClose, onHistorial }) {
     placeholderData: undefined, gcTime: 0,
   });
   return <Modal title={`Historial de configuración · ${fila.concepto_nombre}`} onClose={onClose} width={820}>
-    <div className="mb-4 flex items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Configuraciones del concepto y sus períodos de vigencia</p></div><AyudaFinanzas titulo="Vigencia del control mensual"><p>Cada modificación conserva la configuración anterior. La nueva configuración se usa desde su mes de inicio; el mes indicado como fin ya no se incluye. No necesitás crear una configuración nueva cada mes.</p><p>Los números identifican registros, no la cantidad de modificaciones. Sólo se muestran registros incluidos en tus permisos.</p></AyudaFinanzas></div>
+    <div className="mb-4 flex items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Configuraciones del concepto y sus períodos de vigencia</p></div><AyudaFinanzas titulo="Vigencia de gastos mensuales"><p>Cada modificación conserva la configuración anterior. La nueva configuración se usa desde su mes de inicio; el mes indicado como fin ya no se incluye. No necesitás crear una configuración nueva cada mes.</p><p>Los números identifican registros, no la cantidad de modificaciones. Sólo se muestran registros incluidos en tus permisos.</p></AyudaFinanzas></div>
     <TablaFinanciera consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
       { key: "id", label: "Referencia", render: (r) => <div>#{r.id}{r.reemplaza && <p className="text-sm text-texto-debil">Reemplaza #{r.reemplaza}</p>}</div> },
       { key: "vigente_desde", label: "Desde", render: (r) => r.vigente_desde.slice(0, 7) },
@@ -162,8 +165,9 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const mes = searchParams.get("mes") || mesActual();
   const area = searchParams.get("area") || "";
   const tabs = [
-    ...(permisos.tiene("ver_gastos") ? [{ key: "resumen", label: "Resumen" }, { key: "gastos", label: "Gastos registrados" }, { key: "calendario", label: "Control mensual" }, { key: "repartos", label: "Repartos" }] : []),
+    ...(permisos.tiene("ver_gastos") ? [{ key: "resumen", label: "Resumen" }, { key: "gastos", label: "Gastos registrados" }, { key: "calendario", label: "Gastos mensuales" }, { key: "repartos", label: "Repartos" }] : []),
     ...(permisos.tiene("ver_costos") ? [{ key: "costos", label: "Costos por atención" }] : []),
+    ...(permisos.tiene("ver_dinero") ? [{ key: "dinero", label: "Pagos y cobros" }] : []),
   ];
   const tab = tabs.some((t) => t.key === searchParams.get("tab")) ? searchParams.get("tab") : tabs[0]?.key;
   const filtrosCalendario = useFiltrosFinanzas("calendario", CAMPOS_CALENDARIO);
@@ -213,8 +217,29 @@ function ContenidoFinanzas({ institucion, permisos }) {
   });
   const catalogoListo = !areas.isLoading && !areas.error && !conceptos.isLoading && !conceptos.error;
   const abrir = (tipo, fila) => setModal({ tipo, fila });
+  const acciones = [
+    { tipo: "gasto", label: "Registrar gasto", tab: "gastos", permitida: permisos.tiene("registrar_gastos"), catalogo: true, primaria: true },
+    { tipo: "expectativa", label: "Agregar gasto mensual", tabs: ["gastos", "calendario"], permitida: permisos.tiene(CONFIGURAR), catalogo: true },
+    { tipo: "concepto", label: "Nuevo concepto", permitida: permisos.permite(CONFIGURAR, null) },
+    { tipo: "configuracion-repartos", label: "Configurar repartos", tab: "repartos", permitida: permisos.tiene(CONFIGURAR_REPARTOS), catalogo: true },
+    { tipo: "configuracion-costos", label: "Configurar costos por atención", tab: "costos", permitida: permisos.permite("configurar_componentes", null) },
+    { tipo: "configuracion-cobros", label: "Configurar cobros por atención", tab: "dinero", permitida: permisos.permite("configurar_cobros", null) },
+  ].filter((accion) => accion.permitida);
+  // Un operador sin lectura conserva sus acciones aunque no tenga pestañas.
+  const correspondeAlTab = (accion) => accion.tab === tab || accion.tabs?.includes(tab);
+  // Las acciones con catálogo usan conceptos de gasto (registro, mensual y reparto).
+  const usaConceptos = acciones.some((accion) => accion.catalogo && correspondeAlTab(accion));
+  const esContextual = (accion) => !tabs.length || correspondeAlTab(accion) || (accion.tipo === "concepto" && usaConceptos);
+  const otrasAcciones = acciones.filter((accion) => !esContextual(accion));
+  const botonAccion = (accion, secundaria = false) => <Button key={accion.tipo}
+    variant={secundaria ? "ghost" : accion.primaria ? "primary" : "secondary"}
+    className={secundaria ? "h-auto min-h-10 w-full justify-start py-2 text-left" : undefined}
+    disabled={permisos.isFetching || (accion.catalogo && !catalogoListo)}
+    onClick={() => abrir(accion.tipo)}>{accion.label}</Button>;
+  const abrirCuenta = (id) => setModal({ tipo: "cuenta-existente", id });
   const habilitada = (accion, fila) => !permisos.isFetching && permisos.permite(accion, fila.area, fila.sensible);
-  const areasVisibles = (areas.data || []).filter((a) => ["ver_costos", "ver_gastos", "registrar_gastos", CONFIGURAR, CONFIGURAR_REPARTOS].some((accion) => permisos.permite(accion, a.id)));
+  const areasVisibles = (areas.data || []).filter((a) => ["ver_costos", "ver_gastos", "registrar_gastos", "ver_dinero", "registrar_dinero", CONFIGURAR, CONFIGURAR_REPARTOS].some((accion) => permisos.permite(accion, a.id)));
+  const veInstitucional = permisos.permite(tab === "dinero" ? "ver_dinero" : "ver_gastos", null);
   function cambiarFiltro(campo, valor) {
     setSearchParams((previos) => {
       const siguientes = new URLSearchParams(previos);
@@ -273,7 +298,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     diferencia_referencia: rango("diferencia_referencia", "Diferencia (ARS)"),
   };
   const definicionesGastos = {
-    control_mensual: [{ key: "control_mensual", label: "Control mensual", opciones: [{ value: "true", label: "Sólo gastos esperados" }] }],
+    control_mensual: [{ key: "control_mensual", label: "Gastos mensuales", opciones: [{ value: "true", label: "Sólo gastos mensuales" }] }],
     concepto_nombre: [{ key: "concepto", label: "Concepto", opciones: opcionesConceptos }, { key: "id", label: "Número de gasto", type: "number", min: 1 }],
     importe: rango("importe", "Importe original (ARS)"),
     total_ajustes: rango("total_ajustes", "Ajustes (ARS)"),
@@ -297,10 +322,10 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const detalleReparto = (fila) => !fila.actualizando ? <DetalleRepartoDesplegable key={`${permisos.usuarioId}:${institucion.id}:${mes}:${area}`} abierto={expandido === fila.id}><DetalleAtribuciones fila={fila} usuarioId={permisos.usuarioId} institucionId={institucion.id} /></DetalleRepartoDesplegable> : null;
 
   const columnasCalendario = [
-    { key: "concepto_nombre", label: "Concepto esperado", orden: "concepto__nombre", render: (r) => <div><strong>{r.concepto_nombre}</strong>{r.sensible && <div className="text-sm text-texto-debil">Sensible</div>}</div> },
+    { key: "concepto_nombre", label: "Concepto mensual", orden: "concepto__nombre", render: (r) => <div><strong>{r.concepto_nombre}</strong>{r.sensible && <div className="text-sm text-texto-debil">Sensible</div>}</div> },
     { key: "area_nombre", label: "Área", orden: "area__nombre", render: (r) => r.area_nombre || INSTITUCIONAL },
     { key: "estado_carga", label: "Estado de carga", orden: "estado_carga", render: (r) => <div className="space-y-1"><Estado valor={r.estado_carga} calendario /><p className="text-sm text-texto-debil">{r.indicacion_id == null ? "Sin indicación registrada" : fechaHora(r.indicacion_registrada)}</p></div> },
-    { key: "gastos_pendientes", label: "Por aprobar", orden: "gastos_pendientes", render: (r) => <ConteoGastos cantidad={r.gastos_pendientes} onClick={() => verGastos(r, "pendiente_aprobacion")} /> },
+    { key: "gastos_pendientes", label: "Por aprobar", orden: "gastos_pendientes", render: (r) => <div className="space-y-1"><ConteoGastos cantidad={r.gastos_pendientes} onClick={() => verGastos(r, "pendiente_aprobacion")} />{r.ajustes_pendientes > 0 && <Button size="sm" variant="ghost" onClick={() => verGastos(r, "aprobado")}>{r.ajustes_pendientes} {r.ajustes_pendientes === 1 ? "ajuste" : "ajustes"} por aprobar</Button>}</div> },
     { key: "gastos_aprobados", label: "Aprobados", orden: "gastos_aprobados", render: (r) => <ConteoGastos cantidad={r.gastos_aprobados} onClick={() => verGastos(r, "aprobado")} /> },
     { key: "monto_referencia", label: "Referencia mensual", orden: "monto_referencia", render: (r) => <span className="whitespace-nowrap font-mono">{r.monto_referencia == null ? <span aria-label="Sin referencia">-</span> : importeARS(r.monto_referencia)}</span> },
     { key: "importe_aprobado", label: "Importe aprobado", orden: "importe_aprobado", render: (r) => <span className="whitespace-nowrap font-mono">{importeARS(r.importe_aprobado)}</span> },
@@ -321,6 +346,8 @@ function ContenidoFinanzas({ institucion, permisos }) {
       </>}
       {["pendiente_aprobacion", "rechazado"].includes(r.estado_operativo) && habilitada("registrar_gastos", r) && <Button size="sm" variant="ghost" disabled={!catalogoListo} onClick={() => abrir("reemplazo", r)}>Reemplazar</Button>}
       {r.estado_operativo === "aprobado" && habilitada("corregir_gastos", r) && <Button size="sm" variant="secondary" onClick={() => abrir("ajuste", r)}>Ajustar</Button>}
+      {r.cuenta_por_pagar != null && habilitada("ver_dinero", r) && <Button size="sm" variant="ghost" onClick={() => abrirCuenta(r.cuenta_por_pagar)}>Ver cuenta existente</Button>}
+      {r.cuenta_por_pagar == null && r.estado_operativo === "aprobado" && habilitada("registrar_dinero", r) && habilitada("ver_dinero", r) && <Button size="sm" variant="ghost" onClick={() => abrir("cuenta-pagar", r)}>Crear cuenta por pagar</Button>}
     </div> },
   ];
   const columnasRepartos = [
@@ -333,56 +360,62 @@ function ContenidoFinanzas({ institucion, permisos }) {
   ];
 
   return <div data-finance-tab={tab} className="finance-page flex min-h-full flex-col gap-5 p-lg sm:p-xxl">
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="text-xl font-bold">Finanzas y costos</h1>
-        <div className="mt-2 flex items-center gap-2"><p className="text-md text-texto-debil">Gastos registrados, su distribución y costos conocidos de {institucion.nombre}, según tu acceso.</p><AyudaFinanzas titulo="Qué información incluye Finanzas"><p>El administrador institucional puede consultar los gastos registrados de todas las áreas, incluidos los sensibles. Otros usuarios ven los alcances autorizados.</p><p>No existe todavía un cálculo integral del costo total del hospital. Los costos no registrados o no integrados no están incluidos, incluso para administración.</p><p>Aprobado es el gasto con sus ajustes. Distribuido y sin distribuir explican ese mismo aprobado: no son gastos adicionales.</p></AyudaFinanzas></div>
-      </div>
-      <div className="flex min-h-10 flex-wrap gap-2">
+    <div>
+      <div role="group" aria-label="Acciones de Finanzas" className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="flex min-h-10 items-center text-xl font-bold">Finanzas y costos</h1>
+      <div className="ml-auto flex max-w-full min-w-0 items-start gap-2">
+      <div className="flex min-h-10 min-w-0 flex-wrap justify-end gap-2">
         {(areas.isLoading || conceptos.isLoading) ? <span role="status" className="inline-flex h-10 items-center text-sm text-texto-debil">Preparando acciones…</span> : <>
-        {permisos.tiene("registrar_gastos") && <Button disabled={!catalogoListo || permisos.isFetching} onClick={() => abrir("gasto")}>Registrar gasto</Button>}
-        {permisos.tiene(CONFIGURAR) && <Button variant="secondary" disabled={!catalogoListo || permisos.isFetching} onClick={() => abrir("expectativa")}>Agregar gasto esperado</Button>}
-        {permisos.permite(CONFIGURAR, null) && <Button variant="ghost" onClick={() => abrir("concepto")}>Nuevo concepto</Button>}
-        {permisos.tiene(CONFIGURAR_REPARTOS) && <Button variant="secondary" disabled={!catalogoListo} onClick={() => abrir("configuracion-repartos")}>Configurar repartos</Button>}
-        {permisos.permite("configurar_componentes", null) && <Button variant="secondary" onClick={() => abrir("configuracion-costos")}>Configurar costos por atención</Button>}
+        {acciones.filter(esContextual).map((accion) => botonAccion(accion))}
         </>}
       </div>
+        {!areas.isLoading && !conceptos.isLoading && otrasAcciones.length > 0 && <PanelFlotante key={`${tab}:${modal?.tipo || ""}`} titulo="Acciones de finanzas" icono="list" botonPrincipal>
+          <div className="space-y-1">{otrasAcciones.map((accion) => botonAccion(accion, true))}</div>
+        </PanelFlotante>}
+      </div>
+      </div>
+      <div className="mt-2 flex items-center gap-2"><p className="text-md text-texto-debil">Gastos registrados, su distribución y costos conocidos de {institucion.nombre}, según tu acceso.</p><AyudaFinanzas titulo="Qué información incluye Finanzas"><p>El administrador institucional puede consultar los gastos registrados de todas las áreas, incluidos los sensibles. Otros usuarios ven los alcances autorizados.</p><p>No existe todavía un cálculo integral del costo total del hospital. Los costos no registrados o no integrados no están incluidos, incluso para administración.</p><p>Aprobado es el gasto con sus ajustes. Distribuido y sin distribuir explican ese mismo aprobado: no son gastos adicionales.</p></AyudaFinanzas></div>
     </div>
     <Card className="p-4">
       <div role="group" aria-label="Filtros y secciones de finanzas" className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
         <div className="w-[180px]"><Field label="Mes económico"><Input type="month" required value={mes} onChange={(e) => cambiarFiltro("mes", e.target.value)} /></Field></div>
         <div className="w-[210px] max-w-full"><Field label="Área"><Select value={area} onChange={(e) => cambiarFiltro("area", e.target.value)}>
-          <option value="">{permisos.permite("ver_gastos", null) ? "Todas las áreas e institucional" : "Todas mis áreas"}</option>
-          {permisos.permite("ver_gastos", null) && <option value="null">{INSTITUCIONAL}</option>}
+          <option value="">{veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"}</option>
+          {veInstitucional && <option value="null">{INSTITUCIONAL}</option>}
           {areasVisibles.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
         </Select></Field></div>
-        <AyudaFinanzas titulo="Carga, aprobación y reparto"><p>Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p><p>El control mensual indica qué conceptos debe informar el área cada mes. Marcar la carga completa no aprueba sus gastos ni verifica sus atenciones.</p></AyudaFinanzas>
+        <AyudaFinanzas titulo="Carga, aprobación y reparto"><p>Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p><p>La configuración de gastos mensuales indica qué conceptos debe informar el área cada mes. Marcar la carga completa no aprueba sus gastos ni verifica sus atenciones.</p></AyudaFinanzas>
         </div>
         {tabs.length > 0 && <Tabs className="max-w-full overflow-x-auto [&>button]:whitespace-nowrap [&>button]:px-2.5 [&>button]:text-sm" tabs={tabs} valor={tab} onChange={(valor) => cambiarFiltro("tab", valor)} />}
       </div>
-      {puedeLeer && tieneMes && <div className="mt-4 border-t border-division pt-3"><ProcesamientoFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} /></div>}
+      {puedeLeer && tieneMes && tab !== "dinero" && <div className="mt-4 border-t border-division pt-3"><ProcesamientoFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} /></div>}
     </Card>
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!tabs.length ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
       {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} />
         : tab === "costos" ? <CostosAtencion key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areas={areas.data || []} onGasto={permisos.tiene("ver_gastos") ? verGastoRelacionado : undefined} />
+        : tab === "dinero" ? <DineroFinanzas key={area} institucion={institucion} permisos={permisos} mes={mes} area={area} />
         : tab === "calendario"
-        ? <TablaFinanciera consulta={calendario} tabla={calendarioTabla} columnas={conFiltros(columnasCalendario, definicionesCalendario, filtrosCalendario)} barra={<><FiltrosActivos filtros={filtrosCalendario} definiciones={Object.values(definicionesCalendario).flat()} /><AyudaFinanzas titulo="Cómo leer el control mensual"><p>Las cantidades corresponden a gastos visibles y vigentes; no incluyen los reemplazados ni los aún no declarados. Podés abrir cada cantidad para revisar sus gastos.</p><p>La diferencia es referencia menos aprobado: positiva en verde, negativa en rojo y cero neutro. Verde no garantiza ahorro ni carga completa: pueden faltar cargas o aprobaciones. Un guion indica que no hay referencia, no que sea cero.</p><p>Modificar vigencia cambia desde cuándo se espera este concepto. No hace falta repetir esa configuración cada mes. Su historial se conserva.</p></AyudaFinanzas></>} vacio={{ titulo: "Sin gastos esperados para este mes y área", detalle: "Revisá los filtros aplicados. Sólo se muestran conceptos configurados." }} />
+        ? <TablaFinanciera consulta={calendario} tabla={calendarioTabla} columnas={conFiltros(columnasCalendario, definicionesCalendario, filtrosCalendario)} barra={<><FiltrosActivos filtros={filtrosCalendario} definiciones={Object.values(definicionesCalendario).flat()} /><AyudaFinanzas titulo="Cómo leer los gastos mensuales"><p>Las cantidades corresponden a gastos visibles y vigentes; no incluyen los reemplazados ni los aún no declarados. Podés abrir cada cantidad para revisar sus gastos.</p><p>Los ajustes por aprobar no modifican el importe aprobado; se revisan en el historial de cada gasto.</p><p>La diferencia es referencia menos aprobado: positiva en verde, negativa en rojo y cero neutro. Verde no garantiza ahorro ni carga completa: pueden faltar cargas o aprobaciones. Un guion indica que no hay referencia, no que sea cero.</p><p>Modificar vigencia cambia desde cuándo se espera este concepto. No hace falta repetir esa configuración cada mes. Su historial se conserva.</p></AyudaFinanzas></>} vacio={{ titulo: "Sin gastos mensuales para este mes y área", detalle: "Revisá los filtros aplicados. Sólo se muestran conceptos configurados." }} />
         : tab === "gastos"
           ? <TablaFinanciera consulta={gastos} tabla={gastosTabla} columnas={conFiltros(columnasGastos, definicionesGastos, filtrosGastos)} barra={<><FiltrosActivos filtros={filtrosGastos} definiciones={Object.values(definicionesGastos).flat()} />{["importe", "total_ajustes"].includes(gastosTabla.orden.replace(/^-/, "")) && <div className="flex flex-wrap items-center gap-2 text-sm"><span>Orden guardado: {gastosTabla.orden.includes("total_ajustes") ? "ajustes" : "importe original"} ({gastosTabla.orden.startsWith("-") ? "mayor a menor" : "menor a mayor"})</span><Button size="sm" variant="ghost" onClick={() => gastosTabla.ordenarPor("importe_resultante")}>Ordenar por importe vigente</Button></div>}<AyudaFinanzas titulo="Importes y correcciones"><p>El importe vigente es el original más sus ajustes. En Detalle podés ver el original, los ajustes y su historial. Un registro reemplazado conserva su historial, pero no se suma como gasto vigente.</p><p>Los enlaces de reemplazo permiten seguir cada corrección. Sólo ves gastos incluidos en tus permisos.</p></AyudaFinanzas></>} vacio={{ titulo: "Sin gastos visibles para este mes y área", detalle: "Revisá los filtros aplicados. Sólo se muestran registros incluidos en tus permisos." }} />
           : <TablaFinanciera consulta={repartos} tabla={repartosTabla} columnas={conFiltros(columnasRepartos, definicionesRepartos, filtrosRepartos)} detalleFila={detalleReparto} barra={<><FiltrosActivos filtros={filtrosRepartos} definiciones={Object.values(definicionesRepartos).flat()} /><Button size="sm" variant="ghost" onClick={() => abrir("historial-repartos")}>Ver historial</Button><AyudaFinanzas titulo="Cómo leer un reparto"><p>Actividad verificada significa que cada atención completada tiene su registro financiero correcto y que el área confirmó que registra aquí todas sus atenciones.</p><p>El importe de cada fila es el gasto aprobado con sus ajustes. “Atenciones” muestra cuántas lo comparten y permite revisar cada importe asignado.</p><p>Las versiones históricas se consultan por separado y no se suman al total actual. Un reparto no crea cargos ni pagos.</p></AyudaFinanzas></>} vacio={{ titulo: "Sin repartos para estos filtros", detalle: "Los gastos sin regla o cobertura aparecerán como pendientes después del procesamiento." }} />}
     </>}
     {modal?.tipo === "configuracion-costos" && <ConfiguracionCostos institucion={institucion} permisos={permisos} onClose={() => setModal(null)} />}
+    {modal?.tipo === "configuracion-cobros" && <ConfiguracionCobros institucion={institucion} permisos={permisos} onClose={() => setModal(null)} />}
+    {modal?.tipo === "cuenta-pagar" && <CrearCuentaPorPagar gasto={modal.fila} onClose={() => setModal(null)} onCreada={abrirCuenta} />}
+    {modal?.tipo === "cuenta-existente" && <DetalleCuenta key={modal.id} id={modal.id} institucion={institucion} permisos={permisos} onClose={() => setModal(null)} />}
     {modal?.tipo === "administrar-control" && <DetalleControlMensual fila={modal.fila} mes={mes} puedeConfigurar={habilitada(CONFIGURAR, modal.fila)} onAccion={(tipo) => abrir(tipo, modal.fila)} onClose={() => setModal(null)} />}
     {modal?.tipo === "historial" && <HistorialCarga fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} />}
     {modal?.tipo === "versiones" && <VersionesEsperado fila={modal.fila} usuarioId={permisos.usuarioId} onClose={() => setModal(null)} onHistorial={(fila) => abrir("historial", fila)} />}
-    {modal?.tipo === "detalle" && <DetalleGasto fila={modal.fila} onAbrir={verGastoRelacionado} onClose={() => setModal(null)} />}
-    {modal?.tipo === "detalle-remoto" && <DetalleGastoRemoto id={modal.id} usuarioId={permisos.usuarioId} institucionId={institucion.id} onAbrir={verGastoRelacionado} onClose={() => setModal(null)} />}
+    {modal?.tipo === "detalle" && <DetalleGasto fila={modal.fila} permisos={permisos} onAbrir={verGastoRelacionado} onClose={() => setModal(null)} />}
+    {modal?.tipo === "detalle-remoto" && <DetalleGastoRemoto id={modal.id} usuarioId={permisos.usuarioId} institucionId={institucion.id} permisos={permisos} onAbrir={verGastoRelacionado} onClose={() => setModal(null)} />}
     {modal?.tipo === "historial-repartos" && <HistorialRepartos institucion={institucion} area={area} mes={mes} usuarioId={permisos.usuarioId} columnas={columnasRepartos} detalleFila={detalleReparto} onClose={() => setModal(null)} />}
     {modal?.tipo === "configuracion-repartos" && <ConfiguracionRepartos institucion={institucion} usuarioId={permisos.usuarioId} onNuevo={(tipo) => abrir(tipo)} onCorregir={(tipo, fila) => abrir(tipo, fila)} onClose={() => setModal(null)} />}
     {["cobertura-reparto", "regla-reparto"].includes(modal?.tipo) && <FormularioReparto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
-    {modal && !["administrar-control", "configuracion-costos", "historial", "detalle", "detalle-remoto", "versiones", "historial-repartos", "configuracion-repartos", "cobertura-reparto", "regla-reparto"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
+    {modal && !["administrar-control", "configuracion-costos", "configuracion-cobros", "cuenta-pagar", "cuenta-existente", "historial", "detalle", "detalle-remoto", "versiones", "historial-repartos", "configuracion-repartos", "cobertura-reparto", "regla-reparto"].includes(modal.tipo) && <FormularioGasto {...modal} mes={mes} institucion={institucion} permisos={permisos} areas={areas.data || []} conceptos={conceptos.data || []} onClose={() => setModal(null)} />}
   </div>;
 }
 
@@ -454,18 +487,23 @@ function DetalleAtribuciones({ fila, usuarioId, institucionId }) {
   </section>;
 }
 
-function DetalleGasto({ fila, onClose, onAbrir }) {
+function DetalleGasto({ fila, permisos, onClose, onAbrir }) {
+  const qc = useQueryClient();
+  const [decision, setDecision] = useState(null);
+  async function guardado() { await qc.invalidateQueries({ queryKey: ["finanzas"] }); onClose(); }
+  const puedeAprobar = permisos && !permisos.isFetching && permisos.permite("aprobar_gastos", fila.area, fila.sensible);
+  if (decision) return <Modal title={`Ajuste del gasto #${fila.id}`} width={560}><DecisionAprobacion {...decision} onClose={() => setDecision(null)} onGuardado={guardado} /></Modal>;
   return <Modal title={`Gasto #${fila.id} · ${fila.concepto_nombre}`} onClose={onClose} width={680} footer={<Button variant="secondary" onClick={onClose}>Cerrar detalle</Button>}>
     <div className="space-y-6 text-md">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Mes económico · {fila.periodo_economico.slice(0, 7)}</p></div><Estado valor={fila.estado_operativo} /></div>
       {fila.reemplazado_por && <p className="border-l-2 border-badge-amber-fg pl-3 text-sm">Registro reemplazado: se conserva como historial, pero no se suma al gasto vigente.</p>}
       <section aria-label="Importe del gasto" className="rounded-md bg-superficie-2 p-4">
         <p className="text-sm text-texto-debil">Importe resultante</p><p className="mt-1 break-all text-cifra font-semibold tabular-nums">{importeARS(fila.importe_resultante)}</p>
-        <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-division pt-3"><div><dt className="text-sm text-texto-debil">Importe original</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.importe)}</dd></div><div><dt className="text-sm text-texto-debil">Ajustes</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.total_ajustes)}</dd></div></dl>
+        <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-division pt-3"><div><dt className="text-sm text-texto-debil">Importe original</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.importe)}</dd></div><div><dt className="text-sm text-texto-debil">Ajustes aprobados</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.total_ajustes)}</dd></div></dl><p className="mt-3 text-sm text-texto-debil">Los ajustes pendientes o rechazados se conservan en el historial y no se suman al importe resultante.</p>
       </section>
       {fila.motivo_rechazo && <section className="border-l-2 border-danger pl-3"><h3 className="font-semibold">Motivo de rechazo</h3><p className="mt-1">{fila.motivo_rechazo}</p></section>}
       <section><h3 className="mb-3 font-semibold">Ajustes del importe original</h3>
-        {!fila.ajustes.length ? <p className="text-sm text-texto-debil">Sin ajustes registrados.</p> : <ul className="divide-y divide-division">{fila.ajustes.map((a) => <li key={a.id} className="flex flex-wrap items-start justify-between gap-3 py-3"><div className="min-w-0 flex-1"><p className="break-words">{a.motivo}</p><p className="mt-1 text-sm text-texto-debil">{fechaHora(a.registrado)}</p></div><strong className="tabular-nums">{importeARS(a.importe)}</strong></li>)}</ul>}
+        {!fila.ajustes.length ? <p className="text-sm text-texto-debil">Sin ajustes registrados.</p> : <ul className="divide-y divide-division">{fila.ajustes.map((a) => <li key={a.id} className="space-y-3 py-3"><div className="flex flex-wrap justify-between gap-3"><p className="break-words">{a.motivo}</p><strong className="tabular-nums">{importeARS(a.importe)}</strong></div><EstadoAprobacion fila={a} /><TrazaAprobacion fila={a} />{puedeAprobar && a.estado === "pendiente_aprobacion" && <div className="flex gap-2"><Button size="sm" variant="secondary" onClick={() => setDecision({ titulo: `Aprobar ajuste #${a.id}`, url: `/ajustes-gasto/${a.id}/aprobar/` })}>Aprobar ajuste</Button><Button size="sm" variant="ghost" onClick={() => setDecision({ titulo: `Rechazar ajuste #${a.id}`, rechazar: true, url: `/ajustes-gasto/${a.id}/rechazar/` })}>Rechazar ajuste</Button></div>}</li>)}</ul>}
       </section>
       <section className="border-t border-division pt-4"><h3 className="mb-3 font-semibold">Registro y seguimiento</h3><dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-texto-debil">Registrado</dt><dd className="mt-1">{fechaHora(fila.registrado)}</dd></div>{fila.aprobado_en && <div><dt className="text-texto-debil">Aprobado</dt><dd className="mt-1">{fechaHora(fila.aprobado_en)}</dd></div>}</dl><div className="mt-3"><RelacionGasto fila={fila} onAbrir={onAbrir} /></div></section>
     </div>
@@ -473,14 +511,14 @@ function DetalleGasto({ fila, onClose, onAbrir }) {
 }
 
 function DetalleControlMensual({ fila, mes, puedeConfigurar, onAccion, onClose }) {
-  return <Modal title={`Control mensual · ${fila.concepto_nombre}`} onClose={onClose} width={680} footer={<Button variant="secondary" onClick={onClose}>Cerrar detalle</Button>}>
+  return <Modal title={`Gastos mensuales · ${fila.concepto_nombre}`} onClose={onClose} width={680} footer={<Button variant="secondary" onClick={onClose}>Cerrar detalle</Button>}>
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Mes económico · {mes}</p></div><Estado valor={fila.estado_carga} calendario /></div>
-      <section aria-label="Importes del control mensual" className="rounded-md bg-superficie-2 p-4">
+      <section aria-label="Importes de gastos mensuales" className="rounded-md bg-superficie-2 p-4">
         <p className="text-sm text-texto-debil">Gasto aprobado</p><p className="mt-1 break-all text-cifra font-semibold tabular-nums">{importeARS(fila.importe_aprobado)}</p>
         <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-division pt-3"><div><dt className="text-sm text-texto-debil">Monto de referencia</dt><dd className="mt-1 break-all tabular-nums">{fila.monto_referencia == null ? "No configurado" : importeARS(fila.monto_referencia)}</dd></div><div><dt className="flex items-center gap-2 text-sm text-texto-debil">Diferencia <AyudaFinanzas titulo="Cómo interpretar la diferencia"><p>Es la referencia menos lo aprobado, incluidos los ajustes. Es orientativa: el cierre de carga sigue siendo manual, incluso si la diferencia es cero.</p></AyudaFinanzas></dt><dd className="mt-1 break-all tabular-nums">{fila.diferencia_referencia == null ? "Sin referencia" : importeARS(fila.diferencia_referencia)}</dd></div></dl>
       </section>
-      {puedeConfigurar && <section><h3 className="mb-3 font-semibold">Gestionar este control</h3><div className="flex flex-wrap gap-2"><Button onClick={() => onAccion("indicar")}>Indicar estado de carga</Button><Button variant="secondary" onClick={() => onAccion("version")}>Modificar configuración y vigencia</Button></div></section>}
+      {puedeConfigurar && <section><h3 className="mb-3 font-semibold">Gestionar este gasto mensual</h3><div className="flex flex-wrap gap-2"><Button onClick={() => onAccion("indicar")}>Indicar estado de carga</Button><Button variant="secondary" onClick={() => onAccion("version")}>Modificar configuración y vigencia</Button></div></section>}
       <section className="border-t border-division pt-4"><h3 className="mb-2 font-semibold">Consultar historial</h3><div className="flex flex-wrap gap-2"><Button variant="ghost" onClick={() => onAccion("historial")}>Historial de carga</Button><Button variant="ghost" onClick={() => onAccion("versiones")}>Historial de configuración</Button></div></section>
     </div>
   </Modal>;
