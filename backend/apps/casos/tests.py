@@ -10,6 +10,7 @@ validación previa a publicar.
         └─ [default] → Espera(Sala) → Atención(evaluación) → Fin
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -20,6 +21,7 @@ from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
 from apps.instituciones.models import Area, Box, Grupo, Institucion
 from apps.registros.models import Ciudadano, EntradaHistoria
+from apps.finanzas.models import DefinicionComponente, HechoAtencionCosteable, ImputacionCosto, Prestacion, ValorComponente
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -143,6 +145,40 @@ class MotorTestCase(TestCase):
         entrada = EntradaHistoria.objects.get(caso=caso)
         self.assertFalse(entrada.firmada)
         self.assertEqual(entrada.matricula, "")
+        hecho = HechoAtencionCosteable.objects.get(caso=caso)
+        self.assertEqual(hecho.nodo, self.n_atencion)
+        self.assertEqual(hecho.ciudadano, self.ciudadano)
+        self.assertEqual(HechoAtencionCosteable.objects.filter(caso=caso).count(), 1)
+
+    def test_atencion_completada_intenta_el_costo_directo_sin_exigir_firma(self):
+        prestacion = Prestacion.objects.create(
+            institucion=self.inst,
+            nodo=self.n_atencion,
+            codigo="EVAL",
+            nombre="Evaluación inicial",
+        )
+        componente = DefinicionComponente.objects.create(
+            prestacion=prestacion,
+            codigo="BASE",
+            nombre="Costo directo",
+        )
+        ValorComponente.objects.create(
+            componente=componente,
+            importe=Decimal("1500.00"),
+            vigente_desde=timezone.now() - timedelta(days=1),
+        )
+        caso = self._hasta_atencion()
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            motor.avanzar(
+                caso,
+                {"titulo": "Evaluación", "contenido": "OK", "firmada": False},
+                autor=self._sin_legajo(),
+            )
+        hecho = HechoAtencionCosteable.objects.get(caso=caso)
+        self.assertFalse(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
+        self.assertEqual(len(callbacks), 1)
+        callbacks[0]()
+        self.assertTrue(ImputacionCosto.objects.filter(hecho=hecho, componente=componente).exists())
 
     def test_la_firma_asienta_la_matricula(self):
         """La matrícula queda como snapshot en la entrada (puede cambiar después)."""

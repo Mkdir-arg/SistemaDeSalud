@@ -25,6 +25,24 @@ from apps.flujos.views import (
     VersionFlujoViewSet,
 )
 from apps.formularios.views import CampoViewSet, FormularioViewSet
+from apps.finanzas.api_calendario import ExpectativaGastoViewSet
+from apps.finanzas.api_cobros import PoliticaCobroViewSet, PendienteCobroViewSet
+from apps.finanzas.api_dinero import ObligacionFinancieraViewSet, MovimientoDineroViewSet
+from apps.finanzas.api_reportes_dinero import ReporteDineroViewSet
+from apps.finanzas.api_auditoria import AccesoFinancieroViewSet
+from apps.finanzas.api_reportes import ReporteFinanzasViewSet, ProcesamientoFinanzasViewSet
+from apps.finanzas.api_repartos import CoberturaActividadViewSet, ReglaRepartoViewSet, RepartoGastoViewSet
+from apps.finanzas.views import (
+    AjusteCostoViewSet,
+    AjusteGastoViewSet,
+    ConceptoGastoViewSet,
+    ConcesionFinancieraViewSet,
+    DefinicionComponenteViewSet,
+    HechoAtencionCosteableViewSet,
+    GastoViewSet,
+    PrestacionViewSet,
+    ValorComponenteViewSet,
+)
 from apps.auditoria.views import AccesoClinicoViewSet
 from apps.red.views import RedViewSet, TrasladoViewSet
 from apps.farmacia.views import (
@@ -108,3 +126,26 @@ router.register("traslados", TrasladoViewSet, basename="traslado")
 # Auditoría de accesos a datos clínicos (Ley 26.529).
 router.register("accesos-clinicos", AccesoClinicoViewSet, basename="acceso-clinico")
 router.register("consentimientos", ConsentimientoDatosViewSet)
+
+# Finanzas: separado de la API clínica porque sus permisos son propios.
+router.register("obligaciones-financieras", ObligacionFinancieraViewSet, basename="obligacion-financiera")
+router.register("movimientos-dinero", MovimientoDineroViewSet, basename="movimiento-dinero")
+router.register("politicas-cobro", PoliticaCobroViewSet, basename="politica-cobro")
+router.register("pendientes-cobro", PendienteCobroViewSet, basename="pendiente-cobro")
+router.register("reportes-dinero", ReporteDineroViewSet, basename="reporte-dinero")
+router.register("accesos-financieros", AccesoFinancieroViewSet, basename="acceso-financiero")
+router.register("reportes-finanzas", ReporteFinanzasViewSet, basename="reporte-finanzas")
+router.register("procesamiento-finanzas", ProcesamientoFinanzasViewSet, basename="procesamiento-finanzas")
+router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-costo")
+router.register("concesiones-financieras", ConcesionFinancieraViewSet)
+router.register("prestaciones-costo", PrestacionViewSet)
+router.register("componentes-costo", DefinicionComponenteViewSet)
+router.register("conceptos-gasto", ConceptoGastoViewSet)
+router.register("valores-componentes", ValorComponenteViewSet)
+router.register("ajustes-costo", AjusteCostoViewSet, basename="ajuste-costo")
+router.register("gastos", GastoViewSet, basename="gasto")
+router.register("ajustes-gasto", AjusteGastoViewSet, basename="ajuste-gasto")
+router.register("expectativas-gasto", ExpectativaGastoViewSet, basename="expectativa-gasto")
+router.register("coberturas-actividad", CoberturaActividadViewSet, basename="cobertura-actividad")
+router.register("reglas-reparto", ReglaRepartoViewSet, basename="regla-reparto")
+router.register("repartos-gasto", RepartoGastoViewSet, basename="reparto-gasto")

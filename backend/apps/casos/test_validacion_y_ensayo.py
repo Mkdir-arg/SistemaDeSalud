@@ -11,8 +11,10 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
+from apps.accounts.models import Membresia, Usuario
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
+from apps.finanzas.models import HechoAtencionCosteable, PendienteCosteo
 from apps.instituciones.models import Area, Grupo, Institucion
 
 from . import motor
@@ -86,6 +88,36 @@ class SalidasAmbiguasTests(BaseFlujo):
 
         self.assertEqual(self._errores(), [])
         self.assertTrue(motor.puede_publicar(self.ver))
+
+
+class EnsayoSinCostoTests(BaseFlujo):
+    """El ensayo puede recorrer Atención sin persistir su hecho económico."""
+
+    def setUp(self):
+        super().setUp()
+        self.profesional = Usuario.objects.create_user("ensayo@cauce.local", "x")
+        membresia = Membresia.objects.create(
+            usuario=self.profesional,
+            institucion=self.inst,
+            rol=Membresia.Rol.MEDICO,
+        )
+        membresia.areas.add(self.area)
+        inicio = self._nodo(Nodo.Tipo.INICIO, "Inicio")
+        atencion = self._nodo(Nodo.Tipo.ATENCION, "Atender")
+        fin = self._nodo(Nodo.Tipo.FIN, "Fin")
+        self._unir(inicio, atencion)
+        self._unir(atencion, fin)
+
+    def test_el_ensayo_de_atencion_no_deja_hecho_ni_pendiente_financiero(self):
+        resultado = motor.ensayar(
+            self.ver,
+            [{"titulo": "Consulta de ensayo", "contenido": "Sin efecto", "firmada": False}],
+            autor=self.profesional,
+        )
+
+        self.assertTrue(resultado["termino"], resultado)
+        self.assertEqual(HechoAtencionCosteable.objects.count(), 0)
+        self.assertEqual(PendienteCosteo.objects.count(), 0)
 
 
 class GruposResponsablesTests(BaseFlujo):

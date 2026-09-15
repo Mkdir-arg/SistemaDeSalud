@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hospital General Los Aromos · guía de Finanzas y costos</title>
+<style>
+:root{color-scheme:light;font-family:Arial,Helvetica,sans-serif;color:#19313d;background:#eaf0f2;font-size:16px;line-height:1.5}
+*{box-sizing:border-box}body{margin:0;padding:28px 16px}main{max-width:930px;margin:auto;background:#fff;padding:42px 48px;box-shadow:0 4px 26px #19313d12;border-top:6px solid #23636b}
+h1{font-size:1.7rem;line-height:1.2;margin:0 0 16px;color:#164850}h2{font-size:1.18rem;line-height:1.3;margin:30px 0 12px;padding-top:14px;border-top:1px solid #ccdade;color:#164850}h3{font-size:1rem;margin:20px 0 8px}p{margin:10px 0}li{margin:8px 0}ol,ul{padding-left:24px}strong{font-weight:700}a{color:#14586d;text-decoration:underline;text-underline-offset:2px}a:focus-visible{outline:3px solid #ce8f28;outline-offset:3px}code{font-family:Consolas,monospace;font-size:.9em;overflow-wrap:anywhere}.notice{margin:18px 0;padding:12px 16px;background:#f9f4e9;border-left:4px solid #b8872e;font-size:.94rem}.table-wrap{overflow-x:auto;margin:16px 0}table{width:100%;border-collapse:collapse;font-size:.94rem;text-align:left}th,td{vertical-align:top;padding:9px 10px;border:1px solid #cfdbdf}thead th{background:#edf3f4;color:#164850}tbody th{font-weight:400}footer{margin-top:32px;padding-top:12px;border-top:1px solid #ccdade;font-size:.85rem;color:#45616b}
+@media(max-width:640px){body{padding:0}main{padding:24px 18px;box-shadow:none}h1{font-size:1.45rem}table{font-size:.88rem}th,td{padding:7px}}
+@page{size:A4;margin:15mm 14mm}
+@media print{:root{font-size:10pt;line-height:1.36;background:white;color:#111}body{padding:0}main{max-width:none;margin:0;padding:0;box-shadow:none;border:0}h1{font-size:19pt;color:#173e46}h2{font-size:13pt;margin-top:18pt;padding-top:9pt;break-after:avoid}h3{font-size:11pt;break-after:avoid}p{orphans:3;widows:3}li{margin:5pt 0;break-inside:avoid}thead{display:table-header-group}tr{break-inside:avoid}.table-wrap{overflow:visible}table{font-size:9.3pt}th,td{padding:5pt 6pt}.notice{font-size:9.5pt;break-inside:avoid}a{color:inherit;text-decoration:underline}footer{font-size:8pt}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<main>
+<h1>Hospital General Los Aromos · guía de presentación</h1>
+<p>Finanzas y costos · 15 de septiembre de 2026 · recorrido de 25–30 minutos.</p>
+<p>Institución, personas, proveedores e historia completamente ficticios. Es una muestra de actividad de tres servicios, no un censo de toda la operación hospitalaria. Los importes son ejemplos verosímiles, no información de un hospital real ni referencias de precios de mercado.</p>
+<aside class="notice">Las cifras e identificadores describen la carga inicial del escenario del 15/09/2026. El recorrido principal sólo consulta. Si después registrás o aprobás operaciones, los importes cambian y el historial permite explicar por qué.</aside>
+<h2>Antes de empezar · 2 minutos</h2>
+<p>Abrí <a href="http://localhost:8090">localhost:8090</a>. Ingresá con <strong>Elena Rivas</strong>, <code>elena.rivas@losaromos.test</code>, y comprobá que diga <strong>Hospital General Los Aromos</strong>. Usá la contraseña de <code>acceso-local.txt</code>, entregado por separado junto con la demo; no está en este documento.</p>
+<p>Elena tiene administración institucional —incluido acceso clínico por ese rol— y permisos financieros explícitos; no es superusuaria ni un perfil limitado sólo a finanzas. Paula Benítez carga información sin aprobarla. Los perfiles clínicos son Lucía Ferreyra (Clínica médica), Andrés Molina (Cardiología) y Valeria Costa (Diagnóstico por imágenes), sin permisos financieros. Mateo Salvatierra es el perfil de configuración. Para mantener a Elena abierta y entrar con un médico, usá otro perfil del navegador o una ventana privada. Dos pestañas o ventanas normales del mismo perfil comparten la sesión; si no la separás, cerrá sesión antes de cambiar de usuario.</p>
+<p>Abrí <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=resumen">Finanzas y costos · septiembre</a>, elegí <strong>Todas las áreas e institucional</strong> y cerrá filtros o ventanas que hayan quedado del ensayo. El recorrido principal sólo consulta: no requiere guardar, aprobar, rechazar ni cambiar configuraciones.</p>
+<p>También podés entrar desde la tarjeta <strong>Finanzas y costos</strong> de <strong>Inicio</strong>; se muestra sólo cuando el perfil tiene acceso financiero. Las acciones superiores cambian con la pestaña: <strong>Registrar gasto</strong> y <strong>Agregar gasto mensual</strong> en <strong>Gastos registrados</strong>; <strong>Agregar gasto mensual</strong> también en <strong>Gastos mensuales</strong>; configuración de costos en <strong>Costos por atención</strong>, de repartos en <strong>Repartos</strong> y de cobros en <strong>Pagos y cobros</strong>. <strong>Nuevo concepto</strong> aparece junto a las acciones relacionadas con conceptos, si tenés permiso. El botón con icono <strong>Acciones de finanzas</strong>, al extremo derecho de la cabecera, reúne las demás acciones permitidas.</p>
+<p><strong>Frase de apertura:</strong> “Vamos a seguir qué gastos conocemos, cómo se relacionan con las atenciones y qué se pagó o cobró realmente. Son preguntas diferentes.”</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Lo que mostramos</th><th scope="col">Qué significa</th><th scope="col">Qué no significa</th></tr></thead><tbody>
+<tr><th scope="row">Gasto aprobado</th><td>Gasto registrado más sus ajustes aprobados</td><td>Que ya esté pagado</td></tr>
+<tr><th scope="row">Costo directo</th><td>Componentes configurados para una atención</td><td>Precio que debe pagar el paciente</td></tr>
+<tr><th scope="row">Reparto</th><td>Parte de un gasto compartido asignada a atenciones</td><td>Otro gasto que deba sumarse al original</td></tr>
+<tr><th scope="row">Arancel y cuenta</th><td>Valor administrativo y obligación de pagar o cobrar</td><td>Dinero ya ingresado o salido</td></tr>
+<tr><th scope="row">Pago o cobro confirmado</th><td>Movimiento aprobado, con fecha efectiva</td><td>Saldo bancario o rentabilidad</td></tr>
+</tbody></table></div>
+<h2>1. Mostrar el valor de los reportes · 4 minutos</h2>
+<p><strong>Pantalla:</strong> <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=resumen">Resumen · septiembre</a>.</p>
+<ol>
+<li>Señalá <strong>Gastos aprobados</strong>, <strong>Por aprobar</strong>, <strong>Distribuido entre atenciones</strong> y <strong>Sin distribuir</strong>. “Distribuido + sin distribuir explican el aprobado; no son otros gastos”. Los ajustes por aprobar se informan aparte y todavía no cambian los importes.</li>
+<li>En <strong>Barras</strong>, seleccioná una categoría para abrir los gastos que explican el número. Volvé a Resumen; cambiá a <strong>Listado</strong> si querés leer cifras exactas.</li>
+<li>Abrí <strong>Evolución mensual</strong>, elegí <strong>12 meses</strong> y dejá <strong>Completos y provisionales</strong>. Compará octubre de 2025 a septiembre de 2026; destacá un concepto y probá <strong>Comparar con referencias</strong>.</li>
+<li>Mostrá septiembre como mes en curso. Luego abrí <a href="http://localhost:8090/finanzas?mes=2026-08&amp;tab=resumen">agosto</a> para contrastar un mes anterior; al terminar volvé a septiembre.</li>
+</ol>
+<p><strong>Qué decir:</strong> “Una baja en septiembre no demuestra ahorro: todavía está abierto. Los puntos provisionales también pueden indicar cargas o aprobaciones pendientes. Comparamos pesos de cada mes, sin ajustar por inflación.”</p>
+<p><strong>Resultado esperado:</strong> septiembre muestra <strong>$750.000 aprobados</strong>, <strong>$45.000 por aprobar</strong>, <strong>$750.000 distribuidos</strong> y <strong>$0 sin distribuir</strong>, más un ajuste por aprobar informado por separado. Los gráficos llevan a sus registros; el estado de completitud acompaña al importe. Una referencia es orientativa, no gasto ejecutado ni presupuesto aprobado. Sin carga no equivale a cero.</p>
+<h2>2. Explicar carga, revisión e historia · 4 minutos</h2>
+<p><strong>Pantallas:</strong> <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=gastos&amp;area=1">Gastos registrados · Clínica médica</a> y <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=calendario&amp;area=1">Gastos mensuales · Clínica médica</a>.</p>
+<ol>
+<li>Filtrá <strong>Clínica médica</strong> y buscá <strong>Electricidad</strong> de septiembre, gasto <strong>#100</strong>. Abrí <strong>Detalle</strong>: gasto aprobado de <strong>$120.000</strong> y ajuste de <strong>−$10.000 pendiente de aprobación</strong>. El importe vigente aprobado sigue siendo <strong>$120.000</strong>.</li>
+<li>Señalá el original, estado, motivo e historial. No apruebes el ajuste durante el recorrido principal. Las correcciones conservan el registro original; un reemplazado no se suma como otro gasto vigente.</li>
+<li>Cerrá el detalle y usá <strong>Ver cuenta existente</strong> en esa fila para anticipar la relación con pagos. Volvé al listado; no intentes crear otra cuenta para ese gasto.</li>
+<li>En <strong>Gastos mensuales</strong>, mostrale al público qué conceptos debe informar cada área, referencia y estado de carga. Esta configuración fija la obligación de informar; no genera gastos, cuentas ni pagos automáticamente. Abrí el detalle de un concepto y su historial si necesitás explicar una vigencia.</li>
+</ol>
+<p><strong>Qué decir:</strong> “Cargar, aprobar y declarar la carga completa son decisiones diferentes. Que referencia menos aprobado dé positivo no garantiza ahorro: puede faltar información.”</p>
+<p><strong>Resultado esperado:</strong> el ajuste pendiente aparece como pendiente, sin restar $10.000 al confirmado. Declarar completa una carga no aprueba sus gastos ni verifica todas las atenciones.</p>
+<h2>3. Mostrar qué se configura una vez · 4 minutos</h2>
+<p><strong>Pantalla:</strong> acciones superiores de la pestaña correspondiente o <strong>Acciones de finanzas</strong>, junto al título. Sólo abrí y cerrá; no guardes cambios.</p>
+<ul>
+<li><strong>Agregar gasto mensual:</strong> mostrará área, concepto, vigencia y referencia opcional. Explicá que la obligación de informar se mantiene durante su vigencia; no hace falta configurarla todos los meses. No genera gastos, cuentas ni pagos automáticamente. Cerrá sin guardar.</li>
+<li><strong>Configurar costos por atención:</strong> elegí una <strong>Atención configurada</strong>, un componente y sus <strong>Valores y vigencias</strong>. “Esto determina lo que contamos una vez al completar una atención; no cobra dinero”. Las versiones conservan historia; un cambio no reescribe silenciosamente los costos ya registrados.</li>
+<li><strong>Configurar cobros por atención:</strong> mostrá una política con arancel y responsable. Las políticas de este escenario generan cargos; una cuenta sin movimientos no es una atención gratuita. “El costo interno y el arancel no son lo mismo, y el paciente no es automáticamente quien paga”. Para explicar la alternativa sin cargo, abrí <strong>Cambiar para futuras atenciones</strong>, mostrale el selector <strong>¿Esta atención se cobra? → No: atención sin cobro</strong> y volvé <strong>sin guardar</strong>. Los cambios rigen para futuras atenciones, no generan cargos retrospectivos.</li>
+<li><strong>Configurar repartos:</strong> mostrá <strong>Áreas verificadas</strong> y <strong>Reglas activas</strong>. Una regla indica qué concepto se distribuye; la verificación confirma el registro financiero y la declaración de cobertura de actividad del área.</li>
+</ul>
+<p><strong>Códigos de referencia:</strong> en nuevos conceptos, prestaciones y componentes se generan automáticamente. Si necesitás uno propio, está en <strong>Opciones avanzadas</strong>. Los códigos existentes se conservan; los números de factura o comprobante siguen siendo referencias externas que se cargan manualmente. No crees registros sólo para mostrarlo.</p>
+<p><strong>Permisos:</strong> las acciones visibles dependen del perfil, área y sensibilidad. Registrar no concede aprobar, y consultar finanzas no concede acceso clínico. En <strong>Administración → Usuarios → Editar usuario</strong>, la sección <strong>Permisos financieros</strong> está debajo de <strong>Membresías</strong>, plegada inicialmente. Al desplegarla, muestra hasta tres columnas según el espacio disponible, con los permisos existentes marcados y sus alcances disponibles para consultar. Plegarla no descarta cambios sin guardar. Las lecturas heredadas del administrador se identifican como <strong>Por rol</strong> y no se revocan desde ese checklist. <strong>Guardar permisos financieros</strong> es independiente de guardar los datos generales del usuario. No cambies permisos para demostrarlo.</p>
+<h2>4. Seguir una atención hasta sus costos y repartos · 5 minutos</h2>
+<p><strong>Pantallas:</strong> <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=costos&amp;area=2">Costos por atención · Cardiología</a> y <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=repartos&amp;area=2">Repartos · Cardiología</a>.</p>
+<ol>
+<li>En <strong>Costos por atención</strong>, elegí septiembre y Cardiología. Escribí <strong>167</strong> en <strong>Número de caso</strong>: corresponde a <strong>Clara Benítez</strong>, atendida el 10 de septiembre.</li>
+<li>Abrí <strong>Ver composición</strong>. Mostrá <strong>Componentes directos</strong> por <strong>$23.500</strong> —trabajo profesional $22.000 e insumos $1.500— y <strong>Gastos compartidos atribuidos</strong> por <strong>$92.500</strong> —electricidad $32.500, limpieza $42.500 y mantenimiento $17.500—. Revisá <strong>Alcance y pendientes</strong>. No sumes el total del gasto original otra vez a todas las atenciones que lo comparten.</li>
+<li>Anotá el número de un gasto compartido —por ejemplo, <strong>#103</strong>—, cerrá la composición y buscalo en <strong>Gastos registrados</strong> para mostrar su origen. Después abrí <strong>Repartos</strong>: desplegá <strong>Ver … atenciones</strong> en un reparto distribuido y mostrales los importes asignados.</li>
+<li>Usá <strong>Ver historial</strong> sólo para explicar versiones. Las versiones antiguas no se suman al resultado actual. Si aparece <strong>Actualización pendiente</strong>, esperá la actualización; no describas la distribución anterior como vigente.</li>
+<li>Si querés mostrar el lado clínico, abrí el <a href="http://localhost:8090/casos/167">caso #167</a> con Andrés Molina en una sesión separada. Mirá una atención ya completada; no hace falta completar otra. El registro financiero deriva de la atención completada, sin nuevas preguntas económicas al profesional.</li>
+</ol>
+<p><strong>Ejemplo de información incompleta:</strong> Diagnóstico por imágenes, <strong>caso #170</strong>, Beatriz Correa, atendida el 14 de septiembre. Tiene un componente sin valor y el responsable del cobro por completar. Mostrá los pendientes sin resolverlos durante el recorrido; no son cero ni deuda atribuida a Beatriz.</p>
+<p><strong>Qué decir:</strong> “Directos completos significa completos para los componentes configurados. No promete el costo total del paciente ni del hospital. Un reparto distribuye costo interno: no crea una cuenta por cobrar ni un pago.”</p>
+<p><strong>Resultado esperado:</strong> se puede ir de atención a composición y de reparto a fuente, conservando el alcance de cada número. Un faltante se ve como pendiente, no como costo cero.</p>
+<h2>5. Cerrar el circuito con pagos y cobros · 6 minutos</h2>
+<p><strong>Pantalla:</strong> <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=dinero">Pagos y cobros · septiembre</a>. Volvé a <strong>Todas las áreas e institucional</strong>.</p>
+<h3>A. Una cuenta por pagar, sin confundir gasto con dinero</h3>
+<p>Abrí <strong>Ver cuenta</strong> en la cuenta <strong>#266</strong>, electricidad de Clínica médica. La contraparte es <strong>Cooperativa Eléctrica del Bosque</strong> y el gasto de origen es <strong>#100</strong>. La tabla muestra la contraparte y el número de cuenta, no el concepto del gasto; usá esos datos para identificarla.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Dato de la cuenta de septiembre</th><th scope="col">Importe inicial</th></tr></thead><tbody>
+<tr><th scope="row">Importe actual de la cuenta</th><td>$120.000</td></tr>
+<tr><th scope="row">Pagado neto confirmado</th><td>$60.000</td></tr>
+<tr><th scope="row">Pago por aprobar</th><td>$20.000</td></tr>
+<tr><th scope="row">Pendiente confirmado</th><td>$60.000</td></tr>
+<tr><th scope="row">Disponible para registrar otro pago</th><td>$40.000</td></tr>
+</tbody></table></div>
+<p><strong>Qué decir:</strong> “Todavía debemos $60.000. Hay $20.000 cargados que esperan aprobación; no los damos por pagados, pero los reservamos para no cargarlos dos veces. Por eso puedo registrar otros $40.000.”</p>
+<p>Mostrá el movimiento pendiente y sus acciones <strong>Aprobar movimiento</strong> / <strong>Rechazar movimiento</strong>, sin ejecutarlas. Abrí <strong>Registrar pago</strong> para mostrar el campo <strong>Aprobado</strong>, marcado de entrada para Elena; desmarcarlo deja el registro pendiente. Cerrá sin guardar. Un perfil sin permiso de aprobación registra pendiente aunque normalmente la carga venga aprobada.</p>
+<h3>B. Un cargo por cobrar con responsable explícito</h3>
+<p>Abrí la cuenta <strong>#269</strong>, vinculada a la atención de Clara Benítez. La responsable explícita es <strong>Mutual del Valle</strong>, no Clara. El nombre mostrado en el listado es el de la mutual.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Dato de la cuenta de Cardiología</th><th scope="col">Importe inicial</th></tr></thead><tbody>
+<tr><th scope="row">Importe actual de la cuenta</th><td>$45.000</td></tr>
+<tr><th scope="row">Cobrado neto confirmado</th><td>$15.000</td></tr>
+<tr><th scope="row">Cobro por aprobar</th><td>$10.000</td></tr>
+<tr><th scope="row">Pendiente confirmado</th><td>$30.000</td></tr>
+<tr><th scope="row">Disponible para registrar otro cobro</th><td>$20.000</td></tr>
+</tbody></table></div>
+<p>Abajo, en <strong>Cobros por completar</strong>, mostrá una atención con arancel o responsable faltante. Abrí <strong>Completar cobro</strong> y cerrá sin guardar. “Primero se completa la información administrativa para crear la cuenta; eso todavía no registra un cobro”. Este bloque incluye todos los meses del área seleccionada.</p>
+<h3>C. Dos fechas que responden preguntas distintas</h3>
+<ol>
+<li>Cambiá el <strong>Mes económico</strong> a agosto. En la cuenta <strong>#247</strong>, electricidad de Clínica médica, mostrará <strong>$110.000</strong>, pagados con <strong>$50.000 en agosto</strong> y <strong>$60.000 en septiembre</strong>.</li>
+<li>Dejá <strong>Mes de pagos y cobros</strong> en septiembre y abrí <strong>Ver movimientos del período</strong>. El pago de $60.000 aparece en septiembre aunque su cuenta sea de agosto.</li>
+<li>Señalá <strong>Cobros netos $150.000</strong>, <strong>Pagos netos $610.000</strong> y <strong>Diferencia del período −$460.000</strong>. Abrí <strong>Ver importes originales y devoluciones</strong>: hay <strong>$155.000 de cobros originales</strong> y <strong>$5.000 devueltos</strong>; por eso el cobro neto es $150.000.</li>
+</ol>
+<p><strong>Qué decir:</strong> “Una cosa es a qué mes corresponde el gasto o cargo; otra, cuándo entró o salió el dinero. Esta diferencia no es caja disponible ni ganancia”. No hay anticipos, excedentes ni movimientos sin cuenta vinculada en este alcance.</p>
+<p><strong>Devoluciones, si surge la pregunta:</strong> abrí la <strong>cuenta #264</strong>, de la atención de Daniel Peralta. Tenía un cargo de <strong>$30.000</strong>; la devolución de <strong>$5.000</strong> con reducción dejó cuenta y cobrado neto en <strong>$25.000</strong>, sin pendiente. Mostrá el historial, no crees otra devolución. Las devoluciones se vinculan a un movimiento aprobado y muestran su efecto antes de confirmar. Pueden mantener la cuenta o acompañar su reducción; una reducción anterior se vincula sin descontarla por segunda vez. No modifican automáticamente el gasto original ni los costos.</p>
+<h2>6. Cierre · 2 minutos</h2>
+<p>Volvé a <a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=resumen">Resumen · septiembre</a>, con todas las áreas.</p>
+<p><strong>Frase de cierre:</strong> “Podemos explicar los gastos y sus pendientes, distribuir lo que corresponde, conocer componentes del costo de atención y seguir cuentas y dinero por separado, con historia y permisos. Donde falta información, el sistema lo muestra: no inventa una cifra”.</p>
+<p>Antes de presentar, comprobá que puedas explicar dos casos: por qué un pago pendiente no baja todavía la deuda y por qué el reparto no se suma al gasto original. Si algo no coincide, revisá mes, área, filtros, perfil e historial antes de cargar de nuevo.</p>
+<h2>Acciones opcionales de ensayo</h2>
+<p>No son necesarias para recorrer el módulo. Las cifras anteriores describen la carga inicial; después de guardar una acción, dejá de presentarlas como estado inicial. No vuelvas a sembrar o borrar datos para repetir el ensayo.</p>
+<p><strong>Sin cambios — explorar una carga:</strong> en la cuenta de Clara, abrí <strong>Registrar cobro</strong>, ingresá <code>5000</code> en <strong>Importe en ARS</strong>, desmarcá <strong>Aprobado</strong> y leé la explicación. Cerrá sin confirmar. Los valores siguen en $15.000 confirmados, $10.000 por aprobar, $30.000 pendientes y $20.000 disponibles.</p>
+<p><strong>Con cambio — aprobar una sola vez el pago existente de $20.000:</strong> en la cuenta de electricidad de septiembre, verificá que ese movimiento siga pendiente. Pulsá <strong>Aprobar movimiento</strong> y <strong>Confirmar aprobación</strong>. El pagado neto pasa a <strong>$80.000</strong>, el pendiente a <strong>$40.000</strong>, la reserva queda en <strong>$0</strong> y el disponible sigue en <strong>$40.000</strong>. El gasto sigue en <strong>$120.000</strong>; su ajuste de −$10.000 continúa pendiente. En el resumen de dinero de septiembre, los pagos netos pasan a <strong>$630.000</strong> y la diferencia a <strong>−$480.000</strong>. Esta acción conserva historial y no se deshace desmarcando una casilla. Si ya fue aprobada, sólo explicá su historial; no crees otro pago para repetirla.</p>
+<p>Si una confirmación demora o se pierde la respuesta, revisá el historial antes de volver a cargar. No recargues ni cierres un formulario incierto para recrear la misma operación a ciegas.</p>
+<h2>Ficha de casos y comprobación inicial</h2>
+<p>Identificadores y cifras de la carga inicial, contrastados con el manifiesto del escenario. Al abrir un enlace, comprobá mes y área antes de leer los importes.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Caso a mostrar</th><th scope="col">Dónde localizarlo</th><th scope="col">Clave para explicarlo</th></tr></thead><tbody>
+<tr><th scope="row">Electricidad, Clínica médica, septiembre</th><td><a href="http://localhost:8090/finanzas?mes=2026-09&amp;tab=gastos&amp;area=1&amp;gastos_f_id=100">Gasto #100</a> · cuenta #266</td><td>Aprobado $120.000, pago pendiente $20.000 y ajuste de gasto pendiente −$10.000 son estados distintos</td></tr>
+<tr><th scope="row">Electricidad, Clínica médica, agosto</th><td><a href="http://localhost:8090/finanzas?mes=2026-08&amp;tab=gastos&amp;area=1&amp;gastos_f_id=91">Gasto #91</a> · cuenta #247</td><td>Cuenta de agosto con un pago de $60.000 efectuado en septiembre</td></tr>
+<tr><th scope="row">Clara Benítez, Cardiología, 10/09</th><td>Caso y atención financiera #167 · cuenta #269</td><td>Costo directo $23.500, compartido $92.500 y arancel $45.000; quien paga es Mutual del Valle</td></tr>
+<tr><th scope="row">Daniel Peralta, Clínica médica</th><td>Caso y atención financiera #165 · cuenta #264</td><td>Cargo original $30.000; devolución con reducción de $5.000; cuenta y cobrado neto $25.000</td></tr>
+<tr><th scope="row">Beatriz Correa, Imágenes, 14/09</th><td>Caso y atención financiera #170</td><td>Falta un valor de costo y definir al responsable del cobro; no inventar datos ni asignar deuda al paciente</td></tr>
+</tbody></table></div>
+<p>En el estado inicial, septiembre tiene <strong>7 atenciones financieras</strong>. La historia preparada abarca octubre de 2025 a septiembre de 2026. Los totales esperados de esta guía son de septiembre con todas las áreas, salvo indicación expresa.</p>
+<p><strong>Documento imprimible:</strong> abrí <code>guia-los-aromos.html</code> en el navegador y usá <strong>Ctrl+P</strong>; puede guardarse como PDF. No necesita otro servidor.</p>
+<footer>Guía de presentación · escenario ficticio · 15/09/2026. Los importes esperados corresponden al estado inicial; las operaciones posteriores conservan su propio historial.</footer>
+</main>
+</body>
+</html>

@@ -150,7 +150,13 @@ class LatidoTests(APITestCase):
         nadie lo note, que es exactamente lo que este archivo existe para
         evitar.
         """
-        for servicio in ("correr_tiempos", "recordar_turnos", "alertar_saturacion", "respaldar"):
+        for servicio in (
+            "correr_tiempos",
+            "procesar_costos",
+            "recordar_turnos",
+            "alertar_saturacion",
+            "respaldar",
+        ):
             with self.subTest(servicio=servicio):
                 self.assertIn(servicio, latidos.ESPERADOS)
 

@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/api/client";
-import { useAccion, useLista } from "@/api/queries";
+import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { useAuth } from "@/auth/AuthContext";
+import { EditorPermisosFinancieros } from "../finanzas/EditorPermisosFinancieros";
 import { Icon } from "@/components/icons";
-import { Avatar, Badge, Button, Card, ConfirmDialog, Field, Input, Modal, Select } from "@/components/ui";
+import { Avatar, Badge, Button, Card, ConfirmDialog, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { plural } from "@/lib/format";
@@ -20,7 +22,9 @@ const ROLES = [
 
 export default function Usuarios() {
   const { institucion } = useInstitucion();
+  const { user } = useAuth();
   const [editando, setEditando] = useState(null);
+  const ambito = `${user?.id}:${institucion?.id}`;
 
   /*
    * Las personas salen de las membresías de ESTA institución.
@@ -70,9 +74,11 @@ export default function Usuarios() {
               {plural(filas.length, "persona con acceso", "personas con acceso")} al sistema
             </div>
           </div>
+          <div className="flex flex-wrap gap-2">
           <Button onClick={() => setEditando({})} className="flex items-center gap-2">
             <Icon name="plus" size={15} /> Crear usuario
           </Button>
+          </div>
         </div>
 
         {membresias.error ? (
@@ -131,14 +137,15 @@ export default function Usuarios() {
         )}
       </Card>
 
-      {editando && <UsuarioModal usuario={editando} onClose={() => setEditando(null)} />}
+      {editando && <UsuarioModal key={`${ambito}:${editando.id || "nuevo"}`} usuario={editando} onClose={() => setEditando(null)} />}
     </div>
   );
 }
 
 function UsuarioModal({ usuario, onClose }) {
   const toast = useToast();
-  const { institucion } = useInstitucion();
+  const { institucion, puedeVer } = useInstitucion();
+  const { user } = useAuth();
   const esNuevo = !usuario.id;
   const [form, setForm] = useState({
     email: usuario.email || "",
@@ -150,7 +157,20 @@ function UsuarioModal({ usuario, onClose }) {
   });
   const [nuevaMemb, setNuevaMemb] = useState({ institucion: "", rol: "administrativo" });
   const [aQuitar, setAQuitar] = useState(null);
+  const [permisosGuardando, setPermisosGuardando] = useState(false);
+  const [detalleAplicado, setDetalleAplicado] = useState(esNuevo);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const detalle = useDetalle("usuarios", usuario.id, { gcTime: 0, refetchOnWindowFocus: false });
+  useEffect(() => {
+    if (!esNuevo && detalle.data && !detalleAplicado) {
+      // La fila sólo trae nombre_completo. No separar apellidos por espacios
+      // ni guardar nombres vacíos: el detalle es la fuente del formulario.
+      setForm((anterior) => ({ ...anterior, email: detalle.data.email,
+        nombre: detalle.data.nombre, apellido: detalle.data.apellido,
+        is_active: detalle.data.is_active }));
+      setDetalleAplicado(true);
+    }
+  }, [esNuevo, detalle.data, detalleAplicado]);
 
   const instituciones = useLista("instituciones", { pageSize: 100 });
   const membresias = useLista("membresias", { usuario: usuario.id }, { enabled: !!usuario.id });
@@ -198,28 +218,34 @@ function UsuarioModal({ usuario, onClose }) {
   return (
     <Modal
       title={esNuevo ? "Nuevo usuario" : "Editar usuario"}
-      width={520}
-      onClose={onClose}
+      width={esNuevo ? 520 : 1040}
+      onClose={() => { if (!permisosGuardando) onClose(); }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !form.email || !form.nombre} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "Guardando…" : "Guardar"}
+          <Button variant="secondary" disabled={permisosGuardando} onClick={onClose}>Cerrar</Button>
+          <Button disabled={guardar.isPending || permisosGuardando || !detalleAplicado || !form.email || !form.nombre} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "Guardando…" : esNuevo ? "Guardar" : "Guardar datos personales"}
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-3.5">
+      {!detalleAplicado ? detalle.error
+        ? <EstadoError error={detalle.error} onReintentar={detalle.refetch} />
+        : <Spinner label="Consultando datos del usuario…" />
+        : <div className="flex flex-col gap-3.5">
         <Field label="Email *">
           <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} autoFocus />
         </Field>
-        <div className="flex gap-3">
+        <div className={`grid items-end gap-3 ${esNuevo ? "sm:grid-cols-2" : "md:grid-cols-3"}`}>
           <Field label="Nombre *"><Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
           <Field label="Apellido"><Input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
+          {!esNuevo && <Field label="Nueva contraseña (dejar vacío para no cambiar)">
+            <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} />
+          </Field>}
         </div>
-        <Field label={esNuevo ? "Contraseña" : "Nueva contraseña (dejar vacío para no cambiar)"}>
+        {esNuevo && <Field label="Contraseña">
           <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} />
-        </Field>
+        </Field>}
         {/* Al crear no se elige institución: entra en esta, la del contexto. Lo
             único que falta decidir es con qué rol. */}
         {esNuevo && (
@@ -246,6 +272,7 @@ function UsuarioModal({ usuario, onClose }) {
                 <div key={m.id} className="flex items-center justify-between gap-3 text-base">
                   <span>{nombreInst(m.institucion)} · <strong>{m.rol_display}</strong></span>
                   <button
+                    disabled={permisosGuardando}
                     onClick={() => setAQuitar(m)}
                     className="rounded-md px-2 py-0.5 text-sm font-semibold text-danger hover:bg-badge-error-bg"
                   >
@@ -272,7 +299,7 @@ function UsuarioModal({ usuario, onClose }) {
               <Button
                 variant="secondary"
                 onClick={() => agregar.mutate()}
-                disabled={agregar.isPending || !institucionElegida}
+                disabled={agregar.isPending || permisosGuardando || !institucionElegida}
                 className="whitespace-nowrap"
               >
                 {agregar.isPending ? "…" : "+ Agregar"}
@@ -280,7 +307,12 @@ function UsuarioModal({ usuario, onClose }) {
             </div>
           </div>
         )}
-      </div>
+        {!esNuevo && puedeVer("config_institucional") && (membresias.error
+          ? <EstadoError error={membresias.error} onReintentar={membresias.refetch} />
+          : membresias.isLoading ? <Spinner label="Consultando membresías…" />
+            : <EditorPermisosFinancieros institucion={institucion} usuarioId={user.id}
+              membresias={membresias.filas} onBusyChange={setPermisosGuardando} plegable />)}
+      </div>}
 
       {/* Quitar una membresía deja a la persona sin acceso: se pregunta. */}
       {aQuitar && (

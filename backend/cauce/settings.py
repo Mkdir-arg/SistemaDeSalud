@@ -158,6 +158,7 @@ INSTALLED_APPS = [
     "apps.registros",
     "apps.agenda",
     "apps.farmacia",
+    "apps.finanzas",
     "apps.red",
     "apps.auditoria",
     "apps.fhir",
@@ -294,6 +295,7 @@ devuelve el CapabilityStatement y se sirve sin credenciales.
         "EstadoCasoEnum": "apps.casos.models.ESTADOS_CASO",
         "EstadoVersionEnum": "apps.flujos.models.ESTADOS_VERSION",
         "EstadoInstitucionEnum": "apps.instituciones.models.ESTADOS_INSTITUCION",
+        "EstadoAprobacionFinancieraEnum": "apps.finanzas.models.EstadoAprobacion",
     },
     "TAGS": [
         {"name": "casos", "description": "Casos, su operación y la cola de espera."},

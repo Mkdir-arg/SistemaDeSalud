@@ -15,6 +15,8 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // La demo financiera aislada usa su propia configuración y credenciales.
+  testIgnore: ["**/finanzas-feedback.spec.js", "**/finanzas-ui.spec.js"],
   // Los tests operan sobre la MISMA base de datos: llamar a un paciente cambia
   // la fila que ve otro test. Se corren en serie a propósito.
   workers: 1,

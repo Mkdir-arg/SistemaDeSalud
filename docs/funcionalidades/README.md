@@ -16,6 +16,7 @@ No reemplaza los documentos de capacitacion, marca, capturas o handoff visual ya
 - [Agenda y turnos programados](agenda-turnos/README.md)
 - [Internacion y camas](internacion-camas/README.md)
 - [Farmacia e insumos](farmacia-insumos/README.md)
+- [Finanzas y costos](finanzas-costos/README.md)
 - [Red estatal y traslados](red-traslados/README.md)
 - [Registros clinicos e historia clinica](registros-clinicos/README.md)
 - [Auditoria, consentimiento e integridad](auditoria-consentimiento/README.md)

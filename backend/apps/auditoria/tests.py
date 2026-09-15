@@ -417,15 +417,24 @@ class CoberturaTests(AuditoriaTestCase):
     def test_todo_recurso_clinico_esta_auditado(self):
         """
         Agregar un recurso que expone la historia de alguien SIN auditarlo deja
-        un camino por el que se puede leer sin dejar rastro. Los que declaran
-        `protege_lectura` son exactamente los recursos clínicos.
+        un camino por el que se puede leer sin dejar rastro. La bandera de
+        lectura protegida incluye también configuración no clínica; los costos
+        de pacientes usan permisos propios pero igualmente deben auditarse.
         """
         from apps.auditoria.mixins import AuditaLecturaClinica
+        from apps.finanzas.views import ConcesionFinancieraViewSet, HechoAtencionCosteableViewSet
         from cauce.api import router
 
+        # `protege_lectura` no implica datos de pacientes: las concesiones son
+        # configuración de permisos. Excepción puntual, no de toda Finanzas.
+        # El detalle de costos SÍ habla de pacientes, aunque usa permisos
+        # financieros propios en lugar de la bandera clínica heredada.
         sin_auditar = [
             prefijo for prefijo, viewset, _ in router.registry
-            if getattr(viewset, "protege_lectura", False)
+            if (
+                (getattr(viewset, "protege_lectura", False) and viewset is not ConcesionFinancieraViewSet)
+                or viewset is HechoAtencionCosteableViewSet
+            )
             and not issubclass(viewset, AuditaLecturaClinica)
         ]
         self.assertEqual(

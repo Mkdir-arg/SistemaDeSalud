@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { api } from "@/api/client";
+import { usePermisosFinanzas } from "@/api/finanzas";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { Badge, Card, Spinner } from "@/components/ui";
@@ -41,6 +42,7 @@ const ACENTO = {
 
 export default function Inicio() {
   const { institucion, puedeVer } = useInstitucion();
+  const permisosFinanzas = usePermisosFinanzas();
   // Sub-recurso, no un detalle: `useDetalle` arma `/recurso/{id}/` y acá hace falta
   // `/instituciones/{id}/metricas/`.
   const { data, isLoading, error, refetch } = useQuery({
@@ -52,6 +54,9 @@ export default function Inicio() {
   if (!institucion) return <Spinner />;
 
   const secciones = SECCIONES.filter((s) => puedeVer(s.cap));
+  if (!permisosFinanzas.isLoading && !permisosFinanzas.error && permisosFinanzas.acceso) {
+    secciones.push({ label: "Finanzas y costos", hint: "Gastos, costos por atención, pagos y cobros", icon: "activity", to: "/finanzas", cat: "estado" });
+  }
   const metricas = [
     { n: data?.areas, l: "Áreas" },
     { n: data?.subareas, l: "Sub-áreas" },
