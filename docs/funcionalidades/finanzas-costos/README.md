@@ -4,6 +4,50 @@
 
 Permite registrar y revisar gastos del hospital, controlar la carga mensual y distribuir gastos aprobados entre las atenciones elegibles del área. Los valores de costo no crean cargos al paciente ni pagos.
 
+**Cierre posterior a la demo del 15/09/2026:** ver el [estado, revisión y continuidad del módulo](estado-post-demo-2026-09-15.md). Esa síntesis distingue lo entregado de las limitaciones y de la nueva prioridad: cobros a pacientes, conexión con obras sociales e ingreso de sus usuarios. El feedback adicional de interfaz queda diferido por pedido del usuario.
+
+### Pagos y cobros — lote #38 activo en la demo
+
+**Estado al 15/09/2026:** las correcciones de la revisión están integradas en el worktree `sistemadesalud-finanzas-costos` y activadas en localhost:8090. El usuario autorizó sustituir los datos anteriores por el escenario ficticio Hospital General Los Aromos. La [guía de presentación](guia-los-aromos.md) explica el recorrido y sus cifras iniciales; también hay una [versión imprimible](guia-los-aromos.html).
+
+**Seguridad de la sustitución:** antes de retirar los datos anteriores se respaldaron código, configuración, base y adjuntos. La restauración PostgreSQL 16 reprodujo las huellas de 84 tablas y 36.086 filas. La carga nueva tiene usuarios, concesiones financieras explícitas, cuentas y movimientos sintéticos; no provienen de personas reales. La siembra no modifica las reglas del sistema: prepara los perfiles del escenario sobre el esquema ya migrado. El incremento de código sí incluye las migraciones financieras 0022–0024 y las reglas de aprobación autorizadas. Los detalles históricos de validación y recuperación están en el [plan de la demo](../../plans/2026-09-15-demo-los-aromos-design.md); el estado de publicación se registra en el [cierre post-demo](estado-post-demo-2026-09-15.md).
+
+La pestaña **Pagos y cobros** separa lo que corresponde pagar/cobrar del dinero efectivamente registrado. No ejecuta transferencias ni conecta bancos. Tres datos centrales: importe de la cuenta, pagado/cobrado neto y pendiente.
+
+1. **Desde un gasto aprobado**, crear explícitamente su cuenta por pagar e identificar al proveedor o responsable. Esto no vuelve a sumar el gasto ni registra dinero. Los gastos anteriores no se convierten automáticamente en deuda.
+2. **Para atenciones**, configurar expresamente si se cobran, su arancel y quién debe pagar. Arancel y costo interno son distintos. La regla se aplica a nuevas atenciones; cada cambio conserva la versión anterior. El paciente no se convierte automáticamente en pagador. Si falta arancel o responsable, aparece en **Cobros por completar**, sin crear deuda ni pedir datos nuevos al profesional.
+3. **Abrir la cuenta**, registrar importe, fecha real y referencia del pago/cobro realizado. Se permiten varios parciales, sólo hasta el pendiente. Una cuenta de 100 y un pago de 30 dejan 70 pendientes.
+4. **Para devolver dinero**, elegir el movimiento original, importe y motivo. Indicar si se mantiene lo que corresponde pagar/cobrar, si se reduce, o si esa reducción ya se registró. Ver el resultado antes de confirmar. Cargo de 100 cobrado completo: devolver 30 manteniendo la cuenta deja 30 pendientes; reducir la cuenta a 70 y devolver 30 deja cero. Las reducciones existentes se vinculan sin repetirse.
+5. **Consultar el dinero por fecha real** y abrir sus movimientos, incluso si la cuenta es de otro mes económico. Se muestran importes originales, devoluciones y netos. Cobros netos menos pagos netos no es saldo disponible, rentabilidad ni costo hospitalario.
+
+Reducir o cancelar una cuenta no devuelve dinero por sí solo. Una devolución no modifica automáticamente gastos, costos clínicos, repartos ni stock. Si cuenta y gasto difieren, se muestra un aviso para revisión explícita. No hay borrado o edición de originales.
+
+Permisos nuevos: `ver_dinero`, `registrar_dinero`, `corregir_dinero` y `configurar_cobros`, usando institución, área y sensibilidad. No se otorgan automáticamente, tampoco por ser administrador institucional. Configurar cobros permite identificar prestaciones, no leer sus componentes/valores de costo ni modificarlos. Operar desde pantalla requiere también lectura de dinero del mismo alcance.
+
+### Aprobación simple de gastos y dinero
+
+«Aprobado» comienza marcado si la persona tiene el permiso de aprobación en esa área y nivel de sensibilidad. En un gasto nuevo se determina después de elegir área y concepto. Puede desmarcarlo. Sin ese permiso queda pendiente; ser administración central no aprueba por sí solo. Gastos y sus ajustes usan `aprobar_gastos`; dinero y reducciones, `aprobar_dinero`; ajustes de costo, `aprobar_costos`. Los permisos se administran en Administración → Usuarios → Editar usuario → Permisos financieros; el escenario nuevo los concede explícitamente a sus perfiles ficticios.
+
+| Registro de pago30 sobre cuenta100 | Pagado confirmado | Pendiente de la cuenta | Por aprobar | Disponible para otro pago |
+| --- | --- | --- | --- | --- |
+| Pendiente de aprobación | 0 | 100 | 30 | 70 |
+| Aprobado | 30 | 70 | 0 | 70 |
+| Rechazado | 0 | 100 | 0 | 100 |
+
+Los pendientes se muestran aparte y reservan sus límites: no vuelven a sumarse como pagado/cobrado ni permiten registrar dos veces el mismo pendiente. Rechazarlos libera la reserva y conserva motivo, autoría e historia. Aprobar/rechazar se hace desde el detalle; una devolución con reducción conjunta tiene una sola decisión. Un registro ya aprobado no se desmarca retroactivamente: se corrige con el movimiento o ajuste correspondiente.
+
+Los ajustes de gasto/costo pendientes o rechazados no afectan importes confirmados ni repartos. Los ajustes históricos mantienen el efecto que ya tenían, sin inventar un aprobador. Resumen, Gastos mensuales y Evolución muestran la cantidad de ajustes de gasto por aprobar separada de los importes: una corrección pendiente no se suma ni se resta del confirmado. Revisá y decidí cada corrección desde su historial. La configuración y los costos automáticos al completar atención no agregan otra aprobación manual.
+
+Las operaciones monetarias llevan una clave de reintento. Ante respuesta incierta, reintentar el mismo formulario conserva esa clave, también al actualizar la vista previa o volver a datos ya enviados. Cambiar el contenido económico representa otra intención. No cerrar y recrear una operación incierta sin consultar primero su historial. La devolución confirma la versión previsualizada: si otra persona cambió la cuenta, debe actualizarse la vista previa. Las respuestas monetarias se auditan; si falla la auditoría de una operación, ésta no se guarda.
+
+Desde un gasto con cuenta y permiso de lectura de dinero se puede abrir esa cuenta; no se ofrece crear una segunda. Las reservas sin pendientes se resumen para priorizar las acciones. Una reducción preexistente conserva su aprobación aunque se vincule después una devolución pendiente; sólo una reducción creada junto a esa devolución comparte su decisión.
+
+Desactivar una prestación del catálogo de costos no suspende por sí solo su cobro: en Configuración de cobros indicá que no se cobra. Esa suspensión está disponible aunque la prestación se encuentre inactiva y sólo afecta futuras atenciones.
+
+**Límites:** sin anticipos, sobrepagos, movimientos libres, cajas/cuentas, obras sociales, facturación fiscal, conciliación bancaria ni generación retrospectiva automática de cargos. Una captura fallida puede recuperarse administrativamente desde el hecho de atención durable, incluso si no llegó a crearse su registro de captura. Se conserva la configuración aplicable a la fecha de atención y repetir la recuperación no duplica el cargo. El usuario confirmó que no hay históricos productivos que requieran distinguirse de estas capturas: no se agregó una migración ni un proceso de reconstrucción masiva. Las cuentas conservan referencia de atención aunque ésta no tenga paciente identificado; el pagador sigue siendo explícito e independiente.
+
+API del lote: `obligaciones-financieras`, `movimientos-dinero`, `politicas-cobro`, `pendientes-cobro` y `reportes-dinero`. Diseño, condiciones de activación y pruebas: [plan del lote de dinero](../../plans/2026-09-14-dinero-demo-design.md).
+
 ## Quién usa cada parte
 
 - El personal administrativo carga gastos en las áreas autorizadas.
@@ -14,7 +58,7 @@ Permite registrar y revisar gastos del hospital, controlar la carga mensual y di
 
 El administrador de la institución tiene por defecto lectura de costos y gastos, incluidos los sensibles, **sólo dentro de su institución**. Es quien autoriza qué otras personas pueden acceder a información sensible. No recibe por eso todas las acciones de carga, aprobación o configuración: esas acciones se otorgan explícitamente. Una persona de contabilidad puede tenerlas sin convertirse en administradora ni obtener permisos clínicos.
 
-En **Permisos financieros** se eligen una o varias acciones, las áreas y si se incluyen datos sensibles. Las acciones seleccionadas se otorgan juntas: si alguna no es válida, no se aplica ninguna. Las ya existentes se ven atenuadas y deshabilitadas con “Ya otorgado”; se editan por separado para no ampliar permisos accidentalmente. Al editar se muestra el formulario en lugar de dejarlo al final del listado.
+En **Editar usuario → Permisos financieros** se eligen las acciones; las existentes aparecen marcadas y cada una conserva sus áreas y alcance sensible. La sección es plegable y usa hasta tres columnas independientes. **Guardar permisos financieros** guarda el bloque separado de los datos personales: si alguna acción no es válida, no se aplica ninguna modificación; si otro administrador cambió los permisos, se exige volver a consultarlos. Las lecturas heredadas del administrador se identifican como **Por rol** y no son revocables desde estas casillas. Ya no existe el botón ni el modal global anterior.
 
 Para consultar el resumen de verificación de actividad se necesitan **ambos permisos: configurar repartos y consultar gastos**, en la misma institución y área. Configurar por sí solo no permite consultar totales. Los importes sensibles requieren que ambos permisos los habiliten; de lo contrario, no se incluyen en el resumen general. Cada consulta autorizada queda registrada en auditoría. Si no se puede guardar ese registro, el resumen no se entrega y se informa que hay que reintentar.
 
@@ -29,7 +73,9 @@ Para consultar el resumen de verificación de actividad se necesitan **ambos per
 
 La firma posterior de la atención no duplica su registro financiero. Un costo directo completo sólo cubre los componentes configurados; no implica que se conozca el costo total del paciente o del hospital.
 
-## Control mensual
+## Gastos mensuales
+
+Es el nombre visible que reemplaza «Control mensual» y «Gastos esperados». Las claves de API, modelos y permisos históricos conservan sus nombres técnicos por compatibilidad; no son dos funcionalidades distintas.
 
 Es una lista de comprobación de los gastos que un área espera cargar cada mes durante una vigencia. Por ejemplo: electricidad de Consultorios desde septiembre. Sirve para detectar lo que todavía falta, incluso cuando nadie cargó una factura. Los conceptos disponibles salen del catálogo de gastos de la institución seleccionada; configurar este control no crea conceptos ni facturas.
 
@@ -41,7 +87,7 @@ El **monto de referencia** es opcional. Permite comparar lo esperado con el impo
 
 Puede haber carga completa y gastos todavía pendientes de aprobación. Actualmente el estado de carga no es un requisito automático del reparto.
 
-**Configurar control mensual** establece lo que se espera. El lápiz de cada fila reúne la edición de vigencia y los historiales. Una nueva versión modifica esa configuración conservando la anterior; no se usa para cargar la próxima factura ni se necesita una versión nueva cada mes. Las correcciones conservan concepto y área.
+**Agregar gasto mensual** establece lo que se espera. El lápiz de cada fila reúne la edición de vigencia y los historiales. Una nueva versión modifica esa configuración conservando la anterior; no se usa para cargar la próxima factura ni se necesita una versión nueva cada mes. Las correcciones conservan concepto y área.
 
 Los conteos **Por aprobar** y **Aprobados** abren los gastos correspondientes al mismo concepto, área y mes. No cuentan cargas reemplazadas.
 
@@ -126,28 +172,30 @@ En **Repartos → Ver atenciones**, el detalle abre y cierra gradualmente (sin a
 - Las ayudas (?) se abren con mouse, teclado o toque sin desplazar los datos.
 - Importes, diferencias y causas de bloqueo permanecen visibles cuando son necesarios para decidir.
 - **Gastos registrados** muestra el importe vigente. El original, los ajustes y sus motivos se consultan en **Detalle**. Un gasto reemplazado sigue identificado como no vigente; su historial no desaparece. Los filtros de enlaces antiguos siguen visibles y se pueden quitar aunque su columna ya no esté en la lista.
-- En **Control mensual**, **-** indica que no hay referencia. La diferencia es referencia menos aprobado: positiva en verde, negativa en rojo y cero neutro, siempre con su importe y signo. Estar por debajo de la referencia no garantiza ahorro ni carga completa: todavía pueden faltar cargas o aprobaciones.
+- En **Gastos mensuales**, **-** indica que no hay referencia. La diferencia es referencia menos aprobado: positiva en verde, negativa en rojo y cero neutro, siempre con su importe y signo. Estar por debajo de la referencia no garantiza ahorro ni carga completa: todavía pueden faltar cargas o aprobaciones.
 - **Institucional — sin área asignada** identifica gastos del hospital completo. No equivale a todas las áreas ni distribuye automáticamente el importe entre ellas.
 
 ## Pantallas y límites
 
-### Evolución de los gastos esperados
+### Acciones, referencias y vigencias
 
-En **Resumen → Evolución mensual**, junto a **Barras / Dos niveles / Listado**, se consultan 6 o 12 meses hasta el mes económico seleccionado. Es una vista alternativa, no una tarjeta adicional debajo. Sigue disponible aunque no haya gastos en el mes final. “Gastos fijos” se interpreta aquí como los conceptos configurados en **Control mensual**; no se agrega otra clasificación.
+Inicio ofrece un acceso rápido a Finanzas según permisos efectivos. En Finanzas, los botones principales dependen de la pestaña; **Acciones de finanzas**, siempre a la derecha, conserva las demás acciones autorizadas. **Agregar gasto mensual** está disponible fuera del menú en Gastos registrados y Gastos mensuales. **Nuevo concepto** acompaña las acciones relacionadas con conceptos cuando la persona puede configurarlos. Ocultar una acción por pestaña no concede ni revoca permisos.
 
-#### Histórico de prueba disponible en la demo 8090
+Los códigos internos de conceptos, prestaciones y componentes se generan automáticamente si se omiten al crear. Una referencia manual sigue siendo opcional para una necesidad de identificación propia; los códigos existentes no se reemplazan silenciosamente al editar.
+
+En costos por atención, los valores actuales se destacan; los futuros se identifican y los históricos se atenúan sin ocultarse. Preparar un cambio de valor recupera el importe anterior, incluido cero, y propone hoy como «Vigente desde». Una vigencia futura no invalida anticipadamente la actual y una edición no reescribe el histórico.
+
+### Evolución de los gastos mensuales
+
+En **Resumen → Evolución mensual**, junto a **Barras / Dos niveles / Listado**, se consultan 6 o 12 meses hasta el mes económico seleccionado. Es una vista alternativa, no una tarjeta adicional debajo. Sigue disponible aunque no haya gastos en el mes final. “Gastos fijos” se interpreta aquí como los conceptos configurados en **Gastos mensuales**; no se agrega otra clasificación.
+
+#### Histórico actual y pruebas de interfaz
 
 El recorrido autenticado `frontend/e2e/finanzas-feedback.spec.js` requiere `FINANZAS_DEMO_PASSWORD` en el entorno local. No guardar la clave en código ni documentación. Su configuración es `playwright.finanzas.config.js`; no confundirlo con `playwright.finanzas-ui.config.js`, cuya suite usa respuestas HTTP simuladas y no requiere credenciales ni escribe datos en la demo. El recorrido autenticado conserva expectativas de una versión anterior de la interfaz y debe revisarse antes de usarlo como evidencia actual.
 
-Seleccioná **Hospital Demo Finanzas**, área **Consultorio escuela**, mes **septiembre de 2026**, y abrí **Resumen → Evolución mensual → 12 meses**. Se muestran todos los conceptos visibles juntos, incluidos **Demo histórico · Electricidad / Limpieza / Mantenimiento**. Desde **Conceptos** podés buscar y elegir cuáles comparar.
+Seleccioná **Hospital General Los Aromos**, mes **septiembre de 2026**, y abrí **Resumen → Evolución mensual → 12 meses**. La [guía actual](guia-los-aromos.md) describe las áreas, gastos, atenciones, repartos y movimientos ficticios de octubre de 2025 a septiembre de 2026. Sus cifras son las iniciales de la carga: pueden variar con los ejercicios del usuario.
 
-- Octubre de 2025 a septiembre de 2026: 36 gastos aprobados y uno pendiente, identificados por esos conceptos; no son gastos reales del hospital.
-- Electricidad tiene subas y bajas; **Comparar con referencias** permite ver el cambio de referencia de abril de 2026 (12.000 → 13.500 ARS).
-- Mantenimiento en agosto tiene 3.200 ARS aprobados y 1.800 ARS por aprobar: se muestra provisional, no como un ahorro confirmado. Septiembre permanece provisional por ser el mes abierto.
-- Al seleccionar un punto se abren sus gastos aprobados. Para ver el pendiente de agosto, quitá el filtro de aprobación o entrá desde Control mensual.
-- No se crearon atenciones ni reglas para este lote: sus gastos aprobados quedan **sin distribuir, por falta de regla**. Eso no impide estudiar su evolución y no significa que el proceso automático esté detenido.
-
-Se preservaron tus fuentes existentes, usuarios y permisos. Las configuraciones de demo terminan al comenzar octubre de 2026, para no generar expectativas futuras. La carga puntual reproducible está en `historico_demo.py`, con inspección por defecto, transacción y protección contra duplicados; no forma parte del arranque de la aplicación.
+El escenario anterior «Hospital Demo Finanzas / Consultorio escuela» fue sustituido con autorización; no está disponible como conjunto actual en 8090. `historico_demo.py` permanece como herramienta histórica manual, no como inicializador ni como instrucción para volver a cargar esa base. `seed_los_aromos` también es exclusivamente manual: exige PostgreSQL vacío, confirmación y una contraseña externa; no borra ni mezcla datos existentes.
 
 #### Cómo interpretar la comparación
 
@@ -165,7 +213,7 @@ Cambiar entre 6 y 12 meses conserva la selección explícita. Si un concepto no 
 - Puntos huecos: importes provisionales porque falta completar carga/aprobación o el mes sigue abierto. No se unen como una tendencia confirmada.
 - Sin control o sin carga: se deja un hueco, no una caída ficticia a cero. Un cero con carga declarada completa sí se muestra como dato.
 - **Ver importes mensuales** conserva cifras exactas, estado y cantidad de controles de cada concepto y mes, incluso si no puede dibujarse el gráfico. Si cambian las áreas con control vigente, cambia también la cobertura del total: no interpretar automáticamente esa variación como ahorro.
-- Clic en un punto o importe abre **Gastos registrados** con mes, concepto, aprobación y **Sólo gastos esperados**. Este filtro excluye gastos del mismo concepto en áreas sin control para ese mes; puede quitarse desde los filtros activos.
+- Clic en un punto o importe abre **Gastos registrados** con mes, concepto, aprobación y el filtro de gastos mensuales configurados. Este filtro excluye gastos del mismo concepto en áreas sin control para ese mes; puede quitarse desde los filtros activos.
 
 Son pesos de cada mes, sin ajuste por inflación. La referencia no es un pago, un gasto aprobado ni una garantía de carga completa. El gráfico no modifica gastos, controles ni repartos.
 
@@ -173,9 +221,11 @@ La pantalla administrativa es `/finanzas`. La atención se completa desde `/caso
 
 Fuentes principales: `hechos-costo`, `gastos`, `expectativas-gasto/calendario`, `coberturas-actividad`, `reglas-reparto`, `repartos-gasto`, `reportes-finanzas`, `procesamiento-finanzas` y `accesos-financieros`.
 
-El incremento incluye el primer reparto por actividad y un resumen operativo de gastos y distribución. Otras bases de reparto, pagos/cobros/reintegros, contabilidad general y costo total institucional no están incorporados por este cambio.
+El incremento incluye el primer reparto por actividad, reportes operativos y el lote #38 de pagos/cobros/reintegros vinculados activo en Los Aromos. Otras bases de reparto, contabilidad general y costo total institucional siguen fuera. La nueva prioridad de obras sociales todavía no está implementada.
 
-### Activación local del 14/09/2026
+### Antecedente histórico: activación local del 14/09/2026
+
+Lo siguiente describe aquella intervención, **no el estado actual de datos ni de puertos**. Fue seguida por la sustitución autorizada del escenario el 15/09. No usar estas cifras ni la referencia a 8092 como guía de la demo actual.
 
 La ampliación está activa en **http://localhost:8090/finanzas**. Con autorización del usuario se respaldó la base, se verificó una restauración completa en una base separada, se aplicaron las migraciones aditivas 0020 (referencia opcional) y 0021 (trabajo de reparto), y se activó el servicio `repartos`. Se conservaron usuarios, pacientes, casos, eventos, concesiones y gastos originales, comprobando cantidades y huellas de contenido antes y después. No se creó actividad clínica.
 
@@ -183,7 +233,7 @@ La **práctica anterior en http://localhost:8092** conserva su versión fija y s
 
 La primera pasada atendió ocho gastos aprobados sin errores. Una solicitud adicional sobre una fuente sin cambios se procesó en aproximadamente 0,1 segundos y no generó otra versión del reparto. Se comprobó en navegador el resumen, la navegación a gastos filtrados, el control mensual, los repartos y el detalle de costos por atención, con respuestas reales de la API.
 
-Si sólo aparecen opciones de consulta, revisá las acciones otorgadas en **Administración → Permisos financieros**. La lectura sensible predeterminada del administrador no le concede automáticamente las acciones de carga o configuración. La activación no otorgó ni quitó concesiones: el usuario conserva el control de esa configuración.
+Si sólo aparecen opciones de consulta, revisá las acciones otorgadas en **Administración → Usuarios → Editar usuario → Permisos financieros**. La lectura sensible predeterminada del administrador no le concede automáticamente las acciones de carga o configuración. La activación no otorgó ni quitó concesiones: el usuario conserva el control de esa configuración.
 
 El servicio usa PostgreSQL para recibir el aviso después de confirmar el guardado y conserva el trabajo en base de datos. Al iniciar y cada diez minutos hace una conciliación de seguridad; esa recuperación **no es el disparador normal**. Debe monitorearse el latido del servicio. Detenerlo conserva las solicitudes pendientes; no borra gastos ni repartos anteriores. Antes de migrar una base usada por personas se requiere respaldo y aprobación.
 
@@ -204,7 +254,7 @@ Hacelo en una institución de prueba, sin información real de pacientes. El usu
 1. **Preparar permisos.** Con administración institucional, otorgá a la persona de contabilidad las acciones y áreas que realmente necesita. Habilitá sensibles sólo cuando corresponda. Probá con esa persona que puede entrar a Finanzas pero no obtiene por eso acceso al diseño clínico ni a otras instituciones.
 2. **Configurar el costo directo antes de atender.** Elegí una atención publicada, agregá un componente y un valor vigente, por ejemplo ARS 1.500 por atención. Si no aparece ninguna atención publicada, primero hay que preparar y publicar el circuito clínico; Finanzas no lo publica ni lo modifica.
 3. **Realizar una atención habitual.** Con el usuario y la tarea habilitados por ese circuito, iniciá el caso y completá la atención. Abrí Costos por atención y luego Ver composición. Buscá el componente configurado y sus faltantes; abrir el caso sin completar la atención no alcanza.
-4. **Preparar el control y cargar un gasto.** Definí el concepto y área en Control mensual, con una referencia opcional. Registrá el gasto y, si queda por aprobar, aprobalo con otro usuario autorizado. Compará referencia, aprobado y diferencia. Aunque la diferencia sea cero, la indicación de carga sigue siendo una decisión explícita.
+4. **Preparar el control y cargar un gasto.** Definí el concepto y área en Gastos mensuales, con una referencia opcional. Registrá el gasto y, si queda por aprobar, aprobalo con otro usuario autorizado. Compará referencia, aprobado y diferencia. Aunque la diferencia sea cero, la indicación de carga sigue siendo una decisión explícita.
 5. **Configurar la distribución.** Verificá el área y su actividad real; luego agregá la regla del concepto, en el mismo mes y área. Si el control encuentra diferencias, no dupliques las atenciones: revisá la causa con soporte. Al guardar, observá cómo pasa de actualización pendiente a resultado actualizado y revisá la explicación si conserva saldo sin distribuir.
 6. **Seguir el dinero.** Desde Resumen abrí los gastos que componen cada cifra y las atribuciones del reparto. Comprobá que aprobado sea distribuido más sin distribuir. Registrá un ajuste con motivo y esperá la actualización: debe cambiar el importe efectivo, conservar el original y no sumar el reparto histórico al vigente.
 
