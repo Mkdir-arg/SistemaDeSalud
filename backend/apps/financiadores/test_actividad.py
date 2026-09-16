@@ -323,7 +323,18 @@ class ActividadReporteTests(VigenciasApiSetup, APITestCase):
         self.exportar()
         accesos = AccesoClinico.objects.filter(recurso="financiadores-actividad-csv")
         ids_auditados = set()
-        for acceso in accesos:
+        self.assertEqual(accesos.count(), 3)
+        ordenados = sorted(reservas, reverse=True)
+        for numero, acceso in enumerate(accesos.order_by("pk")):
+            bloque = ordenados[numero * 10:(numero + 1) * 10]
+            self.assertEqual(acceso.detalle, f"financiador={self.financiador.pk} reservas={','.join(map(str, bloque))}")
+            self.assertEqual(acceso.objeto_id, str(bloque[0]))
+            self.assertEqual(acceso.resultados, len(bloque))
+            self.assertEqual(acceso.usuario_id, self.operador.pk)
+            self.assertEqual(acceso.ciudadano_id, self.paciente.pk)
+            self.assertEqual(acceso.institucion_id, self.institucion.pk)
+            self.assertEqual(acceso.ip, "127.0.0.1")
+            self.assertIsNotNone(acceso.momento)
             self.assertLessEqual(len(acceso.detalle), 300)
             ids_auditados.update(int(valor) for valor in acceso.detalle.split("reservas=", 1)[1].split(","))
         self.assertEqual(ids_auditados, reservas)
@@ -342,11 +353,21 @@ class ActividadReporteTests(VigenciasApiSetup, APITestCase):
             (self.institucion.pk, self.paciente.pk), (caso.institucion_id, caso.ciudadano_id),
         })
 
+    def test_csv_audita_hospital_del_hecho_aunque_se_reasigne_el_ciudadano(self):
+        self.realizada()
+        otro = Institucion.objects.create(nombre="Destino posterior del padrón")
+        self.paciente.institucion = otro
+        self.paciente.save(update_fields=["institucion"])
+        self.exportar()
+        acceso = AccesoClinico.objects.get(recurso="financiadores-actividad-csv")
+        self.assertEqual(acceso.institucion_id, self.institucion.pk)
+        self.assertEqual(acceso.ciudadano_id, self.paciente.pk)
+
     @override_settings(DEBUG=False)
     def test_fallo_auditoria_clinica_no_entrega_csv(self):
         self.reservar()
         self.client.raise_request_exception = False
-        with patch("apps.auditoria.mixins.AccesoClinico.objects.create", side_effect=RuntimeError("Auditoría no disponible")):
+        with patch("apps.auditoria.mixins.AccesoClinico.objects.bulk_create", side_effect=RuntimeError("Auditoría no disponible")):
             response = self.client.get(self.base + "actividad/", {"formato": "csv"})
         self.assertEqual(response.status_code, 500)
         self.assertNotIn("Content-Disposition", response)
@@ -355,33 +376,48 @@ class ActividadReporteTests(VigenciasApiSetup, APITestCase):
 
     @override_settings(DEBUG=False)
     def test_fallo_auditoria_administrativa_no_entrega_csv(self):
-        self.reservar()
+        for _ in range(21):
+            self.nueva_reserva()
         self.client.raise_request_exception = False
-        with patch("apps.financiadores.services.EventoCobertura.objects.create", side_effect=RuntimeError("Auditoría no disponible")):
+        with (
+            patch("apps.auditoria.mixins.TAMANIO_LOTE_ACCESOS", 1),
+            patch("apps.auditoria.mixins.AccesoClinico.objects.bulk_create", wraps=AccesoClinico.objects.bulk_create) as insertar,
+            patch("apps.financiadores.services.EventoCobertura.objects.create", side_effect=RuntimeError("Auditoría no disponible")),
+        ):
             response = self.client.get(self.base + "actividad/", {"formato": "csv"})
+        self.assertEqual(insertar.call_count, 3)
         self.assertEqual(response.status_code, 500)
         self.assertNotIn("Content-Disposition", response)
         self.assertNotIn(self.afiliado.documento.encode(), response.content)
         self.assertFalse(AccesoClinico.objects.filter(recurso="financiadores-actividad-csv").exists())
+        self.assertFalse(EventoCobertura.objects.filter(accion="exportar_actividad").exists())
 
     @override_settings(DEBUG=False)
-    def test_fallo_en_segundo_acceso_revierte_la_auditoria_incompleta(self):
-        self.reservar()
-        caso, prestacion = self.otro_hospital()
-        self.reservar(caso=caso, prestacion=prestacion)
-        crear_acceso = AccesoClinico.objects.create
-        intentos = []
-
-        def crear_o_fallar(**datos):
-            intentos.append(datos["institucion_id"])
-            if len(intentos) == 2:
-                raise RuntimeError("Auditoría interrumpida")
-            return crear_acceso(**datos)
-
+    def test_fallo_en_primer_medio_y_ultimo_lote_revierte_toda_la_auditoria(self):
+        for _ in range(21):
+            self.nueva_reserva()
+        crear_accesos = AccesoClinico.objects.bulk_create
         self.client.raise_request_exception = False
-        with patch("apps.auditoria.mixins.AccesoClinico.objects.create", side_effect=crear_o_fallar):
-            response = self.client.get(self.base + "actividad/", {"formato": "csv"})
-        self.assertEqual(len(intentos), 2)
-        self.assertEqual(response.status_code, 500)
-        self.assertFalse(AccesoClinico.objects.filter(recurso="financiadores-actividad-csv").exists())
-        self.assertFalse(EventoCobertura.objects.filter(accion="exportar_actividad").exists())
+        for formato in ("csv", "json"):
+            for falla_en in (1, 2, 3):
+                with self.subTest(formato=formato, lote=falla_en):
+                    intentos = []
+
+                    def crear_o_fallar(objetos, **kwargs):
+                        intentos.append(len(objetos))
+                        if len(intentos) == falla_en:
+                            raise RuntimeError("Auditoría interrumpida")
+                        return crear_accesos(objetos, **kwargs)
+
+                    with (
+                        patch("apps.auditoria.mixins.TAMANIO_LOTE_ACCESOS", 1),
+                        patch("apps.auditoria.mixins.AccesoClinico.objects.bulk_create", side_effect=crear_o_fallar),
+                    ):
+                        response = self.client.get(self.base + "actividad/", {"formato": formato, "page_size": 100})
+                    self.assertEqual(len(intentos), falla_en)
+                    self.assertEqual(response.status_code, 500)
+                    self.assertNotIn("Content-Disposition", response)
+                    self.assertNotIn("text/csv", response["Content-Type"])
+                    self.assertNotIn(self.afiliado.documento.encode(), response.content)
+                    self.assertFalse(AccesoClinico.objects.filter(tipo="financiador").exists())
+                    self.assertFalse(EventoCobertura.objects.filter(accion__in=["exportar_actividad", "consultar_actividad"]).exists())

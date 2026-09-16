@@ -462,7 +462,7 @@ class ActividadHistoricaTests(VigenciasApiSetup, APITestCase):
     def test_fallo_de_auditoria_impide_entregar_actividad_al_financiador(self):
         self.reservar()
         self.client.raise_request_exception = False
-        with patch("apps.auditoria.mixins.AccesoClinico.objects.create", side_effect=RuntimeError("Auditoría no disponible")):
+        with patch("apps.auditoria.mixins.AccesoClinico.objects.bulk_create", side_effect=RuntimeError("Auditoría no disponible")):
             response = self.client.get(self.base + "actividad/")
         self.assertEqual(response.status_code, 500)
         self.assertNotIn(self.afiliado.documento.encode(), response.content)

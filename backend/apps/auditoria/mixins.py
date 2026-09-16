@@ -7,10 +7,14 @@ paciente que tiene delante. Se anota el problema y se sigue: perder una línea d
 auditoría es malo, no poder atender es peor.
 """
 import logging
+from itertools import islice
+
+from django.db import transaction
 
 from .models import AccesoClinico
 
 log = logging.getLogger(__name__)
+TAMANIO_LOTE_ACCESOS = 500
 
 
 def _ip(request):
@@ -54,6 +58,28 @@ def _institucion_del_pedido(request):
     return next(iter(ids)) if len(ids) == 1 else None
 
 
+def _datos_acceso(
+    request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0,
+    institucion_id=None,
+):
+    """Normalización compartida; no escribe ni decide si el fallo es tolerable."""
+    return {
+        "usuario": request.user,
+        "ciudadano": ciudadano,
+        "institucion_id": (
+            getattr(ciudadano, "institucion_id", None)
+            or institucion_id
+            or _institucion_del_pedido(request)
+        ),
+        "tipo": tipo,
+        "recurso": recurso,
+        "objeto_id": str(objeto_id or "")[:40],
+        "detalle": (detalle or "")[:300],
+        "resultados": resultados,
+        "ip": _ip(request),
+    }
+
+
 def registrar_acceso(
     request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0,
     institucion_id=None, estricto=False,
@@ -75,21 +101,10 @@ def registrar_acceso(
     la vista de quien tiene que responder por él.
     """
     try:
-        AccesoClinico.objects.create(
-            usuario=request.user,
-            ciudadano=ciudadano,
-            institucion_id=(
-                getattr(ciudadano, "institucion_id", None)
-                or institucion_id
-                or _institucion_del_pedido(request)
-            ),
-            tipo=tipo,
-            recurso=recurso,
-            objeto_id=str(objeto_id or "")[:40],
-            detalle=(detalle or "")[:300],
-            resultados=resultados,
-            ip=_ip(request),
-        )
+        AccesoClinico.objects.create(**_datos_acceso(
+            request, tipo, recurso, ciudadano=ciudadano, objeto_id=objeto_id,
+            detalle=detalle, resultados=resultados, institucion_id=institucion_id,
+        ))
     except Exception:
         # Ver la regla de oro del módulo: la atención no se detiene porque falle
         # la auditoría. Queda en el log del servidor para que alguien lo vea, en
@@ -98,6 +113,36 @@ def registrar_acceso(
         if estricto:
             # Las consultas administrativas de terceros requieren evidencia de
             # lectura. La atención clínica conserva el comportamiento habitual.
+            raise
+
+
+def registrar_accesos(request, tipo, recurso, accesos, *, estricto=False):
+    """Escribe accesos completos en lotes de hasta 500, todos o ninguno.
+
+    Cada entrada usa los mismos campos que ``registrar_acceso``. La institución
+    explícita corresponde a la fuente histórica leída y prevalece sobre la
+    institución actual del ciudadano. El registrador individual conserva su
+    precedencia histórica y su tolerancia a fallos para las lecturas clínicas.
+
+    ``AccesoClinico`` no tiene save personalizado ni señales de guardado. Django
+    completa ``momento`` (auto_now_add) también en bulk_create; no se omiten
+    conflictos ni se difiere la evidencia. Si el llamador registra un evento
+    adicional, debe envolver ambos pasos en su misma transacción.
+    """
+    try:
+        entradas = iter(accesos)
+        with transaction.atomic():
+            while bloque := list(islice(entradas, TAMANIO_LOTE_ACCESOS)):
+                objetos = []
+                for acceso in bloque:
+                    datos = _datos_acceso(request, tipo, recurso, **acceso)
+                    if acceso.get("institucion_id") is not None:
+                        datos["institucion_id"] = acceso["institucion_id"]
+                    objetos.append(AccesoClinico(**datos))
+                AccesoClinico.objects.bulk_create(objetos, batch_size=TAMANIO_LOTE_ACCESOS)
+    except Exception:
+        log.exception("no se pudo registrar el lote de accesos clínicos")
+        if estricto:
             raise
 
 
