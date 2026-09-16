@@ -18,7 +18,7 @@ const VISTAS = {
 };
 const ESTADOS = {
   cuentas: { pendiente: "Con saldo pendiente", saldada: "Saldadas", a_devolver: "Con saldo a devolver", por_aprobar: "Con registros por aprobar" },
-  pendientes: { pendiente: "Pendiente de resolución", arancel_pendiente: "Arancel pendiente", evaluacion_pendiente: "Evaluación pendiente", sin_distribucion: "Sin distribución" },
+  pendientes: { autorizacion_pendiente: "Autorización pendiente", pendiente: "Pendiente de resolución", arancel_pendiente: "Arancel pendiente", evaluacion_pendiente: "Evaluación pendiente", sin_distribucion: "Sin distribución" },
 };
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 

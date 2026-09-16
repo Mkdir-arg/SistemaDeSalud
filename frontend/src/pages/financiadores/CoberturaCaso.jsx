@@ -8,11 +8,13 @@ import { useAuth } from "@/auth/AuthContext";
 import { Badge, Button, Card, Checkbox, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
 import { fechaHora, plural } from "@/lib/format";
+import AutorizacionesCaso from "./AutorizacionesCaso";
+import AutorizacionEvaluacion, { ESTADOS_EVALUACION_AUTORIZACION } from "./AutorizacionEvaluacion";
 
 const ESTADOS = {
   verificada: "Afiliación verificada", pendiente: "Pendiente de verificación", particular: "Atención particular",
   reservada: "Reservada", realizada: "Realizada", liberada: "Liberada",
-  resuelta: "Responsable definido", arancel_pendiente: "Arancel pendiente",
+  autorizacion_pendiente: "Autorización pendiente", resuelta: "Responsable definido", arancel_pendiente: "Arancel pendiente",
   evaluacion_pendiente: "Evaluación pendiente", sin_cobro: "Sin cobro",
 };
 const tono = (estado) => estado === "pendiente" || estado?.includes("pendiente") ? "amber" : estado === "verificada" || estado === "realizada" ? "green" : "gray";
@@ -45,7 +47,7 @@ export default function CoberturaCaso({ caso, ocupado = false }) {
         <h2 className="text-lg font-bold">Cobertura del caso</h2>
         <Button type="button" size="sm" variant="ghost" disabled={consulta.isFetching || ocupado} onClick={() => actualizar("")}>Actualizar cobertura</Button>
       </div>
-      <p className="mt-1 text-sm text-texto-debil">Registrá la afiliación y consultá el importe antes de la prestación. La atención puede continuar aunque la cobertura esté pendiente.</p>
+      <p className="mt-1 text-sm text-texto-debil">Registrá la afiliación y consultá el importe antes de la prestación. Una autorización pendiente se gestiona según el circuito de atención; no acepta cargos del paciente.</p>
       {mensaje && <p role="status" className="mt-4 rounded-md bg-badge-green-bg p-3 text-sm text-badge-green-fg">{mensaje}</p>}
       {consulta.isLoading ? <Spinner label="Consultando cobertura…" /> : consulta.error ? (
         <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo consultar la cobertura" />
@@ -58,6 +60,7 @@ export default function CoberturaCaso({ caso, ocupado = false }) {
           actualizar={actualizar}
         />
       )}
+      {datos?.activo && <AutorizacionesCaso key={caso.id} caso={caso} ocupadoClinica={ocupado} />}
     </Card>
   );
 }
@@ -252,6 +255,7 @@ function PrestacionCaso({ prestacion, reservas, puedeOperar, conAfiliacion, ocup
           <dl className="grid gap-3 rounded-md bg-superficie-2 p-4 sm:grid-cols-3">
             {[["Importe total", evaluacion.importe_total], ["A cargo del financiador", evaluacion.importe_financiador], ["A cargo del paciente", importePaciente]].map(([label, valor]) => <div key={label}><dt className="text-sm text-texto-debil">{label}</dt><dd className="mt-1 font-semibold">{importeARS(valor)}</dd></div>)}
           </dl>
+          <AutorizacionEvaluacion evaluacion={evaluacion} />
           {pendiente ? <p className="text-sm text-badge-amber-fg">Faltan datos para confirmar la cobertura. La atención puede continuar y la resolución quedará pendiente en Finanzas.</p> : (
             <>
               {reservada && <>
@@ -283,6 +287,8 @@ function RegistrosPrestacion({ reservas }) {
             <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold">{reserva.prestacion_nombre || reserva.evaluacion?.nombre_prestacion}</p><Badge tone={tono(reserva.estado)}>{ESTADOS[reserva.estado] || reserva.estado}</Badge></div>
             <p className="text-texto-debil">{fecha(reserva.fecha)} · {plural(reserva.cantidad, "unidad", "unidades")}</p>
             <p>Financiador: {importeARS(reserva.evaluacion?.importe_financiador)} · Paciente: {importeARS(reserva.evaluacion?.importe_paciente)}</p>
+            {reserva.evaluacion?.requiere_autorizacion && <p className="text-texto-debil">Autorización al evaluar: {ESTADOS_EVALUACION_AUTORIZACION[reserva.evaluacion.estado_autorizacion] || "Pendiente de verificar"}. Esta evaluación se conserva como antecedente.</p>}
+            {reserva.uso_autorizacion && <p className="font-semibold">Uso actual de autorización {reserva.uso_autorizacion.solicitud}: {({ comprometido: "Comprometido", consumido: "Consumido", liberado: "Liberado" })[reserva.uso_autorizacion.estado] || reserva.uso_autorizacion.estado} · {plural(reserva.uso_autorizacion.cantidad, "unidad", "unidades")}</p>}
             {reserva.aceptacion?.importe != null ? <p className="text-texto-debil">Aceptación registrada: {importeARS(reserva.aceptacion.importe)} · {fechaHora(reserva.aceptacion.fecha)}</p> : <p className="text-texto-debil">Sin aceptación registrada del paciente.</p>}
             {reserva.distribucion && <p className="font-semibold">{reserva.distribucion.estado === "pendiente" ? "Saldo pendiente de resolución administrativa" : ESTADOS[reserva.distribucion.estado] || reserva.distribucion.estado}</p>}
             {reserva.discrepancia && <p className="text-badge-amber-fg">Discrepancia detectada. Se conserva lo registrado y queda disponible para revisión en Finanzas.</p>}

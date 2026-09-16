@@ -82,6 +82,20 @@ test("el caso consulta sin reservar y registra aceptación por prestación e imp
   await expect(page.getByText(/Aceptación registrada: ARS 2.000,00/)).toBeVisible();
 });
 
+for (const estado of ["pendiente", "aprobada"]) {
+  test(`la evaluación separa cobertura económica y autorización ${estado} sin afirmar deuda emitida`, async ({ page }) => {
+    await circuito(page, { evaluacion: { requiere_autorizacion: true, autorizacion: 91, estado_autorizacion: estado, autorizacion_disponible: estado === "aprobada" ? 2 : 0 } });
+    await page.goto("/casos/41");
+    await page.getByRole("button", { name: "Consultar cobertura", exact: true }).click();
+    const permiso = page.getByRole("region", { name: "Autorización de esta evaluación", exact: true });
+    await expect(permiso.getByText(estado === "aprobada" ? "Aprobada" : "Pendiente", { exact: true })).toBeVisible();
+    await expect(permiso).toContainText("Los importes de esta evaluación todavía no son cuentas por cobrar");
+    await expect(page.getByRole("button", { name: "Confirmar reserva de cobertura", exact: true })).toBeEnabled();
+    if (estado === "pendiente") await expect(permiso).toContainText("la parte del financiador queda pendiente de autorización");
+    else await expect(permiso).toContainText("Cantidad autorizada disponible: 2");
+  });
+}
+
 test("no elige automáticamente la única afiliación disponible", async ({ page }) => {
   const { escrituras } = await circuito(page, { sinAfiliacion: true });
   await page.goto("/casos/41");

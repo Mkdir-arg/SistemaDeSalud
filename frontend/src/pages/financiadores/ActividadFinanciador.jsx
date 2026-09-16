@@ -11,7 +11,7 @@ import { fechaHora, plural } from "@/lib/format";
 const CAMPOS = ["desde", "hasta", "institucion", "plan", "sin_plan", "prestacion", "estado", "discrepancia", "search"];
 const VACIOS = Object.fromEntries(CAMPOS.map((campo) => [campo, ""]));
 const ESTADOS = { reservada: "Reservada", realizada: "Realizada", liberada: "Liberada" };
-const DISTRIBUCIONES = { resuelta: "Responsable definido", pendiente: "Pendiente de resolución", arancel_pendiente: "Arancel pendiente", evaluacion_pendiente: "Evaluación pendiente", sin_cobro: "Sin cobro" };
+const DISTRIBUCIONES = { autorizacion_pendiente: "Autorización pendiente", resuelta: "Responsable definido", pendiente: "Pendiente de resolución", arancel_pendiente: "Arancel pendiente", evaluacion_pendiente: "Evaluación pendiente", sin_cobro: "Sin cobro" };
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 
 function mesActual() {

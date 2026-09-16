@@ -631,7 +631,7 @@ test("administrador modifica rol y desactiva acceso sin enviar contraseña", asy
   await page.getByRole("checkbox", { name: "Acceso activo a este financiador" }).uncheck();
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Acceso actualizado.");
-  expect(escrituras[0].body).toEqual({ email: "segundo@example.test", nombre: "Usuario Ficticio", rol: "auditor", activo: false });
+  expect(escrituras[0].body).toEqual({ email: "segundo@example.test", nombre: "Usuario Ficticio", rol: "auditor", activo: false, resuelve_autorizaciones: false });
 });
 
 test("permite retomar un lote fuera de la primera página", async ({ page }) => {
