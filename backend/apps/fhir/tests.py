@@ -70,7 +70,7 @@ class MetadataTests(FhirTestCase):
         """
         _, d = self.get("/fhir/metadata")
         declarados = {r["type"] for r in d["rest"][0]["resource"]}
-        self.assertEqual(declarados, {"Patient", "Encounter", "Organization"})
+        self.assertEqual(declarados, {"Patient", "Encounter", "Organization", "Coverage"})
 
     def test_no_declara_escritura_en_ningun_recurso(self):
         _, d = self.get("/fhir/metadata")

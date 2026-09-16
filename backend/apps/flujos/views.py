@@ -232,6 +232,7 @@ class FlujoViewSet(BaseModelViewSet):
             nueva = VersionFlujo.objects.create(
                 flujo=copia,
                 numero=1,
+                tipo_circuito=origen.tipo_circuito if origen else VersionFlujo.TipoCircuito.NO_DEFINIDO,
                 estado=VersionFlujo.Estado.BORRADOR,
                 autor=request.user if request.user.is_authenticated else None,
                 nota=f"Copia de «{flujo.titulo}»"
@@ -258,6 +259,15 @@ class VersionFlujoViewSet(BaseModelViewSet):
     capacidad_requerida = "diseno_flujos"
     institucion_path = "flujo__institucion"
     filter_fields = ("flujo", "estado")
+
+    def perform_update(self, serializer):
+        with transaction.atomic():
+            version = VersionFlujo.objects.select_for_update().get(pk=serializer.instance.pk)
+            serializer.instance = version
+            if "tipo_circuito" in serializer.validated_data:
+                exigir_borrador(version)
+                serializer.validate_tipo_circuito(serializer.validated_data["tipo_circuito"])
+            serializer.save()
 
     @action(detail=True, methods=["get"])
     def validar(self, request, pk=None):
@@ -314,6 +324,11 @@ class VersionFlujoViewSet(BaseModelViewSet):
             hermanas = list(
                 VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id)
             )
+            version = next(v for v in hermanas if v.pk == version.pk)
+            problemas = motor.validar_version(version)
+            if any(p["sev"] == "error" for p in problemas):
+                return Response({"detail": "La versión cambió y tiene errores; revisá el diseño.", "problemas": problemas},
+                                status=status.HTTP_400_BAD_REQUEST)
             for v in hermanas:
                 if v.pk != version.pk and v.estado == VersionFlujo.Estado.PUBLICADA:
                     v.estado = VersionFlujo.Estado.REEMPLAZADA
@@ -398,6 +413,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
             nueva = VersionFlujo.objects.create(
                 flujo_id=version.flujo_id,
                 numero=max((v.numero for v in hermanas), default=0) + 1,
+                tipo_circuito=version.tipo_circuito,
                 estado=VersionFlujo.Estado.BORRADOR,
                 autor=request.user if request.user.is_authenticated else None,
                 nota=f"Copia de {version.etiqueta}",
@@ -415,6 +431,20 @@ class NodoViewSet(SoloSobreBorrador, BaseModelViewSet):
     capacidad_requerida = "diseno_flujos"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")
+
+    def perform_create(self, serializer):
+        with transaction.atomic():
+            version = VersionFlujo.objects.select_for_update().get(pk=serializer.validated_data["version"].pk)
+            serializer.validated_data["version"] = version
+            serializer.validate(serializer.validated_data)
+            super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        with transaction.atomic():
+            version = VersionFlujo.objects.select_for_update().get(pk=serializer.instance.version_id)
+            serializer.instance.version = version
+            serializer.validate(serializer.validated_data)
+            super().perform_update(serializer)
 
     @action(detail=True, methods=["post"])
     def pantalla(self, request, pk=None):

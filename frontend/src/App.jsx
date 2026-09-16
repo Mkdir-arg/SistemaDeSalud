@@ -37,6 +37,9 @@ const PadronDetalle = lazy(() => import("./pages/registros/PadronDetalle"));
 const Legajo = lazy(() => import("./pages/registros/Legajo"));
 const Accesos = lazy(() => import("./pages/auditoria/Accesos"));
 const Finanzas = lazy(() => import("./pages/finanzas/Finanzas"));
+const PortalFinanciadores = lazy(() => import("./pages/financiadores/PortalFinanciadores"));
+const CoberturasHospital = lazy(() => import("./pages/financiadores/CoberturasHospital"));
+const ActivarFinanciador = lazy(() => import("./pages/financiadores/ActivarFinanciador"));
 
 // Landing: el super admin ve el directorio; el resto entra a su institución.
 function Landing() {
@@ -55,19 +58,28 @@ function Landing() {
       setEstado("directorio");
       return;
     }
+    let activo = true;
     (async () => {
+      try {
       const d = await api.get("/instituciones/");
+      if (!activo) return;
       const lista = d.results || d;
       if (lista[0]) {
         setInstitucion(lista[0]); // entra a su institución automáticamente
       } else {
-        setEstado("sin-institucion");
+        setEstado(user?.financiadores?.length ? "financiadores" : "sin-institucion");
+      }
+      } catch {
+        if (activo) setEstado(user?.financiadores?.length ? "financiadores" : "error");
       }
     })();
+    return () => { activo = false; };
   }, [user, institucion, setInstitucion]);
 
   if (institucion) return <Navigate to={destino || "/inicio"} replace />;
   if (estado === "directorio") return <Directorio />;
+  if (estado === "financiadores") return <Navigate to="/financiadores" replace />;
+  if (estado === "error") return <EstadoError error={new Error("No se pudieron consultar tus instituciones.")} onReintentar={() => window.location.reload()} />;
   if (estado === "sin-institucion")
     return <div style={{ padding: 48, textAlign: "center", color: "#667085" }}>No tenés ninguna institución asignada. Pedile a un administrador que te dé acceso.</div>;
   return <Spinner label="Cargando…" />;
@@ -149,9 +161,11 @@ export default function App() {
     <Suspense fallback={<PantallaCargando />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/financiadores/activar" element={<ActivarFinanciador />} />
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
       <Route path="/pantalla/:token" element={<PantallaLlamados />} />
       <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
+      <Route path="/financiadores/:seccion?" element={<AuthOnly><PortalFinanciadores /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />
       <Route path="/dashboard" element={P(<Dashboard />, "supervision")} />
@@ -177,6 +191,7 @@ export default function App() {
       <Route path="/legajo" element={P(<Legajo />)} />
       <Route path="/accesos" element={P(<Accesos />, "auditoria")} />
       <Route path="/finanzas" element={P(<Finanzas />)} />
+      <Route path="/finanzas/coberturas" element={P(<CoberturasHospital />)} />
 
       {/* DISEÑO */}
       <Route path="/flujos" element={P(<Flujos />, "diseno_flujos")} />

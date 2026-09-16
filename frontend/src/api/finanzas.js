@@ -6,13 +6,13 @@ import { query } from "./queries";
 
 const ACCIONES_GASTOS = ["ver_costos", "configurar_componentes", "ver_gastos", "registrar_gastos", "aprobar_gastos", "corregir_gastos", "configurar_gastos_esperados", "configurar_repartos", "ver_dinero", "registrar_dinero", "corregir_dinero", "configurar_cobros", "aprobar_dinero", "aprobar_costos"];
 
-export function usePermisosFinanzas() {
+export function usePermisosFinanzas({ enabled = true } = {}) {
   const { user } = useAuth();
   const { institucion, vista } = useInstitucion();
   const consulta = useQuery({
     queryKey: ["permisos-finanzas", user?.id],
     queryFn: () => api.get("/concesiones-financieras/mias/"),
-    enabled: Boolean(user),
+    enabled: Boolean(user) && enabled,
     staleTime: 0,
     gcTime: 0,
   });

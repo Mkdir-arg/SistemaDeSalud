@@ -39,6 +39,7 @@ class AccesoClinico(models.Model):
         # esconden los accesos que sí importan.
         LISTADO = "listado", "Consulta de un listado"
         EXPORTACION = "exportacion", "Exportación a archivo"
+        FINANCIADOR = "financiador", "Consulta de un financiador"
 
     usuario = models.ForeignKey(
         "accounts.Usuario", on_delete=models.PROTECT, related_name="accesos_clinicos",

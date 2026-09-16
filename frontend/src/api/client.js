@@ -101,8 +101,8 @@ function refreshAccess() {
   return refrescoEnVuelo;
 }
 
-async function request(method, path, body, _retried = false) {
-  const headers = { "Content-Type": "application/json" };
+async function request(method, path, body, _retried = false, { multipart = false, blob = false } = {}) {
+  const headers = multipart ? {} : { "Content-Type": "application/json" };
   // Con cuál salió ESTE pedido. Se guarda para poder distinguir, al volver con
   // 401, si el token sigue siendo el mismo o si mientras tanto ya lo renovaron.
   const usado = tokens.access;
@@ -111,7 +111,7 @@ async function request(method, path, body, _retried = false) {
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
-    body: body != null ? JSON.stringify(body) : undefined,
+    body: body != null ? (multipart ? body : JSON.stringify(body)) : undefined,
   });
 
   if (res.status === 401 && !_retried && tokens.refresh) {
@@ -129,13 +129,14 @@ async function request(method, path, body, _retried = false) {
      * Si el token cambió, no hay nada que refrescar: alcanza con reintentar.
      */
     if (tokens.access && tokens.access !== usado) {
-      return request(method, path, body, true);
+      return request(method, path, body, true, { multipart, blob });
     }
     const ok = await refreshAccess();
-    if (ok) return request(method, path, body, true);
+    if (ok) return request(method, path, body, true, { multipart, blob });
     tokens.clear();
   }
 
+  if (res.ok && blob) return { blob: await res.blob(), disposition: res.headers.get("Content-Disposition") };
   const data = await parse(res);
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
@@ -147,6 +148,18 @@ export const api = {
   patch: (path, body) => request("PATCH", path, body),
   put: (path, body) => request("PUT", path, body),
   del: (path) => request("DELETE", path),
+  multipart: (path, body) => request("POST", path, body, false, { multipart: true }),
+  async download(path, nombre = "archivo") {
+    const { blob, disposition } = await request("GET", path, null, false, { blob: true });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = (disposition?.match(/filename="?([^";]+)"?/)?.[1] || nombre).replace(/[\\/]/g, "_");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+  },
 
   // Sube un archivo (multipart) y devuelve {nombre, ruta, url}.
   async upload(file, { institucion } = {}) {

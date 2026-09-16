@@ -11,6 +11,7 @@ import { cn } from "../lib/cn";
 import { useEsEscritorio } from "../lib/media";
 import { useTema } from "../lib/tema";
 import { usePermisosFinanzas } from "../api/finanzas";
+import { resumenCobertura } from "./financiadores/CoberturaAdministrativa";
 
 // Estado de "última actualización" que una pantalla publica para mostrarlo en la
 // barra superior (al lado de la campana). Null cuando no aplica.
@@ -46,6 +47,7 @@ const TITULOS = {
   "/estructura": "Estructura organizativa",
   "/administracion": "Administración",
   "/finanzas": "Finanzas y costos",
+  "/finanzas/coberturas": "Coberturas y copagos",
 };
 // Rutas con parámetro: llevan prefijo, así que no entran por el mapa de arriba.
 // Faltando una, la barra dice «Cauce» y la persona pierde la referencia de dónde
@@ -145,29 +147,38 @@ function Campana() {
 // Buscador de pacientes (barra superior): nombre o documento �  su historia clínica.
 function BuscadorPacientes() {
   const { institucion, puedeVer } = useInstitucion();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [res, setRes] = useState([]);
-  const [buscando, setBuscando] = useState(false);
+  const [resultado, setResultado] = useState({});
+  const [intento, setIntento] = useState(0);
   const [abierto, setAbierto] = useState(false);
   const puedeAbrirHistoria = puedeVer("historia_clinica");
   const puedeBuscarPacientes = puedeAbrirHistoria || puedeVer("padron_admision");
+  const contexto = JSON.stringify([user?.id, institucion?.id, q.trim()]);
+  const actual = resultado.contexto === contexto;
+  const res = actual ? resultado.filas || [] : [];
+  const error = actual ? resultado.error : null;
+  const buscando = !!q.trim() && (!actual || resultado.cargando);
 
   useEffect(() => {
     const term = q.trim();
-    if (!term || !institucion || !puedeBuscarPacientes) { setRes([]); return; }
-    setBuscando(true);
+    if (!term || !institucion || !puedeBuscarPacientes) { setResultado({}); return; }
+    let vigente = true;
+    setResultado({ contexto, cargando: true });
     const t = setTimeout(async () => {
       try {
         const d = await api.get(`/ciudadanos/?institucion=${institucion.id}&search=${encodeURIComponent(term)}`);
-        setRes((d.results || d).slice(0, 8));
-      } catch { /* silencioso */ } finally { setBuscando(false); }
+        if (vigente) setResultado({ contexto, filas: (d.results || d).slice(0, 8) });
+      } catch (errorConsulta) {
+        if (vigente) setResultado({ contexto, error: errorConsulta });
+      }
     }, 250);
-    return () => clearTimeout(t);
-  }, [q, institucion, puedeBuscarPacientes]);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [contexto, puedeBuscarPacientes, intento]);
 
   function ir(c) {
-    setQ(""); setRes([]); setAbierto(false);
+    setQ(""); setResultado({}); setAbierto(false);
     navigate(`${puedeAbrirHistoria ? "/historia" : "/padron"}/${c.id}`);
   }
 
@@ -185,6 +196,7 @@ function BuscadorPacientes() {
         onFocus={() => setAbierto(true)}
         onKeyDown={(e) => { if (e.key === "Enter" && res[0]) ir(res[0]); if (e.key === "Escape") setAbierto(false); }}
         role="combobox"
+        aria-label="Buscar paciente por nombre o documento"
         aria-expanded={abierto && !!q.trim()}
         aria-controls="buscador-pacientes-resultados"
         className="h-[38px] w-full rounded-md border border-campo-borde bg-superficie-2 px-3 pl-8.5 text-md outline-none placeholder:text-texto-tenue focus:border-accent"
@@ -194,6 +206,11 @@ function BuscadorPacientes() {
           <div id="buscador-pacientes-resultados" role="listbox">
             {buscando ? (
               <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando⬦</div>
+            ) : error ? (
+              <div className="p-3.5 text-sm text-texto-debil" role="alert">
+                No se pudo buscar al paciente.
+                <button className="ml-2 font-semibold text-accent hover:underline" onClick={() => setIntento((v) => v + 1)}>Reintentar</button>
+              </div>
             ) : res.length === 0 ? (
               <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Sin pacientes para «{q.trim()}».</div>
             ) : res.map((c, i) => (
@@ -204,7 +221,7 @@ function BuscadorPacientes() {
                 <Avatar nombre={`${c.nombre} ${c.apellido}`} i={c.id} size={30} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.nombre} {c.apellido}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--color-texto-tenue)" }}>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}{c.obra_social ? ` · ${c.obra_social}` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--color-texto-tenue)" }}>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}{resumenCobertura(c) ? ` · ${resumenCobertura(c)}` : ""}</div>
                 </div>
               </div>
             ))}
@@ -230,7 +247,7 @@ function BotonTema() {
   );
 }
 
-function TopBar({ onAbrirMenu }) {
+function TopBar({ onAbrirMenu, titulo, hospital = true }) {
   const { logout } = useAuth();
   const { refresco } = useRefresh();
   const location = useLocation();
@@ -251,16 +268,16 @@ function TopBar({ onAbrirMenu }) {
       )}
       {/* `truncate` y no `nowrap`: un título largo en pantalla angosta debe
           recortarse, no empujar la barra y desbordar la página. */}
-      <h1 className="truncate text-xl font-bold tracking-tight">{tituloDeRuta(location.pathname)}</h1>
+      <h1 className="truncate text-xl font-bold tracking-tight">{titulo || tituloDeRuta(location.pathname)}</h1>
       {/* El buscador se esconde en angosto: compite con el título y la campana.
           Queda accesible desde «Historia clínica». */}
       <div className="hidden flex-1 justify-center md:flex">
-        <BuscadorPacientes />
+        {hospital && <BuscadorPacientes />}
       </div>
       <div className="flex flex-1 items-center justify-end gap-2.5 md:flex-none">
         {txtRefresco && <span className="hidden whitespace-nowrap text-sm text-texto-tenue lg:inline">{txtRefresco}</span>}
         <BotonTema />
-        <Campana />
+        {hospital && <Campana />}
         <button
           onClick={() => { logout(); navigate("/login"); }}
           title="Cerrar sesión"
@@ -352,8 +369,9 @@ const itemClase = (col) => ({ isActive }) =>
       : "text-texto-suave hover:bg-superficie-2 hover:text-texto",
   );
 
-export function Shell({ children }) {
-  const permisosFinanzas = usePermisosFinanzas();
+export function Shell({ children, financiador = null }) {
+  const esFinanciador = Boolean(financiador);
+  const permisosFinanzas = usePermisosFinanzas({ enabled: !esFinanciador });
   const { user, logout } = useAuth();
   const { institucion, setInstitucion, roles, puedeVer, vista, setVista } = useInstitucion();
   const navigate = useNavigate();
@@ -374,7 +392,7 @@ export function Shell({ children }) {
   const [cajon, setCajon] = useState(false);
   const location = useLocation();
   // Al navegar se cierra solo: si no, queda tapando la pantalla a la que fuiste.
-  useEffect(() => { setCajon(false); }, [location.pathname]);
+  useEffect(() => { setCajon(false); setMenuInst(false); }, [location.pathname, location.search]);
   useEffect(() => {
     if (!cajon) return;
     const onKey = (e) => { if (e.key === "Escape") setCajon(false); };
@@ -386,14 +404,14 @@ export function Shell({ children }) {
   const [misInst, setMisInst] = useState([]);
   const [menuInst, setMenuInst] = useState(false);
   useEffect(() => {
-    if (!user || user.is_superuser) return;
+    if (!user || user.is_superuser || esFinanciador) return;
     api.get("/instituciones/").then((d) => setMisInst(d.results || d)).catch(() => {});
-  }, [user]);
-  const puedeCambiar = !user?.is_superuser && misInst.length > 1;
+  }, [user, esFinanciador]);
+  const puedeCambiar = !esFinanciador && !user?.is_superuser && misInst.length > 1;
 
   // Contador de tareas pendientes para roles operativos (el "Inicio" es su worklist).
   // Se refresca solo cada 30s y se pausa con la pestaña oculta.
-  const operativo = puedeVer("casos_operar") && !puedeVer("config_institucional") && !puedeVer("diseno_flujos");
+  const operativo = !esFinanciador && puedeVer("casos_operar") && !puedeVer("config_institucional") && !puedeVer("diseno_flujos");
   const [pendientes, setPendientes] = useState(0);
   useEffect(() => {
     if (!operativo || !institucion) { setPendientes(0); return; }
@@ -419,7 +437,7 @@ export function Shell({ children }) {
     navigate("/inicio");
   }
 
-  const rolLabel = user?.is_superuser
+  const rolLabel = esFinanciador ? financiador.rol : user?.is_superuser
     ? "Super admin"
     : roles.map((r) => ROL_LABEL[r] || r).join(" · ") || "Usuario";
 
@@ -449,16 +467,16 @@ export function Shell({ children }) {
         <div style={{ position: "relative", flex: "none", display: "flex", alignItems: "center", gap: 8, flexDirection: colapsado ? "column" : "row", padding: colapsado ? "14px 0 12px" : "14px 12px", borderBottom: colapsado ? `1px solid var(--color-division)` : "none" }}>
           <button
             onClick={() => puedeCambiar && !colapsado && setMenuInst((v) => !v)}
-            title={colapsado ? institucion?.nombre : undefined}
+            title={colapsado ? (esFinanciador ? financiador.nombre : institucion?.nombre) : undefined}
             style={{ display: "flex", alignItems: "center", gap: 11, flex: colapsado ? "none" : 1, minWidth: 0, padding: 0, background: "none", border: "none", textAlign: "left", cursor: (puedeCambiar && !colapsado) ? "pointer" : "default" }}
           >
             <Logo size={34} />
             {!colapsado && (
               <div style={{ lineHeight: 1.15, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {institucion?.nombre || "Cauce"}
+                  {(esFinanciador ? financiador.nombre : institucion?.nombre) || "Cauce"}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", fontWeight: 500 }}>{institucion?.tipo || "Institución"}</div>
+                <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", fontWeight: 500 }}>{esFinanciador ? "Financiador" : institucion?.tipo || "Institución"}</div>
               </div>
             )}
           </button>
@@ -481,7 +499,7 @@ export function Shell({ children }) {
           </button>
 
           {/* Menú desplegable de instituciones */}
-          {menuInst && !colapsado && (
+          {!esFinanciador && menuInst && !colapsado && (
             <>
               <div onClick={() => setMenuInst(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
               <div style={{ position: "absolute", top: 62, left: 12, right: 12, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
@@ -511,7 +529,7 @@ export function Shell({ children }) {
         {/* Volver al directorio (super admin) / rol del usuario (no-super) � solo expandido */}
         {!colapsado && (
           <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid var(--color-division)` }}>
-            {user?.is_superuser ? (
+            {esFinanciador ? financiador.selector : user?.is_superuser ? (
               <>
               <button
                 onClick={() => { setInstitucion(null); navigate("/"); }}
@@ -547,7 +565,20 @@ export function Shell({ children }) {
         )}
 
         {/* Navegación */}
-        <nav style={{ flex: 1, overflowY: "auto", padding: colapsado ? "12px 10px" : "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+        <nav aria-label={esFinanciador ? "Menú del financiador" : "Menú principal"} style={{ flex: 1, overflowY: "auto", padding: colapsado ? "12px 10px" : "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+          {esFinanciador ? <>
+            {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">COBERTURA Y GESTIÓN</div>}
+            {financiador.items.map((item) => (
+              <NavLink key={item.key} to={item.to} end className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
+                <Icon name={item.icon} size={17} />
+                {!colapsado && item.label}
+              </NavLink>
+            ))}
+            {financiador.volver && <NavLink to={financiador.volver.to} className={cn("mt-3 border-t border-division", itemClase(colapsado)({ isActive: false }))} title={financiador.volver.label} aria-label={financiador.volver.label}>
+              <Icon name="back" size={17} />
+              {!colapsado && financiador.volver.label}
+            </NavLink>}
+          </> : <>
           <NavLink to={ITEM_INICIO.to} className={itemClase(colapsado)} title={operativo ? "Mi trabajo" : "Inicio"}>
             {({ isActive }) => (
               <>
@@ -596,11 +627,24 @@ export function Shell({ children }) {
             );
           })}
           {permisosFinanzas.acceso && !permisosFinanzas.error && (
-            <NavLink to="/finanzas" className={itemClase(colapsado)} title="Finanzas y costos">
+            <NavLink to="/finanzas" end className={itemClase(colapsado)} title="Finanzas y costos">
               <span aria-hidden="true" className="inline-flex w-[17px] shrink-0 justify-center text-lg font-semibold">$</span>
               {!colapsado && "Finanzas y costos"}
             </NavLink>
           )}
+          {(user?.financiadores?.length > 0 || user?.is_superuser || puedeVer("gobierno_plataforma")) && (
+            <NavLink to="/financiadores" className={itemClase(colapsado)} title="Portal de financiadores">
+              <Icon name="users" size={17} />
+              {!colapsado && "Financiadores"}
+            </NavLink>
+          )}
+          {(puedeVer("casos_operar") || (!permisosFinanzas.error && (permisosFinanzas.acceso || permisosFinanzas.tiene("resolver_cobertura")))) && (
+            <NavLink to="/finanzas/coberturas" className={itemClase(colapsado)} title="Coberturas y copagos">
+              <Icon name="users" size={17} />
+              {!colapsado && "Coberturas y copagos"}
+            </NavLink>
+          )}
+          </>}
         </nav>
 
         {/* Usuario */}
@@ -643,7 +687,7 @@ export function Shell({ children }) {
       </aside>
 
       <main className="flex h-screen min-w-0 flex-1 flex-col">
-        <TopBar onAbrirMenu={() => setCajon(true)} />
+        <TopBar onAbrirMenu={() => setCajon(true)} titulo={financiador?.titulo} hospital={!esFinanciador} />
         <div className="min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>

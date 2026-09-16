@@ -14,6 +14,7 @@ import { antiguedad, casoId, fechaHora } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { estadoCaso, nombreNodo } from "@/lib/dominio";
 import { CancelarModal, ReasignarModal } from "../Supervision";
+import CoberturaCaso from "../financiadores/CoberturaCaso";
 
 // Orden conceptual del stepper de ejecución.
 const PASOS = [
@@ -44,7 +45,7 @@ export default function CasoDetalle() {
   // listas (bandeja, fila, tablero) y el detalle. Antes cada acción recargaba a
   // mano y el error se mostraba en un div propio de la pantalla.
   const accion = useAccion((fn) => fn(), {
-    invalida: ["lista", "detalle", "puesto"],
+    invalida: ["lista", "detalle", "puesto", "cobertura-caso", "historial-cobertura"],
     onError: (e) => toast.deError(e),
   });
   const ejecutar = (fn, ok) => accion.mutate(fn, { onSuccess: () => ok && toast.ok(ok) });
@@ -73,8 +74,8 @@ export default function CasoDetalle() {
         Apiladas, en cambio, la ficha va primero: en una tablet lo que se
         consulta es el estado del caso, no el formulario.
       */}
-      <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8">
-        <div className="order-last flex flex-col gap-lg lg:order-first">
+      <div className="grid grid-cols-1 items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-xxl lg:px-8">
+        <div className="order-last flex min-w-0 flex-col gap-lg lg:order-first">
           <Card className="px-lg py-7 sm:px-8">
             <div className="overflow-x-auto">
               <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
@@ -89,6 +90,8 @@ export default function CasoDetalle() {
           </Card>
 
           {hc && (hc.alergias || hc.condiciones) && <Antecedentes hc={hc} />}
+
+          <CoberturaCaso key={caso.id} caso={caso} ocupado={accion.isPending} />
 
           <PanelPaso
             caso={caso}

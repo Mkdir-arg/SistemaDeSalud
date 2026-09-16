@@ -4,10 +4,13 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { useAuth } from "@/auth/AuthContext";
+import { AvisoCoberturaCaso, resumenCobertura, useConfiguracionCobertura } from "@/components/financiadores/CoberturaAdministrativa";
 import { Avatar, Badge, Button, Field, Input, Modal, Mono } from "@/components/ui";
 import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
+import { EstadoError } from "@/components/ui/estados";
 import { plural } from "@/lib/format";
 
 function fechaCorta(iso) {
@@ -36,7 +39,7 @@ function PacienteCelda({ c }) {
 
 const columnasHistoria = [
   { key: "paciente", label: "Paciente", orden: "apellido", truncar: true, render: (c) => <PacienteCelda c={c} /> },
-  { key: "obra_social", label: "Obra social", render: (c) => c.obra_social || "-" },
+  { key: "cobertura", label: "Cobertura", envolver: true, render: (c) => resumenCobertura(c) || "-" },
   {
     key: "cond", label: "Condiciones / alergias", envolver: true,
     render: (c) => (
@@ -53,7 +56,7 @@ const columnasHistoria = [
 
 const columnasPadron = [
   { key: "paciente", label: "Paciente", orden: "apellido", truncar: true, render: (c) => <PacienteCelda c={c} /> },
-  { key: "obra_social", label: "Cobertura", render: (c) => c.obra_social || "-" },
+  { key: "cobertura", label: "Cobertura", envolver: true, render: (c) => resumenCobertura(c) || "-" },
   { key: "domicilio", label: "Domicilio", truncar: true, render: (c) => c.domicilio || "-" },
   {
     key: "consentimiento", label: "Consentimiento",
@@ -67,6 +70,7 @@ const columnasPadron = [
 
 export default function Registros({ modo = "historia" }) {
   const { institucion } = useInstitucion();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [texto, setTexto, busqueda] = useBusquedaUrl("q");
@@ -75,7 +79,12 @@ export default function Registros({ modo = "historia" }) {
   const esPadron = modo === "padron";
   const detalleBase = esPadron ? "/padron" : "/historia";
   const paramsLista = { institucion: institucion?.id, search: busqueda || undefined };
-  const { total } = useLista("ciudadanos", { ...paramsLista, pageSize: 1 }, { enabled: !!institucion });
+  const { total } = useLista("ciudadanos", { ...paramsLista, pageSize: 1 }, {
+    enabled: !!institucion,
+    queryKey: ["lista", "ciudadanos", user?.id, institucion?.id, "total", busqueda],
+    placeholderData: undefined,
+    gcTime: 0,
+  });
 
   return (
     <div className="px-lg py-[26px] sm:px-[30px]">
@@ -103,10 +112,13 @@ export default function Registros({ modo = "historia" }) {
       </div>
 
       <TablaRecurso
+        key={`${user?.id}:${institucion?.id}`}
         clave={esPadron ? "padron" : "hc"}
         recurso="ciudadanos"
         exportable
         params={paramsLista}
+        ambitoConsulta={[user?.id, institucion?.id]}
+        opcionesConsulta={{ gcTime: 0, placeholderData: undefined, enabled: !!institucion?.id }}
         ordenInicial="apellido"
         onRowClick={(c) => navigate(`${detalleBase}/${c.id}`)}
         vacio={{
@@ -122,6 +134,7 @@ export default function Registros({ modo = "historia" }) {
 
       {nuevo && (
         <NuevoPacienteModal
+          key={`${user?.id}:${institucion?.id}`}
           institucionId={institucion?.id}
           modo={modo}
           onClose={() => setNuevo(false)}
@@ -142,6 +155,9 @@ function igualSinAcentos(a, b) {
 
 function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
   const toast = useToast();
+  const { user } = useAuth();
+  const configuracion = useConfiguracionCobertura(institucionId);
+  const configuracionLista = typeof configuracion.data?.habilitada === "boolean" && !configuracion.error;
   const navigate = useNavigate();
   const [f, setF] = useState({ nombre: "", apellido: "", documento: "", fecha_nacimiento: "", obra_social: "" });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -151,7 +167,12 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
   const posibles = useLista(
     "ciudadanos",
     { institucion: institucionId, search: doc, pageSize: 5 },
-    { enabled: doc.length >= 6 },
+    {
+      enabled: doc.length >= 6,
+      queryKey: ["lista", "ciudadanos", user?.id, institucionId, "documento", doc],
+      placeholderData: undefined,
+      gcTime: 0,
+    },
   );
   const yaExiste = posibles.filas.find((c) => normalizarDocumento(c.documento) === doc);
 
@@ -159,7 +180,12 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
   const homonimos = useLista(
     "ciudadanos",
     { institucion: institucionId, search: apellido, pageSize: 10 },
-    { enabled: !yaExiste && apellido.length >= 3 && !!f.fecha_nacimiento },
+    {
+      enabled: !yaExiste && apellido.length >= 3 && !!f.fecha_nacimiento,
+      queryKey: ["lista", "ciudadanos", user?.id, institucionId, "homonimos", apellido],
+      placeholderData: undefined,
+      gcTime: 0,
+    },
   );
   const mismaPersona =
     !yaExiste &&
@@ -171,12 +197,15 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
   const parecido = yaExiste || mismaPersona;
 
   const crear = useAccion(
-    () =>
-      api.post("/ciudadanos/", {
+    () => {
+      const { obra_social, ...datos } = f;
+      return api.post("/ciudadanos/", {
         institucion: institucionId,
-        ...f,
+        ...datos,
+        ...(!configuracion.data.habilitada ? { obra_social } : {}),
         fecha_nacimiento: f.fecha_nacimiento || null,
-      }),
+      });
+    },
     {
       onSuccess: (c) => { toast.ok("Registro creado."); onCreado(c.id); },
       onError: (e) => toast.deError(e, "No se pudo crear el registro."),
@@ -190,7 +219,7 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={crear.isPending || !f.nombre || !!yaExiste} onClick={() => crear.mutate()}>
+          <Button disabled={crear.isPending || !f.nombre || !!yaExiste || !configuracionLista} onClick={() => crear.mutate()}>
             {crear.isPending ? "Creando..." : "Crear"}
           </Button>
         </>
@@ -222,7 +251,13 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
           </div>
         )}
         <Field label="Fecha de nacimiento"><Input type="date" value={f.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} /></Field>
-        <Field label="Obra social"><Input value={f.obra_social} onChange={(e) => set("obra_social", e.target.value)} placeholder="OSDE" /></Field>
+        {configuracion.error ? (
+          <EstadoError error={configuracion.error} onReintentar={configuracion.refetch} titulo="No se pudo consultar la configuración de cobertura" />
+        ) : !configuracionLista ? (
+          <p className="text-sm text-texto-debil" role="status">Consultando la configuración de cobertura…</p>
+        ) : configuracion.data.habilitada ? <AvisoCoberturaCaso /> : (
+          <Field label="Cobertura declarada (sin verificar)"><Input value={f.obra_social} onChange={(e) => set("obra_social", e.target.value)} placeholder="Nombre declarado por el paciente" /></Field>
+        )}
       </div>
     </Modal>
   );

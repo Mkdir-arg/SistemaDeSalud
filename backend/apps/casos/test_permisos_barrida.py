@@ -36,6 +36,14 @@ SIN_CAPACIDAD_A_PROPOSITO = {
     # historia de quién —es tan sensible como lo que audita—. Además es de sólo
     # lectura, así que no hay escritura que gatear.
     "accesos-clinicos",
+    # Ámbito pagador separado y hospital con concesiones por acción/área.
+    # No heredan BaseModelViewSet ni permisos clínicos para configurar dinero.
+    # La matriz negativa HTTP está en financiadores.test_api/test_recuperacion.
+    "financiadores",
+    "coberturas",
+    # Autorización administrativa: caso/hospital/área para solicitar, membresía
+    # pagadora y designación explícita para resolver. Matriz HTTP en test_autorizaciones.
+    "autorizaciones-cobertura",
 }
 
 # Finanzas no hereda escritura por rol clínico: combina concesión explícita,
@@ -65,6 +73,7 @@ PERMISOS_FINANCIEROS = {
     "reportes-finanzas": None,
     "procesamiento-finanzas": None,
     "reportes-dinero": None,
+    "seguimiento-cobros": None,
 }
 SIN_CAPACIDAD_A_PROPOSITO |= set(PERMISOS_FINANCIEROS)
 

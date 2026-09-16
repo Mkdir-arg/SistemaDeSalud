@@ -139,6 +139,15 @@ class HistoriaClinicaSerializer(serializers.ModelSerializer):
         return datos
 
 
+class CiudadanoListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        from apps.financiadores.administrativa import resumenes_administrativos
+
+        filas = list(data.all() if hasattr(data, "all") else data)
+        self.child._coberturas_administrativas = resumenes_administrativos(filas)
+        return super().to_representation(filas)
+
+
 class CiudadanoSerializer(serializers.ModelSerializer):
     # Resumen de la historia clínica (para la lista de HC).
     condiciones = serializers.SerializerMethodField()
@@ -151,6 +160,7 @@ class CiudadanoSerializer(serializers.ModelSerializer):
     # un campo editable: lo que vale es el historial, y un booleano suelto no
     # puede contestar «¿cuándo lo dio?».
     consentimiento = serializers.SerializerMethodField()
+    cobertura_administrativa = serializers.SerializerMethodField()
 
     class Meta:
         model = Ciudadano
@@ -158,8 +168,9 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             "id", "institucion", "codigo", "nombre", "apellido", "documento",
             "fecha_nacimiento", "obra_social", "domicilio", "creado",
             "condiciones", "alergias", "entradas", "estudios", "recetas_activas", "ultima",
-            "consentimiento",
+            "consentimiento", "cobertura_administrativa",
         ]
+        list_serializer_class = CiudadanoListSerializer
         read_only_fields = ["creado"]
         # DRF arma solo un `UniqueTogetherValidator` desde la constraint del
         # modelo, y contesta «Los campos institucion, documento deben formar un
@@ -201,6 +212,16 @@ class CiudadanoSerializer(serializers.ModelSerializer):
                 "institucion": "Un registro de padron no se mueve de institucion por edicion comun."
             })
 
+        anterior = getattr(self.instance, "obra_social", "")
+        if institucion and "obra_social" in datos and datos["obra_social"] != anterior:
+            from apps.financiadores.models import ConfiguracionHospital
+
+            if ConfiguracionHospital.objects.filter(institucion=institucion, activo=True).exists():
+                raise serializers.ValidationError({
+                    "obra_social": "La cobertura se consulta en el padrón del financiador y se elige "
+                                   "en cada caso. El dato declarado anterior se conserva sin editar."
+                })
+
         if not documento.strip() or institucion is None:
             return datos
 
@@ -226,6 +247,14 @@ class CiudadanoSerializer(serializers.ModelSerializer):
     # anota de una sola vez; acá sólo se leen, con el cálculo viejo de respaldo
     # para cuando el serializer se usa fuera de esa lista —al responder un alta,
     # por ejemplo, donde el objeto recién creado no viene anotado—.
+
+    def get_cobertura_administrativa(self, obj) -> dict:
+        from apps.financiadores.administrativa import resumenes_administrativos
+
+        cache = getattr(self, "_coberturas_administrativas", None)
+        if cache is None:
+            cache = resumenes_administrativos([obj])
+        return cache[obj.pk]
 
     def get_consentimiento(self, obj) -> dict | None:
         # `all()` y no `order_by()`: cualquier cambio al queryset saltea la

@@ -113,6 +113,11 @@ class UsuarioViewSet(BaseModelViewSet):
         data = self.get_serializer(request.user).data
         data["roles_por_institucion"] = roles_por_institucion_de(request.user)
         data["capacidades_por_institucion"] = capacidades_por_institucion_de(request.user)
+        from apps.financiadores.models import MembresiaFinanciador
+        data["financiadores"] = [
+            {"id": m.financiador_id, "nombre": m.financiador.nombre, "rol": m.rol}
+            for m in MembresiaFinanciador.objects.filter(usuario=request.user, activo=True, financiador__activo=True).select_related("financiador")
+        ]
         return Response(data)
 
     @action(detail=True, methods=["get"])

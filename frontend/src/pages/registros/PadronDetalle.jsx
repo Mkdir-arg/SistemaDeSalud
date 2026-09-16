@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
-import { useAccion, useDetalle, useLista } from "@/api/queries";
+import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import CoberturaAdministrativa, { AvisoCoberturaCaso, resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
 import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select, Spinner, Textarea } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
@@ -33,7 +34,7 @@ export default function PadronDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { puedeVer } = useInstitucion();
-  const paciente = useDetalle("ciudadanos", id);
+  const paciente = usePacienteAdministrativo(id);
   const [editando, setEditando] = useState(false);
 
   if (paciente.isLoading) return <Spinner label="Cargando ficha..." />;
@@ -64,7 +65,7 @@ export default function PadronDetalle() {
           <div className="flex flex-wrap items-center gap-x-2 text-base text-texto-debil">
             <span>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}</span>
             {c.fecha_nacimiento && <span>- {fecha(c.fecha_nacimiento)}</span>}
-            {c.obra_social && <span>- {c.obra_social}</span>}
+            {resumenCobertura(c) && <span>- {resumenCobertura(c)}</span>}
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -80,19 +81,21 @@ export default function PadronDetalle() {
       </Card>
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_22rem]">
-        <Card className="p-5">
-          <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-texto-debil">
-            Datos administrativos
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Dato label="Documento">{c.documento || "Sin documento"}</Dato>
-            <Dato label="Código">{c.codigo ? <Mono>{c.codigo}</Mono> : "-"}</Dato>
-            <Dato label="Fecha de nacimiento">{fecha(c.fecha_nacimiento)}</Dato>
-            <Dato label="Cobertura">{c.obra_social || "-"}</Dato>
-            <Dato label="Domicilio">{c.domicilio || "-"}</Dato>
-            <Dato label="Alta en padrón">{fechaHora(c.creado)}</Dato>
-          </div>
-        </Card>
+        <div className="flex flex-col gap-5">
+          <Card className="p-5">
+            <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-texto-debil">
+              Datos administrativos
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Dato label="Documento">{c.documento || "Sin documento"}</Dato>
+              <Dato label="Código">{c.codigo ? <Mono>{c.codigo}</Mono> : "-"}</Dato>
+              <Dato label="Fecha de nacimiento">{fecha(c.fecha_nacimiento)}</Dato>
+              <Dato label="Domicilio">{c.domicilio || "-"}</Dato>
+              <Dato label="Alta en padrón">{fechaHora(c.creado)}</Dato>
+            </div>
+          </Card>
+          <CoberturaAdministrativa paciente={c} />
+        </div>
 
         <div className="flex flex-col gap-3.5">
           <Consentimiento ciudadanoId={id} estado={c.consentimiento} />
@@ -104,6 +107,7 @@ export default function PadronDetalle() {
 
       {editando && (
         <EditarPacienteModal
+          key={c.id}
           paciente={c}
           onClose={() => setEditando(false)}
           onListo={() => { setEditando(false); paciente.refetch(); }}
@@ -115,6 +119,7 @@ export default function PadronDetalle() {
 
 function EditarPacienteModal({ paciente, onClose, onListo }) {
   const toast = useToast();
+  const coberturaHabilitada = paciente.cobertura_administrativa?.habilitada === true;
   const [f, setF] = useState({
     nombre: paciente.nombre || "",
     apellido: paciente.apellido || "",
@@ -126,10 +131,14 @@ function EditarPacienteModal({ paciente, onClose, onListo }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const guardar = useAccion(
-    () => api.patch(`/ciudadanos/${paciente.id}/`, {
-      ...f,
-      fecha_nacimiento: f.fecha_nacimiento || null,
-    }),
+    () => {
+      const { obra_social, ...datos } = f;
+      return api.patch(`/ciudadanos/${paciente.id}/`, {
+        ...datos,
+        ...(!coberturaHabilitada ? { obra_social } : {}),
+        fecha_nacimiento: f.fecha_nacimiento || null,
+      });
+    },
     {
       invalida: ["lista", "detalle"],
       onSuccess: () => { toast.ok("Datos actualizados."); onListo(); },
@@ -157,7 +166,9 @@ function EditarPacienteModal({ paciente, onClose, onListo }) {
         </div>
         <Field label="Documento"><Input value={f.documento} onChange={(e) => set("documento", e.target.value)} /></Field>
         <Field label="Fecha de nacimiento"><Input type="date" value={f.fecha_nacimiento || ""} onChange={(e) => set("fecha_nacimiento", e.target.value)} /></Field>
-        <Field label="Obra social"><Input value={f.obra_social} onChange={(e) => set("obra_social", e.target.value)} /></Field>
+        {coberturaHabilitada ? <AvisoCoberturaCaso /> : (
+          <Field label="Cobertura declarada (sin verificar)"><Input value={f.obra_social} onChange={(e) => set("obra_social", e.target.value)} /></Field>
+        )}
         <Field label="Domicilio"><Input value={f.domicilio} onChange={(e) => set("domicilio", e.target.value)} /></Field>
       </div>
     </Modal>

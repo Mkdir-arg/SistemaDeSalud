@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from apps.common import BaseModelViewSet, tiene_capacidad
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Box, Grupo
+from apps.financiadores.api_clinica import CoberturaCasoMixin
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -49,7 +50,7 @@ PRIORIDAD_ORDEN = Case(
 )
 
 
-class CasoViewSet(BaseModelViewSet):
+class CasoViewSet(CoberturaCasoMixin, BaseModelViewSet):
     queryset = Caso.objects.select_related(
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
@@ -165,7 +166,9 @@ class CasoViewSet(BaseModelViewSet):
 
     def perform_create(self, serializer):
         # El ingreso siempre es de una persona: aseguramos su historia clínica.
-        caso = serializer.save()
+        # El área de ingreso nace del flujo elegido. Dejarla vacía impedía
+        # consultar cobertura a operadores con membresía limitada a esa área.
+        caso = serializer.save(area_actual=serializer.validated_data["version"].flujo.area)
         motor.asegurar_historia(caso)
 
     @action(detail=True, methods=["get"])
@@ -456,7 +459,8 @@ class CasoViewSet(BaseModelViewSet):
         if not motor.usuario_supervisa(request.user, caso):
             return Response({"detail": "Solo el jefe del área puede cancelar el caso."}, status=status.HTTP_403_FORBIDDEN)
         try:
-            motor.cancelar_caso(caso, autor=request.user, motivo=(request.data.get("motivo") or "").strip())
+            motor.cancelar_caso(caso, autor=request.user, motivo=(request.data.get("motivo") or "").strip(),
+                                reservas_no_realizadas=request.data.get("reservas_no_realizadas"))
         except motor.ErrorMotor as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         caso = self.get_queryset().get(pk=caso.pk)
@@ -472,6 +476,20 @@ class CasoViewSet(BaseModelViewSet):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         caso = self.get_queryset().get(pk=caso.pk)
         return Response(CasoDetalleSerializer(caso).data)
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], url_path="continuar-autorizacion")
+    def continuar_autorizacion(self, request, pk=None):
+        from django.core.exceptions import PermissionDenied, ValidationError
+        from apps.financiadores.esperas import continuar
+        try:
+            espera = continuar(caso=self.get_object(), usuario=request.user,
+                               intento=request.data.get("intento"), motivo=request.data.get("motivo"))
+        except PermissionDenied as error:
+            return Response({"detail": str(error)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as error:
+            return Response({"detail": " ".join(error.messages)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(espera)
 
     @action(detail=True, methods=["post"])
     def avanzar(self, request, pk=None):

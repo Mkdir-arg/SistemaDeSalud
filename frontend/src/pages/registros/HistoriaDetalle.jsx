@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
 import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
@@ -16,6 +17,7 @@ import { useFiltroUrl } from "@/components/ui/filtros";
 import { nombreRecurso, TONO_ACCESO } from "@/lib/auditoria";
 import { cn } from "@/lib/cn";
 import { fechaHora, plural } from "@/lib/format";
+import HistorialCoberturaPaciente from "../financiadores/HistorialCoberturaPaciente";
 
 /*
  * Una fecha SIN hora, en dd/mm/aaaa como el resto del expediente.
@@ -75,7 +77,7 @@ export default function HistoriaDetalle() {
   const [nuevaAtencion, setNuevaAtencion] = useState(false);
   const [editandoAntecedentes, setEditandoAntecedentes] = useState(false);
 
-  const paciente = useDetalle("ciudadanos", id);
+  const paciente = usePacienteAdministrativo(id);
   // La historia se busca por paciente; puede no existir todavía.
   const historias = useLista("historias-clinicas", { ciudadano: id }, { enabled: !!id });
   const hc = historias.filas[0];
@@ -108,7 +110,7 @@ export default function HistoriaDetalle() {
         c.fecha_nacimiento
           ? [fecha(c.fecha_nacimiento), edad(c.fecha_nacimiento)].filter(Boolean).join(" · ")
           : null,
-        c.obra_social || null,
+        resumenCobertura(c) || null,
       ].filter(Boolean);
 
   const metricas = [
@@ -136,6 +138,7 @@ export default function HistoriaDetalle() {
     { key: "evolucion", label: "Evolución", cuenta: hc?.entradas?.length },
     { key: "estudios", label: "Estudios", cuenta: hc?.estudios?.length },
     { key: "recetas", label: "Recetas", cuenta: hc?.recetas?.length },
+    { key: "cobertura", label: "Cobertura" },
     // «Quién la miró» es un derecho del paciente, no una herramienta de
     // auditoría interna: va acá, en su historia, donde se lo puede contestar
     // en el momento en que lo pregunta.
@@ -245,6 +248,7 @@ export default function HistoriaDetalle() {
               {tab === "evolucion" && <Evolucion entradas={hc?.entradas || []} puedeFirmar={puedeFirmar} />}
               {tab === "estudios" && <Estudios estudios={estudios} />}
               {tab === "recetas" && <Recetas recetas={hc?.recetas || []} />}
+              {tab === "cobertura" && <HistorialCoberturaPaciente key={id} ciudadanoId={id} />}
               {tab === "accesos" && <Accesos ciudadanoId={id} />}
             </div>
 

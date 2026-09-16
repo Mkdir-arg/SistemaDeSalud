@@ -24,10 +24,12 @@ class AuditaLecturaFinanciera:
     def retrieve(self, request, *args, **kwargs):
         return self.auditar_respuesta(super().retrieve(request, *args, **kwargs))
 
-    def auditar_respuesta(self, respuesta, contexto=None, objeto_id=None, grupos=None):
-        """Usa la página ya autorizada/serializada, no repite la consulta de datos."""
+    def auditar_respuesta(self, respuesta, contexto=None, objeto_id=None, grupos=None, *, recurso=None, accion=None):
+        """Audita datos autorizados; los archivos deben aportar grupos explícitos."""
         try:
-            datos = respuesta.data
+            datos = getattr(respuesta, "data", None)
+            if datos is None and grupos is None:
+                raise ValueError("La respuesta sin datos serializados requiere grupos de auditoría.")
             filas = datos.get("results", [datos]) if isinstance(datos, dict) else datos
             periodo = datos.get("periodo_economico") if isinstance(datos, dict) else None
             # Los resúmenes pueden aportar los grupos de fuentes autorizadas.
@@ -51,7 +53,7 @@ class AuditaLecturaFinanciera:
                     AccesoFinanciero.objects.create(
                         usuario=self.request.user, institucion_id=institucion_id,
                         area_id=area_id, sensible=sensible,
-                        recurso=self.queryset.model._meta.model_name, accion=self.action,
+                        recurso=recurso or self.queryset.model._meta.model_name, accion=accion or self.action,
                         objeto_id=objeto_id, periodo_economico=mes, resultados=cantidad,
                     )
         except Exception as error:

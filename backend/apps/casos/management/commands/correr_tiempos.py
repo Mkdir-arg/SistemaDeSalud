@@ -19,7 +19,7 @@ Es idempotente y seguro de correr en paralelo consigo mismo: cada caso se toma
 con `select_for_update(skip_locked=True)`, así dos pasadas superpuestas no
 avanzan el mismo caso dos veces.
 """
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -39,18 +39,22 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--limite", type=int, default=500,
-            help="Tope de casos por pasada (evita una corrida eterna tras una caída).",
+            help="Tope por pasada, entre 1 y 10.000 (evita una corrida eterna tras una caída).",
         )
 
     def handle(self, *args, **opciones):
         seco = opciones["seco"]
         limite = opciones["limite"]
+        if not 1 <= limite <= 10000:
+            raise CommandError("El límite debe estar entre 1 y 10.000.")
         ahora = timezone.now()
 
         reactivados = self._reactivar(ahora, limite, seco)
         avisados = self._avisar_demoras(ahora, limite, seco)
+        from apps.financiadores.esperas import vencer_autorizaciones
+        vencidas = vencer_autorizaciones(ahora=ahora, limite=limite, seco=seco)
 
-        resumen = f"{reactivados} espera(s) reactivada(s) · {avisados} demora(s) avisada(s)"
+        resumen = f"{reactivados} espera(s) reactivada(s) · {avisados} demora(s) avisada(s) · {vencidas} autorización(es) vencida(s)"
         prefijo = "[en seco] " if seco else ""
         self.stdout.write(f"{prefijo}{resumen}")
 

@@ -73,9 +73,15 @@ class VersionFlujo(models.Model):
         REEMPLAZADA = "reemplazada", "Reemplazada"
         ARCHIVADA = "archivada", "Archivada"
 
+    class TipoCircuito(models.TextChoices):
+        NO_DEFINIDO = "no_definido", "No definido"
+        GUARDIA = "guardia", "Guardia"
+        PROGRAMADO = "programado", "Programado"
+
     flujo = models.ForeignKey(Flujo, on_delete=models.CASCADE, related_name="versiones")
     numero = models.PositiveIntegerField(help_text="1, 2, 3… mostrado como v1, v2, v3")
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.BORRADOR)
+    tipo_circuito = models.CharField(max_length=20, choices=TipoCircuito.choices, default=TipoCircuito.NO_DEFINIDO)
     nota = models.TextField("nota de cambios", blank=True)
     autor = models.ForeignKey(
         "accounts.Usuario",

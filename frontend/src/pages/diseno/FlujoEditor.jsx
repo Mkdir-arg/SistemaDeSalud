@@ -274,6 +274,20 @@ export default function FlujoEditor() {
    * cambiaban responsables, y al recargar no quedaba nada.
    */
   const soloLectura = !!version && version.estado !== "borrador";
+  const [guardandoCircuito, setGuardandoCircuito] = useState(false);
+
+  async function cambiarTipoCircuito(tipo) {
+    if (soloLectura || guardandoCircuito) return;
+    setGuardandoCircuito(true);
+    marcarGuardando();
+    const versionId = version.id;
+    try {
+      const actualizada = await api.patch(`/versiones-flujo/${versionId}/`, { tipo_circuito: tipo });
+      setVersion((actual) => actual.id === versionId ? { ...actual, tipo_circuito: actualizada.tipo_circuito } : actual);
+      marcarGuardado();
+    } catch (e) { marcarError(e); }
+    finally { setGuardandoCircuito(false); }
+  }
 
   const [dragId, setDragId] = useState(null);
   // Arrastre de conexión desde el handle de salida de un nodo (línea-fantasma).
@@ -1629,6 +1643,11 @@ export default function FlujoEditor() {
           <Select size="sm" aria-label="Versión del flujo" value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ width: "auto" }}>
             {flujo.versiones.map((v) => <option key={v.id} value={v.id}>{v.etiqueta}</option>)}
           </Select>
+          <Select size="sm" aria-label="Tipo de circuito de esta versión" value={version.tipo_circuito || "no_definido"} disabled={soloLectura || guardandoCircuito} onChange={(e) => cambiarTipoCircuito(e.target.value)} style={{ width: "auto" }}>
+            <option value="no_definido">Circuito no definido</option>
+            <option value="guardia">Guardia</option>
+            <option value="programado">Atención programada</option>
+          </Select>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <BuscarNodo nodos={version.nodos} onElegir={irAlNodo} />
@@ -1650,7 +1669,7 @@ export default function FlujoEditor() {
             <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
             <Button variant="ghost" onClick={validar} disabled={validando} title="Busca problemas en el flujo antes de publicarlo" className="rounded-none">{validando ? "Validando…" : "Validar"}</Button>
           </div>
-          <Button onClick={publicar} disabled={version.estado === "publicada" || publicando}>{publicando ? "Publicando…" : "Publicar"}</Button>
+          <Button onClick={publicar} disabled={version.estado === "publicada" || publicando || guardandoCircuito}>{publicando ? "Publicando…" : "Publicar"}</Button>
         </div>
       </div>
 
@@ -2883,6 +2902,14 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
               </div>
             )}
           </Field>
+        )}
+
+        {nodo.tipo === "atencion" && (
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-texto-suave">Autorización del financiador</p>
+            <Checkbox label="Esperar autorización antes de registrar la atención" checked={!!nodo.config?.esperar_autorizacion} disabled={version.tipo_circuito !== "programado" && !nodo.config?.esperar_autorizacion} onChange={(e) => setConfig({ esperar_autorizacion: e.target.checked })} />
+            <p className="text-sm text-texto-debil">Sólo una atención programada configurada expresamente espera. Guardia y casos urgentes mantienen continuidad clínica; aprobar no registra la prestación como realizada.</p>
+          </div>
         )}
 
         {nodo.tipo === "espera" && (

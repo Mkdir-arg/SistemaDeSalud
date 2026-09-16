@@ -119,6 +119,7 @@ class CasoSerializer(serializers.ModelSerializer):
     puede_tomar = serializers.SerializerMethodField()
     # Si el usuario actual es jefe/supervisor del área del caso (cancelar/reasignar/priorizar).
     puede_supervisar = serializers.SerializerMethodField()
+    puede_continuar_autorizacion = serializers.SerializerMethodField()
     # Trazabilidad de derivaciones entre flujos.
     origen_flujo = serializers.CharField(source="origen.version.flujo.titulo", read_only=True, default=None)
     # Si este caso vino a realizar un estudio, su tipo (el operador carga el resultado).
@@ -136,16 +137,22 @@ class CasoSerializer(serializers.ModelSerializer):
             "estado", "estado_display", "prioridad", "prioridad_display",
             "nodo_actual", "paso_actual", "nodo_tipo", "nodo_con_fila", "en_fila", "area_actual", "area_nombre",
             "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "puede_supervisar", "esperando",
+            "espera_autorizacion", "puede_continuar_autorizacion",
             "origen", "origen_flujo", "estudio", "estudio_tipo", "creado", "actualizado",
         ]
         read_only_fields = [
             "id", "institucion", "version", "ciudadano", "estado", "prioridad",
             "nodo_actual", "area_actual", "asignado_a", "esperando", "origen",
-            "estudio", "creado", "actualizado",
+            "estudio", "creado", "actualizado", "espera_autorizacion",
         ]
 
     def get_nodo_con_fila(self, obj) -> bool:
         return bool(obj.nodo_actual and (obj.nodo_actual.config or {}).get("con_fila"))
+
+    def get_puede_continuar_autorizacion(self, obj) -> bool:
+        from apps.financiadores.esperas import puede_continuar_autorizacion
+        request = self.context.get("request")
+        return bool(request and puede_continuar_autorizacion(request.user, obj))
 
     def get_en_fila(self, obj) -> bool:
         # Hay un ítem de fila activo y todavía sin llamar (sin box) en el paso actual.

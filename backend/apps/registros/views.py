@@ -4,12 +4,13 @@ from django.db.models import IntegerField, OuterRef, Prefetch, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.auditoria.mixins import AuditaLecturaClinica
-from apps.common import BaseModelViewSet, capacidades_de
+from apps.common import BaseModelViewSet, ROL_CAPACIDADES, capacidades_de, tiene_capacidad
 
 from . import integridad, reglas
 from .models import (
@@ -105,7 +106,7 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         ("apellido", "Apellido"),
         ("nombre", "Nombre"),
         ("fecha_nacimiento", "Fecha de nacimiento"),
-        ("obra_social", "Obra social"),
+        ("obra_social", "Cobertura declarada (sin verificar)"),
         ("condiciones", "Condiciones"),
         ("alergias", "Alergias"),
         ("entradas", "Entradas de historia"),
@@ -116,10 +117,39 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         ("apellido", "Apellido"),
         ("nombre", "Nombre"),
         ("fecha_nacimiento", "Fecha de nacimiento"),
-        ("obra_social", "Obra social"),
+        ("obra_social", "Cobertura declarada (sin verificar)"),
         ("domicilio", "Domicilio"),
         ("consentimiento", "Consentimiento"),
     ]
+
+    def instituciones_del_usuario(self):
+        # Un rol de reportes en B no amplía el padrón que Admisión puede leer en A.
+        roles = [rol for rol, caps in ROL_CAPACIDADES.items() if "padron_admision" in caps]
+        return self.request.user.membresias.filter(activo=True, rol__in=roles).values_list(
+            "institucion_id", flat=True,
+        )
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["get"], url_path="configuracion-cobertura")
+    def configuracion_cobertura(self, request):
+        from django.shortcuts import get_object_or_404
+        from rest_framework.exceptions import PermissionDenied
+        from apps.financiadores.models import ConfiguracionHospital
+        from apps.instituciones.models import Institucion
+
+        try:
+            institucion_id = int(request.query_params.get("institucion", ""))
+            if institucion_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise drf_serializers.ValidationError({"institucion": "Indicá un hospital válido."})
+        if not tiene_capacidad(request.user, "padron_admision", institucion_id):
+            raise PermissionDenied("No tenés acceso al padrón de este hospital.")
+        get_object_or_404(Institucion, pk=institucion_id)
+        return Response({
+            "institucion": institucion_id,
+            "habilitada": ConfiguracionHospital.objects.filter(institucion_id=institucion_id, activo=True).exists(),
+        }, headers={"Cache-Control": "private, no-store"})
 
     def get_columnas_csv(self, request):
         inst = request.query_params.get("institucion")
@@ -130,6 +160,12 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         if "historia_clinica" not in capacidades_de(request.user, inst):
             return self.columnas_csv_padron
         return self.columnas_csv
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get"])
+    def cobertura(self, request, pk=None):
+        from apps.financiadores.api_clinica import historial_paciente
+        return historial_paciente(self, request, self.get_object())
 
 
 class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):

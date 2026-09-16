@@ -87,9 +87,8 @@ def patient(c) -> dict:
     if c.domicilio:
         recurso["address"] = [{"use": "home", "text": c.domicilio}]
 
-    # La cobertura NO va como `Coverage`: ese recurso pide plan, período y
-    # pagador, y Cauce tiene el nombre de la obra social escrito a mano. Se
-    # emite como una extensión con el texto tal cual está, que es lo que hay.
+    # Compatibilidad del dato declarado. Coverage se ofrece por separado sólo
+    # con afiliación estructurada vigente; este texto nunca la acredita.
     if c.obra_social:
         recurso["extension"] = [{
             "url": f"{SISTEMA_LOCAL}:obra-social",
@@ -98,6 +97,34 @@ def patient(c) -> dict:
 
     # `gender` no se emite: Cauce no lo guarda. Mandar "unknown" sería afirmar
     # que se preguntó y no se sabe, cuando en realidad nunca se preguntó.
+    return recurso
+
+
+def coverage(ciudadano, afiliacion) -> dict:
+    """Subset administrativo de R4 4.0.1; no cotiza ni autoriza prestaciones."""
+    financiador = afiliacion["financiador_id"]
+    recurso = {
+        "resourceType": "Coverage",
+        "id": f"{ciudadano.pk}-{afiliacion['id']}",
+        "status": "active",
+        "identifier": [{
+            "system": f"{SISTEMA_LOCAL}:financiador:{financiador}:afiliado",
+            "value": afiliacion["numero"],
+        }],
+        "beneficiary": {"reference": f"Patient/{ciudadano.pk}"},
+        "period": {"start": afiliacion["desde"]},
+        "payor": [{"reference": "#financiador"}],
+        "contained": [{
+            "resourceType": "Organization", "id": "financiador", "active": True,
+            "identifier": [{"system": f"{SISTEMA_LOCAL}:financiador", "value": str(financiador)}],
+            "name": afiliacion["financiador_nombre"],
+        }],
+    }
+    if afiliacion["plan_id"]:
+        recurso["class"] = [{
+            "type": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/coverage-class", "code": "plan"}]},
+            "value": str(afiliacion["plan_id"]), "name": afiliacion["plan_nombre"],
+        }]
     return recurso
 
 

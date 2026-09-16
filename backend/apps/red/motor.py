@@ -47,20 +47,34 @@ def _paciente_en(institucion, base):
     no tiene documento NO se busca: un get_or_create con documento='' fusionaría
     a todos los NN de guardia en una sola persona.
     """
-    from apps.registros.models import Ciudadano
+    from apps.registros.models import Ciudadano, DOCUMENTOS_NN, normalizar_documento
 
-    if base.documento:
-        existente = Ciudadano.objects.filter(
-            institucion=institucion, documento=base.documento
-        ).order_by("id").first()
-        if existente is not None:
-            return existente
+    documento = normalizar_documento(base.documento or "")
+    if documento in DOCUMENTOS_NN:
+        documento = ""
+    if documento:
+        # Compara también las variantes legadas que save() aún no normalizó.
+        # Misma regla ASCII que normalizar_documento, sin perder ceros ni traer
+        # el padrón a Python. Las clases explícitas evitan equivalencias Unicode
+        # de búsquedas sin distinción de mayúsculas (por ejemplo K y K).
+        separadores = r"[^0-9A-Za-z]*"
+        letras = (f"[{c}{c.lower()}]" if c.isalpha() else c for c in documento)
+        patron = "^" + separadores + separadores.join(letras) + separadores + "$"
+        existentes = list(Ciudadano.objects.filter(
+            institucion=institucion, documento__regex=patron,
+        ).order_by("id")[:2])
+        if len(existentes) > 1:
+            raise ErrorTraslado("El documento identifica fichas conflictivas en destino. Revisá la identidad antes de vincularlas.")
+        if existentes:
+            return existentes[0]
     return Ciudadano.objects.create(
         institucion=institucion,
         nombre=base.nombre,
         apellido=base.apellido,
-        documento=base.documento,
+        documento=documento,
         fecha_nacimiento=base.fecha_nacimiento,
+        # Es sólo una declaración histórica. La afiliación se consulta en el
+        # padrón y convenio del destino y se elige expresamente en el nuevo caso.
         obra_social=base.obra_social,
         domicilio=base.domicilio,
     )

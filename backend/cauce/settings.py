@@ -159,6 +159,7 @@ INSTALLED_APPS = [
     "apps.agenda",
     "apps.farmacia",
     "apps.finanzas",
+    "apps.financiadores",
     "apps.red",
     "apps.auditoria",
     "apps.fhir",

@@ -719,6 +719,7 @@ function ModalIngresarPaciente({ item, institucionId, onClose, onCreado }) {
       {paciente ? (
         <div className="flex flex-col gap-3.5">
           <PacienteElegido paciente={paciente} onCambiar={() => setPaciente(null)} />
+          <p className="text-sm text-texto-debil">Al abrir el caso podrás registrar la afiliación y consultar la cobertura de cada prestación. Una cobertura pendiente no impide el ingreso ni la atención.</p>
           <Field label="Prioridad">
             <Select value={prioridad} onChange={(e) => setPrioridad(e.target.value)}>
               <option value="normal">Normal</option>
