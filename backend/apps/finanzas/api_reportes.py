@@ -47,6 +47,14 @@ class ConsultaReporte(AuditaLecturaFinanciera, viewsets.GenericViewSet):
     serializer_class = ContextoReporte
     http_method_names = ["get", "head", "options"]
 
+    def expectativas(self, usuario, ctx):
+        fuentes = gastos_en_alcance_financiero(ExpectativaGasto.objects.all(), usuario).filter(institucion_id=ctx["institucion"])
+        if ctx.get("area"):
+            fuentes = fuentes.filter(area_id=ctx["area"])
+        elif ctx["area_sin_asignar"]:
+            fuentes = fuentes.filter(area_id__isnull=True)
+        return fuentes
+
     def fuentes(self, request, periodo=None):
         entrada = ContextoReporte(data=request.query_params)
         entrada.is_valid(raise_exception=True)
@@ -93,7 +101,13 @@ class ReporteFinanzasViewSet(ConsultaReporte):
             datos = resumir_gastos(fuentes)
             datos["periodo_economico"] = mes.isoformat()
             datos["mes_abierto"] = mes >= timezone.localdate().replace(day=1)
+            controles = list(calendario_mensual(self.expectativas(request.user, ctx), request.user, mes).values("area_id", "sensible", "estado_carga"))
+            datos["controles"] = len(controles)
+            datos["controles_sin_completar"] = sum(f["estado_carga"] == IndicacionCargaGasto.Estado.FALTA_CARGAR for f in controles)
+            datos["provisional"] = datos["mes_abierto"] or datos["controles_sin_completar"] > 0 or datos["ajustes_pendientes"] > 0 or Decimal(datos["pendientes_aprobacion"]) != 0
             resultados[mes] = datos
+            for fila in controles:
+                auditoria[(ctx["institucion"], fila["area_id"], fila["sensible"], mes)] += 1
             for fila in fuentes.order_by().values("area_id", "sensible").annotate(cantidad=Count("pk")):
                 auditoria[(ctx["institucion"], fila["area_id"], fila["sensible"], mes)] += fila["cantidad"]
         presente, previo = resultados[actual], resultados[anterior]
@@ -127,11 +141,7 @@ class ReporteFinanzasViewSet(ConsultaReporte):
         if numero_inicio < 12:
             raise serializers.ValidationError("El período no permite consultar tantos meses anteriores.")
         periodos = [date(n // 12, n % 12 + 1, 1) for n in range(numero_inicio, numero_fin + 1)]
-        expectativas = gastos_en_alcance_financiero(ExpectativaGasto.objects.all(), request.user).filter(institucion_id=ctx["institucion"])
-        if ctx.get("area"):
-            expectativas = expectativas.filter(area_id=ctx["area"])
-        elif ctx["area_sin_asignar"]:
-            expectativas = expectativas.filter(area_id__isnull=True)
+        expectativas = self.expectativas(request.user, ctx)
         # Una consulta por mes, no por concepto/área. Conserva el cálculo de
         # calendario y sus subconsultas: los ajustes nunca multiplican fuentes.
         calendarios = [list(calendario_mensual(expectativas, request.user, mes).values(

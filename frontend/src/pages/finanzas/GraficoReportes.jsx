@@ -12,7 +12,7 @@ function Ayuda({ active, payload, label, medidas }) {
   const fila = payload[0].payload;
   return <div role="tooltip" className="finance-report-tooltip"><strong>{fila.titulo || label}</strong>
     {medidas.map(([campo, nombre]) => <p key={campo}>{nombre}: <strong>{fila.exactos[campo] == null ? "Sin registros comparables" : importeARS(fila.exactos[campo])}</strong></p>)}
-    {fila.abierto && <p>Mes abierto · lectura provisional</p>}
+    {fila.abierto && <p>Lectura provisional: mes abierto, carga o aprobación pendiente</p>}
     <p className="text-xs text-texto-debil">Seleccioná el gráfico o usá el listado para ver el origen.</p>
   </div>;
 }
@@ -20,7 +20,7 @@ function Ayuda({ active, payload, label, medidas }) {
 export function TendenciaReporte({ serie, medidas, onAbrir }) {
   const datos = serie.map((fila) => {
     const disponible = (fila.cantidad_registros ?? fila.cantidad_movimientos) > 0;
-    return { mes: nombreMes(fila.periodo_economico), titulo: fila.periodo_economico.slice(0, 7), fila, abierto: fila.mes_abierto,
+    return { mes: nombreMes(fila.periodo_economico), titulo: fila.periodo_economico.slice(0, 7), fila, abierto: fila.provisional ?? fila.mes_abierto,
       exactos: Object.fromEntries(medidas.map(([campo]) => [campo, disponible ? fila[campo] : null])),
       ...Object.fromEntries(medidas.map(([campo]) => [campo, disponible ? Number(fila[campo]) : null])) };
   });

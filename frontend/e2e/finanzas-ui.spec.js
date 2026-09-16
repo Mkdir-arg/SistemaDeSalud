@@ -82,7 +82,7 @@ async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"]
     const grupos = vacio ? [] : nombres.map((nombre, i) => ({ area: i < 2 ? 3 : 4, area_nombre: i < 2 ? area.nombre : "Guardia", concepto: i + 1, concepto_nombre: nombre,
       actual: { aprobados: ["480000.01", "320000.00", "140000.00", "60000.00"][i] }, anterior: { aprobados: ["400000.00", "250000.00", "100000.00", "50000.00"][i] },
       variacion: { importe: ["80000.01", "70000.00", "40000.00", "10000.00"][i], porcentaje: "20.00" } }));
-    const gasto = (periodo, actual = true) => ({ periodo_economico: periodo, aprobados: vacio ? "0.00" : actual ? "1000000.01" : "800000.00", pendientes_aprobacion: vacio ? "0.00" : "25000.00", cantidad_registros: vacio ? 0 : 4, actualizando: false, ajustes_pendientes: 0, mes_abierto: periodo === "2026-09-01" });
+    const gasto = (periodo, actual = true) => ({ periodo_economico: periodo, aprobados: vacio ? "0.00" : actual ? "1000000.01" : "800000.00", pendientes_aprobacion: vacio ? "0.00" : "25000.00", cantidad_registros: vacio ? 0 : 4, controles: vacio ? 0 : 3, controles_sin_completar: vacio ? 0 : actual ? 1 : 2, provisional: !vacio, actualizando: false, ajustes_pendientes: 0, mes_abierto: periodo === "2026-09-01" });
     const money = (periodo, actual = true) => ({ periodo_economico: periodo, fecha_desde: periodo, fecha_hasta: periodo.slice(0, 8) + (periodo.slice(5, 7) === "09" ? "30" : "31"), cobros_netos: vacio ? "0.00" : actual ? "720000.00" : "600000.00", pagos_netos: vacio ? "0.00" : "540000.00", diferencia: vacio ? "0.00" : actual ? "180000.00" : "60000.00", cantidad_movimientos: vacio ? 0 : 9, por_aprobar: { cantidad: vacio ? 0 : 2 }, mes_abierto: periodo === "2026-09-01" });
     const meses = Number(url.searchParams.get("meses"));
     const serie = Array.from({ length: meses }, (_, i) => {
@@ -129,15 +129,24 @@ test("reporte ejecutivo conserva área concepto y mes del desglose de gastos", a
   await expect.poll(() => peticiones.some((u) => u.pathname === "/api/gastos/" && u.searchParams.get("area") === "4" && u.searchParams.get("concepto") === "3" && u.searchParams.get("periodo_economico") === "2026-09-01" && !u.searchParams.has("control_mensual"))).toBe(true);
 });
 
+test("reporte ejecutivo muestra cargas pendientes de ambos períodos y abre sus controles", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&area=3");
+  await expect(page.getByRole("button", { name: "1 control pendiente de carga · revisar", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "2 controles pendientes de carga · revisar", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/expectativas-gasto/calendario/" && u.searchParams.get("periodo_economico") === "2026-08-01" && u.searchParams.get("area") === "3" && u.searchParams.get("estado_carga") === "falta_cargar")).toBe(true);
+});
+
 test("reporte ejecutivo traza financiador prestación y estado hasta movimientos", async ({ page }) => {
   const { peticiones } = await escenarioEjecutivo(page);
   await page.route("**/api/movimientos-dinero/**", (route) => route.fulfill({ json: lista([{ id: 81, obligacion: 62, importe: "720000.00", estado: "aprobado", tipo: "cobro", obligacion_tipo: "cobrar", contraparte_nombre: "Mutual del Litoral", fecha: "2026-09-10", periodo_economico: "2026-08-01" }]) }));
   await page.route("**/api/obligaciones-financieras/62/", (route) => route.fulfill({ json: { id: 62, tipo: "cobrar", hecho: 71, area: 3, sensible: false, contraparte_nombre: "Mutual del Litoral", periodo_economico: "2026-08-01", importe_original: "720000.00", obligacion_actual: "720000.00", registrado_neto: "720000.00", pendiente: "0.00", disponible_registro: "0.00", disponible_reducir: "0.00", saldo_a_devolver: "0.00", por_aprobar: "0.00", reintegros_por_aprobar: "0.00", ajustes_por_aprobar: "0.00", movimientos: [], ajustes: [] } }));
-  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&movimientos_dinero_pag=2");
   const tabla = page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" });
   await tabla.getByRole("button", { name: "ARS 720.000,00", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("Mutual del Litoral");
-  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("reporte_financiador") === "9" && u.searchParams.get("reporte_prestacion") === "4" && u.searchParams.get("reporte_concepto") === "null" && u.searchParams.get("area") === "3" && u.searchParams.get("estado") === "aprobado" && u.searchParams.get("fecha_desde") === "2026-09-01" && u.searchParams.get("fecha_hasta") === "2026-09-30")).toBe(true);
+  await expect(page).not.toHaveURL(/movimientos_dinero_pag=2/);
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("page") === "1" && u.searchParams.get("reporte_financiador") === "9" && u.searchParams.get("reporte_prestacion") === "4" && u.searchParams.get("reporte_concepto") === "null" && u.searchParams.get("area") === "3" && u.searchParams.get("estado") === "aprobado" && u.searchParams.get("fecha_desde") === "2026-09-01" && u.searchParams.get("fecha_hasta") === "2026-09-30")).toBe(true);
   await page.getByRole("button", { name: "Ver cuenta #62", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Cuenta #62", exact: true })).toContainText("Atención de origen #71");
 });

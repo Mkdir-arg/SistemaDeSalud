@@ -40,6 +40,11 @@ contra una base ausente. Los valores cero registrados sí se conservan. Un neto
 negativo por reintegros conserva su signo. La ausencia de configuración de
 controles mensuales no se interpreta como carga completa.
 
+Ambos períodos muestran cuántos controles conocidos siguen pendientes de carga,
+reutilizando `calendario_mensual` y su alcance autorizado. El contador abre esos
+controles en el mes y área correspondientes. Un mes con carga o aprobación
+pendiente conserva una marca provisional aunque su mes calendario haya terminado.
+
 Los pendientes se consultan aparte. Rechazados no participan del reporte de
 dinero. El reparto sigue incluido en el aprobado, sin sumarlo dos veces, y se
 mantiene desconocido mientras hay procesamiento pendiente. No se estima un
@@ -79,7 +84,7 @@ y superficies, bordes, controles y foco del sistema existente.
 - Petróleo `#287f92` para gasto/cobros, ocre `#ad7133` para pagos y gris azulado
   `#82949e` para el período anterior. No califican un aumento como bueno o malo.
 - Líneas rectas, sin suavizado que invente trayectorias; pagos también llevan
-  guiones. Meses abiertos con puntos huecos, ausencia sin unir huecos.
+  guiones. Meses provisionales con puntos huecos, ausencia sin unir huecos.
 - Barras horizontales pareadas para comparar importes en una escala común;
   admiten negativos. Se muestran hasta ocho grupos por gasto actual, con todos
   los grupos disponibles en la tabla exacta.
@@ -89,6 +94,8 @@ y superficies, bordes, controles y foco del sistema existente.
 - La cifra actual y la anterior abren sus fuentes. El enlace del informe de
   gastos no activa el filtro de control mensual de Evolución. El dinero abre
   movimientos, luego la cuenta y su identificación de origen.
+  Cada apertura reinicia la página del listado para no heredar una página inválida
+  de una cifra anterior.
 - Pantallas verificables en escritorio y a 390 px, usando las tablas adaptables
   del módulo. La etiqueta breve **Reportes** conserva el espacio de las vistas
   operativas.
@@ -122,7 +129,34 @@ Las pruebas nuevas cubren comparativas, centavos, ajustes, ausencia/base cero,
 base negativa, fechas, permisos, fallo de auditoría, reintegros, copagos, vínculos
 de resoluciones, conceptos renombrados y conciliación con filtros de detalle.
 Playwright cubre ambos períodos, navegación completa, estados, permisos y móvil.
-La descripción del PR contiene el resultado final de cada comando.
+Resultado final: 276 pruebas backend aprobadas, 24 omitidas por requerir
+PostgreSQL y 60 subpruebas aprobadas al ejecutar `apps/finanzas/` junto con
+`apps/financiadores/test_cobertura.py` y `apps/financiadores/test_recuperacion.py`.
+Playwright: 127 pruebas aprobadas, incluidos nueve casos nuevos del reporte.
+Build, comprobaciones de Django, ausencia de migraciones y validación de OpenAPI
+correctos. La auditoría CSS conserva los dos hallazgos preexistentes descritos abajo.
+
+Se aplicaron brainstorming para delimitar magnitudes, interface-design para la
+jerarquía y navegación, Playwright para verificar escritorio/móvil y code-review
+para revisar estándares y requisitos por separado. systematic-debugging orientó
+el diagnóstico de dependencias de pruebas y regresiones de espacio en las pestañas.
+Las comprobaciones usan el entorno Python temporal y un Vite propio; no modifican
+los datos ni la configuración de la demo compartida.
+
+### Standards
+
+La revisión detectó paginación heredada al cambiar de cifra. Se corrigió y el e2e
+verifica que el detalle comienza en la primera página. Sin hallazgos adicionales
+concretos en la revisión estática de las correcciones.
+
+### Spec
+
+La revisión detectó la misma paginación y la falta de visibilidad de cargas
+mensuales conocidas pendientes. Ambos hallazgos están corregidos y cubiertos por
+pruebas; los controles conservan período, alcance y vigencia.
+
+Hallazgos pendientes: Standards 0; Spec 0. Las revisiones son evidencia estática,
+no aceptación funcional humana ni prueba de los escenarios pendientes de entorno.
 
 ## Límites y operación
 

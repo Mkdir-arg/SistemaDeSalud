@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { importeARS } from "@/api/finanzas";
 import { query } from "@/api/queries";
@@ -41,9 +42,9 @@ function Indicador({ titulo, campo, reporte, onAbrir }) {
 
 function SerieMensual({ reporte, medidas, onAbrir }) {
   return <Card className="finance-report-panel">
-    <h3 className="font-semibold">Trayectoria mensual</h3><p className="text-sm text-texto-debil">ARS nominales · Los huecos indican meses sin registros. El punto hueco señala un mes abierto.</p>
+    <h3 className="font-semibold">Trayectoria mensual</h3><p className="text-sm text-texto-debil">ARS nominales · Los huecos indican meses sin registros. El punto hueco señala un mes abierto o con carga/aprobación pendiente.</p>
     {reporte.serie.some(disponible) ? <Grafico><Tendencia serie={reporte.serie} medidas={medidas} onAbrir={onAbrir} /></Grafico> : <EstadoVacio titulo="Sin registros para dibujar una tendencia" detalle="Revisá el período y el área. No equivale a una actividad económica nula." />}
-    <details className="finance-report-detail"><summary>Ver importes y fuentes de cada mes</summary><div className="finance-table"><div className="finance-table-content"><table><caption className="sr-only">Serie mensual exacta</caption><thead><tr><th>Mes</th>{medidas.map(([campo, nombre]) => <th key={campo}>{nombre}</th>)}<th>Lectura</th></tr></thead><tbody>{reporte.serie.map((fila) => <tr key={fila.periodo_economico}><th scope="row" data-label="Mes">{fila.periodo_economico.slice(0, 7)}</th>{medidas.map(([campo, nombre]) => <td key={campo} data-label={nombre}><button className="finance-report-link" onClick={() => onAbrir(fila, campo)}>{disponible(fila) ? importeARS(fila[campo]) : "Sin registros"}</button></td>)}<td data-label="Lectura">{!disponible(fila) ? "Sin registros aprobados" : fila.mes_abierto ? "Mes abierto · provisional" : "Registros visibles"}</td></tr>)}</tbody></table></div></div></details>
+    <details className="finance-report-detail"><summary>Ver importes y fuentes de cada mes</summary><div className="finance-table"><div className="finance-table-content"><table><caption className="sr-only">Serie mensual exacta</caption><thead><tr><th>Mes</th>{medidas.map(([campo, nombre]) => <th key={campo}>{nombre}</th>)}<th>Lectura</th></tr></thead><tbody>{reporte.serie.map((fila) => <tr key={fila.periodo_economico}><th scope="row" data-label="Mes">{fila.periodo_economico.slice(0, 7)}</th>{medidas.map(([campo, nombre]) => <td key={campo} data-label={nombre}><button className="finance-report-link" onClick={() => onAbrir(fila, campo)}>{disponible(fila) ? importeARS(fila[campo]) : "Sin registros"}</button></td>)}<td data-label="Lectura">{!disponible(fila) ? "Sin registros aprobados" : (fila.provisional ?? fila.mes_abierto) ? "Lectura provisional" : "Registros visibles"}</td></tr>)}</tbody></table></div></div></details>
   </Card>;
 }
 
@@ -54,6 +55,7 @@ function Consulta({ consulta, children }) {
 }
 
 export default function ReportesEjecutivos({ institucion, permisos, mes, area, onGastos }) {
+  const [, setSearchParams] = useSearchParams();
   const [comparar, setComparar] = useState("mes_anterior");
   const [meses, setMeses] = useState(6);
   const [detalle, setDetalle] = useState(null);
@@ -69,7 +71,24 @@ export default function ReportesEjecutivos({ institucion, permisos, mes, area, o
   const gastos = useQuery(opciones("reportes-finanzas", "ver_gastos"));
   const dinero = useQuery(opciones("reportes-dinero", "ver_dinero"));
   const abrirGasto = (fila, campo, grupo = null) => onGastos(grupo, campo === "pendientes_aprobacion" ? "pendiente_aprobacion" : "aprobado", fila.periodo_economico, false);
+  function abrirControles(fila) {
+    setSearchParams((previos) => {
+      const siguientes = new URLSearchParams(previos);
+      [...siguientes.keys()].filter((clave) => clave.startsWith("calendario_")).forEach((clave) => siguientes.delete(clave));
+      siguientes.set("tab", "calendario");
+      siguientes.set("mes", fila.periodo_economico.slice(0, 7));
+      siguientes.set("calendario_f_estado_carga", "falta_cargar");
+      return siguientes;
+    });
+  }
   function abrirDinero(fila, campo, grupo = null) {
+    // Cada cifra tiene su propia población. Una página avanzada de otro
+    // desglose puede no existir en el siguiente y ocultaría sus fuentes.
+    setSearchParams((previos) => {
+      const siguientes = new URLSearchParams(previos);
+      siguientes.delete("movimientos_dinero_pag");
+      return siguientes;
+    }, { replace: true });
     const contexto = { institucion: institucion.id, fecha_desde: fila.fecha_desde, fecha_hasta: fila.fecha_hasta,
       ...(grupo ? grupo.filtros : filtroAreaDinero(area)), estado: campo === "pendientes" ? "pendiente_aprobacion" : "aprobado" };
     if (campo === "cobros_netos") contexto.tipo_cuenta = "cobrar";
@@ -87,6 +106,9 @@ export default function ReportesEjecutivos({ institucion, permisos, mes, area, o
       <Card className="finance-report-metrics"><Indicador titulo="Gastos aprobados" campo="aprobados" reporte={d} onAbrir={abrirGasto} /><Indicador titulo="Gastos por aprobar" campo="pendientes_aprobacion" reporte={d} onAbrir={abrirGasto} />
         <div className="finance-report-reading"><h3>Antes de interpretar</h3><p>{d.actual.mes_abierto ? "El mes está abierto. Compararlo con un mes cerrado puede mostrar una baja aparente." : "El cierre del mes calendario no certifica que toda la carga esté completa."}</p><p>{d.actual.actualizando ? "Repartos en actualización: su distribución aún no está disponible." : "El gasto aprobado ya incluye lo distribuido entre atenciones."}</p>{d.actual.ajustes_pendientes > 0 && <p>{d.actual.ajustes_pendientes} ajustes por aprobar; no alteran estos importes.</p>}</div>
       </Card>
+      <div className="finance-report-scope" role="status">{[d.actual, d.anterior].map((fila) => <p key={fila.periodo_economico}>
+        <strong>{fila.periodo_economico.slice(0, 7)}:</strong>{" "}{!fila.controles ? "Sin controles mensuales configurados en este alcance; no se puede certificar la carga." : fila.controles_sin_completar > 0 ? <button className="finance-report-link" onClick={() => abrirControles(fila)}>{fila.controles_sin_completar} {fila.controles_sin_completar === 1 ? "control pendiente" : "controles pendientes"} de carga · revisar</button> : "Sin cargas pendientes en los controles configurados; no certifica toda la economía hospitalaria."}
+      </p>)}</div>
       <div className="finance-report-charts"><SerieMensual reporte={d} medidas={medidasGastos} onAbrir={abrirGasto} /><Card className="finance-report-panel"><h3 className="font-semibold">Dónde cambió el gasto</h3><p className="text-sm text-texto-debil">Hasta ocho grupos con mayor gasto aprobado actual. Todos los grupos están en el detalle.</p>{d.agrupaciones.length ? <Grafico><Comparacion grupos={d.agrupaciones} periodoActual={d.actual.periodo_economico} periodoAnterior={d.anterior.periodo_economico} onAbrir={(g, periodo) => abrirGasto(d[periodo], "aprobados", g)} /></Grafico> : <EstadoVacio titulo="Sin gastos registrados en ambos períodos" />}</Card></div>
       <Card className="finance-report-panel"><h3 className="font-semibold">Área × concepto · comparación exacta</h3><p className="text-sm text-texto-debil">Cada importe abre todos sus gastos aprobados, incluso los que no tienen un control mensual configurado.</p><div className="finance-table"><div className="finance-table-content"><table><caption className="sr-only">Comparación exacta de gastos</caption><thead><tr><th>Área / concepto</th><th>{d.anterior.periodo_economico.slice(0, 7)}</th><th>{mes}</th><th>Variación nominal</th></tr></thead><tbody>{d.agrupaciones.map((g) => <tr key={`${g.area}:${g.concepto}`}><th scope="row" data-label="Área / concepto"><strong>{g.concepto_nombre}</strong><p className="text-texto-debil">{g.area_nombre}</p></th>{["anterior", "actual"].map((periodo) => <td key={periodo} data-label={d[periodo].periodo_economico.slice(0, 7)}>{g[periodo] ? <button className="finance-report-link" onClick={() => abrirGasto(d[periodo], "aprobados", g)}>{importeARS(g[periodo].aprobados)}</button> : "Sin registros"}</td>)}<td data-label="Variación"><Variacion dato={g.variacion} /></td></tr>)}</tbody></table></div></div></Card>
       <p className="finance-report-cut">Consultado {fechaHora(d.calculado_en)} · {d.alcance}</p>

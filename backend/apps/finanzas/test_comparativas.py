@@ -13,7 +13,7 @@ from apps.financiadores.models import DistribucionCobro, ResolucionSaldo
 from apps.financiadores.test_cobertura import CoberturaSetup
 from .comparativas import comparar
 from .dinero import crear_obligacion_cobro, registrar_movimiento
-from .models import AccesoFinanciero, AjusteGasto, ConcesionFinanciera, Gasto, MovimientoDinero
+from .models import AccesoFinanciero, AjusteGasto, ConcesionFinanciera, ExpectativaGasto, Gasto, IndicacionCargaGasto, MovimientoDinero
 from .procesamiento import solicitar_reparto
 from . import test_reportes, test_reportes_dinero
 
@@ -107,6 +107,22 @@ class ComparativaGastosTests(APITestCase):
         self.assertEqual(grupo["concepto_nombre"], "Energía eléctrica")
         detalle = self.client.get("/api/gastos/", {**self.parametros, "area": self.area.pk, "concepto": self.concepto.pk, "estado_operativo": "aprobado"})
         self.assertEqual(detalle.data["count"], 2)
+
+    def test_faltantes_conocidos_por_mes_respetan_vigencia_y_permisos(self):
+        control = ExpectativaGasto.objects.create(institucion=self.institucion, area=self.area, concepto=self.concepto, vigente_desde="2026-08-01")
+        ExpectativaGasto.objects.create(institucion=self.institucion, area=self.otra, concepto=self.concepto, vigente_desde="2026-08-01")
+        IndicacionCargaGasto.objects.create(expectativa=control, periodo_economico="2026-09-01", estado="carga_completa", registrado_por=self.usuario)
+        self.membresia.rol = Membresia.Rol.ADMINISTRATIVO
+        self.membresia.save()
+        permiso = ConcesionFinanciera.objects.create(membresia=self.membresia, accion="ver_gastos")
+        permiso.areas.add(self.area)
+        d = self.consultar(periodo_economico="2026-09-01").data
+        self.assertEqual((d["actual"]["controles"], d["actual"]["controles_sin_completar"]), (1, 0))
+        self.assertEqual((d["anterior"]["controles"], d["anterior"]["controles_sin_completar"]), (1, 1))
+        self.assertTrue(d["anterior"]["provisional"])
+        self.assertEqual(d["serie"][0]["controles"], 0)
+        self.assertTrue(AccesoFinanciero.objects.filter(accion="comparativa", area=self.area, periodo_economico="2026-08-01", resultados=1).exists())
+        self.assertFalse(AccesoFinanciero.objects.filter(accion="comparativa", area=self.otra).exists())
 
 
 class ComparativaDineroTests(APITestCase):
