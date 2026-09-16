@@ -81,7 +81,7 @@ No se ejecutó la suite global completa ni una prueba de carga con volúmenes ho
 
 Dos riesgos concretos quedaron cubiertos: contar varias veces una obligación con varios movimientos, y exponer una evaluación incompleta sin conocer su sensibilidad. Un tercero, perder la navegación al saldar la última fila, motivó la corrección de interfaz. La reversión de este bloque retira su lectura y pantalla; debe conservar cuentas, movimientos y auditorías generados con las operaciones existentes. No se eliminan datos para revertirlo.
 
-Siguiente bloque recomendado: **exportación hospitalaria de cuentas y pendientes con los mismos filtros, permisos y auditoría**, para facilitar el intercambio y la conciliación con financiadores. No implica conciliación bancaria automática, emisión fiscal ni pagos masivos. La revisión del piloto y la comprensión/aceptación por parte del usuario siguen pendientes; la instrucción de continuar automáticamente no se presenta como aceptación de incorporación.
+La **exportación hospitalaria de cuentas y pendientes con los mismos filtros, permisos y auditoría**, recomendada después del seguimiento, se implementó en el incremento siguiente documentado abajo. Facilita el intercambio y la conciliación con financiadores. No implica conciliación bancaria automática, emisión fiscal ni pagos masivos. La revisión del piloto y la comprensión/aceptación por parte del usuario siguen pendientes; la instrucción de continuar automáticamente no se presenta como aceptación de incorporación.
 
 ## Exportación hospitalaria — alcance autorizado el 16/09/2026
 
@@ -89,10 +89,37 @@ El usuario pidió continuar el bloque recomendado. Se incorpora `formato=csv` al
 
 Se recomienda CSV UTF-8 con BOM, punto y coma y coma decimal, como la exportación de actividad existente. Reutiliza su protección de texto frente a fórmulas, sin transformar identificadores en números de precisión limitada ni interpretar nombres como fechas. No se agrega un generador de hojas XLSX ni un trabajo asíncrono: el volumen se acota y no requiere infraestructura ni dependencias nuevas.
 
-Cada vista tiene encabezados propios. Cuentas exporta importes originales, ajustes aprobados, obligación actual, cobrado neto, deuda, devoluciones y registros por aprobar en ARS. Pendientes conserva importe desconocido vacío y estado/motivo legibles. Captura no inventa responsables ni importes. Sólo se incluyen los campos financieros ya consultables, el hospital y la fecha de generación; no se agregan documentos, historia clínica ni evidencia de aceptación. Los IDs se conservan como texto para relacionar filas sin pérdida de precisión.
+Cada vista tiene encabezados propios. Cuentas exporta importes originales, ajustes aprobados, obligación actual, cobrado neto, deuda, devoluciones y registros por aprobar en ARS. Pendientes conserva importe desconocido vacío y estado/motivo legibles. Captura no inventa responsables ni importes. Sólo se incluyen los campos financieros ya consultables, el hospital y la fecha de generación; no se agregan documentos, historia clínica ni evidencia de aceptación. IDs y textos libres (nombres, prestaciones y motivos) llevan un apóstrofo inicial para conservarlos como texto, incluso si parecen números o fechas. Ese prefijo es una convención del CSV y puede verse en otros lectores; no modifica los datos del sistema. Las etiquetas fijas, fechas y cantidades monetarias conservan su formato propio.
 
 El archivo se construye con un único conjunto materializado y acotado; los grupos auditados se calculan desde esas mismas filas. No se transmite contenido antes de persistir toda la auditoría. Cada registro identifica `seguimiento-cobros` y `exportar_<vista>`. Si falla un grupo, se revierte la auditoría parcial y se devuelve 503 sin archivo. Se mantienen `private, no-store` y `nosniff`.
 
 El botón «Exportar CSV» usa los filtros aplicados, excluye la página y se deshabilita ante cambios sin aplicar, carga, error, falta de permiso o exceso del límite. Comunica que el archivo reúne todas las páginas y que su estado corresponde al momento de la descarga. La exportación vuelve a validar en servidor permisos y datos; no fija el saldo de una consulta anterior.
 
 Aceptación técnica: comparar JSON/CSV de las tres vistas y de múltiples páginas; rechazar filtros incompatibles y límites excedidos; verificar permisos por hospital/área/sensibilidad, texto peligroso, decimales negativos y desconocidos; simular fallos de auditoría; comprobar descargas y errores desde la interfaz y contrastar un archivo de la demo con su base. Se validan regresiones del exportador de actividad al extraer exclusivamente la función compartida de texto seguro.
+
+### Resultado de la exportación y validación
+
+Implementado en `seguimiento_csv.py` y en el mismo `SeguimientoCobrosViewSet`, sin una segunda API de consulta ni otro cálculo de saldos. `csv.py` extrae sólo el tratamiento de texto reutilizado por `actividad.py`. `AuditaLecturaFinanciera` admite respuestas de archivo únicamente cuando se aportan grupos explícitos. No hay cambios de modelo, migraciones ni nuevas dependencias. Commits de implementación: `26e592e` (backend) y `f64fd2c` (interfaz).
+
+| Criterio | Evidencia |
+| --- | --- |
+| CSV contiene todas las filas filtradas en el orden del JSON | `test_exporta_todas_las_filas_filtradas_en_el_mismo_orden_que_json`, incluso con `page=999&page_size=1` |
+| Conserva saldos exactos, negativos y desconocidos; no modifica dinero | Pruebas de nueve columnas monetarias, controles de cantidades financieras, pendientes y captura sin importes inventados |
+| Ningún campo amplía el ámbito financiero o clínico | Pruebas de institución, área, sensibilidad, roles insuficientes y columnas excluidas |
+| Identificadores íntegros y texto seguro en CSV | Pruebas de IDs largos, nombres parecidos a fechas, fórmulas/Unicode, separadores y saltos de línea; regresión de actividad |
+| Límite sin archivo parcial y auditoría de las mismas filas | Pruebas de límite exacto/excedido, exportación vacía y llegada de nuevos cargos después de materializar la lista |
+| Fallo de auditoría impide entregar el archivo | 503 en las tres vistas y rollback al fallar el segundo grupo |
+| Descarga con filtros aplicados y contexto conservado | Nueve E2E nuevos: tres vistas, filtros sin paginación, límites, borradores, errores 400/503, doble clic y cambio de hospital |
+
+- **366/366 pruebas PostgreSQL 16**, sin omisiones, 99,122 s, con el mismo comando de regresión documentado arriba. Incluye las 19 nuevas pruebas del CSV y las regresiones de financiadores, dinero, aprobaciones, cobros, reportes, permisos y esquema.
+- **19/19 focales SQLite**, 1,575 s. Primer pase adicional de regresión de seguimiento/actividad: **56/56**, 6,538 s. Comando focal: `python manage.py test apps.financiadores.test_exportacion_seguimiento --settings=cauce.settings_financiadores_test --noinput`.
+- **78/78 pruebas Playwright** de la configuración `playwright.financiadores-ui.config.js`, incluidas 22 del seguimiento; build Vite correcto, 751 módulos, 2,81 s. `check`, OpenAPI con `--validate --fail-on-warn` y `git diff --check` correctos.
+- Demo real: CSV de dos cuentas y un pendiente descargados desde la interfaz, comparados con JSON y con los saldos persistidos; una única fecha de generación por archivo, BOM y encabezados HTTP verificados. Exportación de captura vacía verificada por API. Auditoría de las tres vistas y ausencia de nuevos movimientos confirmadas. Capturas de escritorio/móvil sin desborde del documento ni errores JavaScript.
+
+El revisor Codex independiente informó que terminó la inspección de backend y UI sin hallazgos adicionales. La entrega de su respuesta final se interrumpió por cuota; se conservan sus observaciones intermedias. La regresión PostgreSQL y el contraste de la demo los completó el agente principal. Claude no participó de este incremento por el límite informado en la sesión anterior; no se atribuye una revisión final a Claude.
+
+Se aplicaron `brainstorming` para limitar el alcance aprobado, `interface-design` para reutilizar el patrón de descarga de Cauce, el flujo de verificación de `playwright` con las herramientas instaladas y `pr-reviewer-github` para revisar permisos, formato y auditoría. Se consultó `xlsx`, pero no se aplicó su flujo de modelos y fórmulas: este cambio implementa una exportación CSV del servidor y conserva sus valores registrados.
+
+Límites: no se abrió el archivo en Microsoft Excel real ni se midió una exportación de 5.000 filas; el CSV se validó con parser y navegador. No se repitió toda la suite global del repositorio. El límite de filas se comprobó con un umbral reducido en las pruebas. El apóstrofo es parte de la convención de texto del archivo, visible en algunos lectores. Una descarga ya iniciada conserva hospital/vista/filtros si se navega a otra pantalla; el cliente existente no permite cancelarla.
+
+Siguiente paso recomendado: **ensayo integral del piloto con dos hospitales y dos financiadores**, incluyendo permisos, carga masiva, cupos compartidos, atención, cobros y ambos reportes. La aceptación del equipo hospitalario y la medición de volúmenes siguen pendientes; L7 de autorizaciones previas permanece fuera de esta entrega.

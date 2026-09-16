@@ -90,6 +90,10 @@ Ingresar con **`hospital@demo.local` / `CauceDemo2026!`** y abrir [Seguimiento d
 
 La prestación nueva se preparó con los servicios existentes en la SQLite exclusiva, después de respaldarla; se conservaron los casos anteriores. El cobro sí se registró mediante navegador y API reales. Base, auditoría y pantalla coinciden, sin movimientos duplicados al repetir la verificación. Capturas y resultados en `revision-seguimiento`, dentro del directorio local de la demo. [Evidencia y límites](seguimiento-hospitalario.md).
 
+El seguimiento ahora incluye **«Exportar CSV»**: aplicar los filtros y descargar la vista completa, hasta 5.000 filas. Se descargaron desde el navegador las dos cuentas del caso 9 y el pendiente del caso 8; los nueve importes monetarios de cada cuenta coinciden con JSON y base. El importe desconocido del caso 8 queda vacío. El archivo usa punto y coma, coma decimal y UTF-8; IDs y textos libres llevan un apóstrofo inicial para conservarlos como texto al abrirlos en una hoja de cálculo.
+
+Archivos descargados, capturas y comprobación contra la base en `revision-exportacion`, dentro del directorio de la demo. Esta verificación sólo agregó auditorías de lectura: no cargó pacientes ni registró nuevos cobros. La vista de captura no tiene filas en esta demo; se verificó su archivo vacío por API y su botón deshabilitado. El contenido de capturas pendientes está cubierto por pruebas automatizadas.
+
 ### Circuito clínico agregado el 16/09/2026
 
 En [la demo](http://127.0.0.1:5188), iniciar sesión con **`consulta@demo.local` / `CauceDemo2026!`**. «Mi trabajo» ofrece **Consulta con cobertura · demo**. Ingresar a Clara (`00888111`) o Diego (`00888222`) para crear otra consulta y probar la cobertura antes de atender.
