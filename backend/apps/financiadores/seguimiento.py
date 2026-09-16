@@ -2,16 +2,9 @@
 from decimal import Decimal
 
 from django.db.models import BooleanField, Case, Count, DecimalField, F, Q, Sum, Value, When
-from django.db.models.functions import Coalesce, TruncDate, TruncMonth
-from django.utils import timezone
-from drf_spectacular.utils import OpenApiTypes, extend_schema
-from rest_framework import serializers, viewsets
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
+from django.db.models.functions import Coalesce, TruncDate
+from rest_framework import serializers
 
-from cauce.pagination import Paginacion
-from apps.finanzas.auditoria import AuditaLecturaFinanciera
 from apps.finanzas.models import HechoAtencionCosteable, ObligacionFinanciera
 from apps.finanzas.permisos import alcance_financiero_q, concesiones_financieras_de
 from apps.finanzas.saldos import CAMPOS_SALDO, saldos_obligaciones
@@ -183,46 +176,3 @@ def fila_seguimiento(obj, vista):
     }
     return {**fila, "estado": obj.estado_reporte, "motivo": motivos[obj.estado_reporte],
             "importe_pendiente": f"{obj.importe_pendiente:.2f}" if obj.importe_pendiente is not None else None}
-
-
-class SeguimientoCobrosViewSet(viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated]
-    serializer_class = FiltrosSeguimiento
-    pagination_class = Paginacion
-    queryset = ObligacionFinanciera.objects.none()
-    http_method_names = ["get", "head", "options"]
-
-    def finalize_response(self, request, response, *args, **kwargs):
-        response = super().finalize_response(request, response, *args, **kwargs)
-        response["Cache-Control"] = "private, no-store"
-        return response
-
-    @extend_schema(parameters=[FiltrosSeguimiento], responses=OpenApiTypes.OBJECT)
-    def list(self, request):
-        entrada = FiltrosSeguimiento(data=request.query_params.dict())
-        entrada.is_valid(raise_exception=True)
-        filtros = entrada.validated_data
-        institucion, vista = filtros["institucion"], filtros["vista"]
-        if not puede_seguimiento(request.user, institucion):
-            raise PermissionDenied("Necesitás permiso para consultar dinero de esta institución.")
-        if "area" in filtros and not Area.objects.filter(pk=filtros["area"], institucion_id=institucion).exists():
-            raise serializers.ValidationError({"area": "El área no pertenece a la institución."})
-        fuentes = {"cuentas": cuentas_cobertura, "pendientes": pendientes_cobertura, "captura": capturas_cobertura}
-        visible = fuentes[vista](request.user, institucion)
-        qs = filtrar_seguimiento(visible, filtros).order_by("-fecha_reporte", "-pk")
-        generado_en = timezone.now()
-        pagina = list(self.paginate_queryset(qs))
-        respuesta = self.get_paginated_response([fila_seguimiento(obj, vista) for obj in pagina])
-        respuesta.data.update(resumen=resumen_seguimiento(qs, vista), opciones=opciones_seguimiento(visible, vista), generado_en=generado_en)
-        # Auditar también las fuentes de los totales, no sólo la página visible.
-        agrupados = qs.order_by().annotate(mes_reporte=TruncMonth("fecha_reporte")).values(
-            "area_reporte", "sensible_reporte", "mes_reporte",
-        ).annotate(cantidad=Count("pk"))
-        grupos = {(institucion, fila["area_reporte"], fila["sensible_reporte"], fila["mes_reporte"]): fila["cantidad"] for fila in agrupados}
-        if not grupos:
-            grupos = {(institucion, None, False, None): 0}
-        # Reusar la escritura estricta sin heredar las rutas list/retrieve del
-        # mixin: este reporte no tiene un recurso de detalle independiente.
-        return AuditaLecturaFinanciera.auditar_respuesta(
-            self, respuesta, grupos=grupos, recurso="seguimiento-cobros", accion=vista,
-        )
