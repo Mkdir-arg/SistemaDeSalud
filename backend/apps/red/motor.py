@@ -53,8 +53,15 @@ def _paciente_en(institucion, base):
     if documento in DOCUMENTOS_NN:
         documento = ""
     if documento:
+        # Compara también las variantes legadas que save() aún no normalizó.
+        # Misma regla ASCII que normalizar_documento, sin perder ceros ni traer
+        # el padrón a Python. Las clases explícitas evitan equivalencias Unicode
+        # de búsquedas sin distinción de mayúsculas (por ejemplo K y K).
+        separadores = r"[^0-9A-Za-z]*"
+        letras = (f"[{c}{c.lower()}]" if c.isalpha() else c for c in documento)
+        patron = "^" + separadores + separadores.join(letras) + separadores + "$"
         existentes = list(Ciudadano.objects.filter(
-            institucion=institucion, documento__in={base.documento, documento},
+            institucion=institucion, documento__regex=patron,
         ).order_by("id")[:2])
         if len(existentes) > 1:
             raise ErrorTraslado("El documento identifica fichas conflictivas en destino. Revisá la identidad antes de vincularlas.")

@@ -40,6 +40,36 @@ class IdentidadTrasladoTests(TestCase):
             motor._paciente_en(self.destino, origen)
         self.assertEqual(Ciudadano.objects.filter(institucion=self.destino).count(), 2)
 
+    def test_origen_normalizado_reutiliza_variantes_legadas_del_destino(self):
+        for documento, legado in [("00111222", " 00-111/222 "), ("AB123", "a.b-1 2/3")]:
+            with self.subTest(documento=documento):
+                origen = Ciudadano.objects.create(institucion=self.origen, documento=documento)
+                destino = Ciudadano.objects.create(institucion=self.destino, documento=documento)
+                Ciudadano.objects.filter(pk=destino.pk).update(documento=legado)
+                self.assertEqual(motor._paciente_en(self.destino, origen).pk, destino.pk)
+                destino.refresh_from_db()
+                self.assertEqual(destino.documento, legado)
+        self.assertEqual(Ciudadano.objects.filter(institucion=self.destino).count(), 2)
+
+    def test_origen_normalizado_detecta_conflictos_entre_variantes_legadas(self):
+        origen = Ciudadano.objects.create(institucion=self.origen, documento="00111222")
+        for indice, legado in enumerate(["00.111.222", "00 111-222"]):
+            destino = Ciudadano.objects.create(institucion=self.destino, documento=f"TEMP{indice}")
+            Ciudadano.objects.filter(pk=destino.pk).update(documento=legado)
+        with self.assertRaises(motor.ErrorTraslado):
+            motor._paciente_en(self.destino, origen)
+        self.assertEqual(Ciudadano.objects.filter(institucion=self.destino).count(), 2)
+
+    def test_normalizacion_no_omite_ceros_ni_convierte_letras_no_ascii(self):
+        for documento, otro in [("00111222", "111222"), ("K123", "K123")]:
+            with self.subTest(documento=documento):
+                origen = Ciudadano.objects.create(institucion=self.origen, documento=documento)
+                destino = Ciudadano.objects.create(institucion=self.destino, documento="TEMP")
+                Ciudadano.objects.filter(pk=destino.pk).update(documento=otro)
+                nuevo = motor._paciente_en(self.destino, origen)
+                self.assertNotEqual(nuevo.pk, destino.pk)
+                self.assertEqual(nuevo.documento, documento)
+
 
 class CoberturaTrasladoTests(RedTestCase):
     def test_caso_destino_reconsulta_convenio_y_no_hereda_seleccion_ni_reservas(self):
