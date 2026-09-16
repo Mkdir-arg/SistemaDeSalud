@@ -98,6 +98,8 @@ No se reemplazó el registrador central de auditoría por otro camino de escritu
 Si la latencia acordada para el piloto o una base remota lo requieren, el siguiente
 ajuste técnico recomendado es agrupar esas escrituras conservando cada evidencia
 individual y el rechazo íntegro ante fallo de auditoría.
+Se registró como [issue #42](https://github.com/Mkdir-arg/SistemaDeSalud/issues/42),
+con medición reproducible y criterios de aceptación.
 
 Estos tiempos corresponden a `APIClient` dentro de `TestCase`: no incluyen red HTTP,
 descarga del navegador ni el commit externo definitivo de una transacción productiva.
@@ -136,3 +138,7 @@ del proyecto; no se agregó otro framework de pruebas.
 - No hay una decisión de negocio bloqueante dentro del alcance aprobado. La demo
   permanece disponible y el PR sigue en borrador. Autorizaciones previas (L7) siguen
   fuera de esta primera entrega.
+
+El análisis posterior del [resto del circuito](continuidad-del-circuito.md) identifica
+además la integración pendiente del padrón/legado y Red/FHIR. El recorrido de este
+ensayo no pretendía comprobar esos contratos; no los da por terminados.

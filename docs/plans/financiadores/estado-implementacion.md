@@ -6,6 +6,14 @@ Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas la
 
 ## Recorrido disponible
 
+**Pendientes contrastados después del ensayo:** varias pantallas del padrón todavía
+presentan y editan `obra_social` como texto; falta el diagnóstico del legado y su
+conversión revisada. Red aún copia ese texto y FHIR no exporta afiliaciones estructuradas.
+Esto se suma a L7 y a la preparación/aceptación del entorno real. El [plan de continuidad](continuidad-del-circuito.md)
+describe evidencia, orden de bloques y criterios; el [issue #42](https://github.com/Mkdir-arg/SistemaDeSalud/issues/42)
+registra por separado la mejora de rendimiento. El ensayo aprobado no implica cerrar
+estos pendientes ni las épicas completas.
+
 1. Plataforma crea el financiador y da acceso al primer administrador. Una cuenta nueva recibe un enlace de activación de un solo uso para compartir por el canal habitual; Cauce no envía mensajes automáticamente. Una cuenta existente conserva su contraseña.
 2. El administrador configura planes y reglas por prestación o categoría del catálogo común. El padrón admite afiliados sin plan, números familiares y documentos con ceros iniciales.
 3. El financiador descarga su plantilla personalizada, revisa el resumen y confirma las filas válidas. Puede descargar errores, corregirlos y retomar una importación interrumpida. También registra consumos externos y correcciones.
