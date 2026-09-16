@@ -2,6 +2,14 @@
 
 Preparada el 15/09/2026. Acceso en esta máquina: <http://127.0.0.1:5188>.
 
+### Actividad y descarga — 16/09/2026
+
+En «Actividad en hospitales», el financiador dispone de filtros, totales de todas las páginas y CSV. La pantalla abre el mes actual; «Limpiar filtros» permite consultar todo el período visible. El importe asignado suma cargos originales y acuerdos; no es el saldo pendiente de pago.
+
+Se verificó el recorrido real con Obra Social Demo (3 prestaciones realizadas, $24.000 asignados) y Mutual Demo (2 realizadas, $17.500). La mutual conserva su operación pendiente del hospital cuyo convenio finalizó. Los resultados se contrastaron con los CSV y la base ficticia, sin registrar nuevos cobros ni modificar atenciones.
+
+Scripts `verificar-actividad.cjs` y `verificar-datos-actividad.py`, capturas y CSV en `%LOCALAPPDATA%/Cauce/demos/financiadores-main2/revision-actividad/`. Los scripts están en su directorio padre. Son artefactos locales de la demo; no contienen datos reales ni forman parte del PR.
+
 ## Cuentas
 
 Contraseña de todas las cuentas ficticias: `CauceDemo2026!`.

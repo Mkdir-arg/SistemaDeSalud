@@ -1,8 +1,8 @@
 # Implementación local de financiadores y cobertura
 
-Fecha: 15/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas las recomendaciones Q01–Q13. Cambios locales, sin commit, publicación ni migraciones sobre bases reales.
+Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas las recomendaciones Q01–Q13. Implementación en commits de `codex/financiadores-cobertura`, PR borrador [#41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). No se ejecutaron migraciones sobre bases reales.
 
-Último incremento: [cobertura en el circuito clínico](circuito-clinico.md), después de [vigencias, acceso histórico y auditoría](vigencias-y-auditoria.md). Admisión y los puestos acceden al panel desde el caso; la historia del paciente tiene su pestaña de cobertura. Siguen pendientes reportes de actividad completos, conciliación y, posteriormente, autorizaciones previas. No se cerraron issues de GitHub.
+Último incremento: [actividad con filtros, totales y CSV auditado](actividad-y-exportacion.md), después de [cobertura en el circuito clínico](circuito-clinico.md) y [vigencias, acceso histórico y auditoría](vigencias-y-auditoria.md). Admisión y los puestos acceden al panel desde el caso; la historia del paciente tiene su pestaña de cobertura. Siguen pendientes la conciliación y el seguimiento hospitalario y, posteriormente, autorizaciones previas. No se cerraron issues de GitHub. Las validaciones de cada incremento están en su documento; los resultados de la primera implementación se conservan más abajo como antecedente.
 
 ## Recorrido disponible
 
@@ -14,6 +14,7 @@ Fecha: 15/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas las reco
 5. Desde el detalle del caso, el hospital elige la afiliación, consulta el reparto, registra la aceptación del paciente por prestación e importe y confirma la reserva. La consulta sola no ocupa cupo. `/finanzas/coberturas` conserva configuración y seguimiento administrativo.
 6. El registro clínico genera el hecho durable y convierte la reserva en consumo. Las partes exigibles se integran en las obligaciones existentes de Finanzas. No se registra dinero cobrado automáticamente.
 7. Los saldos sin aceptación permanecen pendientes. El personal designado puede rechazar la asunción, asumirlos o registrar un acuerdo documentado con el paciente/financiador. Aranceles y afiliaciones pendientes tienen acciones específicas para completar datos.
+8. El financiador filtra la actividad por fechas, hospital, plan registrado, prestación, estado, discrepancias y afiliado. Consulta totales completos y descarga CSV de hasta 5.000 filas con el mismo alcance y auditoría. El importe asignado incluye acuerdos posteriores; no se presenta como saldo ni como dinero cobrado.
 
 ## Decisiones que conviene revisar en el código
 
