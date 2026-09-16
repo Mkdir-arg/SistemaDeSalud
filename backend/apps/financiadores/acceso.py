@@ -56,17 +56,21 @@ def actividad_visible(financiador):
     ).select_related("afiliado", "prestacion", "caso__institucion", "caso__ciudadano", "hecho__institucion", "hecho__ciudadano", "distribucion")
 
 
-def auditar_actividad(request, financiador, reservas):
-    # Sólo las personas realmente devueltas en esta página. Nunca se atribuye
+def auditar_actividad(request, financiador, reservas, *, recurso="financiadores-actividad"):
+    # Sólo las personas realmente devueltas en la página o archivo. Nunca se atribuye
     # a otro hospital un acceso porque el caso haya cambiado después del hecho.
     personas = defaultdict(list)
     for reserva in reservas:
         fuente = reserva.hecho if reserva.hecho_id else reserva.caso
         personas[(fuente.institucion_id, fuente.ciudadano)].append(reserva.pk)
     for (institucion_id, ciudadano), ids in personas.items():
-        registrar_acceso(
-            request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-actividad",
-            ciudadano=ciudadano, institucion_id=institucion_id, objeto_id=ids[0],
-            detalle=f"financiador={financiador.pk} reservas={','.join(map(str, ids))}",
-            resultados=len(ids), estricto=True,
-        )
+        # El detalle admite 300 caracteres. Diez IDs de 64 bits entran completos;
+        # una exportación grande no debe perder la evidencia por truncamiento.
+        for inicio in range(0, len(ids), 10):
+            bloque = ids[inicio:inicio + 10]
+            registrar_acceso(
+                request, AccesoClinico.Tipo.FINANCIADOR, recurso,
+                ciudadano=ciudadano, institucion_id=institucion_id, objeto_id=bloque[0],
+                detalle=f"financiador={financiador.pk} reservas={','.join(map(str, bloque))}",
+                resultados=len(bloque), estricto=True,
+            )

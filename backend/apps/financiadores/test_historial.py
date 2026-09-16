@@ -110,7 +110,11 @@ class ConsultaFinanciadorTests(CoberturaSetup, APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
-        self.assertEqual(set(response.data["results"][0]), {"id", "fecha", "hospital", "prestacion", "numero", "documento", "cantidad", "cubiertas", "estado", "discrepancia", "importe_financiador", "estado_cobro", "acceso"})
+        self.assertEqual(set(response.data["results"][0]), {
+            "id", "fecha", "hospital", "prestacion", "numero", "documento", "cantidad",
+            "cubiertas", "estado", "discrepancia", "importe_financiador", "estado_cobro", "acceso",
+            "nombre", "plan", "codigo", "importe_acuerdos", "importe_asignado",
+        })
         otra = Financiador.objects.create(nombre="Otro financiador", tipo="mutual")
         MembresiaFinanciador.objects.create(financiador=otra, usuario=self.operador, rol="auditor")
         response = self.client.get(f"/api/financiadores/{otra.pk}/actividad/")

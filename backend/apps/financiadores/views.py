@@ -25,7 +25,8 @@ from . import serializers as s
 from .permisos import plataforma, requerir_financiador
 from .services import auditar, registrar_afiliado, registrar_consumo_externo, corregir_consumo, corregir_identidad
 from . import vigencias
-from .acceso import actividad_visible, auditar_actividad
+from .acceso import actividad_visible
+from .actividad import FiltrosActividad, consultar_actividad
 
 
 def datos(request, campos):
@@ -65,7 +66,7 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     reactivar_afiliacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.AfiliadoSerializer),
     cerrar_convenio=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
     rechazar_convenio=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
-    actividad=extend_schema(responses=OpenApiTypes.OBJECT),
+    actividad=extend_schema(parameters=[FiltrosActividad], responses={200: OpenApiTypes.OBJECT, (200, "text/csv"): OpenApiTypes.BINARY}),
     aranceles=extend_schema(responses=OpenApiTypes.OBJECT),
     instituciones=extend_schema(responses=OpenApiTypes.OBJECT),
     usuarios=extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT),
@@ -213,19 +214,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     @action(detail=True, methods=["get"])
     def actividad(self, request, pk=None):
         org = self.organizacion()
-        qs = actividad_visible(org).order_by("-fecha", "-pk")
-        if request.query_params.get("search"):
-            texto = request.query_params["search"].strip()
-            qs = qs.filter(Q(afiliado__numero__icontains=texto) | Q(afiliado__documento__icontains=normalizar_documento(texto)) | Q(prestacion__nombre__icontains=texto))
-        pagina = list(self.paginate_queryset(qs))
-        items = []
-        for reserva in pagina:
-            distribucion = getattr(reserva, "distribucion", None)
-            fuente = reserva.hecho if reserva.hecho_id else reserva.caso
-            items.append({"id": reserva.pk, "fecha": reserva.fecha, "hospital": fuente.institucion.nombre, "prestacion": reserva.prestacion.nombre, "numero": reserva.afiliado.numero, "documento": reserva.afiliado.documento, "cantidad": reserva.cantidad, "cubiertas": reserva.cubiertas, "estado": reserva.estado, "discrepancia": reserva.discrepancia, "importe_financiador": str(distribucion.importe_financiador) if distribucion else None, "estado_cobro": distribucion.estado if distribucion else "sin_cargo", "acceso": reserva.acceso})
-        auditar_actividad(request, org, pagina)
-        auditar(request.user, "consultar_actividad", org.pk, financiador=org)
-        return self.get_paginated_response(items)
+        return consultar_actividad(self, request, org)
 
     @action(detail=True, methods=["get"])
     def aranceles(self, request, pk=None):

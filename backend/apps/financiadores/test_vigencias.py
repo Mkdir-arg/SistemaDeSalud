@@ -328,7 +328,8 @@ class ActividadHistoricaTests(VigenciasApiSetup, APITestCase):
         self.assertEqual(set(actividad["results"][0]), {
             "id", "fecha", "hospital", "prestacion", "numero", "documento",
             "cantidad", "cubiertas", "estado", "discrepancia", "importe_financiador",
-            "estado_cobro", "acceso",
+            "estado_cobro", "acceso", "nombre", "plan", "codigo",
+            "importe_asignado", "importe_acuerdos",
         })
 
     def test_reserva_cubierta_pendiente_sigue_visible_hasta_liberarla(self):
