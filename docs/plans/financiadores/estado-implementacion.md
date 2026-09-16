@@ -1,18 +1,18 @@
 # Implementación local de financiadores y cobertura
 
-Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas las recomendaciones Q01–Q13. Implementación en commits de `codex/financiadores-cobertura`, PR borrador [#41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). No se ejecutaron migraciones sobre bases reales.
+Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas las recomendaciones Q01–Q13. Implementación en commits de `codex/financiadores-cobertura`, [PR #41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41), preparado para su incorporación por el usuario. No se ejecutaron migraciones sobre bases reales.
 
-Último incremento: [ensayo integral del piloto](piloto-integral.md), después de la [exportación auditada del seguimiento hospitalario](seguimiento-hospitalario.md), [actividad con filtros, totales y CSV auditado](actividad-y-exportacion.md), [cobertura en el circuito clínico](circuito-clinico.md) y [vigencias, acceso histórico y auditoría](vigencias-y-auditoria.md). El hospital puede abrir las cuentas de cobertura, registrar dinero mediante la operatoria existente y descargar cuentas o pendientes con el mismo alcance de lectura. Se verificó el recorrido HTTP entre dos hospitales y dos financiadores, incluida la resolución de un copago, y se midieron exportaciones reales de 5.000 filas. Siguen pendientes la aceptación del piloto por sus usuarios y, posteriormente, autorizaciones previas. No se cerraron issues de GitHub. Las validaciones de cada incremento están en su documento; los resultados de la primera implementación se conservan más abajo como antecedente.
+Último incremento: [continuidad B1–B8](continuidad-implementada.md), que completa padrón/legado, preparación operativa, autorizaciones previas, efectos financieros, esperas programadas, Red/FHIR y rendimiento de auditoría. Amplía el [ensayo integral del piloto](piloto-integral.md), el [seguimiento hospitalario](seguimiento-hospitalario.md) y la [cobertura clínica](circuito-clinico.md). Sus contratos, pruebas y límites actuales están en el informe de continuidad. Las validaciones y decisiones iniciales se conservan más abajo como antecedentes; sus referencias a L7 futuro corresponden a la secuencia original.
 
 ## Recorrido disponible
 
-**Pendientes contrastados después del ensayo:** varias pantallas del padrón todavía
-presentan y editan `obra_social` como texto; falta el diagnóstico del legado y su
-conversión revisada. Red aún copia ese texto y FHIR no exporta afiliaciones estructuradas.
-Esto se suma a L7 y a la preparación/aceptación del entorno real. El [plan de continuidad](continuidad-del-circuito.md)
-describe evidencia, orden de bloques y criterios; el [issue #42](https://github.com/Mkdir-arg/SistemaDeSalud/issues/42)
-registra por separado la mejora de rendimiento. El ensayo aprobado no implica cerrar
-estos pendientes ni las épicas completas.
+**Pendientes actuales:** el [issue #43](https://github.com/Mkdir-arg/SistemaDeSalud/issues/43)
+reúne y prioriza CI, recorrido completo con backend real, operación del destino,
+incorporación de datos e integraciones aplicables. Se atenderá antes de nuevas
+funcionalidades, después de la sesión de comprensión solicitada por el usuario.
+Las autorizaciones y la separación del padrón/legado ya están implementadas;
+la mejora del [issue #42](https://github.com/Mkdir-arg/SistemaDeSalud/issues/42)
+también está en el PR. La aceptación humana y la habilitación real siguen pendientes.
 
 1. Plataforma crea el financiador y da acceso al primer administrador. Una cuenta nueva recibe un enlace de activación de un solo uso para compartir por el canal habitual; Cauce no envía mensajes automáticamente. Una cuenta existente conserva su contraseña.
 2. El administrador configura planes y reglas por prestación o categoría del catálogo común. El padrón admite afiliados sin plan, números familiares y documentos con ceros iniciales.

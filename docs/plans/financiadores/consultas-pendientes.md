@@ -2,7 +2,7 @@
 
 El 15/09/2026 el usuario indicó: **«en todas las preguntas, sigue tu recomendacion»**. Quedan aprobadas las recomendaciones Q01–Q13 siguientes para la implementación local. Los textos de preguntas y bloqueos se conservan como antecedentes, ya resueltos por esa elección. Los acuerdos D1–D27 permanecen en [el relevamiento](../2026-09-15-financiadores-cobertura-y-cobros.md).
 
-No quedan respuestas pendientes para comenzar L1–L6. Volúmenes reales, plazos legales de conservación y configuración de cada hospital siguen siendo datos operativos no informados: se usarán límites técnicos configurables, sin purga automática ni supuestos de demanda. L7 permanece como entrega posterior. Esta aprobación no implica ejecutar migraciones sobre datos reales, desplegar ni publicar cambios.
+No quedan respuestas pendientes de Q01–Q13. La secuencia original distinguía L1–L6 y una entrega posterior L7; ambas están implementadas, con contratos y límites actuales en [continuidad implementada](continuidad-implementada.md). Volúmenes reales, plazos legales de conservación y configuración de cada hospital siguen siendo datos operativos no informados: no se inventan purgas ni demanda. Esta aprobación funcional no autoriza migraciones sobre datos reales ni despliegues. Las preguntas y sus textos «Bloquea» que siguen son antecedentes históricos, no bloqueos actuales.
 
 ## Q01 — Una reserva confirmada y un consumo externo tardío
 

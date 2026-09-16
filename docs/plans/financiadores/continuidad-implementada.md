@@ -153,5 +153,18 @@ La comprensión y aceptación humana no se deducen de tests ni de otra revisión
 
 Liquidación formal, facturación fiscal, conciliación bancaria y pagos desde el portal
 del financiador permanecen fuera de este plan. No se cierran las épicas #13–#20
-por completar estos bloques; el PR sigue en borrador. #42 se cierra sólo al incorporar
-su cambio mediante el PR.
+por completar estos bloques. El usuario solicitó dejar el PR preparado para su
+incorporación personal; #42 se cierra sólo al incorporar su cambio mediante el PR.
+
+## Prioridad posterior y próxima sesión
+
+El [issue #43](https://github.com/Mkdir-arg/SistemaDeSalud/issues/43) tiene prioridad
+alta en Salud y debe atenderse antes de ampliar las funcionalidades financieras.
+Reúne CI, recorrido integral con backend real, preparación del destino, datos e
+integraciones aplicables; reutiliza los trabajos existentes de jobs y monitoreo.
+Se registra para después: no se inicia su implementación en este cierre.
+
+La próxima sesión será de comprensión guiada del módulo, de conceptos a operación
+y trazabilidad técnica. El usuario realizará el merge por su cuenta y pospuso ese
+acompañamiento a la sesión siguiente. Preparar el PR no acredita comprensión humana
+ni aceptación del piloto o del despliegue; tampoco habilita operar sobre datos reales.

@@ -1,11 +1,13 @@
 # Financiadores, cobertura y cobros — plan de implementación
 
-Estado: implementación autorizada sobre `a6bf26c` el 15/09/2026. D1–D27 y las recomendaciones Q01–Q13 están aprobadas por el usuario («en todas las preguntas, sigue tu recomendacion»). L1–L6 forman la primera entrega; L7 es posterior.
+Estado al 16/09/2026: implementados L1–L7 y la continuidad B1–B8 en el [PR #41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). D1–D27 y las recomendaciones Q01–Q13 fueron aprobadas por el usuario («en todas las preguntas, sigue tu recomendacion»).
 
-El núcleo de cobertura, el portal, la integración al circuito clínico, la consulta/exportación de actividad y el seguimiento hospitalario con exportación de cuentas y pendientes están implementados en el PR borrador [#41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). La demo conserva datos ficticios. El ensayo automatizado del piloto está completo; quedan integración del padrón/legado, preparación y aceptación del entorno destino, L7 y los contratos de Red/FHIR de #14. No se consideran cerrados los issues #13/#15/#19. La [continuidad del circuito](continuidad-del-circuito.md) ordena esos pendientes y el issue de rendimiento #42. El texto de diseño que sigue conserva la secuencia original; resultados y límites vigentes están en [estado de implementación](estado-implementacion.md).
+El resultado actual incluye padrón y legado diferenciados, autorizaciones, usos y esperas programadas, integración Red/FHIR y auditoría por lotes. La fuente de resultados y límites es [continuidad implementada](continuidad-implementada.md). El usuario solicitó dejar el PR preparado para incorporarlo personalmente y dedicar la próxima sesión a comprender el módulo, sin iniciar más implementación. El [issue #43](https://github.com/Mkdir-arg/SistemaDeSalud/issues/43), prioridad alta en Salud, reúne el próximo bloque técnico antes de ampliar funciones: CI, recorrido integral con backend real y preparación del entorno destino. No se consideran cerradas las épicas #13–#20 ni validada la operación real. El diseño que sigue conserva la secuencia original L1–L7 como antecedente.
 
 ## Lectura y entregables
 
+- [Estado actual: continuidad B1–B8, autorizaciones y límites de operación](continuidad-implementada.md).
+- [Pendientes técnicos priorizados para después de la sesión de comprensión — #43](https://github.com/Mkdir-arg/SistemaDeSalud/issues/43).
 - [Implementación, operación y validación actual](estado-implementacion.md).
 - [Plan de continuidad: padrón, legado, piloto, autorizaciones y Red/FHIR](continuidad-del-circuito.md).
 - [Seguimiento hospitalario: cuentas, cobros, pendientes y CSV auditado](seguimiento-hospitalario.md).
