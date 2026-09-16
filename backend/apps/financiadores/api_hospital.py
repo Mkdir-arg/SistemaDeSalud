@@ -25,6 +25,7 @@ from .cobros import completar_pendiente, resolver_saldo, revisar_contexto
 from .permisos import plataforma, requerir_caso, requerir_hospital
 from .services import auditar
 from . import vigencias
+from .seguimiento import puede_seguimiento
 from .views import CoberturaBaseViewSet, datos, entero
 
 
@@ -76,7 +77,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
         user = request.user
         configurar = tiene_concesion_financiera(user, "configurar_cobros", institucion.pk)
         operar = tiene_capacidad(user, "casos_operar", institucion.pk)
-        ver = tiene_concesion_financiera(user, "ver_dinero", institucion.pk)
+        ver = puede_seguimiento(user, institucion.pk)
         resolver = concesiones_financieras_de(user, "resolver_cobertura").filter(membresia__institucion=institucion).exists()
         if not (configurar or operar or ver or resolver or plataforma(user)):
             raise PermissionDenied("No tenés acceso a cobertura en este hospital.")
@@ -94,7 +95,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
             casos = casos.filter(permitidos)
         return Response({
             "configuracion": {"activo": bool(config and config.activo), "dias_reserva_antigua": config.dias_reserva_antigua if config else 7},
-            "permisos": {"configurar": configurar, "operar": operar or plataforma(user), "registrar_aceptacion": tiene_concesion_financiera(user, "registrar_aceptacion", institucion.pk), "resolver": tiene_concesion_financiera(user, "resolver_cobertura", institucion.pk)},
+            "permisos": {"configurar": configurar, "operar": operar or plataforma(user), "seguimiento": ver, "registrar_aceptacion": tiene_concesion_financiera(user, "registrar_aceptacion", institucion.pk), "resolver": tiene_concesion_financiera(user, "resolver_cobertura", institucion.pk)},
             "catalogo": s.CatalogoSerializer(m.PrestacionComun.objects.filter(activo=True), many=True).data,
             "prestaciones": [{"id": p.pk, "codigo": p.codigo, "nombre": p.nombre, "nodo_id": p.nodo_id, "comun": getattr(getattr(p, "vinculoprestacion", None), "comun_id", None)} for p in Prestacion.objects.filter(institucion=institucion, activo=True).select_related("vinculoprestacion")],
             "casos": [self.opcion_caso(c) for c in casos.select_related("ciudadano")[:100]],

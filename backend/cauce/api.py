@@ -69,9 +69,11 @@ router = DefaultRouter()
 
 from apps.financiadores.views import FinanciadorViewSet
 from apps.financiadores.api_hospital import CoberturaHospitalViewSet
+from apps.financiadores.seguimiento import SeguimientoCobrosViewSet
 
 router.register("financiadores", FinanciadorViewSet, basename="financiador")
 router.register("coberturas", CoberturaHospitalViewSet, basename="cobertura")
+router.register("seguimiento-cobros", SeguimientoCobrosViewSet, basename="seguimiento-cobros")
 
 # accounts
 router.register("usuarios", UsuarioViewSet)

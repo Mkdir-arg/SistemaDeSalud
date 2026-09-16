@@ -70,6 +70,7 @@ PERMISOS_FINANCIEROS = {
     "reportes-finanzas": None,
     "procesamiento-finanzas": None,
     "reportes-dinero": None,
+    "seguimiento-cobros": None,
 }
 SIN_CAPACIDAD_A_PROPOSITO |= set(PERMISOS_FINANCIEROS)
 

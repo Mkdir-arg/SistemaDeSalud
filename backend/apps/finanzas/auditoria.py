@@ -24,7 +24,7 @@ class AuditaLecturaFinanciera:
     def retrieve(self, request, *args, **kwargs):
         return self.auditar_respuesta(super().retrieve(request, *args, **kwargs))
 
-    def auditar_respuesta(self, respuesta, contexto=None, objeto_id=None, grupos=None):
+    def auditar_respuesta(self, respuesta, contexto=None, objeto_id=None, grupos=None, *, recurso=None, accion=None):
         """Usa la página ya autorizada/serializada, no repite la consulta de datos."""
         try:
             datos = respuesta.data
@@ -51,7 +51,7 @@ class AuditaLecturaFinanciera:
                     AccesoFinanciero.objects.create(
                         usuario=self.request.user, institucion_id=institucion_id,
                         area_id=area_id, sensible=sensible,
-                        recurso=self.queryset.model._meta.model_name, accion=self.action,
+                        recurso=recurso or self.queryset.model._meta.model_name, accion=accion or self.action,
                         objeto_id=objeto_id, periodo_economico=mes, resultados=cantidad,
                     )
         except Exception as error:
