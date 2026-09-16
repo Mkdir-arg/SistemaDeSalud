@@ -69,7 +69,7 @@ function ResumenDinero({ institucion, permisos, area, onCuenta }) {
   </Card>;
 }
 
-function MovimientosPeriodo({ filtros, institucion, permisos, onCuenta }) {
+export function MovimientosPeriodo({ filtros, institucion, permisos, onCuenta }) {
   const tabla = useTablaUrl("movimientos_dinero");
   const params = { ...filtros, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista("movimientos-dinero", params, opcionesConsulta(permisos, institucion, "movimientos", params));

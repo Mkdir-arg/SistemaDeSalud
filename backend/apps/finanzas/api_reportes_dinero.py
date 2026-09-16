@@ -1,14 +1,18 @@
 """Dinero por fecha efectiva, sin sumar de nuevo el gasto o la obligación."""
-from decimal import Decimal
+from calendar import monthrange
+from collections import Counter
+from django.utils import timezone
 
-from django.db.models import Count, Sum
 from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.instituciones.models import Area
 from .auditoria import AuditaLecturaFinanciera
+from .comparativas import ContextoComparativa, periodos_comparados, comparar
+from .reportes_dinero import resumir_dinero, desglosar_dinero
 from .models import ConcesionFinanciera, EstadoAprobacion, MovimientoDinero
 from .permisos import alcance_financiero_q, concesiones_financieras_de, tiene_concesion_financiera
 
@@ -34,8 +38,32 @@ class ReporteDineroViewSet(AuditaLecturaFinanciera, viewsets.GenericViewSet):
     serializer_class = ContextoDinero
     http_method_names = ['get', 'head', 'options']
 
-    def list(self, request):
-        entrada = ContextoDinero(data=request.query_params)
+    @action(detail=False, methods=["get"], serializer_class=ContextoComparativa)
+    def comparativa(self, request):
+        actual, anterior, serie = periodos_comparados(request.query_params)
+        resultados, auditoria = {}, Counter()
+        desglose = []
+        for mes in sorted(set([*serie, anterior])):
+            parametros = request.query_params.dict()
+            parametros.update(fecha_desde=mes.isoformat(), fecha_hasta=mes.replace(day=monthrange(mes.year, mes.month)[1]).isoformat())
+            ctx, fuentes = self.fuentes(request, parametros)
+            if mes == actual:
+                desglose, datos, grupos = desglosar_dinero(fuentes, ctx["institucion"])
+            else:
+                datos, grupos = resumir_dinero(fuentes, ctx["institucion"])
+            auditoria.update(grupos)
+            datos.update(periodo_economico=mes.isoformat(), fecha_desde=parametros["fecha_desde"], fecha_hasta=parametros["fecha_hasta"], mes_abierto=mes >= timezone.localdate().replace(day=1))
+            resultados[mes] = datos
+        presente, previo = resultados[actual], resultados[anterior]
+        return self.auditar_respuesta(Response({
+            "actual": presente, "anterior": previo, "serie": [resultados[m] for m in serie],
+            "variaciones": {c: comparar(presente[c], previo[c], presente["cantidad_movimientos"] > 0 and previo["cantidad_movimientos"] > 0) for c in ("cobros_netos", "pagos_netos", "diferencia")},
+            "agrupaciones": desglose, "moneda": "ARS", "calculado_en": timezone.now(),
+            "alcance": "Dinero aprobado por fecha efectiva y según tus permisos. Cobros y pagos netos de reintegros. La diferencia no es disponibilidad ni rentabilidad. Las prestaciones y los financiadores provienen de vínculos estructurados de las obligaciones.",
+        }), grupos=auditoria)
+
+    def fuentes(self, request, parametros=None):
+        entrada = ContextoDinero(data=parametros if parametros is not None else request.query_params)
         entrada.is_valid(raise_exception=True)
         ctx = entrada.validated_data
         usuario = request.user
@@ -59,41 +87,15 @@ class ReporteDineroViewSet(AuditaLecturaFinanciera, viewsets.GenericViewSet):
             fuentes = fuentes.filter(obligacion__area_id=ctx['area'])
         elif ctx['area_sin_asignar']:
             fuentes = fuentes.filter(obligacion__area_id__isnull=True)
-        # Agrupar únicamente movimientos: nunca unir colecciones de ajustes o
-        # devoluciones que multipliquen importes del movimiento original.
-        agrupaciones = list(fuentes.order_by().values(
-            'tipo', 'estado', 'obligacion__tipo', 'obligacion__area_id',
-            'obligacion__sensible', 'obligacion__periodo_economico',
-        ).annotate(importe=Sum('importe'), cantidad=Count('id')))
-        totales = dict.fromkeys(('cobros_brutos', 'pagos_brutos', 'reintegros_cobros', 'reintegros_pagos'), Decimal('0.00'))
-        pendientes = dict.fromkeys(('cobros', 'pagos', 'reintegros_cobros', 'reintegros_pagos'), Decimal('0.00'))
-        cantidad_pendientes = 0
-        grupos = {}
-        cantidad = 0
-        for fila in agrupaciones:
-            if fila['tipo'] == 'reintegro':
-                clave = 'reintegros_cobros' if fila['obligacion__tipo'] == 'cobrar' else 'reintegros_pagos'
-            else:
-                clave = 'cobros_brutos' if fila['tipo'] == 'cobro' else 'pagos_brutos'
-            if fila['estado'] == EstadoAprobacion.PENDIENTE:
-                pendientes[clave.removesuffix('_brutos')] += fila['importe']
-                cantidad_pendientes += fila['cantidad']
-            else:
-                totales[clave] += fila['importe']
-                cantidad += fila['cantidad']
-            grupo = (institucion, fila['obligacion__area_id'], fila['obligacion__sensible'], fila['obligacion__periodo_economico'])
-            grupos[grupo] = grupos.get(grupo, 0) + fila['cantidad']
-        totales['cobros_netos'] = totales['cobros_brutos'] - totales['reintegros_cobros']
-        totales['pagos_netos'] = totales['pagos_brutos'] - totales['reintegros_pagos']
-        totales['diferencia'] = totales['cobros_netos'] - totales['pagos_netos']
-        respuesta = {clave: str(valor.quantize(Decimal('0.01'))) for clave, valor in totales.items()}
-        respuesta['por_aprobar'] = {
-            **{clave: str(valor.quantize(Decimal('0.01'))) for clave, valor in pendientes.items()},
-            'cantidad': cantidad_pendientes,
-        }
+        return ctx, fuentes
+
+    def list(self, request):
+        ctx, fuentes = self.fuentes(request)
+        institucion = ctx['institucion']
+        respuesta, grupos = resumir_dinero(fuentes, institucion)
         respuesta.update(
             institucion=institucion, area=ctx.get('area'), fecha_desde=ctx['fecha_desde'],
-            fecha_hasta=ctx['fecha_hasta'], moneda='ARS', cantidad_movimientos=cantidad,
+            fecha_hasta=ctx['fecha_hasta'], moneda='ARS',
             alcance='Dinero aprobado por fecha efectiva y según tu acceso; lo pendiente se muestra aparte. La diferencia no es saldo disponible ni rentabilidad.',
         )
         return self.auditar_respuesta(Response(respuesta), grupos=grupos)

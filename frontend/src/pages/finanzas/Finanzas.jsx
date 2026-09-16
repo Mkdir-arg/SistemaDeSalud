@@ -17,6 +17,7 @@ import "./finanzas.css";
 import CostosAtencion, { ConfiguracionCostos } from "./CostosAtencion";
 import DineroFinanzas, { CrearCuentaPorPagar, DetalleCuenta } from "./DineroFinanzas";
 import ConfiguracionCobros from "./ConfiguracionCobros";
+import ReportesEjecutivos from "./ReportesEjecutivos";
 import { DecisionAprobacion, EstadoAprobacion, TrazaAprobacion } from "./AprobacionFinanzas";
 import { AyudaFinanzas, FiltroColumna, FiltrosActivos, PanelFlotante, useFiltrosFinanzas } from "./ControlesFinanzas";
 
@@ -168,6 +169,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     ...(permisos.tiene("ver_gastos") ? [{ key: "resumen", label: "Resumen" }, { key: "gastos", label: "Gastos registrados" }, { key: "calendario", label: "Gastos mensuales" }, { key: "repartos", label: "Repartos" }] : []),
     ...(permisos.tiene("ver_costos") ? [{ key: "costos", label: "Costos por atención" }] : []),
     ...(permisos.tiene("ver_dinero") ? [{ key: "dinero", label: "Pagos y cobros" }] : []),
+    ...(permisos.tiene("ver_gastos") || permisos.tiene("ver_dinero") ? [{ key: "reportes", label: "Reportes" }] : []),
   ];
   const tab = tabs.some((t) => t.key === searchParams.get("tab")) ? searchParams.get("tab") : tabs[0]?.key;
   const filtrosCalendario = useFiltrosFinanzas("calendario", CAMPOS_CALENDARIO);
@@ -239,7 +241,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const abrirCuenta = (id) => setModal({ tipo: "cuenta-existente", id });
   const habilitada = (accion, fila) => !permisos.isFetching && permisos.permite(accion, fila.area, fila.sensible);
   const areasVisibles = (areas.data || []).filter((a) => ["ver_costos", "ver_gastos", "registrar_gastos", "ver_dinero", "registrar_dinero", CONFIGURAR, CONFIGURAR_REPARTOS].some((accion) => permisos.permite(accion, a.id)));
-  const veInstitucional = permisos.permite(tab === "dinero" ? "ver_dinero" : "ver_gastos", null);
+  const veInstitucional = permisos.permite(tab === "dinero" ? "ver_dinero" : "ver_gastos", null) || (tab === "reportes" && permisos.permite("ver_dinero", null));
   function cambiarFiltro(campo, valor) {
     setSearchParams((previos) => {
       const siguientes = new URLSearchParams(previos);
@@ -253,7 +255,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     setModal(null);
     setExpandido(null);
   }
-  function verGastos(fila, estado, periodo) {
+  function verGastos(fila, estado, periodo, controlMensual = true) {
     setSearchParams((previos) => {
       const siguientes = new URLSearchParams(previos);
       [...siguientes.keys()].filter((key) => key.startsWith("gastos_")).forEach((key) => siguientes.delete(key));
@@ -265,7 +267,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
       if (estado) siguientes.set("gastos_f_estado_operativo", estado);
       if (periodo) {
         siguientes.set("mes", periodo.slice(0, 7));
-        siguientes.set("gastos_f_control_mensual", "true");
+        if (controlMensual) siguientes.set("gastos_f_control_mensual", "true");
       }
       return siguientes;
     });
@@ -379,7 +381,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     <Card className="p-4">
       <div role="group" aria-label="Filtros y secciones de finanzas" className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
-        <div className="w-[180px]"><Field label="Mes económico"><Input type="month" required value={mes} onChange={(e) => cambiarFiltro("mes", e.target.value)} /></Field></div>
+        <div className="w-[180px]"><Field label={tab === "reportes" ? "Mes del informe" : "Mes económico"}><Input type="month" required value={mes} onChange={(e) => cambiarFiltro("mes", e.target.value)} /></Field></div>
         <div className="w-[210px] max-w-full"><Field label="Área"><Select value={area} onChange={(e) => cambiarFiltro("area", e.target.value)}>
           <option value="">{veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"}</option>
           {veInstitucional && <option value="null">{INSTITUCIONAL}</option>}
@@ -395,6 +397,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!tabs.length ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
       {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} />
+        : tab === "reportes" ? <ReportesEjecutivos key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} onGastos={verGastos} />
         : tab === "costos" ? <CostosAtencion key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areas={areas.data || []} onGasto={permisos.tiene("ver_gastos") ? verGastoRelacionado : undefined} />
         : tab === "dinero" ? <DineroFinanzas key={area} institucion={institucion} permisos={permisos} mes={mes} area={area} />
         : tab === "calendario"

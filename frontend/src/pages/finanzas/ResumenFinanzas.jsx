@@ -12,7 +12,7 @@ import { coincideEstadoMes, tieneReferencia } from "./evolucion";
 const GraficoFinanzas = lazy(() => import("./GraficoFinanzas"));
 const GraficoEvolucion = lazy(() => import("./GraficoFinanzas").then((modulo) => ({ default: modulo.GraficoEvolucion })));
 
-class RespaldoGrafico extends Component {
+export class RespaldoGrafico extends Component {
   state = { fallo: false };
   static getDerivedStateFromError() { return { fallo: true }; }
   render() {

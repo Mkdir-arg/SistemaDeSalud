@@ -3,8 +3,7 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import BigIntegerField, Case, Count, DecimalField, F, IntegerField, Max, OuterRef, Q, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models import Count, F, Max
 from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -16,7 +15,9 @@ from apps.auditoria.latidos import Latido
 from apps.instituciones.models import Area
 from .auditoria import AuditaLecturaFinanciera
 from .calendario import calendario_mensual
-from .models import AjusteGasto, AtribucionReparto, ConcesionFinanciera, ExpectativaGasto, Gasto, IndicacionCargaGasto, TrabajoReparto
+from .reportes import resumir_gastos
+from .comparativas import ContextoComparativa, periodos_comparados, comparar
+from .models import ConcesionFinanciera, ExpectativaGasto, Gasto, IndicacionCargaGasto, TrabajoReparto
 from .permisos import concesiones_financieras_de, gastos_en_alcance_financiero, instituciones_admin_financiero, tiene_concesion_financiera
 from .procesamiento import SERVICIO
 
@@ -46,10 +47,12 @@ class ConsultaReporte(AuditaLecturaFinanciera, viewsets.GenericViewSet):
     serializer_class = ContextoReporte
     http_method_names = ["get", "head", "options"]
 
-    def fuentes(self, request):
+    def fuentes(self, request, periodo=None):
         entrada = ContextoReporte(data=request.query_params)
         entrada.is_valid(raise_exception=True)
         ctx = entrada.validated_data
+        if periodo is not None:
+            ctx["periodo_economico"] = periodo
         usuario = request.user
         accion = ConcesionFinanciera.Accion.VER_GASTOS
         inst = ctx["institucion"]
@@ -80,6 +83,38 @@ class ConsultaReporte(AuditaLecturaFinanciera, viewsets.GenericViewSet):
 
 
 class ReporteFinanzasViewSet(ConsultaReporte):
+    @action(detail=False, methods=["get"], serializer_class=ContextoComparativa)
+    def comparativa(self, request):
+        actual, anterior, serie = periodos_comparados(request.query_params)
+        resultados, auditoria = {}, Counter()
+        for mes in sorted(set([*serie, anterior])):
+            ctx, fuentes = self.fuentes(request, periodo=mes)
+            fuentes = fuentes.exclude(estado=Gasto.Estado.RECHAZADO)
+            datos = resumir_gastos(fuentes)
+            datos["periodo_economico"] = mes.isoformat()
+            datos["mes_abierto"] = mes >= timezone.localdate().replace(day=1)
+            resultados[mes] = datos
+            for fila in fuentes.order_by().values("area_id", "sensible").annotate(cantidad=Count("pk")):
+                auditoria[(ctx["institucion"], fila["area_id"], fila["sensible"], mes)] += fila["cantidad"]
+        presente, previo = resultados[actual], resultados[anterior]
+        campos = ("aprobados", "pendientes_aprobacion", "distribuido", "sin_distribuir")
+        indices = [{(g["area"], g["concepto"]): g for g in d["agrupaciones"]} for d in (presente, previo)]
+        grupos = []
+        for clave in sorted(indices[0].keys() | indices[1].keys(), key=lambda k: (k[0] or 0, k[1])):
+            a, b = indices[0].get(clave), indices[1].get(clave)
+            origen = a or b
+            grupos.append({
+                **{k: origen[k] for k in ("area", "area_nombre", "concepto", "concepto_nombre")},
+                "actual": a, "anterior": b,
+                "variacion": comparar(a["aprobados"] if a else None, b["aprobados"] if b else None),
+            })
+        return self.auditar_respuesta(Response({
+            "actual": presente, "anterior": previo, "serie": [resultados[m] for m in serie],
+            "variaciones": {c: comparar(presente[c], previo[c], presente["cantidad_registros"] > 0 and previo["cantidad_registros"] > 0) for c in campos},
+            "agrupaciones": grupos, "moneda": "ARS", "calculado_en": timezone.now(),
+            "alcance": "Gastos registrados visibles, con ajustes aprobados, por mes económico. Valores nominales sin ajuste por inflación. Una baja no demuestra ahorro ni carga completa.",
+        }), grupos=auditoria)
+
     @action(detail=False, methods=["get"])
     def evolucion(self, request):
         # Reutiliza la validación institucional/territorial del resumen.
@@ -145,55 +180,8 @@ class ReporteFinanzasViewSet(ConsultaReporte):
     def list(self, request):
         ctx, qs = self.fuentes(request)
         sensible = qs.filter(sensible=True).exists()
-        moneda = DecimalField(max_digits=24, decimal_places=2)
-        ajustes = AjusteGasto.objects.filter(gasto_id=OuterRef("pk"), estado="aprobado").order_by().values("gasto_id").annotate(total=Sum("importe")).values("total")[:1]
-        ajustes_por_aprobar = AjusteGasto.objects.filter(
-            gasto_id=OuterRef("pk"), estado="pendiente_aprobacion",
-        ).order_by().values("gasto_id").annotate(cantidad=Count("pk")).values("cantidad")[:1]
-        atribuciones = AtribucionReparto.objects.filter(
-            reparto__gasto_id=OuterRef("pk"), reparto__reemplazado_por__isnull=True,
-        ).order_by().values("reparto__gasto_id").annotate(total=Sum("importe_centavos")).values("total")[:1]
-        qs = qs.annotate(
-            importe_resultante=F("importe") + Coalesce(Subquery(ajustes, output_field=moneda), Value(Decimal("0"))),
-            atribuido_centavos=Coalesce(Subquery(atribuciones), Value(0), output_field=BigIntegerField()),
-            cantidad_ajustes_pendientes=Coalesce(Subquery(ajustes_por_aprobar), Value(0), output_field=IntegerField()),
-        )
-        grupos = qs.values("area_id", "area__nombre", "concepto_id", "concepto_nombre").annotate(
-            aprobado=Coalesce(Sum(Case(When(estado=Gasto.Estado.APROBADO, then=F("importe_resultante")), default=Value(Decimal("0")), output_field=moneda)), Value(Decimal("0"))),
-            por_aprobar=Coalesce(Sum(Case(When(estado=Gasto.Estado.PENDIENTE_APROBACION, then=F("importe_resultante")), default=Value(Decimal("0")), output_field=moneda)), Value(Decimal("0"))),
-            ajustes_pendientes=Coalesce(Sum("cantidad_ajustes_pendientes"), Value(0)),
-            distribuido_centavos=Coalesce(Sum(Case(When(estado=Gasto.Estado.APROBADO, then=F("atribuido_centavos")), default=Value(0), output_field=BigIntegerField())), Value(0), output_field=BigIntegerField()),
-            actualizando=Max(Case(When(Q(estado=Gasto.Estado.APROBADO) & Q(trabajo_reparto__revision__gt=F("trabajo_reparto__revision_procesada")), then=Value(1)), default=Value(0), output_field=IntegerField())),
-        ).order_by("area__nombre", "concepto_nombre", "area_id", "concepto_id")
-        agrupaciones = []
-        totales = {"aprobados": Decimal("0"), "pendientes_aprobacion": Decimal("0"), "distribuido": Decimal("0")}
-        actualizando = False
-        ajustes_pendientes = 0
-        dinero = lambda valor: str(valor.quantize(Decimal("0.01")))
-        for grupo in grupos:
-            distribuido = Decimal(grupo["distribuido_centavos"]) / 100
-            pendiente = bool(grupo["actualizando"])
-            actualizando |= pendiente
-            totales["aprobados"] += grupo["aprobado"]
-            totales["pendientes_aprobacion"] += grupo["por_aprobar"]
-            ajustes_pendientes += grupo["ajustes_pendientes"]
-            totales["distribuido"] += distribuido
-            agrupaciones.append({
-                "area": grupo["area_id"], "area_nombre": grupo["area__nombre"] or "Institucional — sin área asignada",
-                "concepto": grupo["concepto_id"], "concepto_nombre": grupo["concepto_nombre"],
-                "aprobados": dinero(grupo["aprobado"]), "pendientes_aprobacion": dinero(grupo["por_aprobar"]),
-                "ajustes_pendientes": grupo["ajustes_pendientes"],
-                "distribuido": None if pendiente else dinero(distribuido),
-                "sin_distribuir": None if pendiente else dinero(grupo["aprobado"] - distribuido),
-                "actualizando": pendiente,
-            })
-        totales["sin_distribuir"] = totales["aprobados"] - totales["distribuido"]
-        datos = {nombre: None if actualizando and nombre in {"distribuido", "sin_distribuir"} else dinero(valor) for nombre, valor in totales.items()}
-        datos.update(
-            moneda="ARS", agrupaciones=agrupaciones, actualizando=actualizando, incluye_sensibles=sensible,
-            ajustes_pendientes=ajustes_pendientes,
-            alcance="Gastos registrados visibles según tus permisos; no equivale al costo total del hospital.",
-        )
+        datos = resumir_gastos(qs)
+        datos["incluye_sensibles"] = sensible
         return self.responder(ctx, datos, sensible, qs)
 
 

@@ -17,6 +17,7 @@ from .dinero import (crear_obligacion_pago, decidir_ajuste, decidir_movimiento, 
                      registrar_movimiento, reintegrar_movimiento, movimiento_conjunto)
 from .models import AjusteObligacion, ConcesionFinanciera, Gasto, MovimientoDinero, ObligacionFinanciera
 from .permisos import alcance_financiero_q, tiene_accion_financiera
+from .reportes_dinero import filtrar_desglose
 
 
 def _dinero(valor):
@@ -257,7 +258,7 @@ class MovimientoDineroViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin, mi
             if self.request.query_params.get(parametro):
                 valor = serializers.DateField().run_validation(self.request.query_params[parametro])
                 queryset = queryset.filter(**{filtro: valor})
-        return queryset
+        return filtrar_desglose(queryset, self.request.query_params)
 
     @action(detail=True, methods=["post"], url_path="previsualizar-reintegro")
     def previsualizar_reintegro(self, request, pk=None):

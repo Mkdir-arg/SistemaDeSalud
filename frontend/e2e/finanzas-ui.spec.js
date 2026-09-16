@@ -69,6 +69,126 @@ const acciones = ["ver_gastos", "ver_costos", "registrar_gastos", "aprobar_gasto
 const calendario = { id: 1, institucion: 2, concepto: 1, concepto_nombre: "Electricidad", area: 3, area_nombre: area.nombre, sensible: false, estado_carga: "falta_cargar", gastos_pendientes: 1, gastos_aprobados: 1, monto_referencia: "12000.00", importe_aprobado: "10000.01", diferencia_referencia: "1999.99", vigente_desde: "2026-09-01", vigente_hasta: null };
 const reporte = { aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", moneda: "ARS", actualizando: false, alcance: "Gastos registrados visibles según tus permisos; no equivale al costo total del hospital", agrupaciones: [{ area: 3, area_nombre: area.nombre, concepto: 1, concepto_nombre: "Electricidad", aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", actualizando: false }] };
 
+async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"], vacio = false, error = false } = {}) {
+  const base = await escenario(page, { permisos });
+  const peticiones = [];
+  page.on("request", (r) => { if (r.url().includes("/api/")) peticiones.push(new URL(r.url())); });
+  await page.route(/\/api\/reportes-(finanzas|dinero)\/comparativa\//, async (route) => {
+    if (error) return route.fulfill({ status: 403, json: { detail: "Sin acceso a este alcance" } });
+    const url = new URL(route.request().url());
+    const esDinero = url.pathname.includes("reportes-dinero");
+    const anterior = url.searchParams.get("comparar") === "anio_anterior" ? "2025-09-01" : "2026-08-01";
+    const nombres = ["Electricidad", "Materiales de atención", "Mantenimiento", "Limpieza"];
+    const grupos = vacio ? [] : nombres.map((nombre, i) => ({ area: i < 2 ? 3 : 4, area_nombre: i < 2 ? area.nombre : "Guardia", concepto: i + 1, concepto_nombre: nombre,
+      actual: { aprobados: ["480000.01", "320000.00", "140000.00", "60000.00"][i] }, anterior: { aprobados: ["400000.00", "250000.00", "100000.00", "50000.00"][i] },
+      variacion: { importe: ["80000.01", "70000.00", "40000.00", "10000.00"][i], porcentaje: "20.00" } }));
+    const gasto = (periodo, actual = true) => ({ periodo_economico: periodo, aprobados: vacio ? "0.00" : actual ? "1000000.01" : "800000.00", pendientes_aprobacion: vacio ? "0.00" : "25000.00", cantidad_registros: vacio ? 0 : 4, actualizando: false, ajustes_pendientes: 0, mes_abierto: periodo === "2026-09-01" });
+    const money = (periodo, actual = true) => ({ periodo_economico: periodo, fecha_desde: periodo, fecha_hasta: periodo.slice(0, 8) + (periodo.slice(5, 7) === "09" ? "30" : "31"), cobros_netos: vacio ? "0.00" : actual ? "720000.00" : "600000.00", pagos_netos: vacio ? "0.00" : "540000.00", diferencia: vacio ? "0.00" : actual ? "180000.00" : "60000.00", cantidad_movimientos: vacio ? 0 : 9, por_aprobar: { cantidad: vacio ? 0 : 2 }, mes_abierto: periodo === "2026-09-01" });
+    const meses = Number(url.searchParams.get("meses"));
+    const serie = Array.from({ length: meses }, (_, i) => {
+      const fecha = new Date(Date.UTC(2026, 9 - meses + i, 1)).toISOString().slice(0, 10);
+      const fila = esDinero ? money(fecha) : gasto(fecha);
+      if (!vacio && i < meses - 1) {
+        if (esDinero) { fila.cobros_netos = String(420000 + i * 36000); fila.pagos_netos = String(380000 + i * 23000); }
+        else fila.aprobados = String(620000 + i * 45000);
+      }
+      return fila;
+    });
+    const variacion = { importe: vacio ? null : "200000.01", porcentaje: vacio ? null : "25.00", motivo: vacio ? "Sin registros comparables" : null };
+    const desglose = vacio ? [] : [{ area_nombre: area.nombre, concepto_nombre: "Consulta médica", pagador_nombre: "Mutual del Litoral", cobros_netos: "720000.00", pagos_netos: "0.00", cantidad_movimientos: 9, por_aprobar: { cantidad: 2 }, filtros: { area: 3, tipo_cuenta: "cobrar", reporte_financiador: "9", reporte_prestacion: "4", reporte_concepto: "null", reporte_pagador: "financiador" } }];
+    await route.fulfill({ json: { actual: esDinero ? money("2026-09-01") : gasto("2026-09-01"), anterior: esDinero ? money(anterior, false) : gasto(anterior, false), serie,
+      variaciones: Object.fromEntries((esDinero ? ["cobros_netos", "pagos_netos", "diferencia"] : ["aprobados", "pendientes_aprobacion"]).map((c) => [c, vacio ? variacion : c === "aprobados" ? variacion : { importe: c === "pagos_netos" || c === "pendientes_aprobacion" ? "0.00" : "120000.00", porcentaje: c === "pagos_netos" || c === "pendientes_aprobacion" ? "0.00" : c === "diferencia" ? "200.00" : "20.00" }])), agrupaciones: esDinero ? desglose : grupos,
+      calculado_en: "2026-09-16T15:30:00Z", moneda: "ARS", alcance: "Fuentes registradas y visibles; no certifica carga completa." } });
+  });
+  return { ...base, peticiones };
+}
+
+test("reporte ejecutivo compara períodos y abre gastos anteriores sin imponer control mensual", async ({ page }, testInfo) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("heading", { name: "Los números, con su explicación." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("ARS 1.000.000,01");
+  await expect(page.getByRole("region", { name: "Informe de gastos", exact: true }).getByText("+25% nominal", { exact: true }).first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await expect(page.getByRole("img", { name: "Tendencia mensual; importes y navegación disponibles en la tabla" }).first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-escritorio.png"), animations: "disabled" });
+  await page.locator(".finance-report-charts").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-graficos.png"), animations: "disabled" });
+  await page.getByLabel("Comparar período").selectOption("anio_anterior");
+  await page.getByRole("combobox", { name: "Trayectoria", exact: true }).selectOption("12");
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/reportes-finanzas/comparativa/" && u.searchParams.get("comparar") === "anio_anterior" && u.searchParams.get("meses") === "12")).toBe(true);
+  await page.getByRole("button", { name: "Ver gastos aprobados de 2025-09", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/gastos/" && u.searchParams.get("periodo_economico") === "2025-09-01" && u.searchParams.get("estado_operativo") === "aprobado" && !u.searchParams.has("control_mensual"))).toBe(true);
+});
+
+test("reporte ejecutivo conserva área concepto y mes del desglose de gastos", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const fila = page.getByRole("table", { name: "Comparación exacta de gastos" }).getByRole("row").filter({ hasText: "Mantenimiento" });
+  await fila.getByRole("button", { name: "ARS 140.000,00", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/gastos/" && u.searchParams.get("area") === "4" && u.searchParams.get("concepto") === "3" && u.searchParams.get("periodo_economico") === "2026-09-01" && !u.searchParams.has("control_mensual"))).toBe(true);
+});
+
+test("reporte ejecutivo traza financiador prestación y estado hasta movimientos", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.route("**/api/movimientos-dinero/**", (route) => route.fulfill({ json: lista([{ id: 81, obligacion: 62, importe: "720000.00", estado: "aprobado", tipo: "cobro", obligacion_tipo: "cobrar", contraparte_nombre: "Mutual del Litoral", fecha: "2026-09-10", periodo_economico: "2026-08-01" }]) }));
+  await page.route("**/api/obligaciones-financieras/62/", (route) => route.fulfill({ json: { id: 62, tipo: "cobrar", hecho: 71, area: 3, sensible: false, contraparte_nombre: "Mutual del Litoral", periodo_economico: "2026-08-01", importe_original: "720000.00", obligacion_actual: "720000.00", registrado_neto: "720000.00", pendiente: "0.00", disponible_registro: "0.00", disponible_reducir: "0.00", saldo_a_devolver: "0.00", por_aprobar: "0.00", reintegros_por_aprobar: "0.00", ajustes_por_aprobar: "0.00", movimientos: [], ajustes: [] } }));
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const tabla = page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" });
+  await tabla.getByRole("button", { name: "ARS 720.000,00", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Mutual del Litoral");
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("reporte_financiador") === "9" && u.searchParams.get("reporte_prestacion") === "4" && u.searchParams.get("reporte_concepto") === "null" && u.searchParams.get("area") === "3" && u.searchParams.get("estado") === "aprobado" && u.searchParams.get("fecha_desde") === "2026-09-01" && u.searchParams.get("fecha_hasta") === "2026-09-30")).toBe(true);
+  await page.getByRole("button", { name: "Ver cuenta #62", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Cuenta #62", exact: true })).toContainText("Atención de origen #71");
+});
+
+test("reporte ejecutivo consulta pendientes fuera de los importes confirmados", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" }).getByRole("button", { name: "2 registros", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("estado") === "pendiente_aprobacion" && u.searchParams.get("reporte_financiador") === "9")).toBe(true);
+});
+
+test("reporte ejecutivo es legible en móvil y permite filtrar el desglose", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("heading", { name: "Los números, con su explicación." })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-movil.png"), animations: "disabled" });
+  await page.locator(".finance-report-trend").first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-grafico-movil.png"), animations: "disabled" });
+  await page.getByLabel("Buscar en desglose").fill("inexistente");
+  await expect(page.getByText("Sin movimientos para este desglose", { exact: true })).toBeVisible();
+  await page.getByLabel("Buscar en desglose").fill("Litoral");
+  await expect(page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" })).toContainText("Mutual del Litoral");
+});
+
+test("reporte ejecutivo sin registros no dibuja ceros ni una variación ficticia", async ({ page }) => {
+  await escenarioEjecutivo(page, { vacio: true });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("Sin registros");
+  await expect(page.getByText("Sin base comparable", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".finance-report .recharts-line")).toHaveCount(0);
+  await expect(page.locator(".finance-report").getByText("ARS 0,00", { exact: true })).toHaveCount(0);
+});
+
+test("reporte ejecutivo no consulta gastos sin permiso y muestra restricción en lugar de cero", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page, { permisos: ["ver_dinero"] });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByText("Los gastos no están incluidos en tu acceso. No se representan como cero.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ver cobros netos de 2026-09", exact: true })).toBeVisible();
+  expect(peticiones.some((u) => u.pathname.startsWith("/api/reportes-finanzas/"))).toBe(false);
+});
+
+test("reporte ejecutivo informa rechazo de acceso sin exponer cifras", async ({ page }) => {
+  await escenarioEjecutivo(page, { error: true });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByText("No tenés permiso para ver esto", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".finance-report-metric")).toHaveCount(0);
+});
+
 test("ajustes pendientes se distinguen en resumen, control y evolución sin cambiar el aprobado", async ({ page }, testInfo) => {
   const { db, peticiones } = await escenario(page);
   db.reporte.aprobados = "100.00";
