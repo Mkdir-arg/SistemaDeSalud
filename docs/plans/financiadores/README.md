@@ -2,11 +2,12 @@
 
 Estado: implementación autorizada sobre `a6bf26c` el 15/09/2026. D1–D27 y las recomendaciones Q01–Q13 están aprobadas por el usuario («en todas las preguntas, sigue tu recomendacion»). L1–L6 forman la primera entrega; L7 es posterior.
 
-El núcleo de cobertura, el portal, la integración al circuito clínico y la consulta/exportación de actividad están implementados en el PR borrador [#41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). La demo conserva datos ficticios. Siguen pendientes el seguimiento y la conciliación hospitalaria, la revisión del piloto y L7; no se consideran cerrados los issues #13/#15/#19. El texto de diseño que sigue conserva la secuencia original; resultados y límites vigentes están en [estado de implementación](estado-implementacion.md).
+El núcleo de cobertura, el portal, la integración al circuito clínico, la consulta/exportación de actividad y el seguimiento hospitalario de cuentas y pendientes están implementados en el PR borrador [#41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). La demo conserva datos ficticios. Siguen pendientes la exportación hospitalaria para conciliación, la revisión del piloto y L7; no se consideran cerrados los issues #13/#15/#19. El texto de diseño que sigue conserva la secuencia original; resultados y límites vigentes están en [estado de implementación](estado-implementacion.md).
 
 ## Lectura y entregables
 
 - [Implementación, operación y validación actual](estado-implementacion.md).
+- [Seguimiento hospitalario: cuentas, cobros y pendientes](seguimiento-hospitalario.md).
 - [Actividad: filtros, totales y exportación auditada](actividad-y-exportacion.md).
 - [Cobertura en el circuito clínico y la historia del paciente](circuito-clinico.md).
 - [Vigencias, acceso histórico y auditoría: incremento implementado](vigencias-y-auditoria.md).

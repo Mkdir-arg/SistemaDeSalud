@@ -2,7 +2,7 @@
 
 Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas las recomendaciones Q01–Q13. Implementación en commits de `codex/financiadores-cobertura`, PR borrador [#41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41). No se ejecutaron migraciones sobre bases reales.
 
-Último incremento: [actividad con filtros, totales y CSV auditado](actividad-y-exportacion.md), después de [cobertura en el circuito clínico](circuito-clinico.md) y [vigencias, acceso histórico y auditoría](vigencias-y-auditoria.md). Admisión y los puestos acceden al panel desde el caso; la historia del paciente tiene su pestaña de cobertura. Siguen pendientes la conciliación y el seguimiento hospitalario y, posteriormente, autorizaciones previas. No se cerraron issues de GitHub. Las validaciones de cada incremento están en su documento; los resultados de la primera implementación se conservan más abajo como antecedente.
+Último incremento: [seguimiento hospitalario de cuentas, cobros y pendientes](seguimiento-hospitalario.md), después de [actividad con filtros, totales y CSV auditado](actividad-y-exportacion.md), [cobertura en el circuito clínico](circuito-clinico.md) y [vigencias, acceso histórico y auditoría](vigencias-y-auditoria.md). El hospital puede abrir las cuentas de cobertura y registrar dinero mediante la operatoria existente. Siguen pendientes la exportación hospitalaria para conciliación y, posteriormente, autorizaciones previas. No se cerraron issues de GitHub. Las validaciones de cada incremento están en su documento; los resultados de la primera implementación se conservan más abajo como antecedente.
 
 ## Recorrido disponible
 
@@ -15,6 +15,7 @@ Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas la
 6. El registro clínico genera el hecho durable y convierte la reserva en consumo. Las partes exigibles se integran en las obligaciones existentes de Finanzas. No se registra dinero cobrado automáticamente.
 7. Los saldos sin aceptación permanecen pendientes. El personal designado puede rechazar la asunción, asumirlos o registrar un acuerdo documentado con el paciente/financiador. Aranceles y afiliaciones pendientes tienen acciones específicas para completar datos.
 8. El financiador filtra la actividad por fechas, hospital, plan registrado, prestación, estado, discrepancias y afiliado. Consulta totales completos y descarga CSV de hasta 5.000 filas con el mismo alcance y auditoría. El importe asignado incluye acuerdos posteriores; no se presenta como saldo ni como dinero cobrado.
+9. El hospital abre «Seguimiento de cobros», filtra cuentas por prestación, área, financiador, responsable o estado, y consulta saldos de todo el conjunto. Los pendientes administrativos y las capturas incompletas tienen vistas propias. «Ver cuenta» reutiliza cobros, reducciones, devoluciones y aprobaciones; el seguimiento se actualiza al guardar.
 
 ## Decisiones que conviene revisar en el código
 
@@ -24,6 +25,7 @@ Actualizado: 16/09/2026. Base: `a6bf26c`. El usuario aprobó D1–D27 y todas la
 - `cobros.py`: reparto, protección de reservas confirmadas, recuperación desde el hecho original, conservación de evaluaciones y prohibición de duplicar obligaciones.
 - `importaciones.py`: parser XLSX, límites, personalización, aplicación parcial e idempotencia por fila/lote/referencia.
 - `views.py` y `api_hospital.py`: cada operación deriva y valida su ámbito en el servidor.
+- `backend/apps/finanzas/api_seguimiento_cobertura.py`, `saldos.py` y `backend/apps/financiadores/seguimiento.py`: lectura hospitalaria con `ver_dinero`, saldos calculados por cuenta, fuentes pendientes y auditoría estricta de los totales.
 - `frontend/src/pages/financiadores/`: portal separado del contexto hospitalario y pantalla de cobertura para el hospital.
 
 ## Reglas operativas importantes

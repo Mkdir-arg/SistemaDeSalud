@@ -38,3 +38,47 @@ Se reutiliza la auditoría financiera estricta, agrupada por institución/área/
 Pruebas previstas: totales contra cuentas, devoluciones sin compensación, acuerdos posteriores, varias aprobaciones/rechazos sin multiplicar importes, meses diferentes, paginación, origen conservado tras traslado, permisos negativos, sensibilidad desconocida, captura faltante, auditoría fallida y UI con filtros persistidos/invalidados tras registrar dinero. Demo aislada con datos ficticios; no se interviene localhost:8090 ni se migran datos reales.
 
 Estas decisiones son recomendaciones del agente dentro del alcance autorizado. Se eligió consultar las fuentes existentes frente a crear conciliaciones persistidas o consolidar un nuevo libro: el incremento queda acotado y mantiene una única operatoria de dinero. Quedan fuera las autorizaciones previas y la aceptación del piloto.
+
+## Resultado y evidencia — 16/09/2026
+
+Implementación en `financiadores/seguimiento.py`, `finanzas/saldos.py` y `finanzas/api_seguimiento_cobertura.py`; interfaz en `SeguimientoCobros.jsx`, integrada a `CoberturasHospital.jsx`. La API permanece en Finanzas para cumplir su barrera común de autenticación y permisos. La auditoría admite identificar explícitamente el recurso y la vista, conservando el comportamiento de sus usuarios anteriores.
+
+Se conservan tres vistas paginadas porque las bandejas administrativas previas no ofrecen el contrato financiero de permisos, totales y faltantes de captura. Sus operaciones de revisión y recuperación sí se reutilizan. El detalle de cuenta sigue siendo `DetalleCuenta`, sin otra implementación de cobros.
+
+| Criterio | Evidencia |
+| --- | --- |
+| Saldos por responsable, agregados sin duplicación, devoluciones sin compensar deuda ajena | `test_sumatorias_sin_producto_cartesiano_y_paridad_con_dinero`, `test_saldo_a_devolver_no_compensa_deuda_del_otro_responsable` y acuerdos vinculados por FK |
+| Período de prestación y origen conservado tras traslado | `test_fecha_filtra_prestacion_y_no_fecha_de_movimiento`, `test_traslado_del_caso_no_reescribe_origen_ni_alcance` |
+| Alcance financiero aplicado a filas, opciones y totales | Pruebas de permisos clínicos/financiador/resolución insuficientes, hospital ajeno, concesión por área, sensibilidad y registros sin área |
+| Importe desconocido sin deuda inventada | Pruebas de evaluación/arancel, captura con y sin snapshot, política inexistente y sensibilidad no verificable |
+| Auditoría de todo el conjunto antes de entregar | Pruebas de páginas, vistas y rollback al fallar el segundo grupo; respuesta 503 sin importes |
+| Cobrar desde el detalle actualiza el seguimiento | E2E del modal y recorrido real con $3.000 cobrados, $5.000 pendientes al financiador y $2.000 al paciente |
+| Una página vacía tras saldar su última cuenta se puede recuperar | E2E de 26 a 25 cuentas y error 404 ajeno a paginación; se vuelve a la primera página conservando filtros |
+
+Validación final del incremento:
+
+- **347/347 pruebas en PostgreSQL 16**, sin omisiones, 108,517 s: financiadores, dinero, aprobaciones, cobros, reportes de dinero y barreras de permisos/esquema de Casos.
+- **30/30 focales en SQLite**, 2,730 s, antes del traslado mecánico del ViewSet a Finanzas. PostgreSQL y OpenAPI se repitieron después del traslado. La diferencia de tratamiento de JSON `null` entre motores quedó corregida y cubierta: una evaluación sin política no presume sensibilidad pública.
+- **69/69 pruebas Playwright**, API simulada, 1,1 minutos; incluyen 13 del nuevo seguimiento y las regresiones del portal y circuito clínico. Build Vite correcto: 751 módulos, 3,88 s.
+- `check`, OpenAPI con `--validate --fail-on-warn` y `git diff --check`: correctos. Este incremento no agrega modelos, migraciones, dependencias ni concesiones financieras.
+- Demo con navegador/API/base reales: un cobro parcial aprobado desde el modal, actualización automática del saldo, pendiente con importe desconocido, auditoría y un solo movimiento persistido. Escritorio y móvil inspeccionados; tabla con desplazamiento horizontal contenido, sin desborde del documento ni errores JavaScript. La preparación agrega sólo una atención ficticia con los servicios existentes y conserva los datos previos mediante respaldo.
+
+```text
+python manage.py test apps.financiadores apps.finanzas.test_dinero apps.finanzas.test_aprobaciones_dinero apps.finanzas.test_cobros apps.finanzas.test_reportes_dinero apps.casos.test_permisos_barrida apps.casos.test_esquema --settings=cauce.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.test_seguimiento --settings=cauce.settings_financiadores_test --noinput
+python manage.py spectacular --settings=cauce.settings_financiadores_test --validate --fail-on-warn --file <archivo-temporal.yaml>
+npx playwright test --config playwright.financiadores-ui.config.js
+npm run build
+```
+
+Claude revisó el diseño; su revisión final no se completó porque agotó el límite de sesión. Una revisión independiente de Codex encontró el problema de página inválida tras cobrar y verificó su corrección y el traslado de la API. Es evidencia estática adicional, no otra ejecución de pruebas ni aceptación humana.
+
+Skills: `brainstorming` acotó el bloque sobre decisiones aprobadas; `interface-design` conservó Cauce y el detalle financiero; `systematic-debugging` guio el diagnóstico del JSON nulo; `playwright` verificó el recorrido real; `pr-reviewer-github` estructuró la revisión independiente, sin publicar comentarios de revisión.
+
+## Límites y siguiente bloque
+
+No se ejecutó la suite global completa ni una prueba de carga con volúmenes hospitalarios. Las consultas SQL y la cantidad de grupos de auditoría requieren medición antes del piloto. El reporte es operativo: las cuentas pueden cambiar durante consultas concurrentes; no se ofrece como cierre contable ni instantánea inmutable. El detalle vuelve a validar el saldo y los permisos antes de cualquier operación.
+
+Dos riesgos concretos quedaron cubiertos: contar varias veces una obligación con varios movimientos, y exponer una evaluación incompleta sin conocer su sensibilidad. Un tercero, perder la navegación al saldar la última fila, motivó la corrección de interfaz. La reversión de este bloque retira su lectura y pantalla; debe conservar cuentas, movimientos y auditorías generados con las operaciones existentes. No se eliminan datos para revertirlo.
+
+Siguiente bloque recomendado: **exportación hospitalaria de cuentas y pendientes con los mismos filtros, permisos y auditoría**, para facilitar el intercambio y la conciliación con financiadores. No implica conciliación bancaria automática, emisión fiscal ni pagos masivos. La revisión del piloto y la comprensión/aceptación por parte del usuario siguen pendientes; la instrucción de continuar automáticamente no se presenta como aceptación de incorporación.

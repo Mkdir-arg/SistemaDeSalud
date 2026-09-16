@@ -79,6 +79,17 @@ El inicio reutiliza los datos existentes y rechaza ocupar puertos de otros proce
 
 ## Verificación y continuidad
 
+### Seguimiento hospitalario agregado el 16/09/2026
+
+Ingresar con **`hospital@demo.local` / `CauceDemo2026!`** y abrir [Seguimiento de cobros](http://127.0.0.1:5188/finanzas/coberturas?tab=seguimiento). En Hospital Demo, buscar el caso **9**, de Valeria Seguimiento Demo:
+
+- Cuenta del financiador: **$8.000** originales, **$3.000** cobrados y **$5.000** pendientes.
+- Cuenta de la paciente: **$2.000** de copago aceptado, todavía sin cobro.
+- «Ver cuenta» abre el detalle habitual de Finanzas. El cobro ficticio `DEMO-SEGUIMIENTO-PARCIAL` se registró desde ese modal y actualizó el seguimiento.
+- En la vista «Pendientes administrativos», buscar el caso **8**: la evaluación sigue pendiente y el importe aparece **por determinar**, sin deuda generada.
+
+La prestación nueva se preparó con los servicios existentes en la SQLite exclusiva, después de respaldarla; se conservaron los casos anteriores. El cobro sí se registró mediante navegador y API reales. Base, auditoría y pantalla coinciden, sin movimientos duplicados al repetir la verificación. Capturas y resultados en `revision-seguimiento`, dentro del directorio local de la demo. [Evidencia y límites](seguimiento-hospitalario.md).
+
 ### Circuito clínico agregado el 16/09/2026
 
 En [la demo](http://127.0.0.1:5188), iniciar sesión con **`consulta@demo.local` / `CauceDemo2026!`**. «Mi trabajo» ofrece **Consulta con cobertura · demo**. Ingresar a Clara (`00888111`) o Diego (`00888222`) para crear otra consulta y probar la cobertura antes de atender.
