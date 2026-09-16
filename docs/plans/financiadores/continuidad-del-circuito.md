@@ -3,12 +3,17 @@
 Fecha: 16/09/2026. Código analizado: `0c0d559`, rama `codex/financiadores-cobertura`,
 [PR #41](https://github.com/Mkdir-arg/SistemaDeSalud/pull/41), todavía en borrador.
 
-Este documento responde al pedido de analizar lo disponible y planificar el resto
-del circuito. Es una propuesta de continuidad, no evidencia de funcionalidades
-implementadas. Conserva D1–D27 y Q01–Q13; las recomendaciones nuevas se identifican
-como tales. No autoriza ejecutar cargas sobre datos reales ni activar esperas clínicas.
+El plan fue aprobado y sus bloques **B1–B8 están implementados en el PR #41**.
+El [informe de implementación](continuidad-implementada.md) documenta el resultado,
+los contratos, la validación y lo que todavía requiere el entorno real. Se conservan
+D1–D27 y Q01–Q13. Las recomendaciones son decisiones propuestas por el agente y
+adoptadas bajo la instrucción del usuario; no son razonamientos humanos retrospectivos.
+No se ejecutaron cargas sobre datos reales ni se habilitaron esperas clínicas reales.
 
-## 1. Conclusión
+Las secciones 1 y 2 conservan el diagnóstico **anterior a esta implementación**,
+para explicar el alcance aprobado; no describen los pendientes actuales.
+
+## 1. Conclusión del diagnóstico inicial
 
 El recorrido principal **parametría → padrón → cobertura → reserva → realización →
 cargo → cobro → reporte** está implementado y probado. El piloto automatizado pasó,
@@ -27,7 +32,7 @@ esa funcionalidad, pero posterga la coherencia del padrón y exige mantener acot
 piloto. Para la continuidad general de Cauce, la primera secuencia cubre mejor lo que
 el hospital ya ve y usa.
 
-## 2. Estado contrastado con código e issues
+## 2. Estado inicial contrastado con código e issues
 
 | Parte del circuito | Estado observado | Evidencia / trabajo restante |
 | --- | --- | --- |
