@@ -3,6 +3,183 @@ import { expect, test } from "@playwright/test";
 const lista = (results) => ({ count: results.length, next: null, previous: null, results });
 const organizaciones = [{ id: 21, nombre: "Mutual del Río", tipo: "mutual", rol: "admin" }, { id: 22, nombre: "Obra Social del Norte", tipo: "obra_social", rol: "admin" }];
 const catalogo = [{ id: 3, codigo: "RX", nombre: "Radiografía", categoria: "Imágenes" }];
+const actividadBase = { id: 91, fecha: "2026-09-15", hospital: "Hospital Ficticio", nombre: "Ana Ficticia", plan: "Plan Río", prestacion: "Consulta", codigo: "CONS", numero: "00025", documento: "00123456", cantidad: 1, cubiertas: 1, estado: "realizada", discrepancia: false, importe_financiador: "80.00", importe_asignado: "100.00", importe_acuerdos: "20.00", estado_cobro: "resuelta", acceso: "vigente" };
+function actividadRespuesta(results = [actividadBase], extra = {}) {
+  return {
+    ...lista(results),
+    resumen: { registros: 3, reservadas: 1, realizadas: 2, liberadas: 0, cantidad_realizada: 2, cubiertas_realizadas: 1, discrepancias: 1, importes_pendientes: 1, importe_asignado: "100.00" },
+    opciones: { instituciones: [{ id: 2, nombre: "Hospital Ficticio" }], planes: [{ id: 31, nombre: "Plan Río" }], prestaciones: [{ id: 3, codigo: "CONS", nombre: "Consulta" }] },
+    limite_exportacion: 5000,
+    generado_en: "2026-09-16T12:00:00Z",
+    ...extra,
+  };
+}
+
+test("actividad aplica filtros en servidor y conserva página, recarga y navegación", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    consultas.push(Object.fromEntries(params));
+    return route.fulfill({ json: actividadRespuesta([{ ...actividadBase, id: params.get("page") === "2" ? 92 : 91 }], { count: 30, next: params.get("page") === "2" ? null : "?page=2" }) });
+  });
+  await page.goto("/financiadores/actividad?financiador=21&desde=2026-09-01&hasta=2026-09-30&page=2");
+  await expect(page.getByText("30 registros · Página 2", { exact: true })).toBeVisible();
+  await page.getByLabel("Desde", { exact: true }).fill("2026-08-01");
+  await page.getByLabel("Hasta", { exact: true }).fill("2026-08-31");
+  await page.getByRole("combobox", { name: "Hospital", exact: true }).selectOption("2");
+  await page.getByRole("combobox", { name: "Plan registrado", exact: true }).selectOption("31");
+  await page.getByRole("combobox", { name: "Prestación", exact: true }).selectOption("3");
+  await page.getByRole("combobox", { name: "Estado", exact: true }).selectOption("realizada");
+  await page.getByRole("combobox", { name: "Discrepancias", exact: true }).selectOption("true");
+  await page.getByLabel("Buscar afiliado o prestación").fill("  00025  ");
+  await expect(page.getByRole("button", { name: "Exportar CSV" })).toBeDisabled();
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByText("30 registros · Página 1", { exact: true })).toBeVisible();
+  expect(consultas.at(-1)).toEqual({ desde: "2026-08-01", hasta: "2026-08-31", institucion: "2", plan: "31", prestacion: "3", estado: "realizada", discrepancia: "true", search: "00025", page: "1" });
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Plan registrado", exact: true })).toHaveValue("31");
+  await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
+  await page.goBack();
+  await expect(page.getByText("30 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("2026-09-01");
+});
+
+test("actividad usa mes calendario y limpiar conserva todos los períodos al recargar", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    consultas.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ json: actividadRespuesta() });
+  });
+  await page.goto("/financiadores/actividad");
+  await expect(page.getByRole("cell", { name: "Hospital Ficticio", exact: true })).toBeVisible();
+  const mes = await page.evaluate(() => {
+    const ahora = new Date(); const prefijo = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`;
+    return { desde: `${prefijo}-01`, hasta: `${prefijo}-${new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate()}` };
+  });
+  expect(consultas.at(-1)).toMatchObject(mes);
+  await page.getByRole("button", { name: "Limpiar filtros" }).click();
+  await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("");
+  await expect.poll(() => consultas.at(-1)).toEqual({ page: "1" });
+  await page.reload();
+  await expect(page.getByRole("cell", { name: "Hospital Ficticio", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hasta", { exact: true })).toHaveValue("");
+  expect(consultas.at(-1)).toEqual({ page: "1" });
+  await page.getByRole("button", { name: "Mes actual", exact: true }).click();
+  await expect(page.getByLabel("Desde", { exact: true })).toHaveValue(mes.desde);
+});
+
+test("actividad filtra sin plan sin enviar un plan contradictorio", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    consultas.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ json: actividadRespuesta() });
+  });
+  await page.goto("/financiadores/actividad?financiador=21&plan=31");
+  await page.getByRole("combobox", { name: "Plan registrado", exact: true }).selectOption("sin_plan");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect.poll(() => consultas.at(-1)).toEqual({ sin_plan: "true", page: "1" });
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Plan registrado", exact: true })).toHaveValue("sin_plan");
+  await page.getByRole("combobox", { name: "Plan registrado", exact: true }).selectOption("31");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect.poll(() => consultas.at(-1)).toEqual({ plan: "31", page: "1" });
+});
+
+test("actividad conserva totales de todas las páginas y diferencia importes pendientes y reservas", async ({ page }, testInfo) => {
+  await escenario(page);
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    const segunda = new URL(route.request().url()).searchParams.get("page") === "2";
+    return route.fulfill({ json: actividadRespuesta(segunda ? [
+      { ...actividadBase, id: 92, nombre: "Importe pendiente de prueba", importe_asignado: null, importe_financiador: "0.00", importe_acuerdos: "0.00", estado_cobro: "arancel_pendiente" },
+      { ...actividadBase, id: 93, nombre: "Reserva de prueba", estado: "reservada", importe_asignado: null, importe_acuerdos: "0.00" },
+    ] : [actividadBase], { count: 3, next: segunda ? null : "?page=2" }) });
+  });
+  await page.goto("/financiadores/actividad");
+  const resumen = page.getByLabel("Resumen de actividad");
+  await expect(resumen).toContainText("ARS 100,00");
+  await expect(resumen).toContainText("no representa el saldo pendiente");
+  await expect(page.getByText("Incluye ARS 20,00 de acuerdos", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("actividad-escritorio.png"), fullPage: true });
+  await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(page.getByText("3 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(resumen).toContainText("ARS 100,00");
+  const pendiente = page.getByRole("row").filter({ hasText: "Importe pendiente de prueba" });
+  await expect(pendiente.getByText("Importe pendiente", { exact: true })).toBeVisible();
+  await expect(pendiente).not.toContainText("ARS 0,00");
+  const reserva = page.getByRole("row").filter({ hasText: "Reserva de prueba" });
+  await expect(reserva).not.toContainText("ARS");
+  await expect(reserva).not.toContainText("Importe pendiente");
+});
+
+test("actividad mantiene filtros y tabla dentro de la pantalla móvil de Cauce", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await escenario(page);
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta() }));
+  await page.goto("/financiadores/actividad");
+  await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("actividad-movil.png"), fullPage: true });
+});
+
+test("auditor exporta todas las páginas con los filtros aplicados y ve errores de descarga", async ({ page }) => {
+  const { escrituras } = await escenario(page, { rol: "auditor" });
+  const descargas = [];
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    if (params.formato === "csv") {
+      descargas.push(params);
+      return route.fulfill(descargas.length === 1 ? { contentType: "text/csv", headers: { "Content-Disposition": 'attachment; filename="actividad-21.csv"' }, body: "Fecha;Hospital\r\n15/09/2026;Hospital Ficticio" } : { status: 403, json: { detail: "El acceso a la actividad fue revocado." } });
+    }
+    return route.fulfill({ json: actividadRespuesta() });
+  });
+  await page.goto("/financiadores/actividad?financiador=21&desde=2026-09-01&hasta=2026-09-30&institucion=2&plan=31&prestacion=3&estado=realizada&discrepancia=false&search=00025&page=2");
+  const descargado = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+  expect((await descargado).suggestedFilename()).toBe("actividad-21.csv");
+  expect(descargas[0]).toEqual({ desde: "2026-09-01", hasta: "2026-09-30", institucion: "2", plan: "31", prestacion: "3", estado: "realizada", discrepancia: "false", search: "00025", formato: "csv" });
+  await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("El acceso a la actividad fue revocado.");
+  expect(escrituras).toEqual([]);
+});
+
+test("actividad exige acotar exportaciones grandes y no presenta ceros cuando falla la consulta", async ({ page }) => {
+  await escenario(page);
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta([actividadBase], { count: 5001 }) }));
+  await page.goto("/financiadores/actividad");
+  await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeDisabled();
+  await expect(page.getByText(/El resultado supera el límite de exportación/)).toBeVisible();
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ status: 403, json: { detail: "Acceso a la actividad revocado" } }));
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText("Acceso a la actividad revocado");
+  await expect(page.getByLabel("Resumen de actividad")).toHaveCount(0);
+  await expect(page.getByText("No hay actividad con estos filtros", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toHaveCount(0);
+});
+
+test("cambiar financiador en actividad separa datos y filtros y vuelve con el navegador", async ({ page }) => {
+  await escenario(page);
+  const consultasNorte = [];
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta() }));
+  await page.route("**/api/financiadores/22/actividad/**", (route) => {
+    consultasNorte.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ json: actividadRespuesta([{ ...actividadBase, nombre: "Paciente Norte", numero: "N001", documento: "00999000", plan: "Plan Norte" }], { opciones: { instituciones: [], planes: [], prestaciones: [] } }) });
+  });
+  await page.goto("/financiadores/actividad?financiador=21&desde=2026-09-01&hasta=2026-09-30&search=00025&page=2");
+  await expect(page.getByText("Ana Ficticia", { exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
+  await expect(page.getByText("Paciente Norte", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ana Ficticia", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("");
+  expect(consultasNorte.at(-1)).not.toHaveProperty("search");
+  expect(consultasNorte.at(-1).page).toBe("1");
+  await page.goBack();
+  await expect(page.getByText("Ana Ficticia", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
+  await expect(page.getByText("1 registro · Página 2", { exact: true })).toBeVisible();
+});
 async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false } = {}) {
   const peticiones = [];
   const escrituras = [];
@@ -365,7 +542,7 @@ test("multipart y descarga reintentan con token renovado sin cambiar el lote", a
 
 test("financiador consulta actividad hospitalaria y discrepancias sin editarla", async ({ page }) => {
   await escenario(page);
-  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: lista([{ id: 91, fecha: "2026-09-15", hospital: "Hospital Ficticio", prestacion: "Consulta", numero: "00025", documento: "00123456", cantidad: 1, cubiertas: 1, estado: "realizada", discrepancia: true, importe_financiador: "80.00", estado_cobro: "resuelta" }]) }));
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta([{ ...actividadBase, discrepancia: true, importe_asignado: "80.00", importe_acuerdos: "0.00" }]) }));
   await page.goto("/financiadores");
   await page.getByRole("link", { name: "Actividad en hospitales", exact: true }).click();
   const region = page.getByRole("region", { name: "Actividad en hospitales", exact: true });
@@ -572,7 +749,7 @@ test("convenios conserva el histórico y sólo acepta o rechaza la propuesta de 
 
 test("actividad identifica el acceso mínimo a una operación histórica pendiente", async ({ page }) => {
   await escenario(page, { rol: "auditor" });
-  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: lista([{ id: 91, fecha: "2026-09-15", hospital: "Hospital anterior", prestacion: "Consulta", numero: "00025", documento: "00123456", cantidad: 1, cubiertas: 1, estado: "realizada", importe_financiador: "80.00", estado_cobro: "pendiente", acceso: "pendiente_historico" }]) }));
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta([{ ...actividadBase, hospital: "Hospital anterior", estado_cobro: "pendiente", acceso: "pendiente_historico" }]) }));
   await page.goto("/financiadores/actividad");
   const region = page.getByRole("region", { name: "Actividad en hospitales", exact: true });
   await expect(region).toContainText("sólo se muestran operaciones históricas pendientes de resolución");
