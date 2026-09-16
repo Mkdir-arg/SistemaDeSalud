@@ -8,6 +8,7 @@ El núcleo de cobertura, el portal, la integración al circuito clínico, la con
 
 - [Implementación, operación y validación actual](estado-implementacion.md).
 - [Seguimiento hospitalario: cuentas, cobros, pendientes y CSV auditado](seguimiento-hospitalario.md).
+- [Ensayo integral del piloto: dos hospitales, dos financiadores y 5.000 filas](piloto-integral.md).
 - [Actividad: filtros, totales y exportación auditada](actividad-y-exportacion.md).
 - [Cobertura en el circuito clínico y la historia del paciente](circuito-clinico.md).
 - [Vigencias, acceso histórico y auditoría: incremento implementado](vigencias-y-auditoria.md).
