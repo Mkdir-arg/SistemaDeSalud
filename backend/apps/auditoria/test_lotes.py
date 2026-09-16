@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.db import DatabaseError, connection
 from django.test import TestCase
 from django.utils import timezone
 
@@ -114,4 +115,48 @@ class RegistroPorLotesTests(TestCase):
             self.assertLogs("apps.auditoria.mixins", level="ERROR"),
         ):
             registrar_accesos(self.request, "listado", "ciudadano", [{"ciudadano": self.paciente}])
+        self.assertFalse(AccesoClinico.objects.exists())
+
+    def test_lotes_conservan_todos_los_registros_y_consumen_un_iterador(self):
+        datos = (dict(ciudadano=self.paciente, objeto_id=i) for i in range(501))
+        tamanos = []
+        crear = AccesoClinico.objects.bulk_create
+
+        def guardar(objetos, **kwargs):
+            tamanos.append(len(objetos))
+            return crear(objetos, **kwargs)
+
+        with patch.object(AccesoClinico.objects, "bulk_create", side_effect=guardar):
+            registrar_accesos(self.request, "financiador", "actividad", datos, estricto=True)
+        self.assertEqual(tamanos, [500, 1])
+        self.assertEqual(AccesoClinico.objects.count(), 501)
+
+    def test_error_real_de_escritura_revierte_lotes_previos(self):
+        for fallo in (1, 2, 3):
+            with self.subTest(lote=fallo):
+                intentos = 0
+
+                def fallar(ejecutar, sql, params, many, context):
+                    nonlocal intentos
+                    if sql.lstrip().upper().startswith("INSERT") and AccesoClinico._meta.db_table in sql:
+                        intentos += 1
+                        if intentos == fallo:
+                            raise DatabaseError("Fallo de escritura simulado")
+                    return ejecutar(sql, params, many, context)
+
+                datos = [dict(ciudadano=self.paciente)] * 3
+                with patch("apps.auditoria.mixins.TAMANIO_LOTE_ACCESOS", 1), connection.execute_wrapper(fallar):
+                    with self.assertRaises(DatabaseError):
+                        registrar_accesos(self.request, "financiador", "actividad", datos, estricto=True)
+                self.assertEqual(intentos, fallo)
+                self.assertFalse(AccesoClinico.objects.exists())
+
+    def test_error_del_iterador_revierte_primer_lote(self):
+        def datos():
+            yield dict(ciudadano=self.paciente)
+            raise ValueError("No se pudo preparar el siguiente acceso")
+
+        with patch("apps.auditoria.mixins.TAMANIO_LOTE_ACCESOS", 1):
+            with self.assertRaises(ValueError):
+                registrar_accesos(self.request, "financiador", "actividad", datos(), estricto=True)
         self.assertFalse(AccesoClinico.objects.exists())

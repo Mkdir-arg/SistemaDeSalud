@@ -101,6 +101,11 @@ individual y el rechazo íntegro ante fallo de auditoría.
 Se registró como [issue #42](https://github.com/Mkdir-arg/SistemaDeSalud/issues/42),
 con medición reproducible y criterios de aceptación.
 
+La implementación posterior del issue y su comparación de cinco ejecuciones
+por tamaño están en [auditoría por lotes](auditoria-por-lotes.md). Conserva las
+evidencias personales y reduce los INSERT; los resultados anteriores describen
+la versión previa a esa mejora.
+
 Estos tiempos corresponden a `APIClient` dentro de `TestCase`: no incluyen red HTTP,
 descarga del navegador ni el commit externo definitivo de una transacción productiva.
 No son una prueba de carga con usuarios concurrentes ni una garantía de producción.

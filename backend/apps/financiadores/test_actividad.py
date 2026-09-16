@@ -6,6 +6,7 @@ from io import StringIO
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.db import DatabaseError, connection
 from django.test import override_settings
 from rest_framework.test import APITestCase
 
@@ -393,31 +394,38 @@ class ActividadReporteTests(VigenciasApiSetup, APITestCase):
         self.assertFalse(EventoCobertura.objects.filter(accion="exportar_actividad").exists())
 
     @override_settings(DEBUG=False)
-    def test_fallo_en_primer_medio_y_ultimo_lote_revierte_toda_la_auditoria(self):
+    def test_fallo_en_cualquier_lote_revierte_auditoria_y_no_entrega_datos(self):
         for _ in range(21):
             self.nueva_reserva()
-        crear_accesos = AccesoClinico.objects.bulk_create
         self.client.raise_request_exception = False
         for formato in ("csv", "json"):
-            for falla_en in (1, 2, 3):
-                with self.subTest(formato=formato, lote=falla_en):
-                    intentos = []
+            for fallo in (1, 2, 3):
+                with self.subTest(formato=formato, lote=fallo):
+                    intentos = 0
 
-                    def crear_o_fallar(objetos, **kwargs):
-                        intentos.append(len(objetos))
-                        if len(intentos) == falla_en:
-                            raise RuntimeError("Auditoría interrumpida")
-                        return crear_accesos(objetos, **kwargs)
+                    def fallar(ejecutar, sql, params, many, context):
+                        nonlocal intentos
+                        if sql.lstrip().upper().startswith("INSERT") and AccesoClinico._meta.db_table in sql:
+                            intentos += 1
+                            if intentos == fallo:
+                                raise DatabaseError("Lote interrumpido")
+                        return ejecutar(sql, params, many, context)
 
-                    with (
-                        patch("apps.auditoria.mixins.TAMANIO_LOTE_ACCESOS", 1),
-                        patch("apps.auditoria.mixins.AccesoClinico.objects.bulk_create", side_effect=crear_o_fallar),
-                    ):
+                    with patch("apps.auditoria.mixins.TAMANIO_LOTE_ACCESOS", 1), connection.execute_wrapper(fallar):
                         response = self.client.get(self.base + "actividad/", {"formato": formato, "page_size": 100})
-                    self.assertEqual(len(intentos), falla_en)
+                    self.assertEqual(intentos, fallo)
                     self.assertEqual(response.status_code, 500)
                     self.assertNotIn("Content-Disposition", response)
                     self.assertNotIn("text/csv", response["Content-Type"])
                     self.assertNotIn(self.afiliado.documento.encode(), response.content)
                     self.assertFalse(AccesoClinico.objects.filter(tipo="financiador").exists())
                     self.assertFalse(EventoCobertura.objects.filter(accion__in=["exportar_actividad", "consultar_actividad"]).exists())
+
+    def test_membresia_revocada_no_exporta_ni_audita(self):
+        self.reservar()
+        MembresiaFinanciador.objects.filter(usuario=self.operador, financiador=self.financiador).update(activo=False)
+        response = self.client.get(self.base + "actividad/", {"formato": "csv"})
+        self.assertIn(response.status_code, (403, 404))
+        self.assertNotIn("Content-Disposition", response)
+        self.assertFalse(AccesoClinico.objects.filter(tipo="financiador").exists())
+        self.assertFalse(EventoCobertura.objects.filter(accion="exportar_actividad").exists())
