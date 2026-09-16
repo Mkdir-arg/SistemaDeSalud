@@ -27,6 +27,7 @@ class FiltrosSeguimiento(serializers.Serializer):
     responsable = serializers.ChoiceField(choices=("financiador", "paciente"), required=False)
     estado = serializers.ChoiceField(choices=tuple(dict.fromkeys(ESTADOS_CUENTAS + ESTADOS_PENDIENTES)), required=False)
     search = serializers.CharField(max_length=160, allow_blank=True, required=False)
+    formato = serializers.ChoiceField(choices=("json", "csv"), default="json")
 
     def validate(self, datos):
         if datos.get("area_sin_asignar") and "area" in datos:

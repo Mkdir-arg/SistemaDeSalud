@@ -13,6 +13,7 @@ from apps.financiadores.seguimiento import (
     filtrar_seguimiento, opciones_seguimiento, pendientes_cobertura,
     puede_seguimiento, resumen_seguimiento,
 )
+from apps.financiadores.seguimiento_csv import LIMITE_EXPORTACION, exportar_seguimiento
 from apps.instituciones.models import Area
 from .auditoria import AuditaLecturaFinanciera
 from .models import ObligacionFinanciera
@@ -30,7 +31,9 @@ class SeguimientoCobrosViewSet(viewsets.GenericViewSet):
         response["Cache-Control"] = "private, no-store"
         return response
 
-    @extend_schema(parameters=[FiltrosSeguimiento], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[FiltrosSeguimiento], responses={
+        (200, "application/json"): OpenApiTypes.OBJECT, (200, "text/csv"): OpenApiTypes.BINARY,
+    })
     def list(self, request):
         entrada = FiltrosSeguimiento(data=request.query_params.dict())
         entrada.is_valid(raise_exception=True)
@@ -44,9 +47,11 @@ class SeguimientoCobrosViewSet(viewsets.GenericViewSet):
         visible = fuentes[vista](request.user, institucion)
         qs = filtrar_seguimiento(visible, filtros).order_by("-fecha_reporte", "-pk")
         generado_en = timezone.now()
+        if filtros["formato"] == "csv":
+            return exportar_seguimiento(self, qs, institucion=institucion, vista=vista, generado_en=generado_en)
         pagina = list(self.paginate_queryset(qs))
         respuesta = self.get_paginated_response([fila_seguimiento(obj, vista) for obj in pagina])
-        respuesta.data.update(resumen=resumen_seguimiento(qs, vista), opciones=opciones_seguimiento(visible, vista), generado_en=generado_en)
+        respuesta.data.update(resumen=resumen_seguimiento(qs, vista), opciones=opciones_seguimiento(visible, vista), generado_en=generado_en, limite_exportacion=LIMITE_EXPORTACION)
         # Auditar también las fuentes de los totales, no sólo la página visible.
         agrupados = qs.order_by().annotate(mes_reporte=TruncMonth("fecha_reporte")).values(
             "area_reporte", "sensible_reporte", "mes_reporte",

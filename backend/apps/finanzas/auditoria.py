@@ -25,9 +25,11 @@ class AuditaLecturaFinanciera:
         return self.auditar_respuesta(super().retrieve(request, *args, **kwargs))
 
     def auditar_respuesta(self, respuesta, contexto=None, objeto_id=None, grupos=None, *, recurso=None, accion=None):
-        """Usa la página ya autorizada/serializada, no repite la consulta de datos."""
+        """Audita datos autorizados; los archivos deben aportar grupos explícitos."""
         try:
-            datos = respuesta.data
+            datos = getattr(respuesta, "data", None)
+            if datos is None and grupos is None:
+                raise ValueError("La respuesta sin datos serializados requiere grupos de auditoría.")
             filas = datos.get("results", [datos]) if isinstance(datos, dict) else datos
             periodo = datos.get("periodo_economico") if isinstance(datos, dict) else None
             # Los resúmenes pueden aportar los grupos de fuentes autorizadas.

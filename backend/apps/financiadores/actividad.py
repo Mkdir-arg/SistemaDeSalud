@@ -2,7 +2,6 @@
 import csv
 from decimal import Decimal
 from io import StringIO
-import unicodedata
 
 from django.db import transaction
 from django.db.models import Case, Count, DecimalField, F, OuterRef, Q, Subquery, Sum, Value, When
@@ -14,6 +13,7 @@ from rest_framework import serializers
 from apps.instituciones.models import Institucion
 from apps.registros.models import normalizar_documento
 from .acceso import actividad_visible, auditar_actividad
+from .csv import texto_csv_seguro
 from .models import Plan, PrestacionComun, ReservaCobertura, ResolucionSaldo
 from .services import auditar
 
@@ -157,15 +157,7 @@ def celda_csv(campo, valor):
     # El formateador CSV genérico interpreta textos semejantes a fechas.
     # Un identificador o nombre se conserva literalmente aunque tenga ese aspecto.
     texto = ETIQUETAS_CSV.get(campo, {}).get(valor, str(valor))
-    if not texto:
-        return texto
-    # No usar fórmulas ="00123": una hoja debe recibir texto, nunca código.
-    inicio = texto
-    while inicio and (inicio[0].isspace() or unicodedata.category(inicio[0]).startswith("C")):
-        inicio = inicio[1:]
-    if campo in ("documento", "numero", "codigo") or inicio.startswith(("=", "+", "-", "@")) or texto[0] in "\t\r\n":
-        return "'" + texto
-    return texto
+    return texto_csv_seguro(texto, identificador=campo in ("documento", "numero", "codigo"))
 
 
 def exportar_actividad(request, org, qs):
