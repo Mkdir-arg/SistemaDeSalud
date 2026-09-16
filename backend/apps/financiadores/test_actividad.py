@@ -300,6 +300,18 @@ class ActividadReporteTests(VigenciasApiSetup, APITestCase):
         _, filas = self.exportar()
         self.assertIn("'" + numero, filas[1])
 
+    def test_csv_distingue_cargo_no_emitido_y_prestacion_sin_cargo(self):
+        reservada = self.nueva_reserva()
+        self.politica(cobrar=False)
+        realizada = self.realizar_reserva(self.nueva_reserva())
+        _, filas = self.exportar()
+        por_id = {int(fila[0]): fila for fila in filas[1:]}
+        self.assertIn("Cargo todavía no emitido", por_id[reservada.pk])
+        self.assertIn("Reservada", por_id[reservada.pk])
+        self.assertIn("Prestación sin cargo", por_id[realizada.pk])
+        self.assertIn("Realizada", por_id[realizada.pk])
+        self.assertIn("Relación vigente", por_id[realizada.pk])
+
     def test_csv_audita_todos_los_identificadores_sin_truncar_grupos_grandes(self):
         reservas = set()
         for numero in range(25):

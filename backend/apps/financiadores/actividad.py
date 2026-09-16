@@ -134,6 +134,16 @@ COLUMNAS_CSV = (
     ("estado_cobro", "Estado administrativo (no acredita pago)"), ("acceso", "Alcance de acceso"),
 )
 
+ETIQUETAS_CSV = {
+    "estado": dict(ReservaCobertura._meta.get_field("estado").choices),
+    "estado_cobro": {
+        "sin_cargo": "Cargo todavía no emitido", "sin_cobro": "Prestación sin cargo",
+        "resuelta": "Responsable definido", "pendiente": "Pendiente de resolución administrativa",
+        "arancel_pendiente": "Arancel pendiente", "evaluacion_pendiente": "Evaluación pendiente",
+    },
+    "acceso": {"vigente": "Relación vigente", "pendiente_historico": "Histórico pendiente"},
+}
+
 
 def celda_csv(campo, valor):
     if valor is None:
@@ -146,7 +156,7 @@ def celda_csv(campo, valor):
         return valor.replace(".", ",")
     # El formateador CSV genérico interpreta textos semejantes a fechas.
     # Un identificador o nombre se conserva literalmente aunque tenga ese aspecto.
-    texto = str(valor)
+    texto = ETIQUETAS_CSV.get(campo, {}).get(valor, str(valor))
     if not texto:
         return texto
     # No usar fórmulas ="00123": una hoja debe recibir texto, nunca código.
