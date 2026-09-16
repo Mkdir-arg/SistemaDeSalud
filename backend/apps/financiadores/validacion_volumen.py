@@ -6,6 +6,12 @@ agregar esta carga a la suite habitual. ``bulk_create`` arma fuentes coherentes
 para medir lectura y auditoría; este ensayo NO valida el circuito de creación
 clínica. Los tiempos son observaciones locales, no un SLA ni una prueba de carga
 con usuarios concurrentes. No se imprimen personas ni sentencias SQL.
+
+Para comparar antes/después ejecutar únicamente
+``apps.financiadores.validacion_volumen.ExportacionVolumenTests.test_mediciones_repetidas_de_auditoria``
+en una base recreada por el runner en cada revisión. Ejecutarlo después de otro
+ensayo altera las secuencias y las estadísticas de tablas y deja de ser una
+comparación equivalente, aunque siga verificando la corrección del resultado.
 """
 import csv
 import json
@@ -13,11 +19,14 @@ from collections import Counter
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 from io import StringIO
+from statistics import median
 from time import perf_counter
+from unittest.mock import patch
 from uuid import uuid4
 
 from django.db import connection
 from django.db.models import Sum
+from django.db.models.query import QuerySet
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -31,6 +40,7 @@ from apps.finanzas.models_cobros import SnapshotCobroAtencion
 from apps.registros.models import Ciudadano
 
 from .models import Afiliado, AfiliacionCaso, DistribucionCobro, EventoCobertura, ReservaCobertura
+from . import actividad
 from .seguimiento_csv import DINERO
 from .test_cobertura import CoberturaSetup
 
@@ -229,3 +239,90 @@ class ExportacionVolumenTests(CoberturaSetup, APITestCase):
         self.assertEqual(ObligacionFinanciera.objects.count(), self.cantidad + 1)
         self.assertEqual(MovimientoDinero.objects.count(), (self.cantidad + 1) * 5)
         self.assertEqual(AjusteObligacion.objects.count(), (self.cantidad + 1) * 2)
+
+    def test_mediciones_repetidas_de_auditoria(self):
+        """Cinco solicitudes por tamaño, con las mismas fuentes y sin SLA temporal.
+
+        Se mueve sólo la fecha de las reservas ficticias, fuera de la medición,
+        para seleccionar 100, 1.000 o 5.000 personas mediante el filtro real.
+        Los cronómetros observan el código real sin reemplazar sus resultados.
+        Las fases publicadas no suman el total: éste también incluye permisos,
+        generación CSV, evento final, middleware y construcción de la respuesta.
+        """
+        self.client.force_authenticate(self.operador)
+        url = f"/api/financiadores/{self.financiador.pk}/actividad/"
+        parametros = {"formato": "csv", "desde": self.hoy.isoformat()}
+        fetch_all = QuerySet._fetch_all
+        fila = actividad.fila_actividad
+        auditar = actividad.auditar_actividad
+        ids = list(ReservaCobertura.objects.order_by("pk").values_list("pk", flat=True))
+        dinero_antes = (
+            ObligacionFinanciera.objects.count(), MovimientoDinero.objects.count(),
+            AjusteObligacion.objects.count(),
+        )
+        for cantidad in (100, 1000, 5000):
+            ReservaCobertura.objects.update(fecha=self.hoy - timedelta(days=1))
+            ReservaCobertura.objects.filter(pk__in=ids[:cantidad]).update(fecha=self.hoy)
+            muestras = []
+            for repeticion in range(1, 6):
+                fases = Counter()
+                sentencias = Counter()
+
+                def medir_funcion(nombre, funcion, *args, **kwargs):
+                    inicio = perf_counter()
+                    try:
+                        return funcion(*args, **kwargs)
+                    finally:
+                        fases[nombre] += perf_counter() - inicio
+
+                def materializar(queryset):
+                    if queryset.model is ReservaCobertura and queryset._result_cache is None:
+                        return medir_funcion("consulta_y_materializacion", fetch_all, queryset)
+                    return fetch_all(queryset)
+
+                def contar(ejecutar, sql, params, many, context):
+                    verbo = sql.lstrip().split(None, 1)[0].upper()
+                    sentencias[verbo] += 1
+                    return ejecutar(sql, params, many, context)
+
+                accesos_antes = AccesoClinico.objects.count()
+                eventos_antes = EventoCobertura.objects.filter(accion="exportar_actividad").count()
+                inicio = perf_counter()
+                with (
+                    connection.execute_wrapper(contar),
+                    patch.object(QuerySet, "_fetch_all", materializar),
+                    patch.object(actividad, "fila_actividad", lambda *a, **k: medir_funcion("serializacion_filas", fila, *a, **k)),
+                    patch.object(actividad, "auditar_actividad", lambda *a, **k: medir_funcion("auditoria_personal", auditar, *a, **k)),
+                ):
+                    response = self.client.get(url, parametros)
+                segundos = perf_counter() - inicio
+                self.assertEqual(response.status_code, 200)
+                registros = list(csv.DictReader(StringIO(response.content.decode("utf-8-sig")), delimiter=";"))
+                self.assertEqual(len(registros), cantidad)
+                self.assertEqual(len({r["Documento (texto)"] for r in registros}), cantidad)
+                self.assertEqual(AccesoClinico.objects.count() - accesos_antes, cantidad)
+                self.assertEqual(EventoCobertura.objects.filter(accion="exportar_actividad").count() - eventos_antes, 1)
+                muestra = {
+                    "ensayo": "auditoria_repetida", "personas": cantidad,
+                    "repeticion": repeticion, "segundos": round(segundos, 4),
+                    "bytes": len(response.content), "sentencias": sum(sentencias.values()),
+                    "por_tipo": dict(sentencias),
+                    "fases_segundos": {k: round(v, 4) for k, v in fases.items()},
+                }
+                muestras.append(muestra)
+                print(json.dumps(muestra, sort_keys=True), flush=True)
+            tiempos = [m["segundos"] for m in muestras]
+            print(json.dumps({
+                "ensayo": "resumen_auditoria_repetida", "personas": cantidad,
+                "ejecuciones": len(muestras), "mediana_segundos": median(tiempos),
+                "minimo_segundos": min(tiempos), "maximo_segundos": max(tiempos),
+                "rango_segundos": round(max(tiempos) - min(tiempos), 4),
+                "mediana_fases_segundos": {
+                    k: median(m["fases_segundos"][k] for m in muestras) for k in fases
+                },
+                "insert_por_ejecucion": [m["por_tipo"].get("INSERT", 0) for m in muestras],
+            }, sort_keys=True), flush=True)
+        self.assertEqual(dinero_antes, (
+            ObligacionFinanciera.objects.count(), MovimientoDinero.objects.count(),
+            AjusteObligacion.objects.count(),
+        ))

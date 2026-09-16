@@ -6,7 +6,7 @@ from django.db.models import Case, DecimalField, Exists, F, OuterRef, Q, Subquer
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.auditoria.mixins import registrar_acceso
+from apps.auditoria.mixins import registrar_accesos
 from apps.auditoria.models import AccesoClinico
 from apps.finanzas.models import AjusteObligacion, MovimientoDinero, ObligacionFinanciera
 from .models import ReservaCobertura, ResolucionSaldo
@@ -63,14 +63,16 @@ def auditar_actividad(request, financiador, reservas, *, recurso="financiadores-
     for reserva in reservas:
         fuente = reserva.hecho if reserva.hecho_id else reserva.caso
         personas[(fuente.institucion_id, fuente.ciudadano)].append(reserva.pk)
-    for (institucion_id, ciudadano), ids in personas.items():
-        # El detalle admite 300 caracteres. Diez IDs de 64 bits entran completos;
-        # una exportación grande no debe perder la evidencia por truncamiento.
-        for inicio in range(0, len(ids), 10):
-            bloque = ids[inicio:inicio + 10]
-            registrar_acceso(
-                request, AccesoClinico.Tipo.FINANCIADOR, recurso,
-                ciudadano=ciudadano, institucion_id=institucion_id, objeto_id=bloque[0],
-                detalle=f"financiador={financiador.pk} reservas={','.join(map(str, bloque))}",
-                resultados=len(bloque), estricto=True,
-            )
+    def accesos():
+        for (institucion_id, ciudadano), ids in personas.items():
+            # El detalle admite 300 caracteres. Diez IDs de 64 bits entran completos;
+            # una exportación grande no debe perder la evidencia por truncamiento.
+            for inicio in range(0, len(ids), 10):
+                bloque = ids[inicio:inicio + 10]
+                yield {
+                    "ciudadano": ciudadano, "institucion_id": institucion_id,
+                    "objeto_id": bloque[0], "resultados": len(bloque),
+                    "detalle": f"financiador={financiador.pk} reservas={','.join(map(str, bloque))}",
+                }
+
+    registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, recurso, accesos(), estricto=True)
