@@ -15,6 +15,7 @@ const cuenta = {
 function respuesta(results = [cuenta], extra = {}) {
   return {
     ...lista(results), generado_en: "2026-09-16T12:00:00Z",
+    limite_exportacion: 5000,
     opciones: { areas: [{ id: 4, nombre: "Consultorios" }], financiadores: [{ id: 21, nombre: "Mutual del Río" }] },
     resumen: { registros: 1, ...importes }, ...extra,
   };
@@ -161,6 +162,7 @@ test("permiso denegado no consulta seguimiento ni muestra cuentas", async ({ pag
   await page.goto(entrada);
   await expect(page.getByRole("alert")).toContainText("Esta sección no está disponible");
   await expect(page.getByRole("tab", { name: "Seguimiento de cobros" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
   expect(consultas.some((c) => c.path === "/seguimiento-cobros/")).toBe(false);
 });
 
@@ -181,6 +183,7 @@ test("concesión revocada evita una consulta aunque la opción estuviera disponi
   const { consultas } = await escenario(page, { permisoDinero: false });
   await page.goto(entrada);
   await expect(page.getByRole("alert")).toContainText("No tenés permiso para consultar el seguimiento");
+  await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
   expect(consultas.some((c) => c.path === "/seguimiento-cobros/")).toBe(false);
 });
 
@@ -300,4 +303,153 @@ test("un 404 ajeno a la paginación conserva el error sin ofrecer recuperación 
   await expect(page.getByRole("alert")).toContainText("La institución no está disponible.");
   await expect(page.getByRole("button", { name: "Volver a la primera página" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toHaveCount(0);
+});
+
+for (const vista of ["cuentas", "pendientes", "captura"]) {
+  test(`exporta ${vista} con permiso de lectura y los filtros aplicados, sin paginación`, async ({ page }) => {
+    const { escrituras } = await escenario(page);
+    const descargas = [];
+    await page.route("**/api/seguimiento-cobros/**", (route) => {
+      const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+      if (params.formato === "csv") {
+        descargas.push(params);
+        return route.fulfill({ contentType: "text/csv; charset=utf-8", headers: { "Content-Disposition": `attachment; filename="seguimiento-${vista}-hospital-2.csv"` }, body: "\uFEFFFecha;Caso\r\n15/09/2026;41\r\n" });
+      }
+      const fila = vista === "captura" ? { id: 50, caso: 41, fecha: "2026-09-15", estado: "captura_pendiente", motivo: "Atención sin cargos registrados" }
+        : vista === "pendientes" ? { ...cuenta, estado: "arancel_pendiente", motivo: "Falta definir el arancel", importe_pendiente: null } : cuenta;
+      return route.fulfill({ json: respuesta([fila], { count: 26, resumen: vista === "captura" ? { registros: 26 } : vista === "pendientes" ? { registros: 26, importes_desconocidos: 26, importe_pendiente: "0.00" } : { registros: 26, ...importes } }) });
+    });
+    const filtros = { vista, desde: "2026-09-01", hasta: "2026-09-30", area: "4", search: vista === "captura" ? "41" : "Consulta", ...(vista !== "captura" ? { financiador: "21", estado: vista === "cuentas" ? "pendiente" : "arancel_pendiente" } : {}), ...(vista === "cuentas" ? { responsable: "paciente" } : {}) };
+    await page.goto(`${entrada}&${new URLSearchParams(filtros)}&page=2&page_size=1`);
+    const exportacion = page.getByRole("region", { name: "Exportación del seguimiento" });
+    await expect(exportacion).toContainText("todas las páginas con los filtros aplicados");
+    await expect(exportacion).toContainText("5.000 registros");
+    const archivo = page.waitForEvent("download");
+    await exportacion.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+    expect((await archivo).suggestedFilename()).toBe(`seguimiento-${vista}-hospital-2.csv`);
+    expect(descargas).toEqual([{ ...filtros, institucion: "2", formato: "csv" }]);
+    expect(escrituras).toEqual([]);
+  });
+}
+
+test("exportar exige aplicar cambios, respeta el límite y no habilita descargas vacías", async ({ page }) => {
+  await escenario(page);
+  const descargas = [];
+  await page.route("**/api/seguimiento-cobros/**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.has("formato")) descargas.push(params.toString());
+    const search = params.get("search");
+    return route.fulfill({ json: respuesta(search === "vacio" ? [] : [cuenta], { count: search === "exceso" ? 5001 : search === "vacio" ? 0 : 5000 }) });
+  });
+  await page.goto(entrada);
+  const boton = page.getByRole("button", { name: "Exportar CSV", exact: true });
+  await expect(boton).toBeEnabled();
+  await page.getByLabel("Buscar caso, responsable o prestación").fill("exceso");
+  await expect(boton).toBeDisabled();
+  await expect(page.getByText(/Aplicá los cambios para actualizar la consulta y la exportación/)).toBeVisible();
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByText(/El resultado supera el límite de exportación/)).toBeVisible();
+  await expect(boton).toBeDisabled();
+  await page.getByLabel("Buscar caso, responsable o prestación").fill("vacio");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByText("Sin registros con estos filtros", { exact: true })).toBeVisible();
+  await expect(boton).toBeDisabled();
+  expect(descargas).toEqual([]);
+});
+
+for (const status of [400, 503]) {
+  test(`un error ${status} de exportación conserva la consulta y no descarga archivo`, async ({ page }) => {
+    await escenario(page);
+    const archivos = [];
+    page.on("download", (archivo) => archivos.push(archivo));
+    await page.route("**/api/seguimiento-cobros/**", (route) => {
+      const csv = new URL(route.request().url()).searchParams.has("formato");
+      return route.fulfill(csv ? { status, json: status === 400 ? { detail: "El resultado supera el límite permitido para exportar." } : { detail: "No se pudo auditar la exportación. Intentá nuevamente." } } : { json: respuesta() });
+    });
+    await page.goto(entrada);
+    await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(status === 400 ? "El resultado supera el límite permitido" : "No se pudo auditar la exportación");
+    await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toContainText("ARS 6.000,00");
+    await expect(page.getByText("Paciente de prueba", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeEnabled();
+    expect(archivos).toEqual([]);
+  });
+}
+
+test("una descarga en curso evita doble clic y mantiene fija la selección local", async ({ page }) => {
+  await escenario(page);
+  let liberar;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  const descargas = [];
+  await page.route("**/api/seguimiento-cobros/**", async (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    if (params.formato === "csv") {
+      descargas.push(params);
+      await espera;
+      return route.fulfill({ contentType: "text/csv", body: "Fecha;Caso\r\n15/09/2026;41" });
+    }
+    return route.fulfill({ json: respuesta([cuenta], { count: 26, next: "?page=2" }) });
+  });
+  await page.goto(entrada);
+  const boton = page.getByRole("button", { name: "Exportar CSV", exact: true });
+  await expect(boton).toBeEnabled();
+  await boton.evaluate((elemento) => { elemento.click(); elemento.click(); });
+  await expect.poll(() => descargas.length).toBe(1);
+  await expect(page.getByRole("button", { name: "Exportando CSV…", exact: true })).toBeDisabled();
+  await expect(page.getByRole("combobox", { name: "Vista", exact: true })).toBeDisabled();
+  await expect(page.getByLabel("Desde", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Siguiente", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Ver cuenta", exact: true })).toBeDisabled();
+  await expect(page.getByText(/Preparando archivo: Cuentas por cobrar · Hospital de prueba/)).toBeVisible();
+  const archivo = page.waitForEvent("download");
+  liberar();
+  expect((await archivo).suggestedFilename()).toBe("seguimiento-cuentas-hospital-2.csv");
+  await expect(page.getByRole("combobox", { name: "Vista", exact: true })).toBeEnabled();
+  expect(descargas).toHaveLength(1);
+});
+
+test("cambiar de hospital no traslada un error de la descarga anterior", async ({ page }) => {
+  await escenario(page);
+  let liberar;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  const descargas = [];
+  await page.route("**/api/seguimiento-cobros/**", async (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    if (params.formato === "csv") {
+      descargas.push(params);
+      await espera;
+      return route.fulfill({ status: 503, json: { detail: "Error de exportación del hospital anterior" } });
+    }
+    return route.fulfill({ json: respuesta([{ ...cuenta, contraparte_nombre: params.institucion === "3" ? "Paciente del Sur" : "Paciente de prueba" }]) });
+  });
+  await page.goto(entrada);
+  await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+  await expect.poll(() => descargas.length).toBe(1);
+  await page.getByRole("button", { name: "I-Core Hospital de prueba Institución", exact: true }).click();
+  await page.getByRole("button", { name: "Hospital del Sur Institución", exact: true }).click();
+  await page.getByRole("link", { name: "Coberturas y copagos", exact: true }).click();
+  await page.getByRole("tab", { name: "Seguimiento de cobros", exact: true }).click();
+  await expect(page.getByText("Paciente del Sur", { exact: true })).toBeVisible();
+  const respuestaAnterior = page.waitForResponse((response) => response.url().includes("formato=csv") && response.status() === 503);
+  liberar();
+  await respuestaAnterior;
+  await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeEnabled();
+  await expect(page.getByText("Error de exportación del hospital anterior", { exact: true })).toHaveCount(0);
+  expect(descargas[0].institucion).toBe("2");
+});
+
+test("sin respuesta válida del listado no ofrece exportar", async ({ page }) => {
+  await escenario(page);
+  let liberar;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  await page.route("**/api/seguimiento-cobros/**", async (route) => {
+    await espera;
+    return route.fulfill({ status: 503, json: { detail: "No se pudo consultar el seguimiento" } });
+  });
+  await page.goto(entrada);
+  await expect(page.getByText("Consultando seguimiento de cobros…", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
+  liberar();
+  await expect(page.getByRole("alert")).toContainText("No se pudo consultar el seguimiento");
+  await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
@@ -83,7 +83,7 @@ function Resumen({ vista, datos, generado }) {
   </section>;
 }
 
-function columnasDe(vista, onCuenta, onReservas) {
+function columnasDe(vista, onCuenta, onReservas, bloqueado) {
   const origen = [
     { key: "fecha", label: "Fecha de prestación", render: (fila) => fecha(fila.fecha) },
     { key: "caso", label: "Origen", render: (fila) => <><p className="whitespace-nowrap">Caso #{fila.caso}</p>{fila.prestacion && <p className="mt-1 text-texto-debil">{fila.prestacion}</p>}</> },
@@ -91,14 +91,14 @@ function columnasDe(vista, onCuenta, onReservas) {
   if (vista === "captura") return [...origen,
     { key: "estado", label: "Revisión", render: () => <Badge tone="amber">Captura pendiente</Badge> },
     { key: "motivo", label: "Motivo" },
-    { key: "acciones", label: "Acciones", render: () => <Button size="sm" variant="secondary" onClick={onReservas}>Ver reservas y saldos</Button> },
+    { key: "acciones", label: "Acciones", render: () => <Button size="sm" variant="secondary" disabled={bloqueado} onClick={onReservas}>Ver reservas y saldos</Button> },
   ];
   if (vista === "pendientes") return [...origen,
     { key: "financiador_nombre", label: "Financiador de la cobertura", render: (fila) => fila.financiador_nombre || "Sin financiador registrado" },
     { key: "estado", label: "Revisión", render: (fila) => <Badge tone="amber">{ESTADOS.pendientes[fila.estado] || fila.estado}</Badge> },
     { key: "importe_pendiente", label: "Importe administrativo", render: (fila) => fila.importe_pendiente == null ? <Badge tone="amber">Por determinar</Badge> : importeARS(fila.importe_pendiente) },
     { key: "motivo", label: "Motivo" },
-    { key: "acciones", label: "Acciones", render: () => <Button size="sm" variant="secondary" onClick={onReservas}>Ver reservas y saldos</Button> },
+    { key: "acciones", label: "Acciones", render: () => <Button size="sm" variant="secondary" disabled={bloqueado} onClick={onReservas}>Ver reservas y saldos</Button> },
   ];
   return [...origen,
     { key: "contraparte_nombre", label: "Responsable del cobro", render: (fila) => <><p className="font-medium">{fila.contraparte_nombre}</p><p className="mt-1 text-texto-debil">{fila.responsable === "paciente" ? "Paciente" : "Financiador"} · Cuenta #{fila.id}</p><p className="mt-1 text-texto-debil">Cobertura: {fila.financiador_nombre || "Sin financiador registrado"}</p></> },
@@ -107,7 +107,7 @@ function columnasDe(vista, onCuenta, onReservas) {
     { key: "pendiente", label: "Pendiente de cobro", render: (fila) => <span className="font-semibold tabular-nums">{importeARS(fila.pendiente)}</span> },
     { key: "por_aprobar", label: "Registros por aprobar", render: (fila) => <div className="space-y-1"><p>Cobros: {importeARS(fila.por_aprobar)}</p><p>Devoluciones: {importeARS(fila.reintegros_por_aprobar)}</p><p>Reducciones: {importeARS(fila.ajustes_por_aprobar)}</p></div> },
     { key: "saldo_a_devolver", label: "Saldo a devolver", render: (fila) => importeARS(fila.saldo_a_devolver) },
-    { key: "acciones", label: "Acciones", render: (fila) => <Button size="sm" variant="secondary" onClick={() => onCuenta(fila.id)}>Ver cuenta</Button> },
+    { key: "acciones", label: "Acciones", render: (fila) => <Button size="sm" variant="secondary" disabled={bloqueado} onClick={() => onCuenta(fila.id)}>Ver cuenta</Button> },
   ];
 }
 
@@ -118,6 +118,13 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
   const firma = JSON.stringify(aplicados);
   const [borrador, setBorrador] = useState(aplicados);
   const [cuenta, setCuenta] = useState(null);
+  const [descargando, setDescargando] = useState(false);
+  const [errorDescarga, setErrorDescarga] = useState(null);
+  const [origenDescarga, setOrigenDescarga] = useState("");
+  const descargaEnCurso = useRef(false);
+  const montado = useRef(true);
+  const contextoActual = useRef("");
+  contextoActual.current = `${institucion.id}:${firma}`;
   const hospitalCambio = parametros.has("seguimiento_institucion") && parametros.get("seguimiento_institucion") !== String(institucion.id);
   const paginaSolicitada = Number(parametros.get("page") || 1);
   const page = !hospitalCambio && Number.isSafeInteger(paginaSolicitada) && paginaSolicitada > 0 ? paginaSolicitada : 1;
@@ -133,11 +140,16 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
   });
   const opciones = consulta.error ? {} : consulta.data?.opciones || {};
   const filas = consulta.error ? [] : consulta.data?.results || [];
-  const columnas = columnasDe(aplicados.vista, setCuenta, onReservas);
+  const columnas = columnasDe(aplicados.vista, setCuenta, onReservas, descargando);
+  const cambiosPendientes = JSON.stringify(borrador) !== firma;
+  const limite = consulta.data?.limite_exportacion;
+  const limiteDisponible = Number.isSafeInteger(limite) && limite > 0;
+  const superaLimite = limiteDisponible && consulta.data?.count > limite;
   const paginaInvalida = page > 1 && consulta.error?.status === 404
     && ["Página inválida.", "Invalid page."].includes(consulta.error?.data?.detail);
 
-  useEffect(() => { setBorrador(JSON.parse(firma)); }, [firma]);
+  useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
+  useEffect(() => { setBorrador(JSON.parse(firma)); setErrorDescarga(null); }, [firma]);
   useEffect(() => {
     if (hospitalCambio || !parametros.has("seguimiento_institucion") || !CAMPOS.some((campo) => parametros.has(campo))) {
       const nuevos = new URLSearchParams(parametros);
@@ -153,6 +165,7 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
   }, [parametros, institucion.id, hospitalCambio, firma, setParametros]);
 
   function aplicar(filtros, pagina = 1) {
+    if (descargaEnCurso.current) return;
     const nuevos = new URLSearchParams({ tab: "seguimiento", seguimiento_institucion: institucion.id, vista: filtros.vista });
     for (const campo of CAMPOS) if (filtros[campo] || campo === "desde" || campo === "hasta") nuevos.set(campo, filtros[campo]);
     if (pagina > 1) nuevos.set("page", pagina);
@@ -164,13 +177,35 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
     aplicar({ ...aplicados, vista, estado: "", responsable: "", ...(vista === "captura" ? { financiador: "", search: "" } : {}) });
     setCuenta(null);
   }
+  async function exportar() {
+    if (descargaEnCurso.current || consulta.isFetching || consulta.error || cambiosPendientes || !filas.length || !limiteDisponible || superaLimite || !permisos.tiene("ver_dinero")) return;
+    descargaEnCurso.current = true;
+    const contexto = contextoActual.current;
+    const exportacion = new URLSearchParams(query);
+    exportacion.delete("page");
+    exportacion.delete("page_size");
+    exportacion.set("formato", "csv");
+    const origen = `${VISTAS[aplicados.vista]} · ${institucion.nombre}`;
+    setOrigenDescarga(origen);
+    setDescargando(true);
+    setErrorDescarga(null);
+    try {
+      await api.download(`/seguimiento-cobros/?${exportacion}`, `seguimiento-${aplicados.vista}-hospital-${institucion.id}.csv`);
+    } catch (error) {
+      if (montado.current && contextoActual.current === contexto) setErrorDescarga(error);
+    } finally {
+      descargaEnCurso.current = false;
+      if (montado.current) setDescargando(false);
+    }
+  }
 
   if (permisos.isLoading) return <Spinner label="Consultando permisos financieros…" />;
   if (permisos.error) return <ErrorSeguimiento error={permisos.error} reintentar={permisos.refetch} />;
   if (!permisos.tiene("ver_dinero")) return <Card className="p-5"><p role="alert">No tenés permiso para consultar el seguimiento de cobros en este hospital.</p></Card>;
 
   return <Card className="overflow-hidden">
-    <form className="space-y-4 border-b border-division p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); aplicar({ ...borrador, search: borrador.search.trim() }); }}>
+    <form className="border-b border-division p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); aplicar({ ...borrador, search: borrador.search.trim() }); }}>
+      <fieldset disabled={descargando} className="space-y-4">
       <div><h2 className="text-lg font-semibold">Seguimiento de cobros</h2><p className="mt-1 text-sm text-texto-debil">Revisá las cuentas y los pendientes de las prestaciones realizadas en el hospital.</p></div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Field label="Vista"><Select value={aplicados.vista} onChange={cambiarVista}>{Object.entries(VISTAS).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}</Select></Field>
@@ -191,21 +226,35 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
         <Button type="submit" disabled={consulta.isFetching}>Aplicar filtros</Button>
         <Button type="button" variant="ghost" onClick={() => aplicar({ ...mesActual(), vista: aplicados.vista })}>Mes actual</Button>
         <Button type="button" variant="ghost" onClick={() => aplicar({ ...VACIOS, vista: aplicados.vista })}>Limpiar filtros</Button>
-        {JSON.stringify(borrador) !== firma && <span role="status" className="text-sm text-texto-debil">Aplicá los cambios para actualizar la consulta.</span>}
+        {cambiosPendientes && <span role="status" className="text-sm text-texto-debil">Aplicá los cambios para actualizar la consulta y la exportación.</span>}
       </div>
+      </fieldset>
     </form>
     {consulta.isLoading ? <Spinner label="Consultando seguimiento de cobros…" /> : paginaInvalida ? <div role="status" className="space-y-3 p-4 sm:p-5">
       <p>Esta página ya no está disponible con los filtros aplicados. Los registros pueden haber cambiado al actualizar una cuenta.</p>
       <Button variant="secondary" onClick={() => aplicar(aplicados)}>Volver a la primera página</Button>
     </div> : consulta.error ? <div className="p-4"><ErrorSeguimiento error={consulta.error} reintentar={consulta.refetch} /></div> : <>
       <Resumen vista={aplicados.vista} datos={consulta.data?.resumen} generado={consulta.data?.generado_en} />
+      <section aria-label="Exportación del seguimiento" className="space-y-3 border-b border-division p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="max-w-[44rem] text-sm text-texto-debil">
+            <p>El CSV incluye todas las páginas con los filtros aplicados.{limiteDisponible && ` Hasta ${limite.toLocaleString("es-AR")} registros por descarga.`} La exportación queda auditada y vuelve a consultar permisos y saldos.</p>
+            <p className="mt-1">El archivo corresponde al hospital, la vista y los filtros elegidos al iniciar la descarga. Importes en ARS con coma decimal e identificadores como texto.</p>
+          </div>
+          <Button variant="secondary" onClick={exportar} disabled={descargando || consulta.isFetching || cambiosPendientes || !limiteDisponible || superaLimite || !filas.length}>{descargando ? "Exportando CSV…" : "Exportar CSV"}</Button>
+        </div>
+        {descargando && <p role="status" className="text-sm text-texto-debil">Preparando archivo: {origenDescarga}. Si cambiás de pantalla, la descarga conserva esta selección.</p>}
+        {!limiteDisponible && <p role="status" className="text-sm text-texto-debil">La exportación no está disponible por el momento.</p>}
+        {superaLimite && <p role="status" className="text-sm text-badge-amber-fg">El resultado supera el límite de exportación. Acotá el período o los filtros para descargarlo completo.</p>}
+        {errorDescarga && <ErrorSeguimiento error={errorDescarga} />}
+      </section>
       {!filas.length ? <EstadoVacio titulo="Sin registros con estos filtros" detalle="Probá con otro período, área o estado." /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
         <thead className="border-b border-division bg-superficie-2 text-texto-debil"><tr>{columnas.map((columna) => <th key={columna.key} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{columna.label}</th>)}</tr></thead>
         <tbody>{filas.map((fila) => <tr key={fila.id} className="border-b border-division last:border-0">{columnas.map((columna) => <td key={columna.key} className="px-4 py-3 align-top">{columna.render ? columna.render(fila) : fila[columna.key] || "—"}</td>)}</tr>)}</tbody>
       </table></div>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division px-4 py-3">
         <span className="text-sm text-texto-debil">{plural(consulta.data?.count ?? filas.length, "registro", "registros")} · Página {page}</span>
-        <div className="flex gap-2"><Button size="sm" variant="ghost" disabled={page === 1 || consulta.isFetching} onClick={() => aplicar(aplicados, page - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={!consulta.data?.next || consulta.isFetching} onClick={() => aplicar(aplicados, page + 1)}>Siguiente</Button></div>
+        <div className="flex gap-2"><Button size="sm" variant="ghost" disabled={page === 1 || consulta.isFetching || descargando} onClick={() => aplicar(aplicados, page - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={!consulta.data?.next || consulta.isFetching || descargando} onClick={() => aplicar(aplicados, page + 1)}>Siguiente</Button></div>
       </div>
     </>}
     {cuenta != null && <DetalleCuenta key={cuenta} id={cuenta} institucion={institucion} permisos={permisos} onClose={() => setCuenta(null)} />}
