@@ -4,10 +4,15 @@ from . import models
 
 class FinanciadorSerializer(serializers.ModelSerializer):
     rol = serializers.SerializerMethodField()
+    resuelve_autorizaciones = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones"]
+
+    def get_resuelve_autorizaciones(self, obj) -> bool:
+        from .permisos import puede_resolver_autorizaciones
+        return puede_resolver_autorizaciones(self.context["request"].user, obj.pk)
 
     def get_rol(self, obj) -> str:
         from .permisos import plataforma
@@ -32,7 +37,7 @@ class CatalogoSerializer(serializers.ModelSerializer):
 class ReglaSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.ReglaCobertura
-        fields = ["id", "plan", "prestacion", "categoria", "porcentaje", "cupo", "periodo", "vigente_desde"]
+        fields = ["id", "plan", "prestacion", "categoria", "porcentaje", "cupo", "periodo", "vigente_desde", "requiere_autorizacion"]
 
 
 class AfiliadoSerializer(serializers.ModelSerializer):
@@ -62,7 +67,7 @@ class ConvenioSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Convenio
-        fields = ["id", "institucion", "institucion_nombre", "financiador", "financiador_nombre", "estado", "propuesto_por", "porcentaje_default", "aceptado_en", "cerrado_en", "motivo_cierre"]
+        fields = ["id", "institucion", "institucion_nombre", "financiador", "financiador_nombre", "estado", "propuesto_por", "porcentaje_default", "plazo_autorizacion_horas", "aceptado_en", "cerrado_en", "motivo_cierre"]
 
 
 class ImportacionSerializer(serializers.ModelSerializer):
@@ -73,6 +78,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
 class ReservaSerializer(serializers.ModelSerializer):
     distribucion = serializers.SerializerMethodField()
+    uso_autorizacion = serializers.SerializerMethodField()
     antigua = serializers.SerializerMethodField()
     prestacion_nombre = serializers.CharField(source="prestacion.nombre")
     caso_titulo = serializers.SerializerMethodField()
@@ -84,7 +90,11 @@ class ReservaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.ReservaCobertura
-        fields = ["id", "caso", "caso_titulo", "prestacion", "prestacion_nombre", "fecha", "cantidad", "cubiertas", "estado", "evaluacion", "aceptacion", "discrepancia", "creado", "antigua", "puede_liberar", "puede_resolver", "puede_completar", "puede_completar_arancel", "paciente_documento", "distribucion"]
+        fields = ["id", "caso", "caso_titulo", "prestacion", "prestacion_nombre", "fecha", "cantidad", "cubiertas", "estado", "evaluacion", "aceptacion", "discrepancia", "creado", "antigua", "puede_liberar", "puede_resolver", "puede_completar", "puede_completar_arancel", "paciente_documento", "distribucion", "uso_autorizacion"]
+
+    def get_uso_autorizacion(self, obj) -> dict | None:
+        uso = getattr(obj, "uso_autorizacion", None)
+        return {"solicitud": uso.solicitud_id, "estado": uso.estado, "cantidad": uso.cantidad, "hecho": uso.hecho_id} if uso else None
 
     def get_puede_completar_arancel(self, obj) -> bool:
         from apps.finanzas.permisos import tiene_concesion_financiera
@@ -120,7 +130,7 @@ class ReservaSerializer(serializers.ModelSerializer):
         from apps.finanzas.permisos import tiene_concesion_financiera
         request = self.context.get("request")
         distribucion = getattr(obj, "distribucion", None)
-        return bool(request and distribucion and distribucion.estado == "pendiente" and tiene_concesion_financiera(request.user, "resolver_cobertura", obj.caso.institucion_id, obj.hecho.area_origen_id, sensible=obj.evaluacion.get("sensible", True)))
+        return bool(request and distribucion and distribucion.estado in ("pendiente", "autorizacion_pendiente") and tiene_concesion_financiera(request.user, "resolver_cobertura", obj.caso.institucion_id, obj.hecho.area_origen_id, sensible=obj.evaluacion.get("sensible", True)))
 
     def get_antigua(self, obj) -> bool:
         from datetime import timedelta

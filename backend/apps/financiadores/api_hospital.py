@@ -39,7 +39,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return m.ReservaCobertura.objects.none()
-        qs = m.ReservaCobertura.objects.select_related("caso", "prestacion", "distribucion")
+        qs = m.ReservaCobertura.objects.select_related("caso", "prestacion", "distribucion", "uso_autorizacion")
         if plataforma(self.request.user):
             return qs
         user = self.request.user
@@ -224,7 +224,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
     @action(detail=True, methods=["post"])
     def resolver(self, request, pk=None):
         reserva = self.get_object()
-        d = datos(request, {"decision": serializers.ChoiceField(choices=["asumir", "rechazar", "paciente", "financiador"]), "importe": serializers.DecimalField(max_digits=14, decimal_places=2), "motivo": serializers.CharField(max_length=255), "evidencia": serializers.CharField(max_length=5000, allow_blank=True, default=""), "clave": serializers.UUIDField()})
+        d = datos(request, {"decision": serializers.ChoiceField(choices=["asumir", "rechazar", "paciente", "financiador"]), "parte": serializers.ChoiceField(choices=["paciente", "financiador"], default="paciente"), "importe": serializers.DecimalField(max_digits=14, decimal_places=2), "motivo": serializers.CharField(max_length=255), "evidencia": serializers.CharField(max_length=5000, allow_blank=True, default=""), "clave": serializers.UUIDField()})
         obj = resolver_saldo(reserva=reserva, usuario=request.user, **d)
         return Response({"id": obj.pk, "decision": obj.decision, "obligacion": obj.obligacion_id})
 

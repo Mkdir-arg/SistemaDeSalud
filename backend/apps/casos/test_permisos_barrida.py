@@ -41,6 +41,9 @@ SIN_CAPACIDAD_A_PROPOSITO = {
     # La matriz negativa HTTP está en financiadores.test_api/test_recuperacion.
     "financiadores",
     "coberturas",
+    # Autorización administrativa: caso/hospital/área para solicitar, membresía
+    # pagadora y designación explícita para resolver. Matriz HTTP en test_autorizaciones.
+    "autorizaciones-cobertura",
 }
 
 # Finanzas no hereda escritura por rol clínico: combina concesión explícita,

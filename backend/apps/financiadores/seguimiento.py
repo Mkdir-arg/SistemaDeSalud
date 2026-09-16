@@ -13,7 +13,7 @@ from .models import Financiador, ReservaCobertura
 
 
 ESTADOS_CUENTAS = ("pendiente", "saldada", "a_devolver", "por_aprobar")
-ESTADOS_PENDIENTES = ("pendiente", "arancel_pendiente", "evaluacion_pendiente", "sin_distribucion")
+ESTADOS_PENDIENTES = ("pendiente", "arancel_pendiente", "evaluacion_pendiente", "autorizacion_pendiente", "sin_distribucion")
 
 
 class FiltrosSeguimiento(serializers.Serializer):
@@ -91,6 +91,9 @@ def pendientes_cobertura(usuario, institucion):
         usuario, "ver_dinero", institucion_path="hecho__institucion_id", area_path="area_reporte", sensible_path="sensible_reporte",
     )).annotate(
         importe_pendiente=Case(When(estado_reporte="pendiente", then=F("distribucion__importe_paciente")),
+                               When(estado_reporte="autorizacion_pendiente", then=F("distribucion__importe_financiador") + Case(
+                                   When(distribucion__obligacion_paciente__isnull=True, then=F("distribucion__importe_paciente")),
+                                   default=Value(Decimal("0.00")), output_field=DecimalField(max_digits=20, decimal_places=2))),
                                default=Value(None), output_field=DecimalField(max_digits=20, decimal_places=2)),
     )
     return qs
@@ -173,6 +176,7 @@ def fila_seguimiento(obj, vista):
         "pendiente": "Diferencia sin aceptación de pago ni asunción del hospital; no es una deuda exigible.",
         "arancel_pendiente": "Falta definir el arancel de la prestación.",
         "evaluacion_pendiente": "Falta completar o verificar la evaluación de cobertura.",
+        "autorizacion_pendiente": "Responsabilidad de pago pendiente de autorización; no es una cuenta exigible. El copago ya emitido se consulta por separado.",
         "sin_distribucion": "La prestación se realizó y todavía no tiene una distribución de cargos.",
     }
     return {**fila, "estado": obj.estado_reporte, "motivo": motivos[obj.estado_reporte],

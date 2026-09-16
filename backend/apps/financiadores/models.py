@@ -21,6 +21,7 @@ class MembresiaFinanciador(models.Model):
     rol = models.CharField(max_length=10, choices=[("admin", "Administrador"), ("operador", "Operador"), ("auditor", "Auditor")])
     activo = models.BooleanField(default=True)
     creo_cuenta = models.BooleanField(default=False, editable=False)
+    resuelve_autorizaciones = models.BooleanField(default=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["financiador", "usuario"], name="fin_membresia_unica")]
@@ -61,6 +62,7 @@ class ReglaCobertura(models.Model):
     cupo = models.PositiveIntegerField(null=True, blank=True)
     periodo = models.CharField(max_length=4, choices=[("mes", "Mes calendario"), ("anio", "Año calendario")], default="anio")
     vigente_desde = models.DateField()
+    requiere_autorizacion = models.BooleanField(default=False)
     creado = models.DateTimeField(auto_now_add=True)
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
 
@@ -75,6 +77,7 @@ class Convenio(models.Model):
     estado = models.CharField(max_length=12, default="propuesto", choices=[("propuesto", "Propuesto"), ("activo", "Activo"), ("rechazado", "Rechazado"), ("finalizado", "Finalizado")])
     propuesto_por = models.CharField(max_length=12, choices=[("hospital", "Hospital"), ("financiador", "Financiador"), ("plataforma", "Plataforma")])
     porcentaje_default = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    plazo_autorizacion_horas = models.PositiveIntegerField(null=True, blank=True)
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="convenios_creados")
     aceptado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="convenios_aceptados")
     aceptado_en = models.DateTimeField(null=True)
@@ -210,13 +213,14 @@ class DistribucionCobro(models.Model):
     reserva = models.OneToOneField(ReservaCobertura, on_delete=models.PROTECT, related_name="distribucion")
     importe_financiador = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     importe_paciente = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    estado = models.CharField(max_length=25, default="pendiente", choices=[("pendiente", "Pendiente de resolución administrativa"), ("resuelta", "Resuelta"), ("arancel_pendiente", "Arancel pendiente"), ("evaluacion_pendiente", "Pendiente de evaluación"), ("sin_cobro", "Sin cobro")])
+    estado = models.CharField(max_length=25, default="pendiente", choices=[("pendiente", "Pendiente de resolución administrativa"), ("resuelta", "Resuelta"), ("arancel_pendiente", "Arancel pendiente"), ("evaluacion_pendiente", "Pendiente de evaluación"), ("autorizacion_pendiente", "Responsabilidad pendiente de autorización"), ("sin_cobro", "Sin cobro")])
     obligacion_financiador = models.OneToOneField("finanzas.ObligacionFinanciera", null=True, on_delete=models.PROTECT, related_name="distribucion_financiador")
     obligacion_paciente = models.OneToOneField("finanzas.ObligacionFinanciera", null=True, on_delete=models.PROTECT, related_name="distribucion_paciente")
 
 
 class ResolucionSaldo(models.Model):
     distribucion = models.ForeignKey(DistribucionCobro, on_delete=models.PROTECT, related_name="resoluciones")
+    parte = models.CharField(max_length=12, default="paciente", choices=[("paciente", "Saldo del paciente"), ("financiador", "Responsabilidad pendiente de autorización")])
     decision = models.CharField(max_length=12, choices=[("rechazar", "Rechazar asunción"), ("asumir", "Asumir hospital"), ("paciente", "Aceptación paciente"), ("financiador", "Aceptación financiador")])
     importe = models.DecimalField(max_digits=14, decimal_places=2)
     motivo = models.CharField(max_length=255)
@@ -259,3 +263,80 @@ class RevisionContexto(models.Model):
     motivo = models.CharField(max_length=255)
     registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     creado = models.DateTimeField(auto_now_add=True)
+
+
+class SolicitudAutorizacion(models.Model):
+    """Permiso administrativo; no acredita realización ni asunción de otro importe."""
+    ESTADOS = [(x, titulo) for x, titulo in (
+        ("pendiente", "Pendiente"), ("observada", "Observada"), ("aprobada", "Aprobada"),
+        ("rechazada", "Rechazada"), ("vencida", "Vencida"), ("anulada", "Anulada"),
+    )]
+    ABIERTAS = ("pendiente", "observada")
+    institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
+    financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
+    convenio = models.ForeignKey(Convenio, on_delete=models.PROTECT)
+    afiliado = models.ForeignKey(Afiliado, on_delete=models.PROTECT)
+    afiliacion = models.ForeignKey(AfiliacionCaso, on_delete=models.PROTECT)
+    comun = models.ForeignKey(PrestacionComun, on_delete=models.PROTECT)
+    prestacion = models.ForeignKey("finanzas.Prestacion", on_delete=models.PROTECT)
+    caso = models.ForeignKey("casos.Caso", on_delete=models.PROTECT, related_name="autorizaciones")
+    ciudadano = models.ForeignKey("registros.Ciudadano", null=True, on_delete=models.PROTECT)
+    nodo = models.ForeignKey("flujos.Nodo", on_delete=models.PROTECT)
+    intento = models.UUIDField()
+    anterior = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="reintentos")
+    cantidad_solicitada = models.PositiveIntegerField()
+    cantidad_aprobada = models.PositiveIntegerField(default=0)
+    justificacion = models.CharField(max_length=1000)
+    urgente = models.BooleanField(default=False)
+    estado = models.CharField(max_length=12, choices=ESTADOS, default="pendiente")
+    revision = models.PositiveIntegerField(default=1)
+    plazo_respuesta = models.DateTimeField(null=True, blank=True)
+    vigencia_desde = models.DateField(null=True, blank=True)
+    vigencia_hasta = models.DateField(null=True, blank=True)
+    numero_externo = models.CharField(max_length=120, blank=True)
+    motivo_resolucion = models.CharField(max_length=255, blank=True)
+    evidencia = models.CharField(max_length=1000, blank=True)
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="autorizaciones_solicitadas")
+    resuelto_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="autorizaciones_resueltas")
+    resuelto_en = models.DateTimeField(null=True)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["creado", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=Q(cantidad_solicitada__gt=0) & Q(cantidad_aprobada__lte=models.F("cantidad_solicitada")), name="fin_autorizacion_cantidades"),
+            models.CheckConstraint(condition=~Q(estado="aprobada") | (Q(cantidad_aprobada__gt=0) & Q(vigencia_desde__isnull=False, vigencia_hasta__isnull=False) & Q(vigencia_hasta__gte=models.F("vigencia_desde"))), name="fin_autorizacion_vigencia"),
+            models.UniqueConstraint(fields=["caso", "intento", "prestacion"], condition=Q(estado__in=["pendiente", "observada", "aprobada"]), name="fin_autorizacion_intento_activo"),
+        ]
+        indexes = [models.Index(fields=["estado", "plazo_respuesta"]), models.Index(fields=["estado", "vigencia_hasta"]), models.Index(fields=["convenio", "afiliado", "comun", "estado"])]
+
+
+class EventoAutorizacion(models.Model):
+    """Historia administrativa y claves de reintento, sin edición desde la API."""
+    solicitud = models.ForeignKey(SolicitudAutorizacion, on_delete=models.PROTECT, related_name="historial")
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT)
+    clave = models.UUIDField(unique=True)
+    accion = models.CharField(max_length=20)
+    anterior = models.CharField(max_length=12, blank=True)
+    estado = models.CharField(max_length=12)
+    revision = models.PositiveIntegerField()
+    motivo = models.CharField(max_length=1000)
+    peticion = models.JSONField()
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["pk"]
+
+
+class UsoAutorizacion(models.Model):
+    solicitud = models.ForeignKey(SolicitudAutorizacion, on_delete=models.PROTECT, related_name="usos")
+    reserva = models.OneToOneField(ReservaCobertura, on_delete=models.PROTECT, related_name="uso_autorizacion")
+    cantidad = models.PositiveIntegerField()
+    estado = models.CharField(max_length=12, choices=[("comprometido", "Comprometido"), ("consumido", "Consumido"), ("liberado", "Liberado")], default="comprometido")
+    hecho = models.ForeignKey("finanzas.HechoAtencionCosteable", null=True, on_delete=models.PROTECT)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(cantidad__gt=0), name="fin_uso_autorizacion_positivo")]

@@ -22,6 +22,19 @@ def requerir_financiador(usuario, financiador_id, escritura=False, admin=False):
     return membresia.rol
 
 
+def puede_resolver_autorizaciones(usuario, financiador_id):
+    """Ni administración ni plataforma sustituyen la designación explícita."""
+    return bool(usuario.is_authenticated and usuario.is_active and MembresiaFinanciador.objects.filter(
+        usuario=usuario, financiador_id=financiador_id, financiador__activo=True,
+        activo=True, resuelve_autorizaciones=True, rol__in=["admin", "operador"],
+    ).exists())
+
+
+def requerir_resolver_autorizaciones(usuario, financiador_id):
+    if not puede_resolver_autorizaciones(usuario, financiador_id):
+        raise PermissionDenied("Necesitás designación explícita para resolver autorizaciones de este financiador.")
+
+
 def requerir_hospital(usuario, institucion_id, accion, area_id=None, sensible=False):
     if not tiene_concesion_financiera(usuario, accion, institucion_id, area_id, sensible=sensible):
         raise PermissionDenied("Necesitás un permiso financiero explícito para esta operación.")

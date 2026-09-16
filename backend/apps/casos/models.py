@@ -82,6 +82,9 @@ class Caso(models.Model):
     #  - `estudio`: el estudio que este sub-caso viene a realizar.
     bloquea_origen = models.BooleanField(default=False)
     esperando = models.BooleanField(default=False)
+    # Espera administrativa del intento actual, independiente de subprocesos y tiempos.
+    # Levantarla habilita la acción clínica pendiente; no realiza una prestación.
+    espera_autorizacion = models.JSONField(default=dict, blank=True)
     estudio = models.ForeignKey(
         "registros.Estudio",
         on_delete=models.SET_NULL,

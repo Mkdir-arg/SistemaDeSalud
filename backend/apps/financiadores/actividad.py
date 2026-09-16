@@ -68,12 +68,12 @@ def con_importes(qs):
     cero = Value(Decimal("0.00"), output_field=dinero)
     # La subconsulta evita multiplicar el cargo original al unir resoluciones.
     acuerdos = ResolucionSaldo.objects.filter(
-        distribucion__reserva_id=OuterRef("pk"), decision="financiador", obligacion__isnull=False,
+        distribucion__reserva_id=OuterRef("pk"), decision="financiador", obligacion__isnull=False, parte="paciente",
     ).order_by().values("distribucion__reserva_id").annotate(total=Sum("importe")).values("total")
     return qs.annotate(importe_acuerdos=Coalesce(Subquery(acuerdos, output_field=dinero), cero)).annotate(
         importe_asignado=Case(
             When(estado="realizada", distribucion__estado__in=ESTADOS_CONOCIDOS,
-                 then=F("distribucion__importe_financiador") + F("importe_acuerdos")),
+                 then=Coalesce("distribucion__obligacion_financiador__importe_original", cero) + F("importe_acuerdos")),
             default=Value(None), output_field=dinero,
         ),
     ).select_related("afiliacion__plan", "comun")
@@ -116,7 +116,7 @@ def fila_actividad(reserva):
         "plan": reserva.afiliacion.plan.nombre if reserva.afiliacion.plan_id else None,
         "cantidad": reserva.cantidad, "cubiertas": reserva.cubiertas, "estado": reserva.estado,
         "discrepancia": reserva.discrepancia,
-        "importe_financiador": f"{distribucion.importe_financiador:.2f}" if conocido else None,
+        "importe_financiador": f"{reserva.importe_asignado - reserva.importe_acuerdos:.2f}" if conocido else None,
         "importe_acuerdos": f"{reserva.importe_acuerdos:.2f}",
         "importe_asignado": f"{reserva.importe_asignado:.2f}" if conocido else None,
         "estado_cobro": distribucion.estado if distribucion else "sin_cargo", "acceso": reserva.acceso,
@@ -140,6 +140,7 @@ ETIQUETAS_CSV = {
         "sin_cargo": "Cargo todavía no emitido", "sin_cobro": "Prestación sin cargo",
         "resuelta": "Responsable definido", "pendiente": "Pendiente de resolución administrativa",
         "arancel_pendiente": "Arancel pendiente", "evaluacion_pendiente": "Evaluación pendiente",
+        "autorizacion_pendiente": "Responsabilidad pendiente de autorización",
     },
     "acceso": {"vigente": "Relación vigente", "pendiente_historico": "Histórico pendiente"},
 }

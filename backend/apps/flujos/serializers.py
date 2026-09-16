@@ -47,6 +47,13 @@ class NodoSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         version = attrs.get("version", getattr(self.instance, "version", None))
+        config = attrs.get("config", getattr(self.instance, "config", {})) or {}
+        tipo = attrs.get("tipo", getattr(self.instance, "tipo", None))
+        espera = config.get("esperar_autorizacion", False) if isinstance(config, dict) else False
+        if not isinstance(config, dict) or type(espera) is not bool:
+            raise serializers.ValidationError({"config": "La espera de autorización debe ser un booleano dentro de la configuración."})
+        if espera and (tipo != Nodo.Tipo.ATENCION or not version or version.tipo_circuito != VersionFlujo.TipoCircuito.PROGRAMADO):
+            raise serializers.ValidationError({"config": "Sólo una atención de un circuito programado puede esperar autorización."})
         formulario = attrs.get("formulario", getattr(self.instance, "formulario", None))
         if version and formulario and formulario.institucion_id != version.flujo.institucion_id:
             raise serializers.ValidationError(
@@ -105,7 +112,7 @@ class VersionFlujoSerializer(serializers.ModelSerializer):
         model = VersionFlujo
         fields = [
             "id", "flujo", "numero", "etiqueta", "estado", "estado_display",
-            "nota", "autor", "creada", "nodos", "conexiones",
+            "nota", "autor", "creada", "nodos", "conexiones", "tipo_circuito",
         ]
         # `estado` NO es un campo, es una transición con reglas: la única puerta
         # para publicar es la acción `publicar`, que valida el grafo y degrada a
@@ -123,6 +130,13 @@ class VersionFlujoSerializer(serializers.ModelSerializer):
             for campo in ("flujo", "numero"):
                 self.fields[campo].read_only = True
 
+    def validate_tipo_circuito(self, valor):
+        if self.instance and self.instance.estado != VersionFlujo.Estado.BORRADOR and valor != self.instance.tipo_circuito:
+            raise serializers.ValidationError("La clasificación sólo se cambia en un borrador nuevo.")
+        if self.instance and valor != VersionFlujo.TipoCircuito.PROGRAMADO and self.instance.nodos.filter(config__esperar_autorizacion=True).exists():
+            raise serializers.ValidationError("Retirá las esperas de autorización antes de cambiar la clasificación.")
+        return valor
+
 
 class VersionFlujoResumenSerializer(serializers.ModelSerializer):
     """Versión sin el grafo, para listados anidados en Flujo."""
@@ -132,7 +146,7 @@ class VersionFlujoResumenSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = VersionFlujo
-        fields = ["id", "numero", "etiqueta", "estado", "estado_display", "creada"]
+        fields = ["id", "numero", "etiqueta", "estado", "estado_display", "creada", "tipo_circuito"]
 
 
 class FlujoSerializer(serializers.ModelSerializer):

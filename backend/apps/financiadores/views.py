@@ -74,6 +74,7 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     plantilla=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     rechazos=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
+    plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
 class FinanciadorViewSet(CoberturaBaseViewSet):
     serializer_class = s.FinanciadorSerializer
@@ -159,7 +160,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         org = self.organizacion(admin=request.method == "POST")
         if request.method == "GET":
             return self.lista(m.ReglaCobertura.objects.filter(financiador=org), s.ReglaSerializer)
-        d = datos(request, {"plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org), required=False, allow_null=True), "prestacion": serializers.PrimaryKeyRelatedField(queryset=m.PrestacionComun.objects.filter(activo=True), required=False, allow_null=True), "categoria": serializers.CharField(max_length=80, required=False, allow_blank=True, default=""), "porcentaje": serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100), "cupo": serializers.IntegerField(min_value=0, required=False, allow_null=True), "periodo": serializers.ChoiceField(choices=["mes", "anio"]), "vigente_desde": serializers.DateField()})
+        d = datos(request, {"plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org), required=False, allow_null=True), "prestacion": serializers.PrimaryKeyRelatedField(queryset=m.PrestacionComun.objects.filter(activo=True), required=False, allow_null=True), "categoria": serializers.CharField(max_length=80, required=False, allow_blank=True, default=""), "porcentaje": serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100), "cupo": serializers.IntegerField(min_value=0, required=False, allow_null=True), "periodo": serializers.ChoiceField(choices=["mes", "anio"]), "vigente_desde": serializers.DateField(), "requiere_autorizacion": serializers.BooleanField(default=False)})
         if bool(d.get("prestacion")) == bool(d.get("categoria")):
             raise ValidationError("Elegí una prestación o una categoría del catálogo.")
         if d.get("categoria") and not m.PrestacionComun.objects.filter(categoria=d["categoria"], activo=True).exists():
@@ -292,12 +293,27 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     def rechazar_convenio(self, request, pk=None):
         return self._cerrar_convenio(request, rechazar=True)
 
+    @action(detail=True, methods=["post"], url_path="plazo-autorizacion")
+    def plazo_autorizacion(self, request, pk=None):
+        org = self.organizacion(admin=True)
+        d = datos(request, {"convenio": entero(), "plazo_autorizacion_horas": serializers.IntegerField(min_value=1, max_value=8760, allow_null=True), "motivo": serializers.CharField(max_length=255)})
+        with transaction.atomic():
+            convenio = get_object_or_404(m.Convenio.objects.select_for_update(), pk=d["convenio"], financiador=org)
+            if convenio.estado not in ["propuesto", "activo"]:
+                raise ValidationError("Un convenio cerrado conserva sus condiciones históricas.")
+            convenio.plazo_autorizacion_horas = d["plazo_autorizacion_horas"]
+            convenio.save(update_fields=["plazo_autorizacion_horas"])
+            auditar(request.user, "plazo_autorizacion", convenio.pk, financiador=org, institucion=convenio.institucion, motivo=d["motivo"])
+        return Response(s.ConvenioSerializer(convenio).data)
+
     @action(detail=True, methods=["get", "post"])
     def usuarios(self, request, pk=None):
         org = self.organizacion(admin=True)
         if request.method == "GET":
-            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre} for x in m.MembresiaFinanciador.objects.filter(financiador=org).select_related("usuario")])
-        d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True)})
+            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones} for x in m.MembresiaFinanciador.objects.filter(financiador=org).select_related("usuario")])
+        d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True), "resuelve_autorizaciones": serializers.BooleanField(required=False)})
+        if d["rol"] == "auditor" and d.get("resuelve_autorizaciones"):
+            raise ValidationError("El rol auditor conserva lectura. Para resolver, designá un operador o administrador explícitamente.")
         with transaction.atomic():
             m.Financiador.objects.select_for_update().get(pk=org.pk)
             user, nuevo = Usuario.objects.get_or_create(email=d["email"], defaults={"nombre": d["nombre"]})
@@ -309,9 +325,11 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
                 raise ValidationError("Designá otro administrador antes de retirar este acceso.")
             membresia, _ = m.MembresiaFinanciador.objects.get_or_create(financiador=org, usuario=user, defaults={"rol": d["rol"], "activo": d["activo"], "creo_cuenta": nuevo})
             membresia.rol, membresia.activo = d["rol"], d["activo"]
-            membresia.save(update_fields=["rol", "activo"])
-            auditar(request.user, "membresia_financiador", membresia.pk, financiador=org)
-        respuesta = {"id": membresia.pk, "email": user.email, "nombre": user.nombre, "rol": membresia.rol}
+            membresia.resuelve_autorizaciones = d.get("resuelve_autorizaciones", membresia.resuelve_autorizaciones) if d["rol"] != "auditor" else False
+            membresia.save(update_fields=["rol", "activo", "resuelve_autorizaciones"])
+            auditar(request.user, "membresia_financiador", membresia.pk, financiador=org,
+                motivo=f"rol={membresia.rol}; activo={membresia.activo}; resuelve_autorizaciones={membresia.resuelve_autorizaciones}")
+        respuesta = {"id": membresia.pk, "email": user.email, "nombre": user.nombre, "rol": membresia.rol, "resuelve_autorizaciones": membresia.resuelve_autorizaciones}
         if membresia.creo_cuenta and membresia.activo and not user.has_usable_password():
             uid = urlsafe_base64_encode(str(user.pk).encode())
             respuesta["activacion"] = f"/financiadores/activar?uid={uid}&token={default_token_generator.make_token(user)}"

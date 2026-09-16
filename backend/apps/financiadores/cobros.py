@@ -26,7 +26,8 @@ def contexto_cobertura(caso, nodo):
         return {}
     # El modo y el catálogo se capturan con el hecho. Una recuperación nunca cae
     # al generador legado, aunque el hospital desactive el módulo después.
-    return {"afiliacion": seleccion.pk if seleccion else None, "prestaciones": list(Prestacion.objects.filter(institucion=caso.institucion, nodo=nodo, activo=True).values_list("pk", flat=True)), "reservas": list(reservas.values_list("pk", flat=True))}
+    from .autorizaciones import intento_actual
+    return {"afiliacion": seleccion.pk if seleccion else None, "prestaciones": list(Prestacion.objects.filter(institucion=caso.institucion, nodo=nodo, activo=True).values_list("pk", flat=True)), "reservas": list(reservas.values_list("pk", flat=True)), "intento_autorizacion": str(intento_actual(caso))}
 
 
 def _obligacion(reserva, parte, importe, nombre, referencia):
@@ -59,13 +60,13 @@ def capturar_cobertura(hecho):
             reserva = ReservaCobertura.objects.filter(hecho=hecho, prestacion_id=prestacion_id).first()
         if not reserva:
             prestacion = Prestacion.objects.get(pk=prestacion_id)
-            resultado = evaluar(caso=hecho.caso, prestacion=prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), afiliacion=afiliacion, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id)
+            resultado = evaluar(caso=hecho.caso, prestacion=prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), afiliacion=afiliacion, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id, intento_autorizacion=contexto.get("intento_autorizacion"))
             reserva = ReservaCobertura.objects.create(caso=hecho.caso, afiliacion=afiliacion, afiliado=afiliacion.afiliado, prestacion=prestacion, comun_id=resultado["comun"], fecha=date.fromisoformat(resultado["fecha"]), cantidad=1, cubiertas=resultado["cubiertas"], evaluacion=resultado, hecho=hecho)
         if reserva.hecho_id and reserva.hecho_id != hecho.pk:
             raise ValidationError("La reserva ya corresponde a otra atención.")
         if reserva.estado != "realizada":
             anterior = reserva.evaluacion
-            actual = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), cantidad=reserva.cantidad, afiliacion=reserva.afiliacion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id)
+            actual = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), cantidad=reserva.cantidad, afiliacion=reserva.afiliacion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id, intento_autorizacion=contexto.get("intento_autorizacion"))
             condiciones = ["politica", "regla", "excepcion", "inicio_periodo", "estado"]
             if "convenio" in anterior:
                 condiciones.append("convenio")
@@ -75,12 +76,22 @@ def capturar_cobertura(hecho):
                 actual["evaluacion_confirmada"] = anterior
                 reserva.evaluacion, reserva.cubiertas, reserva.aceptacion = actual, actual["cubiertas"], {}
                 reserva.discrepancia = True
+            elif anterior.get("requiere_autorizacion"):
+                # Cambió la autorización, no el precio aceptado ni el cupo que
+                # ya se comprometió. Se conserva la primera evaluación completa.
+                from .uso_autorizaciones import actualizar_confirmada
+                revisada = actualizar_confirmada(reserva, timezone.localtime(hecho.ocurrida_en).date(), hecho.ocurrida_en, historico=True)
+                if any(anterior.get(k) != revisada.get(k) for k in ("autorizacion", "estado_autorizacion", "autorizacion_revision")):
+                    reserva.evaluacion = {**revisada, "evaluacion_confirmada": anterior}
+                    reserva.discrepancia = True
             if reserva.estado == "liberada":
                 reserva.discrepancia = True
             reserva.estado, reserva.hecho = "realizada", hecho
             reserva.fecha = timezone.localtime(hecho.ocurrida_en).date()
             reserva.cerrado_en = timezone.now()
             reserva.save(update_fields=["estado", "hecho", "fecha", "cerrado_en", "evaluacion", "cubiertas", "aceptacion", "discrepancia"])
+        from .uso_autorizaciones import registrar_uso
+        registrar_uso(reserva, consumir=True)
         distribuir(reserva)
 
 
@@ -96,6 +107,12 @@ def distribuir(reserva, completar=False):
         estado = "arancel_pendiente"
     elif not dato["cobrar"]:
         estado = "sin_cobro"
+    from .uso_autorizaciones import autorizacion_cumplida
+    resolucion_autorizacion = existente and existente.resoluciones.filter(parte="financiador").exclude(decision="rechazar").exists()
+    pendiente_autorizacion = (estado == "pendiente" and not autorizacion_cumplida(reserva)
+                             and not resolucion_autorizacion)
+    if pendiente_autorizacion:
+        estado = "autorizacion_pendiente"
     valores = {"importe_financiador": Decimal(dato["importe_financiador"] or "0"), "importe_paciente": Decimal(dato["importe_paciente"] or "0"), "estado": estado}
     if existente:
         distribucion = existente
@@ -104,22 +121,22 @@ def distribuir(reserva, completar=False):
         distribucion.save()
     else:
         distribucion = DistribucionCobro.objects.create(reserva=reserva, **valores)
-    if estado != "pendiente":
+    if estado not in ("pendiente", "autorizacion_pendiente"):
         return distribucion
-    if distribucion.importe_financiador > 0:
+    if distribucion.importe_financiador > 0 and not pendiente_autorizacion and not resolucion_autorizacion:
         financiador = reserva.afiliado.financiador
         distribucion.obligacion_financiador = _obligacion(reserva, "financiador", distribucion.importe_financiador, financiador.nombre, f"financiador:{financiador.pk}")
     if distribucion.importe_paciente > 0 and reserva.aceptacion.get("importe") == dato["importe_paciente"] and reserva.hecho.ciudadano_id:
         ciudadano = reserva.hecho.ciudadano
         distribucion.obligacion_paciente = _obligacion(reserva, "paciente", distribucion.importe_paciente, f"{ciudadano.nombre} {ciudadano.apellido}".strip(), f"ciudadano:{ciudadano.pk}")
-    if distribucion.importe_paciente == 0 or distribucion.obligacion_paciente_id:
+    if not pendiente_autorizacion and (distribucion.importe_paciente == 0 or distribucion.obligacion_paciente_id):
         distribucion.estado = "resuelta"
     distribucion.save()
     return distribucion
 
 
 @transaction.atomic
-def resolver_saldo(*, reserva, usuario, decision, importe, motivo, evidencia="", clave):
+def resolver_saldo(*, reserva, usuario, decision, importe, motivo, evidencia="", clave, parte="paciente"):
     if not reserva.hecho_id:
         raise ValidationError("La resolución corresponde a una prestación realizada.")
     hecho = HechoAtencionCosteable.objects.select_for_update().get(pk=reserva.hecho_id)
@@ -128,26 +145,33 @@ def resolver_saldo(*, reserva, usuario, decision, importe, motivo, evidencia="",
     clave = UUID(str(clave))
     previa = ResolucionSaldo.objects.filter(clave=clave).first()
     if previa:
-        if (previa.distribucion_id, previa.decision, previa.importe, previa.motivo, previa.evidencia) != (distribucion.pk, decision, importe, motivo, evidencia):
+        if (previa.distribucion_id, previa.decision, previa.importe, previa.motivo, previa.evidencia, previa.parte) != (distribucion.pk, decision, importe, motivo, evidencia, parte):
             raise ValidationError("La clave ya identifica otra resolución.")
         return previa
-    if distribucion.estado != "pendiente" or importe != distribucion.importe_paciente or importe <= 0:
+    resolver_autorizacion = parte == "financiador" and distribucion.estado == "autorizacion_pendiente"
+    saldo = distribucion.importe_financiador if resolver_autorizacion else distribucion.importe_paciente
+    if parte not in ("paciente", "financiador") or (parte == "financiador" and not resolver_autorizacion):
+        raise ValidationError("Elegí un saldo pendiente de responsabilidad para esta prestación.")
+    if (not resolver_autorizacion and distribucion.estado != "pendiente") or importe != saldo or importe <= 0:
         raise ValidationError("Se resuelve el saldo completo pendiente, conservando los cargos previos.")
     if decision not in ["asumir", "rechazar", "paciente", "financiador"] or not motivo.strip():
         raise ValidationError("Elegí la decisión y registrá su motivo.")
     if decision in ["paciente", "financiador"] and not evidencia.strip():
         raise ValidationError("Registrá el respaldo documental de la aceptación expresa para esta prestación e importe.")
-    resolucion = ResolucionSaldo.objects.create(distribucion=distribucion, decision=decision, importe=importe, motivo=motivo, evidencia=evidencia, clave=clave, registrado_por=usuario)
+    resolucion = ResolucionSaldo.objects.create(distribucion=distribucion, decision=decision, importe=importe, motivo=motivo, evidencia=evidencia, clave=clave, registrado_por=usuario, parte=parte)
     if decision in ["paciente", "financiador"]:
         sujeto = hecho.ciudadano if decision == "paciente" else reserva.afiliado.financiador if reserva.afiliado_id else None
         if not sujeto:
             raise ValidationError("No existe un responsable identificado para esta aceptación.")
         nombre = f"{sujeto.nombre} {getattr(sujeto, 'apellido', '')}".strip()
-        resolucion.obligacion = _obligacion(reserva, f"resolucion:{resolucion.pk}", importe, nombre, f"{decision}:{sujeto.pk}")
+        clave_parte = "financiador" if resolver_autorizacion and decision == "financiador" else f"resolucion:{resolucion.pk}"
+        resolucion.obligacion = _obligacion(reserva, clave_parte, importe, nombre, f"{decision}:{sujeto.pk}")
         resolucion.save(update_fields=["obligacion"])
+        if resolver_autorizacion and decision == "financiador":
+            distribucion.obligacion_financiador = resolucion.obligacion
     if decision != "rechazar":
-        distribucion.estado = "resuelta"
-        distribucion.save(update_fields=["estado"])
+        distribucion.estado = "pendiente" if resolver_autorizacion and distribucion.importe_paciente > 0 and not distribucion.obligacion_paciente_id else "resuelta"
+        distribucion.save(update_fields=["estado", "obligacion_financiador"])
     auditar(usuario, "resolver_saldo", resolucion.pk, institucion=hecho.institucion, motivo=motivo)
     return resolucion
 
@@ -177,6 +201,14 @@ def completar_pendiente(*, reserva, usuario, motivo, arancel=None, afiliado=None
     evaluacion = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=reserva.fecha, cantidad=reserva.cantidad, afiliacion=seleccion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id)
     if seleccion.pk == reserva.afiliacion_id and reserva.evaluacion["estado"] == "arancel_pendiente":
         evaluacion["cubiertas"] = reserva.cubiertas
+        # El compromiso conservado por Q01 también conserva la exigencia de
+        # autorización: el consumo tardío no puede convertirla en opcional.
+        from .models import ReglaCobertura
+        from .uso_autorizaciones import agregar_evaluacion
+        agregar_evaluacion(evaluacion, caso=reserva.caso, afiliacion=seleccion,
+            regla=ReglaCobertura.objects.filter(pk=evaluacion.get("regla")).first(),
+            fecha=reserva.fecha, corte=hecho.ocurrida_en, excluir=reserva.pk,
+            historico=True, intento=reserva.evaluacion.get("intento_autorizacion"))
     if arancel is not None:
         requerir_hospital(usuario, hecho.institucion_id, "configurar_cobros", sensible=reserva.evaluacion.get("sensible", True))
         if arancel <= 0:
@@ -199,6 +231,8 @@ def completar_pendiente(*, reserva, usuario, motivo, arancel=None, afiliado=None
     reserva.evaluacion, reserva.aceptacion = evaluacion, {}
     reserva.afiliacion, reserva.afiliado, reserva.cubiertas = seleccion, seleccion.afiliado, evaluacion["cubiertas"]
     reserva.save(update_fields=["evaluacion", "aceptacion", "afiliacion", "afiliado", "cubiertas"])
+    from .uso_autorizaciones import registrar_uso
+    registrar_uso(reserva, consumir=True)
     auditar(usuario, "completar_cobertura", reserva.pk, institucion=hecho.institucion, motivo=motivo)
     return distribuir(reserva, completar=True)
 

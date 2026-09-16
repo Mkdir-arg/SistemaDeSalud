@@ -48,7 +48,7 @@ def actividad_visible(financiador):
         Q(estado="reservada", cubiertas__gt=0)
         | Q(distribucion__obligacion_financiador_id__in=pendientes)
         | Q(acuerdo_pendiente=True)
-        | (Q(distribucion__estado__in=["arancel_pendiente", "evaluacion_pendiente"]) & (Q(cubiertas__gt=0) | Q(evaluacion__convenio__gt=0)))
+        | (Q(distribucion__estado__in=["arancel_pendiente", "evaluacion_pendiente", "autorizacion_pendiente"]) & (Q(cubiertas__gt=0) | Q(evaluacion__convenio__gt=0)))
     )
     # Ni el copago impago ni una discrepancia ya resuelta amplían el acceso del pagador.
     return qs.filter(vigente | pendiente).annotate(

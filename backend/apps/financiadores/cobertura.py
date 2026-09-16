@@ -105,7 +105,7 @@ def arancel_aplicable(*, prestacion, convenio, fecha, corte, nodo_origen_id=None
     return politica, excepcion, arancel
 
 
-def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=None, corte=None, historico=False, nodo_origen_id=None, bloquear_convenio=False):
+def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=None, corte=None, historico=False, nodo_origen_id=None, bloquear_convenio=False, intento_autorizacion=None):
     if not isinstance(cantidad, int) or isinstance(cantidad, bool) or not 1 <= cantidad <= 100000:
         raise ValidationError("La cantidad debe estar entre 1 y 100.000.")
     if prestacion.institucion_id != caso.institucion_id or (not historico and (not prestacion.activo or not prestacion.nodo_id or prestacion.nodo.version_id != caso.version_id)):
@@ -173,6 +173,10 @@ def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=Non
                 return resultado
             financiador = (arancel*resultado["cubiertas"]*porcentaje/100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             resultado.update(arancel=str(arancel), importe_total=str(total), importe_financiador=str(financiador), importe_paciente=str(total-financiador))
+    from .uso_autorizaciones import agregar_evaluacion
+    agregar_evaluacion(resultado, caso=caso, afiliacion=afiliacion, regla=regla,
+                       fecha=fecha, corte=corte, excluir=excluir, historico=historico,
+                       intento=intento_autorizacion)
     return resultado
 
 
@@ -215,6 +219,8 @@ def reservar(*, caso, prestacion, usuario, fecha, cantidad, clave, firma, acepta
         requerir_hospital(usuario, caso.institucion_id, "registrar_aceptacion", caso.area_actual_id, resultado["sensible"])
         aceptacion = {"prestacion": prestacion.pk, "importe": resultado["importe_paciente"], "usuario": usuario.pk, "fecha": timezone.now().isoformat()}
     reserva = ReservaCobertura.objects.create(caso=caso, afiliacion=afiliacion, afiliado=afiliacion.afiliado, prestacion=prestacion, comun_id=resultado["comun"], fecha=fecha, cantidad=cantidad, cubiertas=resultado["cubiertas"], evaluacion=resultado, aceptacion=aceptacion, clave=clave, solicitud=solicitud, creado_por=usuario)
+    from .uso_autorizaciones import registrar_uso
+    registrar_uso(reserva)
     auditar(usuario, "reservar_cobertura", reserva.pk, institucion=caso.institucion)
     return reserva
 
@@ -235,5 +241,7 @@ def liberar(*, reserva, usuario, motivo, no_realizada):
     reserva.estado, reserva.motivo = "liberada", motivo
     reserva.cerrado_por, reserva.cerrado_en = usuario, timezone.now()
     reserva.save(update_fields=["estado", "motivo", "cerrado_por", "cerrado_en"])
+    from .uso_autorizaciones import liberar_uso
+    liberar_uso(reserva)
     auditar(usuario, "liberar_reserva", reserva.pk, institucion=caso.institucion, motivo=motivo)
     return reserva

@@ -57,12 +57,14 @@ def afiliaciones():
 
 def reserva_resumida(obj):
     distribucion = getattr(obj, "distribucion", None)
+    uso = getattr(obj, "uso_autorizacion", None)
     return {
         "id": obj.pk, "prestacion": obj.prestacion_id, "prestacion_nombre": obj.prestacion.nombre,
         "estado": obj.estado, "fecha": str(obj.fecha), "cantidad": obj.cantidad,
         "evaluacion": obj.evaluacion, "aceptacion": obj.aceptacion,
         "discrepancia": obj.discrepancia,
         "distribucion": {"estado": distribucion.estado} if distribucion else None,
+        "uso_autorizacion": {"solicitud": uso.solicitud_id, "estado": uso.estado, "cantidad": uso.cantidad, "hecho": uso.hecho_id} if uso else None,
     }
 
 
@@ -70,7 +72,7 @@ def resumen_caso(caso, usuario):
     requerir_caso(usuario, caso)
     activo = m.ConfiguracionHospital.objects.filter(institucion=caso.institucion, activo=True).exists()
     selecciones = list(afiliaciones().filter(caso=caso)[:21])
-    registros = m.ReservaCobertura.objects.filter(caso=caso).select_related("prestacion", "distribucion").order_by("-pk")
+    registros = m.ReservaCobertura.objects.filter(caso=caso).select_related("prestacion", "distribucion", "uso_autorizacion").order_by("-pk")
     # Una reserva pendiente antigua debe seguir visible aunque haya muchas
     # renovaciones posteriores en otros pasos del caso.
     abiertas = list(registros.filter(estado="reservada"))
@@ -121,7 +123,8 @@ def _evaluacion_paso(caso, usuario, contexto, prestacion, bloquear=False):
         condiciones = ("afiliacion", "politica", "regla", "excepcion", "convenio", "inicio_periodo")
         if all(reserva.evaluacion.get(k) == actual.get(k) for k in condiciones):
             # Un consumo externo tardío no revoca el compromiso previo (Q01).
-            actual = {**reserva.evaluacion, "fecha": str(timezone.localdate())}
+            from .uso_autorizaciones import actualizar_confirmada
+            actual = actualizar_confirmada(reserva, timezone.localdate(), timezone.now())
     return actual, reserva
 
 
@@ -164,6 +167,8 @@ def confirmar_en_paso(*, caso, usuario, contexto, prestacion, firma, clave, acep
         anterior.motivo = "Reemplazada por una nueva confirmación antes de realizar la prestación"
         anterior.cerrado_por, anterior.cerrado_en = usuario, timezone.now()
         anterior.save(update_fields=["estado", "motivo", "cerrado_por", "cerrado_en"])
+        from .uso_autorizaciones import liberar_uso
+        liberar_uso(anterior)
         auditar(usuario, "renovar_reserva", anterior.pk, institucion=caso.institucion, motivo=anterior.motivo)
     seleccion = afiliaciones().filter(caso=caso).first()
     obj = m.ReservaCobertura.objects.create(
@@ -172,6 +177,8 @@ def confirmar_en_paso(*, caso, usuario, contexto, prestacion, firma, clave, acep
         cubiertas=actual["cubiertas"], evaluacion=actual, aceptacion=aceptacion,
         discrepancia=bool(anterior and anterior.discrepancia), clave=clave, solicitud=solicitud, creado_por=usuario,
     )
+    from .uso_autorizaciones import registrar_uso
+    registrar_uso(obj)
     auditar(usuario, "confirmar_cobertura_paso", obj.pk, institucion=caso.institucion)
     EventoCaso.objects.create(caso=caso, nodo=caso.nodo_actual, autor=usuario,
         titulo="Cobertura confirmada", detalle=f"{prestacion.nombre}. {'Aceptación del importe registrada' if acepta else 'Sin aceptación del importe del paciente'}. Referencia {obj.pk}.")

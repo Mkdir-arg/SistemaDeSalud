@@ -1186,6 +1186,7 @@ def _correr_automaticos(caso: Caso, autor=None):
         # Mismo argumento para el reloj del paso: se reinicia acá y en ningún otro
         # lado, así el SLA mide siempre desde que el caso ENTRÓ a este nodo.
         caso.paso_desde = timezone.now()
+        caso.espera_autorizacion = {}
         caso.sla_avisado = False
         # Un vencimiento viejo no puede sobrevivir al cambio de paso.
         if nodo.tipo != Nodo.Tipo.ESPERA_TIEMPO:
@@ -1323,14 +1324,22 @@ def _retornar_al_origen(sub: Caso, autor=None):
 
 
 @transaction.atomic
-def cancelar_caso(caso: Caso, autor=None, motivo: str = "") -> Caso:
+def cancelar_caso(caso: Caso, autor=None, motivo: str = "", reservas_no_realizadas=None) -> Caso:
     """Cancela un caso (acción del jefe/supervisor de área).
 
     Lo saca de cualquier fila, lo marca CANCELADO y, si bloqueaba a un caso de
     origen que estaba esperando, lo destraba para que pueda retomarse.
     """
+    _bloquear_caso(caso)
+    caso.refresh_from_db()
     if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO):
         raise ErrorMotor("El caso ya está finalizado.")
+    from apps.financiadores.esperas import cancelar_pendientes
+    from django.core.exceptions import PermissionDenied, ValidationError
+    try:
+        cancelar_pendientes(caso=caso, usuario=autor, motivo=motivo, reservas_no_realizadas=reservas_no_realizadas)
+    except (PermissionDenied, ValidationError) as error:
+        raise ErrorMotor(" ".join(error.messages) if isinstance(error, ValidationError) else str(error)) from error
     caso.en_filas.filter(atendido=False).update(atendido=True)  # sale de las colas
     # Sin motivo: un caso cancelado no es un alta. Anotarlo como tal ensucia el
     # recorrido del paciente y las estadísticas de egresos del sector.
@@ -1732,6 +1741,12 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
         _registrar(caso, f"Formulario «{nodo.titulo}» completado", detalle=f"{len(valores)} campos cargados", autor=autor, nodo=nodo)
 
     elif nodo.tipo == Nodo.Tipo.ATENCION:
+        from apps.financiadores.esperas import validar_avance
+        from django.core.exceptions import ValidationError
+        try:
+            validar_avance(caso)
+        except ValidationError as error:
+            raise ErrorMotor(" ".join(error.messages)) from error
         if (nodo.config or {}).get("con_fila"):
             item = caso.en_filas.filter(nodo=nodo, atendido=False).first()
             if item and item.box_id is None:
@@ -2243,6 +2258,11 @@ def validar_version(version) -> list[dict]:
     por_tipo = {}
     for n in nodos:
         por_tipo.setdefault(n.tipo, []).append(n)
+        espera = (n.config or {}).get("esperar_autorizacion", False) if isinstance(n.config or {}, dict) else None
+        if type(espera) is not bool or (espera and (n.tipo != Nodo.Tipo.ATENCION or version.tipo_circuito != "programado")):
+            problemas.append({"sev": "error", "nodo_id": n.pk,
+                "titulo": "Espera de autorización inválida",
+                "detalle": "Sólo una atención de circuito programado admite esperar_autorizacion como booleano."})
 
     # 1) Debe existir exactamente un Inicio.
     inicios = por_tipo.get(Nodo.Tipo.INICIO, [])
