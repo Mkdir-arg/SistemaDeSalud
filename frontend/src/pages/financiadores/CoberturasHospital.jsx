@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { filasDe } from "@/api/financiadores";
 import { importeARS } from "@/api/finanzas";
@@ -10,6 +10,7 @@ import { Badge, Button, Card, Checkbox, Field, Input, Modal, Select, Spinner, Ta
 import { EstadoVacio } from "@/components/ui/estados";
 import { EditarVigencia, ErrorPortal, ESTADOS_CONVENIO } from "./PortalFinanciadores";
 import { fechaHora, plural } from "@/lib/format";
+import SeguimientoCobros from "./SeguimientoCobros";
 
 const hoy = () => new Date().toLocaleDateString("en-CA");
 const ESTADOS = { reservada: "Reservada", realizada: "Realizada", liberada: "Liberada", pendiente: "Pendiente de resolución administrativa", resuelta: "Resuelta", arancel_pendiente: "Arancel pendiente", evaluacion_pendiente: "Pendiente de evaluación", sin_cobro: "Sin cobro" };
@@ -22,7 +23,9 @@ export default function CoberturasHospital() {
 
 function EspacioHospital({ usuarioId, institucion }) {
   const scope = ["coberturas-hospital", usuarioId, institucion.id];
-  const [tab, setTab] = useState("reservas");
+  const [parametros, setParametros] = useSearchParams();
+  const tab = parametros.get("tab") || "reservas";
+  const setTab = (valor) => { const nuevos = new URLSearchParams(parametros); nuevos.set("tab", valor); setParametros(nuevos); };
   const qc = useQueryClient();
   const opciones = useQuery({ queryKey: [...scope, "opciones"], queryFn: () => api.get(`/coberturas/opciones/?institucion=${institucion.id}`), gcTime: 0 });
   const actualizar = () => qc.invalidateQueries({ queryKey: scope });
@@ -30,12 +33,14 @@ function EspacioHospital({ usuarioId, institucion }) {
   if (opciones.error) return <div className="p-6"><ErrorPortal error={opciones.error} reintentar={opciones.refetch} /></div>;
   const datos = opciones.data;
   const permisos = datos.permisos || {};
-  const tabs = [{ key: "reservas", label: "Reservas y saldos" }, ...(permisos.operar ? [{ key: "atencion", label: "Evaluar una prestación" }] : []), ...(permisos.configurar ? [{ key: "configuracion", label: "Configuración" }] : [])];
+  const tabs = [{ key: "reservas", label: "Reservas y saldos" }, ...(permisos.seguimiento ? [{ key: "seguimiento", label: "Seguimiento de cobros" }] : []), ...(permisos.operar ? [{ key: "atencion", label: "Evaluar una prestación" }] : []), ...(permisos.configurar ? [{ key: "configuracion", label: "Configuración" }] : [])];
   return <div className="space-y-5 p-4 sm:p-8">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold">Coberturas y copagos</h1><p className="mt-2 text-md text-texto-debil">{institucion.nombre} · Cobertura por prestación, reservas compartidas y saldos a resolver.</p></div><Link to="/finanzas" className="text-sm font-semibold text-accent hover:underline">Finanzas y cobros</Link></div>
     {!datos.configuracion?.activo && <Card className="p-4"><p className="font-semibold">El circuito de cobertura todavía no está habilitado</p><p className="mt-1 text-sm text-texto-debil">Un usuario con permiso de configuración puede habilitarlo después de verificar prestaciones, aranceles y convenios.</p></Card>}
     <div className="overflow-x-auto"><Tabs tabs={tabs} valor={tab} onChange={setTab} /></div>
+    {!tabs.some((item) => item.key === tab) && <Card className="p-5"><p role="alert">Esta sección no está disponible con tus permisos en este hospital.</p><Button className="mt-3" variant="secondary" onClick={() => setTab("reservas")}>Ver reservas y saldos</Button></Card>}
     {tab === "reservas" && <ReservasHospital scope={scope} institucion={institucion} actualizar={actualizar} />}
+    {tab === "seguimiento" && permisos.seguimiento && <SeguimientoCobros usuarioId={usuarioId} institucion={institucion} onReservas={() => setTab("reservas")} />}
     {tab === "atencion" && permisos.operar && <AtencionCobertura scope={scope} institucion={institucion} opciones={datos} actualizar={actualizar} />}
     {tab === "configuracion" && permisos.configurar && <ConfiguracionHospital opciones={datos} institucion={institucion} actualizar={actualizar} />}
   </div>;
