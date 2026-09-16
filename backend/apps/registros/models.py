@@ -10,6 +10,7 @@ import re
 from django.db import models
 
 _SEPARADORES = re.compile(r"[^0-9A-Za-z]")
+DOCUMENTOS_NN = frozenset({"NN", "SINDOCUMENTO", "INDOCUMENTADO", "DESCONOCIDO"})
 
 
 def normalizar_documento(valor) -> str:

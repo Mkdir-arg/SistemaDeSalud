@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import F
 from django.utils import timezone
 
-from apps.registros.models import Ciudadano, normalizar_documento
+from apps.registros.models import Ciudadano, DOCUMENTOS_NN, normalizar_documento
 from .models import Afiliado, Financiador, HistorialAfiliacion, Plan, VinculoCiudadano
 from .vigencias import convenios_vigentes
 
@@ -22,7 +22,6 @@ CLASIFICACIONES = (
     "sin_dato", "sin_documento", "identidad_en_conflicto", "sin_padron_verificado",
     "ambiguo", "plan_desconocido", "sin_convenio", "candidato_unico",
 )
-DOCUMENTOS_NN = frozenset({"NN", "SINDOCUMENTO", "INDOCUMENTADO", "DESCONOCIDO"})
 
 
 def normalizar_alias(valor):

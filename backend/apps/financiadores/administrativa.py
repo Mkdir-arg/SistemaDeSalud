@@ -1,7 +1,7 @@
 """Padrón vigente para Admisión; no elige cobertura ni acepta cargos del caso."""
 from collections import defaultdict
 
-from apps.registros.models import normalizar_documento
+from apps.registros.models import DOCUMENTOS_NN, normalizar_documento
 
 from .models import ConfiguracionHospital
 from .vigencias import afiliados_vigentes, convenios_vigentes
@@ -21,7 +21,7 @@ def resumenes_administrativos(ciudadanos):
     documentos = {
         normalizar_documento(c.documento) for c in ciudadanos
         if c.institucion_id in habilitados and c.documento
-    } - {""}
+    } - {""} - DOCUMENTOS_NN
     por_documento = defaultdict(list)
     financiadores = set().union(*convenios.values()) if convenios else set()
     for afiliado in afiliados_vigentes().filter(
@@ -33,6 +33,8 @@ def resumenes_administrativos(ciudadanos):
     for ciudadano in ciudadanos:
         habilitada = ciudadano.institucion_id in habilitados
         documento = normalizar_documento(ciudadano.documento or "")
+        if documento in DOCUMENTOS_NN:
+            documento = ""
         afiliaciones = []
         for afiliado in por_documento.get(documento, []):
             if afiliado.financiador_id not in convenios[ciudadano.institucion_id]:

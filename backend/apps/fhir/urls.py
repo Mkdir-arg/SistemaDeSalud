@@ -19,6 +19,7 @@ mensaje lo arma `no_soportado` mirando si el tipo está entre los que sí existe
 from django.urls import path, re_path
 
 from . import views
+from . import cobertura
 
 urlpatterns = [
     path("metadata", views.metadata, name="fhir-metadata"),
@@ -31,6 +32,9 @@ urlpatterns = [
 
     path("Organization/<str:pk>", views.organization_read, name="fhir-organization-read"),
     path("Organization", views.organization_search, name="fhir-organization-search"),
+
+    path("Coverage/<str:pk>", cobertura.coverage_read, name="fhir-coverage-read"),
+    path("Coverage", cobertura.coverage_search, name="fhir-coverage-search"),
 
     # El `pk` admite barras a propósito: los sufijos del estándar
     # (`Patient/12/_history`, `Patient/12/$everything`) tienen que salir por acá

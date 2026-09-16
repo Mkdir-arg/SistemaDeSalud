@@ -61,7 +61,7 @@ TOPE = 100
 
 # Los recursos que esta fachada expone de verdad. Se usa para no contestarle a un
 # cliente que Patient no existe cuando lo que pasó es que el id no tiene forma.
-IMPLEMENTADOS = ("Patient", "Encounter", "Organization")
+IMPLEMENTADOS = ("Patient", "Encounter", "Organization", "Coverage")
 
 # Hasta cuántas filas de una búsqueda por identificador se anotan como lectura
 # de ESAS personas. Una persona registrada en varias instituciones de la red
@@ -265,6 +265,16 @@ def metadata(request):
                 {
                     "type": "Organization",
                     "interaction": [{"code": "read"}, {"code": "search-type"}],
+                },
+                {
+                    "type": "Coverage",
+                    "interaction": [{"code": "read"}, {"code": "search-type"}],
+                    "documentation": "Afiliaciones actuales verificadas del paciente hospitalario. "
+                                     "Requiere padron_admision en su institución y cobertura habilitada. "
+                                     "ID: paciente-afiliado. La búsqueda requiere beneficiary; "
+                                     "no representa autorización ni garantía de pago.",
+                    "searchParam": [{"name": "beneficiary", "type": "reference",
+                                     "documentation": "Obligatorio: Patient/<id> o ID local del paciente."}],
                 },
             ],
         }],
