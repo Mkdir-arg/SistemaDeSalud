@@ -24,6 +24,8 @@ class ConcesionFinanciera(models.Model):
         APROBAR_DINERO = "aprobar_dinero", "Aprobar pagos, cobros y correcciones"
         CORREGIR_DINERO = "corregir_dinero", "Reducir obligaciones y reintegrar dinero"
         CONFIGURAR_COBROS = "configurar_cobros", "Configurar cobros"
+        REGISTRAR_ACEPTACION = "registrar_aceptacion", "Registrar aceptación de copago"
+        RESOLVER_COBERTURA = "resolver_cobertura", "Resolver saldos de cobertura"
 
     membresia = models.ForeignKey(
         "accounts.Membresia",
@@ -777,6 +779,7 @@ class HechoAtencionCosteable(models.Model):
     creado = models.DateTimeField(auto_now_add=True)
     componentes_congelados = models.BooleanField(default=False)
     ultimo_costeo_en = models.DateTimeField(null=True, blank=True)
+    cobertura_contexto = models.JSONField(default=dict, blank=True)
     class Meta:
         ordering = ["ocurrida_en", "id"]
 

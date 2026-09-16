@@ -56,7 +56,7 @@ def _institucion_del_pedido(request):
 
 def registrar_acceso(
     request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0,
-    institucion_id=None,
+    institucion_id=None, estricto=False,
 ):
     """
     Escribe UNA línea del registro de accesos.
@@ -95,6 +95,10 @@ def registrar_acceso(
         # la auditoría. Queda en el log del servidor para que alguien lo vea, en
         # vez de desaparecer.
         log.exception("no se pudo registrar el acceso clínico")
+        if estricto:
+            # Las consultas administrativas de terceros requieren evidencia de
+            # lectura. La atención clínica conserva el comportamiento habitual.
+            raise
 
 
 class AuditaLecturaClinica:

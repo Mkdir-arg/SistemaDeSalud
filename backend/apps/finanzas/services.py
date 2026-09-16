@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 def registrar_atencion_completada(caso, nodo, evento, autor=None):
     """Crea una vez el hecho económico para el evento clínico ya confirmado."""
+    from apps.financiadores.cobros import contexto_cobertura
+    try:
+        with transaction.atomic():
+            contexto_financiero = contexto_cobertura(caso, nodo)
+    except Exception as error:
+        # El hecho conserva una tarea pendiente; jamás convertir un fallo de
+        # cobertura en deuda legada ni deshacer el evento asistencial.
+        contexto_financiero = {"pendiente": True}
+        logger.error("No se pudo capturar contexto de cobertura del evento %s (%s).", evento.pk, type(error).__name__)
     hecho, creado = HechoAtencionCosteable.objects.get_or_create(
         evento_origen_id=evento.id,
         defaults={
@@ -35,7 +44,8 @@ def registrar_atencion_completada(caso, nodo, evento, autor=None):
             "area": caso.area_actual,
             "area_origen_id": caso.area_actual_id,
             "autor": autor,
-            "ocurrida_en": timezone.now(),
+              "ocurrida_en": timezone.now(),
+              "cobertura_contexto": contexto_financiero,
         },
     )
     if creado:

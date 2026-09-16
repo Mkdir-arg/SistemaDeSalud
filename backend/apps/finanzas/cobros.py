@@ -68,6 +68,12 @@ def capturar_cobros_atencion(hecho_id):
         snapshot, _ = SnapshotCobroAtencion.objects.select_for_update().get_or_create(hecho_id=hecho_id)
         if snapshot.capturado:
             return snapshot
+        if hecho.cobertura_contexto:
+            from apps.financiadores.cobros import capturar_cobertura
+            capturar_cobertura(hecho)
+            snapshot.capturado = True
+            snapshot.save(update_fields=["capturado"])
+            return snapshot
         politicas = PoliticaCobro.objects.filter(
             institucion_id=hecho.institucion_id,
             vigente_desde__lte=hecho.ocurrida_en, registrado__lte=hecho.ocurrida_en,

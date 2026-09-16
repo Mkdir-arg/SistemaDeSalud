@@ -1689,6 +1689,14 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
       - espera   : datos = {} (representa «llamado desde la fila»)
       - tiempo   : datos = {} (representa la reactivación)
     """
+    # Confirmar cobertura y completar la atención comparten este bloqueo. Así
+    # el hecho captura la reserva confirmada antes de avanzar, o la confirmación
+    # tardía encuentra el paso cerrado; nunca queda una reserva huérfana.
+    nodo_pedido = caso.nodo_actual_id
+    _bloquear_caso(caso)
+    caso.refresh_from_db()
+    if caso.nodo_actual_id != nodo_pedido:
+        raise ErrorMotor("El caso cambió de paso. Actualizá la pantalla antes de continuar.")
     datos = datos or {}
     nodo = caso.nodo_actual
     if nodo is None:

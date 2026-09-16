@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from apps.common import BaseModelViewSet, tiene_capacidad
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Box, Grupo
+from apps.financiadores.api_clinica import CoberturaCasoMixin
 
 from . import motor
 from .models import Caso, EventoCaso, ItemFila, Notificacion, ValorCampo
@@ -49,7 +50,7 @@ PRIORIDAD_ORDEN = Case(
 )
 
 
-class CasoViewSet(BaseModelViewSet):
+class CasoViewSet(CoberturaCasoMixin, BaseModelViewSet):
     queryset = Caso.objects.select_related(
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
@@ -165,7 +166,9 @@ class CasoViewSet(BaseModelViewSet):
 
     def perform_create(self, serializer):
         # El ingreso siempre es de una persona: aseguramos su historia clínica.
-        caso = serializer.save()
+        # El área de ingreso nace del flujo elegido. Dejarla vacía impedía
+        # consultar cobertura a operadores con membresía limitada a esa área.
+        caso = serializer.save(area_actual=serializer.validated_data["version"].flujo.area)
         motor.asegurar_historia(caso)
 
     @action(detail=True, methods=["get"])

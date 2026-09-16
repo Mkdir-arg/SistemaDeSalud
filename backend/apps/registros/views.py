@@ -4,6 +4,7 @@ from django.db.models import IntegerField, OuterRef, Prefetch, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -130,6 +131,12 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         if "historia_clinica" not in capacidades_de(request.user, inst):
             return self.columnas_csv_padron
         return self.columnas_csv
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get"])
+    def cobertura(self, request, pk=None):
+        from apps.financiadores.api_clinica import historial_paciente
+        return historial_paciente(self, request, self.get_object())
 
 
 class HistoriaClinicaViewSet(AuditaLecturaClinica, BaseModelViewSet):
