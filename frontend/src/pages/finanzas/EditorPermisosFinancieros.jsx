@@ -15,6 +15,8 @@ const ACCIONES = [
   ["ver_dinero", "Ver pagos y cobros"], ["registrar_dinero", "Registrar pagos y cobros"],
   ["corregir_dinero", "Registrar devoluciones y reducciones"], ["configurar_cobros", "Configurar cobros por atención"],
   ["aprobar_dinero", "Aprobar pagos, cobros y sus correcciones"], ["aprobar_costos", "Aprobar ajustes de costos"],
+  ["registrar_aceptacion", "Registrar aceptación de copagos por prestación"],
+  ["resolver_cobertura", "Resolver saldos de cobertura con motivo"],
 ];
 const formularioDe = (concesiones) => Object.fromEntries(ACCIONES.map(([accion]) => {
   const actual = concesiones.find((fila) => fila.accion === accion);

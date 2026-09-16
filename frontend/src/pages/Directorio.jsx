@@ -64,6 +64,9 @@ export default function Directorio() {
               </button>
             );
           })}
+          <button onClick={() => navigate("/financiadores")} className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-md font-semibold text-texto-medio hover:bg-superficie-2">
+            <Icon name="users" size={17} /> Financiadores
+          </button>
         </nav>
 
         <div className="flex-1" />

@@ -25,6 +25,8 @@ export const RECURSO = {
   estudio: "estudios",
   receta: "recetas",
   consentimientodatos: "consentimiento",
+  AfiliacionCaso: "cobertura del caso",
+  "financiadores-actividad": "actividad hospitalaria del afiliado",
 };
 
 /** Siempre devuelve algo: un recurso nuevo del backend no puede dejar la celda vacía. */
@@ -37,7 +39,7 @@ export const nombreRecurso = (recurso) => RECURSO[recurso] || recurso || "—";
  * el mismo hecho y no pueden tener el mismo peso visual: quien barre la lista
  * buscando lo grave necesita dónde apoyar la vista.
  */
-export const TONO_ACCESO = { detalle: "info", listado: "gray", exportacion: "amber" };
+export const TONO_ACCESO = { detalle: "info", listado: "gray", exportacion: "amber", financiador: "info" };
 
 /**
  * El filtro de un listado, en castellano.
@@ -64,6 +66,9 @@ export function filtrosLegibles(detalle, institucionActual) {
     if (clave === "search") partes.push(`buscó “${valor}”`);
     else if (clave === "ciudadano" || clave === "historia__ciudadano") partes.push("de un paciente");
     else if (clave === "historia") partes.push("de una historia");
+    else if (clave === "financiador") partes.push(`financiador ${valor}`);
+    else if (clave === "afiliado") partes.push(`afiliado ${valor}`);
+    else if (clave === "acceso") partes.push(valor === "pendiente_historico" ? "histórico pendiente" : valor === "vigente" ? "relación vigente" : `acceso: ${valor}`);
     else partes.push(`${clave}: ${valor}`);
   }
   // Sin filtros no es «nada»: es el listado entero de lo que esa persona alcanza,
