@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
 import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
@@ -76,7 +77,7 @@ export default function HistoriaDetalle() {
   const [nuevaAtencion, setNuevaAtencion] = useState(false);
   const [editandoAntecedentes, setEditandoAntecedentes] = useState(false);
 
-  const paciente = useDetalle("ciudadanos", id);
+  const paciente = usePacienteAdministrativo(id);
   // La historia se busca por paciente; puede no existir todavía.
   const historias = useLista("historias-clinicas", { ciudadano: id }, { enabled: !!id });
   const hc = historias.filas[0];
@@ -109,7 +110,7 @@ export default function HistoriaDetalle() {
         c.fecha_nacimiento
           ? [fecha(c.fecha_nacimiento), edad(c.fecha_nacimiento)].filter(Boolean).join(" · ")
           : null,
-        c.obra_social || null,
+        resumenCobertura(c) || null,
       ].filter(Boolean);
 
   const metricas = [

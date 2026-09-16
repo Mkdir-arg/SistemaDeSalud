@@ -2,9 +2,12 @@ import { useState } from "react";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
+import { resumenCobertura } from "@/components/financiadores/CoberturaAdministrativa";
 import { Button, Field, Input } from "@/components/ui";
 import { Buscador } from "@/components/ui/filtros";
 import { useToast } from "@/components/ui/toast";
+import { EstadoError } from "@/components/ui/estados";
 
 /**
  * Buscar un paciente y, si no existe, crearlo en el momento.
@@ -18,6 +21,11 @@ import { useToast } from "@/components/ui/toast";
  * esta migración viene sacando de todas las pantallas.
  */
 export function BuscadorPaciente({ institucionId, onElegir, permitirCrear = true, autoFocus = true }) {
+  const { user } = useAuth();
+  return <BusquedaPacientePorInstitucion key={`${user?.id}:${institucionId}`} usuarioId={user?.id} institucionId={institucionId} onElegir={onElegir} permitirCrear={permitirCrear} autoFocus={autoFocus} />;
+}
+
+function BusquedaPacientePorInstitucion({ usuarioId, institucionId, onElegir, permitirCrear, autoFocus }) {
   const toast = useToast();
   const [texto, setTexto] = useState("");
   const [creando, setCreando] = useState(null); // datos precargados del nuevo
@@ -25,7 +33,12 @@ export function BuscadorPaciente({ institucionId, onElegir, permitirCrear = true
   const q = useLista(
     "ciudadanos",
     { institucion: institucionId, search: texto.trim() || undefined, pageSize: 8 },
-    { enabled: texto.trim().length > 0 },
+    {
+      enabled: !!institucionId && texto.trim().length > 0,
+      queryKey: ["lista", "ciudadanos", usuarioId, institucionId, "buscador", texto.trim()],
+      placeholderData: undefined,
+      gcTime: 0,
+    },
   );
 
   const crear = useAccion(
@@ -77,6 +90,8 @@ export function BuscadorPaciente({ institucionId, onElegir, permitirCrear = true
         <div className="overflow-hidden rounded-md border border-borde">
           {q.isLoading ? (
             <p className="p-3.5 text-md text-texto-tenue">Buscando…</p>
+          ) : q.error ? (
+            <EstadoError error={q.error} onReintentar={q.refetch} titulo="No se pudo buscar al paciente" />
           ) : q.filas.length > 0 ? (
             <ul>
               {q.filas.map((c) => (
@@ -88,7 +103,7 @@ export function BuscadorPaciente({ institucionId, onElegir, permitirCrear = true
                     <span className="block text-md font-semibold">{c.nombre} {c.apellido}</span>
                     <span className="block text-sm text-texto-tenue">
                       {c.documento ? `Doc. ${c.documento}` : "Sin documento"}
-                      {c.obra_social ? ` · ${c.obra_social}` : ""}
+                      {resumenCobertura(c) ? ` · ${resumenCobertura(c)}` : ""}
                     </span>
                   </button>
                 </li>
@@ -126,7 +141,7 @@ export function PacienteElegido({ paciente, onCambiar }) {
         <div className="text-lg font-bold">{paciente.nombre} {paciente.apellido}</div>
         <div className="text-base text-texto-tenue">
           {paciente.documento ? `Doc. ${paciente.documento}` : "Sin documento"}
-          {paciente.obra_social ? ` · ${paciente.obra_social}` : ""}
+          {resumenCobertura(paciente) ? ` · ${resumenCobertura(paciente)}` : ""}
         </div>
       </div>
       {onCambiar && (

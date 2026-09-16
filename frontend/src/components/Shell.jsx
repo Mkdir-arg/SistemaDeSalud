@@ -11,6 +11,7 @@ import { cn } from "../lib/cn";
 import { useEsEscritorio } from "../lib/media";
 import { useTema } from "../lib/tema";
 import { usePermisosFinanzas } from "../api/finanzas";
+import { resumenCobertura } from "./financiadores/CoberturaAdministrativa";
 
 // Estado de "última actualización" que una pantalla publica para mostrarlo en la
 // barra superior (al lado de la campana). Null cuando no aplica.
@@ -146,29 +147,38 @@ function Campana() {
 // Buscador de pacientes (barra superior): nombre o documento �  su historia clínica.
 function BuscadorPacientes() {
   const { institucion, puedeVer } = useInstitucion();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [res, setRes] = useState([]);
-  const [buscando, setBuscando] = useState(false);
+  const [resultado, setResultado] = useState({});
+  const [intento, setIntento] = useState(0);
   const [abierto, setAbierto] = useState(false);
   const puedeAbrirHistoria = puedeVer("historia_clinica");
   const puedeBuscarPacientes = puedeAbrirHistoria || puedeVer("padron_admision");
+  const contexto = JSON.stringify([user?.id, institucion?.id, q.trim()]);
+  const actual = resultado.contexto === contexto;
+  const res = actual ? resultado.filas || [] : [];
+  const error = actual ? resultado.error : null;
+  const buscando = !!q.trim() && (!actual || resultado.cargando);
 
   useEffect(() => {
     const term = q.trim();
-    if (!term || !institucion || !puedeBuscarPacientes) { setRes([]); return; }
-    setBuscando(true);
+    if (!term || !institucion || !puedeBuscarPacientes) { setResultado({}); return; }
+    let vigente = true;
+    setResultado({ contexto, cargando: true });
     const t = setTimeout(async () => {
       try {
         const d = await api.get(`/ciudadanos/?institucion=${institucion.id}&search=${encodeURIComponent(term)}`);
-        setRes((d.results || d).slice(0, 8));
-      } catch { /* silencioso */ } finally { setBuscando(false); }
+        if (vigente) setResultado({ contexto, filas: (d.results || d).slice(0, 8) });
+      } catch (errorConsulta) {
+        if (vigente) setResultado({ contexto, error: errorConsulta });
+      }
     }, 250);
-    return () => clearTimeout(t);
-  }, [q, institucion, puedeBuscarPacientes]);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [contexto, puedeBuscarPacientes, intento]);
 
   function ir(c) {
-    setQ(""); setRes([]); setAbierto(false);
+    setQ(""); setResultado({}); setAbierto(false);
     navigate(`${puedeAbrirHistoria ? "/historia" : "/padron"}/${c.id}`);
   }
 
@@ -186,6 +196,7 @@ function BuscadorPacientes() {
         onFocus={() => setAbierto(true)}
         onKeyDown={(e) => { if (e.key === "Enter" && res[0]) ir(res[0]); if (e.key === "Escape") setAbierto(false); }}
         role="combobox"
+        aria-label="Buscar paciente por nombre o documento"
         aria-expanded={abierto && !!q.trim()}
         aria-controls="buscador-pacientes-resultados"
         className="h-[38px] w-full rounded-md border border-campo-borde bg-superficie-2 px-3 pl-8.5 text-md outline-none placeholder:text-texto-tenue focus:border-accent"
@@ -195,6 +206,11 @@ function BuscadorPacientes() {
           <div id="buscador-pacientes-resultados" role="listbox">
             {buscando ? (
               <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando⬦</div>
+            ) : error ? (
+              <div className="p-3.5 text-sm text-texto-debil" role="alert">
+                No se pudo buscar al paciente.
+                <button className="ml-2 font-semibold text-accent hover:underline" onClick={() => setIntento((v) => v + 1)}>Reintentar</button>
+              </div>
             ) : res.length === 0 ? (
               <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Sin pacientes para «{q.trim()}».</div>
             ) : res.map((c, i) => (
@@ -205,7 +221,7 @@ function BuscadorPacientes() {
                 <Avatar nombre={`${c.nombre} ${c.apellido}`} i={c.id} size={30} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.nombre} {c.apellido}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--color-texto-tenue)" }}>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}{c.obra_social ? ` · ${c.obra_social}` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--color-texto-tenue)" }}>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}{resumenCobertura(c) ? ` · ${resumenCobertura(c)}` : ""}</div>
                 </div>
               </div>
             ))}

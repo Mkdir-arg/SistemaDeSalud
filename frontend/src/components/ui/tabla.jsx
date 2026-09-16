@@ -306,16 +306,20 @@ export function DataTable({
  */
 export function TablaRecurso({
   clave, recurso, params = {}, columnas, ordenInicial = "", onRowClick, vacio, barra,
-  exportable = false,
+  exportable = false, opcionesConsulta = {}, ambitoConsulta,
 }) {
   const tabla = useTablaUrl(clave, { ordenInicial });
   const { pagina, orden, tamano } = tabla;
 
-  const q = useLista(recurso, {
+  const paramsConsulta = {
     ...params,
     page: pagina,
     pageSize: tamano,
     ordering: orden || undefined,
+  };
+  const q = useLista(recurso, paramsConsulta, {
+    ...(ambitoConsulta ? { queryKey: ["lista", recurso, ...ambitoConsulta, paramsConsulta] } : {}),
+    ...opcionesConsulta,
   });
 
   // Al cambiar un filtro hay que volver a la página 1: quedarse en la 7 de un
