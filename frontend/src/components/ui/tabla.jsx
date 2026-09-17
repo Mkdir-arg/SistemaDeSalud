@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { tokens } from "@/api/client";
@@ -172,8 +172,6 @@ export function DataTable({
   mantenerEncabezados = false,
   adaptable = false,
 }) {
-  const [controlesAbiertos, setControlesAbiertos] = useState(false);
-  const encabezadoId = useId();
   const { pagina, orden, tamano, densidad, setDensidad, irA, ordenarPor, cambiarTamano } = tabla;
   const compacta = densidad === "compacta";
   const { cargando, refrescando, error, reintentar } = estado;
@@ -221,8 +219,9 @@ export function DataTable({
         <>
           {/* El scroll horizontal vive acá dentro: el body de la página nunca
               debe desplazarse en horizontal. */}
-          {adaptable && <button type="button" className="finance-table-toggle px-4 py-3 text-sm font-medium text-accent" aria-expanded={controlesAbiertos} aria-controls={encabezadoId} onClick={() => setControlesAbiertos((abierto) => !abierto)}>Ordenar y filtrar columnas {controlesAbiertos ? "−" : "+"}</button>}
-          <div className={adaptable ? "finance-table-content" : "overflow-x-auto"}>
+          <div className={adaptable ? "finance-table-content" : "overflow-x-auto"}
+            tabIndex={adaptable ? 0 : undefined} role={adaptable ? "region" : undefined}
+            aria-label={adaptable ? `${titulo || "Tabla"}: desplazamiento horizontal` : undefined}>
             <table
               className={cn(
                 "w-full border-collapse text-md",
@@ -232,7 +231,7 @@ export function DataTable({
               )}
             >
               {titulo && <caption className="sr-only">{titulo}</caption>}
-              <thead id={encabezadoId} data-abierto={controlesAbiertos} className="sticky top-0 z-10 bg-superficie-2">
+              <thead className="sticky top-0 z-10 bg-superficie-2">
                 <tr>
                   {columnas.map((c) => (
                     <Encabezado key={c.key} col={c} orden={orden} ordenarPor={ordenarPor} compacta={compacta} />

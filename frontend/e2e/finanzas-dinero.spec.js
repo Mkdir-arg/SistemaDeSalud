@@ -420,6 +420,7 @@ test("las tablas de dinero envían búsqueda y orden al servidor", async ({ page
   const { lecturas } = await escenario(page);
   await page.goto("/finanzas?tab=dinero&mes=2026-09");
   await page.getByRole("textbox", { name: "Buscar cuentas", exact: true }).fill("Proveedor");
+  await expect(page.getByRole("button", { name: "Quitar filtro Buscar cuentas", exact: true })).toContainText("Proveedor");
   await page.getByRole("button", { name: "Ordenar por A quién / de quién", exact: true }).click();
   await expect.poll(() => lecturas.some((u) => u.pathname === "/api/obligaciones-financieras/" && u.searchParams.get("search") === "Proveedor" && u.searchParams.get("ordering") === "contraparte_nombre")).toBe(true);
   await page.getByRole("button", { name: "Ver movimientos del período", exact: true }).click();

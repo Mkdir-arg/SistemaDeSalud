@@ -111,6 +111,12 @@ por área y concepto queda junto a su gráfico. Abrir una tabla mensual no despl
 la otra columna. En móvil se apilan. Los controles de pagos y cobros comparten fila
 cuando hay espacio y ya no dejan un hueco sobre su título.
 
+Las tablas conservan filas y columnas a cualquier ancho; no se convierten en
+fichas ni repiten el encabezado en cada registro. Los controles de orden y filtro
+están siempre en el encabezado. Si falta ancho, se desplaza sólo el contenedor
+de la tabla, también con teclado; no se ensancha el documento. En el desglose de
+la demo a 1440 px entran las cuatro columnas. La densidad Compacta sigue disponible.
+
 Todas las tablas del módulo ofrecen filtros y ordenamiento, reutilizando
 `DataTable`, `useTablaUrl` y los controles financieros existentes:
 
@@ -118,6 +124,15 @@ Todas las tablas del módulo ofrecen filtros y ordenamiento, reutilizando
   rangos de importes, orden exacto en centavos y paginación. Un desconocido no
   coincide con cero y queda al final al ordenar en ambos sentidos. Los filtros
   del listado no cambian gráficos ni indicadores.
+- Los filtros aplicados indican su valor y permiten quitarlos individualmente
+  o limpiar la tabla, incluidas las búsquedas de las listas remotas y el desglose.
+  El período seleccionado/comparado y las fechas efectivas quedan sobre los
+  importes; una versión histórica de reparto se identifica como tal y no suma
+  al total vigente. Un mes pasado puede contener registros vigentes: no equivale
+  a una versión reemplazada ni a un cierre contable.
+- Al abrir otra cifra de dinero se retira la búsqueda previa del detalle para
+  que su listado explique la cifra completa. Se conserva el filtro de período,
+  área, estado y contraparte definido por el origen seleccionado.
 - Cuentas, movimientos, pendientes, recuperables, historiales y atribuciones
   agregan búsqueda y orden sobre el queryset autorizado, antes de paginar.
   Cuentas ordena por tipo y contraparte; los saldos calculados conservan su fuente
@@ -132,7 +147,9 @@ La validación cubre alineación, columnas independientes, teclado, móvil, filt
 reversibles con resultados vacíos, centavos grandes, valores desconocidos,
 paginación y conservación del alcance. La demo aislada conserva sus 13 meses,
 895 cuentas y 918 movimientos; se verificó además búsqueda, orden y paginación
-contra su API real. La aceptación visual y funcional del usuario queda pendiente.
+contra su API real. El usuario identificó como riesgos los filtros poco visibles
+y la confusión entre información histórica y vigente; las etiquetas y pruebas
+anteriores responden a esos casos. La aceptación de esta presentación queda pendiente.
 
 Skills: interface-design para reutilizar componentes y jerarquía del sistema;
 Playwright para interacción y geometría en navegador; systematic-debugging para
@@ -168,7 +185,9 @@ Playwright cubre ambos períodos, navegación completa, estados, permisos y móv
 Resultado final: 280 pruebas backend aprobadas, 24 omitidas por requerir
 PostgreSQL y 60 subpruebas aprobadas al ejecutar `apps/finanzas/` junto con
 `apps/financiadores/test_cobertura.py` y `apps/financiadores/test_recuperacion.py`.
-Playwright: 131 pruebas aprobadas, incluidos los cuatro casos de esta iteración.
+Playwright: 132 pruebas aprobadas, incluidas filas tabulares, filtros visibles
+y navegación sin búsquedas heredadas. La última corrección sólo cambia frontend;
+no repite backend, cuya validación anterior corresponde a `006de0e`.
 Una corrida previa sufrió una recarga durante el caso de error 403; el caso
 aisladamente y la suite completa sin ediciones simultáneas pasaron después.
 Build, comprobaciones de Django, ausencia de migraciones y validación de OpenAPI

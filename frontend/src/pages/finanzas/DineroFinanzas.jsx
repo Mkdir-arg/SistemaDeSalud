@@ -6,7 +6,7 @@ import { query, useLista } from "@/api/queries";
 import { Badge, Button, Card, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
 import { EstadoError } from "@/components/ui/estados";
-import { AyudaFinanzas, useFiltrosFinanzas } from "./ControlesFinanzas";
+import { BusquedaTablaFinanzas, AyudaFinanzas, useFiltrosFinanzas } from "./ControlesFinanzas";
 import { PendientesCobro } from "./ConfiguracionCobros";
 import { CampoAprobado, DecisionAprobacion, EstadoAprobacion, TrazaAprobacion } from "./AprobacionFinanzas";
 import { decimalDinero, fechaLocal, filtroAreaDinero, importeValido, mensajeErrorDinero, useOperacionDinero } from "./dinero";
@@ -32,7 +32,7 @@ export default function DineroFinanzas({ institucion, permisos, mes, area }) {
     <ResumenDinero institucion={institucion} permisos={permisos} area={area} onCuenta={setDetalle} />
     <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-semibold">Cuentas por pagar y cobrar</h2><p className="mt-1 text-sm text-texto-debil">Obligaciones del mes económico {mes}. Un gasto aprobado no significa que ya fue pagado.</p></div><Field label="Tipo de cuenta"><Select value={tipo} onChange={(e) => { setTipo(e.target.value); tabla.irA(1); }}><option value="">Todas</option><option value="pagar">Por pagar</option><option value="cobrar">Por cobrar</option></Select></Field></div>
     <DataTable adaptable filas={cuentas.error ? [] : cuentas.filas} total={cuentas.error ? 0 : cuentas.total} paginas={cuentas.paginas} tabla={tabla}
-      mantenerEncabezados barra={<Input aria-label="Buscar cuentas" placeholder="Nombre o referencia de la contraparte…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />}
+      mantenerEncabezados barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar cuentas" placeholder="Nombre o referencia de la contraparte…" />}
       estado={{ cargando: cuentas.isLoading, refrescando: cuentas.refrescando, error: cuentas.error, reintentar: cuentas.refetch }}
       vacio={{ titulo: "Sin cuentas para este mes y área", detalle: "Las cuentas por pagar se crean explícitamente desde un gasto aprobado. Los cobros dependen de la configuración de la atención." }}
       columnas={[
@@ -76,7 +76,7 @@ export function MovimientosPeriodo({ filtros, institucion, permisos, onCuenta })
   const busqueda = useFiltrosFinanzas("movimientos_dinero", ["search"]);
   const params = { ...filtros, ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista("movimientos-dinero", params, opcionesConsulta(permisos, institucion, "movimientos", params));
-  return <section className="space-y-3 border-t border-division pt-4"><p className="text-sm text-texto-debil">Cada pago, cobro o devolución del período, aunque su cuenta pertenezca a otro mes económico.</p><DataTable adaptable mantenerEncabezados barra={<Input aria-label="Buscar movimientos" placeholder="Contraparte o referencia del movimiento…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} filas={consulta.error ? [] : consulta.filas} total={consulta.error ? 0 : consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading, error: consulta.error, reintentar: consulta.refetch }} vacio={{ titulo: "Sin movimientos en estas fechas" }} columnas={[
+  return <section className="space-y-3 border-t border-division pt-4"><p className="text-sm text-texto-debil">Cada pago, cobro o devolución del período, aunque su cuenta pertenezca a otro mes económico.</p><DataTable adaptable mantenerEncabezados barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar movimientos" placeholder="Contraparte o referencia del movimiento…" />} filas={consulta.error ? [] : consulta.filas} total={consulta.error ? 0 : consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading, error: consulta.error, reintentar: consulta.refetch }} vacio={{ titulo: "Sin movimientos en estas fechas" }} columnas={[
     { key: "fecha", orden: "fecha", label: "Fecha real" },
     { key: "tipo", orden: "tipo", label: "Movimiento", render: (r) => etiquetaMovimiento(r, r.obligacion_tipo) },
     { key: "contraparte_nombre", orden: "obligacion__contraparte_nombre", label: "A quién / de quién" },

@@ -35,7 +35,7 @@
 .finance-report-detail summary { cursor: pointer; color: var(--color-accent); }
 .finance-report .finance-table { margin-top: 16px; }
 .finance-report table { text-align: left; font-size: 13px; }
-.finance-report th, .finance-report td { padding: 14px 12px; vertical-align: top; font-variant-numeric: tabular-nums; }
+.finance-report th, .finance-report td { vertical-align: top; font-variant-numeric: tabular-nums; }
 .finance-report thead th { font-size: 12px; font-weight: 500; color: var(--color-texto-debil); background: var(--color-superficie-2); }
 .finance-report tbody tr { border-top: 1px solid var(--color-division); }
 .finance-report tbody th { font-weight: 400; }
@@ -61,58 +61,18 @@
   .finance-pie-space { grid-row: 1; height: 100cqw; min-height: 0; max-height: none; }
 }
 
-/* Opt-in financiero: otras tablas conservan su comportamiento original.
-   El ancho se mide en el contenedor, también dentro de modales y atribuciones. */
-/* Contiene también captions sr-only: sin un ancestro posicionado, los de una
-   tabla larga/plegada agrandan el documento fuera del scroll de la aplicación. */
-.finance-table { position: relative; container-type: inline-size; min-width: 0; }
-.finance-table-toggle { display: none; }
-.finance-table-content > table { width: 100%; table-layout: fixed; }
-.finance-table-content > table > :is(thead, tbody) > tr > :is(th, td) {
-  white-space: normal; overflow-wrap: anywhere; min-width: 0; padding-inline: 12px;
-}
-.finance-table-content > table > :is(thead, tbody) > tr > :is(th, td) :is(button, span, p, strong, a) {
-  white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%;
-}
+/* Las tablas conservan encabezados y filas también dentro de columnas y
+   modales. El ancho excedente se desplaza aquí, nunca en toda la página.
+   La posición relativa contiene los captions accesibles sin scroll fantasma. */
+.finance-table { position: relative; min-width: 0; }
+.finance-table-content { overflow-x: auto; max-width: 100%; }
+.finance-table-content:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.finance-table-content > table { width: 100%; table-layout: auto; }
+.finance-table-content > table > :is(thead, tbody) > tr > :is(th, td) { padding-inline: 12px; }
 .finance-table-content > table > thead > tr > th button { padding-inline: 4px; }
 .finance-table-content > table > thead > tr > th svg { flex-shrink: 0; }
-@container (max-width: 1050px) {
-  .finance-table-toggle { display: block; }
-  .finance-table-content > table,
-  .finance-table-content > table > tbody { display: block; }
-  .finance-table-content > table > thead { display: none; position: static; }
-  .finance-table-content > table > thead[data-abierto="true"] { display: block; }
-  .finance-table-content > table > thead > tr,
-  .finance-table-content > table > tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .finance-table-content > table > thead > tr > th { display: block; }
-  .finance-table-content > table > tbody > tr > :is(th, td) { display: block; padding: 10px 16px; }
-  .finance-table-content > table > tbody > tr > [colspan] { grid-column: 1 / -1; padding: 0; }
-  .finance-table-content > table > tbody > tr > [data-label]::before {
-    content: attr(data-label); display: block; margin-bottom: 4px;
-    font-size: 12px; font-weight: 500; color: var(--color-texto-debil);
-  }
-}
-@container (max-width: 460px) {
-  .finance-table-content > table > thead > tr,
-  .finance-table-content > table > tbody > tr { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* Nueve columnas: Control mensual necesita adaptarse antes que las listas
-   cortas. Sólo su tabla principal, nunca historiales, modales u otras tabs. */
-@container (1050px < width <= 1440px) {
-  .finance-page[data-finance-tab="calendario"] > .finance-table {
-    .finance-table-toggle { display: block; }
-    .finance-table-content > table,
-    .finance-table-content > table > tbody { display: block; }
-    .finance-table-content > table > thead { display: none; position: static; }
-    .finance-table-content > table > thead[data-abierto="true"] { display: block; }
-    .finance-table-content > table > thead > tr,
-    .finance-table-content > table > tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .finance-table-content > table > thead > tr > th { display: block; }
-    .finance-table-content > table > tbody > tr > :is(th, td) { display: block; padding: 10px 16px; }
-    .finance-table-content > table > tbody > tr > [data-label]::before {
-      content: attr(data-label); display: block; margin-bottom: 4px;
-      font-size: 12px; font-weight: 500; color: var(--color-texto-debil);
-    }
-  }
-}
+.finance-report .finance-table-content td { font-variant-numeric: tabular-nums; }
+.finance-report .finance-table-content th { white-space: normal; }
+.finance-report .finance-table-content > table > :is(thead, tbody) > tr > :is(th, td) { padding-inline: 6px; }
+.finance-report .finance-table-content td:first-child { min-width: 110px; max-width: 180px; white-space: normal; }
+.finance-report .finance-table-content td p { font-size: 12px; }

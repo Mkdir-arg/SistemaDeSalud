@@ -19,7 +19,7 @@ import DineroFinanzas, { CrearCuentaPorPagar, DetalleCuenta } from "./DineroFina
 import ConfiguracionCobros from "./ConfiguracionCobros";
 import ReportesEjecutivos from "./ReportesEjecutivos";
 import { DecisionAprobacion, EstadoAprobacion, TrazaAprobacion } from "./AprobacionFinanzas";
-import { AyudaFinanzas, FiltroColumna, FiltrosActivos, PanelFlotante, useFiltrosFinanzas } from "./ControlesFinanzas";
+import { BusquedaTablaFinanzas, AyudaFinanzas, FiltroColumna, FiltrosActivos, PanelFlotante, useFiltrosFinanzas } from "./ControlesFinanzas";
 
 const CONFIGURAR = "configurar_gastos_esperados";
 const CONFIGURAR_REPARTOS = "configurar_repartos";
@@ -68,7 +68,7 @@ function HistorialRepartos({ institucion, area, mes, usuarioId, columnas, detall
   });
   return <Modal title="Historial de repartos" onClose={onClose} width={920}>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{institucion.nombre} · {mes}</p><p className="mt-1 text-sm text-texto-debil">Versiones anteriores de los repartos del filtro seleccionado</p></div><Badge tone="gray">Histórico · no suma al total actual</Badge></div>
-    <TablaFinanciera barra={<Input aria-label="Buscar repartos históricos" placeholder="Área o concepto…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} columnas={columnas.map(({ filtro, ...col }) => col)} detalleFila={detalleFila} vacio={{ titulo: "No hay versiones históricas para este filtro" }} />
+    <TablaFinanciera barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar repartos históricos" placeholder="Área o concepto…" />} consulta={consulta} tabla={tabla} columnas={columnas.map(({ filtro, ...col }) => col)} detalleFila={detalleFila} vacio={{ titulo: "No hay versiones históricas para este filtro" }} />
   </Modal>;
 }
 
@@ -123,7 +123,7 @@ function HistorialCarga({ fila, usuarioId, onClose }) {
   });
   return <Modal title={`Historial · ${fila.concepto_nombre}`} onClose={onClose} width={720}>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Declaraciones de carga por mes · Gasto mensual #{fila.id}</p></div><Badge tone="gray">Historial de carga</Badge></div>
-    <TablaFinanciera barra={<Input aria-label="Buscar indicaciones de carga" placeholder="Mes o estado de carga…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Todavía no hay indicaciones" }} columnas={[
+    <TablaFinanciera barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar indicaciones de carga" placeholder="Mes o estado de carga…" />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Todavía no hay indicaciones" }} columnas={[
       { key: "periodo_economico", orden: "periodo_economico", label: "Mes", render: (r) => r.periodo_economico.slice(0, 7) },
       { key: "estado", orden: "estado", label: "Carga", render: (r) => <Estado valor={r.estado} calendario /> },
       { key: "registrado", orden: "registrado", label: "Registrado", render: (r) => fechaHora(r.registrado) },
@@ -142,7 +142,7 @@ function VersionesEsperado({ fila, usuarioId, onClose, onHistorial }) {
   });
   return <Modal title={`Historial de configuración · ${fila.concepto_nombre}`} onClose={onClose} width={820}>
     <div className="mb-4 flex items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Configuraciones del concepto y sus períodos de vigencia</p></div><AyudaFinanzas titulo="Vigencia de gastos mensuales"><p>Cada modificación conserva la configuración anterior. La nueva configuración se usa desde su mes de inicio; el mes indicado como fin ya no se incluye. No necesitás crear una configuración nueva cada mes.</p><p>Los números identifican registros, no la cantidad de modificaciones. Sólo se muestran registros incluidos en tus permisos.</p></AyudaFinanzas></div>
-    <TablaFinanciera barra={<Input aria-label="Buscar versiones de configuración" placeholder="Motivo de corrección…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
+    <TablaFinanciera barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar versiones de configuración" placeholder="Motivo de corrección…" />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
       { key: "id", orden: "id", label: "Referencia", render: (r) => <div>#{r.id}{r.reemplaza && <p className="text-sm text-texto-debil">Reemplaza #{r.reemplaza}</p>}</div> },
       { key: "vigente_desde", orden: "vigente_desde", label: "Desde", render: (r) => r.vigente_desde.slice(0, 7) },
       { key: "vigente_hasta", orden: "vigente_hasta", label: "Hasta (exclusivo)", render: (r) => r.vigente_hasta?.slice(0, 7) || "Sin fin declarado" },
@@ -481,12 +481,13 @@ function DetalleAtribuciones({ fila, usuarioId, institucionId }) {
   if (consulta.error?.status === 403) return <p role="status" className="text-md text-texto-suave">No tenés autorización para ver el detalle de las atenciones de este reparto.</p>;
   return <section aria-label={`Atenciones del reparto del gasto ${fila.gasto}`} className="space-y-3">
     <h3 className="font-semibold">Distribución del gasto #{fila.gasto}</h3>
+    <p className="text-sm text-texto-debil">{fila.vigente === false ? "Versión histórica · no suma al total vigente" : "Versión vigente"} · Mes económico {fila.periodo_economico?.slice(0, 7)}</p>
     {consulta.data && <dl className="flex flex-wrap gap-6 text-md">
       <div><dt className="text-texto-debil">Total del gasto</dt><dd className="font-mono">{importeCentavos(consulta.data.saldo_centavos)}</dd></div>
       <div><dt className="text-texto-debil">Total distribuido</dt><dd className="font-mono">{importeCentavos(consulta.data.importe_atribuido_centavos)}</dd></div>
       <div><dt className="text-texto-debil">Sin distribuir</dt><dd className="font-mono">{importeCentavos(consulta.data.saldo_no_atribuido_centavos)}</dd></div>
     </dl>}
-    <TablaFinanciera barra={<Input aria-label="Buscar atenciones del reparto" placeholder="Número de atención…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} columnas={[
+    <TablaFinanciera barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar atenciones del reparto" placeholder="Número de atención…" />} consulta={consulta} tabla={tabla} columnas={[
       { key: "referencia_atencion", orden: "hecho_id", label: "Referencia de atención", render: (r) => `#${r.referencia_atencion}` },
       { key: "caso_navegable", label: "Atención / caso", envolver: true, render: (r) => r.caso_navegable ? <div><Link className="font-medium text-accent underline underline-offset-2" to={`/casos/${r.caso_navegable}`}>{r.caso_descripcion || "Ver atención"}</Link><p className="mt-1 text-sm text-texto-debil">Caso #{r.caso_navegable}</p></div> : <span className="inline-flex items-center gap-2 text-sm text-texto-debil">Sin enlace <AyudaFinanzas titulo="Por qué no puedo abrir este caso"><p>El caso no está disponible o no tenés acceso clínico en esta institución. El permiso financiero no concede acceso clínico.</p></AyudaFinanzas></span> },
       { key: "ocurrida_en", orden: "hecho__ocurrida_en", label: "Fecha", render: (r) => fechaHora(r.ocurrida_en) },

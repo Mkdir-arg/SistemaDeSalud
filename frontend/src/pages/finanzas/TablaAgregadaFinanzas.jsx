@@ -10,7 +10,7 @@ const numero = (valor) => {
 
 // Sólo para agregaciones completas ya devueltas por el servidor. Nunca ordenar
 // aquí una página de una lista remota: sus filtros y orden pertenecen a la API.
-export default function TablaAgregadaFinanzas({ clave, titulo, filas, columnas, vacio }) {
+export default function TablaAgregadaFinanzas({ clave, titulo, contexto, filas, columnas, vacio }) {
   const tabla = useTablaUrl(clave);
   const tamano = [25, 50, 100].includes(tabla.tamano) ? tabla.tamano : 25;
   const definiciones = columnas.map((col) => col.numerica
@@ -44,6 +44,6 @@ export default function TablaAgregadaFinanzas({ clave, titulo, filas, columnas, 
   return <DataTable adaptable mantenerEncabezados titulo={titulo}
     filas={visibles.slice((pagina - 1) * tamano, pagina * tamano)} total={visibles.length} paginas={paginas}
     tabla={{ ...tabla, pagina, tamano }} estado={{}} vacio={vacio}
-    barra={<>{invalidos && <span role="alert">Ingresá importes con hasta dos decimales.</span>}<FiltrosActivos filtros={filtros} definiciones={definiciones.flat()} /></>}
-    columnas={columnas.map((col, i) => ({ ...col, orden: col.key, filtro: <FiltroColumna label={col.label} controles={definiciones[i]} filtros={filtros} /> }))} />;
+    barra={<>{contexto && <span className="text-sm text-texto-debil">{contexto}</span>}{invalidos && <span role="alert">Ingresá importes con hasta dos decimales.</span>}<FiltrosActivos filtros={filtros} definiciones={definiciones.flat()} /></>}
+    columnas={columnas.map((col, i) => ({ envolver: !col.numerica, ...col, orden: col.key, filtro: <FiltroColumna label={col.label} controles={definiciones[i]} filtros={filtros} /> }))} />;
 }

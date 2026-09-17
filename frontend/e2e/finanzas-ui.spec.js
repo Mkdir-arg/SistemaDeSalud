@@ -182,9 +182,9 @@ test("reporte ejecutivo es legible en móvil y permite filtrar el desglose", asy
   await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-movil.png"), animations: "disabled" });
   await page.locator(".finance-report-trend").first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-grafico-movil.png"), animations: "disabled" });
-  await page.getByLabel("Buscar en desglose").fill("inexistente");
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("inexistente");
   await expect(page.getByText("Sin movimientos para este desglose", { exact: true })).toBeVisible();
-  await page.getByLabel("Buscar en desglose").fill("Litoral");
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("Litoral");
   await expect(page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" })).toContainText("Mutual del Litoral");
 });
 
@@ -533,20 +533,14 @@ test("gastos simplificados conservan detalle y filtros guardados; diferencias di
   expect(escrituras).toHaveLength(0);
 });
 
-test("control mensual adapta antes sus nueve columnas sin cambiar otras listas", async ({ page }, testInfo) => {
+test("control mensual conserva columnas y permite desplazarlas sin romper encabezados", async ({ page }, testInfo) => {
   const { escrituras } = await escenario(page);
   await page.route("**/api/gastos/**", (route) => route.fulfill({ json: lista([{ id: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", importe: "100.00", importe_resultante: "100.00", registrado: "2026-09-14T12:00:00Z", reemplazado_por: null }]) }));
   await page.goto("/finanzas?mes=2026-09&tab=calendario");
-  const alternar = page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false });
   const contenido = page.locator(".finance-table-content");
   for (const width of [1366, 1440, 1578, 1734, 1738, 1920, 390]) {
     await page.setViewportSize({ width, height: 1000 });
-    const adaptable = width < 1738;
-    if (adaptable) {
-      await expect(alternar).toBeVisible();
-      await expect(contenido.locator("thead")).toBeHidden();
-      await alternar.click();
-    } else await expect(alternar).toBeHidden();
+    await expect(contenido.locator("thead")).toBeVisible();
     const ordenar = page.getByRole("button", { name: /^Ordenar por Referencia mensual/ });
     await expect(ordenar).toBeVisible();
     // Una palabra del encabezado nunca debería partirse en dos líneas.
@@ -570,10 +564,9 @@ test("control mensual adapta antes sus nueve columnas sin cambiar otras listas",
     await page.getByRole("button", { name: "Filtrar Referencia mensual", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Filtrar Referencia mensual", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    if (adaptable) await alternar.click();
     await expect(contenido.locator('td[data-label="Referencia mensual"]')).toHaveText("ARS 12.000,00");
     await expect(contenido.locator('td[data-label="Diferencia"]')).toHaveText("ARS +1.999,99");
-    await expect.poll(() => contenido.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    await expect.poll(() => contenido.evaluate((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
     await contenido.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`control-adaptado-${width}.png`), animations: "disabled" });
   }
@@ -583,7 +576,6 @@ test("control mensual adapta antes sus nueve columnas sin cambiar otras listas",
   await page.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
   await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
   await expect(contenido.locator("thead")).toBeVisible();
-  await expect(alternar).toBeHidden();
   await expect(contenido.locator('td[data-label="Importe vigente"]')).toHaveText("ARS 100,00");
   expect(escrituras).toHaveLength(0);
 });
@@ -870,7 +862,7 @@ test("estado actualizado deja texto y fecha dentro de su ayuda", async ({ page }
   await expect(ayuda).toContainText("Última ejecución correcta:");
 });
 
-test("listas financieras sin scroll interno conservan importes, filtros y acciones", async ({ page }, testInfo) => {
+test("listas financieras con scroll horizontal conservan importes, filtros y acciones", async ({ page }, testInfo) => {
   await escenario(page);
   await page.route("**/api/gastos/**", (route) => route.fulfill({ json: lista([{ id: 1, concepto_nombre: "Electricidad de edificios y consultorios del hospital", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", estado: "aprobado", importe: "999999999999999.99", total_ajustes: "-10.00", importe_resultante: "999999999999989.99", registrado: "2026-09-14T12:00:00Z", ajustes: [], reemplazado_por: null }]) }));
   await page.route("**/api/repartos-gasto/**", (route) => route.fulfill({ json: lista([{ id: 1, gasto: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado: "distribuido", saldo_centavos: 10001, saldo_no_atribuido_centavos: 0, atribuciones: 0, vigente: true, version: 1 }]) }));
@@ -881,30 +873,29 @@ test("listas financieras sin scroll interno conservan importes, filtros y accion
       await page.getByRole("tab", { name: tab, exact: true }).click();
       if (tab === "Resumen") await page.getByRole("button", { name: "Listado", exact: true }).click();
       await expect(page.locator(".finance-table-content")).toHaveCount(1);
-      await expect.poll(() => page.locator(".finance-table-content").evaluateAll((nodos) => nodos.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
-      await expect.poll(() => page.locator(".finance-table-content table").evaluateAll((nodos) => nodos.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
+      await expect.poll(() => page.locator(".finance-table-content").evaluateAll((nodos) => nodos.every((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1))).toBe(true);
+      await expect(page.locator(".finance-table-content table")).toHaveCSS("display", "table");
+      await expect(page.locator(".finance-table-content thead")).toBeVisible();
     }
   }
   await page.getByRole("tab", { name: "Gastos mensuales", exact: true }).click();
-  await page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false }).click();
   await page.getByRole("button", { name: "Ordenar por Importe aprobado", exact: true }).click();
   await expect(page).toHaveURL(/calendario_ord=importe_aprobado/);
   await page.getByRole("button", { name: "Filtrar Referencia mensual", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Filtrar Referencia mensual", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false }).click();
   await page.locator(".finance-table").scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("control-sin-scroll-movil.png"), animations: "disabled" });
   await page.getByRole("button", { name: "Administrar Electricidad", exact: false }).click();
   await expect(page.getByRole("dialog")).toContainText("ARS 1.999,99");
   await page.getByRole("button", { name: "Historial de configuración", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Historial de configuración · Electricidad" })).toBeVisible();
-  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
   await page.route("**/api/expectativas-gasto/1/indicaciones/**", (route) => route.fulfill({ json: lista([{ id: 1, periodo_economico: "2026-09-01", estado: "carga_completa", registrado: "2026-09-14T12:00:00Z" }]) }));
   await page.getByRole("button", { name: "Historial de carga", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Historial · Electricidad" })).toBeVisible();
   await expect(page.getByRole("dialog").getByText("Carga completa", { exact: true })).toBeVisible();
-  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
 });
 
 test("filtros y tabs comparten fila, cabecera estable y límite explicado en ayuda", async ({ page }, testInfo) => {
@@ -1130,7 +1121,7 @@ for (const movimiento of ["no-preference", "reduce"]) {
     await expect(page.getByText("Sin enlace", { exact: false })).toBeVisible();
     await expect(page.getByRole("link", { name: "Consulta kinesiológica" })).toHaveCount(1);
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect.poll(() => page.locator(".finance-table-content").evaluateAll((listas) => listas.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
+    await expect.poll(() => page.locator(".finance-table-content").evaluateAll((listas) => listas.every((e) => getComputedStyle(e).overflowX === "auto" && (e.parentElement.closest(".finance-table-content") || e.getBoundingClientRect().right <= innerWidth + 1)))).toBe(true);
     await page.setViewportSize({ width: 1440, height: 1100 });
     await page.screenshot({ path: testInfo.outputPath("atribuciones.png"), fullPage: true });
     await enlace.click();
@@ -1367,7 +1358,6 @@ test("reporte ejecutivo ordena importes y filtra sin cambiar las cifras ni los g
   await page.goto("/finanzas?tab=reportes&mes=2026-09");
   const tabla = page.getByRole("table", { name: "Comparación exacta de gastos" });
   const contenedor = tabla.locator("xpath=ancestor::div[contains(@class,'finance-table') and not(contains(@class,'finance-table-content'))][1]");
-  await contenedor.getByRole("button", { name: "Ordenar y filtrar columnas" }).click();
   await tabla.getByRole("button", { name: /^Ordenar por 2026-09/ }).click();
   await expect(tabla.locator("tbody tr").first()).toContainText("Limpieza");
   await tabla.getByRole("button", { name: /^Ordenar por 2026-09/ }).click();
@@ -1408,4 +1398,32 @@ test("listado agregado conserva centavos grandes y no filtra desconocidos como c
   await page.keyboard.press("Escape");
   await expect(tabla.locator("tbody tr")).toHaveCount(1);
   await expect(tabla.locator("tbody tr")).toContainText("Cero");
+});
+
+
+test("desglose mantiene filas compactas y filtros visibles en escritorio y móvil", async ({ page }) => {
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const tabla = page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" });
+  const fila = tabla.locator("tbody tr").first();
+  await expect(tabla.locator("thead")).toBeVisible();
+  await expect(fila).toHaveCSS("display", "table-row");
+  const posiciones = await fila.locator("td").evaluateAll((celdas) => celdas.map((c) => c.getBoundingClientRect().top));
+  expect(Math.max(...posiciones) - Math.min(...posiciones)).toBeLessThan(1);
+  expect((await fila.boundingBox()).height).toBeLessThan(100);
+  await expect(page.getByText("Fecha efectiva: 2026-09-01 al 2026-09-30", { exact: true })).toBeVisible();
+  await expect(page.getByText("Seleccionado: 2026-09 · Comparado: 2026-08 · Gastos vigentes", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("ausente");
+  const quitar = page.getByRole("button", { name: "Quitar filtro Buscar en desglose", exact: true });
+  await expect(quitar).toContainText("ausente");
+  await quitar.click();
+  await expect(tabla.locator("tbody tr")).toHaveCount(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(fila).toHaveCSS("display", "table-row");
+  const region = page.getByRole("region", { name: "Desglose de dinero por área, concepto y financiador: desplazamiento horizontal", exact: true });
+  await region.scrollIntoViewIfNeeded();
+  await region.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => region.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
 });

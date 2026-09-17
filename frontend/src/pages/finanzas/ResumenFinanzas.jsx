@@ -146,6 +146,7 @@ export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onG
       {representacion === "evolucion" ? <EvolucionMensual key={`${institucion.id}:${area}:${mes}`} institucion={institucion} usuarioId={usuarioId} mes={mes} area={area} onGastos={onGastos} />
         : !d.agrupaciones.length ? <EstadoVacio titulo="Todavía no hay gastos para estos filtros" detalle="Registrá un gasto o revisá el mes y el área. Esto no significa que el hospital no tenga gastos." />
         : representacion !== "listado" ? <RespaldoGrafico><Suspense fallback={<p role="status" className="p-4">Preparando gráfico… El listado ya está disponible.</p>}><GraficoFinanzas grupos={d.agrupaciones} representacion={representacion} vista={vista} onGastos={onGastos} onRepartos={onRepartos} /></Suspense></RespaldoGrafico> : <TablaAgregadaFinanzas clave="resumen_grupos" titulo="Gastos por área y concepto · ARS"
+          contexto={`Gastos vigentes · Mes económico ${mes}`}
           filas={d.agrupaciones.map((g) => ({ ...g, id: `${g.area}:${g.concepto}` }))}
           columnas={[
             { key: "area_concepto", label: "Área / concepto", valor: (g) => `${g.area_nombre || "Institucional"} ${g.concepto_nombre}`,

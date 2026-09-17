@@ -11,7 +11,7 @@ import { RespaldoGrafico } from "./ResumenFinanzas";
 import { DetalleCuenta, MovimientosPeriodo } from "./DineroFinanzas";
 import { filtroAreaDinero } from "./dinero";
 import TablaAgregadaFinanzas from "./TablaAgregadaFinanzas";
-import { AyudaFinanzas } from "./ControlesFinanzas";
+import { AyudaFinanzas, FiltrosActivos } from "./ControlesFinanzas";
 
 const Tendencia = lazy(() => import("./GraficoReportes").then((m) => ({ default: m.TendenciaReporte })));
 const Comparacion = lazy(() => import("./GraficoReportes").then((m) => ({ default: m.ComparacionGrupos })));
@@ -48,6 +48,7 @@ function SerieMensual({ reporte, medidas, onAbrir }) {
     {reporte.serie.some(disponible) ? <Grafico><Tendencia serie={reporte.serie} medidas={medidas} onAbrir={onAbrir} /></Grafico> : <EstadoVacio titulo="Sin registros para dibujar una tendencia" detalle="Revisá el período y el área. No equivale a una actividad económica nula." />}
     <details className="finance-report-detail"><summary>Ver importes y fuentes de cada mes</summary>
       <TablaAgregadaFinanzas clave={`reporte_serie_${medidas === medidasGastos ? "gastos" : "dinero"}`} titulo="Serie mensual exacta"
+        contexto={medidas === medidasGastos ? "Gastos vigentes por mes económico" : "Movimientos aprobados por fecha efectiva"}
         filas={reporte.serie.map((fila) => ({ ...fila, id: fila.periodo_economico, lectura: !disponible(fila) ? "Sin registros aprobados" : (fila.provisional ?? fila.mes_abierto) ? "Lectura provisional" : "Registros visibles" }))}
         columnas={[
           { key: "periodo_economico", label: "Mes", render: (fila) => fila.periodo_economico.slice(0, 7) },
@@ -98,6 +99,7 @@ export default function ReportesEjecutivos({ institucion, permisos, mes, area, o
     setSearchParams((previos) => {
       const siguientes = new URLSearchParams(previos);
       siguientes.delete("movimientos_dinero_pag");
+      [...siguientes.keys()].filter((clave) => clave.startsWith("movimientos_dinero_f_")).forEach((clave) => siguientes.delete(clave));
       return siguientes;
     }, { replace: true });
     const contexto = { institucion: institucion.id, fecha_desde: fila.fecha_desde, fecha_hasta: fila.fecha_hasta,
@@ -124,6 +126,7 @@ export default function ReportesEjecutivos({ institucion, permisos, mes, area, o
         {d.agrupaciones.length ? <Grafico><Comparacion grupos={d.agrupaciones} periodoActual={d.actual.periodo_economico} periodoAnterior={d.anterior.periodo_economico} onAbrir={(g, periodo) => abrirGasto(d[periodo], "aprobados", g)} /></Grafico> : <EstadoVacio titulo="Sin gastos registrados en ambos períodos" />}
         <h3 className="mt-4 font-semibold">Detalle por área y concepto</h3>
         <TablaAgregadaFinanzas clave="reporte_grupos_gastos" titulo="Comparación exacta de gastos"
+          contexto={`Seleccionado: ${d.actual.periodo_economico.slice(0, 7)} · Comparado: ${d.anterior.periodo_economico.slice(0, 7)} · Gastos vigentes`}
           filas={d.agrupaciones.map((g) => ({ ...g, id: `${g.area}:${g.concepto}` }))}
           columnas={[
             { key: "area_concepto", label: "Área / concepto", valor: (g) => `${g.area_nombre} ${g.concepto_nombre}`, render: (g) => <><strong>{g.concepto_nombre}</strong><p className="text-texto-debil">{g.area_nombre}</p></> },
@@ -142,7 +145,9 @@ export default function ReportesEjecutivos({ institucion, permisos, mes, area, o
         <div className="finance-report-status"><button className="finance-report-link" onClick={() => abrirDinero(d.actual, "pendientes")}>{d.actual.por_aprobar.cantidad} movimientos por aprobar</button></div>
         <SerieMensual reporte={d} medidas={medidasDinero} onAbrir={abrirDinero} />
         <Card className="finance-report-panel"><div className="finance-report-table-heading"><div className="flex items-center gap-2"><h3 className="font-semibold">Detalle de pagos y cobros</h3><AyudaFinanzas titulo="Cómo se agrupa el dinero"><p>Cobros por área, prestación y financiador; pagos por área y concepto de gasto. Los copagos se muestran a nombre del paciente.</p><p>El financiador proviene del vínculo de cobertura de la cuenta, no de coincidencias de nombres. Sin ese vínculo, queda sin identificar.</p><p>La búsqueda y el tipo de movimiento filtran esta tabla, no los totales del informe. Cada importe abre sus movimientos.</p></AyudaFinanzas></div><div className="finance-report-tools"><Select aria-label="Desglose de dinero" value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="cobrar">Cobros por financiador</option><option value="pagar">Pagos por concepto</option></Select><Input aria-label="Buscar en desglose" placeholder="Buscar área, prestación, financiador…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></div></div>
+          <FiltrosActivos filtros={{ valores: { search: busqueda }, cambiar: ({ search }) => setBusqueda(search || "") }} definiciones={[{ key: "search", label: "Buscar en desglose" }]} />
           <TablaAgregadaFinanzas clave={`reporte_grupos_${tipo}`} titulo="Desglose de dinero por área, concepto y financiador"
+            contexto={`Fecha efectiva: ${d.actual.fecha_desde} al ${d.actual.fecha_hasta}`}
             filas={grupos.map((g) => ({ ...g, id: JSON.stringify(g.filtros) }))} vacio={{ titulo: "Sin movimientos para este desglose", detalle: "Revisá el tipo de movimiento y los filtros." }}
             columnas={[
               { key: "area_concepto", label: "Área / concepto", valor: (g) => `${g.area_nombre} ${g.concepto_nombre}`, render: (g) => <><strong>{g.concepto_nombre}</strong><p className="text-texto-debil">{g.area_nombre}</p></> },
