@@ -211,7 +211,7 @@ def cancelar_pendientes(*, caso, usuario, motivo, reservas_no_realizadas=None):
     list(m.Convenio.objects.select_for_update().filter(pk__in={s.convenio_id for s in solicitudes}).order_by("pk"))
     for solicitud in solicitudes:
         anular(solicitud=solicitud, usuario=usuario, revision=solicitud.revision, motivo=motivo,
-               clave=uuid5(NAMESPACE_URL, f"cauce:cancelar-caso:{caso.pk}:solicitud:{solicitud.pk}:{solicitud.revision}"))
+               clave=uuid5(NAMESPACE_URL, f"salud:cancelar-caso:{caso.pk}:solicitud:{solicitud.pk}:{solicitud.revision}"))
     for reserva in reservas:
         liberar(reserva=reserva, usuario=usuario, motivo=motivo, no_realizada=True)
 
@@ -248,7 +248,7 @@ def vencer_autorizaciones(*, ahora=None, limite=500, seco=False):
             obj.estado, obj.revision, obj.resuelto_en = "vencida", obj.revision + 1, ahora
             obj.motivo_resolucion = "Venció el plazo administrativo; requiere revisión hospitalaria."
             obj.save(update_fields=["estado", "revision", "resuelto_en", "motivo_resolucion", "actualizado"])
-            _evento(obj, None, uuid5(NAMESPACE_URL, f"cauce:vencer-autorizacion:{pk}:{obj.revision}"),
+            _evento(obj, None, uuid5(NAMESPACE_URL, f"salud:vencer-autorizacion:{pk}:{obj.revision}"),
                     "vencer", anterior, obj.motivo_resolucion, {"origen": "correr_tiempos"})
             efectos_resolucion(obj, None)
             cantidad += 1

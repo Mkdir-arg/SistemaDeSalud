@@ -88,7 +88,7 @@ class Command(BaseCommand):
         self._comprobar_versiones(cred)
 
         sello = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        archivo = destino / f"cauce-{sello}.sql.gz"
+        archivo = destino / f"salud-{sello}.sql.gz"
 
         self.stdout.write(f"Respaldando {cred['name']} → {archivo}")
         self._volcar(cred, archivo)
@@ -269,7 +269,7 @@ class Command(BaseCommand):
         """
         if not conservar:
             return
-        archivos = sorted(destino.glob("cauce-*.sql.gz"))
+        archivos = sorted(destino.glob("salud-*.sql.gz"))
         for viejo in archivos[:-conservar]:
             viejo.unlink(missing_ok=True)
             self.stdout.write(f"  rotado: {viejo.name}")

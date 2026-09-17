@@ -8,6 +8,7 @@ cadena entre entradas haga que alterar una vieja no alcance con recalcular su
 propio resumen.
 """
 from datetime import timedelta
+from unittest import mock
 
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -368,3 +369,51 @@ class APITests(IntegridadTestCase):
         r = self.client.get(f"/api/historias-clinicas/{self.hc.id}/verificar/")
         self.assertFalse(r.data["ok"])
         self.assertTrue(r.data["problemas"])
+
+
+class VersionDelFormatoTests(IntegridadTestCase):
+    """
+    El formato del sello se declara versionado. Estos tests verifican que lo
+    sea de verdad: la promesa es que cambiar `VERSION` no invalide lo ya
+    sellado, y antes de guardar la versión por entrada esa promesa era falsa
+    —`_canonico` leía la constante vigente, así que un cambio de nombre del
+    formato reportaba como adulterada toda historia firmada—.
+    """
+
+    def test_sellar_guarda_la_version_vigente(self):
+        self.assertEqual(self._entrada().sello_version, integridad.VERSION)
+
+    def test_lo_sellado_con_una_version_vieja_se_sigue_verificando(self):
+        """
+        El caso que motiva la columna: se sella, cambia el formato, y la entrada
+        de antes tiene que seguir dando «intacta». Verifica con SU versión.
+        """
+        e = self._entrada()
+        sello_original = e.sello
+        with mock.patch.object(integridad, "VERSION", "otro-formato-v2"):
+            r = integridad.verificar(e)
+        self.assertTrue(r["ok"], r["motivo"])
+        self.assertEqual(e.sello, sello_original)
+
+    def test_una_entrada_alterada_sigue_delatandose_con_version_vieja(self):
+        """
+        Verificar con la versión guardada no puede volverse una excusa: lo que
+        cambió después de firmarse se tiene que seguir detectando igual.
+        """
+        e = self._entrada()
+        EntradaHistoria.objects.filter(pk=e.pk).update(contenido="alterado")
+        e.refresh_from_db()
+        with mock.patch.object(integridad, "VERSION", "otro-formato-v2"):
+            self.assertFalse(integridad.verificar(e)["ok"])
+
+    def test_dos_versiones_conviven_en_la_misma_historia(self):
+        """
+        Una historia sellada en parte con un formato y en parte con el
+        siguiente se verifica entera: es el escenario real de un despliegue que
+        cambia de versión con historias ya abiertas.
+        """
+        vieja = self._entrada(titulo="Antes del cambio")
+        with mock.patch.object(integridad, "VERSION", "otro-formato-v2"):
+            nueva = self._entrada(titulo="Después del cambio")
+        self.assertNotEqual(vieja.sello_version, nueva.sello_version)
+        self.assertTrue(integridad.verificar_historia(self.hc)["ok"])

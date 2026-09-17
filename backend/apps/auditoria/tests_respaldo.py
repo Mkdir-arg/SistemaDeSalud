@@ -61,7 +61,7 @@ class RotacionTests(SimpleTestCase):
     def _carpeta(self, cuantos):
         d = TemporaryDirectory()
         for i in range(cuantos):
-            (Path(d.name) / f"cauce-2026081{i}-000000.sql.gz").write_bytes(b"x" * 2048)
+            (Path(d.name) / f"salud-2026081{i}-000000.sql.gz").write_bytes(b"x" * 2048)
         return d
 
     def test_deja_los_mas_nuevos_y_borra_los_viejos(self):
@@ -69,8 +69,8 @@ class RotacionTests(SimpleTestCase):
             Command()._rotar(Path(ruta), conservar=3)
             quedan = sorted(p.name for p in Path(ruta).glob("*.sql.gz"))
         self.assertEqual(len(quedan), 3)
-        self.assertIn("cauce-20260815-000000.sql.gz", quedan)
-        self.assertNotIn("cauce-20260810-000000.sql.gz", quedan)
+        self.assertIn("salud-20260815-000000.sql.gz", quedan)
+        self.assertNotIn("salud-20260810-000000.sql.gz", quedan)
 
     def test_con_cero_no_borra_nada(self):
         """Hay instalaciones donde la retención la maneja el almacenamiento."""

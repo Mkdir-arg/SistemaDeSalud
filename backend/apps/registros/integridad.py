@@ -25,10 +25,13 @@ from datetime import timezone as tz
 from django.db import transaction
 from django.utils import timezone
 
-# Versión del formato del resumen. Si algún día cambia cómo se arma, las
-# entradas viejas se siguen verificando con su versión: un cambio de formato que
-# invalide diez años de historia es peor que no tener sellado.
-VERSION = "cauce-sha256-v1"
+# Versión del formato del resumen, con la que se sella de acá en adelante. La
+# versión usada queda guardada en cada entrada (`sello_version`) y `_canonico`
+# lee ESA, no esta constante: así un cambio de formato no invalida diez años de
+# historia, que sería peor que no tener sellado. La versión previa era
+# `cauce-sha256-v1`, del nombre anterior del sistema; lo sellado con ella se
+# sigue verificando con ella.
+VERSION = "salud-sha256-v1"
 
 
 def _canonico(entrada) -> str:
@@ -43,7 +46,10 @@ def _canonico(entrada) -> str:
     distintos según dónde corra la verificación.
     """
     campos = [
-        VERSION,
+        # La versión con la que se selló esta entrada, no la vigente. `or
+        # VERSION` cubre el único caso sin valor: una entrada que todavía no se
+        # selló y se está calculando ahora.
+        entrada.sello_version or VERSION,
         str(entrada.historia_id),
         str(entrada.historia.ciudadano_id),
         entrada.titulo or "",
@@ -95,8 +101,11 @@ def sellar(entrada):
         )
         entrada.sello_previo = previa.sello if previa else ""
         entrada.firmada_at = entrada.firmada_at or timezone.now()
+        # La versión se fija ANTES de calcular: `_canonico` la incluye, así que
+        # asignarla después daría un sello que no se puede reproducir.
+        entrada.sello_version = VERSION
         entrada.sello = calcular(entrada)
-        entrada.save(update_fields=["sello", "sello_previo", "firmada_at"])
+        entrada.save(update_fields=["sello", "sello_previo", "sello_version", "firmada_at"])
     return entrada
 
 

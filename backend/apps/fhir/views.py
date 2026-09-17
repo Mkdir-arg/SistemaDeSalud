@@ -19,6 +19,7 @@ función que los viewsets (`registrar_acceso`), no una copia.
 usuario tiene membresía activa, ni una más. El scope no lo decide el parámetro
 de la consulta.
 """
+import logging
 from urllib.parse import urlencode
 
 from django.http import JsonResponse
@@ -35,6 +36,42 @@ from apps.instituciones.models import Institucion
 from apps.registros.models import Ciudadano, normalizar_documento
 
 from . import recursos
+
+log = logging.getLogger(__name__)
+
+# Namespaces que esta fachada emitió alguna vez y ya no. Una consulta que llega
+# con uno de estos es un integrador que quedó en una versión anterior: se le
+# sigue contestando vacío —devolver a otra persona sería peor— pero no callado.
+SISTEMAS_RETIRADOS = {"urn:cauce:id": recursos.SISTEMA_LOCAL}
+
+
+def _avisar_identificador_sin_respuesta(sistema):
+    """
+    Un `system` que la fachada no reconoce se responde con un Bundle vacío, y un
+    Bundle vacío no se distingue de «esa persona no está»: del otro lado no hay
+    error que mirar, ni reintento, ni nada que avise. Un integrador que quedó con
+    un namespace viejo deja de encontrar en silencio, y puede pasar mucho tiempo
+    hasta que alguien lo note.
+
+    Se avisa SÓLO acá, y no cada vez que una búsqueda válida no encuentra a
+    nadie: eso último es el resultado correcto de preguntar por alguien que no
+    está, y convertirlo en alerta enseñaría a ignorar las de verdad.
+    """
+    for retirado, vigente in SISTEMAS_RETIRADOS.items():
+        if sistema == retirado or sistema.startswith(f"{retirado}:"):
+            log.warning(
+                "FHIR: consulta con el namespace retirado %r. El vigente es %r. "
+                "Se responde Bundle vacío: quien pregunta quedó en una versión "
+                "anterior de la fachada y sus búsquedas no encuentran nada.",
+                sistema, vigente,
+            )
+            return
+    log.warning(
+        "FHIR: consulta con un system desconocido %r. Se responde Bundle vacío. "
+        "Los que esta fachada resuelve son %r, %r y %r.",
+        sistema, recursos.SISTEMA_DNI,
+        f"{recursos.SISTEMA_LOCAL}:ciu", f"{recursos.SISTEMA_LOCAL}:ciudadano",
+    )
 
 # --------------------------------------------------------------------------- #
 # Esta fachada NO se documenta en el OpenAPI, a propósito.
@@ -307,9 +344,10 @@ def _por_identificador(qs, identificador):
         return qs.filter(codigo=valor)
     if sistema == f"{recursos.SISTEMA_LOCAL}:ciudadano":
         # Los identificadores que Salud mismo emite tienen que poder volver a
-        # buscarse; hasta acá `urn:cauce:id:ciudadano|28` devolvía a la persona
+        # buscarse; hasta acá `urn:icore-salud:id:ciudadano|28` devolvía a la persona
         # con documento 28.
         return qs.filter(pk=valor) if valor.isdigit() else qs.none()
+    _avisar_identificador_sin_respuesta(sistema)
     return qs.none()
 
 

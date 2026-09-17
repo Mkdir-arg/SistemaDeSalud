@@ -17,6 +17,8 @@ from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Cama, EstadiaCama, Institucion
 from apps.registros.models import Ciudadano
 
+from . import recursos
+
 
 class FhirTestCase(APITestCase):
     def setUp(self):
@@ -147,11 +149,11 @@ class PatientTests(FhirTestCase):
 
     def test_los_identificadores_que_salud_emite_se_pueden_volver_a_buscar(self):
         """
-        La fachada emite `urn:cauce:id:ciudadano` en cada Patient. Si buscar por
+        La fachada emite `urn:icore-salud:id:ciudadano` en cada Patient. Si buscar por
         él devuelve a la persona cuyo DOCUMENTO es ese número, un cliente que
         guardó el identificador que le dimos vuelve con otra persona.
         """
-        _, d = self.get(f"/fhir/Patient?identifier=urn:cauce:id:ciudadano|{self.paciente.id}")
+        _, d = self.get(f"/fhir/Patient?identifier=urn:icore-salud:id:ciudadano|{self.paciente.id}")
         self.assertEqual(d["total"], 1)
         self.assertEqual(d["entry"][0]["resource"]["id"], str(self.paciente.id))
 
@@ -557,3 +559,48 @@ class IdConFormaRaraTests(FhirTestCase):
     def test_un_recurso_que_de_verdad_no_existe_sigue_diciendolo(self):
         _, d = self.get("/fhir/Observation/abc")
         self.assertIn("no está implementado", d["issue"][0]["diagnostics"])
+
+
+class VacioQueAvisaTests(FhirTestCase):
+    """
+    Un Bundle vacío es la respuesta correcta a un `system` que la fachada no
+    resuelve —contestar la persona cuyo documento coincide sería devolver a
+    otra—, pero es indistinguible de «esa persona no está». Del otro lado no hay
+    error, ni reintento, ni señal: un integrador que quedó con un namespace viejo
+    deja de encontrar en silencio. Estos tests verifican que ese silencio quede
+    registrado, y que registrarlo no convierta en alerta lo que es normal.
+    """
+
+    def test_el_namespace_retirado_queda_registrado_y_se_nombra_el_vigente(self):
+        with self.assertLogs("apps.fhir.views", level="WARNING") as registro:
+            _, d = self.get(
+                f"/fhir/Patient?identifier=urn:cauce:id:ciudadano|{self.paciente.id}"
+            )
+        self.assertEqual(d["total"], 0)
+        aviso = " ".join(registro.output)
+        self.assertIn("urn:cauce:id:ciudadano", aviso)
+        self.assertIn(recursos.SISTEMA_LOCAL, aviso)
+
+    def test_un_system_desconocido_tambien_queda_registrado(self):
+        with self.assertLogs("apps.fhir.views", level="WARNING") as registro:
+            _, d = self.get("/fhir/Patient?identifier=urn:sistema-inventado|30111222")
+        self.assertEqual(d["total"], 0)
+        self.assertIn("urn:sistema-inventado", " ".join(registro.output))
+
+    def test_una_busqueda_valida_sin_resultados_no_alerta(self):
+        """
+        Lo que protege al detector de volverse ruido. Preguntar por un documento
+        que no está es el uso normal de la fachada y su respuesta correcta es
+        vacía: si eso alertara, la alerta se aprendería a ignorar y el caso que
+        importa —el namespace retirado— pasaría desapercibido entre las demás.
+        """
+        with self.assertNoLogs("apps.fhir.views", level="WARNING"):
+            _, d = self.get("/fhir/Patient?identifier=99888777")
+        self.assertEqual(d["total"], 0)
+
+    def test_el_identificador_vigente_no_alerta(self):
+        with self.assertNoLogs("apps.fhir.views", level="WARNING"):
+            _, d = self.get(
+                f"/fhir/Patient?identifier={recursos.SISTEMA_LOCAL}:ciudadano|{self.paciente.id}"
+            )
+        self.assertEqual(d["total"], 1)
