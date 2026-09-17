@@ -3,7 +3,6 @@
 ## 1. La marca
 
 **Nombre:** I-Core Salud. I-Core es la empresa; Salud, el sistema.
-**Qué evoca:** *pendiente de definir.* La metáfora anterior describía el recorrido del agua por un cauce y se cayó con el nombre viejo; el tono buscado sigue siendo el mismo: serio, público, de infraestructura.
 
 **Descriptor:** *Constructor y motor de flujos.*
 **Promesa (tagline):** *Dibujás el proceso. El sistema lo ejecuta.*
