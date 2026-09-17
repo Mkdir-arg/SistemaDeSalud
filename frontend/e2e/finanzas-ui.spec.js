@@ -178,8 +178,12 @@ test("PDF descarga gráficos y todas las filas filtradas en su orden, con perío
   const { pdf, contenido } = await descargarPdf(page, testInfo);
   expect(pdf.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(3);
   for (const dato of ["Hospital Escuela", "2025-09", "2026-09", "Consultorios Escuela", "Trayectoria: 12 meses", "Fuente consultada", "registros vigentes", "Incluido 031", "Incluido 001", "Filas: 31.", "Búsqueda: Litoral", "Mutual del Litoral"]) expect(contenido).toContain(dato);
-  expect(contenido).not.toContain("Excluido");
-  expect(contenido.indexOf("Incluido 031")).toBeLessThan(contenido.indexOf("Incluido 001"));
+  // El gráfico conserva sus grupos aunque la tabla esté filtrada, y el PDF
+  // identifica cada barra con área y concepto porque no tiene tooltips.
+  expect(contenido).toContain("1. AreaPDF · Excluido");
+  const tablaGastos = contenido.slice(contenido.indexOf("Comparación exacta de gastos"));
+  expect(tablaGastos).not.toContain("Excluido");
+  expect(tablaGastos.indexOf("Incluido 031")).toBeLessThan(tablaGastos.indexOf("Incluido 001"));
   expect(peticiones.filter((p) => p.pathname.includes("/comparativa/")).length).toBe(consultasAntes);
   await expect(page).toHaveURL(/reporte_grupos_gastos_pag=2/);
 });
@@ -402,7 +406,7 @@ async function escenario(page, { permisos = acciones, pendientes = false, conces
   const peticiones = [];
   const escrituras = [];
   const db = { prestaciones: [], componentes: [], valores: [], concesiones: [...concesiones], pendientes, reporte: structuredClone(reporte), evolucion: { conceptos: [], concepto: null, meses: [], moneda: "ARS" } };
-  await page.addInitScript((institucion) => { localStorage.setItem("cauce.access", "credencial-ficticia-solo-mock"); localStorage.setItem("cauce.institucion", JSON.stringify(institucion)); }, inst);
+  await page.addInitScript((institucion) => { localStorage.setItem("salud.access", "credencial-ficticia-solo-mock"); localStorage.setItem("salud.institucion", JSON.stringify(institucion)); }, inst);
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();

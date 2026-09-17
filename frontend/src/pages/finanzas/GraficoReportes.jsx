@@ -1,5 +1,6 @@
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { importeARS } from "@/api/finanzas";
+import { gruposComparados } from "./reportes";
 
 // Number se usa exclusivamente para la geometría; ayudas y tablas muestran
 // las cadenas decimales del servidor, sin recalcular importes en el cliente.
@@ -36,7 +37,7 @@ export function TendenciaReporte({ serie, medidas, onAbrir }) {
 
 export function ComparacionGrupos({ grupos, periodoActual, periodoAnterior, onAbrir }) {
   const medidas = [["anterior", periodoAnterior.slice(0, 7)], ["actual", periodoActual.slice(0, 7)]];
-  const datos = [...grupos].sort((a, b) => Number(b.actual?.aprobados || 0) - Number(a.actual?.aprobados || 0)).slice(0, 8).map((g, i) => ({
+  const datos = gruposComparados(grupos).map((g, i) => ({
     nombre: `${i + 1}. ${g.concepto_nombre}`, titulo: `${g.area_nombre} · ${g.concepto_nombre}`, grupo: g,
     actual: g.actual ? Number(g.actual.aprobados) : null, anterior: g.anterior ? Number(g.anterior.aprobados) : null,
     exactos: { actual: g.actual?.aprobados ?? null, anterior: g.anterior?.aprobados ?? null },

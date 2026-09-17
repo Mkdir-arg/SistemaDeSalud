@@ -103,6 +103,51 @@ y superficies, bordes, controles y foco del sistema existente.
 
 ## Verificación reproducible
 
+### Variaciones y descarga PDF
+
+Las variaciones positivas usan el verde del sistema; las negativas, rojo. Cero,
+ausencia de registros y falta de base siguen neutros. Los signos permanecen
+visibles: el color no es el único indicador ni expresa conveniencia económica.
+
+**Descargar PDF** genera un archivo local, sin servicios de conversión externos.
+Se incorporaron **jsPDF 4.2.1** y **jsPDF-AutoTable 5.0.8**, aprobados por el
+usuario. El generador se carga al pulsar el botón; no agrega consultas financieras.
+
+- Incluye institución, área, períodos, trayectoria, ARS, alcance autorizado y
+  fecha de consulta por fuente. Distingue registros vigentes de una versión
+  histórica congelada; los períodos pasados no constituyen un cierre contable.
+- Los gráficos reutilizan los SVG de Recharts, con fondo blanco y texto oscuro
+  para imprimir. Conservan las series, escalas, huecos y paleta de pantalla.
+  Las barras incluyen referencias numeradas de área y concepto: en papel no hay
+  tooltips para distinguir conceptos repetidos en áreas diferentes.
+- Las tablas toman la selección y orden de `TablaAgregadaFinanzas` antes de
+  paginar: incluyen todas las filas filtradas y las series mensuales aunque su
+  detalle esté cerrado. Los filtros locales no alteran gráficos ni indicadores.
+- Formato A4, texto seleccionable, encabezados de tabla repetidos y páginas
+  numeradas. Importe y porcentaje tienen columnas separadas para mantener el
+  cero y la falta de base neutros independientemente del signo del otro valor.
+- Consultas pendientes o fallidas bloquean la descarga. Los filtros numéricos
+  inválidos muestran un error. Ante fallo de generación no se entrega un PDF
+  parcial; se indica recargar, necesario si el navegador retuvo un import fallido.
+
+Archivos principales: `ReportesEjecutivos.jsx` (botón, instantánea y colores),
+`TablaAgregadaFinanzas.jsx` (selección completa sin duplicar filtros) y
+`reportePdf.js` (documento y paginación). No cambia cálculos ni permisos.
+
+La skill `pdf` orientó la inspección de páginas rasterizadas y extracción de
+texto con PyMuPDF; Playwright verificó descarga, contenido, filtros, orden,
+permisos, estados vacíos, errores, recuperación y móvil oscuro. El escenario de
+31 filas filtradas verifica que cambiar de página no recorte la exportación.
+También se descargó y revisó un PDF autenticado con la población ficticia de la
+demo. No se repoblaron bases ni se modificó la demo compartida.
+
+Límites: gráficos rasterizados a triple resolución y texto en fuentes PDF
+estándar para español; el archivo no contiene los enlaces interactivos al detalle
+de la aplicación. No hay prueba de volumen hospitalario ni de todos los lectores
+PDF. Los dos riesgos señalados por el usuario (filtros poco visibles y confusión
+entre información histórica/actual) se abordan con contexto explícito en el
+documento y pruebas de contenido; su aceptación visual sigue pendiente.
+
 ### Interfaz y tablas del 17/09/2026
 
 El estado de repartos acompaña la descripción del módulo. La comparación usa
@@ -186,13 +231,20 @@ Playwright cubre ambos períodos, navegación completa, estados, permisos y móv
 Resultado final: 280 pruebas backend aprobadas, 24 omitidas por requerir
 PostgreSQL y 60 subpruebas aprobadas al ejecutar `apps/finanzas/` junto con
 `apps/financiadores/test_cobertura.py` y `apps/financiadores/test_recuperacion.py`.
-Playwright: 132 pruebas aprobadas, incluidas filas tabulares, filtros visibles
-y navegación sin búsquedas heredadas. La última corrección sólo cambia frontend;
-no repite backend, cuya validación anterior corresponde a `006de0e`.
+Playwright: 138 pruebas aprobadas en la suite completa con PDF, colores y el
+cambio concurrente de marca integrado. Tras agregar referencias impresas de
+área y concepto, se repitieron los 17 casos de reportería/PDF: todos aprobados.
+Backend se repitió con `config.settings_financiadores_test`: 280 aprobadas,
+24 omitidas por requerir PostgreSQL y 60 subpruebas aprobadas. La sesión usa
+`SALUD_URL=http://127.0.0.1:5190` en un checkout aislado para preservar la tarea
+concurrente. `npm run build` y `git diff --check` correctos.
 Una corrida previa sufrió una recarga durante el caso de error 403; el caso
 aisladamente y la suite completa sin ediciones simultáneas pasaron después.
 Build, comprobaciones de Django, ausencia de migraciones y validación de OpenAPI
-correctos. La auditoría CSS conserva los dos hallazgos preexistentes descritos abajo.
+correctos en la implementación original; en esta iteración se repitieron build,
+pytest y Playwright. La auditoría CSS conserva los dos hallazgos preexistentes
+descritos abajo. `npm audit --omit=dev` señala dos moderados preexistentes en
+`react-router`/`react-router-dom`, ninguno en las nuevas dependencias PDF.
 
 Se aplicaron brainstorming para delimitar magnitudes, interface-design para la
 jerarquía y navegación, Playwright para verificar escritorio/móvil y code-review

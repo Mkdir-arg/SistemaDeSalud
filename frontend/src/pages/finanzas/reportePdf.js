@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { importeARS } from "@/api/finanzas";
 import { fechaHora } from "@/lib/format";
+import { gruposComparados } from "./reportes";
 
 // Se importa sólo al descargar. No se envían datos a un servicio de conversión.
 const tinta = "#243444", tenue = "#536574", petroleo = "#287f92";
@@ -177,6 +178,7 @@ export async function descargarReportePdf(informe) {
     nuevaPagina();
     await grafico("grupos_gastos", "Gastos por área y concepto · ARS", [[referencia.anterior.periodo_economico.slice(0, 7), "#82949e"], [informe.mes, petroleo]], informe.gastos.agrupaciones.length > 0);
     parrafo("Gráfico: hasta ocho grupos con mayor aprobado actual. La tabla conserva su propia selección y orden.", { tamano: 8 });
+    if (informe.gastos.agrupaciones.length) parrafo(gruposComparados(informe.gastos.agrupaciones).map((g, i) => `${i + 1}. ${g.area_nombre} · ${g.concepto_nombre}`).join("\n"), { tamano: 8 });
     detalle("reporte_grupos_gastos");
   }
   if (informe.dinero) {
