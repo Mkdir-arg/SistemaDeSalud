@@ -181,7 +181,7 @@ todos los pasos para que ninguna bandeja ni fila quede vacía.
   en cada corrida.
 
 **Accesos** (contraseña `demo1234`, salvo el admin):
-- `admin@cauce.local` / `admin1234` — super admin (ve todo, configura).
+- `admin@salud.local` / `admin1234` — super admin (ve todo, configura).
 - `guardia.adm@hospital.gob.ar` — admisión (arranca el ingreso).
 - `guardia.enf@hospital.gob.ar` — enfermería (triage).
 - `guardia.med@hospital.gob.ar` — médico de guardia (atención y conducta).

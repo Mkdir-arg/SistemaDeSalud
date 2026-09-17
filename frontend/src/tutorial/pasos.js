@@ -8,7 +8,7 @@
  * Reglas del guion, aprendidas armándolo:
  *
  *  - Los campos se nombran con la etiqueta que se VE, sin el asterisco. «Rol en»
- *    alcanza para «Rol en Hospital Escuela Cauce *»: el guion no puede saber el
+ *    alcanza para «Rol en Hospital Escuela Salud *»: el guion no puede saber el
  *    nombre de la institución de antemano.
  *  - Las opciones de un desplegable se eligen por texto y conviene que sea el
  *    trozo estable. En «Profesional» la app muestra el nombre completo o el mail
@@ -29,7 +29,7 @@ export const DEMO_STEPS = [
     route: "/inicio",
     target: '[data-tour="inicio-institucion"]',
     title: "Modo escuela: el sistema desde cero",
-    body: "Se crea una institución aparte, Hospital Escuela Cauce, y se la puebla paso a paso como el primer día de una implementación. No es un modo de prueba: son las mismas pantallas, los mismos formularios y la misma base que en producción, sobre un establecimiento que se puede vaciar y volver a construir.",
+    body: "Se crea una institución aparte, Hospital Escuela Salud, y se la puebla paso a paso como el primer día de una implementación. No es un modo de prueba: son las mismas pantallas, los mismos formularios y la misma base que en producción, sobre un establecimiento que se puede vaciar y volver a construir.",
     guion: [
       { t: "salir", decir: "Salimos al directorio de la plataforma" },
       { t: "click", boton: "Nueva institución", abreDialogo: true, decir: "Tocamos Nueva institución" },
@@ -67,7 +67,7 @@ export const DEMO_STEPS = [
     guion: [
       { t: "ir", ruta: "/administracion", menu: '[data-tour="menu-administracion"]', decir: "Vamos a Administración" },
       { t: "click", boton: "Crear usuario", abreDialogo: true, decir: "Tocamos Crear usuario" },
-      { t: "escribir", campo: "Email", valor: "escuela.med@cauce.local", decir: "Con qué mail entra" },
+      { t: "escribir", campo: "Email", valor: "escuela.med@salud.local", decir: "Con qué mail entra" },
       { t: "escribir", campo: "Nombre", valor: "Santiago", decir: "Nombre" },
       { t: "escribir", campo: "Apellido", valor: "Vera", decir: "Apellido" },
       { t: "escribir", campo: "Contraseña", valor: "demo1234", decir: "Contraseña inicial" },

@@ -96,9 +96,9 @@ class TraduccionTests(TestCase):
     def test_una_fecha_parcial_del_padron_no_se_guarda_como_fecha(self):
         """
         `1985` y `1985-03` son birthDate válidas en FHIR R4 y frecuentes en
-        padrones; el DateField de Cauce no las admite. Copiarlas tal cual levanta
+        padrones; el DateField de I-Core Salud no las admite. Copiarlas tal cual levanta
         ValidationError dentro de la transacción del motor y el ingreso se cae
-        entero. Una fecha que Cauce no puede representar es mejor vacía.
+        entero. Una fecha que Salud no puede representar es mejor vacía.
         """
         for parcial in ("1985", "1985-03", "no sé", "1985-02-30"):
             with self.subTest(parcial=parcial):

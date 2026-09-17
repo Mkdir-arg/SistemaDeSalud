@@ -1,4 +1,4 @@
-# Cauce — Constructor y motor de flujos
+# I-Core Salud — Constructor y motor de flujos
 
 > Un editor visual donde se **diseña** un proceso como diagrama (pasos, formularios, decisiones) y ese mismo diagrama se **ejecuta**: otros usuarios completan casos reales que avanzan paso a paso, se derivan entre áreas y quedan registrados. Pensado para procesos tipo hospital o trámites del Estado.
 
@@ -44,7 +44,7 @@ Las instituciones son **independientes** (no se agrupan en jurisdicciones ni red
 
 | Archivo | Qué es |
 |---|---|
-| `Cauce - Procesos.dc.html` | **El prototipo completo** — todas las pantallas, interactivo |
+| `Salud - Procesos.dc.html` | **El prototipo completo** — todas las pantallas, interactivo |
 | `Demo del sistema.dc.html` | Video animado tipo pitch (9 escenas, autoplay) |
 | `Sistema de diseno.dc.html` | Página visual del sistema de diseño (paleta, tipografía, componentes) |
 | `docs/01-manual-de-marca.md` | Identidad, voz y tono, logo, color, tipografía |
@@ -60,7 +60,7 @@ Las instituciones son **independientes** (no se agrupan en jurisdicciones ni red
 
 ## 6. Cómo ver el prototipo
 
-Los `.dc.html` son archivos autocontenidos (solo dependen del runtime `support.js` incluido). Abrir `Cauce - Procesos.dc.html` en un navegador moderno.
+Los `.dc.html` son archivos autocontenidos (solo dependen del runtime `support.js` incluido). Abrir `Salud - Procesos.dc.html` en un navegador moderno.
 
 - **Selector de rol** (header): Super admin / Configurador / Administrativo / Admin de institución. Cambia el menú y el mundo visual.
 - **Ingresar a una institución** desde el directorio (super admin) o entrar directo (admin de institución).

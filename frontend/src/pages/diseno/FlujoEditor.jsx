@@ -91,7 +91,7 @@ function listaACondicion(op, reglas) {
   return { op, reglas: utiles };
 }
 
-// `max_page_size` de la paginación del backend (cauce/pagination.py).
+// `max_page_size` de la paginación del backend (config/pagination.py).
 const PAGINA_MAX = 200;
 
 /**
@@ -2760,7 +2760,7 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
   const [titulo, setTitulo] = useState(nodo.titulo);
   // La preferencia de ayuda se recuerda entre nodos (localStorage) en vez de
   // resetearse cada vez que se selecciona otro nodo.
-  const [ayuda, setAyuda] = useState(() => localStorage.getItem("cauce.ayudaNodo") === "1");
+  const [ayuda, setAyuda] = useState(() => localStorage.getItem("salud.ayudaNodo") === "1");
   const [areas, setAreas] = useState([]);
   const [flujos, setFlujos] = useState([]);
   const [formularios, setFormularios] = useState([]);
@@ -2815,7 +2815,7 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
         </span>
         <div style={{ flex: 1, fontSize: "var(--text-sm)", fontWeight: 700, letterSpacing: ".5px", color: cat.sol }}>{cat.name.toUpperCase()}</div>
         <button
-          onClick={() => setAyuda((v) => { localStorage.setItem("cauce.ayudaNodo", v ? "0" : "1"); return !v; })}
+          onClick={() => setAyuda((v) => { localStorage.setItem("salud.ayudaNodo", v ? "0" : "1"); return !v; })}
           title="¿Qué hace este nodo?"
           aria-label="¿Qué hace este nodo?"
           style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", border: `1px solid ${ayuda ? "var(--color-accent)" : "var(--color-campo-borde)"}`, background: ayuda ? "var(--color-accent-50)" : "var(--color-superficie)", color: ayuda ? "var(--color-accent)" : "var(--color-texto-debil)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}
@@ -3127,8 +3127,8 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
               hint={
                 (nodo.config || {}).fhir
                   // Poner acá la URL de búsqueda completa es el error más común:
-                  // Cauce le agrega `/Patient?identifier=…` por su cuenta.
-                  ? "La base del servidor FHIR, sin /Patient: Cauce arma la búsqueda."
+                  // I-Core Salud le agrega `/Patient?identifier=…` por su cuenta.
+                  ? "La base del servidor FHIR, sin /Patient: Salud arma la búsqueda."
                   : undefined
               }
             >

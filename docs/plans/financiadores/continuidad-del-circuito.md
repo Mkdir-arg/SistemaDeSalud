@@ -29,7 +29,7 @@ Recomiendo completar primero la convivencia del padrón y el legado, preparar la
 activación y luego incorporar autorizaciones en incrementos. Una alternativa válida
 es priorizar autorizaciones en un hospital nuevo sin datos históricos: entrega antes
 esa funcionalidad, pero posterga la coherencia del padrón y exige mantener acotado el
-piloto. Para la continuidad general de Cauce, la primera secuencia cubre mejor lo que
+piloto. Para la continuidad general de I-Core Salud, la primera secuencia cubre mejor lo que
 el hospital ya ve y usa.
 
 ## 2. Estado inicial contrastado con código e issues
@@ -122,7 +122,7 @@ declarado, las afiliaciones vigentes y la elección histórica de cada caso.
 
 **Archivos:** `registros/views.py`, `serializers.py`, consulta administrativa en
 `financiadores`, `PadronDetalle.jsx`, `Registros.jsx`, componentes compartidos de
-paciente y las rutas existentes de cobertura. Reutilizar componentes de Cauce.
+paciente y las rutas existentes de cobertura. Reutilizar componentes de Salud.
 
 **Aceptación:** un cambio de obra social se ve para nuevos ingresos sin alterar el
 caso anterior; ninguna pantalla llama «verificada» a un texto; sin historia clínica

@@ -20,7 +20,7 @@ El resultado actual incluye padrón y legado diferenciados, autorizaciones, usos
 - [Decisiones sobre las consultas acumuladas](consultas-pendientes.md): recomendaciones Q01–Q13 aprobadas y su alcance.
 - [Contratos, estados y validación](contratos-y-validacion.md).
 - [Planillas de ejemplo](plantillas/README.md): consumos de dos financiadores y padrón; formato propuesto, datos ficticios.
-- [Simulador de cupos](../../../backend/apps/finanzas/prototipo_cupo_cobertura.py): ejecutable local en memoria, sin integración con Cauce.
+- [Simulador de cupos](../../../backend/apps/finanzas/prototipo_cupo_cobertura.py): ejecutable local en memoria, sin integración con I-Core Salud.
 - [Resultados y límites de la preparación](validacion-preparacion.md).
 
 ## 1. Primera entrega demostrable
@@ -103,12 +103,12 @@ Un usuario con varios ámbitos elige una organización concreta. Toda URL, expor
 1. **Arancel ≠ costo ≠ deuda ≠ cobro.** Una asunción hospitalaria no crea una deuda del hospital consigo mismo ni un segundo gasto que duplique el costo asistencial.
 2. La suma de las partes de una distribución coincide con el arancel aplicable por la cantidad realizada. La suma no vuelve a incluir el saldo original cuando se registra una resolución.
 3. Sólo las partes con responsable válido y condiciones cumplidas generan obligaciones positivas. Una parte de cero no genera una obligación, cuyo modelo actual exige importe positivo.
-4. Un consumo externo modifica cobertura, no crea actividad ni deuda de un hospital de Cauce.
+4. Un consumo externo modifica cobertura, no crea actividad ni deuda de un hospital de Salud.
 5. La reserva pasa a consumo una sola vez. Reintentos, doble clic y recuperación no duplican cupo ni obligaciones.
 6. Las consultas de cobertura no reservan. Una reserva antigua no vence por tiempo; se revisa según D27.
 7. Concurrencia: revalidar dentro de la transacción que decide, no sólo al mostrar el resumen o la cotización.
 8. El caso conserva la afiliación seleccionada. Se conserva el histórico al corregirla y se siguen evaluando reglas a la fecha del hecho según #16.
-9. Mes/año se determinan por la fecha de la prestación, no por la de importación. La zona configurada en Cauce es `America/Argentina/Buenos_Aires`.
+9. Mes/año se determinan por la fecha de la prestación, no por la de importación. La zona configurada en Salud es `America/Argentina/Buenos_Aires`.
 10. Una carga tardía conserva las decisiones realizadas y señala discrepancias D14. Q01 conserva también las reservas confirmadas y marca la discrepancia.
 11. No se representan importes con `float`. #16 propone redondeo decimal a dos posiciones, mitad hacia arriba; calcular una parte y obtener la otra por diferencia para conservar el total.
 12. Agotar cupo es distinto de no poder evaluar por un error o falta de datos. Un fallo técnico no se transforma en deuda al paciente.
@@ -132,9 +132,9 @@ Un usuario con varios ámbitos elige una organización concreta. Toda URL, expor
 | Organización | Completar información propia permitida | Datos administrativos; alta de organización e invitación inicial según #14 |
 | Planes y cobertura | Configurar qué cubre y desde cuándo | Prestaciones del catálogo común, porcentaje, tope y período; revisión de cambios antes de publicar |
 | Afiliados | Mantener padrón | Búsqueda, plan e historial, plantilla, resumen de altas/actualizaciones y errores; sin bajas por Excel |
-| Consumos externos | Poner al día el uso fuera de Cauce | Carga individual o Excel personalizado; resumen y resultados por fila |
+| Consumos externos | Poner al día el uso fuera de Salud | Carga individual o Excel personalizado; resumen y resultados por fila |
 | Convenios y aranceles | Consultar condiciones con hospitales | Arancel general y excepción aplicable; el hospital carga los valores |
-| Consumos en Cauce | Explicar el uso de su cobertura | Prestación, fecha, cantidad e importe propio autorizado; acceso mínimo, sin historia clínica |
+| Consumos en Salud | Explicar el uso de su cobertura | Prestación, fecha, cantidad e importe propio autorizado; acceso mínimo, sin historia clínica |
 | Usuarios | Administrar operadores propios | Roles y permisos limitados a su financiador |
 | Autorizaciones | Incremento posterior Q06 | Solicitudes y justificación mínima cuando el circuito completo esté habilitado |
 

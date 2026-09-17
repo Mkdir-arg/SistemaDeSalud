@@ -43,7 +43,7 @@ test.describe("Directorio de plataforma", () => {
   test("el total del subtítulo es el del servidor, no el de la página", async ({ page }) => {
     const porApi = await page.evaluate(async () => {
       const r = await fetch("/api/instituciones/?page_size=1", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("cauce.access")}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem("salud.access")}` },
       });
       return (await r.json()).count;
     });
@@ -70,7 +70,7 @@ test.describe("Directorio de plataforma", () => {
 
   for (const tema of ["claro", "oscuro"]) {
     test(`sin fallos de contraste AA (${tema})`, async ({ page }) => {
-      await page.evaluate((t) => localStorage.setItem("cauce.tema", t), tema);
+      await page.evaluate((t) => localStorage.setItem("salud.tema", t), tema);
       await page.reload();
       await expect(page.getByRole("heading", { name: "Instituciones" })).toBeVisible();
       await expect(page.locator('[role="status"]')).toHaveCount(0);

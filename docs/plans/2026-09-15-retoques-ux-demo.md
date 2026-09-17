@@ -66,7 +66,7 @@ control de versión. La guía Los Aromos, Markdown y HTML, refleja estos cambios
   recibe conflicto. Se corrigió el cierre de conexiones del propio test concurrente.
 - Ambos comandos se ejecutaron mediante `manage.py shell` y `call_command('test', ...)`,
   fijando NAME a `finanzas_ux_validation` y TEST.NAME a
-  `test_finanzas_ux_demo_20260915`. La base temporal se retiró; `cauce` no fue destino.
+  `test_finanzas_ux_demo_20260915`. La base temporal se retiró; `salud` no fue destino.
 - Frontend: `npx playwright test --config playwright.finanzas-ui.config.js
   --output C:/Users/Juanito/AppData/Local/Temp/finanzas-ux-integrada-final-20260915`,
   114 pruebas OK (2,5 min), API simulada. Cubre acciones, alcances, errores,

@@ -1,21 +1,21 @@
 """
-Traducción de los datos de Cauce a recursos FHIR R4.
+Traducción de los datos de I-Core Salud a recursos FHIR R4.
 
 **Por qué existe esto.** «¿Se integra con nuestro sistema?» es la primera
 pregunta del área de sistemas de cualquier organismo, y hasta acá la respuesta
 era «hay una API REST». Es cierto y no alcanza: una API propia obliga al otro
-lado a escribir un adaptador para Cauce. FHIR es el idioma que ya hablan, y
+lado a escribir un adaptador para Salud. FHIR es el idioma que ya hablan, y
 hablarlo convierte semanas de integración en configurar una URL.
 
 **Qué NO hace esto, dicho antes de que alguien lo suponga.**
 
-  · No inventa códigos. Donde Cauce guarda texto libre —«obra social: OSDE»,
+  · No inventa códigos. Donde Salud guarda texto libre —«obra social: OSDE»,
     «condiciones: hipertensión»— se emite texto libre. Poner eso bajo un
     `system` de SNOMED o de la nomenclatura nacional daría un dato que parece
     codificado y no lo está, y del otro lado alguien lo va a procesar como si
     lo estuviera. Un campo vacío se nota; uno mal codificado, no.
 
-  · No cubre FHIR entero. Se mapea lo que Cauce realmente tiene: quién es la
+  · No cubre FHIR entero. Se mapea lo que Salud realmente tiene: quién es la
     persona (Patient), dónde se la atendió (Organization) y qué episodio de
     atención hubo (Encounter). Anunciar recursos que devuelven cáscaras vacías
     es peor que declarar tres y que funcionen.
@@ -30,7 +30,7 @@ Perfil: FHIR R4 (4.0.1).
 # tiene que poder decir en qué padrón está ese número.
 SISTEMA_DNI = "http://www.renaper.gob.ar/dni"
 
-# Los identificadores propios de Cauce van bajo una URN de la institución que
+# Los identificadores propios de Salud van bajo una URN de la institución que
 # corre el sistema. No se usa una URL http: sugeriría que hay algo publicado ahí.
 SISTEMA_LOCAL = "urn:cauce:id"
 
@@ -50,7 +50,7 @@ def patient(c) -> dict:
     Un `Ciudadano` como `Patient`.
 
     `name` va como lista porque FHIR contempla que una persona tenga varios
-    nombres (de nacimiento, de casada, el que usa). Cauce guarda uno solo: se
+    nombres (de nacimiento, de casada, el que usa). Salud guarda uno solo: se
     emite uno solo, con `use: official`, en vez de fingir que hay más.
     """
     identificadores = []
@@ -95,7 +95,7 @@ def patient(c) -> dict:
             "valueString": c.obra_social,
         }]
 
-    # `gender` no se emite: Cauce no lo guarda. Mandar "unknown" sería afirmar
+    # `gender` no se emite: Salud no lo guarda. Mandar "unknown" sería afirmar
     # que se preguntó y no se sabe, cuando en realidad nunca se preguntó.
     return recurso
 
@@ -144,7 +144,7 @@ def organization(i) -> dict:
             "system": "http://www.afip.gob.ar/cuit", "value": i.cuit,
         })
     if i.tipo:
-        # Sin `system`: el tipo de establecimiento es texto libre en Cauce y no
+        # Sin `system`: el tipo de establecimiento es texto libre en Salud y no
         # hay forma honesta de mapearlo a la tabla de FHIR sin adivinar.
         recurso["type"] = [{"text": i.tipo}]
     if i.direccion:
@@ -156,7 +156,7 @@ def organization(i) -> dict:
 # Encounter
 # --------------------------------------------------------------------------- #
 #
-# El estado del caso en Cauce y el de un Encounter no son la misma escala, y
+# El estado del caso en Salud y el de un Encounter no son la misma escala, y
 # forzarlos uno a uno perdería lo que importa. Lo que un sistema externo
 # necesita saber es si el episodio está abierto, terminado o anulado.
 #
@@ -174,7 +174,7 @@ ESTADO_ENCOUNTER = {
 }
 
 # La prioridad sí tiene tabla estándar y vale usarla: es de las pocas cosas que
-# un sistema externo puede accionar sin conocer nada de Cauce.
+# un sistema externo puede accionar sin conocer nada de Salud.
 PRIORIDAD = {
     "normal": ("R", "routine"),
     "alta": ("UR", "urgent"),
@@ -188,7 +188,7 @@ def encounter(caso) -> dict:
         "id": str(caso.id),
         "identifier": [{"system": f"{SISTEMA_LOCAL}:caso", "value": str(caso.id)}],
         "status": ESTADO_ENCOUNTER.get(caso.estado, "unknown"),
-        # `class` es obligatorio en R4. Cauce no distingue ambulatorio de
+        # `class` es obligatorio en R4. Salud no distingue ambulatorio de
         # internación a nivel del caso —lo dice la cama, si la hay—, así que se
         # emite lo que se puede sostener.
         "class": {
@@ -288,7 +288,7 @@ def operation_outcome(severidad, codigo, mensaje) -> dict:
     El error, en el formato en que un cliente FHIR sabe leerlo.
 
     Un 404 con el JSON de error de Django obliga al otro lado a escribir un caso
-    especial para Cauce, que es justamente lo que esta fachada existe para
+    especial para Salud, que es justamente lo que esta fachada existe para
     evitar.
     """
     return {

@@ -181,7 +181,7 @@ conserva ese origen al recuperarlo, aunque el hospital esté desactivado o cambi
 Comando focal reproducible desde `backend`:
 
 ```text
-python manage.py test apps.financiadores.test_legado apps.financiadores.test_preparacion --settings=cauce.settings_financiadores_test --noinput
+python manage.py test apps.financiadores.test_legado apps.financiadores.test_preparacion --settings=config.settings_financiadores_test --noinput
 ```
 
 Las pruebas cubren SQL de diagnóstico exclusivamente de lectura, aislamiento,

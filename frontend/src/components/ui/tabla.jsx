@@ -8,7 +8,7 @@ import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados
 import { cn } from "@/lib/cn";
 
 const TAMANOS = [25, 50, 100];
-const CLAVE_DENSIDAD = "cauce.densidad";
+const CLAVE_DENSIDAD = "salud.densidad";
 
 /**
  * Estado de la tabla en la URL: página y orden.

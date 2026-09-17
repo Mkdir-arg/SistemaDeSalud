@@ -24,7 +24,7 @@ from .models import Caso, ValorCampo
 
 class CamasGuardasTests(TestCase):
     def setUp(self):
-        self.jefe = Usuario.objects.create_superuser("guarda@cauce.local", "x", nombre="Jefe")
+        self.jefe = Usuario.objects.create_superuser("guarda@salud.local", "x", nombre="Jefe")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Internación")
         self.uti = Subarea.objects.create(area=self.area, nombre="UTI")
@@ -76,7 +76,7 @@ class CamasGuardasTests(TestCase):
 
     def test_no_se_puede_internar_en_una_cama_de_otro_hospital(self):
         """
-        Cauce es multi-institución. Una cama del Hospital del Norte ocupada por
+        I-Core Salud es multi-institución. Una cama del Hospital del Norte ocupada por
         un caso del Central desaparece del tablero del Norte —figura ocupada por
         alguien que nunca llegó— y ahí nadie puede liberarla, porque el egreso lo
         da el caso del otro hospital.
@@ -242,7 +242,7 @@ class CamposRequeridosTests(TestCase):
     """
 
     def setUp(self):
-        self.user = Usuario.objects.create_superuser("req@cauce.local", "x", nombre="Op")
+        self.user = Usuario.objects.create_superuser("req@salud.local", "x", nombre="Op")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.form = Formulario.objects.create(institucion=self.inst, titulo="Triage")
@@ -320,7 +320,7 @@ class DecisionSinRamaPorDefectoTests(TestCase):
     """
 
     def setUp(self):
-        self.user = Usuario.objects.create_superuser("dec@cauce.local", "x", nombre="Dis")
+        self.user = Usuario.objects.create_superuser("dec@salud.local", "x", nombre="Dis")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.form = Formulario.objects.create(institucion=self.inst, titulo="Triage")

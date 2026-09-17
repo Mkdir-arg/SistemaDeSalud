@@ -40,7 +40,7 @@ export default function Directorio() {
         <div className="flex items-center gap-2.5 px-[18px] pb-3.5 pt-[18px]">
           <Logo size={34} />
           <div>
-            <div className="text-xl font-extrabold tracking-tight">Cauce</div>
+            <div className="text-xl font-extrabold tracking-tight">I-Core Salud</div>
             <div className="text-micro font-bold tracking-wider text-texto-tenue">PLATAFORMA</div>
           </div>
         </div>

@@ -639,7 +639,7 @@ class ExportacionCSVTests(APITestCase):
         Recorre todos los viewsets registrados, así que cubre también los que se
         agreguen después.
         """
-        from cauce.api import router
+        from config.api import router
 
         faltantes = []
         for _, viewset, basename in router.registry:

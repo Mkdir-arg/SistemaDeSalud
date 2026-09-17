@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const CLAVE = "cauce.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
+const CLAVE = "salud.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
 
 /** Aplica el tema al <html>. Se exporta para poder llamarlo antes de montar React. */
 export function aplicarTema(tema) {

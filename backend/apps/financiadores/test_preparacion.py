@@ -236,7 +236,7 @@ class EnsayoMigracionRestauracionTests(unittest.TestCase):
         alias = "ensayo_financiadores_" + uuid4().hex
         # Hay migraciones antiguas con ORM sin .using(alias). Se enrutan al
         # ensayo y además se prohíbe consultar default, incluso por SQL directo.
-        with (tempfile.TemporaryDirectory(prefix="cauce-ensayo-migracion-") as directorio,
+        with (tempfile.TemporaryDirectory(prefix="salud-ensayo-migracion-") as directorio,
               patch.object(router, "routers", [_SoloBaseEnsayo(alias)]),
               connection.execute_wrapper(_prohibir_consulta_default)):
             ruta = Path(directorio)

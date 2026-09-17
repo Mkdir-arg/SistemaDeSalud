@@ -8,7 +8,7 @@
 > El rol **médico** comparte exactamente este mundo y agrega la **firma de
 > atenciones** — ver [`05-medico.md`](05-medico.md).
 
-**Usuario de demo:** `operador@cauce.local` / `demo1234` (Carla Ibáñez, Hospital Central · Admisión)
+**Usuario de demo:** `operador@salud.local` / `demo1234` (Carla Ibáñez, Hospital Central · Admisión)
 
 ---
 

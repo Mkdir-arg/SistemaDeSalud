@@ -11,8 +11,8 @@ async function preparar(page, opciones = {}) {
   const escrituras = [];
   const lecturas = [];
   await page.addInitScript((institucion) => {
-    localStorage.setItem("cauce.access", "token-ficticio-interceptado");
-    localStorage.setItem("cauce.institucion", JSON.stringify(institucion));
+    localStorage.setItem("salud.access", "token-ficticio-interceptado");
+    localStorage.setItem("salud.institucion", JSON.stringify(institucion));
   }, instituciones[0]);
   await page.route("**/api/**", async (route) => {
     const request = route.request();

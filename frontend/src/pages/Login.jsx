@@ -6,7 +6,7 @@ import { Icon } from "@/components/icons";
 import { LogoFull } from "@/components/Logo";
 
 /**
- * Login de Cauce. Pantalla partida: panel de marca + formulario.
+ * Login de I-Core Salud. Pantalla partida: panel de marca + formulario.
  *
  * El panel de marca NO sigue el tema: es una superficie de identidad, con su
  * degradado propio y texto blanco encima. El lado del formulario sí, porque ya

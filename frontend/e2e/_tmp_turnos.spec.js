@@ -26,7 +26,7 @@ async function login(page, email, pass = "demo1234") {
 
 test("A · crear la agenda y sus franjas", async ({ page }) => {
   test.setTimeout(180_000);
-  await login(page, "admin@cauce.local", "admin1234");
+  await login(page, "admin@salud.local", "admin1234");
 
   await page.locator("aside").getByRole("link", { name: "Estructura organizativa", exact: true }).click();
   await esperarPantalla(page);

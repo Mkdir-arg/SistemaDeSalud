@@ -21,7 +21,7 @@ La afiliación se registra después de abrir el caso: el ingreso y la atención 
 - `apps/casos/views.py`: usa el mixin de cobertura e inicializa el área del caso con la del flujo al crear el ingreso. La prueba real detectó que antes quedaba vacía: un operador restringido al área recibía 403 en cobertura y el hecho financiero perdía el área de origen.
 - `apps/casos/motor.py:avanzar`: bloquea y relee el caso antes de completar el paso. Una confirmación que llega después encuentra el paso actualizado; si confirma primero, la atención captura esa reserva. Una instancia vieja no sobrescribe una actualización concurrente.
 - `cobertura.py:seleccionar_afiliacion`: conserva cada selección, agrega su evento a la trazabilidad del caso y actualiza su fecha para descartar formularios viejos.
-- `frontend/src/pages/financiadores/CoberturaCaso.jsx` y `HistorialCoberturaPaciente.jsx`: panel y pestaña reutilizando componentes de Cauce. Al cambiar contexto, afiliación o permisos se descartan cotización y consentimiento. Los errores financieros dejan disponible el formulario clínico.
+- `frontend/src/pages/financiadores/CoberturaCaso.jsx` y `HistorialCoberturaPaciente.jsx`: panel y pestaña reutilizando componentes de I-Core Salud. Al cambiar contexto, afiliación o permisos se descartan cotización y consentimiento. Los errores financieros dejan disponible el formulario clínico.
 - Integraciones pequeñas en `CasoDetalle.jsx`, `HistoriaDetalle.jsx`, `MiTrabajo.jsx` y nombre legible del recurso en `lib/auditoria.js`. El detalle del caso también corrige el desborde de su columna en móvil.
 
 ## Evidencia
@@ -35,10 +35,10 @@ Interfaz: 48 pruebas Playwright aprobadas (12 nuevas del circuito y 36 del porta
 Regresión final: **689/689 pruebas aprobadas en PostgreSQL 16, sin omisiones, 81,593 s**. Comandos ejecutados:
 
 ```text
-python manage.py test apps.casos apps.financiadores apps.registros apps.auditoria apps.finanzas.test_cobros --settings=cauce.settings_financiadores_postgres_test --verbosity=0
-python manage.py check --settings=cauce.settings_financiadores_test
-python manage.py makemigrations --check --dry-run --settings=cauce.settings_financiadores_test
-python manage.py spectacular --validate --fail-on-warn --file <temporal>/cauce-circuito-openapi.yaml --settings=cauce.settings_financiadores_test
+python manage.py test apps.casos apps.financiadores apps.registros apps.auditoria apps.finanzas.test_cobros --settings=config.settings_financiadores_postgres_test --verbosity=0
+python manage.py check --settings=config.settings_financiadores_test
+python manage.py makemigrations --check --dry-run --settings=config.settings_financiadores_test
+python manage.py spectacular --validate --fail-on-warn --file <temporal>/salud-circuito-openapi.yaml --settings=config.settings_financiadores_test
 npx --no-install playwright test --config=playwright.financiadores-ui.config.js
 npm run build
 ```
@@ -52,7 +52,7 @@ Recorrido adicional con navegador, API y SQLite de demo reales, sin interceptar 
 3. Ingresa a Diego con una afiliación declarada pendiente y completa la atención desde el mismo formulario.
 4. Caso **8**: prestación realizada, caso cerrado, evaluación pendiente y ninguna obligación financiera. Ambos hechos conservan el área de origen.
 
-La consulta directa a la base dedicada corroboró esos importes y estados. Capturas y scripts en `%LOCALAPPDATA%/Cauce/demos/financiadores-main2/revision-circuito/` y su directorio padre. El ensayo inicial que expuso el área vacía quedó cancelado con motivo, sin borrar su trazabilidad ni registrar prestación.
+La consulta directa a la base dedicada corroboró esos importes y estados. Capturas y scripts en `%LOCALAPPDATA%/Salud/demos/financiadores-main2/revision-circuito/` y su directorio padre. El ensayo inicial que expuso el área vacía quedó cancelado con motivo, sin borrar su trazabilidad ni registrar prestación.
 
 ## Límites y continuidad
 
@@ -64,4 +64,4 @@ La consulta directa a la base dedicada corroboró esos importes y estados. Captu
 - La actividad con filtros, totales y exportación se implementó en el [incremento siguiente](actividad-y-exportacion.md). Continúan la conciliación hospitalaria de prestaciones/deuda/cobros y el seguimiento de pendientes. Autorizaciones previas siguen como L7 posterior.
 - Reversión del incremento: retirar las integraciones de pantalla y rutas nuevas conserva reservas, afiliaciones y obligaciones del módulo anterior; no ejecutar una migración inversa ni liberar reservas automáticamente.
 
-Skills: `interface-design` mantuvo la interfaz de Cauce; `playwright` guio los recorridos reales y simulados; `systematic-debugging` permitió distinguir fallos del fixture, del diseño móvil y del alta real. Claude realizó una revisión independiente de sólo lectura y una segunda revisión de la corrección del alta. Sus observaciones sobre áreas y visibilidad de reservas se explicitan arriba: se mantienen los permisos clínicos y todas las reservas pendientes visibles. La revisión técnica no representa aceptación del piloto ni comprobación de comprensión por parte del usuario.
+Skills: `interface-design` mantuvo la interfaz de Salud; `playwright` guio los recorridos reales y simulados; `systematic-debugging` permitió distinguir fallos del fixture, del diseño móvil y del alta real. Claude realizó una revisión independiente de sólo lectura y una segunda revisión de la corrección del alta. Sus observaciones sobre áreas y visibilidad de reservas se explicitan arriba: se mantienen los permisos clínicos y todas las reservas pendientes visibles. La revisión técnica no representa aceptación del piloto ni comprobación de comprensión por parte del usuario.

@@ -129,7 +129,7 @@ Para producción se propone evaluar `openpyxl` con protección XML y límites de
 Se incorporan al diseño como base de los issues, sujetas a la revisión conjunta; no se atribuyen a una confirmación nueva del usuario:
 
 - #14: plataforma crea el financiador e invita al primer administrador; no hay autorregistro. Las invitaciones no se envían durante esta preparación.
-- #14: convenio entre hospital y financiador con propuesta/aceptación, y posibilidad de alta directa por plataforma; falta concretar pantallas, no inventar negociaciones de arancel dentro de Cauce.
+- #14: convenio entre hospital y financiador con propuesta/aceptación, y posibilidad de alta directa por plataforma; falta concretar pantallas, no inventar negociaciones de arancel dentro de I-Core Salud.
 - #14/#16: varias afiliaciones posibles, elección de una para el caso; no combinar automáticamente financiadores complementarios.
 - #20: admin del financiador gestiona configuración/usuarios; operador y auditor tienen alcances distintos. No se otorga historia clínica por ser auditor de la obra social.
 - #16: especificidad plan+prestación → plan+categoría → financiador+prestación → financiador+categoría → default del convenio. Para evitar una regla adicional ambiguamente situada de #20, cualquier excepción por convenio fuera de ese default debe definirse antes de habilitarla.

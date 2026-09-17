@@ -55,8 +55,8 @@ Validación final del incremento:
 - Demo real, navegador → API → archivo → base: Obra Social Demo, **3 realizadas y $24.000**; Mutual Demo, **2 realizadas y $17.500**, incluida actividad histórica pendiente del segundo hospital. Se verificaron filtros persistentes, CSV equivalente, auditoría por persona/hospital y capturas en escritorio/móvil sin desborde del documento ni errores JS/HTTP. No se registró dinero ni se alteraron prestaciones en este recorrido.
 
 ```text
-python manage.py test apps.financiadores apps.casos.test_permisos_barrida apps.casos.test_esquema --settings=cauce.settings_financiadores_postgres_test --noinput
-python manage.py test apps.financiadores.test_actividad apps.financiadores.test_vigencias.ActividadHistoricaTests --settings=cauce.settings_financiadores_test
+python manage.py test apps.financiadores apps.casos.test_permisos_barrida apps.casos.test_esquema --settings=config.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.test_actividad apps.financiadores.test_vigencias.ActividadHistoricaTests --settings=config.settings_financiadores_test
 npx --no-install playwright test --config=playwright.financiadores-ui.config.js financiadores-ui.spec.js
 npx --no-install playwright test --config=playwright.financiadores-ui.config.js cobertura-clinica-ui.spec.js
 npm run build

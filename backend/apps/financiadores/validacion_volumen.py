@@ -1,7 +1,7 @@
 """Ensayo opt-in con PostgreSQL local dedicado y datos ficticios.
 
 Ejecutar explícitamente con ``manage.py test apps.financiadores.validacion_volumen
---settings=cauce.settings_financiadores_postgres_test --noinput``. El nombre evita
+--settings=config.settings_financiadores_postgres_test --noinput``. El nombre evita
 agregar esta carga a la suite habitual. ``bulk_create`` arma fuentes coherentes
 para medir lectura y auditoría; este ensayo NO valida el circuito de creación
 clínica. Los tiempos son observaciones locales, no un SLA ni una prueba de carga

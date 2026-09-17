@@ -19,7 +19,7 @@ from .models import Caso
 
 class CamasTests(TestCase):
     def setUp(self):
-        self.jefe = Usuario.objects.create_superuser("jefe@cauce.local", "x", nombre="Jefe")
+        self.jefe = Usuario.objects.create_superuser("jefe@salud.local", "x", nombre="Jefe")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Internación")
         self.uti = Subarea.objects.create(area=self.area, nombre="UTI")
@@ -282,7 +282,7 @@ class EnsayoConCamaTests(TestCase):
     """
 
     def setUp(self):
-        self.jefe = Usuario.objects.create_superuser("jefe2@cauce.local", "x", nombre="Jefe")
+        self.jefe = Usuario.objects.create_superuser("jefe2@salud.local", "x", nombre="Jefe")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Internación")
         self.sala = Subarea.objects.create(area=self.area, nombre="Clínica médica")

@@ -24,7 +24,7 @@ class PadronPorInstitucionTests(APITestCase):
         cls.medico_hosp = cls._persona("medico@hospital.local", cls.hospital, "medico")
         cls.medico_clin = cls._persona("medico@clinica.local", cls.clinica, "medico")
         cls.huerfano = Usuario.objects.create_user("suelto@nadie.local", "x", nombre="Suelto")
-        cls.root = Usuario.objects.create_superuser("root@cauce.local", "x", nombre="Root")
+        cls.root = Usuario.objects.create_superuser("root@salud.local", "x", nombre="Root")
 
     @staticmethod
     def _persona(email, institucion, rol):
@@ -91,7 +91,7 @@ class PerfilConCapacidadesTests(APITestCase):
     def setUp(self):
         self.hospital = Institucion.objects.create(nombre="Hospital Central")
         self.clinica = Institucion.objects.create(nombre="Clinica Sur")
-        self.user = Usuario.objects.create_user("multi@cauce.local", "x", nombre="Multi")
+        self.user = Usuario.objects.create_user("multi@salud.local", "x", nombre="Multi")
         Membresia.objects.create(
             usuario=self.user, institucion=self.hospital,
             rol=Membresia.Rol.ADMINISTRATIVO, activo=True,
@@ -172,7 +172,7 @@ class AltaDePersonaTests(APITestCase):
         cls.clinica = Institucion.objects.create(nombre="Clínica del Sur")
         cls.admin = Usuario.objects.create_user("admin@hospital.local", "x", nombre="Admin")
         Membresia.objects.create(usuario=cls.admin, institucion=cls.hospital, rol="admin", activo=True)
-        cls.root = Usuario.objects.create_superuser("root@cauce.local", "x", nombre="Root")
+        cls.root = Usuario.objects.create_superuser("root@salud.local", "x", nombre="Root")
 
     def _alta(self, **extra):
         return self.client.post(

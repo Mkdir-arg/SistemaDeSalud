@@ -27,7 +27,7 @@ existentes con datos ficticios, sin agregar funcionalidades ni modificar la demo
   de usuarios reales del fixture, sin sustituir servicios de negocio por mocks.
 - Ensayo de volumen optativo, fuera del descubrimiento normal `test*.py`. Las filas
   sintéticas preparan el volumen; la integración anterior valida cómo se originan.
-- PostgreSQL 16 desechable, base `cauce_financiadores_test`, puerto local 55438.
+- PostgreSQL 16 desechable, base `salud_financiadores_test`, puerto local 55438.
   Conservar localhost:5188/8766 y cualquier otro entorno existente.
 - Ejecutar las regresiones pertinentes si el ensayo descubre cambios necesarios.
   No incorporar dependencias, migraciones ni nuevas tablas para estas verificaciones.
@@ -57,11 +57,11 @@ se ejercitan por los endpoints del producto.
 | Consumo tardío | Un uso externo adicional marca discrepancia, conserva evaluación, aceptación, cobertura e importes anteriores y deja cero disponibles para la siguiente evaluación. |
 | Resolución administrativa | Tener permiso de cobro no habilita resolver. Tras la concesión expresa, rechazar la asunción conserva el pendiente; aceptar luego $30 con respaldo genera una única cuenta y conserva motivo/autor. Hospital A queda con $300 asignados y $270 pendientes, sin nuevo movimiento de dinero. |
 
-Desde `backend`, con `CAUCE_TEST_POSTGRES_URL` apuntando exclusivamente a la
-instancia desechable local y a la base `cauce_financiadores_test`:
+Desde `backend`, con `SALUD_TEST_POSTGRES_URL` apuntando exclusivamente a la
+instancia desechable local y a la base `salud_financiadores_test`:
 
 ```powershell
-python manage.py test apps.financiadores.test_piloto apps.financiadores.test_concurrencia_clinica apps.financiadores.test_concurrencia_vigencias apps.financiadores.test_cobertura --settings=cauce.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.test_piloto apps.financiadores.test_concurrencia_clinica apps.financiadores.test_concurrencia_vigencias apps.financiadores.test_cobertura --settings=config.settings_financiadores_postgres_test --noinput
 ```
 
 **56/56 aprobadas, sin omisiones, 26,742 s**. Incluye las carreras reales del último
@@ -73,7 +73,7 @@ piloto también pasó en SQLite; la evidencia de concurrencia corresponde a Post
 ### Volumen real del archivo
 
 ```powershell
-python manage.py test apps.financiadores.validacion_volumen --settings=cauce.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.validacion_volumen --settings=config.settings_financiadores_postgres_test --noinput
 ```
 
 **1/1 aprobada, 20,579 s**. El ensayo crea 5.001 personas/cuentas, 25.005 movimientos

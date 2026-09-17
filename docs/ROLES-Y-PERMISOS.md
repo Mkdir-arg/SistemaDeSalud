@@ -2,11 +2,11 @@
 
 Actualizado: 2026-08-20
 
-Este documento describe el modelo funcional de autoridad de Cauce: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
+Este documento describe el modelo funcional de autoridad de I-Core Salud: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
 
 ## 1. Principio general
 
-Cauce separa tres conceptos que en hospitales suelen mezclarse:
+Salud separa tres conceptos que en hospitales suelen mezclarse:
 
 - Usuario: la persona que inicia sesion.
 - Membresia: la relacion de esa persona con una institucion, con uno o mas roles y areas.
@@ -576,7 +576,7 @@ Configurador:
 
 Regla clave:
 
-- La fachada FHIR es de solo lectura y respeta permisos; no reemplaza el motor de Cauce.
+- La fachada FHIR es de solo lectura y respeta permisos; no reemplaza el motor de Salud.
 
 ### Operacion y monitoreo
 

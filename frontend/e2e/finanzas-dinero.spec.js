@@ -16,7 +16,7 @@ const cuenta = {
 async function escenario(page, { permisos = ["ver_dinero", "registrar_dinero", "corregir_dinero", "aprobar_dinero"], fallaMovimiento = false, fallaDetalle = false } = {}) {
   const lecturas = []; const escrituras = [];
   const estado = { intentos: 0, fallaDetalle, cuenta: structuredClone(cuenta), cuentaPorPagar: null, politicas: [], pendientes: [], preview: null, ajustesGasto: [] };
-  await page.addInitScript((institucion) => { localStorage.setItem("cauce.access", "credencial-ficticia-solo-mock"); localStorage.setItem("cauce.institucion", JSON.stringify(institucion)); }, inst);
+  await page.addInitScript((institucion) => { localStorage.setItem("salud.access", "credencial-ficticia-solo-mock"); localStorage.setItem("salud.institucion", JSON.stringify(institucion)); }, inst);
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
