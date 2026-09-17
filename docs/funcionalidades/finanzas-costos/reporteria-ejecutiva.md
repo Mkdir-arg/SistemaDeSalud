@@ -102,6 +102,25 @@ y superficies, bordes, controles y foco del sistema existente.
 
 ## Verificación reproducible
 
+### Iteración visual del 17/09/2026
+
+La revisión solicitada por el usuario identificó un encabezado sobredimensionado,
+títulos promocionales y explicaciones repetidas que desplazaban las cifras.
+Se sustituyen por títulos directos, tarjetas y tamaños acordes al resumen existente.
+Las aclaraciones se agrupan en `AyudaFinanzas`, el componente `(?)` del módulo,
+con acceso por foco, clic y teclado. Se mantienen visibles fechas, restricciones,
+mes abierto, actualizaciones y pendientes navegables de ambos períodos.
+
+Validación de esta iteración: nueve e2e de reportería aprobados, incluidos foco y
+Escape en escritorio y límites del panel de ayuda a 390 px; build correcto.
+Inspección con Playwright en la demo aislada con API real, a 1440 y 390 px.
+La auditoría CSS sigue señalando sólo los dos hallazgos previos de financiadores.
+No se modificó backend ni se repitió su suite; los resultados posteriores describen
+la validación de la implementación funcional anterior a este ajuste visual.
+
+La skill interface-design guio la reutilización del sistema visual existente;
+Playwright permitió contrastar el resultado visible y la interacción de las ayudas.
+
 Backend aislado del entorno compartido:
 
 ```powershell

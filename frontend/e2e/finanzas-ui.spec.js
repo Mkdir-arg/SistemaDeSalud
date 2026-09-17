@@ -106,7 +106,14 @@ async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"]
 test("reporte ejecutivo compara períodos y abre gastos anteriores sin imponer control mensual", async ({ page }, testInfo) => {
   const { peticiones } = await escenarioEjecutivo(page);
   await page.goto("/finanzas?tab=reportes&mes=2026-09");
-  await expect(page.getByRole("heading", { name: "Los números, con su explicación." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Comparación de períodos" })).toBeVisible();
+  const ayuda = page.getByRole("button", { name: "Cómo leer los reportes", exact: true });
+  await expect(page.getByText(/Los importes están en pesos argentinos/)).toHaveCount(0);
+  await ayuda.focus();
+  await expect(page.getByRole("dialog", { name: "Cómo leer los reportes", exact: true })).toContainText("base anterior es positiva");
+  await page.keyboard.press("Escape");
+  await expect(ayuda).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Cómo leer los reportes", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("ARS 1.000.000,01");
   await expect(page.getByRole("region", { name: "Informe de gastos", exact: true }).getByText("+25% nominal", { exact: true }).first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
@@ -162,7 +169,14 @@ test("reporte ejecutivo es legible en móvil y permite filtrar el desglose", asy
   await page.setViewportSize({ width: 390, height: 844 });
   await escenarioEjecutivo(page);
   await page.goto("/finanzas?tab=reportes&mes=2026-09");
-  await expect(page.getByRole("heading", { name: "Los números, con su explicación." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Comparación de períodos" })).toBeVisible();
+  await page.getByRole("button", { name: "Importes y pendientes de gastos", exact: true }).click();
+  const ayuda = page.getByRole("dialog", { name: "Importes y pendientes de gastos", exact: true });
+  await expect(ayuda).toContainText("Los ajustes por aprobar no modifican ese importe");
+  const limites = await ayuda.boundingBox();
+  expect(limites.x).toBeGreaterThanOrEqual(0);
+  expect(limites.x + limites.width).toBeLessThanOrEqual(390);
+  await ayuda.getByRole("button", { name: "Cerrar Importes y pendientes de gastos", exact: true }).click();
   await page.evaluate(() => document.fonts.ready);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-movil.png"), animations: "disabled" });
