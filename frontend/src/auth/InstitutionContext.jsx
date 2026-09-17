@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 
 const InstitutionContext = createContext(null);
-const KEY = "cauce.institucion";
+const KEY = "salud.institucion";
 
 // Solo aplica al super admin cuando usa "ver como". Para usuarios reales, las
 // capacidades vienen de /usuarios/me/ y el frontend no replica la matriz de roles.

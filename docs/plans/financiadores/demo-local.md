@@ -8,11 +8,11 @@ En «Actividad en hospitales», el financiador dispone de filtros, totales de to
 
 Se verificó el recorrido real con Obra Social Demo (3 prestaciones realizadas, $24.000 asignados) y Mutual Demo (2 realizadas, $17.500). La mutual conserva su operación pendiente del hospital cuyo convenio finalizó. Los resultados se contrastaron con los CSV y la base ficticia, sin registrar nuevos cobros ni modificar atenciones.
 
-Scripts `verificar-actividad.cjs` y `verificar-datos-actividad.py`, capturas y CSV en `%LOCALAPPDATA%/Cauce/demos/financiadores-main2/revision-actividad/`. Los scripts están en su directorio padre. Son artefactos locales de la demo; no contienen datos reales ni forman parte del PR.
+Scripts `verificar-actividad.cjs` y `verificar-datos-actividad.py`, capturas y CSV en `%LOCALAPPDATA%/Salud/demos/financiadores-main2/revision-actividad/`. Los scripts están en su directorio padre. Son artefactos locales de la demo; no contienen datos reales ni forman parte del PR.
 
 ## Cuentas
 
-Contraseña de todas las cuentas ficticias: `CauceDemo2026!`.
+Contraseña de todas las cuentas ficticias: `SaludDemo2026!`.
 
 | Cuenta | Uso |
 | --- | --- |
@@ -57,11 +57,11 @@ Se agregaron **Hospital Norte Demo** y **Mutual Demo**, manteniendo los datos an
 
 Guion ejecutado con navegador y API reales: `verificar-vigencias.cjs`. Capturas y resultado en `revision-vigencias/`, dentro del directorio local de la demo. Existe un respaldo SQLite previo a la ampliación (`antes-vigencias-*.sqlite3`). La actualización `actualizar_vigencias.py` reconoce su marca de preparación y no repone los datos ya creados.
 
-El portal ahora usa el sidebar y el encabezado compartidos de Cauce. Las secciones se abren desde el menú lateral; el selector de financiador está en ese mismo menú. En móvil se accede con «Abrir menú». La sección y la organización elegida se conservan al recargar la URL. Para ver la corrección en una pestaña abierta, recargar la página.
+El portal ahora usa el sidebar y el encabezado compartidos de I-Core Salud. Las secciones se abren desde el menú lateral; el selector de financiador está en ese mismo menú. En móvil se accede con «Abrir menú». La sección y la organización elegida se conservan al recargar la URL. Para ver la corrección en una pestaña abierta, recargar la página.
 
 ## Ubicación y operación
 
-Base, scripts, logs y capturas: `C:\Users\Juanito\AppData\Local\Cauce\demos\financiadores-main2`.
+Base, scripts, logs y capturas: `C:\Users\Juanito\AppData\Local\Salud\demos\financiadores-main2`.
 
 - Backend: `127.0.0.1:8766`, SQLite exclusiva `demo.sqlite3`.
 - Frontend: `127.0.0.1:5188`, proxy hacia ese backend.
@@ -71,8 +71,8 @@ Base, scripts, logs y capturas: `C:\Users\Juanito\AppData\Local\Cauce\demos\fina
 Para detener y volver a iniciar, desde PowerShell:
 
 ```powershell
-& "$env:LOCALAPPDATA\Cauce\demos\financiadores-main2\detener.ps1"
-& "$env:LOCALAPPDATA\Cauce\demos\financiadores-main2\iniciar.ps1"
+& "$env:LOCALAPPDATA\Salud\demos\financiadores-main2\detener.ps1"
+& "$env:LOCALAPPDATA\Salud\demos\financiadores-main2\iniciar.ps1"
 ```
 
 El inicio reutiliza los datos existentes y rechaza ocupar puertos de otros procesos. El entorno Python está en `%TEMP%\cauce-financiadores-venv`; si se elimina ese entorno temporal habrá que recrearlo con las dependencias del proyecto.
@@ -81,7 +81,7 @@ El inicio reutiliza los datos existentes y rechaza ocupar puertos de otros proce
 
 ### Seguimiento hospitalario agregado el 16/09/2026
 
-Ingresar con **`hospital@demo.local` / `CauceDemo2026!`** y abrir [Seguimiento de cobros](http://127.0.0.1:5188/finanzas/coberturas?tab=seguimiento). En Hospital Demo, buscar el caso **9**, de Valeria Seguimiento Demo:
+Ingresar con **`hospital@demo.local` / `SaludDemo2026!`** y abrir [Seguimiento de cobros](http://127.0.0.1:5188/finanzas/coberturas?tab=seguimiento). En Hospital Demo, buscar el caso **9**, de Valeria Seguimiento Demo:
 
 - Cuenta del financiador: **$8.000** originales, **$3.000** cobrados y **$5.000** pendientes.
 - Cuenta de la paciente: **$2.000** de copago aceptado, todavía sin cobro.
@@ -96,7 +96,7 @@ Archivos descargados, capturas y comprobación contra la base en `revision-expor
 
 ### Circuito clínico agregado el 16/09/2026
 
-En [la demo](http://127.0.0.1:5188), iniciar sesión con **`consulta@demo.local` / `CauceDemo2026!`**. «Mi trabajo» ofrece **Consulta con cobertura · demo**. Ingresar a Clara (`00888111`) o Diego (`00888222`) para crear otra consulta y probar la cobertura antes de atender.
+En [la demo](http://127.0.0.1:5188), iniciar sesión con **`consulta@demo.local` / `SaludDemo2026!`**. «Mi trabajo» ofrece **Consulta con cobertura · demo**. Ingresar a Clara (`00888111`) o Diego (`00888222`) para crear otra consulta y probar la cobertura antes de atender.
 
 Resultados ya disponibles: [Clara, caso 7](http://127.0.0.1:5188/casos/7), con $8.000 al financiador y $2.000 de copago aceptado; [Diego, caso 8](http://127.0.0.1:5188/casos/8), con atención completada y afiliación pendiente sin deuda generada. La [historia de Clara](http://127.0.0.1:5188/historia/6?tab=cobertura) muestra su selección por caso.
 

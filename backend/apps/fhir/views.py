@@ -19,6 +19,7 @@ función que los viewsets (`registrar_acceso`), no una copia.
 usuario tiene membresía activa, ni una más. El scope no lo decide el parámetro
 de la consulta.
 """
+import logging
 from urllib.parse import urlencode
 
 from django.http import JsonResponse
@@ -35,6 +36,42 @@ from apps.instituciones.models import Institucion
 from apps.registros.models import Ciudadano, normalizar_documento
 
 from . import recursos
+
+log = logging.getLogger(__name__)
+
+# Namespaces que esta fachada emitió alguna vez y ya no. Una consulta que llega
+# con uno de estos es un integrador que quedó en una versión anterior: se le
+# sigue contestando vacío —devolver a otra persona sería peor— pero no callado.
+SISTEMAS_RETIRADOS = {"urn:cauce:id": recursos.SISTEMA_LOCAL}
+
+
+def _avisar_identificador_sin_respuesta(sistema):
+    """
+    Un `system` que la fachada no reconoce se responde con un Bundle vacío, y un
+    Bundle vacío no se distingue de «esa persona no está»: del otro lado no hay
+    error que mirar, ni reintento, ni nada que avise. Un integrador que quedó con
+    un namespace viejo deja de encontrar en silencio, y puede pasar mucho tiempo
+    hasta que alguien lo note.
+
+    Se avisa SÓLO acá, y no cada vez que una búsqueda válida no encuentra a
+    nadie: eso último es el resultado correcto de preguntar por alguien que no
+    está, y convertirlo en alerta enseñaría a ignorar las de verdad.
+    """
+    for retirado, vigente in SISTEMAS_RETIRADOS.items():
+        if sistema == retirado or sistema.startswith(f"{retirado}:"):
+            log.warning(
+                "FHIR: consulta con el namespace retirado %r. El vigente es %r. "
+                "Se responde Bundle vacío: quien pregunta quedó en una versión "
+                "anterior de la fachada y sus búsquedas no encuentran nada.",
+                sistema, vigente,
+            )
+            return
+    log.warning(
+        "FHIR: consulta con un system desconocido %r. Se responde Bundle vacío. "
+        "Los que esta fachada resuelve son %r, %r y %r.",
+        sistema, recursos.SISTEMA_DNI,
+        f"{recursos.SISTEMA_LOCAL}:ciu", f"{recursos.SISTEMA_LOCAL}:ciudadano",
+    )
 
 # --------------------------------------------------------------------------- #
 # Esta fachada NO se documenta en el OpenAPI, a propósito.
@@ -101,7 +138,7 @@ def _id_sin_forma(tipo, pk):
     return _error(
         404, "not-found",
         f"«{tipo}» sí está implementado, pero «{ruta}» no es una ruta de este "
-        f"servidor. Los id de Cauce son numéricos ({tipo}/12), la búsqueda va sin "
+        f"servidor. Los id de I-Core Salud son numéricos ({tipo}/12), la búsqueda va sin "
         f"barra final ({tipo}?…) y no hay operaciones ni sufijos del estándar "
         f"(_history, _search); lo que sí hay está en /fhir/metadata.",
     )
@@ -124,7 +161,7 @@ def _falta_capacidad(request, capacidad):
     return _error(
         403, "forbidden",
         f"Tu rol no tiene la capacidad «{capacidad}», que es la que habilita estos datos "
-        f"en Cauce. Es el mismo permiso que pide la API interna: la fachada FHIR no es "
+        f"en Salud. Es el mismo permiso que pide la API interna: la fachada FHIR no es "
         f"una puerta con otras reglas.",
     )
 
@@ -221,8 +258,8 @@ def metadata(request):
         "status": "active",
         "date": "2026-08-14",
         "kind": "instance",
-        "software": {"name": "Cauce"},
-        "implementation": {"description": "Fachada FHIR de Cauce", "url": base},
+        "software": {"name": "Salud"},
+        "implementation": {"description": "Fachada FHIR de Salud", "url": base},
         "fhirVersion": recursos.VERSION_FHIR,
         "format": ["json"],
         "rest": [{
@@ -246,7 +283,7 @@ def metadata(request):
                         {"name": "identifier", "type": "token",
                          "documentation": (
                              f"Documento. Ej.: {recursos.SISTEMA_DNI}|30111222, o el número "
-                             f"solo. También se buscan los identificadores que emite Cauce: "
+                             f"solo. También se buscan los identificadores que emite Salud: "
                              f"{recursos.SISTEMA_LOCAL}:ciu y {recursos.SISTEMA_LOCAL}:ciudadano. "
                              f"Con cualquier otro sistema la respuesta es un Bundle vacío: "
                              f"contestar la persona con ese documento sería devolver a otra."
@@ -306,10 +343,11 @@ def _por_identificador(qs, identificador):
     if sistema == f"{recursos.SISTEMA_LOCAL}:ciu":
         return qs.filter(codigo=valor)
     if sistema == f"{recursos.SISTEMA_LOCAL}:ciudadano":
-        # Los identificadores que Cauce mismo emite tienen que poder volver a
-        # buscarse; hasta acá `urn:cauce:id:ciudadano|28` devolvía a la persona
+        # Los identificadores que Salud mismo emite tienen que poder volver a
+        # buscarse; hasta acá `urn:icore-salud:id:ciudadano|28` devolvía a la persona
         # con documento 28.
         return qs.filter(pk=valor) if valor.isdigit() else qs.none()
+    _avisar_identificador_sin_respuesta(sistema)
     return qs.none()
 
 
@@ -467,7 +505,7 @@ def encounter_search(request):
         if not ref.isdigit():
             # El mismo ValueError que ya se arregló en auditoria/mixins.py y
             # volvió a entrar por acá: `?patient=urn:uuid:9` levantaba un 500 de
-            # Django, y el integrador del otro lado escala «Cauce se cayó» por un
+            # Django, y el integrador del otro lado escala «Salud se cayó» por un
             # parámetro que la fachada puede rechazar explicando qué mandar.
             return _error(
                 400, "value",
@@ -484,7 +522,7 @@ def encounter_search(request):
         # Sin partirla, `status=in-progress,finished` daba total 0: un hospital
         # sin actividad, que es un dato falso y no una carencia.
         pedidos = {e.strip() for e in estado.split(",") if e.strip()}
-        # Se traduce al revés desde el estado FHIR: varios estados de Cauce caen
+        # Se traduce al revés desde el estado FHIR: varios estados de Salud caen
         # en `in-progress`, así que filtrar por el texto crudo no encontraría
         # nada aunque haya casos que corresponden.
         propios = [c for c, f in recursos.ESTADO_ENCOUNTER.items() if f in pedidos]

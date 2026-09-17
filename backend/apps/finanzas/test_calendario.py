@@ -17,7 +17,7 @@ class CalendarioGastoApiTests(APITestCase):
         self.concepto = ConceptoGasto.objects.create(
             institucion=self.institucion, codigo="LUZ", nombre="Electricidad"
         )
-        self.admin = Usuario.objects.create_user("calendario@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("calendario@salud.local", "x")
         self.miembro = Membresia.objects.create(
             usuario=self.admin, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION
         )
@@ -38,6 +38,23 @@ class CalendarioGastoApiTests(APITestCase):
             concepto=self.concepto, institucion=self.institucion, area=area,
             vigente_desde=date(2026, 8, 1), **datos
         )
+
+    def test_historial_filtra_hijos_sin_filtrar_la_expectativa(self):
+        for mes in ("2026-08-01", "2026-09-01"):
+            self.assertEqual(self.indicar("carga_completa", mes=mes).status_code, 201)
+        url = f"/api/expectativas-gasto/{self.expectativa.pk}/indicaciones/"
+        respuesta = self.client.get(url, {"ordering": "-periodo_economico", "page_size": 1})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 2)
+        self.assertEqual(len(respuesta.data["results"]), 1)
+        self.assertEqual(respuesta.data["results"][0]["periodo_economico"], "2026-09-01")
+        respuesta = self.client.get(url, {"search": "2026-08"})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 1)
+        self.assertEqual(respuesta.data["results"][0]["periodo_economico"], "2026-08-01")
+        otra = self.crear_expectativa(self.otra_area, motivo_correccion="Nueva referencia")
+        respuesta = self.client.get("/api/expectativas-gasto/", {"search": "referencia", "ordering": "-registrado"})
+        self.assertEqual([r["id"] for r in respuesta.data["results"]], [otra.pk])
 
     def calendario(self, mes="2026-08-01", **filtros):
         respuesta = self.client.get(
@@ -191,7 +208,7 @@ class CalendarioGastoApiTests(APITestCase):
         sensible = ConceptoGasto.objects.create(institucion=self.institucion, codigo="HON", nombre="Honorarios", sensible=True)
         registrar_gasto(oculto, self.institucion, self.otra_area, Decimal("20"), date(2026, 8, 1), self.admin)
         registrar_gasto(sensible, self.institucion, self.area, Decimal("30"), date(2026, 8, 1), self.admin)
-        lector = Usuario.objects.create_user("lector-filtros@cauce.local", "x")
+        lector = Usuario.objects.create_user("lector-filtros@salud.local", "x")
         membresia = Membresia.objects.create(usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         permiso = ConcesionFinanciera.objects.create(membresia=membresia, accion=ConcesionFinanciera.Accion.VER_GASTOS)
         permiso.areas.add(self.area)
@@ -210,7 +227,7 @@ class CalendarioGastoApiTests(APITestCase):
         self.assertEqual(fila["estado_carga"], "falta_cargar")
         self.assertIsNone(fila["indicacion_id"])
         self.assertNotIn("importe", fila)
-        delegado = Usuario.objects.create_user("delegado-cal@cauce.local", "x")
+        delegado = Usuario.objects.create_user("delegado-cal@salud.local", "x")
         miembro = Membresia.objects.create(
             usuario=delegado, institucion=self.institucion, rol=Membresia.Rol.MEDICO
         )
@@ -320,7 +337,7 @@ class CalendarioGastoApiTests(APITestCase):
         ajena = Institucion.objects.create(nombre="Otra institución")
         concepto_ajeno = ConceptoGasto.objects.create(institucion=ajena, codigo="LUZ", nombre="Luz")
         ExpectativaGasto.objects.create(concepto=concepto_ajeno, institucion=ajena, vigente_desde=date(2026, 8, 1))
-        lector = Usuario.objects.create_user("lector-cal@cauce.local", "x")
+        lector = Usuario.objects.create_user("lector-cal@salud.local", "x")
         miembro = Membresia.objects.create(usuario=lector, institucion=self.institucion, rol=Membresia.Rol.MEDICO)
         concesion = ConcesionFinanciera.objects.create(membresia=miembro, accion=ConcesionFinanciera.Accion.VER_GASTOS)
         concesion.areas.add(self.area)

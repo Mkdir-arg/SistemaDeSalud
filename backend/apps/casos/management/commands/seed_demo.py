@@ -24,7 +24,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Super admin de plataforma (ve todas las instituciones). Idempotente.
         admin, creado_admin = Usuario.objects.get_or_create(
-            email="admin@cauce.local",
+            email="admin@salud.local",
             defaults={"nombre": "Super", "apellido": "Admin", "is_staff": True, "is_superuser": True},
         )
         if creado_admin:
@@ -63,7 +63,7 @@ class Command(BaseCommand):
 
         # Usuario administrativo de demo.
         op, creado = Usuario.objects.get_or_create(
-            email="operador@cauce.local",
+            email="operador@salud.local",
             defaults={"nombre": "Carla", "apellido": "Ibáñez"},
         )
         if creado:
@@ -220,6 +220,6 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             "Demo cargada: institución «Hospital Central», flujo «Ingreso de paciente» publicado y 3 casos.\n"
-            "Super admin (ve todo): admin@cauce.local / admin1234\n"
-            "Administrativo:         operador@cauce.local / demo1234"
+            "Super admin (ve todo): admin@salud.local / admin1234\n"
+            "Administrativo:         operador@salud.local / demo1234"
         ))

@@ -1,4 +1,4 @@
-# Plan de versiones — NODO Salud
+# Plan de versiones — I-Core Salud
 
 > Hoja de ruta de producto alineada al plan comercial de ICORE. Documento vivo.
 > Creado: **2026-07-31**.
@@ -204,7 +204,7 @@ Los cuatro faltantes duros del Paquete 2 del plan comercial:
 **Facturación es el más caro del plan entero y el que más se parece a un HIS
 tradicional.** Recomendación explícita: **no venderlo**. Integrarse contra el
 facturador que el cliente ya tiene es más rápido, más barato y coherente con el
-posicionamiento («NODO no reemplaza todo: ordena, integra»).
+posicionamiento («I-Core no reemplaza todo: ordena, integra»).
 
 ---
 
@@ -230,7 +230,7 @@ existe y la respuesta improvisada comprometa una entrega. Respuestas acordadas:
 | Si preguntan por… | Respuesta |
 |---|---|
 | **Turnos** | «No está en el paquete de entrada. Se incorpora en la segunda fase, después del piloto de guardia.» **Nunca** «lo tenemos». |
-| **Facturación** | «NODO no reemplaza el facturador: se integra con el que ya tienen.» Es la respuesta honesta *y* la coherente con el posicionamiento. |
+| **Facturación** | «I-Core no reemplaza el facturador: se integra con el que ya tienen.» Es la respuesta honesta *y* la coherente con el posicionamiento. |
 | **Integración con nuestro sistema** | «La API está construida y el sistema es modular; el conector se define en el relevamiento del piloto.» Es cierto: hay API REST completa. Lo que no hay es conector ni especificación publicada — no ofrecer HL7/FHIR hasta v2. |
 | **Historia clínica completa** | Mostrar la que hay (evolución, estudios, recetas, antecedentes). Es real y alcanza para guardia. |
 | **¿Cuántos hospitales lo usan hoy?** | La verdad. El diferencial no es la base instalada: es que el proceso **se configura en días, no se programa en meses** — y eso se demuestra en vivo en el editor de flujos. |

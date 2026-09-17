@@ -423,7 +423,7 @@ class CoberturaTests(AuditoriaTestCase):
         """
         from apps.auditoria.mixins import AuditaLecturaClinica
         from apps.finanzas.views import ConcesionFinancieraViewSet, HechoAtencionCosteableViewSet
-        from cauce.api import router
+        from config.api import router
 
         # `protege_lectura` no implica datos de pacientes: las concesiones son
         # configuración de permisos. Excepción puntual, no de toda Finanzas.

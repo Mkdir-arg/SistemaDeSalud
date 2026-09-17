@@ -30,7 +30,7 @@ test("varios 401 en paralelo disparan un solo refresh", async ({ page }) => {
   // Se invalida solo el access: el refresh sigue bueno, así que la app tiene que
   // recuperarse sola en vez de mandar a login.
   await page.evaluate(() => {
-    localStorage.setItem("cauce.access", "token-vencido-a-proposito");
+    localStorage.setItem("salud.access", "token-vencido-a-proposito");
   });
 
   await page.goto("/bandeja");
@@ -44,7 +44,7 @@ test("varios 401 en paralelo disparan un solo refresh", async ({ page }) => {
 
   // Y la sesión sigue abierta, con el token renovado en lugar de borrado.
   await expect(page).not.toHaveURL(/\/login/);
-  const refresh = await page.evaluate(() => localStorage.getItem("cauce.refresh"));
+  const refresh = await page.evaluate(() => localStorage.getItem("salud.refresh"));
   expect(refresh).toBeTruthy();
 });
 
@@ -74,7 +74,7 @@ test("un pedido que vuelve tarde no dispara un segundo refresh", async ({ page }
   });
 
   const VENCIDO = "token-vencido-a-proposito";
-  await page.evaluate((t) => localStorage.setItem("cauce.access", t), VENCIDO);
+  await page.evaluate((t) => localStorage.setItem("salud.access", t), VENCIDO);
 
   /*
    * Los pedidos se identifican por el token con el que SALEN, no por el orden.
@@ -128,7 +128,7 @@ test("un 500 al arrancar no cierra la sesión: ofrece reintentar", async ({ page
   // No manda a login ni borra el token: avisa y da salida.
   await expect(page.getByRole("alert")).toContainText("No se pudo conectar");
   await expect(page).not.toHaveURL(/\/login/);
-  expect(await page.evaluate(() => localStorage.getItem("cauce.refresh"))).toBeTruthy();
+  expect(await page.evaluate(() => localStorage.getItem("salud.refresh"))).toBeTruthy();
 
   // Y cuando el servidor vuelve, se recupera sin volver a escribir la contraseña.
   caido = false;
@@ -148,8 +148,8 @@ test("un 500 al arrancar no cierra la sesión: ofrece reintentar", async ({ page
 test.describe("Dónde queda la sesión", () => {
   const donde = (page) =>
     page.evaluate(() => ({
-      local: !!localStorage.getItem("cauce.refresh"),
-      sesion: !!sessionStorage.getItem("cauce.refresh"),
+      local: !!localStorage.getItem("salud.refresh"),
+      sesion: !!sessionStorage.getItem("salud.refresh"),
     }));
 
   async function entrarCon(page, recordar) {
@@ -175,7 +175,7 @@ test.describe("Dónde queda la sesión", () => {
 
   test("cambiar de opción no deja el token viejo dando vueltas", async ({ page }) => {
     await entrarCon(page, true);
-    await page.evaluate(() => localStorage.removeItem("cauce.tema")); // ruido aparte
+    await page.evaluate(() => localStorage.removeItem("salud.tema")); // ruido aparte
     await entrarCon(page, false);
     // Lo importante: en localStorage no puede haber quedado el de la vez anterior.
     expect(await donde(page)).toEqual({ local: false, sesion: true });

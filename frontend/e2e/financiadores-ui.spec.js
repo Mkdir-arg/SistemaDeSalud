@@ -114,7 +114,7 @@ test("actividad conserva totales de todas las páginas y diferencia importes pen
   await expect(reserva).not.toContainText("Importe pendiente");
 });
 
-test("actividad mantiene filtros y tabla dentro de la pantalla móvil de Cauce", async ({ page }, testInfo) => {
+test("actividad mantiene filtros y tabla dentro de la pantalla móvil de I-Core Salud", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await escenario(page);
   await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta() }));
@@ -185,8 +185,8 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
   const escrituras = [];
   const planes = { 21: [{ id: 31, codigo: "BAS", nombre: "Plan Río", activo: true }], 22: [{ id: 32, codigo: "NOR", nombre: "Plan Norte", activo: true }] };
   const padron = [{ id: 45, numero: "00025", documento: "00123456", nombre: "Persona Ficticia", plan: 31, desde: "2026-01-01", vigente: true, finalizado_en: null, motivo_finalizacion: "" }];
-  await page.addInitScript(() => { localStorage.setItem("cauce.access", "token-ficticio-mock"); localStorage.setItem("cauce.refresh", "refresh-ficticio-mock"); });
-  if (mixto) await page.addInitScript(() => localStorage.setItem("cauce.institucion", JSON.stringify({ id: 2, nombre: "Hospital de prueba" })));
+  await page.addInitScript(() => { localStorage.setItem("salud.access", "token-ficticio-mock"); localStorage.setItem("salud.refresh", "refresh-ficticio-mock"); });
+  if (mixto) await page.addInitScript(() => localStorage.setItem("salud.institucion", JSON.stringify({ id: 2, nombre: "Hospital de prueba" })));
   await page.route("**/api/**", async (route) => {
     const req = route.request();
     const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
@@ -274,7 +274,7 @@ test("auditor no abre usuarios por ruta directa y una organización ajena no se 
   await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toHaveCount(0);
 });
 
-test("menú móvil navega, se cierra y conserva el tema de Cauce", async ({ page }) => {
+test("menú móvil navega, se cierra y conserva el tema de Salud", async ({ page }) => {
   await escenario(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/financiadores");
@@ -409,7 +409,7 @@ async function hospital(page, { liberar = true, resolver = true, completar = fal
   const opciones = { configuracion: { activo: true, dias_reserva_antigua: 7 }, permisos: { configurar: true, operar: true, registrar_aceptacion: true, resolver: true }, catalogo, prestaciones: [{ id: 7, nombre: "Radiografía", comun: 3 }], casos: [{ id: 41, titulo: "Caso de prueba", documento: "00123456" }], convenios: [], financiadores: organizaciones };
   const reservas = [{ id: 71, caso: 41, fecha: "2026-01-01", cantidad: 1, estado: "reservada", antigua: true, prestacion_nombre: "Radiografía", puede_liberar: liberar, puede_resolver: false }, { id: 72, caso: 41, fecha: "2026-01-01", cantidad: 1, estado: "realizada", prestacion_nombre: "Consulta", puede_liberar: false, puede_resolver: resolver, distribucion: { estado: "pendiente", importe_paciente: "200.00", importe_financiador: "800.00" } }];
   if (completar) reservas.push({ id: 73, caso: 41, fecha: "2026-01-01", cantidad: 1, estado: "realizada", prestacion_nombre: "Laboratorio", puede_completar: true, puede_completar_arancel: true, distribucion: { estado: "arancel_pendiente", importe_paciente: null } });
-  await page.addInitScript((i) => { localStorage.setItem("cauce.access", "token-ficticio-mock"); localStorage.setItem("cauce.institucion", JSON.stringify(i)); }, inst);
+  await page.addInitScript((i) => { localStorage.setItem("salud.access", "token-ficticio-mock"); localStorage.setItem("salud.institucion", JSON.stringify(i)); }, inst);
   await page.route("**/api/**", (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname;
     if (!path.startsWith("/api/")) return route.continue();

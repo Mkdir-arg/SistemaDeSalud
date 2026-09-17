@@ -115,9 +115,17 @@ export function FiltroColumna({ label, controles, filtros }) {
 export function FiltrosActivos({ filtros, definiciones }) {
   const activos = definiciones.filter((c) => filtros.valores[c.key]);
   if (!activos.length) return null;
-  return <div className="flex flex-wrap items-center gap-2" aria-label="Filtros activos">{activos.map((c) => <button key={c.key} type="button"
+  return <div className="flex flex-wrap items-center gap-2" aria-label="Filtros activos"><span className="text-sm text-texto-debil">Filtros de esta tabla:</span>{activos.map((c) => <button key={c.key} type="button"
     className="inline-flex items-center gap-2 rounded-pill border border-accent-100 bg-accent-50 px-3 py-1 text-sm text-accent"
     onClick={() => filtros.cambiar({ [c.key]: "" })} aria-label={`Quitar filtro ${c.label}`}>
     {c.label}: {c.opciones?.find((o) => String(o.value) === filtros.valores[c.key])?.label || filtros.valores[c.key]} <span aria-hidden="true">×</span>
   </button>)}<Button size="sm" variant="ghost" onClick={() => filtros.cambiar(Object.fromEntries(activos.map((c) => [c.key, ""])))}>Limpiar filtros</Button></div>;
+}
+
+export function BusquedaTablaFinanzas({ filtros, label, placeholder }) {
+  return <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <Input aria-label={label} placeholder={placeholder} value={filtros.valores.search || ""}
+      onChange={(e) => filtros.cambiar({ search: e.target.value })} />
+    <FiltrosActivos filtros={filtros} definiciones={[{ key: "search", label }]} />
+  </div>;
 }

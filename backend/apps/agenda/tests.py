@@ -30,7 +30,7 @@ def un_martes(semanas=1):
 
 class AgendaTestCase(TestCase):
     def setUp(self):
-        self.user = Usuario.objects.create_superuser("agenda@cauce.local", "x", nombre="Adm")
+        self.user = Usuario.objects.create_superuser("agenda@salud.local", "x", nombre="Adm")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Cardiología")
         self.agenda = Agenda.objects.create(

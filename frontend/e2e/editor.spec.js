@@ -592,7 +592,7 @@ test.describe("Nodo de integración", () => {
   });
 
   test("avisa que la URL es la base y no la de búsqueda", async ({ page }) => {
-    // Es el error más común: Cauce le agrega /Patient?identifier=… por su cuenta.
+    // Es el error más común: I-Core Salud le agrega /Patient?identifier=… por su cuenta.
     await page.getByLabel("Tipo de servicio").selectOption("fhir");
     await expect(page.getByText(/sin \/Patient/)).toBeVisible();
   });

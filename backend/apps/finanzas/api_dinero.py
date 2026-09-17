@@ -8,8 +8,11 @@ from django.db.models import Sum
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from apps.common import OrdenEstable
 
 from .auditoria import AuditaLecturaFinanciera
 from .dinero import (crear_obligacion_pago, decidir_ajuste, decidir_movimiento, disponible_reduccion, disponible_reintegro,
@@ -17,6 +20,7 @@ from .dinero import (crear_obligacion_pago, decidir_ajuste, decidir_movimiento, 
                      registrar_movimiento, reintegrar_movimiento, movimiento_conjunto)
 from .models import AjusteObligacion, ConcesionFinanciera, Gasto, MovimientoDinero, ObligacionFinanciera
 from .permisos import alcance_financiero_q, tiene_accion_financiera
+from .reportes_dinero import filtrar_desglose
 
 
 def _dinero(valor):
@@ -174,6 +178,9 @@ def _filtrar_contexto(queryset, parametros, prefijo=""):
 
 
 class ObligacionFinancieraViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    filter_backends = [OrdenEstable, SearchFilter]
+    ordering_fields = ("id", "tipo", "contraparte_nombre", "periodo_economico")
+    search_fields = ("contraparte_nombre", "contraparte_referencia")
     permission_classes = [IsAuthenticated]
     serializer_class = ObligacionFinancieraSerializer
     queryset = ObligacionFinanciera.objects.all()
@@ -239,6 +246,9 @@ class ObligacionFinancieraViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin
 
 
 class MovimientoDineroViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    filter_backends = [OrdenEstable, SearchFilter]
+    ordering_fields = ("id", "fecha", "tipo", "importe", "estado", "obligacion__contraparte_nombre", "obligacion__periodo_economico")
+    search_fields = ("referencia", "obligacion__contraparte_nombre", "obligacion__contraparte_referencia")
     permission_classes = [IsAuthenticated]
     serializer_class = MovimientoDineroSerializer
     queryset = MovimientoDinero.objects.all()
@@ -257,7 +267,7 @@ class MovimientoDineroViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin, mi
             if self.request.query_params.get(parametro):
                 valor = serializers.DateField().run_validation(self.request.query_params[parametro])
                 queryset = queryset.filter(**{filtro: valor})
-        return queryset
+        return filtrar_desglose(queryset, self.request.query_params)
 
     @action(detail=True, methods=["post"], url_path="previsualizar-reintegro")
     def previsualizar_reintegro(self, request, pk=None):

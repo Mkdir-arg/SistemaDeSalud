@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from apps.common import BaseModelViewSet
 from .auditoria import AuditaLecturaFinanciera
 from .calendario import calendario_mensual, en_alcance_financiero
-from .filtros import filtrar_rangos
+from .filtros import filtrar_rangos, filtrar_tabla
 from .models import ConcesionFinanciera, ExpectativaGasto, IndicacionCargaGasto
 from .services import indicar_carga_esperada, registrar_expectativa_gasto
 from .views import PuedeRegistrarGastos, PuedeVerGastos
@@ -76,9 +76,14 @@ class ExpectativaGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     institucion_path = "institucion"
     http_method_names = ["get", "head", "options", "post"]
     filter_fields = ("institucion", "area", "concepto")
+
+    @property
+    def search_fields(self):
+        return ("motivo_correccion",) if self.action == "list" else ()
+
     @property
     def ordering_fields(self):
-        campos = ("vigente_desde", "vigente_hasta", "id", "concepto__nombre", "area__nombre")
+        campos = ("vigente_desde", "vigente_hasta", "id", "concepto__nombre", "area__nombre", "registrado")
         if self.action == "calendario":
             campos += ("estado_carga", "gastos_pendientes", "gastos_aprobados", "monto_referencia", "importe_aprobado", "diferencia_referencia")
         return campos
@@ -134,6 +139,10 @@ class ExpectativaGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
     def indicaciones(self, request, pk=None):
         expectativa = self.get_object()
         historial = expectativa.indicaciones_carga.order_by("-registrado", "-id")
+        historial = filtrar_tabla(
+            historial, request, ordenables=("periodo_economico", "estado", "registrado"),
+            busqueda=("periodo_economico", "estado"), orden=("-registrado", "-id"),
+        )
         pagina = self.paginate_queryset(historial)
         if pagina is not None:
             respuesta = self.get_paginated_response(IndicacionSerializer(pagina, many=True).data)

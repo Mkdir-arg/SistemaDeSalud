@@ -26,8 +26,8 @@ async function escenario(page, { seguimiento = true, permisoDinero = true, edita
   const escrituras = [];
   const estado = { actualizado: false };
   await page.addInitScript((institucion) => {
-    localStorage.setItem("cauce.access", "access-solo-pruebas-interceptadas");
-    if (!localStorage.getItem("cauce.institucion")) localStorage.setItem("cauce.institucion", JSON.stringify(institucion));
+    localStorage.setItem("salud.access", "access-solo-pruebas-interceptadas");
+    if (!localStorage.getItem("salud.institucion")) localStorage.setItem("salud.institucion", JSON.stringify(institucion));
   }, hospitales[0]);
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -245,7 +245,7 @@ test("Ver cuenta reutiliza el registro de dinero y actualiza el seguimiento al g
   expect(escrituras[0].body.clave).toMatch(/^[a-f0-9-]{36}$/);
 });
 
-test("lectura financiera en móvil conserva Cauce y no habilita registrar dinero", async ({ page }, testInfo) => {
+test("lectura financiera en móvil conserva I-Core Salud y no habilita registrar dinero", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await escenario(page);
   await page.goto(entrada);

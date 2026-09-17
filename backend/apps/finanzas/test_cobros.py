@@ -175,6 +175,20 @@ class CobrosAtencionTests(CobrosSetup, TestCase):
 
 
 class CobrosApiTests(CobrosSetup, APITestCase):
+    def test_pendientes_busqueda_y_orden_antes_de_paginar(self):
+        self.client.force_authenticate(self.admin)
+        self.politica(importe=None)
+        primero, segundo = self.atencion(), self.atencion()
+        respuesta = self.client.get("/api/pendientes-cobro/", {
+            "search": "Consulta", "ordering": "-hecho_id", "page_size": 1,
+        })
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 2)
+        self.assertEqual(len(respuesta.data["results"]), 1)
+        self.assertEqual(respuesta.data["results"][0]["hecho"], segundo.pk)
+        self.assertNotEqual(primero.pk, segundo.pk)
+        self.assertEqual(self.client.get("/api/pendientes-cobro/", {"search": "ausente"}).data["count"], 0)
+
     def test_circuito_api_politica_atencion_cobros_reintegro_y_reporte_sin_duplicar(self):
         self.client.force_authenticate(self.admin)
         respuesta = self.client.post("/api/politicas-cobro/", {

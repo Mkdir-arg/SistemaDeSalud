@@ -18,7 +18,7 @@ import { entrar, entrarPlataforma, esperarPantalla, fijarTema } from "./apoyo";
  */
 
 const CARPETA = "../diseño/docs/captures-app";
-const API = process.env.CAUCE_API || "http://127.0.0.1:8000";
+const API = process.env.SALUD_API || "http://127.0.0.1:8000";
 
 /*
  * Por qué NO 1440x900 a 1x:
@@ -49,7 +49,7 @@ test.beforeEach(async ({ page }) => {
   // Tema claro desde antes del primer pintado: el script del <head> lo lee de
   // localStorage, así que ponerlo después obliga a recargar. Vale también para
   // las pantallas sin sesión, donde `fijarTema` no se puede usar (pide el aside).
-  await page.addInitScript(() => localStorage.setItem("cauce.tema", "claro"));
+  await page.addInitScript(() => localStorage.setItem("salud.tema", "claro"));
   // Sin animaciones en curso las capturas son reproducibles.
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
@@ -142,7 +142,7 @@ test("17 pantalla de llamados", async ({ page, request }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   // Mismo camino que `pantalla.spec.js`: se le pide el token a un nodo con fila.
   const auth = await request.post(`${API}/api/auth/token/`, {
-    data: { email: "admin@cauce.local", password: "admin1234" },
+    data: { email: "admin@salud.local", password: "admin1234" },
   });
   const { access } = await auth.json();
   const nodos = await request.get(`${API}/api/nodos/?tipo=atencion&page_size=100`, {

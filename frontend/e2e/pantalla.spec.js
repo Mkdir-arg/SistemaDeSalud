@@ -14,7 +14,7 @@ test.describe("Pantalla de llamados", () => {
   /** Toma un nodo con fila y le pide (o genera) su token de pantalla. */
   async function token(request) {
     const auth = await request.post("http://127.0.0.1:8000/api/auth/token/", {
-      data: { email: "admin@cauce.local", password: "admin1234" },
+      data: { email: "admin@salud.local", password: "admin1234" },
     });
     const { access } = await auth.json();
     const nodos = await request.get(

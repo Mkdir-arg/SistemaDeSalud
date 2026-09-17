@@ -6,13 +6,14 @@ import { importeARS } from "@/api/finanzas";
 import { Badge, Button, Card, Input, Select, Spinner } from "@/components/ui";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { fechaHora } from "@/lib/format";
+import TablaAgregadaFinanzas from "./TablaAgregadaFinanzas";
 import { AyudaFinanzas, PanelFlotante } from "./ControlesFinanzas";
 import { coincideEstadoMes, tieneReferencia } from "./evolucion";
 
 const GraficoFinanzas = lazy(() => import("./GraficoFinanzas"));
 const GraficoEvolucion = lazy(() => import("./GraficoFinanzas").then((modulo) => ({ default: modulo.GraficoEvolucion })));
 
-class RespaldoGrafico extends Component {
+export class RespaldoGrafico extends Component {
   state = { fallo: false };
   static getDerivedStateFromError() { return { fallo: true }; }
   render() {
@@ -144,13 +145,14 @@ export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onG
       </div>
       {representacion === "evolucion" ? <EvolucionMensual key={`${institucion.id}:${area}:${mes}`} institucion={institucion} usuarioId={usuarioId} mes={mes} area={area} onGastos={onGastos} />
         : !d.agrupaciones.length ? <EstadoVacio titulo="Todavía no hay gastos para estos filtros" detalle="Registrá un gasto o revisá el mes y el área. Esto no significa que el hospital no tenga gastos." />
-        : representacion !== "listado" ? <RespaldoGrafico><Suspense fallback={<p role="status" className="p-4">Preparando gráfico… El listado ya está disponible.</p>}><GraficoFinanzas grupos={d.agrupaciones} representacion={representacion} vista={vista} onGastos={onGastos} onRepartos={onRepartos} /></Suspense></RespaldoGrafico> : <div className="finance-table"><div className="finance-table-content"><table className="w-full text-left text-md"><caption className="sr-only">Gastos por área y concepto · ARS</caption><thead className="bg-superficie-2"><tr>{["Área / concepto", "Aprobado", "Por aprobar", "Distribuido", "Sin distribuir"].map((label) => <th key={label} scope="col" className="p-3 font-semibold">{label}</th>)}</tr></thead><tbody>
-      {d.agrupaciones.map((g) => <tr key={`${g.area}:${g.concepto}`} className="border-t border-division">
-        <th scope="row" data-label="Área / concepto" className="p-3 font-normal"><strong>{g.area_nombre || "Institucional — sin área asignada"}</strong><p className="text-texto-debil">{g.concepto_nombre}</p>{g.ajustes_pendientes > 0 && <button className="mt-1 text-sm text-accent underline underline-offset-2" onClick={() => onGastos(g, "aprobado")}>{g.ajustes_pendientes} {g.ajustes_pendientes === 1 ? "ajuste por aprobar" : "ajustes por aprobar"}</button>}</th>
-        <td data-label="Aprobado" className="p-3"><button className="whitespace-nowrap tabular-nums text-accent underline underline-offset-2" onClick={() => onGastos(g, "aprobado")}>{importe(g.aprobados)}</button></td>
-        <td data-label="Por aprobar" className="p-3"><button className="whitespace-nowrap tabular-nums text-accent underline underline-offset-2" onClick={() => onGastos(g, "pendiente_aprobacion")}>{importe(g.pendientes_aprobacion)}</button></td>
-        <td data-label="Distribuido" className="whitespace-nowrap p-3 tabular-nums">{g.distribuido == null ? importe(g.distribuido) : <button className="text-accent underline underline-offset-2" onClick={() => onRepartos("distribuido", g)}>{importe(g.distribuido)}</button>}</td><td data-label="Sin distribuir" className="whitespace-nowrap p-3 tabular-nums">{g.sin_distribuir == null ? importe(g.sin_distribuir) : <button className="text-accent underline underline-offset-2" onClick={() => onRepartos("sin_distribuir", g)}>{importe(g.sin_distribuir)}</button>}</td>
-      </tr>)}
-    </tbody></table></div></div>}</Card>
+        : representacion !== "listado" ? <RespaldoGrafico><Suspense fallback={<p role="status" className="p-4">Preparando gráfico… El listado ya está disponible.</p>}><GraficoFinanzas grupos={d.agrupaciones} representacion={representacion} vista={vista} onGastos={onGastos} onRepartos={onRepartos} /></Suspense></RespaldoGrafico> : <TablaAgregadaFinanzas clave="resumen_grupos" titulo="Gastos por área y concepto · ARS"
+          contexto={`Gastos vigentes · Mes económico ${mes}`}
+          filas={d.agrupaciones.map((g) => ({ ...g, id: `${g.area}:${g.concepto}` }))}
+          columnas={[
+            { key: "area_concepto", label: "Área / concepto", valor: (g) => `${g.area_nombre || "Institucional"} ${g.concepto_nombre}`,
+              render: (g) => <><strong>{g.area_nombre || "Institucional — sin área asignada"}</strong><p className="text-texto-debil">{g.concepto_nombre}</p>{g.ajustes_pendientes > 0 && <button className="mt-1 text-sm text-accent underline underline-offset-2" onClick={() => onGastos(g, "aprobado")}>{g.ajustes_pendientes} {g.ajustes_pendientes === 1 ? "ajuste por aprobar" : "ajustes por aprobar"}</button>}</> },
+            ...[["aprobados", "Aprobado", "aprobado"], ["pendientes_aprobacion", "Por aprobar", "pendiente_aprobacion"], ["distribuido", "Distribuido"], ["sin_distribuir", "Sin distribuir"]].map(([campo, label, estado]) => ({ key: campo, label, numerica: true,
+              render: (g) => g[campo] == null ? importe(g[campo]) : <button className="tabular-nums text-accent underline underline-offset-2" onClick={() => estado ? onGastos(g, estado) : onRepartos(campo, g)}>{importe(g[campo])}</button> })),
+          ]} />}</Card>
   </section>;
 }

@@ -33,7 +33,7 @@ class UsuarioViewSet(BaseModelViewSet):
     de otra institución. Un centro recién creado mostraba un desplegable lleno de
     gente ajena, que es lo que hizo aparecer el problema.
 
-    El super admin de plataforma sí ve todo: administra el directorio en Cauce
+    El super admin de plataforma sí ve todo: administra el directorio en I-Core Salud
     Plataforma, que es donde se dan de alta las instituciones y sus admins.
     """
 

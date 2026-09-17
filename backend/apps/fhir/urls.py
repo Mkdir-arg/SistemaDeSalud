@@ -2,7 +2,7 @@
 Rutas de la fachada FHIR.
 
 Las rutas son las que manda el estándar (`/fhir/Patient/12`, con la R en
-mayúscula), no las de Cauce: un cliente FHIR las arma solo a partir del tipo de
+mayúscula), no las de I-Core Salud: un cliente FHIR las arma solo a partir del tipo de
 recurso, y renombrarlas «para que combinen» rompe exactamente eso.
 
 El comodín va último y responde en FHIR: sin él, pedir un recurso que no

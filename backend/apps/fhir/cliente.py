@@ -1,7 +1,7 @@
 """
 La otra mitad del conector: consultar un padrón FHIR ajeno.
 
-La fachada (`views.py`) deja que otros lean lo de Cauce. Esto es al revés: un
+La fachada (`views.py`) deja que otros lean lo de I-Core Salud. Esto es al revés: un
 paso del flujo consulta un servidor FHIR externo —el padrón provincial, SISA, la
 obra social— y completa los datos del paciente que está siendo atendido.
 
@@ -170,14 +170,14 @@ def _nombre(patient):
 
 def _fecha(valor):
     """
-    La `birthDate` que mandó el padrón, sólo si Cauce puede sostenerla.
+    La `birthDate` que mandó el padrón, sólo si Salud puede sostenerla.
 
     FHIR R4 admite fechas parciales —`1985` y `1985-03` son válidas y frecuentes
-    en padrones— y el `DateField` de Cauce no. Guardarlas tal cual levanta
+    en padrones— y el `DateField` de Salud no. Guardarlas tal cual levanta
     ValidationError dentro del `@transaction.atomic` del motor: el ingreso
     contesta 500 y el caso queda sin nodo, sin eventos y sin explicación, con el
     checkbox «detener si falla» destildado. Una fecha parcial es un dato que
-    Cauce no puede representar; vacío se nota, inventado no.
+    Salud no puede representar; vacío se nota, inventado no.
     """
     from django.utils.dateparse import parse_date
 
@@ -206,7 +206,7 @@ def _recortado(campo, texto):
 
 def a_ciudadano(patient) -> dict:
     """
-    Traduce un `Patient` a los campos de Cauce. Sólo lo que se puede sostener.
+    Traduce un `Patient` a los campos de Salud. Sólo lo que se puede sostener.
 
     Acá entra el dato ajeno, así que acá se sanea: lo que sale de esta función
     tiene que poder guardarse sin que el padrón pueda tumbar un ingreso.

@@ -9,11 +9,15 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.common import OrdenEstable
+
 from .auditoria import AuditaLecturaFinanciera
 from .cobros import registrar_politica_cobro, resolver_pendiente_cobro, recuperar_cobros_atencion
+from .filtros import filtrar_tabla
 from .models import HechoAtencionCosteable
 from .models_cobros import PendienteCobro, PoliticaCobro
 from .permisos import alcance_financiero_q, tiene_accion_financiera
@@ -106,6 +110,9 @@ class ResolverCobroSerializer(serializers.Serializer):
 
 
 class PendienteCobroViewSet(AuditaLecturaFinanciera, viewsets.ReadOnlyModelViewSet):
+    filter_backends = [OrdenEstable, SearchFilter]
+    ordering_fields = ("hecho_id", "importe", "contraparte_nombre")
+    search_fields = ("politica__nombre_prestacion", "contraparte_nombre")
     queryset = PendienteCobro.objects.all()
     serializer_class = PendienteCobroSerializer
     permission_classes = [IsAuthenticated, PermisoCobros]
@@ -159,6 +166,7 @@ class PendienteCobroViewSet(AuditaLecturaFinanciera, viewsets.ReadOnlyModelViewS
                 qs = qs.filter(**{atributo: valor})
         if request.query_params.get("area_sin_asignar") == "true":
             qs = qs.filter(area_origen_id__isnull=True)
+        qs = filtrar_tabla(qs, request, ordenables=("id",), busqueda=("id",), orden=("id",))
         pagina = self.paginate_queryset(qs)
         filas = [{"id": obj.pk, "hecho": obj.pk, "institucion": obj.institucion_id, "area": obj.area_origen_id, "sensible": True, "motivo": "No se pudo completar la captura de cobros. Podés reintentar sin aplicar reglas nuevas."} for obj in (pagina if pagina is not None else qs)]
         respuesta = self.get_paginated_response(filas) if pagina is not None else Response(filas)

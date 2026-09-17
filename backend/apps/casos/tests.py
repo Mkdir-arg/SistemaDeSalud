@@ -30,7 +30,7 @@ from .serializers import CasoSerializer
 
 class MotorTestCase(TestCase):
     def setUp(self):
-        self.user = Usuario.objects.create_user("op@cauce.local", "x", nombre="Op")
+        self.user = Usuario.objects.create_user("op@salud.local", "x", nombre="Op")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.admision = Area.objects.create(institucion=self.inst, nombre="Admisión")
         self.cardio = Area.objects.create(institucion=self.inst, nombre="Cardiología")
@@ -229,9 +229,9 @@ class ResponsabilidadTests(TestCase):
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.grupo = Grupo.objects.create(area=self.area, nombre="Turno mañana")
-        self.miembro = Usuario.objects.create_user("m@cauce.local", "x", nombre="Miembro")
-        self.ajeno = Usuario.objects.create_user("a@cauce.local", "x", nombre="Ajeno")
-        self.jefe = Usuario.objects.create_superuser("j@cauce.local", "x", nombre="Jefe")
+        self.miembro = Usuario.objects.create_user("m@salud.local", "x", nombre="Miembro")
+        self.ajeno = Usuario.objects.create_user("a@salud.local", "x", nombre="Ajeno")
+        self.jefe = Usuario.objects.create_superuser("j@salud.local", "x", nombre="Jefe")
         self.mem_miembro = Membresia.objects.create(
             usuario=self.miembro, institucion=self.inst, rol=Membresia.Rol.MEDICO, activo=True
         )
@@ -297,7 +297,7 @@ class AtencionConFilaTests(TestCase):
     """Atención con fila: el paciente espera, se lo llama de un box y recién ahí se atiende."""
 
     def setUp(self):
-        self.jefe = Usuario.objects.create_superuser("jefe@cauce.local", "x", nombre="Jefe")
+        self.jefe = Usuario.objects.create_superuser("jefe@salud.local", "x", nombre="Jefe")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Cardiología")
         self.box = Box.objects.create(area=self.area, nombre="Box 1")
@@ -363,7 +363,7 @@ class EstudioDerivadoTests(TestCase):
     """Estudio que deriva a otra área y vuelve: el caso espera y se reactiva solo."""
 
     def setUp(self):
-        self.jefe = Usuario.objects.create_superuser("jefe2@cauce.local", "x", nombre="Jefe")
+        self.jefe = Usuario.objects.create_superuser("jefe2@salud.local", "x", nombre="Jefe")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.cardio = Area.objects.create(institucion=self.inst, nombre="Cardiología")
         self.imagenes = Area.objects.create(institucion=self.inst, nombre="Imágenes")
@@ -1266,7 +1266,7 @@ class OperacionDeFilaTests(TestCase):
     """
 
     def setUp(self):
-        self.jefe = Usuario.objects.create_superuser("jefe@cauce.local", "x", nombre="Jefe")
+        self.jefe = Usuario.objects.create_superuser("jefe@salud.local", "x", nombre="Jefe")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.box = Box.objects.create(area=self.area, nombre="Box 1")

@@ -21,7 +21,7 @@ from .vigencias import convenio_aplicable, convenios_vigentes
 
 def intento_actual(caso):
     inicio = caso.paso_desde or caso.creado
-    return uuid5(NAMESPACE_URL, f"cauce:autorizacion:{caso.pk}:{caso.nodo_actual_id}:{inicio.isoformat()}")
+    return uuid5(NAMESPACE_URL, f"salud:autorizacion:{caso.pk}:{caso.nodo_actual_id}:{inicio.isoformat()}")
 
 
 def casos_permitidos(usuario):

@@ -16,7 +16,7 @@ const cuenta = {
 async function escenario(page, { permisos = ["ver_dinero", "registrar_dinero", "corregir_dinero", "aprobar_dinero"], fallaMovimiento = false, fallaDetalle = false } = {}) {
   const lecturas = []; const escrituras = [];
   const estado = { intentos: 0, fallaDetalle, cuenta: structuredClone(cuenta), cuentaPorPagar: null, politicas: [], pendientes: [], preview: null, ajustesGasto: [] };
-  await page.addInitScript((institucion) => { localStorage.setItem("cauce.access", "credencial-ficticia-solo-mock"); localStorage.setItem("cauce.institucion", JSON.stringify(institucion)); }, inst);
+  await page.addInitScript((institucion) => { localStorage.setItem("salud.access", "credencial-ficticia-solo-mock"); localStorage.setItem("salud.institucion", JSON.stringify(institucion)); }, inst);
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -413,4 +413,21 @@ test("ajuste de gasto pendiente muestra historia y permite rechazar con motivo",
   await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
   await expect.poll(() => escrituras.length).toBe(1);
   expect(escrituras[0]).toEqual({ path: "/ajustes-gasto/99/rechazar/", body: { motivo: "Importe incorrecto" } });
+});
+
+
+test("las tablas de dinero envían búsqueda y orden al servidor", async ({ page }) => {
+  const { lecturas } = await escenario(page);
+  await page.goto("/finanzas?tab=dinero&mes=2026-09");
+  await page.getByRole("textbox", { name: "Buscar cuentas", exact: true }).fill("Proveedor");
+  await expect(page.getByRole("button", { name: "Quitar filtro Buscar cuentas", exact: true })).toContainText("Proveedor");
+  await page.getByRole("button", { name: "Ordenar por A quién / de quién", exact: true }).click();
+  await expect.poll(() => lecturas.some((u) => u.pathname === "/api/obligaciones-financieras/" && u.searchParams.get("search") === "Proveedor" && u.searchParams.get("ordering") === "contraparte_nombre")).toBe(true);
+  await page.getByRole("button", { name: "Ver movimientos del período", exact: true }).click();
+  await page.getByRole("textbox", { name: "Buscar movimientos", exact: true }).fill("COM");
+  await page.getByRole("button", { name: "Ordenar por Importe", exact: true }).click();
+  await expect.poll(() => lecturas.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("search") === "COM" && u.searchParams.get("ordering") === "importe")).toBe(true);
+  await page.getByRole("textbox", { name: "Buscar cobros por completar", exact: true }).fill("consulta");
+  await page.getByRole("button", { name: "Ordenar por Arancel", exact: true }).click();
+  await expect.poll(() => lecturas.some((u) => u.pathname === "/api/pendientes-cobro/" && u.searchParams.get("search") === "consulta" && u.searchParams.get("ordering") === "importe")).toBe(true);
 });

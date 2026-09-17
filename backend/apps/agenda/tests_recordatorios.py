@@ -1,7 +1,7 @@
 """
 La lista de llamados del día siguiente.
 
-Cauce no tiene canal al paciente. Un «recordatorio» acá es que alguien del
+I-Core Salud no tiene canal al paciente. Un «recordatorio» acá es que alguien del
 mostrador sepa a quién llamar, y lo que se cuida es que ese aviso llegue a
 alguien de verdad: un turno marcado como recordado que nadie va a llamar es
 peor que no tener el comando.

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { inflateSync } from "node:zlib";
 test.beforeEach(async ({ page }) => { page.on("pageerror", (error) => { console.error("Error de página:", error.message); }); });
 
 async function escenarioAjusteCosto(page, { aprobar = true, sensible = false, alcanceSensible = true, areaAprobacion = 3 } = {}) {
@@ -69,6 +71,298 @@ const acciones = ["ver_gastos", "ver_costos", "registrar_gastos", "aprobar_gasto
 const calendario = { id: 1, institucion: 2, concepto: 1, concepto_nombre: "Electricidad", area: 3, area_nombre: area.nombre, sensible: false, estado_carga: "falta_cargar", gastos_pendientes: 1, gastos_aprobados: 1, monto_referencia: "12000.00", importe_aprobado: "10000.01", diferencia_referencia: "1999.99", vigente_desde: "2026-09-01", vigente_hasta: null };
 const reporte = { aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", moneda: "ARS", actualizando: false, alcance: "Gastos registrados visibles según tus permisos; no equivale al costo total del hospital", agrupaciones: [{ area: 3, area_nombre: area.nombre, concepto: 1, concepto_nombre: "Electricidad", aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", actualizando: false }] };
 
+async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"], vacio = false, error = false, transformar = (datos) => datos } = {}) {
+  const base = await escenario(page, { permisos });
+  const peticiones = [];
+  page.on("request", (r) => { if (r.url().includes("/api/")) peticiones.push(new URL(r.url())); });
+  await page.route(/\/api\/reportes-(finanzas|dinero)\/comparativa\//, async (route) => {
+    if (error) return route.fulfill({ status: 403, json: { detail: "Sin acceso a este alcance" } });
+    const url = new URL(route.request().url());
+    const esDinero = url.pathname.includes("reportes-dinero");
+    const anterior = url.searchParams.get("comparar") === "anio_anterior" ? "2025-09-01" : "2026-08-01";
+    const nombres = ["Electricidad", "Materiales de atención", "Mantenimiento", "Limpieza"];
+    const grupos = vacio ? [] : nombres.map((nombre, i) => ({ area: i < 2 ? 3 : 4, area_nombre: i < 2 ? area.nombre : "Guardia", concepto: i + 1, concepto_nombre: nombre,
+      actual: { aprobados: ["480000.01", "320000.00", "140000.00", "60000.00"][i] }, anterior: { aprobados: ["400000.00", "250000.00", "100000.00", "50000.00"][i] },
+      variacion: { importe: ["80000.01", "70000.00", "40000.00", "10000.00"][i], porcentaje: "20.00" } }));
+    const gasto = (periodo, actual = true) => ({ periodo_economico: periodo, aprobados: vacio ? "0.00" : actual ? "1000000.01" : "800000.00", pendientes_aprobacion: vacio ? "0.00" : "25000.00", cantidad_registros: vacio ? 0 : 4, controles: vacio ? 0 : 3, controles_sin_completar: vacio ? 0 : actual ? 1 : 2, provisional: !vacio, actualizando: false, ajustes_pendientes: 0, mes_abierto: periodo === "2026-09-01" });
+    const money = (periodo, actual = true) => ({ periodo_economico: periodo, fecha_desde: periodo, fecha_hasta: periodo.slice(0, 8) + (periodo.slice(5, 7) === "09" ? "30" : "31"), cobros_netos: vacio ? "0.00" : actual ? "720000.00" : "600000.00", pagos_netos: vacio ? "0.00" : "540000.00", diferencia: vacio ? "0.00" : actual ? "180000.00" : "60000.00", cantidad_movimientos: vacio ? 0 : 9, por_aprobar: { cantidad: vacio ? 0 : 2 }, mes_abierto: periodo === "2026-09-01" });
+    const meses = Number(url.searchParams.get("meses"));
+    const serie = Array.from({ length: meses }, (_, i) => {
+      const fecha = new Date(Date.UTC(2026, 9 - meses + i, 1)).toISOString().slice(0, 10);
+      const fila = esDinero ? money(fecha) : gasto(fecha);
+      if (!vacio && i < meses - 1) {
+        if (esDinero) { fila.cobros_netos = String(420000 + i * 36000); fila.pagos_netos = String(380000 + i * 23000); }
+        else fila.aprobados = String(620000 + i * 45000);
+      }
+      return fila;
+    });
+    const variacion = { importe: vacio ? null : "200000.01", porcentaje: vacio ? null : "25.00", motivo: vacio ? "Sin registros comparables" : null };
+    const desglose = vacio ? [] : [{ area_nombre: area.nombre, concepto_nombre: "Consulta médica", pagador_nombre: "Mutual del Litoral", cobros_netos: "720000.00", pagos_netos: "0.00", cantidad_movimientos: 9, por_aprobar: { cantidad: 2 }, filtros: { area: 3, tipo_cuenta: "cobrar", reporte_financiador: "9", reporte_prestacion: "4", reporte_concepto: "null", reporte_pagador: "financiador" } }];
+    await route.fulfill({ json: transformar({ actual: esDinero ? money("2026-09-01") : gasto("2026-09-01"), anterior: esDinero ? money(anterior, false) : gasto(anterior, false), serie,
+      variaciones: Object.fromEntries((esDinero ? ["cobros_netos", "pagos_netos", "diferencia"] : ["aprobados", "pendientes_aprobacion"]).map((c) => [c, vacio ? variacion : c === "aprobados" ? variacion : { importe: c === "pagos_netos" || c === "pendientes_aprobacion" ? "0.00" : "120000.00", porcentaje: c === "pagos_netos" || c === "pendientes_aprobacion" ? "0.00" : c === "diferencia" ? "200.00" : "20.00" }])), agrupaciones: esDinero ? desglose : grupos,
+      calculado_en: "2026-09-16T15:30:00Z", moneda: "ARS", alcance: "Fuentes registradas y visibles; no certifica carga completa." }, esDinero) });
+  });
+  return { ...base, peticiones };
+}
+
+test("comparaciones colorean aumentos y bajas sin confundir cero ni falta de base", async ({ page }) => {
+  await escenarioEjecutivo(page, { transformar: (datos, esDinero) => {
+    if (esDinero) return datos;
+    datos.actual.aprobados = "600000.00";
+    datos.variaciones.aprobados = { importe: "-200000.00", porcentaje: "-25.00" };
+    datos.agrupaciones[0].actual.aprobados = "320000.00";
+    datos.agrupaciones[0].variacion = { importe: "-80000.00", porcentaje: "-20.00" };
+    datos.agrupaciones[1].variacion = { importe: "70000.00", porcentaje: null };
+    datos.agrupaciones[2].anterior = null;
+    datos.agrupaciones[2].variacion = { importe: null, porcentaje: null };
+    return datos;
+  } });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const cambios = page.locator(".finance-report-change");
+  await expect(cambios.first().locator("strong")).toHaveText("ARS -200.000,00");
+  for (const oscuro of [false, true]) {
+    if (oscuro) await page.getByRole("button", { name: "Cambiar a tema oscuro", exact: true }).click();
+    for (const [texto, clase] of [["-25% nominal", "text-badge-error-fg"], ["-20% nominal", "text-badge-error-fg"], ["+20% nominal", "text-badge-green-fg"], ["0% nominal", "text-texto-debil"], ["Sin base porcentual", "text-texto-debil"]]) {
+      const elementos = cambios.getByText(texto, { exact: true });
+      for (const elemento of await elementos.all()) {
+        await expect(elemento).toHaveClass(new RegExp(clase));
+        // Detecta reglas CSS más específicas que anulen el token de color.
+        expect(await elemento.evaluate((el, token) => {
+          const referencia = document.createElement("span");
+          referencia.className = token;
+          document.body.append(referencia);
+          const coincide = getComputedStyle(el).color === getComputedStyle(referencia).color;
+          referencia.remove();
+          return coincide;
+        }, clase)).toBe(true);
+      }
+    }
+    await expect(cambios.first().locator("strong")).toHaveClass(/text-badge-error-fg/);
+    await expect(page.getByText("Sin base comparable", { exact: true })).toHaveClass(/text-texto-debil/);
+  }
+});
+
+async function descargarPdf(page, testInfo) {
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+  const archivo = await descarga;
+  expect(archivo.suggestedFilename()).toBe("reporte-finanzas-2026-09.pdf");
+  const ruta = testInfo.outputPath("reporte.pdf");
+  await archivo.saveAs(ruta);
+  await testInfo.attach("reporte-pdf", { path: ruta, contentType: "application/pdf" });
+  const pdf = (await readFile(ruta)).toString("latin1");
+  expect(pdf).toMatch(/^%PDF-/);
+  // Inspeccionar los flujos de texto emitidos por jsPDF, además de comprobar
+  // la descarga. La revisión visual usa un lector PDF independiente.
+  const contenido = [...pdf.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map((m) => {
+    try { return inflateSync(Buffer.from(m[1], "latin1")).toString("latin1"); } catch { return m[1]; }
+  }).join("\n");
+  return { pdf, contenido };
+}
+
+test("PDF descarga gráficos y todas las filas filtradas en su orden, con períodos y fuentes", async ({ page }, testInfo) => {
+  const { peticiones } = await escenarioEjecutivo(page, { transformar: (datos, esDinero) => {
+    if (!esDinero) datos.agrupaciones = Array.from({ length: 32 }, (_, i) => ({ ...datos.agrupaciones[0],
+      concepto: i + 1, area_nombre: "AreaPDF", concepto_nombre: i === 31 ? "Excluido" : `Incluido ${String(i + 1).padStart(3, "0")}`,
+      actual: { aprobados: `${1000 + i}.01` }, anterior: { aprobados: "900.00" }, variacion: { importe: `${100 + i}.01`, porcentaje: "11.11" },
+    }));
+    return datos;
+  } });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&area=3&reporte_grupos_gastos_f_area_concepto=Incluido&reporte_grupos_gastos_ord=-actual&reporte_grupos_gastos_pag=2");
+  await page.getByLabel("Comparar período", { exact: true }).selectOption("anio_anterior");
+  await page.getByLabel("Trayectoria", { exact: true }).selectOption("12");
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("Litoral");
+  await expect(page.locator("[data-reporte-grafico] .recharts-wrapper > svg.recharts-surface")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  const consultasAntes = peticiones.filter((p) => p.pathname.includes("/comparativa/")).length;
+  const { pdf, contenido } = await descargarPdf(page, testInfo);
+  expect(pdf.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(3);
+  for (const dato of ["Hospital Escuela", "2025-09", "2026-09", "Consultorios Escuela", "Trayectoria: 12 meses", "Fuente consultada", "registros vigentes", "Incluido 031", "Incluido 001", "Filas: 31.", "Búsqueda: Litoral", "Mutual del Litoral"]) expect(contenido).toContain(dato);
+  // El gráfico conserva sus grupos aunque la tabla esté filtrada, y el PDF
+  // identifica cada barra con área y concepto porque no tiene tooltips.
+  expect(contenido).toContain("1. AreaPDF · Excluido");
+  const tablaGastos = contenido.slice(contenido.indexOf("Comparación exacta de gastos"));
+  expect(tablaGastos).not.toContain("Excluido");
+  expect(tablaGastos.indexOf("Incluido 031")).toBeLessThan(tablaGastos.indexOf("Incluido 001"));
+  expect(peticiones.filter((p) => p.pathname.includes("/comparativa/")).length).toBe(consultasAntes);
+  await expect(page).toHaveURL(/reporte_grupos_gastos_pag=2/);
+});
+
+test("PDF conserva restricciones y ausencia de registros sin dibujar ceros", async ({ page }, testInfo) => {
+  const { peticiones } = await escenarioEjecutivo(page, { permisos: ["ver_dinero"], vacio: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  const { pdf, contenido } = await descargarPdf(page, testInfo);
+  expect(contenido).toContain("No incluidos en tu acceso");
+  expect(contenido).toContain("Sin base comparable");
+  expect(contenido).not.toContain("ARS 0,00");
+  expect(pdf).not.toContain("/Subtype /Image");
+  expect(peticiones.some((p) => p.pathname.includes("/reportes-finanzas/"))).toBe(false);
+});
+
+test("PDF bloquea consultas fallidas y filtros numéricos inválidos", async ({ page }) => {
+  await escenarioEjecutivo(page, { error: true });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByText("No tenés permiso para ver esto", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeDisabled();
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&reporte_grupos_gastos_f_actual_min=1e3");
+  await page.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Corregí los filtros de importe" })).toBeVisible();
+});
+
+test("PDF exporta gráficos desde móvil oscuro y conserva las bajas", async ({ page }, testInfo) => {
+  await escenarioEjecutivo(page, { transformar: (datos, esDinero) => {
+    if (!esDinero) {
+      datos.actual.aprobados = "600000.00";
+      datos.variaciones.aprobados = { importe: "-200000.00", porcentaje: "-25.00" };
+    }
+    return datos;
+  } });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await page.getByRole("button", { name: "Cambiar a tema oscuro", exact: true }).click();
+  await expect(page.locator("[data-reporte-grafico] .recharts-wrapper > svg.recharts-surface")).toHaveCount(3);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  const { pdf, contenido } = await descargarPdf(page, testInfo);
+  expect(contenido).toContain("ARS -200.000,00");
+  expect(contenido).toContain("-25%");
+  expect(pdf.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(3);
+  await page.screenshot({ path: testInfo.outputPath("pdf-movil-oscuro.png") });
+});
+
+test("PDF espera las consultas y muestra un error recuperable si falla la generación", async ({ page }, testInfo) => {
+  await escenarioEjecutivo(page, { vacio: true });
+  let liberar;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  await page.route(/\/api\/reportes-(finanzas|dinero)\/comparativa\//, async (route) => { await espera; await route.fallback(); });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeDisabled();
+  liberar();
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  await page.route("**/src/pages/finanzas/reportePdf.js*", (route) => route.abort());
+  await page.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "No se pudo generar el PDF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  await expect(page.locator(".finance-report-metric")).toHaveCount(5);
+  await page.unroute("**/src/pages/finanzas/reportePdf.js*");
+  // Los navegadores conservan un import() fallido durante esta navegación.
+  // Se sigue la recuperación indicada en el mensaje, sin perder filtros URL.
+  await page.reload();
+  await descargarPdf(page, testInfo);
+  await expect(page.getByRole("alert").filter({ hasText: "No se pudo generar el PDF" })).toHaveCount(0);
+});
+
+test("reporte ejecutivo compara períodos y abre gastos anteriores sin imponer control mensual", async ({ page }, testInfo) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("heading", { name: "Comparación de períodos" })).toBeVisible();
+  const ayuda = page.getByRole("button", { name: "Cómo leer los reportes", exact: true });
+  await expect(page.getByText(/Los importes están en pesos argentinos/)).toHaveCount(0);
+  await ayuda.focus();
+  await expect(page.getByRole("dialog", { name: "Cómo leer los reportes", exact: true })).toContainText("base anterior es positiva");
+  await page.keyboard.press("Escape");
+  await expect(ayuda).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Cómo leer los reportes", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("ARS 1.000.000,01");
+  await expect(page.getByRole("region", { name: "Informe de gastos", exact: true }).getByText("+25% nominal", { exact: true }).first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await expect(page.getByRole("img", { name: "Tendencia mensual; importes y navegación disponibles en la tabla" }).first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-escritorio.png"), animations: "disabled" });
+  await page.locator(".finance-report-charts").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-graficos.png"), animations: "disabled" });
+  await page.getByLabel("Comparar período").selectOption("anio_anterior");
+  await page.getByRole("combobox", { name: "Trayectoria", exact: true }).selectOption("12");
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/reportes-finanzas/comparativa/" && u.searchParams.get("comparar") === "anio_anterior" && u.searchParams.get("meses") === "12")).toBe(true);
+  await page.getByRole("button", { name: "Ver gastos aprobados de 2025-09", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/gastos/" && u.searchParams.get("periodo_economico") === "2025-09-01" && u.searchParams.get("estado_operativo") === "aprobado" && !u.searchParams.has("control_mensual"))).toBe(true);
+});
+
+test("reporte ejecutivo conserva área concepto y mes del desglose de gastos", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const fila = page.getByRole("table", { name: "Comparación exacta de gastos" }).getByRole("row").filter({ hasText: "Mantenimiento" });
+  await fila.getByRole("button", { name: "ARS 140.000,00", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/gastos/" && u.searchParams.get("area") === "4" && u.searchParams.get("concepto") === "3" && u.searchParams.get("periodo_economico") === "2026-09-01" && !u.searchParams.has("control_mensual"))).toBe(true);
+});
+
+test("reporte ejecutivo muestra cargas pendientes de ambos períodos y abre sus controles", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&area=3");
+  await expect(page.getByRole("button", { name: "1 control pendiente de carga · revisar", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "2 controles pendientes de carga · revisar", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/expectativas-gasto/calendario/" && u.searchParams.get("periodo_economico") === "2026-08-01" && u.searchParams.get("area") === "3" && u.searchParams.get("estado_carga") === "falta_cargar")).toBe(true);
+});
+
+test("reporte ejecutivo traza financiador prestación y estado hasta movimientos", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.route("**/api/movimientos-dinero/**", (route) => route.fulfill({ json: lista([{ id: 81, obligacion: 62, importe: "720000.00", estado: "aprobado", tipo: "cobro", obligacion_tipo: "cobrar", contraparte_nombre: "Mutual del Litoral", fecha: "2026-09-10", periodo_economico: "2026-08-01" }]) }));
+  await page.route("**/api/obligaciones-financieras/62/", (route) => route.fulfill({ json: { id: 62, tipo: "cobrar", hecho: 71, area: 3, sensible: false, contraparte_nombre: "Mutual del Litoral", periodo_economico: "2026-08-01", importe_original: "720000.00", obligacion_actual: "720000.00", registrado_neto: "720000.00", pendiente: "0.00", disponible_registro: "0.00", disponible_reducir: "0.00", saldo_a_devolver: "0.00", por_aprobar: "0.00", reintegros_por_aprobar: "0.00", ajustes_por_aprobar: "0.00", movimientos: [], ajustes: [] } }));
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&movimientos_dinero_pag=2");
+  const tabla = page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" });
+  await tabla.getByRole("button", { name: "ARS 720.000,00", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Mutual del Litoral");
+  await expect(page).not.toHaveURL(/movimientos_dinero_pag=2/);
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("page") === "1" && u.searchParams.get("reporte_financiador") === "9" && u.searchParams.get("reporte_prestacion") === "4" && u.searchParams.get("reporte_concepto") === "null" && u.searchParams.get("area") === "3" && u.searchParams.get("estado") === "aprobado" && u.searchParams.get("fecha_desde") === "2026-09-01" && u.searchParams.get("fecha_hasta") === "2026-09-30")).toBe(true);
+  await page.getByRole("button", { name: "Ver cuenta #62", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Cuenta #62", exact: true })).toContainText("Atención de origen #71");
+});
+
+test("reporte ejecutivo consulta pendientes fuera de los importes confirmados", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" }).getByRole("button", { name: "2 registros", exact: true }).click();
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("estado") === "pendiente_aprobacion" && u.searchParams.get("reporte_financiador") === "9")).toBe(true);
+});
+
+test("reporte ejecutivo es legible en móvil y permite filtrar el desglose", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("heading", { name: "Comparación de períodos" })).toBeVisible();
+  await page.getByRole("button", { name: "Importes y pendientes de gastos", exact: true }).click();
+  const ayuda = page.getByRole("dialog", { name: "Importes y pendientes de gastos", exact: true });
+  await expect(ayuda).toContainText("Los ajustes por aprobar no modifican ese importe");
+  const limites = await ayuda.boundingBox();
+  expect(limites.x).toBeGreaterThanOrEqual(0);
+  expect(limites.x + limites.width).toBeLessThanOrEqual(390);
+  await ayuda.getByRole("button", { name: "Cerrar Importes y pendientes de gastos", exact: true }).click();
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-movil.png"), animations: "disabled" });
+  await page.locator(".finance-report-trend").first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("reportes-ejecutivos-grafico-movil.png"), animations: "disabled" });
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("inexistente");
+  await expect(page.getByText("Sin movimientos para este desglose", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("Litoral");
+  await expect(page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" })).toContainText("Mutual del Litoral");
+});
+
+test("reporte ejecutivo sin registros no dibuja ceros ni una variación ficticia", async ({ page }) => {
+  await escenarioEjecutivo(page, { vacio: true });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("Sin registros");
+  await expect(page.getByText("Sin base comparable", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".finance-report .recharts-line")).toHaveCount(0);
+  await expect(page.locator(".finance-report").getByText("ARS 0,00", { exact: true })).toHaveCount(0);
+});
+
+test("reporte ejecutivo no consulta gastos sin permiso y muestra restricción en lugar de cero", async ({ page }) => {
+  const { peticiones } = await escenarioEjecutivo(page, { permisos: ["ver_dinero"] });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByText("Los gastos no están incluidos en tu acceso. No se representan como cero.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ver cobros netos de 2026-09", exact: true })).toBeVisible();
+  expect(peticiones.some((u) => u.pathname.startsWith("/api/reportes-finanzas/"))).toBe(false);
+});
+
+test("reporte ejecutivo informa rechazo de acceso sin exponer cifras", async ({ page }) => {
+  await escenarioEjecutivo(page, { error: true });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByText("No tenés permiso para ver esto", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".finance-report-metric")).toHaveCount(0);
+});
+
 test("ajustes pendientes se distinguen en resumen, control y evolución sin cambiar el aprobado", async ({ page }, testInfo) => {
   const { db, peticiones } = await escenario(page);
   db.reporte.aprobados = "100.00";
@@ -112,7 +406,7 @@ async function escenario(page, { permisos = acciones, pendientes = false, conces
   const peticiones = [];
   const escrituras = [];
   const db = { prestaciones: [], componentes: [], valores: [], concesiones: [...concesiones], pendientes, reporte: structuredClone(reporte), evolucion: { conceptos: [], concepto: null, meses: [], moneda: "ARS" } };
-  await page.addInitScript((institucion) => { localStorage.setItem("cauce.access", "credencial-ficticia-solo-mock"); localStorage.setItem("cauce.institucion", JSON.stringify(institucion)); }, inst);
+  await page.addInitScript((institucion) => { localStorage.setItem("salud.access", "credencial-ficticia-solo-mock"); localStorage.setItem("salud.institucion", JSON.stringify(institucion)); }, inst);
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -390,20 +684,14 @@ test("gastos simplificados conservan detalle y filtros guardados; diferencias di
   expect(escrituras).toHaveLength(0);
 });
 
-test("control mensual adapta antes sus nueve columnas sin cambiar otras listas", async ({ page }, testInfo) => {
+test("control mensual conserva columnas y permite desplazarlas sin romper encabezados", async ({ page }, testInfo) => {
   const { escrituras } = await escenario(page);
   await page.route("**/api/gastos/**", (route) => route.fulfill({ json: lista([{ id: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", importe: "100.00", importe_resultante: "100.00", registrado: "2026-09-14T12:00:00Z", reemplazado_por: null }]) }));
   await page.goto("/finanzas?mes=2026-09&tab=calendario");
-  const alternar = page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false });
   const contenido = page.locator(".finance-table-content");
   for (const width of [1366, 1440, 1578, 1734, 1738, 1920, 390]) {
     await page.setViewportSize({ width, height: 1000 });
-    const adaptable = width < 1738;
-    if (adaptable) {
-      await expect(alternar).toBeVisible();
-      await expect(contenido.locator("thead")).toBeHidden();
-      await alternar.click();
-    } else await expect(alternar).toBeHidden();
+    await expect(contenido.locator("thead")).toBeVisible();
     const ordenar = page.getByRole("button", { name: /^Ordenar por Referencia mensual/ });
     await expect(ordenar).toBeVisible();
     // Una palabra del encabezado nunca debería partirse en dos líneas.
@@ -427,10 +715,9 @@ test("control mensual adapta antes sus nueve columnas sin cambiar otras listas",
     await page.getByRole("button", { name: "Filtrar Referencia mensual", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Filtrar Referencia mensual", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    if (adaptable) await alternar.click();
     await expect(contenido.locator('td[data-label="Referencia mensual"]')).toHaveText("ARS 12.000,00");
     await expect(contenido.locator('td[data-label="Diferencia"]')).toHaveText("ARS +1.999,99");
-    await expect.poll(() => contenido.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    await expect.poll(() => contenido.evaluate((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
     await contenido.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`control-adaptado-${width}.png`), animations: "disabled" });
   }
@@ -440,7 +727,6 @@ test("control mensual adapta antes sus nueve columnas sin cambiar otras listas",
   await page.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
   await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
   await expect(contenido.locator("thead")).toBeVisible();
-  await expect(alternar).toBeHidden();
   await expect(contenido.locator('td[data-label="Importe vigente"]')).toHaveText("ARS 100,00");
   expect(escrituras).toHaveLength(0);
 });
@@ -727,7 +1013,7 @@ test("estado actualizado deja texto y fecha dentro de su ayuda", async ({ page }
   await expect(ayuda).toContainText("Última ejecución correcta:");
 });
 
-test("listas financieras sin scroll interno conservan importes, filtros y acciones", async ({ page }, testInfo) => {
+test("listas financieras con scroll horizontal conservan importes, filtros y acciones", async ({ page }, testInfo) => {
   await escenario(page);
   await page.route("**/api/gastos/**", (route) => route.fulfill({ json: lista([{ id: 1, concepto_nombre: "Electricidad de edificios y consultorios del hospital", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado_operativo: "aprobado", estado: "aprobado", importe: "999999999999999.99", total_ajustes: "-10.00", importe_resultante: "999999999999989.99", registrado: "2026-09-14T12:00:00Z", ajustes: [], reemplazado_por: null }]) }));
   await page.route("**/api/repartos-gasto/**", (route) => route.fulfill({ json: lista([{ id: 1, gasto: 1, concepto_nombre: "Electricidad", area_nombre: area.nombre, periodo_economico: "2026-09-01", estado: "distribuido", saldo_centavos: 10001, saldo_no_atribuido_centavos: 0, atribuciones: 0, vigente: true, version: 1 }]) }));
@@ -738,30 +1024,29 @@ test("listas financieras sin scroll interno conservan importes, filtros y accion
       await page.getByRole("tab", { name: tab, exact: true }).click();
       if (tab === "Resumen") await page.getByRole("button", { name: "Listado", exact: true }).click();
       await expect(page.locator(".finance-table-content")).toHaveCount(1);
-      await expect.poll(() => page.locator(".finance-table-content").evaluateAll((nodos) => nodos.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
-      await expect.poll(() => page.locator(".finance-table-content table").evaluateAll((nodos) => nodos.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
+      await expect.poll(() => page.locator(".finance-table-content").evaluateAll((nodos) => nodos.every((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1))).toBe(true);
+      await expect(page.locator(".finance-table-content table")).toHaveCSS("display", "table");
+      await expect(page.locator(".finance-table-content thead")).toBeVisible();
     }
   }
   await page.getByRole("tab", { name: "Gastos mensuales", exact: true }).click();
-  await page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false }).click();
   await page.getByRole("button", { name: "Ordenar por Importe aprobado", exact: true }).click();
   await expect(page).toHaveURL(/calendario_ord=importe_aprobado/);
   await page.getByRole("button", { name: "Filtrar Referencia mensual", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Filtrar Referencia mensual", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Ordenar y filtrar columnas", exact: false }).click();
   await page.locator(".finance-table").scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("control-sin-scroll-movil.png"), animations: "disabled" });
   await page.getByRole("button", { name: "Administrar Electricidad", exact: false }).click();
   await expect(page.getByRole("dialog")).toContainText("ARS 1.999,99");
   await page.getByRole("button", { name: "Historial de configuración", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Historial de configuración · Electricidad" })).toBeVisible();
-  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
   await page.route("**/api/expectativas-gasto/1/indicaciones/**", (route) => route.fulfill({ json: lista([{ id: 1, periodo_economico: "2026-09-01", estado: "carga_completa", registrado: "2026-09-14T12:00:00Z" }]) }));
   await page.getByRole("button", { name: "Historial de carga", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Historial · Electricidad" })).toBeVisible();
   await expect(page.getByRole("dialog").getByText("Carga completa", { exact: true })).toBeVisible();
-  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await expect.poll(() => page.getByRole("dialog").locator(".finance-table-content").evaluate((e) => getComputedStyle(e).overflowX === "auto" && e.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
 });
 
 test("filtros y tabs comparten fila, cabecera estable y límite explicado en ayuda", async ({ page }, testInfo) => {
@@ -987,7 +1272,7 @@ for (const movimiento of ["no-preference", "reduce"]) {
     await expect(page.getByText("Sin enlace", { exact: false })).toBeVisible();
     await expect(page.getByRole("link", { name: "Consulta kinesiológica" })).toHaveCount(1);
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect.poll(() => page.locator(".finance-table-content").evaluateAll((listas) => listas.every((e) => e.scrollWidth <= e.clientWidth))).toBe(true);
+    await expect.poll(() => page.locator(".finance-table-content").evaluateAll((listas) => listas.every((e) => getComputedStyle(e).overflowX === "auto" && (e.parentElement.closest(".finance-table-content") || e.getBoundingClientRect().right <= innerWidth + 1)))).toBe(true);
     await page.setViewportSize({ width: 1440, height: 1100 });
     await page.screenshot({ path: testInfo.outputPath("atribuciones.png"), fullPage: true });
     await enlace.click();
@@ -1193,4 +1478,103 @@ test("configurador sin lectura registra una regla sin consultar importes", async
   await modal.getByRole("button", { name: "Registrar regla", exact: true }).click();
   await expect.poll(() => guardado).toBe(true);
   expect(peticiones.some((url) => /\/(gastos|reportes-finanzas|procesamiento-finanzas)\//.test(url.pathname))).toBe(false);
+});
+
+
+test("reporte ejecutivo mantiene columnas independientes y no genera scroll invisible", async ({ page }) => {
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const gastos = page.getByRole("region", { name: "Informe de gastos", exact: true });
+  const dinero = page.getByRole("region", { name: "Informe de dinero", exact: true });
+  await expect(gastos.getByRole("heading", { name: "Detalle por área y concepto" })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const posicion = () => dinero.getByRole("heading", { name: "Detalle de pagos y cobros" }).evaluate((e) => e.getBoundingClientRect().top + e.closest("main > div:last-child").scrollTop);
+  const antes = await posicion();
+  await gastos.getByText("Ver importes y fuentes de cada mes", { exact: true }).click();
+  expect(Math.abs(await posicion() - antes)).toBeLessThan(2);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  const controles = page.locator(".finance-report-table-heading .finance-report-tools");
+  const select = await controles.locator("select").boundingBox();
+  const input = await controles.locator("input").boundingBox();
+  expect(Math.abs(select.y - input.y)).toBeLessThan(2);
+  const estado = await page.getByText("Repartos actualizados", { exact: true }).boundingBox();
+  const contexto = await page.locator(".finance-page-context > div").first().boundingBox();
+  expect(Math.abs(estado.y + estado.height / 2 - contexto.y - contexto.height / 2)).toBeLessThan(8);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("reporte ejecutivo ordena importes y filtra sin cambiar las cifras ni los gráficos", async ({ page }) => {
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const tabla = page.getByRole("table", { name: "Comparación exacta de gastos" });
+  const contenedor = tabla.locator("xpath=ancestor::div[contains(@class,'finance-table') and not(contains(@class,'finance-table-content'))][1]");
+  await tabla.getByRole("button", { name: /^Ordenar por 2026-09/ }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Limpieza");
+  await tabla.getByRole("button", { name: /^Ordenar por 2026-09/ }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Electricidad");
+  await tabla.getByRole("button", { name: "Filtrar 2026-09", exact: true }).click();
+  await page.getByRole("spinbutton", { name: "2026-09 desde", exact: true }).fill("480000.01");
+  await page.keyboard.press("Escape");
+  await expect(tabla.locator("tbody tr")).toHaveCount(1);
+  await expect(tabla.locator("tbody tr")).toContainText("Electricidad");
+  await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("ARS 1.000.000,01");
+  await contenedor.getByRole("button", { name: "Quitar filtro 2026-09 desde", exact: true }).click();
+  await expect(tabla.locator("tbody tr")).toHaveCount(4);
+  await tabla.getByRole("button", { name: "Filtrar Área / concepto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Área / concepto", exact: true }).fill("ausente");
+  await page.keyboard.press("Escape");
+  await contenedor.getByRole("button", { name: "Limpiar filtros", exact: true }).click();
+  await expect(tabla.locator("tbody tr")).toHaveCount(4);
+});
+
+
+test("listado agregado conserva centavos grandes y no filtra desconocidos como cero", async ({ page }) => {
+  const { db } = await escenario(page);
+  db.reporte.agrupaciones = [
+    ["Mayor", "900719925474099.92"], ["Menor", "900719925474099.91"], ["Desconocido", null], ["Cero", "0.00"],
+  ].map(([nombre, importe], i) => ({ ...reporte.agrupaciones[0], concepto: i + 1, concepto_nombre: nombre, distribuido: importe }));
+  await page.goto("/finanzas?mes=2026-09&resumen_grupos_tam=-5&resumen_grupos_pag=100");
+  await page.getByRole("button", { name: "Listado", exact: true }).click();
+  const tabla = page.getByRole("table", { name: "Gastos por área y concepto · ARS" });
+  await tabla.getByRole("button", { name: "Ordenar por Distribuido", exact: true }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Cero");
+  await expect(tabla.locator("tbody tr").last()).toContainText("Desconocido");
+  await tabla.getByRole("button", { name: "Ordenar por Distribuido (ascendente)", exact: true }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Mayor");
+  await expect(tabla.locator("tbody tr").nth(1)).toContainText("Menor");
+  await expect(tabla.locator("tbody tr").last()).toContainText("Desconocido");
+  await tabla.getByRole("button", { name: "Filtrar Distribuido", exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Distribuido hasta", exact: true }).fill("0");
+  await page.keyboard.press("Escape");
+  await expect(tabla.locator("tbody tr")).toHaveCount(1);
+  await expect(tabla.locator("tbody tr")).toContainText("Cero");
+});
+
+
+test("desglose mantiene filas compactas y filtros visibles en escritorio y móvil", async ({ page }) => {
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const tabla = page.getByRole("table", { name: "Desglose de dinero por área, concepto y financiador" });
+  const fila = tabla.locator("tbody tr").first();
+  await expect(tabla.locator("thead")).toBeVisible();
+  await expect(fila).toHaveCSS("display", "table-row");
+  const posiciones = await fila.locator("td").evaluateAll((celdas) => celdas.map((c) => c.getBoundingClientRect().top));
+  expect(Math.max(...posiciones) - Math.min(...posiciones)).toBeLessThan(1);
+  expect((await fila.boundingBox()).height).toBeLessThan(100);
+  await expect(page.getByText("Fecha efectiva: 2026-09-01 al 2026-09-30", { exact: true })).toBeVisible();
+  await expect(page.getByText("Seleccionado: 2026-09 · Comparado: 2026-08 · Gastos vigentes", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("ausente");
+  const quitar = page.getByRole("button", { name: "Quitar filtro Buscar en desglose", exact: true });
+  await expect(quitar).toContainText("ausente");
+  await quitar.click();
+  await expect(tabla.locator("tbody tr")).toHaveCount(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(fila).toHaveCSS("display", "table-row");
+  const region = page.getByRole("region", { name: "Desglose de dinero por área, concepto y financiador: desplazamiento horizontal", exact: true });
+  await region.scrollIntoViewIfNeeded();
+  await region.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => region.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
 });

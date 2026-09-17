@@ -1,5 +1,17 @@
 """Filtros de columnas aplicados antes de paginar los listados financieros."""
+from types import SimpleNamespace
+
 from rest_framework import serializers
+from rest_framework.filters import SearchFilter
+
+from apps.common import OrdenEstable
+
+
+def filtrar_tabla(queryset, request, *, ordenables, busqueda, orden):
+    """Acciones con modelo propio: filtrar su queryset ya autorizado, no el padre."""
+    opciones = SimpleNamespace(ordering_fields=ordenables, search_fields=busqueda, ordering=orden)
+    queryset = SearchFilter().filter_queryset(request, queryset, opciones)
+    return OrdenEstable().filter_queryset(request, queryset, opciones)
 
 
 def filtrar_rangos(queryset, parametros, *, importes=(), cantidades=(), fechas=()):

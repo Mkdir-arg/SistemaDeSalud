@@ -1,9 +1,8 @@
-# Manual de marca — Cauce
+# Manual de marca — I-Core Salud
 
 ## 1. La marca
 
-**Nombre:** Cauce.
-**Qué evoca:** un cauce es el recorrido por donde fluye el agua. La metáfora: los procesos institucionales fluyen por un cauce diseñado — ordenado, trazable, que llega a destino. Serio, público, de infraestructura.
+**Nombre:** I-Core Salud. I-Core es la empresa; Salud, el sistema.
 
 **Descriptor:** *Constructor y motor de flujos.*
 **Promesa (tagline):** *Dibujás el proceso. El sistema lo ejecuta.*
@@ -30,7 +29,7 @@ Equilibrio: **institucional pero moderno**. Sirve a hospitales y organismos del 
 
 ## 4. Logo
 
-Marca tipográfica **"Cauce"** (Inter, 700–800, tracking ajustado −0.2 a −1.5px según tamaño) acompañada de un **isotipo**: tres nodos conectados por líneas — un nodo de entrada a la izquierda y dos ramas a la derecha, evocando un flujo que se bifurca.
+Marca tipográfica **"I-Core Salud"** — «I-Core» como nombre y «Salud» como descriptor debajo, según `frontend/src/components/Logo.jsx` (Inter, 700–800, tracking ajustado −0.2 a −1.5px según tamaño) acompañada de un **isotipo**: tres nodos conectados por líneas — un nodo de entrada a la izquierda y dos ramas a la derecha, evocando un flujo que se bifurca.
 
 **Construcción del isotipo (SVG):**
 ```svg
@@ -45,7 +44,7 @@ Marca tipográfica **"Cauce"** (Inter, 700–800, tracking ajustado −0.2 a −
 **Contenedor:** cuadrado con esquinas redondeadas (`border-radius` 7–8px en chico, 20px en grande), fondo **Indigo 600 (#3949C0)**, isotipo en blanco.
 
 **Usos:**
-- Lockup horizontal: isotipo + "Cauce" + descriptor en gris.
+- Lockup horizontal: isotipo + "I-Core" + descriptor "Salud" en gris.
 - Tamaño mínimo del isotipo: 24px. Área de respeto: ≥ 50% del lado del contenedor.
 - Sobre fondo oscuro: contenedor mantiene indigo, isotipo blanco. Nunca invertir a indigo sobre indigo.
 

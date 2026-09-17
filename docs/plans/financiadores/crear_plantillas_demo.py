@@ -1,4 +1,4 @@
-"""Genera muestras de formato para revisión; no es el importador de Cauce.
+"""Genera muestras de formato para revisión; no es el importador de I-Core Salud.
 
 Usa openpyxl ya instalado en el entorno de artefactos. No modifica dependencias
 del backend. Desde raíz: python docs/plans/financiadores/crear_plantillas_demo.py
@@ -58,7 +58,7 @@ def crear(nombre_archivo, financiador, codigos, padron=False):
     libro = Workbook()
     instrucciones = libro.active
     instrucciones.title = "LEEME"
-    titulo(instrucciones, f"Cauce · {financiador} · MUESTRA PARA REVISIÓN", 3)
+    titulo(instrucciones, f"I-Core Salud · {financiador} · MUESTRA PARA REVISIÓN", 3)
     notas = [
         "PROTOTIPO de formato: el sistema actual todavía no dispone de este importador.",
         "Datos y organizaciones ficticios. Revisar antes de usar como contrato de producción.",
@@ -77,7 +77,7 @@ def crear(nombre_archivo, financiador, codigos, padron=False):
     else:
         notas += ["Prestación, fecha, cantidad, número de afiliado y documento son obligatorios.",
                   "Referencia externa es opcional. Ayuda a reconocer el mismo consumo al reenviarlo.",
-                  "Un consumo externo actualiza cupo y no genera cargos de un hospital de Cauce.",
+                  "Un consumo externo actualiza cupo y no genera cargos de un hospital de I-Core Salud.",
                   "Antes de aplicar: resumen de válidas, rechazadas y filas que necesitan revisión."]
     instrucciones.column_dimensions["A"].width = 112
     for fila, nota in enumerate(notas, 3):
@@ -149,7 +149,7 @@ def crear(nombre_archivo, financiador, codigos, padron=False):
     contexto.append(["financiador", financiador])
     contexto.append(["contrato", "borrador-1"])
     contexto.sheet_state = "hidden"
-    libro.properties.creator = "Cauce · preparación de diseño"
+    libro.properties.creator = "I-Core Salud · preparación de diseño"
     destino = SALIDA / nombre_archivo
     libro.save(destino)
 

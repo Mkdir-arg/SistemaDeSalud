@@ -4,7 +4,7 @@
 > Técnicamente es el usuario con `is_superuser = True`. El scope por institución
 > no lo limita: ve y opera todo.
 
-**Usuario de demo:** `admin@cauce.local` / `admin1234`
+**Usuario de demo:** `admin@salud.local` / `admin1234`
 
 ---
 

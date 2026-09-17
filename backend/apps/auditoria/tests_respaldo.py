@@ -61,7 +61,7 @@ class RotacionTests(SimpleTestCase):
     def _carpeta(self, cuantos):
         d = TemporaryDirectory()
         for i in range(cuantos):
-            (Path(d.name) / f"cauce-2026081{i}-000000.sql.gz").write_bytes(b"x" * 2048)
+            (Path(d.name) / f"salud-2026081{i}-000000.sql.gz").write_bytes(b"x" * 2048)
         return d
 
     def test_deja_los_mas_nuevos_y_borra_los_viejos(self):
@@ -69,8 +69,8 @@ class RotacionTests(SimpleTestCase):
             Command()._rotar(Path(ruta), conservar=3)
             quedan = sorted(p.name for p in Path(ruta).glob("*.sql.gz"))
         self.assertEqual(len(quedan), 3)
-        self.assertIn("cauce-20260815-000000.sql.gz", quedan)
-        self.assertNotIn("cauce-20260810-000000.sql.gz", quedan)
+        self.assertIn("salud-20260815-000000.sql.gz", quedan)
+        self.assertNotIn("salud-20260810-000000.sql.gz", quedan)
 
     def test_con_cero_no_borra_nada(self):
         """Hay instalaciones donde la retención la maneja el almacenamiento."""
@@ -113,11 +113,11 @@ class ProduccionTests(SimpleTestCase):
         import sys
 
         with patch.dict("os.environ", entorno, clear=False):
-            sys.modules.pop("cauce.settings", None)
+            sys.modules.pop("config.settings", None)
             try:
-                return importlib.import_module("cauce.settings")
+                return importlib.import_module("config.settings")
             finally:
-                sys.modules.pop("cauce.settings", None)
+                sys.modules.pop("config.settings", None)
 
     def _settings_de_produccion(self, **entorno):
         return self._cargar(**{
@@ -189,11 +189,11 @@ class ChecklistDeDjangoTests(SimpleTestCase):
         import importlib
 
         with patch.dict("os.environ", env, clear=False):
-            importlib.reload(importlib.import_module("cauce.settings"))
+            importlib.reload(importlib.import_module("config.settings"))
             from django.conf import settings as s
             from django.test import override_settings
 
-            nuevos = importlib.import_module("cauce.settings")
+            nuevos = importlib.import_module("config.settings")
             extra = {
                 k: getattr(nuevos, k) for k in dir(nuevos)
                 if k.isupper() and not k.startswith("_")
@@ -207,4 +207,4 @@ class ChecklistDeDjangoTests(SimpleTestCase):
                 except Exception as e:  # CommandError con los avisos adentro
                     self.fail(f"check --deploy tiene avisos:\n{salida.getvalue()}\n{e}")
 
-        importlib.reload(importlib.import_module("cauce.settings"))
+        importlib.reload(importlib.import_module("config.settings"))

@@ -1,5 +1,5 @@
 """
-URL configuration for cauce project.
+URL configuration for the Salud project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/6.0/topics/http/urls/
@@ -30,7 +30,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.casos.views import MisTareasView, PantallaLlamadosView, PuestoDetalleView
 from apps.common import DescargarArchivoView, SubirArchivoView
-from cauce.api import router
+from config.api import router
 
 
 def media_clinica_no_publica(_request, ruta):
@@ -60,9 +60,9 @@ def health(_request):
             cur.fetchone()
     except Exception:  # noqa: BLE001
         logging.getLogger(__name__).exception("health: la base no responde")
-        return JsonResponse({"status": "error", "service": "cauce"}, status=503)
+        return JsonResponse({"status": "error", "service": "salud"}, status=503)
 
-    return JsonResponse({"status": "ok", "service": "cauce"})
+    return JsonResponse({"status": "ok", "service": "salud"})
 
 
 class EstadoView(APIView):

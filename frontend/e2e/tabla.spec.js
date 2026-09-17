@@ -28,10 +28,10 @@ test.describe("Tabla de casos", () => {
    */
   async function totalDeCasos(page) {
     return page.evaluate(async () => {
-      const inst = JSON.parse(localStorage.getItem("cauce.institucion") || "null");
+      const inst = JSON.parse(localStorage.getItem("salud.institucion") || "null");
       const r = await fetch(
         `/api/casos/?page_size=1${inst ? `&institucion=${inst.id}` : ""}`,
-        { headers: { Authorization: `Bearer ${localStorage.getItem("cauce.access")}` } },
+        { headers: { Authorization: `Bearer ${localStorage.getItem("salud.access")}` } },
       );
       return (await r.json()).count;
     });

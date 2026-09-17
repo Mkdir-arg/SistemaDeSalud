@@ -1,6 +1,6 @@
 # Plantillas de muestra para revisar
 
-Archivos de diseño, **sin conexión con Cauce ni datos reales**. El importador de estas planillas todavía no existe en la aplicación.
+Archivos de diseño, **sin conexión con I-Core Salud ni datos reales**. El importador de estas planillas todavía no existe en la aplicación.
 
 - [Consumos — obra social A](consumos-obra-social-a-demo.xlsx): consultas y radiografías.
 - [Consumos — mutual B](consumos-mutual-b-demo.xlsx): consultas y ecografías.

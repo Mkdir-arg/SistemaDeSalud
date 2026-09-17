@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Suite end-to-end de Cauce.
+ * Suite end-to-end de I-Core Salud.
  *
  * Es la red de seguridad de la migración: quedan ~28 pantallas por pasar a la
  * fundación nueva y estos recorridos son lo que avisa si una de esas migraciones
@@ -25,7 +25,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   use: {
-    baseURL: process.env.CAUCE_URL || "http://localhost:5173",
+    baseURL: process.env.SALUD_URL || "http://localhost:5173",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     locale: "es-AR",

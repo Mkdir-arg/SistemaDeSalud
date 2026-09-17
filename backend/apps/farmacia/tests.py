@@ -23,7 +23,7 @@ from .models import Deposito, Existencia, Insumo, LineaPedido, Lote, Movimiento,
 
 class StockTestCase(TestCase):
     def setUp(self):
-        self.user = Usuario.objects.create_superuser("farma@cauce.local", "x", nombre="Farm")
+        self.user = Usuario.objects.create_superuser("farma@salud.local", "x", nombre="Farm")
         self.inst = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.inst, nombre="Guardia")
         self.central = Deposito.objects.create(

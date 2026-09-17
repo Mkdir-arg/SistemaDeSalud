@@ -27,7 +27,7 @@ from .services import aprobar_gasto, corregir_snapshot_componentes, indicar_carg
 
 class CosteoAtencionTests(TestCase):
     def setUp(self):
-        self.usuario = Usuario.objects.create_user("finanzas@cauce.local", "x")
+        self.usuario = Usuario.objects.create_user("finanzas@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         flujo = Flujo.objects.create(institucion=self.institucion, area=self.area, titulo="Guardia")
@@ -471,7 +471,7 @@ class CosteoAtencionConcurrentePostgreSQLTests(TransactionTestCase):
     """Verifica el bloqueo que evita duplicar costos ante dos recuperadores."""
 
     def setUp(self):
-        self.usuario = Usuario.objects.create_user("concurrencia@cauce.local", "x")
+        self.usuario = Usuario.objects.create_user("concurrencia@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         flujo = Flujo.objects.create(institucion=self.institucion, area=area, titulo="Guardia")
@@ -534,7 +534,7 @@ class AprobacionGastoConcurrentePostgreSQLTests(TransactionTestCase):
     """La aprobación de una carga delegada conserva un único gasto aprobado."""
 
     def setUp(self):
-        self.admin = Usuario.objects.create_user("aprobar-gasto@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("aprobar-gasto@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.concepto = ConceptoGasto.objects.create(
@@ -585,7 +585,7 @@ class AprobacionGastoConcurrentePostgreSQLTests(TransactionTestCase):
 
 class HechoCostoApiTests(APITestCase):
     def setUp(self):
-        self.usuario = Usuario.objects.create_user("admin-finanzas@cauce.local", "x")
+        self.usuario = Usuario.objects.create_user("admin-finanzas@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         flujo = Flujo.objects.create(institucion=self.institucion, area=self.area, titulo="Guardia")
@@ -646,7 +646,7 @@ class HechoCostoApiTests(APITestCase):
             "ciudadano": hecho.ciudadano_id,
         }).status_code, 200)
 
-        auditor = Usuario.objects.create_user("auditor-transversal@cauce.local", "x")
+        auditor = Usuario.objects.create_user("auditor-transversal@salud.local", "x")
         Membresia.objects.create(
             usuario=auditor, institucion=self.institucion, rol=Membresia.Rol.JEFE_AREA,
         )
@@ -703,7 +703,7 @@ class HechoCostoApiTests(APITestCase):
                 for fila in datos["results"]
             ]}
 
-        delegado = Usuario.objects.create_user("carga-transversal@cauce.local", "x")
+        delegado = Usuario.objects.create_user("carga-transversal@salud.local", "x")
         membresia_area = Membresia.objects.create(
             usuario=delegado, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
         )
@@ -755,7 +755,7 @@ class HechoCostoApiTests(APITestCase):
 
     def test_concesion_no_sensible_ve_un_costo_no_sensible_de_su_area(self):
         hecho = self.crear_hecho_costeado()
-        usuario = Usuario.objects.create_user("finanzas-area@cauce.local", "x")
+        usuario = Usuario.objects.create_user("finanzas-area@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=usuario,
             institucion=self.institucion,
@@ -775,7 +775,7 @@ class HechoCostoApiTests(APITestCase):
 
     def test_concesion_no_sensible_no_ve_un_costo_sensible(self):
         hecho = self.crear_hecho_costeado(sensible=True)
-        usuario_restringido = Usuario.objects.create_user("finanzas-restringida@cauce.local", "x")
+        usuario_restringido = Usuario.objects.create_user("finanzas-restringida@salud.local", "x")
         membresia_restringida = Membresia.objects.create(
             usuario=usuario_restringido,
             institucion=self.institucion,
@@ -792,7 +792,7 @@ class HechoCostoApiTests(APITestCase):
 
         self.assertEqual(respuesta_restringida.status_code, 404)
 
-        usuario_sensible = Usuario.objects.create_user("finanzas-sensible@cauce.local", "x")
+        usuario_sensible = Usuario.objects.create_user("finanzas-sensible@salud.local", "x")
         membresia_sensible = Membresia.objects.create(
             usuario=usuario_sensible,
             institucion=self.institucion,
@@ -913,7 +913,7 @@ class HechoCostoApiTests(APITestCase):
         self.assertEqual(respuesta_origen.status_code, 200)
         self.assertEqual(respuesta_origen.data["area"], self.area.id)
 
-        usuario_destino = Usuario.objects.create_user("finanzas-destino@cauce.local", "x")
+        usuario_destino = Usuario.objects.create_user("finanzas-destino@salud.local", "x")
         membresia_destino = Membresia.objects.create(
             usuario=usuario_destino,
             institucion=self.institucion,
@@ -1150,7 +1150,7 @@ class HechoCostoApiTests(APITestCase):
 
 class ConcesionFinancieraApiTests(APITestCase):
     def setUp(self):
-        self.admin = Usuario.objects.create_user("admin@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("admin@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.membresia_admin = Membresia.objects.create(
@@ -1158,7 +1158,7 @@ class ConcesionFinancieraApiTests(APITestCase):
             institucion=self.institucion,
             rol=Membresia.Rol.ADMIN_INSTITUCION,
         )
-        self.operador = Usuario.objects.create_user("operador@cauce.local", "x")
+        self.operador = Usuario.objects.create_user("operador@salud.local", "x")
         self.membresia_operador = Membresia.objects.create(
             usuario=self.operador,
             institucion=self.institucion,
@@ -1316,7 +1316,7 @@ class ConcesionFinancieraApiTests(APITestCase):
 
 class CatalogoCostosApiTests(APITestCase):
     def setUp(self):
-        self.admin = Usuario.objects.create_user("catalogo@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("catalogo@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         flujo = Flujo.objects.create(institucion=self.institucion, area=self.area, titulo="Guardia")
@@ -1349,7 +1349,7 @@ class CatalogoCostosApiTests(APITestCase):
         self.assertTrue(Prestacion.objects.filter(institucion=self.institucion, codigo="CONS").exists())
 
     def test_membresia_sin_concesion_no_crea_prestaciones(self):
-        sin_concesion = Usuario.objects.create_user("sin-concesion@cauce.local", "x")
+        sin_concesion = Usuario.objects.create_user("sin-concesion@salud.local", "x")
         Membresia.objects.create(
             usuario=sin_concesion,
             institucion=self.institucion,
@@ -1642,7 +1642,7 @@ class CatalogoCostosApiTests(APITestCase):
 
 class AjusteCostoApiTests(APITestCase):
     def setUp(self):
-        self.admin = Usuario.objects.create_user("correccion@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("correccion@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         flujo = Flujo.objects.create(institucion=self.institucion, area=area, titulo="Guardia")
@@ -1686,7 +1686,7 @@ class AjusteCostoApiTests(APITestCase):
         self.assertTrue(AjusteCosto.objects.filter(imputacion=self.imputacion, importe="-10.00").exists())
 
     def test_correccion_sin_acceso_sensible_no_ajusta_un_costo_del_paciente(self):
-        restringido = Usuario.objects.create_user("sin-sensible@cauce.local", "x")
+        restringido = Usuario.objects.create_user("sin-sensible@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=restringido,
             institucion=self.institucion,
@@ -1782,7 +1782,7 @@ class ExpectativaGastoTests(TestCase):
 
 class IndicacionCargaGastoTests(TestCase):
     def setUp(self):
-        self.usuario = Usuario.objects.create_user("indicaciones@cauce.local", "x")
+        self.usuario = Usuario.objects.create_user("indicaciones@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.concepto = ConceptoGasto.objects.create(
@@ -1857,7 +1857,7 @@ class IndicacionCargaGastoTests(TestCase):
         self.assertEqual(nueva.estado, IndicacionCargaGasto.Estado.NO_CORRESPONDE)
 
     def test_servicio_exige_concesion_administrativa_del_ambito(self):
-        admin = Usuario.objects.create_user("admin-indicaciones@cauce.local", "x")
+        admin = Usuario.objects.create_user("admin-indicaciones@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=admin,
             institucion=self.institucion,
@@ -1887,7 +1887,7 @@ class IndicacionCargaGastoTests(TestCase):
 
 class GastoTests(TestCase):
     def setUp(self):
-        self.usuario = Usuario.objects.create_user("gastos@cauce.local", "x")
+        self.usuario = Usuario.objects.create_user("gastos@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.concepto = ConceptoGasto.objects.create(
@@ -1996,8 +1996,8 @@ class GastoServiciosTests(TestCase):
             codigo="LIMPIEZA",
             nombre="Limpieza",
         )
-        self.admin = Usuario.objects.create_user("admin-gastos@cauce.local", "x")
-        self.delegado = Usuario.objects.create_user("area-gastos@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("admin-gastos@salud.local", "x")
+        self.delegado = Usuario.objects.create_user("area-gastos@salud.local", "x")
         membresia_admin = Membresia.objects.create(
             usuario=self.admin,
             institucion=self.institucion,
@@ -2108,9 +2108,9 @@ class ConceptoGastoApiTests(APITestCase):
     def setUp(self):
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
-        self.admin = Usuario.objects.create_user("config-gastos@cauce.local", "x")
-        self.delegado = Usuario.objects.create_user("carga-gastos@cauce.local", "x")
-        self.admin_restringido = Usuario.objects.create_user("sin-sensible-gastos@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("config-gastos@salud.local", "x")
+        self.delegado = Usuario.objects.create_user("carga-gastos@salud.local", "x")
+        self.admin_restringido = Usuario.objects.create_user("sin-sensible-gastos@salud.local", "x")
         membresia_admin = Membresia.objects.create(
             usuario=self.admin,
             institucion=self.institucion,
@@ -2230,9 +2230,9 @@ class GastoApiTests(APITestCase):
             nombre="Sueldos",
             sensible=True,
         )
-        self.admin = Usuario.objects.create_user("admin-api-gastos@cauce.local", "x")
-        self.delegado = Usuario.objects.create_user("delegado-api-gastos@cauce.local", "x")
-        self.lector_restringido = Usuario.objects.create_user("lector-api-gastos@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("admin-api-gastos@salud.local", "x")
+        self.delegado = Usuario.objects.create_user("delegado-api-gastos@salud.local", "x")
+        self.lector_restringido = Usuario.objects.create_user("lector-api-gastos@salud.local", "x")
 
         membresia_admin = Membresia.objects.create(
             usuario=self.admin,
@@ -2341,7 +2341,7 @@ class GastoApiTests(APITestCase):
 class RepartoActividadTests(TestCase):
     def setUp(self):
         self.mes = timezone.localdate().replace(day=1)
-        self.usuario = Usuario.objects.create_user("repartos@cauce.local", "x")
+        self.usuario = Usuario.objects.create_user("repartos@salud.local", "x")
         self.institucion = Institucion.objects.create(nombre="Hospital de prueba")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.membresia = Membresia.objects.create(
@@ -2548,7 +2548,7 @@ class RepartoActividadTests(TestCase):
             )
 
     def test_configurar_repartos_admite_concesion_a_personal_no_admin(self):
-        operador = Usuario.objects.create_user("operador-repartos@cauce.local", "x")
+        operador = Usuario.objects.create_user("operador-repartos@salud.local", "x")
         miembro = Membresia.objects.create(
             usuario=operador, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
         )
@@ -2565,7 +2565,7 @@ class RepartoActividadConcurrentePostgreSQLTests(TransactionTestCase):
 
     def setUp(self):
         mes = timezone.localdate().replace(day=1)
-        usuario = Usuario.objects.create_user("reparto-concurrente@cauce.local", "x")
+        usuario = Usuario.objects.create_user("reparto-concurrente@salud.local", "x")
         institucion = Institucion.objects.create(nombre="Hospital concurrente")
         area = Area.objects.create(institucion=institucion, nombre="Guardia")
         self.mes = mes

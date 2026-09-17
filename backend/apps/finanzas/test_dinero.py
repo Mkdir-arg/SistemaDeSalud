@@ -49,6 +49,24 @@ class DineroTests(DatosDinero, APITestCase):
         self.preparar()
         self.client.force_authenticate(self.usuario)
 
+    def test_tablas_ordenan_y_buscan_antes_de_paginar(self):
+        menor = self.movimiento("9.99", referencia="Transferencia menor")
+        mayor = self.movimiento("20.01", referencia="Transferencia mayor")
+        respuesta = self.client.get("/api/movimientos-dinero/", {
+            "search": "Transferencia", "ordering": "-importe", "page_size": 1,
+        })
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 2)
+        self.assertEqual(len(respuesta.data["results"]), 1)
+        self.assertEqual(respuesta.data["results"][0]["id"], mayor.pk)
+        respuesta = self.client.get("/api/movimientos-dinero/", {"search": "menor"})
+        self.assertEqual([r["id"] for r in respuesta.data["results"]], [menor.pk])
+        for busqueda, cantidad in (("Proveedor", 1), ("Ausente", 0)):
+            respuesta = self.client.get("/api/obligaciones-financieras/", {
+                "search": busqueda, "ordering": "contraparte_nombre",
+            })
+            self.assertEqual(respuesta.data["count"], cantidad)
+
     def test_pago_parcial_limite_y_no_duplica_el_gasto(self):
         self.movimiento("30")
         self.assertEqual(estado_obligacion(self.obligacion)["pendiente"], Decimal("70"))

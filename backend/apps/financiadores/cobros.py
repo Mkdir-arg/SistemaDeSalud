@@ -31,7 +31,7 @@ def contexto_cobertura(caso, nodo):
 
 
 def _obligacion(reserva, parte, importe, nombre, referencia):
-    return crear_obligacion_cobro(hecho=reserva.hecho, importe=importe, contraparte_nombre=nombre, contraparte_referencia=referencia, clave=uuid5(NAMESPACE_URL, f"cauce:cobertura:{reserva.pk}:{parte}"), sensible=reserva.evaluacion.get("sensible", True))
+    return crear_obligacion_cobro(hecho=reserva.hecho, importe=importe, contraparte_nombre=nombre, contraparte_referencia=referencia, clave=uuid5(NAMESPACE_URL, f"salud:cobertura:{reserva.pk}:{parte}"), sensible=reserva.evaluacion.get("sensible", True))
 
 
 def capturar_cobertura(hecho):

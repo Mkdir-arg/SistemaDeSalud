@@ -26,7 +26,7 @@ No se anuncia conformidad con un perfil nacional o de un receptor aún no acorda
 | --- | --- |
 | `id` | Par local ciudadano-afiliado; evita asignar la ficha de otro hospital. |
 | `status` | `active`, únicamente mientras cumple las condiciones de lectura actual. |
-| `identifier` | Número de afiliado bajo `urn:cauce:id:financiador:<id>:afiliado`. |
+| `identifier` | Número de afiliado bajo `urn:icore-salud:id:financiador:<id>:afiliado`. |
 | `beneficiary` | Referencia al Patient del hospital consultado. |
 | `period.start` | Fecha de inicio informada por el padrón. No inventa fecha final. |
 | `payor` | Organization contenida, identificada por el ID local del financiador. |

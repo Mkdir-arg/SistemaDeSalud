@@ -54,9 +54,9 @@ CLAVE = "demo1234"
 # membresía necesita una institución donde colgar, así que se los ancla al
 # hospital de referencia. Eso no les da permisos clínicos ahí.
 USUARIOS = [
-    ("plataforma", "plataforma@cauce.local", "Autoridad", "de Plataforma"),
-    ("auditor", "auditor@cauce.local", "Auditoría", "Estatal"),
-    ("reportes", "reportes@cauce.local", "Reportes", "Ministerio"),
+    ("plataforma", "plataforma@salud.local", "Autoridad", "de Plataforma"),
+    ("auditor", "auditor@salud.local", "Auditoría", "Estatal"),
+    ("reportes", "reportes@salud.local", "Reportes", "Ministerio"),
     ("admin", "admin.central@hospital.gob.ar", "Dirección", "Hospital Central"),
     ("configurador", "config.central@hospital.gob.ar", "Configurador", "de Procesos"),
 ]

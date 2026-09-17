@@ -709,7 +709,7 @@ def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
     if not _host_permitido(url):
         return fallar(
             "el destino no está habilitado. Un administrador tiene que agregarlo a "
-            "CAUCE_INTEGRACIONES_PERMITIDAS."
+            "SALUD_INTEGRACIONES_PERMITIDAS."
         )
 
     # Modo FHIR: el destino es un padrón y lo que se quiere es completar al

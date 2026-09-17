@@ -15,7 +15,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiTypes
-from cauce.pagination import Paginacion
+from config.pagination import Paginacion
 
 from apps.accounts.models import Usuario
 from apps.instituciones.models import Institucion

@@ -203,6 +203,11 @@ class EntradaHistoria(models.Model):
     # El sello de la entrada firmada anterior de esta historia: encadenarlas es
     # lo que hace que alterar una vieja no alcance con recalcular su resumen.
     sello_previo = models.CharField(max_length=64, blank=True, editable=False)
+    # Con qué versión del formato se calculó `sello`. Va guardada, y no se lee de
+    # la constante del módulo: si el formato cambia, lo sellado con la versión
+    # anterior se tiene que seguir verificando con ESA. Leyendo la constante,
+    # cambiarla marcaría como adulterada toda entrada ya sellada.
+    sello_version = models.CharField(max_length=32, blank=True, editable=False)
     firmada_at = models.DateTimeField("firmada el", null=True, blank=True, editable=False)
 
     class Meta:

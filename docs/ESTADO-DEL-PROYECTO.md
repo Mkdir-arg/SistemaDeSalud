@@ -1,10 +1,10 @@
-# Estado del proyecto — Cauce
+# Estado del proyecto — I-Core Salud
 
 > Documento vivo. Resume **qué está hecho**, **cómo levantarlo** y **qué falta**.
 > Última actualización: **2026-08-14** (Fase 8: normativa, interoperabilidad FHIR
 > y preparación para producción).
 
-Cauce = constructor y motor de flujos para procesos de salud / Estado. Ver
+Salud = constructor y motor de flujos para procesos de salud / Estado. Ver
 `README.md` para la visión y los `.dc.html` de la raíz (prototipo de alta
 fidelidad — fuente del modelo de datos).
 
@@ -74,7 +74,7 @@ docker compose up -d
 
 - Django 6 + DRF + SimpleJWT sobre PostgreSQL 16.
 - Dependencias declaradas en `backend/requirements.txt`.
-- **Superusuario de desarrollo:** `admin@cauce.local` / `admin1234`.
+- **Superusuario de desarrollo:** `admin@salud.local` / `admin1234`.
   El staff del escenario entra con `demo1234`.
 - El cliente de Postgres de la imagen está pinchado a la versión del servidor
   (`PG_MAJOR`): un `pg_dump` de otra versión produce respaldos que no se pueden
@@ -87,7 +87,7 @@ docker compose up -d
 # 1) token
 curl -X POST http://127.0.0.1:8000/api/auth/token/ \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@cauce.local","password":"admin1234"}'
+  -d '{"email":"admin@salud.local","password":"admin1234"}'
 # 2) usar el "access" devuelto:
 curl http://127.0.0.1:8000/api/instituciones/ \
   -H "Authorization: Bearer <access>"
@@ -113,7 +113,7 @@ ejecución). El motor usa la misma definición para diseñar y para ejecutar.
 
 ### API REST
 
-- Router central: `backend/cauce/api.py`, montado en `/api/` (21 endpoints, un
+- Router central: `backend/config/api.py`, montado en `/api/` (21 endpoints, un
   ViewSet CRUD por entidad).
 - Cada app tiene `serializers.py` + viewsets en `views.py`.
 - Filtrado por query params: mixin `BaseModelViewSet` en `backend/apps/common.py`
@@ -221,7 +221,7 @@ backend/
   manage.py
   requirements.txt
   .env.example            # copiar a .env
-  cauce/
+  config/
     settings.py           # DRF + JWT + CORS + DB (Supabase/SQLite)
     urls.py               # admin, health, token, include(api)
     api.py                # router central de la API (21 ViewSets)
@@ -251,8 +251,8 @@ npm install                                         # la primera vez
 npm run dev                                          # http://localhost:5173
 ```
 
-Login de demo (administrativo): **operador@cauce.local / demo1234**.
-Super admin: **admin@cauce.local / admin1234**.
+Login de demo (administrativo): **operador@salud.local / demo1234**.
+Super admin: **admin@salud.local / admin1234**.
 
 ## 7. Próximo paso sugerido
 

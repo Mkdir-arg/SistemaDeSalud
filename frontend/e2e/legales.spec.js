@@ -264,7 +264,7 @@ test.describe("Egreso de internación", () => {
     // primera página de Casos puede no haber ninguno, y el test se salteaba sin
     // haber probado nada.
     const caso = await page.evaluate(async () => {
-      const tok = sessionStorage.getItem("cauce.access") ?? localStorage.getItem("cauce.access");
+      const tok = sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access");
       const r = await fetch("/api/camas/?estado=ocupada&page_size=20", {
         headers: { Authorization: `Bearer ${tok}` },
       });

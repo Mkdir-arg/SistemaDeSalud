@@ -5,12 +5,12 @@
  * vacía. Sin esto, un backend caído se manifiesta como quince tests rojos por
  * «timeout esperando un selector», que no dice nada del problema real.
  */
-const BASE = process.env.CAUCE_URL || "http://localhost:5173";
-const API = process.env.CAUCE_API || "http://127.0.0.1:8000";
+const BASE = process.env.SALUD_URL || "http://localhost:5173";
+const API = process.env.SALUD_API || "http://127.0.0.1:8000";
 
 // El comando de siembra cambia según dónde corre el backend, y darlo mal es peor
 // que no darlo: se copia, no anda, y hay que averiguarlo igual.
-const SEMBRAR = process.env.CAUCE_URL?.includes("8080")
+const SEMBRAR = process.env.SALUD_URL?.includes("8080")
   ? "docker compose exec backend python manage.py seed_volumen --rehacer"
   : "cd backend && python manage.py seed_volumen --rehacer";
 
@@ -33,11 +33,11 @@ export default async function globalSetup() {
   const token = await fetch(`${API}/api/auth/token/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "admin@cauce.local", password: "admin1234" }),
+    body: JSON.stringify({ email: "admin@salud.local", password: "admin1234" }),
   }).then((r) => (r.ok ? r.json() : null));
 
   if (!token) {
-    throw new Error(`\n\n  No se pudo autenticar como admin@cauce.local.\n  Sembrá la demo:  ${SEMBRAR}\n`);
+    throw new Error(`\n\n  No se pudo autenticar como admin@salud.local.\n  Sembrá la demo:  ${SEMBRAR}\n`);
   }
 
   const casos = await fetch(`${API}/api/casos/`, {

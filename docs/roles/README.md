@@ -1,4 +1,4 @@
-# Cauce — Documentación funcional por rol
+# I-Core Salud — Documentación funcional por rol
 
 Esta carpeta describe **qué puede hacer cada rol** en el sistema, pantalla por
 pantalla, según lo implementado. Es la referencia funcional (no técnica) del
@@ -6,7 +6,7 @@ producto.
 
 ## Los roles
 
-Cauce tiene un rol de **plataforma** y cuatro roles **por institución** (un mismo
+Salud tiene un rol de **plataforma** y cuatro roles **por institución** (un mismo
 usuario puede tener varios roles, y distintos roles en distintas instituciones; la
 **función es por área**).
 
@@ -35,8 +35,8 @@ usuario puede tener varios roles, y distintos roles en distintas instituciones; 
 
 | Rol | Usuario | Contraseña |
 |---|---|---|
-| Super admin | `admin@cauce.local` | `admin1234` |
+| Super admin | `admin@salud.local` | `admin1234` |
 | Admin de institución | `a.gomez@hospital.gob.ar` | `demo1234` |
 | Configurador | `m.diaz@hospital.gob.ar` | `demo1234` |
-| Administrativo | `operador@cauce.local` | `demo1234` |
+| Administrativo | `operador@salud.local` | `demo1234` |
 | Médico / profesional | `j.perez@hospital.gob.ar` | `demo1234` |

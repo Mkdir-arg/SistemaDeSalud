@@ -27,7 +27,7 @@ async function entrarComo(page, email, pass = "demo1234") {
 
 test("A · crear la agenda y cargarle una franja", async ({ page }) => {
   test.setTimeout(120_000);
-  await entrarComo(page, "admin@cauce.local", "admin1234");
+  await entrarComo(page, "admin@salud.local", "admin1234");
   await page.goto("/estructura");
   await esperarPantalla(page);
 

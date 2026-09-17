@@ -3,7 +3,7 @@
 import { expect } from "@playwright/test";
 
 export const USUARIOS = {
-  admin: { email: "admin@cauce.local", pass: "admin1234" },
+  admin: { email: "admin@salud.local", pass: "admin1234" },
   medico: { email: "guardia.med@hospital.gob.ar", pass: "demo1234" },
   enfermeria: { email: "guardia.enf@hospital.gob.ar", pass: "demo1234" },
   jefe: { email: "guardia.jefe@hospital.gob.ar", pass: "demo1234" },
@@ -92,7 +92,7 @@ export async function esperarPantalla(page) {
 
 /** Fija el tema sin pasar por la interfaz (útil para preparar un test). */
 export async function fijarTema(page, tema) {
-  await page.evaluate((t) => localStorage.setItem("cauce.tema", t), tema);
+  await page.evaluate((t) => localStorage.setItem("salud.tema", t), tema);
   await page.reload();
   await esperarPantalla(page);
   // El tema lo aplica el script del <head>, antes de que pinte React.
@@ -187,7 +187,7 @@ export async function liberarConsultorios(page) {
   await page.evaluate(async () => {
     // El token va como texto plano y puede estar en cualquiera de los dos
     // almacenes, según si la sesión anterior eligió recordarla (ver client.js).
-    const tok = sessionStorage.getItem("cauce.access") ?? localStorage.getItem("cauce.access");
+    const tok = sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access");
     if (!tok) return;
     const cab = { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" };
     const r = await fetch("/api/items-fila/?atendido=false&page_size=200", { headers: cab });
