@@ -1,6 +1,6 @@
-# Plan de desarrollo punta a punta — NODO Salud
+# Plan de desarrollo punta a punta — I-Core Salud
 
-> Hoja de ruta técnica para llevar Cauce/NODO de "sistema completo en su núcleo" a
+> Hoja de ruta técnica para llevar I-Core Salud de "sistema completo en su núcleo" a
 > **producto**. Documento vivo. Creado: **2026-07-31**.
 
 Complementa [`ESTADO-DEL-PROYECTO.md`](ESTADO-DEL-PROYECTO.md) (qué hay hecho),

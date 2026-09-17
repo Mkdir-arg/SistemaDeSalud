@@ -159,7 +159,7 @@ Backend aislado del entorno compartido:
 
 ```powershell
 cd backend
-$env:DJANGO_SETTINGS_MODULE = 'cauce.settings_financiadores_test'
+$env:DJANGO_SETTINGS_MODULE = 'config.settings_financiadores_test'
 python -m pytest apps/finanzas/ -q --tb=short
 python manage.py check
 python manage.py makemigrations --check --dry-run
@@ -172,7 +172,7 @@ cd frontend
 npm ci --no-audit --no-fund
 npm run dev -- --host 127.0.0.1 --port 5187 --strictPort
 # En otra terminal, dentro de frontend:
-$env:CAUCE_URL = 'http://127.0.0.1:5187'
+$env:SALUD_URL = 'http://127.0.0.1:5187'
 npx playwright test --config=playwright.finanzas-ui.config.js
 npm run build
 npm run auditar

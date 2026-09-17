@@ -12,7 +12,7 @@ No se afirma aceptación humana ni habilitación del entorno productivo.
 | B1 | Diagnóstico del texto legado por hospital, sólo lectura, sin inferir afiliación ni crear deuda. | `financiadores/legado.py`, comando `diagnosticar_coberturas_legacy` |
 | B2 | Padrón, búsqueda, ficha e historia distinguen declaración histórica y afiliaciones vigentes. La cobertura verificada se consulta por hospital; no se elige automáticamente. | `financiadores/administrativa.py`, `registros/serializers.py`, `Registros.jsx`, `PadronDetalle.jsx`, `ui/paciente.jsx` |
 | B3 | Comprobación de catálogo, convenios, reglas, aranceles, padrón y responsables explícitos. Ensayo aislado de migración, respaldo/restauración y suspensión. | `financiadores/preparacion.py`, `test_preparacion.py`, [guía operativa](operacion-continuidad.md) |
-| B4 | Solicitud, observación, reenvío, aprobación, rechazo, anulación e historia; bandeja integrada al sidebar de CAUCE. | `autorizaciones.py`, `api_autorizaciones.py`, `AutorizacionesFinanciador.jsx`, `AutorizacionesCaso.jsx` |
+| B4 | Solicitud, observación, reenvío, aprobación, rechazo, anulación e historia; bandeja integrada al sidebar de I-Core Salud. | `autorizaciones.py`, `api_autorizaciones.py`, `AutorizacionesFinanciador.jsx`, `AutorizacionesCaso.jsx` |
 | B5 | Cantidad aprobada, comprometida y realizada; importe pendiente de autorización separado de deuda exigible y del copago. | `uso_autorizaciones.py`, `cobros.py`, `clinica.py`, `actividad.py`, `seguimiento.py` |
 | B6 | Espera sólo en circuito programado explícito; aprobación libera el mismo paso; supervisión con motivo; vencimientos mediante el reloj existente. | `esperas.py`, `casos/motor.py`, `correr_tiempos`, `FlujoEditor.jsx` |
 | B7 | Derivación reconsulta cobertura en destino y detecta conflictos de identidad. FHIR Coverage presenta afiliación vigente, sin prometer cobertura económica. | `red/motor.py`, `fhir/cobertura.py`, [contrato de interoperabilidad](interoperabilidad-cobertura.md) |
@@ -109,13 +109,13 @@ una migración inversa destructiva como mecanismo de reversión.
   y compromiso antiguo se reprodujeron antes de corregir y tienen regresiones.
 - Navegador contra backend/base reales **ficticios**: la aprobación de Nora libera
   la espera, conserva el paso y deja una unidad comprometida, cero realizadas y
-  dos disponibles. Sin errores JavaScript. Revisión visual conserva sidebar CAUCE.
+  dos disponibles. Sin errores JavaScript. Revisión visual conserva sidebar Salud.
 
-Comando principal desde `backend`, con `CAUCE_TEST_POSTGRES_URL` apuntando sólo al
+Comando principal desde `backend`, con `SALUD_TEST_POSTGRES_URL` apuntando sólo al
 PostgreSQL local de pruebas permitido por el settings dedicado:
 
 ```text
-python manage.py test apps.financiadores apps.auditoria.test_lotes apps.registros apps.fhir apps.red.test_cobertura apps.casos.test_motor_guardas apps.casos.test_permisos_barrida apps.casos.test_esquema apps.flujos --settings=cauce.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores apps.auditoria.test_lotes apps.registros apps.fhir apps.red.test_cobertura apps.casos.test_motor_guardas apps.casos.test_permisos_barrida apps.casos.test_esquema apps.flujos --settings=config.settings_financiadores_postgres_test --noinput
 ```
 
 Frontend:
@@ -142,7 +142,7 @@ obligaciones y movimientos anteriores. No se modificó `localhost:8090`.
 
 Se mantienen los usuarios ficticios `financiador@demo.local`, `consulta@demo.local`
 y `hospital@demo.local`. Datos, respaldos y evidencia local viven fuera del repositorio
-en `%LOCALAPPDATA%/Cauce/demos/financiadores-main2`.
+en `%LOCALAPPDATA%/Salud/demos/financiadores-main2`.
 
 Antes de incorporar a un hospital real faltan la copia autorizada del destino,
 ensayo/restauración en su motor y volumen, responsables y permisos designados,

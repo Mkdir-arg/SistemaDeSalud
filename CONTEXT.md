@@ -1,4 +1,4 @@
-# Cauce
+# I-Core Salud
 
 Lenguaje del sistema para los procesos asistenciales y su gestión administrativa.
 
@@ -14,7 +14,7 @@ Vínculo administrativo de una persona con un financiador que identifica sus con
 Afiliación elegida al ingresar a un caso asistencial. Se conserva durante ese caso aunque luego cambie o venza; una corrección expresa queda registrada y no modifica cargos anteriores.
 
 **Padrón de afiliados del financiador**:
-Conjunto de afiliaciones administrado por el financiador. Incluye personas que todavía no fueron atendidas en un hospital de Cauce.
+Conjunto de afiliaciones administrado por el financiador. Incluye personas que todavía no fueron atendidas en un hospital de Salud.
 
 **Carga incremental del padrón**:
 Incorporación o actualización de las afiliaciones incluidas en una carga. No realiza bajas y conserva las afiliaciones omitidas.
@@ -36,7 +36,7 @@ Número máximo de prestaciones cubiertas bajo una regla durante el período def
 Mes o año calendario en el que se cuentan los usos sujetos a un tope. El cupo mensual se renueva al comenzar cada mes y el anual el 1 de enero.
 
 **Cupo disponible**:
-Cantidad de prestaciones cubiertas que le quedan al afiliado bajo un tope, considerando usos en Cauce, consumos externos y reservas activas. Se comparte entre hospitales y es independiente por financiador: cambiar de hospital o plan conserva los consumos del período, y regresar a un financiador conserva su acumulado previo.
+Cantidad de prestaciones cubiertas que le quedan al afiliado bajo un tope, considerando usos en Salud, consumos externos y reservas activas. Se comparte entre hospitales y es independiente por financiador: cambiar de hospital o plan conserva los consumos del período, y regresar a un financiador conserva su acumulado previo.
 
 **Reserva de cupo de cobertura**:
 Uso del cupo comprometido al confirmar que se realizará una prestación, que reduce la disponibilidad para otras confirmaciones. Se convierte en consumo al registrarse la realización y se libera si se cancela; consultar la cobertura no constituye una reserva.
@@ -45,7 +45,7 @@ Uso del cupo comprometido al confirmar que se realizará una prestación, que re
 Reserva de cobertura aún abierta que requiere revisión del hospital. Se libera tras confirmar que la prestación no se realizó; su antigüedad por sí sola no produce el vencimiento.
 
 **Consumo externo informado**:
-Uso de cobertura de un afiliado en una institución ajena a Cauce, declarado por el financiador con prestación, fecha y cantidad para computarlo en el cupo correspondiente.
+Uso de cobertura de un afiliado en una institución ajena a Salud, declarado por el financiador con prestación, fecha y cantidad para computarlo en el cupo correspondiente.
 
 **Identificación del afiliado**:
 Combinación del número de afiliado y el documento de la persona dentro de un financiador. Permite contrastar a quién corresponde un consumo informado.
@@ -63,7 +63,7 @@ Consumo informado que coincide con otro en datos relevantes y requiere revisión
 Situación en que un consumo informado tarde muestra que una prestación se había registrado como cubierta cuando el cupo ya estaba agotado. Conserva la decisión original y requiere revisión.
 
 **Catálogo común de prestaciones**:
-Conjunto de prestaciones de referencia de Cauce, administrado por plataforma. Permite reconocer una misma prestación entre hospitales y financiadores.
+Conjunto de prestaciones de referencia de Salud, administrado por plataforma. Permite reconocer una misma prestación entre hospitales y financiadores.
 
 **Catálogo de prestaciones del financiador**:
 Selección del catálogo común que forma parte de la oferta de cobertura de un financiador. Sus planes pueden establecer condiciones de cobertura diferentes para esas prestaciones.

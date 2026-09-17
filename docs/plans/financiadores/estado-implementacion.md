@@ -14,7 +14,7 @@ Las autorizaciones y la separación del padrón/legado ya están implementadas;
 la mejora del [issue #42](https://github.com/Mkdir-arg/SistemaDeSalud/issues/42)
 también está en el PR. La aceptación humana y la habilitación real siguen pendientes.
 
-1. Plataforma crea el financiador y da acceso al primer administrador. Una cuenta nueva recibe un enlace de activación de un solo uso para compartir por el canal habitual; Cauce no envía mensajes automáticamente. Una cuenta existente conserva su contraseña.
+1. Plataforma crea el financiador y da acceso al primer administrador. Una cuenta nueva recibe un enlace de activación de un solo uso para compartir por el canal habitual; I-Core Salud no envía mensajes automáticamente. Una cuenta existente conserva su contraseña.
 2. El administrador configura planes y reglas por prestación o categoría del catálogo común. El padrón admite afiliados sin plan, números familiares y documentos con ceros iniciales.
 3. El financiador descarga su plantilla personalizada, revisa el resumen y confirma las filas válidas. Puede descargar errores, corregirlos y retomar una importación interrumpida. También registra consumos externos y correcciones.
 4. El hospital habilita cobertura explícitamente, vincula sus prestaciones al catálogo común y acepta/proporciona convenios. El arancel general sigue en la configuración de cobros existente; sólo las excepciones acordadas usan un registro adicional.
@@ -83,20 +83,20 @@ Para detener nuevas operaciones, deshabilitar la configuración del hospital y l
 Desde `backend`, usando un entorno con `requirements.txt` instalado:
 
 ```powershell
-python manage.py check --settings=cauce.settings_financiadores_test
-python manage.py makemigrations --check --dry-run --settings=cauce.settings_financiadores_test
-python manage.py test apps.financiadores --settings=cauce.settings_financiadores_test --noinput
-python manage.py test apps.accounts apps.casos apps.finanzas apps.financiadores --settings=cauce.settings_financiadores_test --noinput
-python manage.py spectacular --settings=cauce.settings_financiadores_test --file esquema.yml --fail-on-warn
+python manage.py check --settings=config.settings_financiadores_test
+python manage.py makemigrations --check --dry-run --settings=config.settings_financiadores_test
+python manage.py test apps.financiadores --settings=config.settings_financiadores_test --noinput
+python manage.py test apps.accounts apps.casos apps.finanzas apps.financiadores --settings=config.settings_financiadores_test --noinput
+python manage.py spectacular --settings=config.settings_financiadores_test --file esquema.yml --fail-on-warn
 ```
 
 `settings_financiadores_test` fuerza SQLite en memoria y no hereda una base real. La regresión amplia incluye pruebas antiguas que inspeccionan `FOR UPDATE`; necesitan PostgreSQL y no pueden certificarse mediante SQLite.
 
-Para las pruebas concurrentes se agregó `settings_financiadores_postgres_test`. Exige `CAUCE_TEST_POSTGRES_URL` apuntando exclusivamente a `localhost`, `127.0.0.1` o `::1`, base `cauce_financiadores_test`; rechaza otros destinos. El servidor local dedicado debe existir antes:
+Para las pruebas concurrentes se agregó `settings_financiadores_postgres_test`. Exige `SALUD_TEST_POSTGRES_URL` apuntando exclusivamente a `localhost`, `127.0.0.1` o `::1`, base `salud_financiadores_test`; rechaza otros destinos. El servidor local dedicado debe existir antes:
 
 ```powershell
-python manage.py test apps.financiadores --settings=cauce.settings_financiadores_postgres_test --noinput
-python manage.py test apps.accounts apps.casos apps.finanzas apps.financiadores --settings=cauce.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores --settings=config.settings_financiadores_postgres_test --noinput
+python manage.py test apps.accounts apps.casos apps.finanzas apps.financiadores --settings=config.settings_financiadores_postgres_test --noinput
 ```
 
 Desde `frontend`:
@@ -150,7 +150,7 @@ Las pruebas automatizadas verifican las reglas anteriores; la aceptación del pi
 - `grill-with-docs` con `domain-modeling`: convirtió la entrevista en reglas, glosario, alternativas y decisiones trazables; las recomendaciones pendientes se adoptaron por instrucción del usuario.
 - `brainstorming`: ordenó el alcance de la primera entrega y la separación de autorizaciones previas.
 - `xlsx`: guio las planillas personalizadas y el tratamiento seguro de identificadores, fórmulas y errores.
-- `interface-design` y `playwright`: mantuvieron los componentes de Cauce y verificaron recorridos de usuario simulados y reales.
+- `interface-design` y `playwright`: mantuvieron los componentes de Salud y verificaron recorridos de usuario simulados y reales.
 - `systematic-debugging`: se usó para distinguir fallos de integración, restricciones de SQLite y procesos locales desactualizados.
 
 ## Revisión e incorporación
@@ -159,7 +159,7 @@ La aprobación de recomendaciones habilitó implementación y pruebas locales. N
 
 ## Corrección de coherencia visual del portal
 
-El usuario pidió conservar la estructura visual de Cauce y aprobó corregir el portal el 15/09/2026. Los issues #19/#20 requieren una rama de menú propia dentro de Cauce; no piden otra interfaz. La separación del primer portal fue una decisión de implementación del agente, corregida aquí.
+El usuario pidió conservar la estructura visual de Salud y aprobó corregir el portal el 15/09/2026. Los issues #19/#20 requieren una rama de menú propia dentro de Salud; no piden otra interfaz. La separación del primer portal fue una decisión de implementación del agente, corregida aquí.
 
 - `frontend/src/components/Shell.jsx`: se reutilizan sidebar, encabezado, usuario, colapso, cajón móvil y tema. El contexto de financiador provee su organización, rol, selector y enlaces; el hospital conserva sus controles.
 - `frontend/src/pages/financiadores/PortalFinanciadores.jsx`: se retiran el encabezado independiente y las pestañas globales. Las secciones pasan al menú lateral, con el espaciado y los componentes existentes.
@@ -167,8 +167,8 @@ El usuario pidió conservar la estructura visual de Cauce y aprobó corregir el 
 - `frontend/src/api/finanzas.js`: opción `enabled` del hook de permisos, con valor predeterminado verdadero. El portal lo desactiva para no consultar permisos hospitalarios. También se omiten búsqueda de pacientes, notificaciones clínicas, instituciones y tareas hospitalarias dentro de ese contexto, incluso para usuarios mixtos.
 - `frontend/e2e/financiadores-ui.spec.js`: navegación adaptada a enlaces y casos nuevos de aislamiento de contextos, rol auditor por URL directa, contexto al recargar, menú colapsado y navegación móvil.
 
-Esta corrección no modifica backend, datos de demostración, membresías ni permisos del servidor. `interface-design` se aplicó para verificar coherencia con los componentes reales de Cauce; `playwright` para inspeccionar la demo en escritorio, móvil y ambos temas. El diseño aprobado se implementó directamente, sin otra ronda de preguntas ni nuevas dependencias.
+Esta corrección no modifica backend, datos de demostración, membresías ni permisos del servidor. `interface-design` se aplicó para verificar coherencia con los componentes reales de Salud; `playwright` para inspeccionar la demo en escritorio, móvil y ambos temas. El diseño aprobado se implementó directamente, sin otra ronda de preguntas ni nuevas dependencias.
 
-Validación: **28/28 pruebas de interfaz aprobadas**, 28,0 s; `npm run build` correcto, 747 módulos, 2,82 s. Se inspeccionaron capturas reales de aranceles, padrón y navegación móvil en `%LOCALAPPDATA%\Cauce\demos\financiadores-main2\revision-ui`. No se repitieron las pruebas de backend porque este ajuste no cambió su comportamiento.
+Validación: **28/28 pruebas de interfaz aprobadas**, 28,0 s; `npm run build` correcto, 747 módulos, 2,82 s. Se inspeccionaron capturas reales de aranceles, padrón y navegación móvil en `%LOCALAPPDATA%\Salud\demos\financiadores-main2\revision-ui`. No se repitieron las pruebas de backend porque este ajuste no cambió su comportamiento.
 
 El ingreso hospitalario real conservó su menú, búsqueda de pacientes, notificaciones y bandeja de coberturas con los datos ficticios existentes. Claude revisó el cambio comparándolo con copias previas de estos cinco archivos, en modo de sólo lectura, sin hallar regresiones; fue una revisión estática, separada de las pruebas y de la inspección visual. La demo sigue activa en el mismo puerto y conserva sus datos.

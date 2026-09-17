@@ -95,7 +95,7 @@ class EnsayoSinCostoTests(BaseFlujo):
 
     def setUp(self):
         super().setUp()
-        self.profesional = Usuario.objects.create_user("ensayo@cauce.local", "x")
+        self.profesional = Usuario.objects.create_user("ensayo@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=self.profesional,
             institucion=self.inst,

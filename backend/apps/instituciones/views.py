@@ -31,13 +31,13 @@ MAX_DIAS_RANGO = 366
 
 # La institución de capacitación del recorrido guiado. Es el único nombre que
 # `reset-escuela` acepta vaciar: ver InstitucionViewSet.reset_escuela.
-NOMBRE_ESCUELA = "Hospital Escuela Cauce"
+NOMBRE_ESCUELA = "Hospital Escuela Salud"
 
-# Los usuarios de práctica del escenario: `escuela.med@cauce.local` y compañía.
+# Los usuarios de práctica del escenario: `escuela.med@salud.local` y compañía.
 # `reset-escuela` los borra junto con la institución, y el prefijo más el dominio
 # son lo que evita que se lleve puesto a nadie más.
 PREFIJO_USUARIO_ESCUELA = "escuela."
-DOMINIO_USUARIO_ESCUELA = "@cauce.local"
+DOMINIO_USUARIO_ESCUELA = "@salud.local"
 
 
 def _rango_pedido(request):

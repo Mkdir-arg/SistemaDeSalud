@@ -113,11 +113,11 @@ class ProduccionTests(SimpleTestCase):
         import sys
 
         with patch.dict("os.environ", entorno, clear=False):
-            sys.modules.pop("cauce.settings", None)
+            sys.modules.pop("config.settings", None)
             try:
-                return importlib.import_module("cauce.settings")
+                return importlib.import_module("config.settings")
             finally:
-                sys.modules.pop("cauce.settings", None)
+                sys.modules.pop("config.settings", None)
 
     def _settings_de_produccion(self, **entorno):
         return self._cargar(**{
@@ -189,11 +189,11 @@ class ChecklistDeDjangoTests(SimpleTestCase):
         import importlib
 
         with patch.dict("os.environ", env, clear=False):
-            importlib.reload(importlib.import_module("cauce.settings"))
+            importlib.reload(importlib.import_module("config.settings"))
             from django.conf import settings as s
             from django.test import override_settings
 
-            nuevos = importlib.import_module("cauce.settings")
+            nuevos = importlib.import_module("config.settings")
             extra = {
                 k: getattr(nuevos, k) for k in dir(nuevos)
                 if k.isupper() and not k.startswith("_")
@@ -207,4 +207,4 @@ class ChecklistDeDjangoTests(SimpleTestCase):
                 except Exception as e:  # CommandError con los avisos adentro
                     self.fail(f"check --deploy tiene avisos:\n{salida.getvalue()}\n{e}")
 
-        importlib.reload(importlib.import_module("cauce.settings"))
+        importlib.reload(importlib.import_module("config.settings"))

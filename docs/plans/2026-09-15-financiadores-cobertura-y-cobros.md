@@ -8,7 +8,7 @@ Continuación: [plan de implementación y materiales](financiadores/README.md), 
 
 Priorizar obras sociales, mutuales, otros financiadores y pagos directos de pacientes por consultas no cubiertas. El usuario del financiador debe poder ingresar y cargar su parametría: organización, planes y prestaciones cubiertas, incluyendo límites de cantidad y porcentajes. El hospital necesita determinar cuánto corresponde cobrarle al financiador por las prestaciones realizadas.
 
-El usuario amplió el alcance para que el financiador también pueda informar, por afiliado, consumos realizados en instituciones ajenas a Cauce y descontarlos del cupo compartido. D8 define esa capacidad y D9 agrega prestación, fecha y cantidad con carga masiva mediante una plantilla de Excel personalizada; no depende de una integración automática externa. D17 incorpora un padrón propio del financiador, con carga masiva y sencilla, aun antes de la primera atención de sus afiliados en Cauce.
+El usuario amplió el alcance para que el financiador también pueda informar, por afiliado, consumos realizados en instituciones ajenas a I-Core Salud y descontarlos del cupo compartido. D8 define esa capacidad y D9 agrega prestación, fecha y cantidad con carga masiva mediante una plantilla de Excel personalizada; no depende de una integración automática externa. D17 incorpora un padrón propio del financiador, con carga masiva y sencilla, aun antes de la primera atención de sus afiliados en Salud.
 
 Este recorrido orienta la primera entrega. Todavía se deben acordar las reglas que convierten una cobertura en un cargo, los permisos y los criterios observables de los casos parciales, desconocidos o rechazados. La configuración de cobertura no implica por sí sola facturación fiscal, liquidación aceptada ni transferencia de dinero.
 
@@ -28,7 +28,7 @@ Este recorrido orienta la primera entrega. Todavía se deben acordar las reglas 
 | --- | --- | --- |
 | Identidad del financiador | [#13](https://github.com/Mkdir-arg/SistemaDeSalud/issues/13), [#14](https://github.com/Mkdir-arg/SistemaDeSalud/issues/14) | Financiadores, planes, convenios, afiliaciones, usuarios y aislamiento por organización. D17 amplía la carga hospitalaria de afiliaciones con un padrón gestionado masivamente por el financiador. |
 | Cobertura | [#15](https://github.com/Mkdir-arg/SistemaDeSalud/issues/15), [#16](https://github.com/Mkdir-arg/SistemaDeSalud/issues/16) | Reglas por prestación/categoría, plan, vigencia, copago, topes y asignación del responsable. D8 amplía el cálculo del cupo con consumos externos informados. |
-| Portal del financiador | [#19](https://github.com/Mkdir-arg/SistemaDeSalud/issues/19), [#20](https://github.com/Mkdir-arg/SistemaDeSalud/issues/20) | Pantallas de parametría, usuarios, convenios, autorizaciones y consulta de consumos. D8 agrega la carga de consumos externos; no habilita editar los cargos de hospitales de Cauce. |
+| Portal del financiador | [#19](https://github.com/Mkdir-arg/SistemaDeSalud/issues/19), [#20](https://github.com/Mkdir-arg/SistemaDeSalud/issues/20) | Pantallas de parametría, usuarios, convenios, autorizaciones y consulta de consumos. D8 agrega la carga de consumos externos; no habilita editar los cargos de hospitales de Salud. |
 | Autorizaciones | [#17](https://github.com/Mkdir-arg/SistemaDeSalud/issues/17), [#18](https://github.com/Mkdir-arg/SistemaDeSalud/issues/18) | Solicitud, observación, aprobación, rechazo, vencimiento y relación con continuidad asistencial. Alcance de primera entrega por decidir. |
 | Catálogo y aranceles | [#9](https://github.com/Mkdir-arg/SistemaDeSalud/issues/9), [#10](https://github.com/Mkdir-arg/SistemaDeSalud/issues/10) | Base de prestaciones y valores; existe política mínima de cobro separada del costo. D16 agrega un catálogo común de referencia. Falta concretar su vínculo con las prestaciones locales y el contrato de aranceles por convenio. |
 | Hechos y cargos | [#11](https://github.com/Mkdir-arg/SistemaDeSalud/issues/11), [#12](https://github.com/Mkdir-arg/SistemaDeSalud/issues/12) | Origen asistencial del cargo y consulta por paciente/caso. Reutilizar lo implementado. |
@@ -56,7 +56,7 @@ El [cierre post-demo](../funcionalidades/finanzas-costos/estado-post-demo-2026-0
 
 El usuario confirmó: «El hospital cargará el arancel previamente acordado con el financiador».
 
-Cuando existe un precio excepcional acordado fuera del sistema, el hospital lo carga y el financiador lo consulta, según la opción presentada y la propuesta de #20. No se incorpora un circuito de negociación y aceptación de precios dentro de Cauce. D2 aclara que este acuerdo excepcional no es necesario para aplicar el arancel general del hospital.
+Cuando existe un precio excepcional acordado fuera del sistema, el hospital lo carga y el financiador lo consulta, según la opción presentada y la propuesta de #20. No se incorpora un circuito de negociación y aceptación de precios dentro de Salud. D2 aclara que este acuerdo excepcional no es necesario para aplicar el arancel general del hospital.
 
 Criterio observable: el hospital puede registrar el arancel acordado para una prestación y su financiador; el usuario de ese financiador puede consultar el arancel correspondiente. Los permisos específicos, vigencias y condiciones para utilizarlo al generar un cargo siguen por definir.
 
@@ -88,7 +88,7 @@ El ejemplo confirma que ambas condiciones pueden coexistir; el ámbito del conte
 
 ### D4. Cupo compartido entre hospitales
 
-El usuario confirmó: «el cupo es compartido», ante la alternativa de compartir el límite del afiliado entre hospitales de Cauce o conceder un cupo independiente en cada hospital.
+El usuario confirmó: «el cupo es compartido», ante la alternativa de compartir el límite del afiliado entre hospitales de Salud o conceder un cupo independiente en cada hospital.
 
 Criterio observable: con un límite de seis radiografías en el período y cuatro usos en el Hospital A, el mismo afiliado dispone de dos usos en el Hospital B. Cambiar de hospital no reinicia ni multiplica el cupo.
 
@@ -98,7 +98,7 @@ Consecuencias técnicas a resolver al diseñar:
 - D16 establece el catálogo común al que se vinculan las prestaciones hospitalarias para consumir el cupo correspondiente. Falta concretar esas vinculaciones y sus controles.
 - Probar que dos hospitales no puedan aplicar simultáneamente el último uso disponible. El momento de reserva/consumo y la liberación por cancelación siguen por definir.
 - Consultar el saldo necesario para evaluar la cobertura sin conceder acceso clínico a otra institución.
-- D8 incorpora la carga por el financiador de usos realizados fuera de Cauce. La ausencia de esa carga no demuestra ausencia de consumos externos; no se presupone una integración automática ni que el saldo registrado sea exhaustivo.
+- D8 incorpora la carga por el financiador de usos realizados fuera de Salud. La ausencia de esa carga no demuestra ausencia de consumos externos; no se presupone una integración automática ni que el saldo registrado sea exhaustivo.
 
 ### D5. Cupo agotado: prestación no cubierta
 
@@ -135,17 +135,17 @@ La aceptación se refiere a los $2.000 que pagará el paciente. El tratamiento d
 
 ### D8. Consumos externos informados por el financiador
 
-El usuario pidió que la obra social pueda indicar, por paciente, consumos realizados en hospitales ajenos a Cauce, cuya actividad no se encuentra registrada en el sistema.
+El usuario pidió que la obra social pueda indicar, por paciente, consumos realizados en hospitales ajenos a Salud, cuya actividad no se encuentra registrada en el sistema.
 
 Resultado requerido: el financiador puede cargar esos consumos de sus afiliados para que se consideren en el cupo compartido. Complementa D4 y conserva D5: una vez agotado el cupo computable, la siguiente prestación queda no cubierta.
 
 Criterios observables:
 
-- Con un límite de seis radiografías para el período, tres usos en hospitales de Cauce y dos usos externos informados por el financiador para la misma cobertura, queda un uso disponible.
-- Ese saldo se aplica al mismo afiliado en todos los hospitales de Cauce; el consumo externo se descuenta una vez, no una vez por hospital.
-- Se puede distinguir un consumo externo informado de una prestación registrada por un hospital de Cauce. Informar actividad ajena a Cauce para el cupo no acredita un servicio realizado por un hospital de Cauce ni crea un cargo a cobrar por éste.
+- Con un límite de seis radiografías para el período, tres usos en hospitales de Salud y dos usos externos informados por el financiador para la misma cobertura, queda un uso disponible.
+- Ese saldo se aplica al mismo afiliado en todos los hospitales de Salud; el consumo externo se descuenta una vez, no una vez por hospital.
+- Se puede distinguir un consumo externo informado de una prestación registrada por un hospital de Salud. Informar actividad ajena a Salud para el cupo no acredita un servicio realizado por un hospital de Salud ni crea un cargo a cobrar por éste.
 
-Cambio de alcance: #20 describe los consumos del financiador como sólo lectura. El pedido actual incorpora una acción nueva para informar actividad externa; la consulta de consumos y cargos de hospitales de Cauce conserva su alcance de lectura. No se modificaron los issues de GitHub.
+Cambio de alcance: #20 describe los consumos del financiador como sólo lectura. El pedido actual incorpora una acción nueva para informar actividad externa; la consulta de consumos y cargos de hospitales de Salud conserva su alcance de lectura. No se modificaron los issues de GitHub.
 
 D9 confirma el registro con prestación, fecha y cantidad, y la carga masiva mediante Excel. No se utilizará una simple declaración de total acumulado como sustituto de esos datos.
 
@@ -165,7 +165,7 @@ Criterios observables:
 
 - Cada consumo externo identifica al afiliado y contiene prestación, fecha del consumo y cantidad. La fecha de carga es un dato distinto de la fecha del consumo.
 - Una plantilla de Excel permite preparar un lote con distintos afiliados y distintas prestaciones. Un mismo afiliado puede aparecer en varias filas para informar consumos diferentes.
-- Los consumos aceptados del archivo alimentan el mismo cupo compartido de D4/D8. La carga masiva conserva la separación entre consumo externo y cargos por prestaciones de hospitales de Cauce.
+- Los consumos aceptados del archivo alimentan el mismo cupo compartido de D4/D8. La carga masiva conserva la separación entre consumo externo y cargos por prestaciones de hospitales de Salud.
 - El resultado permite conocer qué consumos fueron registrados y cuáles requieren corrección, conforme a la importación parcial con resumen y detalle de rechazos confirmada en D10. No se considera aceptable descartar filas sin informar su resultado.
 
 La estructura definitiva del archivo y el comportamiento de la importación siguen en diseño. No se creó una plantilla final, un endpoint ni una nueva dependencia de producción.
@@ -208,7 +208,7 @@ Criterios observables:
 
 - Si el financiador A incluye consultas y radiografías, y B incluye consultas y ecografías, sus plantillas presentan las prestaciones correspondientes a cada uno.
 - El catálogo utilizado para ayudar a completar el archivo corresponde al financiador para el que se prepara la carga.
-- Al importar, Cauce comprueba el alcance del financiador y la validez de las prestaciones; modificar las celdas o usar otra plantilla no permite atribuir consumos a una organización ajena.
+- Al importar, Salud comprueba el alcance del financiador y la validez de las prestaciones; modificar las celdas o usar otra plantilla no permite atribuir consumos a una organización ajena.
 
 Aspectos pendientes: representación exacta del catálogo en el Excel, identificación estable de cada prestación, validación por plan y fecha del consumo, y tratamiento de plantillas antiguas o prestaciones que dejaron de ofrecerse. Que una prestación figure en el catálogo del financiador no demuestra por sí solo que todos sus planes la cubran para cualquier fecha.
 
@@ -224,7 +224,7 @@ Criterios observables:
 - Una fila sin número de afiliado o sin documento se informa como rechazada con el dato faltante; las demás filas siguen la política de importación parcial de D10.
 - La validación contrasta que ambos datos correspondan a la misma persona dentro del financiador de la carga. Una discrepancia no se resuelve atribuyendo el consumo automáticamente a quien coincida con uno solo de los datos.
 
-Los datos de identificación se preservan como texto. Esta decisión no prueba que el número de afiliado sea individual en todos los financiadores ni resuelve cómo dar de alta una afiliación que aún no exista en Cauce. La identidad compartida entre hospitales, la normalización del documento y el tratamiento de coincidencias ambiguas deben concretarse en el diseño.
+Los datos de identificación se preservan como texto. Esta decisión no prueba que el número de afiliado sea individual en todos los financiadores ni resuelve cómo dar de alta una afiliación que aún no exista en Salud. La identidad compartida entre hospitales, la normalización del documento y el tratamiento de coincidencias ambiguas deben concretarse en el diseño.
 
 Datos del Excel confirmados: número de afiliado, documento, prestación, fecha del consumo y cantidad obligatorios; referencia externa del consumo opcional según D13.
 
@@ -241,7 +241,7 @@ Criterios observables:
 
 Comparación utilizada durante la entrevista:
 
-| Alternativa | Trabajo para la obra social | Consecuencia para Cauce |
+| Alternativa | Trabajo para la obra social | Consecuencia para Salud |
 | --- | --- | --- |
 | Referencia externa obligatoria | Si ya existe en su sistema, puede copiarla/exportarla; si no, debe crear y conservar un código por consumo. | Permite reconocer reenvíos por una identidad estable del consumo dentro del financiador. Sigue siendo necesario validar que la referencia no se reutilice con datos distintos. |
 | Referencia externa opcional | Permite cargar las cinco columnas ya confirmadas; se agrega la referencia cuando está disponible. | Requiere tratar cargas con y sin referencia. Las coincidencias ambiguas sin referencia necesitan revisión humana; no hay una garantía automática de detectar todo duplicado entre archivos nuevos. |
@@ -256,7 +256,7 @@ Evidencia de reutilización: `backend/apps/finanzas/dinero.py` ya contiene clave
 
 El usuario confirmó: «conservar lo registrado, actualizar el cupo para las siguientes evaluaciones y señalar la discrepancia».
 
-Escenario que se sometió a decisión: el hospital realiza una prestación que Cauce indica como cubierta; después, el financiador informa consumos externos anteriores del mismo período que muestran que el cupo ya estaba agotado.
+Escenario que se sometió a decisión: el hospital realiza una prestación que Salud indica como cubierta; después, el financiador informa consumos externos anteriores del mismo período que muestran que el cupo ya estaba agotado.
 
 Criterios observables:
 
@@ -287,7 +287,7 @@ El usuario eligió «catalogo comun» frente a la alternativa de nomencladores p
 
 Criterios observables:
 
-- Plataforma mantiene las prestaciones de referencia compartidas de Cauce.
+- Plataforma mantiene las prestaciones de referencia compartidas de Salud.
 - Cada financiador selecciona de ese catálogo las prestaciones que incluye en su oferta; sus planes configuran la cobertura correspondiente.
 - Cada hospital puede vincular sus prestaciones locales con la referencia común. Dos prestaciones locales equivalentes consumen el cupo de la misma prestación de referencia para el afiliado.
 - La plantilla personalizada del financiador de D11 utiliza su selección del catálogo común.
@@ -301,18 +301,18 @@ Quedan pendientes el conjunto inicial del catálogo, permisos detallados, altas/
 
 ### D17. Padrón propio del financiador con carga masiva y sencilla
 
-El usuario confirmó «si, masivamente y de manera simple» ante la posibilidad de que la obra social cargue y mantenga su padrón de afiliados antes de que esas personas sean atendidas en un hospital de Cauce.
+El usuario confirmó «si, masivamente y de manera simple» ante la posibilidad de que la obra social cargue y mantenga su padrón de afiliados antes de que esas personas sean atendidas en un hospital de Salud.
 
 Criterios observables:
 
-- El financiador puede registrar y mantener afiliaciones de personas que todavía no tienen una atención en un hospital de Cauce.
+- El financiador puede registrar y mantener afiliaciones de personas que todavía no tienen una atención en un hospital de Salud.
 - Puede incorporar múltiples afiliados en una sola carga, sin dar de alta uno por uno para después informar sus consumos externos.
 - Cuando una persona se atiende en un hospital, se puede vincular el paciente institucional con la afiliación existente del financiador, conforme a las reglas de identificación que se concreten.
 - La operación masiva identifica el resultado de las filas y los problemas a corregir; el recorrido debe permitir que un operador prepare y revise el lote sin intervención técnica.
 
 Recomendación de recorrido del agente para reutilizar lo ya acordado: plantilla de Excel para el padrón, resumen previo de altas/actualizaciones/errores y detalle de filas a corregir, con el mismo patrón visible de las cargas de consumos. Las columnas específicas del padrón y el tratamiento de cambios siguen por cerrar; no se propone un sistema nuevo de importación configurable para cualquier formato.
 
-Cambio respecto de #14: ese análisis parte de afiliaciones cargadas por el administrativo hospitalario. El padrón propio habilita que el financiador prepare la información antes de cualquier atención en Cauce. Es información administrativa de afiliación; no crea por sí sola casos, atenciones ni historias clínicas hospitalarias.
+Cambio respecto de #14: ese análisis parte de afiliaciones cargadas por el administrativo hospitalario. El padrón propio habilita que el financiador prepare la información antes de cualquier atención en Salud. Es información administrativa de afiliación; no crea por sí sola casos, atenciones ni historias clínicas hospitalarias.
 
 Decisiones y riesgos pendientes:
 
@@ -347,7 +347,7 @@ El cambio de plan no reinicia el contador. Para las siguientes evaluaciones se a
 Criterios observables:
 
 - Un afiliado que utilizó cuatro radiografías en el año y pasa a un plan con límite anual de diez dispone de seis usos adicionales.
-- Los consumos del plan anterior permanecen computables aunque se hayan realizado en otro hospital de Cauce o informado como externos.
+- Los consumos del plan anterior permanecen computables aunque se hayan realizado en otro hospital de Salud o informado como externos.
 - Actualizar el plan mediante una carga del padrón no ofrece un cupo completo ignorando los usos previos del período.
 
 Comparación con #16: su RN5 propone contar cargos de la misma afiliación y prestación. D19 exige continuidad de consumos entre planes, aunque el diseño represente sus vigencias con registros distintos. No se ha aprobado un esquema técnico para esa continuidad.
@@ -365,7 +365,7 @@ Criterios observables:
 - Los consumos computables internos y externos permanecen atribuidos al financiador correspondiente; no se trasladan automáticamente al nuevo.
 - Los cargos anteriores mantienen su responsable original. El alta en B no concede a sus usuarios acceso automático a consumos o información de A.
 
-Se confirma una regla funcional de Cauce, no una afirmación sobre obligaciones legales o condiciones de contratos externos. #14 contempla afiliaciones vigentes e históricas, incluso varias simultáneas; #16 propone contar usos por afiliación, pero no resuelve expresamente un traspaso de cupos entre financiadores.
+Se confirma una regla funcional de Salud, no una afirmación sobre obligaciones legales o condiciones de contratos externos. #14 contempla afiliaciones vigentes e históricas, incluso varias simultáneas; #16 propone contar usos por afiliación, pero no resuelve expresamente un traspaso de cupos entre financiadores.
 
 Esta decisión no da de baja la afiliación anterior por importación ni autoriza a B a modificar el padrón de A. D21 define la continuidad de los casos en curso con la afiliación fijada al ingreso. Siguen pendientes las fechas de inicio/finalización, quién las acredita, la elección entre afiliaciones simultáneas y el vínculo de identidad que permite reconocer el regreso sin exponer datos entre organizaciones.
 
@@ -512,7 +512,7 @@ Se tratarán de a una, según sus dependencias. La lista siguiente registra cues
 - Su modelo inicial coincide con #19/#20 y #14/#16: parametría del financiador y datos suficientes para que el hospital determine el importe a cobrarle.
 - D1/D2 confirman que el hospital carga los aranceles: el general se aplica por defecto y un acuerdo específico funciona como excepción.
 - D3 confirma que una misma regla puede combinar porcentaje y tope opcional de cantidad.
-- D4 confirma el cupo compartido para el mismo afiliado entre hospitales de Cauce. Sus implicancias de identidad, concurrencia y acceso mínimo se registran como cuestiones de diseño, no como una arquitectura ya aprobada.
+- D4 confirma el cupo compartido para el mismo afiliado entre hospitales de Salud. Sus implicancias de identidad, concurrencia y acceso mínimo se registran como cuestiones de diseño, no como una arquitectura ya aprobada.
 - D5 confirma «no cubierta» cuando se agota el cupo. La responsabilidad del paciente y la continuidad asistencial se mantienen como decisiones separadas.
 - D6 confirma aceptación por prestación con el importe a pagar informado, en reemplazo de la aceptación general por caso de #16.
 - D7 confirma copago a cargo del paciente con la misma aceptación por prestación e importe.
@@ -525,7 +525,7 @@ Se tratarán de a una, según sus dependencias. La lista siguiente registra cues
 - D14 confirma que las cargas tardías conservan lo registrado, actualizan el cupo para las siguientes evaluaciones y señalan discrepancias para revisión.
 - D15 confirma meses y años calendario, con renovación mensual o el 1 de enero.
 - D16 confirma catálogo común administrado por plataforma, selección por financiador y vinculación de prestaciones hospitalarias.
-- D17 confirma padrón propio del financiador, con carga masiva y sencilla, antes de la primera atención en Cauce. Se propone reutilizar el recorrido de plantilla Excel, resumen y errores ya acordado para consumos.
+- D17 confirma padrón propio del financiador, con carga masiva y sencilla, antes de la primera atención en Salud. Se propone reutilizar el recorrido de plantilla Excel, resumen y errores ya acordado para consumos.
 - D18 confirma archivos incrementales que agregan/actualizan las filas incluidas, sin realizar bajas. Se corrigió la recomendación previa para excluir también las bajas expresas del importador.
 - D19 confirma la conservación del consumo acumulado del período al cambiar de plan dentro del mismo financiador. Ejemplo: cuatro radiografías utilizadas y un nuevo plan con límite anual de diez dejan seis disponibles.
 - D20 confirma cupos independientes entre financiadores y conservación del consumo si la persona regresa a uno anterior durante el mismo período. Los cargos previos conservan su responsable y el nuevo financiador no obtiene acceso automático a datos del anterior.

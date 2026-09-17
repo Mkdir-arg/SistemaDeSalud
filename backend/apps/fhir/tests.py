@@ -108,7 +108,7 @@ class PatientTests(FhirTestCase):
 
     def test_no_inventa_el_genero(self):
         """
-        Cauce no lo guarda. Mandar «unknown» afirmaría que se preguntó y no se
+        I-Core Salud no lo guarda. Mandar «unknown» afirmaría que se preguntó y no se
         sabe, cuando nunca se preguntó.
         """
         _, d = self.get(f"/fhir/Patient/{self.paciente.id}")
@@ -137,7 +137,7 @@ class PatientTests(FhirTestCase):
     def test_un_identificador_de_otro_sistema_no_devuelve_al_del_documento(self):
         """
         Si el organismo busca por número de afiliado, por pasaporte o por su
-        propia historia clínica y Cauce le contesta 200 con la persona cuyo DNI
+        propia historia clínica y Salud le contesta 200 con la persona cuyo DNI
         coincide con ese número, del otro lado nadie mira: se toma esa identidad
         y se asocia al episodio equivocado. Un Bundle vacío sí lo sabe manejar.
         """
@@ -145,7 +145,7 @@ class PatientTests(FhirTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(d["total"], 0)
 
-    def test_los_identificadores_que_cauce_emite_se_pueden_volver_a_buscar(self):
+    def test_los_identificadores_que_salud_emite_se_pueden_volver_a_buscar(self):
         """
         La fachada emite `urn:cauce:id:ciudadano` en cada Patient. Si buscar por
         él devuelve a la persona cuyo DOCUMENTO es ese número, un cliente que
@@ -157,7 +157,7 @@ class PatientTests(FhirTestCase):
 
     def test_un_documento_con_puntos_encuentra_a_la_persona(self):
         """
-        Cauce guarda el documento normalizado. Comparando la cadena cruda, un
+        Salud guarda el documento normalizado. Comparando la cadena cruda, un
         «30.111.222» del otro lado —que es como está escrito el documento
         físico— no encuentra nada y parece que la persona no existe.
         """
@@ -220,7 +220,7 @@ class EncounterTests(FhirTestCase):
         self.assertTrue(d["period"]["end"])
 
     def test_la_prioridad_usa_la_tabla_estandar(self):
-        """Es de lo poco que un sistema externo puede accionar sin conocer Cauce."""
+        """Es de lo poco que un sistema externo puede accionar sin conocer Salud."""
         _, d = self.get(f"/fhir/Encounter/{self.caso.id}")
         self.assertEqual(d["priority"]["coding"][0]["code"], "EM")
 
@@ -240,7 +240,7 @@ class EncounterTests(FhirTestCase):
 
     def test_el_filtro_por_estado_traduce_desde_fhir(self):
         """
-        Varios estados de Cauce caen en `in-progress`: filtrar por el texto
+        Varios estados de Salud caen en `in-progress`: filtrar por el texto
         crudo no encontraría nada aunque haya casos que corresponden.
         """
         Caso.objects.filter(pk=self.caso.pk).update(estado=Caso.Estado.EN_ESPERA)
@@ -269,7 +269,7 @@ class EncounterTests(FhirTestCase):
     def test_un_patient_que_no_es_un_id_contesta_en_fhir_y_no_se_cae(self):
         """
         `patient` es un `reference` y un cliente manda `Patient/urn:uuid:9` sin
-        pensarlo. Con un 500, el integrador escala «Cauce se cayó» por un
+        pensarlo. Con un 500, el integrador escala «Salud se cayó» por un
         parámetro que la fachada puede rechazar explicando qué mandar.
         """
         for valor in ("abc", "Patient/urn:uuid:9", "undefined"):
@@ -344,7 +344,7 @@ class PaginacionTests(FhirTestCase):
     def test_siguiendo_el_link_next_se_juntan_todos_sin_repetidos(self):
         """
         Sin `next`, un hospital de 250 pacientes sincroniza 100 y cree que
-        sincronizó todo, porque el `total` que declara Cauce coincide con lo que
+        sincronizó todo, porque el `total` que declara Salud coincide con lo que
         el cliente contó.
         """
         url, vistos = "/fhir/Patient?_count=5", []

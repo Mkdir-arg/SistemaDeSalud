@@ -1,5 +1,5 @@
 /**
- * El escenario de capacitación: Hospital Escuela Cauce.
+ * El escenario de capacitación: Hospital Escuela Salud.
  *
  * Acá vive lo que el recorrido carga por API. Dejó de ser el camino principal
  * —ahora el actor completa los formularios de la app— y pasó a cumplir tres
@@ -18,8 +18,8 @@
  */
 import { api } from "@/api/client";
 
-export const ESCUELA_NOMBRE = "Hospital Escuela Cauce";
-export const ESCUELA_TAG = "[escuela-cauce]";
+export const ESCUELA_NOMBRE = "Hospital Escuela Salud";
+export const ESCUELA_TAG = "[escuela-salud]";
 
 export async function lista(recurso, params = {}) {
   const qs = new URLSearchParams();
@@ -115,10 +115,10 @@ async function prepararUsuarios(ctx) {
     });
   };
 
-  const jefe = await usuario("escuela.jefe@cauce.local", "Julia", "Molina");
-  const adm = await usuario("escuela.adm@cauce.local", "Rafael", "Paz");
-  const enf = await usuario("escuela.enf@cauce.local", "Camila", "Rojas");
-  const med = await usuario("escuela.med@cauce.local", "Santiago", "Vera");
+  const jefe = await usuario("escuela.jefe@salud.local", "Julia", "Molina");
+  const adm = await usuario("escuela.adm@salud.local", "Rafael", "Paz");
+  const enf = await usuario("escuela.enf@salud.local", "Camila", "Rojas");
+  const med = await usuario("escuela.med@salud.local", "Santiago", "Vera");
   await membresia(jefe, "jefe_area", [ctx.areas.guardia]);
   await membresia(adm, "administrativo", [ctx.areas.guardia]);
   await membresia(enf, "enfermeria", [ctx.areas.guardia]);
@@ -443,7 +443,7 @@ export async function resetearEscuela() {
 export const YA_HECHO = {
   institucion: async () => !!(await institucionEscuela()),
   areas: async (inst) => !!(await primero("areas", { institucion: inst.id, search: "Guardia escuela" })),
-  usuarios: async () => !!(await primero("usuarios", { search: "escuela.med@cauce.local" })),
+  usuarios: async () => !!(await primero("usuarios", { search: "escuela.med@salud.local" })),
   formularios: async (inst) => !!(await primero("formularios", { institucion: inst.id, search: "Triage escuela" })),
   flujo: async (inst) => !!(await primero("flujos", { institucion: inst.id, search: "Guardia escuela" })),
   agenda: async (inst) => !!(await primero("agendas", { institucion: inst.id, search: "Consultorio escuela" })),

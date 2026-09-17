@@ -33,7 +33,7 @@ test.describe("Agenda", () => {
     // engancharía los dos.
     const visible = await page.getByLabel("Agenda", { exact: true }).inputValue();
     return page.evaluate(async (agendaVisible) => {
-      const tok = sessionStorage.getItem("cauce.access") ?? localStorage.getItem("cauce.access");
+      const tok = sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access");
       const d = new Date();
       const hoy = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
       const r = await fetch(`/api/turnos/?desde=${hoy}&ordering=inicio&page_size=100`, {

@@ -64,16 +64,16 @@ Validación final del incremento:
 - Demo con navegador/API/base reales: un cobro parcial aprobado desde el modal, actualización automática del saldo, pendiente con importe desconocido, auditoría y un solo movimiento persistido. Escritorio y móvil inspeccionados; tabla con desplazamiento horizontal contenido, sin desborde del documento ni errores JavaScript. La preparación agrega sólo una atención ficticia con los servicios existentes y conserva los datos previos mediante respaldo.
 
 ```text
-python manage.py test apps.financiadores apps.finanzas.test_dinero apps.finanzas.test_aprobaciones_dinero apps.finanzas.test_cobros apps.finanzas.test_reportes_dinero apps.casos.test_permisos_barrida apps.casos.test_esquema --settings=cauce.settings_financiadores_postgres_test --noinput
-python manage.py test apps.financiadores.test_seguimiento --settings=cauce.settings_financiadores_test --noinput
-python manage.py spectacular --settings=cauce.settings_financiadores_test --validate --fail-on-warn --file <archivo-temporal.yaml>
+python manage.py test apps.financiadores apps.finanzas.test_dinero apps.finanzas.test_aprobaciones_dinero apps.finanzas.test_cobros apps.finanzas.test_reportes_dinero apps.casos.test_permisos_barrida apps.casos.test_esquema --settings=config.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.test_seguimiento --settings=config.settings_financiadores_test --noinput
+python manage.py spectacular --settings=config.settings_financiadores_test --validate --fail-on-warn --file <archivo-temporal.yaml>
 npx playwright test --config playwright.financiadores-ui.config.js
 npm run build
 ```
 
 Claude revisó el diseño; su revisión final no se completó porque agotó el límite de sesión. Una revisión independiente de Codex encontró el problema de página inválida tras cobrar y verificó su corrección y el traslado de la API. Es evidencia estática adicional, no otra ejecución de pruebas ni aceptación humana.
 
-Skills: `brainstorming` acotó el bloque sobre decisiones aprobadas; `interface-design` conservó Cauce y el detalle financiero; `systematic-debugging` guio el diagnóstico del JSON nulo; `playwright` verificó el recorrido real; `pr-reviewer-github` estructuró la revisión independiente, sin publicar comentarios de revisión.
+Skills: `brainstorming` acotó el bloque sobre decisiones aprobadas; `interface-design` conservó I-Core Salud y el detalle financiero; `systematic-debugging` guio el diagnóstico del JSON nulo; `playwright` verificó el recorrido real; `pr-reviewer-github` estructuró la revisión independiente, sin publicar comentarios de revisión.
 
 ## Límites y siguiente bloque
 
@@ -112,13 +112,13 @@ Implementado en `seguimiento_csv.py` y en el mismo `SeguimientoCobrosViewSet`, s
 | Descarga con filtros aplicados y contexto conservado | Nueve E2E nuevos: tres vistas, filtros sin paginación, límites, borradores, errores 400/503, doble clic y cambio de hospital |
 
 - **366/366 pruebas PostgreSQL 16**, sin omisiones, 99,122 s, con el mismo comando de regresión documentado arriba. Incluye las 19 nuevas pruebas del CSV y las regresiones de financiadores, dinero, aprobaciones, cobros, reportes, permisos y esquema.
-- **19/19 focales SQLite**, 1,575 s. Primer pase adicional de regresión de seguimiento/actividad: **56/56**, 6,538 s. Comando focal: `python manage.py test apps.financiadores.test_exportacion_seguimiento --settings=cauce.settings_financiadores_test --noinput`.
+- **19/19 focales SQLite**, 1,575 s. Primer pase adicional de regresión de seguimiento/actividad: **56/56**, 6,538 s. Comando focal: `python manage.py test apps.financiadores.test_exportacion_seguimiento --settings=config.settings_financiadores_test --noinput`.
 - **78/78 pruebas Playwright** de la configuración `playwright.financiadores-ui.config.js`, incluidas 22 del seguimiento; build Vite correcto, 751 módulos, 2,81 s. `check`, OpenAPI con `--validate --fail-on-warn` y `git diff --check` correctos.
 - Demo real: CSV de dos cuentas y un pendiente descargados desde la interfaz, comparados con JSON y con los saldos persistidos; una única fecha de generación por archivo, BOM y encabezados HTTP verificados. Exportación de captura vacía verificada por API. Auditoría de las tres vistas y ausencia de nuevos movimientos confirmadas. Capturas de escritorio/móvil sin desborde del documento ni errores JavaScript.
 
 El revisor Codex independiente informó que terminó la inspección de backend y UI sin hallazgos adicionales. La entrega de su respuesta final se interrumpió por cuota; se conservan sus observaciones intermedias. La regresión PostgreSQL y el contraste de la demo los completó el agente principal. Claude no participó de este incremento por el límite informado en la sesión anterior; no se atribuye una revisión final a Claude.
 
-Se aplicaron `brainstorming` para limitar el alcance aprobado, `interface-design` para reutilizar el patrón de descarga de Cauce, el flujo de verificación de `playwright` con las herramientas instaladas y `pr-reviewer-github` para revisar permisos, formato y auditoría. Se consultó `xlsx`, pero no se aplicó su flujo de modelos y fórmulas: este cambio implementa una exportación CSV del servidor y conserva sus valores registrados.
+Se aplicaron `brainstorming` para limitar el alcance aprobado, `interface-design` para reutilizar el patrón de descarga de Salud, el flujo de verificación de `playwright` con las herramientas instaladas y `pr-reviewer-github` para revisar permisos, formato y auditoría. Se consultó `xlsx`, pero no se aplicó su flujo de modelos y fórmulas: este cambio implementa una exportación CSV del servidor y conserva sus valores registrados.
 
 Límites: no se abrió el archivo en Microsoft Excel real ni se midió una exportación de 5.000 filas; el CSV se validó con parser y navegador. No se repitió toda la suite global del repositorio. El límite de filas se comprobó con un umbral reducido en las pruebas. El apóstrofo es parte de la convención de texto del archivo, visible en algunos lectores. Una descarga ya iniciada conserva hospital/vista/filtros si se navega a otra pantalla; el cliente existente no permite cancelarla.
 

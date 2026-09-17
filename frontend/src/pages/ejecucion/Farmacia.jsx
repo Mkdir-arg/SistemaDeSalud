@@ -444,7 +444,7 @@ function Stock({
     {
       ...filtros,
       page: pagina,
-      // 200 es el máximo que sirve el servidor (cauce/pagination.py). Pedir 300
+      // 200 es el máximo que sirve el servidor (config/pagination.py). Pedir 300
       // no traía 300: recortaba en silencio y el total del insumo del corte
       // salía menor al real, en rojo como faltante teniendo el resto.
       pageSize: 200,

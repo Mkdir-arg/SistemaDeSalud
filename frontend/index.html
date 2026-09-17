@@ -16,7 +16,7 @@
       // turno noche ese fogonazo blanco es exactamente lo que se quiere evitar.
       (function () {
         try {
-          var t = localStorage.getItem("cauce.tema");
+          var t = localStorage.getItem("salud.tema");
           var oscuro = t === "oscuro" || (!t && matchMedia("(prefers-color-scheme: dark)").matches);
           if (oscuro) document.documentElement.classList.add("dark");
         } catch (e) {}

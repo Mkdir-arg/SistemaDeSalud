@@ -86,7 +86,7 @@ function textoDeEtiqueta(lab) {
  * El control de un campo, buscado por su etiqueta visible.
  *
  * Acepta prefijo a propósito: hay etiquetas que llevan el nombre de la
- * institución adentro («Rol en Hospital Escuela Cauce»), y el guion no puede
+ * institución adentro («Rol en Hospital Escuela Salud»), y el guion no puede
  * saberlo de antemano.
  */
 export function buscarCampo(etiqueta, raiz = ambito()) {

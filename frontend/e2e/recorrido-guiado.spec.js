@@ -83,7 +83,7 @@ test.describe("Recorrido guiado", () => {
 
     // La prueba de que se ACTUÓ: el nombre está dentro del input, escrito, antes
     // de que exista la institución. Sembrando por API el diálogo no se abre.
-    await expect(campo(page, "Nombre")).toHaveValue("Hospital Escuela Cauce", { timeout: 30_000 });
+    await expect(campo(page, "Nombre")).toHaveValue("Hospital Escuela Salud", { timeout: 30_000 });
     await expect(campo(page, "CUIT")).toHaveValue("30-00000000-7", { timeout: 20_000 });
 
     // Y el panel dice qué está haciendo, no un ítem de una lista con temporizador.

@@ -2,7 +2,7 @@
 Router central de la API REST.
 
 Registra todos los ViewSets bajo `/api/`. La autenticación es JWT (ver
-`cauce/urls.py` para los endpoints de token).
+`config/urls.py` para los endpoints de token).
 """
 from rest_framework.routers import DefaultRouter
 

@@ -1,6 +1,6 @@
 # Sistema de diseño — tokens y componentes
 
-Especificación lista para traducir a CSS variables / tema de código. Valores tomados del prototipo `Cauce - Procesos.dc.html`.
+Especificación lista para traducir a CSS variables / tema de código. Valores tomados del prototipo `Salud - Procesos.dc.html`.
 
 ## 1. Design tokens
 

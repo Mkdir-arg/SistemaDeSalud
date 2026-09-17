@@ -1,7 +1,7 @@
 """
-Django settings for the Cauce project.
+Django settings for the I-Core Salud project.
 
-Cauce — constructor y motor de flujos para procesos de salud / Estado.
+I-Core Salud — constructor y motor de flujos para procesos de salud / Estado.
 Backend: Django + DRF. Base de datos: Supabase (Postgres). Auth: JWT (SimpleJWT).
 """
 
@@ -118,17 +118,17 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "cauce": {
+        "salud": {
             "format": "{asctime} {levelname:<8} {name} · {message}",
             "style": "{",
         },
     },
     "handlers": {
-        "consola": {"class": "logging.StreamHandler", "formatter": "cauce"},
+        "consola": {"class": "logging.StreamHandler", "formatter": "salud"},
     },
     "loggers": {
         "apps": {"handlers": ["consola"], "level": "INFO", "propagate": False},
-        "cauce": {"handlers": ["consola"], "level": "INFO", "propagate": False},
+        "config": {"handlers": ["consola"], "level": "INFO", "propagate": False},
         # Los 500 con su traza. Django los manda por mail si hay ADMINS y si no,
         # a ningún lado.
         "django.request": {"handlers": ["consola"], "level": "WARNING", "propagate": False},
@@ -177,7 +177,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "cauce.urls"
+ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
@@ -194,7 +194,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "cauce.wsgi.application"
+WSGI_APPLICATION = "config.wsgi.application"
 
 
 # --- Base de datos ---------------------------------------------------------
@@ -238,7 +238,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
-    "DEFAULT_PAGINATION_CLASS": "cauce.pagination.Paginacion",
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.Paginacion",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
@@ -251,9 +251,9 @@ REST_FRAMEWORK = {
 # es la referencia que evita tener que leer el código para saber qué devuelve
 # cada endpoint.
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Cauce · API",
+    "TITLE": "I-Core Salud · API",
     "DESCRIPTION": """
-API de Cauce: flujos de trabajo para instituciones de salud.
+API de I-Core Salud: flujos de trabajo para instituciones de salud.
 
 **Autenticación.** Todo requiere un token JWT (`Authorization: Bearer <token>`)
 que se obtiene en `POST /api/auth/token/`. Las dos excepciones son ese mismo
@@ -326,11 +326,11 @@ devuelve el CapabilityStatement y se sirve sin credenciales.
 # VACÍA POR DEFECTO: la función viene apagada y hay que habilitar cada host a
 # conciencia, del lado de la infraestructura y no del diseñador del flujo.
 INTEGRACIONES_PERMITIDAS = [
-    h.strip() for h in env("CAUCE_INTEGRACIONES_PERMITIDAS", "").split(",") if h.strip()
+    h.strip() for h in env("SALUD_INTEGRACIONES_PERMITIDAS", "").split(",") if h.strip()
 ]
 # Tope de espera de una llamada externa. El motor la hace en línea, así que un
 # servicio lento colgaría el avance del caso.
-INTEGRACIONES_TIMEOUT = int(env("CAUCE_INTEGRACIONES_TIMEOUT", "6"))
+INTEGRACIONES_TIMEOUT = int(env("SALUD_INTEGRACIONES_TIMEOUT", "6"))
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),

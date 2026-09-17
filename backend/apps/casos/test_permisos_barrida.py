@@ -21,7 +21,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Membresia, Usuario
 from apps.common import ROL_CAPACIDADES
 from apps.instituciones.models import Institucion
-from cauce.api import router
+from config.api import router
 
 # Sin `capacidad_requerida` un viewset queda abierto a cualquier miembro. Puede
 # estar bien, pero tiene que ser una decisión escrita y no un olvido.

@@ -23,8 +23,8 @@ async function escenario(page, opciones = {}) {
   const escrituras = [];
   const lecturas = [];
   await page.addInitScript((hospital) => {
-    localStorage.setItem("cauce.access", "token-ficticio-interceptado");
-    if (hospital) localStorage.setItem("cauce.institucion", JSON.stringify({ id: 2, nombre: "Hospital Ficticio" }));
+    localStorage.setItem("salud.access", "token-ficticio-interceptado");
+    if (hospital) localStorage.setItem("salud.institucion", JSON.stringify({ id: 2, nombre: "Hospital Ficticio" }));
   }, !!opciones.hospital);
   await page.route("**/api/**", async (route) => {
     const r = route.request(); const url = new URL(r.url());
@@ -135,7 +135,7 @@ test("antecedente no disponible conserva su referencia y expone el error de acce
   await expect(page.getByRole("alert")).toContainText("La solicitud anterior no está disponible");
 });
 
-test("bandeja y detalle conservan el espacio móvil de CAUCE", async ({ page }, testInfo) => {
+test("bandeja y detalle conservan el espacio móvil de I-Core Salud", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await escenario(page, { rol: "auditor", solicitud: { puede_resolver: false } });
   await page.goto("/financiadores/autorizaciones");

@@ -76,7 +76,7 @@ class Command(BaseCommand):
 
         # --- Super admin (para poder entrar) -------------------------------
         admin, _ = Usuario.objects.get_or_create(
-            email="admin@cauce.local",
+            email="admin@salud.local",
             defaults={"nombre": "Super", "apellido": "Admin", "is_staff": True, "is_superuser": True},
         )
         admin.is_staff = admin.is_superuser = admin.is_active = True
@@ -624,7 +624,7 @@ class Command(BaseCommand):
             "    · Procesamiento de laboratorio · Realización de estudio por imágenes\n"
             "    · Internación\n"
             "Accesos (contraseña demo1234, salvo el admin):\n"
-            "  admin@cauce.local / admin1234       (super admin)\n"
+            "  admin@salud.local / admin1234       (super admin)\n"
             "  guardia.jefe@hospital.gob.ar        (jefe/supervisor de guardia)\n"
             "  guardia.adm@hospital.gob.ar         (admisión → arranca el ingreso)\n"
             "  guardia.enf@hospital.gob.ar         (enfermería → triage)\n"

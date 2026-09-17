@@ -61,7 +61,7 @@ export default function PortalFinanciadores() {
   const actual = items.find((item) => item.key === seccion);
   if (organizacion && !actual) return <Navigate to={`/financiadores${sufijo}`} replace />;
   return <Shell financiador={{
-    nombre: organizacion?.nombre || "Cauce",
+    nombre: organizacion?.nombre || "I-Core Salud",
     rol: plataforma ? "Plataforma" : ROLES[organizacion?.rol] || "Sin organización asignada",
     titulo: actual?.label || "Financiadores",
     items,
@@ -97,7 +97,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
   }
   const errorOpciones = planes.error || catalogo.error;
   return <>
-    <Card className="border-l-4 border-l-accent p-4 sm:p-5"><h3 className="font-semibold">Cobertura compartida entre hospitales</h3><p className="mt-1 text-sm text-texto-debil">El cupo de cada afiliado se comparte entre los hospitales de Cauce. Los consumos externos actualizan el saldo disponible; no generan un cobro hospitalario. El hospital carga sus aranceles.</p>{resumen.data?.discrepancias > 0 && <p className="mt-3 font-semibold text-badge-amber-fg">{resumen.data.discrepancias} discrepancias requieren revisión. Las decisiones ya registradas se conservan.</p>}{resumen.error && <p role="status" className="mt-2 text-sm text-texto-debil">No se pudo consultar el resumen. <button className="text-accent underline" onClick={() => resumen.refetch()}>Reintentar</button></p>}</Card>
+    <Card className="border-l-4 border-l-accent p-4 sm:p-5"><h3 className="font-semibold">Cobertura compartida entre hospitales</h3><p className="mt-1 text-sm text-texto-debil">El cupo de cada afiliado se comparte entre los hospitales de I-Core Salud. Los consumos externos actualizan el saldo disponible; no generan un cobro hospitalario. El hospital carga sus aranceles.</p>{resumen.data?.discrepancias > 0 && <p className="mt-3 font-semibold text-badge-amber-fg">{resumen.data.discrepancias} discrepancias requieren revisión. Las decisiones ya registradas se conservan.</p>}{resumen.error && <p role="status" className="mt-2 text-sm text-texto-debil">No se pudo consultar el resumen. <button className="text-accent underline" onClick={() => resumen.refetch()}>Reintentar</button></p>}</Card>
     {mensaje && <div role="status" className="rounded-md bg-badge-green-bg p-3 text-badge-green-fg">{mensaje}</div>}
     {activacion && <EnlaceActivacion ruta={activacion} onClose={() => setActivacion("")} />}
     <section aria-label={SECCIONES.find((item) => item.key === tab)?.label}>
@@ -116,8 +116,8 @@ const DESCRIPCIONES = {
   reglas: "Indicá el porcentaje cubierto y, cuando corresponda, el cupo mensual o anual. Las nuevas vigencias conservan el historial anterior.",
   aranceles: "Aranceles vigentes al consultar, cargados por los hospitales con convenio activo. Se aplica el arancel general salvo una excepción acordada. La cobertura y el copago dependen del plan, el cupo y la prestación, y se confirman antes de realizarla.",
   padron: "Altas y actualizaciones de afiliados. Finalizar o reactivar una afiliación requiere una acción explícita con motivo. Una importación nunca da de baja a quienes no aparecen en el archivo.",
-  consumos: "Prestaciones recibidas fuera de Cauce. Se descuentan del cupo del mes o año en que ocurrieron, aunque se registren después.",
-  actividad: "Reservas y prestaciones de tus afiliados registradas por hospitales de Cauce. Sin relación vigente, sólo se muestran operaciones históricas pendientes de resolución. Las discrepancias conservan las decisiones previas y requieren revisión administrativa.",
+  consumos: "Prestaciones recibidas fuera de I-Core Salud. Se descuentan del cupo del mes o año en que ocurrieron, aunque se registren después.",
+  actividad: "Reservas y prestaciones de tus afiliados registradas por hospitales de I-Core Salud. Sin relación vigente, sólo se muestran operaciones históricas pendientes de resolución. Las discrepancias conservan las decisiones previas y requieren revisión administrativa.",
   convenios: "Los convenios habilitan la relación con cada hospital. La contraparte debe aceptar la propuesta.",
   usuarios: "Cada acceso pertenece a esta organización. El rol determina qué puede consultar o modificar la persona.",
   catalogo: "Catálogo compartido por todos los financiadores y hospitales. La plataforma administra su identidad; cada hospital conserva sus aranceles.",
@@ -231,7 +231,7 @@ function CrearRegistro({ recurso, organizacion, scope, planes, catalogo, titulo,
     convenios: [{ name: "institucion", label: "Hospital", options: hospitales.data || [], numeric: true, required: true }],
     usuarios: [campoPermisoAutorizaciones(), { name: "email", label: "Correo electrónico", type: "email", required: true }, { name: "nombre", label: "Nombre y apellido", required: true }, { name: "rol", label: "Rol", options: [{ id: "admin", nombre: "Administración: configura y gestiona accesos" }, { id: "operador", nombre: "Operación: padrón y consumos" }, { id: "auditor", nombre: "Auditoría: sólo lectura" }], required: true }],
   }[recurso];
-  return <FormularioPortal titulo={titulo} campos={campos} onClose={onClose} onGuardado={onGuardado} descripcion={recurso === "reglas" ? "El porcentaje se aplica sobre el arancel del hospital, o sobre su excepción acordada. Agregar una vigencia no modifica decisiones registradas." : recurso === "usuarios" ? "El acceso se limita a este financiador. La credencial de una persona que ya usa Cauce se conserva." : undefined} guardar={(body) => api.post(rutaFinanciador(organizacion.id, recurso), body)} />;
+  return <FormularioPortal titulo={titulo} campos={campos} onClose={onClose} onGuardado={onGuardado} descripcion={recurso === "reglas" ? "El porcentaje se aplica sobre el arancel del hospital, o sobre su excepción acordada. Agregar una vigencia no modifica decisiones registradas." : recurso === "usuarios" ? "El acceso se limita a este financiador. La credencial de una persona que ya usa I-Core Salud se conserva." : undefined} guardar={(body) => api.post(rutaFinanciador(organizacion.id, recurso), body)} />;
 }
 
 function BuscarAfiliado({ scope, organizacion, value, onChange }) {

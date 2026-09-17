@@ -21,7 +21,7 @@ class RepartoActividadApiTests(APITestCase):
         self.institucion = Institucion.objects.create(nombre="Hospital API")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.otra_area = Area.objects.create(institucion=self.institucion, nombre="Clínica")
-        self.admin = Usuario.objects.create_user("admin-repartos-api@cauce.local", "x")
+        self.admin = Usuario.objects.create_user("admin-repartos-api@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=self.admin,
             institucion=self.institucion,
@@ -245,7 +245,7 @@ class RepartoActividadApiTests(APITestCase):
         gasto = registrar_gasto(self.concepto, self.institucion, self.area, Decimal("100"), self.mes, self.admin)
         reparto = procesar_reparto_gasto(gasto.pk)
         url = f"/api/repartos-gasto/{reparto.pk}/atribuciones/"
-        lector = Usuario.objects.create_user("lector-atribuciones@cauce.local", "x")
+        lector = Usuario.objects.create_user("lector-atribuciones@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO,
         )
@@ -421,7 +421,7 @@ class RepartoActividadApiTests(APITestCase):
         self.assertEqual(self.client.get(f"/api/hechos-costo/{hecho.pk}/").status_code, 404)
 
     def test_configuracion_respeta_el_area_de_la_misma_concesion(self):
-        restringido = Usuario.objects.create_user("repartos-restringido@cauce.local", "x")
+        restringido = Usuario.objects.create_user("repartos-restringido@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=restringido,
             institucion=self.institucion,
@@ -448,7 +448,7 @@ class RepartoActividadApiTests(APITestCase):
         self.assertEqual(respuesta.status_code, 403)
 
     def test_permiso_exclusivo_de_repartos_puede_consultar_el_catalogo(self):
-        restringido = Usuario.objects.create_user("solo-repartos@cauce.local", "x")
+        restringido = Usuario.objects.create_user("solo-repartos@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=restringido,
             institucion=self.institucion,
@@ -766,7 +766,7 @@ class RepartoActividadApiTests(APITestCase):
         )
         self.assertTrue(gasto.aprobado, "La lectura sensible se prueba sobre un gasto apto para repartir.")
         procesar_reparto_gasto(gasto.id)
-        restringido = Usuario.objects.create_user("lector-costos-reparto@cauce.local", "x")
+        restringido = Usuario.objects.create_user("lector-costos-reparto@salud.local", "x")
         membresia = Membresia.objects.create(
             usuario=restringido, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO,
         )

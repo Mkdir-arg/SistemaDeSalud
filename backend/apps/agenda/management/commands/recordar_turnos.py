@@ -1,7 +1,7 @@
 """
 Proceso periódico de la agenda: arma la lista de llamados del día siguiente.
 
-**Qué es un recordatorio acá.** Cauce no tiene canal al paciente —no manda SMS
+**Qué es un recordatorio acá.** I-Core Salud no tiene canal al paciente —no manda SMS
 ni mail— y fingir que sí sería peor que no tenerlo: el turno figuraría avisado
 sin que nadie se haya enterado. Lo que sí existe en un hospital público es que
 alguien del mostrador llama por teléfono a los turnos del día siguiente, y esa

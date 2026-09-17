@@ -149,7 +149,7 @@ class ResetEscuelaTests(APITestCase):
     """
 
     def setUp(self):
-        self.escuela = Institucion.objects.create(nombre="Hospital Escuela Cauce")
+        self.escuela = Institucion.objects.create(nombre="Hospital Escuela Salud")
         self.real = Institucion.objects.create(nombre="Hospital Central")
         self.super = Usuario.objects.create_superuser("super-reset@test.local", "x")
         self.plataforma = Usuario.objects.create_user("plataforma-reset@test.local", "x")
@@ -165,7 +165,7 @@ class ResetEscuelaTests(APITestCase):
         r = self.client.post(f"/api/instituciones/{self.escuela.id}/reset-escuela/")
 
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertFalse(Institucion.objects.filter(nombre="Hospital Escuela Cauce").exists())
+        self.assertFalse(Institucion.objects.filter(nombre="Hospital Escuela Salud").exists())
         self.assertFalse(Area.objects.filter(nombre="Guardia escuela").exists())
 
     def test_no_vacia_una_institucion_real(self):
@@ -239,7 +239,7 @@ class ResetEscuelaTests(APITestCase):
         """Los usuarios no cuelgan de la institución. Si el reset los dejaba
         vivos, el recorrido siguiente moría al darlos de alta de nuevo: el email
         es único. El prefijo y el dominio son lo que acota el borrado."""
-        practica = Usuario.objects.create_user("escuela.med@cauce.local", "x")
+        practica = Usuario.objects.create_user("escuela.med@salud.local", "x")
         ajeno = Usuario.objects.create_user("medico@hospital.gob.ar", "x")
         parecido = Usuario.objects.create_user("escuela.med@hospital.gob.ar", "x")
         self.client.force_authenticate(self.super)

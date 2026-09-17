@@ -15,8 +15,8 @@ async function circuito(page, opciones = {}) {
   const lecturas = [];
   const contexto = () => ({ nodo: estado.caso.nodo_actual, actualizado: estado.caso.actualizado });
   await page.addInitScript((i) => {
-    localStorage.setItem("cauce.access", "access-solo-pruebas-interceptadas");
-    localStorage.setItem("cauce.institucion", JSON.stringify(i));
+    localStorage.setItem("salud.access", "access-solo-pruebas-interceptadas");
+    localStorage.setItem("salud.institucion", JSON.stringify(i));
   }, institucion);
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -206,7 +206,7 @@ test("un historial 403 no se presenta como vacío", async ({ page }) => {
   await expect(page.getByText("No hay afiliaciones registradas en los casos visibles", { exact: true })).toHaveCount(0);
 });
 
-test("cobertura e historial conservan el layout móvil Cauce sin desbordar", async ({ page }, testInfo) => {
+test("cobertura e historial conservan el layout móvil I-Core Salud sin desbordar", async ({ page }, testInfo) => {
   await circuito(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/casos/41");

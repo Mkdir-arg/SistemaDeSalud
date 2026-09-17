@@ -7,7 +7,7 @@ from rest_framework import serializers, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 
-from cauce.pagination import Paginacion
+from config.pagination import Paginacion
 from apps.financiadores.seguimiento import (
     FiltrosSeguimiento, capturas_cobertura, cuentas_cobertura, fila_seguimiento,
     filtrar_seguimiento, opciones_seguimiento, pendientes_cobertura,

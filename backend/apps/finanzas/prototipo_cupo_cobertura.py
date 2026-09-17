@@ -3,7 +3,7 @@
 Pregunta: ¿son coherentes reserva, consumo, liberación y carga externa tardía?
 Sólo memoria, sin Django ni persistencia. No valida concurrencia ni permisos.
 Q01 queda sin decidir: no convierte una reserva afectada por información tardía
-en una promesa de cobertura inventada. No es el motor productivo de Cauce.
+en una promesa de cobertura inventada. No es el motor productivo de I-Core Salud.
 
 Desde la raíz: python backend/apps/finanzas/prototipo_cupo_cobertura.py --demo
 Sin --demo inicia una consola interactiva. No calcula importes ni facturación.

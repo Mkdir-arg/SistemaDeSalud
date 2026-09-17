@@ -61,7 +61,7 @@ Traza: [simulación de cupos](simulacion-cupos-demo.jsonl). Sin `--demo`, el mis
 
 - Tests Django, migraciones, servicios, contención PostgreSQL y E2E: no se cambió comportamiento integrado y no se utilizaron bases o servicios reales. Los comandos y escenarios futuros están en [contratos y validación](contratos-y-validacion.md).
 - Build/lint global del frontend: no se modificaron componentes o rutas.
-- Importación en Cauce: ese importador todavía no existe.
+- Importación en I-Core Salud: ese importador todavía no existe.
 - Prueba visual/manual en Excel o LibreOffice: pendiente; la revisión de estructura no acredita usabilidad ni compatibilidad visual completa.
 - Aceptación humana: pendiente para el regreso del usuario. La ejecución del prototipo y la generación de archivos no demuestran comprensión ni aprobación del diseño.
 

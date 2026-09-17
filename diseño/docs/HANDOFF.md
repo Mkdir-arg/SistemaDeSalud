@@ -1,6 +1,6 @@
-# HANDOFF — Implementar Cauce tal cual
+# HANDOFF — Implementar I-Core Salud tal cual
 
-> Objetivo: que el código quede **idéntico** al prototipo `Cauce - Procesos.dc.html`. Este documento es para vos (dev) o para un agente de código. Léelo entero antes de escribir una línea.
+> Objetivo: que el código quede **idéntico** al prototipo `Salud - Procesos.dc.html`. Este documento es para vos (dev) o para un agente de código. Léelo entero antes de escribir una línea.
 
 ---
 
@@ -117,7 +117,7 @@ Detalle de cada pantalla: `docs/04-pantallas.md`. Roles/permisos/navegación: `d
 
 ## 6. Cómo mirar el prototipo mientras desarrollás
 
-Abrí `Cauce - Procesos.dc.html` en un navegador (es autocontenido). Usá el selector de rol del header y "Ingresar" a una institución para recorrer todo. Cuando una interacción no esté clara en los docs, **reproducila ahí**.
+Abrí `Salud - Procesos.dc.html` en un navegador (es autocontenido). Usá el selector de rol del header y "Ingresar" a una institución para recorrer todo. Cuando una interacción no esté clara en los docs, **reproducila ahí**.
 
 ---
 

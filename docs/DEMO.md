@@ -4,7 +4,7 @@
 > cargado para mostrar. Verificado el **2026-08-20** sobre el stack de Docker.
 
 Las credenciales que figuran en [`ESTADO-DEL-PROYECTO.md`](ESTADO-DEL-PROYECTO.md)
-§6 y en [`roles/README.md`](roles/README.md) (`operador@cauce.local`,
+§6 y en [`roles/README.md`](roles/README.md) (`operador@salud.local`,
 `a.gomez@`, `m.diaz@`, `j.perez@`) son de `seed_demo` y **no existen** en este
 entorno: el override de desarrollo siembra `seed_guardia` + `seed_volumen`. Las
 que sirven son las de abajo.
@@ -51,9 +51,9 @@ Contraseña **`demo1234`** para todos, salvo el superusuario.
 
 | Para mostrar | Usuario | Rol |
 |---|---|---|
-| Plataforma completa, editor de flujos, todo | `admin@cauce.local` / `admin1234` | superusuario |
-| Gobierno estatal: alta de efectores y redes, directorio | `plataforma@cauce.local` | plataforma |
-| Auditoría de accesos con alcance estatal | `auditor@cauce.local` | auditor |
+| Plataforma completa, editor de flujos, todo | `admin@salud.local` / `admin1234` | superusuario |
+| Gobierno estatal: alta de efectores y redes, directorio | `plataforma@salud.local` | plataforma |
+| Auditoría de accesos con alcance estatal | `auditor@salud.local` | auditor |
 | Administración de la institución, usuarios y estructura | `admin.central@hospital.gob.ar` | admin |
 | Diseño de flujos y formularios | `config.central@hospital.gob.ar` | configurador |
 | Supervisión de área, reasignar, priorizar, cancelar | `guardia.jefe@hospital.gob.ar` | jefe de área |
@@ -84,7 +84,7 @@ Medido después del reset:
 | Red | 1 red · Villa Real deriva a Hospital Central · 14 traslados (7 recibidos, 3 rechazados, 4 esperando respuesta) |
 | Historia clínica | ~425 entradas, todas selladas · 38 consentimientos |
 | Auditoría | Miles de accesos clínicos registrados; la consulta por paciente devuelve su historial de accesos |
-| Recorrido guiado | Tres clics en la ficha del super admin: la app se maneja sola y construye «Hospital Escuela Cauce» desde cero |
+| Recorrido guiado | Tres clics en la ficha del super admin: la app se maneja sola y construye «Hospital Escuela Salud» desde cero |
 | FHIR | `Patient`, `Encounter`, `Organization` y `metadata` respondiendo |
 | Pantalla de TV | 3 pantallas con token listo; la de la sala de espera de guardia con ~25 en cola |
 
@@ -98,7 +98,7 @@ Medido después del reset:
   a propósito —la auditoría clínica no se borra—, así que la única baja posible es
   la de estado. Si molestan en cámara, entrar directo a Hospital Central en vez de
   pasar por el directorio.
-- **«Hospital Escuela Cauce» NO se toca**: no es un resto de pruebas, es el
+- **«Hospital Escuela Salud» NO se toca**: no es un resto de pruebas, es el
   escenario del **recorrido guiado** (`src/tutorial/`, tres clics en la ficha del
   super admin). Después de sembrar **no existe, y así corresponde**: el recorrido la
   crea desde cero en vivo, que es justamente lo que demuestra. Si quedó de una

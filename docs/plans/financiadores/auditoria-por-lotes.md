@@ -104,7 +104,7 @@ los tiempos varían. No se incorporan umbrales temporales en CI ni se promete un
 - **2/2 PostgreSQL, 28,997 s**: exportaciones de 5.000/5.001 filas y repetición del
   fallo SQL de lotes CSV/JSON, incluyendo la aserción final de no entregar tipo CSV.
   Los 5.000 accesos completos y los once INSERT se comprobaron en esta versión.
-- `python manage.py check --settings=cauce.settings_financiadores_test` y
+- `python manage.py check --settings=config.settings_financiadores_test` y
   `git diff --check`: correctos.
 
 | Criterio | Evidencia |
@@ -128,19 +128,19 @@ Se usó el Python existente en `%TEMP%/cauce-financiadores-venv` y exclusivament
 la base efímera `test_cauce_issue42_aislado`; el runner la creó y destruyó. No se
 alteraron la demo, datos reales o configuraciones compartidas.
 
-Desde `backend`, configurar `CAUCE_TEST_POSTGRES_URL` para el PostgreSQL local
-con base `cauce_financiadores_test`, conforme al settings dedicado existente:
+Desde `backend`, configurar `SALUD_TEST_POSTGRES_URL` para el PostgreSQL local
+con base `salud_financiadores_test`, conforme al settings dedicado existente:
 
 ```powershell
-python manage.py test apps.auditoria apps.financiadores.test_actividad apps.financiadores.test_vigencias --settings=cauce.settings_financiadores_postgres_test --noinput
-python manage.py test apps.financiadores.validacion_volumen.ExportacionVolumenTests.test_medicion_auditoria_por_fases --settings=cauce.settings_financiadores_postgres_test --noinput
-python manage.py test apps.financiadores.validacion_volumen.ExportacionVolumenTests.test_exportaciones_completas_y_rechazo_de_exceso apps.financiadores.test_actividad.ActividadReporteTests.test_fallo_en_cualquier_lote_revierte_auditoria_y_no_entrega_datos --settings=cauce.settings_financiadores_postgres_test --noinput
+python manage.py test apps.auditoria apps.financiadores.test_actividad apps.financiadores.test_vigencias --settings=config.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.validacion_volumen.ExportacionVolumenTests.test_medicion_auditoria_por_fases --settings=config.settings_financiadores_postgres_test --noinput
+python manage.py test apps.financiadores.validacion_volumen.ExportacionVolumenTests.test_exportaciones_completas_y_rechazo_de_exceso apps.financiadores.test_actividad.ActividadReporteTests.test_fallo_en_cualquier_lote_revierte_auditoria_y_no_entrega_datos --settings=config.settings_financiadores_postgres_test --noinput
 ```
 
 Para reproducir el nombre aislado utilizado, sin editar settings versionados:
 
 ```powershell
-$env:DJANGO_SETTINGS_MODULE = 'cauce.settings_financiadores_postgres_test'
+$env:DJANGO_SETTINGS_MODULE = 'config.settings_financiadores_postgres_test'
 python -c "import sys; from django.conf import settings; settings.DATABASES['default']['TEST']['NAME']='test_cauce_issue42_aislado'; from django.core.management import execute_from_command_line; execute_from_command_line(['manage.py', 'test', *sys.argv[1:], '--noinput'])" apps.financiadores.validacion_volumen.ExportacionVolumenTests.test_medicion_auditoria_por_fases
 ```
 

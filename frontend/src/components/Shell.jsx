@@ -50,7 +50,7 @@ const TITULOS = {
   "/finanzas/coberturas": "Coberturas y copagos",
 };
 // Rutas con parámetro: llevan prefijo, así que no entran por el mapa de arriba.
-// Faltando una, la barra dice «Cauce» y la persona pierde la referencia de dónde
+// Faltando una, la barra dice «I-Core Salud» y la persona pierde la referencia de dónde
 // está — que es justamente para lo que sirve el título.
 const TITULOS_DETALLE = [
   ["/casos/", "Detalle del caso"],
@@ -65,7 +65,7 @@ const TITULOS_DETALLE = [
 function tituloDeRuta(pathname) {
   const detalle = TITULOS_DETALLE.find(([prefijo]) => pathname.startsWith(prefijo));
   if (detalle) return detalle[1];
-  return TITULOS[pathname] || "Cauce";
+  return TITULOS[pathname] || "I-Core Salud";
 }
 
 // Campana de notificaciones: contador de no leídas + dropdown (poll a /resumen/).
@@ -380,8 +380,8 @@ export function Shell({ children, financiador = null }) {
   const [refresco, setRefresco] = useState(null);
 
   // Menú lateral colapsable (recordado entre sesiones).
-  const [colapsadoPref, setColapsado] = useState(() => localStorage.getItem("cauce.menu") === "col");
-  const toggleMenu = () => setColapsado((v) => { localStorage.setItem("cauce.menu", v ? "exp" : "col"); return !v; });
+  const [colapsadoPref, setColapsado] = useState(() => localStorage.getItem("salud.menu") === "col");
+  const toggleMenu = () => setColapsado((v) => { localStorage.setItem("salud.menu", v ? "exp" : "col"); return !v; });
   // El colapso solo vale en escritorio: en el cajón móvil el menú se muestra
   // siempre completo (si no, alguien que colapsó en la compu abre el cajón en el
   // celular y ve una columna de iconos sin texto).
@@ -474,7 +474,7 @@ export function Shell({ children, financiador = null }) {
             {!colapsado && (
               <div style={{ lineHeight: 1.15, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {(esFinanciador ? financiador.nombre : institucion?.nombre) || "Cauce"}
+                  {(esFinanciador ? financiador.nombre : institucion?.nombre) || "I-Core Salud"}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", fontWeight: 500 }}>{esFinanciador ? "Financiador" : institucion?.tipo || "Institución"}</div>
               </div>

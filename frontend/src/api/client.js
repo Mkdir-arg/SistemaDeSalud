@@ -1,11 +1,11 @@
-// Cliente HTTP contra la API de Cauce.
+// Cliente HTTP contra la API de I-Core Salud.
 // Maneja el token JWT (access + refresh) en localStorage y reintenta una vez
 // ante un 401 refrescando el access token.
 
 const BASE = import.meta.env.VITE_API_URL || "/api";
-const ACCESS_KEY = "cauce.access";
-const REFRESH_KEY = "cauce.refresh";
-const PERSISTIR_KEY = "cauce.persistir";
+const ACCESS_KEY = "salud.access";
+const REFRESH_KEY = "salud.refresh";
+const PERSISTIR_KEY = "salud.persistir";
 
 /**
  * Dónde viven los tokens según haya elegido la persona.
