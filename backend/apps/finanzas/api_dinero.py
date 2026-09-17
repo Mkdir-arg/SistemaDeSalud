@@ -8,8 +8,11 @@ from django.db.models import Sum
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from apps.common import OrdenEstable
 
 from .auditoria import AuditaLecturaFinanciera
 from .dinero import (crear_obligacion_pago, decidir_ajuste, decidir_movimiento, disponible_reduccion, disponible_reintegro,
@@ -175,6 +178,9 @@ def _filtrar_contexto(queryset, parametros, prefijo=""):
 
 
 class ObligacionFinancieraViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    filter_backends = [OrdenEstable, SearchFilter]
+    ordering_fields = ("id", "tipo", "contraparte_nombre", "periodo_economico")
+    search_fields = ("contraparte_nombre", "contraparte_referencia")
     permission_classes = [IsAuthenticated]
     serializer_class = ObligacionFinancieraSerializer
     queryset = ObligacionFinanciera.objects.all()
@@ -240,6 +246,9 @@ class ObligacionFinancieraViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin
 
 
 class MovimientoDineroViewSet(AuditaLecturaFinanciera, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    filter_backends = [OrdenEstable, SearchFilter]
+    ordering_fields = ("id", "fecha", "tipo", "importe", "estado", "obligacion__contraparte_nombre", "obligacion__periodo_economico")
+    search_fields = ("referencia", "obligacion__contraparte_nombre", "obligacion__contraparte_referencia")
     permission_classes = [IsAuthenticated]
     serializer_class = MovimientoDineroSerializer
     queryset = MovimientoDinero.objects.all()

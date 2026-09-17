@@ -155,6 +155,7 @@ function Paginador({ pagina, paginas, total, tamano, desde, hasta, irA, cambiarT
  * recurso de la API— usar `TablaRecurso`, que le enchufa la consulta.
  */
 export function DataTable({
+  titulo,
   columnas,
   filas,
   total = 0,
@@ -230,6 +231,7 @@ export function DataTable({
                 refrescando && "opacity-60 transition-opacity",
               )}
             >
+              {titulo && <caption className="sr-only">{titulo}</caption>}
               <thead id={encabezadoId} data-abierto={controlesAbiertos} className="sticky top-0 z-10 bg-superficie-2">
                 <tr>
                   {columnas.map((c) => (

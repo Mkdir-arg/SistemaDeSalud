@@ -39,6 +39,23 @@ class CalendarioGastoApiTests(APITestCase):
             vigente_desde=date(2026, 8, 1), **datos
         )
 
+    def test_historial_filtra_hijos_sin_filtrar_la_expectativa(self):
+        for mes in ("2026-08-01", "2026-09-01"):
+            self.assertEqual(self.indicar("carga_completa", mes=mes).status_code, 201)
+        url = f"/api/expectativas-gasto/{self.expectativa.pk}/indicaciones/"
+        respuesta = self.client.get(url, {"ordering": "-periodo_economico", "page_size": 1})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 2)
+        self.assertEqual(len(respuesta.data["results"]), 1)
+        self.assertEqual(respuesta.data["results"][0]["periodo_economico"], "2026-09-01")
+        respuesta = self.client.get(url, {"search": "2026-08"})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 1)
+        self.assertEqual(respuesta.data["results"][0]["periodo_economico"], "2026-08-01")
+        otra = self.crear_expectativa(self.otra_area, motivo_correccion="Nueva referencia")
+        respuesta = self.client.get("/api/expectativas-gasto/", {"search": "referencia", "ordering": "-registrado"})
+        self.assertEqual([r["id"] for r in respuesta.data["results"]], [otra.pk])
+
     def calendario(self, mes="2026-08-01", **filtros):
         respuesta = self.client.get(
             "/api/expectativas-gasto/calendario/", {"periodo_economico": mes, **filtros}

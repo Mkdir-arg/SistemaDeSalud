@@ -102,24 +102,41 @@ y superficies, bordes, controles y foco del sistema existente.
 
 ## Verificación reproducible
 
-### Iteración visual del 17/09/2026
+### Interfaz y tablas del 17/09/2026
 
-La revisión solicitada por el usuario identificó un encabezado sobredimensionado,
-títulos promocionales y explicaciones repetidas que desplazaban las cifras.
-Se sustituyen por títulos directos, tarjetas y tamaños acordes al resumen existente.
-Las aclaraciones se agrupan en `AyudaFinanzas`, el componente `(?)` del módulo,
-con acceso por foco, clic y teclado. Se mantienen visibles fechas, restricciones,
-mes abierto, actualizaciones y pendientes navegables de ambos períodos.
+El estado de repartos acompaña la descripción del módulo. La comparación usa
+controles compactos con nombres accesibles. Gastos y dinero forman dos columnas
+independientes: cada una reúne sus indicadores, tendencia y desglose; el detalle
+por área y concepto queda junto a su gráfico. Abrir una tabla mensual no desplaza
+la otra columna. En móvil se apilan. Los controles de pagos y cobros comparten fila
+cuando hay espacio y ya no dejan un hueco sobre su título.
 
-Validación de esta iteración: nueve e2e de reportería aprobados, incluidos foco y
-Escape en escritorio y límites del panel de ayuda a 390 px; build correcto.
-Inspección con Playwright en la demo aislada con API real, a 1440 y 390 px.
-La auditoría CSS sigue señalando sólo los dos hallazgos previos de financiadores.
-No se modificó backend ni se repitió su suite; los resultados posteriores describen
-la validación de la implementación funcional anterior a este ajuste visual.
+Todas las tablas del módulo ofrecen filtros y ordenamiento, reutilizando
+`DataTable`, `useTablaUrl` y los controles financieros existentes:
 
-La skill interface-design guio la reutilización del sistema visual existente;
-Playwright permitió contrastar el resultado visible y la interacción de las ayudas.
+- Los agregados completos usan `TablaAgregadaFinanzas`: filtros por columna,
+  rangos de importes, orden exacto en centavos y paginación. Un desconocido no
+  coincide con cero y queda al final al ordenar en ambos sentidos. Los filtros
+  del listado no cambian gráficos ni indicadores.
+- Cuentas, movimientos, pendientes, recuperables, historiales y atribuciones
+  agregan búsqueda y orden sobre el queryset autorizado, antes de paginar.
+  Cuentas ordena por tipo y contraparte; los saldos calculados conservan su fuente
+  actual, sin duplicar sus reglas para ofrecer ordenamientos adicionales.
+- Las búsquedas de atribuciones y recuperables usan referencias financieras;
+  no permiten buscar información clínica no visible. El detalle de reparto
+  comprueba todo su alcance antes de filtrar y conserva sus totales completos.
+- Los títulos accesibles ocultos de tablas se posicionan dentro de su contenedor.
+  Esto corrige el scroll invisible sin recortar contenido ni esconder overflow.
+
+La validación cubre alineación, columnas independientes, teclado, móvil, filtros
+reversibles con resultados vacíos, centavos grandes, valores desconocidos,
+paginación y conservación del alcance. La demo aislada conserva sus 13 meses,
+895 cuentas y 918 movimientos; se verificó además búsqueda, orden y paginación
+contra su API real. La aceptación visual y funcional del usuario queda pendiente.
+
+Skills: interface-design para reutilizar componentes y jerarquía del sistema;
+Playwright para interacción y geometría en navegador; systematic-debugging para
+identificar el caption fuera de su contenedor como causa del scroll sobrante.
 
 Backend aislado del entorno compartido:
 
@@ -148,10 +165,12 @@ Las pruebas nuevas cubren comparativas, centavos, ajustes, ausencia/base cero,
 base negativa, fechas, permisos, fallo de auditoría, reintegros, copagos, vínculos
 de resoluciones, conceptos renombrados y conciliación con filtros de detalle.
 Playwright cubre ambos períodos, navegación completa, estados, permisos y móvil.
-Resultado final: 276 pruebas backend aprobadas, 24 omitidas por requerir
+Resultado final: 280 pruebas backend aprobadas, 24 omitidas por requerir
 PostgreSQL y 60 subpruebas aprobadas al ejecutar `apps/finanzas/` junto con
 `apps/financiadores/test_cobertura.py` y `apps/financiadores/test_recuperacion.py`.
-Playwright: 127 pruebas aprobadas, incluidos nueve casos nuevos del reporte.
+Playwright: 131 pruebas aprobadas, incluidos los cuatro casos de esta iteración.
+Una corrida previa sufrió una recarga durante el caso de error 403; el caso
+aisladamente y la suite completa sin ediciones simultáneas pasaron después.
 Build, comprobaciones de Django, ausencia de migraciones y validación de OpenAPI
 correctos. La auditoría CSS conserva los dos hallazgos preexistentes descritos abajo.
 
@@ -181,8 +200,9 @@ no aceptación funcional humana ni prueba de los escenarios pendientes de entorn
 
 - SQLite no valida los bloqueos concurrentes de PostgreSQL. Las pruebas que
   requieren ese motor se omiten explícitamente; no equivalen a una aprobación.
-- Los e2e usan HTTP simulado. Sigue pendiente un recorrido autenticado con datos
-  representativos, PostgreSQL y validación funcional de administración.
+- Los e2e usan HTTP simulado y se complementaron con inspección autenticada en la
+  demo ficticia SQLite. Sigue pendiente validación con PostgreSQL y aceptación
+  funcional de administración.
 - Las consultas son lecturas vivas, no un cierre contable inmutable. Una carga o
   aprobación posterior puede cambiar el detalle al abrirlo. Se informa la fecha
   de consulta; no se promete una instantánea transaccional común entre meses ni

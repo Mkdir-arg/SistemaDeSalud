@@ -5,6 +5,7 @@ import { importeARS, opcionesFinanzas } from "@/api/finanzas";
 import { useLista } from "@/api/queries";
 import { Button, Card, Checkbox, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
+import { useFiltrosFinanzas } from "./ControlesFinanzas";
 import { EstadoError } from "@/components/ui/estados";
 import { decimalDinero, filtroAreaDinero, importeValido, mensajeErrorDinero } from "./dinero";
 
@@ -58,15 +59,16 @@ function FormularioPolitica({ fila, prestaciones, permisos, onClose, onGuardado 
 
 export function PendientesCobro({ institucion, permisos, area }) {
   const tabla = useTablaUrl("pendientes_cobro");
+  const busqueda = useFiltrosFinanzas("pendientes_cobro", ["search"]);
   const [fila, setFila] = useState(null);
-  const params = { institucion: institucion.id, ...filtroAreaDinero(area), estado: "pendiente", page: tabla.pagina, pageSize: tabla.tamano };
+  const params = { institucion: institucion.id, ...filtroAreaDinero(area), estado: "pendiente", ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista("pendientes-cobro", params, { queryKey: ["finanzas", permisos.usuarioId, institucion.id, "pendientes-cobro", params], gcTime: 0, placeholderData: undefined });
   return <section className="space-y-3 border-t border-division pt-5"><div><h2 className="text-lg font-semibold">Cobros por completar</h2><p className="mt-1 text-sm text-texto-debil">Atenciones con cobro previsto que necesitan arancel o responsable. Incluye todos los meses del área seleccionada; todavía no son cuentas.</p></div>
     <RecuperacionCobros institucion={institucion} permisos={permisos} area={area} />
-    <DataTable adaptable filas={consulta.error ? [] : consulta.filas} total={consulta.error ? 0 : consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading, error: consulta.error, reintentar: consulta.refetch }} vacio={{ titulo: "Sin cobros pendientes de completar" }} columnas={[
-      { key: "hecho", label: "Atención", render: (r) => `${r.nombre_prestacion} · #${r.hecho}` },
-      { key: "importe", label: "Arancel", render: (r) => r.importe == null ? "Falta definir" : importeARS(r.importe) },
-      { key: "contraparte_nombre", label: "Quién debe pagar", render: (r) => r.contraparte_nombre || "Falta definir" },
+    <DataTable adaptable mantenerEncabezados barra={<Input aria-label="Buscar cobros por completar" placeholder="Prestación o responsable…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} filas={consulta.error ? [] : consulta.filas} total={consulta.error ? 0 : consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading, error: consulta.error, reintentar: consulta.refetch }} vacio={{ titulo: "Sin cobros pendientes de completar" }} columnas={[
+      { key: "hecho", orden: "hecho_id", label: "Atención", render: (r) => `${r.nombre_prestacion} · #${r.hecho}` },
+      { key: "importe", orden: "importe", label: "Arancel", render: (r) => r.importe == null ? "Falta definir" : importeARS(r.importe) },
+      { key: "contraparte_nombre", orden: "contraparte_nombre", label: "Quién debe pagar", render: (r) => r.contraparte_nombre || "Falta definir" },
       { key: "acciones", label: "Acciones", render: (r) => permisos.permite("registrar_dinero", r.area, r.sensible) && <Button size="sm" variant="secondary" onClick={() => setFila(r)}>Completar cobro</Button> },
     ]} />
     {fila && <ResolverPendiente key={fila.id} fila={fila} onClose={() => setFila(null)} />}
@@ -76,10 +78,11 @@ export function PendientesCobro({ institucion, permisos, area }) {
 function RecuperacionCobros({ institucion, permisos, area }) {
   const qc = useQueryClient();
   const tabla = useTablaUrl("recuperacion_cobros");
+  const busqueda = useFiltrosFinanzas("recuperacion_cobros", ["search"]);
   const bloqueo = useRef(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
-  const params = { institucion: institucion.id, ...filtroAreaDinero(area), page: tabla.pagina, pageSize: tabla.tamano };
+  const params = { institucion: institucion.id, ...filtroAreaDinero(area), ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista("pendientes-cobro/recuperables", params, { queryKey: ["finanzas", permisos.usuarioId, institucion.id, "recuperacion-cobros", params], gcTime: 0, placeholderData: undefined });
   async function recuperar(hecho) {
     if (bloqueo.current) return;
@@ -89,9 +92,9 @@ function RecuperacionCobros({ institucion, permisos, area }) {
     finally { bloqueo.current = false; setGuardando(false); }
   }
   if (consulta.error) return <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo verificar si hay cobros por recuperar" />;
-  if (!consulta.total) return null;
-  return <Card className="space-y-3 p-4"><h3 className="font-semibold">Cobros que necesitan recuperación</h3><p className="text-sm text-texto-debil">La atención se completó, pero su registro de cobro quedó pendiente. Reintentar conserva la configuración de esa atención.</p>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<DataTable adaptable filas={consulta.filas} total={consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading }} columnas={[
-    { key: "hecho", label: "Atención", render: (r) => `Atención #${r.hecho}` },
+  if (!consulta.total && !busqueda.valores.search && !consulta.isLoading) return null;
+  return <Card className="space-y-3 p-4"><h3 className="font-semibold">Cobros que necesitan recuperación</h3><p className="text-sm text-texto-debil">La atención se completó, pero su registro de cobro quedó pendiente. Reintentar conserva la configuración de esa atención.</p>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<DataTable adaptable mantenerEncabezados vacio={{ titulo: "Sin atenciones para esta búsqueda" }} barra={<Input aria-label="Buscar atención por recuperar" placeholder="Número de atención…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} filas={consulta.filas} total={consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading }} columnas={[
+    { key: "hecho", orden: "id", label: "Atención", render: (r) => `Atención #${r.hecho}` },
     { key: "motivo", label: "Qué falta" },
     { key: "acciones", label: "Acciones", render: (r) => permisos.permite("registrar_dinero", r.area, r.sensible) ? <Button size="sm" variant="secondary" disabled={guardando} onClick={() => recuperar(r.hecho)}>Reintentar registro</Button> : "Requiere autorización para registrar dinero sensible" },
   ]} /></Card>;

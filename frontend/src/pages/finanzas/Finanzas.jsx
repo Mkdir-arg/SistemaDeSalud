@@ -50,11 +50,13 @@ function TablaFinanciera({ consulta, tabla, columnas, vacio, barra, detalleFila 
 
 function HistorialRepartos({ institucion, area, mes, usuarioId, columnas, detalleFila, onClose }) {
   const tabla = useTablaUrl("historial_repartos");
+  const busqueda = useFiltrosFinanzas("historial_repartos", ["search"]);
   const params = {
     gasto__institucion: institucion.id,
     gasto__area: area || undefined,
     gasto__periodo_economico: `${mes}-01`,
     vigente: false,
+    ...busqueda.valores,
     page: tabla.pagina,
     pageSize: tabla.tamano,
     ordering: tabla.orden || "-calculado,-version,-id",
@@ -66,7 +68,7 @@ function HistorialRepartos({ institucion, area, mes, usuarioId, columnas, detall
   });
   return <Modal title="Historial de repartos" onClose={onClose} width={920}>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{institucion.nombre} · {mes}</p><p className="mt-1 text-sm text-texto-debil">Versiones anteriores de los repartos del filtro seleccionado</p></div><Badge tone="gray">Histórico · no suma al total actual</Badge></div>
-    <TablaFinanciera consulta={consulta} tabla={tabla} columnas={columnas.map(({ filtro, ...col }) => col)} detalleFila={detalleFila} vacio={{ titulo: "No hay versiones históricas para este filtro" }} />
+    <TablaFinanciera barra={<Input aria-label="Buscar repartos históricos" placeholder="Área o concepto…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} columnas={columnas.map(({ filtro, ...col }) => col)} detalleFila={detalleFila} vacio={{ titulo: "No hay versiones históricas para este filtro" }} />
   </Modal>;
 }
 
@@ -113,36 +115,38 @@ function ConfiguracionRepartos({ institucion, usuarioId, onNuevo, onCorregir, on
 
 function HistorialCarga({ fila, usuarioId, onClose }) {
   const tabla = useTablaUrl("indicaciones");
-  const params = { page: tabla.pagina, pageSize: tabla.tamano };
+  const busqueda = useFiltrosFinanzas("indicaciones", ["search"]);
+  const params = { ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista(`expectativas-gasto/${fila.id}/indicaciones`, params, {
     queryKey: ["finanzas", usuarioId, fila.institucion, "historial", fila.id, params], placeholderData: undefined,
     gcTime: 0,
   });
   return <Modal title={`Historial · ${fila.concepto_nombre}`} onClose={onClose} width={720}>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Declaraciones de carga por mes · Gasto mensual #{fila.id}</p></div><Badge tone="gray">Historial de carga</Badge></div>
-    <TablaFinanciera consulta={consulta} tabla={tabla} vacio={{ titulo: "Todavía no hay indicaciones" }} columnas={[
-      { key: "periodo_economico", label: "Mes", render: (r) => r.periodo_economico.slice(0, 7) },
-      { key: "estado", label: "Carga", render: (r) => <Estado valor={r.estado} calendario /> },
-      { key: "registrado", label: "Registrado", render: (r) => fechaHora(r.registrado) },
+    <TablaFinanciera barra={<Input aria-label="Buscar indicaciones de carga" placeholder="Mes o estado de carga…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Todavía no hay indicaciones" }} columnas={[
+      { key: "periodo_economico", orden: "periodo_economico", label: "Mes", render: (r) => r.periodo_economico.slice(0, 7) },
+      { key: "estado", orden: "estado", label: "Carga", render: (r) => <Estado valor={r.estado} calendario /> },
+      { key: "registrado", orden: "registrado", label: "Registrado", render: (r) => fechaHora(r.registrado) },
     ]} />
   </Modal>;
 }
 
 function VersionesEsperado({ fila, usuarioId, onClose, onHistorial }) {
   const tabla = useTablaUrl("versiones");
-  const params = { institucion: fila.institucion, concepto: fila.concepto,
-    area: fila.area ?? "null", ordering: "-vigente_desde,-id", page: tabla.pagina, pageSize: tabla.tamano };
+  const busqueda = useFiltrosFinanzas("versiones", ["search"]);
+  const params = { ...busqueda.valores, institucion: fila.institucion, concepto: fila.concepto,
+    area: fila.area ?? "null", ordering: tabla.orden || "-vigente_desde,-id", page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista("expectativas-gasto", params, {
     queryKey: ["finanzas", usuarioId, fila.institucion, "versiones", params],
     placeholderData: undefined, gcTime: 0,
   });
   return <Modal title={`Historial de configuración · ${fila.concepto_nombre}`} onClose={onClose} width={820}>
     <div className="mb-4 flex items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Configuraciones del concepto y sus períodos de vigencia</p></div><AyudaFinanzas titulo="Vigencia de gastos mensuales"><p>Cada modificación conserva la configuración anterior. La nueva configuración se usa desde su mes de inicio; el mes indicado como fin ya no se incluye. No necesitás crear una configuración nueva cada mes.</p><p>Los números identifican registros, no la cantidad de modificaciones. Sólo se muestran registros incluidos en tus permisos.</p></AyudaFinanzas></div>
-    <TablaFinanciera consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
-      { key: "id", label: "Referencia", render: (r) => <div>#{r.id}{r.reemplaza && <p className="text-sm text-texto-debil">Reemplaza #{r.reemplaza}</p>}</div> },
-      { key: "vigente_desde", label: "Desde", render: (r) => r.vigente_desde.slice(0, 7) },
-      { key: "vigente_hasta", label: "Hasta (exclusivo)", render: (r) => r.vigente_hasta?.slice(0, 7) || "Sin fin declarado" },
-      { key: "motivo_correccion", label: "Registro", render: (r) => <div>{r.motivo_correccion || "Configuración inicial"}<p className="text-sm text-texto-debil">{fechaHora(r.registrado)}</p></div> },
+    <TablaFinanciera barra={<Input aria-label="Buscar versiones de configuración" placeholder="Motivo de corrección…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
+      { key: "id", orden: "id", label: "Referencia", render: (r) => <div>#{r.id}{r.reemplaza && <p className="text-sm text-texto-debil">Reemplaza #{r.reemplaza}</p>}</div> },
+      { key: "vigente_desde", orden: "vigente_desde", label: "Desde", render: (r) => r.vigente_desde.slice(0, 7) },
+      { key: "vigente_hasta", orden: "vigente_hasta", label: "Hasta (exclusivo)", render: (r) => r.vigente_hasta?.slice(0, 7) || "Sin fin declarado" },
+      { key: "motivo_correccion", orden: "registrado", label: "Registro", render: (r) => <div>{r.motivo_correccion || "Configuración inicial"}<p className="text-sm text-texto-debil">{fechaHora(r.registrado)}</p></div> },
       { key: "acciones", label: "Acciones", render: (r) => <Button size="sm" variant="ghost" onClick={() => onHistorial(r)}>Historial de carga</Button> },
     ]} />
   </Modal>;
@@ -376,7 +380,9 @@ function ContenidoFinanzas({ institucion, permisos }) {
         </PanelFlotante>}
       </div>
       </div>
-      <div className="mt-2 flex items-center gap-2"><p className="text-md text-texto-debil">Gastos registrados, su distribución y costos conocidos de {institucion.nombre}, según tu acceso.</p><AyudaFinanzas titulo="Qué información incluye Finanzas"><p>El administrador institucional puede consultar los gastos registrados de todas las áreas, incluidos los sensibles. Otros usuarios ven los alcances autorizados.</p><p>No existe todavía un cálculo integral del costo total del hospital. Los costos no registrados o no integrados no están incluidos, incluso para administración.</p><p>Aprobado es el gasto con sus ajustes. Distribuido y sin distribuir explican ese mismo aprobado: no son gastos adicionales.</p></AyudaFinanzas></div>
+      <div className="finance-page-context"><div className="flex min-w-0 items-center gap-2"><p className="text-md text-texto-debil">Gastos registrados, su distribución y costos conocidos de {institucion.nombre}, según tu acceso.</p><AyudaFinanzas titulo="Qué información incluye Finanzas"><p>El administrador institucional puede consultar los gastos registrados de todas las áreas, incluidos los sensibles. Otros usuarios ven los alcances autorizados.</p><p>No existe todavía un cálculo integral del costo total del hospital. Los costos no registrados o no integrados no están incluidos, incluso para administración.</p><p>Aprobado es el gasto con sus ajustes. Distribuido y sin distribuir explican ese mismo aprobado: no son gastos adicionales.</p></AyudaFinanzas></div>
+        {puedeLeer && tieneMes && tab !== "dinero" && <ProcesamientoFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} />}
+      </div>
     </div>
     <Card className="p-4">
       <div role="group" aria-label="Filtros y secciones de finanzas" className="flex flex-wrap items-end justify-between gap-3">
@@ -391,7 +397,6 @@ function ContenidoFinanzas({ institucion, permisos }) {
         </div>
         {tabs.length > 0 && <Tabs className="max-w-full overflow-x-auto [&>button]:whitespace-nowrap [&>button]:px-2.5 [&>button]:text-sm" tabs={tabs} valor={tab} onChange={(valor) => cambiarFiltro("tab", valor)} />}
       </div>
-      {puedeLeer && tieneMes && tab !== "dinero" && <div className="mt-4 border-t border-division pt-3"><ProcesamientoFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} /></div>}
     </Card>
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
@@ -468,7 +473,8 @@ function DetalleRepartoDesplegable({ abierto, children }) {
 
 function DetalleAtribuciones({ fila, usuarioId, institucionId }) {
   const tabla = useTablaUrl(`atribuciones_${fila.id}`);
-  const params = { page: tabla.pagina, pageSize: tabla.tamano };
+  const busqueda = useFiltrosFinanzas(`atribuciones_${fila.id}`, ["search"]);
+  const params = { ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista(`repartos-gasto/${fila.id}/atribuciones`, params, {
     queryKey: ["finanzas", usuarioId, institucionId, "atribuciones", fila.id, params], placeholderData: undefined, gcTime: 0,
   });
@@ -480,12 +486,12 @@ function DetalleAtribuciones({ fila, usuarioId, institucionId }) {
       <div><dt className="text-texto-debil">Total distribuido</dt><dd className="font-mono">{importeCentavos(consulta.data.importe_atribuido_centavos)}</dd></div>
       <div><dt className="text-texto-debil">Sin distribuir</dt><dd className="font-mono">{importeCentavos(consulta.data.saldo_no_atribuido_centavos)}</dd></div>
     </dl>}
-    <TablaFinanciera consulta={consulta} tabla={tabla} columnas={[
-      { key: "referencia_atencion", label: "Referencia de atención", render: (r) => `#${r.referencia_atencion}` },
+    <TablaFinanciera barra={<Input aria-label="Buscar atenciones del reparto" placeholder="Número de atención…" value={busqueda.valores.search || ""} onChange={(e) => busqueda.cambiar({ search: e.target.value })} />} consulta={consulta} tabla={tabla} columnas={[
+      { key: "referencia_atencion", orden: "hecho_id", label: "Referencia de atención", render: (r) => `#${r.referencia_atencion}` },
       { key: "caso_navegable", label: "Atención / caso", envolver: true, render: (r) => r.caso_navegable ? <div><Link className="font-medium text-accent underline underline-offset-2" to={`/casos/${r.caso_navegable}`}>{r.caso_descripcion || "Ver atención"}</Link><p className="mt-1 text-sm text-texto-debil">Caso #{r.caso_navegable}</p></div> : <span className="inline-flex items-center gap-2 text-sm text-texto-debil">Sin enlace <AyudaFinanzas titulo="Por qué no puedo abrir este caso"><p>El caso no está disponible o no tenés acceso clínico en esta institución. El permiso financiero no concede acceso clínico.</p></AyudaFinanzas></span> },
-      { key: "ocurrida_en", label: "Fecha", render: (r) => fechaHora(r.ocurrida_en) },
-      { key: "area_nombre", label: "Área" },
-      { key: "importe_centavos", label: "Importe asignado", render: (r) => <span className="font-mono">{importeCentavos(r.importe_centavos)}</span> },
+      { key: "ocurrida_en", orden: "hecho__ocurrida_en", label: "Fecha", render: (r) => fechaHora(r.ocurrida_en) },
+      { key: "area_nombre", orden: "hecho__area__nombre", label: "Área" },
+      { key: "importe_centavos", orden: "importe_centavos", label: "Importe asignado", render: (r) => <span className="font-mono">{importeCentavos(r.importe_centavos)}</span> },
     ]} vacio={{ titulo: "Sin atenciones atribuidas" }} />
   </section>;
 }

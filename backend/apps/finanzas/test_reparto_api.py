@@ -86,6 +86,30 @@ class RepartoActividadApiTests(APITestCase):
             for indice in range(cantidad)
         ]
 
+    def test_atribuciones_filtradas_conservan_totales_y_control_de_alcance(self):
+        self.configurar()
+        hechos = self.crear_hechos(3)
+        gasto = registrar_gasto(self.concepto, self.institucion, self.area, Decimal("100.01"), self.mes, self.admin)
+        reparto = procesar_reparto_gasto(gasto.pk)
+        url = f"/api/repartos-gasto/{reparto.pk}/atribuciones/"
+        respuesta = self.client.get(url, {"ordering": "-importe_centavos", "page_size": 1})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 3)
+        self.assertEqual(len(respuesta.data["results"]), 1)
+        self.assertEqual(respuesta.data["results"][0]["importe_centavos"], 3334)
+        respuesta = self.client.get(url, {"search": str(hechos[0].pk)})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["count"], 1)
+        self.assertEqual(respuesta.data["importe_atribuido_centavos"], 10001)
+        self.assertEqual(respuesta.data["saldo_no_atribuido_centavos"], 0)
+        # Buscar una atención visible nunca debe ocultar otra fuera del alcance
+        # y convertir un reparto parcialmente autorizado en un detalle completo.
+        prestacion = Prestacion.objects.create(institucion=self.institucion, codigo="AT", nombre="Atención")
+        componente = DefinicionComponente.objects.create(prestacion=prestacion, codigo="HON", nombre="Honorarios", sensible=True)
+        ComponenteEsperadoHecho.objects.create(hecho=hechos[1], componente=componente, sensible=True)
+        Membresia.objects.filter(usuario=self.admin).update(rol=Membresia.Rol.ADMINISTRATIVO)
+        self.assertEqual(self.client.get(url, {"search": str(hechos[0].pk)}).status_code, 403)
+
     def test_configurar_despierta_gastos_existentes_y_reporte_no_multiplica_centavos(self):
         from .models import TrabajoReparto
         from .procesamiento import procesar_siguiente

@@ -1337,3 +1337,75 @@ test("configurador sin lectura registra una regla sin consultar importes", async
   await expect.poll(() => guardado).toBe(true);
   expect(peticiones.some((url) => /\/(gastos|reportes-finanzas|procesamiento-finanzas)\//.test(url.pathname))).toBe(false);
 });
+
+
+test("reporte ejecutivo mantiene columnas independientes y no genera scroll invisible", async ({ page }) => {
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const gastos = page.getByRole("region", { name: "Informe de gastos", exact: true });
+  const dinero = page.getByRole("region", { name: "Informe de dinero", exact: true });
+  await expect(gastos.getByRole("heading", { name: "Detalle por área y concepto" })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const posicion = () => dinero.getByRole("heading", { name: "Detalle de pagos y cobros" }).evaluate((e) => e.getBoundingClientRect().top + e.closest("main > div:last-child").scrollTop);
+  const antes = await posicion();
+  await gastos.getByText("Ver importes y fuentes de cada mes", { exact: true }).click();
+  expect(Math.abs(await posicion() - antes)).toBeLessThan(2);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  const controles = page.locator(".finance-report-table-heading .finance-report-tools");
+  const select = await controles.locator("select").boundingBox();
+  const input = await controles.locator("input").boundingBox();
+  expect(Math.abs(select.y - input.y)).toBeLessThan(2);
+  const estado = await page.getByText("Repartos actualizados", { exact: true }).boundingBox();
+  const contexto = await page.locator(".finance-page-context > div").first().boundingBox();
+  expect(Math.abs(estado.y + estado.height / 2 - contexto.y - contexto.height / 2)).toBeLessThan(8);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("reporte ejecutivo ordena importes y filtra sin cambiar las cifras ni los gráficos", async ({ page }) => {
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const tabla = page.getByRole("table", { name: "Comparación exacta de gastos" });
+  const contenedor = tabla.locator("xpath=ancestor::div[contains(@class,'finance-table') and not(contains(@class,'finance-table-content'))][1]");
+  await contenedor.getByRole("button", { name: "Ordenar y filtrar columnas" }).click();
+  await tabla.getByRole("button", { name: /^Ordenar por 2026-09/ }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Limpieza");
+  await tabla.getByRole("button", { name: /^Ordenar por 2026-09/ }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Electricidad");
+  await tabla.getByRole("button", { name: "Filtrar 2026-09", exact: true }).click();
+  await page.getByRole("spinbutton", { name: "2026-09 desde", exact: true }).fill("480000.01");
+  await page.keyboard.press("Escape");
+  await expect(tabla.locator("tbody tr")).toHaveCount(1);
+  await expect(tabla.locator("tbody tr")).toContainText("Electricidad");
+  await expect(page.getByRole("button", { name: "Ver gastos aprobados de 2026-09", exact: true })).toHaveText("ARS 1.000.000,01");
+  await contenedor.getByRole("button", { name: "Quitar filtro 2026-09 desde", exact: true }).click();
+  await expect(tabla.locator("tbody tr")).toHaveCount(4);
+  await tabla.getByRole("button", { name: "Filtrar Área / concepto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Área / concepto", exact: true }).fill("ausente");
+  await page.keyboard.press("Escape");
+  await contenedor.getByRole("button", { name: "Limpiar filtros", exact: true }).click();
+  await expect(tabla.locator("tbody tr")).toHaveCount(4);
+});
+
+
+test("listado agregado conserva centavos grandes y no filtra desconocidos como cero", async ({ page }) => {
+  const { db } = await escenario(page);
+  db.reporte.agrupaciones = [
+    ["Mayor", "900719925474099.92"], ["Menor", "900719925474099.91"], ["Desconocido", null], ["Cero", "0.00"],
+  ].map(([nombre, importe], i) => ({ ...reporte.agrupaciones[0], concepto: i + 1, concepto_nombre: nombre, distribuido: importe }));
+  await page.goto("/finanzas?mes=2026-09&resumen_grupos_tam=-5&resumen_grupos_pag=100");
+  await page.getByRole("button", { name: "Listado", exact: true }).click();
+  const tabla = page.getByRole("table", { name: "Gastos por área y concepto · ARS" });
+  await tabla.getByRole("button", { name: "Ordenar por Distribuido", exact: true }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Cero");
+  await expect(tabla.locator("tbody tr").last()).toContainText("Desconocido");
+  await tabla.getByRole("button", { name: "Ordenar por Distribuido (ascendente)", exact: true }).click();
+  await expect(tabla.locator("tbody tr").first()).toContainText("Mayor");
+  await expect(tabla.locator("tbody tr").nth(1)).toContainText("Menor");
+  await expect(tabla.locator("tbody tr").last()).toContainText("Desconocido");
+  await tabla.getByRole("button", { name: "Filtrar Distribuido", exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Distribuido hasta", exact: true }).fill("0");
+  await page.keyboard.press("Escape");
+  await expect(tabla.locator("tbody tr")).toHaveCount(1);
+  await expect(tabla.locator("tbody tr")).toContainText("Cero");
+});

@@ -414,3 +414,19 @@ test("ajuste de gasto pendiente muestra historia y permite rechazar con motivo",
   await expect.poll(() => escrituras.length).toBe(1);
   expect(escrituras[0]).toEqual({ path: "/ajustes-gasto/99/rechazar/", body: { motivo: "Importe incorrecto" } });
 });
+
+
+test("las tablas de dinero envían búsqueda y orden al servidor", async ({ page }) => {
+  const { lecturas } = await escenario(page);
+  await page.goto("/finanzas?tab=dinero&mes=2026-09");
+  await page.getByRole("textbox", { name: "Buscar cuentas", exact: true }).fill("Proveedor");
+  await page.getByRole("button", { name: "Ordenar por A quién / de quién", exact: true }).click();
+  await expect.poll(() => lecturas.some((u) => u.pathname === "/api/obligaciones-financieras/" && u.searchParams.get("search") === "Proveedor" && u.searchParams.get("ordering") === "contraparte_nombre")).toBe(true);
+  await page.getByRole("button", { name: "Ver movimientos del período", exact: true }).click();
+  await page.getByRole("textbox", { name: "Buscar movimientos", exact: true }).fill("COM");
+  await page.getByRole("button", { name: "Ordenar por Importe", exact: true }).click();
+  await expect.poll(() => lecturas.some((u) => u.pathname === "/api/movimientos-dinero/" && u.searchParams.get("search") === "COM" && u.searchParams.get("ordering") === "importe")).toBe(true);
+  await page.getByRole("textbox", { name: "Buscar cobros por completar", exact: true }).fill("consulta");
+  await page.getByRole("button", { name: "Ordenar por Arancel", exact: true }).click();
+  await expect.poll(() => lecturas.some((u) => u.pathname === "/api/pendientes-cobro/" && u.searchParams.get("search") === "consulta" && u.searchParams.get("ordering") === "importe")).toBe(true);
+});

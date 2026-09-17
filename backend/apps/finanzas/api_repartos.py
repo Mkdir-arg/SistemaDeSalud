@@ -24,7 +24,7 @@ from .models import (
     RepartoGasto,
 )
 from .permisos import concesiones_financieras_de, hechos_en_alcance_financiero, tiene_concesion_financiera, tiene_accion_financiera, alcance_financiero_q
-from .filtros import filtrar_rangos
+from .filtros import filtrar_rangos, filtrar_tabla
 from .services import registrar_cobertura_actividad, registrar_regla_reparto, resumen_actividad_reparto
 
 
@@ -300,6 +300,10 @@ class RepartoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
         "importe_fuente_centavos", "importe_ajustes_centavos", "cantidad_atribuciones",
     )
 
+    @property
+    def search_fields(self):
+        return ("gasto__concepto_nombre", "gasto__area__nombre") if self.action == "list" else ()
+
     def filter_queryset(self, queryset):
         # El nombre público se conserva; listado, filtro y orden usan el mismo
         # saldo derivado que el detalle, también para versiones preexistentes.
@@ -339,13 +343,18 @@ class RepartoGastoViewSet(AuditaLecturaFinanciera, BaseModelViewSet):
             raise PermissionDenied(
                 "No tenés autorización para ver el detalle de las atenciones de este reparto.",
             )
+        importe_atribuido = atribuciones.aggregate(total=Sum("importe_centavos"))["total"] or 0
+        atribuciones = filtrar_tabla(
+            atribuciones, request,
+            ordenables=("hecho_id", "hecho__ocurrida_en", "hecho__area__nombre", "importe_centavos"),
+            busqueda=("hecho__id",), orden=("hecho_id", "id"),
+        )
         pagina = self.paginate_queryset(atribuciones)
         datos = AtribucionRepartoSerializer(pagina, many=True, context={
             "institucion_id": reparto.gasto.institucion_id,
             "puede_abrir_casos": tiene_capacidad(request.user, "casos_operar", reparto.gasto.institucion_id),
         }).data
         respuesta = self.get_paginated_response(datos)
-        importe_atribuido = atribuciones.aggregate(total=Sum("importe_centavos"))["total"] or 0
         respuesta.data.update(
             periodo_economico=reparto.gasto.periodo_economico.isoformat(),
             saldo_centavos=reparto.saldo_centavos,
