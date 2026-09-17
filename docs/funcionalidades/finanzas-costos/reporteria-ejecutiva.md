@@ -73,7 +73,8 @@ los nombres históricos de cada registro.
   actual y su desglose se calculan sobre las mismas filas agregadas de una sola
   consulta. Los importes se envían como decimales exactos en cadenas.
 
-No hay nuevas tablas, migraciones, permisos, cachés ni dependencias. No se agrega
+No hay nuevas tablas, migraciones, permisos ni cachés. La descarga PDF agrega
+jsPDF y AutoTable al frontend, con aprobación del usuario. No se agrega
 acceso del portal del financiador a las finanzas institucionales.
 
 ## Diseño y navegación

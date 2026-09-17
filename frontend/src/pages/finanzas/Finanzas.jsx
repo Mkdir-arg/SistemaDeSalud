@@ -402,7 +402,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!tabs.length ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
       {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} />
-        : tab === "reportes" ? <ReportesEjecutivos key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} onGastos={verGastos} />
+        : tab === "reportes" ? <ReportesEjecutivos key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areaNombre={area === "null" ? INSTITUCIONAL : area ? areasVisibles.find((a) => String(a.id) === area)?.nombre || `Área #${area}` : veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"} onGastos={verGastos} />
         : tab === "costos" ? <CostosAtencion key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areas={areas.data || []} onGasto={permisos.tiene("ver_gastos") ? verGastoRelacionado : undefined} />
         : tab === "dinero" ? <DineroFinanzas key={area} institucion={institucion} permisos={permisos} mes={mes} area={area} />
         : tab === "calendario"

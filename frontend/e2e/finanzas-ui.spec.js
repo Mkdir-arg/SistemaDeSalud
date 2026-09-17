@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { inflateSync } from "node:zlib";
 test.beforeEach(async ({ page }) => { page.on("pageerror", (error) => { console.error("Error de página:", error.message); }); });
 
 async function escenarioAjusteCosto(page, { aprobar = true, sensible = false, alcanceSensible = true, areaAprobacion = 3 } = {}) {
@@ -69,7 +71,7 @@ const acciones = ["ver_gastos", "ver_costos", "registrar_gastos", "aprobar_gasto
 const calendario = { id: 1, institucion: 2, concepto: 1, concepto_nombre: "Electricidad", area: 3, area_nombre: area.nombre, sensible: false, estado_carga: "falta_cargar", gastos_pendientes: 1, gastos_aprobados: 1, monto_referencia: "12000.00", importe_aprobado: "10000.01", diferencia_referencia: "1999.99", vigente_desde: "2026-09-01", vigente_hasta: null };
 const reporte = { aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", moneda: "ARS", actualizando: false, alcance: "Gastos registrados visibles según tus permisos; no equivale al costo total del hospital", agrupaciones: [{ area: 3, area_nombre: area.nombre, concepto: 1, concepto_nombre: "Electricidad", aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", actualizando: false }] };
 
-async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"], vacio = false, error = false } = {}) {
+async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"], vacio = false, error = false, transformar = (datos) => datos } = {}) {
   const base = await escenario(page, { permisos });
   const peticiones = [];
   page.on("request", (r) => { if (r.url().includes("/api/")) peticiones.push(new URL(r.url())); });
@@ -96,12 +98,157 @@ async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"]
     });
     const variacion = { importe: vacio ? null : "200000.01", porcentaje: vacio ? null : "25.00", motivo: vacio ? "Sin registros comparables" : null };
     const desglose = vacio ? [] : [{ area_nombre: area.nombre, concepto_nombre: "Consulta médica", pagador_nombre: "Mutual del Litoral", cobros_netos: "720000.00", pagos_netos: "0.00", cantidad_movimientos: 9, por_aprobar: { cantidad: 2 }, filtros: { area: 3, tipo_cuenta: "cobrar", reporte_financiador: "9", reporte_prestacion: "4", reporte_concepto: "null", reporte_pagador: "financiador" } }];
-    await route.fulfill({ json: { actual: esDinero ? money("2026-09-01") : gasto("2026-09-01"), anterior: esDinero ? money(anterior, false) : gasto(anterior, false), serie,
+    await route.fulfill({ json: transformar({ actual: esDinero ? money("2026-09-01") : gasto("2026-09-01"), anterior: esDinero ? money(anterior, false) : gasto(anterior, false), serie,
       variaciones: Object.fromEntries((esDinero ? ["cobros_netos", "pagos_netos", "diferencia"] : ["aprobados", "pendientes_aprobacion"]).map((c) => [c, vacio ? variacion : c === "aprobados" ? variacion : { importe: c === "pagos_netos" || c === "pendientes_aprobacion" ? "0.00" : "120000.00", porcentaje: c === "pagos_netos" || c === "pendientes_aprobacion" ? "0.00" : c === "diferencia" ? "200.00" : "20.00" }])), agrupaciones: esDinero ? desglose : grupos,
-      calculado_en: "2026-09-16T15:30:00Z", moneda: "ARS", alcance: "Fuentes registradas y visibles; no certifica carga completa." } });
+      calculado_en: "2026-09-16T15:30:00Z", moneda: "ARS", alcance: "Fuentes registradas y visibles; no certifica carga completa." }, esDinero) });
   });
   return { ...base, peticiones };
 }
+
+test("comparaciones colorean aumentos y bajas sin confundir cero ni falta de base", async ({ page }) => {
+  await escenarioEjecutivo(page, { transformar: (datos, esDinero) => {
+    if (esDinero) return datos;
+    datos.actual.aprobados = "600000.00";
+    datos.variaciones.aprobados = { importe: "-200000.00", porcentaje: "-25.00" };
+    datos.agrupaciones[0].actual.aprobados = "320000.00";
+    datos.agrupaciones[0].variacion = { importe: "-80000.00", porcentaje: "-20.00" };
+    datos.agrupaciones[1].variacion = { importe: "70000.00", porcentaje: null };
+    datos.agrupaciones[2].anterior = null;
+    datos.agrupaciones[2].variacion = { importe: null, porcentaje: null };
+    return datos;
+  } });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  const cambios = page.locator(".finance-report-change");
+  await expect(cambios.first().locator("strong")).toHaveText("ARS -200.000,00");
+  for (const oscuro of [false, true]) {
+    if (oscuro) await page.getByRole("button", { name: "Cambiar a tema oscuro", exact: true }).click();
+    for (const [texto, clase] of [["-25% nominal", "text-badge-error-fg"], ["-20% nominal", "text-badge-error-fg"], ["+20% nominal", "text-badge-green-fg"], ["0% nominal", "text-texto-debil"], ["Sin base porcentual", "text-texto-debil"]]) {
+      const elementos = cambios.getByText(texto, { exact: true });
+      for (const elemento of await elementos.all()) {
+        await expect(elemento).toHaveClass(new RegExp(clase));
+        // Detecta reglas CSS más específicas que anulen el token de color.
+        expect(await elemento.evaluate((el, token) => {
+          const referencia = document.createElement("span");
+          referencia.className = token;
+          document.body.append(referencia);
+          const coincide = getComputedStyle(el).color === getComputedStyle(referencia).color;
+          referencia.remove();
+          return coincide;
+        }, clase)).toBe(true);
+      }
+    }
+    await expect(cambios.first().locator("strong")).toHaveClass(/text-badge-error-fg/);
+    await expect(page.getByText("Sin base comparable", { exact: true })).toHaveClass(/text-texto-debil/);
+  }
+});
+
+async function descargarPdf(page, testInfo) {
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+  const archivo = await descarga;
+  expect(archivo.suggestedFilename()).toBe("reporte-finanzas-2026-09.pdf");
+  const ruta = testInfo.outputPath("reporte.pdf");
+  await archivo.saveAs(ruta);
+  await testInfo.attach("reporte-pdf", { path: ruta, contentType: "application/pdf" });
+  const pdf = (await readFile(ruta)).toString("latin1");
+  expect(pdf).toMatch(/^%PDF-/);
+  // Inspeccionar los flujos de texto emitidos por jsPDF, además de comprobar
+  // la descarga. La revisión visual usa un lector PDF independiente.
+  const contenido = [...pdf.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map((m) => {
+    try { return inflateSync(Buffer.from(m[1], "latin1")).toString("latin1"); } catch { return m[1]; }
+  }).join("\n");
+  return { pdf, contenido };
+}
+
+test("PDF descarga gráficos y todas las filas filtradas en su orden, con períodos y fuentes", async ({ page }, testInfo) => {
+  const { peticiones } = await escenarioEjecutivo(page, { transformar: (datos, esDinero) => {
+    if (!esDinero) datos.agrupaciones = Array.from({ length: 32 }, (_, i) => ({ ...datos.agrupaciones[0],
+      concepto: i + 1, area_nombre: "AreaPDF", concepto_nombre: i === 31 ? "Excluido" : `Incluido ${String(i + 1).padStart(3, "0")}`,
+      actual: { aprobados: `${1000 + i}.01` }, anterior: { aprobados: "900.00" }, variacion: { importe: `${100 + i}.01`, porcentaje: "11.11" },
+    }));
+    return datos;
+  } });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&area=3&reporte_grupos_gastos_f_area_concepto=Incluido&reporte_grupos_gastos_ord=-actual&reporte_grupos_gastos_pag=2");
+  await page.getByLabel("Comparar período", { exact: true }).selectOption("anio_anterior");
+  await page.getByLabel("Trayectoria", { exact: true }).selectOption("12");
+  await page.getByRole("textbox", { name: "Buscar en desglose", exact: true }).fill("Litoral");
+  await expect(page.locator("[data-reporte-grafico] .recharts-wrapper > svg.recharts-surface")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  const consultasAntes = peticiones.filter((p) => p.pathname.includes("/comparativa/")).length;
+  const { pdf, contenido } = await descargarPdf(page, testInfo);
+  expect(pdf.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(3);
+  for (const dato of ["Hospital Escuela", "2025-09", "2026-09", "Consultorios Escuela", "Trayectoria: 12 meses", "Fuente consultada", "registros vigentes", "Incluido 031", "Incluido 001", "Filas: 31.", "Búsqueda: Litoral", "Mutual del Litoral"]) expect(contenido).toContain(dato);
+  expect(contenido).not.toContain("Excluido");
+  expect(contenido.indexOf("Incluido 031")).toBeLessThan(contenido.indexOf("Incluido 001"));
+  expect(peticiones.filter((p) => p.pathname.includes("/comparativa/")).length).toBe(consultasAntes);
+  await expect(page).toHaveURL(/reporte_grupos_gastos_pag=2/);
+});
+
+test("PDF conserva restricciones y ausencia de registros sin dibujar ceros", async ({ page }, testInfo) => {
+  const { peticiones } = await escenarioEjecutivo(page, { permisos: ["ver_dinero"], vacio: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  const { pdf, contenido } = await descargarPdf(page, testInfo);
+  expect(contenido).toContain("No incluidos en tu acceso");
+  expect(contenido).toContain("Sin base comparable");
+  expect(contenido).not.toContain("ARS 0,00");
+  expect(pdf).not.toContain("/Subtype /Image");
+  expect(peticiones.some((p) => p.pathname.includes("/reportes-finanzas/"))).toBe(false);
+});
+
+test("PDF bloquea consultas fallidas y filtros numéricos inválidos", async ({ page }) => {
+  await escenarioEjecutivo(page, { error: true });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByText("No tenés permiso para ver esto", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeDisabled();
+  await escenarioEjecutivo(page);
+  await page.goto("/finanzas?tab=reportes&mes=2026-09&reporte_grupos_gastos_f_actual_min=1e3");
+  await page.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Corregí los filtros de importe" })).toBeVisible();
+});
+
+test("PDF exporta gráficos desde móvil oscuro y conserva las bajas", async ({ page }, testInfo) => {
+  await escenarioEjecutivo(page, { transformar: (datos, esDinero) => {
+    if (!esDinero) {
+      datos.actual.aprobados = "600000.00";
+      datos.variaciones.aprobados = { importe: "-200000.00", porcentaje: "-25.00" };
+    }
+    return datos;
+  } });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await page.getByRole("button", { name: "Cambiar a tema oscuro", exact: true }).click();
+  await expect(page.locator("[data-reporte-grafico] .recharts-wrapper > svg.recharts-surface")).toHaveCount(3);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  const { pdf, contenido } = await descargarPdf(page, testInfo);
+  expect(contenido).toContain("ARS -200.000,00");
+  expect(contenido).toContain("-25%");
+  expect(pdf.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(3);
+  await page.screenshot({ path: testInfo.outputPath("pdf-movil-oscuro.png") });
+});
+
+test("PDF espera las consultas y muestra un error recuperable si falla la generación", async ({ page }, testInfo) => {
+  await escenarioEjecutivo(page, { vacio: true });
+  let liberar;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  await page.route(/\/api\/reportes-(finanzas|dinero)\/comparativa\//, async (route) => { await espera; await route.fallback(); });
+  await page.goto("/finanzas?tab=reportes&mes=2026-09");
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeDisabled();
+  liberar();
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  await page.route("**/src/pages/finanzas/reportePdf.js*", (route) => route.abort());
+  await page.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "No se pudo generar el PDF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Descargar PDF", exact: true })).toBeEnabled();
+  await expect(page.locator(".finance-report-metric")).toHaveCount(5);
+  await page.unroute("**/src/pages/finanzas/reportePdf.js*");
+  // Los navegadores conservan un import() fallido durante esta navegación.
+  // Se sigue la recuperación indicada en el mensaje, sin perder filtros URL.
+  await page.reload();
+  await descargarPdf(page, testInfo);
+  await expect(page.getByRole("alert").filter({ hasText: "No se pudo generar el PDF" })).toHaveCount(0);
+});
 
 test("reporte ejecutivo compara períodos y abre gastos anteriores sin imponer control mensual", async ({ page }, testInfo) => {
   const { peticiones } = await escenarioEjecutivo(page);

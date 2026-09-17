@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { decimalACentavos } from "@/api/finanzas";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
 import { FiltroColumna, FiltrosActivos, useFiltrosFinanzas } from "./ControlesFinanzas";
@@ -10,7 +11,7 @@ const numero = (valor) => {
 
 // Sólo para agregaciones completas ya devueltas por el servidor. Nunca ordenar
 // aquí una página de una lista remota: sus filtros y orden pertenecen a la API.
-export default function TablaAgregadaFinanzas({ clave, titulo, contexto, filas, columnas, vacio }) {
+export default function TablaAgregadaFinanzas({ clave, titulo, contexto, filas, columnas, vacio, exportacion }) {
   const tabla = useTablaUrl(clave);
   const tamano = [25, 50, 100].includes(tabla.tamano) ? tabla.tamano : 25;
   const definiciones = columnas.map((col) => col.numerica
@@ -41,6 +42,19 @@ export default function TablaAgregadaFinanzas({ clave, titulo, contexto, filas, 
   });
   const paginas = Math.max(1, Math.ceil(visibles.length / tamano));
   const pagina = Math.max(1, Math.min(Number.isInteger(tabla.pagina) ? tabla.pagina : 1, paginas));
+  // El PDF toma la misma selección y orden, antes de paginar. No vuelve a
+  // consultar ni reproduce las reglas de filtrado en otra fuente de datos.
+  useLayoutEffect(() => {
+    if (!exportacion) return;
+    exportacion.current[clave] = () => ({
+      titulo, contexto, invalidos,
+      filtros: definiciones.flat().filter((c) => filtros.valores[c.key]).map((c) => `${c.label}: ${filtros.valores[c.key]}`),
+      orden: columna ? `${columna.label} (${tabla.orden.startsWith("-") ? "descendente" : "ascendente"})` : "Orden original",
+      columnas: columnas.map((c) => ({ titulo: c.label, numerica: c.numerica })),
+      filas: visibles.map((fila) => columnas.map((col) => col.exportar ? col.exportar(fila) : String(valor(fila, col) ?? "Sin registros"))),
+    });
+    return () => { delete exportacion.current[clave]; };
+  });
   return <DataTable adaptable mantenerEncabezados titulo={titulo}
     filas={visibles.slice((pagina - 1) * tamano, pagina * tamano)} total={visibles.length} paginas={paginas}
     tabla={{ ...tabla, pagina, tamano }} estado={{}} vacio={vacio}
