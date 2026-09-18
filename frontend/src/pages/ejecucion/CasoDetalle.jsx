@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { Icon } from "@/components/icons";
-import { PageHeader } from "@/components/Shell";
 import { Badge, Button, Card, Checkbox, Field, Input, Mono, Select, Stepper, Textarea } from "@/components/ui";
 import { EstadoError, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
@@ -14,7 +13,10 @@ import { antiguedad, casoId, fechaHora } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { estadoCaso, nombreNodo } from "@/lib/dominio";
 import { CancelarModal, ReasignarModal } from "../Supervision";
-import CoberturaCaso from "../financiadores/CoberturaCaso";
+import CoberturaCaso, { AvisoCoberturaPendiente, EstadoCoberturaCaso } from "../financiadores/CoberturaCaso";
+
+// Solo las prioridades que merecen un aviso: «normal» no se muestra.
+const PRIORIDAD_TONO = { urgente: "error", alta: "amber" };
 
 // Orden conceptual del stepper de ejecución.
 const PASOS = [
@@ -55,43 +57,71 @@ export default function CasoDetalle() {
 
   const est = estadoCaso[caso.estado] || { label: caso.estado_display, tone: "neutral" };
   const cerrado = ["cerrado", "cancelado"].includes(caso.estado);
-  const cat = caso.nodo_tipo ? nombreNodo(caso.nodo_tipo) : null;
 
   return (
     <>
-      <PageHeader subtitle={`${caso.flujo_titulo}${caso.ciudadano_nombre ? " · " + caso.ciudadano_nombre : ""}`} />
+      {/*
+        Encabezado: quién es y a qué vino, antes que cualquier otra cosa.
+
+        El nombre del paciente y el flujo aparecían en una sola línea de 13,5 px
+        en el color de texto más débil de la pantalla, debajo de una barra que
+        decía «Detalle del caso». Eran los dos datos que orientan todo lo demás y
+        eran lo menos visible. Acá absorben también el número, el estado, el
+        área y la prioridad, que antes se repetían en la ficha de la derecha.
+
+        El stepper se oculta debajo de `sm`: a 390 px no entraban los cinco
+        pasos y había que desplazarlo dentro de la tarjeta. El badge de estado
+        dice lo mismo.
+      */}
+      <div className="px-lg pt-lg lg:px-8">
+        <Card className="px-lg py-lg sm:px-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-xxl font-bold tracking-tight text-texto-fuerte">
+                {caso.ciudadano_nombre || caso.flujo_titulo}
+              </h2>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-md text-texto-debil">
+                {caso.ciudadano_nombre && <span className="font-medium text-texto-suave">{caso.flujo_titulo}</span>}
+                <Mono>{casoId(caso.id)}</Mono>
+                {caso.area_nombre && <span>{caso.area_nombre}</span>}
+                {PRIORIDAD_TONO[caso.prioridad] && (
+                  <Badge tone={PRIORIDAD_TONO[caso.prioridad]}>{caso.prioridad_display}</Badge>
+                )}
+              </div>
+            </div>
+            <Badge tone={est.tone}>{est.label}</Badge>
+          </div>
+          <div className="mt-lg hidden overflow-x-auto border-t border-division pt-lg sm:block">
+            <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
+          </div>
+        </Card>
+      </div>
 
       {/*
         Dos columnas en pantalla ancha, apiladas debajo de `lg`.
 
-        El panel de trabajo va en la columna ANCHA y la ficha del caso en la
-        angosta. Estaba al revés: `lg:order-1` lo empujaba a la segunda columna,
-        así que el formulario donde se registra la atención —con su textarea, el
-        pedido de estudios, la interconsulta y los insumos— vivía en 320 px
-        mientras al lado sobraban mil. Los nombres de insumo salían cortados
-        («Dipiron…») y los selects no entraban.
+        La columna ANCHA es lo que la persona hace: antecedentes (si los puede
+        ver y los hay), el panel del paso y, detrás, la cobertura. La angosta es
+        lo que consulta mientras lo hace: ficha, datos ya cargados, internación,
+        supervisión y trazabilidad.
 
-        Apiladas, en cambio, la ficha va primero: en una tablet lo que se
-        consulta es el estado del caso, no el formulario.
+        El panel de trabajo va en la ancha a propósito: el formulario de atención
+        —textarea, estudios, interconsulta, insumos— en 320 px cortaba los
+        nombres de insumo y no le entraban los selects.
+
+        Apiladas, la ancha va primero. Antes iba la ficha, con el argumento de
+        que en tablet se consulta y no se carga; medido a 390 px, el panel del
+        paso arrancaba entre 1.200 y 1.850 px abajo, detrás de una trazabilidad
+        que en un caso avanzado mide 580 px. Quien entra desde el teléfono a ver
+        quién hizo qué baja hasta el final; es el costo elegido.
+
+        Los antecedentes pueden estar o no —permiso clínico Y paciente con
+        antecedentes cargados—: nada de lo que sigue depende de ellos, solo
+        corren el panel del paso 105 px.
       */}
       <div className="grid grid-cols-1 items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-xxl lg:px-8">
-        <div className="order-last flex min-w-0 flex-col gap-lg lg:order-first">
-          <Card className="px-lg py-7 sm:px-8">
-            <div className="overflow-x-auto">
-              <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
-            </div>
-            {caso.paso_actual && (
-              <div className="mt-xl flex flex-wrap items-center gap-2.5 border-t border-division pt-lg">
-                <span className="text-xs font-bold tracking-wide text-texto-tenue">PASO ACTUAL</span>
-                {cat && <ChipNodo tipo={caso.nodo_tipo} />}
-                <span className="text-lg font-bold">{caso.paso_actual}</span>
-              </div>
-            )}
-          </Card>
-
+        <div className="flex min-w-0 flex-col gap-lg">
           {hc && (hc.alergias || hc.condiciones) && <Antecedentes hc={hc} />}
-
-          <CoberturaCaso key={caso.id} caso={caso} ocupado={accion.isPending} />
 
           <PanelPaso
             caso={caso}
@@ -101,36 +131,45 @@ export default function CasoDetalle() {
             hc={hc}
           />
 
-          {caso.valores?.length > 0 && (
-            <Card className="p-lg sm:p-xxl">
-              <h3 className="text-lg font-bold">Datos cargados</h3>
-              <dl className="mt-3 flex flex-col gap-2.5">
-                {caso.valores.map((v) => (
-                  <div key={v.id} className="flex justify-between gap-lg text-md">
-                    <dt className="text-texto-debil">{v.campo_label}</dt>
-                    <dd className="text-right font-medium text-texto-fuerte">{v.valor || "—"}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Card>
-          )}
+          {/* Detrás del trabajo: en Los Aromos es un panel de 680 px con
+              afiliación, importes y autorizaciones que tapaba la atención entera.
+              Donde el módulo no está habilitado no pinta nada; su estado vive en
+              la ficha. */}
+          <CoberturaCaso key={caso.id} caso={caso} ocupado={accion.isPending} />
         </div>
 
-        <div className="flex flex-col gap-lg">
+        <div className="flex min-w-0 flex-col gap-lg">
           <Card className="p-xl">
             <h3 className="mb-3.5 text-xs font-bold tracking-wide text-texto-tenue">INFORMACIÓN DEL CASO</h3>
             <dl className="flex flex-col gap-3">
-              <Dato k="Caso" v={<Mono className="font-bold">{casoId(caso.id)}</Mono>} />
-              <Dato k="Estado" v={<Badge tone={est.tone}>{est.label}</Badge>} />
-              <Dato k="Paso actual" v={caso.paso_actual || "—"} />
-              <Dato k="Flujo" v={caso.flujo_titulo} />
               <Dato k="Área actual" v={caso.area_nombre || "—"} />
               <Dato k="Responsable" v={caso.responsables?.length ? caso.responsables.map((g) => g.nombre).join(", ") : "Abierto a todos"} />
               <Dato k="Asignado a" v={caso.asignado_nombre || "Sin asignar"} />
               <Dato k="Ingreso" v={fechaHora(caso.creado)} />
               <Dato k="Prioridad" v={caso.prioridad_display} />
+              <Dato k="Cobertura" v={<EstadoCoberturaCaso caso={caso} />} />
             </dl>
           </Card>
+
+          {/* Al lado del formulario, no debajo: en «Conducta médica» los signos
+              del triage (tensión, frecuencia, saturación) son lo que decide la
+              conducta, y quedaban 450 px debajo del botón de guardar. */}
+          {caso.valores?.length > 0 && (
+            <Card className="p-xl">
+              <h3 className="text-lg font-bold">Datos cargados</h3>
+              {/* Etiqueta arriba y valor abajo, no en dos columnas como la ficha:
+                  en 320 px «Observaciones de enfermería» dejaba al valor una
+                  columna de tres palabras y se partía renglón por renglón. */}
+              <dl className="mt-3 flex flex-col gap-2.5">
+                {caso.valores.map((v) => (
+                  <div key={v.id}>
+                    <dt className="text-sm text-texto-debil">{v.campo_label}</dt>
+                    <dd className="break-words text-md font-medium text-texto-fuerte">{v.valor || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+          )}
 
           {caso.cama && <PanelCama caso={caso} ejecutar={ejecutar} ocupado={accion.isPending} />}
 
@@ -188,33 +227,6 @@ export default function CasoDetalle() {
 // --------------------------------------------------------------------------- //
 // Piezas
 // --------------------------------------------------------------------------- //
-/**
- * Chip con la categoría del nodo (10 tipos, colores dinámicos).
- *
- * La etiqueta va en color de texto normal, no en el color de la categoría: esos
- * colores están pensados para bordes y rellenos del lienzo, no para llevar texto
- * —el rosa de «Atención» sobre su propio tinte da 3,56:1—. El color lo cargan el
- * punto y el borde, que es donde sí funciona.
- */
-function ChipNodo({ tipo, className }) {
-  const cat = nombreNodo(tipo);
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-[3px] text-sm font-semibold text-texto-medio",
-        className,
-      )}
-      style={{
-        background: `var(--color-nodo-${tipo}-tint)`,
-        borderColor: `var(--color-nodo-${tipo}-bd)`,
-      }}
-    >
-      <span className="size-1.5 rounded-sm" style={{ background: `var(--color-nodo-${tipo}-sol)` }} />
-      {cat}
-    </span>
-  );
-}
-
 function Antecedentes({ hc }) {
   return (
     <Card className="overflow-hidden p-0">
@@ -366,6 +378,7 @@ function PasoCama({ caso, ocupado, ejecutar }) {
   return (
     <Card className="p-lg sm:p-xxl">
       <CabeceraPaso tipo="cama" titulo={caso.paso_actual} />
+      <AvisoCoberturaPendiente caso={caso} className="mb-lg" />
       {q.isLoading ? (
         <Skeleton className="h-24" />
       ) : camas.length === 0 ? (
@@ -583,6 +596,7 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
           ))}
         </div>
       )}
+      <AvisoCoberturaPendiente caso={caso} className="mt-xl" />
       <Button
         className="mt-xl"
         disabled={ocupado || fueraDeRango}
@@ -919,6 +933,7 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
         </div>
       )}
 
+      <AvisoCoberturaPendiente caso={caso} className="mt-xl" />
       <Button
         className="mt-xl"
         disabled={ocupado}
@@ -1187,6 +1202,7 @@ function PasoSimple({ caso, ocupado, ejecutar, texto, accion }) {
   return (
     <Card className="p-lg sm:p-xxl">
       <CabeceraPaso tipo={caso.nodo_tipo} titulo={caso.paso_actual} />
+      <AvisoCoberturaPendiente caso={caso} className="mb-lg" />
       <p className="mb-lg text-md text-texto-debil">{texto}</p>
       <Button disabled={ocupado} onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, {}), "Caso avanzado")}>
         {ocupado ? "Procesando…" : accion}
@@ -1231,14 +1247,18 @@ function Timeline({ eventos }) {
 
 function CargandoCaso() {
   return (
-    <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8" role="status" aria-label="Cargando caso…">
-      <div className="order-last flex flex-col gap-lg lg:order-first">
+    <div role="status" aria-label="Cargando caso…">
+      <div className="px-lg pt-lg lg:px-8">
         <Skeleton className="h-32" />
-        <Skeleton className="h-64" />
       </div>
-      <div className="flex flex-col gap-lg">
-        <Skeleton className="h-72" />
-        <Skeleton className="h-48" />
+      <div className="grid items-start gap-lg px-lg pb-8 pt-lg lg:grid-cols-[1fr_20rem] lg:gap-xxl lg:px-8">
+        <div className="flex flex-col gap-lg">
+          <Skeleton className="h-64" />
+        </div>
+        <div className="flex flex-col gap-lg">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+        </div>
       </div>
     </div>
   );

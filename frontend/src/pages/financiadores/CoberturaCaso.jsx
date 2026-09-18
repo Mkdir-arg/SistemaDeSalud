@@ -5,8 +5,10 @@ import { api } from "@/api/client";
 import { importeARS } from "@/api/finanzas";
 import { errorFinanciador } from "@/api/financiadores";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Card, Checkbox, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
+import { Icon } from "@/components/icons";
+import { Badge, Button, Card, Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
+import { cn } from "@/lib/cn";
 import { fechaHora, plural } from "@/lib/format";
 import AutorizacionesCaso from "./AutorizacionesCaso";
 import AutorizacionEvaluacion, { ESTADOS_EVALUACION_AUTORIZACION } from "./AutorizacionEvaluacion";
@@ -20,16 +22,103 @@ const ESTADOS = {
 const tono = (estado) => estado === "pendiente" || estado?.includes("pendiente") ? "amber" : estado === "verificada" || estado === "realizada" ? "green" : "gray";
 const fecha = (iso) => iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "—";
 
-export default function CoberturaCaso({ caso, ocupado = false }) {
+/**
+ * La consulta de cobertura del caso, compartida por el panel y por la fila de
+ * la ficha. Misma clave: react-query hace un solo pedido para los dos.
+ */
+function useCoberturaCaso(caso) {
   const { user } = useAuth();
-  const qc = useQueryClient();
-  const [mensaje, setMensaje] = useState("");
-  const consulta = useQuery({
+  return useQuery({
     queryKey: ["cobertura-caso", user?.id, caso.id, caso.actualizado, caso.nodo_actual],
     queryFn: () => api.get(`/casos/${caso.id}/cobertura/`),
     gcTime: 0,
     retry: false,
   });
+}
+
+/**
+ * Qué le falta a la cobertura de este caso para quien puede operarla.
+ *
+ * `null` si no hay nada pendiente, si el módulo no está habilitado o si la
+ * persona no puede operar. Si no, `{ tipo: "afiliacion" }` o
+ * `{ tipo: "prestaciones", cantidad }` con las prestaciones del paso que no
+ * tienen una reserva abierta ni realizada. Una reserva liberada no cuenta: se
+ * verificó que la prestación no se hizo, así que hay que consultar de nuevo.
+ */
+export function pendienteCobertura(datos) {
+  if (!datos?.activo || !datos.puede_operar) return null;
+  if (!datos.afiliacion) return { tipo: "afiliacion", cantidad: 0 };
+  const cubiertas = new Set(
+    (datos.reservas || []).filter((r) => r.estado === "reservada" || r.estado === "realizada").map((r) => r.prestacion),
+  );
+  const cantidad = (datos.prestaciones || []).filter((p) => !cubiertas.has(p.id)).length;
+  return cantidad > 0 ? { tipo: "prestaciones", cantidad } : null;
+}
+
+/**
+ * El estado de la cobertura en una línea, para la ficha del caso.
+ *
+ * Donde el módulo no está habilitado el panel no se pinta, y esta fila es lo
+ * único que lo dice. Con afiliación registrada pero prestaciones sin consultar
+ * lo dice debajo del badge: si no, la ficha mostraba «Afiliación verificada» en
+ * verde y el pendiente quedaba escondido.
+ */
+export function EstadoCoberturaCaso({ caso }) {
+  const consulta = useCoberturaCaso(caso);
+  if (consulta.isLoading) return <span className="text-texto-tenue">…</span>;
+  if (consulta.error || !consulta.data) return <span className="text-texto-debil">Sin datos</span>;
+  const datos = consulta.data;
+  if (!datos.activo) return <span className="text-texto-debil">No habilitada</span>;
+  if (!datos.afiliacion) return <Badge tone="amber">Sin afiliación</Badge>;
+  const pendiente = pendienteCobertura(datos);
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <Badge tone={tono(datos.afiliacion.estado)}>{ESTADOS[datos.afiliacion.estado] || datos.afiliacion.estado}</Badge>
+      {pendiente?.tipo === "prestaciones" && (
+        <span className="text-sm text-badge-amber-fg">{plural(pendiente.cantidad, "prestación sin consultar", "prestaciones sin consultar")}</span>
+      )}
+    </span>
+  );
+}
+
+const ID_PANEL = "cobertura-caso";
+
+function irAlPanel() {
+  const panel = document.getElementById(ID_PANEL);
+  if (!panel) return;
+  const plegable = panel.querySelector("details");
+  if (plegable) plegable.open = true;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/**
+ * Franja ámbar para el panel del paso: la cobertura quedó detrás del trabajo y
+ * hace falta que quien va a avanzar sepa que la tiene pendiente antes de tocar
+ * el botón. No bloquea nada: el motor deja completar el paso clínico aunque la
+ * cobertura falle, y eso es a propósito.
+ */
+export function AvisoCoberturaPendiente({ caso, className }) {
+  const consulta = useCoberturaCaso(caso);
+  const pendiente = pendienteCobertura(consulta.data);
+  if (!pendiente) return null;
+  const texto = pendiente.tipo === "afiliacion"
+    ? "Falta registrar la afiliación de este caso."
+    : `Falta consultar la cobertura de ${plural(pendiente.cantidad, "prestación", "prestaciones")} de este paso.`;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-3 rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg px-3.5 py-3", className)}>
+      <Icon name="alert" size={18} className="shrink-0 text-badge-amber-fg" />
+      <div className="min-w-40 flex-1 text-md text-badge-amber-fg">
+        <strong>Cobertura pendiente.</strong> {texto} El paso se puede completar igual.
+      </div>
+      <Button type="button" size="sm" variant="secondary" onClick={irAlPanel}>Ir a la cobertura</Button>
+    </div>
+  );
+}
+
+export default function CoberturaCaso({ caso, ocupado = false }) {
+  const qc = useQueryClient();
+  const [mensaje, setMensaje] = useState("");
+  const consulta = useCoberturaCaso(caso);
 
   async function actualizar(texto) {
     setMensaje(texto);
@@ -41,26 +130,39 @@ export default function CoberturaCaso({ caso, ocupado = false }) {
   }
 
   const datos = consulta.data;
+  // Sin el módulo habilitado no hay nada que operar: el panel ocupaba 250 px
+  // para decir «no está habilitada» y «todavía no se registró la afiliación».
+  // Lo dice la fila «Cobertura» de la ficha. Mientras carga tampoco se pinta:
+  // en el hospital que no lo usa aparecería y desaparecería en cada entrada.
+  if (consulta.isLoading || (datos && !datos.activo)) return null;
+
   return (
-    <Card className="p-lg sm:p-xxl" aria-label="Cobertura del caso">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold">Cobertura del caso</h2>
-        <Button type="button" size="sm" variant="ghost" disabled={consulta.isFetching || ocupado} onClick={() => actualizar("")}>Actualizar cobertura</Button>
-      </div>
-      <p className="mt-1 text-sm text-texto-debil">Registrá la afiliación y consultá el importe antes de la prestación. Una autorización pendiente se gestiona según el circuito de atención; no acepta cargos del paciente.</p>
-      {mensaje && <p role="status" className="mt-4 rounded-md bg-badge-green-bg p-3 text-sm text-badge-green-fg">{mensaje}</p>}
-      {consulta.isLoading ? <Spinner label="Consultando cobertura…" /> : consulta.error ? (
-        <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo consultar la cobertura" />
-      ) : datos && (
-        <ContenidoCobertura
-          key={JSON.stringify([caso.id, datos.contexto, datos.afiliacion?.id])}
-          casoId={caso.id}
-          datos={datos}
-          ocupadoClinica={ocupado}
-          actualizar={actualizar}
-        />
-      )}
-      {datos?.activo && <AutorizacionesCaso key={caso.id} caso={caso} ocupadoClinica={ocupado} />}
+    <Card id={ID_PANEL} className="p-0" aria-label="Cobertura del caso">
+      {/* Plegable, abierta por defecto: va detrás del panel del paso y quien ya
+          resolvió la cobertura puede guardarla; quien la tiene pendiente la ve
+          entera sin tocar nada. */}
+      <details open>
+        <summary className="cursor-pointer p-lg text-lg font-bold sm:px-xxl sm:pt-xxl">Cobertura del caso</summary>
+        <div className="px-lg pb-lg sm:px-xxl sm:pb-xxl">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="text-sm text-texto-debil">Registrá la afiliación y consultá el importe antes de la prestación. Una autorización pendiente se gestiona según el circuito de atención; no acepta cargos del paciente.</p>
+            <Button type="button" size="sm" variant="ghost" disabled={consulta.isFetching || ocupado} onClick={() => actualizar("")}>Actualizar cobertura</Button>
+          </div>
+          {mensaje && <p role="status" className="mt-4 rounded-md bg-badge-green-bg p-3 text-sm text-badge-green-fg">{mensaje}</p>}
+          {consulta.error ? (
+            <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo consultar la cobertura" />
+          ) : datos && (
+            <ContenidoCobertura
+              key={JSON.stringify([caso.id, datos.contexto, datos.afiliacion?.id])}
+              casoId={caso.id}
+              datos={datos}
+              ocupadoClinica={ocupado}
+              actualizar={actualizar}
+            />
+          )}
+          {datos?.activo && <AutorizacionesCaso key={caso.id} caso={caso} ocupadoClinica={ocupado} />}
+        </div>
+      </details>
     </Card>
   );
 }
