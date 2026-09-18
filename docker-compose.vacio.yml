@@ -1,0 +1,67 @@
+# Entorno LOCAL A — "vacío": para aprender a configurar el sistema desde cero.
+#
+# No siembra nada. Arranca con la base migrada y sin una sola institución, de
+# modo que todo lo que aparezca en pantalla lo configuraste vos.
+#
+# Se usa SIEMPRE junto al compose base y SIN el override de desarrollo, para que
+# corra igual que en un despliegue real (gunicorn + nginx, sin hot reload):
+#
+#   docker compose -p salud-vacio -f docker-compose.yml -f docker-compose.vacio.yml up -d
+#
+# Puertos: aplicación en 8081, API directa en 8001.
+# El proyecto `salud-vacio` aísla contenedores y volúmenes del otro entorno.
+services:
+  backend:
+    environment:
+      # Sin siembra: el entorno vacío es el punto del ejercicio.
+      SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      # Sin TLS en local: con DEBUG=false el sistema redirige todo a https
+      # y la aplicación responde 301 a cada pedido. La perilla la prevé
+      # settings.py; no se toca el código.
+      DJANGO_SSL_REDIRECT: "${DJANGO_SSL_REDIRECT:-false}"
+      # HSTS apagado: el valor por defecto es un año con subdominios y el
+      # navegador lo recordaría para TODOS tus proyectos en localhost.
+      DJANGO_HSTS_SECONDS: "${DJANGO_HSTS_SECONDS:-0}"
+      CORS_ALLOWED_ORIGINS: http://localhost:8081,http://127.0.0.1:8081
+    # Expuesto además del frontend porque nginx no proxea /fhir/ y porque es
+    # cómodo para mirar /api/docs/ mientras se aprende el modelo de datos.
+    ports:
+      - "8001:8000"
+
+  # Los procesos de fondo NO migran: sólo migra `backend`.
+  #
+  # Es la misma razón que explica el entrypoint: cuatro contenedores de la misma
+  # imagen corriendo `migrate` a la vez toman locks de DDL en distinto orden y la
+  # migración puede quedar a mitad de camino con `django_migrations` diciendo que
+  # terminó. Arrancan cuando `backend` ya está sano, sobre el esquema que dejó.
+  tiempos:
+    environment:
+      EJECUTAR_MIGRACIONES: "0"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  costos:
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  respaldos:
+    environment:
+      EJECUTAR_MIGRACIONES: "0"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # `repartos` no pasa por el entrypoint (usa `entrypoint: python`), así que
+  # nunca migra; sólo necesita que el esquema ya exista.
+  repartos:
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    ports: !override
+      - "8081:80"
