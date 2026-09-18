@@ -67,9 +67,16 @@ for (const [nombre, permisos] of [
 const inst = { id: 2, nombre: "Hospital Escuela" };
 const area = { id: 3, nombre: "Consultorios Escuela", institucion: 2 };
 const lista = (results) => ({ count: results.length, results, next: null, previous: null });
+// El resumen dibuja barras de gastos, de dinero y de costos: siempre se indica cuál.
+const barrasDeGastos = (page) => page.getByRole("region", { name: "Gráfico de barras por área y concepto" }).locator(".recharts-bar-rectangle");
 const acciones = ["ver_gastos", "ver_costos", "registrar_gastos", "aprobar_gastos", "configurar_componentes", "configurar_gastos_esperados", "configurar_repartos"];
 const calendario = { id: 1, institucion: 2, concepto: 1, concepto_nombre: "Electricidad", area: 3, area_nombre: area.nombre, sensible: false, estado_carga: "falta_cargar", gastos_pendientes: 1, gastos_aprobados: 1, monto_referencia: "12000.00", importe_aprobado: "10000.01", diferencia_referencia: "1999.99", vigente_desde: "2026-09-01", vigente_hasta: null };
 const reporte = { aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", moneda: "ARS", actualizando: false, alcance: "Gastos registrados visibles según tus permisos; no equivale al costo total del hospital", agrupaciones: [{ area: 3, area_nombre: area.nombre, concepto: 1, concepto_nombre: "Electricidad", aprobados: "10000.01", pendientes_aprobacion: "500.00", distribuido: "10000.01", sin_distribuir: "0.00", actualizando: false }] };
+const resumenCostos = { institucion: 2, area: null, periodo_economico: "2026-09-01", moneda: "ARS", atenciones: 2, atenciones_incompletas: 1, ajustes_pendientes: 0, reparto_actualizando: false, directo_conocido: "10000.00", compartido_conocido: "3333.34", alcance: "Costos conocidos de las atenciones del mes.", agrupaciones: {
+  area: [{ area: 3, nombre: area.nombre, atenciones: 2, incompletas: 1, directo_conocido: "10000.00", compartido_conocido: "3333.34" }],
+  prestacion: [{ prestacion: 4, nombre: "Consulta médica", atenciones: 1, incompletas: 0, directo_conocido: "10000.00", compartido_conocido: "3333.34" }, { prestacion: null, nombre: "Sin prestación configurada", atenciones: 1, incompletas: 1, directo_conocido: "0.00", compartido_conocido: "0.00" }],
+} };
+const resumenDinero = { cobros_brutos: "200.00", pagos_brutos: "40.00", reintegros_cobros: "10.00", reintegros_pagos: "5.00", cobros_netos: "190.00", pagos_netos: "35.00", diferencia: "155.00", cantidad_movimientos: 3, fecha_desde: "2026-09-01", fecha_hasta: "2026-09-30", moneda: "ARS", por_aprobar: { pagos: "15.00", cobros: "0.00", reintegros_pagos: "0.00", reintegros_cobros: "0.00", cantidad: 1 }, agrupaciones: [{ area: 3, area_nombre: area.nombre, cobros_netos: "190.00", pagos_netos: "35.00", diferencia: "155.00", cantidad_movimientos: 3, por_aprobar: { cantidad: 1 } }] };
 
 async function escenarioEjecutivo(page, { permisos = [...acciones, "ver_dinero"], vacio = false, error = false, transformar = (datos) => datos } = {}) {
   const base = await escenario(page, { permisos });
@@ -405,7 +412,7 @@ test("ajustes pendientes se distinguen en resumen, control y evolución sin camb
 async function escenario(page, { permisos = acciones, pendientes = false, concesiones = [], clinico = false } = {}) {
   const peticiones = [];
   const escrituras = [];
-  const db = { prestaciones: [], componentes: [], valores: [], concesiones: [...concesiones], pendientes, reporte: structuredClone(reporte), evolucion: { conceptos: [], concepto: null, meses: [], moneda: "ARS" } };
+  const db = { prestaciones: [], componentes: [], valores: [], concesiones: [...concesiones], pendientes, reporte: structuredClone(reporte), evolucion: { conceptos: [], concepto: null, meses: [], moneda: "ARS" }, costos: structuredClone(resumenCostos), dinero: structuredClone(resumenDinero) };
   await page.addInitScript((institucion) => { localStorage.setItem("salud.access", "credencial-ficticia-solo-mock"); localStorage.setItem("salud.institucion", JSON.stringify(institucion)); }, inst);
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
@@ -435,6 +442,8 @@ async function escenario(page, { permisos = acciones, pendientes = false, conces
     if (path === "/expectativas-gasto/") data = lista([calendario]);
     if (path === "/reportes-finanzas/") data = db.pendientes ? { ...db.reporte, actualizando: true, distribuido: null, sin_distribuir: null, agrupaciones: [{ ...db.reporte.agrupaciones[0], distribuido: null, sin_distribuir: null, actualizando: true }] } : db.reporte;
     if (path === "/reportes-finanzas/evolucion/") data = { ...db.evolucion, series: db.evolucion.series ?? db.evolucion.conceptos.map((c) => ({ ...c, meses: db.evolucion.meses })) };
+    if (path === "/reportes-costos/") data = db.pendientes ? { ...db.costos, reparto_actualizando: true } : db.costos;
+    if (path === "/reportes-dinero/") data = db.dinero;
     if (path === "/procesamiento-finanzas/") data = { estado: db.pendientes ? "pendiente" : "actualizado", pendientes: db.pendientes ? 1 : 0, worker_activo: !db.pendientes, ultimo_exito: db.pendientes ? null : "2026-09-14T12:00:00Z", mensaje: db.pendientes ? "El proceso está detenido; el trabajo se conserva." : "Sin cambios pendientes." };
     if (path === "/prestaciones-costo/atenciones-disponibles/") data = [{ id: 44, titulo: "Consulta médica", flujo_nombre: "Ingreso Escuela", version_numero: 1, area: 3, area_nombre: area.nombre }];
     if (path === "/prestaciones-costo/") data = lista(db.prestaciones);
@@ -604,12 +613,14 @@ test("gráficos aprovechan el alto restante sin crecer por el viewport ni por el
     await page.setViewportSize({ width, height });
     for (const vista of ["Barras", "Dos niveles", "Evolución mensual"]) {
       await page.getByRole("button", { name: vista, exact: true }).click();
-      const canvas = page.locator(".finance-chart-canvas");
+      const canvas = page.getByRole("region", { name: "Resumen de gastos", exact: true }).locator(".finance-chart-canvas");
       await expect(canvas.locator("svg.recharts-surface")).toBeVisible();
       await expect.poll(() => page.locator("main > .overflow-auto").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
       const dimensiones = await page.locator("main > .overflow-auto").evaluate((e) => ({ visible: e.clientHeight, total: e.scrollHeight }));
       console.log("Espacio gráfico", width, height, vista, dimensiones);
-      if (width >= 1440) expect(dimensiones.total).toBeLessThanOrEqual(dimensiones.visible + 2);
+      // El resumen reúne gastos, dinero y costos: la página se desplaza, pero el
+      // dibujo de gastos no puede colapsar ni crecer con el alto del viewport.
+      if (width >= 1440) expect((await canvas.boundingBox()).height).toBeLessThanOrEqual(dimensiones.visible);
       if (vista === "Dos niveles" && width >= 1366) {
         const leyenda = await page.getByRole("list", { name: "Importes del gráfico de dos niveles" }).boundingBox();
         const dibujo = await canvas.boundingBox();
@@ -634,7 +645,7 @@ test("barras ordenan por la suma exacta de la comparación y dos niveles ordenan
   ];
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/finanzas?mes=2026-09");
-  const nombres = page.locator(".recharts-yAxis-tick-labels text");
+  const nombres = page.getByRole("region", { name: "Gráfico de barras por área y concepto" }).locator(".recharts-yAxis-tick-labels text");
   await expect(nombres).toHaveText([/Menor aprobado/, /Mayor aprobado/, /Intermedio/]);
   await page.getByRole("combobox", { name: "Ordenar", exact: true }).selectOption("menor");
   await expect(nombres).toHaveText([/Intermedio/, /Mayor aprobado/, /Menor aprobado/]);
@@ -737,7 +748,7 @@ test("orden por centavos distingue montos grandes, empates y negativos sin modif
   db.reporte.agrupaciones = valores.map(([nombre, monto], i) => ({ ...reporte.agrupaciones[0], concepto: i + 1, concepto_nombre: nombre, aprobados: monto, pendientes_aprobacion: "0.00" }));
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/finanzas?mes=2026-09");
-  const etiquetas = page.locator(".recharts-yAxis-tick-labels text");
+  const etiquetas = page.getByRole("region", { name: "Gráfico de barras por área y concepto" }).locator(".recharts-yAxis-tick-labels text");
   await expect(etiquetas).toHaveText([/·\s*A$/, /·\s*B$/, /·\s*C$/, /·\s*D$/]);
   await page.getByRole("combobox", { name: "Ordenar", exact: true }).selectOption("menor");
   await expect(etiquetas).toHaveText([/·\s*D$/, /·\s*B$/, /·\s*C$/, /·\s*A$/]);
@@ -817,7 +828,7 @@ test("evolución muestra todas, filtra localmente, destaca sin cambiar colores y
   await expect(page.getByRole("button", { name: "Destacar Limpieza", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(grafico.getByRole("button", { name: "Ver gastos aprobados de 2026-08 · Electricidad", exact: true })).toHaveAttribute("opacity", "0.2");
   await punto.hover();
-  const tooltip = page.locator(".recharts-tooltip-wrapper");
+  const tooltip = page.getByRole("tooltip");
   await expect(tooltip).toContainText("Electricidad");
   await expect(tooltip).toContainText("Limpieza");
   await expect(tooltip).toContainText("Mantenimiento");
@@ -1073,7 +1084,7 @@ test("filtros y tabs comparten fila, cabecera estable y límite explicado en ayu
     expect(Math.abs(posicion.x - botones.x)).toBeLessThan(2);
     expect(Math.abs(posicion.y - botones.y)).toBeLessThan(2);
   }
-  await page.locator(".recharts-bar-rectangle").first().hover();
+  await barrasDeGastos(page).first().hover();
   await page.mouse.move(0, 0);
   await page.screenshot({ path: testInfo.outputPath("resumen-compacto.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1146,7 +1157,7 @@ for (const movimiento of ["no-preference", "reduce"]) {
       }).observe(document, { subtree: true, attributes: true, childList: true });
     });
     await page.goto("/finanzas?mes=2026-09");
-    await page.locator(".recharts-bar-rectangle").first().hover();
+    await barrasDeGastos(page).first().hover();
     const cantidad = await page.evaluate(() => window.anchosGrafico.size);
     expect(cantidad).toBeGreaterThan(0);
     if (movimiento === "reduce") expect(cantidad).toBeLessThanOrEqual(2);
@@ -1176,7 +1187,7 @@ test("barras por defecto con importe exacto y clic que conserva filtros", async 
   await escenario(page);
   await page.goto("/finanzas?mes=2026-09&area=3");
   await expect(page.getByRole("button", { name: "Barras", exact: true })).toHaveAttribute("aria-pressed", "true");
-  const barras = page.locator(".recharts-bar-rectangle");
+  const barras = barrasDeGastos(page);
   await expect(barras).toHaveCount(2);
   await barras.first().hover();
   await expect(page.getByText("Aprobado: ARS 10.000,01", { exact: true })).toBeVisible();
@@ -1214,8 +1225,8 @@ test("negativos y montos grandes conservan decimales; la dona no inventa porcent
   db.reporte.aprobados = "-900719925474099.91";
   db.reporte.agrupaciones[0].aprobados = db.reporte.aprobados;
   await page.goto("/finanzas?mes=2026-09");
-  await expect(page.locator(".recharts-bar-rectangle")).toHaveCount(2);
-  await page.locator(".recharts-bar-rectangle").first().hover();
+  await expect(barrasDeGastos(page)).toHaveCount(2);
+  await barrasDeGastos(page).first().hover();
   await expect(page.getByText("Aprobado: ARS -900.719.925.474.099,91", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Dos niveles", exact: true }).click();
   await expect(page.getByText("Hay importes negativos:", { exact: false })).toBeVisible();
@@ -1229,7 +1240,7 @@ test("distribución pendiente no se grafica como cero y listado sigue disponible
   await page.goto("/finanzas?mes=2026-09");
   await page.getByRole("combobox", { name: "Comparar", exact: true }).selectOption("distribucion");
   await expect(page.getByText("todavía no hay una distribución completa", { exact: false })).toBeVisible();
-  await expect(page.locator(".recharts-bar-rectangle")).toHaveCount(0);
+  await expect(barrasDeGastos(page)).toHaveCount(0);
   await page.getByRole("button", { name: "Listado", exact: true }).click();
   await expect(page.getByRole("table").getByText("Actualización pendiente", { exact: true })).toHaveCount(2);
 });
@@ -1295,8 +1306,8 @@ test("gráficos con muchas áreas, tema oscuro y móvil mantienen todos los impo
   db.reporte.agrupaciones = Array.from({ length: 24 }, (_, i) => ({ ...reporte.agrupaciones[0], area: i + 1, area_nombre: `Área ${i + 1}`, concepto_nombre: `Concepto de prueba ${i + 1}` }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/finanzas?mes=2026-09");
-  await expect(page.locator(".recharts-bar-rectangle")).toHaveCount(48);
   const grafico = page.getByRole("region", { name: "Gráfico de barras por área y concepto" });
+  await expect(barrasDeGastos(page)).toHaveCount(48);
   await expect.poll(() => grafico.evaluate((e) => e.clientHeight > 480 && e.scrollHeight <= e.clientHeight)).toBe(true);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await grafico.scrollIntoViewIfNeeded();
@@ -1310,6 +1321,67 @@ test("gráficos con muchas áreas, tema oscuro y móvil mantienen todos los impo
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.getByRole("region", { name: "Gráfico de dos niveles por área, concepto y estado" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("dona-oscuro.png") });
+});
+
+test("el resumen reúne gastos, dinero y costos con sus tres gráficos y sin sumarlos", async ({ page }, testInfo) => {
+  const { db, peticiones, escrituras } = await escenario(page, { permisos: [...acciones, "ver_dinero"] });
+  db.costos.ajustes_pendientes = 2;
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/finanzas?mes=2026-09");
+  const gastos = page.getByRole("region", { name: "Resumen de gastos", exact: true });
+  const dinero = page.getByRole("region", { name: "Resumen de pagos y cobros", exact: true });
+  const costos = page.getByRole("region", { name: "Resumen de costos por atención", exact: true });
+  await expect(gastos.getByRole("region", { name: "Gráfico de barras por área y concepto" })).toBeVisible();
+  await expect(dinero.getByRole("region", { name: "Gráfico de cobros y pagos netos por área" })).toBeVisible();
+  await expect(costos.getByRole("region", { name: "Gráfico de costo conocido por área" })).toBeVisible();
+  await expect(dinero.getByText("ARS 190,00", { exact: true })).toBeVisible();
+  await expect(dinero.getByText("ARS 155,00", { exact: true })).toBeVisible();
+  await expect(dinero.getByText("Fecha efectiva · 2026-09-01 al 2026-09-30", { exact: true })).toBeVisible();
+  await expect(costos.getByText("ARS 10.000,00", { exact: true })).toBeVisible();
+  await expect(costos.getByText("ARS 3.333,34", { exact: true })).toBeVisible();
+  await expect(costos.getByText("2 ajustes de costo por aprobar", { exact: false })).toBeVisible();
+  // Cada bloque conserva su magnitud: el resumen nunca publica un total común.
+  await expect(page.getByText("ARS 23.333,34", { exact: false })).toHaveCount(0);
+  await expect.poll(() => peticiones.filter((u) => u.pathname === "/api/reportes-costos/" && u.searchParams.get("periodo_economico") === "2026-09-01").length).toBeGreaterThan(0);
+  await expect.poll(() => peticiones.some((u) => u.pathname === "/api/reportes-dinero/" && u.searchParams.get("fecha_desde") === "2026-09-01" && u.searchParams.get("fecha_hasta") === "2026-09-30")).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("resumen-panorama.png"), animations: "disabled", fullPage: true });
+  await costos.getByRole("combobox", { name: "Agrupar costos" }).selectOption("prestacion");
+  await expect(costos.getByRole("region", { name: "Gráfico de costo conocido por prestación" })).toBeVisible();
+  await expect(costos.getByText("Sin prestación configurada", { exact: false })).toBeVisible();
+  expect(escrituras).toHaveLength(0);
+});
+
+test("el resumen lleva cada bloque a su pestaña con el área elegida", async ({ page }) => {
+  await escenario(page, { permisos: [...acciones, "ver_dinero"] });
+  await page.goto("/finanzas?mes=2026-09");
+  const costos = page.getByRole("region", { name: "Resumen de costos por atención", exact: true });
+  await costos.getByRole("button", { name: "Ver atenciones costeadas" }).click();
+  await expect(page.getByRole("tab", { name: "Costos por atención" })).toHaveAttribute("aria-selected", "true");
+  expect(new URL(page.url()).searchParams.get("area")).toBe(null);
+  await page.goto("/finanzas?mes=2026-09");
+  await page.getByRole("region", { name: "Resumen de pagos y cobros", exact: true }).getByRole("button", { name: "Ver cobros netos" }).click();
+  await expect(page.getByRole("tab", { name: "Pagos y cobros" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("el resumen informa restricciones y fallos por bloque sin ocultar los demás", async ({ page }) => {
+  const { db } = await escenario(page, { permisos: [...acciones, "ver_dinero"] });
+  await page.route("**/api/reportes-costos/**", (route) => route.fulfill({ status: 503, json: { detail: "Servicio no disponible" } }));
+  await page.goto("/finanzas?mes=2026-09");
+  await expect(page.getByText("No se pudo consultar los costos por atención", { exact: false })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Resumen de pagos y cobros", exact: true }).getByText("ARS 190,00", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Gráfico de barras por área y concepto" })).toBeVisible();
+  // El bloque que falló no publica cifras propias ni una versión degradada.
+  await expect(page.getByRole("region", { name: "Resumen de costos por atención", exact: true })).toHaveCount(0);
+  await expect(page.getByText("ARS 10.000,00", { exact: true })).toHaveCount(0);
+  expect(db.costos.atenciones).toBe(2);
+});
+
+test("el resumen no consulta dinero sin permiso y lo declara en lugar de mostrar cero", async ({ page }) => {
+  const { peticiones } = await escenario(page);
+  await page.goto("/finanzas?mes=2026-09");
+  await expect(page.getByText("Los pagos y cobros no están incluidos en tu acceso. No se representan como cero.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Resumen de costos por atención", exact: true })).toBeVisible();
+  expect(peticiones.some((u) => u.pathname === "/api/reportes-dinero/")).toBe(false);
 });
 
 test("procesamiento detenido no convierte distribución desconocida en cero y se recupera", async ({ page }) => {

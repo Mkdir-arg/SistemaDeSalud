@@ -31,6 +31,7 @@ from apps.finanzas.api_dinero import ObligacionFinancieraViewSet, MovimientoDine
 from apps.finanzas.api_reportes_dinero import ReporteDineroViewSet
 from apps.finanzas.api_auditoria import AccesoFinancieroViewSet
 from apps.finanzas.api_reportes import ReporteFinanzasViewSet, ProcesamientoFinanzasViewSet
+from apps.finanzas.api_reportes_costos import ReporteCostosViewSet
 from apps.finanzas.api_repartos import CoberturaActividadViewSet, ReglaRepartoViewSet, RepartoGastoViewSet
 from apps.finanzas.views import (
     AjusteCostoViewSet,
@@ -147,6 +148,7 @@ router.register("accesos-financieros", AccesoFinancieroViewSet, basename="acceso
 router.register("reportes-finanzas", ReporteFinanzasViewSet, basename="reporte-finanzas")
 router.register("procesamiento-finanzas", ProcesamientoFinanzasViewSet, basename="procesamiento-finanzas")
 router.register("hechos-costo", HechoAtencionCosteableViewSet, basename="hecho-costo")
+router.register("reportes-costos", ReporteCostosViewSet, basename="reporte-costo")
 router.register("concesiones-financieras", ConcesionFinancieraViewSet)
 router.register("prestaciones-costo", PrestacionViewSet)
 router.register("componentes-costo", DefinicionComponenteViewSet)

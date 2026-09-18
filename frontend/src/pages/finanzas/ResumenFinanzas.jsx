@@ -9,9 +9,11 @@ import { fechaHora } from "@/lib/format";
 import TablaAgregadaFinanzas from "./TablaAgregadaFinanzas";
 import { AyudaFinanzas, PanelFlotante } from "./ControlesFinanzas";
 import { coincideEstadoMes, tieneReferencia } from "./evolucion";
+import { filtroAreaDinero, rangoMes } from "./dinero";
 
 const GraficoFinanzas = lazy(() => import("./GraficoFinanzas"));
 const GraficoEvolucion = lazy(() => import("./GraficoFinanzas").then((modulo) => ({ default: modulo.GraficoEvolucion })));
+const BarrasPanorama = lazy(() => import("./GraficoPanorama"));
 
 export class RespaldoGrafico extends Component {
   state = { fallo: false };
@@ -111,7 +113,90 @@ export function ProcesamientoFinanzas({ institucion, usuarioId, mes, area }) {
   </div>;
 }
 
-export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onGastos, onRepartos, onMensuales }) {
+// Tarjeta de cifra con su enlace al detalle; el resumen no recalcula importes.
+function Medida({ titulo, valor, ayuda, accion, enlace }) {
+  return <Card className="min-w-0 p-4"><h3 className="text-sm text-texto-debil">{titulo}</h3>
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+      <p className="break-all text-lg font-semibold tabular-nums">{valor}</p>
+      {accion && <Button size="sm" variant="ghost" aria-label={enlace} title={enlace} onClick={accion}>Ver →</Button>}
+    </div>
+    {ayuda && <p className="mt-1 text-sm text-texto-debil">{ayuda}</p>}
+  </Card>;
+}
+
+function Panel({ titulo, contexto, ayuda, controles, children }) {
+  return <Card className="flex min-w-0 flex-col overflow-hidden">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-division px-4 py-3">
+      <div className="min-w-0"><h3 className="font-semibold">{titulo}</h3>{contexto && <p className="mt-1 text-sm text-texto-debil">{contexto}</p>}</div>
+      <div className="flex flex-wrap items-center gap-3">{controles}{ayuda}</div>
+    </div>
+    <div className="min-w-0 p-4">{children}</div>
+  </Card>;
+}
+
+function Grafico({ children }) {
+  return <RespaldoGrafico mensaje="No se pudo mostrar el gráfico. Los importes siguen disponibles en su pestaña.">
+    <Suspense fallback={<p role="status">Preparando gráfico…</p>}>{children}</Suspense>
+  </RespaldoGrafico>;
+}
+
+const MEDIDAS_DINERO = [["cobros_netos", "Cobros netos"], ["pagos_netos", "Pagos netos"]];
+const MEDIDAS_COSTOS = [["directo_conocido", "Costo directo conocido"], ["compartido_conocido", "Gasto compartido atribuido"]];
+
+function BloqueDinero({ institucion, usuarioId, mes, area, onTab }) {
+  const filtros = { institucion: institucion.id, ...filtroAreaDinero(area), ...rangoMes(mes) };
+  const consulta = useQuery({ queryKey: ["finanzas", usuarioId, institucion.id, "resumen-dinero", filtros],
+    queryFn: () => api.get(`/reportes-dinero/${query(filtros)}`), gcTime: 0 });
+  const ayuda = <AyudaFinanzas titulo="Qué incluyen pagos y cobros"><p>Cobros y pagos aprobados, netos de devoluciones, según la fecha efectiva de cada movimiento. El intervalo es el mes calendario seleccionado; las cuentas pueden pertenecer a otro mes económico.</p><p>La diferencia es cobros menos pagos: no es saldo disponible, rentabilidad ni costo. Los movimientos por aprobar se informan aparte y no están incluidos en los netos.</p><p>Estos importes no se suman a los gastos ni a los costos por atención: son magnitudes distintas del mismo período.</p></AyudaFinanzas>;
+  if (consulta.error) return <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo consultar pagos y cobros" />;
+  if (!consulta.data) return <Spinner label="Consultando pagos y cobros…" />;
+  const d = consulta.data;
+  const grupos = (d.agrupaciones || []).map((g) => ({ ...g, nombre: g.area_nombre, detalle: `${g.cantidad_movimientos} ${g.cantidad_movimientos === 1 ? "movimiento aprobado" : "movimientos aprobados"}` }));
+  const abrir = () => onTab("dinero");
+  return <section aria-label="Resumen de pagos y cobros" className="flex min-w-0 flex-col gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Pagos y cobros</h2><p className="text-sm text-texto-debil">Fecha efectiva · {d.fecha_desde} al {d.fecha_hasta}</p></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {MEDIDAS_DINERO.map(([campo, titulo]) => <Medida key={campo} titulo={titulo} valor={importeARS(d[campo])} accion={abrir} enlace={`Ver ${titulo.toLowerCase()}`} />)}
+      <Medida titulo="Diferencia del período" valor={importeARS(d.diferencia)} ayuda="Cobros menos pagos. No es dinero disponible." accion={abrir} enlace="Ver pagos y cobros" />
+      <Medida titulo="Movimientos por aprobar" valor={`${d.por_aprobar?.cantidad ?? 0}`} ayuda="Excluidos de los netos." accion={abrir} enlace="Revisar movimientos por aprobar" />
+    </div>
+    <Panel titulo="Cobros y pagos por área · ARS" ayuda={ayuda}>
+      {!grupos.length ? <EstadoVacio titulo="Sin movimientos con fecha de este mes" detalle="Revisá el mes y el área. No equivale a una actividad económica nula ni a cuentas saldadas." />
+        : <Grafico><BarrasPanorama filas={grupos} medidas={MEDIDAS_DINERO} etiqueta="Gráfico de cobros y pagos netos por área" onAbrir={(fila) => onTab("dinero", fila.area)} /></Grafico>}
+    </Panel>
+  </section>;
+}
+
+function BloqueCostos({ institucion, usuarioId, mes, area, onTab }) {
+  const [dimension, setDimension] = useState("area");
+  const filtros = parametros(institucion, mes, area);
+  const consulta = useQuery({ queryKey: ["finanzas", usuarioId, institucion.id, "resumen-costos", filtros],
+    queryFn: () => api.get(`/reportes-costos/${query(filtros)}`), gcTime: 0 });
+  const ayuda = <AyudaFinanzas titulo="Qué costo muestra cada atención"><p>El directo conocido incluye sólo los componentes configurados de la atención y sus ajustes aprobados. El compartido es la parte de gastos aprobados ya atribuida a esas atenciones.</p><p>Las dos series se comparan lado a lado y no se suman: el compartido explica un gasto que ya está contado en el bloque de gastos, no es un costo adicional. Tampoco es el costo total del paciente ni del hospital.</p><p>Agrupar por prestación usa el catálogo congelado al completarse cada atención. Las atenciones sin prestación configurada se muestran aparte; no equivalen a costo cero.</p></AyudaFinanzas>;
+  if (consulta.error) return <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo consultar los costos por atención" />;
+  if (!consulta.data) return <Spinner label="Consultando costos por atención…" />;
+  const d = consulta.data;
+  const grupos = (d.agrupaciones?.[dimension] || []).map((g) => ({ ...g,
+    detalle: `${g.atenciones} ${g.atenciones === 1 ? "atención" : "atenciones"}${g.incompletas ? ` · ${g.incompletas} con directos pendientes` : ""}` }));
+  const abrir = () => onTab("costos");
+  return <section aria-label="Resumen de costos por atención" className="flex min-w-0 flex-col gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Costos por atención</h2><p className="text-sm text-texto-debil">Atenciones completadas · Mes económico {mes}</p></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Medida titulo="Atenciones del mes" valor={`${d.atenciones}`} accion={abrir} enlace="Ver atenciones costeadas" />
+      <Medida titulo="Costo directo conocido" valor={importeARS(d.directo_conocido)} accion={abrir} enlace="Ver costo directo" />
+      <Medida titulo="Gasto compartido atribuido" valor={d.reparto_actualizando ? "Actualizando reparto" : importeARS(d.compartido_conocido)} ayuda="Explica gasto aprobado; no es costo adicional." accion={abrir} enlace="Ver gasto compartido atribuido" />
+      <Medida titulo="Atenciones con directos pendientes" valor={`${d.atenciones_incompletas}`} ayuda="Falta configuración o imputación." accion={abrir} enlace="Revisar atenciones con directos pendientes" />
+    </div>
+    {d.ajustes_pendientes > 0 && <p role="status" className="text-sm text-texto-debil">{d.ajustes_pendientes} {d.ajustes_pendientes === 1 ? "ajuste de costo por aprobar" : "ajustes de costo por aprobar"}. No modifican el directo conocido; se revisan en la composición de cada atención.</p>}
+    <Panel titulo="Costo conocido por atención · ARS" ayuda={ayuda}
+      controles={<div className="w-[210px] max-w-full"><Select aria-label="Agrupar costos" value={dimension} onChange={(e) => setDimension(e.target.value)}><option value="area">Por área</option><option value="prestacion">Por prestación</option></Select></div>}>
+      {!grupos.length ? <EstadoVacio titulo="Sin atenciones costeables en este mes" detalle="Las atenciones aparecen al completarse en el flujo clínico. Revisá el mes, el área y tus permisos." />
+        : <Grafico><BarrasPanorama filas={grupos} medidas={MEDIDAS_COSTOS} etiqueta={`Gráfico de costo conocido por ${dimension === "area" ? "área" : "prestación"}`} onAbrir={(fila) => onTab("costos", dimension === "area" ? fila.area : undefined)} /></Grafico>}
+    </Panel>
+  </section>;
+}
+
+function BloqueGastos({ institucion, usuarioId, mes, area, onGastos, onRepartos, onMensuales }) {
   const [representacion, setRepresentacion] = useState("barras");
   const [vista, setVista] = useState("gastos");
   const filtros = parametros(institucion, mes, area);
@@ -123,8 +208,9 @@ export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onG
   if (!consulta.data) return <Spinner label="Preparando resumen de gastos…" />;
   const d = consulta.data;
   const importe = (valor) => valor == null ? "Actualización pendiente" : importeARS(valor);
-  return <section aria-label="Resumen de gastos" className="flex min-h-0 flex-1 flex-col gap-4">
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  return <section aria-label="Resumen de gastos" className="flex min-w-0 flex-col gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Gastos</h2><p className="text-sm text-texto-debil">Gastos vigentes · Mes económico {mes}</p></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {[
         ["Gastos aprobados", d.aprobados, () => onGastos(null, "aprobado"), "Ver gastos aprobados"],
         ["Por aprobar", d.pendientes_aprobacion, () => onGastos(null, "pendiente_aprobacion"), "Revisar pendientes"],
@@ -135,7 +221,7 @@ export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onG
     </div>
     {d.ajustes_pendientes > 0 && <div role="status" className="flex flex-wrap items-center gap-2 text-sm"><p>{d.ajustes_pendientes} {d.ajustes_pendientes === 1 ? "ajuste por aprobar" : "ajustes por aprobar"}. <span className="text-texto-debil">No modifican los importes aprobados. Revisalos en el historial de cada gasto.</span></p><Button size="sm" variant="ghost" aria-label="Revisar gastos con ajustes" onClick={() => onGastos(null, "aprobado")}>Revisar gastos →</Button></div>}
     {d.actualizando && <p role="status" className="text-md text-texto-debil">Hay cambios en procesamiento. Los gastos guardados ya figuran; su distribución se mostrará al terminar.</p>}
-    <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <Card className={`flex min-w-0 flex-col overflow-hidden ${representacion === "listado" ? "min-h-0" : "min-h-[440px]"}`}>
       <div role="group" aria-label="Controles del resumen" className="flex flex-wrap items-center justify-between gap-3 border-b border-division px-4 py-3">
         <h3 className="font-semibold">Gastos por área y concepto · ARS</h3>
         <div className="flex flex-wrap items-center gap-3">
@@ -158,4 +244,22 @@ export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onG
               render: (g) => g[campo] == null ? importe(g[campo]) : <button className="tabular-nums text-accent underline underline-offset-2" onClick={() => estado ? onGastos(g, estado) : onRepartos(campo, g)}>{importe(g[campo])}</button> })),
           ]} />}</Card>
   </section>;
+}
+
+// Panorama del mes: cada bloque consulta su propia fuente y falla por separado.
+// Nunca se suman gastos, dinero y costos: son magnitudes distintas del período.
+export default function ResumenFinanzas({ institucion, permisos, mes, area, onGastos, onRepartos, onMensuales, onTab }) {
+  const usuarioId = permisos.usuarioId;
+  const bloques = [
+    [permisos.tiene("ver_gastos"), "Los gastos no están incluidos en tu acceso. No se representan como cero.",
+      <BloqueGastos key="gastos" institucion={institucion} usuarioId={usuarioId} mes={mes} area={area} onGastos={onGastos} onRepartos={onRepartos} onMensuales={onMensuales} />],
+    [permisos.tiene("ver_dinero"), "Los pagos y cobros no están incluidos en tu acceso. No se representan como cero.",
+      <BloqueDinero key="dinero" institucion={institucion} usuarioId={usuarioId} mes={mes} area={area} onTab={onTab} />],
+    [permisos.tiene("ver_costos"), "Los costos por atención no están incluidos en tu acceso. No se representan como cero.",
+      <BloqueCostos key="costos" institucion={institucion} usuarioId={usuarioId} mes={mes} area={area} onTab={onTab} />],
+  ];
+  return <div aria-label="Resumen de finanzas y costos" className="flex min-w-0 flex-col gap-6">
+    {bloques.map(([permitido, restriccion, bloque]) => permitido ? bloque
+      : <p key={restriccion} className="finance-report-scope">{restriccion}</p>)}
+  </div>;
 }

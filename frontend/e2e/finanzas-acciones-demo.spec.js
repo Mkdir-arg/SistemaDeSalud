@@ -38,6 +38,8 @@ async function escenario(page, { permisos = todos, errorPermisos = false, espera
     }
     if (path === "/notificaciones/resumen/") data = { no_leidas: 0, recientes: [] };
     if (path === "/reportes-finanzas/") data = { aprobados: "0.00", pendientes_aprobacion: "0.00", distribuido: "0.00", sin_distribuir: "0.00", moneda: "ARS", agrupaciones: [] };
+    if (path === "/reportes-dinero/") data = { cobros_netos: "0.00", pagos_netos: "0.00", diferencia: "0.00", cantidad_movimientos: 0, fecha_desde: "2026-09-01", fecha_hasta: "2026-09-30", moneda: "ARS", por_aprobar: { cantidad: 0 }, agrupaciones: [] };
+    if (path === "/reportes-costos/") data = { atenciones: 0, atenciones_incompletas: 0, ajustes_pendientes: 0, reparto_actualizando: false, directo_conocido: "0.00", compartido_conocido: "0.00", moneda: "ARS", agrupaciones: { area: [], prestacion: [] } };
     if (path === "/procesamiento-finanzas/") data = { estado: "actualizado", pendientes: 0, worker_activo: true, mensaje: "Sin cambios pendientes." };
     if (path === "/instituciones/2/metricas/") data = { areas: 1, subareas: 0, staff: 1, casos_activos: 0 };
     return route.fulfill({ json: data });
