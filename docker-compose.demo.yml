@@ -1,0 +1,57 @@
+# Entorno LOCAL B — "demo": institución poblada con datos realistas, para vender.
+#
+# Igual que el entorno vacío en todo salvo puertos y proyecto: la siembra NO se
+# hace acá. Se hace a mano y en orden después de levantar, porque
+# `seed_los_aromos` exige una base sin una sola institución y aborta si encuentra
+# datos (no borra ni mezcla). El orden correcto está en la guía de demo.
+#
+#   docker compose -p salud-demo -f docker-compose.yml -f docker-compose.demo.yml up -d
+#
+# Puertos: aplicación en 8082, API directa en 8002.
+services:
+  backend:
+    environment:
+      # La siembra automática del entrypoint quedaría ANTES que Los Aromos y le
+      # dejaría la base con datos, que es justo lo que ese comando rechaza.
+      SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      # Sin TLS en local: con DEBUG=false el sistema redirige todo a https
+      # y la aplicación responde 301 a cada pedido. La perilla la prevé
+      # settings.py; no se toca el código.
+      DJANGO_SSL_REDIRECT: "${DJANGO_SSL_REDIRECT:-false}"
+      # HSTS apagado: el valor por defecto es un año con subdominios y el
+      # navegador lo recordaría para TODOS tus proyectos en localhost.
+      DJANGO_HSTS_SECONDS: "${DJANGO_HSTS_SECONDS:-0}"
+      CORS_ALLOWED_ORIGINS: http://localhost:8082,http://127.0.0.1:8082
+    ports:
+      - "8002:8000"
+
+  # Ver la nota del entorno vacío: sólo `backend` migra.
+  tiempos:
+    environment:
+      EJECUTAR_MIGRACIONES: "0"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  costos:
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  respaldos:
+    environment:
+      EJECUTAR_MIGRACIONES: "0"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  repartos:
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    ports: !override
+      - "8082:80"

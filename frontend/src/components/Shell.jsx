@@ -308,8 +308,16 @@ const GRUPOS = [
   {
     label: "TRABAJO",
     items: [
-      // Bandeja / Filas / Casos se operan desde «Mi trabajo» (Inicio); quedan las
-      // rutas vivas pero fuera del menú. Acá solo la vista de supervisión (jefe).
+      // Bandeja y Filas siguen fuera del menú: son la cola de lo que te toca
+      // AHORA y se operan desde «Mi trabajo» (Inicio). Duplicarlas acá sería dos
+      // puertas a lo mismo.
+      //
+      // «Casos» sí entra, porque responde otra pregunta: buscar un caso que NO
+      // es tu tarea pendiente —llama el paciente y pregunta, hay que revisar algo
+      // de ayer, seguimiento administrativo—. Eso no aparece en «Mi trabajo» por
+      // definición, y hasta acá la única forma de llegar era tipear la URL. Es
+      // consulta, no operación: el mismo rol que «Padrón de pacientes».
+      { to: "/casos", label: "Casos", icon: "inbox", cap: "casos_operar" },
       // Internación sí va en el menú: el tablero de camas se consulta todo el
       // día por sí mismo, no como paso de un caso.
       // El Tablero se gatea por `supervision` y no por `config`: la solapa por
