@@ -9,7 +9,7 @@ import { EstadoError } from "@/components/ui/estados";
 import { BusquedaTablaFinanzas, AyudaFinanzas, useFiltrosFinanzas } from "./ControlesFinanzas";
 import { PendientesCobro } from "./ConfiguracionCobros";
 import { CampoAprobado, DecisionAprobacion, EstadoAprobacion, TrazaAprobacion } from "./AprobacionFinanzas";
-import { decimalDinero, fechaLocal, filtroAreaDinero, importeValido, mensajeErrorDinero, useOperacionDinero } from "./dinero";
+import { decimalDinero, fechaLocal, filtroAreaDinero, importeValido, mensajeErrorDinero, rangoMes, useOperacionDinero } from "./dinero";
 
 const signoCuenta = (tipo) => tipo === "pagar" ? "Por pagar" : "Por cobrar";
 const nombreMovimiento = { pago: "Pago", cobro: "Cobro", reintegro_pago: "Devolución recibida", reintegro_cobro: "Devolución entregada" };
@@ -53,9 +53,7 @@ function ResumenDinero({ institucion, permisos, area, onCuenta }) {
   const [mesDinero, setMesDinero] = useState(fechaLocal().slice(0, 7));
   const [verMovimientos, setVerMovimientos] = useState(false);
   const valido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mesDinero);
-  const [anio, mesNumero] = mesDinero.split("-").map(Number);
-  const ultimoDia = valido ? new Date(anio, mesNumero, 0).getDate() : 1;
-  const filtros = { institucion: institucion.id, ...filtroAreaDinero(area), fecha_desde: `${mesDinero}-01`, fecha_hasta: `${mesDinero}-${ultimoDia}` };
+  const filtros = { institucion: institucion.id, ...filtroAreaDinero(area), ...rangoMes(valido ? mesDinero : fechaLocal().slice(0, 7)) };
   const consulta = useQuery({ ...opcionesConsulta(permisos, institucion, "resumen", filtros), enabled: valido,
     queryFn: () => api.get(`/reportes-dinero/${query(filtros)}`) });
   const d = consulta.error ? null : consulta.data;

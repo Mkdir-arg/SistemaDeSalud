@@ -7,14 +7,29 @@ from rest_framework import serializers
 from .models import EstadoAprobacion
 
 
-def resumir_dinero(fuentes, institucion):
+def filas_dinero(fuentes):
     # Agrupar únicamente movimientos: nunca unir colecciones de ajustes o
     # devoluciones que multipliquen importes del movimiento original.
-    agrupaciones = list(fuentes.order_by().values(
-        'tipo', 'estado', 'obligacion__tipo', 'obligacion__area_id',
+    return list(fuentes.order_by().values(
+        'tipo', 'estado', 'obligacion__tipo', 'obligacion__area_id', 'obligacion__area__nombre',
         'obligacion__sensible', 'obligacion__periodo_economico',
     ).annotate(importe=Sum('importe'), cantidad=Count('id')))
-    return resumir_agrupaciones(agrupaciones, institucion)
+
+
+def resumir_dinero(fuentes, institucion):
+    return resumir_agrupaciones(filas_dinero(fuentes), institucion)
+
+
+def resumir_dinero_por_area(filas, institucion):
+    """Mismo neteo que el total, partido por área: los desgloses nunca se suman entre sí."""
+    grupos = defaultdict(list)
+    for fila in filas:
+        grupos[(fila['obligacion__area_id'], fila['obligacion__area__nombre'])].append(fila)
+    resultado = []
+    for (area, nombre), movimientos in grupos.items():
+        importes, _ = resumir_agrupaciones(movimientos, institucion)
+        resultado.append({'area': area, 'area_nombre': nombre or 'Institucional — sin área asignada', **importes})
+    return sorted(resultado, key=lambda g: (g['area_nombre'], g['area'] or 0))
 
 
 def resumir_agrupaciones(agrupaciones, institucion):

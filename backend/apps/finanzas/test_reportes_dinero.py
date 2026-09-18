@@ -126,6 +126,25 @@ class ReportesDineroTests(APITestCase):
         self.assertEqual(respuesta.data['por_aprobar']['pagos'], '0.00')
         self.assertEqual(respuesta.data['por_aprobar']['cantidad'], 1)
 
+    def test_desglose_por_area_netea_igual_que_el_total_y_no_lo_duplica(self):
+        propia, guardia = self.cuenta(), self.cuenta(area=self.otra_area)
+        original = self.pago(propia, '100.00')
+        self.pago(guardia, '40.00')
+        MovimientoDinero.objects.create(
+            obligacion=propia, institucion=self.institucion, tipo='reintegro', original=original,
+            importe=Decimal('10.00'), fecha=date(2026, 9, 12), motivo='Devolución recibida',
+            clave=uuid4(), solicitud={'fixture': True}, autor=self.usuario,
+        )
+        respuesta = self.consultar()
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data['pagos_netos'], '130.00')
+        desglose = {fila['area_nombre']: fila for fila in respuesta.data['agrupaciones']}
+        self.assertEqual(desglose['Consultorios']['pagos_netos'], '90.00')
+        self.assertEqual(desglose['Consultorios']['reintegros_pagos'], '10.00')
+        self.assertEqual(desglose['Guardia']['pagos_netos'], '40.00')
+        self.assertEqual(desglose['Guardia']['cobros_netos'], '0.00')
+        self.assertEqual([fila['area'] for fila in respuesta.data['agrupaciones']], [self.area.pk, self.otra_area.pk])
+
     def test_area_sensible_y_membresia_no_se_mezclan(self):
         self.pago(self.cuenta())
         self.pago(self.cuenta(area=self.otra_area), '50.00')
