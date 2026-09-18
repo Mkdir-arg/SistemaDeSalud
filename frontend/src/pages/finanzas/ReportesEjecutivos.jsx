@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { importeARS } from "@/api/finanzas";
 import { query } from "@/api/queries";
-import { Badge, Button, Card, Input, Modal, Select, Spinner } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Input, Modal, Select, Spinner } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { fechaHora } from "@/lib/format";
@@ -198,7 +198,7 @@ export default function ReportesEjecutivos({ institucion, permisos, mes, area, a
       </section>;
     }}</Consulta> : <p className="finance-report-scope">Los pagos y cobros no están incluidos en tu acceso. No se representan como cero.</p>}
     </div>
-    {detalle && <Modal title={`Fuentes del informe · ${detalle.periodo}`} onClose={() => setDetalle(null)} width={1040}><p className="font-semibold">{detalle.titulo}</p><p className="mt-2 text-sm text-texto-debil">Los reintegros se restan del cobro o pago original para explicar el neto. Se conserva la fecha efectiva de cada movimiento.</p><MovimientosPeriodo key={JSON.stringify(detalle.filtros)} filtros={detalle.filtros} institucion={institucion} permisos={permisos} onCuenta={setCuenta} /></Modal>}
+    {detalle && <Modal title={`Fuentes del informe · ${detalle.periodo}`} ayuda="Los reintegros se restan del cobro o pago original para explicar el neto. Se conserva la fecha efectiva de cada movimiento." onClose={() => setDetalle(null)} width={1040}><p className="font-semibold">{detalle.titulo}</p><MovimientosPeriodo key={JSON.stringify(detalle.filtros)} filtros={detalle.filtros} institucion={institucion} permisos={permisos} onCuenta={setCuenta} /></Modal>}
     {cuenta != null && <DetalleCuenta id={cuenta} institucion={institucion} permisos={permisos} onClose={() => setCuenta(null)} />}
   </section>;
 }

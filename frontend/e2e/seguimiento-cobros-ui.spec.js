@@ -90,7 +90,7 @@ test("filtra por fecha de prestación y conserva filtros, página y navegación"
   await page.getByRole("combobox", { name: "Estado", exact: true }).selectOption("por_aprobar");
   await page.getByLabel("Buscar caso, responsable o prestación").fill("  Consulta  ");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect.poll(() => consultas.at(-1)).toEqual({ desde: "2026-08-01", hasta: "2026-08-31", area: "4", financiador: "21", responsable: "paciente", estado: "por_aprobar", search: "Consulta", vista: "cuentas", institucion: "2", page: "1" });
+  await expect.poll(() => consultas.at(-1)).toEqual({ desde: "2026-08-01", hasta: "2026-08-31", area: "4", financiador: "21", responsable: "paciente", estado: "por_aprobar", search: "Consulta", vista: "cuentas", institucion: "2", page: "1", page_size: "10" });
   await expect(page.getByText(/aunque se hayan registrado en otra fecha/)).toBeVisible();
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Responsable del cobro", exact: true })).toHaveValue("paciente");
@@ -110,7 +110,9 @@ test("los totales de todas las páginas distinguen dinero aprobado y por aprobar
   const resumen = page.getByRole("region", { name: "Resumen del seguimiento" });
   await expect(resumen).toContainText("ARS 55.000,00");
   await expect(resumen).toContainText("ARS 500,00");
-  await expect(resumen).toContainText("pueden coexistir con un saldo en cero");
+  await page.getByRole("button", { name: "Ayuda sobre el seguimiento de cobros", exact: true }).click();
+  await expect(page.getByRole("tooltip")).toContainText("pueden coexistir con un saldo en cero");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(page.getByText("Segundo paciente", { exact: true })).toBeVisible();
   await expect(resumen).toContainText("ARS 55.000,00");
@@ -132,7 +134,7 @@ test("pendientes y captura no presentan deuda ni convierten importes desconocido
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toContainText("todavía no constituyen una deuda asignada");
   await page.getByRole("combobox", { name: "Vista", exact: true }).selectOption("captura");
   await expect(page.getByText("Atención sin cargos registrados", { exact: true })).toBeVisible();
-  expect(consultas.at(-1)).toEqual({ vista: "captura", institucion: "2", page: "1" });
+  expect(consultas.at(-1)).toEqual({ vista: "captura", institucion: "2", page: "1", page_size: "10" });
   await expect(page.getByRole("combobox", { name: "Financiador de la cobertura", exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).not.toContainText("ARS");
   await page.getByRole("button", { name: "Ver reservas y saldos", exact: true }).click();
@@ -290,7 +292,7 @@ test("saldar la última cuenta de la segunda página permite volver a la primera
   await page.getByRole("button", { name: "Volver a la primera página", exact: true }).click();
   await expect(page.getByText("25 registros · Página 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toContainText("ARS 150.000,00");
-  expect(consultas.at(-1)).toEqual({ vista: "cuentas", desde: "2026-09-01", hasta: "2026-09-30", area: "4", financiador: "21", responsable: "paciente", estado: "pendiente", search: "Consulta", institucion: "2", page: "1" });
+  expect(consultas.at(-1)).toEqual({ vista: "cuentas", desde: "2026-09-01", hasta: "2026-09-30", area: "4", financiador: "21", responsable: "paciente", estado: "pendiente", search: "Consulta", institucion: "2", page: "1", page_size: "10" });
   expect(escrituras).toHaveLength(1);
   expect(escrituras[0]).toMatchObject({ body: { importe: "6000", aprobado: true } });
   await expect(page.getByText("Paciente de prueba", { exact: true })).toHaveCount(0);

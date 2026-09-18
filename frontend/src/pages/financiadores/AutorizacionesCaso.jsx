@@ -3,9 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
+import { Ayuda, Badge, Button, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
 import { fechaHora } from "@/lib/format";
 import DetalleAutorizacion, { ErrorAutorizacion, EstadoAutorizacion, PaginasAutorizacion } from "./DetalleAutorizacion";
+import { POR_PAGINA } from "@/api/queries";
 
 export default function AutorizacionesCaso({ caso, ocupadoClinica }) {
   const { user } = useAuth();
@@ -21,7 +22,7 @@ export default function AutorizacionesCaso({ caso, ocupadoClinica }) {
   });
   const consulta = useQuery({
     queryKey: [...scope, "lista", pagina, caso.actualizado],
-    queryFn: () => api.get(`/autorizaciones-cobertura/?${new URLSearchParams({ institucion: caso.institucion, caso: caso.id, page: pagina })}`),
+    queryFn: () => api.get(`/autorizaciones-cobertura/?${new URLSearchParams({ institucion: caso.institucion, caso: caso.id, page: pagina, page_size: POR_PAGINA })}`),
     gcTime: 0, retry: false,
   });
   async function actualizar(texto) {
@@ -35,8 +36,7 @@ export default function AutorizacionesCaso({ caso, ocupadoClinica }) {
   const datos = contexto.data;
   const espera = datos?.espera_autorizacion;
   return <section aria-label="Autorizaciones de este caso" className="mt-5 space-y-4 border-t border-division pt-5">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Autorizaciones de este caso</h3><Button size="sm" variant="ghost" disabled={contexto.isFetching || consulta.isFetching || ocupadoClinica} onClick={() => actualizar("")}>Actualizar solicitudes</Button></div>
-    <p className="text-sm text-texto-debil">Se envía al financiador sólo la justificación necesaria. La autorización conserva el hospital, la prestación y el intento de atención que la originaron.</p>
+    <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><h3 className="font-semibold">Autorizaciones de este caso</h3><Ayuda>Se envía al financiador sólo la justificación necesaria. La autorización conserva el hospital, la prestación y el intento de atención que la originaron.</Ayuda></div><Button size="sm" variant="ghost" disabled={contexto.isFetching || consulta.isFetching || ocupadoClinica} onClick={() => actualizar("")}>Actualizar solicitudes</Button></div>
     {mensaje && <p role="status" className="rounded-md bg-badge-green-bg p-3 text-sm text-badge-green-fg">{mensaje}</p>}
     {contexto.isLoading ? <Spinner label="Consultando el paso de atención…" /> : contexto.error ? <ErrorAutorizacion error={contexto.error} reintentar={contexto.refetch} /> : datos && <>
       {espera?.estado === "esperando" && <EsperaAutorizacion key={`${caso.id}:${espera.intento}`} caso={caso} espera={espera} puedeContinuar={datos.puede_continuar_autorizacion} ocupado={ocupadoClinica} actualizar={actualizar} />}
@@ -82,7 +82,7 @@ function SolicitarAutorizacion({ caso, contexto, ocupadoClinica, actualizar }) {
     <fieldset disabled={ocupado || ocupadoClinica} className="space-y-3">
       <Field label="Prestación a autorizar"><Select required value={prestacion} onChange={cambiar(setPrestacion)}><option value="">Seleccioná una prestación</option>{(contexto.prestaciones || []).map((p) => <option key={p.id} value={p.id}>{p.codigo ? `${p.codigo} · ` : ""}{p.nombre}</option>)}</Select></Field>
       <Field label="Cantidad solicitada"><Input type="number" min="1" max="100000" step="1" required value={cantidad} onChange={cambiar(setCantidad)} /></Field>
-      <Field label="Justificación para el financiador" hint="Describí el motivo administrativo y clínico mínimo. Evitá copiar la historia clínica completa."><Textarea required maxLength={1000} value={justificacion} onChange={cambiar(setJustificacion)} /></Field>
+      <Field label="Justificación para el financiador" ayuda="Describí el motivo administrativo y clínico mínimo. Evitá copiar la historia clínica completa."><Textarea required maxLength={1000} value={justificacion} onChange={cambiar(setJustificacion)} /></Field>
     </fieldset>
     <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!valido || ocupado || ocupadoClinica}>{ocupado ? "Enviando…" : "Enviar solicitud"}</Button><Button type="button" variant="ghost" disabled={ocupado} onClick={() => setAbierto(false)}>Cancelar</Button></div>
   </form>;

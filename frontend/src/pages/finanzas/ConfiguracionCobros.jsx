@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { importeARS, opcionesFinanzas } from "@/api/finanzas";
-import { useLista } from "@/api/queries";
-import { Button, Card, Checkbox, Field, Input, Modal, Select, Spinner } from "@/components/ui";
+import { POR_PAGINA, useLista } from "@/api/queries";
+import { Ayuda, Button, Card, Checkbox, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
 import { BusquedaTablaFinanzas, useFiltrosFinanzas } from "./ControlesFinanzas";
 import { EstadoError } from "@/components/ui/estados";
@@ -27,16 +27,14 @@ export default function ConfiguracionCobros({ institucion, permisos, onClose }) 
   }
   for (const grupo of grupos) grupo.versiones.sort((a, b) => (a.vigente_desde === b.vigente_desde ? b.id - a.id : a.vigente_desde < b.vigente_desde ? 1 : -1));
   async function guardado() { setFormulario(null); await qc.invalidateQueries({ queryKey: ["finanzas"] }); }
-  return <Modal title="Configurar cobros por atención" onClose={formulario ? undefined : onClose} width={780}>
+  return <Modal title="Configurar cobros por atención" ayuda={<><span className="block">Elegí si una atención genera una cuenta por cobrar. Su costo interno y su arancel son importes distintos. Sin una política explícita no se genera un cobro.</span><span className="mt-2 block">Cada cambio crea una versión desde el momento de guardado. No modifica cuentas ni atenciones anteriores. Desactivar el catálogo no suspende el cobro: cambiá esta política a «No: atención sin cobro», incluso si la atención está inactiva.</span></>} onClose={formulario ? undefined : onClose} width={780}>
     {formulario ? <FormularioPolitica key={formulario.id || "nueva"} fila={formulario} prestaciones={prestaciones.data || []} permisos={permisos} onClose={() => setFormulario(null)} onGuardado={guardado} /> : <div className="space-y-4">
-      <p className="text-sm text-texto-debil">Elegí si una atención genera una cuenta por cobrar. Su costo interno y su arancel son importes distintos. Sin una política explícita no se genera un cobro.</p>
       {error && <EstadoError error={error} onReintentar={() => { prestaciones.refetch(); politicas.refetch(); }} />}
       {prestaciones.isLoading || politicas.isLoading ? <Spinner label="Consultando configuración…" /> : <><Button disabled={Boolean(error) || !prestaciones.data?.length} onClick={() => setFormulario({})}>Configurar una atención</Button>{!prestaciones.data?.length && <p className="text-sm text-texto-debil">Primero debe existir una atención vinculada en el catálogo institucional.</p>}
       <div className="space-y-3">{!grupos.length ? <p className="text-sm text-texto-debil">Todavía no hay políticas de cobro.</p> : grupos.map(({ prestacion, versiones }) => <div key={prestacion} className="space-y-2">
         <VersionPolitica politica={versiones[0]} vigente onCambiar={() => setFormulario(versiones[0])} />
         {versiones.length > 1 && <details className="pl-3"><summary className="cursor-pointer text-sm font-medium text-texto-debil">{versiones.length === 2 ? "Ver 1 versión anterior" : `Ver ${versiones.length - 1} versiones anteriores`} de {versiones[0].nombre_prestacion}</summary><div className="mt-2 space-y-2">{versiones.slice(1).map((p) => <VersionPolitica key={p.id} politica={p} />)}</div></details>}
       </div>)}</div></>}
-      <p className="text-sm text-texto-debil">Cada cambio crea una versión desde el momento de guardado. No modifica cuentas ni atenciones anteriores. Desactivar el catálogo no suspende el cobro: cambiá esta política a «No: atención sin cobro», incluso si la atención está inactiva.</p>
     </div>}
   </Modal>;
 }
@@ -47,7 +45,7 @@ function VersionPolitica({ politica: p, vigente = false, onCambiar }) {
       {vigente && <h3 className="font-semibold">{p.nombre_prestacion}</h3>}
       <p className={vigente ? "mt-1 text-sm" : "text-sm"}>{p.cobrar ? `Con cobro · ${p.importe == null ? "Arancel pendiente de definir" : importeARS(p.importe)}` : "Sin cobro"}</p>
       <p className="mt-1 text-sm text-texto-debil">Desde {new Date(p.vigente_desde).toLocaleString("es-AR")} · Versión #{p.id} · {vigente ? "Última configuración" : "Histórica"}</p>
-      {p.cobrar && <p className="mt-1 text-sm text-texto-debil">{p.contraparte_nombre ? `Responsable: ${p.contraparte_nombre}` : "Responsable pendiente: se completará antes de crear la cuenta"}</p>}
+      {p.cobrar && p.contraparte_nombre && <p className="mt-1 text-sm text-texto-debil">Responsable fijado por esta versión histórica: {p.contraparte_nombre}</p>}
     </div>
     {vigente && <Button size="sm" variant="secondary" onClick={onCambiar}>Cambiar para futuras atenciones</Button>}
   </Card>;
@@ -57,8 +55,6 @@ function FormularioPolitica({ fila, prestaciones, permisos, onClose, onGuardado 
   const [prestacion, setPrestacion] = useState(String(fila.prestacion || ""));
   const [cobrar, setCobrar] = useState(fila.cobrar ? "si" : "no");
   const [importe, setImporte] = useState(fila.importe || "");
-  const [nombre, setNombre] = useState(fila.contraparte_nombre || "");
-  const [referencia, setReferencia] = useState(fila.contraparte_referencia || "");
   const [sensible, setSensible] = useState(Boolean(fila.sensible));
   const bloqueo = useRef(false);
   const [guardando, setGuardando] = useState(false);
@@ -69,21 +65,21 @@ function FormularioPolitica({ fila, prestaciones, permisos, onClose, onGuardado 
     if (bloqueo.current || incierto || !prestacion) return;
     bloqueo.current = true; setGuardando(true); setError("");
     try {
-      await api.post("/politicas-cobro/", { prestacion: Number(prestacion), cobrar: cobrar === "si", importe: cobrar === "si" && importe ? decimalDinero(importe) : null, contraparte_nombre: cobrar === "si" ? nombre.trim() : "", contraparte_referencia: cobrar === "si" ? referencia.trim() : "", sensible });
+      await api.post("/politicas-cobro/", { prestacion: Number(prestacion), cobrar: cobrar === "si", importe: cobrar === "si" && importe ? decimalDinero(importe) : null, sensible });
       await onGuardado();
     } catch (err) { const dudoso = !err.status || err.status >= 500; setIncierto(dudoso); setError(dudoso ? "No se pudo confirmar el guardado. Volvé a consultar las políticas antes de crear otra versión." : mensajeErrorDinero(err)); }
     finally { bloqueo.current = false; setGuardando(false); }
   }
-  return <form onSubmit={guardar} className="space-y-4"><h3 className="text-lg font-semibold">{fila.id ? "Cambiar política para futuras atenciones" : "Nueva política de cobro"}</h3><fieldset disabled={guardando || incierto} className="space-y-4"><Field label="Atención"><Select required value={prestacion} disabled={Boolean(fila.id)} onChange={(e) => setPrestacion(e.target.value)}><option value="">Elegí una atención</option>{prestaciones.filter((p) => p.activo || p.id === fila.prestacion).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</Select></Field><Field label="¿Esta atención se cobra?"><Select value={cobrar} onChange={(e) => setCobrar(e.target.value)}><option value="no">No: atención sin cobro</option><option value="si">Sí: generar cuenta por cobrar</option></Select></Field>{cobrar === "si" && <><Field label="Arancel en ARS" hint="No se toma del costo interno. Si falta, la atención quedará pendiente hasta definirlo."><Input inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={importe} onChange={(e) => setImporte(e.target.value)} /></Field><Field label="Quién debe pagar" hint="No se atribuye automáticamente al paciente. Podés completarlo después en los cobros pendientes."><Input maxLength={160} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field><Field label="Referencia del responsable"><Input maxLength={160} value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field></>}{permisos.permite("configurar_cobros", null, true) && <Checkbox label="Información sensible" checked={sensible} onChange={(e) => setSensible(e.target.checked)} />}</fieldset><p className="text-sm text-texto-debil">Se aplica desde el guardado a nuevas atenciones. No cobra dinero automáticamente.</p>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={guardando} onClick={onClose}>Volver</Button><Button type="submit" disabled={guardando || incierto || !prestacion || (cobrar === "si" && importe !== "" && !importeValido(importe))}>{guardando ? "Guardando…" : "Guardar política"}</Button></div></form>;
+  return <form onSubmit={guardar} className="space-y-4"><div className="flex items-center gap-2"><h3 className="text-lg font-semibold">{fila.id ? "Cambiar política para futuras atenciones" : "Nueva política de cobro"}</h3><Ayuda>Se aplica desde el guardado a nuevas atenciones. No cobra dinero automáticamente. El responsable del pago no se define acá: se completa por atención en «Cobros por completar», o lo determina la cobertura del paciente.</Ayuda></div><fieldset disabled={guardando || incierto} className="space-y-4"><Field label="Atención"><Select required value={prestacion} disabled={Boolean(fila.id)} onChange={(e) => setPrestacion(e.target.value)}><option value="">Elegí una atención</option>{prestaciones.filter((p) => p.activo || p.id === fila.prestacion).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</Select></Field><Field label="¿Esta atención se cobra?"><Select value={cobrar} onChange={(e) => setCobrar(e.target.value)}><option value="no">No: atención sin cobro</option><option value="si">Sí: generar cuenta por cobrar</option></Select></Field>{cobrar === "si" && <Field label="Arancel en ARS" ayuda="No se toma del costo interno. Si falta, la atención quedará pendiente hasta definirlo."><Input inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={importe} onChange={(e) => setImporte(e.target.value)} /></Field>}{permisos.permite("configurar_cobros", null, true) && <Checkbox label="Información sensible" checked={sensible} onChange={(e) => setSensible(e.target.checked)} />}</fieldset>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={guardando} onClick={onClose}>Volver</Button><Button type="submit" disabled={guardando || incierto || !prestacion || (cobrar === "si" && importe !== "" && !importeValido(importe))}>{guardando ? "Guardando…" : "Guardar política"}</Button></div></form>;
 }
 
 export function PendientesCobro({ institucion, permisos, area }) {
-  const tabla = useTablaUrl("pendientes_cobro");
+  const tabla = useTablaUrl("pendientes_cobro", { tamanoInicial: POR_PAGINA });
   const busqueda = useFiltrosFinanzas("pendientes_cobro", ["search"]);
   const [fila, setFila] = useState(null);
   const params = { institucion: institucion.id, ...filtroAreaDinero(area), estado: "pendiente", ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista("pendientes-cobro", params, { queryKey: ["finanzas", permisos.usuarioId, institucion.id, "pendientes-cobro", params], gcTime: 0, placeholderData: undefined });
-  return <section className="space-y-3 border-t border-division pt-5"><div><h2 className="text-lg font-semibold">Cobros por completar</h2><p className="mt-1 text-sm text-texto-debil">Atenciones con cobro previsto que necesitan arancel o responsable. Incluye todos los meses del área seleccionada; todavía no son cuentas.</p></div>
+  return <section className="space-y-3 border-t border-division pt-5"><div><div className="flex items-center gap-2"><h2 className="text-lg font-semibold">Cobros por completar</h2><Ayuda>Atenciones con cobro previsto que necesitan arancel o responsable. Incluye todos los meses del área seleccionada; todavía no son cuentas.</Ayuda></div></div>
     <RecuperacionCobros institucion={institucion} permisos={permisos} area={area} />
     <DataTable adaptable mantenerEncabezados barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar cobros por completar" placeholder="Prestación o responsable…" />} filas={consulta.error ? [] : consulta.filas} total={consulta.error ? 0 : consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading, error: consulta.error, reintentar: consulta.refetch }} vacio={{ titulo: "Sin cobros pendientes de completar" }} columnas={[
       { key: "hecho", orden: "hecho_id", label: "Atención", render: (r) => `${r.nombre_prestacion} · #${r.hecho}` },
@@ -97,7 +93,7 @@ export function PendientesCobro({ institucion, permisos, area }) {
 
 function RecuperacionCobros({ institucion, permisos, area }) {
   const qc = useQueryClient();
-  const tabla = useTablaUrl("recuperacion_cobros");
+  const tabla = useTablaUrl("recuperacion_cobros", { tamanoInicial: POR_PAGINA });
   const busqueda = useFiltrosFinanzas("recuperacion_cobros", ["search"]);
   const bloqueo = useRef(false);
   const [guardando, setGuardando] = useState(false);
@@ -113,7 +109,7 @@ function RecuperacionCobros({ institucion, permisos, area }) {
   }
   if (consulta.error) return <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo verificar si hay cobros por recuperar" />;
   if (!consulta.total && !busqueda.valores.search && !consulta.isLoading) return null;
-  return <Card className="space-y-3 p-4"><h3 className="font-semibold">Cobros que necesitan recuperación</h3><p className="text-sm text-texto-debil">La atención se completó, pero su registro de cobro quedó pendiente. Reintentar conserva la configuración de esa atención.</p>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<DataTable adaptable mantenerEncabezados vacio={{ titulo: "Sin atenciones para esta búsqueda" }} barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar atención por recuperar" placeholder="Número de atención…" />} filas={consulta.filas} total={consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading }} columnas={[
+  return <Card className="space-y-3 p-4"><div className="flex items-center gap-2"><h3 className="font-semibold">Cobros que necesitan recuperación</h3><Ayuda>La atención se completó, pero su registro de cobro quedó pendiente. Reintentar conserva la configuración de esa atención.</Ayuda></div>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<DataTable adaptable mantenerEncabezados vacio={{ titulo: "Sin atenciones para esta búsqueda" }} barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar atención por recuperar" placeholder="Número de atención…" />} filas={consulta.filas} total={consulta.total} paginas={consulta.paginas} tabla={tabla} estado={{ cargando: consulta.isLoading }} columnas={[
     { key: "hecho", orden: "id", label: "Atención", render: (r) => `Atención #${r.hecho}` },
     { key: "motivo", label: "Qué falta" },
     { key: "acciones", label: "Acciones", render: (r) => permisos.permite("registrar_dinero", r.area, r.sensible) ? <Button size="sm" variant="secondary" disabled={guardando} onClick={() => recuperar(r.hecho)}>Reintentar registro</Button> : "Requiere autorización para registrar dinero sensible" },
@@ -138,5 +134,5 @@ function ResolverPendiente({ fila, onClose }) {
     } catch (err) { setError(mensajeErrorDinero(err)); }
     finally { bloqueo.current = false; setGuardando(false); }
   }
-  return <Modal title="Completar cuenta por cobrar" onClose={guardando ? undefined : onClose} width={560}><form onSubmit={guardar} className="space-y-4"><p>{fila.nombre_prestacion} · Atención #{fila.hecho}</p><fieldset disabled={guardando} className="space-y-4"><Field label="Arancel en ARS"><Input required inputMode="decimal" disabled={fila.importe != null} value={importe} onChange={(e) => setImporte(e.target.value)} /></Field><Field label="Quién debe pagar"><Input required maxLength={160} disabled={Boolean(fila.contraparte_nombre)} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field><Field label="Referencia del responsable"><Input maxLength={160} disabled={Boolean(fila.contraparte_nombre)} value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field></fieldset><p className="text-sm text-texto-debil">Se creará la cuenta por cobrar. No registra un cobro ni asigna la deuda automáticamente al paciente.</p>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={guardando} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={guardando || !nombre.trim() || !importeValido(importe)}>{guardando ? "Guardando…" : "Crear cuenta por cobrar"}</Button></div></form></Modal>;
+  return <Modal title="Completar cuenta por cobrar" ayuda="Se creará la cuenta por cobrar. No registra un cobro ni asigna la deuda automáticamente al paciente." onClose={guardando ? undefined : onClose} width={560}><form onSubmit={guardar} className="space-y-4"><p>{fila.nombre_prestacion} · Atención #{fila.hecho}</p><fieldset disabled={guardando} className="space-y-4"><Field label="Arancel en ARS"><Input required inputMode="decimal" disabled={fila.importe != null} value={importe} onChange={(e) => setImporte(e.target.value)} /></Field><Field label="Quién debe pagar"><Input required maxLength={160} disabled={Boolean(fila.contraparte_nombre)} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field><Field label="Referencia del responsable"><Input maxLength={160} disabled={Boolean(fila.contraparte_nombre)} value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field></fieldset>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={guardando} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={guardando || !nombre.trim() || !importeValido(importe)}>{guardando ? "Guardando…" : "Crear cuenta por cobrar"}</Button></div></form></Modal>;
 }

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { errorFinanciador } from "@/api/financiadores";
-import { Badge, Button, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
+import { Ayuda, Badge, Button, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
 import { fechaHora } from "@/lib/format";
 
 export const ESTADOS_AUTORIZACION = {
@@ -56,7 +56,6 @@ export default function DetalleAutorizacion({ id, ambito, scope, onClose, onGuar
         {d.numero_externo && <p className="mt-1">Número externo: {d.numero_externo}</p>}
       </section>}
       {d.motivo_resolucion && <section><h3 className="font-semibold">Motivo de la resolución</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm">{d.motivo_resolucion}</p>{d.evidencia && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-texto-debil">Evidencia: {d.evidencia}</p>}</section>}
-      <p className="text-sm text-texto-debil">Aprobar habilita la prestación dentro de su vigencia y cantidad. No registra una atención realizada, no aumenta el cupo del plan ni acepta un copago.</p>
       <AccionesAutorizacion key={`${d.id}:${d.revision}`} solicitud={d} ambito={ambito} refrescar={consulta.refetch} onGuardado={onGuardado} bloqueado={ocupadoClinica || consulta.isFetching} />
       <section className="border-t border-division pt-4"><h3 className="font-semibold">Historial de la solicitud</h3>
         <ol className="mt-3 space-y-3">{(d.historial || []).map((h) => <li key={h.id} className="border-l-2 border-division pl-3 text-sm"><p className="font-semibold">{ESTADOS_AUTORIZACION[h.estado] || h.accion}</p><p className="mt-1 whitespace-pre-wrap break-words">{h.motivo}</p><p className="mt-1 text-texto-debil">{fechaHora(h.creado)} · {h.usuario_nombre || "Usuario registrado"}</p></li>)}</ol>
@@ -95,7 +94,7 @@ function AccionesAutorizacion({ solicitud: d, ambito, refrescar, onGuardado, blo
   if (!d.puede_resolver && !d.puede_reenviar && !d.puede_anular) return <p className="text-sm text-texto-debil">Esta solicitud está disponible sólo para consulta con tu acceso actual.</p>;
   return <section className="space-y-3 border-t border-division pt-4">
     {!accion ? <div className="flex flex-wrap gap-2">
-      {d.puede_resolver && <Button disabled={bloqueado} onClick={() => setAccion("resolver")}>Resolver solicitud</Button>}
+      {d.puede_resolver && <><Button disabled={bloqueado} onClick={() => setAccion("resolver")}>Resolver solicitud</Button><Ayuda>Aprobar habilita la prestación dentro de su vigencia y cantidad. No registra una atención realizada, no aumenta el cupo del plan ni acepta un copago.</Ayuda></>}
       {d.puede_reenviar && <Button variant="secondary" disabled={bloqueado} onClick={() => setAccion("reenviar")}>Responder observación</Button>}
       {d.puede_anular && <Button variant="ghost" disabled={bloqueado} onClick={() => setAccion("anular")}>Anular solicitud</Button>}
     </div> : <form className="space-y-3" onSubmit={guardar}>
@@ -103,9 +102,9 @@ function AccionesAutorizacion({ solicitud: d, ambito, refrescar, onGuardado, blo
       {conflicto && <p className="text-sm text-texto-debil">La solicitud cambió mientras la revisabas. Actualizala y revisá la nueva decisión antes de continuar.</p>}
       <fieldset disabled={ocupado || bloqueado || conflicto} className="space-y-3">
         {accion === "resolver" && <Field label="Decisión"><Select required value={formulario.decision} onChange={(e) => editar("decision", e.target.value)}><option value="">Seleccioná una decisión</option><option value="observar">Observar</option><option value="aprobar">Aprobar</option><option value="rechazar">Rechazar</option></Select></Field>}
-        {accion === "reenviar" ? <Field label="Justificación actualizada" hint="Incluí sólo lo necesario para responder al financiador."><Textarea required maxLength={1000} value={formulario.justificacion} onChange={(e) => editar("justificacion", e.target.value)} /></Field> : <Field label={accion === "anular" ? "Motivo de anulación" : "Motivo de la decisión"}><Textarea required maxLength={255} value={formulario.motivo} onChange={(e) => editar("motivo", e.target.value)} /></Field>}
+        {accion === "reenviar" ? <Field label="Justificación actualizada" ayuda="Incluí sólo lo necesario para responder al financiador."><Textarea required maxLength={1000} value={formulario.justificacion} onChange={(e) => editar("justificacion", e.target.value)} /></Field> : <Field label={accion === "anular" ? "Motivo de anulación" : "Motivo de la decisión"}><Textarea required maxLength={255} value={formulario.motivo} onChange={(e) => editar("motivo", e.target.value)} /></Field>}
         {accion === "resolver" && <>
-          <Field label="Evidencia de la decisión" hint={aprobado ? "Obligatoria para aprobar. Referencia o constancia de la revisión administrativa." : "Referencia o constancia de la revisión administrativa, si corresponde."}><Textarea required={aprobado} maxLength={1000} value={formulario.evidencia} onChange={(e) => editar("evidencia", e.target.value)} /></Field>
+          <Field label="Evidencia de la decisión" ayuda={aprobado ? "Obligatoria para aprobar. Referencia o constancia de la revisión administrativa." : "Referencia o constancia de la revisión administrativa, si corresponde."}><Textarea required={aprobado} maxLength={1000} value={formulario.evidencia} onChange={(e) => editar("evidencia", e.target.value)} /></Field>
           <Field label="Número externo (opcional)"><Input maxLength={120} value={formulario.numero_externo} onChange={(e) => editar("numero_externo", e.target.value)} /></Field>
           {aprobado && <div className="grid gap-3 sm:grid-cols-3"><Field label="Cantidad autorizada"><Input type="number" min="1" max={d.cantidad_solicitada} step="1" required value={formulario.cantidad_aprobada} onChange={(e) => editar("cantidad_aprobada", e.target.value)} /></Field><Field label="Válida desde"><Input type="date" required value={formulario.vigencia_desde} onChange={(e) => editar("vigencia_desde", e.target.value)} /></Field><Field label="Válida hasta"><Input type="date" min={formulario.vigencia_desde || undefined} required value={formulario.vigencia_hasta} onChange={(e) => editar("vigencia_hasta", e.target.value)} /></Field></div>}
         </>}

@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Card, Spinner } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Spinner } from "@/components/ui";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { casoId, fechaHora, plural } from "@/lib/format";
+import { POR_PAGINA } from "@/api/queries";
 
 const ESTADOS = { verificada: "Afiliación verificada", pendiente: "Pendiente de verificación", particular: "Atención particular" };
 
@@ -14,7 +15,7 @@ export default function HistorialCoberturaPaciente({ ciudadanoId }) {
   const [page, setPage] = useState(1);
   const consulta = useQuery({
     queryKey: ["historial-cobertura", user?.id, ciudadanoId, page],
-    queryFn: () => api.get(`/ciudadanos/${ciudadanoId}/cobertura/?page=${page}`),
+    queryFn: () => api.get(`/ciudadanos/${ciudadanoId}/cobertura/?page=${page}&page_size=${POR_PAGINA}`),
     retry: false,
     gcTime: 0,
   });
@@ -22,8 +23,7 @@ export default function HistorialCoberturaPaciente({ ciudadanoId }) {
   return (
     <Card aria-label="Historial de cobertura del paciente">
       <div className="border-b border-division p-5">
-        <h2 className="text-lg font-bold">Cobertura por caso</h2>
-        <p className="mt-1 text-sm text-texto-debil">Afiliaciones y correcciones registradas en los casos a los que tenés acceso. Cada atención conserva su selección, aunque después cambie el padrón del financiador.</p>
+        <div className="flex items-center gap-2"><h2 className="text-lg font-bold">Cobertura por caso</h2><Ayuda>Afiliaciones y correcciones registradas en los casos a los que tenés acceso. Cada atención conserva su selección, aunque después cambie el padrón del financiador.</Ayuda></div>
       </div>
       {consulta.isLoading ? <Spinner label="Consultando historial de cobertura…" /> : consulta.error ? (
         <EstadoError error={consulta.error} onReintentar={consulta.refetch} titulo="No se pudo consultar el historial de cobertura" />

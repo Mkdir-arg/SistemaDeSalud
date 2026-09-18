@@ -7,7 +7,7 @@ import { Icon } from "@/components/icons";
 import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
 import { cn } from "@/lib/cn";
 
-const TAMANOS = [25, 50, 100];
+const TAMANOS = [10, 25, 50, 100];
 const CLAVE_DENSIDAD = "salud.densidad";
 
 /**
@@ -21,7 +21,7 @@ const CLAVE_DENSIDAD = "salud.densidad";
  * La densidad NO va en la URL: es preferencia de la persona, no de la vista (no
  * querés imponerle tu densidad a quien abre tu link). Va en localStorage.
  */
-export function useTablaUrl(clave, { ordenInicial = "", tamanoInicial = 25 } = {}) {
+export function useTablaUrl(clave, { ordenInicial = "", tamanoInicial = 10 } = {}) {
   const [params, setParams] = useSearchParams();
   const k = (n) => `${clave}_${n}`;
 

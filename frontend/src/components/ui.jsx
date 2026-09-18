@@ -3,7 +3,7 @@
 // Migrados a Tailwind sobre tokens SEMÁNTICOS, así que responden al tema. Todos
 // siguen aceptando `style` además de `className`: las pantallas que faltan migrar
 // les pasan estilos inline y no se pueden romper hasta que les toque el turno.
-import { useEffect, useRef, forwardRef } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState, forwardRef } from "react";
 
 import { cn } from "@/lib/cn";
 import { iniciales } from "@/lib/dominio";
@@ -102,6 +102,69 @@ export function Popover({ children, className, align = "right", onClose }) {
   );
 }
 
+/**
+ * Ayuda contextual «(?)».
+ *
+ * Reemplaza los párrafos explicativos que colgaban de un título: el texto vive
+ * en el popover y el botón va EN LÍNEA con el título, así que no gasta un
+ * renglón ni deja un hueco cuando nadie lo abre. Es `<span>` a propósito —
+ * suele ir dentro de un `<h2>`/`<h3>`, donde un `<div>` sería HTML inválido.
+ */
+export function Ayuda({ children, etiqueta = "Ver ayuda", align = "left", className }) {
+  const [abierto, setAbierto] = useState(false);
+
+  // Escape cierra la ayuda, no lo que haya detrás. Va en CAPTURA y corta la
+  // propagación: dentro de un diálogo, el Escape del `Modal` está en `window` y
+  // sin esto cerraría el formulario entero —con lo cargado— por consultar una
+  // aclaración.
+  useEffect(() => {
+    if (!abierto) return undefined;
+    const alTeclear = (e) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      setAbierto(false);
+    };
+    window.addEventListener("keydown", alTeclear, true);
+    return () => window.removeEventListener("keydown", alTeclear, true);
+  }, [abierto]);
+
+  return (
+    <span className={cn("relative inline-flex align-middle", className)}>
+      <button
+        type="button"
+        aria-label={etiqueta}
+        aria-expanded={abierto}
+        title={etiqueta}
+        onClick={(e) => { e.preventDefault(); setAbierto((v) => !v); }}
+        className="inline-flex size-4 items-center justify-center rounded-full border border-borde text-micro font-bold leading-none text-texto-debil transition-colors hover:border-accent hover:text-accent"
+      >
+        ?
+      </button>
+      {abierto && (
+        <>
+          <button
+            type="button"
+            aria-label="Cerrar ayuda"
+            tabIndex={-1}
+            className="fixed inset-0 z-20 cursor-default"
+            onClick={() => setAbierto(false)}
+          />
+          <span
+            role="tooltip"
+            className={cn(
+              "absolute top-6 z-30 block w-[min(22rem,70vw)] whitespace-normal rounded-lg border border-borde bg-superficie p-3",
+              "text-sm font-normal leading-normal text-texto-suave shadow-dropdown",
+              align === "right" ? "right-0" : "left-0",
+            )}
+          >
+            {children}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
 // --------------------------------------------------------------------------- //
 // Indicadores
 // --------------------------------------------------------------------------- //
@@ -168,7 +231,32 @@ export function Avatar({ nombre, i = 0, size = 32 }) {
 // --------------------------------------------------------------------------- //
 // Formulario
 // --------------------------------------------------------------------------- //
-export function Field({ label, hint, children }) {
+export function Field({ label, hint, ayuda, children }) {
+  const generado = useId();
+  /*
+   * `ayuda` es la alternativa a `hint` cuando la aclaración no justifica un
+   * renglón propio debajo del control: el texto vive en el «(?)» del rótulo.
+   *
+   * Cuando la hay, el campo NO puede seguir envuelto en el <label>: un <button>
+   * anidado rompe la asociación implícita y el control se queda sin nombre
+   * accesible —en el árbol de accesibilidad el input aparece sin etiqueta y un
+   * lector de pantalla anuncia «cuadro de edición» a secas—. Con ayuda se pasa a
+   * asociación explícita por id, con el botón fuera del label.
+   */
+  if (ayuda) {
+    const propio = isValidElement(children) ? children.props.id : undefined;
+    const id = propio || generado;
+    return (
+      <div className="block">
+        <div className="mb-1.5 flex items-center gap-1.5 text-base font-semibold text-texto-suave">
+          {label && <label htmlFor={id}>{label}</label>}
+          <Ayuda>{ayuda}</Ayuda>
+        </div>
+        {isValidElement(children) ? cloneElement(children, { id }) : children}
+        {hint && <div className="mt-1 text-sm text-texto-tenue">{hint}</div>}
+      </div>
+    );
+  }
   return (
     <label className="block">
       {label && <div className="mb-1.5 text-base font-semibold text-texto-suave">{label}</div>}
@@ -313,7 +401,7 @@ const ENFOCABLES =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),' +
   'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export function Modal({ title, onClose, children, footer, width = 460 }) {
+export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) {
   const ref = useRef(null);
 
   // Montaje: foco al diálogo, scroll del fondo bloqueado, y al cerrar el foco
@@ -390,7 +478,7 @@ export function Modal({ title, onClose, children, footer, width = 460 }) {
         className="max-h-[90vh] max-w-full overflow-auto rounded-lg bg-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
       >
         <div className="flex items-center justify-between border-b border-division px-xl py-lg">
-          <div className="text-lg font-bold">{title}</div>
+          <div className="flex items-center gap-2 text-lg font-bold">{title}{ayuda && <Ayuda>{ayuda}</Ayuda>}</div>
           <button onClick={onClose} aria-label="Cerrar" className="flex rounded-sm p-1 text-texto-debil hover:text-texto">
             <Icon name="x" size={18} />
           </button>
