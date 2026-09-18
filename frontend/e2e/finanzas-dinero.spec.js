@@ -13,9 +13,9 @@ const cuenta = {
   ajustes: [{ id: 91, importe: "-10.00", motivo: "Cancelación acordada", disponible_reintegro: "10.00", estado: "aprobado", aprobado: true, movimiento_vinculado: null }],
 };
 
-async function escenario(page, { permisos = ["ver_dinero", "registrar_dinero", "corregir_dinero", "aprobar_dinero"], fallaMovimiento = false, fallaDetalle = false } = {}) {
+async function escenario(page, { permisos = ["ver_dinero", "registrar_dinero", "corregir_dinero", "aprobar_dinero"], fallaMovimiento = false, fallaDetalle = false, politicas = [] } = {}) {
   const lecturas = []; const escrituras = [];
-  const estado = { intentos: 0, fallaDetalle, cuenta: structuredClone(cuenta), cuentaPorPagar: null, politicas: [], pendientes: [], preview: null, ajustesGasto: [] };
+  const estado = { intentos: 0, fallaDetalle, cuenta: structuredClone(cuenta), cuentaPorPagar: null, politicas: structuredClone(politicas), pendientes: [], preview: null, ajustesGasto: [] };
   await page.addInitScript((institucion) => { localStorage.setItem("salud.access", "credencial-ficticia-solo-mock"); localStorage.setItem("salud.institucion", JSON.stringify(institucion)); }, inst);
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
@@ -271,6 +271,21 @@ test("política explicita cobro sin tomar costo ni asumir responsable", async ({
   await expect.poll(() => escrituras.length).toBe(1);
   expect(escrituras[0].body).toMatchObject({ prestacion: 44, cobrar: true, importe: null, contraparte_nombre: "" });
   expect(escrituras[0].body.vigente_desde).toBeUndefined();
+});
+
+test("las versiones anteriores del arancel quedan plegadas bajo la vigente", async ({ page }) => {
+  await escenario(page, { permisos: ["configurar_cobros"], politicas: [
+    { id: 1, prestacion: 44, nombre_prestacion: "Consulta médica", cobrar: true, importe: "1000.00", contraparte_nombre: "Paciente", vigente_desde: "2026-08-01T10:00:00Z" },
+    { id: 2, prestacion: 44, nombre_prestacion: "Consulta médica", cobrar: true, importe: "1500.00", contraparte_nombre: "Paciente", vigente_desde: "2026-09-01T10:00:00Z" },
+  ] });
+  await page.goto("/finanzas?mes=2026-09");
+  await page.getByRole("button", { name: "Configurar cobros por atención", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await expect(modal.getByText("Con cobro · ARS 1.500,00", { exact: true })).toBeVisible();
+  await expect(modal.getByText("Con cobro · ARS 1.000,00", { exact: true })).toBeHidden();
+  await expect(modal.getByRole("button", { name: "Cambiar para futuras atenciones", exact: true })).toHaveCount(1);
+  await modal.getByText("Ver 1 versión anterior de Consulta médica").click();
+  await expect(modal.getByText("Con cobro · ARS 1.000,00", { exact: true })).toBeVisible();
 });
 
 test("área institucional no consulta todas las áreas", async ({ page }) => {

@@ -16,21 +16,41 @@ export default function ConfiguracionCobros({ institucion, permisos, onClose }) 
   const prestaciones = useQuery({ queryKey: [...base, "prestaciones"], queryFn: () => opcionesFinanzas("prestaciones-costo", institucion.id), gcTime: 0 });
   const politicas = useQuery({ queryKey: [...base, "politicas"], queryFn: () => opcionesFinanzas("politicas-cobro", institucion.id), gcTime: 0 });
   const error = prestaciones.error || politicas.error;
-  const ultimas = new Map();
+  // Cada cambio crea una versión, pero en pantalla sólo importa la vigente de
+  // cada atención: las anteriores son historia y quedan plegadas debajo.
+  const grupos = [];
+  const porPrestacion = new Map();
   for (const politica of politicas.data || []) {
-    const anterior = ultimas.get(politica.prestacion);
-    if (!anterior || politica.vigente_desde > anterior.vigente_desde || (politica.vigente_desde === anterior.vigente_desde && politica.id > anterior.id)) ultimas.set(politica.prestacion, politica);
+    let grupo = porPrestacion.get(politica.prestacion);
+    if (!grupo) { grupo = { prestacion: politica.prestacion, versiones: [] }; porPrestacion.set(politica.prestacion, grupo); grupos.push(grupo); }
+    grupo.versiones.push(politica);
   }
+  for (const grupo of grupos) grupo.versiones.sort((a, b) => (a.vigente_desde === b.vigente_desde ? b.id - a.id : a.vigente_desde < b.vigente_desde ? 1 : -1));
   async function guardado() { setFormulario(null); await qc.invalidateQueries({ queryKey: ["finanzas"] }); }
   return <Modal title="Configurar cobros por atención" onClose={formulario ? undefined : onClose} width={780}>
     {formulario ? <FormularioPolitica key={formulario.id || "nueva"} fila={formulario} prestaciones={prestaciones.data || []} permisos={permisos} onClose={() => setFormulario(null)} onGuardado={guardado} /> : <div className="space-y-4">
       <p className="text-sm text-texto-debil">Elegí si una atención genera una cuenta por cobrar. Su costo interno y su arancel son importes distintos. Sin una política explícita no se genera un cobro.</p>
       {error && <EstadoError error={error} onReintentar={() => { prestaciones.refetch(); politicas.refetch(); }} />}
       {prestaciones.isLoading || politicas.isLoading ? <Spinner label="Consultando configuración…" /> : <><Button disabled={Boolean(error) || !prestaciones.data?.length} onClick={() => setFormulario({})}>Configurar una atención</Button>{!prestaciones.data?.length && <p className="text-sm text-texto-debil">Primero debe existir una atención vinculada en el catálogo institucional.</p>}
-      <div className="space-y-3">{!(politicas.data || []).length ? <p className="text-sm text-texto-debil">Todavía no hay políticas de cobro.</p> : politicas.data.map((p) => <Card key={p.id} className="flex flex-wrap items-start justify-between gap-3 p-4"><div><h3 className="font-semibold">{p.nombre_prestacion}</h3><p className="mt-1 text-sm">{p.cobrar ? `Con cobro · ${p.importe == null ? "Arancel pendiente de definir" : importeARS(p.importe)}` : "Sin cobro"}</p><p className="mt-1 text-sm text-texto-debil">Desde {new Date(p.vigente_desde).toLocaleString("es-AR")} · Versión #{p.id} · {ultimas.get(p.prestacion)?.id === p.id ? "Última configuración" : "Histórica"}</p>{p.cobrar && <p className="mt-1 text-sm text-texto-debil">{p.contraparte_nombre ? `Responsable: ${p.contraparte_nombre}` : "Responsable pendiente: se completará antes de crear la cuenta"}</p>}</div>{ultimas.get(p.prestacion)?.id === p.id && <Button size="sm" variant="secondary" onClick={() => setFormulario(p)}>Cambiar para futuras atenciones</Button>}</Card>)}</div></>}
+      <div className="space-y-3">{!grupos.length ? <p className="text-sm text-texto-debil">Todavía no hay políticas de cobro.</p> : grupos.map(({ prestacion, versiones }) => <div key={prestacion} className="space-y-2">
+        <VersionPolitica politica={versiones[0]} vigente onCambiar={() => setFormulario(versiones[0])} />
+        {versiones.length > 1 && <details className="pl-3"><summary className="cursor-pointer text-sm font-medium text-texto-debil">{versiones.length === 2 ? "Ver 1 versión anterior" : `Ver ${versiones.length - 1} versiones anteriores`} de {versiones[0].nombre_prestacion}</summary><div className="mt-2 space-y-2">{versiones.slice(1).map((p) => <VersionPolitica key={p.id} politica={p} />)}</div></details>}
+      </div>)}</div></>}
       <p className="text-sm text-texto-debil">Cada cambio crea una versión desde el momento de guardado. No modifica cuentas ni atenciones anteriores. Desactivar el catálogo no suspende el cobro: cambiá esta política a «No: atención sin cobro», incluso si la atención está inactiva.</p>
     </div>}
   </Modal>;
+}
+
+function VersionPolitica({ politica: p, vigente = false, onCambiar }) {
+  return <Card className="flex flex-wrap items-start justify-between gap-3 p-4">
+    <div>
+      {vigente && <h3 className="font-semibold">{p.nombre_prestacion}</h3>}
+      <p className={vigente ? "mt-1 text-sm" : "text-sm"}>{p.cobrar ? `Con cobro · ${p.importe == null ? "Arancel pendiente de definir" : importeARS(p.importe)}` : "Sin cobro"}</p>
+      <p className="mt-1 text-sm text-texto-debil">Desde {new Date(p.vigente_desde).toLocaleString("es-AR")} · Versión #{p.id} · {vigente ? "Última configuración" : "Histórica"}</p>
+      {p.cobrar && <p className="mt-1 text-sm text-texto-debil">{p.contraparte_nombre ? `Responsable: ${p.contraparte_nombre}` : "Responsable pendiente: se completará antes de crear la cuenta"}</p>}
+    </div>
+    {vigente && <Button size="sm" variant="secondary" onClick={onCambiar}>Cambiar para futuras atenciones</Button>}
+  </Card>;
 }
 
 function FormularioPolitica({ fila, prestaciones, permisos, onClose, onGuardado }) {
