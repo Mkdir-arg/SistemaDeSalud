@@ -118,6 +118,29 @@ Con un solo token, el número de la fila destacada quedaba en 2,7:1 en oscuro.
 
    Para espaciado (`p-lg`, `gap-md`, `px-xl`) los nombres se usan igual: ahí no
    hay con qué colisionar.
+8. **Todo listado nuevo pagina de a 10: `POR_PAGINA` de `api/queries.js`.** Nunca
+   el número suelto en la pantalla.
+
+   ```jsx
+   import { POR_PAGINA } from "@/api/queries";
+
+   const tabla = useTablaUrl("cobros", { tamanoInicial: POR_PAGINA });   // con DataTable
+   query.set("page_size", POR_PAGINA);                                   // paginando a mano
+   ```
+
+   El default de DRF son 25 y a nadie le sirven: la fila de estas pantallas es
+   alta —importes, estados, badges, botones— y veinticinco obligan a barrer la
+   pantalla entera para encontrar una. Con diez entra el listado completo sin
+   scrollear y el paginador se usa de verdad. Quien necesite más lo elige en
+   «filas por página»; la elección viaja en la URL, así que se comparte y
+   sobrevive al F5.
+
+   Vale para pantallas **nuevas**. Las anteriores a esta convención siguen en 25
+   hasta que les toque: bajarlas de golpe cambia listados que nadie pidió revisar
+   y rompe los tests que cuentan filas. Cuando se migre una, se cambia también su
+   aserción de e2e.
+
+   Hoy la cumplen finanzas y financiadores.
 
 ---
 
@@ -125,7 +148,7 @@ Con un solo token, el número de la fila destacada quedaba en 2,7:1 en oscuro.
 
 | Pieza | Para qué |
 |---|---|
-| `api/queries.js` | `useLista` (listas paginadas), `useDetalle`, `useAccion` (mutación que invalida las listas) |
+| `api/queries.js` | `useLista` (listas paginadas), `useDetalle`, `useAccion` (mutación que invalida las listas), `POR_PAGINA` (filas por página de un listado nuevo: 10) |
 | `components/ui/tabla.jsx` | `TablaRecurso` (tabla conectada a un recurso) y `DataTable` (presentacional) |
 | `components/ui/filtros.jsx` | `Buscador` (con retardo), `FiltroSelect`, `LimpiarFiltros`, `useFiltroUrl` |
 | `components/ui/estados.jsx` | `Skeleton`, `SkeletonTabla`, `EstadoVacio`, `EstadoError` |
@@ -139,7 +162,9 @@ Con un solo token, el número de la fila destacada quedaba en 2,7:1 en oscuro.
 ## Cómo migrar una pantalla
 
 1. Cambiar el `fetch` a mano por `useLista` / `useDetalle`; las acciones por `useAccion`.
-2. Si lista datos, usar `TablaRecurso`. Sin excepciones: la paginación no es opcional.
+2. Si lista datos, usar `TablaRecurso`. Sin excepciones: la paginación no es
+   opcional, y va de a `POR_PAGINA` (regla 8). Migrar una pantalla es bajarla de
+   25 a 10: ajustar de paso la aserción de e2e que cuente filas.
 3. Reemplazar los `style={{}}` por clases con tokens **semánticos**.
 4. Estados de carga, vacío y error con los componentes de `estados.jsx` (nunca un
    spinner que borra la pantalla, nunca un error sin reintento).

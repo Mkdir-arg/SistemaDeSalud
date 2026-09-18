@@ -120,7 +120,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
           <Field label="Nombre"><Input required maxLength={160} value={datos.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
           <details className="rounded-md border border-borde p-3">
             <summary className="cursor-pointer font-medium">Opciones avanzadas</summary>
-            <div className="mt-3"><Field label="Código de referencia (opcional)" hint="Se genera automáticamente si lo dejás vacío. Usá uno propio sólo si necesitás identificarlo con un código existente."><Input maxLength={60} value={datos.codigo} onChange={(e) => set("codigo", e.target.value)} /></Field></div>
+            <div className="mt-3"><Field label="Código de referencia (opcional)" ayuda="Se genera automáticamente si lo dejás vacío. Usá uno propio sólo si necesitás identificarlo con un código existente."><Input maxLength={60} value={datos.codigo} onChange={(e) => set("codigo", e.target.value)} /></Field></div>
           </details>
           {permisos.permite(CONFIGURAR, null, true) && <Checkbox label="Concepto sensible" checked={datos.sensible} onChange={(e) => set("sensible", e.target.checked)} />}
         </>}
@@ -129,18 +129,18 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
             {permisos.permite(accion, null) && <option value="null">Institucional — sin área asignada</option>}
             {areas.filter((a) => permisos.permite(accion, a.id)).map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </Select></Field>
-          <Field label="Concepto" hint="Catálogo compartido de esta institución, no un catálogo propio del área."><Select required value={datos.concepto} onChange={(e) => set("concepto", e.target.value)}>
+          <Field label="Concepto" ayuda="Catálogo compartido de esta institución, no un catálogo propio del área."><Select required value={datos.concepto} onChange={(e) => set("concepto", e.target.value)}>
             <option value="">Elegí un concepto</option>
             {conceptos.filter((c) => c.activo && datos.area !== "" && permisos.permite(accion, area, c.sensible)).map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.sensible ? " · Sensible" : ""}</option>)}
           </Select></Field>
           <Field label={esCarga ? "Período económico" : "Vigente desde"}><Input type="month" required value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>
         </>}
         {tipo === "version" && <Field label="Aplicar el cambio desde"><Input type="month" required min={fila.vigente_desde.slice(0, 7)} value={datos.mes} onChange={(e) => set("mes", e.target.value)} /></Field>}
-        {esExpectativa && <Field label="Vigente hasta (opcional)" hint="Fin exclusivo: ese mes ya no se incluye. Vacío significa sin fin declarado.">
+        {esExpectativa && <Field label="Vigente hasta (opcional)" ayuda="Fin exclusivo: ese mes ya no se incluye. Vacío significa sin fin declarado.">
           <Input type="month" value={datos.hasta} onChange={(e) => set("hasta", e.target.value)} />
         </Field>}
-        {esExpectativa && <Field label="Monto de referencia mensual en ARS (opcional)" hint="Se compara con lo aprobado. Alcanzarlo no declara la carga completa ni aprueba gastos."><Input inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={datos.monto_referencia} onChange={(e) => set("monto_referencia", e.target.value)} /></Field>}
-        {(esCarga || tipo === "ajuste") && <Field label={tipo === "ajuste" ? "Ajuste en ARS (positivo o negativo)" : "Importe en ARS"} hint="Hasta dos decimales, sin separador de miles.">
+        {esExpectativa && <Field label="Monto de referencia mensual en ARS (opcional)" ayuda="Se compara con lo aprobado. Alcanzarlo no declara la carga completa ni aprueba gastos."><Input inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={datos.monto_referencia} onChange={(e) => set("monto_referencia", e.target.value)} /></Field>}
+        {(esCarga || tipo === "ajuste") && <Field label={tipo === "ajuste" ? "Ajuste en ARS (positivo o negativo)" : "Importe en ARS"} ayuda="Hasta dos decimales, sin separador de miles.">
           <Input required inputMode="decimal" pattern={tipo === "ajuste" ? "-?[0-9]+([.,][0-9]{1,2})?" : "[0-9]+([.,][0-9]{1,2})?"} value={datos.importe} onChange={(e) => set("importe", e.target.value)} />
         </Field>}
         {["rechazar", "ajuste", "version"].includes(tipo) && <Field label="Motivo"><Textarea required maxLength={255} value={datos.motivo} onChange={(e) => set("motivo", e.target.value)} /></Field>}

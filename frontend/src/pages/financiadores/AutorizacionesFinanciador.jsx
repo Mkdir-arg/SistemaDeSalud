@@ -3,10 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "@/api/client";
-import { Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 import { EstadoVacio } from "@/components/ui/estados";
 import { fechaHora } from "@/lib/format";
 import DetalleAutorizacion, { ErrorAutorizacion, EstadoAutorizacion, ESTADOS_AUTORIZACION, PaginasAutorizacion } from "./DetalleAutorizacion";
+import { POR_PAGINA } from "@/api/queries";
 
 const CAMPOS = ["estado", "hospital", "urgente", "desde", "hasta", "search"];
 const VACIOS = Object.fromEntries(CAMPOS.map((campo) => [campo, ""]));
@@ -21,7 +22,7 @@ export default function AutorizacionesFinanciador({ organizacion, scope }) {
   const [mensaje, setMensaje] = useState("");
   const n = Number(parametros.get("page") || 1);
   const pagina = Number.isSafeInteger(n) && n > 0 ? n : 1;
-  const query = new URLSearchParams({ financiador: organizacion.id, page: pagina });
+  const query = new URLSearchParams({ financiador: organizacion.id, page: pagina, page_size: POR_PAGINA });
   Object.entries(filtros).forEach(([campo, valor]) => { if (valor) query.set(campo, valor); });
   const consulta = useQuery({
     queryKey: [...scope, "autorizaciones", query.toString()],
@@ -51,9 +52,8 @@ export default function AutorizacionesFinanciador({ organizacion, scope }) {
           <Field label="Urgencia"><Select value={borrador.urgente} onChange={editar("urgente")}><option value="">Todas</option><option value="true">Urgentes</option><option value="false">No urgentes</option></Select></Field>
           <Field label="Solicitada desde"><Input type="date" value={borrador.desde} onChange={editar("desde")} /></Field>
           <Field label="Solicitada hasta"><Input type="date" min={borrador.desde || undefined} value={borrador.hasta} onChange={editar("hasta")} /></Field>
-          <Field label="Buscar afiliado o referencia"><Input maxLength={120} value={borrador.search} onChange={editar("search")} /></Field>
+          <Field label="Buscar afiliado o referencia" ayuda="El período corresponde a la fecha de solicitud. El plazo de respuesta y la vigencia de una aprobación se muestran por separado."><Input maxLength={120} value={borrador.search} onChange={editar("search")} /></Field>
         </div>
-        <p className="text-sm text-texto-debil">El período corresponde a la fecha de solicitud. El plazo de respuesta y la vigencia de una aprobación se muestran por separado.</p>
         <div className="flex flex-wrap items-center gap-2"><Button type="submit" disabled={consulta.isFetching}>Aplicar filtros</Button><Button type="button" variant="ghost" onClick={() => aplicar(VACIOS)}>Limpiar filtros</Button><Button type="button" variant="ghost" disabled={consulta.isFetching} onClick={() => consulta.refetch()}>Actualizar bandeja</Button>{JSON.stringify(borrador) !== filtrosClave && <span role="status" className="text-sm text-texto-debil">Hay filtros sin aplicar.</span>}</div>
       </form>
       {consulta.isLoading ? <Spinner label="Consultando autorizaciones…" /> : consulta.error ? <div className="p-4"><ErrorAutorizacion error={consulta.error} reintentar={consulta.refetch} />{pagina > 1 && <Button className="mt-3" variant="secondary" onClick={() => aplicar(filtros)}>Volver a la primera página</Button>}</div> : <>

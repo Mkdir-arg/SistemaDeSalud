@@ -2,6 +2,7 @@ import { useLayoutEffect } from "react";
 import { decimalACentavos } from "@/api/finanzas";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
 import { FiltroColumna, FiltrosActivos, useFiltrosFinanzas } from "./ControlesFinanzas";
+import { POR_PAGINA } from "@/api/queries";
 
 const texto = (valor) => String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
 const numero = (valor) => {
@@ -12,7 +13,7 @@ const numero = (valor) => {
 // Sólo para agregaciones completas ya devueltas por el servidor. Nunca ordenar
 // aquí una página de una lista remota: sus filtros y orden pertenecen a la API.
 export default function TablaAgregadaFinanzas({ clave, titulo, contexto, filas, columnas, vacio, exportacion }) {
-  const tabla = useTablaUrl(clave);
+  const tabla = useTablaUrl(clave, { tamanoInicial: POR_PAGINA });
   const tamano = [25, 50, 100].includes(tabla.tamano) ? tabla.tamano : 25;
   const definiciones = columnas.map((col) => col.numerica
     ? ["min", "max"].map((limite) => ({ key: `${col.key}_${limite}`, label: `${col.label} ${limite === "min" ? "desde" : "hasta"}`, type: "number", step: "0.01" }))

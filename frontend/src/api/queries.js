@@ -2,6 +2,21 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 
 import { api } from "./client";
 
+/**
+ * Filas por página de un listado.
+ *
+ * Diez, no veinticinco: en finanzas y financiadores la fila es alta —importes,
+ * estados, acciones— y veinticinco obligan a barrer la pantalla para encontrar
+ * una. Es la cifra a usar en TODO listado nuevo, y por eso vive acá y no repetida
+ * en cada pantalla. Quien quiera ver más lo elige en «filas por página»; la
+ * elección viaja en la URL y sobrevive al F5.
+ *
+ * Las pantallas anteriores a esta convención siguen en el `PAGE_SIZE` de DRF
+ * (25) hasta que les toque migrar: cambiarlo de golpe tocaba pantallas fuera del
+ * alcance de ese trabajo.
+ */
+export const POR_PAGINA = 10;
+
 /** Arma `?a=1&b=2` descartando los valores vacíos (no ensucia la URL ni la cache). */
 export function query(params = {}) {
   const qs = new URLSearchParams();

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { opcionesFinanzas } from "@/api/finanzas";
-import { Button, Checkbox, Field, Select, Spinner } from "@/components/ui";
+import { Ayuda, Button, Checkbox, Field, Select, Spinner } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 
@@ -134,9 +134,9 @@ function ChecklistMembresia({ institucion, usuarioId, miembro, onBusyChange }) {
   if (!form || !base || areas.isLoading) return <Spinner label="Consultando permisos financieros…" />;
   return <div className="space-y-3">
     {!base.activo && <p className="text-md text-texto-debil">Membresía inactiva: sus concesiones no otorgan acceso. Sólo podés conservarlas o revocarlas.</p>}
-    {base.heredadas.length > 0 && <p className="text-md text-texto-debil">La lectura de costos y gastos, incluidos los sensibles, está habilitada en toda la institución por el rol administrador. No se revoca con estas casillas.</p>}
     <fieldset ref={grilla} disabled={deshabilitado} className="grid min-w-0 items-start gap-2" style={{ gridTemplateColumns: `repeat(${columnas}, minmax(0, 1fr))` }}>
       <legend className="sr-only">Acciones financieras de esta membresía</legend>
+      {base.heredadas.length > 0 && <div className="flex items-center gap-2 text-sm font-semibold text-texto-debil" style={{ gridColumn: "1 / -1" }}>Lectura habilitada por rol<Ayuda>La lectura de costos y gastos, incluidos los sensibles, está habilitada en toda la institución por el rol administrador. No se revoca con estas casillas.</Ayuda></div>}
       {/* Pilas independientes: un alcance sólo desplaza su propia columna. */}
       {Array.from({ length: columnas }, (_, columna) => <div key={columna} className="min-w-0 space-y-2">
       {ACCIONES.filter((_, indice) => indice % columnas === columna).map(([accion, nombre]) => {
@@ -150,15 +150,14 @@ function ChecklistMembresia({ institucion, usuarioId, miembro, onBusyChange }) {
             onChange={(e) => { set(accion, "otorgado", e.target.checked); if (e.target.checked && !existia) setAbiertos((actual) => ({ ...actual, [accion]: true })); }} />
           {heredada && <span className="ml-6 text-sm font-semibold text-texto-debil">Por rol · no revocable aquí</span>}
           {!heredada && fila.otorgado && <p className="ml-6 text-sm text-texto-debil">{alcance(fila)}</p>}
-          {otras.length > 0 && <p className="ml-6 text-sm text-texto-debil">También hay permisos de esta acción en otra membresía. Sus alcances no se modifican aquí.</p>}
+          {otras.length > 0 && <div className="ml-6 flex items-center gap-1.5"><p className="text-sm text-texto-debil">En otra membresía</p><Ayuda>También hay permisos de esta acción en otra membresía. Sus alcances no se modifican aquí.</Ayuda></div>}
           {(fila.otorgado || (heredada && existia)) && <details open={Boolean(abiertos[accion])}
             onToggle={(e) => { const open = e.currentTarget.open; setAbiertos((actual) => actual[accion] === open ? actual : { ...actual, [accion]: open }); }} className="ml-6 mt-1 text-sm">
             <summary className="cursor-pointer font-medium text-accent">Alcance de {nombre}</summary>
             <div className="space-y-2 pb-1 pt-2">
               {heredada && existia && <>
-                <Checkbox label={`Conservar concesión explícita · ${nombre}`} checked={fila.otorgado}
-                  onChange={(e) => set(accion, "otorgado", e.target.checked)} />
-                <p className="text-texto-debil">Esta concesión adicional se conserva al guardar. Si la quitás, la lectura por rol sigue vigente.</p>
+                <div className="flex items-center gap-2"><Checkbox label={`Conservar concesión explícita · ${nombre}`} checked={fila.otorgado}
+                  onChange={(e) => set(accion, "otorgado", e.target.checked)} /><Ayuda>Esta concesión adicional se conserva al guardar. Si la quitás, la lectura por rol sigue vigente.</Ayuda></div>
               </>}
               {fila.otorgado && <fieldset disabled={!base.activo} className="space-y-2">
               <Checkbox label="Todas las áreas e institucional" checked={fila.todas_las_areas}

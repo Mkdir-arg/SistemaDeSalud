@@ -6,7 +6,7 @@ import { importeARS } from "@/api/finanzas";
 import { errorFinanciador } from "@/api/financiadores";
 import { useAuth } from "@/auth/AuthContext";
 import { Icon } from "@/components/icons";
-import { Badge, Button, Card, Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
 import { cn } from "@/lib/cn";
 import { fechaHora, plural } from "@/lib/format";
@@ -144,8 +144,10 @@ export default function CoberturaCaso({ caso, ocupado = false }) {
       <details open>
         <summary className="cursor-pointer p-lg text-lg font-bold sm:px-xxl sm:pt-xxl">Cobertura del caso</summary>
         <div className="px-lg pb-lg sm:px-xxl sm:pb-xxl">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <p className="text-sm text-texto-debil">Registrá la afiliación y consultá el importe antes de la prestación. Una autorización pendiente se gestiona según el circuito de atención; no acepta cargos del paciente.</p>
+          {/* La ayuda va junto al botón y no en el <summary>: un click ahí
+              plegaría el panel en vez de abrir la ayuda. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Ayuda>Registrá la afiliación y consultá el importe antes de la prestación. Una autorización pendiente se gestiona según el circuito de atención; no acepta cargos del paciente.</Ayuda>
             <Button type="button" size="sm" variant="ghost" disabled={consulta.isFetching || ocupado} onClick={() => actualizar("")}>Actualizar cobertura</Button>
           </div>
           {mensaje && <p role="status" className="mt-4 rounded-md bg-badge-green-bg p-3 text-sm text-badge-green-fg">{mensaje}</p>}
@@ -202,10 +204,9 @@ function ContenidoCobertura({ casoId, datos, ocupadoClinica, actualizar }) {
             {datos.afiliacion ? <ResumenAfiliacion afiliacion={datos.afiliacion} /> : <p className="mt-1 text-sm text-badge-amber-fg">Todavía no se registró la afiliación.</p>}
           </div>
           {datos.afiliacion && puedeOperar && !corregir && (
-            <Button type="button" size="sm" variant="secondary" disabled={bloqueado || tieneReservas} onClick={() => setCorregir(true)}>Corregir afiliación</Button>
+            <span className="flex items-center gap-2"><Button type="button" size="sm" variant="secondary" disabled={bloqueado || tieneReservas} onClick={() => setCorregir(true)}>Corregir afiliación</Button>{tieneReservas && puedeOperar && <Ayuda>La afiliación no se puede corregir mientras haya reservas abiertas. Revisá su realización antes de solicitar una liberación en Finanzas.</Ayuda>}</span>
           )}
         </div>
-        {tieneReservas && puedeOperar && <p className="text-sm text-texto-debil">La afiliación no se puede corregir mientras haya reservas abiertas. Revisá su realización antes de solicitar una liberación en Finanzas.</p>}
         {puedeOperar && !tieneReservas && (!datos.afiliacion || corregir) && (
           <SeleccionAfiliacion
             afiliados={datos.afiliados || []}
@@ -243,11 +244,10 @@ function ContenidoCobertura({ casoId, datos, ocupadoClinica, actualizar }) {
       {reservas.length > 0 && <RegistrosPrestacion reservas={reservas} />}
       {(datos.historial_afiliaciones || []).length > 0 && (
         <details className="border-t border-division pt-4">
-          <summary className="cursor-pointer text-sm font-semibold text-texto-suave">Historial de afiliación del caso</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-texto-suave">Historial de afiliación del caso{datos.historial_truncado && <Ayuda className="ml-2">Se muestran las selecciones más recientes. El historial completo está disponible en la pestaña Cobertura del paciente.</Ayuda>}</summary>
           <ol className="mt-3 space-y-3">
             {datos.historial_afiliaciones.map((item) => <li key={item.id} className="border-l-2 border-division pl-3"><ResumenAfiliacion afiliacion={item} /></li>)}
           </ol>
-          {datos.historial_truncado && <p className="mt-3 text-sm text-texto-debil">Se muestran las selecciones más recientes. El historial completo está disponible en la pestaña Cobertura del paciente.</p>}
         </details>
       )}
     </div>
@@ -302,7 +302,7 @@ function SeleccionAfiliacion({ afiliados, esCorreccion, ocupado, cancelar, guard
           {!afiliados.length && <p className="text-sm text-badge-amber-fg">No hay afiliaciones vigentes disponibles para este paciente con convenio activo. Podés registrar una declaración pendiente de verificación.</p>}
         </>
       )}
-      {tipo === "pendiente" && <Field label="Afiliación declarada" hint="Obra social o mutual, plan y número que informa el paciente."><Input value={declaracion} required maxLength={160} disabled={ocupado} onChange={(e) => setDeclaracion(e.target.value)} /></Field>}
+      {tipo === "pendiente" && <Field label="Afiliación declarada" ayuda="Obra social o mutual, plan y número que informa el paciente."><Input value={declaracion} required maxLength={160} disabled={ocupado} onChange={(e) => setDeclaracion(e.target.value)} /></Field>}
       {tipo && <Field label={esCorreccion ? "Motivo de la corrección" : "Motivo de la selección"}><Textarea value={motivo} required maxLength={255} disabled={ocupado} onChange={(e) => setMotivo(e.target.value)} /></Field>}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={ocupado || !valido}>{ocupado ? "Registrando…" : esCorreccion ? "Registrar corrección" : "Registrar afiliación"}</Button>
@@ -361,7 +361,6 @@ function PrestacionCaso({ prestacion, reservas, puedeOperar, conAfiliacion, ocup
           {pendiente ? <p className="text-sm text-badge-amber-fg">Faltan datos para confirmar la cobertura. La atención puede continuar y la resolución quedará pendiente en Finanzas.</p> : (
             <>
               {reservada && <>
-                <p className="text-sm text-texto-debil">Actualizar reemplaza la reserva abierta y conserva su historial. La aceptación anterior no se reutiliza.</p>
                 <Checkbox label="Confirmo que esta prestación todavía no se realizó" checked={noRealizada} disabled={ocupado} onChange={(e) => { setNoRealizada(e.target.checked); setClave(crypto.randomUUID()); }} />
               </>}
               {tieneCopago && <>
@@ -369,8 +368,10 @@ function PrestacionCaso({ prestacion, reservas, puedeOperar, conAfiliacion, ocup
                 {!prestacion.puede_aceptar && <p className="text-sm text-texto-debil">No tenés permiso para registrar la aceptación del paciente. Podés confirmar la cobertura sin aceptación.</p>}
                 {!acepta && <p className="text-sm text-badge-amber-fg">Sin aceptación, este importe queda pendiente de resolución administrativa al realizar la prestación. No se asigna automáticamente como deuda al paciente.</p>}
               </>}
-              <p className="text-sm text-texto-debil">Consultar no ocupa cupo. Confirmar lo reserva hasta registrar la realización o verificar que no se realizó.</p>
-              <Button type="button" disabled={ocupado || (reservada && !noRealizada)} onClick={confirmar}>{ocupado ? "Confirmando…" : reservada ? "Actualizar reserva de cobertura" : "Confirmar reserva de cobertura"}</Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" disabled={ocupado || (reservada && !noRealizada)} onClick={confirmar}>{ocupado ? "Confirmando…" : reservada ? "Actualizar reserva de cobertura" : "Confirmar reserva de cobertura"}</Button>
+                <Ayuda><span className="block">Consultar no ocupa cupo. Confirmar lo reserva hasta registrar la realización o verificar que no se realizó.</span>{reservada && <span className="mt-2 block">Actualizar reemplaza la reserva abierta y conserva su historial. La aceptación anterior no se reutiliza.</span>}</Ayuda>
+              </div>
             </>
           )}
         </section>

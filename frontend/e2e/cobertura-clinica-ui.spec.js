@@ -89,7 +89,12 @@ for (const estado of ["pendiente", "aprobada"]) {
     await page.getByRole("button", { name: "Consultar cobertura", exact: true }).click();
     const permiso = page.getByRole("region", { name: "Autorización de esta evaluación", exact: true });
     await expect(permiso.getByText(estado === "aprobada" ? "Aprobada" : "Pendiente", { exact: true })).toBeVisible();
+    // La advertencia dejó de ocupar un renglón: vive en el «(?)» del bloque. Se
+    // sigue verificando —es la que evita leer la evaluación como deuda emitida—,
+    // pero hay que abrirla.
+    await permiso.getByRole("button", { name: "Ver ayuda", exact: true }).click();
     await expect(permiso).toContainText("Los importes de esta evaluación todavía no son cuentas por cobrar");
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Confirmar reserva de cobertura", exact: true })).toBeEnabled();
     if (estado === "pendiente") await expect(permiso).toContainText("la parte del financiador queda pendiente de autorización");
     else await expect(permiso).toContainText("Cantidad autorizada disponible: 2");
@@ -195,7 +200,7 @@ test("el historial del paciente pagina sin ofrecer enlaces a casos ni importes",
   await expect(historial.getByRole("button", { name: "Siguiente" })).toBeDisabled();
   await expect(historial.getByRole("link")).toHaveCount(0);
   await expect(historial.getByText(/ARS /)).toHaveCount(0);
-  expect(lecturas).toContain("/ciudadanos/5/cobertura/?page=2");
+  expect(lecturas).toContain("/ciudadanos/5/cobertura/?page=2&page_size=10");
   expect(escrituras).toEqual([]);
 });
 

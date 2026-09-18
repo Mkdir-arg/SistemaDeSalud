@@ -4,9 +4,10 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { importeARS } from "@/api/finanzas";
-import { Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 import { EstadoVacio } from "@/components/ui/estados";
 import { fechaHora, plural } from "@/lib/format";
+import { POR_PAGINA } from "@/api/queries";
 
 const CAMPOS = ["desde", "hasta", "institucion", "plan", "sin_plan", "prestacion", "estado", "discrepancia", "search"];
 const VACIOS = Object.fromEntries(CAMPOS.map((campo) => [campo, ""]));
@@ -50,13 +51,12 @@ function ResumenActividad({ resumen, generado }) {
   if (!resumen) return <p role="status" className="p-4 text-sm text-texto-debil">El resumen no está disponible.</p>;
   return <div className="border-b border-division p-4 sm:p-5" aria-label="Resumen de actividad">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h3 className="font-semibold">Total del conjunto filtrado</h3><p className="mt-1 text-sm text-texto-debil">Incluye todas las páginas.</p></div>
+      <div><div className="flex items-center gap-2"><h3 className="font-semibold">Total del conjunto filtrado</h3><Ayuda><span className="block">Incluye todas las páginas.</span><span className="mt-2 block">Sólo suma prestaciones realizadas con importe conocido e incluye acuerdos posteriores. No descuenta pagos ni ajustes y no representa el saldo pendiente. Las reservas y los importes pendientes quedan fuera del total.</span></Ayuda></div></div>
       <div className="sm:text-right"><p className="text-sm text-texto-debil">Importe original asignado al financiador</p><p className="mt-1 text-xl font-semibold tabular-nums">{importeARS(resumen.importe_asignado)}</p></div>
     </div>
     <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm sm:grid-cols-4">
       {[["Registros", resumen.registros], ["Reservadas", resumen.reservadas], ["Realizadas", resumen.realizadas], ["Liberadas", resumen.liberadas], ["Cantidad realizada", resumen.cantidad_realizada], ["Unidades cubiertas realizadas", resumen.cubiertas_realizadas], ["Con discrepancias", resumen.discrepancias], ["Importes pendientes", resumen.importes_pendientes]].map(([label, valor]) => <div key={label}><dt className="text-texto-debil">{label}</dt><dd className="mt-1 font-semibold tabular-nums">{valor ?? "—"}</dd></div>)}
     </dl>
-    <p className="mt-4 text-sm text-texto-debil">Sólo suma prestaciones realizadas con importe conocido e incluye acuerdos posteriores. No descuenta pagos ni ajustes y no representa el saldo pendiente. Las reservas y los importes pendientes quedan fuera del total.</p>
     {generado && <p className="mt-2 text-sm text-texto-tenue">Consultado el {fechaHora(generado)}. La exportación vuelve a consultar los datos y el acceso vigente.</p>}
   </div>;
 }
@@ -88,6 +88,7 @@ export default function ActividadFinanciador({ organizacion, scope }) {
   const filtrosQuery = queryDe(aplicados);
   const query = new URLSearchParams(filtrosQuery);
   query.set("page", page);
+  query.set("page_size", POR_PAGINA);
   const consulta = useQuery({ queryKey: [...scope, "actividad", query.toString()], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, "actividad")}?${query}`), gcTime: 0 });
   const opciones = consulta.data?.opciones || {};
   const filas = consulta.data?.results || [];
@@ -133,9 +134,8 @@ export default function ActividadFinanciador({ organizacion, scope }) {
         <SelectorActividad label="Prestación" value={borrador.prestacion} onChange={editar("prestacion")} opciones={opciones.prestaciones} todas="Todas las prestaciones" />
         <Field label="Estado"><Select value={borrador.estado} onChange={editar("estado")}><option value="">Todos los estados</option>{Object.entries(ESTADOS).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</Select></Field>
         <Field label="Discrepancias"><Select value={borrador.discrepancia} onChange={editar("discrepancia")}><option value="">Todas</option><option value="true">Con discrepancia</option><option value="false">Sin discrepancia</option></Select></Field>
-        <Field label="Buscar afiliado o prestación"><Input value={borrador.search} onChange={editar("search")} placeholder="Nombre, documento, número o prestación" maxLength={160} /></Field>
+        <Field label="Buscar afiliado o prestación" ayuda="El período corresponde a la fecha prevista de las reservas y a la fecha de realización de las prestaciones."><Input value={borrador.search} onChange={editar("search")} placeholder="Nombre, documento, número o prestación" maxLength={160} /></Field>
       </div>
-      <p className="text-sm text-texto-debil">El período corresponde a la fecha prevista de las reservas y a la fecha de realización de las prestaciones.</p>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={consulta.isFetching}>Aplicar filtros</Button>
         <Button type="button" variant="ghost" onClick={() => aplicar(mesActual())}>Mes actual</Button>

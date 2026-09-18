@@ -4,10 +4,11 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador } from "@/api/financiadores";
 import { importeARS, usePermisosFinanzas } from "@/api/finanzas";
-import { Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { fechaHora, plural } from "@/lib/format";
 import { DetalleCuenta } from "../finanzas/DineroFinanzas";
+import { POR_PAGINA } from "@/api/queries";
 
 const CAMPOS = ["desde", "hasta", "area", "area_sin_asignar", "financiador", "responsable", "estado", "search"];
 const VACIOS = Object.fromEntries(CAMPOS.map((campo) => [campo, ""]));
@@ -72,13 +73,12 @@ function Resumen({ vista, datos, generado }) {
         <summary className="cursor-pointer text-sm font-medium">Importes originales, ajustes y devoluciones</summary>
         <Importes className="mt-3" datos={datos} campos={[["Importe original", "importe_original"], ["Ajustes aprobados", "ajustes_aprobados"], ["Saldo a devolver", "saldo_a_devolver"]]} />
       </details>
-      <p className="text-sm text-texto-debil">Los saldos incluyen sólo movimientos y ajustes aprobados. Los importes por aprobar se muestran por separado y pueden coexistir con un saldo en cero; una cuenta con registros por aprobar sigue requiriendo revisión.</p>
     </>}
     {vista === "pendientes" && <>
       <Importes datos={datos} campos={[["Importe administrativo conocido", "importe_pendiente"]]} />
       <p className="text-sm text-texto-debil">{plural(datos.importes_desconocidos, "registro con importe por determinar", "registros con importe por determinar")}. El total conocido no incluye esos registros. Estos pendientes todavía no constituyen una deuda asignada.</p>
     </>}
-    {vista === "captura" && <p className="text-sm text-texto-debil">Atenciones registradas que todavía no tienen captura de cargos. Requieren revisión; no se presume un responsable ni un importe a cobrar.</p>}
+    {vista === "captura" && <div className="flex items-center gap-2"><p className="text-sm font-semibold">Atenciones sin captura de cargos</p><Ayuda>Atenciones registradas que todavía no tienen captura de cargos. Requieren revisión; no se presume un responsable ni un importe a cobrar.</Ayuda></div>}
     {generado && <p className="text-sm text-texto-tenue">Consultado el {fechaHora(generado)}.</p>}
   </section>;
 }
@@ -131,6 +131,7 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
   const query = new URLSearchParams(Object.entries(aplicados).filter(([, valor]) => valor !== ""));
   query.set("institucion", institucion.id);
   query.set("page", page);
+  query.set("page_size", POR_PAGINA);
   const consulta = useQuery({
     queryKey: ["finanzas", usuarioId, institucion.id, "seguimiento-cobros", query.toString()],
     queryFn: () => api.get(`/seguimiento-cobros/?${query}`),
@@ -211,7 +212,7 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
   return <Card className="overflow-hidden">
     <form className="border-b border-division p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); aplicar({ ...borrador, search: borrador.search.trim() }); }}>
       <fieldset disabled={descargando} className="space-y-4">
-      <div><h2 className="text-lg font-semibold">Seguimiento de cobros</h2><p className="mt-1 text-sm text-texto-debil">Revisá las cuentas y los pendientes de las prestaciones realizadas en el hospital.</p></div>
+      <div><div className="flex items-center gap-2"><h2 className="text-lg font-semibold">Seguimiento de cobros</h2><Ayuda etiqueta="Ayuda sobre el seguimiento de cobros"><span className="block">Revisá las cuentas y los pendientes de las prestaciones realizadas en el hospital.</span><span className="mt-2 block">El período corresponde a la fecha de la prestación. Los cobros y las devoluciones se consideran aunque se hayan registrado en otra fecha. Sólo se muestran los datos incluidos en tus permisos.</span><span className="mt-2 block">Los saldos incluyen sólo movimientos y ajustes aprobados. Los importes por aprobar se muestran por separado y pueden coexistir con un saldo en cero; una cuenta con registros por aprobar sigue requiriendo revisión.</span></Ayuda></div></div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Field label="Vista"><Select value={aplicados.vista} onChange={cambiarVista}>{Object.entries(VISTAS).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}</Select></Field>
         <Field label="Desde"><Input type="date" value={borrador.desde} onChange={editar("desde")} /></Field>
@@ -221,12 +222,10 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
           setBorrador((previo) => ({ ...previo, area: valor === "sin_area" ? "" : valor, area_sin_asignar: valor === "sin_area" ? "true" : "" }));
         }} opciones={[{ id: "sin_area", nombre: "Sin área asignada" }, ...(opciones.areas || [])]} todas="Todas las áreas permitidas" />
         {aplicados.vista !== "captura" && <Selector label="Financiador de la cobertura" value={borrador.financiador} onChange={editar("financiador")} opciones={opciones.financiadores} todas="Todos los financiadores" />}
-        {aplicados.vista === "cuentas" && <Field label="Responsable del cobro"><Select value={borrador.responsable} onChange={editar("responsable")}><option value="">Todos los responsables</option><option value="financiador">Financiador</option><option value="paciente">Paciente</option></Select></Field>}
+        {aplicados.vista === "cuentas" && <Field label="Responsable del cobro" ayuda="El filtro de financiador incluye los copagos de sus pacientes. Elegí el responsable para distinguir quién debe pagar."><Select value={borrador.responsable} onChange={editar("responsable")}><option value="">Todos los responsables</option><option value="financiador">Financiador</option><option value="paciente">Paciente</option></Select></Field>}
         {aplicados.vista !== "captura" && <Field label="Estado"><Select value={borrador.estado} onChange={editar("estado")}><option value="">Todos los estados</option>{Object.entries(ESTADOS[aplicados.vista]).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}</Select></Field>}
         <Field label={aplicados.vista === "captura" ? "Buscar caso" : "Buscar caso, responsable o prestación"}><Input value={borrador.search} onChange={editar("search")} maxLength={160} placeholder={aplicados.vista === "captura" ? "Número de caso" : "Caso, nombre o prestación"} /></Field>
       </div>
-      <p className="text-sm text-texto-debil">El período corresponde a la fecha de la prestación. Los cobros y las devoluciones se consideran aunque se hayan registrado en otra fecha. Sólo se muestran los datos incluidos en tus permisos.</p>
-      {aplicados.vista === "cuentas" && <p className="text-sm text-texto-debil">El filtro de financiador incluye los copagos de sus pacientes. Elegí el responsable para distinguir quién debe pagar.</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="ghost" onClick={() => aplicar({ ...mesActual(), vista: aplicados.vista })}>Mes actual</Button>
         <Button type="button" variant="ghost" onClick={() => aplicar({ ...VACIOS, vista: aplicados.vista })}>Limpiar filtros</Button>
