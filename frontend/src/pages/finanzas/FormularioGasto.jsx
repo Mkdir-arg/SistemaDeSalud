@@ -24,7 +24,7 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
   const [incierto, setIncierto] = useState(false);
   const [eleccionAprobado, setEleccionAprobado] = useState(true);
   const [datos, setDatos] = useState({
-    area: fila ? (fila.area == null ? "null" : String(fila.area)) : "",
+    area: fila ? (fila.area == null ? "null" : String(fila.area)) : "null",
     concepto: fila?.concepto ? String(fila.concepto) : "",
     importe: tipo === "reemplazo" ? fila.importe : "",
     monto_referencia: fila?.monto_referencia ?? "",
@@ -126,7 +126,6 @@ export default function FormularioGasto({ tipo, fila, mes, institucion, permisos
         </>}
         {configuraAmbito && <>
           <Field label="Área del gasto"><Select required value={datos.area} onChange={(e) => { set("area", e.target.value); set("concepto", ""); }}>
-            <option value="">Elegí un área</option>
             {permisos.permite(accion, null) && <option value="null">Institucional — sin área asignada</option>}
             {areas.filter((a) => permisos.permite(accion, a.id)).map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </Select></Field>

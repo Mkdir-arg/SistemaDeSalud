@@ -15,7 +15,7 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
   const enCurso = useRef(false);
   const esCobertura = tipo === "cobertura-reparto";
   const esCorreccion = Boolean(fila);
-  const [area, setArea] = useState(fila?.area ? String(fila.area) : "");
+  const [area, setArea] = useState(fila?.area == null ? "null" : String(fila.area));
   const [concepto, setConcepto] = useState(fila?.concepto ? String(fila.concepto) : "");
   const [desde, setDesde] = useState(fila?.vigente_desde?.slice(0, 7) || mes);
   const [motivo, setMotivo] = useState("");
@@ -56,7 +56,7 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
     try {
       const base = {
         institucion: institucion.id,
-        area: Number(area),
+      area: area === "null" ? null : Number(area),
         vigente_desde: `${desde}-01`,
         ...(esCorreccion ? {
           reemplaza: fila.id,
@@ -101,7 +101,7 @@ export default function FormularioReparto({ tipo, fila, mes, institucion, permis
         ? "Primero comprobamos los registros del sistema. Después confirmás desde qué mes el área carga aquí toda su actividad."
         : "Elegí qué concepto se distribuye entre las atenciones completadas del área. Antes de confirmar verás cantidades y, si tu permiso lo incluye, importes."}</p><p>El control técnico comprueba que cada atención completada tenga su registro financiero correcto. La confirmación del área indica que no quedan atenciones registradas sólo en papel u otro sistema.</p></AyudaFinanzas>
       <Field label="Área"><Select required value={area} disabled={esCorreccion} onChange={(e) => setArea(e.target.value)}>
-        <option value="">Elegí un área</option>
+        <option value="null">Institucional — sin área asignada</option>
         {areasPermitidas.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
       </Select></Field>
       {!esCobertura && <Field label="Concepto de gasto"><Select required value={concepto} disabled={esCorreccion} onChange={(e) => setConcepto(e.target.value)}>

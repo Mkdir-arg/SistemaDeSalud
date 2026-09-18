@@ -566,17 +566,18 @@ def verificar_integridad_actividad(*, institucion_id, area_id, periodo):
     eventos = EventoCaso.objects.filter(
         caso__institucion_id=institucion_id,
         nodo__tipo=Nodo.Tipo.ATENCION,
-        nodo__version__flujo__area_id=area_id,
         fecha__gte=inicio,
         fecha__lt=fin,
         titulo__startswith="Atención «",
     )
     hechos = HechoAtencionCosteable.objects.filter(
         institucion_id=institucion_id,
-        area_origen_id=area_id,
         ocurrida_en__gte=inicio,
         ocurrida_en__lt=fin,
     )
+    if area_id is not None:
+        eventos = eventos.filter(nodo__version__flujo__area_id=area_id)
+        hechos = hechos.filter(area_origen_id=area_id)
     eventos_sin_hecho = eventos.exclude(
         pk__in=HechoAtencionCosteable.objects.values("evento_origen_id")
     ).count()
@@ -609,17 +610,18 @@ def registrar_cobertura_actividad(
             "Confirmá que, desde ese mes, el área registra todas sus atenciones en el sistema."
         )
     with transaction.atomic():
-        area_model = area._meta.model
-        area = area_model.objects.select_for_update().get(pk=area.pk)
+        if area is not None:
+            area_model = area._meta.model
+            area = area_model.objects.select_for_update().get(pk=area.pk)
         if not tiene_concesion_financiera(
             registrado_por,
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
             institucion.pk,
-            area.pk,
+            area.pk if area else None,
         ):
             raise PermissionDenied("No tenés autorización para configurar repartos.")
         verificacion = verificar_integridad_actividad(
-            institucion_id=institucion.pk, area_id=area.pk, periodo=vigente_desde,
+            institucion_id=institucion.pk, area_id=area.pk if area else None, periodo=vigente_desde,
         )
         if not verificacion["integridad_tecnica"]:
             raise ValidationError(
@@ -632,7 +634,8 @@ def registrar_cobertura_actividad(
             registrado_por=registrado_por,
             **datos,
         )
-        solicitar_en_area(institucion.pk, area.pk, desde=vigente_desde)
+        if area:
+            solicitar_en_area(institucion.pk, area.pk, desde=vigente_desde)
         return cobertura
 
 
@@ -644,7 +647,7 @@ def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, regis
             registrado_por,
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
             institucion.pk,
-            area.pk,
+            area.pk if area else None,
             sensible=concepto.sensible,
         ):
             raise PermissionDenied("No tenés autorización para configurar esta regla de reparto.")
@@ -656,7 +659,8 @@ def registrar_regla_reparto(*, concepto, institucion, area, vigente_desde, regis
             registrado_por=registrado_por,
             **datos,
         )
-        solicitar_en_area(institucion.pk, area.pk, desde=vigente_desde, concepto_id=concepto.pk)
+        if area:
+            solicitar_en_area(institucion.pk, area.pk, desde=vigente_desde, concepto_id=concepto.pk)
         return regla
 
 
@@ -781,29 +785,25 @@ def procesar_reparto_gasto(gasto_id):
         gasto = Gasto.objects.select_for_update(of=("self",)).select_related("concepto", "area").get(pk=gasto_id)
         gasto_ajustes = gasto.ajustes.filter(estado=EstadoAprobacion.APROBADO).select_related("registrado_por")
         list(gasto_ajustes)
-        if gasto.estado != Gasto.Estado.APROBADO or gasto.area_id is None:
+        if gasto.estado != Gasto.Estado.APROBADO:
             return _crear_reparto(
                 gasto=gasto, regla=None, cobertura=None, hechos=[],
                 estado=RepartoGasto.Estado.PENDIENTE,
                 motivo=RepartoGasto.Motivo.FUENTE_NO_ELEGIBLE,
             )
         periodo = gasto.periodo_economico
-        regla = _vigente_en(
-            ReglaRepartoActividad.objects.filter(
-                concepto_id=gasto.concepto_id, institucion_id=gasto.institucion_id, area_id=gasto.area_id,
-            ), periodo,
-        ).first()
+        regla_qs = ReglaRepartoActividad.objects.filter(
+            concepto_id=gasto.concepto_id, institucion_id=gasto.institucion_id,
+        )
+        regla = _vigente_en(regla_qs.filter(area_id=gasto.area_id) if gasto.area_id else regla_qs.filter(area__isnull=True), periodo).first()
         if regla is None:
             return _crear_reparto(
                 gasto=gasto, regla=None, cobertura=None, hechos=[],
                 estado=RepartoGasto.Estado.PENDIENTE, motivo=RepartoGasto.Motivo.SIN_REGLA,
             )
-        cobertura = _vigente_en(
-            CoberturaActividadCosteable.objects.filter(
-                institucion_id=gasto.institucion_id, area_id=gasto.area_id,
-            ), periodo,
-        ).first()
-        if cobertura is None:
+        cobertura_qs = CoberturaActividadCosteable.objects.filter(institucion_id=gasto.institucion_id)
+        cobertura = _vigente_en(cobertura_qs.filter(area_id=gasto.area_id) if gasto.area_id else cobertura_qs.filter(area__isnull=True), periodo).first()
+        if cobertura is not None and not cobertura.habilitada:
             return _crear_reparto(
                 gasto=gasto, regla=regla, cobertura=None, hechos=[],
                 estado=RepartoGasto.Estado.PENDIENTE, motivo=RepartoGasto.Motivo.SIN_COBERTURA,
@@ -821,12 +821,14 @@ def procesar_reparto_gasto(gasto_id):
             )
         inicio = timezone.make_aware(datetime.combine(periodo, time.min))
         fin = timezone.make_aware(datetime.combine(_mes_siguiente(periodo), time.min))
-        hechos = list(HechoAtencionCosteable.objects.filter(
+        hechos_qs = HechoAtencionCosteable.objects.filter(
             institucion_id=gasto.institucion_id,
-            area_origen_id=gasto.area_id,
             ocurrida_en__gte=inicio,
             ocurrida_en__lt=fin,
-        ).order_by("id"))
+        )
+        if gasto.area_id is not None:
+            hechos_qs = hechos_qs.filter(area_origen_id=gasto.area_id)
+        hechos = list(hechos_qs.order_by("id"))
         estado = RepartoGasto.Estado.DISTRIBUIDO if hechos else RepartoGasto.Estado.SIN_ACTIVIDAD
         return _crear_reparto(
             gasto=gasto, regla=regla, cobertura=cobertura, hechos=hechos, estado=estado,

@@ -21,12 +21,12 @@ def concesiones_financieras_de(usuario, accion, sensible=False):
     return concesiones
 
 
-ACCIONES_LECTURA_ADMIN = (ConcesionFinanciera.Accion.VER_COSTOS, ConcesionFinanciera.Accion.VER_GASTOS)
+ACCIONES_ADMIN = tuple(ConcesionFinanciera.Accion.values)
 
 
 def instituciones_admin_financiero(usuario, accion):
-    """Lectura sensible por rol; no persiste ni extiende concesiones explícitas."""
-    if not (getattr(usuario, "is_authenticated", False) and getattr(usuario, "is_active", False)) or accion not in ACCIONES_LECTURA_ADMIN:
+    """Alcance financiero total del administrador institucional, sin filas derivadas."""
+    if not (getattr(usuario, "is_authenticated", False) and getattr(usuario, "is_active", False)) or accion not in ACCIONES_ADMIN:
         return Membresia.objects.none().values_list("institucion_id", flat=True)
     return Membresia.objects.filter(
         usuario=usuario, activo=True, rol=Membresia.Rol.ADMIN_INSTITUCION,

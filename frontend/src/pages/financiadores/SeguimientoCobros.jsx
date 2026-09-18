@@ -151,6 +151,11 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
   useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
   useEffect(() => { setBorrador(JSON.parse(firma)); setErrorDescarga(null); }, [firma]);
   useEffect(() => {
+    if (JSON.stringify(borrador) === firma) return undefined;
+    const timer = setTimeout(() => aplicar({ ...borrador, search: borrador.search.trim() }), 2000);
+    return () => clearTimeout(timer);
+  }, [borrador, firma]);
+  useEffect(() => {
     if (hospitalCambio || !parametros.has("seguimiento_institucion") || !CAMPOS.some((campo) => parametros.has(campo))) {
       const nuevos = new URLSearchParams(parametros);
       nuevos.set("seguimiento_institucion", institucion.id);
@@ -223,10 +228,9 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
       <p className="text-sm text-texto-debil">El período corresponde a la fecha de la prestación. Los cobros y las devoluciones se consideran aunque se hayan registrado en otra fecha. Sólo se muestran los datos incluidos en tus permisos.</p>
       {aplicados.vista === "cuentas" && <p className="text-sm text-texto-debil">El filtro de financiador incluye los copagos de sus pacientes. Elegí el responsable para distinguir quién debe pagar.</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={consulta.isFetching}>Aplicar filtros</Button>
         <Button type="button" variant="ghost" onClick={() => aplicar({ ...mesActual(), vista: aplicados.vista })}>Mes actual</Button>
         <Button type="button" variant="ghost" onClick={() => aplicar({ ...VACIOS, vista: aplicados.vista })}>Limpiar filtros</Button>
-        {cambiosPendientes && <span role="status" className="text-sm text-texto-debil">Aplicá los cambios para actualizar la consulta y la exportación.</span>}
+        {cambiosPendientes && <span role="status" className="text-sm text-texto-debil">Actualizando filtros…</span>}
       </div>
       </fieldset>
     </form>

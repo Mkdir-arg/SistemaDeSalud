@@ -1,5 +1,6 @@
 """Operaciones hospitalarias: ámbito institucional y permisos por acción."""
 from decimal import Decimal
+from datetime import timedelta
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Q
@@ -67,8 +68,21 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
     def list(self, request):
         institucion = self.institucion()
         qs = self.get_queryset().filter(caso__institucion=institucion)
-        if request.query_params.get("estado"):
-            qs = qs.filter(estado=request.query_params["estado"])
+        estado = request.query_params.get("estado", "").strip()
+        if estado:
+            qs = qs.filter(estado=estado)
+        prestacion = request.query_params.get("prestacion", "").strip()
+        if prestacion.isdigit():
+            qs = qs.filter(prestacion_id=int(prestacion))
+        busqueda = request.query_params.get("search", "").strip()
+        if busqueda:
+            coincidencias = Q(caso__ciudadano__nombre__icontains=busqueda) | Q(caso__ciudadano__documento__icontains=busqueda) | Q(prestacion__nombre__icontains=busqueda)
+            qs = qs.filter(coincidencias | (Q(caso__pk=int(busqueda)) if busqueda.isdigit() else Q(pk__in=[])))
+        if request.query_params.get("antiguas") == "true":
+            dias = m.ConfiguracionHospital.objects.filter(institucion=institucion).values_list("dias_reserva_antigua", flat=True).first() or 7
+            qs = qs.filter(estado="reservada", creado__lte=timezone.now() - timedelta(days=dias))
+        if request.query_params.get("con_saldo") == "true":
+            qs = qs.filter(distribucion__estado__in=["pendiente", "autorizacion_pendiente"])
         return self.lista(qs, self.serializer_class)
 
     @action(detail=False, methods=["get"])
@@ -86,6 +100,10 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
         if request.query_params.get("caso"):
             valor = request.query_params["caso"].strip()
             casos = casos.filter(pk=int(valor)) if valor.isdigit() else casos.none()
+        if request.query_params.get("search"):
+            valor = request.query_params["search"].strip()
+            coincidencias = Q(ciudadano__nombre__icontains=valor) | Q(ciudadano__documento__icontains=valor)
+            casos = casos.filter(coincidencias | (Q(pk=int(valor)) if valor.isdigit() else Q(pk__in=[])))
         if not plataforma(user):
             permitidos = Q(pk__in=[])
             roles = [rol for rol, caps in ROL_CAPACIDADES.items() if "casos_operar" in caps]
@@ -109,7 +127,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
         seleccion = None
         if afiliacion:
             seleccion = {"id": afiliacion.pk, "estado": afiliacion.estado, "financiador_nombre": afiliacion.afiliado.financiador.nombre if afiliacion.afiliado_id else "", "plan": afiliacion.plan_id}
-        return {"id": caso.pk, "titulo": f"Caso {caso.pk}", "documento": caso.ciudadano.documento if caso.ciudadano_id else "", "version_id": caso.version_id, "afiliacion": seleccion}
+        return {"id": caso.pk, "titulo": f"Caso {caso.pk}", "paciente": str(caso.ciudadano) if caso.ciudadano_id else "", "documento": caso.ciudadano.documento if caso.ciudadano_id else "", "version_id": caso.version_id, "afiliacion": seleccion}
 
     @action(detail=False, methods=["post"])
     def configurar(self, request):

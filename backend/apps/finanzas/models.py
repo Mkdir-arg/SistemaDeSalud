@@ -967,7 +967,8 @@ class CoberturaActividadCosteable(models.Model):
     """Habilitación prospectiva e inmutable de hechos de atención por ámbito."""
 
     institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
-    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT)
+    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT, null=True, blank=True)
+    habilitada = models.BooleanField(default=True)
     vigente_desde = models.DateField()
     vigente_hasta = models.DateField(null=True, blank=True)
     reemplaza = models.OneToOneField(
@@ -1012,15 +1013,16 @@ class CoberturaActividadCosteable(models.Model):
                 and self.vigente_hasta != self.reemplaza.vigente_hasta
             ):
                 raise ValidationError("Una corrección conserva la vigencia de la cobertura corregida.")
-        if not (self.institucion_id and self.area_id and self.vigente_desde):
+        if not (self.institucion_id and self.vigente_desde):
             return
         solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
         if self.vigente_hasta is not None:
             solapa &= Q(vigente_desde__lt=self.vigente_hasta)
         existentes = type(self).objects.filter(
-            institucion_id=self.institucion_id, area_id=self.area_id,
+            institucion_id=self.institucion_id,
             reemplazada_por__isnull=True,
         ).exclude(pk=self.pk)
+        existentes = existentes.filter(area_id=self.area_id) if self.area_id else existentes.filter(area__isnull=True)
         if self.reemplaza_id:
             existentes = existentes.exclude(pk=self.reemplaza_id)
         if existentes.filter(solapa).exists():
@@ -1049,7 +1051,7 @@ class ReglaRepartoActividad(models.Model):
 
     concepto = models.ForeignKey(ConceptoGasto, on_delete=models.PROTECT)
     institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
-    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT)
+    area = models.ForeignKey("instituciones.Area", on_delete=models.PROTECT, null=True, blank=True)
     vigente_desde = models.DateField()
     vigente_hasta = models.DateField(null=True, blank=True)
     sensible = models.BooleanField(default=False, editable=False)
@@ -1098,15 +1100,15 @@ class ReglaRepartoActividad(models.Model):
                 and self.vigente_hasta != self.reemplaza.vigente_hasta
             ):
                 raise ValidationError("Una corrección conserva la vigencia de la regla corregida.")
-        if not (self.concepto_id and self.institucion_id and self.area_id and self.vigente_desde):
+        if not (self.concepto_id and self.institucion_id and self.vigente_desde):
             return
         solapa = Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=self.vigente_desde)
         if self.vigente_hasta is not None:
             solapa &= Q(vigente_desde__lt=self.vigente_hasta)
         existentes = type(self).objects.filter(
-            concepto_id=self.concepto_id, institucion_id=self.institucion_id,
-            area_id=self.area_id, reemplazada_por__isnull=True,
+            concepto_id=self.concepto_id, institucion_id=self.institucion_id, reemplazada_por__isnull=True,
         ).exclude(pk=self.pk)
+        existentes = existentes.filter(area_id=self.area_id) if self.area_id else existentes.filter(area__isnull=True)
         if self.reemplaza_id:
             existentes = existentes.exclude(pk=self.reemplaza_id)
         if existentes.filter(solapa).exists():

@@ -161,13 +161,13 @@ function ChecklistMembresia({ institucion, usuarioId, miembro, onBusyChange }) {
                 <p className="text-texto-debil">Esta concesión adicional se conserva al guardar. Si la quitás, la lectura por rol sigue vigente.</p>
               </>}
               {fila.otorgado && <fieldset disabled={!base.activo} className="space-y-2">
-                <Checkbox label={`Todas las áreas e institucional · ${nombre}`} checked={fila.todas_las_areas}
+              <Checkbox label="Todas las áreas e institucional" checked={fila.todas_las_areas}
                   onChange={(e) => { set(accion, "todas_las_areas", e.target.checked); set(accion, "areas", []); }} />
                 {!fila.todas_las_areas && <div className="space-y-2">
-                  {(areas.data || []).map((area) => <Checkbox key={area.id} label={`${area.nombre} · ${nombre}`}
+                  {(areas.data || []).map((area) => <Checkbox key={area.id} label={area.nombre}
                     checked={fila.areas.includes(area.id)} onChange={(e) => set(accion, "areas", e.target.checked ? [...fila.areas, area.id] : fila.areas.filter((id) => id !== area.id))} />)}
                 </div>}
-                <Checkbox label={`Incluir información sensible · ${nombre}`} checked={fila.permite_sensibles}
+                <Checkbox label="Incluir información sensible" checked={fila.permite_sensibles}
                   onChange={(e) => set(accion, "permite_sensibles", e.target.checked)} />
               </fieldset>}
             </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { query, useLista } from "@/api/queries";
@@ -44,7 +45,7 @@ export default function CostosAtencion({ institucion, permisos, mes, area, areas
   const nombreArea = (id) => areas.find((a) => a.id === id)?.nombre || (id == null ? "Institucional — sin área asignada" : "Área no disponible");
   return <section className="space-y-4" aria-label="Costos por atención">
     <DataTable adaptable columnas={[
-      { key: "id", label: "Atención", orden: "id", render: (r) => <div><strong>Registro #{r.id}</strong><p className="text-sm text-texto-debil">Caso #{r.caso}</p></div> },
+      { key: "id", label: "Atención", orden: "id", render: (r) => <div><strong>Registro #{r.id}</strong>{r.caso ? <Link className="block text-sm text-accent underline underline-offset-2" to={`/casos/${r.caso}`}>Caso #{r.caso}</Link> : <p className="text-sm text-texto-debil">Sin caso disponible</p>}</div> },
       { key: "ocurrida_en", label: "Fecha de atención", orden: "ocurrida_en", render: (r) => fechaHora(r.ocurrida_en) },
       { key: "area", label: "Área", render: (r) => nombreArea(r.area) },
       { key: "total_conocido", label: "Costo directo conocido", render: (r) => <span className="font-mono">{importeARS(r.total_conocido)}</span> },

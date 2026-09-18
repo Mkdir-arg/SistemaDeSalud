@@ -341,7 +341,7 @@ class ConcesionFinancieraViewSet(BaseModelViewSet):
         concesiones = list(self.get_serializer(
             self.queryset.filter(membresia=membresia).order_by("accion"), many=True,
         ).data)
-        heredadas = [accion for accion in ("ver_costos", "ver_gastos") if
+        heredadas = [accion for accion in ConcesionFinanciera.Accion.values if
                      instituciones_admin_financiero(membresia.usuario, accion).filter(institucion_id=membresia.institucion_id).exists()]
         otras = list(self.get_serializer(self.queryset.filter(
             membresia__usuario_id=membresia.usuario_id,

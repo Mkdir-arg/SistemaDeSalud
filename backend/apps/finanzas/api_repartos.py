@@ -94,7 +94,7 @@ class CoberturaActividadSerializer(serializers.ModelSerializer):
     class Meta:
         model = CoberturaActividadCosteable
         fields = [
-            "id", "institucion", "area", "area_nombre", "vigente_desde", "vigente_hasta",
+            "id", "institucion", "area", "area_nombre", "habilitada", "vigente_desde", "vigente_hasta",
             "reemplaza", "motivo_correccion", "registrado_por", "registrado", "sensible",
             "confirmacion_operativa",
         ]

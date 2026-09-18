@@ -290,6 +290,15 @@ function ContenidoFinanzas({ institucion, permisos }) {
       return siguientes;
     });
   }
+  function verMensualesPendientes() {
+    setSearchParams((previos) => {
+      const siguientes = new URLSearchParams(previos);
+      [...siguientes.keys()].filter((key) => key.startsWith("calendario_")).forEach((key) => siguientes.delete(key));
+      siguientes.set("tab", "calendario");
+      siguientes.set("calendario_f_estado_carga", "falta_cargar");
+      return siguientes;
+    });
+  }
   function verGastoRelacionado(id) {
     setModal({ tipo: "detalle-remoto", id });
   }
@@ -401,7 +410,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!tabs.length ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
-      {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} />
+      {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} onMensuales={verMensualesPendientes} />
         : tab === "reportes" ? <ReportesEjecutivos key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areaNombre={area === "null" ? INSTITUCIONAL : area ? areasVisibles.find((a) => String(a.id) === area)?.nombre || `Área #${area}` : veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"} onGastos={verGastos} />
         : tab === "costos" ? <CostosAtencion key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areas={areas.data || []} onGasto={permisos.tiene("ver_gastos") ? verGastoRelacionado : undefined} />
         : tab === "dinero" ? <DineroFinanzas key={area} institucion={institucion} permisos={permisos} mes={mes} area={area} />

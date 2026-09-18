@@ -111,12 +111,14 @@ export function ProcesamientoFinanzas({ institucion, usuarioId, mes, area }) {
   </div>;
 }
 
-export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onGastos, onRepartos }) {
+export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onGastos, onRepartos, onMensuales }) {
   const [representacion, setRepresentacion] = useState("barras");
   const [vista, setVista] = useState("gastos");
   const filtros = parametros(institucion, mes, area);
   const consulta = useQuery({ queryKey: ["finanzas", usuarioId, institucion.id, "reporte", filtros],
     queryFn: () => api.get(`/reportes-finanzas/${query(filtros)}`), gcTime: 0 });
+  const mensuales = useQuery({ queryKey: ["finanzas", usuarioId, institucion.id, "mensuales-pendientes", filtros],
+    queryFn: () => api.get(`/expectativas-gasto/calendario/${query({ ...filtros, estado_carga: "falta_cargar", pageSize: 1 })}`), gcTime: 0 });
   if (consulta.error) return <EstadoError error={consulta.error} titulo="No se pudo consultar el resumen financiero" onReintentar={consulta.refetch} />;
   if (!consulta.data) return <Spinner label="Preparando resumen de gastos…" />;
   const d = consulta.data;
@@ -128,6 +130,7 @@ export default function ResumenFinanzas({ institucion, usuarioId, mes, area, onG
         ["Por aprobar", d.pendientes_aprobacion, () => onGastos(null, "pendiente_aprobacion"), "Revisar pendientes"],
         ["Distribuido entre atenciones", d.distribuido, () => onRepartos("distribuido"), "Ver distribución"],
         ["Sin distribuir", d.sin_distribuir, () => onRepartos("sin_distribuir"), "Revisar repartos"],
+        ["Gastos mensuales pendientes", mensuales.data?.count ?? 0, onMensuales, "Ver gastos mensuales pendientes"],
       ].map(([label, valor, accion, enlace]) => <Card key={label} className="min-w-0 p-4"><h3 className="text-sm text-texto-debil">{label}</h3><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="break-all text-lg font-semibold tabular-nums">{importe(valor)}</p><Button size="sm" variant="ghost" aria-label={enlace} title={enlace} onClick={accion}>Ver →</Button></div></Card>)}
     </div>
     {d.ajustes_pendientes > 0 && <div role="status" className="flex flex-wrap items-center gap-2 text-sm"><p>{d.ajustes_pendientes} {d.ajustes_pendientes === 1 ? "ajuste por aprobar" : "ajustes por aprobar"}. <span className="text-texto-debil">No modifican los importes aprobados. Revisalos en el historial de cada gasto.</span></p><Button size="sm" variant="ghost" aria-label="Revisar gastos con ajustes" onClick={() => onGastos(null, "aprobado")}>Revisar gastos →</Button></div>}
