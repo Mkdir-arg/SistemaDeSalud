@@ -6,6 +6,7 @@ import { useInstitucion } from "./auth/InstitutionContext";
 import { Shell } from "./components/Shell";
 import { Card, Spinner } from "./components/ui";
 import { EstadoError } from "./components/ui/estados";
+import { useTemaDeRuta } from "./lib/tema";
 
 const Login = lazy(() => import("./pages/Login"));
 const PantallaLlamados = lazy(() => import("./pages/PantallaLlamados"));
@@ -157,6 +158,8 @@ function AuthOnly({ children }) {
 const P = (el, cap) => <Protected cap={cap}>{el}</Protected>;
 
 export default function App() {
+  // El login se ve siempre en claro; el resto sigue la preferencia.
+  useTemaDeRuta();
   return (
     <Suspense fallback={<PantallaCargando />}>
     <Routes>
