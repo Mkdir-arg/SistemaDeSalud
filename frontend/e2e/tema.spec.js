@@ -154,3 +154,37 @@ test.describe("Tema · pantallas de configuración y diseño", () => {
     }
   }
 });
+
+/**
+ * El login no sigue la preferencia: es la cara institucional del sistema y tiene
+ * que verse igual en cualquier puesto. La preferencia no se pierde, solo no se
+ * aplica ahí — por eso el test comprueba las dos mitades.
+ *
+ * Va en su propio bloque porque el resto de la suite entra antes de cada test y
+ * acá lo que importa es justamente la pantalla previa a entrar.
+ */
+test.describe("Tema · el login", () => {
+  const esOscuro = (page) =>
+    page.evaluate(() => document.documentElement.classList.contains("dark"));
+
+  test("se ve en claro aunque la preferencia sea oscura, y la preferencia sobrevive", async ({ page }) => {
+    await page.goto("/login");
+    await page.evaluate(() => localStorage.setItem("salud.tema", "oscuro"));
+    await page.reload();
+
+    // Apenas carga el DOM: lo decide el script del <head>, no React.
+    expect(await esOscuro(page)).toBe(false);
+    await expect(page.getByRole("heading", { name: "Iniciá sesión" })).toBeVisible();
+    expect(await esOscuro(page)).toBe(false);
+
+    // Adentro, la preferencia guardada vuelve a mandar.
+    await entrar(page, "jefe");
+    await expect.poll(() => esOscuro(page)).toBe(true);
+
+    // Y al salir —navegación del router, sin recargar— el login vuelve a claro.
+    // El de la barra lateral, que es solo el icono: el de arriba se llama «Salir».
+    await page.getByRole("button", { name: "Cerrar sesión", exact: true }).click();
+    await page.waitForURL(/\/login/);
+    await expect.poll(() => esOscuro(page)).toBe(false);
+  });
+});
