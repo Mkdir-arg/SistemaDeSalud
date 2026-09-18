@@ -7,6 +7,11 @@ export const fechaLocal = () => {
 };
 export const decimalDinero = (valor) => String(valor).trim().replace(",", ".");
 export const filtroAreaDinero = (area) => area === "null" ? { area_sin_asignar: true } : { area: area || undefined };
+// El dinero se consulta por fecha efectiva; el mes sólo delimita ese intervalo.
+export function rangoMes(mes) {
+  const [anio, numero] = mes.split("-").map(Number);
+  return { fecha_desde: `${mes}-01`, fecha_hasta: `${mes}-${new Date(anio, numero, 0).getDate()}` };
+}
 export function importeValido(valor, maximo) {
   const centavos = decimalACentavos(decimalDinero(valor));
   if (centavos === "importe_invalido" || BigInt(centavos) <= 0n) return false;

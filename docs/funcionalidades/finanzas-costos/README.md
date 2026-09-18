@@ -126,7 +126,13 @@ Si una nueva consulta del detalle de un gasto falla o el acceso se revoca, la pa
 
 ## Resumen y costos por atención
 
-**Resumen** muestra gastos aprobados, por aprobar, lo distribuido y el saldo sin distribuir, con desglose por área y concepto y enlaces a los registros. El aprobado ya contiene lo distribuido: **aprobado = distribuido + sin distribuir**; no se suman las tres cifras como si fueran gastos distintos. Las cifras corresponden al mes, área y permisos elegidos, no necesariamente a todo el hospital.
+**Resumen** es el panorama del mes y reúne tres bloques, cada uno con sus cifras, su gráfico y su enlace a la pestaña correspondiente: **Gastos**, **Pagos y cobros** y **Costos por atención**. Cada bloque consulta su propia fuente y falla por separado: un error o una restricción de permisos en uno no oculta ni convierte en cero a los demás. Los tres son magnitudes distintas del mismo período y **no se suman entre sí**; el Resumen no publica un total común. Para comparar contra otro período y exportar a PDF está la pestaña **Reportes**.
+
+En **Gastos** se muestran aprobados, por aprobar, lo distribuido y el saldo sin distribuir, con desglose por área y concepto y enlaces a los registros. El aprobado ya contiene lo distribuido: **aprobado = distribuido + sin distribuir**; no se suman las tres cifras como si fueran gastos distintos. Las cifras corresponden al mes, área y permisos elegidos, no necesariamente a todo el hospital.
+
+En **Pagos y cobros** se muestran cobros netos, pagos netos, su diferencia y la cantidad de movimientos por aprobar, con un gráfico de cobros contra pagos por área. Se cuentan por **fecha efectiva** dentro del mes calendario seleccionado, no por mes económico: una cuenta puede pertenecer a otro mes. La diferencia no es saldo disponible ni rentabilidad, y los movimientos por aprobar están excluidos de los netos.
+
+En **Costos por atención** se muestran las atenciones del mes, el costo directo conocido, el gasto compartido atribuido y cuántas atenciones tienen componentes directos pendientes, con un gráfico que agrupa **por área o por prestación**. Las dos series se dibujan lado a lado y nunca apiladas: el compartido explica un gasto aprobado que ya figura en el bloque de Gastos, no es un costo adicional. La prestación proviene del catálogo congelado al completarse cada atención; las que no tenían prestación configurada se agrupan aparte y no equivalen a costo cero.
 
 El administrador institucional puede consultar todos los gastos registrados de su institución, incluidos los sensibles. Eso no constituye un costo integral del hospital: todavía pueden faltar fuentes que el módulo no incorpora. Esta aclaración está en el (?) junto a la descripción superior, sin ocupar una tarjeta adicional.
 
@@ -219,7 +225,9 @@ Son pesos de cada mes, sin ajuste por inflación. La referencia no es un pago, u
 
 La pantalla administrativa es `/finanzas`. La atención se completa desde `/casos/:id`. Finanzas incluye resumen de gastos, control mensual, gastos registrados, repartos y costos por atención con configuración y detalle. La auditoría financiera sigue disponible por API.
 
-Fuentes principales: `hechos-costo`, `gastos`, `expectativas-gasto/calendario`, `coberturas-actividad`, `reglas-reparto`, `repartos-gasto`, `reportes-finanzas`, `procesamiento-finanzas` y `accesos-financieros`.
+Fuentes principales: `hechos-costo`, `gastos`, `expectativas-gasto/calendario`, `coberturas-actividad`, `reglas-reparto`, `repartos-gasto`, `reportes-finanzas`, `reportes-dinero`, `reportes-costos`, `procesamiento-finanzas` y `accesos-financieros`.
+
+`reportes-costos` es de sólo lectura y agrega las mismas atenciones que `hechos-costo`, con el alcance de **ver costos** y el mismo registro de auditoría financiera por área y sensibilidad. Devuelve totales del mes y desgloses por área y por prestación; no expone ciudadano, caso ni composición. `reportes-dinero` agrega además el desglose por área del mismo neteo que ya calculaba para el total.
 
 El incremento incluye el primer reparto por actividad, reportes operativos y el lote #38 de pagos/cobros/reintegros vinculados activo en Los Aromos. Otras bases de reparto, contabilidad general y costo total institucional siguen fuera. La nueva prioridad de obras sociales todavía no está implementada.
 

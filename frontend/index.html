@@ -16,6 +16,11 @@
       // turno noche ese fogonazo blanco es exactamente lo que se quiere evitar.
       (function () {
         try {
+          // El login siempre se ve en claro, aunque la preferencia sea oscura:
+          // es la cara institucional del sistema y tiene que verse igual en
+          // cualquier puesto. La misma regla vive en src/lib/tema.js (esRutaClara),
+          // acá repetida porque este script corre antes de que exista el bundle.
+          if (location.pathname.replace(/\/+$/, "") === "/login") return;
           var t = localStorage.getItem("salud.tema");
           var oscuro = t === "oscuro" || (!t && matchMedia("(prefers-color-scheme: dark)").matches);
           if (oscuro) document.documentElement.classList.add("dark");

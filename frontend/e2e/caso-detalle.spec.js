@@ -66,7 +66,7 @@ test.describe("Detalle del caso", () => {
     for (const width of [1440, 1024, 390]) {
       await sinDesborde(page, width);
     }
-    // En angosto la información del caso queda antes que el panel de trabajo.
+    // En angosto la ficha sigue existiendo, detrás del panel de trabajo.
     await expect(page.getByText("INFORMACIÓN DEL CASO")).toBeVisible();
   });
 });

@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from apps.instituciones.models import Area
 from .auditoria import AuditaLecturaFinanciera
 from .comparativas import ContextoComparativa, periodos_comparados, comparar
-from .reportes_dinero import resumir_dinero, desglosar_dinero
+from .reportes_dinero import filas_dinero, resumir_agrupaciones, resumir_dinero, resumir_dinero_por_area, desglosar_dinero
 from .models import ConcesionFinanciera, EstadoAprobacion, MovimientoDinero
 from .permisos import alcance_financiero_q, concesiones_financieras_de, tiene_concesion_financiera
 
@@ -92,10 +92,13 @@ class ReporteDineroViewSet(AuditaLecturaFinanciera, viewsets.GenericViewSet):
     def list(self, request):
         ctx, fuentes = self.fuentes(request)
         institucion = ctx['institucion']
-        respuesta, grupos = resumir_dinero(fuentes, institucion)
+        # Un solo recorrido de movimientos alimenta el total y su reparto por área.
+        filas = filas_dinero(fuentes)
+        respuesta, grupos = resumir_agrupaciones(filas, institucion)
         respuesta.update(
             institucion=institucion, area=ctx.get('area'), fecha_desde=ctx['fecha_desde'],
             fecha_hasta=ctx['fecha_hasta'], moneda='ARS',
+            agrupaciones=resumir_dinero_por_area(filas, institucion),
             alcance='Dinero aprobado por fecha efectiva y según tu acceso; lo pendiente se muestra aparte. La diferencia no es saldo disponible ni rentabilidad.',
         )
         return self.auditar_respuesta(Response(respuesta), grupos=grupos)
