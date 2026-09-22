@@ -60,11 +60,18 @@ control compensatorio queda en manos de la persona a controlar.
 
 ## Lo que esta enmienda NO resuelve
 
-La herencia se aplica de forma despareja y eso sigue igual. `tiene_concesion_financiera`
-consulta el alcance del admin, y por eso hereda dinero, cobros, coberturas y
-aceptación; pero `registrar_gasto`, `PuedeConfigurarRepartos` y los tres reportes
-(`reportes-finanzas`, `reportes-costos`, `reportes-dinero`) exigen concesión
-explícita y no lo consultan.
+La herencia se aplica de forma despareja y eso sigue igual. Quien consulta
+`instituciones_admin_financiero` la respeta; quien mira sólo
+`concesiones_financieras_de` la ignora:
+
+| Camino | ¿Respeta la herencia? | Dónde |
+|---|---|---|
+| `tiene_concesion_financiera` → dinero, cobros, coberturas, aceptación | Sí | `permisos.py:105` |
+| `reportes-finanzas` | Sí | `api_reportes.py:67` |
+| `reportes-costos` | Sí | `api_reportes_costos.py:49` |
+| `registrar_gasto` | **No** | `services.py`, vía `_concesiones_para_gasto` |
+| `PuedeConfigurarRepartos` | **No** | `api_repartos.py:31` |
+| `reportes-dinero` | **No** | `api_reportes_dinero.py:72` |
 
 Se deja como está a propósito: alinear hacia arriba ampliaría permisos sin que
 nadie lo haya pedido, y hacerlo hacia abajo desharía lo que el documento del
