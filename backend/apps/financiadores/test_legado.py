@@ -278,6 +278,37 @@ class DiagnosticoLegadoTests(TestCase):
                     self.comando(reporte=str(destino))
             self.assertFalse(destino.exists())
 
+    def test_la_raiz_se_ubica_por_la_marca_git_y_no_por_la_profundidad(self):
+        """Las dos ramas de la detección, sin depender de dónde corra la prueba.
+
+        Es el camino que la suite no ejercitaba: los casos de la guarda parchean
+        `REPOSITORIO`, y dentro del contenedor no hay copia de trabajo, así que
+        la rama que encuentra el repositorio no llegaba a ejecutarse nunca.
+        """
+        with tempfile.TemporaryDirectory() as base:
+            raiz = Path(base).resolve()
+            hondo = raiz / "backend" / "apps" / "financiadores" / "management" / "commands"
+            hondo.mkdir(parents=True)
+            archivo = hondo / "comando.py"
+            archivo.touch()
+
+            # Sin marca todavía: no hay copia de trabajo que proteger.
+            self.assertIsNone(comando_legado._raiz_del_repositorio(archivo))
+
+            # `.git` como directorio (clon) y como archivo (worktree o submódulo).
+            marca = raiz / ".git"
+            marca.mkdir()
+            self.assertEqual(comando_legado._raiz_del_repositorio(archivo), raiz)
+            marca.rmdir()
+            marca.write_text("gitdir: /otro/lado", encoding="utf-8")
+            self.assertEqual(comando_legado._raiz_del_repositorio(archivo), raiz)
+
+            # Gana la marca más cercana, no la profundidad: un repositorio
+            # anidado protege su propio árbol y no el de arriba.
+            anidado = raiz / "backend"
+            (anidado / ".git").mkdir()
+            self.assertEqual(comando_legado._raiz_del_repositorio(archivo), anidado)
+
     def test_sin_copia_de_trabajo_el_reporte_no_queda_bloqueado(self):
         """Sin repositorio no hay commit accidental que evitar, y el reporte sale.
 

@@ -15,8 +15,8 @@ from apps.financiadores.legado import (
 )
 
 
-def _raiz_del_repositorio():
-    """La copia de trabajo que hay que proteger, o None si no hay ninguna.
+def _raiz_del_repositorio(archivo):
+    """La copia de trabajo que contiene a `archivo`, o None si no hay ninguna.
 
     El reporte lleva identificadores internos: escribirlo dentro del árbol
     versionado lo deja a un `git add` de distancia. La marca es `.git` y no una
@@ -30,13 +30,15 @@ def _raiz_del_repositorio():
     no aplica; las demás protecciones del destino (O_EXCL y 0600) no dependen
     de esto.
     """
-    for carpeta in Path(__file__).resolve().parents:
+    for carpeta in Path(archivo).resolve().parents:
+        # `.git` es un directorio en un clon y un archivo en un worktree o en un
+        # submódulo; `exists()` cubre los tres.
         if (carpeta / ".git").exists():
             return carpeta
     return None
 
 
-REPOSITORIO = _raiz_del_repositorio()
+REPOSITORIO = _raiz_del_repositorio(__file__)
 
 
 def _objeto_sin_repetidos(pares):
