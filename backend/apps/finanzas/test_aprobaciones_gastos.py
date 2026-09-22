@@ -38,7 +38,8 @@ class AprobacionesGastosTests(CobrosSetup, APITestCase):
         El origen es de área y ya no central: `origen` se marca central cuando la
         concesión cuelga de una membresía con rol admin, y ese rol hereda hoy
         `aprobar_gastos`, así que «central y pendiente» dejó de ser alcanzable.
-        El origen central se cubre en `tests.ConceptoGastoApiTests`.
+        El origen central se cubre en `tests.GastoApiTests` y en
+        `tests.GastoServiciosTests`.
         """
         self.conceder("registrar_gastos")
         gasto = self.gasto(self.usuario)
