@@ -192,11 +192,19 @@ class CobrosApiTests(CobrosSetup, APITestCase):
     def test_circuito_api_politica_atencion_cobros_reintegro_y_reporte_sin_duplicar(self):
         self.client.force_authenticate(self.admin)
         respuesta = self.client.post("/api/politicas-cobro/", {
-            "prestacion": self.prestacion.pk, "cobrar": True,
-            "importe": "100.00", "contraparte_nombre": "Responsable administrativo",
+            "prestacion": self.prestacion.pk, "cobrar": True, "importe": "100.00",
         }, format="json")
         self.assertEqual(respuesta.status_code, 201, respuesta.data)
         hecho = self.atencion()
+        # La política fija el arancel, no el responsable: la cuenta nace recién
+        # cuando administración dice quién paga esa atención.
+        pendiente = PendienteCobro.objects.get(hecho=hecho)
+        self.assertIsNone(pendiente.obligacion_id)
+        resolver = self.client.post(
+            f"/api/pendientes-cobro/{pendiente.pk}/resolver/",
+            {"contraparte_nombre": "Responsable administrativo"}, format="json",
+        )
+        self.assertEqual(resolver.status_code, 200, resolver.data)
         obligacion = PendienteCobro.objects.get(hecho=hecho).obligacion
         url = f"/api/obligaciones-financieras/{obligacion.pk}/"
         self.assertEqual(self.client.get(url).data["pendiente"], "100.00")
@@ -268,6 +276,29 @@ class CobrosApiTests(CobrosSetup, APITestCase):
         self.assertEqual(respuesta.status_code, 201, respuesta.data)
         self.assertEqual(self.client.get("/api/politicas-cobro/").status_code, 200)
         self.assertEqual(ConcesionFinanciera.objects.filter(membresia__usuario=self.usuario).count(), 1)
+
+    def test_politica_por_api_no_fija_responsable_y_deja_el_cobro_por_completar(self):
+        """El responsable varía por paciente: la prestación no puede fijarlo."""
+        self.client.force_authenticate(self.admin)
+        respuesta = self.client.post("/api/politicas-cobro/", {
+            "prestacion": self.prestacion.pk, "cobrar": True, "importe": "100",
+            "contraparte_nombre": "Tercero", "contraparte_referencia": "REF-1",
+        }, format="json")
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        politica = PoliticaCobro.objects.get(pk=respuesta.data["id"])
+        self.assertEqual(politica.contraparte_nombre, "")
+        self.assertEqual(politica.contraparte_referencia, "")
+        pendiente = PendienteCobro.objects.get(hecho=self.atencion())
+        self.assertEqual(pendiente.importe, Decimal("100"))
+        self.assertEqual(pendiente.contraparte_nombre, "")
+        self.assertIsNone(pendiente.obligacion_id)
+
+    def test_politica_historica_con_responsable_sigue_generando_su_cuenta(self):
+        """Recuperar una atención vieja reproduce lo que regía ese día."""
+        self.politica(contraparte_nombre="Mutual histórica")
+        obligacion = PendienteCobro.objects.get(hecho=self.atencion()).obligacion
+        self.assertIsNotNone(obligacion)
+        self.assertEqual(obligacion.contraparte_nombre, "Mutual histórica")
 
     def test_resolver_por_api_no_revela_fila_a_permiso_solo_escritura(self):
         self.politica(contraparte_nombre="")

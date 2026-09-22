@@ -39,7 +39,10 @@ class PoliticaCobroSerializer(serializers.ModelSerializer):
     class Meta:
         model = PoliticaCobro
         fields = ["id", "prestacion", "institucion", "nodo_origen_id", "nombre_prestacion", "cobrar", "importe", "contraparte_nombre", "contraparte_referencia", "sensible", "vigente_desde", "registrado", "registrado_por"]
-        read_only_fields = ["id", "institucion", "nodo_origen_id", "nombre_prestacion", "registrado", "registrado_por"]
+        # El responsable del pago no es propiedad de la prestación: varía por
+        # paciente. Se define por atención al completar el cobro, o lo fija la
+        # cobertura. Se siguen leyendo para no ocultar las versiones históricas.
+        read_only_fields = ["id", "institucion", "nodo_origen_id", "nombre_prestacion", "registrado", "registrado_por", "contraparte_nombre", "contraparte_referencia"]
         extra_kwargs = {"vigente_desde": {"required": False}, "importe": {"min_value": Decimal("0.01")}}
 
     def create(self, validated_data):
