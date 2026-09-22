@@ -51,9 +51,9 @@ Modelar y ejecutar circuitos de atencion. Un flujo define el recorrido de un cas
 
 ## Referencias
 
-- `docs/FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md`
-- `docs/ESCENARIO-GUARDIA.md`
-- `diseno/docs/06-handoff-desarrollo.md`
+- [`docs/ESCENARIO-GUARDIA.md`](../../ESCENARIO-GUARDIA.md)
+- [Estructura organizativa](../estructura-organizativa/README.md): el ambito de un flujo (institucion, area o subarea)
+- `diseño/docs/06-handoff-desarrollo.md`
 
 ## Puntos a validar
 

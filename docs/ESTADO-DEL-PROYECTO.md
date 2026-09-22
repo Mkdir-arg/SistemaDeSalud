@@ -1,68 +1,112 @@
 # Estado del proyecto — I-Core Salud
 
-> Documento vivo. Resume **qué está hecho**, **cómo levantarlo** y **qué falta**.
-> Última actualización: **2026-08-14** (Fase 8: normativa, interoperabilidad FHIR
-> y preparación para producción).
+> Qué está construido, qué falta y qué no está validado.
+> Reescrito el **2026-09-22** contra `main` en `fca71e3` (último commit: 18/09/2026).
 
-Salud = constructor y motor de flujos para procesos de salud / Estado. Ver
-`README.md` para la visión y los `.dc.html` de la raíz (prototipo de alta
-fidelidad — fuente del modelo de datos).
+I-Core Salud es un **constructor y motor de flujos** para procesos asistenciales y su
+gestión administrativa. El configurador arma un circuito como diagrama; el mismo
+diagrama se ejecuta: el personal completa casos reales que avanzan paso a paso, se
+derivan entre áreas y quedan registrados. Sobre esa base se apoyan agenda,
+internación, farmacia, red de derivaciones, historia clínica, finanzas y cobertura.
 
-Catálogo completo de funcionalidades (todos los módulos) en
-[`funcionalidades/README.md`](funcionalidades/README.md). Indice compatible en
-[`FUNCIONALIDADES.md`](FUNCIONALIDADES.md). Funcionalidades incrementales de
-estructura organizativa y flujos en
-[`FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md`](FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md)
-(eliminar áreas/sub-áreas, ámbito de flujos, grupos de staff).
-
-**Escenario objetivo (norte):** simular una **guardia completa** (ingreso →
-derivación a Trauma/Cardio/Salud mental → atención por especialidad). Spec y
-evolutivos pendientes en [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md).
+- **Qué hace cada módulo**: [`funcionalidades/`](funcionalidades/README.md).
+- **Cómo levantarlo y mostrarlo**: [`entornos/`](entornos/README.md).
+- **Toda la documentación, con su vigencia**: [`INDICE-FUNCIONAL.md`](INDICE-FUNCIONAL.md).
+- **Por qué se construyó así**: [`historico/`](historico/README.md).
 
 ---
 
-## 1. Resumen rápido
+## 1. El tamaño de lo construido
 
-| Capa | Estado |
+Medido sobre el código, no sobre expectativas:
+
+| | |
 |---|---|
-| Backend — modelo de datos (6 apps) | ✅ Completo |
-| Backend — admin de Django | ✅ Completo |
-| Backend — migraciones aplicadas | ✅ (SQLite local) |
-| Backend — auth JWT | ✅ |
-| Backend — API REST (CRUD de todas las entidades) | ✅ Verificada end-to-end |
-| Backend — motor de ejecución (avance de casos + derivar a otro flujo) | ✅ Completo + tests |
-| Backend — permisos por institución (scope de querysets) | ✅ Completo + tests |
-| Backend — subida de archivos | ✅ Completo + tests |
-| Frontend — base (Vite+React, auth JWT, design system, shell multi-mundo) | ✅ Completo |
-| Frontend — mundo Ejecución (bandejas, nuevo caso, detalle, fila) | ✅ Completo + verificado |
-| Frontend — mundo Diseño (lienzo, paleta, propiedades, reglas, validar/publicar) | ✅ Completo + verificado |
-| Frontend — administración (instituciones, áreas, usuarios) | ✅ Completo + verificado |
-| Frontend — registros (historia clínica) | ✅ Completo + verificado |
-| Camas e internación (modelo, motor, tablero, pases) | ✅ Completo + 41 tests |
-| Turnos y agenda (editor gráfico de horarios, cupos por franja, bloqueos, vista semanal, reprogramar, sobreturnos, ausentismo, presencial/virtual) | ✅ Completo + 135 tests |
-| Farmacia e insumos (stock, lotes, trazabilidad, pedidos) | ✅ Completo + 48 tests |
-| Red multicentro (traslados, panorama, saturación) | ✅ Completo + 55 tests |
-| Auditoría de accesos clínicos (Ley 26.529) | ✅ Backend + pantalla `/accesos` |
-| Sellado de integridad de la historia clínica | ✅ Backend + verificación en pantalla |
-| Retención y consentimiento (Ley 25.326) | ✅ `purgar_datos` (en seco por defecto) + panel en la HC |
-| Firma digital con certificado (Ley 25.506) | ⏳ Enganche listo; falta que el cliente elija certificador |
-| Fachada FHIR R4 de sólo lectura (`/fhir/`) | ✅ Patient · Encounter · Organization · metadata |
-| Consulta a padrón FHIR desde un paso del flujo | ✅ Completa los campos vacíos del paciente |
-| Respaldo verificable (`respaldar`) | ✅ Restaura y compara en cada corrida; servicio diario |
-| Endurecimiento para producción | ✅ `check --deploy` limpio, con test que lo corre |
-| Monitoreo | ✅ `/api/health/` toca la base · `/api/estado/` delata el proceso periódico que murió |
-| Aviso en el Tablero | ✅ Aparece sólo si algo se detuvo, y dice qué se rompe |
-| Datos de demo (seed) | ✅ `seed_volumen --rehacer` (escenario + ~530 casos con 90 días de historia) |
-| Tests automatizados | ✅ 545 de backend · 143 end-to-end (Playwright, dos temas) |
-| Guardas de calidad | ✅ Esquema OpenAPI, clases Tailwind huérfanas, contraste WCAG AA, N+1 por volumen |
-| Despliegue real (hosting, dominio, monitoreo) | ⚠️ Falta decidir dónde se hospeda |
+| Apps de backend | 13 |
+| Modelos | 89 |
+| Recursos REST registrados | 66 |
+| Rutas de frontend | 37 |
+| Roles institucionales | 9 |
+| Capacidades funcionales | 20 |
+| Acciones de permiso financiero | 18 |
+| Tipos de nodo del flujo | 13 |
+| Servicios en Docker Compose | 7 |
 
----
+## 2. Qué está construido
 
-## 2. Cómo levantar el backend
+### Núcleo: flujos, casos y estructura
 
-Todo el stack corre con Docker Compose: base, backend, frontend, el reloj del
-motor y el respaldo diario.
+| Pieza | Estado |
+|---|---|
+| Estructura organizativa: instituciones, áreas, subáreas, grupos, boxes, camas | ✅ |
+| Formularios configurables y su constructor de campos | ✅ |
+| Flujos versionados, editor visual, validación, publicación y ensayo | ✅ |
+| Motor de ejecución con eventos, decisiones, derivaciones y subprocesos | ✅ |
+| Casos, bandeja, filas por prioridad, boxes y pantalla pública de llamados | ✅ |
+| Reactivación de esperas por tiempo | ✅ Servicio `tiempos`, cada 2 minutos |
+| Derivar a otro flujo instanciando el caso en destino | ✅ |
+| Supervisión de área: reasignar, priorizar, cancelar | ✅ |
+| Notificaciones in-app con campana y resumen | ✅ |
+
+### Atención
+
+| Pieza | Estado |
+|---|---|
+| Padrón de pacientes: alta, búsqueda y ficha administrativa | ✅ |
+| Historia clínica, entradas firmadas, estudios, recetas y antecedentes | ✅ |
+| Sellado encadenado de integridad de la historia | ✅ |
+| Agenda: disponibilidades, cupos, bloqueos, grilla, reprogramación, ausentismo | ✅ |
+| Internación: camas por sector, estadías, pases y egresos | ✅ |
+| Farmacia: stock por depósito y lote, movimientos, pedidos, alertas, trazabilidad | ✅ |
+| Red multicentro: redes, destinos, traslados y tablero | ✅ |
+
+### Dinero
+
+| Pieza | Estado |
+|---|---|
+| Costos por atención: prestaciones, componentes y valores vigentes | ✅ |
+| Gastos: carga, ajustes, reemplazos y aprobación | ✅ |
+| Gastos mensuales esperados, con referencia y estado de carga | ✅ |
+| Reparto de gastos aprobados entre atenciones, por área o institucional | ✅ |
+| Pagos y cobros: cuentas, movimientos parciales, devoluciones y reducciones | ✅ |
+| Reportería ejecutiva comparable, con descarga en PDF | ✅ |
+| Permisos financieros explícitos por acción, área y sensibilidad | ✅ |
+| Contabilidad general, facturación fiscal y conciliación bancaria | ❌ Fuera de alcance |
+
+### Financiadores y cobertura
+
+| Pieza | Estado |
+|---|---|
+| Organización del financiador, sus usuarios y su portal | ✅ |
+| Planes, reglas de cobertura versionadas, catálogo común y vínculos | ✅ |
+| Padrón de afiliados, importación incremental, identidad y vigencias | ✅ |
+| Convenios y aranceles acordados | ✅ |
+| Evaluación de cobertura, cupo compartido y reserva serializada | ✅ |
+| Consumos externos informados por el financiador | ✅ |
+| Copago, aceptación del paciente y saldos de resolución administrativa | ✅ |
+| Autorizaciones previas: solicitar, observar, resolver, vencer, anular | ✅ |
+| Seguimiento hospitalario de cobros y exportación auditada | ✅ |
+| Operación con datos productivos | ⚠️ No validada. Lo probado es el piloto integral |
+
+### Normativa, interoperabilidad y operación
+
+| Pieza | Estado |
+|---|---|
+| Auditoría de accesos clínicos (Ley 26.529) y pantalla `/accesos` | ✅ |
+| Retención y consentimiento (Ley 25.326): `purgar_datos` y panel en la HC | ✅ |
+| Firma digital con certificado (Ley 25.506) | ❌ No implementada. Está identificado el punto de inserción; elegir certificador y dispositivo es decisión del cliente |
+| Fachada FHIR R4 de sólo lectura: `Patient`, `Encounter`, `Organization`, `Coverage` | ✅ |
+| Consulta a padrón FHIR externo desde un paso del flujo | ✅ |
+| Respaldo verificable que restaura y compara en cada corrida | ✅ |
+| `/api/health/` (toca la base) y `/api/estado/` (latido de los procesos) | ✅ |
+| Esquema OpenAPI en `/api/esquema/` y visor en `/api/docs/` | ✅ |
+| Endurecimiento para producción: `check --deploy` limpio, con test que lo corre | ✅ |
+| Despliegue real: hosting, dominio y monitoreo | ⚠️ Falta decidir dónde se hospeda |
+
+## 3. Cómo levantarlo
+
+Todo corre con Docker Compose: base, backend, frontend y cuatro procesos de fondo
+(`tiempos`, `repartos`, `costos`, `respaldos`).
 
 ```bash
 docker compose up -d
@@ -72,193 +116,116 @@ docker compose up -d
 # Fachada FHIR:  http://localhost:8000/fhir/metadata
 ```
 
-- Django 6 + DRF + SimpleJWT sobre PostgreSQL 16.
-- Dependencias declaradas en `backend/requirements.txt`.
-- **Superusuario de desarrollo:** `admin@salud.local` / `admin1234`.
-  El staff del escenario entra con `demo1234`.
-- El cliente de Postgres de la imagen está pinchado a la versión del servidor
-  (`PG_MAJOR`): un `pg_dump` de otra versión produce respaldos que no se pueden
-  restaurar.
+Eso levanta el **stack de desarrollo**, con recarga en caliente y el escenario de
+guardia sembrado. Los usuarios y lo que queda cargado están en [`DEMO.md`](DEMO.md).
+
+Para mostrar el sistema o para configurarlo desde cero hay **dos entornos aparte**,
+en 8081 y 8082, con su propia siembra y sus guiones paso a paso:
+[`entornos/README.md`](entornos/README.md).
+
+- Django 6 + DRF + SimpleJWT sobre PostgreSQL 16. Dependencias en `backend/requirements.txt`.
+- El cliente de Postgres de la imagen está fijado a la versión del servidor: un
+  `pg_dump` de otra versión produce respaldos que no se pueden restaurar.
 - Comandos dentro del contenedor: `docker compose exec backend python manage.py …`
 
-### Obtener un token y llamar la API
+### Obtener un token
 
 ```bash
-# 1) token
 curl -X POST http://127.0.0.1:8000/api/auth/token/ \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@salud.local","password":"admin1234"}'
-# 2) usar el "access" devuelto:
-curl http://127.0.0.1:8000/api/instituciones/ \
-  -H "Authorization: Bearer <access>"
+
+curl http://127.0.0.1:8000/api/instituciones/ -H "Authorization: Bearer <access>"
 ```
 
----
+## 4. Mapa del backend
 
-## 3. Lo que está hecho (detalle)
-
-### Modelo de datos — `backend/apps/`
-
-| App | Modelos |
+| App | Responsabilidad |
 |---|---|
-| `accounts` | `Usuario` (login por email, `AUTH_USER_MODEL`), `Membresia` (rol por institución: admin / configurador / administrativo), `LegajoProfesional` |
-| `instituciones` | `Institucion` → `Area` → `Subarea` (instituciones autocontenidas) |
-| `formularios` | `Formulario`, `Campo` (tipos: texto_corto/largo, número con unidad y rango, fecha, selección única, archivo; `origen` HC/legajo declarado pero sin precarga implementada) |
-| `flujos` | `Flujo`, `VersionFlujo` (v1/v2/v3; estados borrador/publicada/reemplazada/archivada), `Nodo` (10 tipos: inicio, form, decision, accion, atencion, derivar, espera, tiempo, estado, fin), `Conexion` |
-| `casos` | `Caso` (instancia de `VersionFlujo`), `ValorCampo`, `ItemFila` (cola FIFO + urgentes), `EventoCaso` (trazabilidad) |
-| `registros` | `Ciudadano`, `HistoriaClinica`, `EntradaHistoria`, `Estudio`, `Receta` |
+| `accounts` | Usuario (login por email), membresía institucional con rol, legajo profesional |
+| `instituciones` | Institución → área → subárea, grupos de trabajo, boxes, camas, estadías |
+| `formularios` | Formulario y campos configurables |
+| `flujos` | Flujo, versión, nodo (13 tipos) y conexión |
+| `casos` | Caso, valores de campo, ítem de fila, evento y notificación; el motor de ejecución |
+| `registros` | Ciudadano, historia clínica, entradas, estudios, recetas, consentimiento, sellado |
+| `agenda` | Agenda, disponibilidad, bloqueo, turno |
+| `farmacia` | Insumo, depósito, lote, existencia, movimiento, pedido |
+| `red` | Red de establecimientos y traslados |
+| `auditoria` | Accesos clínicos, latidos de los procesos, respaldo y purga |
+| `finanzas` | Costos, gastos, reparto, dinero, reportes y permisos financieros |
+| `financiadores` | Organización, padrón, cobertura, cupo, copago, autorizaciones |
+| `fhir` | Fachada FHIR R4 de sólo lectura |
 
-Principio clave: **plantilla** (flujo/versión + grafo) vs **caso** (instancia en
-ejecución). El motor usa la misma definición para diseñar y para ejecutar.
+Principio que ordena todo: **plantilla** (flujo + versión + grafo) frente a **caso**
+(instancia en ejecución). El motor usa la misma definición para diseñar y para
+ejecutar; nadie programa una pantalla a mano.
 
-### API REST
+## 5. Qué falta
 
-- Router central: `backend/config/api.py`, montado en `/api/` (21 endpoints, un
-  ViewSet CRUD por entidad).
-- Cada app tiene `serializers.py` + viewsets en `views.py`.
-- Filtrado por query params: mixin `BaseModelViewSet` en `backend/apps/common.py`
-  (atributo `filter_fields`). Ej.: `/api/areas/?institucion=1`,
-  `/api/casos/?estado=recibido&asignado_a=1`.
-- Búsqueda y orden (`?search=`, `?ordering=`) en los listados principales.
-- Auth: JWT obligatorio (`IsAuthenticated` por defecto). API navegable de DRF
-  activa con sesión.
+### Decisiones pendientes
 
-**Endpoints / acciones especiales:**
-- `GET  /api/health/` — ¿puede atender? Consulta la base; 503 si no llega. Sin auth
-  (una sonda no tramita credenciales) y por eso no cuenta qué falló.
-- `GET  /api/estado/` — latido de los procesos periódicos (reloj del motor,
-  recordatorios, saturación, respaldo). 503 si alguno se quedó callado. Con sesión.
-- `POST /api/auth/token/` y `/api/auth/token/refresh/` — JWT.
-- `GET  /api/usuarios/me/` — usuario autenticado.
-- `POST /api/casos/{id}/tomar/` — asigna el caso al usuario + registra `EventoCaso`.
-- `GET  /api/casos/{id}/eventos/` — línea de tiempo del caso.
+- **Dónde se hospeda.** Es el bloqueo real para pasar a producción.
+- **Certificador para la firma digital** con certificado (Ley 25.506). Lo que hoy se
+  muestra es la firma funcional por rol, no la criptográfica.
+- **Perfiles FHIR** exigidos por la jurisdicción y autenticación de clientes externos.
 
-Lecturas anidadas: `Flujo`→versiones · `VersionFlujo`→nodos+conexiones ·
-`HistoriaClinica`→entradas/estudios/recetas · `Caso` (detalle)→valores+eventos.
+### Alcance no construido
 
----
+- Contabilidad general, facturación fiscal y conciliación bancaria.
+- Otras bases de reparto distintas de la actividad.
+- Pantallas de indicadores agregados no nominales: el rol `reportes` existe y casi no
+  tiene dónde usarse.
+- Tableros por nivel: establecimiento, región sanitaria, provincia.
 
-## 4. Lo que falta (pendiente)
+### Deuda conocida
 
-### 4.1. Motor de ejecución — ✅ HECHO
+- Dos specs de Playwright quedaron de una prueba manual y apuntan a una UI que ya
+  cambió: `e2e/_tmp_caso7.spec.js` y `e2e/_tmp_turnos.spec.js`, junto con los
+  `_tmp_A*.png` del mismo directorio. Conviene borrarlos.
+- `e2e/finanzas-feedback.spec.js` conserva expectativas de una versión anterior de la
+  interfaz de Finanzas.
+- El admin de Django no funciona por http en los entornos con `DEBUG=false`: las
+  cookies van marcadas `Secure`. La aplicación no lo necesita, usa JWT.
+- `/fhir/` no pasa por el puerto de la aplicación; el nginx del frontend no lo proxea.
 
-Implementado en `backend/apps/casos/motor.py` (cubierto por 8 tests en
-`apps/casos/tests.py`). Expuesto en la API:
-- `POST /api/casos/{id}/iniciar/` — posiciona el caso en el Inicio y corre la
-  cadena de nodos automáticos hasta la primera parada.
-- `POST /api/casos/{id}/avanzar/` — completa el nodo de detención actual con los
-  datos enviados y avanza. Cuerpo según el tipo de nodo:
-  - form → `{"valores": {"<campo_id>": "<valor>"}}`
-  - atencion → `{"titulo", "contenido", "firmada"}`
-  - espera (fila) / tiempo → `{}`
-- `GET  /api/versiones-flujo/{id}/validar/` — problemas (errores/avisos) y si
-  se puede publicar.
-- `POST /api/versiones-flujo/{id}/publicar/` — publica si no hay errores y marca
-  las versiones anteriores como reemplazadas.
+## 6. Qué está validado y qué no
 
-Comportamiento por tipo de nodo: inicio/decisión/acción/derivar/estado se
-atraviesan solos; form/atención/espera-fila/espera-tiempo/fin detienen el avance.
-Las **decisiones** evalúan `Conexion.condicion` (campo/operador/valor: `=`, `!=`,
-`>`, `<`, `contiene`) sobre los `ValorCampo` cargados; conexión sin condición =
-rama por defecto. **Atención** crea `EntradaHistoria` en la HC del ciudadano.
-**Espera** encola `ItemFila` (urgentes primero). Cada transición queda en
-`EventoCaso`. Ver convenciones de `Nodo.config` en el docstring de `motor.py`.
+Hay **1767 pruebas de backend** y **35 suites end-to-end** de Playwright.
 
-**Sub-pendientes del motor (mejoras, no bloqueantes):**
-- [ ] Reactivación real de **Espera por tiempo** (cron / tarea diferida); hoy se
-      destraba llamando `avanzar` manualmente.
-- [ ] **Derivar a otro flujo** (`flujo_destino_id`): hoy solo cambia el área; no
-      instancia un nuevo caso en el flujo destino.
-- [ ] Operación de fila más rica (devolver a la cola / marcar ausente). El
-      llamado básico ya funciona vía `avanzar`.
+### Lo medido el 22/09/2026
 
-### 4.2. Frontend (`frontend/` — Vite + React)
+`apps.finanzas` + `apps.financiadores`: **726 pruebas, 49 fallos y 3 errores.**
 
-Stack: Vite + React + react-router. Dev: `cd frontend && npm install && npm run dev`
-(proxy `/api` → `:8000`, ver `vite.config.js`). Base lista: cliente HTTP con JWT
-y refresh automático (`src/api/client.js`), `AuthProvider`, design tokens calcados
-del sistema de diseño (`src/theme.js`), componentes base (`src/components/ui.jsx`:
-Button, Badge, Card, Input, Select, Textarea, Stepper, Avatar, Spinner), shell con
-sidebar/header (`src/components/Shell.jsx`) y login (`src/pages/Login.jsx`).
+Casi todos tienen una sola causa. El commit `c4eefbb` del 18/09 amplió la herencia
+financiera del administrador de institución de dos acciones a las dieciocho, y
+dejó atrás las pruebas que usaban una membresía con rol `admin` como portador
+neutro para verificar que un permiso viene de la concesión y no del rol. Al
+heredar todo, cada afirmación negativa de ese tipo pasa sola y el test falla.
 
-- [x] **Ejecución** (administrativo): bandejas con tabs míos/sin asignar/todos
-      (`pages/ejecucion/Bandejas.jsx`), detalle de caso con stepper + trazabilidad
-      + panel del paso actual que renderiza el formulario/atención/espera desde la
-      definición y llama a `iniciar`/`avanzar` (`pages/ejecucion/CasoDetalle.jsx`),
-      fila de espera del operador (`pages/ejecucion/Fila.jsx`). **Verificado con
-      Playwright** contra el backend con datos de `seed_demo`.
-- [ ] **Diseño** (configurador): lienzo tipo diagrama (nodos arrastrables, flechas,
-      zoom/paneo), panel de propiedades por nodo, constructor de reglas. NO debe
-      parecerse al mundo de ejecución (README §3).
-- [ ] **Administración**: instituciones, áreas/sub-áreas, usuarios y membresías.
-- [ ] **Registros**: historia clínica (evolución, estudios, recetas) y legajo.
-- [ ] Selector de rol / contexto de institución (hoy el shell asume Ejecución).
+Está comprobado: con esa línea revertida, las mismas 724 pruebas bajan a **4
+fallos y 2 errores**. El resto de la suite no está tocado.
 
-### 4.3. Otros pendientes
+**La regla de producción es la correcta** —es una decisión aprobada el 18/09—; lo
+que quedó viejo son los fixtures de prueba, en unos 16 módulos. No están
+reparados. Es una tarea acotada pero propia, no un efecto secundario de otra.
 
-- [ ] **Tests** automatizados (los `tests.py` de cada app están vacíos).
-- [x] **Permisos auditados por rol**: barrida automática de los 24 recursos
-      registrados contra los 6 roles, comparando lo que el servidor hace
-      con lo que el rol declara poder hacer. Falla si alguien agrega un
-      recurso sin declarar su capacidad.
-- [ ] **Seed de datos** de demo (script que cargue las instituciones, flujos y
-      casos del prototipo) para no empezar de cero cada vez.
-- [ ] **Subida de archivos** real para campos tipo Archivo y estudios (hoy solo
-      se guarda el nombre como texto).
-- [x] **Documentación de API**: esquema OpenAPI 3 en `/api/esquema/` y visor
-      Swagger en `/api/docs/` (drf-spectacular). 83 endpoints, sin avisos ni
-      errores de generación. En producción pide sesión: no expone datos pero
-      sí el mapa completo de la API.
-- [ ] Probar de verdad contra **Supabase/Postgres** y preparar despliegue
-      (gunicorn/uvicorn, `collectstatic`, variables de entorno de producción).
-
----
-
-## 5. Mapa de archivos clave del backend
-
-```
-backend/
-  manage.py
-  requirements.txt
-  .env.example            # copiar a .env
-  config/
-    settings.py           # DRF + JWT + CORS + DB (Supabase/SQLite)
-    urls.py               # admin, health, token, include(api)
-    api.py                # router central de la API (21 ViewSets)
-  apps/
-    common.py             # BaseModelViewSet + filtrado por query params
-    accounts/   models.py serializers.py views.py admin.py
-    instituciones/ ...
-    formularios/   ...
-    flujos/        ...
-    casos/         ...
-    registros/     ...
-```
-
----
-
-## 6. Cómo levantar todo (backend + frontend)
+Las demás apps no se ejecutaron en esta medición:
 
 ```bash
-# Terminal 1 — backend
-cd backend
-.venv/Scripts/python.exe manage.py seed_demo      # datos de demo (una vez)
-.venv/Scripts/python.exe manage.py runserver       # :8000
-
-# Terminal 2 — frontend
-cd frontend
-npm install                                         # la primera vez
-npm run dev                                          # http://localhost:5173
+docker compose exec backend python manage.py test
+cd frontend && npm run e2e
 ```
 
-Login de demo (administrativo): **operador@salud.local / demo1234**.
-Super admin: **admin@salud.local / admin1234**.
+Lo que sí está verificado contra la aplicación corriendo, y con fecha:
 
-## 7. Próximo paso sugerido
+| Qué | Cuándo |
+|---|---|
+| Los dos entornos locales, levantados y recorridos botón por botón | 17–18/09/2026 |
+| Circuito de financiadores en el entorno demo | 18/09/2026 |
+| Guion de demo comercial completo | 17/09/2026 |
+| Escenario de finanzas Los Aromos y sus cifras | 15/09/2026 |
+| Stack de desarrollo y escenario de guardia | 20/08/2026 |
 
-El mundo **Ejecución** ya está completo y verificado. Próximos candidatos:
-- **Mundo Diseño** (lienzo de flujos): el más vistoso; usa `nodos`, `conexiones`
-  y las acciones `validar`/`publicar` que ya existen en la API.
-- **Administración** (instituciones/áreas/usuarios): el más simple; CRUD directo.
-- **Permisos por rol/institución** (§4.3): hoy todo usuario autenticado ve y edita
-  todo; conviene cerrarlo antes de exponer el sistema.
+Lo que **no** está validado: la operación real con datos productivos, el
+comportamiento con volumen de producción, y el despliegue fuera de una máquina local.
+Una activación local no equivale a aprobación de producción ni a aceptación funcional.

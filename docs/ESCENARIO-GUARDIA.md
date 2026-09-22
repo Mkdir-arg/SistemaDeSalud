@@ -138,7 +138,7 @@ Inicio (derivado) → Asignar cama → Evolución médica → Conducta → ¿Con
 | Interconsulta a otra área (ida y vuelta) | ✅ |
 | Recetas en la historia clínica | ✅ |
 | Internación con loop de evolución | ✅ |
-| Observación: espera y reevaluación | ⚠️ La reactivación de la espera es manual (no hay cron) |
+| Observación: espera y reevaluación | ✅ El servicio `tiempos` reactiva las esperas vencidas (`correr_tiempos`, cada 2 min) |
 | Cancelar / reasignar / repriorizar (jefe de área) | ✅ |
 | Notificaciones (estudio vuelve · reasignación · urgente · cancelación) | ✅ |
 

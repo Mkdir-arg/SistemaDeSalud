@@ -38,7 +38,9 @@ Plataforma (super admin)
         └── Registros: Historia clínica · Legajo profesional
 ```
 
-Las instituciones son **independientes** (no se agrupan en jurisdicciones ni redes). El super admin es el nivel más alto; el directorio de instituciones es la raíz.
+El super admin es el nivel más alto; el directorio de instituciones es la raíz.
+
+> **Corrección posterior al prototipo.** Acá decía que las instituciones no se agrupan en redes. El sistema implementado sí tiene **redes sanitarias** entre establecimientos, con traslados y tablero de red — ver [`docs/funcionalidades/red-traslados/`](../docs/funcionalidades/red-traslados/README.md). Este documento describe el entregable de diseño de junio de 2026; la marca, los tokens y las capturas siguen siendo la referencia visual, el texto no describe el alcance actual.
 
 ## 5. Archivos de este entregable
 

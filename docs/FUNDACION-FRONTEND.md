@@ -3,7 +3,7 @@
 > Cómo está construido el frontend y las reglas que hay que respetar al tocarlo.
 > Documento vivo. Creado: **2026-08-01** · Fase 1 cerrada: **2026-08-02**.
 
-Contexto y hoja de ruta en [`PLAN-DESARROLLO.md`](PLAN-DESARROLLO.md).
+Contexto y hoja de ruta en [`PLAN-DESARROLLO.md`](historico/PLAN-DESARROLLO.md).
 
 ## El estado
 
@@ -34,9 +34,12 @@ La excepción deliberada sigue siendo la pantalla de llamados (ver más abajo).
 
 ## Tokens
 
-`src/styles/tokens.css` **se genera** desde `src/theme.js` con `npm run tokens`.
-No se edita a mano. Mientras convivan las dos capas, dos listas de colores
-mantenidas por separado divergen sin que nadie se entere.
+`src/styles/tokens.css` **es la fuente única y se edita a mano.** De ahí se deriva
+`src/styles/escalas.js` con `npm run escalas`; ese sí se genera y no se toca.
+
+> Hasta la Fase 2A era al revés: `tokens.css` se generaba desde `theme.js` con un
+> `npm run tokens` que ya no existe. Al borrarse `theme.js`, `tokens.css` pasó a ser
+> el original. Si alguna instrucción vieja dice que no se edita a mano, es de antes.
 
 Hay dos niveles y hay que usar el correcto:
 
