@@ -8,11 +8,13 @@ Institución, personas, proveedores e historia completamente ficticios. Es una m
 
 ## Antes de empezar · 2 minutos
 
-Abrí [localhost:8090](http://localhost:8090). Ingresá con **Elena Rivas**, `elena.rivas@losaromos.test`, y comprobá que diga **Hospital General Los Aromos**. Usá la contraseña de `acceso-local.txt`, entregado por separado junto con la demo; no está en este documento.
+Abrí el **entorno demo**, [localhost:8082](http://localhost:8082) — ver [`docs/entornos/README.md`](../../entornos/README.md). Ingresá con **Elena Rivas**, `elena.rivas@losaromos.test`, y comprobá que diga **Hospital General Los Aromos**. La contraseña es la que se le pasó a `seed_los_aromos` al sembrar el entorno.
+
+> Este recorrido se escribió el 15/09 sobre el worktree que corría en 8090. El escenario es el mismo —lo siembra `seed_los_aromos`—, pero desde el 17/09 vive en el entorno demo en 8082, y los enlaces de abajo ya apuntan ahí. Los identificadores de gasto, cuenta y caso valen si el entorno se sembró en el orden documentado en `entornos/README.md`, que corre `seed_los_aromos` primero sobre una base vacía. Las cifras siguen siendo las de la carga inicial. Para el circuito de obras sociales sobre este mismo hospital, ver [`guia-demo-financiadores.md`](../../entornos/guia-demo-financiadores.md).
 
 Elena tiene administración institucional —incluido acceso clínico por ese rol— y permisos financieros explícitos; no es superusuaria ni un perfil limitado sólo a finanzas. Paula Benítez carga información sin aprobarla. Los perfiles clínicos son Lucía Ferreyra (Clínica médica), Andrés Molina (Cardiología) y Valeria Costa (Diagnóstico por imágenes), sin permisos financieros. Mateo Salvatierra es el perfil de configuración. Para mantener a Elena abierta y entrar con un médico, usá otro perfil del navegador o una ventana privada. Dos pestañas o ventanas normales del mismo perfil comparten la sesión; si no la separás, cerrá sesión antes de cambiar de usuario.
 
-Abrí [Finanzas y costos · septiembre](http://localhost:8090/finanzas?mes=2026-09&tab=resumen), elegí **Todas las áreas e institucional** y cerrá filtros o ventanas que hayan quedado del ensayo. El recorrido principal sólo consulta: no requiere guardar, aprobar, rechazar ni cambiar configuraciones.
+Abrí [Finanzas y costos · septiembre](http://localhost:8082/finanzas?mes=2026-09&tab=resumen), elegí **Todas las áreas e institucional** y cerrá filtros o ventanas que hayan quedado del ensayo. El recorrido principal sólo consulta: no requiere guardar, aprobar, rechazar ni cambiar configuraciones.
 
 También podés entrar desde la tarjeta **Finanzas y costos** de **Inicio**; se muestra sólo cuando el perfil tiene acceso financiero. Las acciones superiores cambian con la pestaña: **Registrar gasto** y **Agregar gasto mensual** en **Gastos registrados**; **Agregar gasto mensual** también en **Gastos mensuales**; configuración de costos en **Costos por atención**, de repartos en **Repartos** y de cobros en **Pagos y cobros**. **Nuevo concepto** aparece junto a las acciones relacionadas con conceptos, si tenés permiso. El botón con icono **Acciones de finanzas**, al extremo derecho de la cabecera, reúne las demás acciones permitidas.
 
@@ -28,12 +30,12 @@ También podés entrar desde la tarjeta **Finanzas y costos** de **Inicio**; se 
 
 ## 1. Mostrar el valor de los reportes · 4 minutos
 
-**Pantalla:** [Resumen · septiembre](http://localhost:8090/finanzas?mes=2026-09&tab=resumen).
+**Pantalla:** [Resumen · septiembre](http://localhost:8082/finanzas?mes=2026-09&tab=resumen).
 
 1. Señalá **Gastos aprobados**, **Por aprobar**, **Distribuido entre atenciones** y **Sin distribuir**. “Distribuido + sin distribuir explican el aprobado; no son otros gastos”. Los ajustes por aprobar se informan aparte y todavía no cambian los importes.
 2. En **Barras**, seleccioná una categoría para abrir los gastos que explican el número. Volvé a Resumen; cambiá a **Listado** si querés leer cifras exactas.
 3. Abrí **Evolución mensual**, elegí **12 meses** y dejá **Completos y provisionales**. Compará octubre de 2025 a septiembre de 2026; destacá un concepto y probá **Comparar con referencias**.
-4. Mostrá septiembre como mes en curso. Luego abrí [agosto](http://localhost:8090/finanzas?mes=2026-08&tab=resumen) para contrastar un mes anterior; al terminar volvé a septiembre.
+4. Mostrá septiembre como mes en curso. Luego abrí [agosto](http://localhost:8082/finanzas?mes=2026-08&tab=resumen) para contrastar un mes anterior; al terminar volvé a septiembre.
 
 **Qué decir:** “Una baja en septiembre no demuestra ahorro: todavía está abierto. Los puntos provisionales también pueden indicar cargas o aprobaciones pendientes. Comparamos pesos de cada mes, sin ajustar por inflación.”
 
@@ -41,7 +43,7 @@ También podés entrar desde la tarjeta **Finanzas y costos** de **Inicio**; se 
 
 ## 2. Explicar carga, revisión e historia · 4 minutos
 
-**Pantallas:** [Gastos registrados · Clínica médica](http://localhost:8090/finanzas?mes=2026-09&tab=gastos&area=1) y [Gastos mensuales · Clínica médica](http://localhost:8090/finanzas?mes=2026-09&tab=calendario&area=1).
+**Pantallas:** [Gastos registrados · Clínica médica](http://localhost:8082/finanzas?mes=2026-09&tab=gastos&area=1) y [Gastos mensuales · Clínica médica](http://localhost:8082/finanzas?mes=2026-09&tab=calendario&area=1).
 
 1. Filtrá **Clínica médica** y buscá **Electricidad** de septiembre, gasto **#100**. Abrí **Detalle**: gasto aprobado de **$120.000** y ajuste de **−$10.000 pendiente de aprobación**. El importe vigente aprobado sigue siendo **$120.000**.
 2. Señalá el original, estado, motivo e historial. No apruebes el ajuste durante el recorrido principal. Las correcciones conservan el registro original; un reemplazado no se suma como otro gasto vigente.
@@ -67,13 +69,13 @@ También podés entrar desde la tarjeta **Finanzas y costos** de **Inicio**; se 
 
 ## 4. Seguir una atención hasta sus costos y repartos · 5 minutos
 
-**Pantallas:** [Costos por atención · Cardiología](http://localhost:8090/finanzas?mes=2026-09&tab=costos&area=2) y [Repartos · Cardiología](http://localhost:8090/finanzas?mes=2026-09&tab=repartos&area=2).
+**Pantallas:** [Costos por atención · Cardiología](http://localhost:8082/finanzas?mes=2026-09&tab=costos&area=2) y [Repartos · Cardiología](http://localhost:8082/finanzas?mes=2026-09&tab=repartos&area=2).
 
 1. En **Costos por atención**, elegí septiembre y Cardiología. Escribí **167** en **Número de caso**: corresponde a **Clara Benítez**, atendida el 10 de septiembre.
 2. Abrí **Ver composición**. Mostrá **Componentes directos** por **$23.500** —trabajo profesional $22.000 e insumos $1.500— y **Gastos compartidos atribuidos** por **$92.500** —electricidad $32.500, limpieza $42.500 y mantenimiento $17.500—. Revisá **Alcance y pendientes**. No sumes el total del gasto original otra vez a todas las atenciones que lo comparten.
 3. Anotá el número de un gasto compartido —por ejemplo, **#103**—, cerrá la composición y buscalo en **Gastos registrados** para mostrar su origen. Después abrí **Repartos**: desplegá **Ver … atenciones** en un reparto distribuido y mostrales los importes asignados.
 4. Usá **Ver historial** sólo para explicar versiones. Las versiones antiguas no se suman al resultado actual. Si aparece **Actualización pendiente**, esperá la actualización; no describas la distribución anterior como vigente.
-5. Si querés mostrar el lado clínico, abrí el [caso #167](http://localhost:8090/casos/167) con Andrés Molina en una sesión separada. Mirá una atención ya completada; no hace falta completar otra. El registro financiero deriva de la atención completada, sin nuevas preguntas económicas al profesional.
+5. Si querés mostrar el lado clínico, abrí el [caso #167](http://localhost:8082/casos/167) con Andrés Molina en una sesión separada. Mirá una atención ya completada; no hace falta completar otra. El registro financiero deriva de la atención completada, sin nuevas preguntas económicas al profesional.
 
 **Ejemplo de información incompleta:** Diagnóstico por imágenes, **caso #170**, Beatriz Correa, atendida el 14 de septiembre. Tiene un componente sin valor y el responsable del cobro por completar. Mostrá los pendientes sin resolverlos durante el recorrido; no son cero ni deuda atribuida a Beatriz.
 
@@ -83,7 +85,7 @@ También podés entrar desde la tarjeta **Finanzas y costos** de **Inicio**; se 
 
 ## 5. Cerrar el circuito con pagos y cobros · 6 minutos
 
-**Pantalla:** [Pagos y cobros · septiembre](http://localhost:8090/finanzas?mes=2026-09&tab=dinero). Volvé a **Todas las áreas e institucional**.
+**Pantalla:** [Pagos y cobros · septiembre](http://localhost:8082/finanzas?mes=2026-09&tab=dinero). Volvé a **Todas las áreas e institucional**.
 
 ### A. Una cuenta por pagar, sin confundir gasto con dinero
 
@@ -127,7 +129,7 @@ Abajo, en **Cobros por completar**, mostrá una atención con arancel o responsa
 
 ## 6. Cierre · 2 minutos
 
-Volvé a [Resumen · septiembre](http://localhost:8090/finanzas?mes=2026-09&tab=resumen), con todas las áreas.
+Volvé a [Resumen · septiembre](http://localhost:8082/finanzas?mes=2026-09&tab=resumen), con todas las áreas.
 
 **Frase de cierre:** “Podemos explicar los gastos y sus pendientes, distribuir lo que corresponde, conocer componentes del costo de atención y seguir cuentas y dinero por separado, con historia y permisos. Donde falta información, el sistema lo muestra: no inventa una cifra”.
 
@@ -149,8 +151,8 @@ Identificadores y cifras de la carga inicial, contrastados con el manifiesto del
 
 | Caso a mostrar | Dónde localizarlo | Clave para explicarlo |
 | --- | --- | --- |
-| Electricidad, Clínica médica, septiembre | [Gasto #100](http://localhost:8090/finanzas?mes=2026-09&tab=gastos&area=1&gastos_f_id=100) · cuenta #266 | Aprobado $120.000, pago pendiente $20.000 y ajuste de gasto pendiente −$10.000 son estados distintos |
-| Electricidad, Clínica médica, agosto | [Gasto #91](http://localhost:8090/finanzas?mes=2026-08&tab=gastos&area=1&gastos_f_id=91) · cuenta #247 | Cuenta de agosto con un pago de $60.000 efectuado en septiembre |
+| Electricidad, Clínica médica, septiembre | [Gasto #100](http://localhost:8082/finanzas?mes=2026-09&tab=gastos&area=1&gastos_f_id=100) · cuenta #266 | Aprobado $120.000, pago pendiente $20.000 y ajuste de gasto pendiente −$10.000 son estados distintos |
+| Electricidad, Clínica médica, agosto | [Gasto #91](http://localhost:8082/finanzas?mes=2026-08&tab=gastos&area=1&gastos_f_id=91) · cuenta #247 | Cuenta de agosto con un pago de $60.000 efectuado en septiembre |
 | Clara Benítez, Cardiología, 10/09 | Caso y atención financiera #167 · cuenta #269 | Costo directo $23.500, compartido $92.500 y arancel $45.000; quien paga es Mutual del Valle |
 | Daniel Peralta, Clínica médica | Caso y atención financiera #165 · cuenta #264 | Cargo original $30.000; devolución con reducción de $5.000; cuenta y cobrado neto $25.000 |
 | Beatriz Correa, Imágenes, 14/09 | Caso y atención financiera #170 | Falta un valor de costo y definir al responsable del cobro; no inventar datos ni asignar deuda al paciente |

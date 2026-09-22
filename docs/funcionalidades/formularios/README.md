@@ -46,8 +46,7 @@ Permitir que la institucion modele datos clinicos, administrativos y operativos 
 
 ## Referencias
 
-- `docs/FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md`
-- `diseno/docs/04-pantallas.md`
+- `diseño/docs/04-pantallas.md`
 
 ## Puntos a validar
 

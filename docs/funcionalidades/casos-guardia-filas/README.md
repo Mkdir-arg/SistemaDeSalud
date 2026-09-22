@@ -69,7 +69,7 @@ Gestionar la atencion de pacientes como casos trazables. El caso concentra estad
 
 - `docs/ESCENARIO-GUARDIA.md`
 - `docs/NOTIFICACIONES.md`
-- `diseno/docs/captures-manual/`
+- `diseño/docs/captures-manual/`
 
 ## Puntos a validar
 

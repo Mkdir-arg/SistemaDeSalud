@@ -18,26 +18,45 @@ Representar el establecimiento de salud como una organizacion operable: instituc
 - Grupos de trabajo por area con miembros.
 - Boxes para llamado y atencion.
 - Camas vinculadas a area/subarea, con sector y estado operativo.
-- Vista de estructura en frontend por area, subseccion y subarea.
+- Agendas asociadas al area.
 
 ## Reglas de negocio
 
 - El area es la unidad funcional principal para flujo, supervision, agenda y derivaciones.
 - Los grupos restringen quien puede tomar, llamar o avanzar un paso cuando el nodo los declara.
+- Un grupo pertenece a un area y **solo admite personas de esa area**: con membresia en la institucion y esa area asignada. El grupo es nombre mas integrantes; no tiene rol ni funcion propia.
 - Un box puede estar libre u ocupado por un caso.
 - Una cama ocupada debe tener caso asociado; una cama sin caso no puede figurar como ocupada.
 - Al liberar una cama, puede pasar a higiene antes de volver a libre.
+- Las instituciones no se eliminan: la auditoria clinica y los flujos las protegen. La unica baja posible es la de estado.
+
+## El ambito de un flujo
+
+Un flujo puede pertenecer a la institucion completa, a un area o a una subarea:
+
+| Ambito | `area` | `subarea` | Significado |
+|---|---|---|---|
+| `institucion` | nula | nula | Proceso de toda la institucion |
+| `area` | seteada | nula | Proceso general del area |
+| `subarea` | derivada | seteada | Proceso especifico de la subarea |
+
+- Fijar una subarea **deriva el area** automaticamente, para que los filtros y listados por area sigan funcionando.
+- El selector de subarea aparece al crear el flujo solo si el area elegida tiene subareas, con una leyenda del alcance resultante. El listado muestra el ambito como `Area > Subarea`, y duplicar un flujo conserva su subarea.
+- El ambito se define al crear. Moverlo despues es posible por API (`PATCH /flujos/{id}/`) pero no tiene pantalla.
 
 ## Pantallas y rutas
 
-- `/estructura`
-- `/estructura/:areaId`
-- `/estructura/:areaId/sub/:subId`
-- `/estructura/:areaId/:seccion`
+- `/estructura` — listado de areas.
+- `/estructura/:areaId` — ficha del area.
+- `/estructura/:areaId/:seccion` — cada seccion es una pagina propia: `datos`, `staff`, `grupos`, `boxes`, `agendas`, `subareas`.
+- `/estructura/:areaId/sub/:subId` — ficha de la subarea, que cuelga aparte porque lleva su propio id y no es una seccion.
+
+Cada seccion tiene su accion principal: asignar profesional, crear grupo, crear box, crear agenda, crear subarea.
 
 ## Entidades y endpoints
 
 - `instituciones`, `areas`, `subareas`, `grupos`, `boxes`, `camas`, `estadias-cama`
+- Escritura con `config_institucional`, salvo `instituciones` (`gobierno_plataforma`), la accion `camas/{id}/estado` y `estadias-cama` (`internacion`).
 
 ## Integraciones
 
@@ -49,9 +68,8 @@ Representar el establecimiento de salud como una organizacion operable: instituc
 
 ## Referencias
 
-- `docs/FUNCIONALIDADES-ESTRUCTURA-Y-FLUJOS.md`
-- `diseno/docs/04-pantallas.md`
-- `diseno/docs/captures-manual/`
+- `diseño/docs/04-pantallas.md`
+- `diseño/docs/captures-manual/`
 
 ## Puntos a validar
 

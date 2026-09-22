@@ -18,7 +18,7 @@ contenedores cada uno, así que si la máquina va justa, bajá el que no estés 
 
 ## Archivos que agrega esta preparación
 
-Ninguno se versiona todavía; todo esto es reversible.
+`docker-compose.vacio.yml`, `docker-compose.demo.yml` y `seed_financiadores.py` quedaron versionados el 18/09. Los `.env.*` no: los cubre `.gitignore`, como corresponde.
 
 | Archivo | Qué es |
 |---|---|

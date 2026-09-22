@@ -1,6 +1,6 @@
 # Roles, responsabilidades y permisos
 
-Actualizado: 2026-08-20
+Actualizado: 2026-09-22 (verificado contra `main` en `fca71e3`)
 
 Este documento describe el modelo funcional de autoridad de I-Core Salud: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
 
@@ -116,7 +116,12 @@ Responsabilidades:
 - Configurar flujos, formularios, agendas y recursos institucionales.
 - Supervisar operacion.
 - Auditar accesos clinicos.
+- Otorgar permisos financieros a quien corresponda.
 - Operar si la institucion lo decide, aunque funcionalmente deberia delegar operacion diaria.
+
+Alcance financiero:
+
+- Desde el 18/09/2026 **hereda todas las acciones financieras** dentro de su institucion, para todas las areas e informacion sensible. Antes heredaba solo las dos lecturas. Ver §3.1.
 
 Funcionalidades:
 
@@ -201,7 +206,7 @@ Responsabilidades:
 - Gestionar turnos, presencia, cancelaciones y ausencias.
 - Operar filas y llamados si pertenece al grupo responsable.
 - Acompañar derivaciones administrativas.
-- Consultar historia clinica cuando el flujo operativo lo requiere y la institucion lo habilita por permisos.
+- Mantener la ficha administrativa del paciente y su consentimiento.
 
 Funcionalidades:
 
@@ -210,13 +215,15 @@ Funcionalidades:
 - Filas.
 - Casos.
 - Agenda y turnos.
-- Historia clinica y busqueda de ciudadanos.
+- Padron de pacientes: alta, busqueda y ficha administrativa.
 - Red y traslados como operador del establecimiento.
-- Farmacia/internacion solo si la organizacion lo usa como rol operativo general y el usuario integra los grupos adecuados.
 
 Limites:
 
+- **No ve la historia clinica.** Tiene `padron_admision` y no `historia_clinica`: accede a la ficha administrativa, no a la evolucion, alergias, estudios ni recetas. Si la institucion necesita que la vea, hay que darle otro rol.
+- **No opera farmacia ni internacion**: no tiene `farmacia_stock` ni `internacion`.
 - No firma atenciones medicas.
+- No solicita estudios ni emite recetas.
 - No audita accesos clinicos.
 - No diseña flujos ni formularios.
 - No administra usuarios ni estructura.
@@ -250,6 +257,7 @@ Limites:
 
 - Opera por grupo responsable.
 - No firma atenciones configuradas para firma medica si el nodo exige rol medico.
+- **No emite recetas**: no tiene `prescripcion`. Si puede solicitar estudios.
 - No audita accesos clinicos.
 - No configura usuarios, estructura, flujos ni formularios.
 
@@ -281,75 +289,151 @@ Limites:
 
 - No audita a colegas.
 - No supervisa casos de area, salvo que tambien sea jefe de area.
+- **No opera el stock de farmacia**: no tiene `farmacia_stock`, que si tiene enfermeria. Puede imputar consumo desde el caso cuando el flujo lo vincula.
 - No diseña flujos/formularios.
 - No administra usuarios ni estructura.
 - Debe integrar el grupo responsable cuando el nodo lo exige.
 
 ## 3. Capacidades del sistema
 
-Las capacidades son permisos funcionales que habilitan bloques de la aplicacion. Los roles otorgan una o mas capacidades.
+Las capacidades son permisos funcionales que habilitan bloques de la aplicacion. Los roles otorgan una o mas capacidades. Se definen en `backend/apps/common.py` y son veinte, en cuatro familias.
+
+### Capacidades legadas (bloques amplios)
+
+| Capacidad | Que habilita |
+|---|---|
+| `config` | Administracion institucional en sentido amplio |
+| `diseno` | Configuracion de procesos en sentido amplio |
+| `trabajo` | Operacion diaria en sentido amplio |
+| `registros` | Datos del ciudadano en sentido amplio; tambien habilita el legajo propio |
+| `supervision` | Tablero, supervision de area, reasignacion, prioridad y cancelacion de casos |
+
+Siguen vigentes porque varios roles las conservan, pero **ya no son las que gobiernan las rutas ni los endpoints**: eso lo hacen las capacidades de dominio.
+
+### Capacidades de dominio (las que usan rutas y endpoints)
 
 | Capacidad | Que habilita | Observacion |
 |---|---|---|
-| `config` | Estructura organizativa, usuarios, membresias, areas, boxes, camas, agendas base | Administracion institucional |
-| `diseno` | Flujos, versiones, nodos, conexiones, formularios, campos | Configuracion de procesos |
-| `trabajo` | Casos, filas, agenda operativa, farmacia, red, internacion y acciones de proceso | Operacion diaria |
-| `registros` | Ciudadanos, historia clinica, entradas, estudios, recetas, consentimientos | Datos clinicos protegidos |
-| `padron_admision` | Alta, busqueda y ficha administrativa de pacientes | No habilita evolucion, alergias, estudios ni recetas |
-| `historia_clinica` | Historia clinica, antecedentes, evolucion, estudios y recetas como lectura clinica | Requiere auditoria de acceso |
-| `supervision` | Tablero, supervision, reasignacion, prioridad y cancelacion de casos | Conduccion por area |
-| `auditoria` | Registro de accesos clinicos | Admin, jefe de area, auditor estatal, plataforma y superusuario |
+| `config_institucional` | Areas, subareas, grupos, boxes, camas, usuarios, membresias, legajos, agendas, disponibilidades, insumos y depositos | Es la que abre `/estructura` y `/administracion` |
+| `diseno_flujos` | Flujos, versiones, nodos, conexiones, formularios y campos | Abre `/flujos`, `/mapa` y `/formularios` |
+| `casos_operar` | Casos, valores de campo y eventos del caso | Abre `/casos`, `/bandeja` y `/puesto/:id` |
+| `filas` | Items de fila | Abre `/filas` |
+| `turnos` | Turnos y bloqueos de agenda | Abre `/agenda`; crear la agenda y sus disponibilidades es `config_institucional` |
+| `internacion` | Estadias de cama y la accion `camas/{id}/estado` | Abre `/internacion` |
+| `farmacia_stock` | Lotes, existencias, movimientos y pedidos | Abre `/farmacia`; el catalogo de insumos y depositos es `config_institucional` |
+| `traslados_red` | Traslados entre establecimientos | Abre `/red`; crear la red es `gobierno_plataforma` |
+| `padron_admision` | Alta, busqueda y ficha administrativa de pacientes, y sus consentimientos | Abre `/padron`. No habilita evolucion, alergias, estudios ni recetas |
+| `historia_clinica` | Historia clinica, entradas, estudios y recetas como lectura clinica | Abre `/historia`. Genera auditoria de acceso |
+| `prescripcion` | Crear y suspender recetas | Se suma a `historia_clinica`, que sigue siendo necesaria para leerlas |
+| `solicitud_estudios` | Crear y actualizar estudios | Se suma a `historia_clinica` |
 | `reportes` | Reportes agregados / solo lectura | No debe exponer datos clinicos nominales sin otra capacidad |
-| `gobierno_plataforma` | Instituciones, redes sanitarias y directorio estatal | Capacidad global, no acotada a un hospital puntual |
+| `gobierno_plataforma` | Instituciones, redes sanitarias y directorio estatal | Capacidad **global**, no acotada a un hospital puntual |
+
+### Capacidad de interfaz
+
+| Capacidad | Que habilita | Observacion |
+|---|---|---|
+| `auditoria` | Registro de accesos clinicos, `/accesos` | Es una capacidad de menu/ruta. El alcance real lo decide `PuedeAuditar`: solo `admin`, `jefe_area`, `auditor` y `plataforma`, y los dos ultimos con alcance estatal |
+
+### 3.1 Permisos financieros: un sistema aparte
+
+Finanzas **no se gobierna por capacidades**. Usa concesiones explicitas (`ConcesionFinanciera`), ligadas a una membresia, con su institucion, sus areas y si alcanzan informacion sensible. Un rol clinico no las otorga y una concesion no concede acceso clinico.
+
+Son dieciocho acciones:
+
+| Acciones | Que habilitan |
+|---|---|
+| `ver_costos`, `configurar_componentes`, `corregir_costos`, `aprobar_costos` | Costos por atencion: consultar, configurar componentes y valores, corregir y aprobar ajustes |
+| `ver_gastos`, `registrar_gastos`, `corregir_gastos`, `aprobar_gastos`, `configurar_gastos_esperados` | Gastos: consultar, cargar, ajustar, aprobar y configurar los gastos mensuales esperados |
+| `configurar_repartos` | Reglas de reparto y estado de actividad del ambito |
+| `ver_dinero`, `registrar_dinero`, `aprobar_dinero`, `corregir_dinero`, `configurar_cobros` | Pagos y cobros: consultar, registrar, aprobar, reducir/reintegrar y definir que se cobra |
+| `registrar_aceptacion` | Registrar la aceptacion del paciente de un copago identificado |
+| `resolver_cobertura` | Resolver saldos pendientes de resolucion administrativa |
+| `auditar_finanzas` | Leer el registro de accesos financieros |
+
+**El administrador de institucion las hereda todas**, para todas las areas e informacion sensible, dentro de su institucion y sin que se creen concesiones duplicadas. Es una decision aprobada el 18/09/2026: antes solo heredaba `ver_costos` y `ver_gastos`. Las lecturas heredadas se identifican en pantalla como **Por rol** y no se revocan desde las casillas.
+
+Se administran en **Administracion -> Usuarios -> Editar usuario -> Permisos financieros**.
+
+### 3.2 Acceso de financiadores: otra membresia
+
+Un usuario de obra social **no tiene membresia institucional**. Tiene una `MembresiaFinanciador` con su propio rol, que no se mezcla con los roles del hospital:
+
+| Rol del financiador | Que puede |
+|---|---|
+| `admin` | Todo lo del operador, mas administrar los usuarios de su organizacion, los planes y los convenios |
+| `operador` | Configurar cobertura, mantener padron, cargar consumos externos y consultar actividad |
+| `auditor` | Solo lectura sobre su organizacion |
+
+Ademas, resolver autorizaciones exige una **designacion expresa** (`resuelve_autorizaciones`) sobre un rol `admin` u `operador`: ni ser administrador de la organizacion ni ser plataforma alcanza por si solo.
+
+Un usuario con varios ambitos elige una organizacion concreta, y cada consulta vuelve a verificar ese ambito en el servidor.
 
 ## 4. Matriz rol-capacidad
 
-| Rol | config | diseno | trabajo | registros | supervision | auditoria | reportes | gobierno_plataforma |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Superusuario plataforma | Si | Si | Si | Si | Si | Si | Si | Si |
-| Autoridad estatal / plataforma | No | No | No | No | No | Si | Si | Si |
-| Auditor estatal | No | No | No | No | No | Si | No | No |
-| Reportes / solo lectura | No | No | No | No | No | No | Si | No |
-| Admin institucion | Si | Si | Si | Si | Si | Si | Si | No |
-| Configurador | No | Si | No | No | No | No | No | No |
-| Jefe / Supervisor de area | No | No | Si | Si | Si | Si | No | No |
-| Administrativo | No | No | Si | Si | No | No | No | No |
-| Enfermeria | No | No | Si | Si | No | No | No | No |
-| Medico / profesional | No | No | Si | Si | No | No | No | No |
+Las capacidades exactas que otorga cada rol, tal como estan en `ROL_CAPACIDADES`.
 
-Nota tecnica: `gobierno_plataforma` es global. `auditoria` se expone como capacidad efectiva para menu/ruta, pero el backend conserva una regla especifica de alcance en `PuedeAuditar`.
+| Rol | Capacidades |
+|---|---|
+| Superusuario de plataforma | Todas, por diseño tecnico. Atraviesa el limite institucional |
+| Autoridad estatal / plataforma | `gobierno_plataforma`, `reportes`, `auditoria` |
+| Auditor estatal | `auditoria` |
+| Reportes / solo lectura | `reportes` |
+| Admin de institucion | Todas menos `gobierno_plataforma` |
+| Configurador | `diseno`, `diseno_flujos` |
+| Jefe / Supervisor de area | `trabajo`, `registros`, `supervision`, `auditoria`, `padron_admision`, `historia_clinica`, `prescripcion`, `solicitud_estudios`, `turnos`, `casos_operar`, `filas`, `internacion`, `farmacia_stock`, `traslados_red` |
+| Administrativo | `trabajo`, `registros`, `padron_admision`, `turnos`, `casos_operar`, `filas`, `traslados_red` |
+| Enfermeria | `trabajo`, `registros`, `padron_admision`, `historia_clinica`, `solicitud_estudios`, `turnos`, `casos_operar`, `filas`, `internacion`, `farmacia_stock`, `traslados_red` |
+| Medico / profesional | `trabajo`, `registros`, `padron_admision`, `historia_clinica`, `prescripcion`, `solicitud_estudios`, `turnos`, `casos_operar`, `filas`, `internacion`, `traslados_red` |
+
+Tres diferencias que suelen sorprender y estan puestas a proposito:
+
+- El **administrativo no tiene `historia_clinica`**: ve el padron y la ficha administrativa, no la evolucion. Tampoco tiene `internacion` ni `farmacia_stock`.
+- La **enfermeria tiene `farmacia_stock` y el medico no**: quien consume el insumo en la sala es enfermeria.
+- El **medico tiene `prescripcion` y la enfermeria no**; la enfermeria si puede `solicitud_estudios`.
+
+Notas tecnicas:
+
+- `gobierno_plataforma` es global; las demas se evaluan contra la institucion seleccionada.
+- `auditoria` se expone como capacidad efectiva para menu/ruta, pero el alcance real lo decide `PuedeAuditar`.
+- Ningun rol otorga permisos financieros, salvo la herencia completa del admin de institucion descrita en §3.1.
 
 ## 5. Matriz por funcionalidad
 
-| Funcionalidad | Admin | Configurador | Jefe area | Administrativo | Enfermeria | Medico |
-|---|---|---|---|---|---|---|
-| Seleccionar institucion | Si | Si | Si | Si | Si | Si |
-| Administrar usuarios/membresias | Si | No | No | No | No | No |
-| Configurar areas/subareas/grupos | Si | No | No | No | No | No |
-| Configurar boxes/camas | Si | No | No | No | No | No |
-| Cambiar estado operativo de cama | Si | No | Si | Si | Si | Si |
-| Crear agendas y disponibilidades | Si | No | No | No | No | No |
-| Operar turnos | Si | No | Si | Si | Si | Si |
-| Diseñar formularios | Si | Si | No | No | No | No |
-| Diseñar/publicar flujos | Si | Si | No | No | No | No |
-| Ver mi trabajo/bandeja | Si | No | Si | Si | Si | Si |
-| Tomar/avanzar caso | Si | No | Si* | Si* | Si* | Si* |
-| Llamar/rellamar/ausente | Si | No | Si* | Si* | Si* | Si* |
-| Reasignar/priorizar/cancelar caso | Si | No | Si** | No | No | No |
-| Gestionar padron/admision | Si | No | Si | Si | Si | Si |
-| Ver historia clinica | Si | No | Si | No | Si | Si |
-| Firmar entrada/atencion medica | Si | No | Segun rol/nodo | No | Segun nodo | Si |
-| Emitir receta | Si | No | Si* | No/segun flujo | Si* | Si* |
-| Solicitar estudio/interconsulta | Si | No | Si* | Segun flujo | Si* | Si* |
-| Gestionar stock/farmacia | Si | No | Si | Si | Si | Si |
-| Solicitar/operar traslado | Si | No | Si | Si | Si | Si |
-| Ver tablero/supervision | Si | No | Si | No | No | No |
-| Auditar accesos clinicos | Si | No | Si | No | No | No |
+| Funcionalidad | Capacidad | Admin | Configurador | Jefe area | Administrativo | Enfermeria | Medico |
+|---|---|---|---|---|---|---|---|
+| Seleccionar institucion | — | Si | Si | Si | Si | Si | Si |
+| Administrar usuarios/membresias | `config_institucional` | Si | No | No | No | No | No |
+| Configurar areas/subareas/grupos/boxes/camas | `config_institucional` | Si | No | No | No | No | No |
+| Cambiar estado operativo de cama | `internacion` | Si | No | Si | **No** | Si | Si |
+| Ver internacion y estadias | `internacion` | Si | No | Si | **No** | Si | Si |
+| Crear agendas y disponibilidades | `config_institucional` | Si | No | No | No | No | No |
+| Operar turnos y bloqueos | `turnos` | Si | No | Si | Si | Si | Si |
+| Diseñar formularios | `diseno_flujos` | Si | Si | No | No | No | No |
+| Diseñar/publicar flujos | `diseno_flujos` | Si | Si | No | No | No | No |
+| Ver mi trabajo/bandeja | `casos_operar` | Si | No | Si | Si | Si | Si |
+| Tomar/avanzar caso | `casos_operar` | Si | No | Si* | Si* | Si* | Si* |
+| Llamar/rellamar/ausente | `filas` | Si | No | Si* | Si* | Si* | Si* |
+| Reasignar/priorizar/cancelar caso | `supervision` | Si | No | Si** | No | No | No |
+| Gestionar padron/admision y consentimientos | `padron_admision` | Si | No | Si | Si | Si | Si |
+| Ver historia clinica | `historia_clinica` | Si | No | Si | **No** | Si | Si |
+| Firmar entrada/atencion medica | `historia_clinica` + regla del motor | Si | No | Segun rol/nodo | No | Segun nodo | Si |
+| Emitir receta | `prescripcion` | Si | No | Si* | No | **No** | Si* |
+| Solicitar estudio/interconsulta | `solicitud_estudios` | Si | No | Si* | **No** | Si* | Si* |
+| Gestionar stock/farmacia | `farmacia_stock` | Si | No | Si | **No** | Si | **No** |
+| Mantener catalogo de insumos y depositos | `config_institucional` | Si | No | No | No | No | No |
+| Solicitar/operar traslado | `traslados_red` | Si | No | Si | Si | Si | Si |
+| Crear redes sanitarias | `gobierno_plataforma` | No | No | No | No | No | No |
+| Ver tablero/supervision | `supervision` | Si | No | Si | No | No | No |
+| Auditar accesos clinicos | `auditoria` + `PuedeAuditar` | Si | No | Si | No | No | No |
+| Operar Finanzas | concesion financiera | Si*** | No | No | No | No | No |
+| Operar cobertura y copagos | concesion financiera | Si*** | No | No | No | No | No |
 
 Notas:
 
 - `Si*`: requiere pertenecer al grupo responsable del nodo actual si el nodo declara grupos.
 - `Si**`: requiere supervisar el area del caso.
+- `Si***`: por la herencia del admin de institucion (§3.1). Cualquier otro rol necesita concesiones explicitas: se otorgan de a una y **no dependen del rol**. Una persona de contabilidad puede tenerlas sin ser administradora ni obtener permisos clinicos.
 - La ficha administrativa usa `padron_admision`; la lectura clinica usa `historia_clinica`.
 - La escritura de cada recurso se valida contra la institucion implicada.
 
@@ -578,6 +662,53 @@ Regla clave:
 
 - La fachada FHIR es de solo lectura y respeta permisos; no reemplaza el motor de Salud.
 
+### Finanzas y costos
+
+Admin de institucion:
+
+- Hereda todas las acciones financieras de su institucion.
+- Otorga y quita permisos financieros a las demas personas, con su area y su alcance sensible.
+
+Persona con concesiones explicitas (contabilidad, administracion del area):
+
+- Carga gastos, los aprueba si tiene esa accion, configura gastos mensuales esperados y reglas de reparto.
+- Registra pagos y cobros, los aprueba y registra reducciones o reintegros.
+- Configura que prestaciones se cobran, su arancel y quien paga.
+
+Personal clinico:
+
+- Registra la atencion como parte de su trabajo. Los componentes de costo configurados se calculan solos.
+- No obtiene por eso acceso al registro financiero.
+
+Reglas clave:
+
+- Ningun rol clinico concede permisos financieros, y ninguna concesion financiera concede acceso clinico.
+- Cada consulta financiera autorizada deja evidencia por area y nivel de sensibilidad.
+
+### Financiadores y cobertura
+
+Usuario del financiador (`admin` / `operador` / `auditor` de su organizacion):
+
+- Configura planes y reglas de cobertura, mantiene el padron, informa consumos externos y consulta su actividad en los hospitales.
+- Resuelve autorizaciones solo con designacion expresa.
+
+Administrativo del hospital:
+
+- Elige la afiliacion del caso al ingresar y ve la verificacion y la vigencia.
+
+Personal clinico del hospital:
+
+- Antes de la prestacion ve arancel, cobertura, copago y disponibilidad; registra la aceptacion del paciente y confirma la reserva.
+
+Finanzas del hospital:
+
+- Ve la distribucion del importe, las obligaciones y los cobros; rechaza asumir un importe y resuelve los saldos pendientes.
+
+Reglas clave:
+
+- El hospital y el financiador ven cada uno lo suyo. El financiador accede a prestacion, fecha, cantidad e importe propio; no a la historia clinica.
+- Un financiador no consulta el padron ni los consumos de otro.
+
 ### Operacion y monitoreo
 
 Superusuario/equipo tecnico:
@@ -656,7 +787,10 @@ Fuente backend:
 
 - `backend/apps/accounts/models.py`: roles en `Membresia.Rol`.
 - `backend/apps/common.py`: `ROL_CAPACIDADES`, `capacidades_de`, `CapacidadPermission`.
-- `backend/apps/auditoria/views.py`: `PuedeAuditar` y roles que auditan.
+- `backend/apps/auditoria/views.py`: `PuedeAuditar`, `ROLES_QUE_AUDITAN` y `ROLES_AUDITORIA_GLOBAL`.
+- `backend/apps/finanzas/models.py`: acciones en `ConcesionFinanciera.Accion`.
+- `backend/apps/finanzas/permisos.py`: `tiene_concesion_financiera`, `instituciones_admin_financiero` y el alcance por area y sensibilidad.
+- `backend/apps/financiadores/permisos.py`: `requerir_financiador`, `puede_resolver_autorizaciones` y `requerir_hospital`.
 - Viewsets: `capacidad_requerida`, `protege_lectura`, `capacidad_por_accion`.
 
 Fuente frontend:
@@ -679,8 +813,18 @@ Fuente frontend:
 | Registros clinicos | `ciudadanos`, `historias-clinicas`, `entradas-historia`, `estudios`, `recetas`, `consentimientos` | `registros` |
 | Farmacia | `insumos`, `depositos`, `lotes`, `stock`, `movimientos-stock`, `pedidos-stock` | config/trabajo segun recurso |
 | Red | `redes`, `traslados` | config/trabajo segun recurso |
-| Auditoria | `accesos-clinicos` | admin/jefe_area |
-| FHIR | `/fhir/Patient`, `/fhir/Encounter`, `/fhir/Organization` | lectura protegida por permisos equivalentes |
+| Auditoria | `accesos-clinicos`, `consentimientos` | `auditoria` + `PuedeAuditar`; los consentimientos, `padron_admision` |
+| Costos y gastos | `hechos-costo`, `gastos`, `ajustes-gasto`, `ajustes-costo`, `conceptos-gasto`, `prestaciones-costo`, `componentes-costo`, `valores-componentes`, `expectativas-gasto` | concesion financiera segun la accion |
+| Reparto | `coberturas-actividad`, `reglas-reparto`, `repartos-gasto`, `procesamiento-finanzas` | `configurar_repartos`; consultar importes exige ademas `ver_gastos` |
+| Dinero | `obligaciones-financieras`, `movimientos-dinero`, `politicas-cobro`, `pendientes-cobro` | `ver_dinero`, `registrar_dinero`, `aprobar_dinero`, `corregir_dinero`, `configurar_cobros` |
+| Reportes financieros | `reportes-finanzas`, `reportes-dinero`, `reportes-costos` | solo lectura, con el alcance de la concesion correspondiente |
+| Auditoria financiera | `accesos-financieros`, `concesiones-financieras` | `auditar_finanzas` / `config_institucional` |
+| Portal del financiador | `financiadores` y sus acciones (`planes`, `reglas`, `padron`, `consumos`, `convenios`, `aranceles`, `actividad`, `usuarios`, `importaciones`, `catalogo`) | `MembresiaFinanciador` de esa organizacion |
+| Cobertura del hospital | `coberturas` (`opciones`, `configurar`, `convenio`, `arancel`, `afiliados`, `afiliacion`, `evaluar`, `reservar`, `liberar`, `resolver`, `completar`, `recuperar`) | concesion financiera de la institucion |
+| Autorizaciones | `autorizaciones-cobertura` (`contexto`, `resolver`, `reenviar`, `anular`) | hospital: concesion financiera. Financiador: designacion expresa |
+| Seguimiento de cobros | `seguimiento-cobros` | `ver_dinero` de la institucion |
+| Cobertura en el caso | `casos/{id}/cobertura`, `cobertura-afiliacion`, `cobertura-evaluar`, `cobertura-confirmar` | `casos_operar` en el area del caso, mas la concesion que exija la accion |
+| FHIR | `/fhir/Patient`, `/fhir/Encounter`, `/fhir/Organization`, `/fhir/Coverage` | lectura protegida por permisos equivalentes; `Coverage` exige `padron_admision` |
 | Monitoreo | `/api/health/`, `/api/estado/` | tecnico/autenticado segun endpoint |
 
 ## 12. Responsabilidades por rol en lenguaje operativo
@@ -699,8 +843,10 @@ Fuente frontend:
 
 Estos roles no estan implementados como roles separados. Hoy se resuelven combinando roles, areas y grupos, salvo los roles estatales ya incorporados (`plataforma`, `auditor`, `reportes`).
 
-- Farmacia: actualmente puede operar con `trabajo`; configuracion de catalogo/depositos requiere `config`.
-- Regulador de red/derivaciones: hoy se opera con `trabajo` dentro de instituciones.
+- Farmacia: hoy se opera con `farmacia_stock`, que tienen `admin`, `jefe_area` y `enfermeria`; el catalogo de insumos y depositos exige `config_institucional`.
+- Regulador de red/derivaciones: hoy se opera con `traslados_red` dentro de cada institucion; crear la red exige `gobierno_plataforma`.
+- Finanzas: no es un rol sino un conjunto de concesiones explicitas (§3.1). Una persona de contabilidad las recibe sin convertirse en administradora.
+- Usuario de obra social: no es un rol institucional sino una `MembresiaFinanciador` (§3.2).
 - Camillero/traslado interno: hoy podria modelarse como grupo dentro de un area.
 - Auditor central estatal: implementado como `auditor`, con alcance estatal de auditoria y sin operacion clinica.
 - Solo lectura/reportes: implementado como `reportes`; requiere pantallas agregadas no nominales para tener uso pleno.
@@ -771,3 +917,6 @@ Decision recomendada:
 - `docs/funcionalidades/casos-guardia-filas/README.md`
 - `docs/funcionalidades/auditoria-consentimiento/README.md`
 - `docs/funcionalidades/interoperabilidad-fhir/README.md`
+- `docs/funcionalidades/registros-clinicos/README.md`
+- `docs/funcionalidades/finanzas-costos/README.md`
+- `docs/funcionalidades/financiadores-cobertura/README.md`

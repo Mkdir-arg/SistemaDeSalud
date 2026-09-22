@@ -22,7 +22,7 @@ Complementa `ESTADO-DEL-PROYECTO.md`. Resume **qué hace** cada funcionalidad,
 
 ## 1. Estructura: tabla de áreas + ficha en panel (drawer)
 
-La pantalla `/estructura` ([`Areas.jsx`](../frontend/src/pages/admin/Areas.jsx)) es
+La pantalla `/estructura` ([`Areas.jsx`](../../frontend/src/pages/admin/Areas.jsx)) es
 una **tabla de áreas** (nombre, responsable, staff, sub-áreas) y, al hacer clic en
 una fila, abre un **panel lateral (drawer)** con la **ficha del área**. La ficha
 tiene un botón **Editar** y un botón de acción **contextual según la solapa**:
@@ -57,9 +57,9 @@ Datos / Staff / Grupos / Sub-áreas.
   `subarea` apunta a ella) y **Eliminar sub-área** (con confirmación inline).
 
 **Piezas de diseño reutilizables:**
-- Icono `trash` en [`components/icons.jsx`](../frontend/src/components/icons.jsx).
-- Variante `danger` del `Button` en [`components/ui.jsx`](../frontend/src/components/ui.jsx).
-- Token de color `danger` (`#B42318`) en [`theme.js`](../frontend/src/theme.js).
+- Icono `trash` en [`components/icons.jsx`](../../frontend/src/components/icons.jsx).
+- Variante `danger` del `Button` en [`components/ui.jsx`](../../frontend/src/components/ui.jsx).
+- Token de color `danger` (`#B42318`) en `theme.js` (borrado al migrar el editor de flujos).
 - Componente `Table` y panel `drawer` (overlay fijo a la derecha) en `Areas.jsx`.
 
 ---
@@ -69,7 +69,7 @@ Datos / Staff / Grupos / Sub-áreas.
 Un flujo puede ser un **proceso general** (de toda la institución o de un área) o
 un **proceso específico de una sub-área**.
 
-### Modelo — [`backend/apps/flujos/models.py`](../backend/apps/flujos/models.py)
+### Modelo — [`backend/apps/flujos/models.py`](../../backend/apps/flujos/models.py)
 
 Se agregó `Flujo.subarea` (FK opcional a `instituciones.Subarea`, `SET_NULL`). Las
 tres jerarquías quedan así:
@@ -88,23 +88,23 @@ Reglas en el modelo:
 
 ### API — serializer y viewset
 
-- [`flujos/serializers.py`](../backend/apps/flujos/serializers.py): el
+- [`flujos/serializers.py`](../../backend/apps/flujos/serializers.py): el
   `FlujoSerializer` expone `subarea`, `subarea_nombre`, `ambito` y `ambito_label`
   (ej. *"Cardiología › Hemodinamia"*). `validate()` rechaza una sub-área que **no
   pertenezca** al área indicada.
-- [`flujos/views.py`](../backend/apps/flujos/views.py): `FlujoViewSet` filtra por
+- [`flujos/views.py`](../../backend/apps/flujos/views.py): `FlujoViewSet` filtra por
   `subarea` (`/api/flujos/?subarea=3`) y la incluye en `select_related`.
 - **Migración:** `flujos/0002_flujo_subarea`.
 
 ### Frontend
 
-- **Crear flujo** ([`pages/diseno/Flujos.jsx`](../frontend/src/pages/diseno/Flujos.jsx)):
+- **Crear flujo** ([`pages/diseno/Flujos.jsx`](../../frontend/src/pages/diseno/Flujos.jsx)):
   el modal "Nuevo flujo" muestra el selector de sub-área **solo si** el área
   elegida tiene sub-áreas, con una leyenda dinámica del alcance
   (institución / general del área / específico de la sub-área).
 - **Listado:** la columna de área muestra el ámbito como `Área › Sub-área`.
   Duplicar un flujo conserva su sub-área.
-- **Editor** ([`pages/diseno/FlujoEditor.jsx`](../frontend/src/pages/diseno/FlujoEditor.jsx)):
+- **Editor** ([`pages/diseno/FlujoEditor.jsx`](../../frontend/src/pages/diseno/FlujoEditor.jsx)):
   el encabezado muestra `ambito_label` junto al título.
 
 > Nota: el ámbito se define al **crear** el flujo. Cambiarlo después (mover un
@@ -125,7 +125,7 @@ como destinatarios en los flujos.
   área asignada).
 - Sin rol/función: el grupo es nombre + integrantes.
 
-### Modelo — [`backend/apps/instituciones/models.py`](../backend/apps/instituciones/models.py)
+### Modelo — [`backend/apps/instituciones/models.py`](../../backend/apps/instituciones/models.py)
 
 ```python
 class Grupo(models.Model):
@@ -140,9 +140,9 @@ class Grupo(models.Model):
 
 - **Migración:** `instituciones/0005_grupo`.
 - **Admin:** `GrupoAdmin` con selector horizontal de miembros
-  ([`instituciones/admin.py`](../backend/apps/instituciones/admin.py)).
+  ([`instituciones/admin.py`](../../backend/apps/instituciones/admin.py)).
 
-### API — [`instituciones/serializers.py`](../backend/apps/instituciones/serializers.py) · [`views.py`](../backend/apps/instituciones/views.py)
+### API — [`instituciones/serializers.py`](../../backend/apps/instituciones/serializers.py) · [`views.py`](../../backend/apps/instituciones/views.py)
 
 - `GrupoViewSet` → `/api/grupos/`, filtrable por `area` y `activo`
   (`/api/grupos/?area=1`), con scope por institución (`area__institucion`).
@@ -152,7 +152,7 @@ class Grupo(models.Model):
   - `validate()` rechaza miembros que **no pertenezcan al área** del grupo
     (verifica contra `Membresia` de esa institución + área).
 
-### Frontend — [`pages/admin/Areas.jsx`](../frontend/src/pages/admin/Areas.jsx)
+### Frontend — [`pages/admin/Areas.jsx`](../../frontend/src/pages/admin/Areas.jsx)
 
 Nueva pestaña **Grupos** en la ficha de cada área, con acción contextual
 **"Crear grupo"**.

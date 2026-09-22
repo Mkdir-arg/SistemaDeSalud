@@ -19,6 +19,7 @@ Exponer informacion sanitaria de I-Core Salud en formato FHIR R4 y permitir que 
 - Recurso `Patient`: lectura por id y busqueda por identificador/apellido.
 - Recurso `Encounter`: lectura por id y busqueda por paciente, estado y fecha.
 - Recurso `Organization`: lectura y busqueda de instituciones.
+- Recurso `Coverage`: cobertura vigente de un paciente hospitalario, buscada por `beneficiary=Patient/<id>`.
 - Respuestas con `application/fhir+json`.
 - Errores en formato FHIR `OperationOutcome`.
 - Auditoria de accesos clinicos realizados por la fachada FHIR.
@@ -31,6 +32,8 @@ Exponer informacion sanitaria de I-Core Salud en formato FHIR R4 y permitir que 
 - La fachada respeta los mismos permisos funcionales que la API interna.
 - Las busquedas devuelven `Bundle`, aun cuando no haya resultados.
 - Los resultados se limitan para evitar consultas masivas sin control.
+- `Coverage` se busca por la referencia local del paciente, nunca por documento: no habilita descargar el padron de un financiador.
+- `Coverage` exige `padron_admision` en la institucion de la ficha y que el circuito de cobertura este habilitado.
 - El padron FHIR externo solo completa campos vacios del paciente; no pisa datos cargados por una persona.
 - Si el padron externo no responde o responde mal, el flujo no debe caer de forma abrupta.
 
@@ -49,12 +52,15 @@ Exponer informacion sanitaria de I-Core Salud en formato FHIR R4 y permitir que 
 - `/fhir/Encounter/<id>`
 - `/fhir/Organization`
 - `/fhir/Organization/<id>`
+- `/fhir/Coverage`
+- `/fhir/Coverage/<id>`
 
 ## Integraciones
 
 - Registros clinicos: `Patient`.
 - Casos: `Encounter`.
 - Instituciones: `Organization`.
+- Financiadores: `Coverage` a partir de las afiliaciones vigentes del paciente.
 - Auditoria: registro de accesos clinicos por FHIR.
 - Flujos: consulta a padron FHIR externo para completar datos del paciente.
 
@@ -63,3 +69,4 @@ Exponer informacion sanitaria de I-Core Salud en formato FHIR R4 y permitir que 
 - Perfiles FHIR exigidos por la jurisdiccion.
 - Autenticacion requerida por clientes externos en produccion.
 - Mapeo futuro de recursos adicionales como `Observation`, `MedicationRequest` o `ServiceRequest`.
+- `/fhir/` no se publica por el puerto de la aplicacion: el nginx del frontend no lo proxea. Se consulta contra el backend directo.

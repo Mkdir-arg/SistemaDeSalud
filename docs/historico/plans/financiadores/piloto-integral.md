@@ -39,7 +39,7 @@ negocio, pantallas, modelos, migraciones ni dependencias durante este incremento
 
 ### Recorrido integrado
 
-[`test_piloto.py`](../../../backend/apps/financiadores/test_piloto.py) recorre la
+[`test_piloto.py`](../../../../backend/apps/financiadores/test_piloto.py) recorre la
 API sin mocks de negocio. La autenticación se inyecta con `APIClient`; los permisos
 se evalúan sobre membresías y concesiones reales, sin usar superusuario para operar.
 El fixture prepara hospitales, convenios y aranceles; planes/reglas de la mutual,

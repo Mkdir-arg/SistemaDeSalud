@@ -54,7 +54,7 @@ Dar visibilidad operativa a equipos y jefaturas: trabajo pendiente, casos asigna
 ## Referencias
 
 - `docs/NOTIFICACIONES.md`
-- `diseno/docs/04-pantallas.md`
+- `diseño/docs/04-pantallas.md`
 
 ## Puntos a validar
 

@@ -10,8 +10,8 @@
 > respuestas para lo que no está construido** (final del documento). El cronograma
 > de acá abajo ya no aplica.
 
-Complementa [`ESTADO-DEL-PROYECTO.md`](ESTADO-DEL-PROYECTO.md) (qué hay hecho) y
-[`FUNCIONALIDADES.md`](FUNCIONALIDADES.md) (catálogo completo).
+Complementa [`ESTADO-DEL-PROYECTO.md`](../ESTADO-DEL-PROYECTO.md) (qué hay hecho) y
+[`FUNCIONALIDADES.md`](../FUNCIONALIDADES.md) (catálogo completo).
 
 ## Contexto que define este plan
 
@@ -64,7 +64,7 @@ hace que se pueda mostrar. Hoy no se puede.
 
 `seed_guardia` crea la institución, las áreas, el staff, los grupos, los boxes, los
 formularios y los 8 flujos publicados — pero **borra los casos y no crea ninguno**
-([`seed_guardia.py:85`](../backend/apps/casos/management/commands/seed_guardia.py#L85)).
+([`seed_guardia.py:85`](../../backend/apps/casos/management/commands/seed_guardia.py#L85)).
 
 Consecuencia concreta: hoy la demo abre con **bandejas vacías, filas vacías y un
 tablero sin datos**. Las tres pantallas que más venden (el tablero de tiempos, la
@@ -119,7 +119,7 @@ mostrar**, no rediseñar.
 - **Mapa georreferenciado.** Un mapa de la provincia con puntitos es caro y no
   agrega argumento por encima del semáforo. Se difiere a v4.
 - **Derivación entre establecimientos.** Hoy la derivación es siempre
-  intra-institución ([`motor.py:372`](../backend/apps/casos/motor.py#L372)). Cambiarlo
+  intra-institución ([`motor.py:372`](../../backend/apps/casos/motor.py#L372)). Cambiarlo
   toca el motor y el modelo de permisos: es v4, no una demo.
 - **Alertas por saturación.** El semáforo se ve; no notifica. v4.
 - **Traslados.** No existe el dominio. v4.

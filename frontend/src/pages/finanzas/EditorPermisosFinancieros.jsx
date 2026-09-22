@@ -136,7 +136,7 @@ function ChecklistMembresia({ institucion, usuarioId, miembro, onBusyChange }) {
     {!base.activo && <p className="text-md text-texto-debil">Membresía inactiva: sus concesiones no otorgan acceso. Sólo podés conservarlas o revocarlas.</p>}
     <fieldset ref={grilla} disabled={deshabilitado} className="grid min-w-0 items-start gap-2" style={{ gridTemplateColumns: `repeat(${columnas}, minmax(0, 1fr))` }}>
       <legend className="sr-only">Acciones financieras de esta membresía</legend>
-      {base.heredadas.length > 0 && <div className="flex items-center gap-2 text-sm font-semibold text-texto-debil" style={{ gridColumn: "1 / -1" }}>Lectura habilitada por rol<Ayuda>La lectura de costos y gastos, incluidos los sensibles, está habilitada en toda la institución por el rol administrador. No se revoca con estas casillas.</Ayuda></div>}
+      {base.heredadas.length > 0 && <div className="flex items-center gap-2 text-sm font-semibold text-texto-debil" style={{ gridColumn: "1 / -1" }}>Habilitado por rol<Ayuda>El rol administrador de institución habilita estas acciones en toda la institución, incluida la información sensible. No se revocan con estas casillas.</Ayuda></div>}
       {/* Pilas independientes: un alcance sólo desplaza su propia columna. */}
       {Array.from({ length: columnas }, (_, columna) => <div key={columna} className="min-w-0 space-y-2">
       {ACCIONES.filter((_, indice) => indice % columnas === columna).map(([accion, nombre]) => {

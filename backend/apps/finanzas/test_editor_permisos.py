@@ -80,10 +80,11 @@ class EditorPermisosApiTests(EscenarioEditor, APITestCase):
         self.assertEqual(capacidades_de(self.usuario, self.institucion.id), antes)
 
     def test_herencia_por_rol_no_borra_concesion_explicita_y_sigue_tras_revocarla(self):
+        """El rol admin hereda TODAS las acciones financieras de su institucion."""
         self.miembro.rol = "admin"
         self.miembro.save(update_fields=["rol"])
         estado = self.consultar()
-        self.assertEqual(set(estado["heredadas"]), {"ver_costos", "ver_gastos"})
+        self.assertEqual(set(estado["heredadas"]), set(ConcesionFinanciera.Accion.values))
         self.assertEqual(self.client.put(RUTA, self.payload(estado), format="json").status_code, 200)
         self.assertTrue(ConcesionFinanciera.objects.filter(pk=self.lectura.pk).exists())
         datos = self.payload()
@@ -96,7 +97,7 @@ class EditorPermisosApiTests(EscenarioEditor, APITestCase):
         self.segunda.rol = "admin"
         self.segunda.save(update_fields=["rol"])
         estado = self.consultar()
-        self.assertEqual(set(estado["heredadas"]), {"ver_costos", "ver_gastos"})
+        self.assertEqual(set(estado["heredadas"]), set(ConcesionFinanciera.Accion.values))
         self.assertEqual(next(c for c in estado["concesiones"] if c["accion"] == "ver_gastos")["areas"], [self.area.pk])
 
     def test_cualquier_fila_invalida_impide_todas_las_altas_revocaciones_y_cambios(self):

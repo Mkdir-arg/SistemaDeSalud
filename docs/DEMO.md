@@ -1,13 +1,18 @@
-# Guion operativo de la demo
+# El stack de desarrollo (8080) y su escenario de guardia
 
-> Cómo dejar la demo impecable, con qué usuario entrar a cada pantalla y qué hay
-> cargado para mostrar. Verificado el **2026-08-20** sobre el stack de Docker.
+> Qué levanta `docker compose up -d`, con qué usuario entrar a cada pantalla y
+> qué queda cargado. Contenido verificado el **2026-08-20**.
 
-Las credenciales que figuran en [`ESTADO-DEL-PROYECTO.md`](ESTADO-DEL-PROYECTO.md)
-§6 y en [`roles/README.md`](roles/README.md) (`operador@salud.local`,
-`a.gomez@`, `m.diaz@`, `j.perez@`) son de `seed_demo` y **no existen** en este
-entorno: el override de desarrollo siembra `seed_guardia` + `seed_volumen`. Las
-que sirven son las de abajo.
+**Para mostrarle el sistema a un cliente, este no es el documento.** Desde el
+17/09/2026 hay dos entornos preparados para eso —uno vacío y uno de demo, con su
+propio guion paso a paso— en [`entornos/README.md`](entornos/README.md). Lo de
+acá es el stack de desarrollo: el que levanta el override con recarga en
+caliente, sobre el escenario de guardia.
+
+Las credenciales que figuran en [`roles/README.md`](roles/README.md)
+(`operador@salud.local`, `a.gomez@`, `m.diaz@`, `j.perez@`) son de `seed_demo` y
+**no existen** en este entorno: el override de desarrollo siembra `seed_guardia`
++ `seed_volumen`. Las que sirven son las de abajo.
 
 ---
 
@@ -118,7 +123,7 @@ Medido después del reset:
 
 ```bash
 curl -s http://localhost:8000/api/health/                 # {"status": "ok"}
-docker compose ps                                         # 5 servicios arriba
+docker compose ps                                         # 7 servicios arriba
 ```
 
 Y con sesión de superusuario, `GET /api/estado/` dice si el reloj del motor, los
@@ -129,7 +134,11 @@ callado, el Tablero lo avisa —y eso también se ve en la demo.
 
 ## 6. Estado de la verificación automática
 
-| Suite | Resultado |
+Medido el **20/08/2026**. Después de esa fecha se incorporaron las suites de
+finanzas, financiadores y cobertura, así que estos números son un piso histórico
+y no el estado actual. Para saber cómo está hoy, correr las suites.
+
+| Suite | Resultado (20/08/2026) |
 |---|---|
 | Backend (`manage.py test`) | 1010 tests, verde |
 | Frontend e2e (`npm run e2e`) | 227 de 229, verde salvo dos specs obsoletos |

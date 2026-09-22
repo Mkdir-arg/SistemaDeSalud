@@ -3,8 +3,8 @@
 > Hoja de ruta técnica para llevar I-Core Salud de "sistema completo en su núcleo" a
 > **producto**. Documento vivo. Creado: **2026-07-31**.
 
-Complementa [`ESTADO-DEL-PROYECTO.md`](ESTADO-DEL-PROYECTO.md) (qué hay hecho),
-[`FUNCIONALIDADES.md`](FUNCIONALIDADES.md) (catálogo) y
+Complementa [`ESTADO-DEL-PROYECTO.md`](../ESTADO-DEL-PROYECTO.md) (qué hay hecho),
+[`FUNCIONALIDADES.md`](../FUNCIONALIDADES.md) (catálogo) y
 [`PLAN-DE-VERSIONES.md`](PLAN-DE-VERSIONES.md) (la ruta demo-first, que queda
 absorbida acá como un hito, ver §8).
 
@@ -37,7 +37,7 @@ probado. **El problema de escala está en el frontend**, y es medible:
 | Tests de frontend | **0** (Playwright instalado, sin specs) | Cada rework visual es una regresión potencial sin red |
 | Dark mode / white-label | Imposible con estilos inline | Se pierde un argumento de venta: **cada gobierno quiere su identidad** |
 
-**Lo que sí está bien y se conserva:** [`theme.js`](../frontend/src/theme.js) es un
+**Lo que sí está bien y se conserva:** `theme.js` es un
 buen sistema de tokens — escala tipográfica de 7 pasos, espaciado en grilla de 4,
 radios, sombras, tonos semánticos de badge y las 10 categorías de nodo. **No se
 tira: se promueve** a variables CSS y a la configuración de Tailwind. La marca no
@@ -130,7 +130,7 @@ Nada de dominio nuevo. Es la inversión que hace baratas todas las fases siguien
 2. **Las variantes usan mapas de clases completas, nunca interpolación.** Tailwind
    escanea el código como texto: `` `bg-badge-${tono}-bg` `` no genera nada. Va un
    objeto con los strings enteros (ver `BADGE_TONO` en
-   [`ui.jsx`](../frontend/src/components/ui.jsx)).
+   [`ui.jsx`](../../frontend/src/components/ui.jsx)).
 
 > **Preflight queda desactivado a propósito.** El reset global de Tailwind cambiaría
 > las 30 pantallas de golpe, porque hoy los ~1.100 estilos inline asumen el reset
@@ -146,7 +146,7 @@ patrón a copiar para las otras 29.
 > El criterio se cumple: **Fila de espera** está migrada entera y verificada, y
 > **Casos** la acompaña con la tabla paginada. Las reglas de la fundación y el
 > procedimiento para migrar cada pantalla están en
-> [`FUNDACION-FRONTEND.md`](FUNDACION-FRONTEND.md).
+> [`FUNDACION-FRONTEND.md`](../FUNDACION-FRONTEND.md).
 >
 > | | |
 > |---|---|
@@ -199,12 +199,12 @@ Delete/Backspace, autosave con indicador, toast con deshacer, handles de salida 
 línea fantasma, conexiones interactivas, paneles colapsables para tablet, constructor
 de reglas, validación con foco en el problema, **Probar** (simulación) y
 **Reproducir** (animación). Las plantillas de arranque viven en
-[`Flujos.jsx`](../frontend/src/pages/diseno/Flujos.jsx).
+[`Flujos.jsx`](../../frontend/src/pages/diseno/Flujos.jsx).
 
 ### 2.1 El problema arquitectónico que hay que resolver primero
 
-[`lib/simular.js`](../frontend/src/lib/simular.js) tiene **83 líneas** y espeja a
-[`motor.py`](../backend/apps/casos/motor.py), que tiene **823**. Son **dos
+`lib/simular.js` tiene **83 líneas** y espeja a
+[`motor.py`](../../backend/apps/casos/motor.py), que tiene **823**. Son **dos
 implementaciones de la misma semántica**, y ya divergen: el simulador evalúa
 condiciones y atraviesa nodos, pero no sabe nada de grupos responsables, boxes,
 prioridad de triage, estudios de ida y vuelta, notificaciones ni de la regla de firma
@@ -228,7 +228,7 @@ rollback). El cliente deja de simular y solo dibuja. Se borra `simular.js`.
 | **Sin SLA ni temporizadores reales** | La espera por tiempo **no se reactiva sola** (no hay cron). No existe "si tarda más de X, avisar o escalar" | Es lo que un director de hospital pide primero |
 | **Sin nodo de integración** | No hay nodo *llamar API externa* ni *enviar notificación* (SMS / email / WhatsApp) | **Es el nodo que haría verdadera la promesa comercial de "integración con sistemas existentes"** |
 | **Sin manejo de excepciones** | No se modela "el paciente se retira", "el estudio falla" | Todo camino no feliz termina en cancelación manual |
-| **Firma fija al rol médico** | El nodo no declara quién firma (Capa 4 pendiente de [`ROLES-Y-PERMISOS.md`](ROLES-Y-PERMISOS.md)) | Bloquea flujos donde firma enfermería, trabajo social o un administrativo |
+| **Firma fija al rol médico** | El nodo no declara quién firma (Capa 4 pendiente de [`ROLES-Y-PERMISOS.md`](../ROLES-Y-PERMISOS.md)) | Bloquea flujos donde firma enfermería, trabajo social o un administrativo |
 | **Versiones sin diff** | No se puede comparar v1 con v2, ni ver qué casos vivos quedaron en la versión anterior | Publicar una versión nueva se hace a ciegas |
 
 ### 2.3 Lo que falta — visual y de operación del lienzo
@@ -333,7 +333,7 @@ alertas de faltante y vencimiento, trazabilidad de lote.
 ## Fase 7 — Red multicentro (6 semanas)
 
 - **Derivación entre establecimientos** — hoy la derivación es siempre
-  [intra-institución](../backend/apps/casos/motor.py#L372). Toca el motor, el modelo de
+  [intra-institución](../../backend/apps/casos/motor.py#L372). Toca el motor, el modelo de
   permisos y el scope. Es el cambio de arquitectura más profundo del plan.
 - Tablero multicentro consolidado e indicadores comparados.
 - Disponibilidad de camas en red.
