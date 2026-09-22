@@ -269,7 +269,10 @@ test("política explicita cobro sin tomar costo ni asumir responsable", async ({
   await page.getByLabel("¿Esta atención se cobra?").selectOption("si");
   await page.getByRole("button", { name: "Guardar política", exact: true }).click();
   await expect.poll(() => escrituras.length).toBe(1);
-  expect(escrituras[0].body).toMatchObject({ prestacion: 44, cobrar: true, importe: null, contraparte_nombre: "" });
+  expect(escrituras[0].body).toMatchObject({ prestacion: 44, cobrar: true, importe: null });
+  // El responsable no es propiedad de la prestación: se define por atención.
+  expect(escrituras[0].body).not.toHaveProperty("contraparte_nombre");
+  expect(escrituras[0].body).not.toHaveProperty("contraparte_referencia");
   expect(escrituras[0].body.vigente_desde).toBeUndefined();
 });
 

@@ -307,8 +307,7 @@ class Command(BaseCommand):
                 # Arancel general: el que rige sin acuerdo de convenio.
                 registrar_politica_cobro(
                     prestacion=prestacion, registrado_por=self.admin, cobrar=True,
-                    importe=dinero(arancel), contraparte_nombre="",
-                    contraparte_referencia="Arancel general de consultorios externos",
+                    importe=dinero(arancel),
                 )
                 # El catálogo común es lo que permite que un hospital y un
                 # financiador hablen de la misma prestación.

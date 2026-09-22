@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -50,6 +50,7 @@ from .serializers import (
     RechazoGastoSerializer,
     ValorComponenteSerializer,
 )
+from .reportes_costos import rango_mes_local
 from .services import aprobar_gasto, corregir_snapshot_componentes, decidir_ajuste, rechazar_gasto, registrar_ajuste_costo, registrar_ajuste_gasto, registrar_gasto
 
 
@@ -903,13 +904,10 @@ class HechoAtencionCosteableViewSet(AuditaLecturaClinica, BaseModelViewSet):
                 inicio = date.fromisoformat(periodo)
                 if inicio.day != 1:
                     raise ValueError
-                fin = date(inicio.year + (inicio.month == 12), inicio.month % 12 + 1, 1)
+                desde, hasta = rango_mes_local(inicio)
             except (ValueError, OverflowError):
                 raise ValidationError({"periodo_economico": "Indicá el primer día del mes (AAAA-MM-01)."})
-            queryset = queryset.filter(
-                ocurrida_en__gte=timezone.make_aware(datetime.combine(inicio, time.min)),
-                ocurrida_en__lt=timezone.make_aware(datetime.combine(fin, time.min)),
-            )
+            queryset = queryset.filter(ocurrida_en__gte=desde, ocurrida_en__lt=hasta)
         sin_area = self.request.query_params.get("area_sin_asignar")
         if sin_area:
             if sin_area not in {"true", "false"}:

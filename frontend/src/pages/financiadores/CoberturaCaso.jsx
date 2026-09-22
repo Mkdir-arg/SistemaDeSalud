@@ -231,6 +231,7 @@ function ContenidoCobertura({ casoId, datos, ocupadoClinica, actualizar }) {
                   reservas={reservas.filter((r) => r.prestacion === prestacion.id)}
                   puedeOperar={puedeOperar}
                   conAfiliacion={Boolean(datos.afiliacion)}
+                  exigeAceptacion={Boolean(datos.exige_aceptacion)}
                   ocupado={bloqueado}
                   operar={operar}
                 />
@@ -312,7 +313,7 @@ function SeleccionAfiliacion({ afiliados, esCorreccion, ocupado, cancelar, guard
   );
 }
 
-function PrestacionCaso({ prestacion, reservas, puedeOperar, conAfiliacion, ocupado, operar }) {
+function PrestacionCaso({ prestacion, reservas, puedeOperar, conAfiliacion, exigeAceptacion, ocupado, operar }) {
   const [evaluacion, setEvaluacion] = useState(null);
   const [acepta, setAcepta] = useState(false);
   const [noRealizada, setNoRealizada] = useState(false);
@@ -366,7 +367,9 @@ function PrestacionCaso({ prestacion, reservas, puedeOperar, conAfiliacion, ocup
               {tieneCopago && <>
                 {prestacion.puede_aceptar && <Checkbox label={`El paciente aceptó expresamente ${importeARS(importePaciente)} por ${prestacion.nombre} (${plural(evaluacion.cantidad, "unidad", "unidades")}).`} checked={acepta} disabled={ocupado} onChange={(e) => { setAcepta(e.target.checked); setClave(crypto.randomUUID()); }} />}
                 {!prestacion.puede_aceptar && <p className="text-sm text-texto-debil">No tenés permiso para registrar la aceptación del paciente. Podés confirmar la cobertura sin aceptación.</p>}
-                {!acepta && <p className="text-sm text-badge-amber-fg">Sin aceptación, este importe queda pendiente de resolución administrativa al realizar la prestación. No se asigna automáticamente como deuda al paciente.</p>}
+                {!acepta && (exigeAceptacion
+                  ? <p className="text-sm text-badge-amber-fg">Este paso exige la aceptación: sin registrarla no se puede avanzar. Si corresponde atender igual, pedí una continuación supervisada con motivo; una urgencia no queda bloqueada.</p>
+                  : <p className="text-sm text-badge-amber-fg">Sin aceptación, este importe queda pendiente de resolución administrativa al realizar la prestación. No se asigna automáticamente como deuda al paciente.</p>)}
               </>}
               <div className="flex items-center gap-2">
                 <Button type="button" disabled={ocupado || (reservada && !noRealizada)} onClick={confirmar}>{ocupado ? "Confirmando…" : reservada ? "Actualizar reserva de cobertura" : "Confirmar reserva de cobertura"}</Button>

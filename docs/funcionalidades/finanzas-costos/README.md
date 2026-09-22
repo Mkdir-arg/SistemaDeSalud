@@ -15,7 +15,7 @@ Permite registrar y revisar gastos del hospital, controlar la carga mensual y di
 La pestaña **Pagos y cobros** separa lo que corresponde pagar/cobrar del dinero efectivamente registrado. No ejecuta transferencias ni conecta bancos. Tres datos centrales: importe de la cuenta, pagado/cobrado neto y pendiente.
 
 1. **Desde un gasto aprobado**, crear explícitamente su cuenta por pagar e identificar al proveedor o responsable. Esto no vuelve a sumar el gasto ni registra dinero. Los gastos anteriores no se convierten automáticamente en deuda.
-2. **Para atenciones**, configurar expresamente si se cobran, su arancel y quién debe pagar. Arancel y costo interno son distintos. La regla se aplica a nuevas atenciones; cada cambio conserva la versión anterior. El paciente no se convierte automáticamente en pagador. Si falta arancel o responsable, aparece en **Cobros por completar**, sin crear deuda ni pedir datos nuevos al profesional.
+2. **Para atenciones**, configurar expresamente si se cobran y su arancel. Arancel y costo interno son distintos. La regla se aplica a nuevas atenciones; cada cambio conserva la versión anterior. **Quién debe pagar no se configura por prestación**: varía según el paciente, así que se define por atención en **Cobros por completar**, o lo determina su cobertura. El paciente no se convierte automáticamente en pagador. Mientras falte el arancel o el responsable, la atención aparece en **Cobros por completar**, sin crear deuda ni pedir datos nuevos al profesional. Las políticas históricas que sí fijaron un responsable lo conservan: recuperar una atención vieja reproduce lo que regía ese día.
 3. **Abrir la cuenta**, registrar importe, fecha real y referencia del pago/cobro realizado. Se permiten varios parciales, sólo hasta el pendiente. Una cuenta de 100 y un pago de 30 dejan 70 pendientes.
 4. **Para devolver dinero**, elegir el movimiento original, importe y motivo. Indicar si se mantiene lo que corresponde pagar/cobrar, si se reduce, o si esa reducción ya se registró. Ver el resultado antes de confirmar. Cargo de 100 cobrado completo: devolver 30 manteniendo la cuenta deja 30 pendientes; reducir la cuenta a 70 y devolver 30 deja cero. Las reducciones existentes se vinculan sin repetirse.
 5. **Consultar el dinero por fecha real** y abrir sus movimientos, incluso si la cuenta es de otro mes económico. Se muestran importes originales, devoluciones y netos. Cobros netos menos pagos netos no es saldo disponible, rentabilidad ni costo hospitalario.
@@ -126,7 +126,13 @@ Si una nueva consulta del detalle de un gasto falla o el acceso se revoca, la pa
 
 ## Resumen y costos por atención
 
-**Resumen** muestra gastos aprobados, por aprobar, lo distribuido y el saldo sin distribuir, con desglose por área y concepto y enlaces a los registros. El aprobado ya contiene lo distribuido: **aprobado = distribuido + sin distribuir**; no se suman las tres cifras como si fueran gastos distintos. Las cifras corresponden al mes, área y permisos elegidos, no necesariamente a todo el hospital.
+**Resumen** es el panorama del mes y reúne tres bloques, cada uno con sus cifras, su gráfico y su enlace a la pestaña correspondiente: **Gastos**, **Pagos y cobros** y **Costos por atención**. Cada bloque consulta su propia fuente y falla por separado: un error o una restricción de permisos en uno no oculta ni convierte en cero a los demás. Los tres son magnitudes distintas del mismo período y **no se suman entre sí**; el Resumen no publica un total común. Para comparar contra otro período y exportar a PDF está la pestaña **Reportes**.
+
+En **Gastos** se muestran aprobados, por aprobar, lo distribuido y el saldo sin distribuir, con desglose por área y concepto y enlaces a los registros. El aprobado ya contiene lo distribuido: **aprobado = distribuido + sin distribuir**; no se suman las tres cifras como si fueran gastos distintos. Las cifras corresponden al mes, área y permisos elegidos, no necesariamente a todo el hospital.
+
+En **Pagos y cobros** se muestran cobros netos, pagos netos, su diferencia y la cantidad de movimientos por aprobar, con un gráfico de cobros contra pagos por área. Se cuentan por **fecha efectiva** dentro del mes calendario seleccionado, no por mes económico: una cuenta puede pertenecer a otro mes. La diferencia no es saldo disponible ni rentabilidad, y los movimientos por aprobar están excluidos de los netos.
+
+En **Costos por atención** se muestran las atenciones del mes, el costo directo conocido, el gasto compartido atribuido y cuántas atenciones tienen componentes directos pendientes, con un gráfico que agrupa **por área o por prestación**. Las dos series se dibujan lado a lado y nunca apiladas: el compartido explica un gasto aprobado que ya figura en el bloque de Gastos, no es un costo adicional. La prestación proviene del catálogo congelado al completarse cada atención; las que no tenían prestación configurada se agrupan aparte y no equivalen a costo cero.
 
 El administrador institucional puede consultar todos los gastos registrados de su institución, incluidos los sensibles. Eso no constituye un costo integral del hospital: todavía pueden faltar fuentes que el módulo no incorpora. Esta aclaración está en el (?) junto a la descripción superior, sin ocupar una tarjeta adicional.
 
@@ -219,7 +225,9 @@ Son pesos de cada mes, sin ajuste por inflación. La referencia no es un pago, u
 
 La pantalla administrativa es `/finanzas`. La atención se completa desde `/casos/:id`. Finanzas incluye resumen de gastos, control mensual, gastos registrados, repartos y costos por atención con configuración y detalle. La auditoría financiera sigue disponible por API.
 
-Fuentes principales: `hechos-costo`, `gastos`, `expectativas-gasto/calendario`, `coberturas-actividad`, `reglas-reparto`, `repartos-gasto`, `reportes-finanzas`, `procesamiento-finanzas` y `accesos-financieros`.
+Fuentes principales: `hechos-costo`, `gastos`, `expectativas-gasto/calendario`, `coberturas-actividad`, `reglas-reparto`, `repartos-gasto`, `reportes-finanzas`, `reportes-dinero`, `reportes-costos`, `procesamiento-finanzas` y `accesos-financieros`.
+
+`reportes-costos` es de sólo lectura y agrega las mismas atenciones que `hechos-costo`, con el alcance de **ver costos** y el mismo registro de auditoría financiera por área y sensibilidad. Devuelve totales del mes y desgloses por área y por prestación; no expone ciudadano, caso ni composición. `reportes-dinero` agrega además el desglose por área del mismo neteo que ya calculaba para el total.
 
 El incremento incluye el primer reparto por actividad, reportes operativos y el lote #38 de pagos/cobros/reintegros vinculados activo en Los Aromos. Otras bases de reparto, contabilidad general y costo total institucional siguen fuera. La nueva prioridad de obras sociales todavía no está implementada.
 

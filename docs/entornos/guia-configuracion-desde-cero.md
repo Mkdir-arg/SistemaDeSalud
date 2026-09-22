@@ -202,10 +202,14 @@ Pestaña **Pagos y cobros** → **«Configurar cobros por atención»**. Por pre
 
 - **¿Esta atención se cobra?** → *No: atención sin cobro* / *Sí: generar cuenta por cobrar*
 - **Arancel en ARS** — no se toma del costo interno. Son cosas distintas.
-- **Quién debe pagar** — explícito. El paciente **no** queda como pagador por defecto.
 
-Si falta el arancel o el responsable, la atención cae en **Cobros por completar**:
-no crea deuda ni le pregunta nada al profesional.
+**Quién debe pagar no se configura acá.** El pagador depende del paciente, no de la
+prestación, así que se define **por atención** en **Cobros por completar**, o lo
+determina la cobertura del paciente. El paciente **no** queda como pagador por
+defecto.
+
+Hasta que falte el arancel o el responsable, la atención cae en **Cobros por
+completar**: no crea deuda ni le pregunta nada al profesional.
 
 ## 7. Permisos financieros
 
@@ -262,16 +266,16 @@ tenés configurado hoy, el resultado tiene que ser **exactamente** esto:
 
 | Si elegís el flujo | Costo directo conocido | En «Pagos y cobros» |
 |---|---:|---|
-| **Inicio de Imagen (v3)** → atención «Imagen» | **ARS 1.700** (Materiales 700 + Uso de la maquina 1.000) | Cuenta por cobrar de **ARS 20.000**, con el responsable **sin definir** |
+| **Inicio de Imagen (v3)** → atención «Imagen» | **ARS 1.700** (Materiales 700 + Uso de la maquina 1.000) | En **Cobros por completar**: arancel **ARS 20.000** y responsable **sin definir** |
 | **Inicio de paciente (v2)** → atención «Enfermeria» | **ARS 500** (Medicamentos) | Nada: su política está en *No se cobra* |
 
 Hacé el de **Imagen**: te muestra las dos mitades de una vez, el costo interno
 ($1.700) y el arancel ($20.000), que son números que no tienen por qué parecerse.
 
-Como su política no tiene **Quién debe pagar**, esa atención va a caer en **Cobros
-por completar** en vez de generar deuda. Eso es lo correcto, y es justamente el
-comportamiento que conviene entender: el sistema no le adjudica la deuda a nadie
-por su cuenta.
+Como ninguna política define **Quién debe pagar**, esa atención cae en **Cobros
+por completar** en vez de generar deuda. Ahí la completás y recién entonces nace la
+cuenta. Eso es lo correcto, y es justamente el comportamiento que conviene
+entender: el sistema no le adjudica la deuda a nadie por su cuenta.
 
 > Si la tabla sigue vacía, revisá el **Mes económico** del filtro: por defecto
 > muestra el mes en curso.

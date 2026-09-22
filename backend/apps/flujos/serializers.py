@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import serializers
 
 from .models import Conexion, Flujo, Nodo, VersionFlujo
@@ -50,10 +51,11 @@ class NodoSerializer(serializers.ModelSerializer):
         config = attrs.get("config", getattr(self.instance, "config", {})) or {}
         tipo = attrs.get("tipo", getattr(self.instance, "tipo", None))
         espera = config.get("esperar_autorizacion", False) if isinstance(config, dict) else False
-        if not isinstance(config, dict) or type(espera) is not bool:
-            raise serializers.ValidationError({"config": "La espera de autorización debe ser un booleano dentro de la configuración."})
-        if espera and (tipo != Nodo.Tipo.ATENCION or not version or version.tipo_circuito != VersionFlujo.TipoCircuito.PROGRAMADO):
-            raise serializers.ValidationError({"config": "Sólo una atención de un circuito programado puede esperar autorización."})
+        aceptacion = config.get("exigir_aceptacion_paciente", False) if isinstance(config, dict) else False
+        if not isinstance(config, dict) or type(espera) is not bool or type(aceptacion) is not bool:
+            raise serializers.ValidationError({"config": "La espera de autorización y la exigencia de aceptación deben ser booleanos dentro de la configuración."})
+        if (espera or aceptacion) and (tipo != Nodo.Tipo.ATENCION or not version or version.tipo_circuito != VersionFlujo.TipoCircuito.PROGRAMADO):
+            raise serializers.ValidationError({"config": "Sólo una atención de un circuito programado puede esperar autorización o exigir la aceptación del paciente."})
         formulario = attrs.get("formulario", getattr(self.instance, "formulario", None))
         if version and formulario and formulario.institucion_id != version.flujo.institucion_id:
             raise serializers.ValidationError(
@@ -133,8 +135,9 @@ class VersionFlujoSerializer(serializers.ModelSerializer):
     def validate_tipo_circuito(self, valor):
         if self.instance and self.instance.estado != VersionFlujo.Estado.BORRADOR and valor != self.instance.tipo_circuito:
             raise serializers.ValidationError("La clasificación sólo se cambia en un borrador nuevo.")
-        if self.instance and valor != VersionFlujo.TipoCircuito.PROGRAMADO and self.instance.nodos.filter(config__esperar_autorizacion=True).exists():
-            raise serializers.ValidationError("Retirá las esperas de autorización antes de cambiar la clasificación.")
+        if self.instance and valor != VersionFlujo.TipoCircuito.PROGRAMADO and self.instance.nodos.filter(
+                Q(config__esperar_autorizacion=True) | Q(config__exigir_aceptacion_paciente=True)).exists():
+            raise serializers.ValidationError("Retirá las esperas de autorización y las exigencias de aceptación antes de cambiar la clasificación.")
         return valor
 
 

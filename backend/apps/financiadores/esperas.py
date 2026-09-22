@@ -1,5 +1,6 @@
 """Espera administrativa del paso: aprobar nunca registra una atención."""
 import logging
+from decimal import Decimal, InvalidOperation
 from uuid import NAMESPACE_URL, uuid5
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -24,11 +25,29 @@ def _intento(caso):
     return str(intento_actual(caso))
 
 
-def _programado(caso):
+def _config_paso(caso):
+    """La config del nodo sólo cuenta en una atención de circuito programado."""
     config = caso.nodo_actual.config if caso.nodo_actual_id else {}
-    return bool(caso.nodo_actual_id and caso.nodo_actual.tipo == Nodo.Tipo.ATENCION
-                and caso.version.tipo_circuito == VersionFlujo.TipoCircuito.PROGRAMADO
-                and isinstance(config, dict) and config.get("esperar_autorizacion") is True)
+    if not (caso.nodo_actual_id and caso.nodo_actual.tipo == Nodo.Tipo.ATENCION
+            and caso.version.tipo_circuito == VersionFlujo.TipoCircuito.PROGRAMADO
+            and isinstance(config, dict)):
+        return {}
+    return config
+
+
+def _programado(caso):
+    return _config_paso(caso).get("esperar_autorizacion") is True
+
+
+def exige_aceptacion_paciente(caso):
+    """El paso exige que la responsabilidad del paciente esté asumida, no cobrada."""
+    return _config_paso(caso).get("exigir_aceptacion_paciente") is True
+
+
+def _con_espera(caso):
+    # Un solo paso, una sola espera: dos guardas paralelas sobre la misma
+    # transición serían dos estados bloqueantes y dos salidas que auditar.
+    return _programado(caso) or exige_aceptacion_paciente(caso)
 
 
 def _actual(caso):
@@ -47,7 +66,26 @@ def _guardar(caso, estado, solicitudes, usuario, motivo):
     return caso.espera_autorizacion
 
 
+def _aceptacion_pendiente(reserva, resultado):
+    """Sin aceptación vigente del importe exacto no hay responsabilidad asumida.
+
+    Se compara contra el importe evaluado ahora, con el mismo criterio que usa
+    la distribución al capturar: una aceptación de otro precio no vale, porque
+    la persona asumió otra cosa.
+    """
+    if not resultado.get("cobrar"):
+        return False
+    importe = resultado.get("importe_paciente")
+    try:
+        if importe is None or Decimal(importe) <= 0:
+            return False
+    except InvalidOperation:
+        return True
+    return not (reserva and reserva.aceptacion.get("importe") == importe)
+
+
 def _requisitos_pendientes(caso):
+    """Devuelve `(prestacion_id, motivo)` con motivo en datos/autorizacion/aceptacion."""
     from .cobertura import evaluar
     from .uso_autorizaciones import actualizar_confirmada
     reservas = {r.prestacion_id: r for r in m.ReservaCobertura.objects.filter(
@@ -56,6 +94,7 @@ def _requisitos_pendientes(caso):
     activo = m.ConfiguracionHospital.objects.filter(institucion_id=caso.institucion_id, activo=True).exists()
     if not activo and not reservas:
         return []
+    espera_autorizacion, exige_aceptacion = _programado(caso), exige_aceptacion_paciente(caso)
     pendientes = []
     for prestacion in Prestacion.objects.filter(institucion_id=caso.institucion_id, nodo_id=caso.nodo_actual_id).filter(Q(activo=True) | Q(pk__in=reservas)):
         reserva = reservas.get(prestacion.pk)
@@ -74,16 +113,28 @@ def _requisitos_pendientes(caso):
             # Sólo se aplica al nodo programado que pidió esperar expresamente:
             # un dato incompleto exige revisión/supervisión, no equivale a aprobado.
             # Guardia/no definido/urgencia pasan por sus guardas antes de llegar aquí.
-            pendientes.append(prestacion.pk)
+            # Sin evaluación tampoco se sabe si hay importe del paciente.
+            pendientes.append((prestacion.pk, "datos"))
             continue
-        if resultado.get("requiere_autorizacion") and resultado.get("cubiertas", 0) > 0 and resultado.get("estado_autorizacion") != "aprobada":
-            pendientes.append(prestacion.pk)
+        if (espera_autorizacion and resultado.get("requiere_autorizacion")
+                and resultado.get("cubiertas", 0) > 0 and resultado.get("estado_autorizacion") != "aprobada"):
+            pendientes.append((prestacion.pk, "autorizacion"))
+        if exige_aceptacion and _aceptacion_pendiente(reserva, resultado):
+            pendientes.append((prestacion.pk, "aceptacion"))
     return pendientes
+
+
+def _mensaje_bloqueo(requisitos):
+    if requisitos and {motivo for _, motivo in requisitos} == {"aceptacion"}:
+        return ("Falta registrar que el paciente aceptó el importe a su cargo. Registrá la aceptación "
+                "en el paso o solicitá una continuación supervisada con motivo.")
+    return ("El paso programado requiere revisar la autorización o sus datos de cobertura. "
+            "Revisá las solicitudes o solicitá una continuación supervisada con motivo.")
 
 
 def validar_avance(caso):
     """Guardia/no definido no esperan, incluso ante configuración inválida heredada."""
-    if not _programado(caso):
+    if not _con_espera(caso):
         return
     espera = _actual(caso)
     if espera.get("estado") in SALIDAS_EXPRESAS:
@@ -97,7 +148,7 @@ def validar_avance(caso):
         _guardar(caso, "liberada", espera["solicitudes"], None, "La aprobación ya está vigente; la atención aún debe registrarse.")
         return
     if espera.get("estado") == "esperando" or requisitos:
-        raise ValidationError("El paso programado requiere revisar la autorización o sus datos de cobertura. Revisá las solicitudes o solicitá una continuación supervisada con motivo.")
+        raise ValidationError(_mensaje_bloqueo(requisitos))
 
 
 def _referencias_aprobadas(caso, espera):
@@ -162,7 +213,7 @@ def resolver_espera(solicitud, usuario):
 
 def puede_continuar_autorizacion(usuario, caso):
     from apps.casos.motor import usuario_puede_tomar, usuario_supervisa
-    if not usuario or not usuario.is_authenticated or not usuario.is_active or caso.estado in Caso.ESTADOS_FINALIZADOS or not _programado(caso):
+    if not usuario or not usuario.is_authenticated or not usuario.is_active or caso.estado in Caso.ESTADOS_FINALIZADOS or not _con_espera(caso):
         return False
     try:
         requerir_caso(usuario, caso)
@@ -184,7 +235,7 @@ def continuar(*, caso, usuario, intento, motivo):
     if espera.get("estado") in SALIDAS_EXPRESAS:
         return espera
     if espera.get("estado") != "esperando" and not _requisitos_pendientes(caso):
-        raise ValidationError("El paso no tiene una autorización pendiente que requiera esta continuación.")
+        raise ValidationError("El paso no tiene un requisito administrativo pendiente que requiera esta continuación.")
     return _guardar(caso, "urgencia" if caso.prioridad == Caso.Prioridad.URGENTE else "supervisada",
                     espera.get("solicitudes", []), usuario, motivo.strip())
 

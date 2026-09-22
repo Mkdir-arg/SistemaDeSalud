@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { useLista } from "@/api/queries";
+import { POR_PAGINA, useLista } from "@/api/queries";
 import { api } from "@/api/client";
 import { ESTADOS_CARGA, ESTADOS_GASTO, decimalACentavos, importeARS, importeCentavos, opcionesFinanzas, usePermisosFinanzas } from "@/api/finanzas";
 import { useInstitucion } from "@/auth/InstitutionContext";
-import { Badge, Button, Card, Field, Input, Modal, Select, Spinner, Tabs } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Field, Input, Modal, Select, Spinner, Tabs } from "@/components/ui";
 import { EstadoError, EstadoVacio } from "@/components/ui/estados";
 import { DataTable, useTablaUrl } from "@/components/ui/tabla";
 import { fechaHora } from "@/lib/format";
@@ -49,7 +49,7 @@ function TablaFinanciera({ consulta, tabla, columnas, vacio, barra, detalleFila 
 }
 
 function HistorialRepartos({ institucion, area, mes, usuarioId, columnas, detalleFila, onClose }) {
-  const tabla = useTablaUrl("historial_repartos");
+  const tabla = useTablaUrl("historial_repartos", { tamanoInicial: POR_PAGINA });
   const busqueda = useFiltrosFinanzas("historial_repartos", ["search"]);
   const params = {
     gasto__institucion: institucion.id,
@@ -67,7 +67,7 @@ function HistorialRepartos({ institucion, area, mes, usuarioId, columnas, detall
     gcTime: 0,
   });
   return <Modal title="Historial de repartos" onClose={onClose} width={920}>
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{institucion.nombre} · {mes}</p><p className="mt-1 text-sm text-texto-debil">Versiones anteriores de los repartos del filtro seleccionado</p></div><Badge tone="gray">Histórico · no suma al total actual</Badge></div>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-division pb-4"><div><div className="flex items-center gap-2"><p className="font-semibold">{institucion.nombre} · {mes}</p><Ayuda>Versiones anteriores de los repartos del filtro seleccionado.</Ayuda></div></div><Badge tone="gray">Histórico · no suma al total actual</Badge></div>
     <TablaFinanciera barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar repartos históricos" placeholder="Área o concepto…" />} consulta={consulta} tabla={tabla} columnas={columnas.map(({ filtro, ...col }) => col)} detalleFila={detalleFila} vacio={{ titulo: "No hay versiones históricas para este filtro" }} />
   </Modal>;
 }
@@ -114,7 +114,7 @@ function ConfiguracionRepartos({ institucion, usuarioId, onNuevo, onCorregir, on
 }
 
 function HistorialCarga({ fila, usuarioId, onClose }) {
-  const tabla = useTablaUrl("indicaciones");
+  const tabla = useTablaUrl("indicaciones", { tamanoInicial: POR_PAGINA });
   const busqueda = useFiltrosFinanzas("indicaciones", ["search"]);
   const params = { ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista(`expectativas-gasto/${fila.id}/indicaciones`, params, {
@@ -132,7 +132,7 @@ function HistorialCarga({ fila, usuarioId, onClose }) {
 }
 
 function VersionesEsperado({ fila, usuarioId, onClose, onHistorial }) {
-  const tabla = useTablaUrl("versiones");
+  const tabla = useTablaUrl("versiones", { tamanoInicial: POR_PAGINA });
   const busqueda = useFiltrosFinanzas("versiones", ["search"]);
   const params = { ...busqueda.valores, institucion: fila.institucion, concepto: fila.concepto,
     area: fila.area ?? "null", ordering: tabla.orden || "-vigente_desde,-id", page: tabla.pagina, pageSize: tabla.tamano };
@@ -141,7 +141,7 @@ function VersionesEsperado({ fila, usuarioId, onClose, onHistorial }) {
     placeholderData: undefined, gcTime: 0,
   });
   return <Modal title={`Historial de configuración · ${fila.concepto_nombre}`} onClose={onClose} width={820}>
-    <div className="mb-4 flex items-center justify-between gap-3 border-b border-division pb-4"><div><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><p className="mt-1 text-sm text-texto-debil">Configuraciones del concepto y sus períodos de vigencia</p></div><AyudaFinanzas titulo="Vigencia de gastos mensuales"><p>Cada modificación conserva la configuración anterior. La nueva configuración se usa desde su mes de inicio; el mes indicado como fin ya no se incluye. No necesitás crear una configuración nueva cada mes.</p><p>Los números identifican registros, no la cantidad de modificaciones. Sólo se muestran registros incluidos en tus permisos.</p></AyudaFinanzas></div>
+    <div className="mb-4 flex items-center justify-between gap-3 border-b border-division pb-4"><div><div className="flex items-center gap-2"><p className="font-semibold">{fila.area_nombre || INSTITUCIONAL}</p><Ayuda>Configuraciones del concepto y sus períodos de vigencia.</Ayuda></div></div><AyudaFinanzas titulo="Vigencia de gastos mensuales"><p>Cada modificación conserva la configuración anterior. La nueva configuración se usa desde su mes de inicio; el mes indicado como fin ya no se incluye. No necesitás crear una configuración nueva cada mes.</p><p>Los números identifican registros, no la cantidad de modificaciones. Sólo se muestran registros incluidos en tus permisos.</p></AyudaFinanzas></div>
     <TablaFinanciera barra={<BusquedaTablaFinanzas filtros={busqueda} label="Buscar versiones de configuración" placeholder="Motivo de corrección…" />} consulta={consulta} tabla={tabla} vacio={{ titulo: "Sin versiones visibles" }} columnas={[
       { key: "id", orden: "id", label: "Referencia", render: (r) => <div>#{r.id}{r.reemplaza && <p className="text-sm text-texto-debil">Reemplaza #{r.reemplaza}</p>}</div> },
       { key: "vigente_desde", orden: "vigente_desde", label: "Desde", render: (r) => r.vigente_desde.slice(0, 7) },
@@ -179,9 +179,9 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const filtrosCalendario = useFiltrosFinanzas("calendario", CAMPOS_CALENDARIO);
   const filtrosGastos = useFiltrosFinanzas("gastos", CAMPOS_GASTOS);
   const filtrosRepartos = useFiltrosFinanzas("repartos", CAMPOS_REPARTOS);
-  const calendarioTabla = useTablaUrl("calendario");
-  const gastosTabla = useTablaUrl("gastos");
-  const repartosTabla = useTablaUrl("repartos");
+  const calendarioTabla = useTablaUrl("calendario", { tamanoInicial: POR_PAGINA });
+  const gastosTabla = useTablaUrl("gastos", { tamanoInicial: POR_PAGINA });
+  const repartosTabla = useTablaUrl("repartos", { tamanoInicial: POR_PAGINA });
   const puedeLeer = permisos.tiene("ver_gastos");
   const puedeCatalogo = permisos.tiene("registrar_gastos") || permisos.tiene(CONFIGURAR) || permisos.tiene(CONFIGURAR_REPARTOS);
   const tieneMes = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);
@@ -302,6 +302,17 @@ function ContenidoFinanzas({ institucion, permisos }) {
   function verGastoRelacionado(id) {
     setModal({ tipo: "detalle-remoto", id });
   }
+  // Desde el resumen se pasa a la pestaña con su alcance; cada cifra tiene su
+  // propia población, así que no se conservan páginas ni filtros anteriores.
+  function irATab(destino, areaDestino) {
+    setSearchParams((previos) => {
+      const siguientes = new URLSearchParams(previos);
+      [...siguientes.keys()].filter((key) => key.startsWith(`${destino}_`)).forEach((key) => siguientes.delete(key));
+      siguientes.set("tab", destino);
+      if (areaDestino !== undefined) siguientes.set("area", areaDestino === null ? "null" : String(areaDestino));
+      return siguientes;
+    });
+  }
   const opcionesConceptos = (conceptos.data || []).map((c) => ({ value: c.id, label: c.nombre }));
   const definicionesCalendario = {
     concepto_nombre: [{ key: "concepto", label: "Concepto", opciones: opcionesConceptos }],
@@ -410,7 +421,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!tabs.length ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
-      {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} onMensuales={verMensualesPendientes} />
+      {!tieneMes ? <p role="alert">Elegí un mes válido.</p> : tab === "resumen" ? <ResumenFinanzas institucion={institucion} permisos={permisos} mes={mes} area={area} onGastos={verGastos} onRepartos={verRepartos} onMensuales={verMensualesPendientes} onTab={irATab} />
         : tab === "reportes" ? <ReportesEjecutivos key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areaNombre={area === "null" ? INSTITUCIONAL : area ? areasVisibles.find((a) => String(a.id) === area)?.nombre || `Área #${area}` : veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"} onGastos={verGastos} />
         : tab === "costos" ? <CostosAtencion key={`${mes}:${area}`} institucion={institucion} permisos={permisos} mes={mes} area={area} areas={areas.data || []} onGasto={permisos.tiene("ver_gastos") ? verGastoRelacionado : undefined} />
         : tab === "dinero" ? <DineroFinanzas key={area} institucion={institucion} permisos={permisos} mes={mes} area={area} />
@@ -481,7 +492,7 @@ function DetalleRepartoDesplegable({ abierto, children }) {
 }
 
 function DetalleAtribuciones({ fila, usuarioId, institucionId }) {
-  const tabla = useTablaUrl(`atribuciones_${fila.id}`);
+  const tabla = useTablaUrl(`atribuciones_${fila.id}`, { tamanoInicial: POR_PAGINA });
   const busqueda = useFiltrosFinanzas(`atribuciones_${fila.id}`, ["search"]);
   const params = { ...busqueda.valores, ordering: tabla.orden, page: tabla.pagina, pageSize: tabla.tamano };
   const consulta = useLista(`repartos-gasto/${fila.id}/atribuciones`, params, {
@@ -518,7 +529,7 @@ function DetalleGasto({ fila, permisos, onClose, onAbrir }) {
       {fila.reemplazado_por && <p className="border-l-2 border-badge-amber-fg pl-3 text-sm">Registro reemplazado: se conserva como historial, pero no se suma al gasto vigente.</p>}
       <section aria-label="Importe del gasto" className="rounded-md bg-superficie-2 p-4">
         <p className="text-sm text-texto-debil">Importe resultante</p><p className="mt-1 break-all text-cifra font-semibold tabular-nums">{importeARS(fila.importe_resultante)}</p>
-        <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-division pt-3"><div><dt className="text-sm text-texto-debil">Importe original</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.importe)}</dd></div><div><dt className="text-sm text-texto-debil">Ajustes aprobados</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.total_ajustes)}</dd></div></dl><p className="mt-3 text-sm text-texto-debil">Los ajustes pendientes o rechazados se conservan en el historial y no se suman al importe resultante.</p>
+        <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-division pt-3"><div><dt className="text-sm text-texto-debil">Importe original</dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.importe)}</dd></div><div><dt className="flex items-center gap-1.5 text-sm text-texto-debil">Ajustes aprobados<Ayuda>Los ajustes pendientes o rechazados se conservan en el historial y no se suman al importe resultante.</Ayuda></dt><dd className="mt-1 break-all tabular-nums">{importeARS(fila.total_ajustes)}</dd></div></dl>
       </section>
       {fila.motivo_rechazo && <section className="border-l-2 border-danger pl-3"><h3 className="font-semibold">Motivo de rechazo</h3><p className="mt-1">{fila.motivo_rechazo}</p></section>}
       <section><h3 className="mb-3 font-semibold">Ajustes del importe original</h3>

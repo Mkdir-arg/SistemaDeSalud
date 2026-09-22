@@ -2258,11 +2258,16 @@ def validar_version(version) -> list[dict]:
     por_tipo = {}
     for n in nodos:
         por_tipo.setdefault(n.tipo, []).append(n)
-        espera = (n.config or {}).get("esperar_autorizacion", False) if isinstance(n.config or {}, dict) else None
-        if type(espera) is not bool or (espera and (n.tipo != Nodo.Tipo.ATENCION or version.tipo_circuito != "programado")):
+        config = n.config or {}
+        valido = isinstance(config, dict)
+        espera = config.get("esperar_autorizacion", False) if valido else None
+        aceptacion = config.get("exigir_aceptacion_paciente", False) if valido else None
+        if (type(espera) is not bool or type(aceptacion) is not bool
+                or ((espera or aceptacion) and (n.tipo != Nodo.Tipo.ATENCION or version.tipo_circuito != "programado"))):
             problemas.append({"sev": "error", "nodo_id": n.pk,
                 "titulo": "Espera de autorización inválida",
-                "detalle": "Sólo una atención de circuito programado admite esperar_autorizacion como booleano."})
+                "detalle": "Sólo una atención de circuito programado admite esperar_autorizacion "
+                           "y exigir_aceptacion_paciente como booleanos."})
 
     # 1) Debe existir exactamente un Inicio.
     inicios = por_tipo.get(Nodo.Tipo.INICIO, [])

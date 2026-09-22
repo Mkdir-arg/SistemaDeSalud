@@ -1,0 +1,35 @@
+# Entorno LOCAL C — "jerarquia": el frontend de ESTE árbol de trabajo, contra
+# los datos de la demo.
+#
+# Sirve para mirar un cambio de pantalla con volumen real sin reconstruir la
+# imagen de la demo ni levantar otro Postgres. Es un solo contenedor: nginx con
+# el build de `frontend/`, enchufado a la red del proyecto `salud-demo`, donde
+# resuelve `backend` igual que el frontend de la demo. La base y los adjuntos
+# son los de la demo, sólo lectura para nginx.
+#
+# Requiere `salud-demo` levantado. Se usa SOLO, sin el docker-compose.yml base:
+#
+#   docker compose -p salud-jerarquia -f docker-compose.jerarquia.yml up -d --build
+#   docker compose -p salud-jerarquia -f docker-compose.jerarquia.yml down
+#
+# Aplicación en 8083. Las llamadas a /api son al mismo origen, así que no hace
+# falta tocar CORS ni ALLOWED_HOSTS del backend de la demo.
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "8083:80"
+    volumes:
+      - media:/usr/share/media:ro
+    networks:
+      - demo
+
+networks:
+  demo:
+    external: true
+    name: salud-demo_default
+
+volumes:
+  media:
+    external: true
+    name: salud-demo_media

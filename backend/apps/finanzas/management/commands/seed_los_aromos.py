@@ -25,7 +25,7 @@ from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
-from apps.finanzas.cobros import registrar_politica_cobro
+from apps.finanzas.cobros import registrar_politica_cobro, resolver_pendiente_cobro
 from apps.finanzas.dinero import (
     crear_obligacion_pago, estado_obligacion, previsualizar_reintegro,
     registrar_movimiento, reintegrar_movimiento,
@@ -235,7 +235,6 @@ class Command(BaseCommand):
                 registrar_politica_cobro(
                     prestacion=prestacion, registrado_por=self.admin, cobrar=True,
                     importe=dinero(Decimal(arancel) * Decimal("0.80")),
-                    contraparte_nombre="Mutual del Valle", contraparte_referencia="Convenio ambulatorio MV-2025",
                 )
                 registrar_cobertura_actividad(
                     institucion=self.institucion, area=area, vigente_desde=INICIO,
@@ -273,8 +272,7 @@ class Command(BaseCommand):
                     )
                 registrar_politica_cobro(
                     prestacion=self.prestaciones[codigo], registrado_por=self.admin, cobrar=True,
-                    importe=dinero(arancel), contraparte_nombre="Mutual del Valle",
-                    contraparte_referencia="Convenio ambulatorio MV-2026",
+                    importe=dinero(arancel),
                 )
 
     def _atencion(self, codigo, paciente, fecha, cerrar=True):
@@ -295,6 +293,17 @@ class Command(BaseCommand):
             hecho = HechoAtencionCosteable.objects.get(caso=caso)
             procesar_hecho_atencion(hecho.pk)
             return hecho
+
+    def _responsable(self, hecho, fecha, mes):
+        """Completa quién paga esa atención, como lo haría administración."""
+        pendiente = PendienteCobro.objects.filter(hecho=hecho, obligacion__isnull=True).first()
+        if not pendiente:
+            return None
+        with fecha_sintetica(fecha, 11):
+            return resolver_pendiente_cobro(
+                pendiente.pk, usuario=self.admin, contraparte_nombre="Mutual del Valle",
+                contraparte_referencia=f"Convenio ambulatorio MV-{mes:%Y}",
+            )
 
     def _movimiento(self, cuenta, importe, fecha, referencia, aprobado=True):
         with fecha_sintetica(fecha, 15):
@@ -317,11 +326,6 @@ class Command(BaseCommand):
                         paciente = self.pacientes[{"CM": (2, 1, 4), "CAR": (0, 6), "IMG": (8, 10)}[codigo][indice]]
                         if codigo == "IMG" and indice == 1:
                             with fecha_sintetica(date(2026, 9, 13), 7):
-                                registrar_politica_cobro(
-                                    prestacion=self.prestaciones[codigo], registrado_por=self.admin,
-                                    cobrar=True, importe=dinero(35000), contraparte_nombre="",
-                                    contraparte_referencia="Responsable de cobertura por confirmar",
-                                )
                                 DefinicionComponente.objects.create(
                                     prestacion=self.prestaciones[codigo], codigo="PROTECCION",
                                     nombre="Protección descartable incorporada en septiembre", orden=2,
@@ -330,6 +334,11 @@ class Command(BaseCommand):
                         paciente = self.pacientes[(numero_mes * 7 + numero_area * 9 + indice) % len(self.pacientes)]
                     hecho = self._atencion(codigo, paciente, fecha)
                     self.hechos[(mes, codigo, indice)] = hecho
+                    # El responsable no viene de la prestación: lo completa
+                    # administración por atención. La radiografía del 14/09 queda
+                    # sin completar a propósito, para mostrar ese estado.
+                    if not (mes == date(2026, 9, 1) and codigo == "IMG" and indice == 1):
+                        self._responsable(hecho, fecha, mes)
                     cuenta = ObligacionFinanciera.objects.filter(hecho=hecho).first()
                     if not cuenta:
                         continue
@@ -405,13 +414,6 @@ class Command(BaseCommand):
             reintegrar_movimiento(
                 **parametros, clave=clave("devolucion-daniel-peralta"),
                 version_esperada=preview["version_esperada"], pendiente_esperado=preview["pendiente_anterior"],
-            )
-            # La versión completa vuelve a regir para nuevas atenciones. La
-            # falta de responsable de la atención anterior conserva su snapshot.
-            registrar_politica_cobro(
-                prestacion=self.prestaciones["IMG"], registrado_por=self.admin, cobrar=True,
-                importe=dinero(35000), contraparte_nombre="Mutual del Valle",
-                contraparte_referencia="Convenio ambulatorio MV-2026",
             )
         self.casos_abiertos = []
         for indice, codigo in enumerate(self.areas):
