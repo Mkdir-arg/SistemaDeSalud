@@ -185,6 +185,14 @@ class ChecklistDeDjangoTests(SimpleTestCase):
             "DJANGO_DEBUG": "false",
             "DJANGO_SECRET_KEY": "N7qL2xV9pR4tYw8mZ1cB6hJ3kD5fS0gA7eU2iO9lP4nQ8rT1vX6yW3zC5bM0jH2k",
             "DATABASE_URL": "postgres://u:p@localhost:5432/x",
+            # Las perillas de TLS se fijan acá en vez de heredarse del entorno.
+            # Este caso afirma cómo queda una configuración de PRODUCCIÓN, y los
+            # entornos donde corre la suite las apagan para poder hablar http:
+            # `.env.demo` y el workflow de CI ponen las dos en cero. Heredadas,
+            # `check --deploy` avisaba W004 y W008 y el resultado dependía de
+            # dónde corriera la suite, no de la configuración bajo prueba.
+            "DJANGO_SSL_REDIRECT": "true",
+            "DJANGO_HSTS_SECONDS": "31536000",
         }
         import importlib
 
