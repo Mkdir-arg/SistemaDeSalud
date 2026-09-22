@@ -21,7 +21,28 @@ def concesiones_financieras_de(usuario, accion, sensible=False):
     return concesiones
 
 
-ACCIONES_ADMIN = tuple(ConcesionFinanciera.Accion.values)
+# El rol no firma ni se audita a sí mismo.
+#
+# La herencia del admin de institución viene de
+# `docs/plans/2026-09-18-finanzas-coberturas-usabilidad-diseno.md` y resuelve un
+# problema real: que configurar un hospital no obligue a duplicar concesiones.
+# Alcanza para ver, registrar, corregir y configurar en toda la institución,
+# incluida la información sensible.
+#
+# Aprobar es otra cosa. Es el control de cuatro ojos sobre el dinero: si el
+# mismo rol registra y aprueba, el control no existe. Y auditar los accesos
+# propios vacía de sentido al registro de accesos, que está para decir quién
+# miró qué. Estas cuatro se conceden de forma explícita a una persona distinta,
+# o no se tienen.
+ACCIONES_SIN_HERENCIA = (
+    ConcesionFinanciera.Accion.APROBAR_COSTOS,
+    ConcesionFinanciera.Accion.APROBAR_GASTOS,
+    ConcesionFinanciera.Accion.APROBAR_DINERO,
+    ConcesionFinanciera.Accion.AUDITAR_FINANZAS,
+)
+ACCIONES_ADMIN = tuple(
+    accion for accion in ConcesionFinanciera.Accion.values if accion not in ACCIONES_SIN_HERENCIA
+)
 
 
 def instituciones_admin_financiero(usuario, accion):
