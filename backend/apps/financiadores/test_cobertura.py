@@ -478,7 +478,9 @@ class PadronYPermisosTests(CoberturaSetup, TestCase):
         self.assertFalse(ObligacionFinanciera.objects.exists())
 
     def test_aceptacion_requiere_permiso_explicito_y_area_correcta(self):
-        Membresia.objects.create(usuario=self.usuario, institucion=self.institucion, rol="admin")
+        # Rol sin herencia financiera: lo que se exige acá es el permiso
+        # explícito, y el admin de institución hereda las dieciocho acciones.
+        Membresia.objects.create(usuario=self.usuario, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         with self.assertRaises(PermissionDenied):
             self.reservar(usuario=self.usuario, acepta=True)
         otra_area = Area.objects.create(institucion=self.institucion, nombre="Otra área")

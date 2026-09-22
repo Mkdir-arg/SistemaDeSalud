@@ -182,13 +182,27 @@ class DineroTests(DatosDinero, APITestCase):
             self.obligacion.delete()
         self.assertEqual(self.client.delete(f"/api/movimientos-dinero/{movimiento.pk}/").status_code, 405)
 
-    def test_admin_sin_permiso_dinero_no_hereda_acceso(self):
-        usuario = Usuario.objects.create_user("admin-sin-dinero@test.local", "x")
-        Membresia.objects.create(usuario=usuario, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION)
-        self.client.force_authenticate(usuario)
+    def test_admin_hereda_el_dinero_de_su_hospital_y_un_miembro_comun_no(self):
+        """El admin de institución hereda las acciones financieras; nadie más.
+
+        Decisión de `docs/plans/2026-09-18-finanzas-coberturas-usabilidad-diseno.md`:
+        el rol hereda todas las acciones, para todas las áreas, sin crear
+        concesiones duplicadas. Antes heredaba sólo `ver_costos` y `ver_gastos`
+        y este caso afirmaba lo contrario. Lo que la herencia no toca —y sigue
+        cerrado— es el miembro que no es admin y no tiene concesión.
+        """
+        admin = Usuario.objects.create_user("admin-con-dinero@test.local", "x")
+        Membresia.objects.create(usuario=admin, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION)
+        self.client.force_authenticate(admin)
+        self.assertEqual(self.client.get("/api/obligaciones-financieras/").status_code, 200)
+        registrar_movimiento(obligacion=self.obligacion, importe="30", fecha=self.fecha, clave=uuid4(), usuario=admin)
+
+        comun = Usuario.objects.create_user("administrativo-sin-dinero@test.local", "x")
+        Membresia.objects.create(usuario=comun, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
+        self.client.force_authenticate(comun)
         self.assertEqual(self.client.get("/api/obligaciones-financieras/").status_code, 403)
         with self.assertRaises(PermissionDenied):
-            registrar_movimiento(obligacion=self.obligacion, importe="30", fecha=self.fecha, clave=uuid4(), usuario=usuario)
+            registrar_movimiento(obligacion=self.obligacion, importe="30", fecha=self.fecha, clave=uuid4(), usuario=comun)
 
     def test_api_lista_detalle_preview_auditan_y_fallan_cerrado(self):
         original = self.movimiento()
@@ -211,7 +225,7 @@ class DineroTests(DatosDinero, APITestCase):
 
     def test_permiso_sensible_y_area_se_comprueban_en_servicio(self):
         usuario = Usuario.objects.create_user("alcance-dinero@test.local", "x")
-        membresia = Membresia.objects.create(usuario=usuario, institucion=self.institucion, rol="admin")
+        membresia = Membresia.objects.create(usuario=usuario, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         permiso = ConcesionFinanciera.objects.create(membresia=membresia, accion="registrar_dinero")
         with self.assertRaises(PermissionDenied):
             registrar_movimiento(obligacion=self.obligacion, importe="1", fecha=self.fecha, clave=uuid4(), usuario=usuario)
@@ -228,7 +242,7 @@ class DineroTests(DatosDinero, APITestCase):
 
     def test_sin_permiso_de_escritura_no_registra_y_otro_hospital_no_ve(self):
         usuario = Usuario.objects.create_user("lectura-dinero@test.local", "x")
-        membresia = Membresia.objects.create(usuario=usuario, institucion=self.institucion, rol="admin")
+        membresia = Membresia.objects.create(usuario=usuario, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         ConcesionFinanciera.objects.create(membresia=membresia, accion="ver_dinero", todas_las_areas=True)
         self.client.force_authenticate(usuario)
         respuesta = self.client.post(f"/api/obligaciones-financieras/{self.obligacion.pk}/movimientos/", {"importe": "1", "fecha": str(self.fecha), "clave": str(uuid4())}, format="json")

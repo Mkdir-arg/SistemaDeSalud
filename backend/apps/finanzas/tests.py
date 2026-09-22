@@ -1322,10 +1322,13 @@ class CatalogoCostosApiTests(APITestCase):
         flujo = Flujo.objects.create(institucion=self.institucion, area=self.area, titulo="Guardia")
         version = VersionFlujo.objects.create(flujo=flujo, numero=1)
         self.nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ATENCION, titulo="Consulta")
+        # Rol sin herencia financiera: la concesión de abajo, sin sensibles y
+        # sin corregir, es justamente lo que estos casos recortan. El admin de
+        # institución hereda las dieciocho acciones y haría pasar solos los 403.
         membresia = Membresia.objects.create(
             usuario=self.admin,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         ConcesionFinanciera.objects.create(
             membresia=membresia,
@@ -2132,10 +2135,12 @@ class ConceptoGastoApiTests(APITestCase):
             accion=ConcesionFinanciera.Accion.REGISTRAR_GASTOS,
         )
         concesion_delegado.areas.add(self.area)
+        # Idem: el «restringido» lo es por su concesión sin sensibles, no por su
+        # rol, así que el rol no puede ser uno que herede la sensibilidad.
         membresia_restringido = Membresia.objects.create(
             usuario=self.admin_restringido,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         ConcesionFinanciera.objects.create(
             membresia=membresia_restringido,

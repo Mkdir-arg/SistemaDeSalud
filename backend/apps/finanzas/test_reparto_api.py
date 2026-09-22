@@ -22,10 +22,14 @@ class RepartoActividadApiTests(APITestCase):
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.otra_area = Area.objects.create(institucion=self.institucion, nombre="Clínica")
         self.admin = Usuario.objects.create_user("admin-repartos-api@salud.local", "x")
+        # Rol sin herencia financiera: las concesiones de abajo son el sujeto de
+        # estas pruebas. El admin de institución hereda las dieciocho acciones
+        # con sensibilidad y todas las áreas, y entonces ni el recorte por área
+        # ni la marca de sensibilidad de la auditoría se podrían observar.
         membresia = Membresia.objects.create(
             usuario=self.admin,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         for accion in (
             ConcesionFinanciera.Accion.CONFIGURAR_REPARTOS,
@@ -425,7 +429,7 @@ class RepartoActividadApiTests(APITestCase):
         membresia = Membresia.objects.create(
             usuario=restringido,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         concesion = ConcesionFinanciera.objects.create(
             membresia=membresia,

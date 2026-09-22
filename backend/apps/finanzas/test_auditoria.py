@@ -20,8 +20,12 @@ class AuditoriaFinancieraTests(APITestCase):
         self.institucion = Institucion.objects.create(nombre="Hospital Central")
         self.area = Area.objects.create(institucion=self.institucion, nombre="Guardia")
         self.usuario = Usuario.objects.create_user("auditoria-financiera@test.local", "x")
+        # Rol sin herencia financiera: lo que se comprueba es que la auditoría
+        # respete institución, área y sensibilidad *de la concesión*. Con el rol
+        # admin, que hereda las dieciocho acciones para todas las áreas, el
+        # recorte por concesión no se vería.
         self.membresia = Membresia.objects.create(
-            usuario=self.usuario, institucion=self.institucion, rol="admin",
+            usuario=self.usuario, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO,
         )
         for accion in ("registrar_gastos", "ver_gastos", "configurar_gastos_esperados"):
             ConcesionFinanciera.objects.create(

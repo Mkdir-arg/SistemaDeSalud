@@ -48,7 +48,13 @@ class CobrosSetup:
         return registrar_atencion_completada(self.caso, self.nodo, evento, self.usuario)
 
     def conceder(self, accion, sensible=False, area=None):
-        membresia, _ = Membresia.objects.get_or_create(usuario=self.usuario, institucion=self.institucion, defaults={"rol": Membresia.Rol.ADMIN_INSTITUCION})
+        # Rol sin herencia financiera a propósito: lo que se comprueba en estos
+        # archivos es que el permiso venga de la concesión explícita, con su
+        # área y su sensibilidad, y no del rol. El admin de institución hereda
+        # las dieciocho acciones para todas las áreas (`finanzas/permisos.py`),
+        # así que usarlo de portador haría pasar sola cualquier afirmación
+        # negativa sobre alcance.
+        membresia, _ = Membresia.objects.get_or_create(usuario=self.usuario, institucion=self.institucion, defaults={"rol": Membresia.Rol.ADMINISTRATIVO})
         concesion = ConcesionFinanciera.objects.create(membresia=membresia, accion=accion, todas_las_areas=area is None, permite_sensibles=sensible)
         if area:
             concesion.areas.add(area)
@@ -356,8 +362,10 @@ class CorreccionesCobrosApiTests(CobrosSetup, APITestCase):
             hecho = self.atencion()
         otra_area = Area.objects.create(institucion=self.institucion, nombre="Otra área")
         otra_institucion = Institucion.objects.create(nombre="Otro hospital")
-        membresia, _ = Membresia.objects.get_or_create(usuario=self.usuario, institucion=self.institucion, defaults={"rol": Membresia.Rol.ADMIN_INSTITUCION})
-        externa = Membresia.objects.create(usuario=self.usuario, institucion=otra_institucion, rol=Membresia.Rol.ADMIN_INSTITUCION)
+        # Portadoras, no admins: el recorte que se comprueba abajo es el de la
+        # concesión (área, sensibilidad, institución) y el rol admin lo anularía.
+        membresia, _ = Membresia.objects.get_or_create(usuario=self.usuario, institucion=self.institucion, defaults={"rol": Membresia.Rol.ADMINISTRATIVO})
+        externa = Membresia.objects.create(usuario=self.usuario, institucion=otra_institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         self.client.force_authenticate(self.usuario)
         for nombre, origen, area, sensible, lectura in (
             ("sin sensibles", membresia, self.area, False, True),

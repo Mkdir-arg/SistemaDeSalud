@@ -18,8 +18,12 @@ class CalendarioGastoApiTests(APITestCase):
             institucion=self.institucion, codigo="LUZ", nombre="Electricidad"
         )
         self.admin = Usuario.objects.create_user("calendario@salud.local", "x")
+        # Rol sin herencia financiera: varios casos apagan `permite_sensibles`
+        # en la concesión para comprobar que la versión histórica sigue pidiendo
+        # permiso. Con el rol admin, que hereda sensibilidad sobre todas las
+        # áreas, ese apagado no cambiaría nada.
         self.miembro = Membresia.objects.create(
-            usuario=self.admin, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION
+            usuario=self.admin, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO
         )
         for accion in (
             ConcesionFinanciera.Accion.CONFIGURAR_GASTOS_ESPERADOS,
