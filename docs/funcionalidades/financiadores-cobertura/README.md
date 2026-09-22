@@ -68,7 +68,8 @@ según permisos:
 - Elegir la afiliación al ingresar: verificada, pendiente o atención particular.
 - Consultar cobertura de una prestación: arancel, porcentaje, cupo disponible,
   importe del financiador y del paciente, y el motivo de cada cifra.
-- Registrar la aceptación del paciente del importe a su cargo.
+- Registrar la aceptación del paciente del importe a su cargo, que el paso puede
+  exigir antes de dejar avanzar la atención.
 - Confirmar, que reserva el cupo; registrar la realización, que lo consume; o
   liberar la reserva si la prestación no se hizo.
 - Solicitar una autorización cuando la regla la exige, y seguir su estado.
@@ -165,6 +166,19 @@ Si no hay ninguna, la prestación no está cubierta por esa cobertura.
 
 - El copago se cobra al paciente sólo con su **aceptación de esa prestación y ese
   importe**. Una condición distinta exige volver a explicarla.
+- Un nodo de atención de circuito **programado** puede exigir que esa aceptación esté
+  registrada **antes de que el paso avance** (`exigir_aceptacion_paciente`). Lo que se
+  exige es la **aceptación, no el cobro**: el dinero puede entrar después o no entrar
+  nunca, pero la responsabilidad tiene que estar asumida antes de la práctica. Sin
+  esto la conversación económica llegaba tarde, y el caso claro es el cupo agotado por
+  consumos en otro prestador, donde el hospital ya había dicho que estaba cubierto.
+- La aceptación se compara **contra el importe evaluado en ese momento**, con el mismo
+  criterio que usa la distribución al capturar: una aceptación de otro precio no vale,
+  porque la persona asumió otra cosa.
+- Esa exigencia reutiliza la misma espera administrativa de las autorizaciones, no una
+  guarda paralela. El motivo del bloqueo dice cuál de los tres requisitos falta: datos,
+  autorización o aceptación. La continuación supervisada con motivo sigue siendo la
+  única salida. El panel del caso avisa **antes** del intento, no después.
 - Si el paciente no acepta y el hospital rechaza asumir el importe, queda un
   **saldo pendiente de resolución administrativa**: identificado, sin atribuirse
   automáticamente a nadie y **sin considerarse cobrado**.

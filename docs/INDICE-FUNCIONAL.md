@@ -144,6 +144,9 @@ aplicación corriendo el 17–18/09/2026.
 
 ## 6. Histórico
 
+Los planes de trabajo **en curso** viven en [`docs/plans/`](plans/); se mueven al
+archivo cuando terminan.
+
 [`docs/historico/`](historico/README.md) — planes, auditorías y documentos cerrados.
 Explican **por qué** el sistema es como es. No describen su estado actual, y sus
 fechas, puertos, cifras y pendientes son fotos del momento en que se escribieron.

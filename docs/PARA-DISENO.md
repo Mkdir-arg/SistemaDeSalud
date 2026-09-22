@@ -143,6 +143,12 @@ Lo mínimo que conviene tener presente:
   marca: `bg-red-500` directamente no existe. La regla vive en la herramienta.
 - **Las variantes usan mapas de clases completas, nunca interpolación.** Tailwind
   escanea el código como texto, así que `` `bg-badge-${tono}` `` no genera nada.
+- **Todo listado nuevo pagina de a 10**, no de a 25. La fila de estas pantallas es
+  alta —importes, estados, badges, botones— y con veinticinco hay que barrer la
+  pantalla entera para encontrar una. Con diez entra sin scrollear y el paginador se
+  usa de verdad. Quien necesite más lo elige en «filas por página», y la elección
+  viaja en la URL. Hoy lo cumplen finanzas y financiadores; las pantallas anteriores
+  siguen en 25 hasta que les toque.
 
 ## 7. Qué está sin resolver
 
