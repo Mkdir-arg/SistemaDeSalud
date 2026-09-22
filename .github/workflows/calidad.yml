@@ -1,0 +1,74 @@
+# Comprobaciones que no cubre `backend.yml`, que corre la suite de Django.
+#
+# Se separan a propósito: la suite de backend tarda minutos y necesita una base;
+# esto tarda segundos y no necesita nada. Juntarlas haría esperar lo rápido por lo
+# lento en cada push.
+name: calidad
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # Un push nuevo sobre la misma rama cancela la corrida anterior: no tiene sentido
+  # esperar el resultado de un commit que ya quedó atrás.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Auditor de clases
+        # Tailwind escanea el código como texto: una clase mal escrita no rompe el
+        # build, simplemente no pinta. Sin esto se descubre mirando la pantalla.
+        run: npm run auditar
+
+  esquema:
+    name: Esquema OpenAPI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_SECRET_KEY: clave-solo-para-ci-no-usar-en-ningun-entorno
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      - name: Comprobaciones de Django
+        run: python manage.py check
+
+      - name: Generar el esquema sin avisos
+        # Es lo primero que pide el área de sistemas de una institución para
+        # integrar. Si deja de generarse, conviene enterarse acá y no ahí.
+        run: python manage.py spectacular --fail-on-warn --file /dev/null
+
+# Los recorridos de Playwright no corren todavía: necesitan el stack completo y datos
+# sembrados, que son unos 15 minutos. Van en un workflow aparte cuando se agreguen.

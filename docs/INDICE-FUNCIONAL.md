@@ -15,7 +15,10 @@ día o se borra.** Lo que describe un trabajo terminado se archiva en
 |---|---|
 | **Quien lo vende** | [`PARA-VENTAS.md`](PARA-VENTAS.md) — qué es, qué mostrar, qué contestar y qué no prometer |
 | **Quien lo diseña** | [`PARA-DISENO.md`](PARA-DISENO.md) — qué pantallas hay, dónde vive la marca, qué reglas respetar |
+| **Quien lo usa para atender** | [`MANUAL-DE-USO.md`](MANUAL-DE-USO.md) — sin una sola palabra técnica |
 | **Quien lo programa** | Seguí con la tabla de abajo |
+| **Quien lo despliega** | [`DESPLIEGUE.md`](DESPLIEGUE.md) |
+| **Quien se integra por API** | [`INTEGRACION-API.md`](INTEGRACION-API.md) |
 
 Las dos primeras están escritas sin jerga técnica y no mencionan un solo endpoint.
 El resto de esta carpeta está escrito para desarrollo: es preciso a propósito, y por
@@ -125,6 +128,12 @@ aplicación corriendo el 17–18/09/2026.
 | [`ESCENARIO-GUARDIA.md`](ESCENARIO-GUARDIA.md) | El escenario de referencia: guardia con triage Manchester, los 8 flujos publicados, el recorrido de prueba y cómo cargarlo |
 | [`NOTIFICACIONES.md`](NOTIFICACIONES.md) | Los 4 eventos que disparan aviso, a quién y desde qué punto del motor; la API y la campana |
 | [`FUNDACION-FRONTEND.md`](FUNDACION-FRONTEND.md) | Cómo está construido el frontend y las reglas al tocarlo: tokens, piezas, cómo migrar una pantalla, la suite e2e |
+| [`MODELO-DE-DATOS.md`](MODELO-DE-DATOS.md) | El mapa de las 93 entidades en 13 apps, con la regla que gobierna cada una |
+| [`PRUEBAS.md`](PRUEBAS.md) | Cómo correr las suites y las tres trampas del entorno que dan fallas falsas |
+| [`DESPLIEGUE.md`](DESPLIEGUE.md) | Qué necesita una instalación real, cómo se actualiza y **qué hacer cuando se pierde la base** |
+| [`INTEGRACION-API.md`](INTEGRACION-API.md) | Para el área de sistemas del otro lado: autenticación, alcance por institución, acciones, errores y FHIR |
+| [`CUMPLIMIENTO-NORMATIVO.md`](CUMPLIMIENTO-NORMATIVO.md) | Qué implementa el sistema de las leyes 26.529, 25.326 y 25.506, con la evidencia, y qué falta decidir |
+| [`MANUAL-DE-USO.md`](MANUAL-DE-USO.md) | Para admisión, enfermería, profesionales y jefaturas. El único escrito para quien atiende |
 | [`FUNCIONALIDADES.md`](FUNCIONALIDADES.md) | Sólo un redirector, para enlaces viejos |
 
 ---

@@ -108,7 +108,19 @@ No las completo porque son decisiones comerciales, no técnicas:
 - **Un plazo de implementación.** Depende del circuito que tenga el cliente, y eso
   se sabe en el relevamiento.
 
-## 7. Si te preguntan algo que no está acá
+## 7. Si te preguntan por normativa
+
+Las leyes 26.529 (historia clínica), 25.326 (datos personales) y 25.506 (firma
+digital) salen en cualquier conversación seria con un hospital o un ministerio.
+
+Hay un documento con qué implementa el sistema de cada una y qué queda por definir:
+[`CUMPLIMIENTO-NORMATIVO.md`](CUMPLIMIENTO-NORMATIVO.md). Al final trae una lista de
+lo que conviene tener a mano antes de una auditoría o una licitación.
+
+**No es una opinión legal**, y la adecuación final depende de la jurisdicción. Eso
+decilo vos antes de que lo pregunten.
+
+## 8. Si te preguntan algo que no está acá
 
 Dos lugares, en este orden:
 
