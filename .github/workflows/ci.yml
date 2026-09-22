@@ -1,0 +1,125 @@
+name: CI
+
+# Por qué existe: `main` estuvo días con 53 tests en rojo y se descubrió a mano,
+# corriendo la suite para otra cosa. Sin esto, la única señal de que algo se rompió
+# es que alguien se tropiece.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # Un push nuevo sobre la misma rama cancela la corrida anterior: no tiene sentido
+  # esperar el resultado de un commit que ya quedó atrás.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        # La misma mayor que producción: los tests de concurrencia usan bloqueos de
+        # PostgreSQL y no valen contra SQLite.
+        image: postgres:16
+        env:
+          POSTGRES_DB: salud
+          POSTGRES_USER: salud
+          POSTGRES_PASSWORD: salud
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U salud"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgres://salud:salud@localhost:5432/salud
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: clave-solo-para-ci
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      # DEBUG=false activa el redirect a HTTPS y TODOS los tests de API reciben 301,
+      # con cientos de fallas que no son reales. Ver docs/PRUEBAS.md.
+      DJANGO_SSL_REDIRECT: "false"
+      DJANGO_HSTS_SECONDS: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Instalar dependencias
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Comprobaciones de Django
+        working-directory: backend
+        run: python manage.py check
+
+      - name: Consistencia de migraciones
+        working-directory: backend
+        # Falla si alguien cambió un modelo y no generó la migración. Es el error que
+        # aparece recién al desplegar, cuando ya es caro.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Pruebas
+        working-directory: backend
+        run: python manage.py test --noinput
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Auditor de clases
+        working-directory: frontend
+        # Detecta clases de Tailwind que no existen: como se escanea el código como
+        # texto, una clase mal escrita no rompe el build, simplemente no pinta.
+        run: npm run auditar
+
+  esquema:
+    name: Esquema OpenAPI
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SECRET_KEY: clave-solo-para-ci
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Instalar dependencias
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Generar el esquema sin avisos
+        working-directory: backend
+        # Es lo primero que pide el área de sistemas de una institución para
+        # integrar. Si deja de generarse, conviene enterarse acá.
+        run: python manage.py spectacular --fail-on-warn --file /dev/null
+
+# Los recorridos end-to-end de Playwright no corren acá todavía: necesitan el stack
+# completo levantado y datos sembrados, que son ~15 minutos. Cuando se agreguen, van
+# en un job aparte y sobre el entorno demo, no sobre este.
