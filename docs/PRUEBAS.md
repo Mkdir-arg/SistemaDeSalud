@@ -138,10 +138,13 @@ cuya suite usa respuestas simuladas y no requiere credenciales ni escribe datos.
 
 ## En CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) corre en cada push a `main`
-y en cada pull request: comprobaciones de Django, consistencia de migraciones,
-pruebas de backend contra Postgres 16, build del frontend, auditor de clases y
-generación del esquema.
+Dos workflows corren en cada push a `main` y en cada pull request:
+
+- **`backend.yml`** — la suite de Django contra Postgres 16, y la consistencia de
+  migraciones. Desactiva el redirect a HTTPS por la trampa de arriba.
+- **`calidad.yml`** — build del frontend, auditor de clases, comprobaciones de
+  Django y generación del esquema OpenAPI. Va aparte porque tarda segundos y no
+  necesita una base: juntarlo haría esperar lo rápido por lo lento.
 
 Los recorridos de Playwright **no** corren ahí todavía: necesitan el stack completo
 y datos sembrados, que son unos 15 minutos.
