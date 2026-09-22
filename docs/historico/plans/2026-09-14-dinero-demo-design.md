@@ -2,7 +2,7 @@
 
 ## Estado de activación de la demo — 15/09/2026
 
-Para el cierre posterior, publicación y nueva prioridad de obras sociales, consultar el [estado post-demo](../funcionalidades/finanzas-costos/estado-post-demo-2026-09-15.md). Las cifras y estados de publicación de este plan son checkpoints históricos.
+Para el cierre posterior, publicación y nueva prioridad de obras sociales, consultar el [estado post-demo](../estado-post-demo-2026-09-15.md). Las cifras y estados de publicación de este plan son checkpoints históricos.
 
 **Decisión posterior a la demo:** el usuario pidió resolver el fallo inicial de captura y aclaró que no existen históricos productivos que deban diferenciarse. El hecho económico existente pasa a ser la fuente recuperable aun sin snapshot de cobro; no se agrega una migración ni se ejecuta reconstrucción masiva. Se conservan los cortes temporales de la política, el bloqueo por hecho, la idempotencia, el alcance sensible y el rollback de recuperación si falla la auditoría. Esto sustituye el límite de «fallo al insertar el ancla requiere investigación» que figura en los checkpoints inferiores. Prueba de reproducción: antes el GET devolvía lista vacía para un hecho cuya captura falló; después aparece y dos POST de recuperación generan un único cargo con el arancel original.
 

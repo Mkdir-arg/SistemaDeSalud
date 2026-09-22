@@ -67,11 +67,11 @@ Traza: [simulación de cupos](simulacion-cupos-demo.jsonl). Sin `--demo`, el mis
 
 ## Archivos y estado de la sesión
 
-- [Glosario](../../../CONTEXT.md): términos confirmados, sin modelo técnico.
+- [Glosario](../../../../CONTEXT.md): términos confirmados, sin modelo técnico.
 - [Decisiones D1–D27](../2026-09-15-financiadores-cobertura-y-cobros.md): relevamiento y evolución de la entrevista.
 - [Plan](README.md), [preguntas](consultas-pendientes.md) y [contratos](contratos-y-validacion.md): propuestas para implementación.
 - [Planillas](plantillas/README.md), generador y traza: artefactos de revisión.
-- [Prototipo](../../../backend/apps/finanzas/prototipo_cupo_cobertura.py): ejecutable aislado, sin importación desde la aplicación.
+- [Prototipo](../../../../backend/apps/finanzas/prototipo_cupo_cobertura.py): ejecutable aislado, sin importación desde la aplicación.
 
 Los archivos permanecen locales y sin commit. No se cambiaron dependencias de producción, permisos, datos, servicios, rutas ni modelos integrados; no se publicaron issues, comentarios o PR.
 

@@ -32,7 +32,7 @@ No se incorporan funcionalidades nuevas, dependencias, reglas financieras ni mig
 - Se creó una semilla manual con base vacía, confirmación explícita, contraseña por entorno, bloqueo exclusivo y transacción. No borra ni mezcla datos ni se ejecuta al arrancar. Si falla la escritura del manifiesto después de confirmar la base, indica que no se repita la carga.
 - Septiembre inicial:750.000gastos aprobados,45.000poraprobar,750.000atribuidos,0sindistribuir;115.000costos directos conocidos;610.000pagos,150.000cobros netos. Permanecen ajuste−10.000, pago20.000, cobro10.000, un componente sin valor y un responsable de cobro por completar. Ningún pendiente técnico de reparto.
 - Nuevos perfiles con concesiones explícitas. Elena Rivas es administradora institucional, no superusuaria; ese rol incluye clínica. Los médicos no reciben permisos financieros. No se modificó el mecanismo productivo de permisos.
-- Guía principal de25–30min sin escrituras, con consultas, cifras, diferencias de dominio y dos ensayos opcionales separados: [Markdown](../funcionalidades/finanzas-costos/guia-los-aromos.md) / [HTML imprimible](../funcionalidades/finanzas-costos/guia-los-aromos.html). Credenciales sólo en el archivo local `acceso/acceso-local.txt`, fuera del repo.
+- Guía principal de25–30min sin escrituras, con consultas, cifras, diferencias de dominio y dos ensayos opcionales separados: [Markdown](../../funcionalidades/finanzas-costos/guia-los-aromos.md) / [HTML imprimible](../../funcionalidades/finanzas-costos/guia-los-aromos.html). Credenciales sólo en el archivo local `acceso/acceso-local.txt`, fuera del repo.
 
 ### Evidencia y límites
 

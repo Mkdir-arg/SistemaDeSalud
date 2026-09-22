@@ -48,7 +48,7 @@ Este recorrido orienta la primera entrega. Todavía se deben acordar las reglas 
 | `backend/apps/finanzas/models.py`, `ObligacionFinanciera` | Deuda con origen, moneda ARS y contraparte textual, separada del movimiento de dinero. | Reutilizar obligaciones/movimientos, definir su vínculo estructurado y preservar originales. |
 | Directorio `backend/apps` | Existe `finanzas`; no hay aplicaciones `costos` ni `financiadores`. | Adaptar los nombres y puntos de integración propuestos por los issues antiguos. |
 
-El [cierre post-demo](../funcionalidades/finanzas-costos/estado-post-demo-2026-09-15.md) documenta validaciones anteriores y límites. Sus resultados no fueron ejecutados de nuevo en esta sesión. Tampoco los checkpoints de demo que aún figuran en GitHub prueban el estado de un servicio actual.
+El [cierre post-demo](../estado-post-demo-2026-09-15.md) documenta validaciones anteriores y límites. Sus resultados no fueron ejecutados de nuevo en esta sesión. Tampoco los checkpoints de demo que aún figuran en GitHub prueban el estado de un servicio actual.
 
 ## Decisiones confirmadas
 
@@ -539,7 +539,7 @@ Se tratarán de a una, según sus dependencias. La lista siguiente registra cues
 - El usuario cambió el modo de trabajo: continuar automáticamente, acumular las preguntas para su regreso y detenerse únicamente cuando no sea posible seguir sin respuestas. Las recomendaciones posteriores se documentan como propuestas, sin convertir la ausencia de respuesta en aceptación.
 - La entrevista en vivo se reemplaza temporalmente por investigación, diseño y preparación de material revisable. Las decisiones D1–D27 conservan prioridad sobre propuestas anteriores de los issues.
 - No se aprobó aún un esquema de datos, una migración, un mecanismo de publicación ni el alcance completo de autorizaciones.
-- El glosario se inicia en [CONTEXT.md](../../CONTEXT.md). No se redactan ADR con razones atribuidas al usuario antes de discutir las alternativas y consecuencias.
+- El glosario se inicia en [CONTEXT.md](../../../CONTEXT.md). No se redactan ADR con razones atribuidas al usuario antes de discutir las alternativas y consecuencias.
 
 ## Validación de esta etapa
 

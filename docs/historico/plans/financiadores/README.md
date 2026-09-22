@@ -20,7 +20,7 @@ El resultado actual incluye padrón y legado diferenciados, autorizaciones, usos
 - [Decisiones sobre las consultas acumuladas](consultas-pendientes.md): recomendaciones Q01–Q13 aprobadas y su alcance.
 - [Contratos, estados y validación](contratos-y-validacion.md).
 - [Planillas de ejemplo](plantillas/README.md): consumos de dos financiadores y padrón; formato propuesto, datos ficticios.
-- [Simulador de cupos](../../../backend/apps/finanzas/prototipo_cupo_cobertura.py): ejecutable local en memoria, sin integración con I-Core Salud.
+- [Simulador de cupos](../../../../backend/apps/finanzas/prototipo_cupo_cobertura.py): ejecutable local en memoria, sin integración con I-Core Salud.
 - [Resultados y límites de la preparación](validacion-preparacion.md).
 
 ## 1. Primera entrega demostrable
