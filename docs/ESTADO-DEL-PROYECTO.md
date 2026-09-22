@@ -23,7 +23,7 @@ Medido sobre el código, no sobre expectativas:
 | | |
 |---|---|
 | Apps de backend | 13 |
-| Modelos | 89 |
+| Modelos | 93 |
 | Recursos REST registrados | 66 |
 | Rutas de frontend | 37 |
 | Roles institucionales | 9 |
