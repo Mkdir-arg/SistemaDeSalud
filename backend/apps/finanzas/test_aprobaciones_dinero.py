@@ -22,7 +22,11 @@ class AprobacionesDineroTests(DatosDinero, APITestCase):
     def setUp(self):
         self.preparar()
         self.operador = Usuario.objects.create_user("registro-sin-aprobar@test.local", "x")
-        self.membresia = Membresia.objects.create(usuario=self.operador, institucion=self.institucion, rol="admin")
+        # Rol sin herencia financiera a propósito: todo este archivo comprueba que
+        # la facultad de aprobar viene de la concesión y no del rol. El admin de
+        # institución hereda las dieciocho acciones, así que usarlo acá haría que
+        # el operador se autoaprobara y las afirmaciones negativas pasaran solas.
+        self.membresia = Membresia.objects.create(usuario=self.operador, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         for accion in ("ver_dinero", "registrar_dinero", "corregir_dinero"):
             ConcesionFinanciera.objects.create(membresia=self.membresia, accion=accion, todas_las_areas=True)
         self.client.force_authenticate(self.usuario)

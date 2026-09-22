@@ -32,10 +32,18 @@ class AprobacionesGastosTests(CobrosSetup, APITestCase):
         procesar_hecho_atencion(hecho.pk)
         return ImputacionCosto.objects.get(hecho=hecho)
 
-    def test_administrador_sin_permiso_aprobacion_crea_pendiente(self):
+    def test_registrador_sin_permiso_de_aprobacion_crea_pendiente(self):
+        """Quien registra sin facultad de aprobar deja el gasto pendiente.
+
+        El origen es de área y ya no central: `origen` se marca central cuando la
+        concesión cuelga de una membresía con rol admin, y ese rol hereda hoy
+        `aprobar_gastos`, así que «central y pendiente» dejó de ser alcanzable.
+        El origen central se cubre en `tests.GastoApiTests` y en
+        `tests.GastoServiciosTests`.
+        """
         self.conceder("registrar_gastos")
         gasto = self.gasto(self.usuario)
-        self.assertEqual(gasto.origen, Gasto.Origen.CENTRAL)
+        self.assertEqual(gasto.origen, Gasto.Origen.AREA)
         self.assertEqual(gasto.estado, EstadoAprobacion.PENDIENTE)
         self.assertIsNone(gasto.aprobado_por)
         self.assertIsNone(gasto.aprobado_en)

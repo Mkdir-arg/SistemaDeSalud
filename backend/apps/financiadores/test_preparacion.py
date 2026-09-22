@@ -119,6 +119,13 @@ class PreparacionFinanciadoresTests(CoberturaSetup, TestCase):
     def test_usuarios_inactivos_superadmin_y_rol_sin_concesion_no_sustituyen_designacion(self):
         self.assertFalse(self.informe(usuarios=[self.admin.pk])["configuracion_completa"])
         ConcesionFinanciera.objects.all().delete()
+        # El rol admin se fija acá y no se hereda del ayudante `conceder`, que usa
+        # a propósito un rol sin herencia financiera. Lo que este caso comprueba
+        # es que ni siquiera el rol que sí hereda las dieciocho acciones sustituye
+        # a la designación explícita de responsable.
+        Membresia.objects.filter(usuario=self.usuario, institucion=self.institucion).update(
+            rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
         self.assertTrue(Membresia.objects.filter(usuario=self.usuario, rol=Membresia.Rol.ADMIN_INSTITUCION).exists())
         self.assertIn("sin_responsable_configuracion", self.codigos())
         for accion in ("configurar_cobros", *ACCIONES_OPERATIVAS):

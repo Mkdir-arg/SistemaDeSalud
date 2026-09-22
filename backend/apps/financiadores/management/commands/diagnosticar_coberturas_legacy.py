@@ -15,7 +15,30 @@ from apps.financiadores.legado import (
 )
 
 
-REPOSITORIO = Path(__file__).resolve().parents[5]
+def _raiz_del_repositorio(archivo):
+    """La copia de trabajo que contiene a `archivo`, o None si no hay ninguna.
+
+    El reporte lleva identificadores internos: escribirlo dentro del árbol
+    versionado lo deja a un `git add` de distancia. La marca es `.git` y no una
+    profundidad fija, porque la profundidad cambia con el despliegue: el código
+    vive en `repo/backend/apps/...` en una copia de trabajo y en `/app/apps/...`
+    dentro del contenedor. Contar niveles daba `/` allá, y entonces *toda* ruta
+    quedaba «dentro del repositorio»: el comando era inejecutable en cualquier
+    despliegue en contenedor, no sólo en las pruebas.
+
+    Sin copia de trabajo no hay commit accidental que evitar, así que la guarda
+    no aplica; las demás protecciones del destino (O_EXCL y 0600) no dependen
+    de esto.
+    """
+    for carpeta in Path(archivo).resolve().parents:
+        # `.git` es un directorio en un clon y un archivo en un worktree o en un
+        # submódulo; `exists()` cubre los tres.
+        if (carpeta / ".git").exists():
+            return carpeta
+    return None
+
+
+REPOSITORIO = _raiz_del_repositorio(__file__)
 
 
 def _objeto_sin_repetidos(pares):
@@ -29,7 +52,7 @@ def _objeto_sin_repetidos(pares):
 
 def _abrir_reporte(ruta):
     destino = Path(ruta).expanduser().resolve()
-    if destino == REPOSITORIO or REPOSITORIO in destino.parents:
+    if REPOSITORIO is not None and (destino == REPOSITORIO or REPOSITORIO in destino.parents):
         raise CommandError("Elegí una ruta privada fuera del repositorio para el reporte.")
     try:
         # O_EXCL impide pisar archivos, incluso ante ejecuciones concurrentes.

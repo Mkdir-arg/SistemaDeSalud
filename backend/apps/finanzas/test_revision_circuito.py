@@ -20,6 +20,14 @@ from .services import procesar_hecho_atencion
 
 
 class NavegacionCuentaGastoTests(DatosDinero, APITestCase):
+    """La cuenta del gasto se revela por concesión de dinero, no por el rol.
+
+    Los lectores de estos casos llevan un rol sin herencia financiera: el admin
+    de institución hereda las dieciocho acciones para todas las áreas, así que
+    con ese rol la cuenta se vería siempre y las tres afirmaciones negativas
+    —sin permiso, sin sensibilidad, en otra institución— pasarían solas.
+    """
+
     def setUp(self):
         self.preparar()
         self.client.force_authenticate(self.usuario)
@@ -34,7 +42,10 @@ class NavegacionCuentaGastoTests(DatosDinero, APITestCase):
     def test_lectura_de_gastos_no_revela_cuenta_sin_permiso_de_dinero(self):
         lector = Usuario.objects.create_user("lector-gastos-revision@test.local", "x")
         membresia = Membresia.objects.create(
-            usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
+            usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia, accion="ver_gastos", todas_las_areas=True,
         )
         self.client.force_authenticate(lector)
         respuesta = self.client.get(f"/api/gastos/{self.gasto.pk}/")
@@ -53,7 +64,10 @@ class NavegacionCuentaGastoTests(DatosDinero, APITestCase):
     def test_cuenta_sensible_requiere_permiso_sensible_aunque_el_gasto_no_lo_sea(self):
         lector = Usuario.objects.create_user("lector-cuenta-sensible@test.local", "x")
         membresia = Membresia.objects.create(
-            usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
+            usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=membresia, accion="ver_gastos", todas_las_areas=True, permite_sensibles=True,
         )
         concesion = ConcesionFinanciera.objects.create(
             membresia=membresia, accion="ver_dinero", todas_las_areas=True,
@@ -69,12 +83,15 @@ class NavegacionCuentaGastoTests(DatosDinero, APITestCase):
 
     def test_permiso_de_dinero_en_otra_institucion_no_revela_la_cuenta(self):
         lector = Usuario.objects.create_user("lector-cuenta-otra-institucion@test.local", "x")
-        Membresia.objects.create(
-            usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
+        propia = Membresia.objects.create(
+            usuario=lector, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO,
+        )
+        ConcesionFinanciera.objects.create(
+            membresia=propia, accion="ver_gastos", todas_las_areas=True, permite_sensibles=True,
         )
         otra = Institucion.objects.create(nombre="Otro hospital")
         membresia = Membresia.objects.create(
-            usuario=lector, institucion=otra, rol=Membresia.Rol.ADMIN_INSTITUCION,
+            usuario=lector, institucion=otra, rol=Membresia.Rol.ADMINISTRATIVO,
         )
         ConcesionFinanciera.objects.create(
             membresia=membresia, accion="ver_dinero", todas_las_areas=True, permite_sensibles=True,

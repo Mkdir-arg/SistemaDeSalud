@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import tempfile
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
@@ -18,7 +19,7 @@ from apps.accounts.models import Usuario
 from apps.instituciones.models import Institucion
 from apps.registros.models import Ciudadano
 from .legado import diagnosticar, huella_aliases, validar_aliases
-from .management.commands.diagnosticar_coberturas_legacy import REPOSITORIO
+from .management.commands import diagnosticar_coberturas_legacy as comando_legado
 from .models import (
     Afiliado, Convenio, Financiador, HistorialAfiliacion, Plan, VinculoCiudadano,
 )
@@ -264,9 +265,60 @@ class DiagnosticoLegadoTests(TestCase):
             with self.assertRaises(CommandError):
                 self.comando(reporte=str(ruta))
             self.assertEqual(ruta.read_text(encoding="utf-8"), "original")
-        with self.assertRaisesMessage(CommandError, "fuera del repositorio"):
-            self.comando(reporte=str(REPOSITORIO / "diagnostico-no-debe-existir.jsonl"))
-        self.assertFalse((REPOSITORIO / "diagnostico-no-debe-existir.jsonl").exists())
+        # La copia de trabajo se simula en vez de usar la real: la raíz depende
+        # del despliegue —dentro del contenedor el código no vive en un
+        # repositorio y no hay ninguna— y probar contra ella hacía que este caso
+        # afirmara cosas distintas según dónde corriera.
+        with tempfile.TemporaryDirectory() as repo:
+            raiz = Path(repo).resolve()
+            (raiz / ".git").mkdir()
+            destino = raiz / "diagnostico-no-debe-existir.jsonl"
+            with patch.object(comando_legado, "REPOSITORIO", raiz):
+                with self.assertRaisesMessage(CommandError, "fuera del repositorio"):
+                    self.comando(reporte=str(destino))
+            self.assertFalse(destino.exists())
+
+    def test_la_raiz_se_ubica_por_la_marca_git_y_no_por_la_profundidad(self):
+        """Las dos ramas de la detección, sin depender de dónde corra la prueba.
+
+        Es el camino que la suite no ejercitaba: los casos de la guarda parchean
+        `REPOSITORIO`, y dentro del contenedor no hay copia de trabajo, así que
+        la rama que encuentra el repositorio no llegaba a ejecutarse nunca.
+        """
+        with tempfile.TemporaryDirectory() as base:
+            raiz = Path(base).resolve()
+            hondo = raiz / "backend" / "apps" / "financiadores" / "management" / "commands"
+            hondo.mkdir(parents=True)
+            archivo = hondo / "comando.py"
+            archivo.touch()
+
+            # Sin marca todavía: no hay copia de trabajo que proteger.
+            self.assertIsNone(comando_legado._raiz_del_repositorio(archivo))
+
+            # `.git` como directorio (clon) y como archivo (worktree o submódulo).
+            marca = raiz / ".git"
+            marca.mkdir()
+            self.assertEqual(comando_legado._raiz_del_repositorio(archivo), raiz)
+            marca.rmdir()
+            marca.write_text("gitdir: /otro/lado", encoding="utf-8")
+            self.assertEqual(comando_legado._raiz_del_repositorio(archivo), raiz)
+
+            # Gana la marca más cercana, no la profundidad: un repositorio
+            # anidado protege su propio árbol y no el de arriba.
+            anidado = raiz / "backend"
+            (anidado / ".git").mkdir()
+            self.assertEqual(comando_legado._raiz_del_repositorio(archivo), anidado)
+
+    def test_sin_copia_de_trabajo_el_reporte_no_queda_bloqueado(self):
+        """Sin repositorio no hay commit accidental que evitar, y el reporte sale.
+
+        Calcular la raíz contando niveles fijos daba `/` en el contenedor: toda
+        ruta caía «dentro del repositorio» y el comando era inejecutable ahí.
+        """
+        with patch.object(comando_legado, "REPOSITORIO", None), tempfile.TemporaryDirectory() as fuera:
+            ruta = Path(fuera) / "diagnostico.jsonl"
+            resumen, _ = self.comando(reporte=str(ruta))
+        self.assertTrue(resumen["reporte_generado"])
 
     def test_alias_archivo_validado_y_errores_no_exponen_contenido(self):
         ciudadano = self.ciudadano(obra_social="Alias reservado")

@@ -41,7 +41,15 @@ class PermisosContablesTests(APITestCase):
                  "areas": [self.area.pk], "permite_sensibles": True}
         return self.client.post("/api/concesiones-financieras/otorgar-multiples/", {**datos, **cambios}, format="json")
 
-    def test_admin_lectura_sensible_propia_sin_concesiones_ni_escritura(self):
+    def test_admin_hereda_todo_en_su_institucion_y_nada_en_la_ajena(self):
+        """La herencia del admin llega hasta el borde de su institución.
+
+        Decisión de `docs/plans/2026-09-18-finanzas-coberturas-usabilidad-diseno.md`:
+        el rol hereda todas las acciones financieras, para todas las áreas e
+        información sensible, sin crear concesiones. Antes heredaba sólo lectura
+        de costos y gastos y este caso afirmaba eso. Lo que la herencia no cruza
+        —y es lo que sigue protegido— es la institución ajena.
+        """
         propio = self.gasto(area=self.area)
         self.gasto(self.otra)
         for _ in range(2):
@@ -50,11 +58,19 @@ class PermisosContablesTests(APITestCase):
             self.assertEqual([g["id"] for g in respuesta.data["results"]], [propio.pk])
         self.assertFalse(ConcesionFinanciera.objects.exists())
         mias = self.client.get("/api/concesiones-financieras/mias/").data["concesiones"]
-        self.assertEqual({c["accion"] for c in mias}, {"ver_gastos", "ver_costos"})
+        self.assertEqual({c["accion"] for c in mias}, set(ConcesionFinanciera.Accion.values))
         self.assertTrue(all(c["permite_sensibles"] and c["todas_las_areas"] for c in mias))
+        # La herencia no es pareja y conviene que esto quede afirmado, no
+        # descubierto: `tiene_concesion_financiera` consulta
+        # `instituciones_admin_financiero` y por eso el admin sí opera dinero,
+        # cobros y coberturas; en cambio `registrar_gasto` y
+        # `PuedeConfigurarRepartos` exigen concesión explícita y no la consultan,
+        # así que estas dos altas siguen cerradas para el admin sin concesiones.
+        # Si alguna vez se alinean con la decisión, estos 403 pasan a 400: es una
+        # decisión de producto, no un detalle a corregir en la prueba.
         self.assertEqual(self.client.post("/api/gastos/", {}, format="json").status_code, 403)
         self.assertEqual(self.client.post("/api/reglas-reparto/", {}, format="json").status_code, 403)
-        self.assertFalse(tiene_concesion_financiera(self.admin, "aprobar_gastos", self.institucion.pk))
+        self.assertTrue(tiene_concesion_financiera(self.admin, "aprobar_gastos", self.institucion.pk))
         self.assertFalse(tiene_concesion_financiera(self.admin, "ver_gastos", self.otra.pk, sensible=True))
 
     def test_cambio_rol_y_membresia_inactiva_retiran_default_sin_datos_persistidos(self):

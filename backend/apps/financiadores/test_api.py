@@ -109,7 +109,9 @@ class ApiFinanciadoresTests(CobrosSetup, APITestCase):
         self.assertTrue(self.usuario.check_password("x"))
 
     def test_hospital_sin_permiso_explicito_no_activa_cobertura(self):
-        Membresia.objects.create(usuario=self.usuario, institucion=self.institucion, rol="admin")
+        # Rol sin herencia financiera: lo que se exige acá es el permiso
+        # explícito, y el admin de institución hereda las dieciocho acciones.
+        Membresia.objects.create(usuario=self.usuario, institucion=self.institucion, rol=Membresia.Rol.ADMINISTRATIVO)
         self.client.force_authenticate(self.usuario)
         response = self.client.post("/api/coberturas/configurar/", {"institucion": self.institucion.pk, "activo": True, "dias_reserva_antigua": 7})
         self.assertEqual(response.status_code, 403)
