@@ -453,10 +453,13 @@ class RepartoActividadApiTests(APITestCase):
 
     def test_permiso_exclusivo_de_repartos_puede_consultar_el_catalogo(self):
         restringido = Usuario.objects.create_user("solo-repartos@salud.local", "x")
+        # «Exclusivo» quiere decir que la única llave es la concesión de repartos.
+        # Con el rol admin, que hereda las dieciocho acciones, el caso pasaba por
+        # la herencia y habría seguido verde aunque se le quitara la concesión.
         membresia = Membresia.objects.create(
             usuario=restringido,
             institucion=self.institucion,
-            rol=Membresia.Rol.ADMIN_INSTITUCION,
+            rol=Membresia.Rol.ADMINISTRATIVO,
         )
         ConcesionFinanciera.objects.create(
             membresia=membresia,
