@@ -74,6 +74,11 @@ PERMISOS_FINANCIEROS = {
     "procesamiento-finanzas": None,
     "reportes-dinero": None,
     "seguimiento-cobros": None,
+    # Resumen agregado del mes. Comprueba institución, área y sensibilidad
+    # dentro de `fuentes()`, igual que los demás reportes, y nunca expone
+    # ciudadano ni caso. Entra acá —y no como capacidad de rol— porque el
+    # alcance financiero no se deduce del rol clínico.
+    "reportes-costos": None,
 }
 SIN_CAPACIDAD_A_PROPOSITO |= set(PERMISOS_FINANCIEROS)
 
