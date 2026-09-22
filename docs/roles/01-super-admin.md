@@ -1,8 +1,12 @@
-# Rol: Super admin (plataforma)
+# Rol: Superusuario de plataforma
 
-> El nivel más alto. No pertenece a una institución: **las administra todas**.
-> Técnicamente es el usuario con `is_superuser = True`. El scope por institución
-> no lo limita: ve y opera todo.
+> El nivel más alto. No pertenece a una institución: **las atraviesa todas**.
+> Técnicamente es el usuario con `is_superuser = True`; el filtro por institución
+> no lo limita.
+>
+> **No es un rol hospitalario.** Es un usuario técnico para administración de
+> plataforma, soporte y contingencia. Para el gobierno estatal de la red hay un rol
+> funcional aparte: [`02-plataforma.md`](02-plataforma.md).
 
 **Usuario de demo:** `admin@salud.local` / `admin1234`
 
@@ -10,108 +14,85 @@
 
 ## 1. En una frase
 
-El super admin entra a la plataforma, ve el **directorio de todas las
-instituciones**, y puede **ingresar a cualquiera** para operarla con acceso
-total (diseño, ejecución, registros y administración).
+Entra al directorio de todas las instituciones y puede ingresar a cualquiera para
+operarla con acceso total: configuración, diseño, ejecución, registros, finanzas y
+cobertura.
 
 ## 2. Qué ve al entrar
 
-Al iniciar sesión aterriza en el **Directorio de instituciones** (no en una
-institución puntual). La barra superior muestra:
-- El pill **"Alcance: todas las instituciones"**.
-- El selector de vista **Super admin / Admin de institución**.
-
----
+Aterriza en el **Directorio de instituciones**, no en una institución puntual. La
+barra muestra el alcance —«todas las instituciones»— y un selector de vista
+**Sistema / Configurador / Administrativo**, que sirve para *previsualizar* qué
+grupos del menú vería cada perfil. Por defecto está en Sistema, que muestra todo.
 
 ## 3. Funcionalidades
 
-### 3.1. Directorio de instituciones *(pantalla raíz)*
-
-Es la "home" del super admin. Tabla con **todas** las instituciones de la plataforma.
+### 3.1. Directorio de instituciones
 
 | Puede… | Detalle |
 |---|---|
-| **Ver el listado** | Tabla: Institución · Tipo · Áreas · Staff · Estado (Activa / En alta / Inactiva) |
-| **Buscar** | Filtro por nombre de institución |
-| **Crear institución** | Botón "+ Nueva institución" → nombre, tipo, CUIT. Nace en estado **En alta** |
-| **Ingresar a una institución** | Botón "Ingresar" → entra al **contexto** de esa institución |
+| Ver el listado completo | Institución · tipo · áreas · staff · estado |
+| Buscar | Por nombre |
+| Crear una institución | Nombre, tipo, CUIT, dirección y coordenadas |
+| Ingresar a una institución | Entra a su contexto; vuelve con **Volver al directorio** |
 
-### 3.2. Contexto de institución
+Las instituciones **no se borran**: `AccesoClinico.institucion` y
+`Flujo.institucion` son `PROTECT` a propósito, porque la auditoría clínica no se
+borra. La única baja posible es la de estado.
 
-Al ingresar a una institución, el super admin la opera como si estuviera adentro,
-con **acceso a todos los mundos**. La barra lateral muestra la institución actual
-y el botón **"Volver al directorio"**.
+### 3.2. Dentro de una institución
 
-- **Vista por rol** (barra superior: Configurador / Administrativo / Sistema):
-  permite *previsualizar* el sistema como lo vería cada rol (cambia qué grupos del
-  menú se muestran). Por defecto está en **Sistema** (ve todo).
-- **Volver al directorio**: sale del contexto y vuelve al listado de instituciones.
-
-Dentro de la institución, accede a estos grupos del menú:
-
-#### 🟦 Inicio — Panel de la institución
-- Cabecera con nombre, tipo y estado de la institución.
-- Métricas: **Áreas · Sub-áreas · Staff · Casos activos**.
-- Accesos rápidos a las secciones.
-
-#### 🗂️ TRABAJO (ejecución)
-- **Bandeja de tareas**: casos asignados ("Mis casos") y "Sin asignar". Puede
-  **tomar** un caso, **continuarlo** y **crear un caso nuevo** (elige flujo
-  publicado + paciente).
-- **Filas de espera**: casos encolados (orden FIFO + urgencias). Puede **llamar al
-  siguiente**.
-- **Casos**: auditoría de **todos** los casos de la institución (estado, área,
-  asignación). Clic → detalle con trazabilidad.
-
-#### 🩺 REGISTROS
-- **Historia clínica**: lista de pacientes (condiciones/alergias, entradas, última
-  visita). Puede **crear un registro** (paciente) y abrir el **detalle** (métricas
-  + evolución / estudios / recetas) y **registrar una nueva atención**.
-- **Legajo profesional**: dashboard por profesional (casos atendidos, pacientes
-  vistos, llamados de fila, actividad reciente). Puede **editar** especialidad/matrícula.
-
-#### 🎨 DISEÑO
-- **Flujos**: lista de flujos (estado, versión, casos). Puede **crear** un flujo,
-  **abrirlo en el diseñador** (lienzo: paleta de nodos, arrastrar, conectar,
-  propiedades, reglas de decisión), **validar** y **publicar** versiones.
-- **Mapa de flujos**: vista panorámica de los procesos.
-- **Formularios**: constructor de formularios con **vista previa en vivo**; puede
-  crear formularios y agregar campos (tipos + campos vinculados a HC/legajo).
+Ve el menú completo, con sus tres grupos y las entradas transversales:
 
 #### ⚙️ SISTEMA
-- **Estructura organizativa**: árbol de Áreas → Sub-áreas. Ficha del área (Datos /
-  Staff / Procesos / Sub-áreas). Puede **crear áreas/sub-áreas**, **editar** la
-  ficha y **asignar profesionales** a un área.
-- **Administración**: usuarios con acceso a la institución (rol(es), área(s),
-  estado). Puede **crear usuarios**, asignar **roles** y **membresías**.
+- **Estructura organizativa**: áreas → subáreas, grupos de trabajo, boxes y camas.
+  Ficha del área con Datos, Staff, Grupos y Sub-áreas.
+- **Administración**: usuarios, membresías, roles, áreas y **permisos financieros**.
+- **Flujos** y **Mapa de flujos**: crear, abrir el editor visual, validar, publicar
+  y versionar.
+- **Formularios**: constructor de campos con vista previa.
 
----
+#### 🗂️ TRABAJO
+- **Casos** · **Tablero** · **Turnos programados** · **Internación** ·
+  **Farmacia e insumos** · **Red y traslados** · **Supervisión**.
+- Bandeja y Filas se operan desde **Mi trabajo**, en Inicio.
 
-## 4. Permisos (resumen)
+#### 🩺 REGISTROS
+- **Padrón de pacientes** · **Historia clínica** · **Legajo profesional** ·
+  **Registro de accesos**.
 
-| Acción | Super admin |
+#### Transversales
+- **Finanzas y costos** y **Coberturas y copagos**.
+- **Portal de financiadores**, incluido el catálogo común de prestaciones.
+
+### 3.3. Recorrido guiado
+
+Tocando tres veces sobre su ficha de usuario en la barra lateral se inicia el
+**recorrido guiado**: la aplicación se maneja sola y construye «Hospital Escuela
+Salud» desde cero. Está pensado para demostrar el sistema sin datos previos.
+
+## 4. Permisos
+
+| Acción | Superusuario |
 |---|---|
-| Ver todas las instituciones | ✅ |
-| Crear instituciones | ✅ |
-| Entrar a cualquier institución | ✅ |
-| Diseñar / publicar flujos | ✅ |
-| Operar casos (tomar, avanzar, derivar) | ✅ |
-| Ver / editar historia clínica | ✅ |
-| Gestionar estructura y usuarios | ✅ |
+| Ver y entrar a todas las instituciones | ✅ |
+| Crear instituciones y redes | ✅ |
+| Diseñar, validar y publicar flujos y formularios | ✅ |
+| Operar casos, filas, turnos, internación, farmacia, traslados | ✅ |
+| Ver y cargar historia clínica | ✅ |
+| Auditar accesos clínicos, en toda la plataforma | ✅ |
+| Operar Finanzas y cobertura | ✅ Sin necesidad de concesiones |
+| Administrar organizaciones de financiadores y el catálogo común | ✅ |
 
-> **Nota técnica:** el alcance "ve todo" surge de `is_superuser=True`, que saltea
-> el filtro por institución (`InstitucionScopedMixin`). Cualquier otro usuario solo
-> ve las instituciones donde tiene una membresía.
+> **Nota técnica.** El alcance «ve todo» surge de `is_superuser=True`, que saltea el
+> filtro por institución. Cualquier otro usuario sólo ve las instituciones donde
+> tiene una membresía activa.
 
----
+## 5. Cómo debería usarse
 
-## 5. Decisiones y notas
-
-- ✅ **Acceso total confirmado:** el super admin puede operar casos, cargar
-  historia clínica, diseñar flujos y administrar — sin restricciones — en cualquier
-  institución.
-- 💡 *Ideas a futuro (no bloqueantes):*
-  - Estados de institución (Activa / En alta / Inactiva): podría sumarse un flujo de
-    alta con pasos para activar una institución recién creada.
-  - El selector "Admin de institución" de la barra del directorio podría permitir al
-    super admin actuar *como* admin de una institución puntual.
+- Administración de plataforma, soporte y contingencia. **No es un rol hospitalario
+  cotidiano.**
+- Atraviesa todos los límites institucionales, así que requiere controles fuertes de
+  credenciales, trazabilidad y uso excepcional.
+- Para las tareas de gobierno estatal que sí son cotidianas —alta de efectores,
+  redes, auditoría— existe el rol `plataforma`, que **no** recibe permisos clínicos.
