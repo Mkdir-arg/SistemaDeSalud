@@ -2416,7 +2416,14 @@ class RepartoActividadTests(TestCase):
         self.assertEqual(reparto.saldo_no_atribuido_centavos, 10000)
         self.assertFalse(reparto.atribuciones.exists())
 
-    def test_sin_regla_o_cobertura_permanece_pendiente(self):
+    def test_sin_regla_o_con_cobertura_bloqueada_permanece_pendiente(self):
+        """Las dos razones por las que el reparto no se calcula y queda a la vista.
+
+        La ausencia de cobertura ya no es una de ellas: la actividad vale de
+        forma implícita y la cobertura pasó a ser la excepción versionada que
+        bloquea o habilita un ámbito desde un mes. Por eso lo que retiene el
+        reparto es una cobertura *deshabilitada*, no la falta de una.
+        """
         otra_area = Area.objects.create(institucion=self.institucion, nombre="Clínica")
         otro_concepto = ConceptoGasto.objects.create(
             institucion=self.institucion, codigo="AGUA", nombre="Agua"
@@ -2430,11 +2437,15 @@ class RepartoActividadTests(TestCase):
             concepto=otro_concepto, institucion=self.institucion, area=otra_area,
             vigente_desde=self.mes, registrado_por=self.usuario,
         )
-        sin_cobertura = procesar_reparto_gasto(gasto.id)
+        registrar_cobertura_actividad(
+            institucion=self.institucion, area=otra_area, vigente_desde=self.mes,
+            registrado_por=self.usuario, confirmacion_operativa=True, habilitada=False,
+        )
+        bloqueado = procesar_reparto_gasto(gasto.id)
 
         self.assertEqual((sin_regla.estado, sin_regla.motivo), ("pendiente", "sin_regla"))
-        self.assertEqual((sin_cobertura.estado, sin_cobertura.motivo), ("pendiente", "sin_cobertura"))
-        self.assertEqual(sin_cobertura.reemplaza_id, sin_regla.id)
+        self.assertEqual((bloqueado.estado, bloqueado.motivo), ("pendiente", "sin_cobertura"))
+        self.assertEqual(bloqueado.reemplaza_id, sin_regla.id)
 
     def test_una_diferencia_tecnica_deja_todo_el_importe_pendiente(self):
         flujo = Flujo.objects.create(
@@ -2503,7 +2514,10 @@ class RepartoActividadTests(TestCase):
 
         reparto = procesar_reparto_gasto(institucional.id)
 
-        self.assertEqual((reparto.estado, reparto.motivo), ("pendiente", "fuente_no_elegible"))
+        # Un ámbito sin área es institucional y por lo tanto fuente elegible: lo
+        # que falta acá es una regla institucional, no la elegibilidad. Antes el
+        # gasto se descartaba por no tener área y el motivo era `fuente_no_elegible`.
+        self.assertEqual((reparto.estado, reparto.motivo), ("pendiente", "sin_regla"))
         self.assertEqual(reparto.saldo_centavos, 7500)
 
     def test_el_comando_recorre_mas_de_un_lote_e_incluye_institucionales(self):
