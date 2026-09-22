@@ -1,0 +1,67 @@
+# La suite de backend, corrida sola en cada PR.
+#
+# Existe por un caso concreto: el commit c4eefbb cambió la herencia de permisos
+# del admin de institución, no tocó ninguna prueba, y entró a main por el PR #45.
+# Las 51 fallas que dejó se descubrieron cuatro días después, a mano. Con esto se
+# habrían visto en el PR que las introdujo.
+name: backend
+
+on:
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+  push:
+    branches: [main]
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      # Misma major que el compose: el cliente de la imagen se pincha al 16 a
+      # propósito y no conviene que las pruebas corran contra otra.
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: salud
+          POSTGRES_USER: salud
+          POSTGRES_PASSWORD: salud
+        options: >-
+          --health-cmd "pg_isready -U salud"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+        ports: ["5432:5432"]
+
+    env:
+      DATABASE_URL: postgres://salud:salud@localhost:5432/salud
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: clave-solo-para-ci-no-usar-en-ningun-entorno
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      # Sin TLS acá. Con DEBUG=false el sistema redirige todo a https y cada
+      # pedido de prueba recibe 301: la corrida entera se vuelve ruido.
+      DJANGO_SSL_REDIRECT: "false"
+      DJANGO_HSTS_SECONDS: "0"
+      SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      # Una migración sin generar rompe en el despliegue, no acá: que falle acá.
+      - name: Migraciones al día
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Suite completa
+        run: python manage.py test --noinput
