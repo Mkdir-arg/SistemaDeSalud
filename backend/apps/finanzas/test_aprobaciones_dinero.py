@@ -50,6 +50,29 @@ class AprobacionesDineroTests(DatosDinero, APITestCase):
         with self.assertRaises(PermissionDenied):
             self.registrar("1", aprobado=True)
 
+    def test_el_admin_de_institucion_tampoco_aprueba_lo_que_registra(self):
+        """Cuatro ojos: el rol hereda registrar dinero, no aprobarlo.
+
+        Es la garantía concreta detrás de `ACCIONES_SIN_HERENCIA`. Mientras el
+        admin heredó las dieciocho acciones, firmaba su propio movimiento en un
+        solo paso y el control no existía para ese rol. Acá el movimiento entra
+        y queda esperando a otra persona.
+        """
+        admin = Usuario.objects.create_user("admin-firma-sola@test.local", "x")
+        Membresia.objects.create(
+            usuario=admin, institucion=self.institucion, rol=Membresia.Rol.ADMIN_INSTITUCION,
+        )
+        movimiento = registrar_movimiento(
+            obligacion=self.obligacion, importe="30", fecha=self.fecha, clave=uuid4(), usuario=admin,
+        )
+        self.assertEqual(movimiento.estado, "pendiente_aprobacion")
+        self.assertIsNone(movimiento.aprobado_por_id)
+        with self.assertRaises(PermissionDenied):
+            registrar_movimiento(
+                obligacion=self.obligacion, importe="1", fecha=self.fecha, clave=uuid4(),
+                usuario=admin, aprobado=True,
+            )
+
     def test_aprobador_default_true_y_false_explicitamente_pendiente(self):
         confirmado = self.movimiento("20")
         pendiente = self.movimiento("30", aprobado=False)

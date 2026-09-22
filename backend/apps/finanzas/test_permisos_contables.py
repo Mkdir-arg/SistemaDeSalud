@@ -10,7 +10,7 @@ from apps.accounts.models import Membresia, Usuario
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from .models import ConcesionFinanciera, ConceptoGasto, Gasto, HechoAtencionCosteable, TrabajoReparto
-from .permisos import tiene_concesion_financiera
+from .permisos import ACCIONES_ADMIN, ACCIONES_SIN_HERENCIA, tiene_concesion_financiera
 
 
 class PermisosContablesTests(APITestCase):
@@ -58,7 +58,7 @@ class PermisosContablesTests(APITestCase):
             self.assertEqual([g["id"] for g in respuesta.data["results"]], [propio.pk])
         self.assertFalse(ConcesionFinanciera.objects.exists())
         mias = self.client.get("/api/concesiones-financieras/mias/").data["concesiones"]
-        self.assertEqual({c["accion"] for c in mias}, set(ConcesionFinanciera.Accion.values))
+        self.assertEqual({c["accion"] for c in mias}, set(ACCIONES_ADMIN))
         self.assertTrue(all(c["permite_sensibles"] and c["todas_las_areas"] for c in mias))
         # La herencia no es pareja y conviene que esto quede afirmado, no
         # descubierto: `tiene_concesion_financiera` consulta
@@ -70,7 +70,9 @@ class PermisosContablesTests(APITestCase):
         # decisión de producto, no un detalle a corregir en la prueba.
         self.assertEqual(self.client.post("/api/gastos/", {}, format="json").status_code, 403)
         self.assertEqual(self.client.post("/api/reglas-reparto/", {}, format="json").status_code, 403)
-        self.assertTrue(tiene_concesion_financiera(self.admin, "aprobar_gastos", self.institucion.pk))
+        # Aprobar y auditar no se heredan: son el control de cuatro ojos.
+        for accion in ACCIONES_SIN_HERENCIA:
+            self.assertFalse(tiene_concesion_financiera(self.admin, accion, self.institucion.pk), accion)
         self.assertFalse(tiene_concesion_financiera(self.admin, "ver_gastos", self.otra.pk, sensible=True))
 
     def test_cambio_rol_y_membresia_inactiva_retiran_default_sin_datos_persistidos(self):
