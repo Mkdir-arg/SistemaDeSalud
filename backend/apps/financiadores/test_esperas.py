@@ -1,6 +1,7 @@
 """Esperas programadas, salidas explícitas y vencimientos sin realización ficticia."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from decimal import Decimal
 from io import StringIO
 from threading import Barrier
 from unittest import skipUnless
@@ -300,6 +301,87 @@ class EsperasAutorizacionTests(EsperaSetup, APITestCase):
         respuesta = self.client.post(f"/api/versiones-flujo/{version.pk}/nueva-version/", {}, format="json")
         self.assertEqual(respuesta.status_code, 201, respuesta.data)
         self.assertEqual(respuesta.data["tipo_circuito"], "programado")
+
+
+class ExigirAceptacionPacienteTests(EsperaSetup, APITestCase):
+    """El paso exige responsabilidad asumida sobre el copago, nunca dinero cobrado."""
+
+    def setUp(self):
+        super().setUp()
+        # Sólo la exigencia de aceptación: aislada de la espera de autorización.
+        self.nodo.config = {"exigir_aceptacion_paciente": True}
+        self.nodo.save(update_fields=["config"])
+        self.regla.requiere_autorizacion = False
+        self.regla.save(update_fields=["requiere_autorizacion"])
+        self.conceder("registrar_aceptacion")
+
+    def aceptar(self, **datos):
+        return self.reservar(acepta=True, usuario=self.usuario, **datos)
+
+    def test_copago_sin_aceptacion_no_avanza_ni_registra_atencion(self):
+        with self.assertRaises(ValidationError) as error:
+            validar_avance(self.caso)
+        self.assertIn("aceptó el importe a su cargo", " ".join(error.exception.messages))
+        self.assertFalse(HechoAtencionCosteable.objects.exists())
+
+    def test_aceptacion_registrada_habilita_el_avance(self):
+        self.aceptar()
+        validar_avance(self.caso)
+
+    def test_reserva_sin_aceptacion_sigue_bloqueando(self):
+        self.reservar()
+        with self.assertRaises(ValidationError):
+            validar_avance(self.caso)
+
+    def test_urgencia_avanza_sin_aceptacion(self):
+        self.caso.prioridad = Caso.Prioridad.URGENTE
+        self.caso.save(update_fields=["prioridad"])
+        validar_avance(self.caso)
+
+    def test_prestacion_que_el_hospital_no_cobra_no_bloquea(self):
+        self.politica(cobrar=False, importe=None)
+        validar_avance(self.caso)
+
+    def test_cambio_de_arancel_invalida_la_aceptacion_anterior(self):
+        self.aceptar()
+        validar_avance(self.caso)
+        self.politica(importe=Decimal("250.00"))
+        with self.assertRaises(ValidationError):
+            validar_avance(self.caso)
+
+    def test_flag_apagado_conserva_el_comportamiento_anterior(self):
+        self.nodo.config = {}
+        self.nodo.save(update_fields=["config"])
+        validar_avance(self.caso)
+
+    def test_supervisor_continua_con_motivo_y_deja_rastro(self):
+        with self.assertRaises(ValidationError):
+            validar_avance(self.caso)
+        continuar(caso=self.caso, usuario=self.supervisor, intento=a.intento_actual(self.caso),
+                  motivo="Paciente eximido por trabajo social")
+        self.caso.refresh_from_db()
+        self.assertEqual(self.caso.espera_autorizacion["estado"], "supervisada")
+        validar_avance(self.caso)
+        self.assertTrue(EventoCaso.objects.filter(
+            caso=self.caso, detalle="Paciente eximido por trabajo social").exists())
+        self.assertFalse(HechoAtencionCosteable.objects.exists())
+
+    def test_disenador_valida_la_exigencia_como_booleano_y_ata_al_circuito(self):
+        for config in ({"exigir_aceptacion_paciente": "true"}, {"exigir_aceptacion_paciente": 1}):
+            self.assertFalse(NodoSerializer(self.nodo, data={"config": config}, partial=True).is_valid())
+        version = self.caso.version
+        version.tipo_circuito = "guardia"
+        version.save(update_fields=["tipo_circuito"])
+        self.assertTrue(any(p["titulo"] == "Espera de autorización inválida"
+                            for p in motor.validar_version(version)))
+        self.nodo.version = version
+        self.assertFalse(NodoSerializer(
+            self.nodo, data={"config": {"exigir_aceptacion_paciente": True}}, partial=True).is_valid())
+        version.tipo_circuito, version.estado = "programado", "borrador"
+        version.save(update_fields=["tipo_circuito", "estado"])
+        serializer = VersionFlujoSerializer(version, data={"tipo_circuito": "guardia"}, partial=True)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("exigencias de aceptación", str(serializer.errors))
 
 
 @skipUnless(connection.vendor == "postgresql", "La exclusión concurrente requiere PostgreSQL")

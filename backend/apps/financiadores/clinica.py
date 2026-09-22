@@ -84,8 +84,11 @@ def resumen_caso(caso, usuario):
     ).filter(Q(plan=None) | Q(plan__activo=True)).select_related("financiador", "plan") if documento and activo else m.Afiliado.objects.none()
     prestaciones = Prestacion.objects.filter(institucion=caso.institucion, nodo_id=caso.nodo_actual_id, activo=True) if caso.nodo_actual_id and activo else Prestacion.objects.none()
     puede = activo and caso.estado not in Caso.ESTADOS_FINALIZADOS and usuario_puede_tomar(usuario, caso)
+    from .esperas import exige_aceptacion_paciente
     return {
         "activo": activo, "contexto": contexto_actual(caso), "puede_operar": puede,
+        # Sin aceptación el paso no avanza: el panel debe decirlo antes, no después.
+        "exige_aceptacion": exige_aceptacion_paciente(caso),
         "afiliacion": afiliacion_resumida(selecciones[0]) if selecciones else None,
         "afiliados": [{"id": a.pk, "financiador_nombre": a.financiador.nombre, "plan_nombre": a.plan.nombre if a.plan_id else "Sin plan", "numero": a.numero} for a in candidatos],
         "prestaciones": [{"id": p.pk, "codigo": p.codigo, "nombre": p.nombre,

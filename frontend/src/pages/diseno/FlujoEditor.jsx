@@ -2908,7 +2908,9 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
           <div className="space-y-2">
             <p className="text-base font-semibold text-texto-suave">Autorización del financiador</p>
             <Checkbox label="Esperar autorización antes de registrar la atención" checked={!!nodo.config?.esperar_autorizacion} disabled={version.tipo_circuito !== "programado" && !nodo.config?.esperar_autorizacion} onChange={(e) => setConfig({ esperar_autorizacion: e.target.checked })} />
+            <Checkbox label="Exigir que el paciente haya aceptado el importe a su cargo" checked={!!nodo.config?.exigir_aceptacion_paciente} disabled={version.tipo_circuito !== "programado" && !nodo.config?.exigir_aceptacion_paciente} onChange={(e) => setConfig({ exigir_aceptacion_paciente: e.target.checked })} />
             <p className="text-sm text-texto-debil">Sólo una atención programada configurada expresamente espera. Guardia y casos urgentes mantienen continuidad clínica; aprobar no registra la prestación como realizada.</p>
+            <p className="text-sm text-texto-debil">La exigencia de aceptación pide que la responsabilidad del copago esté asumida, no que el dinero esté cobrado. No aplica a prestaciones que el hospital no cobra ni a casos urgentes, y se levanta con una continuación supervisada con motivo.</p>
           </div>
         )}
 
