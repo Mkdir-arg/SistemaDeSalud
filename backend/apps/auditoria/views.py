@@ -89,7 +89,7 @@ class AccesoClinicoSerializer(serializers.ModelSerializer):
         fields = [
             "id", "usuario", "usuario_nombre", "usuario_email", "ciudadano", "paciente",
             "documento", "institucion", "institucion_nombre", "tipo", "tipo_display",
-            "recurso", "objeto_id", "detalle", "resultados", "ip", "momento",
+            "recurso", "objeto_id", "detalle", "motivo", "variante", "resultados", "ip", "momento",
         ]
         read_only_fields = fields
 

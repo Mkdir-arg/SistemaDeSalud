@@ -95,7 +95,7 @@ export default function Legajo() {
       <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-[22px]">
         <Avatar nombre={prof?.nombre} i={prof?.id || 0} size={52} />
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-extrabold tracking-tight">{prof?.nombre}</h1>
+          <h2 className="text-xl font-extrabold tracking-tight">{prof?.nombre}</h2>
           <div className="text-base text-texto-debil">
             Profesional
             {u?.especialidad ? ` · ${u.especialidad}` : ""}

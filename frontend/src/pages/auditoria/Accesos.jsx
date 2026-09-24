@@ -58,7 +58,7 @@ export default function Accesos() {
   return (
     <div className="px-lg py-[26px] sm:px-[30px]">
       <div className="mb-[18px]">
-        <h1 className="text-cifra font-extrabold tracking-tight">Registro de accesos</h1>
+        <h2 className="text-cifra font-extrabold tracking-tight">Registro de accesos</h2>
         <div className="text-sm text-texto-debil">
           Quién consultó datos de pacientes, y de quién. {plural(total, "acceso registrado", "accesos registrados")}.
         </div>
@@ -206,6 +206,12 @@ export default function Accesos() {
                     {` · ${filtrosLegibles(a.detalle, a.institucion)}`}
                   </div>
                 )}
+                {a.tipo === "exportacion" && a.variante && <div className="text-sm text-texto-debil">
+                  Variante: {a.variante}
+                </div>}
+                {a.tipo === "exportacion" && a.motivo && <div className="max-w-80 break-words text-sm text-texto-medio">
+                  Motivo: {a.motivo}
+                </div>}
               </div>
             ),
           },

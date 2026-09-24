@@ -60,7 +60,7 @@ def _institucion_del_pedido(request):
 
 def _datos_acceso(
     request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0,
-    institucion_id=None,
+    institucion_id=None, motivo="", variante="",
 ):
     """Normalización compartida; no escribe ni decide si el fallo es tolerable."""
     return {
@@ -75,6 +75,8 @@ def _datos_acceso(
         "recurso": recurso,
         "objeto_id": str(objeto_id or "")[:40],
         "detalle": (detalle or "")[:300],
+        "motivo": motivo,
+        "variante": variante,
         "resultados": resultados,
         "ip": _ip(request),
     }
@@ -82,7 +84,7 @@ def _datos_acceso(
 
 def registrar_acceso(
     request, tipo, recurso, ciudadano=None, objeto_id="", detalle="", resultados=0,
-    institucion_id=None, estricto=False,
+    institucion_id=None, estricto=False, motivo="", variante="",
 ):
     """
     Escribe UNA línea del registro de accesos.
@@ -104,6 +106,7 @@ def registrar_acceso(
         AccesoClinico.objects.create(**_datos_acceso(
             request, tipo, recurso, ciudadano=ciudadano, objeto_id=objeto_id,
             detalle=detalle, resultados=resultados, institucion_id=institucion_id,
+            motivo=motivo, variante=variante,
         ))
     except Exception:
         # Ver la regla de oro del módulo: la atención no se detiene porque falle

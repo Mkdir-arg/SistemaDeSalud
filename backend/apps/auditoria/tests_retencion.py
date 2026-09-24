@@ -180,10 +180,14 @@ class ConsentimientoTests(APITestCase):
         self.client.force_authenticate(self.adm)
 
     def _otorgar(self, otorgado=True, alcance="Atención"):
-        return self.client.post("/api/consentimientos/", {
-            "ciudadano": self.paciente.id, "otorgado": otorgado,
-            "modo": "escrito", "alcance": alcance,
-        })
+        datos = {"ciudadano": self.paciente.id, "otorgado": otorgado,
+                 "modo": "verbal", "alcance": alcance}
+        if otorgado:
+            datos.update(version_texto="Verbal-1", texto_comunicado="Texto comunicado al paciente")
+        else:
+            datos.update(motivo_revocacion="Solicitud del paciente",
+                         consentimiento_referido=self.paciente.consentimientos.first().id)
+        return self.client.post("/api/consentimientos/", datos)
 
     def test_se_registra_el_consentimiento(self):
         r = self._otorgar()
@@ -199,7 +203,8 @@ class ConsentimientoTests(APITestCase):
         otro = Usuario.objects.create_user("otro@test.local", "x")
         self.client.post("/api/consentimientos/", {
             "ciudadano": self.paciente.id, "otorgado": True,
-            "modo": "verbal", "tomado_por": otro.id,
+            "modo": "verbal", "tomado_por": otro.id, "alcance": "Atención",
+            "version_texto": "Verbal-1", "texto_comunicado": "Texto comunicado al paciente",
         })
         self.assertEqual(ConsentimientoDatos.objects.get().tomado_por_id, self.adm.id)
 
@@ -217,7 +222,40 @@ class ConsentimientoTests(APITestCase):
         self._otorgar()
         r = self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
         self.assertTrue(r.data["consentimiento"]["otorgado"])
-        self.assertEqual(r.data["consentimiento"]["modo"], "escrito")
+        self.assertEqual(r.data["consentimiento"]["modo"], "verbal")
+
+    def test_metodo_y_texto_son_explicitos(self):
+        r = self.client.post("/api/consentimientos/", {
+            "ciudadano": self.paciente.id, "otorgado": True,
+            "alcance": "Atención", "version_texto": "V1",
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(ConsentimientoDatos.objects.exists())
+
+    def test_evidencia_es_privada_y_su_descarga_queda_auditada(self):
+        from tempfile import TemporaryDirectory
+        from django.test import override_settings
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.registros.models import ArchivoClinico
+
+        with TemporaryDirectory() as carpeta, override_settings(MEDIA_ROOT=carpeta):
+            archivo = SimpleUploadedFile("consentimiento.pdf", b"%PDF-1.4\nprueba", content_type="application/pdf")
+            r = self.client.post("/api/consentimientos/", {
+                "ciudadano": self.paciente.id, "otorgado": "true", "modo": "escrito",
+                "alcance": "Atención", "version_texto": "Documento firmado V1",
+                "evidencia_archivo": archivo,
+            })
+            self.assertEqual(r.status_code, 201, r.data)
+            meta = ArchivoClinico.objects.get(pk=r.data["evidencia"])
+            self.assertEqual(meta.proposito, ArchivoClinico.Proposito.CONSENTIMIENTO)
+            self.assertEqual(self.client.get(f"/api/archivos/descargar/{meta.ruta}").status_code, 404)
+            AccesoClinico.objects.all().delete()
+            descarga = self.client.get(f"/api/consentimientos/{r.data['id']}/evidencia/")
+            self.assertEqual(descarga.status_code, 200)
+            self.assertEqual(b"".join(descarga.streaming_content), b"%PDF-1.4\nprueba")
+            self.assertTrue(AccesoClinico.objects.filter(
+                ciudadano=self.paciente, recurso="evidencia_consentimiento",
+            ).exists())
 
     def test_tras_revocar_el_estado_lo_refleja(self):
         self._otorgar()

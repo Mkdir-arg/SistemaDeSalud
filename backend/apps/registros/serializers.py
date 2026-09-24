@@ -265,6 +265,7 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             # haría creer que el paciente dijo que no.
             return None
         return {
+            "id": c.id,
             "otorgado": c.otorgado,
             "modo": c.modo,
             "momento": c.momento,
@@ -335,6 +336,9 @@ class CiudadanoSerializer(serializers.ModelSerializer):
 
 
 class ConsentimientoDatosSerializer(serializers.ModelSerializer):
+    otorgado = serializers.BooleanField(required=True)
+    modo = serializers.ChoiceField(choices=ConsentimientoDatos.Modo.choices, required=True)
+    evidencia_archivo = serializers.FileField(write_only=True, required=False)
     paciente = serializers.SerializerMethodField()
     tomado_por_nombre = serializers.SerializerMethodField()
     modo_display = serializers.CharField(source="get_modo_display", read_only=True)
@@ -344,12 +348,36 @@ class ConsentimientoDatosSerializer(serializers.ModelSerializer):
         fields = [
             "id", "ciudadano", "paciente", "otorgado", "modo", "modo_display",
             "alcance", "tomado_por", "tomado_por_nombre", "institucion",
-            "momento", "observaciones",
+            "momento", "observaciones", "version_texto", "texto_comunicado",
+            "motivo_revocacion", "consentimiento_referido", "evidencia", "evidencia_archivo",
         ]
         # No se edita ni se borra: una revocación es un registro NUEVO, no una
         # corrección del anterior. Poder editarlo dejaría sin poder contestar
         # qué se consintió y cuándo, que es la pregunta de la ley.
-        read_only_fields = ["momento", "tomado_por"]
+        read_only_fields = ["momento", "tomado_por", "institucion", "evidencia"]
+
+    def validate(self, attrs):
+        ciudadano = attrs.get("ciudadano")
+        if not (attrs.get("alcance") or "").strip():
+            raise serializers.ValidationError({"alcance": "Indicá el alcance del consentimiento o de la revocación."})
+        if attrs.get("otorgado"):
+            if not (attrs.get("version_texto") or "").strip():
+                raise serializers.ValidationError({"version_texto": "Identificá la versión del texto comunicado."})
+            if attrs.get("modo") == ConsentimientoDatos.Modo.VERBAL:
+                if not (attrs.get("texto_comunicado") or "").strip():
+                    raise serializers.ValidationError({"texto_comunicado": "Transcribí el texto comunicado verbalmente."})
+            elif not attrs.get("evidencia_archivo"):
+                raise serializers.ValidationError({"evidencia_archivo": "Adjuntá el documento comunicado y aceptado."})
+        else:
+            if not (attrs.get("motivo_revocacion") or "").strip():
+                raise serializers.ValidationError({"motivo_revocacion": "Indicá el motivo de la revocación."})
+            referido = attrs.get("consentimiento_referido")
+            if referido is None or referido.ciudadano_id != ciudadano.id or not referido.otorgado:
+                raise serializers.ValidationError({"consentimiento_referido": "Indicá un consentimiento vigente de esta persona."})
+            ultimo = ciudadano.consentimientos.order_by("-momento", "-id").first()
+            if ultimo is None or ultimo.id != referido.id:
+                raise serializers.ValidationError({"consentimiento_referido": "El consentimiento indicado ya no está vigente."})
+        return attrs
 
     def get_paciente(self, obj) -> str:
         c = obj.ciudadano

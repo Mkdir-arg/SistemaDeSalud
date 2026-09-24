@@ -123,6 +123,17 @@ class ConsentimientoDatos(models.Model):
     )
     momento = models.DateTimeField(auto_now_add=True)
     observaciones = models.TextField(blank=True)
+    version_texto = models.CharField(max_length=100, blank=True)
+    texto_comunicado = models.TextField(blank=True)
+    motivo_revocacion = models.TextField(blank=True)
+    consentimiento_referido = models.ForeignKey(
+        "self", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="revocaciones",
+    )
+    evidencia = models.OneToOneField(
+        "ArchivoClinico", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="consentimiento_datos",
+    )
 
     class Meta:
         verbose_name = "consentimiento de datos"
@@ -266,6 +277,7 @@ class ArchivoClinico(models.Model):
         ADJUNTO_CASO = "adjunto_caso", "Adjunto de caso"
         ESTUDIO = "estudio", "Estudio"
         OTRO = "otro", "Otro"
+        CONSENTIMIENTO = "consentimiento", "Evidencia de consentimiento"
 
     institucion = models.ForeignKey(
         "instituciones.Institucion", on_delete=models.CASCADE, related_name="archivos_clinicos"

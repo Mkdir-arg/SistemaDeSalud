@@ -6,7 +6,7 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
 import { AvisoCoberturaCaso, resumenCobertura, useConfiguracionCobertura } from "@/components/financiadores/CoberturaAdministrativa";
-import { Avatar, Badge, Button, Field, Input, Modal, Mono } from "@/components/ui";
+import { Avatar, Badge, Button, Field, Input, Modal, Mono, Select } from "@/components/ui";
 import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
@@ -69,12 +69,17 @@ const columnasPadron = [
 ];
 
 export default function Registros({ modo = "historia" }) {
-  const { institucion } = useInstitucion();
+  const toast = useToast();
+  const { institucion, puedeVer } = useInstitucion();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [texto, setTexto, busqueda] = useBusquedaUrl("q");
   const [nuevo, setNuevo] = useState(params.get("nuevo") === "1");
+  const [exportando, setExportando] = useState(false);
+  const [motivoExportacion, setMotivoExportacion] = useState("");
+  const [varianteExportacion, setVarianteExportacion] = useState("minimizado");
+  const [descargando, setDescargando] = useState(false);
 
   const esPadron = modo === "padron";
   const detalleBase = esPadron ? "/padron" : "/historia";
@@ -86,13 +91,33 @@ export default function Registros({ modo = "historia" }) {
     gcTime: 0,
   });
 
+  async function exportar() {
+    setDescargando(true);
+    try {
+      await api.downloadPost("/ciudadanos/exportar/", {
+        institucion: institucion.id,
+        search: busqueda || "",
+        ordering: params.get(`${esPadron ? "padron" : "hc"}_ord`) || "apellido",
+        variante: varianteExportacion,
+        motivo: motivoExportacion.trim(),
+      }, `pacientes-${varianteExportacion}.csv`);
+      toast.ok("Exportación registrada y descargada.");
+      setExportando(false);
+      setMotivoExportacion("");
+    } catch (error) {
+      toast.deError(error, "No se pudo exportar el padrón.");
+    } finally {
+      setDescargando(false);
+    }
+  }
+
   return (
     <div className="px-lg py-[26px] sm:px-[30px]">
       <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
-          <h1 className="text-cifra font-extrabold tracking-tight">
+          <h2 className="text-cifra font-extrabold tracking-tight">
             {esPadron ? "Padrón de pacientes" : "Historias clínicas"}
-          </h1>
+          </h2>
           <div className="text-sm text-texto-debil">
             {esPadron
               ? plural(total, "persona registrada", "personas registradas")
@@ -108,6 +133,7 @@ export default function Registros({ modo = "historia" }) {
             aria-label="Buscar paciente"
           />
           <Button onClick={() => setNuevo(true)} className="whitespace-nowrap">+ Crear registro</Button>
+          <Button variant="secondary" onClick={() => setExportando(true)} className="whitespace-nowrap">Exportar…</Button>
         </div>
       </div>
 
@@ -115,7 +141,6 @@ export default function Registros({ modo = "historia" }) {
         key={`${user?.id}:${institucion?.id}`}
         clave={esPadron ? "padron" : "hc"}
         recurso="ciudadanos"
-        exportable
         params={paramsLista}
         ambitoConsulta={[user?.id, institucion?.id]}
         opcionesConsulta={{ gcTime: 0, placeholderData: undefined, enabled: !!institucion?.id }}
@@ -131,6 +156,30 @@ export default function Registros({ modo = "historia" }) {
         }}
         columnas={esPadron ? columnasPadron : columnasHistoria}
       />
+
+      {exportando && <Modal title="Exportar pacientes" onClose={() => !descargando && setExportando(false)} footer={<>
+        <Button variant="secondary" disabled={descargando} onClick={() => setExportando(false)}>Volver</Button>
+        <Button disabled={descargando || motivoExportacion.trim().length < 10 || motivoExportacion.trim().length > 500}
+          onClick={exportar}>{descargando ? "Preparando…" : "Registrar y descargar"}</Button>
+      </>}>
+        <div className="flex flex-col gap-4">
+          <p className="text-base text-texto-debil">
+            Institución: <strong>{institucion?.nombre}</strong>. Se exportan todos los resultados de la búsqueda actual,
+            sin limitarse a la página visible. La descarga queda asentada en el registro de accesos.
+          </p>
+          <Field label="Datos incluidos">
+            <Select value={varianteExportacion} onChange={(e) => setVarianteExportacion(e.target.value)}>
+              <option value="minimizado">Padrón minimizado: referencia, iniciales, últimos 4 del documento, año y consentimiento</option>
+              {puedeVer("historia_clinica") && <option value="identificado">Padrón identificado: datos personales y domicilio</option>}
+              {puedeVer("historia_clinica") && <option value="clinico">Resumen clínico: condiciones, alergias y actividad</option>}
+            </Select>
+          </Field>
+          <Field label="Motivo de la exportación *"
+            hint="Entre 10 y 500 caracteres. Quedará visible para quienes auditan los accesos.">
+            <Input value={motivoExportacion} onChange={(e) => setMotivoExportacion(e.target.value)} maxLength={500} />
+          </Field>
+        </div>
+      </Modal>}
 
       {nuevo && (
         <NuevoPacienteModal
@@ -230,7 +279,7 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
           <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus /></Field>
           <Field label="Apellido"><Input value={f.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
         </div>
-        <Field label="Documento"><Input value={f.documento} onChange={(e) => set("documento", e.target.value)} placeholder="27418305" /></Field>
+        <Field label="Documento"><Input value={f.documento} onChange={(e) => set("documento", e.target.value)} placeholder="Número de documento" /></Field>
 
         {parecido && (
           <div className="rounded-md bg-badge-amber-bg px-3 py-2.5 text-md text-badge-amber-fg">

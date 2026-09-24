@@ -58,8 +58,12 @@ class RegistrosAPITestCase(APITestCase):
 
 
 class PermisosGranularesRegistrosTests(RegistrosAPITestCase):
-    def _csv(self, ruta):
-        r = self.client.get(ruta)
+    def _csv(self, variante="minimizado"):
+        r = self.client.post("/api/ciudadanos/exportar/", {
+            "institucion": self.inst.id,
+            "variante": variante,
+            "motivo": "Revisión administrativa del padrón",
+        }, format="json")
         self.assertEqual(r.status_code, 200, getattr(r, "data", r))
         return b"".join(r.streaming_content).decode("utf-8")
 
@@ -110,14 +114,45 @@ class PermisosGranularesRegistrosTests(RegistrosAPITestCase):
         self.hc.save(update_fields=["alergias", "condiciones"])
 
         self.como(self.adm)
-        texto = self._csv(f"/api/ciudadanos/?institucion={self.inst.id}&formato=csv")
+        texto = self._csv()
         encabezado = texto.splitlines()[0]
-        self.assertIn("Documento", encabezado)
-        self.assertIn("Domicilio", encabezado)
+        self.assertIn("Documento (últimos 4)", encabezado)
+        self.assertNotIn("Domicilio", encabezado)
         self.assertNotIn("Condiciones", encabezado)
         self.assertNotIn("Alergias", encabezado)
         self.assertNotIn("Entradas de historia", encabezado)
         self.assertNotIn("Penicilina", texto)
+        self.assertNotIn("30111222", texto)
+        self.assertIn("1222", texto)
+
+    def test_exportar_exige_motivo_y_no_permite_el_get_anterior(self):
+        self.como(self.adm)
+        self.assertEqual(self.client.get("/api/ciudadanos/?formato=csv").status_code, 400)
+        r = self.client.post("/api/ciudadanos/exportar/", {
+            "institucion": self.inst.id, "motivo": "corto",
+        }, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_exportacion_identificada_requiere_historia_en_la_misma_institucion(self):
+        self.como(self.adm)
+        r = self.client.post("/api/ciudadanos/exportar/", {
+            "institucion": self.inst.id, "variante": "identificado",
+            "motivo": "Revisión administrativa del padrón",
+        }, format="json")
+        self.assertEqual(r.status_code, 403)
+        self.como(self.med)
+        texto = self._csv("clinico")
+        self.assertIn("Documento", texto.splitlines()[0])
+
+    def test_exportacion_no_entrega_archivo_si_falla_auditoria(self):
+        from unittest import mock
+        self.como(self.med)
+        with mock.patch("apps.auditoria.mixins.AccesoClinico.objects.create", side_effect=RuntimeError("sin auditoría")):
+            r = self.client.post("/api/ciudadanos/exportar/", {
+                "institucion": self.inst.id, "motivo": "Revisión clínica institucional",
+            }, format="json")
+        self.assertEqual(r.status_code, 503)
+        self.assertFalse(r.get("Content-Disposition"))
 
     def test_el_padron_no_se_mueve_de_institucion_por_patch(self):
         otra = Institucion.objects.create(nombre="Hospital Norte")
