@@ -86,6 +86,20 @@ class PadronPorInstitucionTests(APITestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(r.data["count"], len(ids))
 
+    def test_alta_requiere_password_y_aplica_validadores(self):
+        self.client.force_authenticate(self.root)
+        datos = {"email": "nuevo@salud.local", "nombre": "Nuevo"}
+        sin_password = self.client.post("/api/usuarios/", datos, format="json")
+        self.assertEqual(sin_password.status_code, 400)
+        self.assertIn("password", sin_password.data)
+        debil = self.client.post("/api/usuarios/", {**datos, "password": "12345678"}, format="json")
+        self.assertEqual(debil.status_code, 400)
+        self.assertIn("password", debil.data)
+        self.assertFalse(Usuario.objects.filter(email=datos["email"]).exists())
+        fuerte = self.client.post("/api/usuarios/", {**datos, "password": "Guardia-Diente-84"}, format="json")
+        self.assertEqual(fuerte.status_code, 201, fuerte.data)
+        self.assertTrue(Usuario.objects.get(email=datos["email"]).check_password("Guardia-Diente-84"))
+
 
 class PerfilConCapacidadesTests(APITestCase):
     def setUp(self):
@@ -177,7 +191,7 @@ class AltaDePersonaTests(APITestCase):
     def _alta(self, **extra):
         return self.client.post(
             "/api/usuarios/",
-            {"email": "nueva@hospital.local", "nombre": "Nueva", **extra},
+            {"email": "nueva@hospital.local", "nombre": "Nueva", "password": "Guardia-Diente-84", **extra},
             format="json",
         )
 

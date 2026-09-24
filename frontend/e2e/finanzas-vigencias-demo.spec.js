@@ -14,7 +14,7 @@ async function escenario(page, { valores = [], sensible = false, permiteSensible
     valores: [...valores],
   };
   await page.addInitScript((inst) => {
-    localStorage.setItem("salud.access", "credencial-ficticia-solo-mock");
+    sessionStorage.setItem("salud.access", "credencial-ficticia-solo-mock");
     localStorage.setItem("salud.institucion", JSON.stringify(inst));
   }, institucion);
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {

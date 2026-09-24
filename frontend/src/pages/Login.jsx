@@ -13,18 +13,19 @@ import { LogoFull } from "@/components/Logo";
  * es la aplicación.
  *
  * Sobre los blancos atenuados: los textos secundarios estaban en `rgba(255,255,255,.62)`,
- * que sobre el índigo del degradado da 3.84:1 y no llega al mínimo de AA. A 85%
- * dan 5.76:1. Es la primera pantalla que ve cualquiera y muchas veces se mira en
- * un monitor viejo de admisión: acá el contraste no es un detalle.
+ * que sobre el índigo del degradado daba 3.84:1. El texto ahora tiene más
+ * opacidad y el motivo decorativo queda atenuado detrás de él.
  */
 
 const PUNTOS = [
   { icon: "activity", titulo: "Trazabilidad clínica", desc: "Cada caso, del ingreso al alta, con historial auditable." },
-  { icon: "workflow", titulo: "Flujos configurables", desc: "Diseñá el circuito de atención sin escribir código." },
+  { icon: "workflow", titulo: "Trabajo organizado", desc: "Turnos y tareas del equipo en un mismo recorrido." },
   { icon: "idCard", titulo: "Acceso seguro por rol", desc: "Cada profesional ve solo lo que le corresponde." },
 ];
 
 const AÑO = new Date().getFullYear();
+const SOPORTE_EMAIL = import.meta.env.VITE_SOPORTE_EMAIL?.trim();
+const SOPORTE_URL = import.meta.env.VITE_SOPORTE_URL?.trim();
 
 // Degradado de marca: valores concretos y decorativos, no tokens del sistema.
 const FONDO_MARCA = {
@@ -40,7 +41,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verPass, setVerPass] = useState(false);
-  const [recordar, setRecordar] = useState(true);
+  const [recordar, setRecordar] = useState(false);
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
 
@@ -68,7 +69,7 @@ export default function Login() {
     <div className="flex min-h-screen bg-fondo">
       {/* Panel de marca: se oculta cuando no hay ancho para él. */}
       <aside
-        className="relative hidden flex-[1.05] overflow-hidden text-white lg:block"
+        className="relative hidden flex-[.85] overflow-hidden text-white lg:block"
         style={FONDO_MARCA}
       >
         <MotivoNodos />
@@ -84,11 +85,11 @@ export default function Login() {
               Plataforma de gestión asistencial
             </div>
 
-            <h1 className="mb-8 mt-5 text-[2rem] font-extrabold leading-tight tracking-tight text-white">
+            <p className="mb-8 mt-5 text-[2rem] font-extrabold leading-tight tracking-tight text-white">
               El recorrido de cada paciente,
               <br />
               ordenado de principio a fin.
-            </h1>
+            </p>
 
             <ul className="flex max-w-[26rem] flex-col gap-5">
               {PUNTOS.map((p) => (
@@ -98,7 +99,7 @@ export default function Login() {
                   </span>
                   <div>
                     <div className="text-md font-bold text-white">{p.titulo}</div>
-                    <div className="mt-0.5 text-sm leading-snug text-white/85">{p.desc}</div>
+                    <div className="mt-0.5 text-base leading-snug text-white/90">{p.desc}</div>
                   </div>
                 </li>
               ))}
@@ -122,7 +123,7 @@ export default function Login() {
             />
           </svg>
 
-          <div className="flex items-center justify-between text-sm text-white/80">
+          <div className="flex items-center justify-between text-base text-white/90">
             <span>© {AÑO} I-Core · Sistema de gestión asistencial</span>
             <span className="inline-flex items-center gap-1.5">
               <IconoEscudo /> Conexión cifrada
@@ -140,8 +141,8 @@ export default function Login() {
           </div>
 
           <div className="mb-6">
-            <h2 className="font-display text-cifra font-extrabold tracking-tight">Iniciá sesión</h2>
-            <p className="mt-1.5 text-md text-texto-debil">
+            <h1 className="font-display text-cifra font-extrabold tracking-tight">Iniciá sesión</h1>
+            <p className="mt-1.5 text-md text-texto-suave">
               Ingresá con tu cuenta institucional para continuar.
             </p>
           </div>
@@ -169,7 +170,6 @@ export default function Login() {
                   type={verPass ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
                   autoComplete="current-password"
                   required
                 />
@@ -178,7 +178,8 @@ export default function Login() {
                   onClick={() => setVerPass((v) => !v)}
                   title={verPass ? "Ocultar contraseña" : "Mostrar contraseña"}
                   aria-label={verPass ? "Ocultar contraseña" : "Mostrar contraseña"}
-                  className="absolute right-2 flex size-8 items-center justify-center rounded-md text-texto-debil hover:bg-division hover:text-texto-medio"
+                  aria-pressed={verPass}
+                  className="absolute right-0 flex size-11 items-center justify-center rounded-md text-texto-debil hover:bg-division hover:text-texto-medio focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
                   {verPass ? <OjoTachado /> : <Ojo />}
                 </button>
@@ -215,10 +216,19 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 flex items-center gap-2 border-t border-division pt-5 text-sm text-texto-debil">
-            <Icon name="help" size={14} className="flex-none" />
-            <span>¿No tenés acceso? Solicitalo a la administración de tu institución.</span>
-          </div>
+          <details className="mt-6 border-t border-division pt-5 text-sm text-texto-debil">
+            <summary className="cursor-pointer rounded-md font-semibold text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+              ¿Olvidaste tu contraseña o no tenés acceso?
+            </summary>
+            <div className="mt-3 space-y-2 leading-relaxed">
+              <p>Pedí asistencia a la administración de tu institución o al soporte que te indicó cómo acceder.</p>
+              <p>Identificá tu institución, tu nombre y el correo de tu cuenta. Te indicarán cómo verificar tu identidad y establecer una contraseña nueva por un canal seguro.</p>
+              <p>No envíes tu contraseña, códigos de acceso ni datos clínicos de pacientes.</p>
+              {SOPORTE_EMAIL && <p>Contacto configurado: <a className="underline focus-visible:outline-2 focus-visible:outline-accent" href={`mailto:${SOPORTE_EMAIL}`}>{SOPORTE_EMAIL}</a></p>}
+              {SOPORTE_URL?.startsWith("https://") && <p><a className="underline focus-visible:outline-2 focus-visible:outline-accent" href={SOPORTE_URL}>Abrir el canal de soporte configurado</a></p>}
+              {!SOPORTE_EMAIL && !SOPORTE_URL?.startsWith("https://") && <p>El contacto directo todavía no está configurado en esta instalación; consultá a la administración de tu institución.</p>}
+            </div>
+          </details>
         </div>
       </main>
     </div>
@@ -227,7 +237,7 @@ export default function Login() {
 
 const CLASE_INPUT =
   "h-12 w-full rounded-lg border border-campo-borde bg-superficie-2 pl-11 pr-3.5 text-md text-texto " +
-  "outline-none transition placeholder:text-texto-tenue focus:border-accent focus:bg-superficie";
+  "outline-none transition placeholder:text-texto-tenue focus:border-accent focus:bg-superficie focus-visible:ring-2 focus-visible:ring-accent";
 
 function Campo({ label, children }) {
   return (
@@ -253,7 +263,7 @@ function ConIcono({ icono, children }) {
 function MotivoNodos() {
   return (
     <svg
-      className="pointer-events-none absolute -right-14 top-1/2 size-[35rem] -translate-y-1/2"
+      className="pointer-events-none absolute -right-14 top-1/2 size-[35rem] -translate-y-1/2 opacity-20"
       viewBox="0 0 600 600"
       fill="none"
       aria-hidden="true"

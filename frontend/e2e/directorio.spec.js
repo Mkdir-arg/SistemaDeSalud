@@ -43,7 +43,7 @@ test.describe("Directorio de plataforma", () => {
   test("el total del subtítulo es el del servidor, no el de la página", async ({ page }) => {
     const porApi = await page.evaluate(async () => {
       const r = await fetch("/api/instituciones/?page_size=1", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("salud.access")}` },
+        headers: { Authorization: `Bearer ${sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access")}` },
       });
       return (await r.json()).count;
     });

@@ -31,7 +31,7 @@ test.describe("Tabla de casos", () => {
       const inst = JSON.parse(localStorage.getItem("salud.institucion") || "null");
       const r = await fetch(
         `/api/casos/?page_size=1${inst ? `&institucion=${inst.id}` : ""}`,
-        { headers: { Authorization: `Bearer ${localStorage.getItem("salud.access")}` } },
+        { headers: { Authorization: `Bearer ${sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access")}` } },
       );
       return (await r.json()).count;
     });

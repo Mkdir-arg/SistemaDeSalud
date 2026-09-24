@@ -57,7 +57,7 @@ export async function contextoEscuela() {
     { search: ESCUELA_NOMBRE },
     {
       nombre: ESCUELA_NOMBRE,
-      tipo: "Hospital general de capacitacion",
+      tipo: "Hospital general de capacitación",
       cuit: "30-00000000-7",
       estado: "en_alta",
     },
@@ -89,7 +89,7 @@ async function prepararUsuarios(ctx) {
   const usuario = async (email, nombre, apellido) => {
     ctx.avisar?.(`${nombre} ${apellido}`);
     return crearPorCampoExacto("usuarios", { search: email }, "email", email, {
-      email, nombre, apellido, password: "demo1234", is_active: true,
+      email, nombre, apellido, password: "EscuelaSalud2026!", is_active: true,
     });
   };
 

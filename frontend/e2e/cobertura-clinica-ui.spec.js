@@ -15,7 +15,7 @@ async function circuito(page, opciones = {}) {
   const lecturas = [];
   const contexto = () => ({ nodo: estado.caso.nodo_actual, actualizado: estado.caso.actualizado });
   await page.addInitScript((i) => {
-    localStorage.setItem("salud.access", "access-solo-pruebas-interceptadas");
+    sessionStorage.setItem("salud.access", "access-solo-pruebas-interceptadas");
     localStorage.setItem("salud.institucion", JSON.stringify(i));
   }, institucion);
   await page.route("**/api/**", async (route) => {

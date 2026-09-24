@@ -20,7 +20,7 @@ async function escenario(page, { admin = false, activo = true, detalleError = fa
     otras_membresias: miembro === 8 ? [{ ...lectura, id: 10, membresia: 9, areas: [4], permite_sensibles: true }] : db.concesiones,
     version_esperada: String(db.version).padStart(64, "0") });
   await page.addInitScript((inst) => {
-    localStorage.setItem("salud.access", "token-simulado-sin-acceso-real");
+    sessionStorage.setItem("salud.access", "token-simulado-sin-acceso-real");
     localStorage.setItem("salud.institucion", JSON.stringify(inst));
   }, institucion);
   await page.route("**/api/**", async (route) => {
