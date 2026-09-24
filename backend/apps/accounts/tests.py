@@ -302,7 +302,7 @@ class GobiernoPlataformaTests(APITestCase):
     def test_plataforma_crea_usuario_sin_membresia_institucional(self):
         self.client.force_authenticate(self.plataforma)
         r = self.client.post("/api/usuarios/", {
-            "email": "nuevo@test.local", "nombre": "Nuevo",
+            "email": "nuevo@test.local", "nombre": "Nuevo", "password": "Guardia-Diente-84",
         }, format="json")
         self.assertEqual(r.status_code, 201, r.data)
         self.assertFalse(
