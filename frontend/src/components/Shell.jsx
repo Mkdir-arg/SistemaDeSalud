@@ -453,7 +453,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
   return (
     <RefreshCtx.Provider value={{ refresco, setRefresco }}>
     <div className="flex min-h-screen bg-fondo">
-      <a href="#contenido-principal" className="sr-only fixed left-4 top-3 z-[100] rounded-md bg-superficie px-4 py-2 text-accent shadow-lg focus:not-sr-only focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+      <a href="#contenido-principal" className="sr-only fixed left-4 top-3 z-[100] rounded-md bg-superficie px-4 py-2 text-accent shadow-float focus:not-sr-only focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
         Ir al contenido principal
       </a>
       {/* Fondo del cajón: solo existe en angosto y con el menú abierto. */}

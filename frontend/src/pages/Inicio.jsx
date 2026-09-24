@@ -94,7 +94,7 @@ export default function Inicio() {
       </Card>
 
       {puedeVer("casos_operar") && puesta.data && !puesta.data.flujo_operativo && (
-        <Card className="mb-5 border-amber-300 bg-badge-amber-bg p-4 text-badge-amber-fg" role="status">
+        <Card className="mb-5 border-badge-amber-fg/25 bg-badge-amber-bg p-4 text-badge-amber-fg" role="status">
           <p className="font-semibold">Todavía no hay un flujo operativo publicado.</p>
           <p className="mt-1 text-sm">Podés revisar casos existentes en la Bandeja, pero para iniciar nuevas atenciones hace falta publicar un flujo. {puedeVer("diseno_flujos") ? <Link to="/flujos" className="font-semibold underline">Configurar flujos</Link> : "Pedile a un configurador que lo publique."}</p>
         </Card>

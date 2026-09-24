@@ -190,7 +190,7 @@ export function AuthProvider({ children }) {
       <div aria-hidden={locked || undefined} inert={locked ? "" : undefined}
         style={locked ? { display: "none" } : undefined}>{children}</div>
       {locked && <PantallaBloqueada onDesbloquear={desbloquear} />}
-      {!!aviso && !locked && <div role="status" className="fixed bottom-4 left-4 z-[1000] rounded-lg border border-division bg-superficie p-4 shadow-lg">
+      {!!aviso && !locked && <div role="status" className="fixed bottom-4 left-4 z-[1000] rounded-lg border border-division bg-superficie p-4 shadow-float">
         <p>La sesión se bloqueará por inactividad en {aviso} {aviso === 1 ? "minuto" : "minutos"}.</p>
         <button className="mt-2 rounded-md bg-accent px-3 py-2 text-sobre-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           onClick={() => { ultimaActividad.current = Date.now(); setAviso(0); }}>Continuar trabajando</button>
@@ -217,8 +217,8 @@ function PantallaBloqueada({ onDesbloquear }) {
     }
   }
   return <main className="fixed inset-0 z-[10000] flex items-center justify-center bg-fondo p-6">
-    <form onSubmit={enviar} className="w-full max-w-[28rem] rounded-xl border border-division bg-superficie p-6 shadow-lg">
-      <h1 className="text-2xl font-bold text-texto-fuerte">Sesión bloqueada</h1>
+    <form onSubmit={enviar} className="w-full max-w-[28rem] rounded-lg border border-division bg-superficie p-6 shadow-modal">
+      <h1 className="text-xxl font-bold text-texto-fuerte">Sesión bloqueada</h1>
       <p className="mt-2 text-md text-texto-debil">Por inactividad, ingresá de nuevo con la misma cuenta para continuar. El formulario abierto permanece en esta pestaña.</p>
       <label className="mt-5 block text-md font-semibold">Correo de la cuenta
         <input type="email" required autoComplete="username" autoFocus value={email} onChange={(e) => setEmail(e.target.value)}
