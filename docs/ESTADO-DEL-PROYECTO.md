@@ -190,7 +190,15 @@ ejecutar; nadie programa una pantalla a mano.
 
 ## 6. Qué está validado y qué no
 
-Hay **1767 pruebas de backend** y **35 suites end-to-end** de Playwright.
+La cantidad y el resultado de las pruebas dependen del commit. La medición
+anterior de este documento registró **1767 pruebas de backend** y **35 suites
+end-to-end** de Playwright; no describe por sí sola el estado de esta entrega.
+
+El [issue #58](https://github.com/Mkdir-arg/SistemaDeSalud/issues/58) informó
+que la suite de backend quedó corregida sobre el commit `4857497` (evidencia
+externa del issue, 23/09/2026). Las pruebas de este PR deben informarse con su
+propio SHA final; esa medición previa no es una ejecución nueva ni sustituye la
+validación visual o funcional pendiente.
 
 ### Lo medido el 22/09/2026
 

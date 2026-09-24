@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import serializers
 
 from .models import Campo, Formulario
@@ -44,23 +46,72 @@ class CampoSerializer(serializers.ModelSerializer):
 
         tipo = efectivo("tipo")
 
-        if tipo == Campo.Tipo.SELECCION_UNICA:
+        if tipo in (Campo.Tipo.SELECCION_UNICA, Campo.Tipo.SELECCION_MULTIPLE):
             # Sólo cuando se están tocando las opciones o el tipo: un formulario
             # viejo puede tener una selección única sin opciones, y exigirlas en
             # cualquier PATCH impediría lo único que la arregla —entrar a editar
             # el campo— por corregir la etiqueta de al lado.
             if self.instance is None or "opciones" in attrs or "tipo" in attrs:
-                opciones = [str(o).strip() for o in (efectivo("opciones") or []) if str(o).strip()]
+                originales = efectivo("opciones") or []
+                if not isinstance(originales, list) or any(not isinstance(o, str) for o in originales):
+                    raise serializers.ValidationError({"opciones": "Cada opción debe ser texto."})
+                opciones = [o.strip() for o in originales if o.strip()]
                 if not opciones:
                     raise serializers.ValidationError({
-                        "opciones": "Una selección única sin opciones es un desplegable "
-                                    "vacío: agregá al menos una."
+                        "opciones": "Una selección sin opciones no se puede completar: agregá al menos una."
                     })
                 if len(set(opciones)) != len(opciones):
                     raise serializers.ValidationError({
                         "opciones": "Hay opciones repetidas. Dos opciones iguales son "
                                     "indistinguibles para quien completa y para las Decisiones."
                     })
+                if "opciones" in attrs:
+                    attrs["opciones"] = opciones
+                if self.instance is not None and "opciones" in attrs:
+                    usadas = set()
+                    for valor in self.instance.valores.values_list("valor", flat=True).iterator():
+                        if tipo == Campo.Tipo.SELECCION_MULTIPLE:
+                            try:
+                                seleccion = json.loads(valor)
+                            except (ValueError, TypeError):
+                                continue
+                            if isinstance(seleccion, list):
+                                usadas.update(item for item in seleccion if isinstance(item, str))
+                        elif valor:
+                            usadas.add(valor)
+
+                    # También se conservan los valores que todavía esperan una
+                    # decisión en una versión activa, aunque ningún caso los haya
+                    # cargado: quitarlos haría inalcanzable esa rama.
+                    from apps.flujos.models import Conexion
+
+                    def referencias(condicion):
+                        if not isinstance(condicion, dict):
+                            return []
+                        if "reglas" in condicion:
+                            return [v for r in (condicion.get("reglas") or []) for v in referencias(r)]
+                        if str(condicion.get("campo")) != str(self.instance.pk):
+                            return []
+                        valor = condicion.get("valor")
+                        if condicion.get("operador") in ("vacio", "no_vacio"):
+                            return []
+                        if isinstance(valor, list):
+                            return [v for v in valor if isinstance(v, str)]
+                        if isinstance(valor, str):
+                            return [valor]
+                        return []
+
+                    conexiones = Conexion.objects.filter(
+                        version__flujo__institucion=self.instance.formulario.institucion,
+                    ).exclude(version__estado="archivada")
+                    for condicion in conexiones.values_list("condicion", flat=True).iterator():
+                        usadas.update(referencias(condicion))
+                    quitadas = usadas - set(opciones)
+                    if quitadas:
+                        raise serializers.ValidationError({
+                            "opciones": "Estas opciones ya tienen datos cargados: "
+                                       + ", ".join(sorted(quitadas)) + "."
+                        })
         elif "tipo" in attrs or "opciones" in attrs:
             # Un campo que dejó de ser selección se queda con opciones que ya no
             # se muestran en ningún lado y que las Decisiones siguen ofreciendo

@@ -36,7 +36,7 @@ const masViejo = (isos) => (isos.length ? isos.reduce((a, b) => (new Date(a) < n
  * arma el backend en `/mis-tareas/` a partir de usuario → grupos → nodos.
  */
 export default function MiTrabajo() {
-  const { institucion } = useInstitucion();
+  const { institucion, puedeVer } = useInstitucion();
   const navigate = useNavigate();
   const { setRefresco } = useRefresh();
   const [areaSel, setAreaSel] = useState(null);
@@ -52,6 +52,11 @@ export default function MiTrabajo() {
     // foco, así que ya no hace falta manejar `visibilitychange` a mano.
     refetchInterval: REFRESCO_MS,
     refetchIntervalInBackground: false,
+  });
+  const puesta = useQuery({
+    queryKey: ["puesta-en-marcha", institucion?.id],
+    queryFn: () => api.get(`/instituciones/${institucion.id}/puesta-en-marcha/`),
+    enabled: !!institucion,
   });
 
   // Publica «última actualización» en la barra superior.
@@ -89,8 +94,9 @@ export default function MiTrabajo() {
       <div className="flex flex-col gap-7 px-lg pb-8 pt-[22px] sm:px-8">
         {vacio ? (
           <EstadoVacio
-            titulo="No tenés tareas pendientes"
-            detalle="Cuando entren casos a los pasos que operás, van a aparecer acá."
+            titulo={puesta.data?.flujo_operativo === false ? "No hay un flujo publicado" : "No tenés tareas pendientes"}
+            detalle={puesta.data?.flujo_operativo === false ? `Para iniciar nuevas atenciones hace falta publicar un flujo. ${puedeVer("diseno_flujos") ? "Podés configurarlo desde Flujos." : "Pedile a un configurador que lo publique."} Los casos existentes seguirán disponibles en la Bandeja.` : "Cuando entren casos a los pasos que operás, van a aparecer acá."}
+            accion={puesta.data?.flujo_operativo === false && puedeVer("diseno_flujos") ? <Button onClick={() => navigate("/flujos")}>Configurar flujos</Button> : undefined}
           />
         ) : areaActiva ? (
           <>

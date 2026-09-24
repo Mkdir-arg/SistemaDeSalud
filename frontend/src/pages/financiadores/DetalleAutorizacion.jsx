@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
+import { POR_PAGINA } from "@/api/queries";
 import { errorFinanciador } from "@/api/financiadores";
 import { Ayuda, Badge, Button, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
 import { fechaHora } from "@/lib/format";
@@ -24,11 +25,13 @@ export function ErrorAutorizacion({ error, reintentar }) {
 }
 
 export function PaginasAutorizacion({ consulta, pagina, cambiar }) {
+  const total = consulta.data?.count ?? 0;
+  const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   return <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division p-4 text-sm">
-    <span>{consulta.data?.count ?? 0} solicitudes · Página {pagina}</span>
+    <span>{total} solicitudes · {total === 0 ? "Sin páginas" : `Página ${pagina} de ${paginas}`}</span>
     <div className="flex gap-2">
       <Button type="button" size="sm" variant="secondary" disabled={pagina <= 1 || consulta.isFetching} onClick={() => cambiar(pagina - 1)}>Anterior</Button>
-      <Button type="button" size="sm" variant="secondary" disabled={!consulta.data?.next || consulta.isFetching} onClick={() => cambiar(pagina + 1)}>Siguiente</Button>
+      <Button type="button" size="sm" variant="secondary" disabled={total === 0 || !consulta.data?.next || consulta.isFetching} onClick={() => cambiar(pagina + 1)}>Siguiente</Button>
     </div>
   </div>;
 }

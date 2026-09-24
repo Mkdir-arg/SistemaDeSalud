@@ -63,8 +63,9 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       # No siembra: de eso se ocupa `backend`.
       SEED_DEMO: "0"
+      EJECUTAR_MIGRACIONES: "0"
     depends_on:
-      db:
+      backend:
         condition: service_healthy
 
   # Repartos por eventos: la fuente y su solicitud se confirman juntas.
@@ -82,7 +83,7 @@ services:
       SEED_DEMO: "0"
       SEED_GUARDIA: "0"
     depends_on:
-      db:
+      backend:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "manage.py", "shell", "-c", "from datetime import timedelta; from django.utils import timezone; from apps.auditoria.latidos import Latido; import sys; sys.exit(0 if Latido.objects.filter(servicio='repartos_eventos', momento__gte=timezone.now()-timedelta(minutes=2)).exists() else 1)"]
@@ -110,7 +111,7 @@ services:
       SEED_GUARDIA: "0"
       EJECUTAR_MIGRACIONES: "0"
     depends_on:
-      db:
+      backend:
         condition: service_healthy
 
   # Respaldo diario, con la restauración verificada en cada corrida.
@@ -134,10 +135,11 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       SEED_DEMO: "0"
+      EJECUTAR_MIGRACIONES: "0"
     volumes:
       - respaldos:/respaldos
     depends_on:
-      db:
+      backend:
         condition: service_healthy
 
   frontend:
@@ -147,7 +149,8 @@ services:
     volumes:
       - media:/usr/share/media:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

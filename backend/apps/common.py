@@ -483,6 +483,10 @@ class SubirArchivoView(APIView):
         from apps.registros.models import ArchivoClinico
 
         proposito = request.data.get("proposito") or ArchivoClinico.Proposito.ADJUNTO_CASO
+        if proposito == ArchivoClinico.Proposito.CONSENTIMIENTO:
+            default_storage.delete(guardado)
+            return Response({"detail": "La evidencia se adjunta al registrar el consentimiento."},
+                            status=status.HTTP_400_BAD_REQUEST)
         if proposito not in {v for v, _ in ArchivoClinico.Proposito.choices}:
             default_storage.delete(guardado)
             return Response({"detail": "Proposito de archivo invalido."}, status=status.HTTP_400_BAD_REQUEST)
@@ -539,6 +543,9 @@ class DescargarArchivoView(APIView):
         from apps.registros.models import ArchivoClinico
 
         meta = ArchivoClinico.objects.filter(ruta=ruta).first()
+        if meta and meta.proposito == ArchivoClinico.Proposito.CONSENTIMIENTO:
+            return Response({"detail": "Descargá la evidencia desde el consentimiento."},
+                            status=status.HTTP_404_NOT_FOUND)
         institucion_id = meta.institucion_id if meta else int(partes[1])
         if "historia_clinica" not in capacidades_de(request.user, institucion_id):
             return Response(

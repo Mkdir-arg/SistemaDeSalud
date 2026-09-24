@@ -26,7 +26,7 @@ async function escenario(page, { seguimiento = true, permisoDinero = true, edita
   const escrituras = [];
   const estado = { actualizado: false };
   await page.addInitScript((institucion) => {
-    localStorage.setItem("salud.access", "access-solo-pruebas-interceptadas");
+    sessionStorage.setItem("salud.access", "access-solo-pruebas-interceptadas");
     if (!localStorage.getItem("salud.institucion")) localStorage.setItem("salud.institucion", JSON.stringify(institucion));
   }, hospitales[0]);
   await page.route("**/api/**", async (route) => {

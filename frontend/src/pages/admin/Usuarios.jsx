@@ -69,7 +69,7 @@ export default function Usuarios() {
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-lg px-[22px] py-[18px]">
           <div>
-            <h1 className="text-xl font-bold">Usuarios</h1>
+            <h2 className="text-xl font-bold">Usuarios</h2>
             <div className="text-sm text-texto-debil">
               {plural(filas.length, "persona con acceso", "personas con acceso")} al sistema
             </div>
@@ -152,6 +152,7 @@ function UsuarioModal({ usuario, onClose }) {
     nombre: usuario.nombre || "",
     apellido: usuario.apellido || "",
     password: "",
+    confirmarPassword: "",
     is_active: usuario.is_active ?? true,
     rol: "administrativo",
   });
@@ -160,6 +161,8 @@ function UsuarioModal({ usuario, onClose }) {
   const [permisosGuardando, setPermisosGuardando] = useState(false);
   const [detalleAplicado, setDetalleAplicado] = useState(esNuevo);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const passwordRequerida = esNuevo || !!form.password;
+  const passwordCoincide = !passwordRequerida || (form.password && form.password === form.confirmarPassword);
   const detalle = useDetalle("usuarios", usuario.id, { gcTime: 0, refetchOnWindowFocus: false });
   useEffect(() => {
     if (!esNuevo && detalle.data && !detalleAplicado) {
@@ -223,7 +226,7 @@ function UsuarioModal({ usuario, onClose }) {
       footer={
         <>
           <Button variant="secondary" disabled={permisosGuardando} onClick={onClose}>Cerrar</Button>
-          <Button disabled={guardar.isPending || permisosGuardando || !detalleAplicado || !form.email || !form.nombre} onClick={() => guardar.mutate()}>
+          <Button disabled={guardar.isPending || permisosGuardando || !detalleAplicado || !form.email || !form.nombre || !passwordCoincide} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "Guardando…" : esNuevo ? "Guardar" : "Guardar datos personales"}
           </Button>
         </>
@@ -240,11 +243,15 @@ function UsuarioModal({ usuario, onClose }) {
           <Field label="Nombre *"><Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
           <Field label="Apellido"><Input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
           {!esNuevo && <Field label="Nueva contraseña (dejar vacío para no cambiar)">
-            <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} />
+            <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" />
           </Field>}
         </div>
-        {esNuevo && <Field label="Contraseña">
-          <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} />
+        {esNuevo && <Field label="Contraseña *" hint="Usá al menos 8 caracteres. Evitá contraseñas comunes, numéricas o similares a tus datos personales.">
+          <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" required />
+        </Field>}
+        {passwordRequerida && <Field label="Confirmar contraseña *"
+          error={form.confirmarPassword && form.password !== form.confirmarPassword ? "Las contraseñas no coinciden." : undefined}>
+          <Input type="password" value={form.confirmarPassword} onChange={(e) => set("confirmarPassword", e.target.value)} autoComplete="new-password" required />
         </Field>}
         {/* Al crear no se elige institución: entra en esta, la del contexto. Lo
             único que falta decidir es con qué rol. */}

@@ -2,8 +2,8 @@ from datetime import date, datetime, time, timedelta
 
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -228,6 +228,8 @@ class TurnoViewSet(BaseModelViewSet):
             qs = qs.filter(inicio__date__gte=_fecha(d))
         if (h := p.get("hasta")):
             qs = qs.filter(inicio__date__lte=_fecha(h))
+        if p.get("excluir_retrospectivos") == "1":
+            qs = qs.exclude(estado=Turno.Estado.REALIZADO)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -265,6 +267,47 @@ class TurnoViewSet(BaseModelViewSet):
         except motor.ErrorAgenda as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(turno).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        request=inline_serializer(name="RegistroAtencionPasadaRequest", fields={
+            "agenda": serializers.IntegerField(), "ciudadano": serializers.IntegerField(),
+            "inicio": serializers.DateTimeField(), "duracion_min": serializers.IntegerField(min_value=1),
+            "motivo_registro": serializers.CharField(max_length=300),
+            "clave_operacion": serializers.UUIDField(),
+        }),
+        responses={200: TurnoSerializer, 201: TurnoSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="registrar-pasado")
+    def registrar_pasado(self, request):
+        """Deja constancia administrativa de una atención ya ocurrida; no reserva ni abre caso."""
+        agenda = Agenda.objects.filter(pk=request.data.get("agenda")).first()
+        ciudadano = Ciudadano.objects.filter(pk=request.data.get("ciudadano")).first()
+        if agenda is None or ciudadano is None:
+            return Response({"detail": "Falta la agenda o el paciente."}, status=status.HTTP_400_BAD_REQUEST)
+        if "turnos" not in capacidades_de(request.user, agenda.institucion_id):
+            raise PermissionDenied("No tenés permiso para registrar atenciones de esa institución.")
+        inicio = serializers_parse_dt(request.data.get("inicio"))
+        if inicio is None:
+            return Response({"inicio": ["Indicá cuándo ocurrió la atención."]},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if isinstance(request.data.get("duracion_min"), bool):
+            raise serializers.ValidationError({"duracion_min": "Indicá la duración real en minutos."})
+        try:
+            duracion = serializers.IntegerField(min_value=1).run_validation(request.data.get("duracion_min"))
+        except serializers.ValidationError as error:
+            raise serializers.ValidationError({"duracion_min": error.detail}) from error
+        try:
+            turno, creado = motor.registrar_pasado(
+                agenda, ciudadano, inicio, duracion, request.data.get("motivo_registro"),
+                request.data.get("clave_operacion"), autor=request.user,
+            )
+        except motor.ErrorAgenda as error:
+            datos = {"detail": str(error)}
+            if error.caso_id:
+                datos["caso"] = error.caso_id
+            return Response(datos, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(turno).data,
+                        status=status.HTTP_201_CREATED if creado else status.HTTP_200_OK)
 
     def _accion(self, request, fn, **kw):
         turno = self.get_object()

@@ -3,10 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
-import { useAuth } from "@/auth/AuthContext";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { Logo } from "@/components/Logo";
+import { Shell } from "@/components/Shell";
 import { Avatar, Badge, Button, Field, Input, Modal, Mono, Select } from "@/components/ui";
 import { Buscador, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
@@ -16,115 +15,26 @@ import { plural } from "@/lib/format";
 const ESTADO_TONE = { activa: "green", en_alta: "amber", inactiva: "gray" };
 
 
-const NAV = [
-  { key: "instituciones", label: "Instituciones", icon: "building" },
-  { key: "usuarios", label: "Usuarios", icon: "users" },
-];
-
-/**
- * Shell de plataforma: lo que ve el super admin antes de entrar a una institución.
- *
- * Tiene su propio armazón (no usa `Shell`) porque acá todavía no hay institución
- * en contexto y el menú es otro: se administra la plataforma, no un hospital.
- */
+/** Listados globales dentro del armazón común, sin contexto clínico institucional. */
 export default function Directorio() {
-  const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const rolPlataforma = user?.is_superuser ? "Super admin" : "Autoridad de plataforma";
-  // En la URL: así «mandame el listado de usuarios» es un link.
-  const [vista, setVista] = useFiltroUrl("vista", "instituciones");
+  const [vista] = useFiltroUrl("vista", "instituciones");
 
   return (
-    <div className="flex min-h-screen bg-fondo">
-      <aside className="sticky top-0 flex h-screen w-60 flex-none flex-col border-r border-borde bg-superficie">
-        <div className="flex items-center gap-2.5 px-[18px] pb-3.5 pt-[18px]">
-          <Logo size={34} />
-          <div>
-            <div className="text-xl font-extrabold tracking-tight">I-Core Salud</div>
-            <div className="text-micro font-bold tracking-wider text-texto-tenue">PLATAFORMA</div>
-          </div>
-        </div>
-
-        <nav className="flex flex-col gap-0.5 px-3 py-2">
-          {NAV.map((n) => {
-            const activo = vista === n.key;
-            return (
-              <button
-                key={n.key}
-                onClick={() => setVista(n.key)}
-                aria-current={activo ? "page" : undefined}
-                className={
-                  "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-md font-semibold " +
-                  (activo
-                    ? "bg-accent-fuerte text-sobre-accent"
-                    : "text-texto-medio hover:bg-superficie-2")
-                }
-              >
-                <Icon name={n.icon} size={17} /> {n.label}
-              </button>
-            );
-          })}
-          <button onClick={() => navigate("/financiadores")} className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-md font-semibold text-texto-medio hover:bg-superficie-2">
-            <Icon name="users" size={17} /> Financiadores
-          </button>
-        </nav>
-
-        <div className="flex-1" />
-
-        <div
-          data-tour="directorio-super-admin"
-          data-demo-trigger="super-admin"
-          title="Tocar 3 veces para iniciar el modo demo"
-          className="flex cursor-pointer items-center gap-2.5 border-t border-division p-3.5"
-        >
-          <Avatar nombre={user?.nombre_completo || user?.email} size={34} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{user?.nombre_completo || user?.email}</div>
-            <button
-              type="button"
-              className="block cursor-pointer rounded-sm text-left text-xs text-texto-tenue outline-none hover:text-texto-suave focus-visible:ring-2 focus-visible:ring-accent"
-              title={rolPlataforma}
-            >
-              {rolPlataforma}
-            </button>
-          </div>
-          <button
-            onClick={() => { logout(); navigate("/login"); }}
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
-            className="flex text-texto-debil hover:text-texto"
-          >
-            <Icon name="power" size={17} />
-          </button>
-        </div>
-      </aside>
-
-      <main className="flex h-screen min-w-0 flex-1 flex-col">
-        <header className="flex h-16 flex-none items-center gap-lg border-b border-borde bg-superficie px-[26px]">
-          {/* No es un encabezado: el título real de la página es el grande de
-              abajo. Marcar los dos como heading dejaba «Instituciones» repetido
-              dos veces seguidas en el índice de un lector de pantalla. */}
-          <div className="text-xl font-bold">{vista === "instituciones" ? "Instituciones" : "Usuarios"}</div>
-          <div className="inline-flex items-center gap-1.5 rounded-pill bg-accent-50 px-3 py-1.5 text-sm font-semibold text-accent">
-            <Icon name="building" size={14} /> Alcance: todas las instituciones
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-auto p-[30px]">
-          {vista === "instituciones" ? <InstitucionesView /> : <UsuariosView />}
-        </div>
-      </main>
-    </div>
+    <Shell plataforma>
+      <div className="p-lg sm:p-[30px]">
+        <p className="mb-4 text-sm font-semibold text-texto-debil">Alcance: todas las instituciones de la plataforma</p>
+        {vista === "usuarios" ? <UsuariosView /> : <InstitucionesView />}
+      </div>
+    </Shell>
   );
 }
 
 /** Cabecera común de las dos vistas: título, conteo real y acciones. */
-function Encabezado({ titulo, detalle, children }) {
+function Encabezado({ detalle, children }) {
   return (
     <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
       <div>
-        <h1 className="text-cifra-lg font-extrabold tracking-tight">{titulo}</h1>
-        <div className="mt-0.5 text-base text-texto-debil">{detalle}</div>
+        <p className="text-base text-texto-debil">{detalle}</p>
       </div>
       <div className="flex items-center gap-2.5">{children}</div>
     </div>
@@ -149,7 +59,6 @@ function InstitucionesView() {
   return (
     <>
       <Encabezado
-        titulo="Instituciones"
         detalle={`${plural(total, "institución", "instituciones")} en la plataforma`}
       >
         <Buscador
@@ -211,6 +120,7 @@ function InstitucionesView() {
 function NuevaInstitucionModal({ onClose }) {
   const toast = useToast();
   const [f, setF] = useState({ nombre: "", tipo: "", cuit: "", admin: "" });
+  const [tipoOpcion, setTipoOpcion] = useState("");
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   // Candidatos a admin. Se piden 100 y ordenados: con los 25 de la primera página
@@ -240,7 +150,7 @@ function NuevaInstitucionModal({ onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={crear.isPending || !f.nombre} onClick={() => crear.mutate()}>
+          <Button disabled={crear.isPending || !f.nombre || (tipoOpcion === "Otro" && !f.tipo.trim())} onClick={() => crear.mutate()}>
             {crear.isPending ? "…" : "Crear"}
           </Button>
         </>
@@ -251,8 +161,17 @@ function NuevaInstitucionModal({ onClose }) {
           <Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus placeholder="Hospital Central" />
         </Field>
         <Field label="Tipo">
-          <Input value={f.tipo} onChange={(e) => set("tipo", e.target.value)} placeholder="Hospital general" />
+          <Select value={tipoOpcion} onChange={(e) => {
+            setTipoOpcion(e.target.value);
+            set("tipo", e.target.value === "Otro" ? "" : e.target.value);
+          }}>
+            <option value="">— Seleccioná un tipo —</option>
+            {["Hospital", "Centro de salud", "Clínica", "Sanatorio", "Otro"].map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+          </Select>
         </Field>
+        {tipoOpcion === "Otro" && <Field label="Especificá el tipo *">
+          <Input value={f.tipo} onChange={(e) => set("tipo", e.target.value)} placeholder="Tipo de institución" required />
+        </Field>}
         <Field label="CUIT">
           <Input value={f.cuit} onChange={(e) => set("cuit", e.target.value)} placeholder="30-12345678-9" />
         </Field>
@@ -287,7 +206,6 @@ function UsuariosView() {
   return (
     <>
       <Encabezado
-        titulo="Usuarios"
         detalle={`${plural(total, "usuario", "usuarios")} · candidatos a admin de institución`}
       >
         <Buscador
@@ -352,9 +270,13 @@ function UsuarioModal({ usuario, onClose }) {
     nombre: usuario.nombre || "",
     apellido: usuario.apellido || "",
     password: "",
+    confirmarPassword: "",
     is_active: usuario.is_active ?? true,
   });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const passwordRequerida = esNuevo || !!f.password;
+  const passwordCoincide = !passwordRequerida || (f.password && f.password === f.confirmarPassword);
 
   const guardar = useAccion(() => {
     const payload = { email: f.email, nombre: f.nombre, apellido: f.apellido, is_active: f.is_active };
@@ -372,7 +294,7 @@ function UsuarioModal({ usuario, onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !f.email || !f.nombre} onClick={() => guardar.mutate()}>
+          <Button disabled={guardar.isPending || !f.email || !f.nombre || !passwordCoincide} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "…" : "Guardar"}
           </Button>
         </>
@@ -386,9 +308,14 @@ function UsuarioModal({ usuario, onClose }) {
           <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
           <Field label="Apellido"><Input value={f.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
         </div>
-        <Field label={esNuevo ? "Contraseña" : "Nueva contraseña (vacío = no cambiar)"}>
-          <Input type="password" value={f.password} onChange={(e) => set("password", e.target.value)} />
+        <Field label={esNuevo ? "Contraseña *" : "Nueva contraseña (vacío = no cambiar)"}
+          hint="Al menos 8 caracteres; evitá contraseñas comunes, numéricas o parecidas a los datos personales.">
+          <Input type="password" value={f.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" required={esNuevo} />
         </Field>
+        {passwordRequerida && <Field label="Confirmar contraseña *"
+          error={f.confirmarPassword && f.password !== f.confirmarPassword ? "Las contraseñas no coinciden." : undefined}>
+          <Input type="password" value={f.confirmarPassword} onChange={(e) => set("confirmarPassword", e.target.value)} autoComplete="new-password" required />
+        </Field>}
         <label className="flex items-center gap-2.5 text-md">
           <input type="checkbox" checked={f.is_active} onChange={(e) => set("is_active", e.target.checked)} /> Activo
         </label>

@@ -7,7 +7,7 @@ const todos = ["ver_gastos", "ver_costos", "ver_dinero", "registrar_gastos", "co
 async function escenario(page, { permisos = todos, errorPermisos = false, esperarPermisos, esperarCatalogo } = {}) {
   const escrituras = [];
   await page.addInitScript((inst) => {
-    localStorage.setItem("salud.access", "credencial-ficticia-solo-mock");
+    sessionStorage.setItem("salud.access", "credencial-ficticia-solo-mock");
     localStorage.setItem("salud.institucion", JSON.stringify(inst));
   }, institucion);
   // Todas las solicitudes API se interceptan; jamás se escriben datos de demo.

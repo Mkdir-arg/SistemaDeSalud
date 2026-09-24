@@ -34,3 +34,13 @@ export function antiguedad(iso) {
   if (h < 48) return `${h} h`;
   return `${Math.floor(h / 24)} d`;
 }
+
+// Una duración recibida en minutos, separada de la antigüedad de una fecha.
+export function duracionMinutos(valor) {
+  if (valor == null || valor === "") return "—";
+  const minutos = Number(valor);
+  if (!Number.isFinite(minutos) || minutos < 0) return "—";
+  if (minutos < 60) return `${Math.round(minutos)} min`;
+  if (minutos < 2880) return `${Math.floor(minutos / 60)} h ${Math.round(minutos % 60)} min`;
+  return `${Math.floor(minutos / 1440)} d ${Math.floor(minutos % 1440 / 60)} h`;
+}

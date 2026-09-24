@@ -128,8 +128,10 @@ hay certificado, así que los dos entornos traen `DJANGO_SSL_REDIRECT=false`. Y
 si el navegador lo recibe para `localhost`, te fuerza https en `localhost` para
 **todos** tus proyectos locales y revertirlo exige limpiar el estado HSTS.
 
-**Sólo `backend` migra.** Los procesos de fondo arrancan con
-`EJECUTAR_MIGRACIONES=0` y esperan a que `backend` esté sano. Cuatro contenedores
+**Sólo `backend` migra.** El Compose base configura los procesos de fondo con
+`EJECUTAR_MIGRACIONES=0` cuando usan el entrypoint y los hace esperar a que
+`backend` esté sano. `repartos` usa `entrypoint: python`: no ejecuta migraciones,
+pero también espera al esquema. Cuatro contenedores
 de la misma imagen corriendo `migrate` a la vez toman locks de DDL en distinto
 orden y la migración puede quedar a mitad de camino con `django_migrations`
 diciendo que terminó.

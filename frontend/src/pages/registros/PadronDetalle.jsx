@@ -61,7 +61,7 @@ export default function PadronDetalle() {
       <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-5">
         <Avatar nombre={nombre} i={c.id} size={52} />
         <div className="min-w-0 flex-1">
-          <h1 className="text-xxl font-extrabold tracking-tight">{nombre || "Sin nombre"}</h1>
+          <h2 className="text-xxl font-extrabold tracking-tight">{nombre || "Sin nombre"}</h2>
           <div className="flex flex-wrap items-center gap-x-2 text-base text-texto-debil">
             <span>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}</span>
             {c.fecha_nacimiento && <span>- {fecha(c.fecha_nacimiento)}</span>}
@@ -231,6 +231,7 @@ function Consentimiento({ ciudadanoId, estado }) {
         <ConsentimientoModal
           ciudadanoId={ciudadanoId}
           otorgar={pidiendo === "otorgar"}
+          referidoId={estado?.id}
           onClose={() => setPidiendo(null)}
           onListo={() => { toast.ok("Consentimiento registrado."); setPidiendo(null); }}
         />
@@ -240,10 +241,19 @@ function Consentimiento({ ciudadanoId, estado }) {
 }
 
 function HistorialConsentimientos({ ciudadanoId }) {
+  const toast = useToast();
   const q = useLista("consentimientos", { ciudadano: ciudadanoId, pageSize: 50 });
 
+  async function descargar(c) {
+    try {
+      await api.download(`/consentimientos/${c.id}/evidencia/`, `consentimiento-${c.id}`);
+    } catch (error) {
+      toast.deError(error, "No se pudo descargar la evidencia.");
+    }
+  }
+
   if (q.isLoading) return <div className="mt-2 text-sm text-texto-debil">Buscando historial...</div>;
-  if (q.error) return <div className="mt-2 text-sm text-danger">No se pudo traer el historial.</div>;
+  if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
   if (!q.filas.length) return <div className="mt-2 text-sm text-texto-debil">Sin registros.</div>;
 
   return (
@@ -259,19 +269,50 @@ function HistorialConsentimientos({ ciudadanoId }) {
             {c.tomado_por_nombre ? ` - lo tomo ${c.tomado_por_nombre}` : ""}
           </div>
           {c.alcance && <div className="text-texto-medio">{c.otorgado ? "Alcance: " : "Motivo: "}{c.alcance}</div>}
+          {c.version_texto && <div className="text-texto-debil">Versión del texto: {c.version_texto}</div>}
+          {c.texto_comunicado && <div className="whitespace-pre-wrap text-texto-debil">Texto comunicado: {c.texto_comunicado}</div>}
+          {c.motivo_revocacion && <div className="text-texto-debil">Motivo de revocación: {c.motivo_revocacion}</div>}
+          {c.evidencia ? <button onClick={() => descargar(c)} className="font-semibold text-accent underline">
+            Descargar evidencia
+          </button> : !c.version_texto && <div className="text-texto-tenue">Evidencia anterior sin versión ni adjunto.</div>}
         </li>
       ))}
     </ol>
   );
 }
 
-function ConsentimientoModal({ ciudadanoId, otorgar, onClose, onListo }) {
+function ConsentimientoModal({ ciudadanoId, otorgar, referidoId, onClose, onListo }) {
   const toast = useToast();
-  const [modo, setModo] = useState("escrito");
+  const [modo, setModo] = useState("");
   const [alcance, setAlcance] = useState("");
+  const [version, setVersion] = useState("");
+  const [texto, setTexto] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [archivo, setArchivo] = useState(null);
+  const exigeArchivo = otorgar && ["escrito", "digital"].includes(modo);
+  const archivoValido = !archivo || archivo.size <= 10 * 1024 * 1024;
+  const valido = modo && alcance.trim() && archivoValido &&
+    (otorgar
+      ? version.trim() && (modo !== "verbal" || texto.trim()) && (!exigeArchivo || archivo)
+      : motivo.trim() && referidoId);
 
   const guardar = useAccion(
-    () => api.post("/consentimientos/", { ciudadano: ciudadanoId, otorgado: otorgar, modo, alcance }),
+    () => {
+      const datos = new FormData();
+      datos.append("ciudadano", String(ciudadanoId));
+      datos.append("otorgado", String(otorgar));
+      datos.append("modo", modo);
+      datos.append("alcance", alcance.trim());
+      if (otorgar) {
+        datos.append("version_texto", version.trim());
+        if (texto.trim()) datos.append("texto_comunicado", texto.trim());
+      } else {
+        datos.append("motivo_revocacion", motivo.trim());
+        datos.append("consentimiento_referido", String(referidoId));
+      }
+      if (archivo) datos.append("evidencia_archivo", archivo);
+      return api.multipart("/consentimientos/", datos);
+    },
     {
       invalida: ["lista", "detalle"],
       onSuccess: onListo,
@@ -286,7 +327,7 @@ function ConsentimientoModal({ ciudadanoId, otorgar, onClose, onListo }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending} onClick={() => guardar.mutate()}>
+          <Button disabled={guardar.isPending || !valido} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "Registrando..." : "Registrar"}
           </Button>
         </>
@@ -295,16 +336,32 @@ function ConsentimientoModal({ ciudadanoId, otorgar, onClose, onListo }) {
       <div className="flex flex-col gap-3.5">
         <Field label="Cómo se tomó">
           <Select value={modo} onChange={(e) => setModo(e.target.value)}>
+            <option value="">— Seleccioná un método —</option>
             {Object.entries(MODO).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </Select>
         </Field>
-        <Field label="Alcance / observaciones">
+        <Field label="Alcance *" hint="Qué tratamiento de datos se consintió o se revoca.">
           <Textarea
             value={alcance}
             onChange={(e) => setAlcance(e.target.value)}
-            placeholder={otorgar ? "Atención y tratamiento de datos de salud" : "Motivo de la revocación"}
+            placeholder="Describí el alcance comunicado"
           />
         </Field>
+        {otorgar ? <>
+          <Field label="Versión del texto comunicado *" hint="Identificador real del documento o texto usado; no se genera automáticamente.">
+            <Input value={version} onChange={(e) => setVersion(e.target.value)} maxLength={100} />
+          </Field>
+          {modo === "verbal" && <Field label="Texto comunicado verbalmente *">
+            <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} />
+          </Field>}
+        </> : <Field label="Motivo de la revocación *">
+          <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+        </Field>}
+        {modo && <Field label={exigeArchivo ? "Documento de evidencia *" : "Evidencia adjunta (opcional)"}
+          hint="PDF o imagen JPEG, PNG o WebP, hasta 10 MiB.">
+          <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setArchivo(e.target.files?.[0] || null)} />
+        </Field>}
+        {!archivoValido && <p role="alert" className="text-sm text-badge-error-fg">El archivo supera los 10 MiB permitidos.</p>}
       </div>
     </Modal>
   );

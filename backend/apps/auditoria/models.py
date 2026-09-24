@@ -63,6 +63,8 @@ class AccesoClinico(models.Model):
     # Con qué filtros, en un listado. Es lo que distingue «buscó a esta persona
     # por documento» de «abrió el padrón del área».
     detalle = models.CharField(max_length=300, blank=True)
+    motivo = models.CharField(max_length=500, blank=True)
+    variante = models.CharField(max_length=20, blank=True)
     resultados = models.PositiveIntegerField(default=0)
 
     ip = models.GenericIPAddressField(null=True, blank=True)

@@ -78,7 +78,7 @@ export function HorariosModal({ agenda, onClose }) {
     (cuerpo) => api.post("/disponibilidades/", { agenda: agenda.id, ...cuerpo }),
     {
       onSuccess: (nueva) => {
-        toast.ok(`${DIAS[nueva.dia_semana]} de ${hhmm(nueva.desde)} a ${hhmm(nueva.hasta)}.`);
+        toast.ok(`Horario guardado: ${DIAS[nueva.dia_semana].toLowerCase()} de ${hhmm(nueva.desde)} a ${hhmm(nueva.hasta)}.`);
         setSel(nueva.id);
         lista.refetch();
       },
@@ -90,12 +90,12 @@ export function HorariosModal({ agenda, onClose }) {
   );
 
   const guardar = useAccion(({ id, ...campos }) => api.patch(`/disponibilidades/${id}/`, campos), {
-    onSuccess: () => { toast.ok("Franja actualizada."); lista.refetch(); },
+    onSuccess: (franja) => { toast.ok(`Horario guardado: ${DIAS[franja.dia_semana].toLowerCase()} de ${hhmm(franja.desde)} a ${hhmm(franja.hasta)}.`); lista.refetch(); },
     onError: (e) => toast.deError(e, "No se pudo guardar la franja."),
   });
 
   const quitar = useAccion((f) => api.del(`/disponibilidades/${f.id}/`), {
-    onSuccess: () => { toast.ok("Franja quitada."); setSel(null); lista.refetch(); },
+    onSuccess: (_, franja) => { toast.ok(`Horario quitado: ${DIAS[franja.dia_semana].toLowerCase()} de ${hhmm(franja.desde)} a ${hhmm(franja.hasta)}.`); setSel(null); lista.refetch(); },
     onError: (e) => toast.deError(e, "No se pudo quitar la franja."),
   });
 

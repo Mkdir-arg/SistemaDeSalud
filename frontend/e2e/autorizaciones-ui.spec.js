@@ -23,7 +23,7 @@ async function escenario(page, opciones = {}) {
   const escrituras = [];
   const lecturas = [];
   await page.addInitScript((hospital) => {
-    localStorage.setItem("salud.access", "token-ficticio-interceptado");
+    sessionStorage.setItem("salud.access", "token-ficticio-interceptado");
     if (hospital) localStorage.setItem("salud.institucion", JSON.stringify({ id: 2, nombre: "Hospital Ficticio" }));
   }, !!opciones.hospital);
   await page.route("**/api/**", async (route) => {

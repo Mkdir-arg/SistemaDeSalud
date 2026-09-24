@@ -95,8 +95,13 @@ class RegistroDeAccesoTests(AuditoriaTestCase):
 
     def test_una_exportacion_se_marca_como_tal(self):
         """Llevarse el padrón en un archivo no es lo mismo que mirarlo."""
-        self.client.get("/api/ciudadanos/?formato=csv")
-        self.assertEqual(AccesoClinico.objects.get().tipo, AccesoClinico.Tipo.EXPORTACION)
+        self.client.post("/api/ciudadanos/exportar/", {
+            "institucion": self.inst.id, "motivo": "Revisión del padrón de pacientes",
+        }, format="json")
+        evento = AccesoClinico.objects.get()
+        self.assertEqual(evento.tipo, AccesoClinico.Tipo.EXPORTACION)
+        self.assertEqual(evento.motivo, "Revisión del padrón de pacientes")
+        self.assertEqual(evento.variante, "minimizado")
 
     def test_una_exportacion_dice_cuanta_gente_se_llevo(self):
         """
@@ -105,7 +110,9 @@ class RegistroDeAccesoTests(AuditoriaTestCase):
         alguien denuncia una filtración. La exportación se transmite fila por
         fila y no tiene `.data`, así que contar sobre la respuesta da 0 siempre.
         """
-        self.client.get("/api/ciudadanos/?formato=csv")
+        self.client.post("/api/ciudadanos/exportar/", {
+            "institucion": self.inst.id, "motivo": "Revisión del padrón de pacientes",
+        }, format="json")
         a = AccesoClinico.objects.get()
         self.assertEqual(a.tipo, AccesoClinico.Tipo.EXPORTACION)
         self.assertEqual(a.resultados, 2)
@@ -385,7 +392,10 @@ class DobleCargoTests(AuditoriaTestCase):
         admin —el alcance filtra por institución y NULL nunca matchea—, así que
         el único que se enteraba era el proveedor del software.
         """
-        self.assertEqual(self.client.get("/api/ciudadanos/?formato=csv").status_code, 200)
+        for institucion in (self.inst, self.otra):
+            self.assertEqual(self.client.post("/api/ciudadanos/exportar/", {
+                "institucion": institucion.id, "motivo": "Revisión del padrón institucional",
+            }, format="json").status_code, 200)
         filas = AccesoClinico.objects.filter(tipo=AccesoClinico.Tipo.EXPORTACION)
         self.assertFalse(
             filas.filter(institucion__isnull=True).exists(),
@@ -398,7 +408,9 @@ class DobleCargoTests(AuditoriaTestCase):
         )
 
     def test_el_admin_de_un_hospital_ve_la_exportacion_que_se_llevo_a_su_gente(self):
-        self.client.get("/api/ciudadanos/?formato=csv")
+        self.client.post("/api/ciudadanos/exportar/", {
+            "institucion": self.inst.id, "motivo": "Revisión del padrón institucional",
+        }, format="json")
         solo_central = Usuario.objects.create_user("solo@test.local", "x")
         Membresia.objects.create(
             usuario=solo_central, institucion=self.inst, rol="admin", activo=True

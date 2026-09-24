@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/Shell";
 import { Badge, Card } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { useFiltroUrl } from "@/components/ui/filtros";
-import { antiguedad, casoId } from "@/lib/format";
+import { antiguedad, casoId, duracionMinutos } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { estadoCaso, estadoVersion, nombreNodo } from "@/lib/dominio";
 
@@ -78,7 +78,7 @@ function varEspera(min) {
 }
 
 /** Un número de minutos que puede no existir: "—" y sin unidad, nunca 0. */
-const espera = (min) => (min == null ? { v: "—", u: null } : { v: min, u: "min" });
+const espera = (min) => ({ v: duracionMinutos(min), u: null });
 
 export default function Dashboard() {
   const { institucion } = useInstitucion();
@@ -651,7 +651,7 @@ function TablaAreas({ areas }) {
                     tabla en vez de decir que no midió nada. */}
                 {a.espera_prom_min == null
                   ? <span className="font-medium text-texto-tenue">—</span>
-                  : <>{a.espera_prom_min} <span className="font-medium text-texto-tenue">min</span></>}
+                  : duracionMinutos(a.espera_prom_min)}
               </td>
               <td className="whitespace-nowrap px-xl py-3.5 tabular-nums text-texto-suave">
                 {a.atencion_prom_min ? <>{a.atencion_prom_min} <span className="text-texto-tenue">min</span></> : <span className="text-texto-tenue">—</span>}
@@ -712,7 +712,7 @@ function TopDemoras({ items, onAbrir }) {
               </span>
             </span>
             <span className="shrink-0 font-bold tabular-nums" style={{ color: varEspera(it.espera_min) }}>
-              {it.espera_min} <span className="font-medium text-texto-tenue">min</span>
+              {duracionMinutos(it.espera_min)}
             </span>
           </button>
         </li>

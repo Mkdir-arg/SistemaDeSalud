@@ -79,6 +79,21 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
 class FinanciadorViewSet(CoberturaBaseViewSet):
     serializer_class = s.FinanciadorSerializer
 
+    @extend_schema(methods=["GET"], responses=s.CatalogoSerializer(many=True))
+    @extend_schema(methods=["POST"], request=s.CatalogoSerializer, responses=s.CatalogoSerializer)
+    @action(detail=False, methods=["get", "post"], url_path="catalogo-comun")
+    def catalogo_comun(self, request):
+        """Catálogo de plataforma, también cuando todavía no existe financiador."""
+        if not plataforma(request.user):
+            raise PermissionDenied("El catálogo común es administrado por plataforma.")
+        if request.method == "POST":
+            d = datos(request, {k: serializers.CharField(max_length=n) for k, n in [
+                ("codigo", 60), ("nombre", 160), ("categoria", 80),
+            ]})
+            item = m.PrestacionComun.objects.create(**d)
+            return Response(s.CatalogoSerializer(item).data, status=201)
+        return self.lista(m.PrestacionComun.objects.filter(activo=True), s.CatalogoSerializer)
+
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)
         response["Cache-Control"] = "private, no-store"

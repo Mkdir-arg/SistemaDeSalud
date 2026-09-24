@@ -114,7 +114,7 @@ export default function Supervision() {
       render: (c) => <span className="text-texto-debil">{antiguedad(c.paso_desde || c.creado)}</span>,
     },
     {
-      key: "acciones", label: "", className: "w-52 text-right",
+      key: "acciones", label: "Acciones", fija: true, className: "w-52 min-w-52 text-right",
       render: (c) => (
         // La fila navega al caso con clic y con Enter. Frenar sólo el clic dejaba
         // a quien opera por teclado sin poder reasignar ni cancelar: el keydown
@@ -296,6 +296,7 @@ export function CancelarModal({ caso, onClose, onDone }) {
       confirmar="Cancelar el caso"
       volver="No, volver"
       cargando={cancelar.isPending}
+      deshabilitado={!motivo.trim()}
       onConfirmar={() => cancelar.mutate(undefined, { onSuccess: onDone })}
       onClose={onClose}
     >
@@ -303,11 +304,12 @@ export function CancelarModal({ caso, onClose, onDone }) {
         El caso saldrá de las colas y quedará cerrado como <strong>cancelado</strong>.
         Esta acción no se revierte.
       </p>
-      <Field label="Motivo (opcional)">
+      <Field label="Motivo *" hint="Dejá registrada la razón de la cancelación.">
         <Textarea
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
           placeholder="Ej.: duplicado, paciente se retiró…"
+          required
         />
       </Field>
     </ConfirmDialog>

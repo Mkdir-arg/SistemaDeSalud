@@ -4,8 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
+import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { Badge } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad, casoId } from "@/lib/format";
@@ -28,6 +29,7 @@ export default function Fila() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const { institucion, puedeVer } = useInstitucion();
   const [areaSel, setAreaSel] = useState(null);
 
   // `box: "null"` como texto a propósito: `query()` descarta los valores null
@@ -43,16 +45,16 @@ export default function Fila() {
   // el triage marcó ROJO hace diez minutos no subía al tope de la lista de nadie.
   const q = useLista(
     "items-fila",
-    { atendido: false, box: "null", pageSize: 200 },
-    { refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
+    { caso__institucion: institucion?.id, atendido: false, box: "null", pageSize: 200 },
+    { enabled: !!institucion?.id, placeholderData: undefined, refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
   );
 
   // Quién está adentro de cada box. Es una lista corta —a lo sumo uno por box—
   // y va aparte de la cola para no mezclarla: la de arriba son los que ESPERAN.
   const enBox = useLista(
     "items-fila",
-    { atendido: false, pageSize: 200 },
-    { refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
+    { caso__institucion: institucion?.id, atendido: false, pageSize: 200 },
+    { enabled: !!institucion?.id, placeholderData: undefined, refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
   );
   const ocupacion = useMemo(() => {
     const m = new Map();
@@ -79,9 +81,12 @@ export default function Fila() {
    */
   const misMembresias = useLista(
     "membresias",
-    { usuario: user?.id, activo: true, pageSize: 50 },
-    { enabled: !!user?.id },
+    { usuario: user?.id, institucion: institucion?.id, activo: true, pageSize: 50 },
+    { enabled: !!user?.id && !!institucion?.id, placeholderData: undefined },
   );
+  const areasConfiguradas = useLista("areas", { institucion: institucion?.id, activa: true, pageSize: 1 }, {
+    enabled: !!institucion?.id, placeholderData: undefined,
+  });
   const misAreas = useMemo(
     () => new Set(misMembresias.filas.flatMap((m) => m.areas || [])),
     [misMembresias.filas],
@@ -126,7 +131,9 @@ export default function Fila() {
   // que no puede llamar sería mentirle por un instante.
   const areaAjena = misMembresias.isSuccess && areaSel != null && !misAreas.has(areaSel);
 
-  const boxes = useLista("boxes", { area: areaSel, activo: true, pageSize: 50 }, { enabled: areaSel != null });
+  const boxes = useLista("boxes", { area: areaSel, activo: true, pageSize: 50 }, {
+    enabled: areaSel != null && areas.some((a) => a.id === areaSel), placeholderData: undefined,
+  });
 
   /*
    * Los que se dieron por ausente.
@@ -139,8 +146,8 @@ export default function Fila() {
    */
   const ausentes = useLista(
     "items-fila",
-    { ausente: true, pageSize: 50 },
-    { refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
+    { caso__institucion: institucion?.id, ausente: true, pageSize: 50 },
+    { enabled: !!institucion?.id, placeholderData: undefined, refetchInterval: REFRESCO_MS, refetchIntervalInBackground: false },
   );
   const misAusentes = ausentes.filas.filter((it) => it.area === areaSel);
 
@@ -181,8 +188,13 @@ export default function Fila() {
     );
   }
 
-  if (q.isLoading) return <CargandoFila />;
-  if (q.error) return <div className="p-[30px]"><EstadoError error={q.error} onReintentar={q.refetch} /></div>;
+  if (q.isLoading || misMembresias.isLoading || areasConfiguradas.isLoading) return <CargandoFila />;
+  if (q.error || misMembresias.error || areasConfiguradas.error) return <div className="p-[30px]"><EstadoError error={q.error || misMembresias.error || areasConfiguradas.error} onReintentar={() => { q.refetch(); misMembresias.refetch(); areasConfiguradas.refetch(); }} /></div>;
+  if (!areas.length) return <div className="p-[30px]"><EstadoVacio
+    titulo={areasConfiguradas.total === 0 ? "Todavía no hay áreas activas" : "No tenés un área de atención asignada"}
+    detalle={areasConfiguradas.total === 0 ? "Configurá un área para organizar la fila de espera." : "Pedile a un administrador que te asigne a un área para operar su fila."}
+    accion={puedeVer("config_institucional") ? <Button onClick={() => navigate(areasConfiguradas.total === 0 ? "/estructura" : "/administracion")}>Configurar {areasConfiguradas.total === 0 ? "áreas" : "asignaciones"}</Button> : undefined}
+  /></div>;
 
   return (
     <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">

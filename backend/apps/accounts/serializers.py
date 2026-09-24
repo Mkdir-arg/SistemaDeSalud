@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.common import tiene_capacidad
 
@@ -84,13 +86,25 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["creado", "is_staff", "is_superuser"]
 
+    def validate(self, attrs):
+        password = attrs.get("password")
+        if self.instance is None and not password:
+            raise serializers.ValidationError({"password": "Indicá una contraseña para la nueva cuenta."})
+        if password is not None:
+            candidato = self.instance or Usuario(
+                email=attrs.get("email", ""), nombre=attrs.get("nombre", ""),
+                apellido=attrs.get("apellido", ""),
+            )
+            try:
+                validate_password(password, user=candidato)
+            except DjangoValidationError as error:
+                raise serializers.ValidationError({"password": error.messages}) from error
+        return attrs
+
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         usuario = Usuario(**validated_data)
-        if password:
-            usuario.set_password(password)
-        else:
-            usuario.set_unusable_password()
+        usuario.set_password(password)
         usuario.save()
         return usuario
 

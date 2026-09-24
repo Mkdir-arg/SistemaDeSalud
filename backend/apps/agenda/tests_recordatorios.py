@@ -186,11 +186,11 @@ class IndicadorAusentismoTests(TestCase):
         inicio = timezone.make_aware(
             datetime.combine(self.ayer, time(8, 0)), timezone.get_current_timezone()
         ) + timedelta(minutes=minuto)
-        t = motor.reservar(self.agenda, c, inicio)
-        if estado != Turno.Estado.RESERVADO:
-            t.estado = estado
-            t.save(update_fields=["estado"])
-        return t
+        # El indicador necesita turnos históricos en distintos estados; reservar
+        # ahora rechaza horarios pasados, como corresponde al flujo operativo.
+        return Turno.objects.create(
+            agenda=self.agenda, ciudadano=c, inicio=inicio, estado=estado,
+        )
 
     def _resumen(self):
         r = self.client.get(f"/api/instituciones/{self.inst.id}/tablero/?dias=7")

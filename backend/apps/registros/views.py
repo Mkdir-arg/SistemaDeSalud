@@ -1,15 +1,21 @@
 
+import csv
+import io
+
 from django.db import transaction
-from django.db.models import IntegerField, OuterRef, Prefetch, Subquery
+from django.db.models import IntegerField, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import status
 
-from apps.auditoria.mixins import AuditaLecturaClinica
+from apps.auditoria.mixins import AuditaLecturaClinica, registrar_acceso
+from apps.auditoria.models import AccesoClinico
 from apps.common import BaseModelViewSet, ROL_CAPACIDADES, capacidades_de, tiene_capacidad
 
 from . import integridad, reglas
@@ -121,6 +127,112 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         ("domicilio", "Domicilio"),
         ("consentimiento", "Consentimiento"),
     ]
+
+    def list(self, request, *args, **kwargs):
+        if request.query_params.get("formato") == "csv":
+            return Response({"detail": "La exportación requiere motivo. Usá POST /api/ciudadanos/exportar/."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"])
+    def exportar(self, request):
+        """Exportación institucional con motivo y variante controlados por servidor."""
+        from apps.registros.models import Ciudadano
+
+        try:
+            institucion_id = int(request.data.get("institucion"))
+            if institucion_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise drf_serializers.ValidationError({"institucion": "Indicá una institución válida."})
+        if not tiene_capacidad(request.user, "padron_admision", institucion_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("No tenés acceso al padrón de esa institución.")
+
+        variante = request.data.get("variante") or "minimizado"
+        if not isinstance(variante, str) or variante not in {"minimizado", "identificado", "clinico"}:
+            raise drf_serializers.ValidationError({"variante": "Elegí una variante válida."})
+        if variante != "minimizado" and not tiene_capacidad(request.user, "historia_clinica", institucion_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("La exportación identificada o clínica requiere acceso a historia clínica.")
+
+        motivo = request.data.get("motivo")
+        if not isinstance(motivo, str) or not 10 <= len(motivo.strip()) <= 500:
+            raise drf_serializers.ValidationError({"motivo": "Explicá el motivo (entre 10 y 500 caracteres)."})
+        motivo = motivo.strip()
+        busqueda = request.data.get("search") or ""
+        if not isinstance(busqueda, str) or len(busqueda) > 150:
+            raise drf_serializers.ValidationError({"search": "La búsqueda no puede superar los 150 caracteres."})
+        orden = request.data.get("ordering") or "apellido"
+        if not isinstance(orden, str) or orden.lstrip("-") not in {"apellido", "nombre", "creado"}:
+            raise drf_serializers.ValidationError({"ordering": "Orden no admitido."})
+
+        qs = self.get_queryset().filter(institucion_id=institucion_id)
+        if busqueda.strip():
+            termino = busqueda.strip()
+            qs = qs.filter(Q(nombre__icontains=termino) | Q(apellido__icontains=termino)
+                           | Q(documento__icontains=termino) | Q(codigo__icontains=termino))
+        qs = qs.order_by(orden, "id")
+        cantidad = qs.count()
+        filtros = f"search={busqueda.strip()}; ordering={orden}"
+        try:
+            registrar_acceso(
+                request, AccesoClinico.Tipo.EXPORTACION, Ciudadano._meta.model_name,
+                detalle=filtros, resultados=cantidad, institucion_id=institucion_id,
+                motivo=motivo, variante=variante, estricto=True,
+            )
+        except Exception:
+            return Response({"detail": "No se pudo registrar la auditoría; no se generó el archivo."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        if variante == "minimizado":
+            columnas = ["Referencia", "Iniciales", "Documento (últimos 4)", "Año de nacimiento", "Consentimiento"]
+        else:
+            columnas = [titulo for _, titulo in (
+                self.columnas_csv_padron if variante == "identificado" else self.columnas_csv
+            )]
+
+        def segura(valor):
+            texto = str(valor if valor is not None else "")
+            return "'" + texto if texto.lstrip().startswith(("=", "+", "-", "@", "\t", "\r", "\n")) else texto
+
+        def filas():
+            salida = io.StringIO()
+            escritor = csv.writer(salida, delimiter=";")
+
+            def linea(valores):
+                salida.seek(0); salida.truncate(0)
+                escritor.writerow([segura(v) for v in valores])
+                return salida.getvalue()
+
+            yield "\ufeff"
+            yield linea(columnas)
+            for ciudadano in qs.iterator(chunk_size=500):
+                if variante == "minimizado":
+                    consentimiento = next(iter(ciudadano.consentimientos.all()), None)
+                    fila = [ciudadano.codigo or ciudadano.pk,
+                            f"{ciudadano.nombre[:1]}. {ciudadano.apellido[:1]}.",
+                            ciudadano.documento[-4:],
+                            ciudadano.fecha_nacimiento.year if ciudadano.fecha_nacimiento else "",
+                            "Sin registro" if consentimiento is None else
+                            "Otorgado" if consentimiento.otorgado else "Revocado"]
+                else:
+                    datos = self.get_serializer(ciudadano).data
+                    claves = [clave for clave, _ in (
+                        self.columnas_csv_padron if variante == "identificado" else self.columnas_csv
+                    )]
+                    fila = [
+                        ("Sin registro" if datos.get("consentimiento") is None else
+                         "Otorgado" if datos["consentimiento"]["otorgado"] else "Revocado")
+                        if clave == "consentimiento" else datos.get(clave)
+                        for clave in claves
+                    ]
+                yield linea(fila)
+
+        respuesta = StreamingHttpResponse(filas(), content_type="text/csv; charset=utf-8")
+        respuesta["Content-Disposition"] = f'attachment; filename="pacientes-{variante}-{timezone.localdate():%Y-%m-%d}.csv"'
+        respuesta["Cache-Control"] = "private, no-store"
+        return respuesta
 
     def instituciones_del_usuario(self):
         # Un rol de reportes en B no amplía el padrón que Admisión puede leer en A.
@@ -413,7 +525,7 @@ class ConsentimientoDatosViewSet(AuditaLecturaClinica, BaseModelViewSet):
     se consintió y cuándo—, no el estado de hoy.
     """
 
-    queryset = ConsentimientoDatos.objects.select_related("ciudadano", "tomado_por")
+    queryset = ConsentimientoDatos.objects.select_related("ciudadano", "tomado_por", "evidencia")
     serializer_class = ConsentimientoDatosSerializer
     capacidad_requerida = "padron_admision"
     protege_lectura = True
@@ -421,10 +533,79 @@ class ConsentimientoDatosViewSet(AuditaLecturaClinica, BaseModelViewSet):
     filter_fields = ("ciudadano", "otorgado", "modo")
     http_method_names = ["get", "head", "options", "post"]
 
+    def get_parsers(self):
+        from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+        return [JSONParser(), MultiPartParser(), FormParser()]
+
     def perform_create(self, serializer):
         # Quién lo tomó sale de la sesión, no del cuerpo: un consentimiento que
         # se puede atribuir a cualquiera no se puede verificar.
-        obj = serializer.save(tomado_por=self.request.user)
-        if obj.institucion_id is None:
-            obj.institucion = obj.ciudadano.institucion
-            obj.save(update_fields=["institucion"])
+        from pathlib import PurePosixPath
+        from uuid import uuid4
+        from django.core.files.storage import default_storage
+        from apps.common import _validar_archivo_clinico, _sha256_archivo
+        from .models import ArchivoClinico
+
+        archivo = serializer.validated_data.pop("evidencia_archivo", None)
+        nombre = PurePosixPath(archivo.name).name if archivo else ""
+        if archivo:
+            valido = _validar_archivo_clinico(archivo, nombre)
+            if isinstance(valido, Response):
+                raise drf_serializers.ValidationError({"evidencia_archivo": valido.data["detail"]})
+            content_type, ext, tamano = valido
+            if content_type not in {"application/pdf", "image/jpeg", "image/png", "image/webp"}:
+                raise drf_serializers.ValidationError({"evidencia_archivo": "Adjuntá un PDF o una imagen válida."})
+            sha256 = _sha256_archivo(archivo)
+        guardado = None
+        try:
+            with transaction.atomic():
+                ciudadano = serializer.validated_data["ciudadano"]
+                Ciudadano.objects.select_for_update().get(pk=ciudadano.pk)
+                referido = serializer.validated_data.get("consentimiento_referido")
+                if referido:
+                    ultimo = ConsentimientoDatos.objects.filter(ciudadano=ciudadano).order_by("-momento", "-id").first()
+                    if ultimo is None or ultimo.pk != referido.pk:
+                        raise drf_serializers.ValidationError({"consentimiento_referido": "El consentimiento ya no está vigente."})
+                obj = serializer.save(tomado_por=self.request.user, institucion=ciudadano.institucion)
+                if archivo:
+                    ruta = f"uploads/{ciudadano.institucion_id}/{uuid4().hex}{ext}"
+                    guardado = default_storage.save(ruta, archivo)
+                    meta = ArchivoClinico.objects.create(
+                        institucion=ciudadano.institucion, ruta=guardado, nombre_original=nombre,
+                        content_type=content_type, tamano=tamano, sha256=sha256,
+                        proposito=ArchivoClinico.Proposito.CONSENTIMIENTO,
+                        objeto_tipo="ConsentimientoDatos", objeto_id=obj.pk,
+                        subido_por=self.request.user,
+                    )
+                    obj.evidencia = meta
+                    obj.save(update_fields=["evidencia"])
+        except Exception:
+            if guardado:
+                default_storage.delete(guardado)
+            raise
+
+    @action(detail=True, methods=["get"])
+    def evidencia(self, request, pk=None):
+        """Descarga protegida y auditada de la evidencia de consentimiento."""
+        from django.core.files.storage import default_storage
+        from django.http import FileResponse
+
+        consentimiento = self.get_object()
+        meta = consentimiento.evidencia
+        if meta is None or meta.proposito != "consentimiento" or meta.objeto_id != consentimiento.pk:
+            return Response({"detail": "No hay evidencia adjunta."}, status=status.HTTP_404_NOT_FOUND)
+        if not default_storage.exists(meta.ruta):
+            return Response({"detail": "La evidencia no está disponible."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            registrar_acceso(
+                request, AccesoClinico.Tipo.DETALLE, "evidencia_consentimiento",
+                ciudadano=consentimiento.ciudadano, objeto_id=consentimiento.pk,
+                institucion_id=consentimiento.ciudadano.institucion_id, estricto=True,
+            )
+        except Exception:
+            return Response({"detail": "No se pudo registrar el acceso a la evidencia."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        respuesta = FileResponse(default_storage.open(meta.ruta, "rb"), as_attachment=True,
+                                 filename=meta.nombre_original)
+        respuesta["Cache-Control"] = "private, no-store"
+        return respuesta

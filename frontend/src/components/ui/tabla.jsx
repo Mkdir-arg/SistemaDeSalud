@@ -25,9 +25,10 @@ export function useTablaUrl(clave, { ordenInicial = "", tamanoInicial = 10 } = {
   const [params, setParams] = useSearchParams();
   const k = (n) => `${clave}_${n}`;
 
-  const pagina = Number(params.get(k("pag"))) || 1;
+  const pagina = Math.max(1, Number(params.get(k("pag"))) || 1);
   const orden = params.get(k("ord")) ?? ordenInicial;
-  const tamano = Number(params.get(k("tam"))) || tamanoInicial;
+  const tamanoPedido = Number(params.get(k("tam")));
+  const tamano = TAMANOS.includes(tamanoPedido) ? tamanoPedido : tamanoInicial;
 
   const set = useCallback(
     (cambios) => {
@@ -75,11 +76,12 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
     "whitespace-nowrap px-lg text-left text-sm font-semibold text-texto-debil",
     compacta ? "py-2" : "py-3",
     col.className,
+    col.fija && "sticky right-0 z-20 bg-superficie-2 shadow-[-6px_0_8px_-7px_rgba(0,0,0,.35)]",
   );
 
   if (!col.orden) {
     return (
-      <th scope="col" className={clases}>
+      <th scope="col" aria-label={col.label || (col.fija ? "Acciones" : undefined)} className={clases}>
         {col.label}{col.filtro}
       </th>
     );
@@ -139,9 +141,9 @@ function Paginador({ pagina, paginas, total, tamano, desde, hasta, irA, cambiarT
         <div className="flex items-center gap-1">
           <button className={btn} onClick={() => irA(1)} disabled={pagina <= 1} aria-label="Primera página"><Icon name="chevronsLeft" size={15} /></button>
           <button className={btn} onClick={() => irA(pagina - 1)} disabled={pagina <= 1} aria-label="Página anterior"><Icon name="chevronLeft" size={15} /></button>
-          <span className="px-2 text-base tabular-nums text-texto-suave">{pagina} / {paginas}</span>
-          <button className={btn} onClick={() => irA(pagina + 1)} disabled={pagina >= paginas} aria-label="Página siguiente"><Icon name="chevronRight" size={15} /></button>
-          <button className={btn} onClick={() => irA(paginas)} disabled={pagina >= paginas} aria-label="Última página"><Icon name="chevronsRight" size={15} /></button>
+          <span className="px-2 text-base tabular-nums text-texto-suave">{total === 0 ? "Sin páginas" : `${pagina} / ${paginas}`}</span>
+          <button className={btn} onClick={() => irA(pagina + 1)} disabled={total === 0 || pagina >= paginas} aria-label="Página siguiente"><Icon name="chevronRight" size={15} /></button>
+          <button className={btn} onClick={() => irA(paginas)} disabled={total === 0 || pagina >= paginas} aria-label="Última página"><Icon name="chevronsRight" size={15} /></button>
         </div>
       </div>
     </div>
@@ -271,6 +273,7 @@ export function DataTable({
                             // visual, que es justo para lo que sirve la densidad.
                             !c.envolver && "whitespace-nowrap",
                             c.className,
+                            c.fija && "sticky right-0 z-10 bg-superficie shadow-[-6px_0_8px_-7px_rgba(0,0,0,.35)]",
                           )}
                         >
                           {c.truncar ? (

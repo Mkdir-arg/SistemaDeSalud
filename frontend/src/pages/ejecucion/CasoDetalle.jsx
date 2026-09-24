@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAccion, useDetalle, useLista } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
 import { Icon } from "@/components/icons";
-import { Badge, Button, Card, Checkbox, Field, Input, Mono, Select, Stepper, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Checkbox, ConfirmDialog, Field, Input, Mono, Select, Stepper, Textarea } from "@/components/ui";
 import { EstadoError, Skeleton } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { antiguedad, casoId, fechaHora } from "@/lib/format";
@@ -26,12 +27,13 @@ const PASOS = [
   { label: "Atendido", estados: ["atendido"] },
   { label: "Cerrado", estados: ["cerrado"] },
 ];
-const pasoActual = (estado) => Math.max(0, PASOS.findIndex((p) => p.estados.includes(estado)));
+const pasoActual = (estado) => PASOS.findIndex((p) => p.estados.includes(estado));
 
 export default function CasoDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const encabezadoRef = useRef(null);
 
   const q = useDetalle("casos", id);
   const caso = q.data;
@@ -42,6 +44,8 @@ export default function CasoDetalle() {
     { enabled: !!caso?.ciudadano },
   );
   const hc = hcQ.filas[0] || null;
+  const borradoresCaso = (hc?.entradas || []).filter((entrada) =>
+    entrada.caso === caso?.id && !entrada.firmada);
 
   // Todas las acciones del caso pasan por acá: una sola mutación que invalida las
   // listas (bandeja, fila, tablero) y el detalle. Antes cada acción recargaba a
@@ -50,7 +54,19 @@ export default function CasoDetalle() {
     invalida: ["lista", "detalle", "puesto", "cobertura-caso", "historial-cobertura"],
     onError: (e) => toast.deError(e),
   });
-  const ejecutar = (fn, ok) => accion.mutate(fn, { onSuccess: () => ok && toast.ok(ok) });
+  const ejecutar = (fn, ok) => accion.mutate(fn, { onSuccess: async (resultado) => {
+    if (ok) toast.ok(ok);
+    if (resultado?.id === caso?.id && (resultado.estado !== caso.estado || resultado.nodo_actual !== caso.nodo_actual)) {
+      await q.refetch();
+      requestAnimationFrame(() => {
+        encabezadoRef.current?.focus({ preventScroll: true });
+        encabezadoRef.current?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "start",
+        });
+      });
+    }
+  } });
 
   if (q.isLoading) return <CargandoCaso />;
   if (q.error) return <div className="p-8"><EstadoError error={q.error} onReintentar={q.refetch} /></div>;
@@ -77,7 +93,7 @@ export default function CasoDetalle() {
         <Card className="px-lg py-lg sm:px-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-xxl font-bold tracking-tight text-texto-fuerte">
+              <h2 ref={encabezadoRef} tabIndex={-1} className="text-xxl font-bold tracking-tight text-texto-fuerte">
                 {caso.ciudadano_nombre || caso.flujo_titulo}
               </h2>
               <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-md text-texto-debil">
@@ -92,7 +108,11 @@ export default function CasoDetalle() {
             <Badge tone={est.tone}>{est.label}</Badge>
           </div>
           <div className="mt-lg hidden overflow-x-auto border-t border-division pt-lg sm:block">
-            <Stepper steps={PASOS} current={pasoActual(caso.estado)} />
+            {caso.estado === "cancelado"
+              ? <p className="text-md text-texto-debil">Circuito cancelado. No se completó una etapa de atención.</p>
+              : pasoActual(caso.estado) >= 0
+                ? <Stepper steps={PASOS} current={pasoActual(caso.estado)} completo={caso.estado === "cerrado"} />
+                : <p className="text-md text-texto-debil">Estado actual: {est.label}.</p>}
           </div>
         </Card>
       </div>
@@ -130,6 +150,18 @@ export default function CasoDetalle() {
             ejecutar={ejecutar}
             hc={hc}
           />
+          {borradoresCaso.length > 0 && <Card className="p-lg">
+            <h3 className="text-md font-bold">Atenciones sin firmar de este caso</h3>
+            <p className="mt-1 text-sm text-texto-debil">Podés revisarlas, editarlas y firmarlas en la historia clínica.</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {borradoresCaso.map((entrada) => <li key={entrada.id}>
+                <Link className="text-base font-semibold text-accent underline underline-offset-2"
+                  to={`/historia/${caso.ciudadano}?tab=evolucion#entrada-${entrada.id}`}>
+                  Abrir «{entrada.titulo}»
+                </Link>
+              </li>)}
+            </ul>
+          </Card>}
 
           {/* Detrás del trabajo: en Los Aromos es un panel de 680 px con
               afiliación, importes y autorizaciones que tapaba la atención entera.
@@ -164,7 +196,7 @@ export default function CasoDetalle() {
                 {caso.valores.map((v) => (
                   <div key={v.id}>
                     <dt className="text-sm text-texto-debil">{v.campo_label}</dt>
-                    <dd className="break-words text-md font-medium text-texto-fuerte">{v.valor || "—"}</dd>
+                    <dd className="break-words text-md font-medium text-texto-fuerte">{valorMostrado(v)}</dd>
                   </div>
                 ))}
               </dl>
@@ -576,6 +608,8 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
       || (c.minimo != null && n < c.minimo)
       || (c.maximo != null && n > c.maximo);
   });
+  const errores = Object.fromEntries(campos.map((c) => [c.id, errorCampo(c, valores[c.id])]));
+  const hayErrores = fueraDeRango || Object.values(errores).some(Boolean);
 
   return (
     <Card className="p-lg sm:p-xxl">
@@ -585,10 +619,10 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
       ) : (
         <div className="flex flex-col gap-3.5">
           {campos.map((c) => (
-            <Field key={c.id} label={c.label + (c.requerido ? " *" : "")} hint={c.ayuda}>
+            <Field key={c.id} label={c.label + (c.requerido ? " *" : "")} hint={c.ayuda} error={errores[c.id]}>
               <CampoInput
                 campo={c}
-                value={valores[c.id] || ""}
+                value={valores[c.id] ?? ""}
                 institucionId={caso.institucion}
                 onChange={(v) => setValores((p) => ({ ...p, [c.id]: v }))}
               />
@@ -599,7 +633,7 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
       <AvisoCoberturaPendiente caso={caso} className="mt-xl" />
       <Button
         className="mt-xl"
-        disabled={ocupado || fueraDeRango}
+        disabled={ocupado || hayErrores}
         onClick={() => ejecutar(() => api.post(`/casos/${caso.id}/avanzar/`, { valores }), "Paso completado")}
       >
         {ocupado ? "Guardando…" : "Completar y avanzar"}
@@ -608,20 +642,64 @@ function PasoFormulario({ caso, ocupado, ejecutar }) {
   );
 }
 
-function CampoInput({ campo, value, onChange, institucionId }) {
-  if (campo.tipo === "texto_largo") return <Textarea value={value} onChange={(e) => onChange(e.target.value)} />;
-  if (campo.tipo === "fecha") return <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
-  if (campo.tipo === "numero") return <CampoNumero campo={campo} value={value} onChange={onChange} />;
+function CampoInput({ campo, value, onChange, institucionId, id, "aria-describedby": descripcion, "aria-invalid": invalido }) {
+  const props = { id, "aria-describedby": descripcion, "aria-invalid": invalido };
+  if (campo.tipo === "texto_largo") return <Textarea {...props} value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "fecha") return <Input {...props} type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "hora") return <Input {...props} type="time" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "email") return <Input {...props} type="email" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "telefono") return <Input {...props} type="tel" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "booleano") return <Select {...props} value={value === "" ? "" : String(value)}
+    onChange={(e) => onChange(e.target.value === "" ? "" : e.target.value === "true")}>
+    <option value="">Seleccionar…</option><option value="true">Sí</option><option value="false">No</option>
+  </Select>;
+  if (campo.tipo === "seleccion_multiple") {
+    const seleccionados = Array.isArray(value) ? value : [];
+    return <div {...props} role="group" aria-label={campo.label} className="flex flex-col gap-2 rounded-md border border-campo-borde p-3">
+      {(campo.opciones || []).map((o) => <label key={o} className="flex items-center gap-2 text-base">
+        <input type="checkbox" checked={seleccionados.includes(o)} onChange={(e) =>
+          onChange(campo.opciones.filter((op) => e.target.checked ? (op === o || seleccionados.includes(op)) : (op !== o && seleccionados.includes(op))))} />
+        {o}
+      </label>)}
+    </div>;
+  }
+  if (campo.tipo === "numero") return <CampoNumero campo={campo} value={value} onChange={onChange} inputProps={props} />;
   if (campo.tipo === "seleccion_unica") {
     return (
-      <Select value={value} onChange={(e) => onChange(e.target.value)}>
+      <Select {...props} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">Seleccionar…</option>
         {(campo.opciones || []).map((o) => <option key={o} value={o}>{o}</option>)}
       </Select>
     );
   }
-  if (campo.tipo === "archivo") return <CampoArchivo value={value} onChange={onChange} institucionId={institucionId} />;
-  return <Input value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (campo.tipo === "archivo") return <CampoArchivo value={value} onChange={onChange} institucionId={institucionId} inputProps={props} />;
+  return <Input {...props} value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
+function errorCampo(campo, valor) {
+  if (valor == null || valor === "") return undefined;
+  if (campo.tipo === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(valor).trim()))
+    return "Ingresá un correo electrónico válido.";
+  if (campo.tipo === "telefono") {
+    const texto = String(valor).trim();
+    const digitos = texto.replace(/\D/g, "");
+    if (!/^\+?[0-9 ()-]+$/.test(texto) || digitos.length < 7 || digitos.length > 15)
+      return "Usá entre 7 y 15 dígitos; se admite + inicial y separadores.";
+  }
+  if (campo.tipo === "hora" && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(valor)))
+    return "Ingresá una hora entre 00:00 y 23:59.";
+  return undefined;
+}
+
+function valorMostrado(valor) {
+  if (valor.campo_tipo === "booleano") return valor.valor === "true" ? "Sí" : valor.valor === "false" ? "No" : "—";
+  if (valor.campo_tipo === "seleccion_multiple") {
+    try {
+      const opciones = JSON.parse(valor.valor);
+      return Array.isArray(opciones) && opciones.length ? opciones.join(" · ") : "—";
+    } catch { return "—"; }
+  }
+  return valor.valor || "—";
 }
 
 /**
@@ -633,7 +711,7 @@ function CampoInput({ campo, value, onChange, institucionId }) {
  * `type="number"` con el rango del campo lo dice mientras se escribe, y la unidad
  * al lado evita el «38» que era en Fahrenheit.
  */
-function CampoNumero({ campo, value, onChange }) {
+function CampoNumero({ campo, value, onChange, inputProps }) {
   const fuera =
     String(value).trim() !== "" &&
     ((campo.minimo != null && Number(value) < campo.minimo) ||
@@ -642,6 +720,7 @@ function CampoNumero({ campo, value, onChange }) {
     <div>
       <div className="flex items-center gap-2">
         <Input
+          {...inputProps}
           type="number"
           step="any"
           min={campo.minimo ?? undefined}
@@ -670,7 +749,7 @@ function nombreArchivo(ref) {
   return s.split(/[\\/]/).filter(Boolean).pop() || s;
 }
 
-function CampoArchivo({ value, onChange, institucionId }) {
+function CampoArchivo({ value, onChange, institucionId, inputProps }) {
   const toast = useToast();
   const [nombreVisible, setNombreVisible] = useState("");
   const subir = useAccion((file) => api.upload(file, { institucion: institucionId }), {
@@ -680,6 +759,7 @@ function CampoArchivo({ value, onChange, institucionId }) {
   return (
     <div className="flex items-center gap-2.5">
       <input
+        {...inputProps}
         type="file"
         disabled={subir.isPending}
         onChange={(e) => {
@@ -703,10 +783,12 @@ function CampoArchivo({ value, onChange, institucionId }) {
 
 function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
   const toast = useToast();
+  const { user } = useAuth();
   const realizandoEstudio = !!caso.estudio_tipo;
   const [titulo, setTitulo] = useState(caso.paso_actual || "");
   const [contenido, setContenido] = useState("");
-  const [firmada, setFirmada] = useState(true);
+  const [firmada, setFirmada] = useState(false);
+  const [confirmandoFirma, setConfirmandoFirma] = useState(false);
   const [tipoEstudio, setTipoEstudio] = useState("");
   const [areaEstudio, setAreaEstudio] = useState("");
   const [detalleReceta, setDetalleReceta] = useState("");
@@ -717,6 +799,13 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
 
   const estudios = hc?.estudios || [];
   const recetas = hc?.recetas || [];
+  const enviarAtencion = () => ejecutar(
+    () => api.post(`/casos/${caso.id}/avanzar/`, {
+      titulo, contenido, firmada,
+      ...(realizandoEstudio ? { resultado, archivo } : {}),
+    }),
+    realizandoEstudio ? "Resultado cargado y paso cerrado" : firmada ? "Atención firmada y registrada; caso avanzado" : "Atención registrada sin firmar; caso avanzado",
+  );
 
   // Áreas a las que se puede derivar: las que tienen flujo publicado derivable.
   const flujos = useLista("flujos", { institucion: caso.institucion, pageSize: 100 }, { enabled: !realizandoEstudio });
@@ -937,16 +1026,21 @@ function PasoAtencion({ caso, ocupado, ejecutar, hc }) {
       <Button
         className="mt-xl"
         disabled={ocupado}
-        onClick={() => ejecutar(
-          () => api.post(`/casos/${caso.id}/avanzar/`, {
-            titulo, contenido, firmada,
-            ...(realizandoEstudio ? { resultado, archivo } : {}),
-          }),
-          realizandoEstudio ? "Resultado cargado" : "Atención registrada",
-        )}
+        onClick={() => firmada ? setConfirmandoFirma(true) : enviarAtencion()}
       >
-        {ocupado ? "Registrando…" : realizandoEstudio ? "Cargar resultado y cerrar" : "Registrar atención y avanzar"}
+        {ocupado ? "Registrando…" : firmada ? "Firmar, registrar y avanzar" : realizandoEstudio ? "Registrar sin firmar y cerrar paso" : "Registrar sin firmar y avanzar"}
       </Button>
+      {confirmandoFirma && <ConfirmDialog
+        title="Confirmar firma de la atención"
+        confirmar="Firmar y avanzar"
+        cargando={ocupado}
+        onClose={() => setConfirmandoFirma(false)}
+        onConfirmar={() => { setConfirmandoFirma(false); enviarAtencion(); }}
+      >
+        <p>Paciente: <strong>{caso.ciudadano_nombre || casoId(caso.id)}</strong>.</p>
+        <p className="mt-2">Firma: <strong>{user?.nombre_completo || user?.email}</strong>.</p>
+        <p className="mt-2">La entrada quedará sellada y el caso avanzará. Después no podrás editarla; una corrección requerirá un nuevo registro.</p>
+      </ConfirmDialog>}
     </Card>
   );
 }

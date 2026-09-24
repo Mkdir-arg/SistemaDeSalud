@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
@@ -19,7 +19,6 @@ const PAD = 16;
 // (nodos «derivar» con flujo de destino) que encadenan un proceso con otro.
 export default function MapaFlujos() {
   const { institucion } = useInstitucion();
-  const navigate = useNavigate();
 
   const q = useQuery({
     queryKey: ["mapa-flujos", institucion?.id],
@@ -32,7 +31,7 @@ export default function MapaFlujos() {
   return (
     <div className="flex h-full flex-col">
       <div className="px-lg pb-3.5 pt-5 sm:px-[30px]">
-        <h1 className="text-lg font-bold">Cómo se encadenan los procesos</h1>
+        <h2 className="text-lg font-bold">Cómo se encadenan los procesos</h2>
         <div className="mt-0.5 max-w-2xl text-base text-texto-debil">
           Cada bloque es un flujo; las flechas son derivaciones entre flujos. Hacé
           clic en un bloque para abrirlo en el diseñador.
@@ -85,7 +84,7 @@ export default function MapaFlujos() {
             {layout.aristas.map((a, i) => a.etiqueta && (
               <div
                 key={`l${i}`}
-                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-fondo px-1.5 py-px text-xs font-semibold text-texto-debil"
+                className="pointer-events-none absolute max-w-44 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-fondo px-1.5 py-px text-center text-xs font-semibold text-texto-debil"
                 style={{ left: a.lx, top: a.ly }}
               >
                 {a.etiqueta}
@@ -96,17 +95,14 @@ export default function MapaFlujos() {
             {layout.nodos.map((n) => {
               const est = estadoVersion[n.estado] || estadoVersion.borrador;
               const externo = n.externo;
-              const abrir = () => !externo && navigate(`/flujos/${n.id}`);
+              const Bloque = externo ? "div" : Link;
               return (
-                <div
+                <Bloque
                   key={n.id}
-                  role={externo ? undefined : "button"}
-                  tabIndex={externo ? undefined : 0}
+                  to={externo ? undefined : `/flujos/${n.id}`}
                   aria-label={externo ? undefined : `Abrir flujo ${n.titulo}`}
-                  onClick={abrir}
-                  onKeyDown={(e) => { if (!externo && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); abrir(); } }}
                   className={
-                    "absolute box-border flex flex-col justify-between rounded-lg border border-borde px-lg py-3.5 " +
+                    "absolute box-border flex flex-col justify-between rounded-lg border border-borde px-lg py-3.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent " +
                     (externo
                       ? "cursor-default border-dashed bg-superficie-2"
                       : "cursor-pointer bg-superficie shadow-card hover:border-accent-100")
@@ -134,12 +130,28 @@ export default function MapaFlujos() {
                       </>
                     )}
                   </div>
-                </div>
+                </Bloque>
               );
             })}
           </div>
         )}
       </div>
+      {layout?.aristas.length > 0 && (
+        <details className="border-t border-division bg-superficie px-lg py-4 sm:px-[30px]">
+          <summary className="cursor-pointer font-semibold text-accent">Ver conexiones como lista ({layout.aristas.length})</summary>
+          <ul className="mt-3 max-h-64 list-disc space-y-2 overflow-y-auto pl-5 text-sm">
+            {layout.aristas.map((a, i) => {
+              const origen = layout.nodos.find((n) => n.id === a.from);
+              const destino = layout.nodos.find((n) => n.id === a.to);
+              return <li key={i}>
+                <Link to={`/flujos/${a.from}`} className="font-semibold text-accent underline">{origen?.titulo || `Flujo ${a.from}`}</Link>
+                {` → ${a.etiqueta || "Derivación"} → `}
+                {a.externo ? <span>{destino?.titulo || "Flujo de otro alcance"}</span> : <Link to={`/flujos/${a.to}`} className="font-semibold text-accent underline">{destino?.titulo || `Flujo ${a.to}`}</Link>}
+              </li>;
+            })}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -212,31 +224,42 @@ function calcularLayout(data) {
     if (!columnas.has(d)) columnas.set(d, []);
     columnas.get(d).push(n);
   }
+  const desvios = edges.filter((e) => depth.get(e.to) !== depth.get(e.from) + 1).length;
+  const margenSuperior = desvios ? desvios * 30 + 24 : 0;
+  const margenLateral = desvios ? 40 : PAD;
   const pos = new Map();
   let maxFilas = 0;
   for (const [d, lista] of columnas) {
     maxFilas = Math.max(maxFilas, lista.length);
     lista.forEach((n, fila) => {
-      pos.set(n.id, { x: PAD + d * (CARD_W + GAP_X), y: PAD + fila * (CARD_H + GAP_Y) });
+      pos.set(n.id, { x: margenLateral + d * (CARD_W + GAP_X), y: PAD + margenSuperior + fila * (CARD_H + GAP_Y) });
     });
   }
   const maxDepth = Math.max(0, ...items.map((n) => depth.get(n.id)));
-  const width = PAD * 2 + (maxDepth + 1) * CARD_W + maxDepth * GAP_X;
-  const height = PAD * 2 + maxFilas * CARD_H + Math.max(0, maxFilas - 1) * GAP_Y;
+  const width = margenLateral * 2 + (maxDepth + 1) * CARD_W + maxDepth * GAP_X;
+  const height = PAD * 2 + margenSuperior + maxFilas * CARD_H + Math.max(0, maxFilas - 1) * GAP_Y;
 
   const nodosUbicados = items.map((n) => ({ ...n, ...pos.get(n.id) }));
 
   // Curvas: del borde derecho del origen al borde izquierdo del destino.
+  let carrilSuperior = 0;
   const aristasUbicadas = edges.map((e) => {
     const o = pos.get(e.from), d = pos.get(e.to);
     const sx = o.x + CARD_W, sy = o.y + CARD_H / 2;
     const tx = d.x, ty = d.y + CARD_H / 2;
-    const dx = Math.max(36, (tx - sx) / 2);
+    const adyacente = depth.get(e.to) === depth.get(e.from) + 1;
+    const corredor = (sx + tx) / 2;
+    const superior = PAD + carrilSuperior * 30 + 8;
+    if (!adyacente) carrilSuperior += 1;
     return {
       ...e,
-      path: `M ${sx} ${sy} C ${sx + dx} ${sy}, ${tx - dx} ${ty}, ${tx} ${ty}`,
-      lx: (sx + tx) / 2,
-      ly: (sy + ty) / 2 - 8,
+      // Entre columnas vecinas se usa el hueco; retornos y saltos largos
+      // pasan por un carril sobre todas las tarjetas.
+      path: adyacente
+        ? `M ${sx} ${sy} H ${corredor} V ${ty} H ${tx}`
+        : `M ${sx} ${sy} H ${sx + 24} V ${superior} H ${tx - 24} V ${ty} H ${tx}`,
+      lx: adyacente ? corredor : (sx + tx) / 2,
+      ly: adyacente ? (sy + ty) / 2 - 12 : superior,
     };
   });
 

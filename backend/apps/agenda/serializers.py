@@ -184,7 +184,7 @@ class TurnoSerializer(serializers.ModelSerializer):
             "ciudadano", "paciente",
             "documento", "inicio", "fin", "duracion_min", "estado", "estado_display",
             "sobreturno", "modalidad", "modalidad_display", "enlace",
-            "motivo", "origen", "caso", "observaciones",
+            "motivo", "motivo_registro", "origen", "caso", "observaciones",
             "recordado_at", "cancelado_at", "creado",
             "resuelto_por", "resuelto_por_nombre", "resuelto_at",
         ]
@@ -208,6 +208,7 @@ class TurnoSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "estado", "agenda", "ciudadano", "inicio", "caso", "duracion_min", "sobreturno",
             "modalidad", "enlace",
+            "motivo_registro",
             "recordado_at", "cancelado_at", "creado", "resuelto_por", "resuelto_at",
         ]
 
