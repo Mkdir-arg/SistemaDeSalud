@@ -256,7 +256,7 @@ export default function SeguimientoCobros({ usuarioId, institucion, onReservas }
         <tbody>{filas.map((fila) => <tr key={fila.id} className="border-b border-division last:border-0">{columnas.map((columna) => <td key={columna.key} className="px-4 py-3 align-top">{columna.render ? columna.render(fila) : fila[columna.key] || "—"}</td>)}</tr>)}</tbody>
       </table></div>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division px-4 py-3">
-        <span className="text-sm text-texto-debil">{plural(consulta.data?.count ?? filas.length, "registro", "registros")} · Página {page}</span>
+        <span className="text-sm text-texto-debil">{plural(consulta.data?.count ?? filas.length, "registro", "registros")} · {(consulta.data?.count ?? filas.length) === 0 ? "Sin páginas" : `Página ${page} de ${Math.ceil((consulta.data?.count ?? filas.length) / POR_PAGINA)}`}</span>
         <div className="flex gap-2"><Button size="sm" variant="ghost" disabled={page === 1 || consulta.isFetching || descargando} onClick={() => aplicar(aplicados, page - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={!consulta.data?.next || consulta.isFetching || descargando} onClick={() => aplicar(aplicados, page + 1)}>Siguiente</Button></div>
       </div>
     </>}

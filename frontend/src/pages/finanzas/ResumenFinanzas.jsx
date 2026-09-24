@@ -106,9 +106,11 @@ export function ProcesamientoFinanzas({ institucion, usuarioId, mes, area }) {
   if (!estado.data) return <p role="status" className="text-sm text-texto-debil">Comprobando actualización de repartos…</p>;
   const d = estado.data;
   const pendiente = d.estado !== "actualizado";
+  const sinActividad = !pendiente && !d.ultimo_exito;
   return <div role="status" className="flex flex-wrap items-center gap-3 text-sm">
-    <Badge tone={d.estado === "error" ? "error" : pendiente ? "amber" : "green"}>{d.estado === "error" ? "No se pudo actualizar" : pendiente ? (d.worker_activo ? "Actualizando repartos" : "Actualización pendiente") : "Repartos actualizados"}</Badge>
-    {(pendiente || !d.worker_activo) && <span className="text-texto-debil">{d.mensaje}</span>}
+    <Badge tone={d.estado === "error" ? "error" : pendiente ? "amber" : sinActividad ? "info" : "green"}>{d.estado === "error" ? "No se pudo actualizar" : pendiente ? (d.worker_activo ? "Actualizando repartos" : "Actualización pendiente") : sinActividad ? "Sin repartos procesados" : "Repartos actualizados"}</Badge>
+    {(pendiente || sinActividad || !d.worker_activo) && <span className="text-texto-debil">{sinActividad ? "No se registró una ejecución correcta en este filtro." : d.mensaje}</span>}
+    {!pendiente && d.ultimo_exito && <span className="text-texto-debil">Última ejecución correcta: {fechaHora(d.ultimo_exito)}</span>}
     <AyudaFinanzas titulo="Cuándo se actualizan los repartos"><p>{d.mensaje}</p>{d.ultimo_exito && <p>Última ejecución correcta: {fechaHora(d.ultimo_exito)}</p>}<p>Los cambios de gastos, aprobaciones, ajustes, reglas y actividad disparan el cálculo en segundo plano. Guardar confirma la carga, no que el reparto ya haya terminado.</p><p>No necesitás dejar abierta esta pantalla. Si el proceso se detiene, los cambios quedan pendientes para recuperarse; mientras tanto no se presentan como un resultado actualizado.</p></AyudaFinanzas>
   </div>;
 }

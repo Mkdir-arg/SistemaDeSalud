@@ -18,7 +18,7 @@ import { POR_PAGINA } from "@/api/queries";
 const ROLES = { admin: "Administración", operador: "Operación", auditor: "Sólo lectura" };
 const SECCIONES = [
   { key: "planes", label: "Planes", icon: "layers" },
-  { key: "reglas", label: "Cobertura", icon: "clipboard" },
+  { key: "reglas", label: "Reglas de cobertura", icon: "clipboard" },
   { key: "aranceles", label: "Aranceles", icon: "list" },
   { key: "padron", label: "Padrón", icon: "idCard" },
   { key: "consumos", label: "Consumos externos", icon: "fileText" },
@@ -57,7 +57,7 @@ export default function PortalFinanciadores() {
   const plataforma = plataformaDe(user);
   const admin = plataforma || organizacion?.rol === "admin";
   const sufijo = seleccion ? `?financiador=${encodeURIComponent(seleccion)}` : "";
-  const items = SECCIONES.filter((item) => (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
+  const items = SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
     .map((item) => ({ ...item, to: `/financiadores${item.key === "planes" ? "" : `/${item.key}`}${sufijo}` }));
   const actual = items.find((item) => item.key === seccion);
   if (organizacion && !actual) return <Navigate to={`/financiadores${sufijo}`} replace />;
@@ -70,10 +70,31 @@ export default function PortalFinanciadores() {
     volver: institucion ? { to: "/inicio", label: "Volver al hospital" } : plataforma ? { to: "/", label: "Directorio" } : null,
   }}>
     <div className="space-y-6 p-lg sm:p-[30px]">
-      {organizaciones.isLoading ? <Spinner label="Consultando financiadores…" /> : organizaciones.error ? <ErrorPortal error={organizaciones.error} reintentar={organizaciones.refetch} /> : organizacion ? <EspacioFinanciador key={`${user.id}:${organizacion.id}:${seccion}`} organizacion={organizacion} usuarioId={user.id} plataforma={plataforma} tab={seccion} /> : <Card><EstadoVacio titulo={seleccion ? "No tenés acceso al financiador seleccionado" : "Todavía no tenés un financiador asignado"} detalle="El administrador de tu organización puede habilitar tu acceso. La plataforma da de alta las nuevas organizaciones." /></Card>}
+      {organizaciones.isLoading ? <Spinner label="Consultando financiadores…" /> : organizaciones.error ? <ErrorPortal error={organizaciones.error} reintentar={organizaciones.refetch} /> : organizacion ? <EspacioFinanciador key={`${user.id}:${organizacion.id}:${seccion}`} organizacion={organizacion} usuarioId={user.id} plataforma={plataforma} tab={seccion} /> : plataforma && seccion === "catalogo" && !seleccion ? <CatalogoGlobal usuarioId={user.id} /> : <Card><EstadoVacio titulo={seleccion ? "No tenés acceso al financiador seleccionado" : plataforma ? "Todavía no hay financiadores" : "Todavía no tenés un financiador asignado"} detalle={seleccion && lista.length ? "Elegí un financiador disponible en el selector lateral." : plataforma ? "Creá el primero para configurar sus planes, reglas y convenios. El catálogo común está disponible en el menú." : "El administrador de tu organización puede habilitar tu acceso."} accion={plataforma && !seleccion ? <Button onClick={() => setCrear(true)}>Nuevo financiador</Button> : undefined} /></Card>}
       {crear && <FormularioPortal titulo="Nuevo financiador" campos={[{ name: "nombre", label: "Nombre", required: true }, { name: "tipo", label: "Tipo", options: [{ id: "obra_social", nombre: "Obra social" }, { id: "mutual", nombre: "Mutual" }, { id: "otro", nombre: "Otro financiador" }], required: true }]} guardar={(body) => api.post("/financiadores/", body)} onClose={() => setCrear(false)} onGuardado={async () => { await organizaciones.refetch(); setCrear(false); }} />}
     </div>
   </Shell>;
+}
+
+function CatalogoGlobal({ usuarioId }) {
+  const [pagina, setPagina] = useState(1);
+  const [crear, setCrear] = useState(false);
+  const consulta = useQuery({
+    queryKey: ["catalogo-comun", usuarioId, pagina],
+    queryFn: () => api.get(`/financiadores/catalogo-comun/?page=${pagina}`),
+    gcTime: 0,
+  });
+  const filas = filasDe(consulta.data);
+  const total = consulta.data?.count || 0;
+  useEffect(() => {
+    if (pagina > 1 && (consulta.error?.status === 404 || consulta.isSuccess && total === 0)) setPagina(1);
+  }, [consulta.error, consulta.isSuccess, pagina, total]);
+  return <Card className="overflow-hidden">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-division p-4"><p className="text-sm text-texto-debil">Prestaciones compartidas por hospitales y financiadores.</p><Button onClick={() => setCrear(true)}>Nueva prestación común</Button></div>
+    {consulta.isLoading ? <Spinner label="Cargando catálogo…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : filas.length === 0 ? <EstadoVacio titulo="El catálogo común todavía está vacío" detalle="Agregá una prestación para que los hospitales puedan vincularla." /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-superficie-2 text-texto-debil"><tr><th className="px-4 py-3" scope="col">Código</th><th className="px-4 py-3" scope="col">Prestación</th><th className="px-4 py-3" scope="col">Categoría</th></tr></thead><tbody>{filas.map((item) => <tr key={item.id} className="border-t border-division"><td className="px-4 py-3 font-mono">{item.codigo}</td><td className="px-4 py-3">{item.nombre}</td><td className="px-4 py-3">{item.categoria}</td></tr>)}</tbody></table></div>}
+    {!consulta.error && !consulta.isLoading && <div className="flex items-center justify-between border-t border-division p-3 text-sm"><span>{plural(total, "prestación", "prestaciones")} · {total ? `Página ${pagina}` : "Sin páginas"}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={pagina === 1 || consulta.isFetching} onClick={() => setPagina(pagina - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={!consulta.data?.next || consulta.isFetching} onClick={() => setPagina(pagina + 1)}>Siguiente</Button></div></div>}
+    {crear && <FormularioPortal titulo="Nueva prestación común" campos={[{ name: "codigo", label: "Código", maxLength: 60, required: true }, { name: "nombre", label: "Prestación", maxLength: 160, required: true }, { name: "categoria", label: "Categoría", maxLength: 80, required: true }]} guardar={(body) => api.post("/financiadores/catalogo-comun/", body)} onClose={() => setCrear(false)} onGuardado={async () => { await consulta.refetch(); setCrear(false); }} />}
+  </Card>;
 }
 
 function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
@@ -124,6 +145,16 @@ const DESCRIPCIONES = {
   catalogo: "Catálogo compartido por todos los financiadores y hospitales. La plataforma administra su identidad; cada hospital conserva sus aranceles.",
 };
 
+const VACIOS_PORTAL = {
+  planes: "Creá un plan para poder asignarlo a los afiliados.",
+  reglas: "Definí una regla para indicar qué prestaciones cubre cada plan.",
+  padron: "Registrá un afiliado o importá el padrón para comenzar.",
+  consumos: "Los consumos externos registrados o importados aparecerán acá.",
+  convenios: "Proponé un convenio a un hospital para habilitar la relación.",
+  usuarios: "Agregá una persona para darle acceso a este financiador.",
+  catalogo: "Agregá una prestación al catálogo común para que los hospitales puedan vincularla.",
+};
+
 function EnlaceActivacion({ ruta, onClose }) {
   const [copiado, setCopiado] = useState(false);
   const [error, setError] = useState(false);
@@ -147,6 +178,11 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
   const [vigencia, setVigencia] = useState(null);
   const consulta = useQuery({ queryKey: [...scope, recurso, page, buscar], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, recurso)}?${new URLSearchParams({ page, search: buscar, page_size: POR_PAGINA })}`), gcTime: 0 });
   const filas = filasDe(consulta.data);
+  const total = consulta.data?.count ?? filas.length;
+  const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  useEffect(() => {
+    if (page > 1 && (consulta.error?.status === 404 || consulta.isSuccess && page > paginas)) setPage(consulta.error ? 1 : paginas);
+  }, [consulta.error, consulta.isSuccess, page, paginas]);
   const columnas = columnasDe(recurso, planes, catalogo);
   if (recurso === "consumos" && operador) columnas.push({ key: "corregir", label: "Correcciones", render: (r) => r.corrige ? `Corrige consumo ${r.corrige}` : <Button size="sm" variant="ghost" onClick={() => setCorreccion(r)}>Corregir cantidad</Button> });
   if (recurso === "padron" && operador) columnas.push({ key: "identidad", label: "Identificación", render: (r) => <Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Corregir identidad</Button> });
@@ -163,8 +199,8 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
   return <><Card className="overflow-hidden">
     {["padron", "consumos", "aranceles"].includes(recurso) && <form className="flex flex-wrap items-end gap-2 border-b border-division p-4" onSubmit={(e) => { e.preventDefault(); setPage(1); setBuscar(busqueda.trim()); }}><div className="min-w-0 flex-1"><Field label={recurso === "padron" ? "Buscar por afiliado, documento o nombre" : recurso === "aranceles" ? "Buscar por hospital o prestación" : "Buscar consumo"}><Input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></Field></div><Button variant="secondary" type="submit">Buscar</Button></form>}
     {error && <div className="p-4"><ErrorPortal error={error} /></div>}
-    {consulta.isLoading ? <Spinner label="Cargando registros…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : filas.length === 0 ? <EstadoVacio titulo={buscar ? "No hay resultados para esta búsqueda" : "Todavía no hay registros"} detalle={recurso === "aranceles" ? (buscar ? "Probá con otro hospital o prestación." : "Se mostrarán las prestaciones vinculadas de los hospitales con convenio activo.") : buscar ? "Probá con otro documento, número o nombre." : "Los registros de esta sección aparecerán acá."} /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-division bg-superficie-2 text-texto-debil"><tr>{columnas.map((col) => <th key={col.key} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{col.label}</th>)}</tr></thead><tbody>{filas.map((fila) => <tr key={recurso === "aranceles" ? `${fila.convenio}:${fila.id}` : fila.id} className="border-b border-division last:border-0">{columnas.map((col) => <td key={col.key} className="px-4 py-3 align-top">{col.render ? col.render(fila) : fila[col.key] ?? "—"}</td>)}</tr>)}</tbody></table></div>}
-    {!consulta.error && !consulta.isLoading && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division px-4 py-3"><span className="text-sm text-texto-debil">{plural(consulta.data?.count ?? filas.length, "registro", "registros")} · Página {page}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={page === 1 || consulta.isFetching} onClick={() => setPage((p) => p - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={!consulta.data?.next || consulta.isFetching} onClick={() => setPage((p) => p + 1)}>Siguiente</Button></div></div>}
+    {consulta.isLoading ? <Spinner label="Cargando registros…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : filas.length === 0 ? <EstadoVacio titulo={buscar ? "No hay resultados para esta búsqueda" : "Todavía no hay registros"} detalle={buscar ? (recurso === "aranceles" ? "Probá con otro hospital o prestación." : "Probá con otro documento, número o nombre.") : recurso === "aranceles" ? "Se mostrarán las prestaciones vinculadas de los hospitales con convenio activo." : VACIOS_PORTAL[recurso] || "Los registros de esta sección aparecerán acá."} /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-division bg-superficie-2 text-texto-debil"><tr>{columnas.map((col) => <th key={col.key} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{col.label}</th>)}</tr></thead><tbody>{filas.map((fila) => <tr key={recurso === "aranceles" ? `${fila.convenio}:${fila.id}` : fila.id} className="border-b border-division last:border-0">{columnas.map((col) => <td key={col.key} className="px-4 py-3 align-top">{col.render ? col.render(fila) : fila[col.key] ?? "—"}</td>)}</tr>)}</tbody></table></div>}
+    {!consulta.error && !consulta.isLoading && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division px-4 py-3"><span className="text-sm text-texto-debil">{plural(total, "registro", "registros")} · {total === 0 ? "Sin páginas" : `Página ${page} de ${paginas}`}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={total === 0 || page === 1 || consulta.isFetching} onClick={() => setPage((p) => p - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={total === 0 || !consulta.data?.next || consulta.isFetching} onClick={() => setPage((p) => p + 1)}>Siguiente</Button></div></div>}
   </Card>{correccion && <FormularioPortal titulo="Corregir consumo externo" descripcion={`La cantidad correcta reemplaza el efecto del consumo ${correccion.id}. El registro original y su motivo se conservan. Cero anula su cantidad consumida.`} campos={[{ name: "cantidad", label: "Cantidad correcta", type: "number", min: 0, max: 100000, step: 1, numeric: true, required: true }, { name: "motivo", label: "Motivo de corrección", maxLength: 255, required: true }]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "corregir-consumo"), { consumo: correccion.id, ...body })} onClose={() => setCorreccion(null)} onGuardado={async () => { setCorreccion(null); await actualizado("Corrección registrada. Se conservó el consumo original."); }} />}
   {identidad && <FormularioPortal titulo="Corregir identidad del afiliado" descripcion="Esta corrección conserva el afiliado, su consumo y sus vínculos. Usala para corregir un identificador cargado por error." campos={[{ name: "numero", label: "Número de afiliado correcto", default: identidad.numero, maxLength: 80, required: true }, { name: "documento", label: "Documento correcto", default: identidad.documento, maxLength: 80, required: true }, { name: "motivo", label: "Motivo de corrección", maxLength: 255, required: true }]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "corregir-identidad"), { afiliado: identidad.id, ...body })} onClose={() => setIdentidad(null)} onGuardado={async () => { setIdentidad(null); await actualizado("Identidad corregida. Se conservó el consumo del afiliado."); }} />}
   {usuario && <FormularioPortal titulo="Cambiar acceso al financiador" descripcion="El cambio se aplica sólo a esta organización. Se conserva la contraseña del usuario." campos={[{ name: "email", label: "Correo electrónico", default: usuario.email, readOnly: true, required: true }, { name: "nombre", label: "Nombre y apellido", default: usuario.nombre || "", required: true }, { name: "rol", label: "Rol", default: usuario.rol, options: Object.entries(ROLES).map(([id, nombre]) => ({ id, nombre })), required: true }, { name: "activo", boolean: true, default: usuario.activo !== false, render: (value, onChange) => <Checkbox label="Acceso activo a este financiador" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} /> }, campoPermisoAutorizaciones(usuario.resuelve_autorizaciones)]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "usuarios"), body)} onClose={() => setUsuario(null)} onGuardado={async (resultado) => { setUsuario(null); await actualizado("Acceso actualizado.", resultado); }} />}

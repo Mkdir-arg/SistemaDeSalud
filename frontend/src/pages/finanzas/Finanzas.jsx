@@ -388,7 +388,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
   return <div data-finance-tab={tab} className="finance-page flex min-h-full flex-col gap-5 p-lg sm:p-xxl">
     <div>
       <div role="group" aria-label="Acciones de Finanzas" className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="flex min-h-10 items-center text-xl font-bold">Finanzas y costos</h1>
+      <h2 className="flex min-h-10 items-center text-xl font-bold">Finanzas y costos</h2>
       <div className="ml-auto flex max-w-full min-w-0 items-start gap-2">
       <div className="flex min-h-10 min-w-0 flex-wrap justify-end gap-2">
         {(areas.isLoading || conceptos.isLoading) ? <span role="status" className="inline-flex h-10 items-center text-sm text-texto-debil">Preparando acciones…</span> : <>

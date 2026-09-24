@@ -48,7 +48,7 @@ export default function HistorialCoberturaPaciente({ ciudadanoId }) {
       )}
       {consulta.data && !consulta.error && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division p-4">
-          <p className="text-sm text-texto-debil">{plural(consulta.data.count, "registro", "registros")} · Página {page}</p>
+          <p className="text-sm text-texto-debil">{plural(consulta.data.count, "registro", "registros")} · {consulta.data.count === 0 ? "Sin páginas" : `Página ${page} de ${Math.ceil(consulta.data.count / POR_PAGINA)}`}</p>
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="ghost" disabled={page === 1 || consulta.isFetching} onClick={() => setPage(page - 1)}>Anterior</Button>
             <Button type="button" size="sm" variant="ghost" disabled={!consulta.data.next || consulta.isFetching} onClick={() => setPage(page + 1)}>Siguiente</Button>

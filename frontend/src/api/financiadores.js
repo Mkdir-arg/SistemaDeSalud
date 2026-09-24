@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, mensajeError } from "./client";
 
 export const rutaFinanciador = (id, recurso = "") => `/financiadores/${id}/${recurso ? `${recurso}/` : ""}`;
 export const filasDe = (data) => Array.isArray(data) ? data : data?.results || [];
@@ -23,11 +23,5 @@ export async function importarFinanciador(id, tipo, archivo, clave) {
 }
 
 export function errorFinanciador(error) {
-  if (error?.status === 403) return typeof error.data?.detail === "string" ? error.data.detail : "No tenés permiso para esta operación. Consultá al administrador de tu organización.";
-  const data = error?.data;
-  if (Array.isArray(data)) return data.join(" ");
-  if (data && typeof data === "object") {
-    return Object.entries(data).map(([campo, valor]) => `${campo === "detail" || campo === "non_field_errors" ? "" : `${campo}: `}${Array.isArray(valor) ? valor.join(" ") : typeof valor === "object" ? JSON.stringify(valor) : valor}`).join(" ");
-  }
-  return error?.message || "No se pudo completar la operación. Podés volver a intentarlo.";
+  return mensajeError(error, "No se pudo completar la operación. Podés volver a intentarlo.");
 }
