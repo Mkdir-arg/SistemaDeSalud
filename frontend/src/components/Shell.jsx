@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "./Logo";
 import { Avatar, IconButton, Popover } from "./ui";
 import { Icon } from "./icons";
 import { api } from "../api/client";
+import { useLista } from "../api/queries";
 import { useAuth } from "../auth/AuthContext";
 import { useInstitucion } from "../auth/InstitutionContext";
 import { antiguedad } from "../lib/format";
@@ -36,7 +37,7 @@ const TITULOS = {
   "/internacion": "Internación",
   "/agenda": "Turnos programados",
   "/farmacia": "Farmacia e insumos",
-  "/red": "Red de establecimientos",
+  "/red": "Red y traslados",
   "/casos": "Casos",
   "/padron": "Padrón de pacientes",
   "/historia": "Historia clínica",
@@ -247,14 +248,14 @@ function BotonTema() {
   );
 }
 
-function TopBar({ onAbrirMenu, titulo, hospital = true }) {
+function TopBar({ onAbrirMenu, titulo, hospital = true, volverA = "/inicio" }) {
   const { logout } = useAuth();
   const { refresco } = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
   const txtRefresco = textoRefresco(refresco);
   // Volver: en toda página salvo el inicio (que es la base del recorrido).
-  const puedeVolver = !["/inicio", "/"].includes(location.pathname);
+  const puedeVolver = !["/inicio", "/", "/financiadores"].includes(location.pathname);
   return (
     <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-borde bg-superficie px-lg sm:gap-3.5 sm:px-[26px]">
       {/* Hamburguesa: solo en angosto, donde el menú es un cajón. */}
@@ -262,7 +263,7 @@ function TopBar({ onAbrirMenu, titulo, hospital = true }) {
         <Icon name="rows" size={17} />
       </button>
       {puedeVolver && (
-        <button onClick={() => navigate(-1)} aria-label="Volver" title="Volver" className={BOTON_BARRA}>
+        <button onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate(volverA)} aria-label="Volver" title="Volver" className={BOTON_BARRA}>
           <Icon name="back" size={17} />
         </button>
       )}
@@ -308,15 +309,8 @@ const GRUPOS = [
   {
     label: "TRABAJO",
     items: [
-      // Bandeja y Filas siguen fuera del menú: son la cola de lo que te toca
-      // AHORA y se operan desde «Mi trabajo» (Inicio). Duplicarlas acá sería dos
-      // puertas a lo mismo.
-      //
-      // «Casos» sí entra, porque responde otra pregunta: buscar un caso que NO
-      // es tu tarea pendiente —llama el paciente y pregunta, hay que revisar algo
-      // de ayer, seguimiento administrativo—. Eso no aparece en «Mi trabajo» por
-      // definición, y hasta acá la única forma de llegar era tipear la URL. Es
-      // consulta, no operación: el mismo rol que «Padrón de pacientes».
+      { to: "/bandeja", label: "Bandeja de tareas", icon: "inbox", cap: "casos_operar" },
+      // «Casos» permite buscar el historial además de las tareas actuales.
       { to: "/casos", label: "Casos", icon: "inbox", cap: "casos_operar" },
       // Internación sí va en el menú: el tablero de camas se consulta todo el
       // día por sí mismo, no como paso de un caso.
@@ -377,9 +371,10 @@ const itemClase = (col) => ({ isActive }) =>
       : "text-texto-suave hover:bg-superficie-2 hover:text-texto",
   );
 
-export function Shell({ children, financiador = null }) {
+export function Shell({ children, financiador = null, plataforma = false }) {
   const esFinanciador = Boolean(financiador);
-  const permisosFinanzas = usePermisosFinanzas({ enabled: !esFinanciador });
+  const esPlataforma = plataforma && !esFinanciador;
+  const permisosFinanzas = usePermisosFinanzas({ enabled: !esFinanciador && !esPlataforma });
   const { user, logout } = useAuth();
   const { institucion, setInstitucion, roles, puedeVer, vista, setVista } = useInstitucion();
   const navigate = useNavigate();
@@ -389,6 +384,7 @@ export function Shell({ children, financiador = null }) {
 
   // Menú lateral colapsable (recordado entre sesiones).
   const [colapsadoPref, setColapsado] = useState(() => localStorage.getItem("salud.menu") === "col");
+  const [gruposCerrados, setGruposCerrados] = useState(() => new Set());
   const toggleMenu = () => setColapsado((v) => { localStorage.setItem("salud.menu", v ? "exp" : "col"); return !v; });
   // El colapso solo vale en escritorio: en el cajón móvil el menú se muestra
   // siempre completo (si no, alguien que colapsó en la compu abre el cajón en el
@@ -412,14 +408,19 @@ export function Shell({ children, financiador = null }) {
   const [misInst, setMisInst] = useState([]);
   const [menuInst, setMenuInst] = useState(false);
   useEffect(() => {
-    if (!user || user.is_superuser || esFinanciador) return;
+    if (!user || user.is_superuser || esFinanciador || esPlataforma) return;
     api.get("/instituciones/").then((d) => setMisInst(d.results || d)).catch(() => {});
-  }, [user, esFinanciador]);
-  const puedeCambiar = !esFinanciador && !user?.is_superuser && misInst.length > 1;
+  }, [user, esFinanciador, esPlataforma]);
+  const puedeCambiar = !esFinanciador && !esPlataforma && !user?.is_superuser && misInst.length > 1;
 
   // Contador de tareas pendientes para roles operativos (el "Inicio" es su worklist).
   // Se refresca solo cada 30s y se pausa con la pestaña oculta.
-  const operativo = !esFinanciador && puedeVer("casos_operar") && !puedeVer("config_institucional") && !puedeVer("diseno_flujos");
+  const operativo = !esFinanciador && !esPlataforma && puedeVer("casos_operar") && !puedeVer("config_institucional") && !puedeVer("diseno_flujos");
+  const conteoBandeja = useLista("casos", { institucion: institucion?.id, tomables: true, pageSize: 1 }, {
+    enabled: !esFinanciador && !esPlataforma && Boolean(institucion?.id) && puedeVer("casos_operar"),
+    placeholderData: undefined,
+    refetchInterval: () => document.hidden ? false : 30000,
+  });
   const [pendientes, setPendientes] = useState(0);
   useEffect(() => {
     if (!operativo || !institucion) { setPendientes(0); return; }
@@ -452,6 +453,9 @@ export function Shell({ children, financiador = null }) {
   return (
     <RefreshCtx.Provider value={{ refresco, setRefresco }}>
     <div className="flex min-h-screen bg-fondo">
+      <a href="#contenido-principal" className="sr-only fixed left-4 top-3 z-[100] rounded-md bg-superficie px-4 py-2 text-accent shadow-lg focus:not-sr-only focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        Ir al contenido principal
+      </a>
       {/* Fondo del cajón: solo existe en angosto y con el menú abierto. */}
       {cajon && (
         <div
@@ -484,7 +488,7 @@ export function Shell({ children, financiador = null }) {
                 <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {(esFinanciador ? financiador.nombre : institucion?.nombre) || "I-Core Salud"}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", fontWeight: 500 }}>{esFinanciador ? "Financiador" : institucion?.tipo || "Institución"}</div>
+                <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", fontWeight: 500 }}>{esFinanciador ? "Financiador" : esPlataforma ? "Plataforma" : institucion?.tipo || "Institución"}</div>
               </div>
             )}
           </button>
@@ -503,11 +507,11 @@ export function Shell({ children, financiador = null }) {
             aria-label={colapsado ? "Expandir menú" : "Colapsar menú"}
             className="hidden size-7 shrink-0 items-center justify-center rounded-md border border-accent-100 bg-accent-50 text-accent md:flex"
           >
-            <Icon name="back" size={14} className={colapsado ? "rotate-180" : undefined} />
+            <Icon name="chevronRight" size={14} className={colapsado ? undefined : "rotate-180"} />
           </button>
 
           {/* Menú desplegable de instituciones */}
-          {!esFinanciador && menuInst && !colapsado && (
+          {!esFinanciador && !esPlataforma && menuInst && !colapsado && (
             <>
               <div onClick={() => setMenuInst(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
               <div style={{ position: "absolute", top: 62, left: 12, right: 12, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
@@ -535,7 +539,7 @@ export function Shell({ children, financiador = null }) {
         </div>
 
         {/* Volver al directorio (super admin) / rol del usuario (no-super) � solo expandido */}
-        {!colapsado && (
+        {!colapsado && !esPlataforma && (
           <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid var(--color-division)` }}>
             {esFinanciador ? financiador.selector : user?.is_superuser ? (
               <>
@@ -561,6 +565,7 @@ export function Shell({ children, financiador = null }) {
                       <option key={valor} value={valor}>{label}</option>
                     ))}
                   </select>
+                  <span className="mt-1 block text-xs text-texto-debil">Vista previa del menú; los permisos del servidor no cambian.</span>
                 </label>
               )}
               </>
@@ -573,8 +578,23 @@ export function Shell({ children, financiador = null }) {
         )}
 
         {/* Navegación */}
-        <nav aria-label={esFinanciador ? "Menú del financiador" : "Menú principal"} style={{ flex: 1, overflowY: "auto", padding: colapsado ? "12px 10px" : "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
-          {esFinanciador ? <>
+        <nav aria-label={esFinanciador ? "Menú del financiador" : esPlataforma ? "Menú de plataforma" : "Menú principal"} style={{ flex: 1, overflowY: "auto", padding: colapsado ? "12px 10px" : "12px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+          {esPlataforma ? <>
+            {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">PLATAFORMA</div>}
+            {[
+              { to: "/?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
+              { to: "/?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
+            ].map((item) => {
+              const actual = new URLSearchParams(location.search).get("vista") || "instituciones";
+              return <Link key={item.key} to={item.to} aria-current={actual === item.key ? "page" : undefined}
+                className={itemClase(colapsado)({ isActive: actual === item.key })} title={item.label}>
+                <Icon name={item.icon} size={17} />{!colapsado && item.label}
+              </Link>;
+            })}
+            <NavLink to="/financiadores" className={itemClase(colapsado)} title="Financiadores">
+              <Icon name="users" size={17} />{!colapsado && "Financiadores"}
+            </NavLink>
+          </> : esFinanciador ? <>
             {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">COBERTURA Y GESTIÓN</div>}
             {financiador.items.map((item) => (
               <NavLink key={item.key} to={item.to} end className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
@@ -608,15 +628,23 @@ export function Shell({ children, financiador = null }) {
             )}
           </NavLink>
 
-          {GRUPOS.map((g) => {
+          {(operativo ? [GRUPOS[1], GRUPOS[2], GRUPOS[0]] : GRUPOS).map((g) => {
             const items = g.items.filter((n) => puedeVer(n.cap));
             if (!items.length) return null;
             return (
               <div key={g.label}>
                 {colapsado
                   ? <div style={{ height: 1, background: "var(--color-division)", margin: "8px 8px 6px" }} />
-                  : <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".7px", color: "var(--color-texto-tenue)", padding: "12px 12px 6px" }}>{g.label}</div>}
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  : <button type="button" aria-expanded={!gruposCerrados.has(g.label)}
+                      onClick={() => setGruposCerrados((actual) => {
+                        const nuevos = new Set(actual);
+                        if (nuevos.has(g.label)) nuevos.delete(g.label); else nuevos.add(g.label);
+                        return nuevos;
+                      })}
+                      className="flex w-full items-center justify-between rounded-md px-3 pb-1.5 pt-3 text-left text-xs font-bold tracking-wide text-texto-tenue hover:bg-superficie-2 focus-visible:outline-2 focus-visible:outline-accent">
+                      {g.label}<Icon name="chevronRight" size={13} className={gruposCerrados.has(g.label) ? "" : "rotate-90"} />
+                    </button>}
+                {(colapsado || !gruposCerrados.has(g.label)) && <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {items.map((n) => (
                     <NavLink
                       key={n.to}
@@ -628,15 +656,20 @@ export function Shell({ children, financiador = null }) {
                     >
                       <Icon name={n.icon} size={17} />
                       {!colapsado && n.label}
+                      {n.to === "/bandeja" && conteoBandeja.total > 0 && (
+                        <span className="ml-auto rounded-full bg-accent-50 px-1.5 text-xs font-bold text-accent" aria-label={`${conteoBandeja.total} casos para tomar`}>
+                          {conteoBandeja.total > 99 ? "99+" : conteoBandeja.total}
+                        </span>
+                      )}
                     </NavLink>
                   ))}
-                </div>
+                </div>}
               </div>
             );
           })}
           {permisosFinanzas.acceso && !permisosFinanzas.error && (
             <NavLink to="/finanzas" end className={itemClase(colapsado)} title="Finanzas y costos">
-              <span aria-hidden="true" className="inline-flex w-[17px] shrink-0 justify-center text-lg font-semibold">$</span>
+              <Icon name="wallet" size={17} />
               {!colapsado && "Finanzas y costos"}
             </NavLink>
           )}
@@ -688,15 +721,15 @@ export function Shell({ children, financiador = null }) {
               )}
             </div>
           )}
-          <button onClick={() => { logout(); navigate("/login"); }} title="Cerrar sesión" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-texto-tenue)", display: "flex" }}>
-            <Icon name="power" size={17} />
-          </button>
         </div>
       </aside>
 
       <main className="flex h-screen min-w-0 flex-1 flex-col">
-        <TopBar onAbrirMenu={() => setCajon(true)} titulo={financiador?.titulo} hospital={!esFinanciador} />
-        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+        <TopBar onAbrirMenu={() => setCajon(true)}
+          titulo={esPlataforma ? (new URLSearchParams(location.search).get("vista") === "usuarios" ? "Usuarios de plataforma" : "Instituciones") : financiador?.titulo}
+          hospital={!esFinanciador && !esPlataforma}
+          volverA={esPlataforma ? "/" : esFinanciador ? "/financiadores" : "/inicio"} />
+        <div id="contenido-principal" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>
     </RefreshCtx.Provider>

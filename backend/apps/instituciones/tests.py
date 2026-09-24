@@ -1,3 +1,5 @@
+from datetime import time
+
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
@@ -76,6 +78,62 @@ class GobiernoPlataformaInstitucionTests(APITestCase):
         nombres = {i["nombre"] for i in r.data["results"]}
         self.assertIn("Hospital Central", nombres)
         self.assertIn("Clinica Norte", nombres)
+
+    def test_metricas_staff_cuenta_personas_activas_una_vez(self):
+        activo = Usuario.objects.create_user("activo-metricas@test.local", "x")
+        inactivo = Usuario.objects.create_user("inactivo-metricas@test.local", "x")
+        inactivo.is_active = False
+        inactivo.save(update_fields=["is_active"])
+        for usuario, rol, estado in [
+            (activo, Membresia.Rol.MEDICO, True),
+            (activo, Membresia.Rol.ENFERMERIA, True),
+            (activo, Membresia.Rol.ADMINISTRATIVO, False),
+            (inactivo, Membresia.Rol.MEDICO, True),
+        ]:
+            Membresia.objects.create(usuario=usuario, institucion=self.hospital,
+                                     rol=rol, activo=estado)
+        self.client.force_authenticate(self.plataforma)
+        respuesta = self.client.get(f"/api/instituciones/{self.hospital.id}/metricas/")
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["staff"], 2)  # admin institucional + médico activo
+
+    def test_puesta_en_marcha_verifica_agendas_y_flujo_sin_exigir_profesional_al_recurso(self):
+        from apps.agenda.models import Agenda, Disponibilidad
+        from apps.flujos.models import Flujo, VersionFlujo
+
+        self.client.force_authenticate(self.admin)
+        url = f"/api/instituciones/{self.hospital.id}/puesta-en-marcha/"
+        inicial = self.client.get(url)
+        self.assertEqual(inicial.status_code, 200, inicial.data)
+        self.assertTrue(inicial.data["usuarios"])
+        for clave in ("areas", "asignaciones", "agenda_profesional", "agenda_recurso", "flujo_operativo"):
+            self.assertFalse(inicial.data[clave], clave)
+
+        area = Area.objects.create(institucion=self.hospital, nombre="Consultorios")
+        Membresia.objects.get(usuario=self.admin, institucion=self.hospital).areas.add(area)
+        recurso = Agenda.objects.create(institucion=self.hospital, area=area, tipo=Agenda.Tipo.RECURSO, nombre="Equipo")
+        Disponibilidad.objects.create(agenda=recurso, dia_semana=0, desde=time(8), hasta=time(12))
+        flujo = Flujo.objects.create(institucion=self.hospital, titulo="Atención")
+        VersionFlujo.objects.create(flujo=flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA,
+                                   tipo_circuito=VersionFlujo.TipoCircuito.GUARDIA)
+        parcial = self.client.get(url).data
+        self.assertTrue(all(parcial[k] for k in ("areas", "usuarios", "asignaciones", "agenda_recurso", "flujo_operativo")))
+        self.assertFalse(parcial["agenda_profesional"])
+
+        profesional = Usuario.objects.create_user("profesional-puesta@test.local", "x")
+        Membresia.objects.create(usuario=profesional, institucion=self.hospital, rol=Membresia.Rol.MEDICO)
+        agenda = Agenda.objects.create(institucion=self.hospital, area=area, tipo=Agenda.Tipo.PROFESIONAL,
+                                      nombre="Consultorio", profesional=profesional)
+        Disponibilidad.objects.create(agenda=agenda, dia_semana=1, desde=time(8), hasta=time(12))
+        self.assertTrue(self.client.get(url).data["agenda_profesional"])
+        profesional.is_active = False
+        profesional.save(update_fields=["is_active"])
+        self.assertFalse(self.client.get(url).data["agenda_profesional"])
+
+    def test_puesta_en_marcha_no_expone_otra_institucion(self):
+        self.client.force_authenticate(self.admin)
+        respuesta = self.client.get(f"/api/instituciones/{self.clinica.id}/puesta-en-marcha/")
+        self.assertEqual(respuesta.status_code, 404)
 
 
 class GruposOperativosTests(APITestCase):

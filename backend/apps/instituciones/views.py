@@ -123,8 +123,47 @@ class InstitucionViewSet(BaseModelViewSet):
         return Response({
             "areas": inst.areas.count(),
             "subareas": Subarea.objects.filter(area__institucion=inst).count(),
-            "staff": Membresia.objects.filter(institucion=inst).values("usuario").distinct().count(),
+            "staff": Membresia.objects.filter(
+                institucion=inst, activo=True, usuario__is_active=True,
+            ).values("usuario").distinct().count(),
             "casos_activos": Caso.objects.filter(institucion=inst).exclude(estado__in=Caso.ESTADOS_FINALIZADOS).count(),
+        })
+
+    @action(detail=True, methods=["get"], url_path="puesta-en-marcha")
+    def puesta_en_marcha(self, request, pk=None):
+        """Señales de configuración verificadas en el ámbito de la institución."""
+        from apps.accounts.models import Membresia
+        from apps.agenda.models import Agenda, Disponibilidad
+        from apps.flujos.models import VersionFlujo
+
+        inst = self.get_object()
+        miembros = Membresia.objects.filter(
+            institucion=inst, activo=True, usuario__is_active=True,
+        )
+        horarios = Disponibilidad.objects.filter(
+            agenda__institucion=inst, agenda__activa=True,
+            agenda__area__activa=True, activa=True,
+        ).filter(
+            Q(vigente_desde__isnull=True) | Q(vigente_desde__lte=timezone.localdate()),
+            Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=timezone.localdate()),
+        )
+        profesionales = horarios.filter(
+            agenda__tipo=Agenda.Tipo.PROFESIONAL,
+            agenda__profesional__is_active=True,
+            agenda__profesional__membresias__institucion=inst,
+            agenda__profesional__membresias__activo=True,
+        )
+        recursos = horarios.filter(agenda__tipo=Agenda.Tipo.RECURSO)
+        publicados = VersionFlujo.objects.filter(
+            flujo__institucion=inst, estado=VersionFlujo.Estado.PUBLICADA,
+        )
+        return Response({
+            "areas": Area.objects.filter(institucion=inst, activa=True).exists(),
+            "usuarios": miembros.exists(),
+            "asignaciones": miembros.filter(areas__institucion=inst, areas__activa=True).exists(),
+            "agenda_profesional": profesionales.exists(),
+            "agenda_recurso": recursos.exists(),
+            "flujo_operativo": publicados.exists(),
         })
 
     @action(detail=True, methods=["get"])
@@ -200,7 +239,7 @@ class InstitucionViewSet(BaseModelViewSet):
         # turnos que YA PASARON.
         turnos = Turno.objects.filter(
             agenda__institucion=inst, inicio__date__range=rango
-        )
+        ).exclude(estado=Turno.Estado.REALIZADO)
         pasados = turnos.filter(inicio__lt=now)
         t_presentes = pasados.filter(estado=Turno.Estado.PRESENTE).count()
         t_ausentes = pasados.filter(estado=Turno.Estado.AUSENTE).count()

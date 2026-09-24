@@ -197,7 +197,7 @@ function ArbolAreas({ areas, institucion, areaId, subId, onArea, onSub, onNueva 
     >
       <div className="border-b border-division px-3.5 pb-2.5 pt-3.5">
         <div className="flex items-baseline justify-between gap-2">
-          <h1 className="text-lg font-extrabold tracking-tight">Áreas</h1>
+          <h2 className="text-lg font-extrabold tracking-tight">Áreas</h2>
           <span className="text-xs tabular-nums text-texto-tenue">{areas.total}</span>
         </div>
         <Buscador
@@ -1258,7 +1258,7 @@ function AsignarModal({ area, onClose }) {
       ) : usuarios.filas.length === 0 ? (
         <EstadoVacio
           titulo="Esta institución todavía no tiene personas"
-          detalle="Creá usuarios en Estructura → Usuarios y después asignalos al área."
+          detalle="Creá usuarios en Administración → Usuarios y después asignalos al área."
           icono="users"
         />
       ) : (
@@ -1458,6 +1458,7 @@ function AgendaModal({ area, agenda, onClose }) {
   const [sobreturnos, setSobreturnos] = useState(agenda?.sobreturnos_max ?? 2);
   const [modalidad, setModalidad] = useState(agenda?.modalidad || "presencial");
   const [enlace, setEnlace] = useState(agenda?.enlace_virtual || "");
+  const faltaProfesional = tipo === "profesional" && (agenda?.activa ?? true) && !profesional;
 
   const staff = useLista("membresias", { areas: area.id, activo: true, pageSize: 100 });
   const flujos = useLista("flujos", { area: area.id, pageSize: 100 });
@@ -1500,7 +1501,7 @@ function AgendaModal({ area, agenda, onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !nombre.trim()} onClick={() => guardar.mutate()}>
+          <Button disabled={guardar.isPending || !nombre.trim() || faltaProfesional} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "…" : esNuevo ? "Crear" : "Guardar"}
           </Button>
         </>
@@ -1518,9 +1519,9 @@ function AgendaModal({ area, agenda, onClose }) {
           </Select>
         </Field>
         {tipo === "profesional" && (
-          <Field label="Profesional">
+          <Field label="Profesional *" error={faltaProfesional ? "Elegí un profesional para activar esta agenda." : undefined}>
             <Select value={profesional} onChange={(e) => setProfesional(e.target.value)}>
-              <option value="">Sin asignar</option>
+              <option value="">Elegí un profesional…</option>
               {staff.filas.map((m) => (
                 <option key={m.id} value={m.usuario}>{m.usuario_nombre || m.usuario_email}</option>
               ))}

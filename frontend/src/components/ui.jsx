@@ -3,7 +3,7 @@
 // Migrados a Tailwind sobre tokens SEMÁNTICOS, así que responden al tema. Todos
 // siguen aceptando `style` además de `className`: las pantallas que faltan migrar
 // les pasan estilos inline y no se pueden romper hasta que les toque el turno.
-import { cloneElement, isValidElement, useEffect, useId, useRef, useState, forwardRef } from "react";
+import { Fragment, cloneElement, isValidElement, useEffect, useId, useRef, useState, forwardRef } from "react";
 
 import { cn } from "@/lib/cn";
 import { iniciales } from "@/lib/dominio";
@@ -231,7 +231,7 @@ export function Avatar({ nombre, i = 0, size = 32 }) {
 // --------------------------------------------------------------------------- //
 // Formulario
 // --------------------------------------------------------------------------- //
-export function Field({ label, hint, ayuda, children }) {
+export function Field({ label, hint, ayuda, error, children }) {
   const generado = useId();
   /*
    * `ayuda` es la alternativa a `hint` cuando la aclaración no justifica un
@@ -243,32 +243,43 @@ export function Field({ label, hint, ayuda, children }) {
    * lector de pantalla anuncia «cuadro de edición» a secas—. Con ayuda se pasa a
    * asociación explícita por id, con el botón fuera del label.
    */
-  if (ayuda) {
-    const propio = isValidElement(children) ? children.props.id : undefined;
-    const id = propio || generado;
+  if (!ayuda && !error) {
+    const idAyuda = `${generado}-ayuda`;
+    const control = hint && isValidElement(children) && children.type !== Fragment ? cloneElement(children, {
+      "aria-describedby": [children.props["aria-describedby"], idAyuda].filter(Boolean).join(" "),
+    }) : children;
     return (
-      <div className="block">
-        <div className="mb-1.5 flex items-center gap-1.5 text-base font-semibold text-texto-suave">
-          {label && <label htmlFor={id}>{label}</label>}
-          <Ayuda>{ayuda}</Ayuda>
-        </div>
-        {isValidElement(children) ? cloneElement(children, { id }) : children}
-        {hint && <div className="mt-1 text-sm text-texto-tenue">{hint}</div>}
-      </div>
+      <label className="block">
+        {label && <div className="mb-1.5 text-base font-semibold text-texto-suave">{label}</div>}
+        {control}
+        {hint && <div id={idAyuda} className="mt-1 text-sm text-texto-tenue">{hint}</div>}
+      </label>
     );
   }
+  const propio = isValidElement(children) ? children.props.id : undefined;
+  const id = propio || generado;
+  const descripcion = [hint && `${id}-ayuda`, error && `${id}-error`].filter(Boolean).join(" ");
+  const control = isValidElement(children) ? cloneElement(children, {
+    id,
+    "aria-invalid": error ? true : children.props["aria-invalid"],
+    "aria-describedby": [children.props["aria-describedby"], descripcion].filter(Boolean).join(" ") || undefined,
+  }) : children;
   return (
-    <label className="block">
-      {label && <div className="mb-1.5 text-base font-semibold text-texto-suave">{label}</div>}
-      {children}
-      {hint && <div className="mt-1 text-sm text-texto-tenue">{hint}</div>}
-    </label>
+    <div className="block">
+      {(label || ayuda) && <div className="mb-1.5 flex items-center gap-1.5 text-base font-semibold text-texto-suave">
+        {label && <label htmlFor={id}>{label}</label>}
+        {ayuda && <Ayuda>{ayuda}</Ayuda>}
+      </div>}
+      {control}
+      {hint && <div id={`${id}-ayuda`} className="mt-1 text-sm text-texto-tenue">{hint}</div>}
+      {error && <div id={`${id}-error`} className="mt-1 text-sm text-badge-error-fg">{error}</div>}
+    </div>
   );
 }
 
 const CONTROL =
   "w-full rounded-md border border-campo-borde bg-superficie text-texto outline-none " +
-  "placeholder:text-texto-tenue focus:border-accent disabled:bg-superficie-2 disabled:text-texto-tenue";
+  "placeholder:text-texto-tenue focus:border-accent focus-visible:ring-2 focus-visible:ring-accent disabled:bg-superficie-2 disabled:text-texto-tenue";
 
 /**
  * `forwardRef` porque hay pantallas que necesitan enfocar el campo a mano (el
@@ -427,6 +438,9 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
 
   useEffect(() => {
     const onKey = (e) => {
+      // El bloqueo por inactividad conserva el árbol oculto para recuperar el
+      // borrador. Un diálogo oculto no debe capturar Tab/Escape del reingreso.
+      if (!ref.current || ref.current.getClientRects().length === 0) return;
       if (e.key === "Escape") { onClose?.(); return; }
       if (e.key !== "Tab" || !ref.current) return;
       // El foco cicla DENTRO del diálogo. Sin esto, un par de tabulaciones de
@@ -502,7 +516,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
  */
 export function ConfirmDialog({
   title, children, confirmar = "Confirmar", volver = "Volver",
-  peligroso = false, cargando = false, onConfirmar, onClose,
+  peligroso = false, cargando = false, deshabilitado = false, onConfirmar, onClose,
 }) {
   return (
     <Modal
@@ -511,7 +525,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={cargando}>{volver}</Button>
-          <Button variant={peligroso ? "danger" : "primary"} onClick={onConfirmar} disabled={cargando}>
+          <Button variant={peligroso ? "danger" : "primary"} onClick={onConfirmar} disabled={cargando || deshabilitado}>
             {cargando ? "…" : confirmar}
           </Button>
         </>
@@ -573,16 +587,18 @@ export function Table({ columns, rows, onRowClick, vacio = "Sin registros" }) {
 // --------------------------------------------------------------------------- //
 // Stepper
 // --------------------------------------------------------------------------- //
-export function Stepper({ steps, current }) {
+export function Stepper({ steps, current, completo = false }) {
   return (
-    <div className="flex items-center">
+    <div className="flex items-center" role="list" aria-label="Etapas del caso">
       {steps.map((s, i) => {
-        const hecho = i < current;
-        const actual = i === current;
+        const hecho = i < current || (completo && i === current);
+        const actual = i === current && !completo;
         return (
-          <div key={i} className={cn("flex items-center", i < steps.length - 1 && "flex-1")}>
+          <div key={i} role="listitem" aria-label={`${s.label}: ${hecho ? "completada" : actual ? "actual" : "pendiente"}`}
+            className={cn("flex items-center", i < steps.length - 1 && "flex-1")}>
             <div className="flex flex-col items-center gap-1.5">
               <div
+                aria-hidden="true"
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-pill text-sm font-bold",
                   hecho && "bg-accent-fuerte text-sobre-accent",
@@ -592,7 +608,7 @@ export function Stepper({ steps, current }) {
               >
                 {hecho ? "✓" : i + 1}
               </div>
-              <div
+              <div aria-hidden="true"
                 className={cn(
                   "whitespace-nowrap text-sm",
                   actual ? "font-bold text-accent" : hecho ? "font-medium text-texto-suave" : "font-medium text-texto-tenue",

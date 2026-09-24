@@ -50,6 +50,11 @@ export default function Inicio() {
     queryFn: () => api.get(`/instituciones/${institucion.id}/metricas/`),
     enabled: institucion?.id != null,
   });
+  const puesta = useQuery({
+    queryKey: ["puesta-en-marcha", institucion?.id],
+    queryFn: () => api.get(`/instituciones/${institucion.id}/puesta-en-marcha/`),
+    enabled: institucion?.id != null && (puedeVer("config_institucional") || puedeVer("casos_operar")),
+  });
 
   if (!institucion) return <Spinner />;
 
@@ -87,6 +92,33 @@ export default function Inicio() {
           {institucion.activa === false ? "Inactiva" : "Activa"}
         </Badge>
       </Card>
+
+      {puedeVer("casos_operar") && puesta.data && !puesta.data.flujo_operativo && (
+        <Card className="mb-5 border-amber-300 bg-badge-amber-bg p-4 text-badge-amber-fg" role="status">
+          <p className="font-semibold">Todavía no hay un flujo operativo publicado.</p>
+          <p className="mt-1 text-sm">Podés revisar casos existentes en la Bandeja, pero para iniciar nuevas atenciones hace falta publicar un flujo. {puedeVer("diseno_flujos") ? <Link to="/flujos" className="font-semibold underline">Configurar flujos</Link> : "Pedile a un configurador que lo publique."}</p>
+        </Card>
+      )}
+
+      {puedeVer("config_institucional") && <Card className="mb-6 p-5" aria-label="Puesta en marcha">
+        <h2 className="text-lg font-bold">Puesta en marcha</h2>
+        <p className="mt-1 text-sm text-texto-debil">Verificá los pasos para empezar a operar. Una agenda de recurso no necesita profesional.</p>
+        {puesta.isLoading ? <p className="mt-3 text-sm">Comprobando configuración…</p> : puesta.error ? <EstadoError error={puesta.error} onReintentar={puesta.refetch} titulo="No se pudo comprobar la configuración" /> : puesta.data && (
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            {[
+              ["areas", "Áreas activas", "/estructura", "Creá o activá un área."],
+              ["usuarios", "Usuarios activos", "/administracion", "Dá acceso a una persona de la institución."],
+              ["asignaciones", "Personal asignado a un área", "/administracion", "Asigná una persona activa a un área activa."],
+              ["agenda_profesional", "Agenda profesional con horarios", "/estructura", "Asigná un profesional activo y cargá horarios en Estructura."],
+              ["agenda_recurso", "Agenda de recurso con horarios", "/estructura", "Creá una agenda de recurso y cargá horarios; no requiere profesional."],
+              ["flujo_operativo", "Flujo publicado", "/flujos", "Publicá un flujo para iniciar nuevas atenciones."],
+            ].map(([clave, titulo, ruta, detalle]) => <li key={clave} className="rounded-md border border-division p-3">
+              <div className="flex items-center gap-2"><Badge tone={puesta.data[clave] ? "green" : "amber"}>{puesta.data[clave] ? "Listo" : "Pendiente"}</Badge><strong>{titulo}</strong></div>
+              {!puesta.data[clave] && <p className="mt-1 text-sm text-texto-debil">{detalle} {(clave !== "flujo_operativo" || puedeVer("diseno_flujos")) && <Link to={ruta} className="font-semibold text-accent underline">Ir a {titulo.toLowerCase()}</Link>}</p>}
+            </li>)}
+          </ul>
+        )}
+      </Card>}
 
       {/* Métricas */}
       {error ? (
