@@ -14,10 +14,11 @@ class NotificacionSerializer(serializers.ModelSerializer):
 
 class ValorCampoSerializer(serializers.ModelSerializer):
     campo_label = serializers.CharField(source="campo.label", read_only=True)
+    campo_tipo = serializers.CharField(source="campo.tipo", read_only=True)
 
     class Meta:
         model = ValorCampo
-        fields = ["id", "caso", "campo", "campo_label", "nodo", "valor", "cargado"]
+        fields = ["id", "caso", "campo", "campo_label", "campo_tipo", "nodo", "valor", "cargado"]
         read_only_fields = ["cargado"]
 
 

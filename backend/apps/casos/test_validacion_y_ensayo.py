@@ -90,6 +90,34 @@ class SalidasAmbiguasTests(BaseFlujo):
         self.assertTrue(motor.puede_publicar(self.ver))
 
 
+class ReglasTiposNuevosTests(BaseFlujo):
+    def test_publicacion_rechaza_operadores_y_valores_incompatibles(self):
+        form = Formulario.objects.create(institucion=self.inst, titulo="Evaluación")
+        campo = Campo.objects.create(
+            formulario=form, label="Síntomas", tipo=Campo.Tipo.SELECCION_MULTIPLE,
+            opciones=["A, B", "Niñez"], orden=0,
+        )
+        inicio = self._nodo(Nodo.Tipo.INICIO, "Inicio")
+        captura = Nodo.objects.create(
+            version=self.ver, tipo=Nodo.Tipo.FORMULARIO, titulo="Captura", formulario=form,
+        )
+        decision = self._nodo(Nodo.Tipo.DECISION, "¿Síntoma?")
+        fin = self._nodo(Nodo.Tipo.FIN, "Fin")
+        self._unir(inicio, captura)
+        self._unir(captura, decision)
+        regla = self._unir(decision, fin, {
+            "campo": campo.pk, "operador": "=", "valor": "A, B",
+        })
+        self._unir(decision, fin)
+        self.assertIn("Regla incompatible con el campo", [p["titulo"] for p in self._errores()])
+        regla.condicion = {"campo": campo.pk, "operador": "contiene", "valor": "Ausente"}
+        regla.save(update_fields=["condicion"])
+        self.assertIn("Regla incompatible con el campo", [p["titulo"] for p in self._errores()])
+        regla.condicion = {"campo": campo.pk, "operador": "contiene", "valor": "A, B"}
+        regla.save(update_fields=["condicion"])
+        self.assertNotIn("Regla incompatible con el campo", [p["titulo"] for p in self._errores()])
+
+
 class EnsayoSinCostoTests(BaseFlujo):
     """El ensayo puede recorrer Atención sin persistir su hecho económico."""
 

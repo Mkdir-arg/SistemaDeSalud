@@ -57,9 +57,19 @@ class SupervisionTests(APITestCase):
 
     def test_no_se_cancela_dos_veces(self):
         caso = self._caso()
-        motor.cancelar_caso(caso, autor=self.jefe)
+        motor.cancelar_caso(caso, autor=self.jefe, motivo="duplicado")
         with self.assertRaises(motor.ErrorMotor):
-            motor.cancelar_caso(caso, autor=self.jefe)
+            motor.cancelar_caso(caso, autor=self.jefe, motivo="duplicado")
+
+    def test_api_exige_motivo_antes_de_sacar_el_caso_de_la_fila(self):
+        caso = self._caso()
+        item = ItemFila.objects.create(caso=caso, nodo=self.nodo, atendido=False)
+        self.client.force_authenticate(self.jefe)
+        r = self.client.post(f"/api/casos/{caso.id}/cancelar/", {"motivo": "  "})
+        self.assertEqual(r.status_code, 400)
+        caso.refresh_from_db(); item.refresh_from_db()
+        self.assertNotEqual(caso.estado, Caso.Estado.CANCELADO)
+        self.assertFalse(item.atendido)
 
     # --- API ---------------------------------------------------------------
     def test_api_jefe_cancela(self):

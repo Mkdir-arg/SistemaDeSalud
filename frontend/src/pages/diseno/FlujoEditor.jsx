@@ -5,6 +5,7 @@ import { Badge, Button, Checkbox, ConfirmDialog, Field, Input, Modal, Select, Sp
 import { Icon } from "../../components/icons";
 import { estadoCaso, estadoVersion } from "../../lib/dominio";
 import { TIPOS_NODO, catDe } from "@/lib/nodos";
+import { useToast } from "@/components/ui/toast";
 
 const NODO_W = 200;
 // Alto del nodo. Es FIJO, no un mínimo: las conexiones salen y entran a media
@@ -139,7 +140,7 @@ export default function FlujoEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [flujo, setFlujo] = useState(null);
-  const [version, setVersion] = useState(null); // versión completa (nodos+conexiones)
+  const [version, setVersionState] = useState(null); // versión completa (nodos+conexiones)
   const [verId, setVerId] = useState(null);
   /*
    * Selección de nodos.
@@ -169,6 +170,14 @@ export default function FlujoEditor() {
   const [hoverConn, setHoverConn] = useState(null); // id de conexión bajo el cursor
   const [hoverNodo, setHoverNodo] = useState(null); // id de nodo bajo el cursor
   const [problemas, setProblemas] = useState(null);
+  const revisionValidacion = useRef(0);
+  function setVersion(actualizacion) {
+    revisionValidacion.current += 1;
+    setProblemas((actual) => actual ? {
+      ...actual, desactualizado: true, puede_publicar: false, problemas: [], errores: 0, avisos: 0,
+    } : null);
+    setVersionState(actualizacion);
+  }
   const [conectarDesde, setConectarDesde] = useState(null);
   const [campos, setCampos] = useState([]); // campos disponibles para reglas
   const [cargando, setCargando] = useState(true);
@@ -176,12 +185,16 @@ export default function FlujoEditor() {
   const [sim, setSim] = useState(null); // modo Probar: {current, valores, camino, fin}
   const [repro, setRepro] = useState(null); // Reproducir: {camino, idx}
   const [guardado, setGuardado] = useState("idle"); // idle | guardando | guardado | error
-  const [toast, setToast] = useState(null); // { tipo:'ok'|'error', msg, accion?:{label,fn} }
+  const toast = useToast();
+  const avisosDeshacer = useRef(new Set());
+  useEffect(() => () => {
+    for (const id of avisosDeshacer.current) toast.cerrar(id);
+    avisosDeshacer.current.clear();
+  }, [toast, id, verId]);
   const [publicando, setPublicando] = useState(false);
   const [creandoVersion, setCreandoVersion] = useState(false);
   const [validando, setValidando] = useState(false);
   const guardadoTimer = useRef(null);
-  const toastTimer = useRef(null);
 
   // Indicador de autosave (barra superior) + feedback de error de red.
   function marcarGuardando() { setGuardado("guardando"); }
@@ -190,10 +203,10 @@ export default function FlujoEditor() {
     clearTimeout(guardadoTimer.current);
     guardadoTimer.current = setTimeout(() => setGuardado("idle"), 1800);
   }
-  function mostrarToast(t, ms = 4000) {
-    clearTimeout(toastTimer.current);
-    setToast(t);
-    toastTimer.current = setTimeout(() => setToast(null), ms);
+  function mostrarToast(t) {
+    const extra = t.accion ? { accion: { label: t.accion.label, onClick: t.accion.fn } } : undefined;
+    const id = t.tipo === "error" ? toast.error(t.msg, extra) : toast.ok(t.msg, extra);
+    if (t.accion) avisosDeshacer.current.add(id);
   }
   /**
    * Falla de guardado.
@@ -208,10 +221,7 @@ export default function FlujoEditor() {
   function marcarError(e) {
     setGuardado("error");
     const detalle = typeof e?.data?.detail === "string" ? e.data.detail : null;
-    mostrarToast(
-      { tipo: "error", msg: detalle || "No se pudo guardar. Revisá tu conexión e intentá de nuevo." },
-      detalle ? 9000 : 4000,
-    );
+    mostrarToast({ tipo: "error", msg: detalle || "No se pudo guardar. Revisá tu conexión e intentá de nuevo." });
   }
 
   const cargarVersion = useCallback(async (vid) => {
@@ -988,13 +998,12 @@ export default function FlujoEditor() {
           ? `Se eliminó «${nodos[0].titulo}»${cuantas}.`
           : `Se eliminaron ${nodos.length} nodos${cuantas}.`,
         accion: { label: "Deshacer", fn: () => restaurarNodos(nodos, conexiones) },
-      }, 9000);
+      });
     } catch (e) { setVersion(snapshot); marcarError(e); }
   }
 
   // Rehace los nodos borrados y sus conexiones (remapeando los ids a los nuevos).
   async function restaurarNodos(nodos, conexiones) {
-    setToast(null);
     marcarGuardando();
     try {
       const creados = [];
@@ -1047,13 +1056,12 @@ export default function FlujoEditor() {
           tipo: "ok",
           msg: `Se quitó la conexión${conexion.etiqueta ? ` «${conexion.etiqueta}»` : ""}.`,
           accion: { label: "Deshacer", fn: () => restaurarConexion(conexion) },
-        }, 9000);
+        });
       }
     } catch (e) { setVersion(snapshot); marcarError(e); }
   }
 
   async function restaurarConexion(conexion) {
-    setToast(null);
     // Los dos extremos tienen que seguir existiendo: si se borró el nodo, la
     // conexión no tiene dónde volver.
     const existe = (gid) => versionRef.current.nodos.some((n) => n.id === gid);
@@ -1140,10 +1148,11 @@ export default function FlujoEditor() {
   }
 
   async function validar() {
+    const revision = revisionValidacion.current;
     setValidando(true);
     try {
       const r = await api.get(`/versiones-flujo/${verId}/validar/`);
-      mostrarProblemas(r);
+      if (revision === revisionValidacion.current) mostrarProblemas(r);
     } catch { mostrarToast({ tipo: "error", msg: "No se pudo validar el flujo." }); }
     finally { setValidando(false); }
   }
@@ -1154,7 +1163,7 @@ export default function FlujoEditor() {
       await cargarVersion(verId);
       const f = await api.get(`/flujos/${id}/`);
       setFlujo(f);
-      mostrarProblemas({ problemas: [], errores: 0, avisos: 0, puede_publicar: true, publicado: true });
+      mostrarProblemas({ problemas: [], errores: 0, avisos: 0, puede_publicar: false, publicado: true });
       mostrarToast({ tipo: "ok", msg: "Versión publicada ✓" });
     } catch (e) {
       if (e?.data?.problemas) {
@@ -1480,6 +1489,7 @@ export default function FlujoEditor() {
     function onKey(e) {
       const tag = e.target?.tagName;
       const editando = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable;
+      if (document.body.dataset.sesionBloqueada === "1") return;
       // Con un diálogo de confirmación abierto manda el diálogo: si no, Escape
       // limpiaría además la selección y Suprimir volvería a disparar el borrado.
       // Con la ficha de un nodo abierta, igual: los atajos del lienzo actúan
@@ -1648,6 +1658,7 @@ export default function FlujoEditor() {
             <option value="guardia">Guardia</option>
             <option value="programado">Atención programada</option>
           </Select>
+          {version.tipo_circuito === "no_definido" && <span className="max-w-48 text-xs text-texto-debil">Sin tipo de circuito, las esperas automáticas de autorización no se aplican. Elegí Guardia o Atención programada si corresponde.</span>}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <BuscarNodo nodos={version.nodos} onElegir={irAlNodo} />
@@ -1667,9 +1678,9 @@ export default function FlujoEditor() {
             <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
             <Button variant="ghost" onClick={iniciarSim} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para probar el flujo" : "Simulá un caso paso a paso"} className="rounded-none">Probar</Button>
             <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
-            <Button variant="ghost" onClick={validar} disabled={validando} title="Busca problemas en el flujo antes de publicarlo" className="rounded-none">{validando ? "Validando…" : "Validar"}</Button>
+            <Button variant="ghost" onClick={validar} disabled={validando || guardado === "guardando"} title="Busca problemas en el flujo antes de publicarlo" className="rounded-none">{validando ? "Validando…" : "Validar"}</Button>
           </div>
-          <Button onClick={publicar} disabled={version.estado === "publicada" || publicando || guardandoCircuito}>{publicando ? "Publicando…" : "Publicar"}</Button>
+          <Button onClick={() => setAConfirmar({ tipo: "publicacion" })} disabled={version.estado === "publicada" || publicando || guardandoCircuito || guardado === "guardando"}>{publicando ? "Publicando…" : "Publicar"}</Button>
         </div>
       </div>
 
@@ -1688,7 +1699,7 @@ export default function FlujoEditor() {
         >
           <Icon name="alert" size={14} />
           <span style={{ flex: 1, minWidth: 220 }}>
-            Esta versión está <strong>{estV.label.toLowerCase()}</strong> y no se edita.
+            Esta versión está <strong>{estV.label.toLowerCase()}</strong> y no se edita porque puede sostener casos en curso. Sacá una versión nueva para cambiar el circuito.
           </span>
           <Button size="sm" variant="secondary" onClick={sacarVersionNueva} disabled={creandoVersion}>
             {creandoVersion ? "Creando…" : "Sacar una versión nueva"}
@@ -2166,7 +2177,19 @@ export default function FlujoEditor() {
         </ConfirmDialog>
       )}
 
-      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+      {aConfirmar?.tipo === "publicacion" && (
+        <ConfirmDialog
+          title="¿Publicar esta versión del flujo?"
+          confirmar="Publicar versión"
+          onClose={() => setAConfirmar(null)}
+          onConfirmar={() => { setAConfirmar(null); publicar(); }}
+        >
+          <p>Flujo: <strong>{flujo.titulo}</strong>. Versión <strong>{version.numero}</strong>{flujo.ambito_label ? ` · ${flujo.ambito_label}` : ""}.</p>
+          <p className="mt-2">Se publicarán {version.nodos.length} nodos y {version.conexiones.length} conexiones. El servidor volverá a validar el flujo antes de activarlo para nuevos casos.</p>
+          <p className="mt-2">Este resumen describe la versión actual; no existe una comparación automática con versiones anteriores.</p>
+        </ConfirmDialog>
+      )}
+
     </div>
   );
 }
@@ -2206,27 +2229,6 @@ function SaveStatus({ estado }) {
 }
 
 // Toast efímero con acción opcional (p. ej. «Deshacer»).
-function Toast({ toast, onClose }) {
-  const ok = toast.tipo === "ok";
-  return (
-    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 14, background: "var(--color-ink)", color: "var(--color-white)", padding: "11px 16px", borderRadius: "var(--radius-md)", fontSize: "var(--text-base)", boxShadow: "var(--shadow-dropdown)", zIndex: 60, maxWidth: 460, animation: "fadeUp .16s ease" }}>
-      {/* Estos colores NO siguen el tema a propósito: el aviso va siempre sobre
-          tinta oscura (`--color-ink`, que es literal), así que están elegidos para
-          leerse ahí. Pasarlos a tokens semánticos los volvería ilegibles en claro. */}
-      <span style={{ width: 8, height: 8, borderRadius: "50%", background: ok ? "#46C08A" : "#F26D6D", flex: "none" }} />
-      <span style={{ flex: 1 }}>{toast.msg}</span>
-      {/* Sin etiqueta no se dibuja: un botón vacío es una salida que la persona
-          no puede ver, y peor que no ofrecer ninguna. */}
-      {toast.accion?.label && (
-        <button onClick={toast.accion.fn} style={{ border: "none", background: "none", color: "#9FB0FF", fontWeight: 700, cursor: "pointer", fontSize: "var(--text-base)", whiteSpace: "nowrap" }}>{toast.accion.label}</button>
-      )}
-      <button onClick={onClose} aria-label="Cerrar" style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", display: "flex", opacity: .7 }}>
-        <Icon name="x" size={15} />
-      </button>
-    </div>
-  );
-}
-
 // --------------------------------------------------------------------------- //
 function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerrar }) {
   const nodo = version.nodos.find((n) => n.id === sim.current);
@@ -2310,17 +2312,33 @@ function PanelSimulacion({ sim, version, campos, onAvanzar, onReiniciar, onCerra
                       <option value="">Seleccionar…</option>
                       {(c.opciones || []).map((o) => <option key={o} value={o}>{o}</option>)}
                     </Select>
+                  ) : c.tipo === "booleano" ? (
+                    <Select size="sm" value={valores[c.id] === undefined ? "" : String(valores[c.id])}
+                      onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value === "" ? "" : e.target.value === "true" }))}>
+                      <option value="">Seleccionar…</option><option value="true">Sí</option><option value="false">No</option>
+                    </Select>
+                  ) : c.tipo === "seleccion_multiple" ? (
+                    <div role="group" aria-label={c.label} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {(c.opciones || []).map((opcion) => <label key={opcion}>
+                        <input type="checkbox" checked={(valores[c.id] || []).includes(opcion)}
+                          onChange={(e) => setValores((v) => ({ ...v, [c.id]:
+                            c.opciones.filter((item) => e.target.checked
+                              ? item === opcion || (v[c.id] || []).includes(item)
+                              : item !== opcion && (v[c.id] || []).includes(item)),
+                          }))} /> {opcion}
+                      </label>)}
+                    </div>
                   ) : (
                     <Input
                       size="sm"
-                      type={c.tipo === "fecha" ? "date" : c.tipo === "numero" ? "number" : "text"}
+                      type={{ fecha: "date", numero: "number", hora: "time", email: "email", telefono: "tel" }[c.tipo] || "text"}
                       // El rango del campo también rige en el ensayo: el motor es
                       // el mismo y rechaza el valor que se salga de él.
                       step={c.tipo === "numero" ? "any" : undefined}
                       min={c.tipo === "numero" && c.minimo != null ? c.minimo : undefined}
                       max={c.tipo === "numero" && c.maximo != null ? c.maximo : undefined}
                       placeholder={c.tipo === "numero" && c.unidad ? c.unidad : undefined}
-                      value={valores[c.id] || ""}
+                      value={valores[c.id] ?? ""}
                       onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}
                     />
                   )}
@@ -2377,6 +2395,11 @@ const OP_POR_TIPO = {
   decimal: ["=", "!=", ...ORDEN, ...PRESENCIA],
   fecha: ["=", "!=", ...ORDEN, ...PRESENCIA],
   seleccion_unica: ["=", "!=", "en", "no_en", ...PRESENCIA],
+  booleano: ["=", "!=", ...PRESENCIA],
+  seleccion_multiple: ["contiene", "no_contiene", ...PRESENCIA],
+  hora: ["=", "!=", ...ORDEN, ...PRESENCIA],
+  email: ["=", "!=", ...PRESENCIA],
+  telefono: ["=", "!=", ...PRESENCIA],
 };
 const OP_TEXTO = ["=", "!=", "contiene", "no_contiene", "en", "no_en", ...PRESENCIA];
 
@@ -2533,6 +2556,7 @@ function BuscarNodo({ nodos, onElegir }) {
 
   useEffect(() => {
     function alTeclado(e) {
+      if (document.body.dataset.sesionBloqueada === "1") return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setAbierto(true);
@@ -2641,7 +2665,11 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
               <Select
                 size="sm"
                 value={r.campo || ""}
-                onChange={(e) => cambiar(i, { campo: e.target.value ? Number(e.target.value) : null, operador: "=", valor: "" })}
+                onChange={(e) => {
+                  const elegido = campos.find((c) => String(c.id) === e.target.value);
+                  cambiar(i, { campo: elegido ? Number(elegido.id) : null,
+                    operador: elegido?.tipo === "seleccion_multiple" ? "contiene" : "=", valor: "" });
+                }}
                 aria-label={`Campo de la condición ${i + 1}`}
               >
                 <option value="">elegí un campo…</option>
@@ -2668,7 +2696,11 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
                 </Select>
 
                 {/* «vacío» no lleva valor: pedirlo sería pedir un dato que no se usa. */}
-                {SIN_VALOR.has(operador) ? null : campoSel?.opciones?.length && !CON_LISTA.has(operador) ? (
+                {SIN_VALOR.has(operador) ? null : campoSel?.tipo === "booleano" ? (
+                  <Select size="sm" value={r.valor || ""} onChange={(e) => cambiar(i, { valor: e.target.value })} aria-label={`Valor de la condición ${i + 1}`}>
+                    <option value="">valor…</option><option value="true">Sí</option><option value="false">No</option>
+                  </Select>
+                ) : campoSel?.opciones?.length && !CON_LISTA.has(operador) ? (
                   <Select size="sm" value={r.valor || ""} onChange={(e) => cambiar(i, { valor: e.target.value })} aria-label={`Valor de la condición ${i + 1}`}>
                     <option value="">valor…</option>
                     {campoSel.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -2678,6 +2710,7 @@ function RuleBuilder({ conexion, campos, onActualizar }) {
                   <Input
                     key={`${r.campo}-${operador}`}
                     size="sm"
+                    type={campoSel?.tipo === "hora" && operador !== "entre" ? "time" : campoSel?.tipo === "email" ? "email" : "text"}
                     placeholder={operador === "entre" ? "desde, hasta" : CON_LISTA.has(operador) ? "uno, otro, otro más" : "valor"}
                     defaultValue={r.valor || ""}
                     onBlur={(e) => e.target.value !== (r.valor || "") && cambiar(i, { valor: e.target.value })}
@@ -3489,6 +3522,10 @@ function PanelValidacion({ problemas, onCerrar, onFocus }) {
       {problemas.publicado && (
         <div style={{ fontSize: "var(--text-base)", background: "var(--color-badge-green-bg)", color: "var(--color-badge-green-fg)", padding: "10px 12px", borderRadius: "var(--radius-md)", marginBottom: 12, fontWeight: 600 }}>✓ Versión publicada</div>
       )}
+      {problemas.desactualizado && <p role="status" style={{ marginBottom: 12, color: "var(--color-badge-amber-fg)" }}>
+        Cambios pendientes de validar. Ejecutá la validación otra vez antes de publicar.
+      </p>}
+      {!problemas.desactualizado && <>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <Badge tone={problemas.errores ? "error" : "green"}>{problemas.errores} errores</Badge>
         <Badge tone="amber">{problemas.avisos} avisos</Badge>
@@ -3515,6 +3552,7 @@ function PanelValidacion({ problemas, onCerrar, onFocus }) {
           ))}
         </div>
       )}
+      </>}
     </div>
   );
 }

@@ -28,6 +28,11 @@ const TIPO_CHIP = {
   fecha: "bg-nodo-derivar-tint text-nodo-derivar-sol",
   seleccion_unica: "bg-nodo-decision-tint text-nodo-decision-sol",
   archivo: "bg-nodo-atencion-tint text-nodo-atencion-sol",
+  booleano: "bg-nodo-decision-tint text-nodo-decision-sol",
+  seleccion_multiple: "bg-nodo-decision-tint text-nodo-decision-sol",
+  hora: "bg-nodo-derivar-tint text-nodo-derivar-sol",
+  email: "bg-nodo-form-tint text-nodo-form-sol",
+  telefono: "bg-nodo-form-tint text-nodo-form-sol",
 };
 
 /*
@@ -50,6 +55,11 @@ const TIPOS = [
   { value: "fecha", label: "Fecha" },
   { value: "seleccion_unica", label: "Selección única" },
   { value: "archivo", label: "Archivo adjunto" },
+  { value: "booleano", label: "Sí/No" },
+  { value: "seleccion_multiple", label: "Selección múltiple" },
+  { value: "hora", label: "Hora" },
+  { value: "email", label: "Correo electrónico" },
+  { value: "telefono", label: "Teléfono" },
 ];
 
 const ESTADO_VERSION = {
@@ -190,9 +200,9 @@ export default function FormularioDetalle() {
             <Icon name="form" size={21} />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="mb-1 font-display text-cifra font-bold leading-tight tracking-tight text-texto-fuerte">
+            <h2 className="mb-1 font-display text-cifra font-bold leading-tight tracking-tight text-texto-fuerte">
               {form ? form.titulo : <Skeleton className="h-6 w-56" />}
-            </h1>
+            </h2>
             {/* La descripción no se podía cargar ni ver desde ninguna pantalla:
                 la columna del listado sólo podía decir «—». Vacía, el hueco
                 invita a llenarla en vez de no decir nada. */}
@@ -522,7 +532,7 @@ function ListaCampos({ campos, ocupado, condicionesDe, onReordenar, onEditar, on
                   {c.tipo_display}
                 </span>
                 {c.tipo === "numero" && <RangoCampo campo={c} />}
-                {c.tipo === "seleccion_unica" && (c.opciones || []).length > 0 && (
+                {["seleccion_unica", "seleccion_multiple"].includes(c.tipo) && (c.opciones || []).length > 0 && (
                   // Recortadas con tope de ancho: los niveles de triage son cinco
                   // etiquetas largas («Rojo - Emergencia», «Naranja - Muy
                   // urgente»…) y sin tope empujaban la fila a dos líneas, que es
@@ -530,9 +540,9 @@ function ListaCampos({ campos, ocupado, condicionesDe, onReordenar, onEditar, on
                   // detalle completo queda en el title.
                   <span
                     className="max-w-[200px] truncate font-mono text-xs text-texto-debil"
-                    title={c.opciones.join(", ")}
+                    title={c.opciones.join(" · ")}
                   >
-                    {plural(c.opciones.length, "opción", "opciones")} · {c.opciones.join(", ")}
+                    {plural(c.opciones.length, "opción", "opciones")} · {c.opciones.join(" · ")}
                   </span>
                 )}
                 {/* Que el campo tenga datos cargados cambia lo que se
@@ -726,6 +736,13 @@ function PreviewInput({ campo }) {
   const props = { readOnly: true, tabIndex: -1, className: "bg-superficie-2" };
   if (campo.tipo === "texto_largo") return <Textarea placeholder="Escribí aquí…" {...props} />;
   if (campo.tipo === "fecha") return <Input type="date" {...props} />;
+  if (campo.tipo === "hora") return <Input type="time" {...props} />;
+  if (campo.tipo === "email") return <Input type="email" placeholder="nombre@institución" {...props} />;
+  if (campo.tipo === "telefono") return <Input type="tel" placeholder="Número de contacto" {...props} />;
+  if (campo.tipo === "booleano") return <Select disabled><option value="">Seleccionar…</option><option>Sí</option><option>No</option></Select>;
+  if (campo.tipo === "seleccion_multiple") return <div className="flex flex-col gap-1">
+    {(campo.opciones || []).map((o) => <label key={o} className="text-sm text-texto-debil"><input type="checkbox" disabled /> {o}</label>)}
+  </div>;
   if (campo.tipo === "numero") {
     // La unidad se muestra al lado y no dentro del valor: dentro dejaría de ser
     // un número comparable para las Decisiones.
@@ -902,7 +919,7 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
     tipo: campo?.tipo || "texto_corto",
     requerido: campo?.requerido || false,
     ayuda: campo?.ayuda || "",
-    opciones: (campo?.opciones || []).join(", "),
+    opciones: campo?.opciones?.length ? [...campo.opciones] : [""],
     unidad: campo?.unidad || "",
     minimo: campo?.minimo ?? "",
     maximo: campo?.maximo ?? "",
@@ -919,8 +936,8 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
         requerido: f.requerido,
         ayuda: f.ayuda,
         opciones:
-          f.tipo === "seleccion_unica"
-            ? f.opciones.split(",").map((s) => s.trim()).filter(Boolean)
+          ["seleccion_unica", "seleccion_multiple"].includes(f.tipo)
+            ? f.opciones.map((s) => s.trim()).filter(Boolean)
             : [],
         // Unidad y rango sólo viajan en un campo numérico; en cualquier otro el
         // servidor los limpia, y mandarlos con valor sería pedir una validación
@@ -941,7 +958,14 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
   );
 
   // Una selección única sin opciones es un desplegable vacío.
-  const faltanOpciones = f.tipo === "seleccion_unica" && !f.opciones.trim();
+  const esSeleccion = ["seleccion_unica", "seleccion_multiple"].includes(f.tipo);
+  const faltanOpciones = esSeleccion && f.opciones.some((o) => !o.trim());
+  const opcionesRepetidas = esSeleccion && new Set(f.opciones.map((o) => o.trim())).size !== f.opciones.length;
+  const moverOpcion = (desde, hasta) => {
+    const opciones = [...f.opciones];
+    [opciones[desde], opciones[hasta]] = [opciones[hasta], opciones[desde]];
+    set("opciones", opciones);
+  };
   const rangoInvertido =
     esNumero && f.minimo !== "" && f.maximo !== "" && Number(f.minimo) > Number(f.maximo);
   // Volver obligatorio un campo es lo único de esta pantalla que puede TRABAR
@@ -957,7 +981,7 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button
-            disabled={guardar.isPending || !f.label || faltanOpciones || rangoInvertido}
+            disabled={guardar.isPending || !f.label || faltanOpciones || opcionesRepetidas || rangoInvertido}
             onClick={() => guardar.mutate()}
           >
             {guardar.isPending ? "…" : editando ? "Guardar" : "Agregar"}
@@ -980,14 +1004,26 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
           </Select>
         </Field>
 
-        {f.tipo === "seleccion_unica" && (
-          <Field
-            label="Opciones (separadas por coma) *"
-            hint="Agregar o corregir una opción no toca los datos ya cargados."
-          >
-            <Input value={f.opciones} onChange={(e) => set("opciones", e.target.value)} placeholder="OSDE, PAMI, Particular" />
-          </Field>
-        )}
+        {["seleccion_unica", "seleccion_multiple"].includes(f.tipo) && <div>
+          <div className="mb-1.5 text-base font-semibold text-texto-suave">Opciones *</div>
+          <p className="mb-2 text-sm text-texto-tenue">Una opción por renglón. Podés usar comas dentro de una opción. El orden será el de la lista.</p>
+          {(faltanOpciones || opcionesRepetidas) && <p role="alert" className="mb-2 text-sm text-danger">
+            {faltanOpciones ? "Completá o quitá las opciones vacías." : "Cada opción debe tener un nombre distinto."}
+          </p>}
+          <div className="flex flex-col gap-2">
+            {f.opciones.map((opcion, i) => <div key={i} className="flex gap-2">
+              <Input value={opcion} aria-label={`Opción ${i + 1}`} placeholder={`Opción ${i + 1}`}
+                onChange={(e) => set("opciones", f.opciones.map((o, j) => j === i ? e.target.value : o))} />
+              <Button variant="secondary" disabled={i === 0} aria-label={`Subir opción ${i + 1}`}
+                onClick={() => moverOpcion(i, i - 1)}>↑</Button>
+              <Button variant="secondary" disabled={i === f.opciones.length - 1} aria-label={`Bajar opción ${i + 1}`}
+                onClick={() => moverOpcion(i, i + 1)}>↓</Button>
+              <Button variant="secondary" disabled={f.opciones.length === 1}
+                onClick={() => set("opciones", f.opciones.filter((_, j) => j !== i))}>Quitar</Button>
+            </div>)}
+          </div>
+          <Button variant="secondary" className="mt-2" onClick={() => set("opciones", [...f.opciones, ""])}>Agregar opción</Button>
+        </div>}
 
         {/*
          * Unidad y rango del campo numérico.

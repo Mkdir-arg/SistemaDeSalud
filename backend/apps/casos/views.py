@@ -1160,7 +1160,7 @@ class ItemFilaViewSet(BaseModelViewSet):
     # fue a fumar y vuelve a los diez minutos no tenía cómo ser reencolado sin
     # buscar el caso a mano por otro lado.
     filter_fields = (
-        "caso", "nodo", "urgente", "atendido", "ausente", "box",
+        "caso", "caso__institucion", "nodo", "urgente", "atendido", "ausente", "box",
         "nodo__version__flujo__area",
     )
     # Exportación de la cola: lo que un jefe de guardia necesita para revisar

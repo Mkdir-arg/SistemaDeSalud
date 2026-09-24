@@ -53,6 +53,18 @@ class EditarCampoTests(APITestCase):
         self.campo.refresh_from_db()
         self.assertEqual(self.campo.opciones, ["OSDE", "PAMI", "Swiss Medical"])
 
+    def test_opciones_se_guardan_como_texto_normalizado(self):
+        invalida = self.client.patch(
+            f"/api/campos/{self.campo.pk}/", {"opciones": [1, "PAMI"]}, format="json"
+        )
+        self.assertEqual(invalida.status_code, 400, invalida.data)
+        valida = self.client.patch(
+            f"/api/campos/{self.campo.pk}/", {"opciones": [" OSDE ", "PAMI"]}, format="json"
+        )
+        self.assertEqual(valida.status_code, 200, valida.data)
+        self.campo.refresh_from_db()
+        self.assertEqual(self.campo.opciones, ["OSDE", "PAMI"])
+
     def test_se_corrige_la_etiqueta_aunque_el_campo_ya_tenga_datos(self):
         """Es justo lo que el error del borrado manda a hacer: no puede estar prohibido."""
         self._con_un_valor_cargado()
@@ -477,3 +489,112 @@ class CampoNumericoTests(APITestCase):
         caso, _ = self._caso_parado_en_el_formulario()
         motor.avanzar(caso, {"valores": {str(campo.pk): "36,8"}}, autor=self.user)
         self.assertEqual(ValorCampo.objects.get(caso=caso, campo=campo).valor, "36.8")
+
+
+class TiposNuevosTests(APITestCase):
+    """Contrato de alta, persistencia y decisiones de los cinco tipos nuevos."""
+
+    def setUp(self):
+        self.inst = Institucion.objects.create(nombre="Hospital Central")
+        self.user = Usuario.objects.create_user(
+            email="config-tipos@test.local", password="x", is_superuser=True, is_staff=True,
+        )
+        self.client.force_authenticate(self.user)
+        self.form = Formulario.objects.create(institucion=self.inst, titulo="Evaluación")
+
+    def _caso_parado_en_el_formulario(self):
+        from apps.flujos.models import Nodo
+
+        flujo = Flujo.objects.create(institucion=self.inst, titulo="Guardia")
+        version = VersionFlujo.objects.create(
+            flujo=flujo, numero=1, estado=VersionFlujo.Estado.PUBLICADA,
+        )
+        nodo = Nodo.objects.create(
+            version=version, tipo=Nodo.Tipo.FORMULARIO, titulo="Evaluación",
+            formulario=self.form, x=0, y=0,
+        )
+        Nodo.objects.create(version=version, tipo=Nodo.Tipo.FIN, titulo="Fin", x=1, y=1)
+        return Caso.objects.create(institucion=self.inst, version=version, nodo_actual=nodo), nodo
+
+    def _nuevo(self, tipo, **extra):
+        datos = {"formulario": self.form.pk, "label": tipo, "tipo": tipo, "orden": 0, **extra}
+        respuesta = self.client.post("/api/campos/", datos, format="json")
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        return Campo.objects.get(pk=respuesta.data["id"])
+
+    def test_valores_validos_se_guardan_y_deciden_con_el_mismo_significado(self):
+        from apps.casos import motor
+
+        muestras = [
+            ("booleano", False, "false", "=", "false", True),
+            ("seleccion_multiple", ["A, B", "Niñez"], '["A, B","Niñez"]',
+             "contiene", "A, B", True),
+            ("hora", "14:35", "14:35", ">", "09:00", True),
+            ("email", "Persona@EJEMPLO.COM", "Persona@ejemplo.com", "=",
+             "Persona@EJEMPLO.COM", True),
+            ("telefono", "+54 (11) 1234-5678", "+541112345678", "=", "+54 (11) 1234-5678", True),
+        ]
+        for tipo, enviado, guardado, operador, esperado, resultado in muestras:
+            with self.subTest(tipo=tipo):
+                extras = {"opciones": ["A, B", "Niñez"]} if tipo == "seleccion_multiple" else {}
+                campo = self._nuevo(tipo, **extras)
+                caso, _ = self._caso_parado_en_el_formulario()
+                motor.avanzar(caso, {"valores": {str(campo.pk): enviado}}, autor=self.user)
+                self.assertEqual(ValorCampo.objects.get(caso=caso, campo=campo).valor, guardado)
+                self.assertEqual(motor._cumple_simple(
+                    {"campo": campo.pk, "operador": operador, "valor": esperado}, caso,
+                ), resultado)
+                campo.delete()
+
+    def test_valores_invalidos_se_rechazan_sin_guardar(self):
+        from apps.casos import motor
+
+        muestras = [
+            ("booleano", "false", {}),
+            ("seleccion_multiple", ["A, B", "A, B"], {"opciones": ["A, B"]}),
+            ("seleccion_multiple", ["Otra"], {"opciones": ["A, B"]}),
+            ("hora", "25:61", {}),
+            ("email", "sin arroba", {}),
+            ("telefono", "123", {}),
+        ]
+        for tipo, enviado, extras in muestras:
+            with self.subTest(tipo=tipo, enviado=enviado):
+                campo = self._nuevo(tipo, **extras)
+                caso, _ = self._caso_parado_en_el_formulario()
+                with self.assertRaises(motor.ErrorMotor):
+                    motor.avanzar(caso, {"valores": {str(campo.pk): enviado}}, autor=self.user)
+                self.assertFalse(ValorCampo.objects.filter(caso=caso, campo=campo).exists())
+                campo.delete()
+
+    def test_seleccion_multiple_requerida_no_acepta_lista_vacia_y_conserva_opciones_usadas(self):
+        from apps.casos import motor
+
+        campo = self._nuevo("seleccion_multiple", opciones=["A, B", "Niñez"], requerido=True)
+        caso, nodo = self._caso_parado_en_el_formulario()
+        with self.assertRaises(motor.ErrorMotor):
+            motor.avanzar(caso, {"valores": {str(campo.pk): []}}, autor=self.user)
+        motor.avanzar(caso, {"valores": {str(campo.pk): ["A, B"]}}, autor=self.user)
+        self.assertEqual(ValorCampo.objects.get(caso=caso, campo=campo).valor, '["A, B"]')
+        respuesta = self.client.patch(
+            f"/api/campos/{campo.pk}/", {"opciones": ["Niñez"]}, format="json",
+        )
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)
+        campo.refresh_from_db()
+        self.assertEqual(campo.opciones, ["A, B", "Niñez"])
+
+    def test_opcion_de_una_regla_activa_no_se_puede_quitar(self):
+        from apps.flujos.models import Conexion, Nodo
+
+        campo = self._nuevo("seleccion_multiple", opciones=["A, B", "Niñez"])
+        flujo = Flujo.objects.create(institucion=self.inst, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        decision = Nodo.objects.create(version=version, tipo=Nodo.Tipo.DECISION, titulo="Decidir")
+        fin = Nodo.objects.create(version=version, tipo=Nodo.Tipo.FIN, titulo="Fin")
+        Conexion.objects.create(
+            version=version, origen=decision, destino=fin,
+            condicion={"campo": campo.pk, "operador": "contiene", "valor": "A, B"},
+        )
+        respuesta = self.client.patch(
+            f"/api/campos/{campo.pk}/", {"opciones": ["Niñez"]}, format="json",
+        )
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)

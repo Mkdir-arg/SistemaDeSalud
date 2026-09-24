@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/icons";
+import { mensajeError } from "@/api/client";
 import { cn } from "@/lib/cn";
 
 const ToastCtx = createContext(null);
@@ -43,7 +44,8 @@ export function ToastProvider({ children }) {
     info: (texto, extra) => mostrar({ tono: "info", texto, ...extra }),
     // Atajo para errores de la API: usa el `detail` de DRF si viene.
     deError: (e, porDefecto = "No se pudo completar la acción.") =>
-      mostrar({ tono: "error", texto: e?.data?.detail || e?.message || porDefecto }),
+      mostrar({ tono: "error", texto: mensajeError(e, porDefecto) }),
+    cerrar,
   }).current;
 
   return (

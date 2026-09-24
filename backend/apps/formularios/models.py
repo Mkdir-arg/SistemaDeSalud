@@ -53,6 +53,11 @@ class Campo(models.Model):
         FECHA = "fecha", "Fecha"
         SELECCION_UNICA = "seleccion_unica", "Selección única"
         ARCHIVO = "archivo", "Archivo adjunto"
+        BOOLEANO = "booleano", "Sí/No"
+        SELECCION_MULTIPLE = "seleccion_multiple", "Selección múltiple"
+        HORA = "hora", "Hora"
+        EMAIL = "email", "Correo electrónico"
+        TELEFONO = "telefono", "Teléfono"
 
     class Origen(models.TextChoices):
         HISTORIA_CLINICA = "historia_clinica", "Historia clínica"
@@ -65,7 +70,7 @@ class Campo(models.Model):
     tipo = models.CharField(max_length=20, choices=Tipo.choices)
     requerido = models.BooleanField(default=False)
     ayuda = models.CharField("texto de ayuda", max_length=255, blank=True)
-    # Opciones para SELECCION_UNICA (lista de strings).
+    # Opciones para selección única o múltiple (lista de strings).
     opciones = models.JSONField(default=list, blank=True)
     # Sólo para NUMERO. La unidad se muestra al lado del casillero (no se guarda
     # dentro del valor: si el valor fuera «36.8 °C» dejaría de ser comparable, y

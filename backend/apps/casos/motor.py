@@ -32,7 +32,10 @@ import math
 import re
 import unicodedata
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, time, timedelta
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -345,7 +348,13 @@ def _comparables(a, b):
     try:
         return date.fromisoformat(str(a)[:10]), date.fromisoformat(str(b)[:10])
     except ValueError:
-        return None
+        pass
+    try:
+        if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(a)) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(b)):
+            return time.fromisoformat(str(a)), time.fromisoformat(str(b))
+    except ValueError:
+        pass
+    return None
 
 
 def _cumple_simple(condicion: dict, caso: Caso) -> bool:
@@ -353,6 +362,34 @@ def _cumple_simple(condicion: dict, caso: Caso) -> bool:
     operador = condicion.get("operador", "=")
     esperado = condicion.get("valor")
     actual = _valor_de_campo(caso, condicion.get("campo"))
+    campo = Campo.objects.filter(pk=_entero(condicion.get("campo"))).first()
+    tipo = campo.tipo if campo else None
+
+    if tipo == Campo.Tipo.SELECCION_MULTIPLE and actual is not None:
+        try:
+            seleccionados = json.loads(actual)
+            if not isinstance(seleccionados, list):
+                return False
+        except (TypeError, ValueError):
+            return False
+        if operador == "vacio":
+            return not seleccionados
+        if operador == "no_vacio":
+            return bool(seleccionados)
+        if operador == "contiene":
+            return str(esperado) in seleccionados
+        if operador == "no_contiene":
+            return str(esperado) not in seleccionados
+        return False
+
+    if tipo == Campo.Tipo.BOOLEANO and actual is not None:
+        if operador == "vacio":
+            return actual == ""
+        if operador == "no_vacio":
+            return actual != ""
+        if str(esperado) not in ("true", "false") or actual not in ("true", "false"):
+            return False
+        return (actual == str(esperado)) if operador == "=" else (actual != str(esperado)) if operador == "!=" else False
 
     # Vacío se resuelve antes que nada: «sin cargar» es justamente lo que pregunta,
     # así que no puede caer en el descarte por `actual is None`.
@@ -363,6 +400,15 @@ def _cumple_simple(condicion: dict, caso: Caso) -> bool:
         return not vacio
     if vacio:
         return False
+
+    # Captura normaliza dominio y teléfono antes de guardarlos. La condición
+    # escrita por el diseñador debe pasar por la misma forma canónica.
+    if operador in ("=", "!=") and tipo == Campo.Tipo.EMAIL and isinstance(esperado, str):
+        local, separador, dominio = esperado.strip().rpartition("@")
+        if separador:
+            esperado = f"{local}@{dominio.lower()}"
+    if operador in ("=", "!=") and tipo == Campo.Tipo.TELEFONO and isinstance(esperado, str):
+        esperado = ("+" if esperado.strip().startswith("+") else "") + re.sub(r"\D", "", esperado)
 
     if operador == "=":
         return str(actual) == str(esperado)
@@ -422,6 +468,54 @@ def campos_de_condicion(condicion: dict | None) -> set[int]:
         return {int(campo)} if campo else set()
     except (TypeError, ValueError):
         return set()
+
+
+def _reglas_nuevas_invalidas(condicion: dict | None, campos: dict[int, Campo]) -> list[str]:
+    """Detecta reglas imposibles de evaluar para los tipos agregados al editor."""
+    if not isinstance(condicion, dict) or not condicion:
+        return []
+    if "reglas" in condicion:
+        return [error for regla in (condicion.get("reglas") or [])
+                for error in _reglas_nuevas_invalidas(regla, campos)]
+    campo = campos.get(_entero(condicion.get("campo")))
+    if not campo:
+        return []  # la referencia inexistente se informa en el chequeo general
+    operador, valor = condicion.get("operador", "="), condicion.get("valor")
+    permitidos = {
+        Campo.Tipo.BOOLEANO: {"=", "!=", "vacio", "no_vacio"},
+        Campo.Tipo.SELECCION_MULTIPLE: {"contiene", "no_contiene", "vacio", "no_vacio"},
+        Campo.Tipo.HORA: {"=", "!=", ">", "<", ">=", "<=", "entre", "vacio", "no_vacio"},
+        Campo.Tipo.EMAIL: {"=", "!=", "vacio", "no_vacio"},
+        Campo.Tipo.TELEFONO: {"=", "!=", "vacio", "no_vacio"},
+    }
+    if campo.tipo not in permitidos:
+        return []
+    if operador not in permitidos[campo.tipo]:
+        return [f"«{campo.label}»: operador {operador} incompatible con su tipo"]
+    if operador in {"vacio", "no_vacio"}:
+        return []
+    if campo.tipo == Campo.Tipo.BOOLEANO and valor not in ("true", "false"):
+        return [f"«{campo.label}»: elegí Sí o No"]
+    if campo.tipo == Campo.Tipo.SELECCION_MULTIPLE and valor not in campo.opciones:
+        return [f"«{campo.label}»: elegí una opción existente"]
+    if campo.tipo == Campo.Tipo.HORA:
+        valores = _lista(valor) if operador == "entre" else [valor]
+        if len(valores) != (2 if operador == "entre" else 1) or any(
+            not isinstance(item, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", item)
+            for item in valores
+        ):
+            return [f"«{campo.label}»: usá horas HH:mm válidas"]
+    if campo.tipo == Campo.Tipo.EMAIL:
+        try:
+            validate_email(str(valor or "").strip())
+        except DjangoValidationError:
+            return [f"«{campo.label}»: ingresá un correo electrónico válido para comparar"]
+    if campo.tipo == Campo.Tipo.TELEFONO:
+        texto = str(valor or "").strip()
+        digitos = re.sub(r"\D", "", texto)
+        if not re.fullmatch(r"\+?[0-9 ()-]+", texto) or not 7 <= len(digitos) <= 15:
+            return [f"«{campo.label}»: ingresá un teléfono válido para comparar"]
+    return []
 
 
 def _cumple(condicion: dict, caso: Caso) -> bool:
@@ -1330,6 +1424,9 @@ def cancelar_caso(caso: Caso, autor=None, motivo: str = "", reservas_no_realizad
     Lo saca de cualquier fila, lo marca CANCELADO y, si bloqueaba a un caso de
     origen que estaba esperando, lo destraba para que pueda retomarse.
     """
+    motivo = (motivo or "").strip()
+    if not motivo:
+        raise ErrorMotor("Indicá el motivo de la cancelación.")
     _bloquear_caso(caso)
     caso.refresh_from_db()
     if caso.estado in (Caso.Estado.CERRADO, Caso.Estado.CANCELADO):
@@ -1909,7 +2006,7 @@ def _exigir_clinico(caso: Caso, autor):
 
 
 def _validar_valores(nodo: Nodo, valores: dict) -> dict:
-    """Valida los campos numéricos y devuelve los valores NORMALIZADOS.
+    """Valida los tipos del formulario y devuelve valores canónicos para persistencia.
 
     Los valores se guardan como texto, así que nada impedía que «Temperatura»
     quedara con «treinta y ocho» o con «386» por un punto que no se tipeó. Eso no
@@ -1932,15 +2029,65 @@ def _validar_valores(nodo: Nodo, valores: dict) -> dict:
         raise ErrorMotor("Los valores del formulario deben enviarse como objeto.")
     if not nodo.formulario_id or not valores:
         return valores
-    por_id = {c.id: c for c in nodo.formulario.campos.filter(tipo="numero")}
+    por_id = {c.id: c for c in nodo.formulario.campos.all()}
     if not por_id:
         return valores
 
     limpios, problemas = dict(valores), []
     for clave, crudo in valores.items():
         campo = por_id.get(_entero(clave))
-        if campo is None or crudo is None or str(crudo).strip() == "":
+        if campo is None or crudo is None or crudo == "":
             continue  # el vacío lo resuelve la regla de «requerido», no ésta
+        if campo.tipo == Campo.Tipo.BOOLEANO:
+            if not isinstance(crudo, bool):
+                problemas.append(f"«{campo.label}» debe ser Sí o No")
+            else:
+                limpios[clave] = "true" if crudo else "false"
+            continue
+        if campo.tipo == Campo.Tipo.SELECCION_MULTIPLE:
+            if (not isinstance(crudo, list) or
+                    any(not isinstance(item, str) for item in crudo) or
+                    len(crudo) != len(set(crudo)) or
+                    any(item not in campo.opciones for item in crudo)):
+                problemas.append(f"«{campo.label}» debe contener opciones válidas sin repetir")
+            else:
+                limpios[clave] = json.dumps(
+                    [opcion for opcion in campo.opciones if opcion in crudo],
+                    ensure_ascii=False, separators=(",", ":"),
+                )
+            continue
+        if campo.tipo == Campo.Tipo.HORA:
+            if not isinstance(crudo, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", crudo):
+                problemas.append(f"«{campo.label}» debe tener el formato HH:mm (00:00 a 23:59)")
+            continue
+        if campo.tipo == Campo.Tipo.EMAIL:
+            if not isinstance(crudo, str):
+                problemas.append(f"«{campo.label}» debe ser un correo electrónico válido")
+                continue
+            email = crudo.strip()
+            try:
+                validate_email(email)
+            except DjangoValidationError:
+                problemas.append(f"«{campo.label}» debe ser un correo electrónico válido")
+                continue
+            if len(email) > 254:
+                problemas.append(f"«{campo.label}» no puede superar 254 caracteres")
+            else:
+                local, dominio = email.rsplit("@", 1)
+                limpios[clave] = f"{local}@{dominio.lower()}"
+            continue
+        if campo.tipo == Campo.Tipo.TELEFONO:
+            if not isinstance(crudo, str) or not re.fullmatch(r"\+?[0-9 ()-]+", crudo.strip()):
+                problemas.append(f"«{campo.label}» debe ser un teléfono válido")
+                continue
+            normal = ("+" if crudo.strip().startswith("+") else "") + re.sub(r"\D", "", crudo)
+            if not 7 <= len(normal.lstrip("+")) <= 15:
+                problemas.append(f"«{campo.label}» debe tener entre 7 y 15 dígitos")
+            else:
+                limpios[clave] = normal
+            continue
+        if campo.tipo != Campo.Tipo.NUMERO:
+            continue
         try:
             n = float(str(crudo).strip().replace(",", "."))
         except ValueError:
@@ -2009,16 +2156,17 @@ def _requeridos_sin_cargar(caso: Caso, nodo: Nodo) -> list[str]:
     """
     if not nodo.formulario_id:
         return []
-    requeridos = list(nodo.formulario.campos.filter(requerido=True).values_list("id", "label"))
+    requeridos = list(nodo.formulario.campos.filter(requerido=True).values_list("id", "label", "tipo"))
     if not requeridos:
         return []
+    tipos = {cid: tipo for cid, _, tipo in requeridos}
     cargados = {
         cid for cid, valor in caso.valores
-        .filter(campo_id__in=[cid for cid, _ in requeridos])
+        .filter(campo_id__in=[cid for cid, _, _ in requeridos])
         .values_list("campo_id", "valor")
-        if str(valor).strip()
+        if str(valor).strip() and not (tipos[cid] == Campo.Tipo.SELECCION_MULTIPLE and valor == "[]")
     }
-    return [label for cid, label in requeridos if cid not in cargados]
+    return [label for cid, label, _ in requeridos if cid not in cargados]
 
 
 def _aplicar_prioridad_desde_form(caso: Caso, nodo: Nodo, autor=None):
@@ -2369,6 +2517,11 @@ def validar_version(version) -> list[dict]:
                                       "titulo": "Regla con un campo inexistente",
                                       "detalle": f"«{n.titulo}» usa un campo que no se carga en ningún formulario del flujo."})
                     break
+                invalidas = _reglas_nuevas_invalidas(c.condicion, campos_por_id)
+                if invalidas:
+                    problemas.append({"sev": "error", "nodo_id": n.pk,
+                                      "titulo": "Regla incompatible con el campo",
+                                      "detalle": "; ".join(invalidas) + "."})
 
         # 5 bis) Decisión sin rama por defecto: si ninguna condición se cumple, el
         #    caso queda PARADO en la decisión, que es un nodo automático. No

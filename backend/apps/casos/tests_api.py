@@ -59,6 +59,17 @@ class ScopeInstitucionTest(APITestCase):
         nombres = {i["nombre"] for i in r.data["results"]}
         self.assertEqual(nombres, {"Hospital A"})
 
+    def test_fila_puede_filtrarse_por_institucion_activa(self):
+        Membresia.objects.create(usuario=self.user, institucion=self.inst_b, rol=Membresia.Rol.ADMINISTRATIVO)
+        nodo_a = Nodo.objects.create(version=self.caso_a.version, tipo=Nodo.Tipo.ESPERA_FILA, titulo="Espera A")
+        nodo_b = Nodo.objects.create(version=self.caso_b.version, tipo=Nodo.Tipo.ESPERA_FILA, titulo="Espera B")
+        item_a = ItemFila.objects.create(caso=self.caso_a, nodo=nodo_a)
+        ItemFila.objects.create(caso=self.caso_b, nodo=nodo_b)
+        self.client.force_authenticate(self.user)
+        respuesta = self.client.get("/api/items-fila/", {"caso__institucion": self.inst_a.id})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual([fila["id"] for fila in respuesta.data["results"]], [item_a.id])
+
 
 class PuestosConMembresiaActivaTests(APITestCase):
     def setUp(self):

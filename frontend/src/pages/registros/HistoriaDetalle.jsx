@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { useAuth } from "@/auth/AuthContext";
 import { resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
 import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
@@ -81,6 +82,10 @@ export default function HistoriaDetalle() {
   // La historia se busca por paciente; puede no existir todavía.
   const historias = useLista("historias-clinicas", { ciudadano: id }, { enabled: !!id });
   const hc = historias.filas[0];
+  useEffect(() => {
+    if (!hc || tab !== "evolucion" || !window.location.hash.startsWith("#entrada-")) return;
+    requestAnimationFrame(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "center" }));
+  }, [hc, tab]);
 
   if (paciente.error) return <EstadoError error={paciente.error} onReintentar={paciente.refetch} />;
 
@@ -163,9 +168,9 @@ export default function HistoriaDetalle() {
       <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-5">
         <Avatar nombre={nombre} i={c?.id || 0} size={52} />
         <div className="min-w-0 flex-1">
-          <h1 className="text-xxl font-extrabold tracking-tight">
+          <h2 className="text-xxl font-extrabold tracking-tight">
             {c ? nombre : <Skeleton className="h-6 w-52" />}
-          </h1>
+          </h2>
           <div className="flex flex-wrap items-center gap-x-2 text-base text-texto-debil">
             {identificacion.map((d, i) => (
               <span key={d} className="whitespace-nowrap">
@@ -245,7 +250,7 @@ export default function HistoriaDetalle() {
               cuándo) y el lugar donde se edita. */}
           <div className="grid items-start gap-5 lg:grid-cols-[1fr_17.5rem]">
             <div>
-              {tab === "evolucion" && <Evolucion entradas={hc?.entradas || []} puedeFirmar={puedeFirmar} />}
+              {tab === "evolucion" && <Evolucion entradas={hc?.entradas || []} puedeFirmar={puedeFirmar} pacienteNombre={nombre} />}
               {tab === "estudios" && <Estudios estudios={estudios} />}
               {tab === "recetas" && <Recetas recetas={hc?.recetas || []} />}
               {tab === "cobertura" && <HistorialCoberturaPaciente key={id} ciudadanoId={id} />}
@@ -262,7 +267,7 @@ export default function HistoriaDetalle() {
       )}
 
       {nuevaAtencion && (
-        <NuevaAtencionModal ciudadanoId={id} hcId={hc?.id} onClose={() => setNuevaAtencion(false)} />
+        <NuevaAtencionModal ciudadanoId={id} pacienteNombre={nombre} hcId={hc?.id} onClose={() => setNuevaAtencion(false)} />
       )}
       {editandoAntecedentes && (
         <AntecedentesModal hc={hc} onClose={() => setEditandoAntecedentes(false)} />
@@ -419,11 +424,13 @@ function AntecedentesModal({ hc, onClose }) {
   );
 }
 
-function NuevaAtencionModal({ ciudadanoId, hcId, onClose }) {
+function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, onClose }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [titulo, setTitulo] = useState("");
   const [contenido, setContenido] = useState("");
-  const [firmada, setFirmada] = useState(true);
+  const [firmada, setFirmada] = useState(false);
+  const [confirmandoFirma, setConfirmandoFirma] = useState(false);
 
   const guardar = useAccion(
     async () => {
@@ -436,7 +443,7 @@ function NuevaAtencionModal({ ciudadanoId, hcId, onClose }) {
       return api.post("/entradas-historia/", { historia, titulo, contenido, firmada });
     },
     {
-      onSuccess: () => { toast.ok("Atención registrada."); onClose(); },
+      onSuccess: () => { toast.ok(firmada ? "Atención firmada." : "Borrador guardado."); onClose(); },
       // Firmar exige matrícula (regla del motor): el error del backend explica
       // exactamente eso, así que se muestra tal cual en vez de uno genérico.
       onError: (e) => toast.deError(e, "No se pudo registrar la atención."),
@@ -445,17 +452,25 @@ function NuevaAtencionModal({ ciudadanoId, hcId, onClose }) {
 
   return (
     <Modal
-      title="Nueva atención"
-      onClose={onClose}
+      title={confirmandoFirma ? "Confirmar firma de la atención" : "Nueva atención"}
+      onClose={confirmandoFirma ? () => setConfirmandoFirma(false) : onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !titulo} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "Registrando…" : "Registrar atención"}
+          <Button variant="secondary" disabled={guardar.isPending} onClick={confirmandoFirma ? () => setConfirmandoFirma(false) : onClose}>
+            {confirmandoFirma ? "Volver a editar" : "Cancelar"}
+          </Button>
+          <Button disabled={guardar.isPending || !titulo.trim()} onClick={() => firmada && !confirmandoFirma ? setConfirmandoFirma(true) : guardar.mutate()}>
+            {guardar.isPending ? "Guardando…" : confirmandoFirma ? "Firmar atención" : firmada ? "Revisar firma" : "Guardar borrador"}
           </Button>
         </>
       }
     >
+      {confirmandoFirma ? <div className="space-y-2 text-md text-texto-suave">
+        <p>Paciente: <strong>{pacienteNombre || `#${ciudadanoId}`}</strong></p>
+        <p>Firma: <strong>{user?.nombre_completo || user?.email}</strong></p>
+        <p>Entrada: <strong>{titulo.trim()}</strong></p>
+        <p>Al firmar quedará sellada y ya no podrás editarla; las correcciones requerirán una entrada nueva.</p>
+      </div> :
       <div className="flex flex-col gap-3.5">
         <Field label="Título *">
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Evaluación inicial, Control…" />
@@ -473,6 +488,7 @@ function NuevaAtencionModal({ ciudadanoId, hcId, onClose }) {
           puede editar después. Sin firmar queda como borrador y se puede corregir.
         </div>
       </div>
+      }
     </Modal>
   );
 }
@@ -1042,7 +1058,7 @@ function SelloDeFirma({ entrada }) {
   return <Badge tone="green">Firmada</Badge>;
 }
 
-function Evolucion({ entradas, puedeFirmar }) {
+function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
   // `null` = ninguno abierto. Guarda la entrada y qué se va a hacer con ella.
   const [editando, setEditando] = useState(null);
   const [firmando, setFirmando] = useState(null);
@@ -1053,7 +1069,7 @@ function Evolucion({ entradas, puedeFirmar }) {
   return (
     <div className="flex flex-col gap-3">
       {entradas.map((e) => (
-        <Card key={e.id} className="p-[18px]">
+        <Card key={e.id} id={`entrada-${e.id}`} className="p-[18px]">
           <div className="mb-1.5 flex items-center justify-between gap-3">
             <h3 className="text-md font-bold">{e.titulo}</h3>
             <SelloDeFirma entrada={e} />
@@ -1088,7 +1104,7 @@ function Evolucion({ entradas, puedeFirmar }) {
       ))}
 
       {editando && <EditarBorradorModal entrada={editando} onClose={() => setEditando(null)} />}
-      {firmando && <FirmarBorradorModal entrada={firmando} onClose={() => setFirmando(null)} />}
+      {firmando && <FirmarBorradorModal entrada={firmando} pacienteNombre={pacienteNombre} onClose={() => setFirmando(null)} />}
     </div>
   );
 }
@@ -1135,8 +1151,9 @@ function EditarBorradorModal({ entrada, onClose }) {
   );
 }
 
-function FirmarBorradorModal({ entrada, onClose }) {
+function FirmarBorradorModal({ entrada, pacienteNombre, onClose }) {
   const toast = useToast();
+  const { user } = useAuth();
 
   const firmar = useAccion(
     () => api.patch(`/entradas-historia/${entrada.id}/`, { firmada: true }),
@@ -1162,6 +1179,7 @@ function FirmarBorradorModal({ entrada, onClose }) {
       }
     >
       <div className="flex flex-col gap-3.5">
+        <p className="text-md text-texto-suave">Paciente: <strong>{pacienteNombre}</strong> · Firma: <strong>{user?.nombre_completo || user?.email}</strong></p>
         {/* Se firma lo que se está leyendo, no un id: el texto va delante. */}
         <div className="rounded-md bg-superficie-2 px-3 py-2.5">
           <div className="text-md font-bold">{entrada.titulo}</div>
