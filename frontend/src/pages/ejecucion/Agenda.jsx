@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
@@ -12,6 +12,7 @@ import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { BuscadorPaciente } from "@/components/ui/paciente";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { fechaHora } from "@/lib/format";
 
 import { SemanaAgenda, lunesDe } from "./AgendaSemana";
 
@@ -34,6 +35,7 @@ const ESTADOS = {
   presente: { label: "Se presentó", tone: "green" },
   ausente: { label: "No vino", tone: "error" },
   cancelado: { label: "Cancelado", tone: "neutral" },
+  realizado: { label: "Atención pasada registrada", tone: "green" },
 };
 
 // 24 horas: es cómo se escriben los horarios en un hospital, y además «02:15
@@ -68,6 +70,7 @@ export default function Agenda() {
   // Horario que hay que abrir con el formulario de alta ya desplegado: es a
   // dónde deja parado el salto desde «Próximos libres».
   const [abrir, setAbrir] = useState(null);
+  const [registrarPasado, setRegistrarPasado] = useState(null);
 
   const agendas = useLista(
     "agendas",
@@ -88,13 +91,13 @@ export default function Agenda() {
   // renglón propio de la grilla: cuelgan del horario que sobreturnean—.
   const turnos = useQuery({
     queryKey: ["agenda-turnos", agenda?.id, fecha],
-    queryFn: () => api.get(`/turnos/?agenda=${agenda.id}&desde=${fecha}&hasta=${fecha}&page_size=200`),
+    queryFn: () => api.get(`/turnos/?agenda=${agenda.id}&desde=${fecha}&hasta=${fecha}&excluir_retrospectivos=1&page_size=200`),
     enabled: agenda?.id != null,
   });
   const porHorario = useMemo(() => {
     const m = new Map();
     for (const t of turnos.data?.results || []) {
-      if (t.estado === "cancelado") continue;
+      if (t.estado === "cancelado" || t.estado === "realizado") continue;
       const k = new Date(t.inicio).getTime();
       if (!m.has(k)) m.set(k, []);
       m.get(k).push(t);
@@ -108,7 +111,11 @@ export default function Agenda() {
     enabled: verProximos && agenda?.id != null,
   });
 
-  const recargar = () => { dia.refetch(); turnos.refetch(); if (verProximos) proximos.refetch(); };
+  const pasados = useLista("turnos", {
+    agenda: agenda?.id, desde: fecha, hasta: fecha, estado: "realizado", pageSize: 100,
+  }, { enabled: agenda?.id != null });
+
+  const recargar = () => { dia.refetch(); turnos.refetch(); pasados.refetch(); if (verProximos) proximos.refetch(); };
 
   const ocupados = horarios.filter((h) => h.ocupado).length;
   // Sale de la grilla del día y no de la consulta de turnos: si esa falla, el
@@ -151,10 +158,14 @@ export default function Agenda() {
     return (
       <div className="p-lg sm:p-[26px] lg:px-[30px]">
         <EstadoVacio
-          titulo="No hay agendas cargadas"
-          detalle="Creá una en Estructura organizativa para empezar a dar turnos."
+          titulo="No hay agendas activas"
+          detalle="Creá o activá una en Estructura organizativa para dar turnos futuros. Podés registrar una atención pasada en una agenda inactiva."
           icono="calendar"
         />
+        <div className="mt-4 flex justify-center"><Button variant="secondary" onClick={() => setRegistrarPasado({})}>Registrar atención pasada</Button></div>
+        {registrarPasado && <RegistrarPasado institucionId={institucion?.id}
+          agendaInicial={registrarPasado.agenda} inicioInicial={registrarPasado.inicio}
+          onClose={() => setRegistrarPasado(null)} onListo={() => setRegistrarPasado(null)} toast={toast} />}
       </div>
     );
   }
@@ -168,6 +179,7 @@ export default function Agenda() {
       turnos={porHorario.get(new Date(h.inicio).getTime()) || []}
       turnosListos={!turnos.isLoading && !turnos.error}
       abierto={abrir != null && mismoInstante(abrir, h.inicio)}
+      onRegistrarPasado={(inicio, paciente) => setRegistrarPasado({ agenda, inicio, paciente })}
       onCambio={recargar}
       toast={toast}
     />
@@ -239,7 +251,18 @@ export default function Agenda() {
             dados{sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
           </div>
         </div>
+        <Button variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>
+          Registrar atención pasada
+        </Button>
       </section>
+
+      {registrarPasado && <RegistrarPasado
+        institucionId={institucion?.id} agendaInicial={registrarPasado.agenda} inicioInicial={registrarPasado.inicio}
+        pacienteInicial={registrarPasado.paciente}
+        onClose={() => setRegistrarPasado(null)}
+        onListo={(turno) => { setRegistrarPasado(null); if (turno.agenda === agenda?.id) irAFecha(iso(new Date(turno.inicio))); recargar(); }}
+        toast={toast}
+      />}
 
       <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />
 
@@ -359,8 +382,108 @@ export default function Agenda() {
           </>
         )}
       </section>
+      {(pasados.total > 0 || pasados.error) && <section className="rounded-lg border border-borde bg-superficie px-xl py-lg">
+        <h2 className="text-lg font-bold">Atenciones pasadas registradas en este día</h2>
+        {pasados.error ? <EstadoError error={pasados.error} onReintentar={pasados.refetch} /> : <>
+        <p className="mb-3 text-sm text-texto-debil">Son constancias administrativas; no crean un caso ni una nota clínica.</p>
+        <ul className="divide-y divide-division">
+          {pasados.filas.map((t) => <li key={t.id} className="py-2 text-base">
+            <span className="font-semibold">{hhmm(t.inicio)} · {t.paciente}</span>
+            <span className="block text-sm text-texto-debil">Motivo del registro: {t.motivo_registro}</span>
+          </li>)}
+        </ul>
+        {pasados.total > pasados.filas.length && <p className="text-sm text-texto-debil">
+          Se muestran {pasados.filas.length} de {pasados.total} registros de este día.
+        </p>}
+        </>}
+      </section>}
     </div>
   );
+}
+
+function RegistrarPasado({ institucionId, agendaInicial, inicioInicial, pacienteInicial, onClose, onListo, toast }) {
+  const claveOperacion = useRef(null);
+  const cambiarDatos = (actualizar, valor) => { claveOperacion.current = null; actualizar(valor); };
+  const [agendaId, setAgendaId] = useState(agendaInicial?.id || "");
+  const [paciente, setPaciente] = useState(pacienteInicial || null);
+  const [inicio, setInicio] = useState(() => {
+    if (!inicioInicial) return "";
+    const fecha = new Date(inicioInicial);
+    return `${iso(fecha)}T${String(fecha.getHours()).padStart(2, "0")}:${String(fecha.getMinutes()).padStart(2, "0")}`;
+  });
+  const [duracion, setDuracion] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [confirmando, setConfirmando] = useState(false);
+  const [casoExistente, setCasoExistente] = useState(null);
+  const agendas = useQuery({
+    queryKey: ["agendas-registro-pasado", institucionId],
+    queryFn: async () => {
+      const todas = [];
+      for (let page = 1; ; page += 1) {
+        const data = await api.get(`/agendas/?institucion=${institucionId}&page_size=100&page=${page}`);
+        todas.push(...(data.results || data));
+        if (!data.next) return todas;
+      }
+    },
+    enabled: institucionId != null,
+  });
+  const agenda = agendas.data?.find((item) => String(item.id) === String(agendaId));
+  const fechaValida = inicio && Number.isFinite(new Date(inicio).getTime()) && new Date(inicio) < new Date();
+  const duracionValida = /^\d+$/.test(duracion) && Number(duracion) > 0;
+  const registrar = useAccion(
+    () => api.post("/turnos/registrar-pasado/", {
+      agenda: agenda.id, ciudadano: paciente.id,
+      inicio: new Date(inicio).toISOString(), duracion_min: Number(duracion),
+      motivo_registro: motivo.trim(),
+      clave_operacion: claveOperacion.current,
+    }),
+    {
+      onSuccess: (turno) => { toast.ok("Atención pasada registrada."); onListo(turno); },
+      onError: (error) => { setCasoExistente(error.data?.caso || null); toast.deError(error, "No se pudo registrar la atención pasada."); },
+    },
+  );
+  const cerrar = () => confirmando ? setConfirmando(false) : onClose();
+  return <Modal title={confirmando ? "Confirmar atención pasada" : "Registrar atención pasada"} onClose={cerrar} footer={<>
+    <Button variant="secondary" disabled={registrar.isPending} onClick={cerrar}>{confirmando ? "Volver a editar" : "Cerrar"}</Button>
+    <Button disabled={registrar.isPending || !agenda || !paciente || !fechaValida || !duracionValida || !motivo.trim()}
+      onClick={() => {
+        if (!confirmando) { setConfirmando(true); return; }
+        claveOperacion.current ||= crypto.randomUUID();
+        registrar.mutate();
+      }}>{registrar.isPending ? "Registrando…" : confirmando ? "Confirmar registro" : "Revisar registro"}</Button>
+  </>}>
+    {confirmando ? <div className="flex flex-col gap-2 text-base">
+      <p><strong>Paciente:</strong> {paciente?.nombre} {paciente?.apellido}</p>
+      <p><strong>Agenda:</strong> {agenda?.nombre}{agenda && !agenda.activa ? " (inactiva hoy)" : ""}</p>
+      <p><strong>Atención:</strong> {fechaHora(new Date(inicio).toISOString())} · {duracion} min</p>
+      <p><strong>Motivo de carga:</strong> {motivo.trim()}</p>
+      <p className="text-texto-debil">Se registrará una atención ya realizada. No se reservará un cupo ni se abrirá un caso. Si había un turno pendiente de esta persona en ese horario, se completará ese mismo turno.</p>
+      {casoExistente && <p role="alert" className="text-badge-error-fg">Ya existe un caso asociado. <Link className="font-semibold underline" to={`/casos/${casoExistente}`}>Abrir caso {casoExistente}</Link>.</p>}
+    </div> : <div className="flex flex-col gap-4">
+      <p className="text-base text-texto-debil">
+        Dejá constancia de una atención que ya ocurrió. Este registro no reserva un horario, no abre un caso ni reemplaza la historia clínica.
+      </p>
+      {agendas.isLoading ? <p className="text-base text-texto-debil">Cargando agendas…</p> : agendas.error ? <EstadoError error={agendas.error} onReintentar={agendas.refetch} /> :
+        <Field label="Agenda *"><Select value={agendaId} onChange={(e) => { cambiarDatos(setAgendaId, e.target.value); setPaciente(null); }}>
+          <option value="">Elegí una agenda…</option>
+          {(agendas.data || []).map((item) => <option key={item.id} value={item.id}>{item.nombre}{item.activa ? "" : " · inactiva hoy"}</option>)}
+        </Select></Field>}
+      {agenda && !agenda.activa && <p className="text-sm text-badge-amber-fg">Esta agenda está inactiva hoy. La atención pasada puede registrarse sin reactivarla.</p>}
+      {paciente ? <div className="flex items-center justify-between gap-2 text-base">
+        <span>Paciente: <strong>{paciente.nombre} {paciente.apellido}</strong></span>
+        <Button variant="secondary" onClick={() => cambiarDatos(setPaciente, null)}>Cambiar</Button>
+      </div> : agenda ? <BuscadorPaciente institucionId={agenda.institucion} onElegir={(p) => cambiarDatos(setPaciente, p)} /> : null}
+      <Field label="Fecha y hora de la atención *" error={inicio && !fechaValida ? "La fecha debe ser anterior a este momento." : undefined}>
+        <Input type="datetime-local" value={inicio} onChange={(e) => cambiarDatos(setInicio, e.target.value)} />
+      </Field>
+      <Field label="Duración real (minutos) *" error={duracion && !duracionValida ? "Indicá un número entero mayor que cero." : undefined}>
+        <Input type="number" min={1} step={1} value={duracion} onChange={(e) => cambiarDatos(setDuracion, e.target.value)} />
+      </Field>
+      <Field label="Motivo del registro *" hint="Explicá por qué se carga ahora una atención ya ocurrida.">
+        <Input value={motivo} onChange={(e) => cambiarDatos(setMotivo, e.target.value)} maxLength={300} />
+      </Field>
+    </div>}
+  </Modal>;
 }
 
 /*
@@ -489,7 +612,7 @@ function ProximosLibres({ consulta, onElegir }) {
   );
 }
 
-function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abierto, onCambio, toast }) {
+function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abierto, onRegistrarPasado, onCambio, toast }) {
   const navigate = useNavigate();
   const [dando, setDando] = useState(!!abierto);
   // El turno «titular» del horario y los sobreturnos que cuelgan de él.
@@ -515,6 +638,8 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
   // renglón.
   const ocupadoSinFicha = horario.ocupado && !titular;
   const est = ESTADOS[horario.estado] || { label: horario.estado, tone: "neutral" };
+  const pasado = new Date(horario.inicio) <= new Date();
+  const abrirAlta = () => pasado ? onRegistrarPasado(horario.inicio) : setDando(!dando);
 
   return (
     <li className={cn(
@@ -548,13 +673,13 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
               )}
             </span>
             {libres > 0 && !horario.bloqueado && (
-              <Button size="sm" variant="secondary" onClick={() => setDando(!dando)}>
-                {dando ? "Cerrar" : "Dar turno"}
+              <Button size="sm" variant="secondary" onClick={abrirAlta}>
+                {pasado ? "Registrar atención" : dando ? "Cerrar" : "Dar turno"}
               </Button>
             )}
           </>
         ) : titular ? (
-          <FichaTurno turno={titular} onCambio={onCambio} toast={toast} navigate={navigate} />
+          <FichaTurno turno={titular} onCambio={onCambio} onRegistrarPasado={onRegistrarPasado} toast={toast} navigate={navigate} />
         ) : ocupadoSinFicha ? (
           <>
             <span className="min-w-0 flex-1 truncate text-md font-semibold">
@@ -571,8 +696,8 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
               {horario.bloqueado ? "bloqueado" : extras.length ? "sin titular" : "libre"}
             </span>
             {!horario.bloqueado && (
-              <Button size="sm" variant="secondary" onClick={() => setDando(!dando)}>
-                {dando ? "Cerrar" : "Dar turno"}
+              <Button size="sm" variant="secondary" onClick={abrirAlta}>
+                {pasado ? "Registrar atención" : dando ? "Cerrar" : "Dar turno"}
               </Button>
             )}
           </>
@@ -580,7 +705,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
         {/* El sobreturno se ofrece sólo donde tiene sentido —sobre un horario
             ocupado y mientras queden cupos— y sin peso visual: es excepcional, y
             repetido en cada renglón convertía la grilla en una pared de botones. */}
-        {titulares.length > 0 && horario.admite_sobreturno && (
+        {titulares.length > 0 && horario.admite_sobreturno && !pasado && (
           <button
             onClick={() => setDando(!dando)}
             title="Agregar un sobreturno en este horario"
@@ -608,14 +733,14 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
       {enFila.map((t, i) => (
         <div key={t.id} className="mt-2 flex flex-wrap items-center gap-x-md gap-y-2 pl-14">
           {(variosCupos ? i >= cupos : true) && <Badge tone="error">turno duplicado</Badge>}
-          <FichaTurno turno={t} onCambio={onCambio} toast={toast} navigate={navigate} />
+          <FichaTurno turno={t} onCambio={onCambio} onRegistrarPasado={onRegistrarPasado} toast={toast} navigate={navigate} />
         </div>
       ))}
 
       {extras.map((t) => (
         <div key={t.id} className="mt-2 flex flex-wrap items-center gap-x-md gap-y-2 pl-14">
           <Badge tone="amber">sobreturno</Badge>
-          <FichaTurno turno={t} onCambio={onCambio} toast={toast} navigate={navigate} />
+          <FichaTurno turno={t} onCambio={onCambio} onRegistrarPasado={onRegistrarPasado} toast={toast} navigate={navigate} />
         </div>
       ))}
 
@@ -624,6 +749,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
           agenda={agenda}
           inicio={horario.inicio}
           sobreturno={libres === 0}
+          onRegistrarPasado={onRegistrarPasado}
           onListo={() => { setDando(false); onCambio(); }}
           onCerrar={() => setDando(false)}
           toast={toast}
@@ -633,7 +759,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
   );
 }
 
-function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
+function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTelefono = false }) {
   const est = ESTADOS[turno.estado] || { label: turno.estado, tone: "neutral" };
   // Las dos acciones irreversibles se confirman antes de disparar. En el
   // mostrador se opera con alguien enfrente y apurado: un clic corrido una
@@ -679,6 +805,7 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
     },
   );
   const pendiente = ["reservado", "confirmado"].includes(turno.estado);
+  const pasado = new Date(turno.inicio) <= new Date();
   // Desde el buscador el turno puede ser de cualquier día: preguntar «¿cancelo
   // el de las 10:20?» a secas deja cancelar el de la semana equivocada, y de eso
   // nadie se entera hasta que el paciente se presenta.
@@ -734,7 +861,7 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
               turno de la semana que viene, «Llegó» deja un caso abierto que
               llaman por altavoz y nadie contesta, y «No vino» le carga un
               ausentismo a alguien que justamente está llamando para avisar. */}
-          {!porTelefono && (
+          {!porTelefono && !pasado && (
           <Button size="sm" disabled={accion.isPending}
                   onClick={() => accion.mutate({
                     nombre: "llegada",
@@ -753,6 +880,12 @@ function FichaTurno({ turno, onCambio, toast, navigate, porTelefono = false }) {
             {virtual ? "Se conectó" : "Llegó"}
           </Button>
           )}
+          {!porTelefono && pasado && onRegistrarPasado && <Button size="sm" disabled={accion.isPending}
+            onClick={() => onRegistrarPasado(turno.inicio, {
+              id: turno.ciudadano, nombre: turno.paciente, apellido: "", documento: turno.documento,
+            })}>
+            Registrar atención realizada
+          </Button>}
           {/* El circuito de recordatorios se cierra acá: el comando arma la
               lista de llamados, la persona llama y el paciente dice «sí, voy».
               Sin este botón no había dónde anotarlo, así que el estado
@@ -968,8 +1101,9 @@ function MoverTurno({ turno, onListo, onClose, toast }) {
   );
 }
 
-function DarTurno({ agenda, inicio, sobreturno, onListo, onCerrar, toast }) {
+function DarTurno({ agenda, inicio, sobreturno, onRegistrarPasado, onListo, onCerrar, toast }) {
   const { institucion } = useInstitucion();
+  const [paciente, setPaciente] = useState(null);
   const [motivo, setMotivo] = useState("");
   // En una agenda mixta hay algo que elegir; en las otras dos la modalidad ya
   // está decidida y preguntarla sería una pregunta con una sola respuesta.
@@ -1003,6 +1137,13 @@ function DarTurno({ agenda, inicio, sobreturno, onListo, onCerrar, toast }) {
     },
   );
 
+  if (new Date(inicio) <= new Date()) {
+    return <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-borde bg-superficie-2 p-3 text-base">
+      <p className="min-w-48 flex-1 text-texto-debil">Este horario ya pasó. Si la atención ocurrió, registrala con duración y motivo; no se crea una reserva retroactiva.</p>
+      <Button size="sm" variant="secondary" onClick={() => { onCerrar(); onRegistrarPasado(inicio); }}>Registrar atención realizada</Button>
+    </div>;
+  }
+
   return (
     <div className="mt-3 flex flex-col gap-2 rounded-md border border-borde bg-superficie-2 p-3">
       <div className="text-sm font-semibold text-texto-suave">
@@ -1034,11 +1175,20 @@ function DarTurno({ agenda, inicio, sobreturno, onListo, onCerrar, toast }) {
           nunca fue atendido acá; antes había que irse a Registros y volver a
           navegar hasta este horario, que para entonces se lo podía haber
           llevado otro operador. */}
-      <BuscadorPaciente
-        institucionId={institucion?.id}
-        onElegir={(c) => reservar.mutate(c.id)}
-      />
-      <Button size="sm" variant="secondary" onClick={onCerrar}>Cerrar</Button>
+      {paciente ? <div className="rounded-md border border-accent/30 bg-superficie p-3 text-md">
+        <p className="font-semibold">Confirmá el {sobreturno ? "sobreturno" : "turno"}</p>
+        <p>Paciente: {paciente.nombre} {paciente.apellido}{paciente.dni ? ` · ${paciente.dni}` : ""}</p>
+        <p>Agenda: {agenda.nombre}</p>
+        <p>Fecha y hora: {fechaHora(inicio)}</p>
+        <p>Modalidad: {virtual ? "Virtual" : "Presencial"}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" disabled={reservar.isPending} onClick={() => reservar.mutate(paciente.id)}>
+            {reservar.isPending ? "Guardando…" : sobreturno ? "Confirmar sobreturno" : "Confirmar turno"}
+          </Button>
+          <Button size="sm" variant="secondary" disabled={reservar.isPending} onClick={() => setPaciente(null)}>Cambiar paciente</Button>
+        </div>
+      </div> : <BuscadorPaciente institucionId={institucion?.id} onElegir={setPaciente} />}
+      <Button size="sm" variant="secondary" disabled={reservar.isPending} onClick={onCerrar}>Cerrar</Button>
     </div>
   );
 }

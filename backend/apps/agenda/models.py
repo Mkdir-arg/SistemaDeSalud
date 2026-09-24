@@ -301,6 +301,7 @@ class Turno(models.Model):
         PRESENTE = "presente", "Se presentó"
         AUSENTE = "ausente", "No se presentó"
         CANCELADO = "cancelado", "Cancelado"
+        REALIZADO = "realizado", "Atención pasada registrada"
 
     class Modalidad(models.TextChoices):
         PRESENCIAL = "presencial", "Presencial"
@@ -337,6 +338,12 @@ class Turno(models.Model):
     # se puede pisar cuando el profesional abre una sala por paciente.
     enlace = models.URLField("enlace de la videollamada", blank=True)
     motivo = models.CharField(max_length=200, blank=True)
+    motivo_registro = models.CharField(
+        "motivo del registro retrospectivo", max_length=300, blank=True,
+    )
+    clave_operacion = models.UUIDField(
+        "clave de operación retrospectiva", unique=True, null=True, blank=True,
+    )
     origen = models.CharField(max_length=20, choices=Origen.choices, default=Origen.MOSTRADOR)
     # Caso que se abrió al presentarse. Es lo que conecta el turno con el resto
     # del sistema: sin esto un turno es una anotación en una grilla.
@@ -376,7 +383,7 @@ class Turno(models.Model):
             # llega con el turno impreso y para el mostrador no existe—.
             models.UniqueConstraint(
                 fields=["agenda", "inicio", "posicion"],
-                condition=models.Q(sobreturno=False) & ~models.Q(estado="cancelado"),
+                condition=models.Q(sobreturno=False) & ~models.Q(estado__in=["cancelado", "realizado"]),
                 name="un_turno_por_cupo",
             ),
         ]

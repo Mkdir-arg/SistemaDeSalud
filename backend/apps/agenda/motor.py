@@ -6,6 +6,7 @@ invocan. Nada de esto se puede hacer editando el modelo directamente sin romper
 alguna cuenta.
 """
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import URLValidator
@@ -21,6 +22,10 @@ from .models import Agenda, Bloqueo, Disponibilidad, Turno
 
 class ErrorAgenda(Exception):
     """Regla de agenda incumplida. La API la traduce a un 400 con el texto."""
+
+    def __init__(self, mensaje, caso_id=None):
+        super().__init__(mensaje)
+        self.caso_id = caso_id
 
 
 def _zona(fecha, hora):
@@ -137,7 +142,7 @@ def horarios_del_dia(agenda, fecha):
     turnos = list(
         agenda.turnos.select_related("ciudadano")
         .filter(inicio__gte=inicio_dia, inicio__lt=fin_dia)
-        .exclude(estado=Turno.Estado.CANCELADO)
+        .exclude(estado__in=[Turno.Estado.CANCELADO, Turno.Estado.REALIZADO])
     )
     return _grilla(agenda, fecha, disponibilidades, bloqueos, turnos)
 
@@ -160,7 +165,7 @@ def turnos_en_rango(agenda, desde, hasta):
     candidatos = (
         agenda.turnos.select_related("ciudadano", "agenda__area", "resuelto_por")
         .filter(inicio__gte=desde - timedelta(minutes=max_duracion), inicio__lt=hasta)
-        .exclude(estado=Turno.Estado.CANCELADO)
+        .exclude(estado__in=[Turno.Estado.CANCELADO, Turno.Estado.REALIZADO])
         .order_by("inicio")
     )
     return [t for t in candidatos if t.fin > desde]
@@ -262,6 +267,8 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
     el segundo paciente tiene el turno impreso y para el mostrador no existe—.
     """
     agenda = Agenda.objects.select_for_update().order_by().get(pk=agenda.pk)
+    if inicio <= timezone.now():
+        raise ErrorAgenda("Ese horario ya pasó. Registrá la atención pasada con un motivo.")
     if ciudadano.institucion_id != agenda.institucion_id:
         raise ErrorAgenda("El paciente no pertenece a la institucion de la agenda.")
     if not agenda.activa:
@@ -273,7 +280,7 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
 
     ocupados = list(
         Turno.objects.filter(agenda=agenda, inicio=inicio)
-        .exclude(estado=Turno.Estado.CANCELADO)
+        .exclude(estado__in=[Turno.Estado.CANCELADO, Turno.Estado.REALIZADO])
     )
     normales = [t for t in ocupados if not t.sobreturno]
     extras = [t for t in ocupados if t.sobreturno]
@@ -330,6 +337,85 @@ def reservar(agenda, ciudadano, inicio, autor=None, motivo="", origen=Turno.Orig
         raise ErrorAgenda("Ese horario ya está tomado.")
 
 
+@transaction.atomic
+def registrar_pasado(agenda, ciudadano, inicio, duracion_min, motivo_registro, clave_operacion, autor=None) -> tuple[Turno, bool]:
+    """Registra administrativamente una atención ya ocurrida sin reservar cupo ni abrir un caso."""
+    if isinstance(duracion_min, bool) or not isinstance(duracion_min, int) or duracion_min <= 0:
+        raise ErrorAgenda("Indicá la duración real de la atención en minutos.")
+    motivo_registro = (motivo_registro or "").strip()
+    if not motivo_registro:
+        raise ErrorAgenda("Indicá por qué se registra esta atención pasada.")
+    if len(motivo_registro) > 300:
+        raise ErrorAgenda("El motivo no puede superar los 300 caracteres.")
+    try:
+        clave = UUID(str(clave_operacion))
+        if clave.version != 4:
+            raise ValueError
+    except (TypeError, ValueError, AttributeError):
+        raise ErrorAgenda("Indicá una clave de operación UUID v4 válida.")
+    if inicio >= timezone.now():
+        raise ErrorAgenda("La atención registrada debe haber ocurrido en el pasado.")
+    agenda = Agenda.objects.select_for_update().order_by().get(pk=agenda.pk)
+    if ciudadano.institucion_id != agenda.institucion_id:
+        raise ErrorAgenda("El paciente no pertenece a la institución de la agenda.")
+    anterior = Turno.objects.filter(clave_operacion=clave).first()
+    if anterior:
+        if (anterior.agenda_id, anterior.ciudadano_id, anterior.inicio,
+                anterior.duracion_min, anterior.motivo_registro) == (
+            agenda.pk, ciudadano.pk, inicio, duracion_min, motivo_registro,
+        ):
+            return anterior, False
+        raise ErrorAgenda("La clave de operación ya se usó con otros datos. Revisá el registro antes de reintentar.")
+    coincidentes = list(Turno.objects.filter(agenda=agenda, ciudadano=ciudadano, inicio=inicio).order_by("id"))
+    if len(coincidentes) > 1:
+        raise ErrorAgenda("Hay varios turnos de esta persona en el mismo horario. Revisalos antes de registrar la atención.")
+    ahora = timezone.now()
+    try:
+        with transaction.atomic():
+            if coincidentes:
+                turno = coincidentes[0]
+                if turno.caso_id:
+                    raise ErrorAgenda(
+                        f"El turno {turno.pk} ya tiene un caso abierto. Revisá el caso antes de registrar otra atención.",
+                        caso_id=turno.caso_id,
+                    )
+                if turno.estado == Turno.Estado.REALIZADO:
+                    raise ErrorAgenda(f"Esta atención ya está registrada en el turno {turno.pk}.")
+                if turno.estado not in (Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO):
+                    raise ErrorAgenda(
+                        f"El turno {turno.pk} ya fue resuelto como {turno.get_estado_display().lower()}. "
+                        "Revisalo antes de registrar otra atención."
+                    )
+                turno.estado = Turno.Estado.REALIZADO
+                turno.duracion_min = duracion_min
+                turno.motivo_registro = motivo_registro
+                turno.clave_operacion = clave
+                turno.resuelto_por = autor
+                turno.resuelto_at = ahora
+                turno.save(update_fields=["estado", "duracion_min", "motivo_registro",
+                                          "clave_operacion", "resuelto_por", "resuelto_at"])
+                return turno, False
+            turno = Turno.objects.create(
+                agenda=agenda, ciudadano=ciudadano, inicio=inicio,
+                duracion_min=duracion_min, estado=Turno.Estado.REALIZADO,
+                motivo_registro=motivo_registro, clave_operacion=clave, creado_por=autor,
+                resuelto_por=autor, resuelto_at=ahora,
+                modalidad=agenda.modalidad_por_defecto,
+            )
+            return turno, True
+    except IntegrityError:
+        # Otro pedido con esta clave pudo terminar mientras esperábamos el INSERT.
+        anterior = Turno.objects.filter(clave_operacion=clave).first()
+        if anterior is None:
+            raise
+        if (anterior.agenda_id, anterior.ciudadano_id, anterior.inicio,
+                anterior.duracion_min, anterior.motivo_registro) == (
+            agenda.pk, ciudadano.pk, inicio, duracion_min, motivo_registro,
+        ):
+            return anterior, False
+        raise ErrorAgenda("La clave de operación ya se usó con otros datos. Revisá el registro antes de reintentar.")
+
+
 def _bajo_candado(turno: Turno) -> Turno:
     """
     Relee el turno bloqueando su fila.
@@ -362,7 +448,7 @@ def _firma(turno: Turno, autor):
 def cancelar(turno: Turno, autor=None, motivo="") -> Turno:
     """Cancela el turno y libera el horario."""
     turno = _bajo_candado(turno)
-    if turno.estado in (Turno.Estado.PRESENTE, Turno.Estado.AUSENTE):
+    if turno.estado in (Turno.Estado.PRESENTE, Turno.Estado.AUSENTE, Turno.Estado.REALIZADO):
         raise ErrorAgenda("El turno ya fue resuelto: no se puede cancelar.")
     if turno.estado == Turno.Estado.CANCELADO:
         raise ErrorAgenda("El turno ya estaba cancelado.")
@@ -422,7 +508,7 @@ def registrar_llegada(turno: Turno, autor=None) -> Turno:
     negarse porque falta una configuración.
     """
     turno = _bajo_candado(turno)
-    if turno.estado in (Turno.Estado.CANCELADO, Turno.Estado.AUSENTE):
+    if turno.estado in (Turno.Estado.CANCELADO, Turno.Estado.AUSENTE, Turno.Estado.REALIZADO):
         raise ErrorAgenda("El turno ya fue resuelto.")
     if turno.estado == Turno.Estado.PRESENTE:
         raise ErrorAgenda("La llegada ya estaba registrada.")
@@ -511,6 +597,8 @@ def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
     turno = _bajo_candado(turno)
     if turno.estado not in (Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO):
         raise ErrorAgenda("Sólo un turno pendiente se puede reprogramar.")
+    if nuevo_inicio <= timezone.now():
+        raise ErrorAgenda("El horario nuevo debe ser futuro.")
     if nuevo_inicio == turno.inicio:
         return turno
     if not agenda.activa:
@@ -520,7 +608,7 @@ def reprogramar(turno: Turno, nuevo_inicio, autor=None) -> Turno:
 
     ocupados = list(
         Turno.objects.filter(agenda=agenda, inicio=nuevo_inicio)
-        .exclude(estado=Turno.Estado.CANCELADO)
+        .exclude(estado__in=[Turno.Estado.CANCELADO, Turno.Estado.REALIZADO])
         .exclude(pk=turno.pk)
     )
     titulares = [t for t in ocupados if not t.sobreturno]
@@ -597,7 +685,7 @@ def _datos_de_rango(agenda, desde_fecha, dias):
     for t in (
         agenda.turnos.select_related("ciudadano")
         .filter(inicio__gte=inicio_rango, inicio__lt=fin_rango)
-        .exclude(estado=Turno.Estado.CANCELADO)
+        .exclude(estado__in=[Turno.Estado.CANCELADO, Turno.Estado.REALIZADO])
     ):
         por_dia.setdefault(timezone.localdate(t.inicio), []).append(t)
     return disponibilidades, bloqueos, por_dia

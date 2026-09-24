@@ -7,15 +7,23 @@ viewset equivocado y los tests del motor no lo vieron —existía la ruta en otr
 recurso y la que usaba el frontend daba 404—.
 """
 from datetime import datetime, time, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest import skipUnless
+from uuid import uuid4
 
+from django.db import connection, connections
+from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import Membresia, Usuario
+from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
+from . import motor
 from .models import Agenda, Bloqueo, Disponibilidad, Turno
 
 
@@ -90,6 +98,117 @@ class AgendaAPITests(APITestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data["estado"], "reservado")
         self.assertEqual(r.data["paciente"], "Ana Pérez")
+
+    def test_registrar_atencion_pasada_requiere_motivo_y_no_reserva_cupo(self):
+        fecha = self.martes - timedelta(days=392)
+        pasado = timezone.make_aware(datetime.combine(fecha, time(8)), timezone.get_current_timezone()).isoformat()
+        datos = {"agenda": self.agenda.id, "ciudadano": self.paciente.id, "inicio": pasado,
+                 "duracion_min": 35, "clave_operacion": str(uuid4())}
+        self.assertEqual(self.client.post("/api/turnos/", datos).status_code, 400)
+        sin_motivo = self.client.post("/api/turnos/registrar-pasado/", datos, format="json")
+        self.assertEqual(sin_motivo.status_code, 400)
+        self.assertFalse(Turno.objects.filter(inicio=pasado).exists())
+        respuesta = self.client.post("/api/turnos/registrar-pasado/", {
+            **datos, "motivo_registro": "Carga del archivo histórico",
+        }, format="json")
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        self.assertEqual(respuesta.data["estado"], "realizado")
+        self.assertEqual(respuesta.data["duracion_min"], 35)
+        self.assertIsNone(respuesta.data["caso"])
+        self.assertIsNone(respuesta.data["recordado_at"])
+        self.assertEqual(respuesta.data["resuelto_por"], self.user.id)
+        reintento = self.client.post("/api/turnos/registrar-pasado/", {
+            **datos, "motivo_registro": "Carga del archivo histórico",
+        }, format="json")
+        self.assertEqual(reintento.status_code, 200, reintento.data)
+        self.assertEqual(reintento.data["id"], respuesta.data["id"])
+        self.assertEqual(Turno.objects.filter(estado=Turno.Estado.REALIZADO).count(), 1)
+        clave_reutilizada = self.client.post("/api/turnos/registrar-pasado/", {
+            **datos, "motivo_registro": "Otro motivo",
+        }, format="json")
+        self.assertEqual(clave_reutilizada.status_code, 400)
+        grilla = self.client.get(f"/api/agendas/{self.agenda.id}/dia/?fecha={fecha}")
+        self.assertFalse(any(h["ocupado"] for h in grilla.data["horarios"]))
+        duplicado = self.client.post("/api/turnos/registrar-pasado/", {
+            **datos, "clave_operacion": str(uuid4()), "motivo_registro": "Otro motivo",
+        }, format="json")
+        self.assertEqual(duplicado.status_code, 400)
+
+    def test_registro_pasado_completa_turno_pendiente_sin_duplicarlo(self):
+        inicio = timezone.now() - timedelta(days=900)
+        pendiente = Turno.objects.create(
+            agenda=self.agenda, ciudadano=self.paciente, inicio=inicio,
+            duracion_min=20, estado=Turno.Estado.RESERVADO,
+        )
+        self.agenda.activa = False
+        self.agenda.save(update_fields=["activa"])
+        datos = {
+            "agenda": self.agenda.id, "ciudadano": self.paciente.id, "inicio": inicio.isoformat(),
+            "duracion_min": 45, "motivo_registro": "Carga tardía desde el libro de guardia",
+            "clave_operacion": str(uuid4()),
+        }
+        respuesta = self.client.post("/api/turnos/registrar-pasado/", datos, format="json")
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["id"], pendiente.pk)
+        self.assertEqual(Turno.objects.filter(agenda=self.agenda, ciudadano=self.paciente).count(), 1)
+        pendiente.refresh_from_db()
+        self.assertEqual(pendiente.estado, Turno.Estado.REALIZADO)
+        self.assertEqual(pendiente.duracion_min, 45)
+        repetido = self.client.post("/api/turnos/registrar-pasado/", datos, format="json")
+        self.assertEqual(repetido.status_code, 200, repetido.data)
+
+    def test_registro_pasado_rechaza_turno_ya_resuelto_y_duracion_omitida(self):
+        inicio = timezone.now() - timedelta(days=1)
+        Turno.objects.create(
+            agenda=self.agenda, ciudadano=self.paciente, inicio=inicio,
+            duracion_min=20, estado=Turno.Estado.AUSENTE,
+        )
+        datos = {
+            "agenda": self.agenda.id, "ciudadano": self.paciente.id, "inicio": inicio.isoformat(),
+            "motivo_registro": "Carga tardía desde el libro de guardia", "clave_operacion": str(uuid4()),
+        }
+        sin_duracion = self.client.post("/api/turnos/registrar-pasado/", datos, format="json")
+        self.assertEqual(sin_duracion.status_code, 400)
+        self.assertIn("duracion_min", sin_duracion.data)
+        resuelto = self.client.post("/api/turnos/registrar-pasado/", {
+            **datos, "duracion_min": 45,
+        }, format="json")
+        self.assertEqual(resuelto.status_code, 400)
+        self.assertEqual(Turno.objects.filter(agenda=self.agenda, ciudadano=self.paciente).count(), 1)
+
+    def test_registro_pasado_informa_el_caso_ya_abierto_sin_modificar_el_turno(self):
+        inicio = timezone.now() - timedelta(days=1)
+        caso = Caso.objects.create(
+            institucion=self.inst, version=self.flujo.versiones.get(numero=1),
+            ciudadano=self.paciente,
+        )
+        turno = Turno.objects.create(
+            agenda=self.agenda, ciudadano=self.paciente, inicio=inicio,
+            duracion_min=20, estado=Turno.Estado.PRESENTE, caso=caso,
+        )
+        respuesta = self.client.post("/api/turnos/registrar-pasado/", {
+            "agenda": self.agenda.id, "ciudadano": self.paciente.id,
+            "inicio": inicio.isoformat(), "duracion_min": 45,
+            "motivo_registro": "Carga tardía desde el libro de guardia",
+            "clave_operacion": str(uuid4()),
+        }, format="json")
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)
+        self.assertEqual(respuesta.data["caso"], caso.pk)
+        turno.refresh_from_db()
+        self.assertEqual(turno.estado, Turno.Estado.PRESENTE)
+        self.assertEqual(turno.duracion_min, 20)
+
+    def test_registrar_pasado_no_admite_futuro_ni_paciente_ajeno(self):
+        datos = {"agenda": self.agenda.id, "ciudadano": self.paciente.id,
+                 "inicio": self._iso(8), "duracion_min": 20, "motivo_registro": "Carga tardía",
+                 "clave_operacion": str(uuid4())}
+        self.assertEqual(self.client.post("/api/turnos/registrar-pasado/", datos).status_code, 400)
+        ajeno = Ciudadano.objects.create(institucion=Institucion.objects.create(nombre="Otra"), nombre="Ajena")
+        pasado = timezone.now() - timedelta(days=1)
+        respuesta = self.client.post("/api/turnos/registrar-pasado/", {
+            **datos, "ciudadano": ajeno.id, "inicio": pasado.isoformat(),
+        }, format="json")
+        self.assertEqual(respuesta.status_code, 400)
 
     def test_un_horario_tomado_lo_dice_y_ofrece_el_sobreturno(self):
         otro = Ciudadano.objects.create(institucion=self.inst, nombre="Beto", apellido="T")
@@ -672,3 +791,33 @@ class FranjasAPITests(APITestCase):
             f"&hasta={lejos + timedelta(days=6)}"
         )
         self.assertEqual(r2.data["count"], 0)
+
+
+@skipUnless(connection.vendor == "postgresql", "El bloqueo de filas requiere PostgreSQL")
+class RegistroPasadoConcurrenteTests(TransactionTestCase):
+    def test_dos_reintentos_simultaneos_crean_una_sola_atencion(self):
+        institucion = Institucion.objects.create(nombre="Hospital Central")
+        area = Area.objects.create(institucion=institucion, nombre="Guardia")
+        agenda = Agenda.objects.create(institucion=institucion, area=area, nombre="Guardia")
+        paciente = Ciudadano.objects.create(institucion=institucion, nombre="Ana")
+        inicio = timezone.now() - timedelta(days=800)
+        clave = uuid4()
+        partida = Barrier(2)
+
+        def registrar(_):
+            try:
+                partida.wait(timeout=10)
+                turno, creado = motor.registrar_pasado(
+                    Agenda.objects.get(pk=agenda.pk), Ciudadano.objects.get(pk=paciente.pk),
+                    inicio, 35, "Carga tardía desde el libro de guardia", clave,
+                )
+                return turno.pk, creado
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            resultados = list(pool.map(registrar, range(2)))
+
+        self.assertEqual(resultados[0][0], resultados[1][0])
+        self.assertEqual(sorted(creado for _, creado in resultados), [False, True])
+        self.assertEqual(Turno.objects.filter(agenda=agenda, ciudadano=paciente).count(), 1)
