@@ -333,13 +333,11 @@ class Command(BaseCommand):
         un ingreso de las últimas horas que la guardia deriva a esa área —o, para
         estudios, a Cardiología, que pide el estudio y lo deja pendiente—.
         """
+        especialidades = [nombre for nombre, _ in ESPECIALIDADES]
         destinos = {
-            "Traumatología": {"especialidad": "Traumatología", "dejar_en_fila": True},
-            "Cardiología": {"especialidad": "Cardiología", "dejar_en_fila": True},
-            "Salud mental": {"especialidad": "Salud mental", "dejar_en_fila": True},
-            "Neurología": {"especialidad": "Neurología", "dejar_en_fila": True},
-            "Laboratorio": {"especialidad": "Cardiología", "estudio": "laboratorio"},
-            "Diagnóstico por imágenes": {"especialidad": "Cardiología", "estudio": "imagenes"},
+            **{nombre: {"dejar_en_fila": True} for nombre in especialidades},
+            "Laboratorio": {"estudio": "laboratorio"},
+            "Diagnóstico por imágenes": {"estudio": "imagenes"},
         }
         for nombre, forzar in destinos.items():
             area = self.areas.get(nombre)
@@ -347,12 +345,27 @@ class Command(BaseCommand):
                 estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
             if area is None or abiertos.exists():
                 continue
+            # Una especialidad deja al paciente en su propia fila. Un estudio lo
+            # pide una especialidad que tenga un consultorio libre: sin él no se
+            # lo puede atender, y los recientes que esperan un estudio los ocupan.
+            if forzar.get("estudio"):
+                candidatas = [e for e in especialidades if self._consultorio_libre(self.areas.get(e))]
+            else:
+                candidatas = [nombre]
+            if not candidatas:
+                self.stderr.write(f"  trabajo para {nombre}: ninguna especialidad con consultorio libre")
+                continue
             t0 = ahora - timedelta(minutes=random.randint(150, 240))
             try:
-                self._recorrer_ingreso(random.choice(pacientes), t0, "completo", hechos,
-                                       forzar={"conducta": "Derivar a especialidad", **forzar})
+                self._recorrer_ingreso(random.choice(pacientes), t0, "completo", hechos, forzar={
+                    "conducta": "Derivar a especialidad", "especialidad": candidatas[0], **forzar})
             except motor.ErrorMotor as e:
                 self.stderr.write(f"  trabajo para {nombre}: {e}")
+
+    def _consultorio_libre(self, area):
+        boxes = self.boxes.get(area.id, []) if area else []
+        ocupados = set(ItemFila.objects.filter(box__in=boxes, atendido=False).values_list("box_id", flat=True))
+        return any(box.id not in ocupados for box in boxes)
 
     def _bloqueo_de_agenda(self):
         """
@@ -1000,7 +1013,9 @@ class Command(BaseCommand):
         forzar = forzar or {}
         # Una parte se deja en curso para que las filas de las especialidades no queden
         # vacías, pero solo si el caso es reciente (ver `limite_cola`).
-        if forzar.get("dejar_en_fila") or (reloj.t >= self.limite_cola and random.random() < 0.45):
+        # Con un estudio forzado no se sortea: el caso tiene que llegar a pedirlo.
+        if forzar.get("dejar_en_fila") or (
+                not forzar.get("estudio") and reloj.t >= self.limite_cola and random.random() < 0.45):
             return
 
         reloj.mas(20, 90)
