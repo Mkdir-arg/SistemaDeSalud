@@ -90,16 +90,29 @@ bajar el entorno ni borrar el volumen.
 `demo1234`, y el comando lo advierte, porque esa clave está en el repositorio.
 En `.env.demo` o en las variables del servicio, nunca en un archivo versionado.
 
-**Correlo el mismo día de la demo.** Las fechas son relativas al momento de la
-carga (ver `backend/apps/demo/calendario.py`):
+**Las fechas son relativas al momento de la carga** (ver
+`backend/apps/demo/calendario.py`):
 
-- Hay doce meses de historia que terminan hoy.
+- Hay doce meses de historia que terminan ese momento.
 - El mes en curso —el que abren por defecto Finanzas, Coberturas y la actividad
-  del financiador— tiene su movimiento repartido entre el 1° y ahora.
+  del financiador— tiene su movimiento repartido entre el 1° y ese momento.
 - Lo pendiente es de las últimas horas: casos abiertos, pacientes en la sala de
-  espera, autorizaciones con 48 h de plazo. Cargado un día antes, las
-  autorizaciones pueden vencer y la sala de espera tiene gente esperando desde
-  ayer.
+  espera, autorizaciones con 48 h de plazo.
+
+**Para una demo con hora fija, cargala antes con `--ancla`.** Con
+`--ancla 2026-10-01T08:00` la carga queda como si se hubiera hecho el 01/10 a
+las 8, aunque se corra días antes: a las 9 hay pacientes esperando desde hace un
+rato, octubre tiene movimiento y las autorizaciones abiertas vencen el 03/10.
+
+```bash
+$DEMO exec backend python manage.py seed_entorno_demo --noinput --ancla 2026-10-01T08:00
+```
+
+Dos consecuencias hasta que llega el ancla. La aplicación muestra datos con
+fecha futura, con esperas negativas en la sala de espera. Y lo que se opere antes
+—un ensayo— queda con la hora real, anterior a esos datos: **después de ensayar,
+volvé a cargar con la misma ancla.** Sin `--ancla`, el momento es ahora, y la
+carga conviene hacerla el mismo día.
 
 Qué carga, por paso:
 
@@ -129,7 +142,8 @@ hace falta, no un procedimiento probado.
    guarda fuera del repositorio), `SEED_DEMO=0` y `SEED_GUARDIA=0`. Cambiar
    variables **redespliega el servicio**: esperá a que quede sano antes del paso 3.
 3. Desde una consola **del contenedor** del backend (`railway ssh` o la consola
-   web): `python manage.py seed_entorno_demo --noinput`. No uses `railway run`:
+   web): `python manage.py seed_entorno_demo --noinput --ancla 2026-10-01T08:00`.
+   No uses `railway run`:
    corre el código de tu máquina con las variables del servicio, y necesita la
    URL pública de la base.
 4. Revisar el resumen que imprime: ningún usuario operativo sin trabajo y el
@@ -142,23 +156,23 @@ imagen del backend (tiempos, repartos, costos, respaldos).
 
 ### El día de la demo
 
-Si en el ensayo se consumen los casos preparados, o la carga es de otro día, la
-única forma de volver al estado inicial es **recargar todo**: no hay recarga
-parcial. Para que eso no se descubra el 01/10 a la mañana:
+La demo del 01/10 es a las 9: la idea es **no tener que cargar nada esa mañana.**
 
-- **El día anterior, ensayá la recarga en el mismo entorno** con el procedimiento
-  de arriba y anotá cuánto tardó. Si la consola de Railway corta la sesión antes
-  de que termine, la carga se revierte entera: la base queda como estaba, sin
-  demo nueva, y conviene saberlo antes.
-- **El día de la demo, recargá temprano** y dejá margen: 5 a 7 minutos de carga,
-  más de lo que haya tardado el ensayo, con la aplicación sin responder mientras
-  tanto. No la recargues el día anterior: las autorizaciones abiertas tienen 48 h
-  de plazo y la sala de espera amanece con gente esperando desde ayer.
-- **Verificá con el resumen del comando** que no haya líneas «Sin trabajo
-  pendiente» ni el aviso de clave por defecto, y entrá con un usuario de cada
-  lado (hospital, financiador, finanzas).
-- **Si la recarga falla**, el mensaje dice qué paso falló, y la base queda con la
-  carga anterior, que sigue sirviendo aunque sea de otro día.
+1. **Apenas haya acceso a Railway, cargá con el ancla** del día de la demo, con el
+   procedimiento de arriba: `--ancla 2026-10-01T08:00`. Anotá cuánto tardó. Si la
+   consola corta la sesión antes de que termine, la carga se revierte entera y
+   la base queda como estaba: mejor descubrirlo con días de margen.
+2. **Verificá con el resumen del comando** que no haya líneas «Sin trabajo
+   pendiente» ni el aviso de clave por defecto, y entrá con un usuario de cada
+   lado (hospital, financiador, finanzas). Las fechas se ven futuras hasta el
+   01/10: es lo esperado.
+3. **Si ensayás el recorrido, volvé a cargar con la misma ancla** al terminar. El
+   ensayo consume los casos preparados, y no hay recarga parcial.
+4. **El 30/09 a la tarde, última carga con la misma ancla**, y nadie opera hasta
+   la demo.
+5. **El 01/10 no hace falta cargar.** Si algo se rompió igual, la recarga sin
+   ancla tarda entre 5 y 7 minutos, con la aplicación sin responder; si falla, la
+   base queda con la carga anterior, que sigue sirviendo.
 
 ---
 
