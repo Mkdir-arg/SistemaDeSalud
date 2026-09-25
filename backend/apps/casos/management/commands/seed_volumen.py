@@ -27,11 +27,16 @@ Eso es lo que hace que el tablero muestre métricas reales, porque las calcula a
 Determinista: con la misma `--semilla` produce exactamente los mismos datos, así la
 demo se puede resetear y queda idéntica.
 
+También deja lo que depende de esos turnos y esas colas: un bloqueo de agenda que
+pisa turnos ya dados y el token de la pantalla pública de llamados de cada cola
+con pacientes. Requiere `ENTORNO` distinto de `produccion`.
+
     python manage.py seed_volumen --rehacer     # reset completo de la demo (un comando)
     python manage.py seed_volumen               # agrega volumen al escenario existente
     python manage.py seed_volumen --casos 500 --dias 120
 """
 import random
+import secrets
 import unicodedata
 from datetime import datetime, time, timedelta
 
@@ -42,6 +47,7 @@ from django.utils import timezone
 
 from apps.casos import motor
 from apps.casos.models import Caso, EventoCaso, ItemFila, Notificacion
+from apps.demo.entorno import exigir_entorno_de_prueba
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.formularios.models import Campo, Formulario
 from apps.instituciones.models import Area, Box, Cama, EstadiaCama, Institucion
@@ -198,6 +204,7 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **opciones):
+        exigir_entorno_de_prueba("seed_volumen")
         random.seed(opciones["semilla"])
         # Corriente de azar SEPARADA para las fechas de ingreso.
         #
@@ -253,6 +260,7 @@ class Command(BaseCommand):
         # sentado en una sala. Sin este límite, el tablero informa demoras de 80 días.
         self.limite_cola = ahora - timedelta(hours=10)        # filas y estudios pendientes
         self.limite_internacion = ahora - timedelta(days=15)  # una internación sí dura días
+        self.ventana_internados = ahora - timedelta(days=30)  # de dónde salen los internados de hoy
 
         hechos = {"cerrados": 0, "en_curso": 0, "derivados": 0, "estudios": 0, "internados": 0}
 
@@ -265,7 +273,13 @@ class Command(BaseCommand):
             except motor.ErrorMotor as e:
                 self.stderr.write(f"  histórico {i}: {e}")
 
-        # 2. Carga viva: lo que se ve al abrir la app. Se rota por las paradas (en vez
+        # 2. Ningún equipo sin trabajo: lo que el histórico dejó sin casos abiertos
+        #    se completa con un ingreso reciente dirigido a esa área. Va ANTES de
+        #    la carga viva, que ocupa todos los consultorios de la guardia: sin
+        #    uno libre, a este ingreso no se lo podría atender.
+        self._asegurar_trabajo_por_area(pacientes, hechos, ahora)
+
+        # 3. Carga viva: lo que se ve al abrir la app. Se rota por las paradas (en vez
         #    de sortearlas) para garantizar que ninguna bandeja ni fila quede vacía, y
         #    cada una usa su propia ventana de antigüedad.
         paradas = list(PARADAS)
@@ -286,6 +300,8 @@ class Command(BaseCommand):
         consentimientos = self._sembrar_consentimientos(pacientes)
         self._dejar_consultorios_libres()
         self._ordenar_las_colas()
+        bloqueo = self._bloqueo_de_agenda()
+        pantallas = self._pantallas_de_llamados()
 
         activos = Caso.objects.filter(institucion=self.inst).exclude(
             estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO]).count()
@@ -301,8 +317,109 @@ class Command(BaseCommand):
             f"  {EntradaHistoria.objects.count()} entradas de historia clínica "
             f"({sellados} selladas)\n"
             f"  {consentimientos} consentimientos de datos\n"
+            f"  {bloqueo}\n"
+            f"  {len(pantallas)} pantallas de llamados: {', '.join(pantallas)}\n"
             f"\nReproducible: misma --semilla ({opciones['semilla']}) = mismos datos."
         ))
+
+    def _asegurar_trabajo_por_area(self, pacientes, hechos, ahora):
+        """
+        Al menos un caso abierto en cada área con equipo propio.
+
+        La carga viva rota por las paradas de la guardia, pero lo que llega a
+        cada especialidad o a cada servicio de estudios depende del azar de las
+        conductas: en una corrida Neurología o Laboratorio podían quedar sin un
+        solo caso, y su profesional entraba a una bandeja vacía. Se completa con
+        un ingreso de las últimas horas que la guardia deriva a esa área —o, para
+        estudios, a Cardiología, que pide el estudio y lo deja pendiente—.
+        """
+        especialidades = [nombre for nombre, _ in ESPECIALIDADES]
+        destinos = {
+            **{nombre: {"dejar_en_fila": True} for nombre in especialidades},
+            "Laboratorio": {"estudio": "laboratorio"},
+            "Diagnóstico por imágenes": {"estudio": "imagenes"},
+        }
+        for nombre, forzar in destinos.items():
+            area = self.areas.get(nombre)
+            abiertos = Caso.objects.filter(area_actual=area).exclude(
+                estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+            if area is None or abiertos.exists():
+                continue
+            # Una especialidad deja al paciente en su propia fila. Un estudio lo
+            # pide una especialidad que tenga un consultorio libre: sin él no se
+            # lo puede atender, y los recientes que esperan un estudio los ocupan.
+            if forzar.get("estudio"):
+                candidatas = [e for e in especialidades if self._consultorio_libre(self.areas.get(e))]
+            else:
+                candidatas = [nombre]
+            if not candidatas:
+                self.stderr.write(f"  trabajo para {nombre}: ninguna especialidad con consultorio libre")
+                continue
+            t0 = ahora - timedelta(minutes=random.randint(150, 240))
+            try:
+                self._recorrer_ingreso(random.choice(pacientes), t0, "completo", hechos, forzar={
+                    "conducta": "Derivar a especialidad", "especialidad": candidatas[0], **forzar})
+            except motor.ErrorMotor as e:
+                self.stderr.write(f"  trabajo para {nombre}: {e}")
+
+    def _consultorio_libre(self, area):
+        boxes = self.boxes.get(area.id, []) if area else []
+        ocupados = set(ItemFila.objects.filter(box__in=boxes, atendido=False).values_list("box_id", flat=True))
+        return any(box.id not in ocupados for box in boxes)
+
+    def _bloqueo_de_agenda(self):
+        """
+        Un bloqueo que pisa turnos ya dados.
+
+        Se elige el rango a partir de turnos futuros reales para que
+        `turnos_en_rango` devuelva algo: un bloqueo sobre una franja vacía no
+        muestra la funcionalidad que importa, que es enterarse de a quién hay
+        que reprogramar.
+        """
+        from apps.agenda import motor as agenda_motor
+        from apps.agenda.models import Bloqueo, Turno
+
+        turno = (Turno.objects
+                 .filter(agenda__institucion=self.inst,
+                         estado__in=[Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO],
+                         inicio__gt=timezone.now())
+                 .select_related("agenda")
+                 .order_by("inicio")
+                 .first())
+        if not turno:
+            return "sin bloqueo de agenda: no hay turnos futuros vigentes"
+        agenda = turno.agenda
+        # Arranca media hora ANTES del turno y termina dentro de su duración: así
+        # el solape es parcial, que es el caso que el cálculo por hora de inicio
+        # dejaba pasar.
+        desde = turno.inicio - timedelta(minutes=30)
+        hasta = turno.inicio + timedelta(hours=3)
+        Bloqueo.objects.filter(agenda=agenda, desde=desde, hasta=hasta).delete()
+        Bloqueo.objects.create(agenda=agenda, desde=desde, hasta=hasta,
+                               motivo="Mantenimiento del equipo · demo")
+        afectados = agenda_motor.turnos_en_rango(agenda, desde, hasta)
+        return (f"agenda «{agenda}» bloqueada {timezone.localtime(desde):%d/%m %H:%M}–"
+                f"{timezone.localtime(hasta):%H:%M} · turnos afectados: {len(afectados)}")
+
+    def _pantallas_de_llamados(self):
+        """
+        Token de la pantalla pública de llamados, para los nodos que hoy tienen cola.
+
+        La pantalla vive en `/pantalla/<token>` y no pide login, pero el token se
+        genera a pedido desde el editor: recién sembrado no existe ninguno, así
+        que la pantalla de sala de espera —de las que más se muestran— no se
+        puede abrir sin ir antes a generarlo.
+        """
+        con_cola = (ItemFila.objects
+                    .filter(caso__institucion=self.inst, atendido=False, ausente=False)
+                    .values_list("nodo_id", flat=True))
+        rutas = []
+        for nodo in Nodo.objects.filter(pk__in=set(con_cola)).order_by("pk"):
+            if not nodo.pantalla_token:
+                nodo.pantalla_token = secrets.token_urlsafe(12)
+                nodo.save(update_fields=["pantalla_token"])
+            rutas.append(f"«{nodo.titulo}» /pantalla/{nodo.pantalla_token}")
+        return rutas
 
     def _dejar_consultorios_libres(self):
         """
@@ -506,8 +623,18 @@ class Command(BaseCommand):
         return self.admin
 
     def _box(self, caso):
+        """Un consultorio del área, libre si hay alguno.
+
+        El motor no deja llamar a un consultorio con un paciente adentro. Sortear
+        entre todos hacía fallar el llamado cada vez que tocaba uno ocupado,
+        aunque hubiera otro libre, y el caso quedaba a mitad de camino. Con todos
+        ocupados falla igual, que es lo que pasa en la guardia: no se llama a
+        nadie a un consultorio lleno, y sin consultorio no se lo puede atender.
+        """
         opciones = self.boxes.get(caso.area_actual_id or 0, [])
-        return random.choice(opciones).id if opciones else None
+        ocupados = set(ItemFila.objects.filter(box__in=opciones, atendido=False).values_list("box_id", flat=True))
+        libres = [box for box in opciones if box.id not in ocupados]
+        return random.choice(libres or opciones).id if opciones else None
 
     # ----------------------------------------------------------------- #
     # Padrón
@@ -523,9 +650,12 @@ class Command(BaseCommand):
             # Pirámide etaria con sesgo a adultos y adultos mayores (perfil de guardia).
             edad = random.choice([random.randint(1, 17), random.randint(18, 64),
                                   random.randint(18, 64), random.randint(65, 92)])
-            documento = str(random.randint(4_000_000, 55_000_000))
+            # Del 90 al 99 millones: tiene forma de DNI pero todavía no se asignó
+            # a nadie. En el rango de los documentos vigentes, un número al azar
+            # puede ser el de una persona real.
+            documento = str(random.randint(90_000_000, 99_999_999))
             while documento in usados:
-                documento = str(random.randint(4_000_000, 55_000_000))
+                documento = str(random.randint(90_000_000, 99_999_999))
             usados.add(documento)
 
             ciu, _ = Ciudadano.objects.get_or_create(
@@ -584,6 +714,9 @@ class Command(BaseCommand):
         tiempo tenga un orden estable (EventoCaso ordena por fecha).
         """
         nuevos = list(EventoCaso.objects.filter(pk__gt=self.cursor_evento).order_by("pk").values_list("pk", flat=True))
+        # Con el reloj en su techo («ahora»), los segundos de separación dejaban
+        # los últimos eventos del tramo en el futuro: se corre el tramo hacia atrás.
+        t = min(t, timezone.now() - timedelta(seconds=7 * max(len(nuevos) - 1, 0)))
         for i, pk in enumerate(nuevos):
             EventoCaso.objects.filter(pk=pk).update(fecha=t + timedelta(seconds=i * 7))
         if nuevos:
@@ -748,7 +881,11 @@ class Command(BaseCommand):
     # ----------------------------------------------------------------- #
     # Recorrido de un ingreso a guardia
     # ----------------------------------------------------------------- #
-    def _recorrer_ingreso(self, paciente, t0, parada, hechos):
+    def _recorrer_ingreso(self, paciente, t0, parada, hechos, forzar=None):
+        """`forzar` fija decisiones que de otro modo se sortean: conducta, especialidad,
+        si la especialidad lo deja en fila y qué estudio pide (ver
+        `_asegurar_trabajo_por_area`)."""
+        forzar = forzar or {}
         reloj = Reloj(t0)
         guardia = self.areas["Guardia"]
 
@@ -831,8 +968,8 @@ class Command(BaseCommand):
         # 5. Conducta médica ---------------------------------------------
         reloj.mas(5, 18)
         caso.refresh_from_db()
-        conducta = elegir(CONDUCTAS)
-        especialidad = elegir(ESPECIALIDADES) if conducta == "Derivar a especialidad" else ""
+        conducta = forzar.get("conducta") or elegir(CONDUCTAS)
+        especialidad = (forzar.get("especialidad") or elegir(ESPECIALIDADES)) if conducta == "Derivar a especialidad" else ""
         motor.avanzar(caso, {"valores": {
             self.campo("Conducta médica de guardia", "Diagnóstico presuntivo"): random.choice(DIAGNOSTICOS),
             self.campo("Conducta médica de guardia", "Conducta"): conducta,
@@ -864,18 +1001,21 @@ class Command(BaseCommand):
                 self._recorrer_internacion(sub, reloj, hechos)
             else:
                 hechos["derivados"] += 1
-                self._recorrer_especialidad(sub, reloj, hechos)
+                self._recorrer_especialidad(sub, reloj, hechos, forzar)
 
         self._cerrar_tramo(caso, hechos, en_curso=False)
 
     # ----------------------------------------------------------------- #
     # Sub-flujos
     # ----------------------------------------------------------------- #
-    def _recorrer_especialidad(self, caso, reloj, hechos):
+    def _recorrer_especialidad(self, caso, reloj, hechos, forzar=None):
         """Atención con fila → (estudio opcional) → conducta → alta o internación."""
+        forzar = forzar or {}
         # Una parte se deja en curso para que las filas de las especialidades no queden
         # vacías, pero solo si el caso es reciente (ver `limite_cola`).
-        if reloj.t >= self.limite_cola and random.random() < 0.45:
+        # Con un estudio forzado no se sortea: el caso tiene que llegar a pedirlo.
+        if forzar.get("dejar_en_fila") or (
+                not forzar.get("estudio") and reloj.t >= self.limite_cola and random.random() < 0.45):
             return
 
         reloj.mas(20, 90)
@@ -886,14 +1026,16 @@ class Command(BaseCommand):
         caso.refresh_from_db()
 
         # Durante la atención el médico puede pedir un estudio (ida y vuelta).
-        if random.random() < 0.4:
+        if forzar.get("estudio") or random.random() < 0.4:
             reloj.mas(3, 10)
-            a_laboratorio = random.random() < 0.55
+            a_laboratorio = forzar["estudio"] == "laboratorio" if forzar.get("estudio") else random.random() < 0.55
             area = self.areas["Laboratorio" if a_laboratorio else "Diagnóstico por imágenes"]
             tipo = random.choice(ESTUDIOS_LAB if a_laboratorio else ESTUDIOS_IMG)
             sub = motor.solicitar_estudio_derivado(caso, tipo, area, autor=medico)
             self._sellar(reloj.t)
             hechos["estudios"] += 1
+            if forzar.get("estudio"):
+                return  # el estudio queda pendiente: es el trabajo que se quería dejar
             if not self._recorrer_estudio(sub, reloj, a_laboratorio):
                 return  # el estudio quedó pendiente: el caso sigue esperando
             caso.refresh_from_db()
@@ -981,6 +1123,13 @@ class Command(BaseCommand):
         libre = motor.camas_disponibles(caso.nodo_actual).order_by("?").first()
         if libre is None:
             hechos["sin_cama"] = hechos.get("sin_cama", 0) + 1
+            # Sólo los recientes siguen esperando. Uno de hace meses no espera
+            # más: se lo derivó a otro efector, y dejarlo abierto sumaba a la
+            # bandeja de internación pacientes que llevaban medio año sin cama.
+            if reloj.t < self.limite_cola:
+                motor.cancelar_caso(caso, autor=self.admin,
+                                    motivo="Sin cama disponible: se deriva a otro efector de la red.")
+                self._sellar(reloj.t)
             return
         motor.asignar_cama(caso, libre.id, autor=self._autor(caso))
         self._sellar(reloj.t)
@@ -1001,19 +1150,24 @@ class Command(BaseCommand):
                 self._sellar(reloj.t)
                 caso.refresh_from_db()
                 hechos["pases_uti"] = hechos.get("pases_uti", 0) + 1
+                self._higienizar(caso, reloj)
 
         # Una parte queda internada AHORA: son los pacientes que ocupan las camas
         # que muestra el tablero, y sin ellos la pantalla arranca vacía.
         #
-        # No se decide por el reloj del recorrido. Los casos que llegan a
-        # internarse son los que completaron todo el circuito de guardia, y esos
-        # son siempre los viejos: los recientes quedan detenidos antes (en la
-        # sala, en atención). Con un corte por fecha la internación más nueva
-        # daba 21 días y no había ninguna en curso.
+        # Los casos que llegan a internarse son los que completaron todo el
+        # circuito de guardia, y entre los muy recientes casi no hay: quedan
+        # detenidos antes (en la sala, en atención). Por eso no se exige que la
+        # internación sea de hoy: se elige entre las del último mes y se la
+        # refecha a una ventana reciente y plausible, que es la misma operación
+        # que el seed ya hace con eventos e historia clínica.
         #
-        # Se los refecha a una ventana reciente y plausible, que es la misma
-        # operación que el seed ya hace con eventos e historia clínica.
-        if hechos.get("internados_ahora", 0) < 12 and random.random() < 0.4:
+        # El mes importa. Ocupan su cama desde que se eligen hasta el final de la
+        # carga, y sin ventana, con un año de historia, los primeros doce la
+        # tenían tomada desde el primer mes: el resto del año casi nadie
+        # conseguía cama y el sector terminaba con cien pacientes esperando.
+        if (reloj.t >= self.ventana_internados and hechos.get("internados_ahora", 0) < 12
+                and random.random() < 0.6):
             # Los primeros tres van a UTI. Librado al azar del pase general
             # (uno de cada seis, y sólo si además le toca quedar en curso) UTI
             # salía vacía en casi todas las corridas, y un tablero donde un
@@ -1027,6 +1181,11 @@ class Command(BaseCommand):
                                           motivo="Descompensación hemodinámica")
                     caso.refresh_from_db()
                     hechos["en_uti"] = hechos.get("en_uti", 0) + 1
+            # Se sella el tramo ANTES de refechar: si no, la estadía de UTI queda
+            # después del cursor y el `_sellar` del caso siguiente le pone la
+            # fecha de ese otro caso. Así quedaban camas de UTI «ocupadas desde
+            # hace seis meses».
+            self._sellar(reloj.t)
             ingreso = timezone.now() - timedelta(
                 days=random.randint(0, 7), hours=random.randint(1, 23)
             )
@@ -1096,11 +1255,23 @@ class Command(BaseCommand):
         #
         # Las de las últimas horas se dejan sucias: es el estado que hay que
         # poder ver en el tablero, y si se limpian todas no se ve nunca.
-        ultima = caso.estadias.select_related("cama").order_by("-desde").first()
-        cama = ultima.cama if ultima else None
-        if cama and cama.estado == Cama.Estado.HIGIENE and reloj.t < self.limite_cola:
-            reloj.mas(25, 70)
-            motor.cambiar_estado_cama(cama, Cama.Estado.LIBRE)
+        self._higienizar(caso, reloj)
+
+    def _higienizar(self, caso, reloj):
+        """Deja libres TODAS las camas que el caso dejó en higiene, no sólo la última.
+
+        Un pase a UTI deja sucia la cama de Clínica médica que se desocupa. Si
+        sólo se limpiaba la de la última estadía, cada pase dejaba una cama de
+        Clínica fuera de uso para el resto de la carga: con un año de historia el
+        sector se quedaba sin camas a las pocas semanas y casi todas las
+        internaciones posteriores terminaban sin lugar.
+        """
+        if reloj.t >= self.limite_cola:
+            return
+        for estadia in caso.estadias.select_related("cama").exclude(hasta__isnull=True).order_by("desde"):
+            if estadia.cama.estado == Cama.Estado.HIGIENE:
+                reloj.mas(25, 70)
+                motor.cambiar_estado_cama(estadia.cama, Cama.Estado.LIBRE)
 
     # ----------------------------------------------------------------- #
     # Auxiliares de fila y cierre

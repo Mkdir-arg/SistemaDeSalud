@@ -8,7 +8,7 @@
 > plataforma, soporte y contingencia. Para el gobierno estatal de la red hay un rol
 > funcional aparte: [`02-plataforma.md`](02-plataforma.md).
 
-**Usuario de demo:** `admin@salud.local` / `admin1234`
+**Usuario de demo:** `admin@salud.local` / `demo1234`
 
 ---
 

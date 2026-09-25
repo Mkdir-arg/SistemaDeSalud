@@ -1,8 +1,20 @@
-"""Escenario ficticio de financiadores; nunca se ejecuta al iniciar la aplicación.
+"""Circuito de financiadores sobre un hospital ya cargado: doce meses que terminan hoy.
 
-Monta el circuito de cobertura —obras sociales, planes, reglas, convenios,
-aranceles acordados, padrón, consumos externos y atenciones con copago— SOBRE
-una institución ya sembrada, sin tocar sus datos anteriores.
+Qué carga
+---------
+Obras sociales, planes, reglas, convenios, aranceles acordados, padrón, consumos
+externos, autorizaciones previas y atenciones con copago, SOBRE Los Aromos (o la
+institución que se indique), sin tocar sus datos anteriores. Las fechas siguen el
+calendario relativo de `apps.demo.calendario`.
+
+Deja trabajo pendiente para cada lado:
+
+- **Financiador:** autorizaciones pendientes de respuesta, la liquidación del mes
+  en curso sin pagar, un padrón con bajas y una reactivación.
+- **Hospital:** una autorización observada para reenviar, saldos del mes en
+  curso sin decidir quién los paga, un caso con reserva y copago aceptado, un
+  caso sin cupo porque el afiliado lo consumió en otro prestador, y un convenio
+  que propuso una prepaga y espera la aceptación del hospital.
 
 Por qué un área nueva y no las existentes
 -----------------------------------------
@@ -10,22 +22,24 @@ Las atenciones nuevas entran en un área propia («Consultorios externos») crea
 por este comando. No es una decisión estética: el reparto distribuye cada gasto
 entre las atenciones elegibles DE SU ÁREA, así que sumar atenciones a un área con
 gastos repartidos le cambia la porción a todas las demás. En Los Aromos eso
-reescribiría en silencio las cifras por atención ya verificadas y documentadas.
-El área nueva no tiene gastos ni reglas de reparto, así que no entra en ningún
-reparto existente y los importes anteriores quedan intactos.
+reescribiría en silencio las cifras por atención de `seed_los_aromos`. El área
+nueva no tiene gastos ni reglas de reparto, así que no entra en ningún reparto
+existente y los importes anteriores quedan intactos.
 
-Requiere una base PostgreSQL migrada, la institución destino ya sembrada, que no
-exista ningún financiador, --confirmar ESCENARIO_FINANCIADORES y
-DEMO_FINANCIADORES_PASSWORD. No borra ni actualiza datos clínicos ni económicos
-previos. La cronología simulada sólo vive dentro de esta carga.
+Requisitos
+----------
+- PostgreSQL migrado.
+- `ENTORNO` distinto de `produccion`.
+- La institución destino ya cargada, con administrador institucional.
+- Ningún financiador cargado. Para rehacerlo se vacía la base con
+  `seed_entorno_demo`: el escenario no se borra ni se mezcla por partes.
+
+Los usuarios toman la clave de `DEMO_PASSWORD` (ver `apps.demo.claves`).
 """
 import json
-import os
-from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from django.core.management.base import BaseCommand, CommandError
@@ -35,6 +49,9 @@ from django.utils import timezone
 from apps.accounts.models import LegajoProfesional, Membresia, Usuario
 from apps.casos import motor
 from apps.casos.models import Caso
+from apps.demo.calendario import Calendario
+from apps.demo.claves import clave_demo
+from apps.demo.entorno import exigir_entorno_de_prueba
 from apps.finanzas.cobros import registrar_politica_cobro
 from apps.finanzas.dinero import registrar_movimiento
 from apps.finanzas.models import (
@@ -46,21 +63,18 @@ from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
 from apps.financiadores import models as m
+from apps.financiadores import autorizaciones
 from apps.financiadores.cobertura import cotizacion, reservar, seleccionar_afiliacion
 from apps.financiadores.cobros import resolver_saldo
 from apps.financiadores.services import registrar_afiliado, registrar_consumo_externo
 
 
-CONFIRMACION = "ESCENARIO_FINANCIADORES"
 INSTITUCION_POR_DEFECTO = "Hospital General Los Aromos"
 CENTAVOS = Decimal("0.01")
-
-# La historia va de julio a septiembre de 2026. Septiembre queda IMPAGO a
-# propósito: es el caso real —la obra social todavía no liquidó— y es lo que
-# permite mostrar deuda de financiador separada del copago del paciente.
-MESES = (date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1))
-MES_SIN_PAGO = date(2026, 9, 1)
-VIGENCIA = date(2026, 6, 15)
+CANTIDAD_DE_MESES = 12
+# Días nominales del primer mes: la configuración va el 5 y el padrón el 8, así
+# que las atenciones de ese mes arrancan después.
+DIA_CONFIGURACION, DIA_PADRON = 5, 8
 
 # Aranceles generales del área nueva: los que rigen cuando no hay un acuerdo de
 # convenio para esa prestación.
@@ -87,6 +101,7 @@ FINANCIADORES = (
         "reglas": {"CEX": ("80", 6, "anio", False), "RXE": ("70", 2, "anio", True)},
         # Acuerdo por debajo del arancel general: se negoció, no es un descuento.
         "aranceles": {"CEX": 26000},
+        "convenio": "activo",
     },
     {
         "slug": "obra-social-provincial",
@@ -97,6 +112,20 @@ FINANCIADORES = (
         "plan_nombre": "Plan Base",
         "reglas": {"CEX": ("70", 4, "anio", False), "RXE": ("50", None, "anio", False)},
         "aranceles": {"RXE": 32000},
+        "convenio": "activo",
+    },
+    {
+        # Recién llegada: propuso convenio y el hospital todavía no lo aceptó.
+        # Es lo que deja trabajo en «Coberturas → Configuración».
+        "slug": "prepaga-horizonte",
+        "nombre": "Prepaga Horizonte Salud",
+        "tipo": "otro",
+        "dominio": "horizontesalud.test",
+        "plan_codigo": "PH-300",
+        "plan_nombre": "Plan 300",
+        "reglas": {"CEX": ("90", 12, "anio", False), "RXE": ("80", 4, "anio", False)},
+        "aranceles": {},
+        "convenio": "propuesto",
     },
 )
 
@@ -107,37 +136,43 @@ PERSONAS = (
     ("Mirta", "Zalazar"), ("Fabián", "Leguizamón"), ("Carina", "Ojeda"),
     ("Rubén", "Maldonado"), ("Andrea", "Paniagua"), ("Claudio", "Insaurralde"),
     ("Viviana", "Escalante"), ("Marcelo", "Aguirre"), ("Susana", "Barrios"),
+    ("Hernán", "Villagra"), ("Lorena", "Quintana"), ("Walter", "Sanabria"),
+    ("Gisela", "Toledo"), ("Mauricio", "Benavídez"), ("Estela", "Carrizo"),
+    ("Damián", "Frías"), ("Romina", "Pacheco"), ("Osvaldo", "Duarte"),
+    ("Liliana", "Arévalo"), ("Ignacio", "Montiel"),
 )
 
-# Reparto del padrón sobre esas personas, por orden de alta. Las que no figuran
+# Padrón: qué personas están afiliadas a cada financiador. Las que no figuran
 # quedan sin cobertura: ese estado también hay que poder mostrarlo.
 PADRON = {
-    "mutual-del-valle": (0, 1, 2, 3, 4, 5, 6),
-    "obra-social-provincial": (7, 8, 9, 10, 11),
+    "mutual-del-valle": tuple(range(0, 12)),
+    "obra-social-provincial": tuple(range(12, 21)),
 }
+SIN_COBERTURA = tuple(range(21, 26))
+# Personas con una historia propia en el padrón. Quedan fuera de la rotación
+# mensual para que esa historia no choque con atenciones de rutina.
+SIN_CUPO = 3          # Mutual: consumió sus radiografías del año en otro prestador.
+REACTIVADA = 6        # Mutual: baja por falta de pago y reactivación en el mes.
+DADA_DE_BAJA = 20     # Obra Social Provincial: cese laboral.
+EN_CURSO_CEX_MV, EN_CURSO_CEX_OSP = 1, 17
+AUTORIZACION_PENDIENTE = (8, 10)   # Mutual: radiografías esperando respuesta.
+AUTORIZACION_OBSERVADA = 11        # Mutual: el financiador pidió más datos.
 
-# (índice de mes, día, prestación, financiador, índice de paciente)
-AGENDA = (
-    (0, 7, "CEX", "mutual-del-valle", 0),
-    (0, 9, "CEX", "obra-social-provincial", 7),
-    (0, 14, "CEX", "mutual-del-valle", 1),
-    (0, 16, "RXE", "obra-social-provincial", 8),
-    (0, 21, "CEX", "mutual-del-valle", 2),
-    (0, 23, "CEX", "obra-social-provincial", 9),
-    (1, 4, "CEX", "mutual-del-valle", 0),
-    (1, 6, "RXE", "mutual-del-valle", 1),
-    (1, 11, "CEX", "obra-social-provincial", 7),
-    (1, 13, "CEX", "mutual-del-valle", 4),
-    (1, 18, "CEX", "obra-social-provincial", 8),
-    (1, 20, "RXE", "obra-social-provincial", 9),
-    (1, 25, "CEX", "mutual-del-valle", 5),
-    (2, 3, "CEX", "mutual-del-valle", 0),
-    (2, 4, "CEX", "obra-social-provincial", 7),
-    (2, 8, "RXE", "mutual-del-valle", 2),
-    (2, 9, "CEX", "mutual-del-valle", 1),
-    (2, 10, "CEX", "obra-social-provincial", 10),
-    (2, 11, "CEX", "mutual-del-valle", 4),
-)
+# Rotación mensual, pensada para no agotar cupos por año calendario:
+# ~3 consultas por persona de la Mutual (cupo 6) y ~3 por persona de la Obra
+# Social (cupo 4). Las radiografías de la Mutual rotan de a una por mes entre
+# siete personas: nadie pasa de dos en doce meses, que es justo el cupo anual.
+# Sacar a alguien más de esa rotación puede dejar a otro sin cobertura.
+ROTACION_CEX_MV = tuple(i for i in PADRON["mutual-del-valle"] if i not in (REACTIVADA,))
+ROTACION_RXE_MV = tuple(i for i in PADRON["mutual-del-valle"] if i not in (SIN_CUPO, REACTIVADA, *AUTORIZACION_PENDIENTE, AUTORIZACION_OBSERVADA))
+ROTACION_OSP = tuple(i for i in PADRON["obra-social-provincial"] if i != DADA_DE_BAJA)
+# Días nominales de las atenciones de un mes pasado y del mes en curso: uno por
+# cada fila de `_agenda_del_mes`. El primer mes arranca después del padrón y
+# tiene menos días, así que ahí entran las primeras filas y no todas.
+DIAS_HISTORIA = (4, 7, 10, 13, 16, 19, 22, 25)
+DIAS_EN_CURSO = (3, 4, 8, 9, 10, 11, 12, 13)
+# Meses (por distancia al actual) en que la Mutual rechazó la radiografía.
+RECHAZOS = (-8, -3)
 
 
 def dinero(valor):
@@ -145,48 +180,48 @@ def dinero(valor):
 
 
 def clave(texto):
-    return uuid5(NAMESPACE_URL, "financiadores/20260917/" + texto)
+    return uuid5(NAMESPACE_URL, "financiadores/" + texto)
 
 
-@contextmanager
-def fecha_sintetica(fecha, hora=10):
-    """Ordena fixtures históricas, sin hacer backfills en servicios productivos."""
-    instante = timezone.make_aware(datetime.combine(fecha, datetime.min.time()).replace(hour=hora))
-    # Nunca dejar registros con marcas posteriores a esta corrida.
-    instante = min(instante, timezone.now())
-    with patch("django.utils.timezone.now", return_value=instante):
-        yield instante
+def es_de_paciente(obligacion):
+    """Cargo a una persona y no a un financiador.
+
+    Se distingue por la referencia que deja `cobros._obligacion`: el copago
+    va a `ciudadano:<id>` y lo que la persona acepta al resolver un saldo, a
+    `paciente:<id>`. El nombre no sirve: los dos llevan uno.
+    """
+    return obligacion.contraparte_referencia.startswith(("ciudadano:", "paciente:"))
 
 
 class Command(BaseCommand):
-    help = "Carga un escenario ficticio de financiadores sobre una institución ya sembrada."
+    help = "Carga el circuito de financiadores (doce meses que terminan hoy) sobre una institución ya cargada."
 
     def add_arguments(self, parser):
-        parser.add_argument("--confirmar", required=True)
         parser.add_argument("--institucion", type=int, default=None,
                             help="Id de la institución destino. Por defecto, la de Los Aromos.")
         parser.add_argument("--salida", help="Archivo JSON nuevo con el manifiesto; nunca sobrescribe otro.")
 
     def handle(self, *args, **options):
-        if options["confirmar"] != CONFIRMACION:
-            raise CommandError("Confirmación incorrecta; no se modificó ningún dato.")
-        password = os.environ.get("DEMO_FINANCIADORES_PASSWORD", "")
-        if len(password) < 12:
-            raise CommandError("Definí DEMO_FINANCIADORES_PASSWORD con al menos 12 caracteres; no se imprime.")
+        exigir_entorno_de_prueba("seed_financiadores")
         if connection.vendor != "postgresql":
             raise CommandError("La carga requiere PostgreSQL para verificar transacciones y bloqueo exclusivo.")
         salida = Path(options["salida"]).resolve() if options.get("salida") else None
         if salida and (salida.exists() or not salida.parent.is_dir()):
             raise CommandError("La salida debe ser un archivo nuevo dentro de un directorio existente.")
+        self.cal = Calendario()
+        self.meses = self.cal.meses(CANTIDAD_DE_MESES)
 
         with transaction.atomic():
-            # Dos invocaciones no pueden observar simultáneamente la misma base.
+            # Dos invocaciones no pueden cargar el escenario a la vez.
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(%s)", [2026091701])
             if m.Financiador.objects.exists():
-                raise CommandError("Ya hay financiadores cargados. No se borra, mezcla ni duplica el escenario.")
+                raise CommandError(
+                    "Ya hay financiadores cargados. No se borra, mezcla ni duplica por partes: "
+                    "para rehacerlo, corré seed_entorno_demo."
+                )
             self._institucion(options.get("institucion"))
-            self._configurar(password)
+            self._configurar(clave_demo())
             self._padron()
             self._historia()
             self._resolver_saldos()
@@ -216,7 +251,7 @@ class Command(BaseCommand):
             self.institucion = Institucion.objects.filter(nombre=INSTITUCION_POR_DEFECTO).first()
             if not self.institucion:
                 raise CommandError(
-                    "No existe «%s». Sembrala primero o indicá --institucion." % INSTITUCION_POR_DEFECTO
+                    "No existe «%s». Cargala primero con seed_los_aromos o indicá --institucion." % INSTITUCION_POR_DEFECTO
                 )
         self.admin = Usuario.objects.filter(
             membresias__institucion=self.institucion,
@@ -235,9 +270,10 @@ class Command(BaseCommand):
     def _configurar(self, password):
         self.prestaciones, self.versiones, self.comunes = {}, {}, {}
         self.financiadores, self.planes, self.convenios, self.operadores = {}, {}, {}, {}
-        self.afiliados = {}
+        self.resolutores, self.afiliados = {}, {}
+        self.vigencia = self.cal.dia(-(CANTIDAD_DE_MESES - 1), DIA_CONFIGURACION)
 
-        with fecha_sintetica(VIGENCIA) as desde:
+        with self.cal.sintetica(self.vigencia) as desde:
             # El circuito de cobertura se activa explícitamente por institución.
             # Sin esto el sistema sigue capturando cargos por política simple.
             m.ConfiguracionHospital.objects.update_or_create(
@@ -252,7 +288,7 @@ class Command(BaseCommand):
                 ),
             )
             self.medico = Usuario.objects.create_user(
-                "irene.bustos@losaromos.test", password, nombre="Irene Bustos",
+                "irene.bustos@losaromos.test", password, nombre="Irene", apellido="Bustos",
             )
             membresia_medico = Membresia.objects.create(
                 usuario=self.medico, institucion=self.institucion, rol=Membresia.Rol.MEDICO,
@@ -317,7 +353,13 @@ class Command(BaseCommand):
 
             self._pacientes()
             for datos in FINANCIADORES:
-                self._financiador(datos, password, desde)
+                if datos["convenio"] == "activo":
+                    self._financiador(datos, password, desde)
+        # La prepaga llega en el mes en curso.
+        with self.cal.sintetica(self.cal.dia(0, 13), 11) as desde:
+            for datos in FINANCIADORES:
+                if datos["convenio"] == "propuesto":
+                    self._financiador(datos, password, desde)
 
     def _pacientes(self):
         """Personas propias del área nueva, sin historia clínica previa.
@@ -329,11 +371,12 @@ class Command(BaseCommand):
         sello previo, y la base lo rechaza —correctamente— como cadena rota.
         """
         self.pacientes = []
+        hoy = self.cal.hoy
         for indice, (nombre, apellido) in enumerate(PERSONAS, 1):
             self.pacientes.append(Ciudadano.objects.create(
                 institucion=self.institucion, nombre=nombre, apellido=apellido,
                 codigo="LA-CEX-%04d" % indice, documento="FIC1%05d" % indice,
-                fecha_nacimiento=date(1958 + (indice * 5) % 45, 1 + indice % 12, 1 + indice % 27),
+                fecha_nacimiento=hoy.replace(year=hoy.year - 68 + (indice * 5) % 45, month=1 + indice % 12, day=1 + indice % 27),
             ))
 
     def _financiador(self, datos, password, desde):
@@ -341,46 +384,52 @@ class Command(BaseCommand):
         financiador = m.Financiador.objects.create(nombre=datos["nombre"], tipo=datos["tipo"])
         self.financiadores[slug] = financiador
 
-        # Un administrador que opera el portal y un auditor de sólo lectura: el
-        # portal no es una sola cuenta que puede todo.
-        admin_portal = Usuario.objects.create_user(
-            "admin@" + datos["dominio"], password, nombre="Administración · " + datos["nombre"],
-        )
-        m.MembresiaFinanciador.objects.create(
-            financiador=financiador, usuario=admin_portal, rol="admin", resuelve_autorizaciones=True,
-        )
-        auditor_portal = Usuario.objects.create_user(
-            "auditor@" + datos["dominio"], password, nombre="Auditoría · " + datos["nombre"],
-        )
-        m.MembresiaFinanciador.objects.create(
-            financiador=financiador, usuario=auditor_portal, rol="auditor",
-        )
-        self.operadores[slug] = admin_portal
+        # El portal no es una sola cuenta que puede todo: un administrador, un
+        # operador que responde autorizaciones y un auditor de sólo lectura.
+        cuentas = [("admin", "Administración", "admin", True), ("auditor", "Auditoría", "auditor", False)]
+        if datos["reglas"] and any(regla[3] for regla in datos["reglas"].values()):
+            cuentas.insert(1, ("operador", "Autorizaciones", "operador", True))
+        for cuenta, etiqueta, rol, resuelve in cuentas:
+            usuario = Usuario.objects.create_user(
+                "%s@%s" % (cuenta, datos["dominio"]), password, nombre=etiqueta, apellido=datos["nombre"],
+            )
+            m.MembresiaFinanciador.objects.create(
+                financiador=financiador, usuario=usuario, rol=rol, resuelve_autorizaciones=resuelve,
+            )
+            if rol == "admin":
+                self.operadores[slug] = usuario
+            if rol == "operador":
+                self.resolutores[slug] = usuario
+        admin_portal = self.operadores[slug]
+        self.resolutores.setdefault(slug, admin_portal)
 
         self.planes[slug] = m.Plan.objects.create(
             financiador=financiador, codigo=datos["plan_codigo"], nombre=datos["plan_nombre"],
         )
+        activo = datos["convenio"] == "activo"
         self.convenios[slug] = m.Convenio.objects.create(
-            financiador=financiador, institucion=self.institucion, estado="activo",
+            financiador=financiador, institucion=self.institucion, estado=datos["convenio"],
             propuesto_por="financiador", creado_por=admin_portal,
-            aceptado_por=self.admin, aceptado_en=desde, plazo_autorizacion_horas=48,
+            aceptado_por=self.admin if activo else None, aceptado_en=desde if activo else None,
+            plazo_autorizacion_horas=48,
         )
         for codigo, (porcentaje, cupo, periodo, autorizacion) in datos["reglas"].items():
             m.ReglaCobertura.objects.create(
                 financiador=financiador, plan=self.planes[slug], prestacion=self.comunes[codigo],
                 porcentaje=Decimal(porcentaje), cupo=cupo, periodo=periodo,
-                vigente_desde=VIGENCIA, requiere_autorizacion=autorizacion, creado_por=admin_portal,
+                vigente_desde=timezone.localdate(), requiere_autorizacion=autorizacion, creado_por=admin_portal,
             )
         for codigo, importe in datos.get("aranceles", {}).items():
             m.ArancelConvenio.objects.create(
                 convenio=self.convenios[slug], prestacion=self.prestaciones[codigo],
-                importe=dinero(importe), vigente_desde=VIGENCIA, creado_por=self.admin,
+                importe=dinero(importe), vigente_desde=timezone.localdate(), creado_por=self.admin,
             )
 
     # ------------------------------------------------------------------ #
     def _padron(self):
         """Afiliaciones sobre personas ya registradas, con historia de vigencias."""
-        with fecha_sintetica(date(2026, 6, 20)):
+        alta = self.cal.dia(-(CANTIDAD_DE_MESES - 1), DIA_PADRON)
+        with self.cal.sintetica(alta):
             for slug, indices in PADRON.items():
                 prefijo = "MV" if slug == "mutual-del-valle" else "OSP"
                 for orden, indice in enumerate(indices, 1):
@@ -389,7 +438,7 @@ class Command(BaseCommand):
                         financiador=self.financiadores[slug], usuario=self.operadores[slug],
                         numero="%s%05d" % (prefijo, orden), documento=paciente.documento,
                         nombre=("%s %s" % (paciente.nombre, paciente.apellido)).strip(),
-                        plan=self.planes[slug], desde=date(2026, 6, 20),
+                        plan=self.planes[slug], desde=timezone.localdate(),
                     )
                     # Vincular la afiliación a la persona del hospital es lo que
                     # permite reconocerla al admitirla, sin cargar el documento
@@ -402,40 +451,55 @@ class Command(BaseCommand):
         # Una baja y una baja con reactivación: sin esto el padrón se ve como si
         # las afiliaciones no cambiaran nunca, que es justo lo que sí pasa.
         self.afiliado_dado_de_baja = self._finalizar(
-            ("obra-social-provincial", 11), date(2026, 8, 10),
+            ("obra-social-provincial", DADA_DE_BAJA), self.cal.dia(-2, 10),
             "Cese de la relación laboral informada por el empleador.",
         )
         self.afiliado_reactivado = self._finalizar(
-            ("mutual-del-valle", 6), date(2026, 8, 25),
+            ("mutual-del-valle", REACTIVADA), self.cal.dia(-1, 25),
             "Falta de pago informada por la mutual.",
         )
-        with fecha_sintetica(date(2026, 9, 2)):
+        with self.cal.sintetica(self.cal.dia(0, 2)):
             vuelve = self.afiliado_reactivado
             vuelve.finalizado_en, vuelve.finalizado_por, vuelve.motivo_finalizacion = None, None, ""
             vuelve.save(update_fields=["finalizado_en", "finalizado_por", "motivo_finalizacion"])
             m.HistorialAfiliacion.objects.create(
                 afiliado=vuelve, numero=vuelve.numero, documento=vuelve.documento, plan=vuelve.plan,
-                desde=date(2026, 9, 2), registrado_por=self.operadores["mutual-del-valle"],
+                desde=timezone.localdate(), registrado_por=self.operadores["mutual-del-valle"],
                 tipo="reactivacion", motivo="Regularización de aportes verificada por la mutual.",
             )
 
+        # La prepaga recién llegada ya tiene padrón aunque el convenio no esté
+        # aceptado: son las personas que hasta ahora se atendían como
+        # particulares. Sin esto su portal abría vacío.
+        with self.cal.sintetica(self.cal.dia(0, 13), 12):
+            prepaga = "prepaga-horizonte"
+            for orden, indice in enumerate(SIN_COBERTURA, 1):
+                paciente = self.pacientes[indice]
+                self.afiliados[(prepaga, indice)] = registrar_afiliado(
+                    financiador=self.financiadores[prepaga], usuario=self.operadores[prepaga],
+                    numero="PH%05d" % orden, documento=paciente.documento,
+                    nombre=("%s %s" % (paciente.nombre, paciente.apellido)).strip(),
+                    plan=self.planes[prepaga], desde=timezone.localdate(),
+                )
+
         # Consumos en otros prestadores: gastan cupo sin que el hospital los vea
         # en su propia actividad. Es la causa más común de «creí que estaba
-        # cubierto y no lo estaba».
-        with fecha_sintetica(date(2026, 7, 5)):
-            agotado = self.afiliados[("mutual-del-valle", 3)]
+        # cubierto y no lo estaba». Van en el mes en curso para que caigan en el
+        # mismo año calendario que el caso que los encuentra.
+        with self.cal.sintetica(self.cal.dia(0, 2), 9):
+            agotado = self.afiliados[("mutual-del-valle", SIN_CUPO)]
             for numero in (1, 2):
                 registrar_consumo_externo(
                     financiador=self.financiadores["mutual-del-valle"],
                     usuario=self.operadores["mutual-del-valle"], afiliado=agotado,
-                    prestacion=self.comunes["RXE"], fecha=date(2026, 7, 5), cantidad=1,
+                    prestacion=self.comunes["RXE"], fecha=timezone.localdate(), cantidad=1,
                     referencia="EXT-RXE-%s-%02d" % (agotado.numero, numero),
                 )
             self.afiliado_sin_cupo = agotado
 
     def _finalizar(self, referencia, fecha, motivo):
         slug = referencia[0]
-        with fecha_sintetica(fecha):
+        with self.cal.sintetica(fecha):
             afiliado = self.afiliados[referencia]
             afiliado.finalizado_en = timezone.now()
             afiliado.finalizado_por = self.operadores[slug]
@@ -443,67 +507,88 @@ class Command(BaseCommand):
             afiliado.save(update_fields=["finalizado_en", "finalizado_por", "motivo_finalizacion"])
             m.HistorialAfiliacion.objects.create(
                 afiliado=afiliado, numero=afiliado.numero, documento=afiliado.documento,
-                plan=afiliado.plan, desde=fecha, registrado_por=self.operadores[slug],
+                plan=afiliado.plan, desde=timezone.localdate(), registrado_por=self.operadores[slug],
                 tipo="finalizacion", motivo=motivo,
             )
             return afiliado
 
     # ------------------------------------------------------------------ #
+    def _agenda_del_mes(self, numero_mes, desplazamiento):
+        """Atenciones de un mes: (día nominal, prestación, financiador, paciente, autorización)."""
+        mv, osp = "mutual-del-valle", "obra-social-provincial"
+        cex_mv = [ROTACION_CEX_MV[(numero_mes * 3 + k) % len(ROTACION_CEX_MV)] for k in range(3)]
+        cex_osp = [ROTACION_OSP[(numero_mes * 2 + k) % len(ROTACION_OSP)] for k in range(2)]
+        rxe_mv = ROTACION_RXE_MV[numero_mes % len(ROTACION_RXE_MV)]
+        rxe_osp = ROTACION_OSP[(numero_mes * 3 + 1) % len(ROTACION_OSP)]
+        particular = SIN_COBERTURA[numero_mes % len(SIN_COBERTURA)]
+        decision = "rechazar" if desplazamiento in RECHAZOS else "aprobar"
+        filas = [
+            ("CEX", mv, cex_mv[0], None), ("CEX", osp, cex_osp[0], None),
+            ("RXE", mv, rxe_mv, decision), ("CEX", mv, cex_mv[1], None),
+            ("RXE", osp, rxe_osp, None), ("CEX", osp, cex_osp[1], None),
+            ("CEX", mv, cex_mv[2], None), ("CEX", None, particular, None),
+        ]
+        if desplazamiento == 0:
+            dias = DIAS_EN_CURSO
+        elif numero_mes == 0:
+            dias = [d for d in DIAS_HISTORIA if d > DIA_PADRON]
+        else:
+            dias = DIAS_HISTORIA
+        return [(dia, *fila) for dia, fila in zip(dias, filas)]
+
     def _historia(self):
         """Atenciones con cobertura, mes a mes, en el área nueva."""
         self.atenciones = []
-        for indice_mes, dia, codigo, slug, indice_paciente in AGENDA:
-            mes = MESES[indice_mes]
-            fecha = mes.replace(day=dia)
-            hecho = self._atencion(
-                codigo, self.pacientes[indice_paciente], fecha,
-                afiliado=self.afiliados[(slug, indice_paciente)],
-            )
-            self.atenciones.append((fecha, codigo, slug, hecho))
-
-        # Una atención particular, sin cobertura: la comparación hace visible qué
-        # aporta el convenio.
-        self.hecho_particular = self._atencion("CEX", self.pacientes[14], date(2026, 9, 12), afiliado=None)
+        self.autorizaciones_resueltas = {"aprobar": 0, "rechazar": 0}
+        for numero_mes, mes in enumerate(self.meses):
+            desplazamiento = numero_mes - (CANTIDAD_DE_MESES - 1)
+            for dia, codigo, slug, indice, decision in self._agenda_del_mes(numero_mes, desplazamiento):
+                afiliado = self.afiliados[(slug, indice)] if slug else None
+                hecho = self._atencion(codigo, self.pacientes[indice], mes.replace(day=dia),
+                                       afiliado=afiliado, slug=slug, autorizacion=decision)
+                self.atenciones.append((mes, codigo, slug, hecho))
 
     def _resolver_saldos(self):
         """Decide quién se hace cargo de la parte no cubierta.
 
         El sistema NO convierte automáticamente en deuda del paciente lo que el
         financiador no cubre: deja la distribución pendiente y espera una
-        decisión administrativa con su respaldo. Julio y agosto quedan resueltos;
-        septiembre queda pendiente a propósito, que es la bandeja real de
-        trabajo. Una de agosto la asume el hospital, para que se vea que
-        «resuelto» no quiere decir «se lo cobramos al paciente».
+        decisión administrativa con su respaldo. Los meses pasados quedan
+        resueltos; el mes en curso queda pendiente a propósito, que es la bandeja
+        real de trabajo. Una del mes anterior la asume el hospital, para que se
+        vea que «resuelto» no quiere decir «se lo cobramos al paciente».
         """
-        self.resoluciones = {"aceptadas": 0, "asumidas": 0, "autorizadas": 0}
+        self.resoluciones = {"aceptadas": 0, "asumidas": 0, "tras_rechazo": 0}
         asumida = False
-        for fecha, codigo, slug, hecho in self.atenciones:
-            reserva = m.ReservaCobertura.objects.filter(hecho=hecho).first()
-            if not reserva:
+        actual, anterior = self.cal.mes(0), self.cal.mes(-1)
+        for mes, codigo, slug, hecho in self.atenciones:
+            if mes == actual:
                 continue
-            distribucion = m.DistribucionCobro.objects.filter(reserva=reserva).first()
+            reserva = m.ReservaCobertura.objects.filter(hecho=hecho).first()
+            distribucion = m.DistribucionCobro.objects.filter(reserva=reserva).first() if reserva else None
             if not distribucion:
                 continue
-            if fecha.replace(day=1) == MES_SIN_PAGO:
-                continue
+            momento = timezone.localtime(hecho.ocurrida_en)
+            fecha, hora = momento.date(), min(momento.hour + 4, 23)
 
             if distribucion.estado == "autorizacion_pendiente":
-                # La mutual autorizó la práctica dentro del plazo del convenio.
-                with fecha_sintetica(fecha, 16):
+                # La Mutual rechazó la radiografía: la persona acepta abonar
+                # también la parte que iba a cubrir el financiador.
+                with self.cal.sintetica(fecha, hora):
                     resolver_saldo(
-                        reserva=reserva, usuario=self.admin, decision="financiador",
+                        reserva=reserva, usuario=self.admin, decision="paciente",
                         importe=distribucion.importe_financiador, parte="financiador",
-                        motivo="Autorización otorgada por el financiador dentro del plazo del convenio.",
-                        evidencia="Autorización %s-%s registrada por la mutual." % (codigo, reserva.pk),
-                        clave=clave("aut-%s" % reserva.pk),
+                        motivo="Autorización rechazada por el financiador; la persona acepta abonar la prestación.",
+                        evidencia="Conformidad firmada tras el rechazo %s-%s." % (codigo, reserva.pk),
+                        clave=clave("rechazo-%s" % reserva.pk),
                     )
-                self.resoluciones["autorizadas"] += 1
+                self.resoluciones["tras_rechazo"] += 1
                 distribucion.refresh_from_db()
 
             if distribucion.estado != "pendiente" or distribucion.importe_paciente <= 0:
                 continue
-            if not asumida and fecha.replace(day=1) == date(2026, 8, 1):
-                with fecha_sintetica(fecha, 16):
+            if not asumida and mes == anterior:
+                with self.cal.sintetica(fecha, hora):
                     resolver_saldo(
                         reserva=reserva, usuario=self.admin, decision="asumir",
                         importe=distribucion.importe_paciente,
@@ -513,7 +598,7 @@ class Command(BaseCommand):
                 self.resoluciones["asumidas"] += 1
                 asumida = True
                 continue
-            with fecha_sintetica(fecha, 16):
+            with self.cal.sintetica(fecha, hora):
                 resolver_saldo(
                     reserva=reserva, usuario=self.admin, decision="paciente",
                     importe=distribucion.importe_paciente,
@@ -524,17 +609,50 @@ class Command(BaseCommand):
             self.resoluciones["aceptadas"] += 1
 
     def _pagos(self):
-        """Cobra lo de julio y agosto; septiembre queda adeudado a propósito."""
+        """Cobra los meses pasados; el mes en curso queda adeudado a propósito."""
         self.cobrado = Decimal("0")
-        for fecha, codigo, slug, hecho in self.atenciones:
-            if fecha.replace(day=1) == MES_SIN_PAGO:
+        actual = self.cal.mes(0)
+        for mes, codigo, slug, hecho in self.atenciones:
+            if mes == actual:
                 continue
             for obligacion in ObligacionFinanciera.objects.filter(hecho=hecho, tipo="cobrar"):
-                self._movimiento(obligacion, fecha, codigo)
+                self._movimiento(obligacion, timezone.localtime(hecho.ocurrida_en).date(), codigo)
                 self.cobrado += obligacion.importe_original
 
-    def _atencion(self, codigo, paciente, fecha, afiliado=None):
-        with fecha_sintetica(fecha):
+    def _solicitar(self, caso, codigo, momento, detalle):
+        """La administrativa pide la autorización previa desde el caso."""
+        # El intento se deriva de `paso_desde`, que el motor actualiza en la base
+        # al avanzar: con la instancia en memoria saldría el de un paso anterior.
+        caso.refresh_from_db()
+        with self.cal.sintetica(*momento):
+            return autorizaciones.solicitar(
+                caso=caso, prestacion=self.prestaciones[codigo], usuario=self.administrativa,
+                intento=autorizaciones.intento_actual(caso), cantidad=1,
+                justificacion=detalle, clave=clave("solicita-%s" % caso.pk),
+            )
+
+    def _responder(self, solicitud, slug, decision, momento):
+        """El financiador responde dentro del plazo del convenio."""
+        motivos = {
+            "aprobar": "Indicación médica consistente con el plan.",
+            "rechazar": "La práctica no está justificada con la documentación enviada.",
+            "observar": "Falta la orden médica firmada con diagnóstico presuntivo.",
+        }
+        with self.cal.sintetica(*momento):
+            extra = {}
+            if decision == "aprobar":
+                hoy = timezone.localdate()
+                extra = dict(cantidad_aprobada=1, vigencia_desde=hoy, vigencia_hasta=hoy + timedelta(days=30),
+                             evidencia="Orden médica y pedido de la práctica verificados.",
+                             numero_externo="AUT-%s-%05d" % (self.financiadores[slug].pk, solicitud.pk))
+            return autorizaciones.resolver(
+                solicitud=solicitud, usuario=self.resolutores[slug], revision=solicitud.revision,
+                decision=decision, motivo=motivos[decision],
+                clave=clave("responde-%s-%s" % (solicitud.pk, decision)), **extra,
+            )
+
+    def _atencion(self, codigo, paciente, fecha, afiliado=None, slug=None, autorizacion=None):
+        with self.cal.sintetica(fecha):
             caso = Caso.objects.create(
                 institucion=self.institucion, version=self.versiones[codigo],
                 ciudadano=paciente, area_actual=self.area, asignado_a=self.medico,
@@ -550,6 +668,11 @@ class Command(BaseCommand):
                     caso=caso, usuario=self.administrativa, particular=True,
                     motivo="La persona declara no tener cobertura.",
                 )
+        if autorizacion:
+            solicitud = self._solicitar(caso, codigo, (fecha, 10, 5), "Radiografía de control solicitada por el profesional tratante.")
+            self._responder(solicitud, slug, autorizacion, (fecha, 10, 40))
+            self.autorizaciones_resueltas[autorizacion] += 1
+        with self.cal.sintetica(fecha, 11):
             textos = {
                 "CEX": "Consulta ambulatoria programada. Paciente estable; se acuerdan pautas de control.",
                 "RXE": "Radiografía ambulatoria realizada. Informe disponible para el profesional solicitante.",
@@ -565,13 +688,14 @@ class Command(BaseCommand):
 
     def _movimiento(self, obligacion, fecha, codigo):
         # El financiador liquida a mes vencido; el paciente paga en el momento.
-        dia = min(fecha.day + 25, 28) if obligacion.contraparte_nombre else fecha.day
-        efectiva = min(fecha.replace(day=dia), date(2026, 9, 15))
-        with fecha_sintetica(efectiva, 15):
+        dia = fecha.day if es_de_paciente(obligacion) else min(fecha.day + 25, 28)
+        efectiva = fecha.replace(day=max(dia, fecha.day))
+        with self.cal.sintetica(efectiva, 15):
+            real = timezone.localdate()
             return registrar_movimiento(
-                obligacion=obligacion, importe=dinero(obligacion.importe_original), fecha=efectiva,
+                obligacion=obligacion, importe=dinero(obligacion.importe_original), fecha=real,
                 clave=clave("mov-%s" % obligacion.pk), usuario=self.admin,
-                referencia="LIQ-%s-%s-%s" % (efectiva.strftime("%Y%m%d"), codigo, obligacion.pk),
+                referencia="LIQ-%s-%s-%s" % (real.strftime("%Y%m%d"), codigo, obligacion.pk),
                 aprobado=True,
             )
 
@@ -581,26 +705,19 @@ class Command(BaseCommand):
         self.en_curso = []
         pendientes = (
             # (prestación, índice de paciente, financiador, reservar)
-            ("CEX", 1, "mutual-del-valle", True),
-            ("RXE", 3, "mutual-del-valle", False),   # sin cupo: consumido afuera
-            ("CEX", 10, "obra-social-provincial", False),
+            ("CEX", EN_CURSO_CEX_MV, "mutual-del-valle", True),
+            ("RXE", SIN_CUPO, "mutual-del-valle", False),   # sin cupo: consumido afuera
+            ("CEX", EN_CURSO_CEX_OSP, "obra-social-provincial", False),
         )
-        with fecha_sintetica(date(2026, 9, 15), 9):
+        presente = self.cal.dia(0, 15)
+        with self.cal.sintetica(presente, 9):
             for codigo, indice, slug, con_reserva in pendientes:
-                caso = Caso.objects.create(
-                    institucion=self.institucion, version=self.versiones[codigo],
-                    ciudadano=self.pacientes[indice], area_actual=self.area, asignado_a=self.medico,
-                )
-                motor.iniciar(caso, autor=self.administrativa)
-                seleccionar_afiliacion(
-                    caso=caso, usuario=self.administrativa, afiliado=self.afiliados[(slug, indice)],
-                    motivo="Afiliación verificada contra el padrón al admitir.",
-                )
+                caso = self._abrir(codigo, indice, slug)
                 reserva = None
                 if con_reserva:
                     datos = dict(
                         caso=caso, prestacion=self.prestaciones[codigo],
-                        fecha=date(2026, 9, 15), cantidad=1,
+                        fecha=timezone.localdate(), cantidad=1,
                     )
                     presentada = cotizacion(**datos)
                     # `acepta=True` registra que la persona aceptó el copago
@@ -612,21 +729,55 @@ class Command(BaseCommand):
                     )
                 self.en_curso.append((caso, codigo, slug, reserva))
 
+        # Autorizaciones abiertas. Se piden en las últimas horas porque el
+        # convenio da 48 para responder: vencido el plazo, el financiador ya no
+        # puede resolverlas y `correr_tiempos` las marca vencidas.
+        self.autorizaciones_abiertas = []
+        for indice in AUTORIZACION_PENDIENTE:
+            with self.cal.sintetica(presente, 8):
+                caso = self._abrir("RXE", indice, "mutual-del-valle")
+            solicitud = self._solicitar(caso, "RXE", (presente, 8, 30), "Radiografía de tórax por tos persistente de tres semanas.")
+            self.autorizaciones_abiertas.append(solicitud)
+        with self.cal.sintetica(self.cal.dia(0, 14), 9):
+            caso = self._abrir("RXE", AUTORIZACION_OBSERVADA, "mutual-del-valle")
+        solicitud = self._solicitar(caso, "RXE", (self.cal.dia(0, 14), 9, 30), "Control radiológico posterior a neumonía.")
+        self.autorizaciones_abiertas.append(self._responder(solicitud, "mutual-del-valle", "observar", (self.cal.dia(0, 14), 15)))
+
+    def _abrir(self, codigo, indice, slug):
+        caso = Caso.objects.create(
+            institucion=self.institucion, version=self.versiones[codigo],
+            ciudadano=self.pacientes[indice], area_actual=self.area, asignado_a=self.medico,
+        )
+        motor.iniciar(caso, autor=self.administrativa)
+        seleccionar_afiliacion(
+            caso=caso, usuario=self.administrativa, afiliado=self.afiliados[(slug, indice)],
+            motivo="Afiliación verificada contra el padrón al admitir.",
+        )
+        return caso
+
     # ------------------------------------------------------------------ #
     def _verificar_y_resumir(self):
         cobertura = ObligacionFinanciera.objects.filter(
             hecho__institucion=self.institucion, hecho__area=self.area, tipo="cobrar",
         )
-        de_financiador = cobertura.exclude(contraparte_nombre="")
-        de_paciente = cobertura.filter(contraparte_nombre="")
-        if not de_financiador.exists():
+        de_paciente = [o for o in cobertura if es_de_paciente(o)]
+        de_financiador = [o for o in cobertura if not es_de_paciente(o)]
+        if not de_financiador:
             raise CommandError(
                 "No se generó ninguna obligación a cargo de un financiador; se revierte la carga."
             )
+        solicitudes = m.SolicitudAutorizacion.objects.filter(institucion=self.institucion)
+        por_estado = {estado: solicitudes.filter(estado=estado).count() for estado, _ in m.SolicitudAutorizacion.ESTADOS}
+        esperado = {"pendiente": len(AUTORIZACION_PENDIENTE), "observada": 1, "rechazada": len(RECHAZOS),
+                    "aprobada": self.autorizaciones_resueltas["aprobar"]}
+        if any(por_estado[estado] != cantidad for estado, cantidad in esperado.items()):
+            raise CommandError("Las autorizaciones no quedaron como se esperaba (%s); se revierte la carga." % por_estado)
         por_slug = {d["slug"]: d for d in FINANCIADORES}
+        actual = self.cal.mes(0)
         return {
-            "escenario": "Financiadores sobre una institución ya sembrada",
+            "escenario": "Financiadores sobre una institución ya cargada",
             "institucion": {"id": self.institucion.pk, "nombre": self.institucion.nombre},
+            "periodos": [str(mes) for mes in self.meses],
             "area_nueva": {
                 "id": self.area.pk, "nombre": self.area.nombre,
                 "nota": "Sin gastos ni reglas de reparto: no altera los importes por atención anteriores.",
@@ -637,40 +788,43 @@ class Command(BaseCommand):
                     "plan": self.planes[slug].codigo,
                     "convenio": self.convenios[slug].estado,
                     "afiliados": m.Afiliado.objects.filter(financiador=financiador).count(),
-                    "portal": [
-                        "admin@" + por_slug[slug]["dominio"],
-                        "auditor@" + por_slug[slug]["dominio"],
-                    ],
+                    "portal": list(m.MembresiaFinanciador.objects.filter(financiador=financiador)
+                                   .order_by("id").values_list("usuario__email", flat=True)),
                 }
                 for slug, financiador in self.financiadores.items()
             ],
-            "atenciones_con_cobertura": len(self.atenciones),
-            "atencion_particular_comparativa": self.hecho_particular.pk,
+            "atenciones_con_cobertura": sum(1 for _, _, slug, _ in self.atenciones if slug),
+            "atenciones_particulares": sum(1 for _, _, slug, _ in self.atenciones if not slug),
             "cargos": {
                 "a_financiadores": {
-                    "cantidad": de_financiador.count(),
+                    "cantidad": len(de_financiador),
                     "importe": str(sum((o.importe_original for o in de_financiador), Decimal("0"))),
                 },
-                "copagos_de_pacientes": {
-                    "cantidad": de_paciente.count(),
+                "a_pacientes": {
+                    "cantidad": len(de_paciente),
                     "importe": str(sum((o.importe_original for o in de_paciente), Decimal("0"))),
                 },
-                "nota": "Septiembre queda sin liquidar a propósito: es la deuda viva del financiador.",
+                "nota": "El mes en curso queda sin liquidar a propósito: es la deuda viva del financiador.",
             },
+            "autorizaciones": por_estado,
             "resolucion_de_saldos": {
                 "aceptados_por_el_paciente": self.resoluciones["aceptadas"],
                 "asumidos_por_el_hospital": self.resoluciones["asumidas"],
-                "autorizaciones_otorgadas": self.resoluciones["autorizadas"],
-                "pendientes": m.DistribucionCobro.objects.filter(estado="pendiente").count(),
+                "pagados_por_el_paciente_tras_rechazo": self.resoluciones["tras_rechazo"],
+                "pendientes": m.DistribucionCobro.objects.filter(reserva__caso__institucion=self.institucion, estado="pendiente").count(),
                 "pendientes_de_autorizacion": m.DistribucionCobro.objects.filter(
-                    estado="autorizacion_pendiente").count(),
+                    reserva__caso__institucion=self.institucion, estado="autorizacion_pendiente").count(),
                 "nota": "Lo no cubierto no se convierte solo en deuda del paciente: espera una decisión.",
             },
-            "cobrado_julio_agosto": str(self.cobrado),
+            "cobrado_meses_anteriores": str(self.cobrado),
+            "atenciones_mes_en_curso": sum(1 for mes, *_ in self.atenciones if mes == actual),
             "padron_con_historia": {
                 "dado_de_baja": self.afiliado_dado_de_baja.numero,
                 "reactivado": self.afiliado_reactivado.numero,
                 "sin_cupo_por_consumo_externo": self.afiliado_sin_cupo.numero,
+            },
+            "convenio_propuesto": {
+                slug: self.convenios[slug].pk for slug, datos in por_slug.items() if datos["convenio"] == "propuesto"
             },
             "casos_abiertos_para_mostrar_en_vivo": [
                 {
@@ -680,6 +834,11 @@ class Command(BaseCommand):
                     "paciente": ("%s %s" % (caso.ciudadano.nombre, caso.ciudadano.apellido)).strip(),
                 }
                 for caso, codigo, slug, reserva in self.en_curso
+            ],
+            "autorizaciones_abiertas": [
+                {"solicitud": s.pk, "caso": s.caso_id, "estado": s.estado,
+                 "paciente": ("%s %s" % (s.caso.ciudadano.nombre, s.caso.ciudadano.apellido)).strip()}
+                for s in self.autorizaciones_abiertas
             ],
             "no_incluye": [
                 "Facturación fiscal, conciliación bancaria y transferencias reales",

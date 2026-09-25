@@ -20,6 +20,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Membresia, Usuario
+from apps.demo.claves import clave_demo
+from apps.demo.entorno import exigir_entorno_de_prueba
 from apps.casos import motor as motor_casos
 from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
@@ -44,6 +46,7 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **opciones):
+        exigir_entorno_de_prueba("seed_red")
         random.seed(opciones["semilla"])
 
         principal = Institucion.objects.filter(nombre="Hospital Central").first()
@@ -75,12 +78,13 @@ class Command(BaseCommand):
         )
 
         def persona(email, nombre, apellido, rol, *areas):
-            u, nuevo = Usuario.objects.get_or_create(
+            u, _ = Usuario.objects.get_or_create(
                 email=email, defaults={"nombre": nombre, "apellido": apellido}
             )
-            if nuevo:
-                u.set_password("demo1234")
-                u.save()
+            # Siempre, no sólo al crearlo: si cambió DEMO_PASSWORD, la corrida
+            # siguiente tiene que dejar a todos con la clave nueva.
+            u.set_password(clave_demo())
+            u.save()
             m, _ = Membresia.objects.get_or_create(usuario=u, institucion=chico, rol=rol)
             m.activo = True
             m.save()
@@ -173,6 +177,17 @@ class Command(BaseCommand):
                 hechos["pendientes"] += 1
                 continue
 
+            # El anterior ya lo aceptó el hospital grande y el móvil todavía no
+            # salió: es el trabajo que le queda a Villa Real, que despacha.
+            if i == len(pacientes) - 5:
+                hace = ahora - timedelta(hours=2)
+                Traslado.objects.filter(pk=t.pk).update(solicitado_at=hace)
+                t.refresh_from_db()
+                motor_red.aceptar(t, autor=jefe, area_destino=area_destino)
+                Traslado.objects.filter(pk=t.pk).update(resuelto_at=hace + timedelta(minutes=35))
+                hechos["por_despachar"] = 1
+                continue
+
             hace = ahora - timedelta(days=random.randint(1, 20), hours=random.randint(0, 20))
             Traslado.objects.filter(pk=t.pk).update(solicitado_at=hace)
             t.refresh_from_db()
@@ -208,6 +223,7 @@ class Command(BaseCommand):
             f"\nRed «{red.nombre}» lista:\n"
             f"  {chico.nombre} (guardia + 6 camas) deriva a {principal.nombre}\n"
             f"  {hechos['pedidos']} traslados · {hechos['aceptados']} aceptados · "
-            f"{hechos['rechazados']} rechazados · {hechos['pendientes']} esperando respuesta\n"
-            f"  Entrar como: villa.med@hospital.gob.ar / villa.jefe@hospital.gob.ar (demo1234)\n"
+            f"{hechos['rechazados']} rechazados · {hechos['pendientes']} esperando respuesta · "
+            f"{hechos.get('por_despachar', 0)} aceptado sin despachar\n"
+            f"  Entrar como: villa.med@hospital.gob.ar / villa.jefe@hospital.gob.ar\n"
         ))

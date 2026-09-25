@@ -67,12 +67,12 @@ permisos financieros: ahí adentro cada pestaña sí depende de sus concesiones.
 
 ## Usuarios de demo
 
-Del escenario de guardia (`seed_guardia` + `seed_faltantes`), en el stack de
-desarrollo. Contraseña `demo1234` salvo el superusuario.
+Del escenario de guardia (`seed_guardia` + `seed_roles`), en el stack de
+desarrollo. Contraseña `demo1234` para todos, salvo que el entorno defina `DEMO_PASSWORD`.
 
 | Rol | Usuario |
 |---|---|
-| Superusuario | `admin@salud.local` / `admin1234` |
+| Superusuario | `admin@salud.local` / `demo1234` |
 | Plataforma | `plataforma@salud.local` |
 | Auditor | `auditor@salud.local` |
 | Reportes | `reportes@salud.local` |
