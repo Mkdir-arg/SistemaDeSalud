@@ -1,18 +1,20 @@
 # Entorno LOCAL B — "demo": institución poblada con datos realistas, para vender.
 #
-# Igual que el entorno vacío en todo salvo puertos y proyecto: la siembra NO se
-# hace acá. Se hace a mano y en orden después de levantar, porque
-# `seed_los_aromos` exige una base sin una sola institución y aborta si encuentra
-# datos (no borra ni mezcla). El orden correcto está en la guía de demo.
+# Igual que el entorno vacío en todo salvo puertos y proyecto: la carga NO se
+# hace al arrancar. Se hace a mano después de levantar, con un solo comando que
+# vacía la base y carga todo en orden (ver docs/entornos/README.md):
 #
 #   docker compose -p salud-demo -f docker-compose.yml -f docker-compose.demo.yml up -d
+#   docker compose -p salud-demo ... exec backend python manage.py seed_entorno_demo --noinput
 #
 # Puertos: aplicación en 8082, API directa en 8002.
 services:
   backend:
     environment:
-      # La siembra automática del entrypoint quedaría ANTES que Los Aromos y le
-      # dejaría la base con datos, que es justo lo que ese comando rechaza.
+      # Habilita la carga ficticia: sin esto el compose base deja `produccion`.
+      ENTORNO: demo
+      # La siembra automática del entrypoint cargaría escenarios sueltos en cada
+      # arranque; la demo se carga entera y a mano con `seed_entorno_demo`.
       SEED_DEMO: "0"
       SEED_GUARDIA: "0"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend

@@ -13,7 +13,9 @@
 services:
   backend:
     environment:
-      # Sin siembra: el entorno vacío es el punto del ejercicio.
+      # Sin siembra: el entorno vacío es el punto del ejercicio. Tampoco se
+      # redefine ENTORNO: hereda `produccion` del compose base a propósito, así
+      # ningún `seed_*` puede pisar lo que se configuró a mano.
       SEED_DEMO: "0"
       SEED_GUARDIA: "0"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
