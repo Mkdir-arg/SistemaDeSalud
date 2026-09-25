@@ -2,6 +2,13 @@
 
 Finanzas y costos · 15 de septiembre de 2026 · recorrido de 25–30 minutos.
 
+> **Fechas relativas desde el #65.** La carga (`seed_entorno_demo`) ahora arma doce meses que
+> terminan el día en que se corre: donde esta guía dice «septiembre» o «agosto», leé «el mes en
+> curso» y «el mes anterior». Los importes de esos dos meses son los mismos; los de meses anteriores
+> siguen la estación del año en que caen. Los enlaces con `?mes=2026-09` apuntan a septiembre: cambiá
+> el mes en la pantalla. Las fechas exactas y los identificadores (`#gasto`, `#caso`) cambian en cada
+> carga, y el resumen del comando imprime los usuarios. Ver [`entornos/README.md`](../../entornos/README.md).
+
 Institución, personas, proveedores e historia completamente ficticios. Es una muestra de actividad de tres servicios, no un censo de toda la operación hospitalaria. Los importes son ejemplos verosímiles, no información de un hospital real ni referencias de precios de mercado.
 
 > Las cifras e identificadores describen la carga inicial del escenario del 15/09/2026. El recorrido principal sólo consulta. Si después registrás o aprobás operaciones, los importes cambian y el historial permite explicar por qué.

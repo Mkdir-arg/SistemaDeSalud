@@ -3,6 +3,13 @@
 Recorrido de **20 minutos** sobre <http://localhost:8082>, Hospital General Los Aromos.
 Todo verificado contra la app el **18/09/2026**.
 
+> **Fechas relativas desde el #65.** La carga (`seed_entorno_demo`) ahora arma doce meses que
+> terminan el día en que se corre: donde esta guía dice «septiembre» o «agosto», leé «el mes en
+> curso» y «el mes anterior». Los importes de esos dos meses son los mismos; los de meses anteriores
+> siguen la estación del año en que caen. Los enlaces con `?mes=2026-09` apuntan a septiembre: cambiá
+> el mes en la pantalla. Las fechas exactas y los identificadores (`#gasto`, `#caso`) cambian en cada
+> carga, y el resumen del comando imprime los usuarios. Ver [`entornos/README.md`](README.md).
+
 **Hacelo en este orden.** Los pasos 3 y 4 consumen los casos preparados: una vez
 que los usás, no se repiten sin volver a sembrar.
 
@@ -10,10 +17,10 @@ que los usás, no se repiten sin volver a sembrar.
 
 | Para | Usuario | Contraseña |
 |---|---|---|
-| Administrativa (admisión) | `paula.benitez@losaromos.test` | `LosAromos2026!` |
-| Médica de Consultorios externos | `irene.bustos@losaromos.test` | `Financiadores2026!` |
-| Administración y finanzas | `elena.rivas@losaromos.test` | `LosAromos2026!` |
-| Portal de la obra social | `admin@mutualdelvalle.test` | `Financiadores2026!` |
+| Administrativa (admisión) | `paula.benitez@losaromos.test` | `demo1234` |
+| Médica de Consultorios externos | `irene.bustos@losaromos.test` | `demo1234` |
+| Administración y finanzas | `elena.rivas@losaromos.test` | `demo1234` |
+| Portal de la obra social | `admin@mutualdelvalle.test` | `demo1234` |
 
 Para cambiar de usuario usá **ventana privada**. Dos pestañas normales comparten sesión.
 

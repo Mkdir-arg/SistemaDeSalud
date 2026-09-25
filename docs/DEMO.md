@@ -26,37 +26,43 @@ docker compose up -d
 # Fachada FHIR:  http://localhost:8000/fhir/metadata
 ```
 
-**Reset completo, dos comandos (~60 s). Correrlos juntos y en este orden:**
+**Reset completo del escenario de guardia, tres comandos (~60 s). Correrlos
+juntos y en este orden:**
 
 ```bash
 docker compose exec backend python manage.py seed_volumen --rehacer
-docker compose exec backend python manage.py seed_faltantes
+docker compose exec backend python manage.py seed_roles
+docker compose exec backend python manage.py seed_farmacia
 ```
 
 `seed_volumen --rehacer` refecha todo contra *ahora*: sin él, los pacientes de la
 cola aparecen esperando días y el tablero de demoras muestra números absurdos.
-**Conviene correrlo el mismo día de la demo.**
+**Conviene correrlo el mismo día de la demo.** También deja un bloqueo de agenda
+con turnos afectados y el token de la pantalla pública de llamados de cada cola.
 
-`seed_faltantes` completa lo que `seed_volumen` no cubre y sin lo cual cinco
-funcionalidades existen pero no se pueden mostrar: los pedidos de farmacia, el
-consumo imputado a pacientes (trazabilidad de lote), un bloqueo de agenda con
-turnos afectados, el token de la pantalla pública de llamados, y los usuarios de
-los roles de gobierno.
+`seed_roles` crea los usuarios de los roles de gobierno (plataforma, auditoría,
+reportes) y la administración del hospital. `seed_farmacia` siembra los pedidos
+de reposición y el consumo imputado a pacientes (trazabilidad de lote).
 
-**Anotá la URL de la pantalla de TV**: el comando la imprime al final, en la
-sección «Pantalla pública de llamados». Es un token nuevo en cada corrida, así
-que la URL de la demo anterior deja de servir. La de la sala de espera de guardia
-es la que tiene la cola larga.
+Para cargar **todo** —además de la guardia, finanzas, financiadores, la red y el
+registro de accesos— hay un solo comando, que vacía la base antes:
+`seed_entorno_demo` (ver [`entornos/README.md`](entornos/README.md)).
+
+**Anotá la URL de la pantalla de TV**: `seed_volumen` la imprime al final, en la
+línea «pantallas de llamados». Es un token nuevo en cada corrida, así que la URL
+de la demo anterior deja de servir. La de la sala de espera de guardia es la que
+tiene la cola larga.
 
 ---
 
 ## 2. Con qué usuario entrar
 
-Contraseña **`demo1234`** para todos, salvo el superusuario.
+Contraseña **`demo1234`** para todos, también el superusuario, salvo que el
+entorno defina `DEMO_PASSWORD`.
 
 | Para mostrar | Usuario | Rol |
 |---|---|---|
-| Plataforma completa, editor de flujos, todo | `admin@salud.local` / `admin1234` | superusuario |
+| Plataforma completa, editor de flujos, todo | `admin@salud.local` / `demo1234` | superusuario |
 | Gobierno estatal: alta de efectores y redes, directorio | `plataforma@salud.local` | plataforma |
 | Auditoría de accesos con alcance estatal | `auditor@salud.local` | auditor |
 | Administración de la institución, usuarios y estructura | `admin.central@hospital.gob.ar` | admin |
