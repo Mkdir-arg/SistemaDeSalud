@@ -1,5 +1,6 @@
 """Guarda de entorno, calendario relativo y carga completa del entorno de demo."""
-from datetime import date, datetime
+import time
+from datetime import date, datetime, timedelta
 from io import StringIO
 from unittest import skipUnless
 from unittest.mock import patch
@@ -31,15 +32,14 @@ def reloj(texto):
 
 
 def reloj_corrido(texto):
-    """El reloj en ese instante, pero que sigue corriendo como en una carga real.
+    """El reloj en ese instante, pero que sigue corriendo, como el de la carga.
 
-    Congelarlo en un solo instante no es lo mismo: todas las firmas de la
-    historia clínica quedarían con la misma hora, y el sellado —que encadena por
-    hora de firma— desempataría de una forma que en la realidad no ocurre.
+    Ver `seed_entorno_demo._reloj_en`: congelado o volviendo atrás, el sellado
+    de la historia clínica —que encadena por hora de firma— se bifurca.
     """
-    original = timezone.now
-    desplazamiento = reloj(texto) - original()
-    return patch("django.utils.timezone.now", side_effect=lambda: original() + desplazamiento)
+    base, inicio = reloj(texto), time.monotonic()
+    return patch("django.utils.timezone.now",
+                 side_effect=lambda: base + timedelta(seconds=time.monotonic() - inicio))
 
 
 class CalendarioTests(SimpleTestCase):
@@ -105,12 +105,18 @@ class EntornoTests(TestCase):
 
 @skipUnless(connection.vendor == "postgresql", "La carga completa requiere PostgreSQL.")
 class CargaCompletaTests(TransactionTestCase):
-    """Una carga chica, con el reloj en el peor día: el 1° del mes, temprano."""
+    """Una carga chica anclada en el peor día: el 1° del mes, temprano.
 
+    Es el caso real de la demo: se carga días antes con `--ancla` a las 8 y se
+    mira a las 9, que es cuando empieza.
+    """
+
+    ANCLA = "2026-10-01T08:00"
     AHORA = "2026-10-01T09:00"
 
-    def cargar(self):
-        call_command("seed_entorno_demo", interactive=False, casos=40, dias=30, stdout=StringIO())
+    def cargar(self, **opciones):
+        call_command("seed_entorno_demo", interactive=False, casos=40, dias=30, ancla=self.ANCLA,
+                     stdout=StringIO(), **opciones)
 
     def cantidades(self):
         modelos = (Usuario, Institucion, Caso, Gasto, HechoAtencionCosteable, MovimientoDinero,
@@ -127,6 +133,9 @@ class CargaCompletaTests(TransactionTestCase):
         ahora = timezone.now()
         mes = timezone.localdate().replace(day=1)
         self.assertEqual(mes, reloj(self.AHORA).date().replace(day=1))
+        # La carga quedó en el ancla, no en la fecha real de la corrida.
+        ultimo = Caso.objects.order_by("-creado").values_list("creado", flat=True).first()
+        self.assertLess(abs(ultimo - reloj(self.ANCLA)), timedelta(minutes=30))
 
         # Nada queda en el futuro.
         futuros = list(Caso.objects.filter(creado__gt=ahora).values_list("pk", "institucion__nombre", "creado"))
@@ -172,6 +181,12 @@ class CargaCompletaTests(TransactionTestCase):
     def test_un_paso_que_falla_no_deja_la_base_a_medias(self):
         Institucion.objects.create(nombre="Datos previos")
         with patch("apps.casos.management.commands.seed_red.Command.handle", side_effect=RuntimeError("falla de prueba")):
-            with self.assertRaisesMessage(CommandError, "seed_red falló"), reloj_corrido(self.AHORA):
+            with self.assertRaisesMessage(CommandError, "seed_red falló"):
                 self.cargar()
         self.assertEqual(list(Institucion.objects.values_list("nombre", flat=True)), ["Datos previos"])
+
+    def test_ancla_invalida_no_toca_la_base(self):
+        Institucion.objects.create(nombre="Datos previos")
+        with self.assertRaisesMessage(CommandError, "no es una fecha"):
+            call_command("seed_entorno_demo", interactive=False, ancla="el lunes", stdout=StringIO())
+        self.assertEqual(Institucion.objects.count(), 1)
