@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.common import capacidades_de
@@ -333,6 +334,35 @@ class CiudadanoSerializer(serializers.ModelSerializer):
             return None
         e = hc.entradas.order_by("-fecha").first()
         return e.fecha if e else None
+
+
+class CiudadanoListadoSerializer(CiudadanoSerializer):
+    """El listado permite ubicar pacientes sin entregar sus datos completos."""
+
+    documento = serializers.SerializerMethodField()
+    fecha_nacimiento = serializers.SerializerMethodField()
+    domicilio = serializers.SerializerMethodField()
+    edad = serializers.SerializerMethodField()
+
+    class Meta(CiudadanoSerializer.Meta):
+        fields = [*CiudadanoSerializer.Meta.fields, "edad"]
+
+    def get_documento(self, obj):
+        documento = obj.documento or ""
+        return f"••••{documento[-3:]}" if len(documento) > 3 else ("••••" if documento else "")
+
+    def get_fecha_nacimiento(self, obj):
+        return None
+
+    def get_domicilio(self, obj):
+        return "••••••" if obj.domicilio else ""
+
+    def get_edad(self, obj):
+        nacimiento = obj.fecha_nacimiento
+        if not nacimiento:
+            return None
+        hoy = timezone.localdate()
+        return hoy.year - nacimiento.year - ((hoy.month, hoy.day) < (nacimiento.month, nacimiento.day))
 
 
 class ConsentimientoDatosSerializer(serializers.ModelSerializer):

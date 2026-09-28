@@ -1,7 +1,7 @@
 """
-Django settings for the I-Core Salud project.
+Django settings for the HEN project.
 
-I-Core Salud — constructor y motor de flujos para procesos de salud / Estado.
+HEN — constructor y motor de flujos para procesos de salud / Estado.
 Backend: Django + DRF. Base de datos: Supabase (Postgres). Auth: JWT (SimpleJWT).
 """
 
@@ -251,9 +251,9 @@ REST_FRAMEWORK = {
 # es la referencia que evita tener que leer el código para saber qué devuelve
 # cada endpoint.
 SPECTACULAR_SETTINGS = {
-    "TITLE": "I-Core Salud · API",
+    "TITLE": "HEN · API",
     "DESCRIPTION": """
-API de I-Core Salud: flujos de trabajo para instituciones de salud.
+API de HEN: flujos de trabajo para instituciones de salud.
 
 **Autenticación.** Todo requiere un token JWT (`Authorization: Bearer <token>`)
 que se obtiene en `POST /api/auth/token/`. Las dos excepciones son ese mismo

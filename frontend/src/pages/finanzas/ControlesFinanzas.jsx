@@ -61,7 +61,7 @@ export function PanelFlotante({ titulo, icono, children, activo = false, ayuda =
   }, [abierto]);
   return <>
     <button ref={boton} type="button" aria-label={titulo} aria-expanded={abierto} aria-controls={abierto ? id : undefined}
-      aria-haspopup="dialog" className={`inline-flex shrink-0 items-center justify-center rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${botonPrincipal ? "h-10 gap-1.5 px-4.5 text-md font-semibold transition-colors bg-accent-fuerte text-sobre-accent hover:bg-accent-hover" : `${etiqueta ? "min-h-8 gap-2 px-3 text-sm" : "size-8"} ${activo ? "text-accent bg-accent-50" : "text-texto-debil hover:bg-superficie-2"}`}`}
+      aria-haspopup="dialog" className={`inline-flex shrink-0 items-center justify-center rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${botonPrincipal ? "hen-cta h-10 gap-1.5 px-4.5 text-md font-medium text-sobre-accent" : `${etiqueta ? "min-h-8 gap-2 px-3 text-sm" : "size-8"} ${activo ? "text-accent bg-accent-50" : "text-texto-debil hover:bg-superficie-2"}`}`}
       onMouseEnter={() => { cancelarCierre(); if (ayuda) setAbierto(true); }}
       onMouseLeave={salir}
       onFocus={() => { if (omitirFoco.current) { omitirFoco.current = false; return; } if (ayuda) setAbierto(true); }}

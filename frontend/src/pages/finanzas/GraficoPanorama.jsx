@@ -2,10 +2,10 @@ import { Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContaine
 import { importeARS } from "@/api/finanzas";
 
 // Number sólo posiciona el dibujo; la ayuda muestra las cadenas decimales del
-// servidor. Petróleo identifica lo cobrado y lo directo; ocre lo pagado y lo
+// servidor. Teal identifica lo cobrado y lo directo; lavanda lo pagado y lo
 // atribuido. Ninguno de los dos indica éxito ni error.
 const compacto = new Intl.NumberFormat("es-AR", { notation: "compact", maximumFractionDigits: 1 });
-const colores = { cobros_netos: "#287f92", pagos_netos: "#ad7133", directo_conocido: "#287f92", compartido_conocido: "#ad7133" };
+const colores = { cobros_netos: "var(--color-brand-teal)", pagos_netos: "var(--color-slate-600)", directo_conocido: "var(--color-brand-teal)", compartido_conocido: "var(--color-slate-600)" };
 
 function AyudaPanorama({ active, payload, medidas }) {
   const fila = payload?.[0]?.payload;

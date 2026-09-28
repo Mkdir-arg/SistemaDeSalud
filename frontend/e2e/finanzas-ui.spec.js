@@ -736,7 +736,7 @@ test("control mensual conserva columnas y permite desplazarlas sin romper encabe
   await page.getByRole("button", { name: "Administrar Electricidad", exact: false }).click();
   await expect(page.getByRole("dialog")).toContainText("Consultar historial");
   await page.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
-  await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos", exact: true }).click();
   await expect(contenido.locator("thead")).toBeVisible();
   await expect(contenido.locator('td[data-label="Importe vigente"]')).toHaveText("ARS 100,00");
   expect(escrituras).toHaveLength(0);
@@ -1031,7 +1031,7 @@ test("listas financieras con scroll horizontal conservan importes, filtros y acc
   await page.goto("/finanzas?mes=2026-09");
   for (const ancho of [1440, 1024, 390]) {
     await page.setViewportSize({ width: ancho, height: 1100 });
-    for (const tab of ["Gastos mensuales", "Gastos registrados", "Repartos", "Costos por atención", "Resumen"]) {
+    for (const tab of ["Gastos mensuales", "Gastos", "Distribución", "Costos por atención", "Resumen"]) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       if (tab === "Resumen") await page.getByRole("button", { name: "Listado", exact: true }).click();
       await expect(page.locator(".finance-table-content")).toHaveCount(1);

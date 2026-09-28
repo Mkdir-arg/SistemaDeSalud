@@ -4,9 +4,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { useAuth } from "@/auth/AuthContext";
 import CoberturaAdministrativa, { AvisoCoberturaCaso, resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select, Spinner, Textarea } from "@/components/ui";
+import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Spinner, Textarea } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { fechaHora } from "@/lib/format";
@@ -175,7 +176,7 @@ function EditarPacienteModal({ paciente, onClose, onListo }) {
   );
 }
 
-const MODO = { escrito: "Escrito", verbal: "Verbal", digital: "Digital" };
+export const MODO = { escrito: "Escrito", verbal: "Verbal", digital: "Digital" };
 
 function Consentimiento({ ciudadanoId, estado }) {
   const toast = useToast();
@@ -281,8 +282,9 @@ function HistorialConsentimientos({ ciudadanoId }) {
   );
 }
 
-function ConsentimientoModal({ ciudadanoId, otorgar, referidoId, onClose, onListo }) {
+export function ConsentimientoModal({ ciudadanoId, otorgar, referidoId, onClose, onListo }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [modo, setModo] = useState("");
   const [alcance, setAlcance] = useState("");
   const [version, setVersion] = useState("");
@@ -334,19 +336,30 @@ function ConsentimientoModal({ ciudadanoId, otorgar, referidoId, onClose, onList
       }
     >
       <div className="flex flex-col gap-3.5">
-        <Field label="Cómo se tomó">
-          <Select value={modo} onChange={(e) => setModo(e.target.value)}>
-            <option value="">— Seleccioná un método —</option>
-            {Object.entries(MODO).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </Select>
-        </Field>
-        <Field label="Alcance *" hint="Qué tratamiento de datos se consintió o se revoca.">
+        <Field label="Tipo y alcance *" hint="Describí qué tratamiento de datos se consintió o se revoca.">
           <Textarea
             value={alcance}
             onChange={(e) => setAlcance(e.target.value)}
             placeholder="Describí el alcance comunicado"
           />
         </Field>
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold text-texto-suave">Método *</legend>
+          <div className="grid gap-2">
+            {Object.entries(MODO).map(([valor, etiqueta]) => <label key={valor}
+              className="flex cursor-pointer items-start gap-2.5 rounded-md border border-borde bg-superficie px-3 py-2.5 text-sm hover:border-accent-100">
+              <input type="radio" name="metodo-consentimiento" value={valor} checked={modo === valor}
+                onChange={() => { setModo(valor); setArchivo(null); }} className="mt-0.5 accent-accent" />
+              <span><strong className="block text-texto-suave">{etiqueta}</strong>
+                <span className="text-texto-debil">{valor === "verbal" ? "Transcribí el texto comunicado." : "Adjuntá el documento aceptado."}</span>
+              </span>
+            </label>)}
+          </div>
+        </fieldset>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Fecha y hora"><Input value="Se asigna al registrar" readOnly /></Field>
+          <Field label="Responsable"><Input value={user?.nombre_completo || user?.email || "Sesión actual"} readOnly /></Field>
+        </div>
         {otorgar ? <>
           <Field label="Versión del texto comunicado *" hint="Identificador real del documento o texto usado; no se genera automáticamente.">
             <Input value={version} onChange={(e) => setVersion(e.target.value)} maxLength={100} />
@@ -359,7 +372,7 @@ function ConsentimientoModal({ ciudadanoId, otorgar, referidoId, onClose, onList
         </Field>}
         {modo && <Field label={exigeArchivo ? "Documento de evidencia *" : "Evidencia adjunta (opcional)"}
           hint="PDF o imagen JPEG, PNG o WebP, hasta 10 MiB.">
-          <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setArchivo(e.target.files?.[0] || null)} />
+          <Input key={modo} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setArchivo(e.target.files?.[0] || null)} />
         </Field>}
         {!archivoValido && <p role="alert" className="text-sm text-badge-error-fg">El archivo supera los 10 MiB permitidos.</p>}
       </div>

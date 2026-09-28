@@ -73,7 +73,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
   const activo = orden === col.orden || orden === `-${col.orden}`;
   const desc = orden === `-${col.orden}`;
   const clases = cn(
-    "whitespace-nowrap px-lg text-left text-sm font-semibold text-texto-debil",
+    "whitespace-nowrap px-5 text-left text-sm font-medium text-texto-suave",
     compacta ? "py-2" : "py-3",
     col.className,
     col.fija && "sticky right-0 z-20 bg-superficie-2 shadow-[-6px_0_8px_-7px_rgba(0,0,0,.35)]",
@@ -96,7 +96,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
         type="button"
         onClick={() => ordenarPor(col.orden)}
         className={cn(
-          "group flex w-full items-center gap-1.5 px-lg text-left text-sm font-semibold",
+          "group flex w-full items-center gap-1.5 px-5 text-left text-sm font-medium",
           compacta ? "py-2" : "py-3",
           activo ? "text-accent" : "text-texto-debil hover:text-texto-medio",
         )}
@@ -123,7 +123,7 @@ function Paginador({ pagina, paginas, total, tamano, desde, hasta, irA, cambiarT
     "flex size-8 items-center justify-center rounded-md border border-borde text-texto-suave " +
     "enabled:hover:bg-superficie-2 disabled:opacity-40 disabled:cursor-not-allowed";
   return (
-    <div className="flex flex-wrap items-center justify-between gap-md border-t border-division px-lg py-2.5">
+    <div className="flex flex-wrap items-center justify-between gap-md border-t border-division px-5 py-2.5">
       <div className="text-base text-texto-debil">
         {total === 0 ? "Sin resultados" : <>Mostrando <b className="font-semibold text-texto-medio">{desde}–{hasta}</b> de <b className="font-semibold text-texto-medio">{total}</b></>}
       </div>
@@ -184,7 +184,7 @@ export function DataTable({
   return (
     <div className={cn("overflow-hidden rounded-lg border border-borde bg-superficie", adaptable && "finance-table")}>
       {/* La barra existe siempre: aunque no haya filtros, aloja la densidad. */}
-      <div className="flex flex-wrap items-center justify-between gap-md border-b border-division px-lg py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-md border-b border-division px-5 py-2.5">
         <div className="flex flex-wrap items-center gap-md">{barra}</div>
         <div className="flex items-center gap-1">
         {onExportar && (
@@ -256,6 +256,7 @@ export function DataTable({
                     }
                     className={cn(
                       "border-t border-division",
+                      !compacta && "h-14",
                       onRowClick && "cursor-pointer hover:bg-superficie-2 focus-visible:bg-superficie-2",
                     )}
                   >
@@ -266,8 +267,8 @@ export function DataTable({
                           key={c.key}
                           data-label={adaptable ? c.label : undefined}
                           className={cn(
-                            "px-lg align-middle",
-                            compacta ? "py-2" : "py-3.5",
+                            "px-5 align-middle",
+                            compacta ? "py-2" : "py-2.5",
                             // Por defecto una celda no parte en dos líneas: en una
                             // tabla larga la altura despareja arruina el barrido
                             // visual, que es justo para lo que sirve la densidad.

@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
-import { PageHeader } from "@/components/Shell";
 import { Badge, Button, ConfirmDialog, Field, Modal, Select, Textarea } from "@/components/ui";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
@@ -32,6 +31,9 @@ export default function Supervision() {
   const toast = useToast();
   const [reasignar, setReasignar] = useState(null);
   const [cancelar, setCancelar] = useState(null);
+  const [area, setArea] = useState("");
+  const [soloSinAsignar, setSoloSinAsignar] = useState(false);
+  const areas = useLista("areas", { institucion: institucion?.id, pageSize: 200 }, { enabled: !!institucion?.id });
 
   const priorizar = useAccion(
     ({ caso, prioridad }) => api.post(`/casos/${caso.id}/priorizar/`, { prioridad }),
@@ -134,15 +136,28 @@ export default function Supervision() {
 
   return (
     <>
-      <PageHeader subtitle="Todos los casos activos de tu área. Reasigná, cambiá la prioridad o cancelá." />
-      <div className="px-8 pb-8 pt-[22px]">
+      <div className="px-lg pb-8 pt-[26px] sm:px-[30px] xl:px-10">
+        <header className="mb-5">
+          <h2 className="text-xl font-bold">Supervisión</h2>
+          <p className="mt-1 text-sm text-texto-debil">Casos activos de tus áreas. Reasigná, cambiá la prioridad o cancelá con motivo.</p>
+        </header>
         <TablaRecurso
           clave="sup"
           recurso="casos"
           ordenInicial="-creado"
-          params={{ institucion: institucion?.id, supervisables: true }}
+          params={{ institucion: institucion?.id, supervisables: true, area_actual: area || undefined, sin_asignar: soloSinAsignar || undefined }}
           columnas={columnas}
           onRowClick={(c) => navigate(`/casos/${c.id}`)}
+          barra={<>
+            <Select aria-label="Filtrar por área" value={area} onChange={(e) => setArea(e.target.value)} className="w-full sm:w-auto sm:min-w-44">
+              <option value="">Todas mis áreas</option>
+              {areas.filas.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            </Select>
+            <label className="flex min-h-10 items-center gap-2 text-sm text-texto-medio">
+              <input type="checkbox" checked={soloSinAsignar} onChange={(e) => setSoloSinAsignar(e.target.checked)} />
+              Solo sin asignar
+            </label>
+          </>}
           vacio={{
             titulo: "No hay casos activos en tu área",
             detalle: "Cuando ingresen casos, vas a poder supervisarlos desde acá.",

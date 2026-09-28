@@ -99,7 +99,7 @@ test.describe("Historia clínica en el celular", () => {
 
   test("el bloque de identificación no queda estrangulado", async ({ page }) => {
     /*
-     * El botón «Nueva atención» es hermano de la identificación en un
+     * El botón «Registrar atención» es hermano de la identificación en un
      * `flex-wrap` y no bajaba de línea: el bloque del medio se encogía a 60 px,
      * el nombre salía en dos líneas y el documento en cuatro renglones.
      * Confirmar que se escribe en la historia del paciente correcto es el
@@ -114,7 +114,7 @@ test.describe("Historia clínica en el celular", () => {
     // El bloque de identificación es el hermano anterior del botón: se lo mide
     // desde ahí y no por su clase, que es lo que se está cambiando.
     const ancho = await page
-      .getByRole("button", { name: "Nueva atención" })
+      .getByRole("button", { name: "Registrar atención" })
       .evaluate((el) => el.previousElementSibling.getBoundingClientRect().width);
     expect(ancho, "la identificación del paciente quedó en una columna ilegible").toBeGreaterThan(200);
   });
@@ -122,17 +122,17 @@ test.describe("Historia clínica en el celular", () => {
   test("el padrón no se corre para el costado ni corta el botón de alta", async ({ page }) => {
     /*
      * El buscador tenía ancho fijo de 280 px dentro de un flex sin wrap: a 390 px
-     * el «+ Crear registro» terminaba 58 px afuera y para llegar a él había que
+     * el botón de alta terminaba 58 px afuera y para llegar a él había que
      * arrastrar el panel entero de la app, que se lee como pantalla rota. La
      * guarda de desborde no lo veía porque el que desbordaba era un contenedor
      * con `overflow-auto`, no el documento.
      */
     await entrar(page, "medico");
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto("/historia");
+    await page.goto("/padron");
     await esperarPantalla(page);
 
-    const boton = page.getByRole("button", { name: "+ Crear registro" });
+    const boton = page.getByRole("button", { name: "+ Registrar paciente" });
     const caja = await boton.boundingBox();
     expect(caja.x + caja.width, "el botón de alta queda cortado a la derecha").toBeLessThanOrEqual(390);
   });

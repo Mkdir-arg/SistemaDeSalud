@@ -15,8 +15,8 @@ import { Icon } from "./icons";
 const BOTON_VARIANTE = {
   // El primario usa el relleno de marca con su color de texto: `accent` a secas
   // es claro en tema oscuro y el blanco encima no llegaría a contraste.
-  primary: "bg-accent-fuerte text-sobre-accent hover:bg-accent-hover",
-  secondary: "bg-accent-50 text-accent border border-accent-100 hover:bg-accent-100",
+  primary: "hen-cta text-sobre-accent",
+  secondary: "bg-superficie text-accent border border-accent-100 hover:bg-accent-50",
   dashed: "border-[1.5px] border-dashed border-accent-100 text-accent hover:bg-accent-50",
   danger: "bg-danger-fuerte text-sobre-danger hover:brightness-110",
   ghost: "text-texto-suave hover:bg-superficie-2 hover:text-texto",
@@ -27,8 +27,8 @@ export function Button({ variant = "primary", size = "md", className, children, 
     <button
       disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-colors",
-        size === "sm" ? "h-8 px-3 text-base" : "h-10 px-4.5 text-md",
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors",
+        size === "sm" ? "h-9 px-3 text-md" : "h-10 px-4.5 text-md",
         disabled
           ? "cursor-not-allowed bg-division text-texto-tenue"
           : BOTON_VARIANTE[variant] || BOTON_VARIANTE.primary,
@@ -185,8 +185,8 @@ export function Badge({ tone = "neutral", className, children }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-[3px]",
-        "text-sm font-semibold",
+        "inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm border border-borde px-1.5",
+        "text-xs font-medium leading-4",
         BADGE_TONO[tone] || BADGE_TONO.neutral,
         className,
       )}
@@ -278,7 +278,7 @@ export function Field({ label, hint, ayuda, error, children }) {
 }
 
 const CONTROL =
-  "w-full rounded-md border border-campo-borde bg-superficie text-texto outline-none " +
+  "w-full rounded-md border border-campo-borde bg-superficie-2 text-texto outline-none " +
   "placeholder:text-texto-tenue focus:border-accent focus-visible:ring-2 focus-visible:ring-accent disabled:bg-superficie-2 disabled:text-texto-tenue";
 
 /**
@@ -291,7 +291,7 @@ export const Input = forwardRef(function Input({ className, size = "md", ...prop
   return (
     <input
       ref={ref}
-      className={cn(CONTROL, size === "sm" ? "h-8 px-3 text-base" : "h-10 px-3 text-md", className)}
+      className={cn(CONTROL, size === "sm" ? "h-9 px-3 text-md" : "h-10 px-3 text-md", className)}
       {...props}
     />
   );
@@ -304,7 +304,7 @@ export function Textarea({ className, ...props }) {
 export function Select({ className, size = "md", children, ...props }) {
   return (
     <select
-      className={cn(CONTROL, size === "sm" ? "h-8 px-2 text-base" : "h-10 px-2.5 text-md", className)}
+      className={cn(CONTROL, size === "sm" ? "h-9 px-2 text-md" : "h-10 px-2.5 text-md", className)}
       {...props}
     >
       {children}
@@ -363,7 +363,7 @@ export function EmptyState({ title, hint }) {
  * navegación: con solo `<button>` sueltos, un lector de pantalla no anuncia
  * cuántas hay ni cuál está activa.
  */
-export function Tabs({ tabs, valor, onChange, className }) {
+export function Tabs({ tabs, valor, onChange, className, variant = "pills" }) {
   function alTeclado(e) {
     const i = tabs.findIndex((t) => t.key === valor);
     if (e.key === "ArrowRight") onChange(tabs[(i + 1) % tabs.length].key);
@@ -373,7 +373,7 @@ export function Tabs({ tabs, valor, onChange, className }) {
     <div
       role="tablist"
       onKeyDown={alTeclado}
-      className={cn("inline-flex gap-1 rounded-lg bg-superficie-2 p-1", className)}
+      className={cn(variant === "underline" ? "flex w-full gap-1 border-b border-division" : "inline-flex gap-1 rounded-lg bg-superficie-2 p-1", className)}
     >
       {tabs.map((t) => {
         const activa = t.key === valor;
@@ -384,9 +384,10 @@ export function Tabs({ tabs, valor, onChange, className }) {
             aria-selected={activa}
             tabIndex={activa ? 0 : -1}
             onClick={() => onChange(t.key)}
-            className={cn(
-              "rounded-md px-4 py-2 text-md font-semibold transition-colors",
-              activa ? "bg-superficie text-accent shadow-card" : "text-texto-debil hover:text-texto-suave",
+            className={cn("px-4 py-2 text-md font-semibold transition-colors",
+              variant === "underline"
+                ? cn("border-b-2", activa ? "border-accent text-accent" : "border-transparent text-texto-debil hover:text-texto-suave")
+                : cn("rounded-md", activa ? "bg-superficie text-accent shadow-card" : "text-texto-debil hover:text-texto-suave"),
             )}
           >
             {t.label}
@@ -550,12 +551,12 @@ export function ConfirmDialog({
 export function Table({ columns, rows, onRowClick, vacio = "Sin registros" }) {
   if (!rows.length) return <EmptyState title={vacio} />;
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-md border border-borde bg-superficie shadow-card">
       <table className="w-full border-collapse text-md">
         <thead>
-          <tr className="bg-superficie-2 text-left">
+          <tr className="h-11 bg-superficie-2 text-left">
             {columns.map((c) => (
-              <th key={c.key} className="whitespace-nowrap px-lg py-3 text-sm font-semibold text-texto-debil">
+              <th key={c.key} scope="col" className="whitespace-nowrap px-5 py-2 text-sm font-medium text-texto-suave">
                 {c.label}
               </th>
             ))}
@@ -567,12 +568,12 @@ export function Table({ columns, rows, onRowClick, vacio = "Sin registros" }) {
               key={r.id}
               onClick={onRowClick ? () => onRowClick(r) : undefined}
               className={cn(
-                "border-t border-division",
+                "h-14 border-t border-division",
                 onRowClick && "cursor-pointer hover:bg-superficie-2",
               )}
             >
               {columns.map((c) => (
-                <td key={c.key} className="px-lg py-3.5 align-middle">
+                <td key={c.key} className="px-5 py-2 align-middle">
                   {c.render ? c.render(r) : r[c.key]}
                 </td>
               ))}

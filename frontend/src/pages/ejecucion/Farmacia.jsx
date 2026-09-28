@@ -76,14 +76,11 @@ export default function Farmacia() {
 
   return (
     <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">
-      <section className="flex flex-wrap items-center gap-lg rounded-lg border border-borde bg-superficie px-xl py-lg">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-nodo-accion-tint text-nodo-accion-sol">
-          <Icon name="cube" size={22} />
-        </span>
+      <section className="flex flex-wrap items-center gap-lg">
         <div className="min-w-40 flex-1">
           <h2 className="text-xl font-bold">Farmacia e insumos</h2>
           <p className="text-base text-texto-debil">
-            Stock por depósito · lo que falta y lo que vence
+            Stock por depósito: lo que falta y lo que vence.
           </p>
         </div>
         <select
@@ -187,10 +184,10 @@ function Controlado({ si }) {
  * se la come justo en los nombres largos —«Morfina clorhidrato Ampolla 10
  * mg/ml»— que son los que más falta hace marcar.
  */
-function NombreInsumo({ nombre, controlado, className, truncado = "sm:truncate" }) {
+function NombreInsumo({ nombre, controlado, className, truncado = "" }) {
   return (
-    <span className={cn("flex items-center gap-1.5", className)}>
-      <span className={cn("min-w-0", truncado)} title={nombre}>{nombre}</span>
+    <span className={cn("flex min-w-0 items-start gap-1.5", className)}>
+      <span className={cn("min-w-0 break-words", truncado)} title={nombre}>{nombre}</span>
       <Controlado si={controlado} />
     </span>
   );
@@ -322,7 +319,7 @@ function Alertas({ institucion, deposito, onResolver, onResolverVencimiento }) {
                     {/* Tener todo vencido no es lo mismo que no tener: hay algo
                         que dar de baja y alguien a quien reclamarle. */}
                     {f.vencida > 0 && (
-                      <span className="block text-sm text-danger">{f.vencida} vencida/s</span>
+                      <span className="block text-sm text-danger">{f.vencida} {f.unidad || "u."} fuera de uso por vencimiento</span>
                     )}
                   </span>
                   <Icon name="chevronRight" size={15} className="text-texto-tenue" />
@@ -336,8 +333,8 @@ function Alertas({ institucion, deposito, onResolver, onResolverVencimiento }) {
       <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
         <header className="flex flex-wrap items-center gap-2 border-b border-division px-xl py-lg">
           <Icon name="refresh" size={16} className="text-badge-amber-fg" />
-          <h3 className="flex-1 text-lg font-bold">Vencen pronto</h3>
-          {vencidos.length > 0 && <Badge tone="error">{vencidos.length} vencido/s</Badge>}
+          <h3 className="flex-1 text-lg font-bold">Vencidos y por vencer</h3>
+          {vencidos.length > 0 && <Badge tone="error">{vencidos.length} {vencidos.length === 1 ? "lote vencido" : "lotes vencidos"}</Badge>}
           <Badge tone={proximos.length ? "amber" : "gray"}>{proximos.length}</Badge>
         </header>
         {vencen.length === 0 ? (
@@ -588,7 +585,7 @@ function Stock({
                       <span className="text-sm text-texto-tenue"> {g.unidad}</span>
                       {g.vencido > 0 && (
                         <span className="block text-xs font-semibold text-danger">
-                          {g.vencido} vencida/s
+                          {g.vencido} {g.unidad || "u."} fuera de uso por vencimiento
                         </span>
                       )}
                       {g.minimo > 0 && (
@@ -918,7 +915,7 @@ function MovimientoModal({ grupo, depositos, onClose, onListo, toast }) {
         <div className="text-md text-texto-suave">
           Hay <strong className="tabular-nums">{grupo.usable}</strong> {grupo.unidad} en condiciones
           {grupo.vencido > 0 && (
-            <strong className="text-danger"> y {grupo.vencido} vencida/s</strong>
+            <strong className="text-danger"> y {grupo.vencido} {grupo.unidad || "u."} fuera de uso por vencimiento</strong>
           )}.
           <span className="text-texto-tenue">
             {modo === "transferencia"

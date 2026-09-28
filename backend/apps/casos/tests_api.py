@@ -385,6 +385,49 @@ class ListadoTest(APITestCase):
         r = self.client.get("/api/casos/?search=Quiroga&prioridad=normal")
         self.assertEqual(r.data["count"], 0, "el caso de Quiroga es urgente")
 
+    def test_grupos_de_estado_se_filtran_antes_de_paginar(self):
+        Caso.objects.filter(pk__in=Caso.objects.order_by("id").values_list("id", flat=True)[:2]).update(
+            estado=Caso.Estado.CERRADO,
+        )
+        Caso.objects.filter(pk=Caso.objects.order_by("id").last().pk).update(
+            estado=Caso.Estado.CANCELADO,
+        )
+        activos = self.client.get("/api/casos/?grupo_estado=activos&page_size=10")
+        cerrados = self.client.get("/api/casos/?grupo_estado=cerrados")
+        cancelados = self.client.get("/api/casos/?grupo_estado=cancelados")
+        todos = self.client.get("/api/casos/")
+        self.assertEqual((activos.data["count"], len(activos.data["results"])), (27, 10))
+        self.assertEqual(cerrados.data["count"], 2)
+        self.assertEqual(cancelados.data["count"], 1)
+        self.assertEqual(todos.data["count"], 30)
+
+    def test_sin_asignar_filtra_antes_de_paginar(self):
+        caso = Caso.objects.order_by("id").first()
+        caso.asignado_a = self.admin
+        caso.save(update_fields=["asignado_a"])
+
+        r = self.client.get("/api/casos/?supervisables=true&sin_asignar=true&page_size=10")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["count"], 29)
+        self.assertEqual(len(r.data["results"]), 10)
+        self.assertNotIn(caso.id, [fila["id"] for fila in r.data["results"]])
+
+    def test_filtro_flujo_y_documento_resumen_de_la_bandeja(self):
+        otro_flujo = Flujo.objects.create(institucion=self.inst, titulo="Consulta")
+        otra_version = VersionFlujo.objects.create(flujo=otro_flujo, numero=1)
+        otro_caso = Caso.objects.create(
+            institucion=self.inst, version=otra_version, ciudadano=self.quiroga,
+        )
+
+        r = self.client.get(f"/api/casos/?flujo={otro_flujo.id}&page_size=10")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["id"], otro_caso.id)
+        self.assertEqual(r.data["results"][0]["documento_resumen"], "••••678")
+        self.assertIn("paso_desde", r.data["results"][0])
+        self.assertEqual(self.client.get("/api/casos/?flujo=invalid").data["count"], 0)
+        self.assertEqual(self.client.get(f"/api/casos/?flujo={'9' * 100}").data["count"], 0)
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class SubirArchivoTest(APITestCase):

@@ -9,7 +9,10 @@ padrón completo de la plataforma, con nombre y email».
 """
 from rest_framework.test import APITestCase
 
+from apps.casos.models import Caso, EventoCaso
+from apps.flujos.models import Flujo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
+from apps.registros.models import Ciudadano
 
 from .models import LegajoProfesional, Membresia, Usuario
 
@@ -170,6 +173,51 @@ class LegajoAjenoTests(APITestCase):
         )
         self.assertEqual(r.status_code, 400)
         self.assertFalse(LegajoProfesional.objects.exists())
+
+
+class LegajoPorInstitucionTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.hospital = Institucion.objects.create(nombre="Hospital Central")
+        cls.clinica = Institucion.objects.create(nombre="Clínica del Sur")
+        cls.admin = Usuario.objects.create_user("admin@hospital.local", "x")
+        cls.medico = Usuario.objects.create_user("medico@ambas.local", "x")
+        for user, inst, rol in (
+            (cls.admin, cls.hospital, "admin"),
+            (cls.medico, cls.hospital, "medico"),
+            (cls.medico, cls.clinica, "medico"),
+        ):
+            Membresia.objects.create(usuario=user, institucion=inst, rol=rol, activo=True)
+        for inst, nombre in ((cls.hospital, "Hospital"), (cls.clinica, "Clínica")):
+            flujo = Flujo.objects.create(institucion=inst, titulo=f"Flujo {nombre}")
+            version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+            ciudadano = Ciudadano.objects.create(institucion=inst, nombre=nombre, apellido="Paciente")
+            caso = Caso.objects.create(
+                institucion=inst, version=version, ciudadano=ciudadano,
+                asignado_a=cls.medico, estado=Caso.Estado.ATENDIDO,
+            )
+            EventoCaso.objects.create(caso=caso, autor=cls.medico, titulo=f"Atención {nombre}")
+
+    def setUp(self):
+        self.client.force_authenticate(self.admin)
+
+    def test_legajo_filtra_metricas_y_actividad_de_la_institucion(self):
+        r = self.client.get(f"/api/usuarios/{self.medico.id}/legajo/?institucion={self.hospital.id}")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["casos_atendidos"], 1)
+        self.assertEqual(r.data["pacientes_vistos"], 1)
+        self.assertEqual(r.data["atenciones"], 1)
+        self.assertEqual([a["accion"] for a in r.data["actividad"]], ["Atención Hospital"])
+
+    def test_legajo_sin_filtro_no_muestra_actividad_de_otra_institucion(self):
+        r = self.client.get(f"/api/usuarios/{self.medico.id}/legajo/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["casos_atendidos"], 1)
+        self.assertEqual([a["accion"] for a in r.data["actividad"]], ["Atención Hospital"])
+
+    def test_no_puede_solicitar_legajo_de_institucion_ajena(self):
+        r = self.client.get(f"/api/usuarios/{self.medico.id}/legajo/?institucion={self.clinica.id}")
+        self.assertEqual(r.status_code, 403)
 
 
 class AltaDePersonaTests(APITestCase):

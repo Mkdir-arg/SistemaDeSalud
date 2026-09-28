@@ -76,7 +76,8 @@ function reloj(t) {
 }
 
 export default function RedTraslados() {
-  const { institucion } = useInstitucion();
+  const { institucion, puedeVer } = useInstitucion();
+  const navigate = useNavigate();
   const [tab, setTab] = useState(null);
 
   /*
@@ -97,6 +98,7 @@ export default function RedTraslados() {
   );
   const [redId, setRedId] = useState(null);
   const red = redes.filas.find((r) => r.id === redId) || redes.filas[0];
+  const otrosEstablecimientos = red?.instituciones_detalle?.filter((i) => i.id !== institucion?.id).length || 0;
 
   /*
    * La pestaña inicial depende de lo que este establecimiento hace.
@@ -143,27 +145,24 @@ export default function RedTraslados() {
   }
 
   return (
-    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">
-      <section className="flex flex-wrap items-center gap-lg rounded-lg border border-borde bg-superficie px-xl py-lg">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-nodo-derivar-tint text-nodo-derivar-sol">
-          <Icon name="map" size={22} />
-        </span>
-        <div className="min-w-40 flex-1">
+    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px] xl:px-10">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
           <h2 className="text-xl font-bold">Red de establecimientos</h2>
           <p className="text-base text-texto-debil">
-            {red.nombre} · {red.instituciones_detalle?.length || 0} establecimientos
+            {red.nombre} · derivaciones entre {institucion.nombre} y {otrosEstablecimientos} {otrosEstablecimientos === 1 ? "establecimiento" : "establecimientos"}
           </p>
         </div>
-        {/* Con más de una red hay que poder elegir: la ocupación de la red por
-            la que se va a derivar este paciente no se puede mirar si la pantalla
-            se queda siempre con la primera por orden alfabético. */}
-        {redes.filas.length > 1 && (
-          <Select value={red.id} onChange={(e) => setRedId(Number(e.target.value))}
-                  aria-label="Red" className="w-auto">
-            {redes.filas.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </Select>
-        )}
-      </section>
+        <div className="flex flex-wrap gap-2">
+          {redes.filas.length > 1 && (
+            <Select value={red.id} onChange={(e) => setRedId(Number(e.target.value))}
+                    aria-label="Red" className="w-auto">
+              {redes.filas.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+            </Select>
+          )}
+          {puedeVer("casos_operar") && <Button onClick={() => navigate("/casos")}>Buscar caso para derivar</Button>}
+        </div>
+      </header>
 
       <Tabs tabs={TABS} valor={tab} onChange={setTab} />
 

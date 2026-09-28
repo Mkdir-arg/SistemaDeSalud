@@ -2,7 +2,7 @@
 
 ## Proposito
 
-Exponer informacion sanitaria de I-Core Salud en formato FHIR R4 y permitir que un flujo consulte un padron FHIR externo para completar datos del paciente. El objetivo funcional es integrarse con ecosistemas estatales o interinstitucionales sin romper la trazabilidad interna del sistema.
+Exponer informacion sanitaria de HEN en formato FHIR R4 y permitir que un flujo consulte un padron FHIR externo para completar datos del paciente. El objetivo funcional es integrarse con ecosistemas estatales o interinstitucionales sin romper la trazabilidad interna del sistema.
 
 ## Actores
 
@@ -28,6 +28,7 @@ Exponer informacion sanitaria de I-Core Salud en formato FHIR R4 y permitir que 
 ## Reglas de negocio
 
 - La fachada FHIR es de solo lectura: no admite escritura directa de pacientes, episodios u observaciones.
+- El cambio de nombre a HEN no cambia los identificadores FHIR existentes (`urn:icore-salud:id`) ni la compatibilidad de lectura de `urn:cauce:id`.
 - La escritura sanitaria debe seguir pasando por el motor de Salud para conservar permisos, eventos y reglas.
 - La fachada respeta los mismos permisos funcionales que la API interna.
 - Las busquedas devuelven `Bundle`, aun cuando no haya resultados.

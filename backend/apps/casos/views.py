@@ -113,6 +113,15 @@ class CasoViewSet(CoberturaCasoMixin, BaseModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset().annotate(prioridad_rank=PRIORIDAD_ORDEN)
+        # Pestañas del listado institucional. El grupo se filtra antes de
+        # paginar: filtrar en el navegador dejaría fuera casos de otras páginas.
+        grupo_estado = self.request.query_params.get("grupo_estado")
+        if grupo_estado == "activos":
+            qs = qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
+        elif grupo_estado == "cerrados":
+            qs = qs.filter(estado=Caso.Estado.CERRADO)
+        elif grupo_estado == "cancelados":
+            qs = qs.filter(estado=Caso.Estado.CANCELADO)
         # `?supervisables=true` — los casos que el usuario puede supervisar:
         # activos y en un área donde es jefe. Se resuelve en el servidor a
         # propósito: la pantalla de Supervisión traía TODOS los casos de la
@@ -122,6 +131,15 @@ class CasoViewSet(CoberturaCasoMixin, BaseModelViewSet):
             qs = qs.exclude(estado__in=[Caso.Estado.CERRADO, Caso.Estado.CANCELADO])
             if not self.request.user.is_superuser:
                 qs = qs.filter(area_actual__in=motor.areas_que_supervisa(self.request.user))
+        if self.request.query_params.get("sin_asignar") in ("true", "1"):
+            qs = qs.filter(asignado_a__isnull=True)
+        flujo = self.request.query_params.get("flujo")
+        if flujo:
+            try:
+                flujo_id = int(flujo) if len(flujo) <= 20 else 0
+            except ValueError:
+                flujo_id = 0
+            qs = qs.filter(version__flujo_id=flujo_id) if flujo_id > 0 else qs.none()
 
         # `?tomables=true` — lo accionable para el usuario: activo, sin asignar,
         # que no esté encolado (eso se opera solo desde la pantalla Fila) y cuyo

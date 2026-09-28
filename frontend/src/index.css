@@ -20,6 +20,36 @@
    `document.documentElement.classList.add("dark")`. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+@layer components {
+  .hen-cta { background-image: var(--gradient-action); }
+  .hen-cta:hover { background-image: var(--gradient-action-hover); }
+  .presentacion-hero { background: radial-gradient(circle at 22% 10%, var(--color-accent-50), transparent 42%), var(--color-fondo); }
+  .presentacion-pulso { height: 58px; opacity: .35; }
+  .presentacion-titulo-gradiente { background: var(--gradient-action); background-clip: text; -webkit-background-clip: text; color: transparent; }
+  .dark .presentacion-titulo-gradiente { background-image: linear-gradient(90deg, #B778F5, #62C9D4); }
+  .presentacion-beneficio { background: linear-gradient(125deg, var(--color-accent-50), var(--color-superficie-2)); }
+  .login-main {
+    background: radial-gradient(ellipse 70% 58% at 50% 46%, color-mix(in srgb, var(--color-accent) 9%, var(--color-fondo)), var(--color-fondo) 75%);
+  }
+  .login-pulso { color: color-mix(in srgb, var(--color-accent) 52%, transparent); }
+  .clinica-demo {
+    --color-fondo: #F8F6FD;
+    --color-superficie: #FFFFFF;
+    --color-superficie-2: #F8F6FD;
+    --color-borde: #E3DDF2;
+    --color-campo-borde: #C9C0E0;
+    --color-texto: #1D1930;
+    --color-texto-medio: #463F63;
+    --color-texto-suave: #5E5680;
+    --color-accent: #7031C7;
+    --color-accent-50: #F7F2FD;
+    --color-accent-100: #E0CCF7;
+    --color-accent-fuerte: #7031C7;
+  }
+  .clinica-phone { width: min(100%, 390px); min-height: 844px; }
+  .clinica-llamado { background: linear-gradient(to top right, #7031C7, #007A70); }
+}
+
 /* Marca blanca: los tokens viven en :root, así que una institución puede pisar su
    color de acento en runtime sin recompilar nada:
        document.documentElement.style.setProperty("--color-accent", "#0E8893")
@@ -28,9 +58,7 @@
 @layer base {
   body {
     font-family: var(--font-sans);
-    /* Tokens SEMÁNTICOS, no literales: `--color-ink` y `--color-canvas` no
-       cambian con el tema, así que usarlos acá dejaba el fondo de la página en
-       claro con las tarjetas ya en oscuro. */
+    /* La página usa colores semánticos para acompañar el tema activo. */
     color: var(--color-texto);
     background: var(--color-fondo);
     -webkit-font-smoothing: antialiased;

@@ -9,7 +9,7 @@ async function entrarFinanzas(page, usuario = "admin") {
   await page.locator('button[type="submit"]').click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
   await page.goto("/finanzas?mes=2026-09&tab=calendario");
-  await expect(page.getByRole("heading", { name: "Finanzas y costos" }).last()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finanzas y cobros" }).last()).toBeVisible();
   await expect(page.locator("tbody tr").first()).toContainText("Demo");
 }
 
@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => entrarFinanzas(page));
 
 test("mes y área actualizan automáticamente y sobreviven a recarga", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Actualizar", exact: true })).toHaveCount(0);
-  await expect(page.locator("p.uppercase").filter({ hasText: "Finanzas y costos" })).toHaveCount(0);
+  await expect(page.locator("p.uppercase").filter({ hasText: "Finanzas y cobros" })).toHaveCount(0);
   await page.getByRole("combobox", { name: "Área", exact: true }).selectOption({ label: "Consultorios Demo" });
   await expect(page).toHaveURL(/area=\d+/);
   await page.reload();
@@ -51,7 +51,7 @@ test("ayuda se puede recorrer con mouse y cerrar con Escape sin desplazar conten
 });
 
 test("todos los encabezados de datos envían el orden al servidor", async ({ page }) => {
-  for (const [tab, recurso] of [["Control mensual", "/expectativas-gasto/calendario/"], ["Gastos registrados", "/gastos/"], ["Repartos", "/repartos-gasto/"]]) {
+  for (const [tab, recurso] of [["Gastos mensuales", "/expectativas-gasto/calendario/"], ["Gastos", "/gastos/"], ["Distribución", "/repartos-gasto/"]]) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
     const botones = page.locator("thead button[aria-label^='Ordenar por']");
     for (let i = 0; i < await botones.count(); i += 1) {
@@ -78,7 +78,7 @@ test("contador abre exactamente los gastos pendientes del área y concepto", asy
 });
 
 test("rangos mantienen foco mientras cargan y se pueden quitar con cero resultados", async ({ page }) => {
-  await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos", exact: true }).click();
   await page.getByRole("button", { name: "Filtrar Importe original", exact: true }).click();
   const panel = page.getByRole("dialog", { name: "Filtrar Importe original", exact: true });
   await panel.getByLabel("Importe original (ARS) desde", { exact: true }).pressSequentially("999999");
@@ -91,14 +91,14 @@ test("rangos mantienen foco mientras cargan y se pueden quitar con cero resultad
 });
 
 test("ajustes y reemplazos visibles; atribuciones conservan el total exacto", async ({ page }) => {
-  await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos", exact: true }).click();
   const ajuste = page.locator("tbody tr").filter({ has: page.getByRole("button", { name: "Ver 1 ajuste", exact: true }) });
   await expect(ajuste).toContainText("ARS -250,00");
   await expect(ajuste).toContainText("ARS 9.750,00");
   await page.getByRole("button", { name: /^Reemplazado por #/ }).first().click();
   await expect(page.getByRole("dialog")).toContainText("Reemplaza #");
   await page.keyboard.press("Escape");
-  await page.getByRole("tab", { name: "Repartos", exact: true }).click();
+  await page.getByRole("tab", { name: "Distribución", exact: true }).click();
   await expect(page.locator("tbody tr").filter({ hasText: "Mantenimiento" })).toContainText("Sin asignaciones");
   const reparto = page.locator("tbody tr").filter({ hasText: "Electricidad" });
   await reparto.getByRole("button", { name: /Ver 4 atenciones/ }).click();
@@ -112,7 +112,7 @@ test("ajustes y reemplazos visibles; atribuciones conservan el total exacto", as
 
 test("institucional filtra repartos sin mezclar áreas", async ({ page }) => {
   await page.getByRole("combobox", { name: "Área", exact: true }).selectOption("null");
-  await page.getByRole("tab", { name: "Repartos", exact: true }).click();
+  await page.getByRole("tab", { name: "Distribución", exact: true }).click();
   await expect(page.locator("tbody")).toContainText("Limpieza institucional");
   await expect(page.locator("tbody")).not.toContainText("Consultorios Demo");
 });
@@ -121,10 +121,10 @@ test("perfil de área no ve remuneraciones ni detalle de costos sin autorizació
   await page.getByRole("button", { name: "Cerrar sesión", exact: true }).click();
   await entrarFinanzas(page, "area");
   await expect(page.getByRole("button", { name: "Configurar repartos", exact: true })).toHaveCount(0);
-  await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos", exact: true }).click();
   await expect(page.locator("tbody")).not.toContainText("Remuneraciones");
   await expect(page.getByRole("button", { name: "Aprobar", exact: true })).toHaveCount(0);
-  await page.getByRole("tab", { name: "Repartos", exact: true }).click();
+  await page.getByRole("tab", { name: "Distribución", exact: true }).click();
   await page.getByRole("button", { name: /Ver 4 atenciones/ }).first().click();
   await expect(page.getByText("No tenés autorización para ver el detalle de las atenciones de este reparto.", { exact: true })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Referencia de atención", exact: true })).toHaveCount(0);
@@ -132,7 +132,7 @@ test("perfil de área no ve remuneraciones ni detalle de costos sin autorizació
 
 test("tablas y ayudas mantienen el ancho disponible en móvil", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const tab of ["Control mensual", "Gastos registrados", "Repartos"]) {
+  for (const tab of ["Gastos mensuales", "Gastos", "Distribución"]) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
@@ -147,7 +147,7 @@ test("tablas y ayudas mantienen el ancho disponible en móvil", async ({ page })
 });
 
 test("importe de reparto no descarta silenciosamente decimales inválidos", async ({ page }) => {
-  await page.getByRole("tab", { name: "Repartos", exact: true }).click();
+  await page.getByRole("tab", { name: "Distribución", exact: true }).click();
   await page.getByRole("button", { name: "Filtrar Importe", exact: true }).click();
   const panel = page.getByRole("dialog", { name: "Filtrar Importe", exact: true });
   const minimo = panel.getByLabel("Importe (ARS) desde", { exact: true });
@@ -165,7 +165,7 @@ test("importe de reparto no descarta silenciosamente decimales inválidos", asyn
 });
 
 test("importe de gasto rechaza exponente cuando indica un rango inválido", async ({ page }) => {
-  await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos", exact: true }).click();
   await page.getByRole("button", { name: "Filtrar Importe original", exact: true }).click();
   const panel = page.getByRole("dialog", { name: "Filtrar Importe original", exact: true });
   const respuesta = page.waitForResponse((r) => r.url().includes("/gastos/") && new URL(r.url()).searchParams.get("importe_min") === "importe_invalido");

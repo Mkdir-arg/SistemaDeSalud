@@ -1,4 +1,4 @@
-# Desplegar y operar I-Core Salud
+# Desplegar y operar HEN
 
 > Qué necesita una instalación real, cómo se actualiza y **qué hacer cuando se
 > pierde la base**. Escrito el 22/09/2026 contra el compose y los comandos del

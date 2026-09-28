@@ -114,6 +114,7 @@ class CasoSerializer(serializers.ModelSerializer):
     nodo_tipo = serializers.CharField(source="nodo_actual.tipo", read_only=True)
     area_nombre = serializers.SerializerMethodField()
     ciudadano_nombre = serializers.SerializerMethodField()
+    documento_resumen = serializers.SerializerMethodField()
     asignado_nombre = serializers.SerializerMethodField()
     # Grupos responsables del paso actual y si el usuario actual puede tomarlo.
     responsables = serializers.SerializerMethodField()
@@ -134,18 +135,22 @@ class CasoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Caso
         fields = [
-            "id", "institucion", "version", "flujo_titulo", "ciudadano", "ciudadano_nombre",
+            "id", "institucion", "version", "flujo_titulo", "ciudadano", "ciudadano_nombre", "documento_resumen",
             "estado", "estado_display", "prioridad", "prioridad_display",
             "nodo_actual", "paso_actual", "nodo_tipo", "nodo_con_fila", "en_fila", "area_actual", "area_nombre",
             "asignado_a", "asignado_nombre", "responsables", "puede_tomar", "puede_supervisar", "esperando",
             "espera_autorizacion", "puede_continuar_autorizacion",
-            "origen", "origen_flujo", "estudio", "estudio_tipo", "creado", "actualizado",
+            "origen", "origen_flujo", "estudio", "estudio_tipo", "creado", "actualizado", "paso_desde",
         ]
         read_only_fields = [
             "id", "institucion", "version", "ciudadano", "estado", "prioridad",
             "nodo_actual", "area_actual", "asignado_a", "esperando", "origen",
-            "estudio", "creado", "actualizado", "espera_autorizacion",
+            "estudio", "creado", "actualizado", "paso_desde", "espera_autorizacion",
         ]
+
+    def get_documento_resumen(self, obj) -> str:
+        documento = (obj.ciudadano.documento or "") if obj.ciudadano_id else ""
+        return f"••••{documento[-3:]}" if len(documento) > 3 else ("••••" if documento else "")
 
     def get_nodo_con_fila(self, obj) -> bool:
         return bool(obj.nodo_actual and (obj.nodo_actual.config or {}).get("con_fila"))

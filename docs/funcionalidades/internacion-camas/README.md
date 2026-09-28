@@ -20,6 +20,8 @@ Administrar camas y estadias de internacion como parte del proceso asistencial. 
 - Egreso de cama sin necesariamente cerrar el caso.
 - Estadias historicas con motivo de egreso.
 - Vista operativa de internacion.
+- El tablero señala si un paciente figura en dos camas activas, incluso cuando
+  las camas están en sectores distintos o los casos tienen IDs diferentes.
 
 ## Reglas de negocio
 
@@ -38,6 +40,7 @@ Administrar camas y estadias de internacion como parte del proceso asistencial. 
 ## Entidades y endpoints
 
 - `camas`
+- `GET /api/camas/tablero/`: totales por sector y `conflictos` por ID de cama.
 - `estadias-cama`
 - Acciones funcionales de caso: `cama`, `pase`, `egreso-cama`.
 

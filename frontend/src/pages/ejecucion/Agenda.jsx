@@ -71,6 +71,7 @@ export default function Agenda() {
   // dónde deja parado el salto desde «Próximos libres».
   const [abrir, setAbrir] = useState(null);
   const [registrarPasado, setRegistrarPasado] = useState(null);
+  const [buscarPaciente, setBuscarPaciente] = useState(false);
 
   const agendas = useLista(
     "agendas",
@@ -186,37 +187,68 @@ export default function Agenda() {
   );
 
   return (
-    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">
-      <section className="flex flex-wrap items-center gap-lg rounded-lg border border-borde bg-superficie px-xl py-lg">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-nodo-espera-tint text-nodo-espera-sol">
-          <Icon name="calendar" size={22} />
-        </span>
-        <div className="min-w-40 flex-1">
-          <h2 className="text-xl font-bold">Turnos programados</h2>
+    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px] xl:px-10">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold">Turnos</h2>
           <p className="text-base text-texto-debil">
+            {new Date(`${fecha}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            {` · ${ocupados} de ${horarios.length} horarios dados`}
+            {sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
+      </header>
+
+      <section className="flex flex-wrap items-center gap-3">
+        <Select
+          aria-label="Agenda"
+          value={agenda?.id ?? ""}
+          onChange={(e) => setAgendaSel(Number(e.target.value))}
+          className="w-full sm:w-auto sm:min-w-64"
+        >
+          {lista.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+        </Select>
+        <Input
+          type="date"
+          value={fecha}
+          onChange={(e) => irAFecha(e.target.value)}
+          aria-label="Fecha de la agenda"
+          className="w-full sm:w-auto"
+        />
+        <Button variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>
+          Registrar atención pasada
+        </Button>
+        <Button variant="secondary" onClick={() => setBuscarPaciente((actual) => !actual)} aria-expanded={buscarPaciente}>
+          Buscar turno de un paciente
+        </Button>
+      </section>
+
+      <div className="text-sm text-texto-debil">
+        <p>
             {agenda?.area_nombre}
             {agenda?.tipo === "recurso" && " · recurso"}
             {agenda?.duracion_min && ` · turnos de ${agenda.duracion_min} min`}
             {agenda?.modalidad === "virtual" && " · sólo virtual"}
             {agenda?.modalidad === "mixta" && " · presencial o virtual"}
-          </p>
+        </p>
           {/* Una agenda que atiende por video sin sala configurada da turnos que
               el paciente no puede usar: hay que pegarle el link a cada uno. Se
               dice acá porque es donde se están dando los turnos. */}
-          {agenda && agenda.modalidad !== "presencial" && !agenda.enlace_virtual && (
-            <p className="text-sm text-texto-tenue">
-              Esta agenda no tiene sala configurada: cada turno virtual sale sin enlace.
-            </p>
-          )}
+        {agenda && agenda.modalidad !== "presencial" && !agenda.enlace_virtual && (
+          <p className="text-sm text-texto-tenue">
+            Esta agenda no tiene sala configurada: cada turno virtual sale sin enlace.
+          </p>
+        )}
           {/* Una agenda sin flujo es un estado real y previsto, pero registrar
               la llegada ahí no abre ningún caso: si no se dice acá, el
               administrativo manda al paciente a esperar que lo llamen y no hay
               nada en ninguna cola. */}
-          {agenda && !agenda.flujo && (
-            <p className="text-sm text-texto-tenue">
-              Esta agenda no tiene flujo: registrar la llegada no abre ningún caso.
-            </p>
-          )}
+        {agenda && !agenda.flujo && (
+          <p className="text-sm text-texto-tenue">
+            Esta agenda no tiene flujo: registrar la llegada no abre ningún caso.
+          </p>
+        )}
           {/* Un renglón sin «+» no distingue «esta agenda no toma sobreturnos»
               de «ya se usaron los cupos de ese horario». Dicho una vez acá, la
               respuesta a «¿me da un sobreturno a las 10?» deja de ser un tanteo.
@@ -225,36 +257,10 @@ export default function Agenda() {
               sobreturnos ahora se configuran por franja, así que una agenda en
               cero puede tener la franja de la mañana aceptando dos, y el cartel
               diría lo contrario de lo que la grilla ofrece. */}
-          {sinSobreturnosHoy && (
-            <p className="text-sm text-texto-tenue">Esta agenda no toma sobreturnos.</p>
-          )}
-        </div>
-        {lista.length > 1 && (
-          <select
-            aria-label="Agenda"
-            value={agenda?.id ?? ""}
-            onChange={(e) => setAgendaSel(Number(e.target.value))}
-            className="h-9 rounded-md border border-campo-borde bg-superficie px-2 text-md outline-none focus:border-accent"
-          >
-            {lista.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-          </select>
+        {sinSobreturnosHoy && (
+          <p className="text-sm text-texto-tenue">Esta agenda no toma sobreturnos.</p>
         )}
-        <div className="text-right">
-          <div className="text-cifra font-extrabold leading-none tabular-nums">
-            {ocupados}/{horarios.length}
-          </div>
-          {/* El sobreturno no ocupa un renglón propio de la grilla, así que sin
-              esta línea un día con 12 horarios llenos y 5 sobreturnos se resume
-              «12/12 dados» — y ése es el número con el que se contesta «¿cuánta
-              gente tiene hoy la doctora?» y se decide si se acepta uno más. */}
-          <div className="text-xs text-texto-tenue">
-            dados{sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
-          </div>
-        </div>
-        <Button variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>
-          Registrar atención pasada
-        </Button>
-      </section>
+      </div>
 
       {registrarPasado && <RegistrarPasado
         institucionId={institucion?.id} agendaInicial={registrarPasado.agenda} inicioInicial={registrarPasado.inicio}
@@ -264,14 +270,13 @@ export default function Agenda() {
         toast={toast}
       />}
 
-      <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />
+      {buscarPaciente && <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />}
 
       {/* Navegación por día */}
-      <section className="flex flex-wrap items-center gap-2 rounded-lg border border-borde bg-superficie px-xl py-3">
+      <section className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="secondary" onClick={() => mover(-1)}>
           <Icon name="chevronLeft" size={14} /> Día anterior
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
         <Button size="sm" variant="secondary" onClick={() => mover(1)}>
           Día siguiente <Icon name="chevronRight" size={14} />
         </Button>
@@ -295,13 +300,6 @@ export default function Agenda() {
         >
           <Icon name="filter" size={14} /> Sin confirmar ({sinConfirmar})
         </Button>
-        <Input
-          type="date"
-          value={fecha}
-          onChange={(e) => irAFecha(e.target.value)}
-          aria-label="Fecha de la agenda"
-          className="ml-auto w-auto"
-        />
       </section>
 
       {verProximos && (

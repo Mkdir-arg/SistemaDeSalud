@@ -187,6 +187,18 @@ class CamasAPITests(APITestCase):
         d = self.client.get(f"/api/camas/tablero/?area={self.area.id}").data
         self.assertNotIn("Otra", [s["sector"] for s in d["sectores"]])
 
+    def test_el_tablero_detecta_al_mismo_paciente_en_dos_sectores_y_casos(self):
+        primero = self._internar("Ana")
+        segundo = Caso.objects.create(
+            institucion=self.inst, version=self.ver, ciudadano=primero.ciudadano,
+        )
+        Cama.objects.filter(pk=self.c1.pk).update(estado=Cama.Estado.OCUPADA, caso=primero)
+        Cama.objects.filter(pk=self.u1.pk).update(estado=Cama.Estado.OCUPADA, caso=segundo)
+        data = self.client.get("/api/camas/tablero/").data
+        self.assertEqual(data["conflictos"][self.c1.id], ["UTI 1 · UTI"])
+        self.assertEqual(data["conflictos"][self.u1.id], ["101-A · Clínica médica"])
+        self.assertNotIn(self.c2.id, data["conflictos"])
+
 
 class CamasPermisosTests(APITestCase):
     """Crear camas es configurar el hospital; higienizarlas es el día a día."""

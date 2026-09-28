@@ -183,85 +183,30 @@ export default function FormularioDetalle() {
         </div>
       </div>
 
-      {/*
-        * Cabecera del formulario, con la tira de datos.
-        *
-        * Antes el título, el ámbito, la cuenta de campos y la descripción se
-        * apilaban con el mismo peso al lado de un icono suelto, y el resto de lo
-        * que hay que saber del formulario —cuántos campos son obligatorios,
-        * cuántos datos cargados hay en juego, en cuántos pasos se pide— estaba
-        * repartido por la pantalla o directamente no estaba. Son números que la
-        * API ya devuelve: juntos y arriba, contestan de un vistazo «¿qué puedo
-        * tocar acá sin romper nada?».
-        */}
-      <Card className="mb-lg shadow-card">
-        <div className="flex flex-wrap items-start gap-3.5 p-lg">
-          <div className="flex size-[42px] flex-none items-center justify-center rounded-md border border-accent-100 bg-accent-50 text-accent">
-            <Icon name="form" size={21} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="mb-1 font-display text-cifra font-bold leading-tight tracking-tight text-texto-fuerte">
-              {form ? form.titulo : <Skeleton className="h-6 w-56" />}
-            </h2>
-            {/* La descripción no se podía cargar ni ver desde ninguna pantalla:
-                la columna del listado sólo podía decir «—». Vacía, el hueco
-                invita a llenarla en vez de no decir nada. */}
-            {form?.descripcion ? (
-              <p className="max-w-prose text-md text-texto-suave">{form.descripcion}</p>
-            ) : form ? (
-              <button
-                onClick={() => setEditarForm(true)}
-                className="border-b border-dashed border-accent-100 text-md text-accent"
-              >
-                Agregá una descripción
-              </button>
-            ) : null}
-          </div>
-          {form && (
-            <div className="flex flex-none items-center gap-1.5">
-              <Button variant="secondary" onClick={() => setEditarForm(true)} className="flex h-8 items-center gap-1.5 px-3">
-                <Icon name="edit" size={14} /> Editar
-              </Button>
-              <IconButton icon="copy" label="Duplicar formulario" size="sm" disabled={duplicar.isPending} onClick={() => duplicar.mutate()} />
-              <IconButton icon="trash" label="Eliminar formulario" size="sm" onClick={() => setBorrarForm(true)} />
-            </div>
+      <header className="mb-lg flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold">{form ? form.titulo : <Skeleton className="h-6 w-56" />}</h2>
+          {form && <p className="mt-1 text-sm text-texto-debil">
+            {form.area_nombre || "Institución"} · {plural(campos.length, "campo", "campos")}
+            {` · ${requeridos} obligatorios · ${vecesCompletado} completados`}
+            {usosQ.data && ` · se pide en ${plural(usos.length, "paso", "pasos")}`}
+          </p>}
+          {form?.descripcion ? <p className="mt-1 text-sm text-texto-suave">{form.descripcion}</p> : form && (
+            <button onClick={() => setEditarForm(true)} className="mt-1 text-sm text-accent hover:underline">Agregá una descripción</button>
           )}
         </div>
-
-        <dl className="grid grid-cols-2 border-t border-division bg-superficie-2 sm:grid-cols-4">
-          <TiraDato titulo="Ámbito" texto={form?.area_nombre} />
-          <TiraDato
-            titulo="Campos"
-            cifra={q.isLoading ? null : campos.length}
-            texto={q.isLoading ? null : `· ${requeridos} ${requeridos === 1 ? "obligatorio" : "obligatorios"}`}
-          />
-          <TiraDato
-            titulo="Completado"
-            cifra={q.isLoading ? null : vecesCompletado}
-            // La consecuencia concreta del número de al lado: con datos cargados,
-            // el tipo de esos campos ya no se puede cambiar.
-            texto={
-              q.isLoading ? null
-                : vecesCompletado === 0 ? "nunca · los tipos se pueden cambiar"
-                  : "veces · los tipos quedan fijos"
-            }
-            apagada={vecesCompletado === 0}
-          />
-          <TiraDato
-            titulo="Se pide en"
-            // Sin usos no va cifra: «0 ningún paso» es peor que decirlo con
-            // palabras, y es justamente el caso en el que se puede tocar todo.
-            cifra={usosQ.isLoading || usosQ.error || usos.length === 0 ? null : usos.length}
-            texto={
-              usosQ.isLoading || usosQ.error ? null
-                : usos.length === 0 ? "ningún paso todavía"
-                  : (usos.length === 1 ? "paso" : "pasos")
-                    + (casosParados > 0 ? ` · ${plural(casosParados, "caso parado ahí", "casos parados ahí")}` : "")
-            }
-            apagada={usos.length === 0}
-          />
-        </dl>
-      </Card>
+        {form && <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" disabled={duplicar.isPending} onClick={() => duplicar.mutate()}>Duplicar</Button>
+          <Button size="sm" variant="secondary" onClick={() => setEditarForm(true)}>Editar datos</Button>
+          <IconButton icon="trash" label="Eliminar formulario" size="sm" onClick={() => setBorrarForm(true)} />
+        </div>}
+      </header>
+      {vecesCompletado > 0 && <p role="status" className="mb-lg rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg px-4 py-3 text-sm text-badge-amber-fg">
+        Hay respuestas cargadas: el tipo de cada campo usado queda fijo. Para cambiarlo, duplicá el formulario y revisá sus usos.
+      </p>}
+      {casosParados > 0 && <p className="mb-lg rounded-md border border-borde px-4 py-2 text-sm text-texto-suave">
+        {plural(casosParados, "caso activo está", "casos activos están")} en pasos que piden este formulario.
+      </p>}
 
       {/* Una columna hasta `lg`: a 1024px dos columnas dejan la vista previa
           demasiado angosta para parecerse a lo que verá el administrativo. */}
@@ -700,33 +645,6 @@ function BotonFila({ title, icono, onClick, disabled, peligroso = false }) {
     >
       <Icon name={icono} size={14} />
     </button>
-  );
-}
-
-/**
- * Una celda de la tira de datos de la cabecera.
- *
- * La cifra en mono y tabular para que las cuatro se lean como una fila de
- * números y no como cuatro textos; `null` mientras el dato no llegó, que es
- * distinto de cero.
- */
-function TiraDato({ titulo, cifra, texto, apagada = false }) {
-  return (
-    <div className="border-l border-division px-lg py-2.5 first:border-l-0 [&:nth-child(3)]:border-l-0 sm:[&:nth-child(3)]:border-l">
-      <dt className="mb-0.5 text-micro font-bold uppercase tracking-wider text-texto-tenue">{titulo}</dt>
-      <dd className="flex items-baseline gap-1.5">
-        {cifra != null && (
-          <Mono className={`text-lg font-semibold tabular-nums ${apagada ? "text-texto-tenue" : "text-texto-fuerte"}`}>
-            {cifra}
-          </Mono>
-        )}
-        {texto ? (
-          <span className="truncate text-sm text-texto-debil">{texto}</span>
-        ) : cifra == null ? (
-          <Skeleton className="h-4 w-16" />
-        ) : null}
-      </dd>
-    </div>
   );
 }
 

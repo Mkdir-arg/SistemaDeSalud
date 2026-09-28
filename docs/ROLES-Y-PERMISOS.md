@@ -2,7 +2,7 @@
 
 Actualizado: 2026-09-22 (verificado contra `main` en `fca71e3`)
 
-Este documento describe el modelo funcional de autoridad de I-Core Salud: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
+Este documento describe el modelo funcional de autoridad de HEN: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
 
 ## 1. Principio general
 
@@ -435,6 +435,7 @@ Notas:
 - `Si**`: requiere supervisar el area del caso.
 - `Si***`: por la herencia del admin de institucion (§3.1). Cualquier otro rol necesita concesiones explicitas: se otorgan de a una y **no dependen del rol**. Una persona de contabilidad puede tenerlas sin ser administradora ni obtener permisos clinicos.
 - La ficha administrativa usa `padron_admision`; la lectura clinica usa `historia_clinica`.
+- El listado del padrón devuelve documento y domicilio enmascarados, edad calculada y ninguna fecha de nacimiento completa. La búsqueda por DNI completo sigue funcionando en el servidor. Quien tiene `padron_admision` puede abrir la ficha o usar el ojo para revelar los datos administrativos completos; esa lectura se audita antes de responder y falla cerrada si no puede registrarse. No se pide motivo para revelar. La exportación sí exige motivo y conserva sus variantes y permisos actuales.
 - La escritura de cada recurso se valida contra la institucion implicada.
 
 ## 6. Interaccion por modulo

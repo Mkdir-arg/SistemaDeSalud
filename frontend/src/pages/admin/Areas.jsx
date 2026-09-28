@@ -94,47 +94,54 @@ export default function Areas() {
   });
 
   return (
-    <div className="flex h-full min-h-0">
-      <ArbolAreas
-        areas={areas}
-        institucion={institucion}
-        areaId={areaId}
-        subId={subId}
-        onArea={abrirArea}
-        onSub={abrirSub}
-        onNueva={() => setNuevoArea(true)}
-      />
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-6 pb-4 pt-6">
+        <div>
+          <h2 className="text-xl font-bold">Estructura organizativa</h2>
+          <p className="mt-1 text-sm text-texto-debil">{areas.total} áreas · {areas.filas.reduce((total, a) => total + (a.subareas?.length || 0), 0)} sub-áreas. Elegí un área para ver su staff, grupos, boxes y agendas.</p>
+        </div>
+        <Button data-tour="estructura-nueva-area" onClick={() => setNuevoArea(true)} disabled={!institucion}>Nueva área</Button>
+      </header>
+      <div className="flex min-h-0 flex-1 border-t border-borde">
+        <ArbolAreas
+          areas={areas}
+          areaId={areaId}
+          subId={subId}
+          onArea={abrirArea}
+          onSub={abrirSub}
+        />
 
-      <div className="min-w-0 flex-1">
-        {!sel ? (
-          <SinSeleccion
-            cargando={areas.isLoading}
-            error={areas.error}
-            onReintentar={areas.refetch}
-            total={areas.total}
-            onNueva={() => setNuevoArea(true)}
-          />
-        ) : sub ? (
-          <FichaSubarea
-            key={sub.id}
-            area={sel}
-            sub={sub}
-            onVolver={() => navigate(`/estructura/${sel.id}/subareas`)}
-            onChange={areas.refetch}
-          />
-        ) : (
-          <FichaArea
-            key={sel.id}
-            area={sel}
-            seccion={activa}
-            institucionNombre={institucion?.nombre}
-            onSeccion={abrirSeccion}
-            onEditar={() => setEditar(true)}
-            onBorrar={() => setABorrar(sel)}
-            onAbrirSub={(s) => abrirSub(sel, s)}
-            onChange={areas.refetch}
-          />
-        )}
+        <div className="min-w-0 flex-1">
+          {!sel ? (
+            <SinSeleccion
+              cargando={areas.isLoading}
+              error={areas.error}
+              onReintentar={areas.refetch}
+              total={areas.total}
+              onNueva={() => setNuevoArea(true)}
+            />
+          ) : sub ? (
+            <FichaSubarea
+              key={sub.id}
+              area={sel}
+              sub={sub}
+              onVolver={() => navigate(`/estructura/${sel.id}/subareas`)}
+              onChange={areas.refetch}
+            />
+          ) : (
+            <FichaArea
+              key={sel.id}
+              area={sel}
+              seccion={activa}
+              institucionNombre={institucion?.nombre}
+              onSeccion={abrirSeccion}
+              onEditar={() => setEditar(true)}
+              onBorrar={() => setABorrar(sel)}
+              onAbrirSub={(s) => abrirSub(sel, s)}
+              onChange={areas.refetch}
+            />
+          )}
+        </div>
       </div>
 
       {nuevoArea && (
@@ -177,7 +184,7 @@ export default function Areas() {
  * están cargadas, y filtrar acá también encuentra sub-áreas —que el backend no
  * busca— además de responder mientras se escribe.
  */
-function ArbolAreas({ areas, institucion, areaId, subId, onArea, onSub, onNueva }) {
+function ArbolAreas({ areas, areaId, subId, onArea, onSub }) {
   const [q, setQ] = useState("");
 
   const filtradas = useMemo(() => {
@@ -251,16 +258,6 @@ function ArbolAreas({ areas, institucion, areaId, subId, onArea, onSub, onNueva 
         </ul>
       </div>
 
-      <div className="border-t border-division p-2.5">
-        <button
-          data-tour="estructura-nueva-area"
-          onClick={onNueva}
-          disabled={!institucion}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-borde px-3 py-2 text-base font-semibold text-texto-suave hover:border-accent-100 hover:text-accent disabled:opacity-40"
-        >
-          <Icon name="plus" size={14} /> Nueva área
-        </button>
-      </div>
     </nav>
   );
 }
@@ -363,6 +360,7 @@ function FichaArea({
   const [crearGrupo, setCrearGrupo] = useState(false);
   const [crearBox, setCrearBox] = useState(false);
   const [crearAgenda, setCrearAgenda] = useState(false);
+  const [horariosNuevaAgenda, setHorariosNuevaAgenda] = useState(null);
 
   const staff = useStaffDeArea(area);
   const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
@@ -478,7 +476,10 @@ function FichaArea({
       {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={onChange} />}
       {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} />}
       {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} />}
-      {crearAgenda && <AgendaModal area={area} onClose={() => setCrearAgenda(false)} />}
+      {crearAgenda && <AgendaModal area={area} onClose={() => setCrearAgenda(false)}
+        onCreated={(nueva) => { setCrearAgenda(false); setHorariosNuevaAgenda(nueva); }} />}
+      {horariosNuevaAgenda && <HorariosModal agenda={horariosNuevaAgenda}
+        onClose={() => { setHorariosNuevaAgenda(null); agendas.refetch(); }} />}
     </div>
   );
 }
@@ -1447,7 +1448,7 @@ function AgendasTab({ agendas }) {
  * sin esto la única salida era borrarla y volver a crearla, que se lleva
  * puestos los turnos ya dados.
  */
-function AgendaModal({ area, agenda, onClose }) {
+function AgendaModal({ area, agenda, onClose, onCreated }) {
   const toast = useToast();
   const esNuevo = !agenda;
   const [nombre, setNombre] = useState(agenda?.nombre || "");
@@ -1486,9 +1487,10 @@ function AgendaModal({ area, agenda, onClose }) {
       ? api.post("/agendas/", cuerpo())
       : api.patch(`/agendas/${agenda.id}/`, cuerpo())),
     {
-      onSuccess: () => {
-        toast.ok(esNuevo ? "Agenda creada." : "Agenda actualizada.");
-        onClose();
+      onSuccess: (guardada) => {
+        toast.ok(esNuevo ? "Agenda creada. Configurá sus horarios para ofrecer turnos." : "Agenda actualizada.");
+        if (esNuevo && onCreated) onCreated(guardada);
+        else onClose();
       },
       onError: (e) => toast.deError(e, "No se pudo guardar la agenda."),
     },
@@ -1502,7 +1504,7 @@ function AgendaModal({ area, agenda, onClose }) {
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={guardar.isPending || !nombre.trim() || faltaProfesional} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "…" : esNuevo ? "Crear" : "Guardar"}
+            {guardar.isPending ? "…" : esNuevo ? "Crear y configurar horarios" : "Guardar"}
           </Button>
         </>
       }

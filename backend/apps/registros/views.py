@@ -1,6 +1,7 @@
 
 import csv
 import io
+from datetime import date
 
 from django.db import transaction
 from django.db.models import IntegerField, OuterRef, Prefetch, Q, Subquery
@@ -24,6 +25,7 @@ from .models import (
 )
 from .serializers import (
     CiudadanoSerializer,
+    CiudadanoListadoSerializer,
     ConsentimientoDatosSerializer,
     EntradaHistoriaSerializer,
     EstudioSerializer,
@@ -84,7 +86,7 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
     capacidad_requerida = "padron_admision"
     protege_lectura = True
     institucion_path = "institucion"
-    filter_fields = ("institucion", "obra_social")
+    filter_fields = ("institucion", "obra_social", "documento", "fecha_nacimiento")
     search_fields = ["nombre", "apellido", "documento", "codigo"]
     ordering_fields = ["apellido", "nombre", "creado"]
     # Sin DELETE ni PUT, igual que la historia y sus entradas. Borrar al paciente
@@ -128,11 +130,40 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         ("consentimiento", "Consentimiento"),
     ]
 
+    def get_serializer_class(self):
+        return CiudadanoListadoSerializer if getattr(self, "action", None) == "list" else CiudadanoSerializer
+
+    def get_queryset(self):
+        nacimiento = self.request.query_params.get("fecha_nacimiento")
+        if nacimiento:
+            try:
+                date.fromisoformat(nacimiento)
+            except ValueError:
+                raise drf_serializers.ValidationError({"fecha_nacimiento": "Usá una fecha válida (AAAA-MM-DD)."})
+        return super().get_queryset()
+
     def list(self, request, *args, **kwargs):
         if request.query_params.get("formato") == "csv":
             return Response({"detail": "La exportación requiere motivo. Usá POST /api/ciudadanos/exportar/."},
                             status=status.HTTP_400_BAD_REQUEST)
         return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        # El detalle entrega DNI, nacimiento y domicilio completos. La lectura
+        # se registra antes de responder; si falla la auditoría, no se revela.
+        ciudadano = self.get_object()
+        try:
+            registrar_acceso(
+                request, AccesoClinico.Tipo.DETALLE, Ciudadano._meta.model_name,
+                ciudadano=ciudadano, objeto_id=ciudadano.pk,
+                institucion_id=ciudadano.institucion_id, estricto=True,
+            )
+        except Exception:
+            return Response({"detail": "No se pudo registrar la lectura de la ficha."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        respuesta = Response(self.get_serializer(ciudadano).data)
+        respuesta["Cache-Control"] = "private, no-store"
+        return respuesta
 
     @action(detail=False, methods=["post"])
     def exportar(self, request):

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -19,6 +19,7 @@ const PAD = 16;
 // (nodos «derivar» con flujo de destino) que encadenan un proceso con otro.
 export default function MapaFlujos() {
   const { institucion } = useInstitucion();
+  const [vista, setVista] = useState("diagrama");
 
   const q = useQuery({
     queryKey: ["mapa-flujos", institucion?.id],
@@ -28,20 +29,33 @@ export default function MapaFlujos() {
 
   const layout = useMemo(() => calcularLayout(q.data), [q.data]);
 
+  const nodos = new Map((q.data?.nodos || []).map((n) => [String(n.id), n]));
+  const conexiones = q.data?.aristas || [];
+  const destinosSinPublicar = conexiones.filter((a) => {
+    const destino = nodos.get(String(a.destino));
+    return a.externo || !destino || destino.estado !== "publicada";
+  }).length;
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="px-lg pb-3.5 pt-5 sm:px-[30px]">
-        <h2 className="text-lg font-bold">Cómo se encadenan los procesos</h2>
-        <div className="mt-0.5 max-w-2xl text-base text-texto-debil">
-          Cada bloque es un flujo; las flechas son derivaciones entre flujos. Hacé
-          clic en un bloque para abrirlo en el diseñador.
+    <div className="flex h-full flex-col gap-4 p-lg sm:p-[30px]">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">Mapa de flujos</h2>
+          <p className="text-sm text-texto-debil">Cómo se conectan los flujos. Abrí uno para ver su diseño.</p>
         </div>
-      </div>
+        <div role="group" aria-label="Vista del mapa" className="flex rounded-md border border-borde bg-superficie-2 p-1">
+          {["diagrama", "lista"].map((opcion) => <button key={opcion} type="button" onClick={() => setVista(opcion)}
+            aria-pressed={vista === opcion}
+            className={`rounded px-3 py-1.5 text-sm font-semibold ${vista === opcion ? "bg-superficie text-texto-fuerte shadow-card" : "text-texto-suave"}`}>
+            {opcion === "diagrama" ? "Diagrama" : "Lista"}
+          </button>)}
+        </div>
+      </header>
 
       {/* La cuadrícula de puntos usa el token de borde, así que en tema oscuro se
           atenúa sola en vez de quedar un enrejado claro sobre fondo negro. */}
-      <div
-        className="flex-1 overflow-auto bg-fondo p-8"
+      {vista === "diagrama" && <div
+        className="min-h-[32rem] flex-1 overflow-auto rounded-lg border border-borde bg-superficie p-6"
         style={{
           backgroundImage: "radial-gradient(circle, var(--color-borde) 1.1px, transparent 1.1px)",
           backgroundSize: "20px 20px",
@@ -135,23 +149,30 @@ export default function MapaFlujos() {
             })}
           </div>
         )}
-      </div>
-      {layout?.aristas.length > 0 && (
-        <details className="border-t border-division bg-superficie px-lg py-4 sm:px-[30px]">
-          <summary className="cursor-pointer font-semibold text-accent">Ver conexiones como lista ({layout.aristas.length})</summary>
-          <ul className="mt-3 max-h-64 list-disc space-y-2 overflow-y-auto pl-5 text-sm">
-            {layout.aristas.map((a, i) => {
-              const origen = layout.nodos.find((n) => n.id === a.from);
-              const destino = layout.nodos.find((n) => n.id === a.to);
-              return <li key={i}>
-                <Link to={`/flujos/${a.from}`} className="font-semibold text-accent underline">{origen?.titulo || `Flujo ${a.from}`}</Link>
-                {` → ${a.etiqueta || "Derivación"} → `}
-                {a.externo ? <span>{destino?.titulo || "Flujo de otro alcance"}</span> : <Link to={`/flujos/${a.to}`} className="font-semibold text-accent underline">{destino?.titulo || `Flujo ${a.to}`}</Link>}
-              </li>;
-            })}
-          </ul>
-        </details>
-      )}
+      </div>}
+      {vista === "lista" && (q.error ? <EstadoError error={q.error} onReintentar={q.refetch} /> : q.isLoading ? <Spinner /> : conexiones.length === 0 ? (
+        <EstadoVacio titulo="No hay conexiones entre flujos" detalle="Las derivaciones aparecerán acá cuando un flujo apunte a otro." icono="workflow" />
+      ) : <div className="overflow-x-auto rounded-lg border border-borde bg-superficie">
+        <table className="w-full min-w-[42rem] text-left text-sm">
+          <thead className="bg-superficie-2 text-xs uppercase text-texto-tenue"><tr>
+            {["Flujo de origen", "Conecta con", "Mediante", "Destino"].map((titulo) => <th key={titulo} scope="col" className="px-4 py-3">{titulo}</th>)}
+          </tr></thead>
+          <tbody>{conexiones.map((a, i) => {
+            const origen = nodos.get(String(a.origen));
+            const destino = nodos.get(String(a.destino));
+            return <tr key={`${a.origen}-${a.destino}-${i}`} className="border-t border-division">
+              <td className="px-4 py-3"><Link to={`/flujos/${a.origen}`} className="font-semibold text-accent hover:underline">{origen?.titulo || `Flujo ${a.origen}`}</Link><p className="text-xs text-texto-debil">{origen?.area_nombre}</p></td>
+              <td className="px-4 py-3">{destino ? <Link to={`/flujos/${a.destino}`} className="font-semibold text-accent hover:underline">{destino.titulo}</Link> : `Flujo externo #${a.destino}`}<p className="text-xs text-texto-debil">{destino?.area_nombre}</p></td>
+              <td className="px-4 py-3 text-texto-medio">Paso «{a.etiqueta || "Derivar"}»</td>
+              <td className="px-4 py-3"><Badge tone={destino?.estado === "publicada" ? "green" : "amber"}>{destino?.estado === "publicada" ? "Publicado" : "Revisar destino"}</Badge></td>
+            </tr>;
+          })}</tbody>
+        </table>
+        <p className="border-t border-division px-4 py-3 text-xs text-texto-debil">{conexiones.length} conexiones entre {nodos.size} flujos.</p>
+      </div>)}
+      {destinosSinPublicar > 0 && <p role="status" className="rounded-md border border-borde px-4 py-2 text-sm text-badge-amber-fg">
+        {destinosSinPublicar} {destinosSinPublicar === 1 ? "conexión apunta" : "conexiones apuntan"} a un destino sin versión publicada o fuera de este alcance. Revisá el flujo de origen antes de usarlo.
+      </p>}
     </div>
   );
 }

@@ -6,6 +6,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -98,7 +99,7 @@ class InstitucionViewSet(BaseModelViewSet):
     serializer_class = InstitucionSerializer
     capacidad_requerida = "gobierno_plataforma"
     institucion_path = "id"
-    filter_fields = ("activa",)
+    filter_fields = ("activa", "estado")
     search_fields = ["nombre", "cuit"]
     ordering_fields = ["nombre", "creada"]
 
@@ -112,6 +113,95 @@ class InstitucionViewSet(BaseModelViewSet):
             if value not in (None, ""):
                 qs = qs.filter(**{field: _coerce(value)})
         return qs
+
+    @action(detail=False, methods=["get"], url_path="tablero-plataforma")
+    def tablero_plataforma(self, request):
+        """Resumen global para gobierno de plataforma; nunca se calcula desde una página."""
+        from apps.accounts.models import Membresia
+        from apps.casos.models import ItemFila
+
+        # La lectura ordinaria del directorio está abierta a miembros. Este
+        # resumen cruza toda la red y requiere gobierno de plataforma.
+        if not tiene_capacidad(request.user, "gobierno_plataforma"):
+            raise PermissionDenied("No tenés acceso al tablero de plataforma.")
+
+        dias = 30 if request.query_params.get("dias") == "30" else 7
+        hasta = timezone.localdate()
+        desde = hasta - timedelta(days=dias - 1)
+        instituciones = list(Institucion.objects.values("id", "nombre", "estado", "activa", "creada"))
+        camas = list(Cama.objects.filter(activa=True).values("area__institucion_id").annotate(
+            total=Count("id", filter=~Q(estado=Cama.Estado.BLOQUEADA)),
+            ocupadas=Count("id", filter=Q(estado=Cama.Estado.OCUPADA)),
+        ))
+        camas_por_institucion = {fila["area__institucion_id"]: fila for fila in camas}
+        total_camas = sum(fila["total"] for fila in camas)
+        ocupadas = sum(fila["ocupadas"] for fila in camas)
+
+        atendidos = ItemFila.objects.filter(
+            atendido_at__date__range=(desde, hasta),
+        ).annotate(fecha=TruncDate("atendido_at")).values("fecha").annotate(
+            total=Count("caso_id", distinct=True),
+        )
+        por_dia = {fila["fecha"]: fila["total"] for fila in atendidos}
+        atendidos_hoy = {
+            fila["caso__institucion_id"]: fila["total"]
+            for fila in ItemFila.objects.filter(atendido_at__date=hasta)
+            .values("caso__institucion_id").annotate(total=Count("caso_id", distinct=True))
+        }
+        espera_expr = ExpressionWrapper(F("llamado_at") - F("ingreso"), output_field=DurationField())
+        esperas_hoy = {
+            fila["caso__institucion_id"]: _minutos(fila["promedio"])
+            for fila in ItemFila.objects.filter(
+                llamado_at__date=hasta, llamado_at__gt=F("ingreso"),
+            ).values("caso__institucion_id").annotate(promedio=Avg(espera_expr))
+        }
+        serie = [
+            {"fecha": (desde + timedelta(days=i)).isoformat(),
+             "total": por_dia.get(desde + timedelta(days=i), 0)}
+            for i in range(dias)
+        ]
+
+        alertas = []
+        for inst in instituciones:
+            camas_inst = camas_por_institucion.get(inst["id"])
+            if camas_inst and camas_inst["total"]:
+                porcentaje = round(camas_inst["ocupadas"] * 100 / camas_inst["total"])
+                if porcentaje >= 90:
+                    alertas.append({
+                        "institucion": inst["nombre"], "tipo": "ocupacion",
+                        "detalle": f"{porcentaje} % de camas ocupadas",
+                    })
+            if inst["estado"] == Institucion.Estado.EN_ALTA and inst["creada"].date() < hasta - timedelta(days=30):
+                alertas.append({
+                    "institucion": inst["nombre"], "tipo": "puesta_en_marcha",
+                    "detalle": "Más de 30 días en alta",
+                })
+
+        return Response({
+            "instituciones": len(instituciones),
+            "activas": sum(inst["estado"] == Institucion.Estado.ACTIVA and inst["activa"] for inst in instituciones),
+            "en_alta": sum(inst["estado"] == Institucion.Estado.EN_ALTA for inst in instituciones),
+            "personal_activo": Membresia.objects.filter(
+                activo=True, usuario__is_active=True,
+            ).values("usuario_id").distinct().count(),
+            "ocupacion": round(ocupadas * 100 / total_camas) if total_camas else None,
+            "atendidos": sum(por_dia.values()),
+            "serie": serie,
+            "alertas": alertas[:8],
+            "indicadores": [
+                {
+                    "institucion": inst["id"],
+                    "ocupacion": round(
+                        camas_por_institucion[inst["id"]]["ocupadas"] * 100
+                        / camas_por_institucion[inst["id"]]["total"]
+                    ) if camas_por_institucion.get(inst["id"], {}).get("total") else None,
+                    "atendidos_hoy": atendidos_hoy.get(inst["id"], 0),
+                    "espera_minutos": esperas_hoy.get(inst["id"]),
+                }
+                for inst in instituciones
+            ],
+            "actualizado": timezone.now(),
+        })
 
     @action(detail=True, methods=["get"])
     def metricas(self, request, pk=None):
@@ -768,6 +858,7 @@ class CamaViewSet(BaseModelViewSet):
         """
         qs = self.filter_queryset(self.get_queryset()).filter(activa=True)
         sectores = {}
+        camas_por_paciente = {}
         for cama in qs:
             clave = cama.subarea_id or f"area-{cama.area_id}"
             s = sectores.setdefault(clave, {
@@ -790,6 +881,12 @@ class CamaViewSet(BaseModelViewSet):
                 Cama.Estado.HIGIENE: "higiene",
                 Cama.Estado.BLOQUEADA: "bloqueadas",
             }[cama.estado]] += 1
+            if cama.estado == Cama.Estado.OCUPADA and cama.caso_id:
+                # Dos casos del mismo ciudadano también son una ocupación
+                # duplicada. Calcularla aquí incluye camas fuera de la primera
+                # página del listado y de otros sectores de la institución.
+                paciente = cama.caso.ciudadano_id or f"caso-{cama.caso_id}"
+                camas_por_paciente.setdefault(paciente, []).append(cama)
 
         for s in sectores.values():
             # Sobre camas EN SERVICIO: una cama fuera de servicio no está
@@ -807,7 +904,16 @@ class CamaViewSet(BaseModelViewSet):
         totales["ocupacion"] = (
             round(100 * totales["ocupadas"] / totales["operativas"]) if totales["operativas"] else 0
         )
-        return Response({"sectores": lista, "totales": totales})
+        conflictos = {}
+        for camas in camas_por_paciente.values():
+            if len(camas) < 2:
+                continue
+            for cama in camas:
+                conflictos[cama.id] = [
+                    f"{otra.nombre} · {otra.sector_nombre}"
+                    for otra in camas if otra.id != cama.id
+                ]
+        return Response({"sectores": lista, "totales": totales, "conflictos": conflictos})
 
 
 class EstadiaCamaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

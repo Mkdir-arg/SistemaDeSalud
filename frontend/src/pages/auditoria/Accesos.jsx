@@ -58,43 +58,27 @@ export default function Accesos() {
   return (
     <div className="px-lg py-[26px] sm:px-[30px]">
       <div className="mb-[18px]">
-        <h2 className="text-cifra font-extrabold tracking-tight">Registro de accesos</h2>
+        <h2 className="text-xl font-bold">Registro de accesos</h2>
         <div className="text-sm text-texto-debil">
-          Quién consultó datos de pacientes, y de quién. {plural(total, "acceso registrado", "accesos registrados")}.
+          Quién consultó datos de pacientes, cuándo y con qué fin. Abrir una historia desde acá también queda registrado a tu nombre.
         </div>
         {/* El alcance, dicho. Todo lo que rodea a la tabla afirma el hospital de
             la barra lateral, así que cada fila se lee como suya: con membresía
             en dos instituciones eso es atribuirle a un hospital un acceso que
             ocurrió en otro, en el documento que después se presenta ante el
             paciente o ante la autoridad de aplicación. */}
-        <div className="text-sm text-texto-debil">
+        <div className="mt-1 text-xs text-texto-tenue">
           Alcance:{" "}
           <strong className="text-texto-suave">
             {soloInstitucion && institucion
               ? institucion.nombre
               : "todas las instituciones donde podés auditar"}
           </strong>
+          {` · ${plural(total, "acceso registrado", "accesos registrados")}`}
         </div>
       </div>
 
-      {/* Quien mira esta pantalla necesita saber qué está viendo antes de sacar
-          conclusiones: un listado del padrón no es lo mismo que abrir la
-          historia de una persona, y en la tabla las dos son «un acceso». */}
-      <Card className="mb-[18px] px-[18px] py-3.5 text-md text-texto-medio">
-        Se registran las consultas a datos clínicos y a la actividad hospitalaria que
-        pueden ver los financiadores. Consultar esa actividad no da acceso a la historia
-        clínica. El sistema registra quién consultó, cuándo y a qué paciente corresponden
-        los datos. Abrir una historia desde acá también queda registrado a tu nombre.
-      </Card>
-
       <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
-        <Buscador
-          valor={texto}
-          onChange={setTexto}
-          placeholder="Buscar por usuario, paciente o documento…"
-          className="w-80"
-          aria-label="Buscar en el registro de accesos"
-        />
         <FiltroSelect valor={tipo} onChange={setTipo} opciones={TIPOS} todos="Todo tipo de acceso" />
         {institucion && (
           <FiltroSelect
@@ -107,6 +91,13 @@ export default function Accesos() {
         )}
         <Fecha etiqueta="Desde" valor={desde} onChange={setDesde} />
         <Fecha etiqueta="Hasta" valor={hasta} onChange={setHasta} />
+        <Buscador
+          valor={texto}
+          onChange={setTexto}
+          placeholder="Buscar por usuario, paciente o documento…"
+          className="w-80"
+          aria-label="Buscar en el registro de accesos"
+        />
         <LimpiarFiltros
           activos={activos}
           onLimpiar={() => {
@@ -217,6 +208,15 @@ export default function Accesos() {
           },
         ]}
       />
+
+      <details className="mt-4 text-sm text-texto-debil">
+        <summary className="cursor-pointer text-accent">Qué registra este listado</summary>
+        <Card className="mt-2 px-4 py-3 text-texto-medio">
+          Incluye consultas a datos clínicos y a la actividad hospitalaria visible para
+          financiadores. Consultar esa actividad no permite abrir la historia clínica.
+          Las consultas de listados pueden corresponder a varias personas.
+        </Card>
+      </details>
     </div>
   );
 }

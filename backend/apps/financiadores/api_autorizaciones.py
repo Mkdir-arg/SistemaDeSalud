@@ -27,6 +27,7 @@ class FiltrosAutorizaciones(serializers.Serializer):
     hospital = serializers.IntegerField(min_value=1, required=False)
     caso = serializers.IntegerField(min_value=1, required=False)
     estado = serializers.ChoiceField(choices=m.SolicitudAutorizacion.ESTADOS, required=False)
+    grupo = serializers.ChoiceField(choices=["resueltas", "todas"], required=False)
     urgente = serializers.BooleanField(required=False)
     desde = serializers.DateField(required=False)
     hasta = serializers.DateField(required=False)
@@ -37,6 +38,8 @@ class FiltrosAutorizaciones(serializers.Serializer):
             raise serializers.ValidationError("Indicá exactamente un ámbito: financiador o institución.")
         if datos.get("desde") and datos.get("hasta") and datos["desde"] > datos["hasta"]:
             raise serializers.ValidationError("La fecha inicial no puede ser posterior a la final.")
+        if datos.get("estado") and datos.get("grupo"):
+            raise serializers.ValidationError("Elegí un estado o un grupo, no ambos.")
         return datos
 
 
@@ -162,6 +165,8 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         for campo, lookup in (("hospital", "institucion_id"), ("caso", "caso_id"), ("estado", "estado"), ("urgente", "urgente"), ("desde", "creado__date__gte"), ("hasta", "creado__date__lte")):
             if campo in f:
                 qs = qs.filter(**{lookup: f[campo]})
+        if f.get("grupo") == "resueltas":
+            qs = qs.exclude(estado__in=m.SolicitudAutorizacion.ABIERTAS)
         if f.get("search"):
             texto = f["search"]
             qs = qs.filter(Q(afiliado__nombre__icontains=texto) | Q(afiliado__numero__icontains=texto) | Q(afiliado__documento__icontains=texto) | Q(numero_externo__icontains=texto))

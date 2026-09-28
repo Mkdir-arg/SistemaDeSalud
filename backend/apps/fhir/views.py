@@ -138,7 +138,7 @@ def _id_sin_forma(tipo, pk):
     return _error(
         404, "not-found",
         f"«{tipo}» sí está implementado, pero «{ruta}» no es una ruta de este "
-        f"servidor. Los id de I-Core Salud son numéricos ({tipo}/12), la búsqueda va sin "
+        f"servidor. Los id de HEN son numéricos ({tipo}/12), la búsqueda va sin "
         f"barra final ({tipo}?…) y no hay operaciones ni sufijos del estándar "
         f"(_history, _search); lo que sí hay está en /fhir/metadata.",
     )

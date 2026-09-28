@@ -1,4 +1,4 @@
-# I-Core Salud
+# HEN
 
 **Un sistema donde el hospital dibuja su propio circuito de atención como un
 diagrama, y ese mismo diagrama pasa a ser el sistema que usa el personal.**
@@ -27,6 +27,11 @@ docker compose up -d
 | API navegable | <http://localhost:8000/api/> |
 | Documentación de la API | <http://localhost:8000/api/docs/> |
 | Fachada FHIR | <http://localhost:8000/fhir/metadata> |
+
+Para revisar el diseño HEN: la presentación pública está en `/presentacion` y la
+maqueta de la app clínica en `/demo/app-clinica`. La maqueta clínica permite
+recorrer pantallas con datos ficticios; no autentica pacientes ni crea turnos,
+presencias o resultados.
 
 Eso levanta el **stack de desarrollo**, con recarga en caliente y el escenario de
 guardia sembrado. Superusuario: `admin@salud.local` / `admin1234`; el staff del
@@ -69,7 +74,7 @@ backend/          Django 6 + DRF + SimpleJWT sobre PostgreSQL 16
   apps/           13 apps · 93 modelos · 66 recursos REST
   config/         settings, router central de la API, urls
 frontend/         Vite + React + TanStack Query + Tailwind sobre tokens propios
-  src/pages/      37 rutas
+  src/pages/      rutas de interfaz
   e2e/            Playwright
 docs/             La documentación. Empezá por INDICE-FUNCIONAL.md
 diseño/           Marca, sistema de diseño, capturas y el prototipo original

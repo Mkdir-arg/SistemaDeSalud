@@ -2,7 +2,7 @@
 
 ## Para qué sirve
 
-Permite que una obra social, mutual o prepaga opere dentro de I-Core Salud con su
+Permite que una obra social, mutual o prepaga opere dentro de HEN con su
 propia organización y sus propios usuarios, y que un hospital con convenio sepa,
 **antes de realizar una prestación**, cuánto cubre el financiador, cuánto queda a
 cargo del paciente y si todavía hay cupo disponible.

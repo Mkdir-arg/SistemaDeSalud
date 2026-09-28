@@ -34,6 +34,7 @@ export default function CasoDetalle() {
   const navigate = useNavigate();
   const toast = useToast();
   const encabezadoRef = useRef(null);
+  const [tabDetalle, setTabDetalle] = useState("trazabilidad");
 
   const q = useDetalle("casos", id);
   const caso = q.data;
@@ -46,6 +47,8 @@ export default function CasoDetalle() {
   const hc = hcQ.filas[0] || null;
   const borradoresCaso = (hc?.entradas || []).filter((entrada) =>
     entrada.caso === caso?.id && !entrada.firmada);
+  const atencionesCaso = (hc?.entradas || []).filter((entrada) => entrada.caso === caso?.id);
+  const tabActivo = tabDetalle === "atenciones" && hc ? "atenciones" : "trazabilidad";
 
   // Todas las acciones del caso pasan por acá: una sola mutación que invalida las
   // listas (bandeja, fila, tablero) y el detalle. Antes cada acción recargaba a
@@ -76,36 +79,24 @@ export default function CasoDetalle() {
 
   return (
     <>
-      {/*
-        Encabezado: quién es y a qué vino, antes que cualquier otra cosa.
-
-        El nombre del paciente y el flujo aparecían en una sola línea de 13,5 px
-        en el color de texto más débil de la pantalla, debajo de una barra que
-        decía «Detalle del caso». Eran los dos datos que orientan todo lo demás y
-        eran lo menos visible. Acá absorben también el número, el estado, el
-        área y la prioridad, que antes se repetían en la ficha de la derecha.
-
-        El stepper se oculta debajo de `sm`: a 390 px no entraban los cinco
-        pasos y había que desplazarlo dentro de la tarjeta. El badge de estado
-        dice lo mismo.
-      */}
       <div className="px-lg pt-lg lg:px-8">
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 ref={encabezadoRef} tabIndex={-1} className="text-xl font-bold text-texto-fuerte">
+              Caso {casoId(caso.id)} · {caso.ciudadano_nombre || caso.flujo_titulo}
+            </h2>
+            <p className="mt-1 text-sm text-texto-debil">
+              {caso.flujo_titulo} · abierto el {fechaHora(caso.creado)}
+              {caso.area_nombre && ` · ${caso.area_nombre}`}
+            </p>
+          </div>
+          {hc && caso.ciudadano && <Button size="sm" variant="secondary" onClick={() => navigate(`/historia/${caso.ciudadano}`)}>Ver historia clínica</Button>}
+        </header>
         <Card className="px-lg py-lg sm:px-8">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 ref={encabezadoRef} tabIndex={-1} className="text-xxl font-bold tracking-tight text-texto-fuerte">
-                {caso.ciudadano_nombre || caso.flujo_titulo}
-              </h2>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-md text-texto-debil">
-                {caso.ciudadano_nombre && <span className="font-medium text-texto-suave">{caso.flujo_titulo}</span>}
-                <Mono>{casoId(caso.id)}</Mono>
-                {caso.area_nombre && <span>{caso.area_nombre}</span>}
-                {PRIORIDAD_TONO[caso.prioridad] && (
-                  <Badge tone={PRIORIDAD_TONO[caso.prioridad]}>{caso.prioridad_display}</Badge>
-                )}
-              </div>
-            </div>
-            <Badge tone={est.tone}>{est.label}</Badge>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-texto-debil">
+            <span>Estado</span><Badge tone={est.tone}>{est.label}</Badge>
+            {PRIORIDAD_TONO[caso.prioridad] && <Badge tone={PRIORIDAD_TONO[caso.prioridad]}>{caso.prioridad_display}</Badge>}
+            {caso.actualizado && <span className="ml-auto">Actualizado hace {antiguedad(caso.actualizado)}</span>}
           </div>
           <div className="mt-lg hidden overflow-x-auto border-t border-division pt-lg sm:block">
             {caso.estado === "cancelado"
@@ -168,12 +159,35 @@ export default function CasoDetalle() {
               Donde el módulo no está habilitado no pinta nada; su estado vive en
               la ficha. */}
           <CoberturaCaso key={caso.id} caso={caso} ocupado={accion.isPending} />
+
+          <Card className="overflow-hidden">
+            <div role="tablist" aria-label="Detalle del caso" className="flex gap-4 overflow-x-auto border-b border-division px-lg">
+              {[
+                ["trazabilidad", "Trazabilidad"],
+                ...(hc ? [["atenciones", `Atenciones (${atencionesCaso.length})`]] : []),
+              ].map(([clave, titulo]) => <button key={clave} id={`caso-${id}-tab-${clave}`} type="button" role="tab" aria-selected={tabActivo === clave}
+                onClick={() => setTabDetalle(clave)}
+                className={cn("whitespace-nowrap border-b-2 py-3 text-sm font-semibold", tabActivo === clave ? "border-accent text-accent" : "border-transparent text-texto-debil hover:text-texto-fuerte")}>
+                {titulo}
+              </button>)}
+            </div>
+            {tabActivo === "atenciones" ? (
+              <div role="tabpanel" aria-labelledby={`caso-${id}-tab-atenciones`} className="p-lg">
+                {atencionesCaso.length ? <ul className="space-y-3">{atencionesCaso.map((entrada) => <li key={entrada.id} className="border-b border-division pb-3 last:border-0 last:pb-0">
+                  <Link to={`/historia/${caso.ciudadano}?tab=evolucion#entrada-${entrada.id}`} className="font-semibold text-accent hover:underline">{entrada.titulo}</Link>
+                  <p className="text-sm text-texto-debil">{fechaHora(entrada.fecha)} · {entrada.firmada ? "Firmada" : "Borrador"}</p>
+                </li>)}</ul> : <p className="text-sm text-texto-debil">Este caso no tiene atenciones registradas en la historia.</p>}
+              </div>
+            ) : <div role="tabpanel" aria-labelledby={`caso-${id}-tab-trazabilidad`} className="p-lg"><Timeline eventos={caso.eventos || []} /></div>}
+          </Card>
         </div>
 
         <div className="flex min-w-0 flex-col gap-lg">
           <Card className="p-xl">
-            <h3 className="mb-3.5 text-xs font-bold tracking-wide text-texto-tenue">INFORMACIÓN DEL CASO</h3>
+            <h3 className="mb-3.5 text-sm font-bold">Datos del caso</h3>
             <dl className="flex flex-col gap-3">
+              <Dato k="Paciente" v={caso.ciudadano_nombre || "—"} />
+              {caso.documento_resumen && <Dato k="Documento" v={`DNI ${caso.documento_resumen}`} />}
               <Dato k="Área actual" v={caso.area_nombre || "—"} />
               <Dato k="Responsable" v={caso.responsables?.length ? caso.responsables.map((g) => g.nombre).join(", ") : "Abierto a todos"} />
               <Dato k="Asignado a" v={caso.asignado_nombre || "Sin asignar"} />
@@ -246,10 +260,6 @@ export default function CasoDetalle() {
             </Card>
           )}
 
-          <Card className="p-xl">
-            <h3 className="text-lg font-bold">Trazabilidad</h3>
-            <Timeline eventos={caso.eventos || []} />
-          </Card>
         </div>
       </div>
     </>

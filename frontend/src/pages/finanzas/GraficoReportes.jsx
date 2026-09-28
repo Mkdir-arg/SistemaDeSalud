@@ -5,7 +5,7 @@ import { gruposComparados } from "./reportes";
 // Number se usa exclusivamente para la geometría; ayudas y tablas muestran
 // las cadenas decimales del servidor, sin recalcular importes en el cliente.
 const compacto = new Intl.NumberFormat("es-AR", { notation: "compact", maximumFractionDigits: 1 });
-const colores = { aprobados: "#287f92", cobros_netos: "#287f92", pagos_netos: "#ad7133", actual: "#287f92", anterior: "#82949e" };
+const colores = { aprobados: "var(--color-brand-teal)", cobros_netos: "var(--color-brand-teal)", pagos_netos: "var(--color-slate-600)", actual: "var(--color-brand-teal)", anterior: "var(--color-slate-400)" };
 export const nombreMes = (fecha) => new Intl.DateTimeFormat("es-AR", { month: "short", year: "2-digit", timeZone: "UTC" }).format(new Date(`${fecha}T12:00:00Z`));
 
 function Ayuda({ active, payload, label, medidas }) {

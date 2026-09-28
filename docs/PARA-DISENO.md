@@ -1,7 +1,8 @@
-# I-Core Salud para quien lo diseña
+# HEN para quien lo diseña
 
 > Qué pantallas existen, dónde vive la marca, qué reglas hay que respetar y qué
-> está sin resolver. Verificado contra la aplicación el **22/09/2026**.
+> está sin resolver. Estructura verificada el **22/09/2026**; marca HEN incorporada
+> para el issue #67.
 
 ---
 
@@ -23,12 +24,10 @@ Es la decisión de diseño más vieja del producto y sigue vigente.
 
 | Qué | Dónde | Se edita |
 |---|---|---|
-| Manual de marca: identidad, voz y tono, logo, color, tipografía | [`diseño/docs/01-manual-de-marca.md`](../diseño/docs/01-manual-de-marca.md) | Sí |
-| Sistema de diseño: tokens y componentes | [`diseño/docs/02-sistema-de-diseno.md`](../diseño/docs/02-sistema-de-diseno.md) | Sí |
+| Diseño HEN vigente: pantallas, componentes y marca | [Figma HEN](https://www.figma.com/design/BR2ExsfHBsYcar7fLWcOmn/HEN?node-id=8-2) y adjuntos del issue #67 | En Figma |
 | **Los tokens que usa la aplicación** | `frontend/src/styles/tokens.css` | **Sí, es la fuente única** |
 | Escalas derivadas | `frontend/src/styles/escalas.js` | No, se genera con `npm run escalas` |
-| Tokens en CSS y JSON del entregable | `diseño/docs/tokens.css` · `tokens.json` | Sí |
-| Página visual del sistema de diseño | `diseño/Sistema de diseno.dc.html` | Sí |
+| Prototipo y documentación visual anterior | [`diseño/`](../diseño/README.md) | Archivo histórico; no usar para nueva marca |
 
 **Cuidado con una instrucción vieja:** hubo un `theme.js` del que se generaba
 `tokens.css`. Ese archivo se borró y ahora es al revés: `tokens.css` es el original
@@ -36,11 +35,10 @@ y se edita a mano. Si encontrás un `npm run tokens`, ya no existe.
 
 ### Los dos niveles de token, y cuál usar
 
-- **Literales** (`slate-600`, `canvas`, `white`): la escala de la marca. **No cambian
-  con el tema.**
+- **Literales** (`slate-600`, `canvas`, `white`): escalas base. Algunos alias
+  heredados cambian con el tema para conservar contraste en pantallas existentes.
 - **Semánticos** (`superficie`, `fondo`, `borde`, `texto-suave`…): dicen **qué papel
-  cumple** el color, no cómo se ve. **Son los únicos que cambian con el tema**, y son
-  los que usa todo lo nuevo.
+  cumple** el color, no cómo se ve. Son los que debe usar toda pantalla nueva.
 
 Tres tokens se desdoblan a propósito, porque cumplen papeles contradictorios: como
 **texto** sobre fondo oscuro tienen que ser claros, y como **relleno** detrás de texto
@@ -59,11 +57,11 @@ Hay tres carpetas y sirven para cosas distintas. Es la confusión más común.
 
 | Carpeta | Qué es | Vigencia |
 |---|---|---|
-| [`captures-app/`](../diseño/docs/captures-app/) | **29 capturas de la aplicación real**, generadas automáticamente | La referencia de cómo se ve hoy. Última corrida: 20/08/2026 |
+| [`captures-app/`](../diseño/docs/captures-app/) | **29 capturas de la aplicación real**, generadas automáticamente | Registro del 20/08/2026; anterior a HEN |
 | [`captures/`](../diseño/docs/captures/) | 17 capturas del **prototipo** original | Junio 2026. Sirve como intención de diseño, no como estado |
 | [`captures-manual/`](../diseño/docs/captures-manual/) | 24 capturas tomadas a mano, para material de capacitación | Agosto 2026 |
 
-**Las de `captures-app/` se regeneran solas.** Están definidas en
+**Las de `captures-app/` se pueden regenerar.** Están definidas en
 `frontend/e2e/capturas.spec.js` y salen de recorrer la aplicación con el navegador.
 Si cambiás algo visual, se actualizan corriendo esa suite: no hay que volver a
 sacarlas a mano.
@@ -82,10 +80,10 @@ Agregarlas a `capturas.spec.js` es la forma de que entren al circuito automátic
 
 ## 4. Las pantallas que existen hoy
 
-Son 37 rutas. Agrupadas por dónde aparecen en el menú:
+Son 39 rutas. Agrupadas por dónde aparecen en el menú:
 
 ### Fuera de la sesión
-- **Login** · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
+- **Login** · **Presentación HEN** · **Maqueta de la app clínica** (`/demo/app-clinica`) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
 
 ### Entrada
 - **Directorio de instituciones** (sólo para plataforma; el resto entra directo a la suya) · **Inicio / Mi trabajo** · **Notificaciones**
@@ -109,8 +107,8 @@ Son 37 rutas. Agrupadas por dónde aparecen en el menú:
 - Diez secciones: planes, cobertura, aranceles, padrón, consumos externos, autorizaciones, actividad, convenios, usuarios, catálogo común
 
 > **Ojo con `diseño/docs/04-pantallas.md`.** Describe estas pantallas, pero según el
-> prototipo de junio: habla de 10 tipos de nodo (hoy son 13), de Bandeja en el menú
-> (hoy se opera desde Mi trabajo) y de un panel lateral para la ficha del área (hoy
+> prototipo de junio: habla de 10 tipos de nodo (hoy son 13), de una navegación
+> anterior a la agrupación HEN y de un panel lateral para la ficha del área (hoy
 > cada sección es una página). Úsalo como intención original, no como especificación.
 
 ## 5. Quién ve qué
@@ -122,9 +120,9 @@ entrar y qué hace.
 
 Lo mínimo que conviene tener presente:
 
-- **Bandeja y Filas están fuera del menú a propósito.** Son la cola de lo que te toca
-  ahora y se operan desde **Mi trabajo**, en Inicio. «Casos» sí está en el menú,
-  porque responde otra pregunta: buscar un caso que no es tu tarea pendiente.
+- **Bandeja** aparece en Operación y reúne casos propios y casos para tomar.
+  **Filas** conserva una ruta propia, pero no una entrada fija en el menú HEN.
+  «Casos» aparece en Seguimiento para buscar un caso fuera de la tarea inmediata.
 - El **administrativo no ve Historia clínica**. Ve el Padrón, que es la ficha
   administrativa. Son dos permisos distintos y la diferencia es deliberada.
 - **Finanzas no aparece por rol**, sino por permisos que se otorgan de a uno.
@@ -154,16 +152,15 @@ Lo mínimo que conviene tener presente:
 
 Deuda visual conocida, por si aparece en una revisión:
 
-- **`slate400` de la marca no llega a AA** (2,63:1 sobre blanco). Se corrigió en el
-  token semántico `texto-tenue`, así que lo migrado cumple. **Cambiar la escala
-  literal es una decisión de marca**, y está pendiente.
-- **Las categorías de nodo no tienen paleta oscura.** Son unos 30 colores del lienzo
-  del editor.
+- **Modo oscuro HEN:** la paleta base ya está adaptada en la aplicación, pero
+  falta contrastarla pantalla por pantalla cuando el diseño final esté listo.
+- **Portal ciudadano:** aplicar la misma base visual cuando exista el diseño y
+  se incorpore el portal.
 - **El buscador de pacientes se esconde en pantalla angosta**, porque compite con el
   título y la campana. Queda accesible desde Historia clínica, pero la solución buena
   es que se expanda desde un ícono.
-- **`04-pantallas.md` y el resto del entregable de diseño describen el prototipo**, no
-  la aplicación actual. La marca, los tokens y las capturas sí están vigentes.
+- **`diseño/` describe el prototipo anterior**, no la marca ni las capturas
+  vigentes de HEN. La referencia actual está en Figma y en los tokens de la app.
 
 ## 8. Si querés ver el sistema funcionando
 
