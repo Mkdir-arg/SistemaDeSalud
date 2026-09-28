@@ -8,6 +8,7 @@ import { Button, Field, Input } from "@/components/ui";
 import { Buscador } from "@/components/ui/filtros";
 import { useToast } from "@/components/ui/toast";
 import { EstadoError } from "@/components/ui/estados";
+import { busquedaPaciente, precargarPaciente } from "@/lib/paciente";
 
 /**
  * Buscar un paciente y, si no existe, crearlo en el momento.
@@ -29,13 +30,14 @@ function BusquedaPacientePorInstitucion({ usuarioId, institucionId, onElegir, pe
   const toast = useToast();
   const [texto, setTexto] = useState("");
   const [creando, setCreando] = useState(null); // datos precargados del nuevo
+  const busqueda = busquedaPaciente(texto);
 
   const q = useLista(
     "ciudadanos",
-    { institucion: institucionId, search: texto.trim() || undefined, pageSize: 8 },
+    { institucion: institucionId, search: busqueda || undefined, pageSize: 8 },
     {
       enabled: !!institucionId && texto.trim().length > 0,
-      queryKey: ["lista", "ciudadanos", usuarioId, institucionId, "buscador", texto.trim()],
+      queryKey: ["lista", "ciudadanos", usuarioId, institucionId, "buscador", busqueda],
       placeholderData: undefined,
       gcTime: 0,
     },
@@ -50,12 +52,12 @@ function BusquedaPacientePorInstitucion({ usuarioId, institucionId, onElegir, pe
     return (
       <div className="flex flex-col gap-2">
         <p className="text-base text-texto-debil">Nuevo paciente</p>
-        <Input placeholder="Nombre *" value={creando.nombre} autoFocus
-          onChange={(e) => setCreando({ ...creando, nombre: e.target.value })} />
-        <Input placeholder="Apellido" value={creando.apellido}
-          onChange={(e) => setCreando({ ...creando, apellido: e.target.value })} />
-        <Input placeholder="Documento" value={creando.documento}
-          onChange={(e) => setCreando({ ...creando, documento: e.target.value })} />
+        <Field label="Nombre *"><Input value={creando.nombre} autoFocus={!creando.documento}
+          onChange={(e) => setCreando({ ...creando, nombre: e.target.value })} /></Field>
+        <Field label="Apellido"><Input value={creando.apellido}
+          onChange={(e) => setCreando({ ...creando, apellido: e.target.value })} /></Field>
+        <Field label="Documento"><Input value={creando.documento} autoFocus={!!creando.documento}
+          onChange={(e) => setCreando({ ...creando, documento: e.target.value })} /></Field>
         <div className="mt-1 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setCreando(null)}>Volver</Button>
           <Button
@@ -115,12 +117,7 @@ function BusquedaPacientePorInstitucion({ usuarioId, institucionId, onElegir, pe
               {permitirCrear && (
                 <Button
                   size="sm"
-                  onClick={() => {
-                    // Precarga lo escrito: si buscaste «Juan Pérez», ya viene el
-                    // nombre partido y no hay que volver a tipearlo.
-                    const partes = texto.trim().split(/\s+/);
-                    setCreando({ nombre: partes[0] || "", apellido: partes.slice(1).join(" "), documento: "" });
-                  }}
+                  onClick={() => setCreando(precargarPaciente(texto))}
                 >
                   + Crear nuevo
                 </Button>
