@@ -338,7 +338,7 @@ const GRUPOS = [
       { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno_flujos" },
       { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno_flujos" },
       { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno_flujos" },
-      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
+      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "config_institucional" },
       { to: "/accesos", label: "Registro de accesos", icon: "search", cap: "auditoria" },
     ],
   },

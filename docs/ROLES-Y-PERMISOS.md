@@ -305,7 +305,7 @@ Las capacidades son permisos funcionales que habilitan bloques de la aplicacion.
 | `config` | Administracion institucional en sentido amplio |
 | `diseno` | Configuracion de procesos en sentido amplio |
 | `trabajo` | Operacion diaria en sentido amplio |
-| `registros` | Datos del ciudadano en sentido amplio; tambien habilita el legajo propio |
+| `registros` | Datos del ciudadano en sentido amplio; no habilita `/legajo` |
 | `supervision` | Tablero, supervision de area, reasignacion, prioridad y cancelacion de casos |
 
 Siguen vigentes porque varios roles las conservan, pero **ya no son las que gobiernan las rutas ni los endpoints**: eso lo hacen las capacidades de dominio.
@@ -314,7 +314,7 @@ Siguen vigentes porque varios roles las conservan, pero **ya no son las que gobi
 
 | Capacidad | Que habilita | Observacion |
 |---|---|---|
-| `config_institucional` | Areas, subareas, grupos, boxes, camas, usuarios, membresias, legajos, agendas, disponibilidades, insumos y depositos | Es la que abre `/estructura` y `/administracion` |
+| `config_institucional` | Areas, subareas, grupos, boxes, camas, usuarios, membresias, legajos, agendas, disponibilidades, insumos y depositos | Es la que abre `/estructura`, `/administracion` y `/legajo` |
 | `diseno_flujos` | Flujos, versiones, nodos, conexiones, formularios y campos | Abre `/flujos`, `/mapa` y `/formularios` |
 | `casos_operar` | Casos, valores de campo y eventos del caso | Abre `/casos`, `/bandeja` y `/puesto/:id` |
 | `filas` | Items de fila | Abre `/filas` |

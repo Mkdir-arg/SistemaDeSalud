@@ -195,7 +195,7 @@ export default function App() {
       <Route path="/padron/:id" element={P(<PadronDetalle />, "padron_admision")} />
       <Route path="/historia" element={P(<Registros />, "historia_clinica")} />
       <Route path="/historia/:id" element={P(<HistoriaDetalle />, "historia_clinica")} />
-      <Route path="/legajo" element={P(<Legajo />)} />
+      <Route path="/legajo" element={P(<Legajo />, "config_institucional")} />
       <Route path="/accesos" element={P(<Accesos />, "auditoria")} />
       <Route path="/finanzas" element={P(<Finanzas />)} />
       <Route path="/finanzas/coberturas" element={P(<CoberturasHospital />)} />
