@@ -37,6 +37,24 @@ class ApiFinanciadoresTests(CobrosSetup, APITestCase):
         self.assertEqual(me.data["financiadores"][0]["id"], self.org.pk)
         self.assertEqual(me.data["capacidades_por_institucion"], {})
 
+    def test_listado_cuenta_planes_activos_y_convenios_vigentes(self):
+        m.Plan.objects.create(financiador=self.org, codigo="INACTIVO", nombre="Plan viejo", activo=False)
+        ahora = timezone.now()
+        m.Convenio.objects.create(
+            financiador=self.org, institucion=self.institucion, estado="activo",
+            propuesto_por="plataforma", creado_por=self.admin, aceptado_en=ahora,
+        )
+        m.Convenio.objects.create(
+            financiador=self.org, institucion=self.institucion, estado="finalizado",
+            propuesto_por="plataforma", creado_por=self.admin,
+            aceptado_en=ahora - timedelta(days=8), cerrado_en=ahora - timedelta(days=1),
+        )
+        response = self.client.get("/api/financiadores/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["planes_activos"], 1)
+        self.assertEqual(response.data["results"][0]["convenios_vigentes"], 1)
+
     def test_otra_organizacion_y_alta_reservadas_a_plataforma(self):
         self.assertEqual(self.client.get(f"/api/financiadores/{self.otra.pk}/padron/").status_code, 404)
         self.assertEqual(self.client.post("/api/financiadores/", {"nombre": "Intrusa", "tipo": "otro"}).status_code, 403)

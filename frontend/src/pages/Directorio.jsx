@@ -68,6 +68,8 @@ function FinanciadoresView() {
       columnas={[
         { key: "nombre", label: "Financiador", render: (f) => <strong className="text-sm">{f.nombre}</strong> },
         { key: "tipo", label: "Tipo", render: (f) => ({ obra_social: "Obra social", mutual: "Mutual", otro: "Otro financiador" })[f.tipo] || f.tipo },
+        { key: "planes_activos", label: "Planes", render: (f) => <span className="tabular-nums">{f.planes_activos ?? "—"}</span> },
+        { key: "convenios_vigentes", label: "Convenios", render: (f) => <span className="tabular-nums">{f.convenios_vigentes ?? "—"}</span> },
         { key: "activo", label: "Estado", render: (f) => <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge> },
         { key: "accion", label: "", fija: true, className: "text-right", render: (f) => <Button variant="secondary" size="sm" onClick={() => navigate(`/financiadores?financiador=${f.id}`)}>Ver</Button> },
       ]}
