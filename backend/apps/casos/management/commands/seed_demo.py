@@ -9,6 +9,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.accounts.models import Membresia, Usuario
+from apps.demo.claves import clave_demo
+from apps.demo.entorno import exigir_entorno_de_prueba
 from apps.casos import motor
 from apps.casos.models import Caso
 from apps.flujos.models import Conexion, Flujo, Nodo, VersionFlujo
@@ -22,13 +24,14 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        exigir_entorno_de_prueba("seed_demo")
         # Super admin de plataforma (ve todas las instituciones). Idempotente.
         admin, creado_admin = Usuario.objects.get_or_create(
             email="admin@salud.local",
             defaults={"nombre": "Super", "apellido": "Admin", "is_staff": True, "is_superuser": True},
         )
         if creado_admin:
-            admin.set_password("admin1234")
+            admin.set_password(clave_demo())
             admin.save()
 
         inst, _ = Institucion.objects.get_or_create(
@@ -67,7 +70,7 @@ class Command(BaseCommand):
             defaults={"nombre": "Carla", "apellido": "Ibáñez"},
         )
         if creado:
-            op.set_password("demo1234")
+            op.set_password(clave_demo())
             op.save()
         m_op, _ = Membresia.objects.get_or_create(
             usuario=op, institucion=inst, rol=Membresia.Rol.ADMINISTRATIVO
@@ -84,7 +87,7 @@ class Command(BaseCommand):
                 email=email, defaults={"nombre": nombre, "apellido": apellido}
             )
             if creado:
-                u.set_password("demo1234")
+                u.set_password(clave_demo())
             u.is_active = activo
             u.save()
             for rol in roles:
@@ -220,6 +223,6 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             "Demo cargada: institución «Hospital Central», flujo «Ingreso de paciente» publicado y 3 casos.\n"
-            "Super admin (ve todo): admin@salud.local / admin1234\n"
-            "Administrativo:         operador@salud.local / demo1234"
+            "Super admin (ve todo): admin@salud.local\n"
+            "Administrativo:         operador@salud.local (clave de DEMO_PASSWORD, o demo1234)"
         ))

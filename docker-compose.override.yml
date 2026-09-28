@@ -19,6 +19,8 @@ services:
     environment:
       # DEBUG=true habilita el autoreload y que Django sirva /media y /static.
       DJANGO_DEBUG: "true"
+      # Datos de prueba: los `seed_*` pueden cargar y vaciar esta base.
+      ENTORNO: desarrollo
       SEED_DEMO: ${SEED_DEMO:-0}
       # En dev, al levantar se siembra el escenario de guardia (usuario de test +
       # datos) si la base está vacía. Poné SEED_GUARDIA=0 para desactivarlo.

@@ -1,115 +1,196 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
 import { useInstitucion } from "@/auth/InstitutionContext";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Select } from "@/components/ui";
+import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
+import { Buscador, FiltroSelect, LimpiarFiltros, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
+import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
 import { casoId, fechaHora } from "@/lib/format";
 
+const ROLES = [
+  { value: "plataforma", label: "Autoridad estatal / plataforma" },
+  { value: "auditor", label: "Auditor estatal" },
+  { value: "reportes", label: "Reportes / solo lectura" },
+  { value: "admin", label: "Admin de institución" },
+  { value: "configurador", label: "Configurador" },
+  { value: "jefe_area", label: "Jefe / Supervisor de área" },
+  { value: "administrativo", label: "Administrativo" },
+  { value: "enfermeria", label: "Enfermería" },
+  { value: "medico", label: "Médico / profesional" },
+];
+
 export default function Legajo() {
   const { institucion } = useInstitucion();
-  const navigate = useNavigate();
-  const [sel, setSel] = useState("");
-  const [editar, setEditar] = useState(false);
+  const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const [texto, setTexto, busqueda] = useBusquedaUrl("q");
+  const [rol, setRol] = useFiltroUrl("rol");
+  const [area, setArea] = useFiltroUrl("area");
+  const [sel, setSel] = useFiltroUrl("profesional");
+  const institucionAnterior = useRef(institucion?.id);
+  const detalleRef = useRef(null);
+  const areas = useLista("areas", { institucion: institucion?.id, pageSize: 200 }, {
+    enabled: !!institucion?.id, placeholderData: undefined,
+  });
 
-  /*
-   * El staff sale de las membresías, sin cruzar con /usuarios/.
-   *
-   * Antes se pedían las tres listas y se cruzaban acá: `/usuarios/` devuelve 25
-   * por página, así que el desplegable de profesionales se cortaba en 25 sin
-   * decir nada. La membresía ya trae `usuario_nombre`, que es justamente para
-   * evitar ese cruce.
-   */
-  const membresias = useLista(
-    "membresias",
-    { institucion: institucion?.id, activo: true, pageSize: 200 },
-    { enabled: !!institucion },
-  );
-  const areas = useLista("areas", { institucion: institucion?.id, pageSize: 100 }, { enabled: !!institucion });
-
-  const staff = useMemo(() => {
-    const nombreArea = Object.fromEntries(areas.filas.map((a) => [a.id, a.nombre]));
-    const por = new Map();
-    for (const m of membresias.filas) {
-      if (!por.has(m.usuario)) {
-        por.set(m.usuario, { id: m.usuario, nombre: m.usuario_nombre || m.usuario_email, areas: new Set() });
-      }
-      (m.areas || []).forEach((aid) => nombreArea[aid] && por.get(m.usuario).areas.add(nombreArea[aid]));
-    }
-    return [...por.values()]
-      .map((x) => ({ ...x, areas: [...x.areas] }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  }, [membresias.filas, areas.filas]);
-
-  // Al llegar la lista se elige al primero, salvo que ya haya alguien elegido.
+  // Los filtros y la selección pertenecen a la institución, no a la sesión global.
   useEffect(() => {
-    if (!sel && staff.length) setSel(String(staff[0].id));
-  }, [staff, sel]);
+    if (institucionAnterior.current && institucionAnterior.current !== institucion?.id) {
+      const p = new URLSearchParams(params);
+      ["q", "rol", "area", "profesional", "legajo_pag"].forEach((clave) => p.delete(clave));
+      setParams(p, { replace: true });
+    }
+    institucionAnterior.current = institucion?.id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [institucion?.id]);
+
+  const activos = [busqueda, rol, area].filter(Boolean).length;
+  const limpiar = () => {
+    const p = new URLSearchParams(params);
+    ["q", "rol", "area", "legajo_pag"].forEach((clave) => p.delete(clave));
+    setParams(p, { replace: true });
+    setTexto("");
+  };
+  const columnas = [{
+    key: "nombre_completo", label: "Persona", orden: "apellido",
+    render: (persona) => (
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Avatar nombre={persona.nombre_completo || persona.email} i={persona.id} size={32} />
+        <div className="min-w-0">
+          <div className="truncate font-semibold">{persona.nombre_completo || persona.email}</div>
+          <div className="truncate text-sm text-texto-debil">{persona.email}</div>
+        </div>
+      </div>
+    ),
+  }];
+
+  return (
+    <div className="px-lg py-[22px] sm:px-[30px]">
+      <div className="mb-lg">
+        <h2 className="text-xl font-extrabold">Legajos del equipo</h2>
+        <p className="text-sm text-texto-debil">Buscá una persona con membresía activa en {institucion?.nombre} para consultar su legajo.</p>
+      </div>
+      <div className="grid items-start gap-lg xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
+        <TablaRecurso
+          key={`${user?.id}:${institucion?.id}`}
+          clave="legajo"
+          recurso="usuarios"
+          params={{
+            institucion: institucion?.id,
+            search: busqueda || undefined,
+            rol: rol || undefined,
+            areas: area || undefined,
+          }}
+          ambitoConsulta={[user?.id, institucion?.id]}
+          opcionesConsulta={{ enabled: !!institucion?.id, gcTime: 0, placeholderData: undefined }}
+          ordenInicial="apellido"
+          columnas={columnas}
+          onRowClick={(persona) => {
+            setSel(String(persona.id));
+            if (!window.matchMedia("(min-width: 1280px)").matches) {
+              requestAnimationFrame(() => detalleRef.current?.scrollIntoView({ block: "start" }));
+            }
+          }}
+          vacio={{
+            titulo: activos ? "Nadie coincide con la búsqueda" : "No hay personas en esta institución",
+            detalle: activos ? "Probá quitar algún filtro." : "Asigná membresías desde Administración para que aparezcan acá.",
+          }}
+          barra={
+            <>
+              <Buscador valor={texto} onChange={setTexto} placeholder="Nombre o correo…" aria-label="Buscar persona" className="w-full" />
+              <FiltroSelect etiqueta="Filtrar por rol" valor={rol} onChange={setRol} opciones={ROLES} todos="Todos los roles" />
+              <FiltroSelect
+                etiqueta="Filtrar por área" valor={area} onChange={setArea}
+                opciones={areas.filas.map((a) => ({ value: String(a.id), label: a.nombre }))}
+                todos="Todas las áreas"
+              />
+              <LimpiarFiltros activos={activos} onLimpiar={limpiar} />
+            </>
+          }
+        />
+        <section ref={detalleRef} className="min-w-0" aria-label="Detalle del legajo">
+          {sel
+            ? <LegajoDetalle key={`${institucion?.id}:${sel}`} institucionId={institucion?.id} usuarioId={sel} />
+            : <Card><EstadoVacio titulo="Elegí una persona" detalle="Seleccioná alguien del listado para ver su legajo y actividad reciente." icono="users" /></Card>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function LegajoDetalle({ institucionId, usuarioId }) {
+  const navigate = useNavigate();
+  const [editar, setEditar] = useState(false);
+  const idValido = /^\d+$/.test(usuarioId);
+  const membresias = useLista("membresias", {
+    institucion: institucionId, usuario: usuarioId, activo: true, pageSize: 20,
+  }, { enabled: !!institucionId && idValido, placeholderData: undefined, gcTime: 0 });
+  const pertenece = idValido && !membresias.isFetching && !membresias.error && membresias.total > 0;
 
   const q = useQuery({
-    queryKey: ["legajo", sel, institucion?.id],
-    queryFn: () => api.get(`/usuarios/${sel}/legajo/?institucion=${institucion.id}`),
-    enabled: !!sel && !!institucion?.id,
+    queryKey: ["legajo", institucionId, usuarioId],
+    queryFn: () => api.get(`/usuarios/${usuarioId}/legajo/?institucion=${institucionId}`),
+    enabled: pertenece,
   });
   const legajo = q.data;
-
-  if (membresias.error) return <EstadoError error={membresias.error} onReintentar={membresias.refetch} />;
-  if (membresias.isLoading) return <div className="p-[30px]"><SkeletonTabla filas={4} columnas={4} /></div>;
-  if (!staff.length) {
-    return (
-      <EstadoVacio
-        titulo="No hay profesionales en esta institución"
-        detalle="Asigná membresías desde Administración para que aparezcan acá."
-        icono="users"
-      />
-    );
-  }
-
-  const prof = staff.find((s) => String(s.id) === String(sel));
   const u = legajo?.usuario;
+  const prof = membresias.filas[0];
+  const nombresArea = [...new Set(membresias.filas.flatMap((m) => Object.values(m.areas_nombres || {})))];
   const metricas = [
     { n: legajo?.casos_atendidos, l: "Casos atendidos" },
     { n: legajo?.pacientes_vistos, l: "Pacientes distintos" },
     { n: legajo?.llamados_fila, l: "Llamados de fila" },
   ];
 
+  if (!idValido) {
+    return <Card><EstadoVacio titulo="Enlace de legajo inválido" detalle="Elegí una persona del listado." /></Card>;
+  }
+  if (membresias.error) {
+    return <Card><EstadoError error={membresias.error} onReintentar={membresias.refetch} /></Card>;
+  }
+  if (membresias.isFetching || membresias.isLoading) {
+    return <Card><SkeletonTabla filas={4} columnas={2} /></Card>;
+  }
+  if (!membresias.total) {
+    return <Card><EstadoVacio titulo="Legajo no disponible en esta institución" detalle="Elegí una persona del listado actual." /></Card>;
+  }
+
   return (
-    <div className="px-lg py-[22px] sm:px-[30px]">
-      <header className="mb-lg flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">Legajo profesional</h2>
-          <p className="text-sm text-texto-debil">Actividad clínica y datos de matrícula de cada profesional.</p>
+    <div className="min-w-0">
+      <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-[22px]">
+        <Avatar nombre={prof?.usuario_nombre || u?.nombre} i={Number(usuarioId)} size={52} />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-extrabold tracking-tight">{prof?.usuario_nombre || u?.nombre}</h2>
+          <div className="text-base text-texto-debil">
+            Integrante del equipo
+            {u?.especialidad ? ` · ${u.especialidad}` : ""}
+            {nombresArea.length ? ` · ${nombresArea.join(" · ")}` : ""}
+          </div>
+          {u?.matricula && <Mono className="mt-1.5 block text-base font-semibold">M.N. {u.matricula}</Mono>}
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <label htmlFor="profesional" className="sr-only">Profesional</label>
-          <Select id="profesional" value={sel} onChange={(e) => setSel(e.target.value)} className="min-w-48 flex-1 sm:w-56 sm:flex-none">
-            {staff.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </Select>
-          <Button size="sm" variant="secondary" onClick={() => setEditar(true)} disabled={!u}>Editar legajo</Button>
-        </div>
-      </header>
-
-      {membresias.total > membresias.filas.length && (
-        <p className="mb-3 rounded-md bg-badge-amber-bg px-3 py-2 text-sm text-badge-amber-fg">
-          Se muestran {membresias.filas.length} de {membresias.total} membresías. Algunos profesionales pueden faltar en el selector.
-        </p>
-      )}
-
-      <Card className="mb-[18px] px-5 py-lg">
-        <div className="mb-4 flex flex-wrap items-center gap-2.5">
-          <Avatar nombre={prof?.nombre} i={prof?.id || 0} size={40} />
-          <h3 className="text-lg font-bold">{prof?.nombre}</h3>
+        <div className="flex flex-col items-end gap-2">
+          {/* La matrícula es la que habilita a firmar una atención (regla del
+              motor), así que su estado se muestra con palabras, no sólo color. */}
           {u?.matricula ? <Badge tone="green">Matrícula cargada</Badge> : <Badge tone="gray">Sin matrícula</Badge>}
+          <button
+            onClick={() => setEditar(true)}
+            disabled={!u}
+            className="text-sm font-semibold text-accent hover:underline disabled:opacity-50"
+          >
+            Editar legajo
+          </button>
         </div>
         <dl className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["Matrícula", u?.matricula || "—"],
             ["Especialidad", u?.especialidad || "—"],
-            ["Áreas", prof?.areas?.join(", ") || "—"],
+            ["Áreas", nombresArea.join(", ") || "—"],
             ["Última actividad", legajo?.ultima_actividad ? fechaHora(legajo.ultima_actividad) : "—"],
           ].map(([etiqueta, valor]) => (
             <div key={etiqueta}>

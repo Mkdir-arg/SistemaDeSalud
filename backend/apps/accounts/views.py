@@ -55,8 +55,21 @@ class UsuarioViewSet(BaseModelViewSet):
         # membresía activa). Es lo que necesita cualquier selector de personas de
         # una pantalla de institución.
         inst = (self.request.query_params.get("institucion") or "").strip()
-        if inst.isdigit():
-            qs = qs.filter(membresias__institucion_id=int(inst), membresias__activo=True)
+        rol = (self.request.query_params.get("rol") or "").strip()
+        area = (self.request.query_params.get("areas") or "").strip()
+        if inst.isdigit() and (not area or area.isdigit()):
+            # Rol y área deben pertenecer a la MISMA membresía activa de esta
+            # institución. Encadenar filtros permitiría combinar roles o áreas
+            # de membresías distintas de una misma persona.
+            membresia = {"membresias__institucion_id": int(inst), "membresias__activo": True}
+            if rol:
+                membresia["membresias__rol"] = rol
+            if area:
+                membresia["membresias__areas"] = int(area)
+            qs = qs.filter(**membresia)
+        elif rol or area:
+            # Un filtro de membresía sin institución válida no puede ampliar el padrón.
+            return qs.none()
 
         if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
             # Uno mismo entra siempre: si no, quien no tiene membresía activa no

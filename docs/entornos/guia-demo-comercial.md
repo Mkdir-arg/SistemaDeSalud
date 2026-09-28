@@ -2,6 +2,13 @@
 
 Entorno **demo**: <http://localhost:8082> · verificado el **17/09/2026**.
 
+> **Fechas relativas desde el #65.** La carga (`seed_entorno_demo`) ahora arma doce meses que
+> terminan el día en que se corre: donde esta guía dice «septiembre» o «agosto», leé «el mes en
+> curso» y «el mes anterior». Los importes de esos dos meses son los mismos; los de meses anteriores
+> siguen la estación del año en que caen. Los enlaces con `?mes=2026-09` apuntan a septiembre: cambiá
+> el mes en la pantalla. Las fechas exactas y los identificadores (`#gasto`, `#caso`) cambian en cada
+> carga, y el resumen del comando imprime los usuarios. Ver [`entornos/README.md`](README.md).
+
 Recorrido completo de **45–50 minutos**. Los bloques son independientes: con 20
 minutos, hacé el 1, el 4 y el 6.
 
@@ -43,7 +50,7 @@ perfecto.
 Para cambiar de usuario usá **otra ventana del navegador en modo privado**. Dos
 pestañas normales comparten la sesión.
 
-**Hospital General Los Aromos** — contraseña `LosAromos2026!`
+**Hospital General Los Aromos** — contraseña `demo1234`
 
 | Perfil | Usuario |
 |---|---|
@@ -52,19 +59,19 @@ pestañas normales comparten la sesión.
 | Configuración | `mateo.salvatierra@losaromos.test` |
 | Médicos | `lucia.ferreyra@` · `andres.molina@` · `valeria.costa@` |
 
-**Consultorios externos y financiadores** — contraseña `Financiadores2026!`
+**Consultorios externos y financiadores** — contraseña `demo1234`
 
 | Perfil | Usuario |
 |---|---|
 | Médica de consultorios externos | `irene.bustos@losaromos.test` |
-| Mutual del Valle (portal) | `admin@mutualdelvalle.test` · `auditor@mutualdelvalle.test` |
+| Mutual del Valle (portal) | `admin@mutualdelvalle.test` · `operador@mutualdelvalle.test` (autorizaciones) · `auditor@mutualdelvalle.test` |
 | Obra Social Provincial (portal) | `admin@osprovincial.test` · `auditor@osprovincial.test` |
 
-**Hospital Central y red** — contraseña `demo1234` (salvo el superusuario)
+**Hospital Central y red** — contraseña `demo1234`
 
 | Perfil | Usuario |
 |---|---|
-| Superusuario / plataforma completa | `admin@salud.local` / `admin1234` |
+| Superusuario / plataforma completa | `admin@salud.local` / `demo1234` |
 | Gobierno estatal: efectores y redes | `plataforma@salud.local` |
 | Auditoría con alcance estatal | `auditor@salud.local` |
 | Administración de la institución | `admin.central@hospital.gob.ar` |

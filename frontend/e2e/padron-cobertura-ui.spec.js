@@ -34,10 +34,12 @@ async function preparar(page, opciones = {}) {
       return route.fulfill({ status: 404, json: { detail: "Escritura no prevista" } });
     }
     lecturas.push(path + url.search);
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 30, nombre_completo: "Admisión de prueba", email: "admision@example.test", capacidades_por_institucion: { 1: ["padron_admision"], 2: ["padron_admision"] }, roles_por_institucion: { 1: ["administrativo"], 2: ["administrativo"] }, financiadores: [] } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 30, nombre_completo: "Admisión de prueba", email: "admision@example.test", capacidades_por_institucion: { 1: opciones.capacidades || ["padron_admision"], 2: ["padron_admision"] }, roles_por_institucion: { 1: ["administrativo"], 2: ["administrativo"] }, financiadores: [] } });
     if (path === "/instituciones/") return route.fulfill({ json: lista(instituciones) });
     if (path === "/notificaciones/resumen/") return route.fulfill({ json: { no_leidas: 0, items: [] } });
     if (path === "/concesiones-financieras/mias/") return route.fulfill({ json: { superusuario: false, concesiones: [] } });
+    if (path === "/flujos/") return route.fulfill({ json: lista(opciones.flujos || []) });
+    if (path === "/mis-tareas/") return route.fulfill({ json: opciones.misTareas || { iniciar: [], tareas: [], filas: [], esperando: [], puestos: [] } });
     if (path === "/ciudadanos/configuracion-cobertura/") {
       if (estado.configuracionError) return route.fulfill({ status: 503, json: { detail: "Configuración temporalmente no disponible" } });
       return route.fulfill({ json: { institucion: Number(url.searchParams.get("institucion")), habilitada: opciones.habilitada !== false } });
@@ -91,13 +93,95 @@ test("listado y buscador común distinguen afiliación vigente y texto sin verif
   await expect(page.getByRole("region", { name: "Cobertura administrativa" })).toContainText("Sin verificación de afiliación");
 });
 
+test("el alta del padrón copia documento o nombre de la búsqueda y enfoca el campo correcto", async ({ page }) => {
+  await preparar(page);
+  await page.goto("/padron");
+
+  for (const [texto, nombre, apellido, documento, foco] of [
+    ["30.123.456", "", "", "30.123.456", "Documento"],
+    ["30123456", "", "", "30123456", "Documento"],
+    ["FIC000123", "", "", "FIC000123", "Documento"],
+    ["Pérez", "Pérez", "", "", "Nombre *"],
+    ["Juan Pérez", "Juan", "Pérez", "", "Nombre *"],
+  ]) {
+    await page.getByRole("searchbox", { name: "Buscar paciente" }).fill(texto);
+    await expect(page.getByText("Ningún paciente coincide")).toBeVisible();
+    await page.getByRole("button", { name: "+ Registrar paciente" }).click();
+    await expect(page.getByLabel("Nombre *")).toHaveValue(nombre);
+    await expect(page.getByLabel("Apellido")).toHaveValue(apellido);
+    await expect(page.getByLabel("Documento (opcional para NN)")).toHaveValue(documento);
+    await expect(page.getByLabel(foco === "Documento" ? "Documento (opcional para NN)" : foco)).toBeFocused();
+    await page.getByRole("button", { name: "Cancelar" }).click();
+  }
+
+  await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("");
+  await page.getByRole("button", { name: "+ Registrar paciente" }).click();
+  await expect(page.getByLabel("Nombre *")).toHaveValue("");
+  await expect(page.getByLabel("Documento (opcional para NN)")).toHaveValue("");
+});
+
+test("el padrón encuentra un DNI guardado sin puntos al buscarlo con puntos", async ({ page }) => {
+  const { lecturas } = await preparar(page, { pacientes: [paciente({ documento: "30123456" })] });
+  await page.goto("/padron");
+  await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await expect.poll(() => lecturas.some((ruta) => ruta.startsWith("/ciudadanos/") && ruta.includes("search=30123456"))).toBe(true);
+  await expect(page.getByRole("row", { name: /Ana de Prueba/ })).toBeVisible();
+});
+
+test("un caso nuevo precarga el DNI en Documento, sin crear otro paciente", async ({ page }) => {
+  const { escrituras, lecturas } = await preparar(page, {
+    pacientes: [],
+    capacidades: ["padron_admision", "casos_operar"],
+    flujos: [{ id: 3, titulo: "Guardia", institucion: 1, origen_inicio: "manual", versiones: [{ id: 5, estado: "publicada", etiqueta: "v1" }] }],
+  });
+  await page.goto("/bandeja");
+  await page.getByRole("button", { name: "Nuevo caso", exact: true }).click();
+  const modal = page.getByRole("dialog", { name: "Nuevo caso" });
+  await modal.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await expect(modal.getByText("Sin coincidencias para «30.123.456»")).toBeVisible();
+  await modal.getByRole("button", { name: "+ Crear nuevo" }).click();
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento")).toHaveValue("30.123.456");
+  await expect(modal.getByLabel("Documento")).toBeFocused();
+  expect(lecturas.some((ruta) => ruta.startsWith("/ciudadanos/") && ruta.includes("search=30123456"))).toBe(true);
+  expect(escrituras).toHaveLength(0);
+});
+
+test("ingresar paciente a guardia precarga el DNI en Documento", async ({ page }) => {
+  const { escrituras } = await preparar(page, {
+    pacientes: [],
+    capacidades: ["padron_admision", "casos_operar"],
+    misTareas: { iniciar: [{ version_id: 5, flujo_titulo: "Guardia", area_nombre: "Guardia", paso: "Ingreso" }] },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ingresar paciente" }).click();
+  const modal = page.getByRole("dialog", { name: "Ingresar paciente · Guardia" });
+  await modal.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await expect(modal.getByText("Sin coincidencias para «30.123.456»")).toBeVisible();
+  await modal.getByRole("button", { name: "+ Crear nuevo" }).click();
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento")).toHaveValue("30.123.456");
+  await expect(modal.getByLabel("Documento")).toBeFocused();
+  expect(escrituras).toHaveLength(0);
+});
+
+test("el alta de historia clínica precarga el documento buscado", async ({ page }) => {
+  await preparar(page, { capacidades: ["padron_admision", "historia_clinica"] });
+  await page.goto("/historia");
+  await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await page.getByRole("button", { name: "+ Crear registro" }).click();
+  const modal = page.getByRole("dialog", { name: "Nuevo registro de paciente" });
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento (opcional para NN)")).toHaveValue("30.123.456");
+});
+
 test("alta habilitada omite el texto de obra social y conserva los datos personales", async ({ page }) => {
   const { escrituras } = await preparar(page);
   await page.goto("/padron?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Paciente Nuevo");
   await expect(page.getByText(/Las declaraciones nuevas se registran en la cobertura del caso/)).toBeVisible();
   await expect(page.getByLabel("Cobertura declarada (sin verificar)")).toHaveCount(0);
-  await page.getByRole("button", { name: "Crear", exact: true }).click();
+  await page.getByRole("button", { name: "Registrar paciente" }).click();
   await expect(page).toHaveURL(/\/padron\/99$/);
   expect(escrituras[0].body).toMatchObject({ institucion: 1, nombre: "Paciente Nuevo" });
   expect(escrituras[0].body).not.toHaveProperty("obra_social");
@@ -107,8 +191,8 @@ test("hospital no habilitado permite cargar cobertura etiquetada como declarada"
   const { escrituras } = await preparar(page, { habilitada: false });
   await page.goto("/padron?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Nuevo Declarado");
-  await page.getByLabel("Cobertura declarada (sin verificar)").fill("Mutual informada");
-  await page.getByRole("button", { name: "Crear", exact: true }).click();
+  await page.getByLabel("Financiador (opcional)").fill("Mutual informada");
+  await page.getByRole("button", { name: "Registrar paciente" }).click();
   await expect(page).toHaveURL(/\/padron\/99$/);
   expect(escrituras[0].body.obra_social).toBe("Mutual informada");
   const region = page.getByRole("region", { name: "Cobertura administrativa" });
@@ -143,29 +227,29 @@ test("un error de configuración se muestra, bloquea el alta y permite reintenta
   const { estado, escrituras } = await preparar(page, { configuracionError: true });
   await page.goto("/padron?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Paciente Seguro");
-  await expect(page.getByRole("alert")).toContainText("Configuración temporalmente no disponible");
-  await expect(page.getByRole("button", { name: "Crear", exact: true })).toBeDisabled();
+  await expect(page.getByRole("alert")).toContainText("No se pudo consultar la configuración de cobertura");
+  await expect(page.getByRole("button", { name: "Registrar paciente" })).toBeDisabled();
   expect(escrituras).toHaveLength(0);
   estado.configuracionError = false;
   await page.getByRole("button", { name: "Reintentar", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Crear", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Registrar paciente" })).toBeEnabled();
 });
 
 test("cambiar de hospital consulta su configuración y descarta el formulario anterior", async ({ page }) => {
   const { estado, lecturas, escrituras } = await preparar(page);
   await page.goto("/padron?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Nombre del hospital anterior");
-  await expect(page.getByRole("button", { name: "Crear", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Registrar paciente" })).toBeEnabled();
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
   await page.getByRole("button", { name: /Hospital Central Hospital$/ }).click();
   await page.getByRole("button", { name: "Hospital Norte Hospital", exact: true }).click();
   estado.configuracionError = true;
   await page.getByRole("link", { name: "Padrón de pacientes", exact: true }).click();
-  await page.getByRole("button", { name: "+ Crear registro", exact: true }).click();
+  await page.getByRole("button", { name: "+ Registrar paciente", exact: true }).click();
   await expect(page.getByLabel("Nombre *", { exact: true })).toHaveValue("");
   await page.getByLabel("Nombre *", { exact: true }).fill("Paciente del nuevo hospital");
-  await expect(page.getByRole("alert")).toContainText("Configuración temporalmente no disponible");
-  await expect(page.getByRole("button", { name: "Crear", exact: true })).toBeDisabled();
+  await expect(page.getByRole("alert")).toContainText("No se pudo consultar la configuración de cobertura");
+  await expect(page.getByRole("button", { name: "Registrar paciente" })).toBeDisabled();
   expect(lecturas).toContain("/ciudadanos/configuracion-cobertura/?institucion=2");
   expect(escrituras).toHaveLength(0);
 });

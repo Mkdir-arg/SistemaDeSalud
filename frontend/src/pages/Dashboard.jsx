@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -42,6 +42,16 @@ const isoHace = (dias) => {
   x.setDate(x.getDate() - (dias - 1));
   return isoLocal(x);
 };
+const fechaValida = (iso) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return false;
+  const fecha = new Date(`${iso}T12:00:00`);
+  return !Number.isNaN(fecha.getTime()) && isoLocal(fecha) === iso;
+};
+const isoAntes = (hasta, dias) => {
+  const fecha = new Date(`${hasta}T12:00:00`);
+  fecha.setDate(fecha.getDate() - (dias - 1));
+  return isoLocal(fecha);
+};
 // "2026-08-15" → "15/08/2026", para poder mostrar el rango que contestó el servidor.
 const fechaCorta = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
 
@@ -82,17 +92,24 @@ const espera = (min) => ({ v: duracionMinutos(min), u: null });
 export default function Dashboard() {
   const { institucion } = useInstitucion();
   const navigate = useNavigate();
-  const [desde, setDesde] = useFiltroUrl("desde", isoHoy());
-  const [hasta, setHasta] = useFiltroUrl("hasta", isoHoy());
-  const [tab, setTab] = useFiltroUrl("area", "general");
   const [params, setParams] = useSearchParams();
+  const hastaPedido = params.get("hasta") ?? isoHoy();
+  const desdePedido = params.get("desde") ?? (fechaValida(hastaPedido) ? isoAntes(hastaPedido, 30) : isoHace(30));
+  const invertido = fechaValida(desdePedido) && fechaValida(hastaPedido) && desdePedido > hastaPedido;
+  const desde = invertido ? hastaPedido : desdePedido;
+  const hasta = invertido ? desdePedido : hastaPedido;
+  const [tab, setTab] = useFiltroUrl("area", "general");
 
-  function seleccionarPeriodo(dias) {
-    const siguientes = new URLSearchParams(params);
-    siguientes.set("desde", isoHace(dias));
-    siguientes.set("hasta", isoHoy());
-    setParams(siguientes, { replace: true });
-  }
+  const setRango = useCallback((nuevoDesde, nuevoHasta) => setParams((actuales) => {
+    const siguientes = new URLSearchParams(actuales);
+    siguientes.set("desde", nuevoDesde);
+    siguientes.set("hasta", nuevoHasta);
+    return siguientes;
+  }, { replace: true }), [setParams]);
+
+  useEffect(() => {
+    if (invertido) setRango(desde, hasta);
+  }, [invertido, desde, hasta, setRango]);
 
   const q = useQuery({
     queryKey: ["tablero", institucion?.id, desde, hasta],
@@ -117,22 +134,18 @@ export default function Dashboard() {
           <div className="flex rounded-md border border-borde bg-superficie-2 p-1" role="group" aria-label="Período del tablero">
             {[[1, "Hoy"], [7, "7 días"], [30, "30 días"]].map(([dias, label]) => <button key={dias} type="button"
               aria-pressed={desde === isoHace(dias) && hasta === isoHoy()}
-              onClick={() => seleccionarPeriodo(dias)}
+              onClick={() => setRango(isoHace(dias), isoHoy())}
               className={cn("rounded px-3 py-1.5 text-xs", desde === isoHace(dias) && hasta === isoHoy() ? "bg-superficie font-semibold text-texto shadow-card" : "text-texto-suave hover:text-texto")}>{label}</button>)}
           </div>
-          <label className="sr-only" htmlFor="tablero-area">Área</label>
-          <select id="tablero-area" value={tab} onChange={(e) => setTab(e.target.value)} className="h-9 rounded-md border border-campo-borde bg-superficie px-2.5 text-xs text-texto">
-            <option value="general">Todas las áreas</option>
-            {(d.por_area || []).map((area) => <option key={area.area_id} value={area.area_id}>{area.nombre}</option>)}
-          </select>
         </div>
       </div>
       <details className="rounded-md border border-borde bg-superficie px-3 py-2 text-xs text-texto-suave">
         <summary className="cursor-pointer font-medium">Elegir otras fechas</summary>
-        <div className="mt-3"><RangoFechas desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} onPeriodo={seleccionarPeriodo} periodo={d.periodo} /></div>
+        <div className="mt-3"><RangoFechas desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} /></div>
       </details>
       <div className="flex flex-col gap-4">
         <ProcesosDetenidos />
+        <SolapasArea areas={d.por_area} tab={tab} setTab={setTab} />
         {tab === "general"
           ? <TableroGeneral d={d} navigate={navigate} />
           : <TableroArea key={tab} areaId={tab} desde={desde} hasta={hasta} navigate={navigate} />}
@@ -228,9 +241,35 @@ function ProcesosDetenidos() {
 // --------------------------------------------------------------------------- //
 // Controles
 // --------------------------------------------------------------------------- //
-function RangoFechas({ desde, hasta, setDesde, setHasta, onPeriodo, periodo }) {
+function SolapasArea({ areas, tab, setTab }) {
+  const items = [{ id: "general", nombre: "General" }, ...(areas || []).map((a) => ({ id: String(a.area_id), nombre: a.nombre }))];
+  return (
+    <div role="group" aria-label="Área del tablero" className="flex flex-wrap gap-0.5 border-b border-borde">
+      {items.map((it) => {
+        const activo = String(tab) === it.id;
+        return (
+          <button
+            key={it.id}
+            aria-pressed={activo}
+            onClick={() => setTab(it.id)}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2.5 font-display text-md transition-colors",
+              activo
+                ? "border-accent font-bold text-accent"
+                : "border-transparent font-semibold text-texto-debil hover:text-texto-suave",
+            )}
+          >
+            {it.nombre}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RangoFechas({ desde, hasta, setRango, periodo }) {
   const hoy = isoHoy();
-  const tope = isoHace(MAX_DIAS_RANGO);
+  const tope = fechaValida(hasta) ? isoAntes(hasta, MAX_DIAS_RANGO) : isoHace(MAX_DIAS_RANGO);
   // El servidor recorta lo que exceda el tope y devuelve en `periodo` el rango
   // que usó de verdad. Si no se dice, los números cambian igual al mover el
   // selector y la pantalla no parece rota: parece que funcionó. Dirección pide
@@ -246,7 +285,7 @@ function RangoFechas({ desde, hasta, setDesde, setHasta, onPeriodo, periodo }) {
           return (
             <button
               key={rg.dias}
-              onClick={() => onPeriodo(rg.dias)}
+              onClick={() => setRango(isoHace(rg.dias), hoy)}
               className={cn(
                 "rounded-sm px-3 py-1.5 text-base font-semibold",
                 activo ? "bg-superficie text-accent shadow-card" : "text-texto-debil hover:text-texto-suave",
@@ -258,9 +297,9 @@ function RangoFechas({ desde, hasta, setDesde, setHasta, onPeriodo, periodo }) {
         })}
       </div>
       <span className="text-base text-texto-tenue">o</span>
-      <input type="date" value={desde} min={tope} max={hasta} onChange={(e) => e.target.value && setDesde(e.target.value)} className={campo} aria-label="Desde" />
+      <input type="date" value={desde} min={tope} max={hasta} onChange={(e) => e.target.value && setRango(e.target.value, hasta)} className={campo} aria-label="Desde" />
       <span className="text-texto-tenue">→</span>
-      <input type="date" value={hasta} min={desde} max={hoy} onChange={(e) => e.target.value && setHasta(e.target.value)} className={campo} aria-label="Hasta" />
+      <input type="date" value={hasta} min={desde} max={hoy} onChange={(e) => e.target.value && setRango(desde, e.target.value)} className={campo} aria-label="Hasta" />
       {recortado && (
         <span className="text-base text-texto-medio">
           Se muestran del <strong>{fechaCorta(periodo.desde)}</strong> al <strong>{fechaCorta(periodo.hasta)}</strong>

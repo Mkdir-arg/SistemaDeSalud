@@ -89,6 +89,59 @@ class PadronPorInstitucionTests(APITestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(r.data["count"], len(ids))
 
+    def test_filtros_de_rol_y_area_exigen_la_misma_membresia_activa(self):
+        guardia = Area.objects.create(institucion=self.hospital, nombre="Guardia")
+        consultorios = Area.objects.create(institucion=self.hospital, nombre="Consultorios")
+        Membresia.objects.get(usuario=self.medico_hosp, institucion=self.hospital).areas.add(guardia)
+        jefe = Membresia.objects.create(
+            usuario=self.medico_hosp, institucion=self.hospital, rol="jefe_area", activo=True
+        )
+        jefe.areas.add(consultorios)
+        Membresia.objects.get(usuario=self.admin_hosp, institucion=self.hospital).areas.add(guardia)
+
+        self.assertEqual(
+            self._emails(f"?institucion={self.hospital.id}&rol=medico&areas={guardia.id}"),
+            {self.medico_hosp.email},
+        )
+        self.assertEqual(
+            self._emails(f"?institucion={self.hospital.id}&rol=medico&areas={guardia.id}&search=medico"),
+            {self.medico_hosp.email},
+        )
+        self.assertEqual(
+            self._emails(f"?institucion={self.hospital.id}&rol=jefe_area&areas={guardia.id}"),
+            set(),
+        )
+        self.assertEqual(
+            self._emails(f"?institucion={self.hospital.id}&rol=medico&areas={consultorios.id}"),
+            set(),
+        )
+
+    def test_area_no_duplica_personas_ni_incluye_membresias_inactivas(self):
+        guardia = Area.objects.create(institucion=self.hospital, nombre="Guardia")
+        Membresia.objects.get(usuario=self.medico_hosp, institucion=self.hospital).areas.add(guardia)
+        otra = Membresia.objects.create(
+            usuario=self.medico_hosp, institucion=self.hospital, rol="jefe_area", activo=True
+        )
+        otra.areas.add(guardia)
+        inactiva = Membresia.objects.create(
+            usuario=self.admin_hosp, institucion=self.hospital, rol="medico", activo=False
+        )
+        inactiva.areas.add(guardia)
+
+        self.client.force_authenticate(self.admin_hosp)
+        r = self.client.get(f"/api/usuarios/?institucion={self.hospital.id}&areas={guardia.id}&page_size=1")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["id"], self.medico_hosp.id)
+        self.assertEqual(self._emails(f"?institucion={self.hospital.id}&rol=medico&areas={guardia.id}"), {self.medico_hosp.email})
+
+    def test_filtros_de_membresia_requieren_institucion_valida(self):
+        self.assertEqual(self._emails("?rol=medico"), set())
+        self.assertEqual(self._emails(f"?institucion={self.hospital.id}&areas=no-es-un-id"), set())
+        self.assertEqual(
+            self._emails(f"?institucion={self.clinica.id}&rol=medico"), set()
+        )
+
     def test_alta_requiere_password_y_aplica_validadores(self):
         self.client.force_authenticate(self.root)
         datos = {"email": "nuevo@salud.local", "nombre": "Nuevo"}

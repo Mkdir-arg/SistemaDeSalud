@@ -61,8 +61,10 @@ export default function Usuarios() {
       }
       const f = por.get(m.usuario);
       f.activo = f.activo || m.activo;
-      f.roles.add(m.rol_display || m.rol);
-      (m.areas || []).forEach((aid) => nombreArea[aid] && f.areas.add(nombreArea[aid]));
+      if (m.activo) {
+        f.roles.add(m.rol_display || m.rol);
+        (m.areas || []).forEach((aid) => nombreArea[aid] && f.areas.add(nombreArea[aid]));
+      }
     }
     return [...por.values()]
       .map((x) => ({ ...x, roles: [...x.roles], areas: [...x.areas] }))
@@ -137,7 +139,7 @@ export default function Usuarios() {
                   </div>
                   <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge>
                 </div>
-                <p className="text-xs text-texto-debil">{f.roles.join(" · ") || "Sin rol"}{f.areas.length ? ` · ${f.areas.join(", ")}` : ""}</p>
+                <p className="text-xs text-texto-debil">{f.roles.join(" · ") || "Sin rol activo"}{f.areas.length ? ` · ${f.areas.join(", ")}` : ""}</p>
                 <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Editar a ${f.nombre || f.email}`}>Editar</Button>
               </li>
             ))}
@@ -168,7 +170,7 @@ export default function Usuarios() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-[22px] py-3 text-texto-medio">{f.roles.join(" · ") || "—"}</td>
+                    <td className="px-[22px] py-3 text-texto-medio">{f.roles.join(" · ") || "Sin rol activo"}</td>
                     <td className="px-[22px] py-3 text-texto-medio">{f.areas.join(", ") || "—"}</td>
                     <td className="px-[22px] py-3">
                       <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge>

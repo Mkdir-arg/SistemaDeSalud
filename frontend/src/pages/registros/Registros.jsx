@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { EstadoError } from "@/components/ui/estados";
 import { Icon } from "@/components/icons";
 import { plural } from "@/lib/format";
+import { busquedaPaciente, normalizarDocumento, precargarPaciente } from "@/lib/paciente";
 
 function fechaCorta(iso) {
   const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -84,7 +85,9 @@ export default function Registros({ modo = "historia" }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [texto, setTexto, busqueda] = useBusquedaUrl("q");
-  const [nuevoModal, setNuevoModal] = useState(params.get("nuevo") === "1");
+  const [nuevoModal, setNuevoModal] = useState(() => modo !== "padron" && params.get("nuevo") === "1"
+    ? { busqueda: params.get("q") || "", institucionId: institucion?.id }
+    : null);
   const [exportando, setExportando] = useState(false);
   const [motivoExportacion, setMotivoExportacion] = useState("");
   const [varianteExportacion, setVarianteExportacion] = useState("minimizado");
@@ -94,9 +97,10 @@ export default function Registros({ modo = "historia" }) {
   const peticionRevelado = useRef(0);
 
   const esPadron = modo === "padron";
-  const nuevo = esPadron ? params.get("nuevo") === "1" : nuevoModal;
+  const nuevo = esPadron ? params.get("nuevo") === "1" : !!nuevoModal;
   const detalleBase = esPadron ? "/padron" : "/historia";
-  const paramsLista = { institucion: institucion?.id, search: busqueda || undefined };
+  const terminoBusqueda = esPadron ? busquedaPaciente(busqueda) : busqueda;
+  const paramsLista = { institucion: institucion?.id, search: terminoBusqueda || undefined };
   useEffect(() => {
     peticionRevelado.current += 1;
     setRevelado(null);
@@ -105,7 +109,7 @@ export default function Registros({ modo = "historia" }) {
   }, [user?.id, institucion?.id, busqueda, params.toString()]);
   const { total } = useLista("ciudadanos", { ...paramsLista, pageSize: 1 }, {
     enabled: !!institucion,
-    queryKey: ["lista", "ciudadanos", user?.id, institucion?.id, "total", busqueda],
+    queryKey: ["lista", "ciudadanos", user?.id, institucion?.id, "total", terminoBusqueda],
     placeholderData: undefined,
     gcTime: 0,
   });
@@ -115,7 +119,7 @@ export default function Registros({ modo = "historia" }) {
     try {
       await api.downloadPost("/ciudadanos/exportar/", {
         institucion: institucion.id,
-        search: busqueda || "",
+        search: terminoBusqueda || "",
         ordering: params.get(`${esPadron ? "padron" : "hc"}_ord`) || "apellido",
         variante: varianteExportacion,
         motivo: motivoExportacion.trim(),
@@ -147,6 +151,7 @@ export default function Registros({ modo = "historia" }) {
     key={`${user?.id}:${institucion?.id}`}
     institucionId={institucion?.id}
     modo={modo}
+    busquedaInicial={params.get("q") || ""}
     onClose={() => navigate("/padron")}
     onCreado={(id) => navigate(`/padron/${id}`)}
   />;
@@ -172,7 +177,9 @@ export default function Registros({ modo = "historia" }) {
             className="min-w-0 flex-1 sm:w-70 sm:flex-none"
             aria-label="Buscar paciente"
           />
-          {esPadron && <Button onClick={() => navigate("/padron?nuevo=1")} className="whitespace-nowrap">+ Registrar paciente</Button>}
+          {esPadron
+            ? <Button onClick={() => navigate(`/padron?nuevo=1${texto ? `&q=${encodeURIComponent(texto)}` : ""}`)} className="whitespace-nowrap">+ Registrar paciente</Button>
+            : <Button onClick={() => setNuevoModal({ busqueda: texto, institucionId: institucion?.id })} className="whitespace-nowrap">+ Crear registro</Button>}
           {esPadron && <Button variant="secondary" onClick={() => setExportando(true)} className="whitespace-nowrap">Exportar…</Button>}
         </div>
       </div>
@@ -240,7 +247,8 @@ export default function Registros({ modo = "historia" }) {
           key={`${user?.id}:${institucion?.id}`}
           institucionId={institucion?.id}
           modo={modo}
-          onClose={() => setNuevoModal(false)}
+          busquedaInicial={nuevoModal.institucionId == null || nuevoModal.institucionId === institucion?.id ? nuevoModal.busqueda : ""}
+          onClose={() => setNuevoModal(null)}
           onCreado={(id) => navigate(`${detalleBase}/${id}`)}
         />
       )}
@@ -248,21 +256,24 @@ export default function Registros({ modo = "historia" }) {
   );
 }
 
-function normalizarDocumento(valor) {
-  return String(valor || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
-}
-
 function igualSinAcentos(a, b) {
   return String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base" }) === 0;
 }
 
-function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
+function NuevoPacienteModal({ institucionId, modo, busquedaInicial, onClose, onCreado }) {
   const toast = useToast();
   const { user } = useAuth();
   const configuracion = useConfiguracionCobertura(institucionId);
   const configuracionLista = typeof configuracion.data?.habilitada === "boolean" && !configuracion.error;
   const navigate = useNavigate();
-  const [f, setF] = useState({ nombre: "", apellido: "", documento: "", fecha_nacimiento: "", domicilio: "", obra_social: "" });
+  const [f, setF] = useState(() => ({ ...precargarPaciente(busquedaInicial), fecha_nacimiento: "", domicilio: "", obra_social: "" }));
+  const nombreRef = useRef(null);
+  const documentoRef = useRef(null);
+  useEffect(() => {
+    // Modal enfoca el diálogo al montarse; después enfocamos el campo precargado.
+    const id = requestAnimationFrame(() => (f.documento ? documentoRef : nombreRef).current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const destinoBase = modo === "padron" ? "/padron" : "/historia";
 
@@ -326,12 +337,12 @@ function NuevoPacienteModal({ institucionId, modo, onClose, onCreado }) {
       <h3 className="mb-4 text-base font-bold">Identidad</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Documento (opcional para NN)">
-          <Input value={f.documento} onChange={(e) => set("documento", e.target.value)} placeholder="Número de documento" />
+          <Input ref={documentoRef} value={f.documento} onChange={(e) => set("documento", e.target.value)} placeholder="Número de documento" />
         </Field>
         <Field label="Fecha de nacimiento">
           <Input type="date" value={f.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} />
         </Field>
-        <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus /></Field>
+        <Field label="Nombre *"><Input ref={nombreRef} value={f.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
         <Field label="Apellido"><Input value={f.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
       </div>
       {parecido && <div className="mt-4 rounded-md bg-badge-amber-bg px-3 py-2.5 text-md text-badge-amber-fg">

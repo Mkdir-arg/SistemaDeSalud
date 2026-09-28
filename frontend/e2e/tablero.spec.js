@@ -62,6 +62,11 @@ async function conTablero(page, datos = TABLERO, area = TABLERO_AREA) {
   await page.route("**/api/areas/*/tablero/*", (r) => r.fulfill(json(area)));
 }
 
+async function conPeriodo(page, desde, hasta, dias) {
+  const periodo = { desde, hasta, dias, agrupacion: dias <= 45 ? "dia" : "semana" };
+  await conTablero(page, { ...TABLERO, periodo }, { ...TABLERO_AREA, periodo });
+}
+
 /** Color computado de una variable del tema, para comparar contra lo pintado. */
 function colorDe(page, variable) {
   return page.evaluate((v) => {
@@ -192,8 +197,94 @@ test.describe("Tablero", () => {
     await esperarPantalla(page);
 
     await expect(page.getByText(/Se muestran del.*15\/08\/2025.*al.*15\/08\/2026/)).toBeVisible();
-    // Y el calendario no ofrece lo que el servidor no va a contestar.
-    await expect(page.getByLabel("Desde")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
+    // El límite depende de «Hasta», incluso al consultar un período histórico.
+    await expect(page.getByLabel("Desde")).toHaveAttribute("min", "2025-08-15");
+  });
+
+  test("solo hasta toma 30 días anteriores en institución y área", async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-09-28T12:00:00-03:00"));
+    await conPeriodo(page, "2026-08-04", "2026-09-02", 30);
+    const general = page.waitForRequest((r) => r.url().includes("/api/instituciones/") && r.url().includes("/tablero/"));
+    const area = page.waitForRequest((r) => r.url().includes("/api/areas/") && r.url().includes("/tablero/"));
+
+    await page.goto("/dashboard?area=1&hasta=2026-09-02");
+    await esperarPantalla(page);
+
+    for (const pedido of await Promise.all([general, area])) {
+      const params = new URL(pedido.url()).searchParams;
+      expect(params.get("desde")).toBe("2026-08-04");
+      expect(params.get("hasta")).toBe("2026-09-02");
+    }
+    await expect(page.getByLabel("Desde")).toHaveValue("2026-08-04");
+    await expect(page.getByLabel("Hasta")).toHaveValue("2026-09-02");
+    await expect(page.getByRole("tab", { name: "Guardia" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("solo desde y ambos extremos conservan el rango pedido", async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-09-28T12:00:00-03:00"));
+    for (const caso of [
+      { url: "/dashboard?desde=2026-09-02", desde: "2026-09-02", hasta: "2026-09-28" },
+      { url: "/dashboard?desde=2026-08-01&hasta=2026-09-02", desde: "2026-08-01", hasta: "2026-09-02" },
+    ]) {
+      const pedido = page.waitForRequest((r) => r.url().includes("/api/instituciones/") && r.url().includes("/tablero/"));
+      await page.goto(caso.url);
+      await esperarPantalla(page);
+      const params = new URL((await pedido).url()).searchParams;
+      expect(params.get("desde")).toBe(caso.desde);
+      expect(params.get("hasta")).toBe(caso.hasta);
+      await expect(page.getByLabel("Desde")).toHaveValue(caso.desde);
+      await expect(page.getByLabel("Hasta")).toHaveValue(caso.hasta);
+    }
+  });
+
+  test("una URL invertida se corrige antes de consultar y conserva los otros filtros", async ({ page }) => {
+    await conPeriodo(page, "2026-09-02", "2026-09-20", 19);
+    const general = page.waitForRequest((r) => r.url().includes("/api/instituciones/") && r.url().includes("/tablero/"));
+    const area = page.waitForRequest((r) => r.url().includes("/api/areas/") && r.url().includes("/tablero/"));
+
+    await page.goto("/dashboard?area=1&desde=2026-09-20&hasta=2026-09-02&origen=demo");
+    await esperarPantalla(page);
+
+    for (const pedido of await Promise.all([general, area])) {
+      const params = new URL(pedido.url()).searchParams;
+      expect(params.get("desde")).toBe("2026-09-02");
+      expect(params.get("hasta")).toBe("2026-09-20");
+    }
+    await expect.poll(() => new URL(page.url()).searchParams.get("desde")).toBe("2026-09-02");
+    const params = new URL(page.url()).searchParams;
+    expect(params.get("hasta")).toBe("2026-09-20");
+    expect(params.get("area")).toBe("1");
+    expect(params.get("origen")).toBe("demo");
+    await expect(page.getByLabel("Desde")).toHaveValue("2026-09-02");
+    await expect(page.getByLabel("Hasta")).toHaveValue("2026-09-20");
+    await expect(page.getByText(/Se muestran del/)).toHaveCount(0);
+  });
+
+  test("atajos e inputs cambian ambos extremos sin perder el área", async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-09-28T12:00:00-03:00"));
+    await page.goto("/dashboard?area=1&desde=2026-09-01&hasta=2026-09-20");
+    await esperarPantalla(page);
+
+    for (const { label, desde } of [
+      { label: "7 días", desde: "2026-09-22" },
+      { label: "30 días", desde: "2026-08-30" },
+      { label: "90 días", desde: "2026-07-01" },
+    ]) {
+      const pedido = page.waitForRequest((r) => r.url().includes("/api/areas/") && new URL(r.url()).searchParams.get("desde") === desde);
+      await page.getByRole("button", { name: label }).click();
+      const params = new URL((await pedido).url()).searchParams;
+      expect(params.get("hasta")).toBe("2026-09-28");
+      await expect(page.getByLabel("Desde")).toHaveValue(desde);
+      await expect(page.getByLabel("Hasta")).toHaveValue("2026-09-28");
+      expect(new URL(page.url()).searchParams.get("area")).toBe("1");
+    }
+
+    await page.getByLabel("Desde").fill("2026-09-01");
+    await page.getByLabel("Hasta").fill("2026-09-20");
+    const params = new URL(page.url()).searchParams;
+    expect(params.get("desde")).toBe("2026-09-01");
+    expect(params.get("hasta")).toBe("2026-09-20");
+    expect(params.get("area")).toBe("1");
   });
 
   test("la solapa de área muestra la producción del período, no una foto de un estado de paso", async ({ page }) => {

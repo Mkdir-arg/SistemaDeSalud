@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
@@ -12,10 +12,12 @@ export function useFiltroUrl(nombre, inicial = "") {
   const [params, setParams] = useSearchParams();
   const valor = params.get(nombre) ?? inicial;
   const setValor = (v) => {
-    const p = new URLSearchParams(params);
-    if (v === "" || v === null || v === undefined) p.delete(nombre);
-    else p.set(nombre, v);
-    setParams(p, { replace: true });
+    setParams((actual) => {
+      const p = new URLSearchParams(actual);
+      if (v === "" || v === null || v === undefined) p.delete(nombre);
+      else p.set(nombre, v);
+      return p;
+    }, { replace: true });
   };
   return [valor, setValor];
 }
@@ -28,13 +30,15 @@ export function useFiltroUrl(nombre, inicial = "") {
 export function useBusquedaUrl(nombre = "q", ms = 350) {
   const [valor, setValor] = useFiltroUrl(nombre);
   const [texto, setTexto] = useState(valor);
+  const setValorActual = useRef(setValor);
+  useEffect(() => { setValorActual.current = setValor; }, [setValor]);
 
   // Si la URL cambia por fuera (atrás/adelante del navegador), seguirla.
   useEffect(() => { setTexto(valor); }, [valor]);
 
   useEffect(() => {
     if (texto === valor) return;
-    const id = setTimeout(() => setValor(texto), ms);
+    const id = setTimeout(() => setValorActual.current(texto), ms);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [texto, ms]);

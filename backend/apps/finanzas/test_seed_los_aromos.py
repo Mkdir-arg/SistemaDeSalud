@@ -1,5 +1,6 @@
-"""Guardas destructivas y conciliación del escenario ficticio de presentación."""
+"""Guardas y conciliación del escenario ficticio de Los Aromos, con fechas relativas."""
 import json
+from datetime import datetime
 from io import StringIO
 from unittest import skipUnless
 from unittest.mock import patch
@@ -8,51 +9,37 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
 from django.db.models import F
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.accounts.models import Usuario
 from apps.casos.models import Caso
 from apps.instituciones.models import Institucion
-from .management.commands.seed_los_aromos import CONFIRMACION
 from .models import Gasto, HechoAtencionCosteable, MovimientoDinero, ObligacionFinanciera, PendienteCosteo
 from .models_cobros import PendienteCobro
 
 
+def reloj(texto):
+    return timezone.make_aware(datetime.fromisoformat(texto))
+
+
 @skipUnless(connection.vendor == "postgresql", "La semilla requiere PostgreSQL aislado.")
 class SeedLosAromosTests(TestCase):
-    def ejecutar(self, **opciones):
+    def ejecutar(self, ahora=None, **opciones):
         salida = StringIO()
-        parametros = {"confirmar": CONFIRMACION, "stdout": salida, **opciones}
-        with patch.dict("os.environ", {"DEMO_LOS_AROMOS_PASSWORD": "clave-exclusiva-de-pruebas"}):
-            call_command("seed_los_aromos", **parametros)
+        if ahora is None:
+            call_command("seed_los_aromos", stdout=salida, **opciones)
+        else:
+            with patch("django.utils.timezone.now", return_value=reloj(ahora)):
+                call_command("seed_los_aromos", stdout=salida, **opciones)
         return json.loads(salida.getvalue())
 
-    def test_confirmacion_incorrecta_no_escribe(self):
-        with self.assertRaisesMessage(CommandError, "Confirmación incorrecta"):
-            self.ejecutar(confirmar="APLICAR")
+    @override_settings(ENTORNO="produccion")
+    def test_en_produccion_no_escribe(self):
+        with self.assertRaisesMessage(CommandError, "ENTORNO=produccion"):
+            self.ejecutar()
         self.assertFalse(Institucion.objects.exists())
         self.assertFalse(Usuario.objects.exists())
-
-    def test_sin_password_no_escribe(self):
-        with patch.dict("os.environ", {"DEMO_LOS_AROMOS_PASSWORD": ""}):
-            with self.assertRaisesMessage(CommandError, "DEMO_LOS_AROMOS_PASSWORD"):
-                call_command("seed_los_aromos", confirmar=CONFIRMACION, stdout=StringIO())
-        self.assertFalse(Institucion.objects.exists())
-
-    def test_institucion_existente_no_se_mezcla_ni_borra(self):
-        original = Institucion.objects.create(nombre="Datos que se conservan")
-        with self.assertRaisesMessage(CommandError, "La base contiene datos"):
-            self.ejecutar()
-        self.assertEqual(Institucion.objects.get().pk, original.pk)
-        self.assertFalse(Usuario.objects.exists())
-
-    def test_usuario_existente_sin_institucion_tambien_bloquea(self):
-        original = Usuario.objects.create_user("existente@example.test", "sin-importancia")
-        with self.assertRaisesMessage(CommandError, "La base contiene datos"):
-            self.ejecutar()
-        self.assertEqual(Usuario.objects.get().pk, original.pk)
-        self.assertFalse(Institucion.objects.exists())
 
     def test_no_sobrescribe_manifiesto(self):
         with patch("apps.finanzas.management.commands.seed_los_aromos.Path.exists", return_value=True):
@@ -68,16 +55,31 @@ class SeedLosAromosTests(TestCase):
         self.assertFalse(Usuario.objects.exists())
         self.assertFalse(Gasto.objects.exists())
 
-    def test_escenario_concilia_con_cronologia_y_no_se_duplica(self):
-        resumen = self.ejecutar()
+    def test_convive_con_otros_datos_y_no_se_duplica(self):
+        # No depende de que la base esté vacía: sólo de que Los Aromos no esté.
+        otra = Institucion.objects.create(nombre="Datos que se conservan")
+        Usuario.objects.create_user("existente@example.test", "sin-importancia")
+        self.ejecutar()
+        self.assertTrue(Institucion.objects.filter(pk=otra.pk).exists())
+        modelos = (Usuario, Institucion, Caso, Gasto, ObligacionFinanciera, MovimientoDinero)
+        antes = [m.objects.count() for m in modelos]
+        with self.assertRaisesMessage(CommandError, "ya está cargado"):
+            self.ejecutar()
+        self.assertEqual([m.objects.count() for m in modelos], antes)
+
+    def test_usuarios_con_la_clave_de_la_demo(self):
+        with patch.dict("os.environ", {"DEMO_PASSWORD": "otra-clave-de-prueba"}):
+            self.ejecutar()
+        usuario = Usuario.objects.get(email="elena.rivas@losaromos.test")
+        self.assertTrue(usuario.check_password("otra-clave-de-prueba"))
+
+    def test_mismas_cifras_en_septiembre_que_antes_de_las_fechas_relativas(self):
+        # Con el mes en curso en septiembre, la serie es exactamente la que se
+        # documentó cuando el escenario tenía fechas fijas.
+        resumen = self.ejecutar("2026-09-24T12:00")
+        self.assertEqual(resumen["periodos"][0], "2025-10-01")
         self.assertEqual(resumen["cantidades"]["HechoAtencionCosteable"], 170)
         self.assertEqual(resumen["cantidades"]["Gasto"], 110)
-        self.assertEqual(resumen["septiembre"]["gasto_aprobado"], "750000.00")
-        self.assertEqual(resumen["septiembre"]["pago_aprobado"], "610000.00")
-        self.assertEqual(resumen["septiembre"]["cobro_aprobado"], "155000.00")
-        self.assertEqual(resumen["septiembre"]["reintegro_aprobado"], "5000.00")
-        # Estacionalidad y contratos del escenario, sin línea artificialmente
-        # creciente ni cambios en los importes canónicos de presentación.
         esperados = (
             ("Clínica médica", "ELEC", "2026-01-01", "104000.00"),
             ("Clínica médica", "ELEC", "2026-03-01", "88000.00"),
@@ -93,14 +95,32 @@ class SeedLosAromosTests(TestCase):
         for area, concepto, mes, importe in esperados:
             gasto = Gasto.objects.get(area__nombre=area, concepto__codigo=concepto, periodo_economico=mes)
             self.assertEqual(str(gasto.importe), importe)
-        self.assertFalse(Usuario.objects.filter(is_superuser=True).exists())
-        self.assertFalse(Caso.objects.filter(creado__gt=timezone.now()).exists())
-        self.assertFalse(HechoAtencionCosteable.objects.filter(ocurrida_en__gt=timezone.now()).exists())
+
+    # El 1° temprano, a fin de mes y en marzo cruzando el año: el mes en curso
+    # tiene lo mismo y nada queda en el futuro.
+    def test_concilia_el_primer_dia_del_mes(self):
+        self._conciliar("2026-10-01T09:00")
+
+    def test_concilia_a_fin_de_mes(self):
+        self._conciliar("2026-10-28T18:00")
+
+    def test_concilia_cruzando_el_anio(self):
+        self._conciliar("2027-03-01T00:30")
+
+    def _conciliar(self, ahora):
+        resumen = self.ejecutar(ahora)
+        mes = resumen["mes_en_curso"]
+        self.assertEqual(mes["periodo"], ahora[:8] + "01")
+        self.assertEqual(mes["gasto_aprobado"], "750000.00")
+        self.assertEqual(mes["gasto_por_aprobar"], "45000.00")
+        self.assertEqual(mes["pago_aprobado"], "610000.00")
+        self.assertEqual(mes["cobro_aprobado"], "155000.00")
+        self.assertEqual(mes["reintegro_aprobado"], "5000.00")
+        self.assertEqual(mes["atenciones"], 7)
+        instante = reloj(ahora)
+        self.assertFalse(Caso.objects.filter(creado__gt=instante).exists())
+        self.assertFalse(HechoAtencionCosteable.objects.filter(ocurrida_en__gt=instante).exists())
+        self.assertFalse(MovimientoDinero.objects.filter(fecha__gt=instante.date()).exists())
         self.assertFalse(PendienteCobro.objects.filter(politica__registrado__gt=F("hecho__ocurrida_en")).exists())
         self.assertEqual(PendienteCobro.objects.filter(obligacion__isnull=True).count(), 1)
         self.assertEqual(PendienteCosteo.objects.filter(resuelto=False, motivo="sin_valor").count(), 1)
-        modelos = (Usuario, Institucion, Caso, Gasto, ObligacionFinanciera, MovimientoDinero)
-        antes = [m.objects.count() for m in modelos]
-        with self.assertRaisesMessage(CommandError, "La base contiene datos"):
-            self.ejecutar()
-        self.assertEqual([m.objects.count() for m in modelos], antes)

@@ -32,6 +32,8 @@ Los nodos de trabajo quedan asignados a los grupos responsables (quién hace qu�
 así el circuito de bandejas y filas filtra por equipo.
 
 Idempotente: borra los flujos/formularios/casos de la institución y los recrea.
+Requiere `ENTORNO` distinto de `produccion`. Los usuarios toman la clave de
+`DEMO_PASSWORD` (ver `apps.demo.claves`), también el superusuario.
 
     python manage.py seed_guardia
     python manage.py seed_guardia --si-vacio   # solo si no hay instituciones
@@ -50,6 +52,8 @@ from apps.formularios.models import Campo, Formulario
 from datetime import timedelta
 
 from apps.agenda.models import Agenda, Disponibilidad
+from apps.demo.claves import clave_demo
+from apps.demo.entorno import exigir_entorno_de_prueba
 from apps.farmacia import motor as farmacia_motor
 from apps.farmacia.models import Deposito, Existencia, Insumo, Lote, Movimiento
 from apps.instituciones.models import Area, Box, Cama, Grupo, Institucion, Subarea
@@ -66,6 +70,7 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        exigir_entorno_de_prueba("seed_guardia")
         if options["si_vacio"] and Institucion.objects.exists():
             self.stdout.write("Ya hay datos cargados; se omite el sembrado.")
             return
@@ -80,7 +85,7 @@ class Command(BaseCommand):
             defaults={"nombre": "Super", "apellido": "Admin", "is_staff": True, "is_superuser": True},
         )
         admin.is_staff = admin.is_superuser = admin.is_active = True
-        admin.set_password("admin1234")
+        admin.set_password(clave_demo())
         admin.save()
 
         # --- Institución y áreas -------------------------------------------
@@ -145,12 +150,13 @@ class Command(BaseCommand):
 
         # --- Staff ----------------------------------------------------------
         def persona(email, nombre, apellido, rol, *areas):
-            u, nuevo = Usuario.objects.get_or_create(
+            u, _ = Usuario.objects.get_or_create(
                 email=email, defaults={"nombre": nombre, "apellido": apellido}
             )
-            if nuevo:
-                u.set_password("demo1234")
-                u.save()
+            # Siempre, no sólo al crearlo: si cambió DEMO_PASSWORD, la corrida
+            # siguiente tiene que dejar a todos con la clave nueva.
+            u.set_password(clave_demo())
+            u.save()
             mem, _ = Membresia.objects.get_or_create(usuario=u, institucion=inst, rol=rol)
             mem.areas.add(*areas)
             # Los médicos necesitan matrícula cargada para poder firmar atenciones.
@@ -537,6 +543,13 @@ class Command(BaseCommand):
                [(0, 8, 12), (2, 8, 12), (4, 14, 18)])
         agenda("Dr. Vega · Traumatología", trauma, f_trauma, med_trauma, 15,
                [(1, 9, 13), (3, 9, 13)])
+        # Salud mental y Neurología también dan turnos: sin agenda, su
+        # administración no tiene nada que confirmar y el consultorio arranca
+        # vacío salvo lo que derive la guardia.
+        agenda("Lic. Bravo · Salud mental", salud_mental, f_sm, med_sm, 40,
+               [(0, 9, 13), (3, 9, 13)])
+        agenda("Dra. Castro · Neurología", neuro, f_neuro, med_neuro, 30,
+               [(1, 14, 18), (3, 14, 18)])
         # De recurso: se reserva igual, pero no tiene profesional detrás.
         agenda("Tomógrafo", imagenes, f_img, None, 30,
                [(d, 8, 16) for d in range(5)], tipo=Agenda.Tipo.RECURSO)
@@ -623,8 +636,8 @@ class Command(BaseCommand):
             "    · Atención traumatológica / cardiológica / salud mental / neurológica\n"
             "    · Procesamiento de laboratorio · Realización de estudio por imágenes\n"
             "    · Internación\n"
-            "Accesos (contraseña demo1234, salvo el admin):\n"
-            "  admin@salud.local / admin1234       (super admin)\n"
+            "Accesos (clave de DEMO_PASSWORD, o demo1234 si no está definida):\n"
+            "  admin@salud.local                   (super admin)\n"
             "  guardia.jefe@hospital.gob.ar        (jefe/supervisor de guardia)\n"
             "  guardia.adm@hospital.gob.ar         (admisión → arranca el ingreso)\n"
             "  guardia.enf@hospital.gob.ar         (enfermería → triage)\n"
