@@ -86,7 +86,7 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
     capacidad_requerida = "padron_admision"
     protege_lectura = True
     institucion_path = "institucion"
-    filter_fields = ("institucion", "obra_social", "documento", "fecha_nacimiento")
+    filter_fields = ("institucion", "obra_social")
     search_fields = ["nombre", "apellido", "documento", "codigo"]
     ordering_fields = ["apellido", "nombre", "creado"]
     # Sin DELETE ni PUT, igual que la historia y sus entradas. Borrar al paciente
@@ -134,13 +134,20 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
         return CiudadanoListadoSerializer if getattr(self, "action", None) == "list" else CiudadanoSerializer
 
     def get_queryset(self):
+        qs = super().get_queryset()
+        if getattr(self, "action", None) != "list":
+            return qs
+        documento = self.request.query_params.get("documento")
+        if documento:
+            qs = qs.filter(documento=documento)
         nacimiento = self.request.query_params.get("fecha_nacimiento")
         if nacimiento:
             try:
-                date.fromisoformat(nacimiento)
+                fecha = date.fromisoformat(nacimiento)
             except ValueError:
                 raise drf_serializers.ValidationError({"fecha_nacimiento": "Usá una fecha válida (AAAA-MM-DD)."})
-        return super().get_queryset()
+            qs = qs.filter(fecha_nacimiento=fecha)
+        return qs
 
     def list(self, request, *args, **kwargs):
         if request.query_params.get("formato") == "csv":
