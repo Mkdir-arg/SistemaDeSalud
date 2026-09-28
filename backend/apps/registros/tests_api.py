@@ -10,9 +10,13 @@ Todo se prueba pegándole a la API con el rol que lo haría en la vida real:
 mesa de entradas maneja padrón/admisión, y el equipo clínico escribe la historia.
 Lo que importa no es que una función devuelva False sino que el pedido HTTP muera.
 """
+from datetime import date
+from unittest import mock
+
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import LegajoProfesional, Membresia, Usuario
+from apps.auditoria.models import AccesoClinico
 from apps.instituciones.models import Area, Institucion
 from apps.registros import integridad
 from apps.registros.models import (
@@ -58,6 +62,78 @@ class RegistrosAPITestCase(APITestCase):
 
 
 class PermisosGranularesRegistrosTests(RegistrosAPITestCase):
+    def test_listado_enmascara_y_busca_por_documento_completo(self):
+        self.paciente.fecha_nacimiento = date(1990, 5, 10)
+        self.paciente.domicilio = "Calle 123"
+        self.paciente.save(update_fields=["fecha_nacimiento", "domicilio"])
+        self.como(self.adm)
+
+        r = self.client.get("/api/ciudadanos/", {"institucion": self.inst.id, "search": "30111222"})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["count"], 1)
+        fila = r.data["results"][0]
+        self.assertEqual(fila["documento"], "••••222")
+        self.assertIsNone(fila["fecha_nacimiento"])
+        self.assertEqual(fila["domicilio"], "••••••")
+        self.assertIsInstance(fila["edad"], int)
+        self.assertNotIn("30111222", str(fila))
+        self.assertNotIn("Calle 123", str(fila))
+
+        exacto = self.client.get("/api/ciudadanos/", {
+            "institucion": self.inst.id, "documento": "30111222",
+        })
+        self.assertEqual(exacto.data["count"], 1)
+        self.assertEqual(exacto.data["results"][0]["documento"], "••••222")
+        mismo_nacimiento = self.client.get("/api/ciudadanos/", {
+            "institucion": self.inst.id, "search": "Pérez", "fecha_nacimiento": "1990-05-10",
+        })
+        self.assertEqual(mismo_nacimiento.data["count"], 1)
+        otro_nacimiento = self.client.get("/api/ciudadanos/", {
+            "institucion": self.inst.id, "search": "Pérez", "fecha_nacimiento": "1991-05-10",
+        })
+        self.assertEqual(otro_nacimiento.data["count"], 0)
+        invalido = self.client.get("/api/ciudadanos/", {"fecha_nacimiento": "sin-fecha"})
+        self.assertEqual(invalido.status_code, 400)
+
+    def test_revelar_ficha_con_padron_admision_exige_auditoria(self):
+        self.paciente.fecha_nacimiento = date(1990, 5, 10)
+        self.paciente.domicilio = "Calle 123"
+        self.paciente.save(update_fields=["fecha_nacimiento", "domicilio"])
+        self.como(self.adm)
+
+        r = self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["documento"], "30111222")
+        self.assertEqual(r.data["fecha_nacimiento"], "1990-05-10")
+        self.assertEqual(r.data["domicilio"], "Calle 123")
+        self.assertEqual(r["Cache-Control"], "private, no-store")
+        self.assertTrue(AccesoClinico.objects.filter(
+            usuario=self.adm, ciudadano=self.paciente,
+            institucion=self.inst, tipo=AccesoClinico.Tipo.DETALLE,
+        ).exists())
+
+        with mock.patch("apps.auditoria.mixins.AccesoClinico.objects.create", side_effect=RuntimeError("sin auditoría")):
+            fallida = self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
+        self.assertEqual(fallida.status_code, 503)
+        self.assertNotIn("documento", fallida.data)
+
+    def test_revelacion_no_cruza_instituciones_ni_omite_permiso(self):
+        otra = Institucion.objects.create(nombre="Hospital Norte")
+        ajeno = Ciudadano.objects.create(
+            institucion=otra, nombre="Otra", documento="32999888", domicilio="Calle privada",
+        )
+        self.como(self.adm)
+        r = self.client.get(f"/api/ciudadanos/{ajeno.id}/")
+        self.assertIn(r.status_code, (403, 404))
+        self.assertNotIn("documento", getattr(r, "data", {}))
+
+        configurador = Usuario.objects.create_user("config@test.local", "x")
+        Membresia.objects.create(usuario=configurador, institucion=self.inst, rol="configurador", activo=True)
+        self.como(configurador)
+        r = self.client.get(f"/api/ciudadanos/{self.paciente.id}/")
+        self.assertEqual(r.status_code, 403)
+        self.assertNotIn("documento", getattr(r, "data", {}))
+
     def _csv(self, variante="minimizado"):
         r = self.client.post("/api/ciudadanos/exportar/", {
             "institucion": self.inst.id,

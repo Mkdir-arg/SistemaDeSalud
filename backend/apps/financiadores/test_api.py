@@ -57,6 +57,39 @@ class ApiFinanciadoresTests(CobrosSetup, APITestCase):
         self.assertEqual(self.post("reglas", payload).status_code, 400)
         self.assertFalse(m.ReglaCobertura.objects.exists())
 
+    def test_reglas_filtradas_por_plan_sin_mezclar_otros_planes(self):
+        segundo = m.Plan.objects.create(financiador=self.org, codigo="B", nombre="Plan B")
+        for plan in (self.plan, segundo):
+            response = self.post("reglas", {"plan": plan.pk, "prestacion": self.comun.pk,
+                "porcentaje": "80", "periodo": "anio", "vigente_desde": str(timezone.localdate())})
+            self.assertEqual(response.status_code, 201)
+        response = self.client.get(self.base + f"reglas/?plan={self.plan.pk}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([fila["plan"] for fila in response.data["results"]], [self.plan.pk])
+        self.assertEqual(self.client.get(self.base + "reglas/?plan=invalido").status_code, 400)
+
+    def test_catalogo_busca_por_codigo_nombre_y_categoria(self):
+        m.PrestacionComun.objects.create(codigo="CONS", nombre="Consulta", categoria="Clínica")
+        for busqueda in ("RX", "Radiografía", "Imágenes"):
+            response = self.client.get(self.base + f"catalogo/?search={busqueda}")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual([fila["codigo"] for fila in response.data["results"]], ["RX"])
+
+    def test_padron_filtra_plan_y_vigencia_sin_perder_afiliaciones_historicas(self):
+        segundo = m.Plan.objects.create(financiador=self.org, codigo="B", nombre="Plan B")
+        hoy = timezone.localdate()
+        for numero, plan, desde in (("1", self.plan, hoy), ("3", segundo, hoy)):
+            response = self.post("padron", {"numero": numero, "documento": numero, "nombre": f"Afiliado {numero}", "plan": plan.pk, "desde": str(desde)})
+            self.assertEqual(response.status_code, 201)
+        m.Afiliado.objects.create(financiador=self.org, numero="2", documento="2", nombre="Afiliado 2", plan=self.plan, desde=hoy + timedelta(days=1))
+        filtrado = self.client.get(self.base + f"padron/?plan={self.plan.pk}&estado=vigentes")
+        self.assertEqual([fila["numero"] for fila in filtrado.data["results"]], ["1"])
+        futuro = self.client.get(self.base + "padron/?estado=futuras")
+        self.assertEqual([fila["numero"] for fila in futuro.data["results"]], ["2"])
+        todos = self.client.get(self.base + "padron/?estado=todos")
+        self.assertEqual(todos.data["count"], 3)
+        self.assertEqual(self.client.get(self.base + "padron/?estado=desconocido").status_code, 400)
+
     def test_operador_no_configura_plan_auditor_no_actualiza_padron(self):
         self.membresia.rol = "operador"
         self.membresia.save()
@@ -74,6 +107,15 @@ class ApiFinanciadoresTests(CobrosSetup, APITestCase):
         response = self.client.post("/api/coberturas/aceptar-convenio/", {"convenio": response.data["id"]})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["estado"], "activo")
+
+    def test_convenios_filtran_estado_sin_ocultar_el_historial(self):
+        self.assertEqual(self.post("convenios", {"institucion": self.institucion.pk}).status_code, 201)
+        propuestos = self.client.get(self.base + "convenios/?estado=propuesto")
+        self.assertEqual(propuestos.status_code, 200)
+        self.assertEqual(propuestos.data["count"], 1)
+        self.assertEqual(self.client.get(self.base + "convenios/?estado=activo").data["count"], 0)
+        self.assertEqual(self.client.get(self.base + "convenios/?estado=todos").data["count"], 1)
+        self.assertEqual(self.client.get(self.base + "convenios/?estado=desconocido").status_code, 400)
 
     def test_membresia_revocada_invalida_lecturas(self):
         self.membresia.activo = False

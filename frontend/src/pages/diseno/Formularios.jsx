@@ -5,7 +5,7 @@ import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { Badge, Button, ConfirmDialog, Field, IconButton, Input, Modal, Mono, Select, Textarea } from "@/components/ui";
+import { Badge, Button, ConfirmDialog, Field, IconButton, Input, Modal, Select, Textarea } from "@/components/ui";
 import { Buscador, FiltroSelect, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
@@ -51,20 +51,17 @@ export default function Formularios() {
   });
 
   return (
-    <div className="px-lg py-[26px] sm:px-[30px]">
+    <div className="px-lg py-[26px] sm:px-[30px] xl:px-10">
       <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
-          <h2 className="text-cifra-lg font-extrabold tracking-tight">Formularios</h2>
+          <h2 className="text-xl font-bold">Formularios</h2>
           <div className="mt-0.5 text-base text-texto-debil">
-            Definí los campos que los flujos piden en cada paso.
+            Campos que los flujos piden en cada paso.
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
-          <Buscador valor={texto} onChange={setTexto} placeholder="Buscar formulario…" className="w-64" aria-label="Buscar formulario" />
-          <Button onClick={() => setNuevo(true)} className="flex items-center gap-2 whitespace-nowrap">
-            <Icon name="plus" size={15} /> Nuevo formulario
-          </Button>
-        </div>
+        <Button onClick={() => setNuevo(true)} className="flex items-center gap-2 whitespace-nowrap">
+          <Icon name="plus" size={15} /> Nuevo formulario
+        </Button>
       </div>
 
       <TablaRecurso
@@ -73,7 +70,8 @@ export default function Formularios() {
         params={{ institucion: institucion?.id, area: area || undefined, search: busqueda || undefined }}
         ordenInicial="titulo"
         onRowClick={(f) => navigate(`/formularios/${f.id}`)}
-        barra={
+        barra={<>
+          <Buscador valor={texto} onChange={setTexto} placeholder="Buscar formulario…" className="w-full sm:w-64" aria-label="Buscar formulario" />
           <FiltroSelect
             valor={area}
             onChange={setArea}
@@ -81,7 +79,7 @@ export default function Formularios() {
             todos="Todas las áreas"
             opciones={areas.filas.map((a) => ({ value: String(a.id), label: a.nombre }))}
           />
-        }
+        </>}
         vacio={{
           titulo: busqueda || area ? "Ningún formulario coincide" : "No hay formularios",
           detalle: busqueda || area ? "Probá con otro título o quitá el filtro de área." : "Creá el primero para que los flujos tengan qué pedir.",
@@ -89,27 +87,18 @@ export default function Formularios() {
         }}
         columnas={[
           {
-            key: "titulo", label: "Formulario", orden: "titulo", truncar: true,
+            key: "titulo", label: "Formulario", orden: "titulo",
             render: (f) => (
-              <div className="flex items-center gap-2.5">
-                <span className="flex size-9 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
-                  <Icon name="form" size={17} />
-                </span>
-                <span className="truncate font-semibold">{f.titulo}</span>
+              <div className="min-w-0">
+                <strong className="block font-semibold">{f.titulo}</strong>
+                {f.descripcion && <span className="block text-sm text-texto-debil">{f.descripcion}</span>}
               </div>
             ),
           },
-          { key: "area", label: "Ámbito", render: (f) => <Badge tone="info">{f.area_nombre}</Badge> },
-          { key: "campos", label: "Campos", render: (f) => <Mono>{f.campos?.length || 0}</Mono> },
+          { key: "area", label: "Área", render: (f) => <Badge tone="info">{f.area_nombre}</Badge> },
           {
-            // Reemplaza a la columna «Vinculados», que sólo podía dar 0: la
-            // precarga desde historia clínica o legajo no está implementada en
-            // ninguna parte y el alta de campo tampoco dejaba elegir el origen,
-            // así que la columna contaba una función que no existe. Cuántos
-            // campos son obligatorios sí dice algo del formulario: es lo que
-            // traba a un caso cuando falta cargarlos.
-            key: "requeridos", label: "Requeridos",
-            render: (f) => <Mono>{(f.campos || []).filter((c) => c.requerido).length}</Mono>,
+            key: "campos", label: "Campos",
+            render: (f) => <span className="text-texto-medio">{plural(f.campos?.length || 0, "campo", "campos")} · {(f.campos || []).filter((c) => c.requerido).length} oblig.</span>,
           },
           {
             // En cuántos flujos se pide. Es lo primero que hay que saber antes de
@@ -122,15 +111,12 @@ export default function Formularios() {
                 : <span className="text-texto-tenue" title="Ningún paso de ningún flujo vigente lo pide">sin uso</span>,
           },
           {
-            key: "descripcion", label: "Descripción", truncar: true,
-            render: (f) => <span className="text-texto-debil">{f.descripcion || "—"}</span>,
-          },
-          {
             key: "acciones", label: "", className: "text-right",
             render: (f) => (
               // Corta la propagación: la fila entera abre el constructor y sin
               // esto duplicar abriría además el formulario original.
               <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/formularios/${f.id}`)}>Editar</Button>
                 <IconButton icon="copy" label="Duplicar" size="sm" disabled={duplicar.isPending} onClick={() => duplicar.mutate(f)} />
                 <IconButton icon="trash" label="Eliminar formulario" size="sm" onClick={() => setABorrar(f)} />
               </div>

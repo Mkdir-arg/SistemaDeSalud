@@ -1,4 +1,4 @@
-# Integrarse con I-Core Salud
+# Integrarse con HEN
 
 > Para el área de sistemas que tiene que conectar otro sistema con éste.
 > Verificado contra el código el 22/09/2026.
@@ -81,6 +81,16 @@ Consecuencias prácticas:
   cada uno.
 - La escritura se valida contra la institución **dueña del objeto**, no contra la que
   venga en el cuerpo.
+- `GET /api/usuarios/:id/legajo/?institucion=:id` limita las métricas y la actividad
+  a esa institución. Sin el filtro, un usuario institucional sólo ve actividad de
+  sus propias instituciones; solicitar una ajena devuelve 403.
+
+**Excepción global:** `GET /api/instituciones/tablero-plataforma/?dias=7|30`
+resume instituciones, personal, atenciones de fila y ocupación de camas de toda
+la plataforma. Requiere la capacidad `gobierno_plataforma`; un administrador
+institucional recibe 403. La ocupación no tiene valor si no hay camas disponibles
+registradas. `indicadores` contiene los valores por institución que muestra el
+directorio; las atenciones y la espera corresponden al día actual.
 
 ## 4. Listados
 
@@ -104,9 +114,28 @@ Filtros, búsqueda y orden:
 ```
 GET /api/areas/?institucion=1
 GET /api/casos/?estado=recibido&asignado_a=7
+GET /api/casos/?grupo_estado=activos
+GET /api/casos/?supervisables=true&sin_asignar=true&area_actual=3
+GET /api/casos/?flujo=7&prioridad=urgente
 GET /api/ciudadanos/?search=gomez
 GET /api/gastos/?ordering=-periodo_economico
 ```
+
+`grupo_estado` en casos acepta `activos` (todos excepto cerrados y cancelados),
+`cerrados` o `cancelados`. Se aplica antes de paginar y se puede combinar con
+`estado`, prioridad, área y búsqueda.
+`sin_asignar=true` filtra en el servidor antes de paginar; `flujo` recibe el ID
+del flujo y reúne sus versiones. Cada caso lista `paso_desde` para medir la espera
+en el paso actual y `documento_resumen` con solo los últimos tres dígitos del DNI.
+
+El listado `GET /api/ciudadanos/` entrega DNI y domicilio enmascarados, edad
+calculada y `fecha_nacimiento: null`. La búsqueda por DNI completo funciona en el
+servidor. Con `padron_admision`, `GET /api/ciudadanos/{id}/` revela la ficha
+administrativa completa y registra el acceso antes de responder; si la auditoría
+falla, devuelve 503 sin los datos. La revelación no exige motivo. La exportación
+se hace por `POST /api/ciudadanos/exportar/` y sí exige motivo.
+Para prevenir duplicados sin revelar los campos, el listado admite filtros exactos
+`documento` y `fecha_nacimiento` (AAAA-MM-DD), combinables con `institucion` y `search`.
 
 Qué campos admite cada recurso está en el esquema. **No inventes parámetros**: uno
 desconocido se ignora en silencio y vas a recibir el listado completo creyendo que

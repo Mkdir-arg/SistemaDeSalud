@@ -7,7 +7,7 @@ import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
 import { resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
 
 import { useToast } from "@/components/ui/toast";
@@ -19,6 +19,7 @@ import { nombreRecurso, TONO_ACCESO } from "@/lib/auditoria";
 import { cn } from "@/lib/cn";
 import { fechaHora, plural } from "@/lib/format";
 import HistorialCoberturaPaciente from "../financiadores/HistorialCoberturaPaciente";
+import { ConsentimientoModal, MODO } from "./PadronDetalle";
 
 /*
  * Una fecha SIN hora, en dd/mm/aaaa como el resto del expediente.
@@ -165,8 +166,7 @@ export default function HistoriaDetalle() {
         </div>
       </div>
 
-      <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-5">
-        <Avatar nombre={nombre} i={c?.id || 0} size={52} />
+      <div className="mb-[18px] flex flex-wrap items-start gap-lg">
         <div className="min-w-0 flex-1">
           <h2 className="text-xxl font-extrabold tracking-tight">
             {c ? nombre : <Skeleton className="h-6 w-52" />}
@@ -181,10 +181,9 @@ export default function HistoriaDetalle() {
               </span>
             ))}
           </div>
-          <AlergiaEnCabecera hc={hc} listo={!historias.isLoading && !historias.error} />
           {c?.codigo && (
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-badge-info-bg px-2.5 py-1 text-xs font-semibold text-badge-info-fg">
-              <Icon name="enter" size={12} /> Identidad del Legajo ciudadano (externo) · <Mono>{c.codigo}</Mono>
+            <div className="mt-1 text-xs text-texto-debil">
+              Legajo ciudadano · <Mono>{c.codigo}</Mono>
             </div>
           )}
         </div>
@@ -199,9 +198,11 @@ export default function HistoriaDetalle() {
           // documento en cuatro. `w-full` lo obliga a ocupar su propia fila.
           className="flex w-full items-center justify-center gap-2 sm:w-auto"
         >
-          <Icon name="plus" size={15} /> Nueva atención
+          <Icon name="plus" size={15} /> Registrar atención
         </Button>
-      </Card>
+      </div>
+
+      <AlergiaEnCabecera hc={hc} listo={!historias.isLoading && !historias.error} />
 
       {historias.isLoading ? (
         <SkeletonTabla filas={4} columnas={4} />
@@ -240,7 +241,7 @@ export default function HistoriaDetalle() {
             etiqueta se parte en tres renglones y la tira mide 87 px de alto.
           */}
           <div className="mb-5 max-w-full overflow-x-auto">
-            <Tabs tabs={TABS} valor={tab} onChange={setTab} className="whitespace-nowrap" />
+            <Tabs tabs={TABS} valor={tab} onChange={setTab} variant="underline" className="whitespace-nowrap" />
           </div>
 
           {/* Los antecedentes bajan debajo del contenido hasta `lg`: en una tablet
@@ -267,7 +268,7 @@ export default function HistoriaDetalle() {
       )}
 
       {nuevaAtencion && (
-        <NuevaAtencionModal ciudadanoId={id} pacienteNombre={nombre} hcId={hc?.id} onClose={() => setNuevaAtencion(false)} />
+        <NuevaAtencionModal ciudadanoId={id} pacienteNombre={nombre} hcId={hc?.id} puedeFirmar={puedeFirmar} onClose={() => setNuevaAtencion(false)} />
       )}
       {editandoAntecedentes && (
         <AntecedentesModal hc={hc} onClose={() => setEditandoAntecedentes(false)} />
@@ -294,7 +295,8 @@ export default function HistoriaDetalle() {
 function AlergiaEnCabecera({ hc, listo }) {
   if (!listo) return null;
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-base">
+    <div className={cn("mb-5 flex flex-wrap items-center gap-x-2 rounded-lg border px-4 py-2.5 text-base",
+      hc?.alergias ? "border-badge-error-fg/25 bg-badge-error-bg" : "border-borde bg-superficie")}>
       {hc?.alergias ? (
         // Símbolo Y palabra: en una historia clínica confiar sólo en el rojo es
         // un riesgo, no un detalle de estilo.
@@ -424,26 +426,25 @@ function AntecedentesModal({ hc, onClose }) {
   );
 }
 
-function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, onClose }) {
+function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, puedeFirmar, onClose }) {
   const toast = useToast();
   const { user } = useAuth();
   const [titulo, setTitulo] = useState("");
   const [contenido, setContenido] = useState("");
-  const [firmada, setFirmada] = useState(false);
   const [confirmandoFirma, setConfirmandoFirma] = useState(false);
 
   const guardar = useAccion(
-    async () => {
+    async (firmar) => {
       // El paciente puede no tener historia todavía: se crea al vuelo.
       let historia = hcId;
       if (!historia) {
         const hc = await api.post("/historias-clinicas/", { ciudadano: ciudadanoId });
         historia = hc.id;
       }
-      return api.post("/entradas-historia/", { historia, titulo, contenido, firmada });
+      return api.post("/entradas-historia/", { historia, titulo, contenido, firmada: firmar });
     },
     {
-      onSuccess: () => { toast.ok(firmada ? "Atención firmada." : "Borrador guardado."); onClose(); },
+      onSuccess: (_entrada, firmar) => { toast.ok(firmar ? "Atención firmada." : "Borrador guardado."); onClose(); },
       // Firmar exige matrícula (regla del motor): el error del backend explica
       // exactamente eso, así que se muestra tal cual en vez de uno genérico.
       onError: (e) => toast.deError(e, "No se pudo registrar la atención."),
@@ -452,16 +453,20 @@ function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, onClose }) {
 
   return (
     <Modal
-      title={confirmandoFirma ? "Confirmar firma de la atención" : "Nueva atención"}
+      title={confirmandoFirma ? "Confirmar firma de la atención" : "Registrar atención"}
       onClose={confirmandoFirma ? () => setConfirmandoFirma(false) : onClose}
+      width={560}
       footer={
         <>
           <Button variant="secondary" disabled={guardar.isPending} onClick={confirmandoFirma ? () => setConfirmandoFirma(false) : onClose}>
             {confirmandoFirma ? "Volver a editar" : "Cancelar"}
           </Button>
-          <Button disabled={guardar.isPending || !titulo.trim()} onClick={() => firmada && !confirmandoFirma ? setConfirmandoFirma(true) : guardar.mutate()}>
-            {guardar.isPending ? "Guardando…" : confirmandoFirma ? "Firmar atención" : firmada ? "Revisar firma" : "Guardar borrador"}
-          </Button>
+          {confirmandoFirma ? <Button disabled={guardar.isPending} onClick={() => guardar.mutate(true)}>
+            {guardar.isPending ? "Firmando…" : "Firmar y registrar"}
+          </Button> : <>
+            <Button variant="secondary" disabled={guardar.isPending || !titulo.trim() || !contenido.trim()} onClick={() => guardar.mutate(false)}>Guardar borrador</Button>
+            {puedeFirmar && <Button disabled={guardar.isPending || !titulo.trim() || !contenido.trim()} onClick={() => setConfirmandoFirma(true)}>Firmar y registrar</Button>}
+          </>}
         </>
       }
     >
@@ -472,20 +477,22 @@ function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, onClose }) {
         <p>Al firmar quedará sellada y ya no podrás editarla; las correcciones requerirán una entrada nueva.</p>
       </div> :
       <div className="flex flex-col gap-3.5">
-        <Field label="Título *">
-          <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Evaluación inicial, Control…" />
-        </Field>
-        <Field label="Evolución / observaciones">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Tipo de entrada *">
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus placeholder="Evolución, control…" />
+          </Field>
+          <Field label="Fecha y hora">
+            <Input value="Se asigna al guardar" readOnly />
+          </Field>
+        </div>
+        <Field label="Evolución *">
           <Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} />
         </Field>
-        <label className="flex cursor-pointer items-center gap-2.5 text-md text-texto-medio">
-          <input type="checkbox" checked={firmada} onChange={(e) => setFirmada(e.target.checked)} /> Firmar la entrada
-        </label>
         {/* Se dice ANTES de intentar, no después del error: quien no puede
             firmar igual necesita dejar el asiento, y destildar es el camino. */}
         <div className="text-sm text-texto-debil">
-          Firmar la asienta a tu nombre y con tu matrícula, y queda sellada: no se
-          puede editar después. Sin firmar queda como borrador y se puede corregir.
+          El borrador se puede editar. Al firmar, la entrada queda sellada a tu
+          nombre y matrícula; las correcciones se agregan como una nueva entrada.
         </div>
       </div>
       }
@@ -580,6 +587,7 @@ function Consentimiento({ ciudadanoId, estado }) {
         <ConsentimientoModal
           ciudadanoId={ciudadanoId}
           otorgar={pidiendo === "otorgar"}
+          referidoId={estado?.id}
           onClose={() => setPidiendo(null)}
           onListo={() => { toast.ok("Registrado."); setPidiendo(null); }}
         />
@@ -634,73 +642,6 @@ function HistorialConsentimientos({ ciudadanoId }) {
         </div>
       )}
     </>
-  );
-}
-
-/*
- * Tiene que coincidir con `ConsentimientoDatos.Modo` del backend.
- *
- * Acá decía «electronico», que no existe: el alta devolvía 400 y un
- * consentimiento guardado como «digital» se mostraba con el valor crudo. Una
- * lista de opciones duplicada de este lado se desincroniza sin que nada avise,
- * así que hay un test que manda cada opción del selector contra la API.
- */
-const MODO = { escrito: "Escrito", verbal: "Verbal", digital: "Digital" };
-
-function ConsentimientoModal({ ciudadanoId, otorgar, onClose, onListo }) {
-  const toast = useToast();
-  const [modo, setModo] = useState("escrito");
-  const [alcance, setAlcance] = useState("");
-
-  const guardar = useAccion(
-    () => api.post("/consentimientos/", {
-      ciudadano: ciudadanoId, otorgado: otorgar, modo, alcance,
-    }),
-    {
-      // El detalle del paciente lo trae derivado del último registro.
-      invalida: ["lista", "detalle"],
-      onSuccess: onListo,
-      onError: (e) => toast.deError(e, "No se pudo registrar."),
-    },
-  );
-
-  return (
-    <Modal
-      title={otorgar ? "Registrar consentimiento" : "Registrar revocación"}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "Registrando…" : "Registrar"}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-3.5">
-        <Field label="Cómo se tomó">
-          <select
-            value={modo}
-            onChange={(e) => setModo(e.target.value)}
-            className="h-9 w-full rounded-md border border-campo-borde bg-superficie px-2.5 text-md text-texto-medio"
-          >
-            {Object.entries(MODO).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </Field>
-        <Field label="Alcance / observaciones">
-          <Textarea
-            value={alcance}
-            onChange={(e) => setAlcance(e.target.value)}
-            placeholder={otorgar ? "Atención y tratamiento de datos de salud" : "Motivo de la revocación"}
-          />
-        </Field>
-        <div className="text-sm text-texto-debil">
-          {/* Que quede claro antes de guardar, no después: acá no hay deshacer. */}
-          Queda como registro nuevo, con la fecha y quién lo tomó. No reemplaza ni borra
-          los anteriores.
-        </div>
-      </div>
-    </Modal>
   );
 }
 

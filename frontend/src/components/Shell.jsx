@@ -32,26 +32,27 @@ const TITULOS = {
   "/dashboard": "Tablero",
   "/supervision": "Supervisión",
   "/notificaciones": "Notificaciones",
-  "/bandeja": "Bandeja de tareas",
+  "/bandeja": "Bandeja",
   "/filas": "Filas de espera",
   "/internacion": "Internación",
-  "/agenda": "Turnos programados",
+  "/agenda": "Turnos",
   "/farmacia": "Farmacia e insumos",
-  "/red": "Red y traslados",
+  "/red": "Red de establecimientos",
   "/casos": "Casos",
   "/padron": "Padrón de pacientes",
   "/historia": "Historia clínica",
   "/legajo": "Legajo profesional",
+  "/accesos": "Registro de accesos",
   "/flujos": "Flujos",
   "/mapa": "Mapa de flujos",
   "/formularios": "Formularios",
   "/estructura": "Estructura organizativa",
-  "/administracion": "Administración",
-  "/finanzas": "Finanzas y costos",
+  "/administracion": "Usuarios y permisos",
+  "/finanzas": "Finanzas y cobros",
   "/finanzas/coberturas": "Coberturas y copagos",
 };
 // Rutas con parámetro: llevan prefijo, así que no entran por el mapa de arriba.
-// Faltando una, la barra dice «I-Core Salud» y la persona pierde la referencia de dónde
+// Faltando una, la barra dice «HEN» y la persona pierde la referencia de dónde
 // está — que es justamente para lo que sirve el título.
 const TITULOS_DETALLE = [
   ["/casos/", "Detalle del caso"],
@@ -66,7 +67,7 @@ const TITULOS_DETALLE = [
 function tituloDeRuta(pathname) {
   const detalle = TITULOS_DETALLE.find(([prefijo]) => pathname.startsWith(prefijo));
   if (detalle) return detalle[1];
-  return TITULOS[pathname] || "I-Core Salud";
+  return TITULOS[pathname] || "HEN";
 }
 
 // Campana de notificaciones: contador de no leídas + dropdown (poll a /resumen/).
@@ -248,7 +249,7 @@ function BotonTema() {
   );
 }
 
-function TopBar({ onAbrirMenu, titulo, hospital = true, volverA = "/inicio" }) {
+function TopBar({ onAbrirMenu, titulo, contexto, hospital = true, plataforma = false, volverA = "/inicio" }) {
   const { logout } = useAuth();
   const { refresco } = useRefresh();
   const location = useLocation();
@@ -257,19 +258,21 @@ function TopBar({ onAbrirMenu, titulo, hospital = true, volverA = "/inicio" }) {
   // Volver: en toda página salvo el inicio (que es la base del recorrido).
   const puedeVolver = !["/inicio", "/", "/financiadores"].includes(location.pathname);
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-borde bg-superficie px-lg sm:gap-3.5 sm:px-[26px]">
+    <header className="flex h-[64px] shrink-0 items-center gap-2.5 border-b border-borde bg-superficie px-lg sm:gap-3.5 sm:px-[24px]">
       {/* Hamburguesa: solo en angosto, donde el menú es un cajón. */}
       <button onClick={onAbrirMenu} aria-label="Abrir menú" className={cn(BOTON_BARRA, "md:hidden")}>
         <Icon name="rows" size={17} />
       </button>
-      {puedeVolver && (
+      {puedeVolver && !plataforma && location.pathname.split("/").filter(Boolean).length > 1 && (
         <button onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate(volverA)} aria-label="Volver" title="Volver" className={BOTON_BARRA}>
           <Icon name="back" size={17} />
         </button>
       )}
       {/* `truncate` y no `nowrap`: un título largo en pantalla angosta debe
           recortarse, no empujar la barra y desbordar la página. */}
-      <h1 className="truncate text-xl font-bold tracking-tight">{titulo || tituloDeRuta(location.pathname)}</h1>
+      <h1 className="truncate text-xs font-medium text-texto-suave">
+        <span>{contexto}</span><span className="mx-2">/</span><span className="text-texto">{titulo || tituloDeRuta(location.pathname)}</span>
+      </h1>
       {/* El buscador se esconde en angosto: compite con el título y la campana.
           Queda accesible desde «Historia clínica». */}
       <div className="hidden flex-1 justify-center md:flex">
@@ -291,51 +294,51 @@ function TopBar({ onAbrirMenu, titulo, hospital = true, volverA = "/inicio" }) {
   );
 }
 
-const ITEM_INICIO = { to: "/inicio", label: "Inicio", icon: "home" };
-
-// Grupos del menú. Orden: configuración primero (SISTEMA), luego operación.
-// Cada ítem se muestra según su capacidad (cap) y el rol del usuario.
+// Las rutas y capacidades siguen siendo las existentes; los grupos corresponden
+// al recorrido de Figma y se abren según la sección activa.
 const GRUPOS = [
   {
-    label: "SISTEMA",
+    label: "DIRECCIÓN",
     items: [
-      { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config_institucional" },
-      { to: "/administracion", label: "Administración", icon: "users", cap: "config_institucional" },
-      { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno_flujos" },
-      { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno_flujos" },
-      { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno_flujos" },
+      { to: "/dashboard", label: "Tablero", icon: "activity", cap: "supervision" },
+      { to: "/finanzas", label: "Finanzas y cobros", icon: "wallet", especial: "finanzas" },
+      { to: "/finanzas/coberturas", label: "Coberturas y copagos", icon: "users", especial: "coberturas" },
+      { to: "/red", label: "Red de establecimientos", icon: "map", cap: "traslados_red" },
     ],
   },
   {
-    label: "TRABAJO",
+    label: "OPERACIÓN",
     items: [
-      { to: "/bandeja", label: "Bandeja de tareas", icon: "inbox", cap: "casos_operar" },
-      // «Casos» permite buscar el historial además de las tareas actuales.
-      { to: "/casos", label: "Casos", icon: "inbox", cap: "casos_operar" },
-      // Internación sí va en el menú: el tablero de camas se consulta todo el
-      // día por sí mismo, no como paso de un caso.
-      // El Tablero se gatea por `supervision` y no por `config`: la solapa por
-      // área —mapa del flujo, casos por paso, top de demoras— existe para el jefe
-      // de área, que es el único rol sin `config` y por lo tanto el único que no
-      // tenía por dónde entrar. Dárselo con `config` le abriría también
-      // Estructura y Administración: el jefe de Guardia dando de alta usuarios
-      // del hospital para poder mirar su propia espera promedio.
-      { to: "/dashboard", label: "Tablero", icon: "activity", cap: "supervision" },
-      { to: "/agenda", label: "Turnos programados", icon: "calendar", cap: "turnos" },
+      { to: "/inicio", label: "Inicio", icon: "home" },
+      { to: "/bandeja", label: "Bandeja", icon: "inbox", cap: "casos_operar" },
+      { to: "/agenda", label: "Turnos", icon: "calendar", cap: "turnos" },
       { to: "/internacion", label: "Internación", icon: "bed", cap: "internacion" },
       { to: "/farmacia", label: "Farmacia e insumos", icon: "cube", cap: "farmacia_stock" },
-      { to: "/red", label: "Red y traslados", icon: "map", cap: "traslados_red" },
+    ],
+  },
+  {
+    label: "PACIENTES",
+    items: [
+      { to: "/padron", label: "Padrón de pacientes", icon: "idCard", cap: "padron_admision" },
+      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "historia_clinica" },
+    ],
+  },
+  {
+    label: "SEGUIMIENTO",
+    items: [
+      { to: "/casos", label: "Casos", icon: "inbox", cap: "casos_operar" },
       { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
     ],
   },
   {
-    label: "REGISTROS",
+    label: "CONFIGURACIÓN",
     items: [
-      { to: "/padron", label: "Padrón de pacientes", icon: "idCard", cap: "padron_admision" },
-      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "historia_clinica" },
-      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "registros" },
-      // Quién consultó datos clínicos. Va en REGISTROS y no en SISTEMA: es la
-      // contracara de la historia clínica, no una opción de configuración.
+      { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config_institucional" },
+      { to: "/administracion", label: "Usuarios y permisos", icon: "users", cap: "config_institucional" },
+      { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno_flujos" },
+      { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno_flujos" },
+      { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno_flujos" },
+      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "config_institucional" },
       { to: "/accesos", label: "Registro de accesos", icon: "search", cap: "auditoria" },
     ],
   },
@@ -364,10 +367,10 @@ const VISTA_LABEL = {
 
 const itemClase = (col) => ({ isActive }) =>
   cn(
-    "flex items-center gap-2.5 rounded-md text-md font-semibold",
-    col ? "justify-center py-2.5" : "px-3 py-2.5",
+    "flex items-center gap-2 rounded-md text-xs font-medium",
+    col ? "justify-center py-2" : "px-2 py-2",
     isActive
-      ? "bg-accent-fuerte text-sobre-accent"
+      ? "bg-accent-50 text-accent"
       : "text-texto-suave hover:bg-superficie-2 hover:text-texto",
   );
 
@@ -384,7 +387,11 @@ export function Shell({ children, financiador = null, plataforma = false }) {
 
   // Menú lateral colapsable (recordado entre sesiones).
   const [colapsadoPref, setColapsado] = useState(() => localStorage.getItem("salud.menu") === "col");
-  const [gruposCerrados, setGruposCerrados] = useState(() => new Set());
+  const [gruposCerrados, setGruposCerrados] = useState(() => {
+    const ruta = window.location.pathname;
+    const activo = GRUPOS.find((grupo) => grupo.items.some((item) => ruta === item.to || ruta.startsWith(`${item.to}/`)));
+    return new Set(GRUPOS.map((grupo) => grupo.label).filter((label) => label !== activo?.label));
+  });
   const toggleMenu = () => setColapsado((v) => { localStorage.setItem("salud.menu", v ? "exp" : "col"); return !v; });
   // El colapso solo vale en escritorio: en el cajón móvil el menú se muestra
   // siempre completo (si no, alguien que colapsó en la compu abre el cajón en el
@@ -397,6 +404,16 @@ export function Shell({ children, financiador = null, plataforma = false }) {
   const location = useLocation();
   // Al navegar se cierra solo: si no, queda tapando la pantalla a la que fuiste.
   useEffect(() => { setCajon(false); setMenuInst(false); }, [location.pathname, location.search]);
+  useEffect(() => {
+    const activo = GRUPOS.find((grupo) => grupo.items.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)));
+    if (!activo) return;
+    setGruposCerrados((anteriores) => {
+      if (!anteriores.has(activo.label)) return anteriores;
+      const siguientes = new Set(anteriores);
+      siguientes.delete(activo.label);
+      return siguientes;
+    });
+  }, [location.pathname]);
   useEffect(() => {
     if (!cajon) return;
     const onKey = (e) => { if (e.key === "Escape") setCajon(false); };
@@ -449,6 +466,14 @@ export function Shell({ children, financiador = null, plataforma = false }) {
   const rolLabel = esFinanciador ? financiador.rol : user?.is_superuser
     ? "Super admin"
     : roles.map((r) => ROL_LABEL[r] || r).join(" · ") || "Usuario";
+  const gruposInstitucion = user?.is_superuser && vista === "sistema"
+    ? GRUPOS
+    : [GRUPOS[1], GRUPOS[0], ...GRUPOS.slice(2)];
+  const itemVisible = (item) => {
+    if (item.especial === "finanzas") return permisosFinanzas.acceso && !permisosFinanzas.error;
+    if (item.especial === "coberturas") return puedeVer("casos_operar") || (!permisosFinanzas.error && (permisosFinanzas.acceso || permisosFinanzas.tiene("resolver_cobertura")));
+    return !item.cap || puedeVer(item.cap);
+  };
 
   return (
     <RefreshCtx.Provider value={{ refresco, setRefresco }}>
@@ -471,27 +496,13 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           // De `md` para arriba deja de ser cajón: vuelve al flujo y lo que
           // cambia es el ancho (colapsado o no).
           "md:sticky md:top-0 md:shrink-0 md:translate-x-0 md:transition-[width]",
-          colapsadoPref ? "md:w-[68px]" : "md:w-[244px]",
+          colapsadoPref ? "md:w-[68px]" : "md:w-[200px] xl:w-[264px]",
           cajon ? "translate-x-0 shadow-modal" : "-translate-x-full",
         )}
       >
-        {/* Cabecera: institución + colapsar (en una sola fila) */}
+        {/* Marca y control del menú: el contexto queda en el selector inferior. */}
         <div style={{ position: "relative", flex: "none", display: "flex", alignItems: "center", gap: 8, flexDirection: colapsado ? "column" : "row", padding: colapsado ? "14px 0 12px" : "14px 12px", borderBottom: colapsado ? `1px solid var(--color-division)` : "none" }}>
-          <button
-            onClick={() => puedeCambiar && !colapsado && setMenuInst((v) => !v)}
-            title={colapsado ? (esFinanciador ? financiador.nombre : institucion?.nombre) : undefined}
-            style={{ display: "flex", alignItems: "center", gap: 11, flex: colapsado ? "none" : 1, minWidth: 0, padding: 0, background: "none", border: "none", textAlign: "left", cursor: (puedeCambiar && !colapsado) ? "pointer" : "default" }}
-          >
-            <Logo size={34} />
-            {!colapsado && (
-              <div style={{ lineHeight: 1.15, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {(esFinanciador ? financiador.nombre : institucion?.nombre) || "I-Core Salud"}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--color-texto-tenue)", fontWeight: 500 }}>{esFinanciador ? "Financiador" : esPlataforma ? "Plataforma" : institucion?.tipo || "Institución"}</div>
-              </div>
-            )}
-          </button>
+          <span className="flex min-w-0 flex-1 items-center gap-2 font-bold"><Logo size={24} />{!colapsado && "HEN"}</span>
           {/* En angosto este botón cierra el cajón; de `md` para arriba colapsa
               el menú. Son dos botones distintos porque también cambia el icono. */}
           <button
@@ -514,7 +525,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           {!esFinanciador && !esPlataforma && menuInst && !colapsado && (
             <>
               <div onClick={() => setMenuInst(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
-              <div style={{ position: "absolute", top: 62, left: 12, right: 12, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
+              <div style={{ position: "absolute", top: 112, left: 12, right: 12, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-tenue)", padding: "6px 8px 4px" }}>CAMBIAR DE INSTITUCI�N</div>
                 {misInst.map((inst) => {
                   const activa = inst.id === institucion?.id;
@@ -538,7 +549,18 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           )}
         </div>
 
-        {/* Volver al directorio (super admin) / rol del usuario (no-super) � solo expandido */}
+        {esPlataforma && !colapsado && <div className="mx-3 rounded-md border border-borde bg-superficie-2 px-2 py-2 text-xs">
+          <div className="flex items-center justify-between font-semibold"><span>Plataforma</span><Icon name="chevronRight" size={13} className="rotate-90" /></div>
+          <div className="mt-0.5 text-texto-suave">Administración general</div>
+        </div>}
+        {!esPlataforma && !esFinanciador && !colapsado && <button type="button"
+          onClick={() => puedeCambiar && setMenuInst((v) => !v)}
+          aria-expanded={puedeCambiar ? menuInst : undefined}
+          className="mx-3 flex items-center justify-between rounded-md border border-borde bg-superficie-2 px-2 py-2 text-left text-xs">
+          <span className="min-w-0"><span className="block truncate font-semibold">{institucion?.nombre || "Institución"}</span><span className="block truncate text-texto-suave">{institucion?.tipo || "Institución"}</span></span>
+          {puedeCambiar && <Icon name="chevronRight" size={13} className="rotate-90" />}
+        </button>}
+        {/* Volver al directorio (super admin) / rol del usuario (no-super) — solo expandido */}
         {!colapsado && !esPlataforma && (
           <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid var(--color-division)` }}>
             {esFinanciador ? financiador.selector : user?.is_superuser ? (
@@ -551,23 +573,16 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               >
                 <Icon name="back" size={14} /> Volver al directorio
               </button>
-              {institucion && (
-                <label style={{ display: "block", marginTop: 10 }}>
-                  <span style={{ display: "block", marginBottom: 5, fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-tenue)" }}>
-                    VER COMO
-                  </span>
-                  <select
-                    value={vista}
-                    onChange={(e) => setVista(e.target.value)}
-                    style={{ width: "100%", height: 34, borderRadius: 8, border: "1px solid var(--color-campo-borde)", background: "var(--color-superficie)", color: "var(--color-texto)", padding: "0 9px", fontSize: 12, fontWeight: 600 }}
-                  >
-                    {Object.entries(VISTA_LABEL).map(([valor, label]) => (
-                      <option key={valor} value={valor}>{label}</option>
-                    ))}
+              {institucion && <details className="mt-2 text-xs text-texto-suave">
+                <summary className="cursor-pointer font-semibold">Ver como: {VISTA_LABEL[vista] || vista}</summary>
+                <label className="mt-2 block">
+                  <span className="sr-only">Vista previa del menú</span>
+                  <select value={vista} onChange={(e) => setVista(e.target.value)} className="h-8 w-full rounded-md border border-campo-borde bg-superficie px-2 text-xs text-texto">
+                    {Object.entries(VISTA_LABEL).map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}
                   </select>
-                  <span className="mt-1 block text-xs text-texto-debil">Vista previa del menú; los permisos del servidor no cambian.</span>
                 </label>
-              )}
+                <p className="mt-1 text-xs">Vista previa del menú; los permisos del servidor no cambian.</p>
+              </details>}
               </>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--color-texto-tenue)", padding: "4px 2px" }}>
@@ -584,18 +599,16 @@ export function Shell({ children, financiador = null, plataforma = false }) {
             {[
               { to: "/?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
               { to: "/?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
+              { to: "/?vista=financiadores", label: "Financiadores", icon: "users", key: "financiadores" },
             ].map((item) => {
-              const actual = new URLSearchParams(location.search).get("vista") || "instituciones";
+              const actual = location.pathname.startsWith("/financiadores") ? "financiadores" : new URLSearchParams(location.search).get("vista") || "instituciones";
               return <Link key={item.key} to={item.to} aria-current={actual === item.key ? "page" : undefined}
                 className={itemClase(colapsado)({ isActive: actual === item.key })} title={item.label}>
                 <Icon name={item.icon} size={17} />{!colapsado && item.label}
               </Link>;
             })}
-            <NavLink to="/financiadores" className={itemClase(colapsado)} title="Financiadores">
-              <Icon name="users" size={17} />{!colapsado && "Financiadores"}
-            </NavLink>
           </> : esFinanciador ? <>
-            {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">COBERTURA Y GESTIÓN</div>}
+            {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">MI FINANCIADOR</div>}
             {financiador.items.map((item) => (
               <NavLink key={item.key} to={item.to} end className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
                 <Icon name={item.icon} size={17} />
@@ -607,29 +620,8 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               {!colapsado && financiador.volver.label}
             </NavLink>}
           </> : <>
-          <NavLink to={ITEM_INICIO.to} className={itemClase(colapsado)} title={operativo ? "Mi trabajo" : "Inicio"}>
-            {({ isActive }) => (
-              <>
-                <span style={{ position: "relative", display: "flex" }}>
-                  <Icon name={ITEM_INICIO.icon} size={17} />
-                  {colapsado && operativo && pendientes > 0 && (
-                    <span style={{ position: "absolute", top: -5, right: -7, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 8, background: "var(--color-danger-fuerte)", color: "var(--color-sobre-danger)", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
-                      {pendientes > 9 ? "9+" : pendientes}
-                    </span>
-                  )}
-                </span>
-                {!colapsado && (operativo ? "Mi trabajo" : ITEM_INICIO.label)}
-                {!colapsado && operativo && pendientes > 0 && (
-                  <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, fontSize: 11.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", background: isActive ? "rgba(255,255,255,.25)" : "var(--color-accent-50)", color: isActive ? "#fff" : "var(--color-accent)" }}>
-                    {pendientes}
-                  </span>
-                )}
-              </>
-            )}
-          </NavLink>
-
-          {(operativo ? [GRUPOS[1], GRUPOS[2], GRUPOS[0]] : GRUPOS).map((g) => {
-            const items = g.items.filter((n) => puedeVer(n.cap));
+          {gruposInstitucion.map((g) => {
+            const items = g.items.filter(itemVisible);
             if (!items.length) return null;
             return (
               <div key={g.label}>
@@ -651,11 +643,14 @@ export function Shell({ children, financiador = null, plataforma = false }) {
                       to={n.to}
                       data-tour={`menu-${n.to.slice(1)}`}
                       className={itemClase(colapsado)}
-                      end={n.to === "/flujos"}
+                      end={n.to === "/flujos" || n.to === "/finanzas"}
                       title={n.label}
                     >
-                      <Icon name={n.icon} size={17} />
-                      {!colapsado && n.label}
+                      <Icon name={n.icon} size={16} />
+                      {!colapsado && (n.to === "/inicio" && operativo ? "Mi trabajo" : n.label)}
+                      {n.to === "/inicio" && operativo && pendientes > 0 && (
+                        <span className="ml-auto rounded-pill bg-accent-50 px-1.5 text-xs font-bold text-accent" aria-label={`${pendientes} tareas pendientes`}>{pendientes > 99 ? "99+" : pendientes}</span>
+                      )}
                       {n.to === "/bandeja" && conteoBandeja.total > 0 && (
                         <span className="ml-auto rounded-full bg-accent-50 px-1.5 text-xs font-bold text-accent" aria-label={`${conteoBandeja.total} casos para tomar`}>
                           {conteoBandeja.total > 99 ? "99+" : conteoBandeja.total}
@@ -667,22 +662,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               </div>
             );
           })}
-          {permisosFinanzas.acceso && !permisosFinanzas.error && (
-            <NavLink to="/finanzas" end className={itemClase(colapsado)} title="Finanzas y costos">
-              <Icon name="wallet" size={17} />
-              {!colapsado && "Finanzas y costos"}
-            </NavLink>
-          )}
           {(user?.financiadores?.length > 0 || user?.is_superuser || puedeVer("gobierno_plataforma")) && (
             <NavLink to="/financiadores" className={itemClase(colapsado)} title="Portal de financiadores">
               <Icon name="users" size={17} />
               {!colapsado && "Financiadores"}
-            </NavLink>
-          )}
-          {(puedeVer("casos_operar") || (!permisosFinanzas.error && (permisosFinanzas.acceso || permisosFinanzas.tiene("resolver_cobertura")))) && (
-            <NavLink to="/finanzas/coberturas" className={itemClase(colapsado)} title="Coberturas y copagos">
-              <Icon name="users" size={17} />
-              {!colapsado && "Coberturas y copagos"}
             </NavLink>
           )}
           </>}
@@ -726,8 +709,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
 
       <main className="flex h-screen min-w-0 flex-1 flex-col">
         <TopBar onAbrirMenu={() => setCajon(true)}
-          titulo={esPlataforma ? (new URLSearchParams(location.search).get("vista") === "usuarios" ? "Usuarios de plataforma" : "Instituciones") : financiador?.titulo}
+          titulo={esPlataforma ? (location.pathname.startsWith("/financiadores") ? "Financiadores" : ({ usuarios: "Usuarios", financiadores: "Financiadores" })[new URLSearchParams(location.search).get("vista")] || "Instituciones") : financiador?.titulo}
+          contexto={esPlataforma ? "Plataforma" : esFinanciador ? financiador.nombre : institucion?.nombre || "Institución"}
           hospital={!esFinanciador && !esPlataforma}
+          plataforma={esPlataforma}
           volverA={esPlataforma ? "/" : esFinanciador ? "/financiadores" : "/inicio"} />
         <div id="contenido-principal" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">{children}</div>
       </main>

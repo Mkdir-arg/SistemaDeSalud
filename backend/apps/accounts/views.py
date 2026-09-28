@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.db.models import Q
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.common import (
@@ -138,11 +138,26 @@ class UsuarioViewSet(BaseModelViewSet):
         """Dashboard del legajo profesional: métricas + actividad reciente."""
         from apps.casos.models import Caso, EventoCaso
 
+        institucion = (request.query_params.get("institucion") or "").strip()
+        if institucion and not institucion.isdigit():
+            raise ValidationError({"institucion": ["Indicá una institución válida."]})
+        alcance_global = request.user.is_superuser or tiene_capacidad(request.user, "gobierno_plataforma")
+        propias = self.instituciones_del_usuario() if not alcance_global else []
+        if institucion and not alcance_global and int(institucion) not in propias:
+            raise PermissionDenied("No podés consultar el legajo de esa institución.")
+
         user = self.get_object()
         casos = Caso.objects.filter(asignado_a=user)
+        eventos_qs = EventoCaso.objects.filter(autor=user)
+        if institucion:
+            casos = casos.filter(institucion_id=int(institucion))
+            eventos_qs = eventos_qs.filter(caso__institucion_id=int(institucion))
+        elif not alcance_global:
+            casos = casos.filter(institucion_id__in=propias)
+            eventos_qs = eventos_qs.filter(caso__institucion_id__in=propias)
         atendidos = casos.filter(estado__in=[Caso.Estado.ATENDIDO, Caso.Estado.CERRADO]).count()
         pacientes = casos.exclude(ciudadano=None).values("ciudadano").distinct().count()
-        eventos_qs = EventoCaso.objects.filter(autor=user).select_related("caso", "caso__ciudadano")
+        eventos_qs = eventos_qs.select_related("caso", "caso__ciudadano")
         atenciones = eventos_qs.filter(titulo__icontains="Atención").count()
         llamados_fila = eventos_qs.filter(titulo__icontains="Llamado desde la fila").count()
         recientes = list(eventos_qs.order_by("-fecha")[:10])

@@ -1,4 +1,9 @@
-# I-Core Salud — Constructor y motor de flujos
+# Prototipo histórico de I-Core Salud
+
+> Este entregable de junio de 2026 se conserva como antecedente. La marca
+> vigente de la aplicación es HEN: [diseño en Figma](https://www.figma.com/design/BR2ExsfHBsYcar7fLWcOmn/HEN?node-id=8-2), implementación en
+> [`frontend/src/styles/tokens.css`](../frontend/src/styles/tokens.css). Los
+> logotipos, colores y capturas de esta carpeta no son la referencia actual.
 
 > Un editor visual donde se **diseña** un proceso como diagrama (pasos, formularios, decisiones) y ese mismo diagrama se **ejecuta**: otros usuarios completan casos reales que avanzan paso a paso, se derivan entre áreas y quedan registrados. Pensado para procesos tipo hospital o trámites del Estado.
 
@@ -40,7 +45,7 @@ Plataforma (super admin)
 
 El super admin es el nivel más alto; el directorio de instituciones es la raíz.
 
-> **Corrección posterior al prototipo.** Acá decía que las instituciones no se agrupan en redes. El sistema implementado sí tiene **redes sanitarias** entre establecimientos, con traslados y tablero de red — ver [`docs/funcionalidades/red-traslados/`](../docs/funcionalidades/red-traslados/README.md). Este documento describe el entregable de diseño de junio de 2026; la marca, los tokens y las capturas siguen siendo la referencia visual, el texto no describe el alcance actual.
+> **Corrección posterior al prototipo.** Acá decía que las instituciones no se agrupan en redes. El sistema implementado sí tiene **redes sanitarias** entre establecimientos, con traslados y tablero de red — ver [`docs/funcionalidades/red-traslados/`](../docs/funcionalidades/red-traslados/README.md). Este documento describe el entregable de diseño de junio de 2026; no representa la marca ni el alcance actuales.
 
 ## 5. Archivos de este entregable
 

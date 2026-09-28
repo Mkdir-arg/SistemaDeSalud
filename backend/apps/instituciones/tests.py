@@ -1,12 +1,15 @@
-from datetime import time
+from datetime import time, timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.common import _coerce
 from apps.accounts.models import Membresia, Usuario
+from apps.casos.models import Caso, ItemFila
+from apps.flujos.models import Flujo, Nodo, VersionFlujo
 
-from .models import Area, Grupo, Institucion
+from .models import Area, Cama, Grupo, Institucion
 
 
 class CoerceQueryParamTest(TestCase):
@@ -78,6 +81,57 @@ class GobiernoPlataformaInstitucionTests(APITestCase):
         nombres = {i["nombre"] for i in r.data["results"]}
         self.assertIn("Hospital Central", nombres)
         self.assertIn("Clinica Norte", nombres)
+
+    def test_tablero_plataforma_usa_datos_reales_y_restringe_el_acceso(self):
+        self.hospital.estado = Institucion.Estado.EN_ALTA
+        self.hospital.save(update_fields=["estado"])
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(
+            self.client.get("/api/instituciones/tablero-plataforma/").status_code, 403
+        )
+
+        self.client.force_authenticate(self.plataforma)
+        r = self.client.get("/api/instituciones/tablero-plataforma/?dias=7")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["instituciones"], 3)
+        self.assertEqual(r.data["activas"], 2)
+        self.assertEqual(r.data["en_alta"], 1)
+        self.assertEqual(r.data["personal_activo"], 2)
+        self.assertIsNone(r.data["ocupacion"])
+        self.assertEqual(len(r.data["serie"]), 7)
+        self.assertEqual(r.data["atendidos"], 0)
+
+        filtradas = self.client.get("/api/instituciones/?estado=en_alta")
+        self.assertEqual(filtradas.data["count"], 1)
+        self.assertEqual(filtradas.data["results"][0]["id"], self.hospital.id)
+
+    def test_tablero_plataforma_cuenta_atencion_y_ocupacion_reales(self):
+        area = Area.objects.create(institucion=self.hospital, nombre="Guardia")
+        flujo = Flujo.objects.create(institucion=self.hospital, titulo="Guardia")
+        version = VersionFlujo.objects.create(flujo=flujo, numero=1)
+        nodo = Nodo.objects.create(version=version, tipo=Nodo.Tipo.ESPERA_FILA, titulo="Fila")
+        caso = Caso.objects.create(institucion=self.hospital, version=version)
+        ahora = timezone.now()
+        item = ItemFila.objects.create(
+            caso=caso, nodo=nodo, atendido=True,
+            llamado_at=ahora, atendido_at=ahora,
+        )
+        ItemFila.objects.filter(pk=item.pk).update(ingreso=ahora - timedelta(minutes=10))
+        Cama.objects.create(area=area, nombre="Cama 1", estado=Cama.Estado.OCUPADA, caso=caso)
+        Cama.objects.create(area=area, nombre="Cama bloqueada", estado=Cama.Estado.BLOQUEADA)
+
+        self.client.force_authenticate(self.plataforma)
+        r = self.client.get("/api/instituciones/tablero-plataforma/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["atendidos"], 1)
+        self.assertEqual(r.data["ocupacion"], 100)
+        self.assertEqual(r.data["alertas"][0]["tipo"], "ocupacion")
+        hospital = next(
+            fila for fila in r.data["indicadores"] if fila["institucion"] == self.hospital.id
+        )
+        self.assertEqual(hospital["ocupacion"], 100)
+        self.assertEqual(hospital["atendidos_hoy"], 1)
+        self.assertEqual(hospital["espera_minutos"], 10)
 
     def test_metricas_staff_cuenta_personas_activas_una_vez(self):
         activo = Usuario.objects.create_user("activo-metricas@test.local", "x")

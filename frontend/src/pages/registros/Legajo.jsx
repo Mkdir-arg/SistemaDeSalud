@@ -135,7 +135,7 @@ function LegajoDetalle({ institucionId, usuarioId }) {
 
   const q = useQuery({
     queryKey: ["legajo", institucionId, usuarioId],
-    queryFn: () => api.get(`/usuarios/${usuarioId}/legajo/`),
+    queryFn: () => api.get(`/usuarios/${usuarioId}/legajo/?institucion=${institucionId}`),
     enabled: pertenece,
   });
   const legajo = q.data;
@@ -143,13 +143,9 @@ function LegajoDetalle({ institucionId, usuarioId }) {
   const prof = membresias.filas[0];
   const nombresArea = [...new Set(membresias.filas.flatMap((m) => Object.values(m.areas_nombres || {})))];
   const metricas = [
-    { n: legajo?.casos_atendidos, l: "casos atendidos" },
-    { n: legajo?.pacientes_vistos, l: "pacientes vistos" },
-    { n: legajo?.llamados_fila, l: "llamados de fila" },
-    {
-      n: legajo?.ultima_actividad ? fechaHora(legajo.ultima_actividad).split(" · ")[0] : "—",
-      l: "última actividad",
-    },
+    { n: legajo?.casos_atendidos, l: "Casos atendidos" },
+    { n: legajo?.pacientes_vistos, l: "Pacientes distintos" },
+    { n: legajo?.llamados_fila, l: "Llamados de fila" },
   ];
 
   if (!idValido) {
@@ -181,7 +177,7 @@ function LegajoDetalle({ institucionId, usuarioId }) {
         <div className="flex flex-col items-end gap-2">
           {/* La matrícula es la que habilita a firmar una atención (regla del
               motor), así que su estado se muestra con palabras, no sólo color. */}
-          {u?.matricula ? <Badge tone="green">✓ Vigente</Badge> : <Badge tone="gray">Sin matrícula</Badge>}
+          {u?.matricula ? <Badge tone="green">Matrícula cargada</Badge> : <Badge tone="gray">Sin matrícula</Badge>}
           <button
             onClick={() => setEditar(true)}
             disabled={!u}
@@ -190,41 +186,47 @@ function LegajoDetalle({ institucionId, usuarioId }) {
             Editar legajo
           </button>
         </div>
+        <dl className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Matrícula", u?.matricula || "—"],
+            ["Especialidad", u?.especialidad || "—"],
+            ["Áreas", nombresArea.join(", ") || "—"],
+            ["Última actividad", legajo?.ultima_actividad ? fechaHora(legajo.ultima_actividad) : "—"],
+          ].map(([etiqueta, valor]) => (
+            <div key={etiqueta}>
+              <dt className="text-texto-tenue">{etiqueta}</dt>
+              <dd className="mt-1 font-medium text-texto-fuerte">{valor}</dd>
+            </div>
+          ))}
+        </dl>
       </Card>
 
       {q.error ? (
         <EstadoError error={q.error} onReintentar={q.refetch} titulo="No se pudo cargar el legajo" />
       ) : (
         <>
-          <div className="mb-[22px] grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+          <div className="mb-[22px] grid gap-3.5 sm:grid-cols-3">
             {metricas.map((m) => (
               <Card key={m.l} className="p-[18px]">
-                <div className="text-cifra-lg font-extrabold leading-none">
+                <div className="text-sm text-texto-debil">{m.l}</div>
+                <div className="mt-1.5 text-cifra font-bold leading-none">
                   {q.isLoading ? <Skeleton className="h-6 w-12" /> : (m.n ?? "—")}
                 </div>
-                <div className="mt-1.5 text-sm text-texto-debil">{m.l}</div>
               </Card>
             ))}
           </div>
 
           <Card className="overflow-hidden">
-            <div className="px-5 py-lg">
-              <h2 className="text-lg font-bold">Actividad reciente</h2>
-              <div className="text-sm text-texto-debil">
-                Cada Atención que genera enlaza con una entrada en la Historia clínica del paciente.
-              </div>
-            </div>
-
             {q.isLoading ? (
               <SkeletonTabla filas={5} columnas={4} />
             ) : !legajo?.actividad?.length ? (
-              <div className="px-5 pb-[22px] text-base text-texto-tenue">Sin actividad registrada.</div>
+              <div className="px-5 py-[22px] text-base text-texto-tenue">Sin actividad registrada.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-md">
                   <thead className="bg-superficie-2">
                     <tr>
-                      {["Fecha", "Paciente", "Acción", "Caso"].map((h) => (
+                      {["Fecha", "Paciente", "Caso", "Entrada en la historia"].map((h) => (
                         <th key={h} scope="col" className="whitespace-nowrap border-t border-division px-5 py-2.5 text-left text-sm font-semibold text-texto-debil">
                           {h}
                         </th>
@@ -242,8 +244,8 @@ function LegajoDetalle({ institucionId, usuarioId }) {
                       >
                         <td className="whitespace-nowrap px-5 py-3 text-texto-debil">{fechaHora(a.fecha)}</td>
                         <td className="px-5 py-3 font-semibold">{a.paciente || "—"}</td>
-                        <td className="px-5 py-3 text-texto-medio">{a.accion}</td>
                         <td className="px-5 py-3"><Mono>{casoId(a.caso)}</Mono></td>
+                        <td className="px-5 py-3 text-texto-medio">{a.accion}</td>
                       </tr>
                     ))}
                   </tbody>

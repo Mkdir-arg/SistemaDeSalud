@@ -56,6 +56,18 @@ class AutorizacionApiTests(AutorizacionSetup, APITestCase):
         self.client.force_authenticate(usuario or self.operador)
         return self.client.post(f"{self.url}{obj.pk}/resolver/?financiador={obj.financiador_id}", datos or self.aprobacion(), format="json")
 
+    def test_bandeja_agrupa_las_resueltas_sin_mezclar_pendientes(self):
+        solicitud = self.solicitud()
+        self.client.force_authenticate(self.operador)
+        base = f"{self.url}?financiador={self.financiador.pk}"
+        self.assertEqual(self.client.get(base + "&estado=pendiente").data["count"], 1)
+        self.assertEqual(self.client.get(base + "&grupo=resueltas").data["count"], 0)
+        self.assertEqual(self.resolver_http(solicitud).status_code, 200)
+        resueltas = self.client.get(base + "&grupo=resueltas")
+        self.assertEqual(resueltas.status_code, 200)
+        self.assertEqual([fila["estado"] for fila in resueltas.data["results"]], ["aprobada"])
+        self.assertEqual(self.client.get(base + "&grupo=resueltas&estado=pendiente").status_code, 400)
+
     def test_crear_observar_reenviar_aprobar_conserva_paso_y_no_emite_cargos(self):
         self.client.force_authenticate(self.usuario)
         contexto = self.client.get(self.url + "contexto/", {"caso": self.caso.pk})

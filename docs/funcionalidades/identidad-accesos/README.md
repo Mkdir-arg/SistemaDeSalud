@@ -39,7 +39,7 @@ Gestionar usuarios, membresias institucionales, roles, legajos profesionales y s
 - `/login`
 - `/` — directorio de instituciones o entrada directa segun el rol.
 - `/administracion` — usuarios, membresias y permisos financieros de la institucion.
-- `/legajo` — legajo profesional propio y su actividad.
+- `/legajo` — consulta de legajos del equipo y su actividad para administración institucional.
 - `/financiadores/activar` — alta de la cuenta de un usuario invitado por un financiador.
 
 ## Entidades y endpoints

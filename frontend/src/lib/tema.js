@@ -6,14 +6,18 @@ const CLAVE = "salud.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
 /**
  * Rutas que se ven siempre en claro, sin importar la preferencia.
  *
- * El login es la cara institucional del sistema: tiene que verse igual en
- * cualquier puesto, y su panel de marca ya trae su propio degradado. La misma
+ * Las pantallas públicas de llamados y de la maqueta clínica mantienen el tema
+ * claro en cualquier puesto.
+ * El login admite ambas variantes de Figma. La misma
  * regla está repetida en el script del <head> de index.html, que corre antes de
  * que exista este módulo; si cambia una, cambian las dos.
  */
-const RUTAS_CLARAS = ["/login"];
+const RUTAS_CLARAS = ["/demo/app-clinica"];
 
-export const esRutaClara = (pathname) => RUTAS_CLARAS.includes(pathname.replace(/\/+$/, ""));
+export const esRutaClara = (pathname) => {
+  const ruta = pathname.replace(/\/+$/, "");
+  return RUTAS_CLARAS.includes(ruta) || ruta.startsWith("/pantalla/");
+};
 
 /** Aplica el tema al <html>. Se exporta para poder llamarlo antes de montar React. */
 export function aplicarTema(tema) {
@@ -37,8 +41,7 @@ const prefiereOscuro = () => {
  * Mantiene el <html> en el tema que corresponde a la ruta actual.
  *
  * Va en un layout effect para que el cambio ocurra antes de pintar: al salir del
- * login la preferencia vuelve sin que se vea un cuadro en claro, y al entrar al
- * login no se ve uno en oscuro mientras carga su chunk.
+ * una ruta fija la preferencia vuelve sin que se vea un cuadro con el tema anterior.
  */
 export function useTemaDeRuta() {
   const { pathname } = useLocation();

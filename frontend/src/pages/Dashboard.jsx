@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { PageHeader } from "@/components/Shell";
 import { Badge, Card } from "@/components/ui";
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { useFiltroUrl } from "@/components/ui/filtros";
@@ -127,22 +126,31 @@ export default function Dashboard() {
   const d = q.data;
 
   return (
-    <>
-      <PageHeader
-        subtitle="Estado general del hospital: carga, tiempos por área y evolución de ingresos."
-        right={<span className="text-sm text-texto-tenue">{q.isFetching ? "Actualizando…" : "Se actualiza solo cada 60 s"}</span>}
-      />
-
-      <div className="flex flex-col gap-[22px] px-lg pb-8 pt-[22px] sm:px-8">
+    <div className="mx-auto flex max-w-[1500px] flex-col gap-4 px-lg pb-8 pt-6 sm:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><h2 className="text-xl font-bold tracking-tight">Tablero</h2>
+          <p className="mt-1 text-xs text-texto-suave">{institucion.nombre} · del {fechaCorta(d.periodo.desde)} al {fechaCorta(d.periodo.hasta)} · {q.isFetching ? "actualizando…" : "se actualiza cada 60 s"}</p></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border border-borde bg-superficie-2 p-1" role="group" aria-label="Período del tablero">
+            {[[1, "Hoy"], [7, "7 días"], [30, "30 días"]].map(([dias, label]) => <button key={dias} type="button"
+              aria-pressed={desde === isoHace(dias) && hasta === isoHoy()}
+              onClick={() => setRango(isoHace(dias), isoHoy())}
+              className={cn("rounded px-3 py-1.5 text-xs", desde === isoHace(dias) && hasta === isoHoy() ? "bg-superficie font-semibold text-texto shadow-card" : "text-texto-suave hover:text-texto")}>{label}</button>)}
+          </div>
+        </div>
+      </div>
+      <details className="rounded-md border border-borde bg-superficie px-3 py-2 text-xs text-texto-suave">
+        <summary className="cursor-pointer font-medium">Elegir otras fechas</summary>
+        <div className="mt-3"><RangoFechas desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} /></div>
+      </details>
+      <div className="flex flex-col gap-4">
         <ProcesosDetenidos />
-        <RangoFechas desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} />
         <SolapasArea areas={d.por_area} tab={tab} setTab={setTab} />
-
         {tab === "general"
           ? <TableroGeneral d={d} navigate={navigate} />
           : <TableroArea key={tab} areaId={tab} desde={desde} hasta={hasta} navigate={navigate} />}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -236,14 +244,13 @@ function ProcesosDetenidos() {
 function SolapasArea({ areas, tab, setTab }) {
   const items = [{ id: "general", nombre: "General" }, ...(areas || []).map((a) => ({ id: String(a.area_id), nombre: a.nombre }))];
   return (
-    <div role="tablist" className="flex flex-wrap gap-0.5 border-b border-borde">
+    <div role="group" aria-label="Área del tablero" className="flex flex-wrap gap-0.5 border-b border-borde">
       {items.map((it) => {
         const activo = String(tab) === it.id;
         return (
           <button
             key={it.id}
-            role="tab"
-            aria-selected={activo}
+            aria-pressed={activo}
             onClick={() => setTab(it.id)}
             className={cn(
               "-mb-px border-b-2 px-4 py-2.5 font-display text-md transition-colors",
@@ -372,6 +379,7 @@ function GrupoMetricas({ titulo, subtitulo, children }) {
 // --------------------------------------------------------------------------- //
 function TableroGeneral({ d, navigate }) {
   const r = d.resumen;
+  const maxActivosArea = Math.max(1, ...(d.por_area || []).map((area) => area.activos));
   // Denominador del ausentismo: los turnos que tuvieron desenlace. El backend
   // deja afuera a los sin registrar a propósito —si no, el indicador se movería
   // con la prolijidad administrativa y no con cuánta gente faltó—, así que el
@@ -466,47 +474,78 @@ function TableroGeneral({ d, navigate }) {
   ];
   return (
     <>
-      {requiereAtencion.length > 0 && (
-        <GrupoMetricas titulo="Requiere atención" subtitulo="Indicadores que conviene resolver antes de mirar el análisis.">
-          <Kpis kpis={requiereAtencion} />
-        </GrupoMetricas>
-      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <KpiDireccion titulo="Casos cerrados" valor={r.cerrados} detalle="En el período elegido" />
+        <KpiDireccion titulo="Espera promedio" valor={r.espera_prom_min == null ? "—" : duracionMinutos(r.espera_prom_min)} detalle={r.en_cola ? `${r.en_cola} en cola ahora` : "Sin fila actual"} />
+        <KpiDireccion titulo="Turnos del período" valor={r.turnos_periodo} detalle={`${r.turnos_ausentes} ausentes · ${r.turnos_sin_registrar} sin registrar`} />
+        <KpiDireccion titulo="Ocupación de camas" valor={r.camas_operativas ? `${r.ocupacion_camas} %` : "—"} detalle={r.camas_operativas ? `${r.camas_ocupadas} de ${r.camas_operativas} operativas` : "Sin camas operativas"} />
+        <KpiDireccion titulo="Casos activos" valor={r.casos_activos} detalle={`${r.urgentes} urgentes · ${r.en_cola} en cola`} />
+      </div>
 
-      <GrupoMetricas titulo="Pulso operativo" subtitulo="Carga actual y producción del período seleccionado.">
-        <Kpis kpis={kpis} />
-      </GrupoMetricas>
-
-      {/* Debajo de `lg` las dos columnas se apilan: un gráfico aplastado no
-          informa nada. */}
-      <div className="grid items-stretch gap-lg lg:grid-cols-[1.6fr_1fr]">
-        <Card className="min-w-0 p-xl">
-          <TituloGrafico titulo="Ingresos de casos" sub={d.periodo?.agrupacion === "semana" ? "por semana" : "por día"} />
-          <LineaIngresos serie={d.serie_ingresos} />
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.65fr)_minmax(290px,1fr)]">
+        <Card className="min-w-0 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="text-sm font-bold">Ingresos de casos</h3><span className="text-xs text-texto-suave">{d.periodo?.agrupacion === "semana" ? "Por semana" : "Por día"} · {r.ingresos} en el período</span></div>
+          <BarrasIngresos serie={d.serie_ingresos} />
         </Card>
-        <Card className="min-w-0 p-xl">
-          <TituloGrafico titulo="Distribución por estado" sub="casos no cancelados" />
-          <DonaEstados data={d.por_estado} />
+        <Card className="min-w-0 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-division px-4 py-3"><h3 className="text-sm font-bold">Requiere atención</h3><Badge tone={requiereAtencion.length ? "amber" : "green"}>{requiereAtencion.length}</Badge></div>
+          {requiereAtencion.length ? <ul className="divide-y divide-division">{requiereAtencion.map((item) => <li key={item.l} className="flex items-center justify-between gap-3 px-4 py-3 text-xs"><span><strong className="block">{item.l}</strong><span className="mt-1 block text-texto-suave">{item.v}{item.u ? ` ${item.u}` : ""}{item.l === "Espera prom." ? " · objetivo menor a 30 min" : ""}</span></span><Badge tone={item.destacado ? "error" : "amber"}>{item.destacado ? "Urgente" : "Revisar"}</Badge></li>)}</ul> : <p className="px-4 py-6 text-xs text-texto-suave">Sin urgencias, esperas altas ni turnos pendientes de cierre.</p>}
         </Card>
       </div>
 
-      <div className="grid items-start gap-lg lg:grid-cols-[1.5fr_1fr]">
-        <Card className="min-w-0 p-xl"><Comparativa areas={d.por_area} /></Card>
-        <Card className="min-w-0 overflow-hidden p-0">
-          <div className="px-xl pb-1 pt-lg">
-            <TituloGrafico titulo="Top de demoras" sub="quién espera más ahora" />
-          </div>
-          <TopDemoras items={d.top_demoras} onAbrir={(id) => navigate(`/casos/${id}`)} />
-        </Card>
+      <div className="grid gap-3 md:grid-cols-3">
+        <ResumenDireccion titulo="Carga por área" filas={(d.por_area || []).map((a) => ({ nombre: a.nombre, valor: a.activos, total: maxActivosArea, detalle: `${a.en_cola} en cola` }))} vacio="Sin áreas con casos activos" />
+        <ResumenDireccion titulo="Turnos del período" filas={[
+          { nombre: "Presentes", valor: r.turnos_presentes, total: Math.max(1, r.turnos_periodo) },
+          { nombre: "Ausentes", valor: r.turnos_ausentes, total: Math.max(1, r.turnos_periodo) },
+          { nombre: "Sin registrar", valor: r.turnos_sin_registrar, total: Math.max(1, r.turnos_periodo) },
+        ]} />
+        <ResumenDireccion titulo="Camas" filas={[
+          { nombre: "Ocupadas", valor: r.camas_ocupadas, total: Math.max(1, r.camas_operativas) },
+          { nombre: "Libres", valor: r.camas_libres, total: Math.max(1, r.camas_operativas) },
+          { nombre: "Fuera de servicio", valor: Math.max(0, r.camas_total - r.camas_operativas), total: Math.max(1, r.camas_total) },
+        ]} vacio={r.camas_total ? undefined : "Sin camas registradas"} />
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="px-xl pb-3.5 pt-lg">
-          <TituloGrafico titulo="Carga y tiempos por área" sub="ordenado por casos activos" />
-        </div>
+        <div className="px-4 py-3"><h3 className="text-sm font-bold">Carga y tiempos por área</h3></div>
         <TablaAreas areas={d.por_area} />
       </Card>
+
+      <details className="rounded-lg border border-borde bg-superficie p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-accent">Ver análisis detallado del tablero</summary>
+        <div className="mt-5 flex flex-col gap-4">
+          <GrupoMetricas titulo="Pulso operativo" subtitulo="Carga actual y producción del período seleccionado."><Kpis kpis={kpis} /></GrupoMetricas>
+          <div className="grid items-stretch gap-4 lg:grid-cols-[1.6fr_1fr]">
+            <Card className="min-w-0 p-4"><TituloGrafico titulo="Ingresos de casos" sub={d.periodo?.agrupacion === "semana" ? "por semana" : "por día"} /><LineaIngresos serie={d.serie_ingresos} /></Card>
+            <Card className="min-w-0 p-4"><TituloGrafico titulo="Distribución por estado" sub="casos no cancelados" /><DonaEstados data={d.por_estado} /></Card>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+            <Card className="min-w-0 p-4"><Comparativa areas={d.por_area} /></Card>
+            <Card className="min-w-0 overflow-hidden p-0"><div className="px-4 py-3"><TituloGrafico titulo="Top de demoras" sub="quién espera más ahora" /></div><TopDemoras items={d.top_demoras} onAbrir={(id) => navigate(`/casos/${id}`)} /></Card>
+          </div>
+        </div>
+      </details>
     </>
   );
+}
+
+function KpiDireccion({ titulo, valor, detalle }) {
+  return <Card className="min-w-0 p-3.5"><h3 className="text-xs text-texto-suave">{titulo}</h3><p className="mt-2 text-xxl font-bold tabular-nums">{valor}</p><p className="mt-1 truncate text-xs text-texto-suave" title={detalle}>{detalle}</p></Card>;
+}
+
+function BarrasIngresos({ serie = [] }) {
+  const maximo = Math.max(1, ...serie.map((punto) => punto.casos || 0));
+  return <div className="mt-5"><div className="flex h-36 items-end gap-1.5 border-b border-division">
+    {serie.map((punto) => <div key={punto.fecha} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${fechaCorta(punto.fecha)}: ${punto.casos} ingresos`}><div className="w-full rounded-t-sm bg-accent-fuerte" style={{ height: `${Math.max(punto.casos ? 5 : 0, (punto.casos / maximo) * 100)}%` }} /></div>)}
+  </div><div className="mt-2 flex justify-between text-[10px] text-texto-tenue"><span>{fechaCorta(serie[0]?.fecha)}</span><span>{serie.some((punto) => punto.casos) ? "Ingresos registrados" : "Sin ingresos en el período"}</span><span>{fechaCorta(serie.at(-1)?.fecha)}</span></div></div>;
+}
+
+function ResumenDireccion({ titulo, filas, vacio }) {
+  const tieneDatos = filas.some((fila) => fila.valor);
+  return <Card className="p-4"><h3 className="mb-4 text-sm font-bold">{titulo}</h3>
+    {vacio && !tieneDatos ? <p className="text-xs text-texto-suave">{vacio}</p> : <div className="space-y-3">{filas.slice(0, 4).map((fila) => <div key={fila.nombre} className="text-xs"><div className="mb-1 flex justify-between gap-2"><span>{fila.nombre}</span><span className="tabular-nums text-texto-suave">{fila.valor}{fila.detalle ? ` · ${fila.detalle}` : ""}</span></div><div className="h-1.5 overflow-hidden rounded-pill bg-superficie-2"><div className="h-full rounded-pill bg-accent-fuerte" style={{ width: `${Math.min(100, (fila.valor / fila.total) * 100)}%` }} /></div></div>)}</div>}
+  </Card>;
 }
 
 // --------------------------------------------------------------------------- //

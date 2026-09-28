@@ -92,7 +92,7 @@ test("cambiar pestaña cierra el menú, conserva el mes y no desborda en móvil"
   await expect(page.getByRole("button", { name: "Registrar gasto", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Mes económico", { exact: true })).toHaveValue("2026-09");
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("tab", { name: "Gastos registrados", exact: true }).click();
+  await page.getByRole("tab", { name: "Gastos", exact: true }).click();
   await page.getByRole("button", { name: "Acciones de finanzas" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("acciones-movil.png"), animations: "disabled" });
@@ -117,7 +117,7 @@ test("desplegable comparte el estilo primario y la altura de Registrar gasto", a
 test("lector no recibe acciones prohibidas y registrador sin lectura conserva la carga", async ({ page }) => {
   await escenario(page, { permisos: ["ver_gastos"] });
   await page.goto("/finanzas?tab=gastos");
-  await expect(page.getByRole("tab", { name: "Gastos registrados", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Gastos", exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Acciones de Finanzas", exact: true }).getByRole("button")).toHaveCount(0);
   await page.unroute("**/api/**");
   await escenario(page, { permisos: ["registrar_gastos"] });

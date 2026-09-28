@@ -170,7 +170,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
   const mes = searchParams.get("mes") || mesActual();
   const area = searchParams.get("area") || "";
   const tabs = [
-    ...(permisos.tiene("ver_gastos") ? [{ key: "resumen", label: "Resumen" }, { key: "gastos", label: "Gastos registrados" }, { key: "calendario", label: "Gastos mensuales" }, { key: "repartos", label: "Repartos" }] : []),
+    ...(permisos.tiene("ver_gastos") ? [{ key: "resumen", label: "Resumen" }, { key: "gastos", label: "Gastos" }, { key: "calendario", label: "Gastos mensuales" }, { key: "repartos", label: "Distribución" }] : []),
     ...(permisos.tiene("ver_costos") ? [{ key: "costos", label: "Costos por atención" }] : []),
     ...(permisos.tiene("ver_dinero") ? [{ key: "dinero", label: "Pagos y cobros" }] : []),
     ...(permisos.tiene("ver_gastos") || permisos.tiene("ver_dinero") ? [{ key: "reportes", label: "Reportes" }] : []),
@@ -388,7 +388,7 @@ function ContenidoFinanzas({ institucion, permisos }) {
   return <div data-finance-tab={tab} className="finance-page flex min-h-full flex-col gap-5 p-lg sm:p-xxl">
     <div>
       <div role="group" aria-label="Acciones de Finanzas" className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="flex min-h-10 items-center text-xl font-bold">Finanzas y costos</h2>
+      <h2 className="flex min-h-10 items-center text-xl font-bold">Finanzas y cobros</h2>
       <div className="ml-auto flex max-w-full min-w-0 items-start gap-2">
       <div className="flex min-h-10 min-w-0 flex-wrap justify-end gap-2">
         {(areas.isLoading || conceptos.isLoading) ? <span role="status" className="inline-flex h-10 items-center text-sm text-texto-debil">Preparando acciones…</span> : <>
@@ -400,12 +400,13 @@ function ContenidoFinanzas({ institucion, permisos }) {
         </PanelFlotante>}
       </div>
       </div>
-      <div className="finance-page-context"><div className="flex min-w-0 items-center gap-2"><p className="text-md text-texto-debil">Gastos registrados, su distribución y costos conocidos de {institucion.nombre}, según tu acceso.</p><AyudaFinanzas titulo="Qué información incluye Finanzas"><p>El administrador institucional puede consultar los gastos registrados de todas las áreas, incluidos los sensibles. Otros usuarios ven los alcances autorizados.</p><p>No existe todavía un cálculo integral del costo total del hospital. Los costos no registrados o no integrados no están incluidos, incluso para administración.</p><p>Aprobado es el gasto con sus ajustes. Distribuido y sin distribuir explican ese mismo aprobado: no son gastos adicionales.</p></AyudaFinanzas></div>
+      <div className="finance-page-context"><div className="flex min-w-0 items-center gap-2"><p className="text-md text-texto-debil">Gastos, distribución entre atenciones y pagos y cobros de {institucion.nombre}, según tu acceso.</p><AyudaFinanzas titulo="Qué información incluye Finanzas"><p>El administrador institucional puede consultar los gastos registrados de todas las áreas, incluidos los sensibles. Otros usuarios ven los alcances autorizados.</p><p>No existe todavía un cálculo integral del costo total del hospital. Los costos no registrados o no integrados no están incluidos, incluso para administración.</p><p>Aprobado es el gasto con sus ajustes. Distribuido y sin distribuir explican ese mismo aprobado: no son gastos adicionales.</p></AyudaFinanzas></div>
         {puedeLeer && tieneMes && tab !== "dinero" && <ProcesamientoFinanzas institucion={institucion} usuarioId={permisos.usuarioId} mes={mes} area={area} />}
       </div>
     </div>
+    {tabs.length > 0 && <nav aria-label="Secciones de finanzas" className="border-b border-division"><Tabs className="max-w-full overflow-x-auto [&>button]:whitespace-nowrap [&>button]:px-2.5 [&>button]:text-sm" tabs={tabs} valor={tab} onChange={(valor) => cambiarFiltro("tab", valor)} /></nav>}
     <Card className="p-4">
-      <div role="group" aria-label="Filtros y secciones de finanzas" className="flex flex-wrap items-end justify-between gap-3">
+      <div role="group" aria-label="Filtros de finanzas" className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
         <div className="w-[180px]"><Field label={tab === "reportes" ? "Mes del informe" : "Mes económico"}><Input type="month" required value={mes} onChange={(e) => cambiarFiltro("mes", e.target.value)} /></Field></div>
         <div className="w-[210px] max-w-full"><Field label="Área"><Select value={area} onChange={(e) => cambiarFiltro("area", e.target.value)}>
@@ -415,7 +416,6 @@ function ContenidoFinanzas({ institucion, permisos }) {
         </Select></Field></div>
         <AyudaFinanzas titulo="Carga, aprobación y reparto"><p>Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p><p>La configuración de gastos mensuales indica qué conceptos debe informar el área cada mes. Marcar la carga completa no aprueba sus gastos ni verifica sus atenciones.</p></AyudaFinanzas>
         </div>
-        {tabs.length > 0 && <Tabs className="max-w-full overflow-x-auto [&>button]:whitespace-nowrap [&>button]:px-2.5 [&>button]:text-sm" tabs={tabs} valor={tab} onChange={(valor) => cambiarFiltro("tab", valor)} />}
       </div>
     </Card>
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}

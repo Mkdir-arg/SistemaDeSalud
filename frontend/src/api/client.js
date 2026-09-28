@@ -1,4 +1,4 @@
-// Cliente HTTP contra la API de I-Core Salud.
+// Cliente HTTP contra la API de HEN.
 // Maneja el token JWT (access + refresh) en localStorage y reintenta una vez
 // ante un 401 refrescando el access token.
 

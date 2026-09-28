@@ -22,14 +22,14 @@ const FUNCIONES = [
   { value: "medico", label: "Médico / profesional" },
 ];
 
-/** Secciones de la ficha, en el orden en que se apilan. */
+/** Secciones de la ficha, en orden de navegación. */
 const SECCIONES = [
-  { key: "datos", label: "Datos", icono: "list" },
-  { key: "staff", label: "Staff", icono: "users", accion: "Asignar profesional" },
-  { key: "grupos", label: "Grupos", icono: "users", accion: "Crear grupo" },
-  { key: "boxes", label: "Boxes", icono: "enter", accion: "Crear box" },
-  { key: "agendas", label: "Agendas", icono: "calendar", accion: "Crear agenda" },
-  { key: "subareas", label: "Sub-áreas", icono: "cube", accion: "Crear sub-área" },
+  { key: "datos", label: "Datos" },
+  { key: "staff", label: "Staff" },
+  { key: "grupos", label: "Grupos" },
+  { key: "boxes", label: "Boxes" },
+  { key: "agendas", label: "Agendas" },
+  { key: "subareas", label: "Sub-áreas" },
 ];
 
 const CLAVES = SECCIONES.map((s) => s.key);
@@ -94,47 +94,54 @@ export default function Areas() {
   });
 
   return (
-    <div className="flex h-full min-h-0">
-      <ArbolAreas
-        areas={areas}
-        institucion={institucion}
-        areaId={areaId}
-        subId={subId}
-        onArea={abrirArea}
-        onSub={abrirSub}
-        onNueva={() => setNuevoArea(true)}
-      />
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-6 pb-4 pt-6">
+        <div>
+          <h2 className="text-xl font-bold">Estructura organizativa</h2>
+          <p className="mt-1 text-sm text-texto-debil">{areas.total} áreas · {areas.filas.reduce((total, a) => total + (a.subareas?.length || 0), 0)} sub-áreas. Elegí un área para ver su staff, grupos, boxes y agendas.</p>
+        </div>
+        <Button data-tour="estructura-nueva-area" onClick={() => setNuevoArea(true)} disabled={!institucion}>Nueva área</Button>
+      </header>
+      <div className="flex min-h-0 flex-1 border-t border-borde">
+        <ArbolAreas
+          areas={areas}
+          areaId={areaId}
+          subId={subId}
+          onArea={abrirArea}
+          onSub={abrirSub}
+        />
 
-      <div className="min-w-0 flex-1">
-        {!sel ? (
-          <SinSeleccion
-            cargando={areas.isLoading}
-            error={areas.error}
-            onReintentar={areas.refetch}
-            total={areas.total}
-            onNueva={() => setNuevoArea(true)}
-          />
-        ) : sub ? (
-          <FichaSubarea
-            key={sub.id}
-            area={sel}
-            sub={sub}
-            onVolver={() => navigate(`/estructura/${sel.id}/subareas`)}
-            onChange={areas.refetch}
-          />
-        ) : (
-          <FichaArea
-            key={sel.id}
-            area={sel}
-            seccion={activa}
-            institucionNombre={institucion?.nombre}
-            onSeccion={abrirSeccion}
-            onEditar={() => setEditar(true)}
-            onBorrar={() => setABorrar(sel)}
-            onAbrirSub={(s) => abrirSub(sel, s)}
-            onChange={areas.refetch}
-          />
-        )}
+        <div className="min-w-0 flex-1">
+          {!sel ? (
+            <SinSeleccion
+              cargando={areas.isLoading}
+              error={areas.error}
+              onReintentar={areas.refetch}
+              total={areas.total}
+              onNueva={() => setNuevoArea(true)}
+            />
+          ) : sub ? (
+            <FichaSubarea
+              key={sub.id}
+              area={sel}
+              sub={sub}
+              onVolver={() => navigate(`/estructura/${sel.id}/subareas`)}
+              onChange={areas.refetch}
+            />
+          ) : (
+            <FichaArea
+              key={sel.id}
+              area={sel}
+              seccion={activa}
+              institucionNombre={institucion?.nombre}
+              onSeccion={abrirSeccion}
+              onEditar={() => setEditar(true)}
+              onBorrar={() => setABorrar(sel)}
+              onAbrirSub={(s) => abrirSub(sel, s)}
+              onChange={areas.refetch}
+            />
+          )}
+        </div>
       </div>
 
       {nuevoArea && (
@@ -177,7 +184,7 @@ export default function Areas() {
  * están cargadas, y filtrar acá también encuentra sub-áreas —que el backend no
  * busca— además de responder mientras se escribe.
  */
-function ArbolAreas({ areas, institucion, areaId, subId, onArea, onSub, onNueva }) {
+function ArbolAreas({ areas, areaId, subId, onArea, onSub }) {
   const [q, setQ] = useState("");
 
   const filtradas = useMemo(() => {
@@ -251,16 +258,6 @@ function ArbolAreas({ areas, institucion, areaId, subId, onArea, onSub, onNueva 
         </ul>
       </div>
 
-      <div className="border-t border-division p-2.5">
-        <button
-          data-tour="estructura-nueva-area"
-          onClick={onNueva}
-          disabled={!institucion}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-borde px-3 py-2 text-base font-semibold text-texto-suave hover:border-accent-100 hover:text-accent disabled:opacity-40"
-        >
-          <Icon name="plus" size={14} /> Nueva área
-        </button>
-      </div>
     </nav>
   );
 }
@@ -348,13 +345,7 @@ function SinSeleccion({ cargando, error, onReintentar, total, onNueva }) {
   );
 }
 
-/**
- * Ficha del área: contadores arriba, secciones apiladas abajo.
- *
- * Las consultas viven acá y no en cada sección porque los contadores necesitan
- * los totales antes de que el usuario baje: pedirlos dos veces sería pedir lo
- * mismo dos veces.
- */
+/** Ficha del área: las cifras de cada sección aparecen en sus pestañas. */
 function FichaArea({
   area, seccion, institucionNombre, onSeccion, onEditar, onBorrar, onAbrirSub, onChange,
 }) {
@@ -363,16 +354,13 @@ function FichaArea({
   const [crearGrupo, setCrearGrupo] = useState(false);
   const [crearBox, setCrearBox] = useState(false);
   const [crearAgenda, setCrearAgenda] = useState(false);
+  const [horariosNuevaAgenda, setHorariosNuevaAgenda] = useState(null);
 
   const staff = useStaffDeArea(area);
   const grupos = useLista("grupos", { area: area.id, pageSize: 100 });
   const boxes = useLista("boxes", { area: area.id, pageSize: 100 });
   const agendas = useLista("agendas", { area: area.id, pageSize: 100 });
   const subareas = area.subareas || [];
-
-  // Una agenda sin flujo da turnos que no abren nada. Se cuenta acá para poder
-  // avisarlo en el resumen, sin obligar a entrar a la sección.
-  const sinFlujo = agendas.filas.filter((a) => !a.flujo).length;
 
   const cuentas = {
     staff: staff.isLoading ? null : staff.total,
@@ -385,21 +373,7 @@ function FichaArea({
   const paginas = {
     datos: (
       <div className="flex flex-col gap-lg">
-        {/* Los contadores viven acá, la sección de entrada, y no repetidos en
-            todas: son el panorama del área, no un encabezado. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-2.5">
-          {SECCIONES.filter((s) => s.key !== "datos").map((s) => (
-            <Contador
-              key={s.key}
-              icono={s.icono}
-              label={s.label}
-              valor={cuentas[s.key]}
-              aviso={s.key === "agendas" && sinFlujo > 0 ? `${sinFlujo} sin flujo` : null}
-              onClick={() => onSeccion(s.key)}
-            />
-          ))}
-        </div>
-        <Seccion titulo="Datos" icono="list">
+        <Seccion titulo="Datos">
           <div className="grid gap-lg sm:grid-cols-2">
             <Dato k="Nombre" v={area.nombre} />
             <Dato k="Responsable / jefe" v={area.responsable || "—"} />
@@ -411,31 +385,31 @@ function FichaArea({
       </div>
     ),
     staff: (
-      <Seccion titulo="Staff" icono="users" cuenta={cuentas.staff}
+      <Seccion titulo="Staff"
         accion="Asignar profesional" onAccion={() => setAsignar(true)}>
         <StaffTab area={area} staff={staff} grupos={grupos} />
       </Seccion>
     ),
     grupos: (
-      <Seccion titulo="Grupos" icono="users" cuenta={cuentas.grupos}
+      <Seccion titulo="Grupos"
         accion="Crear grupo" onAccion={() => setCrearGrupo(true)}>
         <GruposTab area={area} grupos={grupos} staff={staff} />
       </Seccion>
     ),
     boxes: (
-      <Seccion titulo="Boxes" icono="enter" cuenta={cuentas.boxes}
+      <Seccion titulo="Boxes"
         accion="Crear box" onAccion={() => setCrearBox(true)}>
         <BoxesTab boxes={boxes} />
       </Seccion>
     ),
     agendas: (
-      <Seccion titulo="Agendas" icono="calendar" cuenta={cuentas.agendas}
+      <Seccion titulo="Agendas"
         accion="Crear agenda" onAccion={() => setCrearAgenda(true)}>
         <AgendasTab agendas={agendas} />
       </Seccion>
     ),
     subareas: (
-      <Seccion titulo="Sub-áreas" icono="cube" cuenta={cuentas.subareas}
+      <Seccion titulo="Sub-áreas"
         accion="Crear sub-área" onAccion={() => setCrearSub(true)}>
         <SubareasLista area={area} onAbrir={onAbrirSub} />
       </Seccion>
@@ -478,7 +452,10 @@ function FichaArea({
       {crearSub && <NuevaSubareaModal area={area} onClose={() => setCrearSub(false)} onSaved={onChange} />}
       {crearGrupo && <GrupoModal area={area} onClose={() => setCrearGrupo(false)} />}
       {crearBox && <BoxModal area={area} onClose={() => setCrearBox(false)} />}
-      {crearAgenda && <AgendaModal area={area} onClose={() => setCrearAgenda(false)} />}
+      {crearAgenda && <AgendaModal area={area} onClose={() => setCrearAgenda(false)}
+        onCreated={(nueva) => { setCrearAgenda(false); setHorariosNuevaAgenda(nueva); }} />}
+      {horariosNuevaAgenda && <HorariosModal agenda={horariosNuevaAgenda}
+        onClose={() => { setHorariosNuevaAgenda(null); agendas.refetch(); }} />}
     </div>
   );
 }
@@ -536,34 +513,12 @@ function SolapasArea({ activa, cuentas, onSeccion }) {
   );
 }
 
-/** Tarjeta-contador: resumen y atajo a la sección, en el mismo gesto. */
-function Contador({ icono, label, valor, aviso, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "flex flex-col items-start gap-0.5 rounded-md border bg-superficie px-3.5 py-2.5 text-left shadow-card transition-colors",
-        aviso ? "border-badge-amber-fg/40" : "border-borde",
-        "hover:border-accent-100",
-      ].join(" ")}
-    >
-      <Icon name={icono} size={15} className="mb-0.5 text-accent" />
-      <span className={valor ? "text-cifra font-extrabold tabular-nums leading-tight" : "text-cifra font-extrabold tabular-nums leading-tight text-texto-tenue"}>
-        {valor ?? "—"}
-      </span>
-      <span className="text-xs font-semibold text-texto-debil">{label}</span>
-      {aviso && <span className="text-micro font-bold text-badge-amber-fg">{aviso}</span>}
-    </button>
-  );
-}
-
 /** Una sección de la ficha, con su contador y su propio botón de crear. */
-function Seccion({ titulo, icono, cuenta, accion, onAccion, children }) {
+function Seccion({ titulo, cuenta, accion, onAccion, children }) {
   return (
     <section aria-labelledby={`titulo-${titulo}`}>
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-division px-lg py-2.5">
-          <Icon name={icono} size={16} className="text-accent" />
           <h3 id={`titulo-${titulo}`} className="text-md font-bold">{titulo}</h3>
           {cuenta != null && (
             <span className="rounded-pill bg-badge-neutral-bg px-2 text-xs font-bold tabular-nums text-badge-neutral-fg">
@@ -1084,7 +1039,7 @@ function FichaSubarea({ area, sub, onVolver, onChange }) {
       </header>
 
       <div className="px-6 pb-10 pt-lg">
-        <Seccion titulo="Flujos vinculados" icono="workflow" cuenta={todos.isLoading ? null : flujos.length}>
+        <Seccion titulo="Flujos vinculados" cuenta={todos.isLoading ? null : flujos.length}>
           {todos.isLoading ? (
             <Skeleton className="h-16" />
           ) : flujos.length === 0 ? (
@@ -1447,7 +1402,7 @@ function AgendasTab({ agendas }) {
  * sin esto la única salida era borrarla y volver a crearla, que se lleva
  * puestos los turnos ya dados.
  */
-function AgendaModal({ area, agenda, onClose }) {
+function AgendaModal({ area, agenda, onClose, onCreated }) {
   const toast = useToast();
   const esNuevo = !agenda;
   const [nombre, setNombre] = useState(agenda?.nombre || "");
@@ -1486,9 +1441,10 @@ function AgendaModal({ area, agenda, onClose }) {
       ? api.post("/agendas/", cuerpo())
       : api.patch(`/agendas/${agenda.id}/`, cuerpo())),
     {
-      onSuccess: () => {
-        toast.ok(esNuevo ? "Agenda creada." : "Agenda actualizada.");
-        onClose();
+      onSuccess: (guardada) => {
+        toast.ok(esNuevo ? "Agenda creada. Configurá sus horarios para ofrecer turnos." : "Agenda actualizada.");
+        if (esNuevo && onCreated) onCreated(guardada);
+        else onClose();
       },
       onError: (e) => toast.deError(e, "No se pudo guardar la agenda."),
     },
@@ -1502,7 +1458,7 @@ function AgendaModal({ area, agenda, onClose }) {
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={guardar.isPending || !nombre.trim() || faltaProfesional} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "…" : esNuevo ? "Crear" : "Guardar"}
+            {guardar.isPending ? "…" : esNuevo ? "Crear y configurar horarios" : "Guardar"}
           </Button>
         </>
       }

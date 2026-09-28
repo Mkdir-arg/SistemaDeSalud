@@ -5,8 +5,7 @@ import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
-import { PageHeader } from "@/components/Shell";
-import { Badge, Button, ConfirmDialog, Field, Input, Modal, Mono, Select, Tabs } from "@/components/ui";
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Mono, Select } from "@/components/ui";
 import { Buscador, FiltroSelect, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
@@ -15,9 +14,9 @@ import { plural } from "@/lib/format";
 
 const TABS = [
   { key: "todos", label: "Todos" },
-  { key: "publicada", label: "Publicado" },
-  { key: "borrador", label: "Borrador" },
-  { key: "archivada", label: "Archivado" },
+  { key: "publicada", label: "Publicados" },
+  { key: "borrador", label: "Borradores" },
+  { key: "archivada", label: "Archivados" },
 ];
 
 // Plantillas de arranque: en vez de un lienzo en blanco, el flujo nuevo puede
@@ -59,6 +58,7 @@ const PLANTILLAS = [
 /** Versión que representa al flujo: la publicada, o la última si no hay ninguna. */
 const versionVigente = (f) =>
   (f.versiones || []).find((v) => v.estado === "publicada") || (f.versiones || [])[0];
+const versionReciente = (f) => (f.versiones || [])[0];
 
 export default function Flujos() {
   const navigate = useNavigate();
@@ -114,17 +114,27 @@ export default function Flujos() {
 
   return (
     <>
-      <PageHeader subtitle="Diseñá un proceso como diagrama. La misma definición se ejecuta." />
-
-      <div className="px-lg pb-8 pt-[18px] sm:px-[30px]">
-        <div className="mb-[18px] flex flex-wrap items-center gap-lg">
-          <Tabs tabs={TABS} valor={estado} onChange={setEstado} />
-          <div className="flex-1" />
-          <Buscador valor={texto} onChange={setTexto} placeholder="Buscar flujo…" className="w-64" aria-label="Buscar flujo" />
-          <Button onClick={() => setNuevo(true)} className="flex items-center gap-2 whitespace-nowrap">
-            <Icon name="plus" size={15} /> Nuevo flujo
-          </Button>
-        </div>
+      <div className="px-lg pb-8 pt-[26px] sm:px-[30px] xl:px-10">
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold">Flujos</h2>
+            <p className="mt-1 text-sm text-texto-debil">Diseñá cómo avanza un caso en cada área. Solo los flujos publicados pueden recibir casos.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => navigate("/mapa")}>Ver mapa de flujos</Button>
+            <Button onClick={() => setNuevo(true)} className="flex items-center gap-2 whitespace-nowrap">
+              <Icon name="plus" size={15} /> Nuevo flujo
+            </Button>
+          </div>
+        </header>
+        <nav aria-label="Estado de los flujos" className="mb-4 flex gap-1 overflow-x-auto border-b border-division">
+          {TABS.map((tab) => (
+            <button key={tab.key} type="button" onClick={() => setEstado(tab.key)} aria-current={estado === tab.key ? "page" : undefined}
+              className={`whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-sm font-semibold ${estado === tab.key ? "border-accent text-accent" : "border-transparent text-texto-debil hover:text-texto-suave"}`}>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
         <TablaRecurso
           clave="flujos"
@@ -137,7 +147,8 @@ export default function Flujos() {
           }}
           ordenInicial="titulo"
           onRowClick={(f) => navigate(`/flujos/${f.id}`)}
-          barra={
+          barra={<>
+            <Buscador valor={texto} onChange={setTexto} placeholder="Buscar flujo…" className="w-full sm:w-64" aria-label="Buscar flujo" />
             <FiltroSelect
               valor={area}
               onChange={setArea}
@@ -145,7 +156,7 @@ export default function Flujos() {
               todos="Todas las áreas"
               opciones={areas.filas.map((a) => ({ value: String(a.id), label: a.nombre }))}
             />
-          }
+          </>}
           vacio={{
             titulo: "No hay flujos",
             detalle: "Creá el primero o cambiá los filtros.",
@@ -153,13 +164,11 @@ export default function Flujos() {
           }}
           columnas={[
             {
-              key: "titulo", label: "Flujo", orden: "titulo", truncar: true,
+              key: "titulo", label: "Flujo", orden: "titulo",
               render: (f) => (
-                <div className="flex items-center gap-2.5">
-                  <span className="flex size-8 flex-none items-center justify-center rounded-md bg-accent-50 text-accent">
-                    <Icon name="workflow" size={16} />
-                  </span>
-                  <span className="truncate font-semibold">{f.titulo}</span>
+                <div className="min-w-0">
+                  <strong className="block font-semibold">{f.titulo}</strong>
+                  {f.descripcion && <span className="block text-sm text-texto-debil">{f.descripcion}</span>}
                 </div>
               ),
             },
@@ -174,22 +183,24 @@ export default function Flujos() {
                 </span>
               ),
             },
+            { key: "version", label: "Versión", render: (f) => <Mono>{versionReciente(f)?.etiqueta || "—"}</Mono> },
             {
               key: "estado", label: "Estado",
               render: (f) => {
-                const e = estadoVersion[versionVigente(f)?.estado] || estadoVersion.borrador;
-                return <Badge tone={e.tone}>{e.label}</Badge>;
+                const reciente = versionReciente(f);
+                const publicada = (f.versiones || []).find((v) => v.estado === "publicada");
+                const e = estadoVersion[reciente?.estado] || estadoVersion.borrador;
+                return <Badge tone={e.tone}>{e.label}{reciente?.estado === "borrador" && publicada ? ` · ${publicada.etiqueta} en uso` : ""}</Badge>;
               },
             },
-            { key: "version", label: "Ver.", render: (f) => <Mono>{versionVigente(f)?.etiqueta || "—"}</Mono> },
             {
               key: "casos_activos", label: "Casos",
               render: (f) => (f.casos_activos > 0 ? plural(f.casos_activos, "activo", "activos") : "—"),
             },
             {
-              key: "creada", label: "Últ. edición", orden: "creado",
+              key: "creada", label: "Última edición", orden: "creado",
               render: (f) => {
-                const v = versionVigente(f);
+                const v = versionReciente(f);
                 return v ? new Date(v.creada).toLocaleDateString("es-AR") : "—";
               },
             },
@@ -199,7 +210,7 @@ export default function Flujos() {
                 // Corta la propagación: la fila entera navega al diseñador y sin
                 // esto duplicar también abriría el flujo original.
                 <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                  <IconBtn title="Abrir en diseñador" name="edit" onClick={() => navigate(`/flujos/${f.id}`)} />
+                  <Button size="sm" variant="secondary" onClick={() => navigate(`/flujos/${f.id}`)}>Editar</Button>
                   <IconBtn
                     title="Duplicar"
                     name="copy"

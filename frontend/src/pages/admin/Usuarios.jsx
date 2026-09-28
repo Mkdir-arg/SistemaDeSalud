@@ -24,6 +24,10 @@ export default function Usuarios() {
   const { institucion } = useInstitucion();
   const { user } = useAuth();
   const [editando, setEditando] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [rol, setRol] = useState("");
+  const [area, setArea] = useState("");
+  const [estado, setEstado] = useState("activos");
   const ambito = `${user?.id}:${institucion?.id}`;
 
   /*
@@ -56,30 +60,59 @@ export default function Usuarios() {
         });
       }
       const f = por.get(m.usuario);
-      f.roles.add(m.rol_display || m.rol);
-      (m.areas || []).forEach((aid) => nombreArea[aid] && f.areas.add(nombreArea[aid]));
+      f.activo = f.activo || m.activo;
+      if (m.activo) {
+        f.roles.add(m.rol_display || m.rol);
+        (m.areas || []).forEach((aid) => nombreArea[aid] && f.areas.add(nombreArea[aid]));
+      }
     }
     return [...por.values()]
       .map((x) => ({ ...x, roles: [...x.roles], areas: [...x.areas] }))
       .sort((a, b) => (a.nombre || a.email).localeCompare(b.nombre || b.email, "es"));
   }, [membresias.filas, areas.filas]);
 
+  const rolesFiltro = [...new Set(filas.flatMap((f) => f.roles))].sort((a, b) => a.localeCompare(b, "es"));
+  const areasFiltro = [...new Set(filas.flatMap((f) => f.areas))].sort((a, b) => a.localeCompare(b, "es"));
+  const termino = busqueda.trim().toLocaleLowerCase("es");
+  const visibles = filas.filter((f) =>
+    (!termino || `${f.nombre} ${f.email}`.toLocaleLowerCase("es").includes(termino))
+    && (!rol || f.roles.includes(rol))
+    && (!area || f.areas.includes(area))
+    && (estado === "todos" || f.activo === (estado === "activos"))
+  );
+
+  const abrir = (f) => setEditando({ id: f.id, email: f.email, nombre_completo: f.nombre });
+
   return (
-    <div className="px-lg py-[26px] sm:px-[30px]">
-      <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-lg px-[22px] py-[18px]">
-          <div>
-            <h2 className="text-xl font-bold">Usuarios</h2>
-            <div className="text-sm text-texto-debil">
-              {plural(filas.length, "persona con acceso", "personas con acceso")} al sistema
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setEditando({})} className="flex items-center gap-2">
-            <Icon name="plus" size={15} /> Crear usuario
-          </Button>
-          </div>
+    <div className="px-lg py-[26px] sm:px-[30px] xl:px-10">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold">Usuarios y permisos</h2>
+          <p className="mt-1 text-sm text-texto-debil">
+            {membresias.total > membresias.filas.length ? "Al menos " : ""}{plural(filas.length, "persona con acceso", "personas con acceso")} a {institucion?.nombre || "esta institución"}.
+          </p>
         </div>
+        <Button onClick={() => setEditando({})} className="flex items-center gap-2">
+          <Icon name="plus" size={15} /> Nuevo usuario
+        </Button>
+      </header>
+
+      <div className="mb-4 flex flex-wrap gap-2" role="search" aria-label="Filtrar usuarios">
+        <Input aria-label="Buscar por nombre o email" placeholder="Buscar por nombre o email" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="w-full sm:w-64" />
+        <Select aria-label="Filtrar por rol" value={rol} onChange={(e) => setRol(e.target.value)} className="w-full sm:w-auto">
+          <option value="">Todos los roles</option>
+          {rolesFiltro.map((r) => <option key={r} value={r}>{r}</option>)}
+        </Select>
+        <Select aria-label="Filtrar por área" value={area} onChange={(e) => setArea(e.target.value)} className="w-full sm:w-auto">
+          <option value="">Todas las áreas</option>
+          {areasFiltro.map((a) => <option key={a} value={a}>{a}</option>)}
+        </Select>
+        <Select aria-label="Filtrar por estado" value={estado} onChange={(e) => setEstado(e.target.value)} className="w-full sm:w-auto">
+          <option value="activos">Activos</option><option value="inactivos">Inactivos</option><option value="todos">Todos los estados</option>
+        </Select>
+      </div>
+
+      <Card className="overflow-hidden">
 
         {membresias.error ? (
           <EstadoError error={membresias.error} onReintentar={membresias.refetch} />
@@ -91,8 +124,27 @@ export default function Usuarios() {
             detalle="Creá uno y asignale una membresía para que pueda entrar."
             icono="users"
           />
+        ) : visibles.length === 0 ? (
+          <EstadoVacio titulo="Ningún usuario coincide con los filtros" detalle="Probá cambiar la búsqueda, el rol, el área o el estado." icono="users" />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <ul className="divide-y divide-division sm:hidden">
+            {visibles.map((f) => (
+              <li key={f.id} className="space-y-2 px-4 py-4">
+                <div className="flex items-start gap-2.5">
+                  <Avatar nombre={f.nombre || f.email} i={f.id} size={32} />
+                  <div className="min-w-0 flex-1">
+                    <strong className="block break-words text-sm">{f.nombre || "—"}</strong>
+                    <span className="block break-all text-xs text-texto-debil">{f.email}</span>
+                  </div>
+                  <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge>
+                </div>
+                <p className="text-xs text-texto-debil">{f.roles.join(" · ") || "Sin rol activo"}{f.areas.length ? ` · ${f.areas.join(", ")}` : ""}</p>
+                <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Editar a ${f.nombre || f.email}`}>Editar</Button>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full border-collapse text-md">
               <thead className="bg-superficie-2">
                 <tr>
@@ -104,13 +156,10 @@ export default function Usuarios() {
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => (
+                {visibles.map((f) => (
                   <tr
                     key={f.id}
-                    onClick={() => setEditando({ id: f.id, email: f.email, nombre_completo: f.nombre })}
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditando({ id: f.id, email: f.email, nombre_completo: f.nombre }); } }}
-                    className="cursor-pointer border-t border-division hover:bg-superficie-2 focus-visible:bg-superficie-2"
+                    className="border-t border-division hover:bg-superficie-2"
                   >
                     <td className="px-[22px] py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
@@ -121,19 +170,26 @@ export default function Usuarios() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-[22px] py-3 text-texto-medio">{f.roles.join(" · ") || "—"}</td>
+                    <td className="px-[22px] py-3 text-texto-medio">{f.roles.join(" · ") || "Sin rol activo"}</td>
                     <td className="px-[22px] py-3 text-texto-medio">{f.areas.join(", ") || "—"}</td>
                     <td className="px-[22px] py-3">
                       <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge>
                     </td>
-                    <td className="px-[22px] py-3 text-right text-texto-debil">
-                      <Icon name="edit" size={15} aria-hidden="true" />
+                    <td className="px-[22px] py-3 text-right">
+                      <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Editar a ${f.nombre || f.email}`}>Editar</Button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          </>
+        )}
+        {!membresias.isLoading && !membresias.error && filas.length > 0 && (
+          <p className="border-t border-division px-[22px] py-3 text-sm text-texto-debil">
+            Mostrando {visibles.length} de {filas.length} usuarios cargados
+            {membresias.total > membresias.filas.length && ". La lista supera las 200 membresías; los filtros sólo abarcan las cargadas."}
+          </p>
         )}
       </Card>
 

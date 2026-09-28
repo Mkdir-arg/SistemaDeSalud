@@ -481,7 +481,7 @@ function BotonLlamar({ label, disabled, cargando, onClick }) {
         // en los dos temas (defecto que ya venía del diseño original). Llamar al
         // siguiente paciente es LA acción primaria de la pantalla, así que usa el
         // relleno de marca; el teal queda como color de categoría en el icono.
-        : "bg-accent-fuerte text-sobre-accent hover:bg-accent-hover",
+        : "hen-cta text-sobre-accent",
       )}
     >
       <Icon name="enter" size={14} /> {cargando ? "Llamando…" : label}

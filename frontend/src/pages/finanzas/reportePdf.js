@@ -5,8 +5,8 @@ import { fechaHora } from "@/lib/format";
 import { gruposComparados } from "./reportes";
 
 // Se importa sólo al descargar. No se envían datos a un servicio de conversión.
-const tinta = "#243444", tenue = "#536574", petroleo = "#287f92";
-const colorSigno = (n) => Number(n) > 0 ? "#187344" : Number(n) < 0 ? "#b42332" : tenue;
+const tinta = "#1D1930", tenue = "#5E5680", teal = "#007A70", lavanda = "#5E5680";
+const colorSigno = (n) => Number(n) > 0 ? "#016630" : Number(n) < 0 ? "#9F0712" : tenue;
 const porcentaje = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2, signDisplay: "exceptZero" });
 const disponible = (fila) => (fila.cantidad_registros ?? fila.cantidad_movimientos) > 0;
 // Las fuentes estándar de PDF cubren español y símbolos monetarios latinos.
@@ -33,8 +33,11 @@ async function imagenGrafico(svg) {
   });
   const contenido = new XMLSerializer().serializeToString(svg)
     .replace(/var\(--color-superficie\)/g, "#ffffff")
-    .replace(/var\(--color-division\)/g, "#dce3e8")
-    .replace(/var\(--color-texto-debil\)/g, tenue);
+    .replace(/var\(--color-division\)/g, "#E3DDF2")
+    .replace(/var\(--color-texto-debil\)/g, tenue)
+    .replace(/var\(--color-brand-teal\)/g, teal)
+    .replace(/var\(--color-slate-600\)/g, lavanda)
+    .replace(/var\(--color-slate-400\)/g, "#766E94");
   const url = URL.createObjectURL(new Blob([contenido], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image();
@@ -54,7 +57,7 @@ async function imagenGrafico(svg) {
 
 export async function descargarReportePdf(informe) {
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
-  doc.setProperties({ title: `Finanzas - ${informe.institucion} - ${informe.mes}`, subject: "Reporte ejecutivo de fuentes financieras registradas", creator: "Sistema de Salud" });
+  doc.setProperties({ title: `HEN · Finanzas - ${informe.institucion} - ${informe.mes}`, subject: "Reporte ejecutivo de fuentes financieras registradas", creator: "HEN" });
   const margen = 16, ancho = 178, limite = 275;
   let y = 32;
   const nuevaPagina = () => { doc.addPage(); y = 32; };
@@ -85,9 +88,9 @@ export async function descargarReportePdf(informe) {
     autoTable(doc, {
       startY: y, head: [cabeceras], body: filas.length ? filas.map((fila) => fila.flatMap((celda, i) => esVariacion(celda) ? variacion(celda.variacion) : [{ content: texto(celda), styles: { halign: numericas.includes(i) ? "right" : "left" } }])) : [[{ content: "Sin registros para esta selección", colSpan: cabeceras.length }]],
       margin: { top: 32, bottom: 22, left: margen, right: margen },
-      styles: { font: "helvetica", fontSize: 8.5, textColor: tinta, cellPadding: 2.5, lineColor: "#e2e8ed", lineWidth: 0.1, overflow: "linebreak" },
-      headStyles: { fillColor: petroleo, textColor: "#ffffff", fontStyle: "bold" },
-      alternateRowStyles: { fillColor: "#f3f6f8" },
+      styles: { font: "helvetica", fontSize: 8.5, textColor: tinta, cellPadding: 2.5, lineColor: "#E3DDF2", lineWidth: 0.1, overflow: "linebreak" },
+      headStyles: { fillColor: teal, textColor: "#ffffff", fontStyle: "bold" },
+      alternateRowStyles: { fillColor: "#F8F6FD" },
       columnStyles: cabeceras.length === 5 && variaciones.size === 1 ? { 0: { cellWidth: 50 }, 1: { cellWidth: 32 }, 2: { cellWidth: 32 }, 3: { cellWidth: 32 }, 4: { cellWidth: 32 } } : {},
       rowPageBreak: "avoid", showHead: "everyPage",
     });
@@ -172,18 +175,18 @@ export async function descargarReportePdf(informe) {
   }
   if (informe.gastos) {
     nuevaPagina();
-    await grafico("tendencia_gastos", "Gastos · evolución mensual en ARS", [["Gastos aprobados", petroleo]], informe.gastos.serie.some(disponible));
+    await grafico("tendencia_gastos", "Gastos · evolución mensual en ARS", [["Gastos aprobados", teal]], informe.gastos.serie.some(disponible));
     parrafo("Puntos huecos: lectura provisional. Huecos en la serie: sin registros.", { tamano: 8 });
     detalle("reporte_serie_gastos");
     nuevaPagina();
-    await grafico("grupos_gastos", "Gastos por área y concepto · ARS", [[referencia.anterior.periodo_economico.slice(0, 7), "#82949e"], [informe.mes, petroleo]], informe.gastos.agrupaciones.length > 0);
+    await grafico("grupos_gastos", "Gastos por área y concepto · ARS", [[referencia.anterior.periodo_economico.slice(0, 7), "#766E94"], [informe.mes, teal]], informe.gastos.agrupaciones.length > 0);
     parrafo("Gráfico: hasta ocho grupos con mayor aprobado actual. La tabla conserva su propia selección y orden.", { tamano: 8 });
     if (informe.gastos.agrupaciones.length) parrafo(gruposComparados(informe.gastos.agrupaciones).map((g, i) => `${i + 1}. ${g.area_nombre} · ${g.concepto_nombre}`).join("\n"), { tamano: 8 });
     detalle("reporte_grupos_gastos");
   }
   if (informe.dinero) {
     nuevaPagina();
-    await grafico("tendencia_dinero", "Pagos y cobros · evolución mensual en ARS", [["Cobros netos", petroleo], ["Pagos netos", "#ad7133"]], informe.dinero.serie.some(disponible));
+    await grafico("tendencia_dinero", "Pagos y cobros · evolución mensual en ARS", [["Cobros netos", teal], ["Pagos netos", lavanda]], informe.dinero.serie.some(disponible));
     parrafo("Puntos huecos: mes abierto. Huecos en la serie: sin movimientos aprobados.", { tamano: 8 });
     detalle("reporte_serie_dinero");
     detalle(`reporte_grupos_${informe.tipo}`, `Tipo: ${informe.tipo === "cobrar" ? "Cobros por financiador" : "Pagos por concepto"}${informe.busqueda ? ` · Búsqueda: ${informe.busqueda}` : ""}`);
@@ -193,12 +196,12 @@ export async function descargarReportePdf(informe) {
     doc.setPage(i);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(petroleo);
-    doc.text("FINANZAS / REPORTE EJECUTIVO", margen, 16);
+    doc.setTextColor(teal);
+    doc.text("HEN / FINANZAS / REPORTE EJECUTIVO", margen, 16);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(tenue);
     doc.text(informe.mes, 194, 16, { align: "right" });
-    doc.setDrawColor("#dce3e8");
+    doc.setDrawColor("#E3DDF2");
     doc.setLineWidth(0.25);
     doc.line(margen, 21, 194, 21);
     doc.line(margen, 280, 194, 280);

@@ -16,7 +16,7 @@ El sistema **no tiene pantallas fijas**. Cada hospital dibuja su propio circuito
 atención —admisión, triage, sala de espera, atención, derivación— y el sistema arma
 las pantallas a partir de ese dibujo.
 
-Por eso dos hospitales con I-Core Salud no se ven igual, y por eso **lo que ves en tu
+Por eso dos hospitales con HEN no se ven igual, y por eso **lo que ves en tu
 pantalla depende del paso en el que esté el paciente**, no de un menú fijo.
 
 Dos palabras que vas a leer todo el tiempo:

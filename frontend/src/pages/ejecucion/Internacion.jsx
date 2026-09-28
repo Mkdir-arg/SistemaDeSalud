@@ -178,43 +178,50 @@ export default function Internacion() {
   }
 
   return (
-    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">
-      <section className="flex flex-wrap items-center gap-lg rounded-lg border border-borde bg-superficie px-xl py-lg">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-nodo-atencion-tint text-nodo-atencion-sol">
-          <Icon name="bed" size={22} />
-        </span>
-        <div className="min-w-40 flex-1">
+    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px] xl:px-10">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
           <h2 className="text-xl font-bold">Internación</h2>
           <p className="text-base text-texto-debil">
             {foco.ocupadas} de {foco.operativas} camas en servicio ocupadas
             {foco.bloqueadas > 0 && ` · ${foco.bloqueadas} fuera de servicio`}
+            {` · ${tab.isFetching ? "actualizando…" : `actualizado ${frescura(actualizado === Infinity ? 0 : actualizado)}`}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-texto-tenue" aria-live="polite">
-            {tab.isFetching ? "Actualizando…" : `Actualizado ${frescura(actualizado === Infinity ? 0 : actualizado)}`}
-          </span>
-          <Button size="sm" variant="secondary" onClick={refrescar} disabled={tab.isFetching}>
+        <div className="flex flex-wrap items-center gap-2">
+          {sectores.length > 1 && (
+            <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-borde bg-superficie-2 p-1" role="group" aria-label="Sector">
+              <button type="button" onClick={() => setSectorSel(null)} aria-pressed={!sel}
+                className={cn("whitespace-nowrap rounded px-3 py-1.5 text-sm", !sel ? "bg-superficie font-semibold text-texto-fuerte shadow-card" : "text-texto-suave hover:text-texto-fuerte")}>
+                Todos
+              </button>
+              {sectores.map((s) => (
+                <button key={s.clave} type="button" onClick={() => setSectorSel(s.clave)} aria-pressed={sel?.clave === s.clave}
+                  className={cn("whitespace-nowrap rounded px-3 py-1.5 text-sm", sel?.clave === s.clave ? "bg-superficie font-semibold text-texto-fuerte shadow-card" : "text-texto-suave hover:text-texto-fuerte")}>
+                  {s.rotulo}
+                </button>
+              ))}
+            </div>
+          )}
+          <Button size="sm" variant="secondary" onClick={refrescar} disabled={tab.isFetching} aria-label="Actualizar camas">
             <Icon name="refresh" size={14} /> Actualizar
           </Button>
         </div>
-        {sectores.length > 1 && (
-          <select
-            aria-label="Sector"
-            value={sectorSel ?? ""}
-            onChange={(e) => setSectorSel(e.target.value || null)}
-            className="h-9 rounded-md border border-campo-borde bg-superficie px-2 text-md outline-none focus:border-accent"
-          >
-            <option value="">Todos los sectores</option>
-            {sectores.map((s) => <option key={s.clave} value={s.clave}>{s.rotulo}</option>)}
-          </select>
-        )}
-        <div className="text-right">
-          <div className={cn("text-cifra font-extrabold leading-none tabular-nums", tonoOcupacion(foco.ocupacion).texto)}>
-            {foco.ocupacion}%
+      </header>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label={`Estado de las camas de ${rotuloFoco}`}>
+        {[
+          { label: "Ocupación", value: `${foco.ocupacion}%`, detail: `${foco.ocupadas} de ${foco.operativas} camas en servicio`, tone: tonoOcupacion(foco.ocupacion).texto },
+          { label: "Libres", value: foco.libres, detail: "Listas para ingresar" },
+          { label: "En higiene", value: foco.higiene, detail: "Pendientes de limpieza", tone: "text-badge-amber-fg" },
+          { label: "Fuera de servicio", value: foco.bloqueadas, detail: "No cuentan como operativas" },
+        ].map((k) => (
+          <div key={k.label} className="rounded-lg border border-borde bg-superficie px-4 py-4">
+            <p className="text-sm text-texto-suave">{k.label}</p>
+            <p className={cn("mt-1 text-cifra font-bold leading-none tabular-nums", k.tone)}>{k.value}</p>
+            <p className="mt-2 text-xs text-texto-tenue">{k.detail}</p>
           </div>
-          <div className="text-xs text-texto-tenue">ocupación · {rotuloFoco}</div>
-        </div>
+        ))}
       </section>
 
       {faltan > 0 && (
@@ -243,6 +250,7 @@ export default function Internacion() {
               sector={s}
               camas={camas}
               faltan={estable ? Math.max(0, s.total - camas.length) : 0}
+              conflictos={tab.data?.conflictos || {}}
               onCambio={refrescar}
             />
           );
@@ -252,11 +260,10 @@ export default function Internacion() {
   );
 }
 
-function Sector({ sector, camas, faltan = 0, onCambio }) {
-  const tono = tonoOcupacion(sector.ocupacion);
+function Sector({ sector, camas, faltan = 0, conflictos, onCambio }) {
   return (
     <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-      <header className="flex flex-wrap items-center gap-lg border-b border-division px-xl py-lg">
+      <header className="flex flex-wrap items-center gap-lg px-xl pt-lg">
         <div className="min-w-40 flex-1">
           <h3 className="text-lg font-bold">{sector.rotulo}</h3>
           <p className="text-base text-texto-debil">
@@ -265,19 +272,9 @@ function Sector({ sector, camas, faltan = 0, onCambio }) {
             {sector.bloqueadas > 0 && ` · ${sector.bloqueadas} fuera de servicio`}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* La barra dice lo mismo que el número, pero se lee de reojo. */}
-          <div className="h-2 w-32 overflow-hidden rounded-pill bg-division" role="presentation">
-            <div className={cn("h-full rounded-pill", tono.barra)} style={{ width: `${sector.ocupacion}%` }} />
-          </div>
-          <div className="text-right tabular-nums">
-            <div className={cn("text-lg font-extrabold leading-none", tono.texto)}>{sector.ocupacion}%</div>
-            <div className="text-xs text-texto-tenue">{sector.ocupadas}/{sector.operativas}</div>
-          </div>
-        </div>
       </header>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2.5 p-xl">
-        {camas.map((c) => <FichaCama key={c.id} cama={c} onCambio={onCambio} />)}
+        {camas.map((c) => <FichaCama key={c.id} cama={c} conflicto={conflictos[c.id]} onCambio={onCambio} />)}
       </div>
       {faltan > 0 && (
         <p className="border-t border-division px-xl py-3 text-base text-badge-amber-fg">
@@ -289,7 +286,7 @@ function Sector({ sector, camas, faltan = 0, onCambio }) {
   );
 }
 
-function FichaCama({ cama, onCambio }) {
+function FichaCama({ cama, conflicto, onCambio }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [bloqueando, setBloqueando] = useState(false);
@@ -307,22 +304,26 @@ function FichaCama({ cama, onCambio }) {
   return (
     <div className={cn(
       "flex flex-col gap-2 rounded-md border p-3",
-      cama.estado === "ocupada" ? "border-accent-100 bg-accent-50/40" : "border-borde",
+      conflicto?.length ? "border-danger bg-badge-error-bg" : cama.estado === "ocupada" ? "border-accent-100 bg-accent-50/40" : "border-borde",
     )}>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2 font-mono text-md font-bold">
           <span className={cn("size-2.5 shrink-0 rounded-pill", est.punto)} aria-hidden="true" />
           {cama.nombre}
         </span>
-        <span className={cn("rounded-pill px-2 py-px text-xs font-semibold", est.chip)}>{est.label}</span>
+        <span className={cn("rounded-pill px-2 py-px text-xs font-semibold", conflicto?.length ? "bg-danger-fuerte text-sobre-danger" : est.chip)}>{conflicto?.length ? "Conflicto" : est.label}</span>
       </div>
+
+      {conflicto?.length > 0 && (
+          <p className="text-sm text-badge-error-fg">El paciente también ocupa {conflicto.join(", ")}. Revisá la asignación.</p>
+      )}
 
       {cama.estado === "ocupada" ? (
         <button
           onClick={() => navigate(`/casos/${cama.caso_id}`)}
           className="min-w-0 text-left"
         >
-          <span className="block truncate text-base font-semibold text-accent">
+          <span className="block text-base font-semibold text-accent">
             {cama.paciente || casoId(cama.caso_id)}
           </span>
           <span className="block text-sm text-texto-tenue">internado hace {antiguedad(cama.desde)}</span>
@@ -332,7 +333,7 @@ function FichaCama({ cama, onCambio }) {
           <span className="text-sm text-texto-tenue">esperando hace {antiguedad(cama.desde)}</span>
           <Button size="sm" variant="secondary" disabled={cambiar.isPending}
                   onClick={() => cambiar.mutate({ estado: "libre" })}>
-            Higienizada
+            Marcar higienizada
           </Button>
         </div>
       ) : cama.estado === "bloqueada" ? (

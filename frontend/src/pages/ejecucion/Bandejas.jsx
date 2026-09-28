@@ -5,14 +5,18 @@ import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { useInstitucion } from "@/auth/InstitutionContext";
-import { PageHeader } from "@/components/Shell";
-import { Badge, Button, Field, Modal, Select, Tabs } from "@/components/ui";
-import { useFiltroUrl } from "@/components/ui/filtros";
+import { Badge, Button, Field, Modal, Select } from "@/components/ui";
+import { Buscador, FiltroSelect, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { BuscadorPaciente, PacienteElegido } from "@/components/ui/paciente";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
-import { antiguedad, casoId } from "@/lib/format";
-import { estadoCaso } from "@/lib/dominio";
+import { antiguedad, casoId, fechaHora } from "@/lib/format";
+
+const PRIORIDADES = [
+  { value: "urgente", label: "Urgente" },
+  { value: "alta", label: "Alta" },
+  { value: "normal", label: "Normal" },
+];
 
 export default function Bandejas() {
   const { user } = useAuth();
@@ -20,19 +24,29 @@ export default function Bandejas() {
   const navigate = useNavigate();
   const toast = useToast();
   const [tab, setTab] = useFiltroUrl("bandeja", "mios");
+  const [texto, setTexto, busqueda] = useBusquedaUrl("q");
+  const [prioridad, setPrioridad] = useFiltroUrl("prioridad");
+  const [flujo, setFlujo] = useFiltroUrl("flujo");
   const [nuevo, setNuevo] = useState(false);
 
   // Cada pestaña es un filtro DEL SERVIDOR. Antes la pantalla traía todos los
   // casos de la institución y separaba las bandejas en el navegador, así que con
   // volumen real repartía los primeros 25 que devolvía la API.
-  const params = tab === "mios"
-    ? { institucion: institucion?.id, asignado_a: user?.id }
-    : { institucion: institucion?.id, tomables: true };
+  const params = {
+    institucion: institucion?.id,
+    ...(tab === "mios" ? { asignado_a: user?.id, grupo_estado: "activos" }
+      : tab === "sin" ? { tomables: true } : { grupo_estado: "activos" }),
+    search: busqueda || undefined,
+    prioridad: prioridad || undefined,
+    flujo: flujo || undefined,
+  };
 
   // Las cuentas de las pestañas piden una sola fila: lo único que interesa es el
   // `count` que devuelve la API igual.
-  const nMios = useLista("casos", { institucion: institucion?.id, asignado_a: user?.id, pageSize: 1 });
+  const nMios = useLista("casos", { institucion: institucion?.id, asignado_a: user?.id, grupo_estado: "activos", pageSize: 1 });
   const nSin = useLista("casos", { institucion: institucion?.id, tomables: true, pageSize: 1 });
+  const nTodos = useLista("casos", { institucion: institucion?.id, grupo_estado: "activos", pageSize: 1 });
+  const flujos = useLista("flujos", { institucion: institucion?.id, pageSize: 200 }, { enabled: !!institucion?.id });
 
   const tomar = useAccion((caso) => api.post(`/casos/${caso}/tomar/`), {
     onError: (e) => toast.deError(e, "No se pudo tomar el caso."),
@@ -40,47 +54,33 @@ export default function Bandejas() {
 
   const columnas = [
     {
-      key: "id", label: "Caso", orden: "id", className: "w-36",
+      key: "id", label: "Caso", orden: "id", className: "w-24",
+      render: (c) => <span className="font-mono font-bold">{casoId(c.id)}</span>,
+    },
+    {
+      key: "ciudadano_nombre", label: "Paciente", orden: "ciudadano__apellido", className: "min-w-36",
       render: (c) => (
-        <span>
-          <span className="block font-mono font-bold">{casoId(c.id)}</span>
-          <span className="block text-sm text-texto-debil">{c.flujo_titulo}</span>
-        </span>
+        <span><strong className="block font-semibold">{c.ciudadano_nombre || "Sin paciente"}</strong>
+          {c.documento_resumen && <span className="block text-sm text-texto-debil">DNI {c.documento_resumen}</span>}</span>
       ),
     },
     {
-      key: "paso_actual", label: "Paso actual", orden: "nodo_actual__titulo", truncar: true,
-      className: "max-w-56",
-      render: (c) => (
-        <span>
-          <span className="block text-texto-suave">{c.paso_actual || "—"}</span>
-          {c.responsables?.length > 0 && (
-            <span className="block text-xs text-texto-tenue">
-              {c.responsables.map((g) => g.nombre).join(", ")}
-            </span>
-          )}
-        </span>
-      ),
+      key: "paso_actual", label: "Flujo y etapa", orden: "nodo_actual__titulo", className: "min-w-40",
+      render: (c) => <span><strong className="block font-semibold">{c.flujo_titulo || "—"}</strong><span className="block text-sm text-texto-debil">{c.paso_actual || "Sin paso actual"}</span></span>,
     },
+    { key: "prioridad", label: "Prioridad", orden: "prioridad_rank", render: (c) => <Badge tone={c.prioridad === "urgente" ? "error" : c.prioridad === "alta" ? "amber" : "neutral"}>{c.prioridad_display || c.prioridad}</Badge> },
     {
-      key: "estado", label: "Estado", orden: "estado",
-      render: (c) => {
-        const e = estadoCaso[c.estado] || { label: c.estado_display, tone: "neutral" };
-        return <Badge tone={e.tone}>{e.label}</Badge>;
-      },
+      key: "paso_desde", label: "Espera", orden: "paso_desde", className: "w-24 tabular-nums",
+      render: (c) => <span className="text-texto-debil">{antiguedad(c.paso_desde || c.creado)}</span>,
     },
-    { key: "area_nombre", label: "Área", orden: "area_actual__nombre", render: (c) => c.area_nombre || "—" },
-    {
-      key: "creado", label: "Antigüedad", orden: "creado", className: "w-28 tabular-nums",
-      render: (c) => <span className="text-texto-debil">{antiguedad(c.creado)}</span>,
-    },
+    { key: "creado", label: "Ingreso", orden: "creado", className: "min-w-28", render: (c) => <span className="text-texto-debil">{fechaHora(c.creado)}</span> },
     {
       key: "accion", label: "Acciones", fija: true, className: "w-32 min-w-32 text-right",
       render: (c) => (
         <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           {c.asignado_a === user?.id ? (
             <Button size="sm" onClick={() => navigate(`/casos/${c.id}`)}>Continuar</Button>
-          ) : !c.asignado_a ? (
+          ) : !c.asignado_a && c.puede_tomar && !c.en_fila ? (
             <Button
               size="sm"
               variant="secondary"
@@ -91,7 +91,7 @@ export default function Bandejas() {
             >
               {tomar.isPending ? "…" : "Tomar"}
             </Button>
-          ) : null}
+          ) : <Button size="sm" variant="secondary" onClick={() => navigate(`/casos/${c.id}`)}>Ver</Button>}
         </span>
       ),
     },
@@ -99,21 +99,31 @@ export default function Bandejas() {
 
   return (
     <>
-      <PageHeader
-        subtitle="Casos en curso. Tomá uno sin asignar o continuá los tuyos."
-        right={<Button onClick={() => setNuevo(true)}>+ Nuevo caso</Button>}
-      />
+      <div className="px-lg pb-8 pt-[26px] sm:px-[30px] xl:px-10">
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold">Bandeja</h2>
+            <p className="mt-1 text-sm text-texto-debil">Casos en curso. Tomá uno sin asignar o continuá los tuyos.</p>
+          </div>
+          <Button onClick={() => setNuevo(true)}>Nuevo caso</Button>
+        </header>
+        <nav aria-label="Bandejas de casos" className="mb-4 flex gap-1 overflow-x-auto border-b border-division">
+          {[
+            { key: "mios", label: "Mis casos", consulta: nMios },
+            { key: "sin", label: "Sin asignar", consulta: nSin },
+            { key: "todos", label: "Todos", consulta: nTodos },
+          ].map((item) => (
+            <button key={item.key} type="button" onClick={() => setTab(item.key)} aria-current={tab === item.key ? "page" : undefined}
+              title={item.key === "todos" ? "Todos los casos activos de la institución" : undefined}
+              aria-label={item.key === "todos" ? `Todos los casos activos de la institución (${item.consulta.error ? "sin dato" : item.consulta.isLoading ? "cargando" : item.consulta.total})` : undefined}
+              className={`whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-sm font-semibold ${tab === item.key ? "border-accent text-accent" : "border-transparent text-texto-debil hover:text-texto-suave"}`}>
+              {item.label} ({item.consulta.error ? "—" : item.consulta.isLoading ? "…" : item.consulta.total})
+            </button>
+          ))}
+        </nav>
 
-      <div className="px-lg pb-8 pt-lg sm:px-8">
-        <Tabs
-          className="mb-lg"
-          valor={tab}
-          onChange={setTab}
-          tabs={[
-            { key: "mios", label: "Mis casos", cuenta: nMios.total },
-            { key: "sin", label: "Sin asignar", cuenta: nSin.total },
-          ]}
-        />
+        {flujos.error && <p role="alert" className="mb-3 text-sm text-badge-error-fg">No se pudieron cargar los flujos del filtro. <button type="button" className="font-semibold underline" onClick={() => flujos.refetch()}>Reintentar</button></p>}
+        {flujos.total > flujos.filas.length && <p className="mb-3 text-sm text-badge-amber-fg">El filtro muestra los primeros 200 flujos de la institución.</p>}
 
         <TablaRecurso
           // La clave incluye la pestaña para que cada bandeja recuerde su propia
@@ -124,10 +134,18 @@ export default function Bandejas() {
           params={params}
           columnas={columnas}
           onRowClick={(c) => navigate(`/casos/${c.id}`)}
+          barra={<>
+            <Buscador valor={texto} onChange={setTexto} placeholder="Paciente, DNI o flujo…" className="w-full sm:w-64" aria-label="Buscar en la bandeja" />
+            <FiltroSelect etiqueta="Filtrar por prioridad" valor={prioridad} onChange={setPrioridad} opciones={PRIORIDADES} todos="Todas las prioridades" />
+            <FiltroSelect etiqueta="Filtrar por flujo" valor={flujo} onChange={setFlujo}
+              opciones={flujos.filas.map((f) => ({ value: String(f.id), label: f.titulo }))} todos="Todos los flujos" />
+          </>}
           vacio={
             tab === "mios"
               ? { titulo: "No tenés casos asignados", detalle: "Tomá uno de «Sin asignar» para empezar." }
-              : { titulo: "No hay casos para tomar", detalle: "Los casos encolados se operan desde Filas de espera." }
+              : tab === "sin"
+                ? { titulo: "No hay casos para tomar", detalle: "Los casos encolados se operan desde Filas de espera." }
+                : { titulo: "No hay casos activos", detalle: "Los casos aparecen al iniciarse desde un flujo publicado." }
           }
         />
       </div>

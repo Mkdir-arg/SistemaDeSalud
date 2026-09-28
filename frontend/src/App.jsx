@@ -9,6 +9,8 @@ import { EstadoError } from "./components/ui/estados";
 import { useTemaDeRuta } from "./lib/tema";
 
 const Login = lazy(() => import("./pages/Login"));
+const Presentacion = lazy(() => import("./pages/Presentacion"));
+const DemoClinica = lazy(() => import("./pages/DemoClinica"));
 const PantallaLlamados = lazy(() => import("./pages/PantallaLlamados"));
 const Directorio = lazy(() => import("./pages/Directorio"));
 const Inicio = lazy(() => import("./pages/Inicio"));
@@ -82,7 +84,7 @@ function Landing() {
   if (estado === "financiadores") return <Navigate to="/financiadores" replace />;
   if (estado === "error") return <EstadoError error={new Error("No se pudieron consultar tus instituciones.")} onReintentar={() => window.location.reload()} />;
   if (estado === "sin-institucion")
-    return <div style={{ padding: 48, textAlign: "center", color: "#667085" }}>No tenés ninguna institución asignada. Pedile a un administrador que te dé acceso.</div>;
+    return <div style={{ padding: 48, textAlign: "center", color: "var(--color-texto-suave)" }}>No tenés ninguna institución asignada. Pedile a un administrador que te dé acceso.</div>;
   return <Spinner label="Cargando…" />;
 }
 
@@ -158,12 +160,14 @@ function AuthOnly({ children }) {
 const P = (el, cap) => <Protected cap={cap}>{el}</Protected>;
 
 export default function App() {
-  // El login se ve siempre en claro; el resto sigue la preferencia.
+  // El login sigue la preferencia; la pantalla pública de llamados usa claro.
   useTemaDeRuta();
   return (
     <Suspense fallback={<PantallaCargando />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/presentacion" element={<Presentacion />} />
+      <Route path="/demo/app-clinica" element={<DemoClinica />} />
       <Route path="/financiadores/activar" element={<ActivarFinanciador />} />
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
       <Route path="/pantalla/:token" element={<PantallaLlamados />} />
@@ -191,7 +195,7 @@ export default function App() {
       <Route path="/padron/:id" element={P(<PadronDetalle />, "padron_admision")} />
       <Route path="/historia" element={P(<Registros />, "historia_clinica")} />
       <Route path="/historia/:id" element={P(<HistoriaDetalle />, "historia_clinica")} />
-      <Route path="/legajo" element={P(<Legajo />)} />
+      <Route path="/legajo" element={P(<Legajo />, "config_institucional")} />
       <Route path="/accesos" element={P(<Accesos />, "auditoria")} />
       <Route path="/finanzas" element={P(<Finanzas />)} />
       <Route path="/finanzas/coberturas" element={P(<CoberturasHospital />)} />

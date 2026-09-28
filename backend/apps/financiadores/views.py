@@ -92,7 +92,11 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
             ]})
             item = m.PrestacionComun.objects.create(**d)
             return Response(s.CatalogoSerializer(item).data, status=201)
-        return self.lista(m.PrestacionComun.objects.filter(activo=True), s.CatalogoSerializer)
+        qs = m.PrestacionComun.objects.filter(activo=True)
+        if request.query_params.get("search"):
+            texto = request.query_params["search"].strip()
+            qs = qs.filter(Q(codigo__icontains=texto) | Q(nombre__icontains=texto) | Q(categoria__icontains=texto))
+        return self.lista(qs, s.CatalogoSerializer)
 
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)
@@ -166,7 +170,11 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
             d = datos(request, {k: serializers.CharField(max_length=n) for k, n in [("codigo", 60), ("nombre", 160), ("categoria", 80)]})
             item = m.PrestacionComun.objects.create(**d)
             return Response(s.CatalogoSerializer(item).data, status=201)
-        return self.lista(m.PrestacionComun.objects.filter(activo=True), s.CatalogoSerializer)
+        qs = m.PrestacionComun.objects.filter(activo=True)
+        if request.query_params.get("search"):
+            texto = request.query_params["search"].strip()
+            qs = qs.filter(Q(codigo__icontains=texto) | Q(nombre__icontains=texto) | Q(categoria__icontains=texto))
+        return self.lista(qs, s.CatalogoSerializer)
 
     @extend_schema(methods=["GET"], responses=s.ReglaSerializer(many=True))
     @extend_schema(methods=["POST"], request=s.ReglaSerializer, responses=s.ReglaSerializer)
@@ -174,7 +182,11 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     def reglas(self, request, pk=None):
         org = self.organizacion(admin=request.method == "POST")
         if request.method == "GET":
-            return self.lista(m.ReglaCobertura.objects.filter(financiador=org), s.ReglaSerializer)
+            qs = m.ReglaCobertura.objects.filter(financiador=org)
+            if request.query_params.get("plan"):
+                plan_id = serializers.IntegerField(min_value=1).run_validation(request.query_params["plan"])
+                qs = qs.filter(plan_id=plan_id)
+            return self.lista(qs, s.ReglaSerializer)
         d = datos(request, {"plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org), required=False, allow_null=True), "prestacion": serializers.PrimaryKeyRelatedField(queryset=m.PrestacionComun.objects.filter(activo=True), required=False, allow_null=True), "categoria": serializers.CharField(max_length=80, required=False, allow_blank=True, default=""), "porcentaje": serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100), "cupo": serializers.IntegerField(min_value=0, required=False, allow_null=True), "periodo": serializers.ChoiceField(choices=["mes", "anio"]), "vigente_desde": serializers.DateField(), "requiere_autorizacion": serializers.BooleanField(default=False)})
         if bool(d.get("prestacion")) == bool(d.get("categoria")):
             raise ValidationError("Elegí una prestación o una categoría del catálogo.")
@@ -194,6 +206,17 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         org = self.organizacion(escritura=request.method == "POST")
         if request.method == "GET":
             qs = m.Afiliado.objects.filter(financiador=org)
+            if request.query_params.get("plan"):
+                plan_id = serializers.IntegerField(min_value=1).run_validation(request.query_params["plan"])
+                qs = qs.filter(plan_id=plan_id)
+            if request.query_params.get("estado"):
+                estado = serializers.ChoiceField(choices=["vigentes", "finalizadas", "futuras", "todos"]).run_validation(request.query_params["estado"])
+                if estado == "vigentes":
+                    qs = qs.filter(finalizado_en__isnull=True, desde__lte=timezone.localdate())
+                elif estado == "finalizadas":
+                    qs = qs.filter(finalizado_en__isnull=False)
+                elif estado == "futuras":
+                    qs = qs.filter(finalizado_en__isnull=True, desde__gt=timezone.localdate())
             if request.query_params.get("documento"):
                 qs = qs.filter(documento=normalizar_documento(request.query_params["documento"]))
             if request.query_params.get("search"):
@@ -281,7 +304,14 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     def convenios(self, request, pk=None):
         org = self.organizacion(admin=request.method == "POST")
         if request.method == "GET":
-            return self.lista(m.Convenio.objects.filter(financiador=org).select_related("institucion"), s.ConvenioSerializer)
+            qs = m.Convenio.objects.filter(financiador=org).select_related("institucion")
+            if request.query_params.get("estado"):
+                estado = serializers.ChoiceField(choices=["activo", "propuesto", "cerrado", "todos"]).run_validation(request.query_params["estado"])
+                if estado == "cerrado":
+                    qs = qs.filter(estado__in=["finalizado", "rechazado"])
+                elif estado != "todos":
+                    qs = qs.filter(estado=estado)
+            return self.lista(qs, s.ConvenioSerializer)
         d = datos(request, {"institucion": serializers.PrimaryKeyRelatedField(queryset=Institucion.objects.filter(activa=True))})
         obj = vigencias.proponer_convenio(usuario=request.user, financiador=org, origen="financiador", **d)
         return Response(s.ConvenioSerializer(obj).data, status=201)

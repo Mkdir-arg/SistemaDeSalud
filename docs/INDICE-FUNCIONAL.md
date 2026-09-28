@@ -1,4 +1,4 @@
-# Índice de documentación — I-Core Salud
+# Índice de documentación — HEN
 
 > Qué documento leer para cada cosa y qué contiene.
 > Actualizado el **22/09/2026** contra `main` en `fca71e3`.

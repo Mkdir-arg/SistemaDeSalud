@@ -1641,46 +1641,44 @@ export default function FlujoEditor() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Barra superior */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: `1px solid var(--color-borde)`, background: "var(--color-superficie)", flex: "none", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <button onClick={() => navigate("/flujos")} title="Volver a Flujos" style={{ border: "none", background: "none", cursor: "pointer", fontSize: "var(--text-base)", color: "var(--color-texto-debil)", display: "flex", alignItems: "center", gap: 5, padding: 4, borderRadius: "var(--radius-sm)" }}>
-            <Icon name="back" size={15} /> Flujos
-          </button>
-          <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, letterSpacing: "-.4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{flujo.titulo}</div>
-          {flujo.ambito_label && <span style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)", whiteSpace: "nowrap" }}>· {flujo.ambito_label}</span>}
-          <Badge tone={estV.tone}>{estV.label}</Badge>
-          <Select size="sm" aria-label="Versión del flujo" value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ width: "auto" }}>
-            {flujo.versiones.map((v) => <option key={v.id} value={v.id}>{v.etiqueta}</option>)}
-          </Select>
+      {/* El nombre, la versión y Publicar encabezan el editor. Las herramientas
+          frecuentes siguen visibles en una segunda fila sin competir con esa acción. */}
+      <div style={{ flex: "none", borderBottom: `1px solid var(--color-borde)`, background: "var(--color-superficie)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: "wrap" }}>
+            <button onClick={() => navigate("/flujos")} title="Volver a Flujos" style={{ border: "none", background: "none", cursor: "pointer", fontSize: "var(--text-base)", color: "var(--color-texto-debil)", display: "flex", alignItems: "center", gap: 5, padding: 4, borderRadius: "var(--radius-sm)" }}>
+              <Icon name="back" size={15} /> Salir del editor
+            </button>
+            <span aria-hidden="true" style={{ width: 1, height: 24, background: "var(--color-division)" }} />
+            <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, letterSpacing: "-.4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "min(36vw, 24rem)" }}>{flujo.titulo}</div>
+            <Badge tone={estV.tone}>{estV.label}</Badge>
+            <Select size="sm" aria-label="Versión del flujo" value={verId} onChange={(e) => { setVerId(Number(e.target.value)); cargarVersion(Number(e.target.value)); }} style={{ width: "auto" }}>
+              {flujo.versiones.map((v) => <option key={v.id} value={v.id}>{v.etiqueta}</option>)}
+            </Select>
+            {flujo.ambito_label && <span style={{ fontSize: "var(--text-sm)", color: "var(--color-texto-debil)" }}>· {flujo.ambito_label}</span>}
+            <SaveStatus estado={guardado} />
+          </div>
+          <Button onClick={() => setAConfirmar({ tipo: "publicacion" })} disabled={version.estado === "publicada" || publicando || guardandoCircuito || guardado === "guardando"}>{publicando ? "Publicando…" : "Publicar"}</Button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 24px", borderTop: `1px solid var(--color-division)`, flexWrap: "wrap" }}>
           <Select size="sm" aria-label="Tipo de circuito de esta versión" value={version.tipo_circuito || "no_definido"} disabled={soloLectura || guardandoCircuito} onChange={(e) => cambiarTipoCircuito(e.target.value)} style={{ width: "auto" }}>
             <option value="no_definido">Circuito no definido</option>
             <option value="guardia">Guardia</option>
             <option value="programado">Atención programada</option>
           </Select>
           {version.tipo_circuito === "no_definido" && <span className="max-w-48 text-xs text-texto-debil">Sin tipo de circuito, las esperas automáticas de autorización no se aplican. Elegí Guardia o Atención programada si corresponde.</span>}
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <BuscarNodo nodos={version.nodos} onElegir={irAlNodo} />
-          <SaveStatus estado={guardado} />
           <div style={{ display: "flex", gap: 2 }}>
             <ZoomBtn title="Deshacer (Ctrl+Z)" onClick={deshacer} disabled={undoStack.current.length === 0}><Icon name="undo" size={16} /></ZoomBtn>
             <ZoomBtn title="Rehacer (Ctrl+Shift+Z)" onClick={rehacer} disabled={redoStack.current.length === 0}><Icon name="redo" size={16} /></ZoomBtn>
           </div>
-          {/* Los tres ensayos van juntos y en un peso menor; Publicar es la única
-              acción que cambia lo que ven los casos reales, y es la única que se
-              ve como acción principal. Antes los cuatro eran botones azules del
-              mismo tamaño y la barra no decía cuál era el que importaba. */}
-          <div style={{ display: "flex", alignItems: "center", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", border: `1px solid var(--color-borde)`, borderRadius: "var(--radius-md)", overflow: "hidden", flexWrap: "wrap" }}>
             <Button variant="ghost" onClick={reproducir} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para reproducir el recorrido" : "Anima el recorrido del flujo"} className="rounded-none">
               <Icon name="play" size={13} /> Reproducir
             </Button>
-            <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
             <Button variant="ghost" onClick={iniciarSim} disabled={sinRecorrido} title={sinRecorrido ? "Agregá y conectá nodos para probar el flujo" : "Simulá un caso paso a paso"} className="rounded-none">Probar</Button>
-            <span style={{ width: 1, alignSelf: "stretch", background: "var(--color-borde)" }} />
             <Button variant="ghost" onClick={validar} disabled={validando || guardado === "guardando"} title="Busca problemas en el flujo antes de publicarlo" className="rounded-none">{validando ? "Validando…" : "Validar"}</Button>
           </div>
-          <Button onClick={() => setAConfirmar({ tipo: "publicacion" })} disabled={version.estado === "publicada" || publicando || guardandoCircuito || guardado === "guardando"}>{publicando ? "Publicando…" : "Publicar"}</Button>
         </div>
       </div>
 
@@ -3162,7 +3160,7 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
               hint={
                 (nodo.config || {}).fhir
                   // Poner acá la URL de búsqueda completa es el error más común:
-                  // I-Core Salud le agrega `/Patient?identifier=…` por su cuenta.
+                  // HEN le agrega `/Patient?identifier=…` por su cuenta.
                   ? "La base del servidor FHIR, sin /Patient: Salud arma la búsqueda."
                   : undefined
               }

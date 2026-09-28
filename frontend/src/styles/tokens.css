@@ -37,56 +37,58 @@
   --color-transparent: transparent;
   --color-current: currentColor;
 
-  /* Marca y neutros (literales) */
-  --color-accent: #3949C0;
-  --color-accent-hover: #2D3A9E;
-  --color-accent-50: #ECEEFB;
-  --color-accent-100: #C7CDF2;
-  --color-ink: #14161C;
-  --color-slate-900: #1F2430;
-  --color-slate-700: #344054;
-  --color-slate-600: #475467;
-  --color-slate-500: #667085;
-  --color-slate-400: #98A0AE;
-  --color-border: #E7E9EE;
-  --color-divider: #EEF0F3;
-  --color-canvas: #F4F5F7;
-  --color-subtle: #FAFBFC;
+  /* HEN DS Modern: la API de tokens existente se conserva para todas las vistas. */
+  --color-accent: #7031C7;
+  --color-accent-hover: #5B25A6;
+  --color-accent-50: #F7F2FD;
+  --color-accent-100: #E0CCF7;
+  --color-brand-teal: #007A70;
+  --color-acento-aqua: #0B7A90;
+  --color-ink: #1D1930;
+  --color-slate-900: #1D1930;
+  --color-slate-700: #463F63;
+  --color-slate-600: #5E5680;
+  --color-slate-500: #5E5680;
+  --color-slate-400: #766E94;
+  --color-border: #E3DDF2;
+  --color-divider: #E3DDF2;
+  --color-canvas: #F8F6FD;
+  --color-subtle: #F8F6FD;
   --color-white: #FFFFFF;
-  --color-input-border: #E2E5EA;
-  --color-danger: #B42318;
+  --color-input-border: #C9C0E0;
+  --color-danger: #9F0712;
 
   /* Semánticos (los usa el código migrado; el tema oscuro solo redefine estos) */
-  --color-fondo: #F4F5F7;
+  --color-fondo: #F8F6FD;
   --color-superficie: #FFFFFF;
-  --color-superficie-2: #FAFBFC;
-  --color-borde: #E7E9EE;
-  --color-division: #EEF0F3;
-  --color-campo-borde: #E2E5EA;
-  --color-accent-fuerte: #3949C0;
+  --color-superficie-2: #F8F6FD;
+  --color-borde: #E3DDF2;
+  --color-division: #E3DDF2;
+  --color-campo-borde: #C9C0E0;
+  --color-accent-fuerte: #7031C7;
   --color-sobre-accent: #FFFFFF;
-  --color-danger-fuerte: #B42318;
+  --color-danger-fuerte: #9F0712;
   --color-sobre-danger: #FFFFFF;
-  --color-texto: #14161C;
-  --color-texto-fuerte: #1F2430;
-  --color-texto-medio: #344054;
-  --color-texto-suave: #475467;
-  --color-texto-debil: #667085;
-  --color-texto-tenue: #626A7B;
+  --color-texto: #1D1930;
+  --color-texto-fuerte: #1D1930;
+  --color-texto-medio: #463F63;
+  --color-texto-suave: #5E5680;
+  --color-texto-debil: #5E5680;
+  --color-texto-tenue: #5E5680;
 
   /* Badges por tono semántico */
-  --color-badge-neutral-bg: #EEF0F3;
-  --color-badge-neutral-fg: #475467;
-  --color-badge-info-bg: #E8EEFB;
-  --color-badge-info-fg: #2D3A9E;
-  --color-badge-amber-bg: #FBF0DD;
-  --color-badge-amber-fg: #90590D;
-  --color-badge-green-bg: #E6F5EC;
-  --color-badge-green-fg: #1B7A4E;
-  --color-badge-gray-bg: #F0F1F3;
-  --color-badge-gray-fg: #5F6879;
-  --color-badge-error-bg: #FCEBEB;
-  --color-badge-error-fg: #B42318;
+  --color-badge-neutral-bg: #F0ECF9;
+  --color-badge-neutral-fg: #463F63;
+  --color-badge-info-bg: #EBF9FC;
+  --color-badge-info-fg: #0A6173;
+  --color-badge-amber-bg: #FEF3C6;
+  --color-badge-amber-fg: #7B3306;
+  --color-badge-green-bg: #DCFCE7;
+  --color-badge-green-fg: #016630;
+  --color-badge-gray-bg: #F0ECF9;
+  --color-badge-gray-fg: #5E5680;
+  --color-badge-error-bg: #FEF2F2;
+  --color-badge-error-fg: #9F0712;
 
   /* Categorías de nodo (diseñador de flujos) */
   --color-nodo-inicio-sol: #1F8A5B;
@@ -142,20 +144,20 @@
   /* Tipografía */
   --font-sans: Inter, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-  --font-display: Manrope, Inter, system-ui, sans-serif;
+  --font-display: Inter, system-ui, sans-serif;
 
   /* Escala tipográfica (7 pasos) */
   --text-micro: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 14px;
   --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 17px;
-  --text-xxl: 20px;
-  --text-cifra: 22px;
-  --text-cifra-lg: 26px;
-  --text-cifra-xl: 30px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-xxl: 24px;
+  --text-cifra: 24px;
+  --text-cifra-lg: 30px;
+  --text-cifra-xl: 36px;
 
   /* Espaciado nombrado (la escala numérica de Tailwind sigue disponible) */
   --spacing-xs: 4px;
@@ -166,26 +168,30 @@
   --spacing-xxl: 24px;
 
   /* Radios */
-  --radius-sm: 7px;
-  --radius-md: 9px;
-  --radius-lg: 14px;
-  --radius-pill: 999px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
 
   /* Elevación */
-  --shadow-card: 0 1px 3px rgba(16,24,40,.07);
+  --shadow-card: 0 1px 2px -1px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.1);
   --shadow-float: 0 8px 20px rgba(16,24,40,.14);
   --shadow-dropdown: 0 12px 32px rgba(16,24,40,.16);
   --shadow-modal: 0 18px 50px rgba(16,24,40,.28);
 }
 
+/* Figma HEN DS: Action admite texto blanco; Brand se reserva a decoración. */
+:root {
+  --gradient-action: linear-gradient(to top right, #7031C7, #007A70);
+  --gradient-action-hover: linear-gradient(to top right, #5B25A6, #00615A);
+  --gradient-brand: linear-gradient(to top right, #7031C7, #03B8A8);
+}
+
 /*
  * Tema oscuro. Se activa con la clase «dark» en el elemento html.
  *
- * Redefine SOLO la capa semántica, la marca y los badges: las utilidades leen
- * var(--color-…), así que cambiar la variable alcanza y no hace falta una
- * segunda clase por componente. Las escalas literales (slate-600, canvas…) no se
- * tocan: las siguen usando los estilos inline sin migrar, que no tienen modo
- * oscuro — adoptarlo es parte de migrar cada pantalla.
+ * Redefine la capa semántica y los alias de neutros que aún consumen las
+ * pantallas con estilos inline. Así mantienen contraste mientras se revisan.
  *
  * Las categorías de nodo SÍ se redefinen, aunque el lienzo del diseñador se
  * rehaga en la Fase 2: sus chips aparecen fuera del lienzo (detalle del caso,
@@ -195,39 +201,54 @@
  * categoría sobre la superficie oscura en la proporción justa.
  */
 .dark {
-  --color-fondo: #0E1219;
-  --color-superficie: #171C26;
-  --color-superficie-2: #1E242F;
-  --color-borde: #2A313F;
-  --color-division: #232A36;
-  --color-campo-borde: #333B4B;
-  --color-texto: #E7EAF1;
-  --color-texto-fuerte: #F2F4F8;
-  --color-texto-medio: #C6CDDA;
-  --color-texto-suave: #B4BCCB;
-  --color-texto-debil: #98A1B2;
-  --color-texto-tenue: #949DAE;
-  --color-accent: #8B97F0;
-  --color-accent-hover: #A2ACF5;
-  --color-accent-50: #1D2440;
-  --color-accent-100: #2B3560;
-  --color-accent-fuerte: #4A57C8;
+  --color-fondo: #110E1E;
+  --color-superficie: #1D1930;
+  --color-superficie-2: #110E1E;
+  --color-borde: #2F2A47;
+  --color-division: #2F2A47;
+  --color-campo-borde: #463F63;
+  --color-texto: #FFFFFF;
+  --color-texto-fuerte: #FFFFFF;
+  --color-texto-medio: #C9C0E0;
+  --color-texto-suave: #C9C0E0;
+  --color-texto-debil: #C9C0E0;
+  --color-texto-tenue: #C9C0E0;
+  --color-accent: #B084E6;
+  --color-accent-hover: #CBA8F0;
+  --color-accent-50: #2A1050;
+  --color-accent-100: #4A1F87;
+  --color-brand-teal: #25C3B5;
+  --color-acento-aqua: #36C2DB;
+  --color-accent-fuerte: #8243D0;
   --color-sobre-accent: #FFFFFF;
-  --color-danger: #F0958C;
-  --color-danger-fuerte: #B4453C;
+  --color-danger: #FFA2A2;
+  --color-danger-fuerte: #9F0712;
   --color-sobre-danger: #FFFFFF;
-  --color-badge-neutral-bg: #252B37;
-  --color-badge-neutral-fg: #B4BCCB;
-  --color-badge-info-bg: #1D2745;
-  --color-badge-info-fg: #9FB2F2;
-  --color-badge-amber-bg: #382C18;
-  --color-badge-amber-fg: #E3B573;
-  --color-badge-green-bg: #14301E;
-  --color-badge-green-fg: #6ED79A;
-  --color-badge-gray-bg: #222732;
-  --color-badge-gray-fg: #8B94A5;
-  --color-badge-error-bg: #3A1D1B;
-  --color-badge-error-fg: #F0958C;
+  --color-badge-neutral-bg: #2F2A47;
+  --color-badge-neutral-fg: #C9C0E0;
+  --color-badge-info-bg: #06313B;
+  --color-badge-info-fg: #69D1E4;
+  --color-badge-amber-bg: #461901;
+  --color-badge-amber-fg: #FEE685;
+  --color-badge-green-bg: #032E15;
+  --color-badge-green-fg: #7BF1A8;
+  --color-badge-gray-bg: #2F2A47;
+  --color-badge-gray-fg: #C9C0E0;
+  --color-badge-error-bg: #460809;
+  --color-badge-error-fg: #FFA2A2;
+
+  /* Ink permanece oscuro: se usa como fondo de avisos y de overlays. */
+  --color-ink: #1D1930;
+  --color-slate-900: #FFFFFF;
+  --color-slate-700: #C9C0E0;
+  --color-slate-600: #C9C0E0;
+  --color-slate-500: #C9C0E0;
+  --color-slate-400: #9E95BD;
+  --color-border: #2F2A47;
+  --color-divider: #2F2A47;
+  --color-canvas: #110E1E;
+  --color-subtle: #1D1930;
+  --color-input-border: #463F63;
 
   /* Categorías de nodo: el color sólido se aclara para poder leerse sobre
      oscuro, y el tinte y el borde se componen sobre la superficie. */
