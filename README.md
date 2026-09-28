@@ -29,7 +29,7 @@ docker compose up -d
 | Fachada FHIR | <http://localhost:8000/fhir/metadata> |
 
 Eso levanta el **stack de desarrollo**, con recarga en caliente y el escenario de
-guardia sembrado. Superusuario: `admin@salud.local` / `admin1234`; el staff del
+guardia sembrado. Superusuario: `admin@salud.local` / `demo1234`; el staff del
 escenario entra con `demo1234`. Qué queda cargado y con qué usuario ver cada cosa:
 [`docs/DEMO.md`](docs/DEMO.md).
 

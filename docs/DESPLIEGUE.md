@@ -57,6 +57,10 @@ quedar en su valor de ejemplo:
       error y sirve `/media` directo.
 - [ ] **`DJANGO_ALLOWED_HOSTS`** con el dominio real, o Django rechaza todo con 400.
 - [ ] **`CORS_ALLOWED_ORIGINS`** con el origen real del navegador.
+- [ ] **`ENTORNO=produccion`.** Si falta, la aplicación asume `desarrollo`, y ahí
+      `seed_entorno_demo` puede **vaciar la base entera**. El `docker-compose.yml`
+      la fija; en un despliegue sin compose (Railway y similares) hay que
+      definirla a mano en el servicio.
 - [ ] **`SEED_DEMO=0` y `SEED_GUARDIA=0`.** Sembrar datos ficticios sobre una
       instalación real es difícil de deshacer.
 - [ ] **`SALUD_INTEGRACIONES_PERMITIDAS`** sólo con los hosts efectivamente

@@ -55,6 +55,22 @@ if not DEBUG and SECRET_KEY == CLAVE_DE_DESARROLLO:
         "  python -c \"import secrets; print(secrets.token_urlsafe(64))\""
     )
 
+# --- Entorno ---------------------------------------------------------------- #
+#
+# Qué es esta instalación, y no cómo corre: `DEBUG` está apagado tanto en la demo
+# como en producción, así que no sirve para decidir si se pueden vaciar los datos.
+# Los comandos de carga ficticia (`seed_entorno_demo` y los `seed_*` que orquesta)
+# se niegan a correr en `produccion`.
+#
+# Si falta vale `desarrollo`: por eso el compose base y la guía de despliegue la
+# fijan en `produccion` de forma explícita. Un valor desconocido no arranca, porque
+# un error de tipeo («produccíon») caería en silencio en un entorno que se puede
+# borrar.
+ENTORNOS = ("produccion", "demo", "desarrollo")
+ENTORNO = env("ENTORNO", "desarrollo").strip().lower()
+if ENTORNO not in ENTORNOS:
+    raise RuntimeError(f"ENTORNO={ENTORNO!r} no es válido: usá {', '.join(ENTORNOS)}.")
+
 # --- Endurecimiento para producción ---------------------------------------- #
 #
 # Sólo se aplica con DEBUG apagado: en desarrollo se corre sobre http, y forzar
@@ -163,6 +179,7 @@ INSTALLED_APPS = [
     "apps.red",
     "apps.auditoria",
     "apps.fhir",
+    "apps.demo",
 ]
 
 MIDDLEWARE = [
