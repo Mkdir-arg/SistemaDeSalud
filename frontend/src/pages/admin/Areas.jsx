@@ -22,14 +22,14 @@ const FUNCIONES = [
   { value: "medico", label: "Médico / profesional" },
 ];
 
-/** Secciones de la ficha, en el orden en que se apilan. */
+/** Secciones de la ficha, en orden de navegación. */
 const SECCIONES = [
-  { key: "datos", label: "Datos", icono: "list" },
-  { key: "staff", label: "Staff", icono: "users", accion: "Asignar profesional" },
-  { key: "grupos", label: "Grupos", icono: "users", accion: "Crear grupo" },
-  { key: "boxes", label: "Boxes", icono: "enter", accion: "Crear box" },
-  { key: "agendas", label: "Agendas", icono: "calendar", accion: "Crear agenda" },
-  { key: "subareas", label: "Sub-áreas", icono: "cube", accion: "Crear sub-área" },
+  { key: "datos", label: "Datos" },
+  { key: "staff", label: "Staff" },
+  { key: "grupos", label: "Grupos" },
+  { key: "boxes", label: "Boxes" },
+  { key: "agendas", label: "Agendas" },
+  { key: "subareas", label: "Sub-áreas" },
 ];
 
 const CLAVES = SECCIONES.map((s) => s.key);
@@ -345,13 +345,7 @@ function SinSeleccion({ cargando, error, onReintentar, total, onNueva }) {
   );
 }
 
-/**
- * Ficha del área: contadores arriba, secciones apiladas abajo.
- *
- * Las consultas viven acá y no en cada sección porque los contadores necesitan
- * los totales antes de que el usuario baje: pedirlos dos veces sería pedir lo
- * mismo dos veces.
- */
+/** Ficha del área: las cifras de cada sección aparecen en sus pestañas. */
 function FichaArea({
   area, seccion, institucionNombre, onSeccion, onEditar, onBorrar, onAbrirSub, onChange,
 }) {
@@ -368,10 +362,6 @@ function FichaArea({
   const agendas = useLista("agendas", { area: area.id, pageSize: 100 });
   const subareas = area.subareas || [];
 
-  // Una agenda sin flujo da turnos que no abren nada. Se cuenta acá para poder
-  // avisarlo en el resumen, sin obligar a entrar a la sección.
-  const sinFlujo = agendas.filas.filter((a) => !a.flujo).length;
-
   const cuentas = {
     staff: staff.isLoading ? null : staff.total,
     grupos: grupos.isLoading ? null : grupos.total,
@@ -383,21 +373,7 @@ function FichaArea({
   const paginas = {
     datos: (
       <div className="flex flex-col gap-lg">
-        {/* Los contadores viven acá, la sección de entrada, y no repetidos en
-            todas: son el panorama del área, no un encabezado. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-2.5">
-          {SECCIONES.filter((s) => s.key !== "datos").map((s) => (
-            <Contador
-              key={s.key}
-              icono={s.icono}
-              label={s.label}
-              valor={cuentas[s.key]}
-              aviso={s.key === "agendas" && sinFlujo > 0 ? `${sinFlujo} sin flujo` : null}
-              onClick={() => onSeccion(s.key)}
-            />
-          ))}
-        </div>
-        <Seccion titulo="Datos" icono="list">
+        <Seccion titulo="Datos">
           <div className="grid gap-lg sm:grid-cols-2">
             <Dato k="Nombre" v={area.nombre} />
             <Dato k="Responsable / jefe" v={area.responsable || "—"} />
@@ -409,31 +385,31 @@ function FichaArea({
       </div>
     ),
     staff: (
-      <Seccion titulo="Staff" icono="users" cuenta={cuentas.staff}
+      <Seccion titulo="Staff"
         accion="Asignar profesional" onAccion={() => setAsignar(true)}>
         <StaffTab area={area} staff={staff} grupos={grupos} />
       </Seccion>
     ),
     grupos: (
-      <Seccion titulo="Grupos" icono="users" cuenta={cuentas.grupos}
+      <Seccion titulo="Grupos"
         accion="Crear grupo" onAccion={() => setCrearGrupo(true)}>
         <GruposTab area={area} grupos={grupos} staff={staff} />
       </Seccion>
     ),
     boxes: (
-      <Seccion titulo="Boxes" icono="enter" cuenta={cuentas.boxes}
+      <Seccion titulo="Boxes"
         accion="Crear box" onAccion={() => setCrearBox(true)}>
         <BoxesTab boxes={boxes} />
       </Seccion>
     ),
     agendas: (
-      <Seccion titulo="Agendas" icono="calendar" cuenta={cuentas.agendas}
+      <Seccion titulo="Agendas"
         accion="Crear agenda" onAccion={() => setCrearAgenda(true)}>
         <AgendasTab agendas={agendas} />
       </Seccion>
     ),
     subareas: (
-      <Seccion titulo="Sub-áreas" icono="cube" cuenta={cuentas.subareas}
+      <Seccion titulo="Sub-áreas"
         accion="Crear sub-área" onAccion={() => setCrearSub(true)}>
         <SubareasLista area={area} onAbrir={onAbrirSub} />
       </Seccion>
@@ -537,34 +513,12 @@ function SolapasArea({ activa, cuentas, onSeccion }) {
   );
 }
 
-/** Tarjeta-contador: resumen y atajo a la sección, en el mismo gesto. */
-function Contador({ icono, label, valor, aviso, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "flex flex-col items-start gap-0.5 rounded-md border bg-superficie px-3.5 py-2.5 text-left shadow-card transition-colors",
-        aviso ? "border-badge-amber-fg/40" : "border-borde",
-        "hover:border-accent-100",
-      ].join(" ")}
-    >
-      <Icon name={icono} size={15} className="mb-0.5 text-accent" />
-      <span className={valor ? "text-cifra font-extrabold tabular-nums leading-tight" : "text-cifra font-extrabold tabular-nums leading-tight text-texto-tenue"}>
-        {valor ?? "—"}
-      </span>
-      <span className="text-xs font-semibold text-texto-debil">{label}</span>
-      {aviso && <span className="text-micro font-bold text-badge-amber-fg">{aviso}</span>}
-    </button>
-  );
-}
-
 /** Una sección de la ficha, con su contador y su propio botón de crear. */
-function Seccion({ titulo, icono, cuenta, accion, onAccion, children }) {
+function Seccion({ titulo, cuenta, accion, onAccion, children }) {
   return (
     <section aria-labelledby={`titulo-${titulo}`}>
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-division px-lg py-2.5">
-          <Icon name={icono} size={16} className="text-accent" />
           <h3 id={`titulo-${titulo}`} className="text-md font-bold">{titulo}</h3>
           {cuenta != null && (
             <span className="rounded-pill bg-badge-neutral-bg px-2 text-xs font-bold tabular-nums text-badge-neutral-fg">
@@ -1085,7 +1039,7 @@ function FichaSubarea({ area, sub, onVolver, onChange }) {
       </header>
 
       <div className="px-6 pb-10 pt-lg">
-        <Seccion titulo="Flujos vinculados" icono="workflow" cuenta={todos.isLoading ? null : flujos.length}>
+        <Seccion titulo="Flujos vinculados" cuenta={todos.isLoading ? null : flujos.length}>
           {todos.isLoading ? (
             <Skeleton className="h-16" />
           ) : flujos.length === 0 ? (
