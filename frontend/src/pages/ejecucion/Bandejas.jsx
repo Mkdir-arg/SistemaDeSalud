@@ -83,7 +83,6 @@ export default function Bandejas() {
           ) : !c.asignado_a && c.puede_tomar && !c.en_fila ? (
             <Button
               size="sm"
-              variant="secondary"
               disabled={tomar.isPending}
               onClick={() => tomar.mutate(c.id, {
                 onSuccess: () => { toast.ok("Caso tomado"); navigate(`/casos/${c.id}`); },
@@ -203,6 +202,7 @@ function NuevoCasoModal({ institucionId, permitirCrearPaciente, onClose, onCreat
         </>
       }
     >
+      <p className="mb-4 text-sm text-texto-suave">El caso ingresa a la bandeja de la institución.</p>
       {flujosQ.isLoading ? (
         <div className="text-md text-texto-tenue">Cargando flujos…</div>
       ) : flujos.length === 0 ? (
@@ -211,16 +211,16 @@ function NuevoCasoModal({ institucionId, permitirCrearPaciente, onClose, onCreat
         </div>
       ) : (
         <div className="flex flex-col gap-3.5">
+          {paciente
+            ? <PacienteElegido paciente={paciente} onCambiar={() => setPaciente(null)} />
+            : <BuscadorPaciente institucionId={institucionId} onElegir={setPaciente} permitirCrear={permitirCrearPaciente} />}
+
           <Field label="Flujo *">
             <Select value={flujoId} onChange={(e) => setFlujoId(e.target.value)}>
               <option value="">Elegí un flujo publicado…</option>
               {flujos.map((f) => <option key={f.id} value={f.id}>{f.titulo} ({f.pub.etiqueta})</option>)}
             </Select>
           </Field>
-
-          {paciente
-            ? <PacienteElegido paciente={paciente} onCambiar={() => setPaciente(null)} />
-            : <BuscadorPaciente institucionId={institucionId} onElegir={setPaciente} permitirCrear={permitirCrearPaciente} />}
 
           <Field label="Prioridad">
             <Select value={prioridad} onChange={(e) => setPrioridad(e.target.value)}>

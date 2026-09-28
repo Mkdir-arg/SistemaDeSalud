@@ -137,15 +137,17 @@ export default function Dashboard() {
               onClick={() => setRango(isoHace(dias), isoHoy())}
               className={cn("rounded px-3 py-1.5 text-xs", desde === isoHace(dias) && hasta === isoHoy() ? "bg-superficie font-semibold text-texto shadow-card" : "text-texto-suave hover:text-texto")}>{label}</button>)}
           </div>
+          <SolapasArea areas={d.por_area} tab={tab} setTab={setTab} />
+          <details className="relative text-xs text-texto-suave">
+            <summary className="cursor-pointer list-none rounded-md border border-borde bg-superficie px-3 py-2.5 font-medium hover:border-accent" aria-label="Elegir fechas del tablero">Fechas ▾</summary>
+            <div className="absolute right-0 z-20 mt-2 w-[min(42rem,calc(100vw-2rem))] rounded-lg border border-borde bg-superficie p-3 shadow-dropdown">
+              <RangoFechas desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} />
+            </div>
+          </details>
         </div>
       </div>
-      <details className="rounded-md border border-borde bg-superficie px-3 py-2 text-xs text-texto-suave">
-        <summary className="cursor-pointer font-medium">Elegir otras fechas</summary>
-        <div className="mt-3"><RangoFechas desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} /></div>
-      </details>
       <div className="flex flex-col gap-4">
         <ProcesosDetenidos />
-        <SolapasArea areas={d.por_area} tab={tab} setTab={setTab} />
         {tab === "general"
           ? <TableroGeneral d={d} navigate={navigate} />
           : <TableroArea key={tab} areaId={tab} desde={desde} hasta={hasta} navigate={navigate} />}
@@ -243,28 +245,13 @@ function ProcesosDetenidos() {
 // --------------------------------------------------------------------------- //
 function SolapasArea({ areas, tab, setTab }) {
   const items = [{ id: "general", nombre: "General" }, ...(areas || []).map((a) => ({ id: String(a.area_id), nombre: a.nombre }))];
-  return (
-    <div role="group" aria-label="Área del tablero" className="flex flex-wrap gap-0.5 border-b border-borde">
-      {items.map((it) => {
-        const activo = String(tab) === it.id;
-        return (
-          <button
-            key={it.id}
-            aria-pressed={activo}
-            onClick={() => setTab(it.id)}
-            className={cn(
-              "-mb-px border-b-2 px-4 py-2.5 font-display text-md transition-colors",
-              activo
-                ? "border-accent font-bold text-accent"
-                : "border-transparent font-semibold text-texto-debil hover:text-texto-suave",
-            )}
-          >
-            {it.nombre}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <>
+    <label className="sr-only" htmlFor="tablero-area">Área del tablero</label>
+    <select id="tablero-area" aria-label="Área del tablero" value={String(tab)} onChange={(e) => setTab(e.target.value)}
+      className="h-9 min-w-36 rounded-md border border-borde bg-superficie px-3 text-xs text-texto focus:border-accent focus:outline-none">
+      {items.map((it) => <option key={it.id} value={it.id}>{it.nombre}</option>)}
+    </select>
+  </>;
 }
 
 function RangoFechas({ desde, hasta, setRango, periodo }) {
