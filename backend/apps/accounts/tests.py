@@ -272,6 +272,31 @@ class LegajoPorInstitucionTests(APITestCase):
         r = self.client.get(f"/api/usuarios/{self.medico.id}/legajo/?institucion={self.clinica.id}")
         self.assertEqual(r.status_code, 403)
 
+    def test_medico_no_puede_leer_actividad_ni_legajos_del_equipo(self):
+        legajo = LegajoProfesional.objects.create(usuario=self.medico, matricula="MN-123")
+        self.client.force_authenticate(self.medico)
+        self.assertEqual(
+            self.client.get(f"/api/usuarios/{self.medico.id}/legajo/?institucion={self.hospital.id}").status_code,
+            403,
+        )
+        self.assertEqual(self.client.get("/api/legajos/").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/legajos/{legajo.id}/").status_code, 403)
+
+    def test_administrar_una_institucion_no_abre_la_actividad_de_otra(self):
+        Membresia.objects.create(usuario=self.admin, institucion=self.clinica, rol="medico", activo=True)
+        solo_clinica = Usuario.objects.create_user("solo-clinica@test.local", "x")
+        Membresia.objects.create(usuario=solo_clinica, institucion=self.clinica, rol="medico", activo=True)
+        legajo_clinica = LegajoProfesional.objects.create(usuario=solo_clinica, matricula="CL-1")
+        r = self.client.get(f"/api/usuarios/{self.medico.id}/legajo/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual([a["accion"] for a in r.data["actividad"]], ["Atención Hospital"])
+        self.assertEqual(
+            self.client.get(f"/api/usuarios/{self.medico.id}/legajo/?institucion={self.clinica.id}").status_code,
+            403,
+        )
+        self.assertEqual(self.client.get(f"/api/usuarios/{solo_clinica.id}/legajo/").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/legajos/{legajo_clinica.id}/").status_code, 404)
+
 
 class AltaDePersonaTests(APITestCase):
     """

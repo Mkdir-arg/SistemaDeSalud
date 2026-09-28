@@ -142,11 +142,21 @@ class UsuarioViewSet(BaseModelViewSet):
         if institucion and not institucion.isdigit():
             raise ValidationError({"institucion": ["Indicá una institución válida."]})
         alcance_global = request.user.is_superuser or tiene_capacidad(request.user, "gobierno_plataforma")
-        propias = self.instituciones_del_usuario() if not alcance_global else []
+        propias = (
+            [inst for inst in self.instituciones_del_usuario()
+             if tiene_capacidad(request.user, "config_institucional", inst)]
+            if not alcance_global else []
+        )
         if institucion and not alcance_global and int(institucion) not in propias:
             raise PermissionDenied("No podés consultar el legajo de esa institución.")
+        if not institucion and not alcance_global and not propias:
+            raise PermissionDenied("El legajo requiere administración institucional.")
 
         user = self.get_object()
+        if not alcance_global and not user.membresias.filter(
+            institucion_id__in=propias, activo=True,
+        ).exists():
+            raise PermissionDenied("La persona no pertenece a una institución que administrás.")
         casos = Caso.objects.filter(asignado_a=user)
         eventos_qs = EventoCaso.objects.filter(autor=user)
         if institucion:
@@ -219,16 +229,17 @@ class LegajoProfesionalViewSet(BaseModelViewSet):
     queryset = LegajoProfesional.objects.select_related("usuario")
     serializer_class = LegajoProfesionalSerializer
     capacidad_requerida = "config_institucional"
+    protege_lectura = True
     filter_fields = ("usuario",)
 
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
         if user.is_authenticated and not user.is_superuser:
-            qs = qs.filter(
-                Q(usuario__membresias__institucion__in=self.instituciones_del_usuario())
-                | Q(usuario_id=user.pk)
-            ).distinct()
+            administradas = [inst for inst in self.instituciones_del_usuario()
+                             if tiene_capacidad(user, "config_institucional", inst)]
+            qs = qs.filter(usuario__membresias__institucion_id__in=administradas,
+                           usuario__membresias__activo=True).distinct()
         return qs
 
     def perform_create(self, serializer):
@@ -244,9 +255,10 @@ class LegajoProfesionalViewSet(BaseModelViewSet):
     def _verificar_persona(self, serializer):
         user = self.request.user
         usuario = serializer.validated_data.get("usuario")
-        if not usuario or user.is_superuser or usuario.pk == user.pk:
+        if not usuario or user.is_superuser:
             return
-        propias = set(self.instituciones_del_usuario())
+        propias = {inst for inst in self.instituciones_del_usuario()
+                   if tiene_capacidad(user, "config_institucional", inst)}
         suyas = set(usuario.membresias.filter(activo=True).values_list("institucion_id", flat=True))
         if not propias & suyas:
             raise ValidationError({"usuario": ["Esa persona no pertenece a tu institución."]})
