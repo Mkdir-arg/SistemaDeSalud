@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.common import capacidades_de
@@ -347,17 +348,18 @@ class CiudadanoListadoSerializer(CiudadanoSerializer):
     class Meta(CiudadanoSerializer.Meta):
         fields = [*CiudadanoSerializer.Meta.fields, "edad"]
 
-    def get_documento(self, obj):
+    def get_documento(self, obj) -> str:
         documento = obj.documento or ""
         return f"••••{documento[-3:]}" if len(documento) > 3 else ("••••" if documento else "")
 
+    @extend_schema_field(serializers.DateField(allow_null=True))
     def get_fecha_nacimiento(self, obj):
         return None
 
-    def get_domicilio(self, obj):
+    def get_domicilio(self, obj) -> str:
         return "••••••" if obj.domicilio else ""
 
-    def get_edad(self, obj):
+    def get_edad(self, obj) -> int | None:
         nacimiento = obj.fecha_nacimiento
         if not nacimiento:
             return None
