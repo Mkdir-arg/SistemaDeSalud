@@ -34,10 +34,12 @@ async function preparar(page, opciones = {}) {
       return route.fulfill({ status: 404, json: { detail: "Escritura no prevista" } });
     }
     lecturas.push(path + url.search);
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 30, nombre_completo: "Admisión de prueba", email: "admision@example.test", capacidades_por_institucion: { 1: ["padron_admision"], 2: ["padron_admision"] }, roles_por_institucion: { 1: ["administrativo"], 2: ["administrativo"] }, financiadores: [] } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 30, nombre_completo: "Admisión de prueba", email: "admision@example.test", capacidades_por_institucion: { 1: opciones.capacidades || ["padron_admision"], 2: ["padron_admision"] }, roles_por_institucion: { 1: ["administrativo"], 2: ["administrativo"] }, financiadores: [] } });
     if (path === "/instituciones/") return route.fulfill({ json: lista(instituciones) });
     if (path === "/notificaciones/resumen/") return route.fulfill({ json: { no_leidas: 0, items: [] } });
     if (path === "/concesiones-financieras/mias/") return route.fulfill({ json: { superusuario: false, concesiones: [] } });
+    if (path === "/flujos/") return route.fulfill({ json: lista(opciones.flujos || []) });
+    if (path === "/mis-tareas/") return route.fulfill({ json: opciones.misTareas || { iniciar: [], tareas: [], filas: [], esperando: [], puestos: [] } });
     if (path === "/ciudadanos/configuracion-cobertura/") {
       if (estado.configuracionError) return route.fulfill({ status: 503, json: { detail: "Configuración temporalmente no disponible" } });
       return route.fulfill({ json: { institucion: Number(url.searchParams.get("institucion")), habilitada: opciones.habilitada !== false } });
@@ -89,6 +91,90 @@ test("listado y buscador común distinguen afiliación vigente y texto sin verif
   await expect(page.getByRole("listbox")).toContainText("Declarada: Mutual declarada");
   await page.getByRole("listbox").getByText("Beatriz de Prueba", { exact: true }).click();
   await expect(page.getByRole("region", { name: "Cobertura administrativa" })).toContainText("Sin verificación de afiliación");
+});
+
+test("el alta del padrón copia documento o nombre de la búsqueda y enfoca el campo correcto", async ({ page }) => {
+  await preparar(page);
+  await page.goto("/padron");
+
+  for (const [texto, nombre, apellido, documento, foco] of [
+    ["30.123.456", "", "", "30.123.456", "Documento"],
+    ["30123456", "", "", "30123456", "Documento"],
+    ["FIC000123", "", "", "FIC000123", "Documento"],
+    ["Pérez", "Pérez", "", "", "Nombre *"],
+    ["Juan Pérez", "Juan", "Pérez", "", "Nombre *"],
+  ]) {
+    await page.getByRole("searchbox", { name: "Buscar paciente" }).fill(texto);
+    await expect(page.getByText("Ningún paciente coincide")).toBeVisible();
+    await page.getByRole("button", { name: "+ Crear registro" }).click();
+    const modal = page.getByRole("dialog", { name: "Nuevo registro de paciente" });
+    await expect(modal.getByLabel("Nombre *")).toHaveValue(nombre);
+    await expect(modal.getByLabel("Apellido")).toHaveValue(apellido);
+    await expect(modal.getByLabel("Documento")).toHaveValue(documento);
+    await expect(modal.getByLabel(foco)).toBeFocused();
+    await modal.getByRole("button", { name: "Cancelar" }).click();
+  }
+
+  await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("");
+  await page.getByRole("button", { name: "+ Crear registro" }).click();
+  const modal = page.getByRole("dialog", { name: "Nuevo registro de paciente" });
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento")).toHaveValue("");
+});
+
+test("el padrón encuentra un DNI guardado sin puntos al buscarlo con puntos", async ({ page }) => {
+  const { lecturas } = await preparar(page, { pacientes: [paciente({ documento: "30123456" })] });
+  await page.goto("/padron");
+  await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await expect.poll(() => lecturas.some((ruta) => ruta.startsWith("/ciudadanos/") && ruta.includes("search=30123456"))).toBe(true);
+  await expect(page.getByRole("row", { name: /Ana de Prueba/ })).toBeVisible();
+});
+
+test("un caso nuevo precarga el DNI en Documento, sin crear otro paciente", async ({ page }) => {
+  const { escrituras, lecturas } = await preparar(page, {
+    pacientes: [],
+    capacidades: ["padron_admision", "casos_operar"],
+    flujos: [{ id: 3, titulo: "Guardia", institucion: 1, origen_inicio: "manual", versiones: [{ id: 5, estado: "publicada", etiqueta: "v1" }] }],
+  });
+  await page.goto("/bandeja");
+  await page.getByRole("button", { name: "+ Nuevo caso" }).click();
+  const modal = page.getByRole("dialog", { name: "Nuevo caso" });
+  await modal.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await expect(modal.getByText("Sin coincidencias para «30.123.456»")).toBeVisible();
+  await modal.getByRole("button", { name: "+ Crear nuevo" }).click();
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento")).toHaveValue("30.123.456");
+  await expect(modal.getByLabel("Documento")).toBeFocused();
+  expect(lecturas.some((ruta) => ruta.startsWith("/ciudadanos/") && ruta.includes("search=30123456"))).toBe(true);
+  expect(escrituras).toHaveLength(0);
+});
+
+test("ingresar paciente a guardia precarga el DNI en Documento", async ({ page }) => {
+  const { escrituras } = await preparar(page, {
+    pacientes: [],
+    capacidades: ["padron_admision", "casos_operar"],
+    misTareas: { iniciar: [{ version_id: 5, flujo_titulo: "Guardia", area_nombre: "Guardia", paso: "Ingreso" }] },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ingresar paciente" }).click();
+  const modal = page.getByRole("dialog", { name: "Ingresar paciente · Guardia" });
+  await modal.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await expect(modal.getByText("Sin coincidencias para «30.123.456»")).toBeVisible();
+  await modal.getByRole("button", { name: "+ Crear nuevo" }).click();
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento")).toHaveValue("30.123.456");
+  await expect(modal.getByLabel("Documento")).toBeFocused();
+  expect(escrituras).toHaveLength(0);
+});
+
+test("el alta de historia clínica conserva el formulario vacío", async ({ page }) => {
+  await preparar(page, { capacidades: ["padron_admision", "historia_clinica"] });
+  await page.goto("/historia");
+  await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
+  await page.getByRole("button", { name: "+ Crear registro" }).click();
+  const modal = page.getByRole("dialog", { name: "Nuevo registro de paciente" });
+  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
+  await expect(modal.getByLabel("Documento")).toHaveValue("");
 });
 
 test("alta habilitada omite el texto de obra social y conserva los datos personales", async ({ page }) => {
