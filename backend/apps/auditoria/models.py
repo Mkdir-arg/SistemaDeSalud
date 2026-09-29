@@ -69,6 +69,12 @@ class AccesoClinico(models.Model):
 
     ip = models.GenericIPAddressField(null=True, blank=True)
     momento = models.DateTimeField(auto_now_add=True, db_index=True)
+    # Si el acceso ocurrió simulando un perfil: `usuario` es el superusuario que
+    # miró, y la sesión conserva la cuenta, el perfil y el ámbito simulados.
+    simulacion = models.ForeignKey(
+        "simulacion.SesionSimulacion", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="accesos_clinicos",
+    )
 
     class Meta:
         verbose_name = "acceso a datos clínicos"

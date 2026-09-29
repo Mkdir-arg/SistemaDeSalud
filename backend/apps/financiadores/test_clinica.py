@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -10,16 +11,18 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.accounts.models import Membresia, LegajoProfesional
+from apps.accounts.models import Membresia, LegajoProfesional, Usuario
 from apps.auditoria.models import AccesoClinico
 from apps.casos.models import Caso, EventoCaso
 from apps.finanzas.models import HechoAtencionCosteable, ObligacionFinanciera, Prestacion
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Grupo
 from apps.registros.models import EntradaHistoria
+from apps.simulacion import contexto
 
 from . import models as m
 from .cobertura import cantidades_periodo, periodo, seleccionar_afiliacion
+from .clinica import confirmar_en_paso
 from .test_cobertura import CoberturaSetup
 
 
@@ -238,6 +241,20 @@ class CoberturaClinicaTests(CoberturaSetup, TestCase):
         self.assertEqual(response.data["aceptacion"]["usuario"], self.usuario.pk)
         self.assertIn("fecha", response.data["aceptacion"])
         self.assertFalse(ObligacionFinanciera.objects.exists())
+
+    def test_aceptacion_clinica_json_atribuye_al_superusuario_que_simula(self):
+        self.conceder("registrar_aceptacion")
+        payload = self.solicitud(acepta=True)
+        root = Usuario.objects.create_superuser("root-clinica@example.test", "x")
+        contexto.activar(SimpleNamespace(cuenta=self.usuario), root)
+        try:
+            reserva = confirmar_en_paso(
+                caso=self.caso, usuario=self.usuario, contexto=payload["contexto"], prestacion=self.prestacion,
+                firma=payload["firma"], clave=payload["clave"], acepta=True,
+            )
+        finally:
+            contexto.limpiar()
+        self.assertEqual(reserva.aceptacion["usuario"], root.pk)
 
     def test_reintento_idempotente_no_duplica_reserva_evento_ni_cupo(self):
         payload = self.solicitud()

@@ -11,6 +11,8 @@ from itertools import islice
 
 from django.db import transaction
 
+from apps.simulacion.contexto import usuario_real
+
 from .models import AccesoClinico
 
 log = logging.getLogger(__name__)
@@ -64,7 +66,10 @@ def _datos_acceso(
 ):
     """Normalización compartida; no escribe ni decide si el fallo es tolerable."""
     return {
-        "usuario": request.user,
+        # Simulando un perfil, quien mira es el superusuario (va explícito y no
+        # por `pre_save` porque `registrar_accesos` usa `bulk_create`).
+        "usuario": usuario_real(request),
+        "simulacion": getattr(request, "simulacion", None),
         "ciudadano": ciudadano,
         "institucion_id": (
             getattr(ciudadano, "institucion_id", None)

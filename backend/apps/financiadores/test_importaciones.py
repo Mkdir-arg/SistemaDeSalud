@@ -3,6 +3,7 @@ from datetime import date
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from threading import Barrier
+from types import SimpleNamespace
 from unittest import skipUnless
 from unittest.mock import patch
 from uuid import uuid4
@@ -16,6 +17,7 @@ from openpyxl import load_workbook
 
 from apps.accounts.models import Usuario
 from apps.registros.models import Ciudadano
+from apps.simulacion import contexto
 from . import importaciones
 from .models import (
     Afiliado, ConsumoExterno, Financiador, Importacion, MembresiaFinanciador,
@@ -74,6 +76,17 @@ class ImportacionesTests(ImportacionesSetup, TestCase):
         self.assertFalse(Ciudadano.objects.exists())
         self.aplicar(lote)
         self.assertEqual(ConsumoExterno.objects.count(), 1)
+
+    def test_fila_aplicada_atribuye_al_superusuario_que_simula(self):
+        lote = self.preview(self.archivo(filas=[self.consumo()]))
+        root = Usuario.objects.create_superuser("root-importacion@example.test", "x")
+        contexto.activar(SimpleNamespace(cuenta=self.usuario), root)
+        try:
+            self.aplicar(lote)
+        finally:
+            contexto.limpiar()
+        lote.refresh_from_db()
+        self.assertEqual(lote.filas[0]["aplicado_por"], root.pk)
 
     def test_mismo_lote_reintenta_y_clave_no_admite_otro_contenido(self):
         archivo = self.archivo(filas=[self.consumo()])

@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import Membresia
+from apps.simulacion.contexto import autor_real
 
 from .models import AjusteCosto, AjusteGasto, AtribucionReparto, CoberturaActividadCosteable, ComponenteEsperadoHecho, ConceptoGasto, ConcesionFinanciera, CorreccionSnapshotCosteo, DefinicionComponente, EstadoAprobacion, ExpectativaGasto, Gasto, HechoAtencionCosteable, ImputacionCosto, IndicacionCargaGasto, PendienteCosteo, Prestacion, ReglaRepartoActividad, RepartoGasto, ValorComponente
 from .permisos import concesiones_financieras_en_alcance, tiene_concesion_financiera
@@ -476,13 +477,15 @@ def decidir_ajuste(ajuste_id, *, modelo, usuario, aprobar, motivo=""):
             return ajuste
         if ajuste.estado != EstadoAprobacion.PENDIENTE:
             raise ValidationError("El ajuste ya fue decidido. No se modifica su historia.")
+        # `update()` no pasa por `pre_save`: simulando un perfil, decide el superusuario.
+        autor = autor_real(usuario)
         if aprobar:
-            datos = {"estado": estado, "aprobado_por": usuario, "aprobado_en": timezone.now()}
+            datos = {"estado": estado, "aprobado_por": autor, "aprobado_en": timezone.now()}
         else:
             motivo = motivo.strip()
             if not motivo or len(motivo) > 255:
                 raise ValidationError("Indicá un motivo de rechazo de hasta 255 caracteres.")
-            datos = {"estado": estado, "rechazado_por": usuario, "rechazado_en": timezone.now(), "motivo_rechazo": motivo}
+            datos = {"estado": estado, "rechazado_por": autor, "rechazado_en": timezone.now(), "motivo_rechazo": motivo}
         # El modelo es inmutable para sus datos económicos. Sólo se actualiza
         # metadata de decisión bajo el bloqueo del registro y su padre.
         modelo.objects.filter(pk=ajuste.pk).update(**datos)

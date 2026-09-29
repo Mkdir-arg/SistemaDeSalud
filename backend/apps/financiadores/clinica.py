@@ -14,6 +14,7 @@ from apps.common import ROL_CAPACIDADES
 from apps.finanzas.models import HechoAtencionCosteable, Prestacion
 from apps.finanzas.permisos import tiene_concesion_financiera
 from apps.registros.models import normalizar_documento
+from apps.simulacion.contexto import autor_real
 from . import models as m
 from .cobertura import evaluar, seleccionar_afiliacion
 from .permisos import plataforma, requerir_caso, requerir_hospital
@@ -162,7 +163,7 @@ def confirmar_en_paso(*, caso, usuario, contexto, prestacion, firma, clave, acep
     aceptacion = {}
     if acepta:
         requerir_hospital(usuario, caso.institucion_id, "registrar_aceptacion", caso.area_actual_id, actual["sensible"])
-        aceptacion = {"prestacion": prestacion.pk, "importe": actual["importe_paciente"], "usuario": usuario.pk, "fecha": timezone.now().isoformat()}
+        aceptacion = {"prestacion": prestacion.pk, "importe": actual["importe_paciente"], "usuario": autor_real(usuario).pk, "fecha": timezone.now().isoformat()}
     if anterior:
         # Reemplazo atómico, con el cupo propio excluido del cálculo. Se conserva
         # toda la cotización y aceptación anterior en su registro original.

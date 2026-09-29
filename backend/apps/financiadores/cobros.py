@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.finanzas.dinero import crear_obligacion_cobro
 from apps.finanzas.models import HechoAtencionCosteable, Prestacion
+from apps.simulacion.contexto import autor_real
 from .cobertura import evaluar
 from .models import (
     Afiliado, AfiliacionCaso, ConfiguracionHospital, DistribucionCobro,
@@ -227,7 +228,7 @@ def completar_pendiente(*, reserva, usuario, motivo, arancel=None, afiliado=None
     if evaluacion["estado"] in ["pendiente_evaluacion", "arancel_pendiente"]:
         raise ValidationError(evaluacion["motivo"])
     evaluacion["evaluacion_original"] = reserva.evaluacion
-    evaluacion["revision"] = {"usuario": usuario.pk, "fecha": timezone.now().isoformat(), "motivo": motivo}
+    evaluacion["revision"] = {"usuario": autor_real(usuario).pk, "fecha": timezone.now().isoformat(), "motivo": motivo}
     reserva.evaluacion, reserva.aceptacion = evaluacion, {}
     reserva.afiliacion, reserva.afiliado, reserva.cubiertas = seleccion, seleccion.afiliado, evaluacion["cubiertas"]
     reserva.save(update_fields=["evaluacion", "aceptacion", "afiliacion", "afiliado", "cubiertas"])

@@ -161,3 +161,8 @@ router.register("expectativas-gasto", ExpectativaGastoViewSet, basename="expecta
 router.register("coberturas-actividad", CoberturaActividadViewSet, basename="cobertura-actividad")
 router.register("reglas-reparto", ReglaRepartoViewSet, basename="regla-reparto")
 router.register("repartos-gasto", RepartoGastoViewSet, basename="reparto-gasto")
+
+# Simulación de perfiles del backoffice (solo superusuarios).
+from apps.simulacion.views import SimulacionViewSet  # noqa: E402
+
+router.register("simulaciones", SimulacionViewSet, basename="simulacion")

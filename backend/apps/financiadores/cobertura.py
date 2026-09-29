@@ -13,6 +13,7 @@ from apps.casos.models import Caso, EventoCaso
 from apps.finanzas.models import Prestacion
 from apps.finanzas.models_cobros import PoliticaCobro
 from apps.registros.models import normalizar_documento
+from apps.simulacion.contexto import autor_real
 from .models import (
     Afiliado, AfiliacionCaso, ArancelConvenio, ConfiguracionHospital, ConsumoExterno,
     Convenio, ReglaCobertura, ReservaCobertura, VinculoCiudadano, VinculoPrestacion,
@@ -217,7 +218,7 @@ def reservar(*, caso, prestacion, usuario, fecha, cantidad, clave, firma, acepta
     aceptacion = {}
     if acepta:
         requerir_hospital(usuario, caso.institucion_id, "registrar_aceptacion", caso.area_actual_id, resultado["sensible"])
-        aceptacion = {"prestacion": prestacion.pk, "importe": resultado["importe_paciente"], "usuario": usuario.pk, "fecha": timezone.now().isoformat()}
+        aceptacion = {"prestacion": prestacion.pk, "importe": resultado["importe_paciente"], "usuario": autor_real(usuario).pk, "fecha": timezone.now().isoformat()}
     reserva = ReservaCobertura.objects.create(caso=caso, afiliacion=afiliacion, afiliado=afiliacion.afiliado, prestacion=prestacion, comun_id=resultado["comun"], fecha=fecha, cantidad=cantidad, cubiertas=resultado["cubiertas"], evaluacion=resultado, aceptacion=aceptacion, clave=clave, solicitud=solicitud, creado_por=usuario)
     from .uso_autorizaciones import registrar_uso
     registrar_uso(reserva)

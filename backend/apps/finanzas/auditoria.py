@@ -6,6 +6,7 @@ from django.db import transaction
 from rest_framework.exceptions import APIException
 
 from apps.auditoria.mixins import _institucion_del_pedido
+from apps.simulacion.contexto import usuario_real
 from .models import AccesoFinanciero
 
 log = logging.getLogger(__name__)
@@ -51,7 +52,8 @@ class AuditaLecturaFinanciera:
             with transaction.atomic():
                 for (institucion_id, area_id, sensible, mes), cantidad in grupos.items():
                     AccesoFinanciero.objects.create(
-                        usuario=self.request.user, institucion_id=institucion_id,
+                        usuario=usuario_real(self.request), simulacion=getattr(self.request, "simulacion", None),
+                        institucion_id=institucion_id,
                         area_id=area_id, sensible=sensible,
                         recurso=recurso or self.queryset.model._meta.model_name, accion=accion or self.action,
                         objeto_id=objeto_id, periodo_economico=mes, resultados=cantidad,

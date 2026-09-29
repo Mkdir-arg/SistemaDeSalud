@@ -20,7 +20,7 @@ class AccesoFinancieroSerializer(serializers.ModelSerializer):
         model = AccesoFinanciero
         fields = [
             "id", "usuario", "institucion", "area", "sensible", "recurso", "accion",
-            "objeto_id", "periodo_economico", "resultados", "registrado",
+            "objeto_id", "periodo_economico", "resultados", "registrado", "simulacion",
         ]
         read_only_fields = fields
 

@@ -18,6 +18,7 @@ from rest_framework import status
 from apps.auditoria.mixins import AuditaLecturaClinica, registrar_acceso
 from apps.auditoria.models import AccesoClinico
 from apps.common import BaseModelViewSet, ROL_CAPACIDADES, capacidades_de, tiene_capacidad
+from apps.simulacion.contexto import usuario_real
 
 from . import integridad, reglas
 from .models import (
@@ -459,7 +460,8 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         # quién lo pidió sería una cadena que nadie puede verificar.
         historia = serializer.validated_data["historia"]
         reglas.exigir_clinico(historia.ciudadano.institucion, self.request.user)
-        serializer.save(autor=self.request.user.nombre_completo)
+        # `Estudio.autor` es texto: simulando un perfil, lo pide el superusuario.
+        serializer.save(autor=usuario_real(self.request).nombre_completo)
 
     def perform_update(self, serializer):
         # Informar un resultado es tan clínico como pedirlo, y hasta acá sólo el

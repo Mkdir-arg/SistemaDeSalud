@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 import os
 
@@ -180,6 +181,7 @@ INSTALLED_APPS = [
     "apps.auditoria",
     "apps.fhir",
     "apps.demo",
+    "apps.simulacion",
 ]
 
 MIDDLEWARE = [
@@ -190,6 +192,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Limpia el contexto de simulación de cada pedido y registra sus escrituras.
+    "apps.simulacion.middleware.SimulacionMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -238,6 +242,10 @@ else:
 # --- Auth ------------------------------------------------------------------
 AUTH_USER_MODEL = "accounts.Usuario"
 
+# Las cuentas de referencia de la simulación de perfiles no inician sesión por
+# su cuenta, aunque alguien les ponga contraseña (ver apps/simulacion).
+AUTHENTICATION_BACKENDS = ["apps.simulacion.autenticacion.BackendSinCuentasDeReferencia"]
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -249,6 +257,10 @@ AUTH_PASSWORD_VALIDATORS = [
 # --- DRF + JWT -------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        # Primera a propósito: con `X-HEN-Simulacion` resuelve la cuenta simulada
+        # y, si la sesión no es válida, rechaza el pedido antes de que otro
+        # autenticador lo atienda como superusuario.
+        "apps.simulacion.autenticacion.SimulacionAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ),
@@ -353,6 +365,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
+    "USER_AUTHENTICATION_RULE": "apps.simulacion.autenticacion.regla_de_autenticacion",
 }
 
 
@@ -362,6 +375,8 @@ CORS_ALLOWED_ORIGINS = [
     for o in env("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     if o.strip()
 ]
+# El frontend identifica la simulación de perfiles con un encabezado propio.
+CORS_ALLOW_HEADERS = (*default_headers, "x-hen-simulacion")
 
 
 # --- Internacionalización --------------------------------------------------
