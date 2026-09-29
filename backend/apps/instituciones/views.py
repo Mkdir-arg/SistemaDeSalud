@@ -16,6 +16,7 @@ from apps.common import BaseModelViewSet, CapacidadPermission, _coerce, tiene_ca
 from apps.agenda.models import Turno
 
 from .models import Area, Box, Cama, EstadiaCama, Grupo, Institucion, Subarea
+from .puesta_en_marcha import pasos as pasos_de_puesta_en_marcha
 from .serializers import (
     AreaSerializer, BoxSerializer, CamaSerializer, EstadiaCamaSerializer,
     GrupoSerializer, InstitucionSerializer, SubareaSerializer,
@@ -225,39 +226,7 @@ class InstitucionViewSet(BaseModelViewSet):
     @action(detail=True, methods=["get"], url_path="puesta-en-marcha")
     def puesta_en_marcha(self, request, pk=None):
         """Señales de configuración verificadas en el ámbito de la institución."""
-        from apps.accounts.models import Membresia
-        from apps.agenda.models import Agenda, Disponibilidad
-        from apps.flujos.models import VersionFlujo
-
-        inst = self.get_object()
-        miembros = Membresia.objects.filter(
-            institucion=inst, activo=True, usuario__is_active=True,
-        )
-        horarios = Disponibilidad.objects.filter(
-            agenda__institucion=inst, agenda__activa=True,
-            agenda__area__activa=True, activa=True,
-        ).filter(
-            Q(vigente_desde__isnull=True) | Q(vigente_desde__lte=timezone.localdate()),
-            Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=timezone.localdate()),
-        )
-        profesionales = horarios.filter(
-            agenda__tipo=Agenda.Tipo.PROFESIONAL,
-            agenda__profesional__is_active=True,
-            agenda__profesional__membresias__institucion=inst,
-            agenda__profesional__membresias__activo=True,
-        )
-        recursos = horarios.filter(agenda__tipo=Agenda.Tipo.RECURSO)
-        publicados = VersionFlujo.objects.filter(
-            flujo__institucion=inst, estado=VersionFlujo.Estado.PUBLICADA,
-        )
-        return Response({
-            "areas": Area.objects.filter(institucion=inst, activa=True).exists(),
-            "usuarios": miembros.exists(),
-            "asignaciones": miembros.filter(areas__institucion=inst, areas__activa=True).exists(),
-            "agenda_profesional": profesionales.exists(),
-            "agenda_recurso": recursos.exists(),
-            "flujo_operativo": publicados.exists(),
-        })
+        return Response(pasos_de_puesta_en_marcha(self.get_object()))
 
     @action(detail=True, methods=["get"])
     def tablero(self, request, pk=None):

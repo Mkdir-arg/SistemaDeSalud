@@ -10,7 +10,9 @@ sola cosa y declara lo que necesita; este los encadena:
     5. seed_roles          gobierno estatal y administración de Hospital Central
     6. seed_farmacia       pedidos de reposición y consumos imputados a pacientes
     7. seed_red            un segundo hospital y los traslados entre los dos
-    8. seed_accesos        el historial de accesos que revisa la auditoría
+    8. seed_efectores      más efectores en la red, para el tablero de plataforma
+    9. seed_comprador      el usuario de quien recibe la demo y su institución por configurar
+   10. seed_accesos        el historial de accesos que revisa la auditoría
 
 Todo corre en UNA transacción, vaciado incluido: si un paso falla, la base
 queda como estaba y no a medio cargar. Mientras corre, la aplicación espera:
@@ -57,6 +59,8 @@ def pasos(dias, casos):
         ("seed_roles", {}),
         ("seed_farmacia", {}),
         ("seed_red", {}),
+        ("seed_efectores", {}),
+        ("seed_comprador", {}),
         ("seed_accesos", {}),
     ]
 

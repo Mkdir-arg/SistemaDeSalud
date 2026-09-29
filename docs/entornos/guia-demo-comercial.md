@@ -25,6 +25,8 @@ minutos, hacé el 1, el 4 y el 6.
 | **Hospital General Los Aromos** | Finanzas maduras: un año de historia (oct/25 → sep/26), gastos, repartos, costos por atención, cobros y el circuito de obras sociales |
 | **Hospital Central** | Operación clínica densa: guardia con triage, 547 casos, 28 camas, farmacia, agenda, historia clínica sellada |
 | **Hospital Municipal de Villa Real** | El efector chico de la red que deriva al grande |
+| **Zonal Sur · Clínica San Martín · CAPS Barrio Norte** | Más efectores de la red con guardia andando: el tablero de plataforma muestra una región y no dos hospitales. Zonal Sur está lleno y dispara la alerta de ocupación |
+| **Lomas del Este · Hospital Piloto** | En puesta en marcha. Lomas lleva 45 días y dispara la alerta; Piloto es la institución del comprador |
 
 **Esa diferencia es el argumento, no un defecto.** Una plataforma provincial no
 recibe hospitales parejos: recibe uno con la gestión económica ordenada y otro
@@ -72,6 +74,7 @@ pestañas normales comparten la sesión.
 | Perfil | Usuario |
 |---|---|
 | Superusuario / plataforma completa | `admin@salud.local` / `demo1234` |
+| **Quien recibe la demo:** todos los roles, finanzas de Los Aromos, portal de Mutual del Valle y Hospital Piloto por configurar | `comprador@salud.local` |
 | Gobierno estatal: efectores y redes | `plataforma@salud.local` |
 | Auditoría con alcance estatal | `auditor@salud.local` |
 | Administración de la institución | `admin.central@hospital.gob.ar` |
@@ -147,7 +150,9 @@ queda registrada: quién, cuándo, a qué paciente.
 
 ## 3. Dos hospitales, una plataforma · 3 minutos
 
-Entrá con `plataforma@salud.local`. El **Directorio** muestra los tres efectores.
+Entrá con `plataforma@salud.local`. El **Directorio** muestra ocho instituciones,
+con dos alertas: Zonal Sur por encima del 90 % de camas y Lomas del
+Este con más de 30 días en puesta en marcha.
 
 Cada uno tiene su estructura, sus flujos, sus usuarios y sus finanzas. La
 plataforma da de alta efectores y redes; **no** opera adentro de ellos.

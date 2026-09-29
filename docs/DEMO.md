@@ -63,6 +63,7 @@ entorno defina `DEMO_PASSWORD`.
 | Para mostrar | Usuario | Rol |
 |---|---|---|
 | Plataforma completa, editor de flujos, todo | `admin@salud.local` / `demo1234` | superusuario |
+| Quien recibe la demo: todo sin «Acceso denegado» y su propia institución por configurar | `comprador@salud.local` | todos (ver `entornos/README.md`) |
 | Gobierno estatal: alta de efectores y redes, directorio | `plataforma@salud.local` | plataforma |
 | Auditoría de accesos con alcance estatal | `auditor@salud.local` | auditor |
 | Administración de la institución, usuarios y estructura | `admin.central@hospital.gob.ar` | admin |
@@ -92,7 +93,7 @@ Medido después del reset:
 | Agenda | 4 agendas · ~1.100 turnos con los 5 estados · turnos de hoy y a futuro · **1 bloqueo con 6 turnos afectados** |
 | Farmacia | Stock, lotes y los **6 estados de pedido**: pendiente, pendiente urgente, preparado, **parcial**, entregado, rechazado |
 | Trazabilidad de lote | 2 lotes que llegan a 4 pacientes con nombre cada uno (el caso «se retira el lote, a quién se le aplicó») |
-| Red | 1 red · Villa Real deriva a Hospital Central · 14 traslados (7 recibidos, 3 rechazados, 4 esperando respuesta) |
+| Red | 1 red con 6 efectores · Villa Real deriva a Hospital Central · 14 traslados (7 recibidos, 3 rechazados, 4 esperando respuesta) · Zonal Sur, San Martín, Barrio Norte y Villa Real con 30 días de fila, e internados donde hay camas |
 | Historia clínica | ~425 entradas, todas selladas · 38 consentimientos |
 | Auditoría | Miles de accesos clínicos registrados; la consulta por paciente devuelve su historial de accesos |
 | Recorrido guiado | Tres clics en la ficha del super admin: la app se maneja sola y construye «Hospital Escuela Salud» desde cero |
