@@ -44,8 +44,9 @@ const PortalFinanciadores = lazy(() => import("./pages/financiadores/PortalFinan
 const CoberturasHospital = lazy(() => import("./pages/financiadores/CoberturasHospital"));
 const ActivarFinanciador = lazy(() => import("./pages/financiadores/ActivarFinanciador"));
 
-// Landing: el super admin ve el directorio; el resto entra a su institución.
-function Landing() {
+// Entrada después del login: el super admin ve el directorio; el resto entra a
+// su institución. Vive en /directorio porque / es la landing pública.
+function Entrada() {
   const { user } = useAuth();
   const { institucion, setInstitucion } = useInstitucion();
   const [estado, setEstado] = useState("cargando");
@@ -106,6 +107,8 @@ function InicioHome() {
  */
 function usePuerta() {
   const { user, loading, error, reintentar } = useAuth();
+  // Se recuerda a dónde iba: después del login se lo devuelve ahí.
+  const loc = useLocation();
   if (loading) return <Spinner label="Cargando sesión…" />;
   if (error)
     return (
@@ -115,7 +118,7 @@ function usePuerta() {
         titulo="No se pudo conectar con el servidor"
       />
     );
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" state={{ desde: loc.pathname + loc.search }} replace />;
   return null;
 }
 
@@ -146,8 +149,8 @@ function Protected({ children, cap }) {
   const { institucion, puedeVer, cargandoRoles } = useInstitucion();
   const loc = useLocation();
   if (puerta) return puerta;
-  // Se recuerda a dónde iba: el Landing elige institución y lo devuelve ahí.
-  if (!institucion) return <Navigate to="/" state={{ desde: loc.pathname + loc.search }} replace />;
+  // Se recuerda a dónde iba: la entrada elige institución y lo devuelve ahí.
+  if (!institucion) return <Navigate to="/directorio" state={{ desde: loc.pathname + loc.search }} replace />;
   if (cargandoRoles) return <Spinner label="Cargando permisos..." />;
   if (cap && !puedeVer(cap)) return <Shell><AccesoDenegado /></Shell>;
   return <Shell><Suspense fallback={<PantallaCargando />}>{children}</Suspense></Shell>;
@@ -166,12 +169,13 @@ export default function App() {
     <Suspense fallback={<PantallaCargando />}>
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/presentacion" element={<Presentacion />} />
+      <Route path="/" element={<Presentacion />} />
+      <Route path="/presentacion" element={<Navigate to="/" replace />} />
       <Route path="/demo/app-clinica" element={<DemoClinica />} />
       <Route path="/financiadores/activar" element={<ActivarFinanciador />} />
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
       <Route path="/pantalla/:token" element={<PantallaLlamados />} />
-      <Route path="/" element={<AuthOnly><Landing /></AuthOnly>} />
+      <Route path="/directorio" element={<AuthOnly><Entrada /></AuthOnly>} />
       <Route path="/financiadores/:seccion?" element={<AuthOnly><PortalFinanciadores /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />
@@ -216,7 +220,7 @@ export default function App() {
       <Route path="/estructura/:areaId/:seccion" element={P(<Areas />, "config_institucional")} />
       <Route path="/administracion" element={P(<Usuarios />, "config_institucional")} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/directorio" replace />} />
     </Routes>
     </Suspense>
   );

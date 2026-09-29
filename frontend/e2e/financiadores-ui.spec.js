@@ -221,7 +221,7 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
 
 test("un financiador sin hospital entra a su portal y configura un plan", async ({ page }) => {
   const { escrituras, peticiones } = await escenario(page);
-  await page.goto("/");
+  await page.goto("/directorio");
   await expect(page).toHaveURL(/\/financiadores$/);
   await expect(page.getByRole("heading", { name: "Planes", exact: true, level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Nuevo plan", exact: true }).click();

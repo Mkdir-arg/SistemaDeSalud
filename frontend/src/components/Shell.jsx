@@ -256,7 +256,7 @@ function TopBar({ onAbrirMenu, titulo, contexto, hospital = true, plataforma = f
   const navigate = useNavigate();
   const txtRefresco = textoRefresco(refresco);
   // Volver: en toda página salvo el inicio (que es la base del recorrido).
-  const puedeVolver = !["/inicio", "/", "/financiadores"].includes(location.pathname);
+  const puedeVolver = !["/inicio", "/directorio", "/financiadores"].includes(location.pathname);
   return (
     <header className="flex h-[64px] shrink-0 items-center gap-2.5 border-b border-borde bg-superficie px-lg sm:gap-3.5 sm:px-[24px]">
       {/* Hamburguesa: solo en angosto, donde el menú es un cajón. */}
@@ -566,7 +566,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
             {esFinanciador ? financiador.selector : user?.is_superuser ? (
               <>
               <button
-                onClick={() => { setInstitucion(null); navigate("/"); }}
+                onClick={() => { setInstitucion(null); navigate("/directorio"); }}
                 // El gris estaba hardcodeado (#F2F3F6) y en tema oscuro dejaba
                 // texto claro sobre fondo claro: 1,7:1.
                 style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--color-superficie-2)", color: "var(--color-texto-suave)", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer" }}
@@ -597,9 +597,9 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           {esPlataforma ? <>
             {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">PLATAFORMA</div>}
             {[
-              { to: "/?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
-              { to: "/?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
-              { to: "/?vista=financiadores", label: "Financiadores", icon: "users", key: "financiadores" },
+              { to: "/directorio?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
+              { to: "/directorio?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
+              { to: "/directorio?vista=financiadores", label: "Financiadores", icon: "users", key: "financiadores" },
             ].map((item) => {
               const actual = location.pathname.startsWith("/financiadores") ? "financiadores" : new URLSearchParams(location.search).get("vista") || "instituciones";
               return <Link key={item.key} to={item.to} aria-current={actual === item.key ? "page" : undefined}
@@ -713,7 +713,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           contexto={esPlataforma ? "Plataforma" : esFinanciador ? financiador.nombre : institucion?.nombre || "Institución"}
           hospital={!esFinanciador && !esPlataforma}
           plataforma={esPlataforma}
-          volverA={esPlataforma ? "/" : esFinanciador ? "/financiadores" : "/inicio"} />
+          volverA={esPlataforma ? "/directorio" : esFinanciador ? "/financiadores" : "/inicio"} />
         <div id="contenido-principal" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>

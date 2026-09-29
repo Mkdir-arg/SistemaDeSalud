@@ -93,7 +93,7 @@ export default function DemoClinica() {
 
   return <div className="clinica-demo min-h-screen bg-fondo p-3 text-texto sm:p-6">
     <div className="mx-auto mb-4 max-w-[390px] rounded-lg border border-borde bg-superficie px-4 py-3 text-xs shadow-card">
-      <div className="flex items-center justify-between gap-2"><strong>App clínica · demo interactiva</strong><Link to="/presentacion" className="font-semibold text-accent hover:underline">Volver a HEN</Link></div>
+      <div className="flex items-center justify-between gap-2"><strong>App clínica · demo interactiva</strong><Link to="/" className="font-semibold text-accent hover:underline">Volver a HEN</Link></div>
       <p className="mt-1 text-texto-suave">Datos ficticios. Probá el recorrido; nada se envía al sistema.</p>
       <details className="mt-2"><summary className="cursor-pointer font-medium text-accent">Explorar pantallas de Figma</summary>
         <label className="mt-2 flex items-center gap-2">Pantalla
