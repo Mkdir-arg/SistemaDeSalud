@@ -8,7 +8,7 @@ import { etapa, LUGAR_INICIAL, useAhora, useApp } from "./estado";
 import { GRADIENTE } from "./Turnos";
 import { Boton, Cabecera, Insignia, MarcaClinica, Pie, ruta, Tarjeta } from "./ui";
 
-const hhmm = (ms) => new Date(ms).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+const hhmm = (ms) => new Date(ms).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
 
 /** Turno de la ruta si está en la etapa pedida; si no, a dónde corresponde ir. */
 function useTurnoEn(etapas) {
@@ -125,7 +125,7 @@ export function Llamado() {
   if (salto) return <Navigate to={salto} replace />;
   const voy = () => { acciones.entrarAConsulta(t.id); navigate(ruta("inicio"), { replace: true }); };
   return <div role="alertdialog" aria-labelledby="titulo-llamado" className={`flex min-h-dvh flex-col items-center justify-center px-6 text-center ${GRADIENTE}`}>
-    <div className="flex w-full max-w-sm flex-1 flex-col items-center justify-center">
+    <div className="flex w-full max-w-[24rem] flex-1 flex-col items-center justify-center">
       <span className="relative flex size-24 items-center justify-center">
         <span className="absolute inset-0 animate-ping rounded-full bg-white/30" />
         <span className="relative flex size-20 items-center justify-center rounded-full bg-white text-accent"><Icon name="bell" size={36} strokeWidth={2} /></span>
@@ -134,7 +134,7 @@ export function Llamado() {
       <p className="mt-4 text-lg font-semibold">Consultorio {t.consultorio} · planta baja</p>
       <p className="mt-2 text-sm text-white/90">{t.profesional} te espera.</p>
     </div>
-    <div className="w-full max-w-sm pb-8">
+    <div className="w-full max-w-[24rem] pb-8">
       <Boton variante="claro" onClick={voy}>Voy para allá</Boton>
       <p className="mt-6 flex items-center justify-center gap-2 text-xs text-white/80"><MarcaClinica size={18} /> Clínica Modelo</p>
     </div>

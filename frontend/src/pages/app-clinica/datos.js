@@ -98,16 +98,16 @@ const BASE = { mañana: ["09:00", "09:20", "10:40", "11:40", "12:00", "12:40"], 
 export function horariosLibres(profesionalId, dia) {
   const p = profesional(profesionalId);
   if (!p) return [];
-  if (dia === hoy()) return horariosDeHoy(PROFESIONALES.indexOf(p) % 2 ? 40 : 30);
+  if (dia === hoy()) return horariosDeHoy(30, PROFESIONALES.indexOf(p) % 2 ? [20, 60, 100] : [0, 40, 60]);
   const semilla = [...`${profesionalId}${dia}`].reduce((s, c) => s + c.charCodeAt(0), 0);
   return BASE[p.turno].filter((_, i) => (semilla + i) % 3 !== 0);
 }
 
-/** Tres horarios de hoy desde `margen` minutos en adelante, en saltos de 20. */
-export function horariosDeHoy(margen = 30) {
+/** Horarios de hoy desde `margen` minutos en adelante (redondeado a 20), corridos `extras` minutos. */
+export function horariosDeHoy(margen = 30, extras = [0, 20, 60]) {
   const ahora = new Date();
   const desde = Math.ceil((ahora.getHours() * 60 + ahora.getMinutes() + margen) / 20) * 20;
-  return [0, 20, 60].map((extra) => desde + extra).filter((m) => m <= aMinutos("23:40")).map(aHora);
+  return extras.map((extra) => desde + extra).filter((m) => m <= aMinutos("23:40")).map(aHora);
 }
 
 // ── Paciente conocida ────────────────────────────────────────────────────────

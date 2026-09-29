@@ -36,7 +36,7 @@ function Pestanas() {
   const { resultados } = useApp();
   const nuevos = resultados.some((r) => r.nuevo && r.estado === "listo");
   return <nav aria-label="Secciones" className="fixed inset-x-0 bottom-0 z-20 border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden">
-    <div className="mx-auto grid max-w-xl grid-cols-4">
+    <div className="mx-auto grid max-w-[36rem] grid-cols-4">
       {SECCIONES.map((s) => <NavLink key={s.a} to={ruta(s.a)} className={({ isActive }) => `relative flex h-16 flex-col items-center justify-center gap-1 text-micro font-semibold ${isActive ? "text-accent" : "text-texto-suave"}`}>
         <span className="relative"><Icon name={s.icono} size={22} />{s.a === "resultados" && nuevos && <span aria-label="Hay resultados nuevos" className="absolute -right-1 -top-0.5 size-2.5 rounded-full border-2 border-superficie bg-accent-fuerte" />}</span>
         {s.texto}
@@ -48,7 +48,7 @@ function Pestanas() {
 export function Aviso() {
   const { aviso } = useApp();
   return <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-30 flex justify-center px-4 md:bottom-8">
-    {aviso && <p key={aviso.id} role="status" className="max-w-sm rounded-md bg-texto px-4 py-3 text-sm text-white shadow-float">{aviso.texto}</p>}
+    {aviso && <p key={aviso.id} role="status" className="max-w-[24rem] rounded-md bg-texto px-4 py-3 text-sm text-white shadow-float">{aviso.texto}</p>}
   </div>;
 }
 
@@ -62,7 +62,7 @@ export function Marco({ enfoque = false }) {
   if (!paciente) return <Navigate to={ruta()} replace />;
   return <div className="flex min-h-dvh flex-col bg-fondo text-texto">
     <Encabezado enfoque={enfoque} />
-    <main className={`mx-auto flex w-full max-w-xl flex-1 flex-col px-4 pt-5 md:pb-12 md:pt-8 ${enfoque ? "pb-6" : "pb-24"}`}>
+    <main className={`mx-auto flex w-full max-w-[36rem] flex-1 flex-col px-4 pt-5 md:pb-12 md:pt-8 ${enfoque ? "pb-6" : "pb-24"}`}>
       <Outlet />
     </main>
     <footer className="hidden border-t border-borde py-5 text-center text-xs text-texto-suave md:block">

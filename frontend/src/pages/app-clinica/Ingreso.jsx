@@ -15,11 +15,11 @@ export function MarcoIngreso() {
   return <div className="flex min-h-dvh bg-fondo text-texto">
     <aside className="hidden flex-1 flex-col justify-between bg-gradient-to-tr from-[#7031C7] via-[#315BA0] to-[#007A70] p-10 text-white md:flex">
       <span className="flex items-center gap-3 text-sm font-bold"><span className="rounded-[12px] bg-white/15 p-1"><MarcaClinica size={34} /></span>{CLINICA.nombre}</span>
-      <img src={ILUSTRACION} alt="" className="mx-auto w-full max-w-md rounded-[28px] shadow-modal" />
-      <p className="max-w-md text-sm text-white/85">Tus turnos, tu lugar en la fila y tus resultados, en un solo lugar.</p>
+      <img src={ILUSTRACION} alt="" className="mx-auto w-full max-w-[28rem] rounded-[28px] shadow-modal" />
+      <p className="max-w-[28rem] text-sm text-white/85">Tus turnos, tu lugar en la fila y tus resultados, en un solo lugar.</p>
     </aside>
     <main className="flex flex-1 flex-col md:items-center md:justify-center md:p-10">
-      <div className="flex w-full flex-1 flex-col md:max-w-sm md:flex-none"><Outlet /></div>
+      <div className="flex w-full flex-1 flex-col md:max-w-[24rem] md:flex-none"><Outlet /></div>
     </main>
     <Aviso />
   </div>;

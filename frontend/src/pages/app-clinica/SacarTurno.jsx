@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
 import { aPagar, cobertura, diaSemana, diasDisponibles, ESPECIALIDADES, fechaCorta, fechaLarga, horariosLibres, hoy, numeroDia, pesos, profesional, profesionalesDe, PROFESIONALES } from "./datos";
-import { useApp } from "./estado";
+import { ACTIVOS, useApp } from "./estado";
 import { Boton, Cabecera, CLASE_CAMPO, Fila, Paso, Pie, ruta, Tarjeta } from "./ui";
 
 const normalizar = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -39,13 +39,16 @@ export function Especialidad() {
 }
 
 export function Horario() {
-  const { borrador, acciones } = useApp();
+  const { borrador, turnos, acciones } = useApp();
   const navigate = useNavigate();
   if (!borrador?.especialidad) return <Navigate to={ruta("sacar-turno")} replace />;
   const dias = diasDisponibles();
   // El profesional elegido va primero; el resto de la especialidad, como alternativa.
   const lista = profesionalesDe(borrador.especialidad).sort((a, b) => (b.id === borrador.profesionalId) - (a.id === borrador.profesionalId));
-  const hayHorarios = (dia) => lista.some((p) => horariosLibres(p.id, dia).length);
+  // No se ofrece un horario en el que la persona ya tiene otro turno.
+  const ocupados = new Set(turnos.filter((t) => ACTIVOS.has(t.estado) && t.id !== borrador.reprograma).map((t) => `${t.dia} ${t.hora}`));
+  const libres = (profesionalId, dia) => horariosLibres(profesionalId, dia).filter((hora) => !ocupados.has(`${dia} ${hora}`));
+  const hayHorarios = (dia) => lista.some((p) => libres(p.id, dia).length);
   const dia = borrador.dia || dias.find(hayHorarios) || dias[0];
   const atras = borrador.reprograma ? ruta(`turnos/${borrador.reprograma}`) : ruta("sacar-turno");
   const elegido = borrador.dia === dia && borrador.hora;
@@ -60,7 +63,7 @@ export function Horario() {
       </button>)}
     </div>
     {lista.map((p) => {
-      const horas = horariosLibres(p.id, dia);
+      const horas = libres(p.id, dia);
       return <Tarjeta key={p.id} className="mt-4 p-4">
         <h3 className="text-sm font-semibold">{p.nombre}</h3>
         <p className="text-xs text-texto-suave">Consultorio {p.consultorio}</p>

@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Link } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
@@ -56,7 +57,7 @@ export function Fila({ titulo, detalle, to, href, onClick, insignia, icono, extr
     {accionable && <Icon name="chevronRight" size={16} className="flex-none text-texto-suave" />}
   </>;
   const interactiva = `${clase} hover:bg-accent-50 ${FOCO}`;
-  if (to) return <Link to={to} className={interactiva}>{contenido}</Link>;
+  if (to) return <Link to={to} onClick={onClick} className={interactiva}>{contenido}</Link>;
   if (href) return <a href={href} className={interactiva} {...(href.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {})}>{contenido}</a>;
   if (onClick) return <button type="button" onClick={onClick} className={interactiva}>{contenido}</button>;
   return <div className={clase}>{contenido}</div>;
@@ -75,9 +76,12 @@ export const CLASE_CAMPO = "mt-2 h-11 w-full rounded-md border border-campo-bord
 
 /** Isotipo de la clínica: la misma cruz de la fachada de la ilustración. */
 export function MarcaClinica({ size = 36 }) {
+  // Un id por instancia: si todas comparten uno y la primera está oculta
+  // (display: none), Chrome no pinta el degradado en las demás.
+  const degradado = useId();
   return <svg width={size} height={size} viewBox="0 0 36 36" role="img" aria-label="Clínica Modelo" className="flex-none">
-    <defs><linearGradient id="marca-clinica" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stopColor="#7031C7" /><stop offset="1" stopColor="#007A70" /></linearGradient></defs>
-    <rect width="36" height="36" rx="10" fill="url(#marca-clinica)" />
+    <defs><linearGradient id={degradado} x1="0" y1="1" x2="1" y2="0"><stop offset="0" stopColor="#7031C7" /><stop offset="1" stopColor="#007A70" /></linearGradient></defs>
+    <rect width="36" height="36" rx="10" fill={`url(#${degradado})`} />
     <path d="M15 9h6v6h6v6h-6v6h-6v-6H9v-6h6z" fill="#fff" />
   </svg>;
 }

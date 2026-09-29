@@ -127,7 +127,7 @@ export function CancelarTurno() {
   return <>
     <DetalleTurno />
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-[#1D1930]/50 md:items-center md:p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="titulo-cancelar" className="w-full max-w-md rounded-t-[24px] bg-superficie p-6 shadow-modal md:rounded-lg">
+      <div role="dialog" aria-modal="true" aria-labelledby="titulo-cancelar" className="w-full max-w-[28rem] rounded-t-[24px] bg-superficie p-6 shadow-modal md:rounded-lg">
         <h2 id="titulo-cancelar" className="text-lg font-bold">{enFila ? "¿Liberar tu lugar en la fila?" : `¿Cancelar tu turno de ${t.especialidad}?`}</h2>
         <p className="mt-3 text-sm text-texto-suave">{fechaLarga(t.dia)}, {t.hora} con {t.profesional}. {enFila ? "Le avisamos a la recepción y pasa la siguiente persona." : "El horario queda libre para otra persona."}</p>
         <div className="mt-6 space-y-2">
@@ -149,7 +149,7 @@ export function TurnoConfirmado() {
   return <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
     <span className="flex size-20 items-center justify-center rounded-full bg-badge-green-bg text-badge-green-fg"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5 10 17 19 7" /></svg></span>
     <h1 className="mt-5 text-xl font-bold">{cambio ? "Listo, cambiamos tu turno" : "¡Listo! Tu turno quedó confirmado"}</h1>
-    <p className="mt-3 max-w-xs text-sm text-texto-suave">{fechaLarga(t.dia)} a las {t.hora} con {t.profesional}, consultorio {t.consultorio}. {t.recordatorio ? "Te recordamos 2 horas antes." : ""}</p>
+    <p className="mt-3 max-w-[20rem] text-sm text-texto-suave">{fechaLarga(t.dia)} a las {t.hora} con {t.profesional}, consultorio {t.consultorio}. {t.recordatorio ? "Te recordamos 2 horas antes." : ""}</p>
     <div className="mt-8 w-full space-y-3">
       <Boton variante="secundario" icono="calendar" onClick={() => agregarAlCalendario(t)}>Agregar al calendario</Boton>
       <Boton to={ruta("inicio")} replace>Volver al inicio</Boton>
