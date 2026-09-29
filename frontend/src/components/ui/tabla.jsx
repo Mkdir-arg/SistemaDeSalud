@@ -73,7 +73,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
   const activo = orden === col.orden || orden === `-${col.orden}`;
   const desc = orden === `-${col.orden}`;
   const clases = cn(
-    "whitespace-nowrap px-5 text-left text-sm font-medium text-texto-suave",
+    "whitespace-nowrap px-5 text-left text-sm font-semibold uppercase tracking-wide text-texto-suave",
     compacta ? "py-2" : "py-3",
     col.className,
     col.fija && "sticky right-0 z-20 bg-superficie-2 shadow-[-6px_0_8px_-7px_rgba(0,0,0,.35)]",
@@ -96,7 +96,7 @@ function Encabezado({ col, orden, ordenarPor, compacta }) {
         type="button"
         onClick={() => ordenarPor(col.orden)}
         className={cn(
-          "group flex w-full items-center gap-1.5 px-5 text-left text-sm font-medium",
+          "group flex w-full items-center gap-1.5 px-5 text-left text-sm font-semibold uppercase tracking-wide",
           compacta ? "py-2" : "py-3",
           activo ? "text-accent" : "text-texto-debil hover:text-texto-medio",
         )}
@@ -255,7 +255,7 @@ export function DataTable({
                         : undefined
                     }
                     className={cn(
-                      "border-t border-division",
+                      "group border-t border-division",
                       !compacta && "h-14",
                       onRowClick && "cursor-pointer hover:bg-superficie-2 focus-visible:bg-superficie-2",
                     )}
@@ -274,7 +274,7 @@ export function DataTable({
                             // visual, que es justo para lo que sirve la densidad.
                             !c.envolver && "whitespace-nowrap",
                             c.className,
-                            c.fija && "sticky right-0 z-10 bg-superficie shadow-[-6px_0_8px_-7px_rgba(0,0,0,.35)]",
+                            c.fija && "sticky right-0 z-10 bg-superficie group-hover:bg-superficie-2 group-focus-visible:bg-superficie-2 shadow-[-6px_0_8px_-7px_rgba(0,0,0,.35)]",
                           )}
                         >
                           {c.truncar ? (

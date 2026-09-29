@@ -434,17 +434,21 @@ class CoberturaTests(AuditoriaTestCase):
         de pacientes usan permisos propios pero igualmente deben auditarse.
         """
         from apps.auditoria.mixins import AuditaLecturaClinica
+        from apps.accounts.views import LegajoProfesionalViewSet
         from apps.finanzas.views import ConcesionFinancieraViewSet, HechoAtencionCosteableViewSet
         from config.api import router
 
         # `protege_lectura` no implica datos de pacientes: las concesiones son
-        # configuración de permisos. Excepción puntual, no de toda Finanzas.
+        # configuración de permisos y el legajo profesional sólo tiene
+        # especialidad y matrícula. Excepciones puntuales, no de toda Finanzas
+        # ni de la actividad clínica del equipo.
         # El detalle de costos SÍ habla de pacientes, aunque usa permisos
         # financieros propios en lugar de la bandera clínica heredada.
         sin_auditar = [
             prefijo for prefijo, viewset, _ in router.registry
             if (
-                (getattr(viewset, "protege_lectura", False) and viewset is not ConcesionFinancieraViewSet)
+                (getattr(viewset, "protege_lectura", False)
+                 and viewset not in (ConcesionFinancieraViewSet, LegajoProfesionalViewSet))
                 or viewset is HechoAtencionCosteableViewSet
             )
             and not issubclass(viewset, AuditaLecturaClinica)

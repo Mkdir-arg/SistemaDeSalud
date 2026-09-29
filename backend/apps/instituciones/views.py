@@ -217,6 +217,9 @@ class InstitucionViewSet(BaseModelViewSet):
                 institucion=inst, activo=True, usuario__is_active=True,
             ).values("usuario").distinct().count(),
             "casos_activos": Caso.objects.filter(institucion=inst).exclude(estado__in=Caso.ESTADOS_FINALIZADOS).count(),
+            "turnos_hoy": Turno.objects.filter(
+                agenda__institucion=inst, inicio__date=timezone.localdate(),
+            ).exclude(estado=Turno.Estado.CANCELADO).count(),
         })
 
     @action(detail=True, methods=["get"], url_path="puesta-en-marcha")

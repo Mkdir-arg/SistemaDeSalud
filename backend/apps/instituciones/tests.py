@@ -151,6 +151,26 @@ class GobiernoPlataformaInstitucionTests(APITestCase):
         self.assertEqual(respuesta.status_code, 200, respuesta.data)
         self.assertEqual(respuesta.data["staff"], 2)  # admin institucional + médico activo
 
+    def test_metricas_turnos_hoy_excluye_cancelados_y_otras_instituciones(self):
+        from apps.agenda.models import Agenda, Turno
+        from apps.registros.models import Ciudadano
+
+        ahora = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0)
+        area = Area.objects.create(institucion=self.hospital, nombre="Consultorios")
+        agenda = Agenda.objects.create(institucion=self.hospital, area=area, nombre="Consultorio")
+        paciente = Ciudadano.objects.create(institucion=self.hospital, nombre="Ana")
+        for indice, estado in enumerate((Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO, Turno.Estado.CANCELADO)):
+            Turno.objects.create(agenda=agenda, ciudadano=paciente, inicio=ahora + timedelta(hours=indice), estado=estado)
+        Turno.objects.create(agenda=agenda, ciudadano=paciente, inicio=ahora - timedelta(days=1))
+        otra_area = Area.objects.create(institucion=self.clinica, nombre="Consultorios")
+        otra_agenda = Agenda.objects.create(institucion=self.clinica, area=otra_area, nombre="Consultorio")
+        otro_paciente = Ciudadano.objects.create(institucion=self.clinica, nombre="Luis")
+        Turno.objects.create(agenda=otra_agenda, ciudadano=otro_paciente, inicio=ahora)
+        self.client.force_authenticate(self.admin)
+        respuesta = self.client.get(f"/api/instituciones/{self.hospital.id}/metricas/")
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["turnos_hoy"], 2)
+
     def test_puesta_en_marcha_verifica_agendas_y_flujo_sin_exigir_profesional_al_recurso(self):
         from apps.agenda.models import Agenda, Disponibilidad
         from apps.flujos.models import Flujo, VersionFlujo

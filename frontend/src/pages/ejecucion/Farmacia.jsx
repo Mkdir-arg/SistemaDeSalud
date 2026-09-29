@@ -11,6 +11,14 @@ import { useToast } from "@/components/ui/toast";
 import { fechaHora } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
+const UNIDADES_INVARIABLES = new Set(["ml", "mg", "g", "kg", "l", "u."]);
+function cantidadConUnidad(cantidad, unidad = "unidad") {
+  unidad = unidad || "unidad";
+  const formaPlural = UNIDADES_INVARIABLES.has(unidad.toLowerCase())
+    ? unidad : /[aeiouáéíóú]$/i.test(unidad) ? `${unidad}s` : `${unidad}es`;
+  return `${cantidad} ${cantidad === 1 ? unidad : formaPlural}`;
+}
+
 /*
  * Farmacia.
  *
@@ -41,9 +49,17 @@ export default function Farmacia() {
     { institucion: institucion?.id, activo: true, pageSize: 50 },
     { enabled: institucion?.id != null },
   );
+  // `useAccion` invalida el prefijo «lista» al resolver un faltante o vencimiento.
+  const alertas = useQuery({
+    queryKey: ["lista", "farmacia-alertas", institucion?.id, deposito],
+    queryFn: () => api.get(`/pedidos-stock/alertas/?institucion=${institucion.id}${deposito ? `&deposito=${deposito}` : ""}`),
+    enabled: institucion?.id != null,
+  });
+  const cuentaAlertas = alertas.data
+    ? (alertas.data.faltantes?.length || 0) + (alertas.data.por_vencer?.length || 0) : undefined;
 
   const TABS = [
-    { key: "alertas", label: "Qué resolver" },
+    { key: "alertas", label: "Qué resolver", cuenta: cuentaAlertas },
     { key: "stock", label: "Stock" },
     { key: "movimientos", label: "Movimientos" },
   ];
@@ -76,13 +92,17 @@ export default function Farmacia() {
 
   return (
     <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px]">
-      <section className="flex flex-wrap items-center gap-lg">
-        <div className="min-w-40 flex-1">
+      <section>
+        <div>
           <h2 className="text-xl font-bold">Farmacia e insumos</h2>
           <p className="text-base text-texto-debil">
             Stock por depósito: lo que falta y lo que vence.
           </p>
         </div>
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs tabs={TABS} valor={tab} onChange={setTab} variant="underline" className="w-auto" />
         <select
           aria-label="Depósito"
           value={deposito}
@@ -94,14 +114,11 @@ export default function Farmacia() {
             <option key={d.id} value={d.id}>{d.nombre}</option>
           ))}
         </select>
-      </section>
-
-      <Tabs tabs={TABS} valor={tab} onChange={setTab} />
+      </div>
 
       {tab === "alertas" && (
         <Alertas
-          institucion={institucion}
-          deposito={deposito}
+          q={alertas}
           onResolver={resolver}
           onResolverVencimiento={resolverVencimiento}
         />
@@ -244,21 +261,7 @@ function BotonExportar({ exportar }) {
   );
 }
 
-function Alertas({ institucion, deposito, onResolver, onResolverVencimiento }) {
-  const q = useQuery({
-    // La clave va DENTRO del prefijo «lista», que es lo único que `useAccion`
-    // invalida al terminar una acción. Afuera, reponer un faltante y volver acá
-    // mostraba la alerta vieja o la nueva según cuánto hubiera tardado la
-    // persona en llenar el modal (`staleTime` de 30 s): la lectura natural de un
-    // faltante que sigue en rojo es que la reposición no se registró, y repetir
-    // la transferencia deja el botiquín con el doble y la central corta.
-    queryKey: ["lista", "farmacia-alertas", institucion?.id, deposito],
-    queryFn: () => api.get(
-      `/pedidos-stock/alertas/?institucion=${institucion.id}${deposito ? `&deposito=${deposito}` : ""}`
-    ),
-    enabled: institucion?.id != null,
-  });
-
+function Alertas({ q, onResolver, onResolverVencimiento }) {
   if (q.isLoading) return <Skeleton className="h-64" />;
   if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
 
@@ -281,10 +284,9 @@ function Alertas({ institucion, deposito, onResolver, onResolverVencimiento }) {
   return (
     <div className="grid items-start gap-lg lg:grid-cols-2">
       <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-        <header className="flex items-center gap-2 border-b border-division px-xl py-lg">
-          <Icon name="alert" size={16} className="text-danger" />
-          <h3 className="flex-1 text-lg font-bold">Por debajo del mínimo</h3>
-          <Badge tone={faltantes.length ? "error" : "gray"}>{faltantes.length}</Badge>
+        <header className="border-b border-division px-xl py-3">
+          <h3 className="text-base font-bold">Por debajo del mínimo</h3>
+          <p className="mt-0.5 text-sm text-texto-suave">{faltantes.length} {faltantes.length === 1 ? "insumo" : "insumos"} · ordenados por faltante</p>
         </header>
         {faltantes.length === 0 ? (
           <p className="px-xl py-lg text-base text-texto-tenue">No falta nada.</p>
@@ -314,12 +316,12 @@ function Alertas({ institucion, deposito, onResolver, onResolverVencimiento }) {
                   <span className="ml-auto whitespace-nowrap text-right tabular-nums">
                     <span className="block">
                       <strong className="text-danger">{f.cantidad}</strong>
-                      <span className="text-texto-tenue"> de {f.minimo} {f.unidad}</span>
+                      <span className="text-texto-tenue"> de {cantidadConUnidad(f.minimo, f.unidad)}</span>
                     </span>
                     {/* Tener todo vencido no es lo mismo que no tener: hay algo
                         que dar de baja y alguien a quien reclamarle. */}
                     {f.vencida > 0 && (
-                      <span className="block text-sm text-danger">{f.vencida} {f.unidad || "u."} fuera de uso por vencimiento</span>
+                      <span className="block text-sm text-danger">{cantidadConUnidad(f.vencida, f.unidad)} fuera de uso por vencimiento</span>
                     )}
                   </span>
                   <Icon name="chevronRight" size={15} className="text-texto-tenue" />
@@ -331,11 +333,9 @@ function Alertas({ institucion, deposito, onResolver, onResolverVencimiento }) {
       </section>
 
       <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
-        <header className="flex flex-wrap items-center gap-2 border-b border-division px-xl py-lg">
-          <Icon name="refresh" size={16} className="text-badge-amber-fg" />
-          <h3 className="flex-1 text-lg font-bold">Vencidos y por vencer</h3>
-          {vencidos.length > 0 && <Badge tone="error">{vencidos.length} {vencidos.length === 1 ? "lote vencido" : "lotes vencidos"}</Badge>}
-          <Badge tone={proximos.length ? "amber" : "gray"}>{proximos.length}</Badge>
+        <header className="border-b border-division px-xl py-3">
+          <h3 className="text-base font-bold">Vencidos y por vencer</h3>
+          <p className="mt-0.5 text-sm text-texto-suave">{vencidos.length} {vencidos.length === 1 ? "lote vencido" : "lotes vencidos"} · {proximos.length} vencen en los próximos 60 días</p>
         </header>
         {vencen.length === 0 ? (
           <p className="px-xl py-lg text-base text-texto-tenue">Nada vence en los próximos dos meses.</p>
@@ -397,7 +397,7 @@ function FilaQueVence({ v, onResolver }) {
             {v.vencido ? "vencido" : `en ${v.dias} d`}
           </span>
           <span className="block text-sm text-texto-tenue tabular-nums">
-            {v.cantidad} {v.unidad || "u."}
+            {cantidadConUnidad(v.cantidad, v.unidad)}
           </span>
         </span>
         <Icon name="chevronRight" size={15} className="text-texto-tenue" />

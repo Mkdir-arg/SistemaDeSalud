@@ -61,6 +61,7 @@
   /* Semánticos (los usa el código migrado; el tema oscuro solo redefine estos) */
   --color-fondo: #F8F6FD;
   --color-superficie: #FFFFFF;
+  --color-modal-superficie: #FFFFFF;
   --color-superficie-2: #F8F6FD;
   --color-borde: #E3DDF2;
   --color-division: #E3DDF2;
@@ -203,6 +204,7 @@
 .dark {
   --color-fondo: #110E1E;
   --color-superficie: #1D1930;
+  --color-modal-superficie: #28223E;
   --color-superficie-2: #110E1E;
   --color-borde: #2F2A47;
   --color-division: #2F2A47;

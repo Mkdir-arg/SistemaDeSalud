@@ -31,12 +31,15 @@ export default function Inicio() {
   if (!institucion) return <Spinner />;
 
   const enConfiguracion = institucion.estado === "en_alta";
+  const guiaActiva = enConfiguracion && puedeVer("config_institucional");
   const pendientes = puesta.data ? PASOS.filter(([clave]) => !puesta.data[clave]) : [];
+  const completados = PASOS.length - pendientes.length;
+  const primerPendiente = pendientes[0]?.[0];
   const metricas = [
     { valor: data?.staff, titulo: "Personal activo", criterio: "Con acceso a esta institución" },
     { valor: data?.areas, titulo: "Áreas", criterio: "Estructura institucional" },
     { valor: data?.casos_activos, titulo: "Casos activos", criterio: "Sin cerrar ni cancelar" },
-    { valor: data?.subareas, titulo: "Subáreas", criterio: "Dentro de las áreas" },
+    { valor: data?.turnos_hoy, titulo: "Turnos de hoy", criterio: "No cancelados del día" },
   ];
   const accesos = [
     { titulo: "Bandeja", detalle: "Casos en curso y sin asignar", ruta: "/bandeja", cap: "casos_operar" },
@@ -59,16 +62,41 @@ export default function Inicio() {
         <p className="mt-1 text-sm">Podés revisar casos existentes en la Bandeja. Para iniciar nuevas atenciones, {puedeVer("diseno_flujos") ? <Link to="/flujos" className="font-semibold underline">publicá un flujo</Link> : "pedile a un configurador que publique un flujo"}.</p>
       </Card>}
 
-    {enConfiguracion && puedeVer("config_institucional") && <Card className="mb-5 p-4" aria-label="Puesta en marcha">
-      <h3 className="text-lg font-bold">Puesta en marcha</h3>
-      <p className="mt-1 text-sm text-texto-suave">Completá estos pasos para empezar a operar. Las agendas de recurso no requieren profesional.</p>
-      {puesta.isLoading ? <p className="mt-3 text-sm">Comprobando configuración…</p> : puesta.error ? <EstadoError error={puesta.error} onReintentar={puesta.refetch} titulo="No se pudo comprobar la configuración" /> : <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-        {PASOS.map(([clave, titulo, ruta, detalle]) => <li key={clave} className="rounded-md border border-division p-3">
-          <div className="flex items-center gap-2"><Badge tone={puesta.data?.[clave] ? "green" : "amber"}>{puesta.data?.[clave] ? "Listo" : "Pendiente"}</Badge><strong className="text-sm">{titulo}</strong></div>
-          {!puesta.data?.[clave] && <p className="mt-2 text-sm text-texto-suave">{detalle} {(clave !== "flujo_operativo" || puedeVer("diseno_flujos")) && <Link to={ruta} className="font-semibold text-accent underline">Ir a la sección</Link>}</p>}
-        </li>)}
-      </ul>}
-    </Card>}
+    {guiaActiva && <div className="mb-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(250px,0.8fr)]">
+      <Card className="overflow-hidden" aria-label="Puesta en marcha">
+        <div className="border-b border-division p-4">
+          <h3 className="text-lg font-bold">Puesta en marcha</h3>
+          <p className="mt-1 text-sm text-texto-suave">Completá estos pasos para empezar a operar. Cada paso te lleva a su sección.</p>
+          {puesta.data && <div className="mt-4 flex items-center gap-3 text-xs text-texto-suave">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-superficie-2" role="progressbar" aria-valuenow={completados} aria-valuemin={0} aria-valuemax={PASOS.length} aria-label="Avance de la puesta en marcha">
+              <div className="h-full rounded-full bg-accent-fuerte" style={{ width: `${completados / PASOS.length * 100}%` }} />
+            </div>
+            <span className="whitespace-nowrap">{completados} de {PASOS.length} pasos</span>
+          </div>}
+        </div>
+        {puesta.isLoading ? <p className="p-4 text-sm">Comprobando configuración…</p> : puesta.error ? <div className="p-4"><EstadoError error={puesta.error} onReintentar={puesta.refetch} titulo="No se pudo comprobar la configuración" /></div> : <ol className="divide-y divide-division">
+          {PASOS.map(([clave, titulo, ruta, detalle], indice) => {
+            const listo = puesta.data?.[clave];
+            const actual = clave === primerPendiente;
+            return <li key={clave} className={`flex items-center gap-3 px-4 py-3 ${actual ? "bg-accent-50" : ""}`}>
+              <span aria-hidden="true" className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${listo ? "border-badge-green-fg/30 bg-badge-green-bg text-badge-green-fg" : actual ? "border-accent bg-accent-fuerte text-sobre-accent" : "border-borde bg-superficie-2 text-texto-suave"}`}>{listo ? "✓" : indice + 1}</span>
+              <div className="min-w-0 flex-1"><strong className="block text-sm">{titulo}</strong><p className="mt-0.5 text-xs text-texto-suave">{detalle}{clave === "agenda_recurso" && " No requiere profesional."}</p></div>
+              {(clave !== "flujo_operativo" || puedeVer("diseno_flujos")) && <Link to={ruta} className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-semibold ${actual ? "hen-cta border-transparent text-sobre-accent" : "border-borde bg-superficie text-accent hover:border-accent"}`}>
+                {listo ? "Ver" : actual ? "Continuar" : "Ir"}
+              </Link>}
+            </li>;
+          })}
+        </ol>}
+      </Card>
+      <aside className="space-y-3">
+        <Card className="p-4"><h3 className="text-sm font-bold">¿Necesitás ayuda?</h3><p className="mt-2 text-xs text-texto-suave">Cada paso tiene un enlace directo a la sección donde se completa.</p></Card>
+        <Card className="p-4"><h3 className="text-sm font-bold">Estado de la institución</h3><p className="mt-2 text-xs text-texto-suave">La institución permanece en configuración mientras se completan los pasos. Las agendas de recurso no requieren profesional.</p></Card>
+      </aside>
+    </div>}
+
+    <details key={String(guiaActiva)} open={!guiaActiva} className={guiaActiva ? "mb-4 rounded-lg border border-borde bg-superficie p-3 text-sm" : ""}>
+      <summary className={guiaActiva ? "cursor-pointer font-semibold text-accent" : "hidden"}>Ver métricas y accesos de la institución</summary>
+      {guiaActiva && <p className="mb-3 mt-2 text-xs text-texto-suave">Estas cifras y accesos siguen disponibles durante la configuración.</p>}
 
     {error ? <Card className="mb-5 p-4"><EstadoError error={error} onReintentar={refetch} titulo="No se pudieron cargar las métricas" /></Card> :
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -90,5 +118,6 @@ export default function Inicio() {
         {accesos.map(({ titulo, detalle, ruta }) => <Link key={ruta} to={ruta} data-tour={`inicio-${ruta.slice(1)}`} className="flex items-center justify-between rounded-lg border border-borde bg-superficie px-4 py-4 hover:border-accent-100 hover:shadow-card"><span><strong className="text-sm">{titulo}</strong><span className="mt-1 block text-xs text-texto-suave">{detalle}</span></span><span className="text-accent" aria-hidden="true">›</span></Link>)}
       </div>
     </div>
+    </details>
   </div>;
 }

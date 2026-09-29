@@ -232,10 +232,9 @@ function ArbolAreas({ areas, areaId, subId, onArea, onSub }) {
                 <NodoArbol
                   activo={activa && !subId}
                   seleccionado={activa}
-                  chevron={subs.length ? (activa ? "down" : "right") : null}
                   nombre={a.nombre}
-                  cuenta={a.staff}
-                  tituloCuenta={plural(a.staff || 0, "persona", "personas")}
+                  cuenta={subs.length ? `${a.staff} · ${plural(subs.length, "sub-área", "sub-áreas")}` : a.staff}
+                  tituloCuenta={`${plural(a.staff || 0, "persona", "personas")}${subs.length ? ` · ${plural(subs.length, "sub-área", "sub-áreas")}` : ""}`}
                   onClick={() => onArea(a)}
                 />
                 {activa && subs.length > 0 && (
@@ -262,7 +261,7 @@ function ArbolAreas({ areas, areaId, subId, onArea, onSub }) {
   );
 }
 
-function NodoArbol({ hijo, activo, seleccionado, chevron, nombre, cuenta, tituloCuenta, onClick }) {
+function NodoArbol({ hijo, activo, seleccionado, nombre, cuenta, tituloCuenta, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -277,13 +276,6 @@ function NodoArbol({ hijo, activo, seleccionado, chevron, nombre, cuenta, titulo
             : "text-texto-medio hover:bg-superficie-2",
       ].join(" ")}
     >
-      {!hijo && (
-        <span className={activo ? "w-3 text-accent" : "w-3 text-texto-tenue"}>
-          {chevron && (
-            <Icon name="back" size={11} className={chevron === "down" ? "-rotate-90" : "rotate-180"} />
-          )}
-        </span>
-      )}
       <span
         className={[
           "min-w-0 flex-1 truncate",

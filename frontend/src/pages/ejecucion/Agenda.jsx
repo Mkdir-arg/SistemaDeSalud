@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -150,6 +150,10 @@ export default function Agenda() {
     : horarios;
   const enGrilla = visibles.filter((h) => !h.fuera_de_grilla);
   const sueltos = visibles.filter((h) => h.fuera_de_grilla);
+  const ahora = new Date();
+  const lineaAhora = fecha === iso(ahora) && enGrilla.length > 0;
+  const primeraPosterior = enGrilla.findIndex((h) => new Date(h.inicio) > ahora);
+  const horaActual = ahora.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
 
   if (agendas.isLoading) return <Cargando />;
   if (agendas.error) {
@@ -187,11 +191,11 @@ export default function Agenda() {
   );
 
   return (
-    <div className="flex flex-col gap-lg p-lg sm:p-[26px] lg:px-[30px] xl:px-10">
+    <div className="flex flex-col gap-4 p-lg sm:p-[26px] lg:px-[30px] xl:px-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold">Turnos</h2>
-          <p className="text-base text-texto-debil">
+          <p className="mt-1 text-sm text-texto-debil">
             {new Date(`${fecha}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             {` · ${ocupados} de ${horarios.length} horarios dados`}
             {sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
@@ -200,7 +204,7 @@ export default function Agenda() {
         <Button size="sm" variant="secondary" onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
       </header>
 
-      <section className="flex flex-wrap items-center gap-3">
+      <section className="flex flex-wrap items-center gap-2">
         <Select
           aria-label="Agenda"
           value={agenda?.id ?? ""}
@@ -216,12 +220,6 @@ export default function Agenda() {
           aria-label="Fecha de la agenda"
           className="w-full sm:w-auto"
         />
-        <Button variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>
-          Registrar atención pasada
-        </Button>
-        <Button variant="secondary" onClick={() => setBuscarPaciente((actual) => !actual)} aria-expanded={buscarPaciente}>
-          Buscar turno de un paciente
-        </Button>
       </section>
 
       <div className="text-sm text-texto-debil">
@@ -272,8 +270,12 @@ export default function Agenda() {
 
       {buscarPaciente && <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />}
 
-      {/* Navegación por día */}
-      <section className="flex flex-wrap items-center gap-2">
+      {/* Las acciones adicionales quedan disponibles sin competir con la grilla diaria. */}
+      <details className="text-sm text-texto-suave">
+        <summary className="w-fit cursor-pointer rounded-md border border-borde bg-superficie px-3 py-2 font-medium hover:border-accent">Navegación y más acciones ▾</summary>
+      <section className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>Registrar atención pasada</Button>
+        <Button size="sm" variant="secondary" onClick={() => setBuscarPaciente((actual) => !actual)} aria-expanded={buscarPaciente}>Buscar turno de un paciente</Button>
         <Button size="sm" variant="secondary" onClick={() => mover(-1)}>
           <Icon name="chevronLeft" size={14} /> Día anterior
         </Button>
@@ -301,6 +303,7 @@ export default function Agenda() {
           <Icon name="filter" size={14} /> Sin confirmar ({sinConfirmar})
         </Button>
       </section>
+      </details>
 
       {verProximos && (
         <ProximosLibres consulta={proximos} onElegir={irA} />
@@ -318,7 +321,7 @@ export default function Agenda() {
         />
       )}
 
-      <section className="overflow-hidden rounded-lg border border-borde bg-superficie">
+      <section className="rounded-lg border border-borde bg-superficie">
         {dia.isLoading ? (
           <div className="p-xl"><Skeleton className="h-64" /></div>
         ) : dia.error ? (
@@ -353,7 +356,12 @@ export default function Agenda() {
               </div>
             )}
             {enGrilla.length > 0 && (
-              <ul className="divide-y divide-division">{enGrilla.map(renglon)}</ul>
+              <ul className="divide-y divide-division">{enGrilla.map((h, i) => <Fragment key={h.inicio}>
+                {lineaAhora && i === primeraPosterior && <LineaAhora hora={horaActual} />}
+                {renglon(h)}
+              </Fragment>)}
+                {lineaAhora && primeraPosterior === -1 && <LineaAhora hora={horaActual} />}
+              </ul>
             )}
             {enGrilla.length === 0 && sueltos.length === 0 && (
               /* Sólo se llega acá con el filtro puesto: el día tiene horarios,
@@ -397,6 +405,12 @@ export default function Agenda() {
       </section>}
     </div>
   );
+}
+
+function LineaAhora({ hora }) {
+  return <li className="flex items-center gap-2 px-4 py-1 text-xs font-semibold text-danger" aria-label={`Hora actual ${hora}`}>
+    <span>{hora} · Ahora</span><span className="h-px flex-1 bg-danger" aria-hidden="true" />
+  </li>;
 }
 
 function RegistrarPasado({ institucionId, agendaInicial, inicioInicial, pacienteInicial, onClose, onListo, toast }) {
@@ -641,8 +655,9 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
 
   return (
     <li className={cn(
-      "px-xl py-3",
-      horario.bloqueado ? "bg-badge-error-bg/25" : horario.ocupado ? "" : "bg-superficie-2/40",
+      "relative px-4 py-2.5",
+      dando && "z-20",
+      horario.bloqueado ? "bg-badge-error-bg/25" : horario.ocupado ? "" : "hover:bg-accent-50/40",
     )}>
       <div className="flex flex-wrap items-center gap-x-md gap-y-2">
         <span className="w-14 shrink-0 font-mono text-md font-bold tabular-nums">
@@ -672,7 +687,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
             </span>
             {libres > 0 && !horario.bloqueado && (
               <Button size="sm" variant="secondary" onClick={abrirAlta}>
-                {pasado ? "Registrar atención" : dando ? "Cerrar" : "Dar turno"}
+                {pasado ? "Registrar atención" : dando ? "Cerrar" : "Reservar"}
               </Button>
             )}
           </>
@@ -691,11 +706,11 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
         ) : (
           <>
             <span className="flex-1 text-base text-texto-tenue">
-              {horario.bloqueado ? "bloqueado" : extras.length ? "sin titular" : "libre"}
+              {horario.bloqueado ? "bloqueado" : extras.length ? "sin titular" : "Libre"}
             </span>
             {!horario.bloqueado && (
               <Button size="sm" variant="secondary" onClick={abrirAlta}>
-                {pasado ? "Registrar atención" : dando ? "Cerrar" : "Dar turno"}
+                {pasado ? "Registrar atención" : dando ? "Cerrar" : "Reservar"}
               </Button>
             )}
           </>
@@ -818,6 +833,10 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
         )}
       </span>
       <Badge tone={est.tone}>{est.label}</Badge>
+      <details className="relative ml-auto shrink-0 text-sm">
+        <summary className="cursor-pointer list-none rounded-md border border-borde bg-superficie px-3 py-1.5 font-medium text-accent hover:border-accent" aria-label={`Ver acciones del turno de ${turno.paciente} a las ${hora}`}>Ver</summary>
+        <div className="absolute right-0 top-full z-30 mt-1 w-[min(25rem,calc(100vw-2rem))] rounded-lg border border-borde bg-modal-superficie p-3 shadow-dropdown">
+          <p className="mb-2 text-xs text-texto-suave">{turno.paciente} · {hora} · {est.label}</p>
       {/* Presencial no lleva marca: es la mayoría de los renglones y marcarlos
           todos deja la grilla sin jerarquía. El virtual sí: es la diferencia
           entre esperar a alguien en el consultorio y esperarlo en una pantalla. */}
@@ -850,7 +869,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
         </Button>
       )}
       {pendiente && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           {/* «Llegó» es la acción principal: es la que abre el caso y arranca la
               atención. El resto son excepciones.
 
@@ -912,7 +931,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
             Mover
           </Button>
           {/* Separadas del primario: son las dos que no se pueden deshacer. */}
-          <span className="mx-0.5 h-5 w-px bg-division" aria-hidden="true" />
+          <span className="col-span-2 h-px bg-division" aria-hidden="true" />
           {!porTelefono && (
           <Button size="sm" variant="secondary" disabled={accion.isPending}
                   onClick={() => setConfirmando({
@@ -937,6 +956,8 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
           </Button>
         </div>
       )}
+        </div>
+      </details>
       {moviendo && (
         <MoverTurno
           turno={turno}
@@ -1143,9 +1164,9 @@ function DarTurno({ agenda, inicio, sobreturno, onRegistrarPasado, onListo, onCe
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-2 rounded-md border border-borde bg-superficie-2 p-3">
+    <div className="z-30 mt-3 flex max-h-[75vh] flex-col gap-2 overflow-auto rounded-md border border-borde bg-modal-superficie p-3 shadow-dropdown sm:absolute sm:right-4 sm:top-8 sm:w-[360px]">
       <div className="text-sm font-semibold text-texto-suave">
-        {sobreturno ? "Sobreturno" : "Dar turno"} · {hhmm(inicio)}
+        {sobreturno ? "Sobreturno" : "Reservar"} · {hhmm(inicio)}
         {!mixta && virtual && " · virtual"}
       </div>
       <Input value={motivo} onChange={(e) => setMotivo(e.target.value)}
@@ -1181,7 +1202,7 @@ function DarTurno({ agenda, inicio, sobreturno, onRegistrarPasado, onListo, onCe
         <p>Modalidad: {virtual ? "Virtual" : "Presencial"}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" disabled={reservar.isPending} onClick={() => reservar.mutate(paciente.id)}>
-            {reservar.isPending ? "Guardando…" : sobreturno ? "Confirmar sobreturno" : "Confirmar turno"}
+            {reservar.isPending ? "Guardando…" : sobreturno ? "Confirmar sobreturno" : "Confirmar reserva"}
           </Button>
           <Button size="sm" variant="secondary" disabled={reservar.isPending} onClick={() => setPaciente(null)}>Cambiar paciente</Button>
         </div>

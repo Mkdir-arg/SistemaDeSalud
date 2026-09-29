@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -109,7 +109,19 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         qs = m.Financiador.objects.all()
         if not plataforma(self.request.user):
             qs = qs.filter(membresiafinanciador__usuario=self.request.user, membresiafinanciador__activo=True, activo=True)
-        return qs.distinct()
+        if self.action not in ("list", "retrieve"):
+            return qs.distinct()
+        corte = timezone.now()
+        return qs.distinct().annotate(
+            planes_activos=Count("plan", filter=Q(plan__activo=True), distinct=True),
+            convenios_vigentes=Count(
+                "convenio",
+                filter=Q(convenio__estado__in=["activo", "finalizado"])
+                & (Q(convenio__aceptado_en__isnull=True) | Q(convenio__aceptado_en__lte=corte))
+                & (Q(convenio__cerrado_en__isnull=True) | Q(convenio__cerrado_en__gt=corte)),
+                distinct=True,
+            ),
+        )
 
     def organizacion(self, escritura=False, admin=False):
         obj = self.get_object()
