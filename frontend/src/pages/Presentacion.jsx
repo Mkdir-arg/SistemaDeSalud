@@ -54,6 +54,9 @@ const BENEFICIOS = [
 const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const CTA_PRINCIPAL = `hen-cta inline-flex h-10 items-center rounded-md px-4.5 text-sm font-medium text-sobre-accent ${FOCO}`;
 const CTA_TERCIARIO = `inline-flex h-10 items-center rounded-md border border-borde bg-superficie px-4.5 text-sm font-medium text-texto transition-colors hover:border-accent hover:text-accent ${FOCO}`;
+// Títulos de sección: la lámina los lleva a ~36 px en escritorio. La escala del
+// sistema termina en 24 px para texto, por eso el tamaño va acotado acá.
+const TITULO_SECCION = "text-balance text-[clamp(1.75rem,3.2vw,2.25rem)] font-bold leading-tight tracking-[-.03em]";
 const ENLACE_SUAVE = `rounded-sm transition-colors hover:text-accent ${FOCO}`;
 
 /** Entrada escalonada del primer pantallazo; `retardo` en milisegundos. */
@@ -162,11 +165,11 @@ export default function Presentacion() {
         </section>
 
         <section id="como-funciona" aria-labelledby="como-funciona-titulo" className="mx-auto mt-16 max-w-[980px] scroll-mt-8 sm:mt-20">
-          <h2 id="como-funciona-titulo" className="text-balance text-xxl font-bold tracking-tight">Todo lo que tu institución necesita, en un solo lugar</h2>
+          <h2 id="como-funciona-titulo" className={TITULO_SECCION}>Todo lo que tu institución necesita, en un solo lugar</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-5">
             {BENEFICIOS.map(({ titulo, detalle, destacado, ancho, arriba, maqueta }) => <article key={titulo}
               className={`rounded-lg border border-borde p-5 ${ancho ? "md:col-span-3" : "md:col-span-2"} ${destacado ? "presentacion-beneficio" : "bg-superficie"} ${arriba ? "md:self-start" : ""}`}>
-              <h3 className="text-base font-bold">{titulo}</h3>
+              <h3 className="text-xl font-bold tracking-tight">{titulo}</h3>
               <p className="mt-2 text-sm leading-relaxed text-texto-suave">{detalle}</p>
               {destacado && <Pulso className="mt-4 h-[40px] w-full max-w-[320px] text-brand-teal" />}
               {maqueta && <Link to="/demo/app-clinica" className={`group mt-4 inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver app clínica<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link>}
@@ -176,7 +179,7 @@ export default function Presentacion() {
       </div>
 
       <section aria-labelledby="cierre-titulo" className="relative border-t border-borde px-5 py-16 text-center sm:py-20">
-        <h2 id="cierre-titulo" className="text-balance text-xxl font-bold tracking-tight">Llevá tu institución al siguiente nivel.</h2>
+        <h2 id="cierre-titulo" className={TITULO_SECCION}>Llevá tu institución al siguiente nivel.</h2>
         <div className="mt-5 flex justify-center">
           {DEMO_URL
             ? <a href={DEMO_URL} className={CTA_PRINCIPAL}>Solicitar una demo</a>
