@@ -29,9 +29,20 @@ docker compose up -d
 | Fachada FHIR | <http://localhost:8000/fhir/metadata> |
 
 Para revisar el diseño HEN: la presentación pública está en `/presentacion` y la
-maqueta de la app clínica en `/demo/app-clinica`. La maqueta clínica permite
-recorrer pantallas con datos ficticios; no autentica pacientes ni crea turnos,
-presencias o resultados.
+app de pacientes de ejemplo ("Clínica Modelo") en `/demo/app-clinica`. Es
+pública, no usa la API y guarda todo en la pestaña (`sessionStorage`): no
+autentica pacientes ni crea turnos, presencias o resultados reales. Para
+mostrarla:
+
+- **DNI 34521521** es una paciente con historia: turno para hoy, turnos
+  anteriores y resultados. Cualquier otro DNI recorre el alta de primera vez.
+- El código del SMS acepta cualquier combinación de cuatro dígitos.
+- Al dar presente queda 3.ª en la fila y avanza un lugar cada 8 segundos: el
+  llamado llega solo en menos de medio minuto.
+- «Cerrar sesión» (en el perfil) o cerrar la pestaña deja la demo en cero.
+
+Sus recorridos se prueban sin backend con
+`npx playwright test -c playwright.app-clinica.config.js` (desde `frontend/`).
 
 Eso levanta el **stack de desarrollo**, con recarga en caliente y el escenario de
 guardia sembrado. Superusuario: `admin@salud.local` / `demo1234`; el staff del

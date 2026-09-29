@@ -83,7 +83,7 @@ Agregarlas a `capturas.spec.js` es la forma de que entren al circuito automátic
 Son 39 rutas. Agrupadas por dónde aparecen en el menú:
 
 ### Fuera de la sesión
-- **Login** · **Presentación HEN** · **Maqueta de la app clínica** (`/demo/app-clinica`) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
+- **Login** · **Presentación HEN** · **App de pacientes de ejemplo** (`/demo/app-clinica/*`: ingreso, inicio, turnos, resultados, la clínica y perfil, con datos ficticios) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
 
 ### Entrada
 - **Directorio de instituciones** (sólo para plataforma; el resto entra directo a la suya) · **Inicio / Mi trabajo** · **Notificaciones**
