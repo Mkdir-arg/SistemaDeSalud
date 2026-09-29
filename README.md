@@ -28,8 +28,10 @@ docker compose up -d
 | Documentación de la API | <http://localhost:8000/api/docs/> |
 | Fachada FHIR | <http://localhost:8000/fhir/metadata> |
 
-Para revisar el diseño HEN: la presentación pública está en `/presentacion` y la
-maqueta de la app clínica en `/demo/app-clinica`. La maqueta clínica permite
+Para revisar el diseño HEN: la landing pública está en `/` (`/presentacion` es un
+alias) y, después del login, `/directorio` resuelve el directorio de plataforma, la
+elección de institución o el portal del financiador. La maqueta de la app clínica
+está en `/demo/app-clinica`. La maqueta clínica permite
 recorrer pantallas con datos ficticios; no autentica pacientes ni crea turnos,
 presencias o resultados.
 
