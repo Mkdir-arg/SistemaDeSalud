@@ -92,17 +92,62 @@ test.describe("Landing pública", () => {
     }
     // Sin canal aprobado, la demo no aparece; la maqueta clínica sigue a mano.
     await expect(page.getByRole("link", { name: "Solicitar una demo" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /Ver maqueta de la app clínica/ })).toHaveAttribute("href", "/demo/app-clinica");
+    await expect(page.getByRole("link", { name: "Ver app clínica" })).toHaveAttribute("href", "/demo/app-clinica");
   });
 
-  test("se recorre con teclado desde la marca", async ({ page }) => {
+  test("se recorre con teclado, con salto al contenido y foco visible", async ({ page }) => {
     await simularApi(page, null);
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "HEN, inicio" })).toBeFocused();
+    const saltar = page.getByRole("link", { name: "Saltar al contenido" });
+    await expect(saltar).toBeFocused();
+    await expect(saltar).toBeInViewport();
+    await page.keyboard.press("Tab");
+    const marca = page.getByRole("link", { name: "HEN, inicio" });
+    await expect(marca).toBeFocused();
+    expect(await marca.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none");
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "Cómo funciona" })).toBeFocused();
+  });
+
+  test("las anclas se desplazan suave y la entrada es breve", async ({ page }) => {
+    await simularApi(page, null);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("smooth");
+    const animacion = await page.getByRole("heading", { level: 1 }).evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { nombre: cs.animationName, duracion: parseFloat(cs.animationDuration) };
+    });
+    expect(animacion.nombre).toBe("landing-entrada");
+    expect(animacion.duracion).toBeLessThanOrEqual(0.5);
+    await page.getByRole("link", { name: "Conocer HEN" }).click();
+    await expect(page).toHaveURL(/#como-funciona$/);
+    await expect(page.getByRole("heading", { name: /Todo lo que tu institución necesita/ })).toBeInViewport();
+  });
+
+  test("con movimiento reducido no hay animación ni desplazamiento suave", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await simularApi(page, null);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
+    expect(await page.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  });
+
+  test("el hover de una barra la destaca y muestra su hora", async ({ page }) => {
+    await simularApi(page, null);
+    await page.goto("/");
+    const barras = page.locator(".group\\/barra");
+    await expect(barras).toHaveCount(12);
+    const rotulo = barras.nth(5).locator("span");
+    await expect(rotulo).toHaveCSS("opacity", "0");
+    await barras.nth(5).hover();
+    await expect(rotulo).toHaveCSS("opacity", "1");
+    await expect(rotulo).toHaveText("12 h · 88");
+    await expect(barras.nth(0)).toHaveCSS("opacity", "0.5");
+    await expect(barras.nth(5)).toHaveCSS("opacity", "1");
   });
 
   for (const tema of ["claro", "oscuro"]) {
