@@ -19,21 +19,30 @@ test.beforeEach(async ({ page }) => {
 
 async function ingresar(page, dni = "34521521") {
   await page.goto(BASE);
-  await page.getByRole("link", { name: "Ingresar con mi DNI" }).click();
+  await page.getByRole("link", { name: "Empezar" }).click();
   await page.getByLabel("Número de documento").fill(dni);
   await page.getByRole("button", { name: "Continuar" }).click();
 }
 
+// El código de la demo acepta cualquier combinación de seis dígitos.
 async function codigo(page) {
-  await page.getByLabel("Código de 4 dígitos").fill("5820");
-  await page.getByRole("button", { name: "Ingresar" }).click();
+  await page.getByLabel("Código de 6 dígitos").fill("581902");
+  await page.getByRole("button", { name: "Continuar" }).click();
+}
+
+/** Paciente conocida (DNI 34521521): DNI → código → «¿Sos Martina Sosa?». */
+async function entrarConocida(page) {
+  await ingresar(page);
+  await codigo(page);
+  await page.getByRole("button", { name: "Sí, soy yo" }).click();
   await expect(page).toHaveURL(`${BASE}/inicio`);
 }
 
 test("se ve como una app y no como la maqueta de un celular", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("salud.tema", "oscuro"));
   await page.goto(BASE);
-  await expect(page.getByRole("heading", { name: /Te damos la bienvenida/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hola, te damos la bienvenida" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ingresar", exact: true })).toHaveAttribute("href", `${BASE}/ingresar`);
   for (const resto of ["9:41", "5G", "Explorar pantallas", "simulación"]) await expect(page.getByText(resto)).toHaveCount(0);
   // La app de la clínica mantiene su tema claro aunque la persona use oscuro en HEN.
   await expect(page.locator("html")).not.toHaveClass(/dark/);
@@ -49,8 +58,12 @@ test("sin sesión, un link interno vuelve a la bienvenida", async ({ page }) => 
 
 test("paciente conocida: da presente, avanza en la fila y la llaman", async ({ page }) => {
   await ingresar(page);
-  await expect(page.getByText("terminado en")).toContainText("21");
+  await expect(page.getByText("Lo mandamos al celular que termina en 4521. Vence en 5 minutos.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continuar" })).toBeDisabled();
   await codigo(page);
+  await expect(page.getByRole("heading", { name: "¿Sos Martina Sosa?" })).toBeVisible();
+  await expect(page.getByText("OSDE 210 · credencial 61 234567 8 01")).toBeVisible();
+  await page.getByRole("button", { name: "Sí, soy yo" }).click();
   await expect(page.getByText("Tu turno de hoy")).toBeVisible();
   await expect(page.getByRole("link", { name: "Cómo llegar" })).toHaveAttribute("href", /google\.com\/maps/);
 
@@ -73,15 +86,20 @@ test("paciente conocida: da presente, avanza en la fila y la llaman", async ({ p
 });
 
 test("paciente nueva: alta, turno con su cobertura, cambio y cancelación", async ({ page }) => {
+  // Sin celular en el padrón: primero se pide uno, el código va ahí y después los datos.
   await ingresar(page, "40111222");
+  await expect(page.getByRole("heading", { name: "¿A qué celular te mandamos el código?" })).toBeVisible();
+  await page.getByLabel("Celular").fill("11 4444-7788");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByText("termina en 7788")).toBeVisible();
+  await codigo(page);
   await expect(page.getByRole("heading", { name: "Es tu primera vez en la clínica" })).toBeVisible();
+  await expect(page.getByLabel("Celular")).toHaveValue("11 4444-7788");
   await page.getByLabel("Nombre y apellido").fill("Lucía Fernández");
   await page.getByLabel("Fecha de nacimiento").fill("1994-02-03");
-  await page.getByLabel("Celular").fill("11 4444-7788");
   await page.getByLabel("Cobertura").selectOption({ label: "Swiss Medical SMG20" });
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await expect(page.getByText("terminado en")).toContainText("88");
-  await codigo(page);
+  await page.getByRole("button", { name: "Guardar y continuar" }).click();
+  await expect(page).toHaveURL(`${BASE}/inicio`);
 
   await expect(page.getByRole("heading", { name: "Hola, Lucía" })).toBeVisible();
   await page.getByRole("link", { name: "Sacar turno" }).first().click();
@@ -117,8 +135,7 @@ test("paciente nueva: alta, turno con su cobertura, cambio y cancelación", asyn
 });
 
 test("resultados: el informe se descarga en PDF y lleva al turno con quien lo pidió", async ({ page }) => {
-  await ingresar(page);
-  await codigo(page);
+  await entrarConocida(page);
   await page.goto(`${BASE}/resultados`);
   await page.getByRole("link", { name: /Análisis de sangre completo/ }).click();
   await expect(page.getByText("Fuera de rango")).toHaveCount(2);
@@ -130,8 +147,7 @@ test("resultados: el informe se descarga en PDF y lleva al turno con quien lo pi
 });
 
 test("la clínica y el perfil: teléfonos reales como links y cierre de sesión", async ({ page }) => {
-  await ingresar(page);
-  await codigo(page);
+  await entrarConocida(page);
   await page.goto(`${BASE}/clinica`);
   await expect(page.getByRole("link", { name: "Llamar" })).toHaveAttribute("href", "tel:+541145550000");
   await page.goto(`${BASE}/perfil`);
@@ -140,4 +156,18 @@ test("la clínica y el perfil: teléfonos reales como links y cierre de sesión"
   await expect(page).toHaveURL(BASE);
   await page.goto(`${BASE}/inicio`);
   await expect(page).toHaveURL(BASE);
+});
+
+test("ingreso: el DNI se formatea al escribir y «No soy yo» vuelve a empezar", async ({ page }) => {
+  await page.goto(`${BASE}/ingresar`);
+  await page.getByLabel("Número de documento").fill("34521521");
+  await expect(page.getByLabel("Número de documento")).toHaveValue("34.521.521");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await codigo(page);
+  await page.getByRole("button", { name: "No soy yo" }).click();
+  await expect(page).toHaveURL(`${BASE}/ingresar`);
+  await expect(page.getByLabel("Número de documento")).toHaveValue("");
+  // Sin pasar por el código no se puede saltar a los pasos siguientes.
+  await page.goto(`${BASE}/ingresar/confirmar`);
+  await expect(page).toHaveURL(`${BASE}/ingresar`);
 });

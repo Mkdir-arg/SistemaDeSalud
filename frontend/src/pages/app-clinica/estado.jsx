@@ -65,12 +65,13 @@ export function AppClinicaProvider({ children }) {
   const acciones = useMemo(() => {
     const cambiarTurno = (id, cambios) => setEstado((e) => ({ ...e, turnos: e.turnos.map((t) => (t.id === id ? { ...t, ...cambios } : t)) }));
     return {
+      // Ingreso: DNI → (celular, si la clínica no tiene uno) → código → confirmar
+      // identidad (paciente conocida) o completar datos (paciente nueva).
       empezarIngreso: (dni) => setEstado((e) => ({ ...e, ingreso: { dni, conocida: dni === DNI_CONOCIDO } })),
-      guardarDatos: (datos) => setEstado((e) => ({ ...e, ingreso: { ...e.ingreso, datos } })),
-      confirmarCodigo: () => setEstado((e) => {
-        if (e.ingreso?.conocida) return { ...e, ingreso: null, paciente: pacienteConocida(), ...historiaConocida() };
-        return { ...e, ingreso: null, paciente: { dni: e.ingreso.dni, ...e.ingreso.datos, desde: String(new Date().getFullYear()) }, turnos: [], resultados: [] };
-      }),
+      guardarCelular: (celular) => setEstado((e) => ({ ...e, ingreso: { ...e.ingreso, celular } })),
+      verificarCodigo: () => setEstado((e) => ({ ...e, ingreso: { ...e.ingreso, verificado: true } })),
+      confirmarIdentidad: () => setEstado((e) => ({ ...e, ingreso: null, paciente: pacienteConocida(), ...historiaConocida() })),
+      registrar: (datos) => setEstado((e) => ({ ...e, ingreso: null, paciente: { dni: e.ingreso.dni, ...datos, desde: String(new Date().getFullYear()) }, turnos: [], resultados: [] })),
       elegir: (cambios) => setEstado((e) => ({ ...e, borrador: { ...e.borrador, ...cambios } })),
       empezarTurno: (borrador = {}) => setEstado((e) => ({ ...e, borrador })),
       /** Confirma el borrador: crea un turno nuevo o reprograma uno existente. Devuelve su id. */
