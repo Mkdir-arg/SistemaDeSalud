@@ -25,6 +25,7 @@ export default function CoberturasHospital() {
 
 function EspacioHospital({ usuarioId, institucion }) {
   const scope = ["coberturas-hospital", usuarioId, institucion.id];
+  const [mostrarSecciones, setMostrarSecciones] = useState(false);
   const [parametros, setParametros] = useSearchParams();
   const tab = parametros.get("tab") || "reservas";
   const setTab = (valor) => { const nuevos = new URLSearchParams(parametros); nuevos.set("tab", valor); setParametros(nuevos); };
@@ -35,16 +36,34 @@ function EspacioHospital({ usuarioId, institucion }) {
   if (opciones.error) return <div className="p-6"><ErrorPortal error={opciones.error} reintentar={opciones.refetch} /></div>;
   const datos = opciones.data;
   const permisos = datos.permisos || {};
+  const deshabilitado = !datos.configuracion?.activo;
+  const verSecciones = !deshabilitado || tab !== "reservas" || mostrarSecciones;
   const tabs = [{ key: "reservas", label: "Reservas y saldos" }, ...(permisos.seguimiento ? [{ key: "seguimiento", label: "Seguimiento de cobros" }] : []), ...(permisos.operar ? [{ key: "atencion", label: "Evaluar una prestación" }] : []), ...(permisos.configurar ? [{ key: "configuracion", label: "Configuración" }] : [])];
   return <div className="space-y-5 p-4 sm:p-8">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h2 className="text-xl font-bold">Coberturas y copagos</h2><Ayuda etiqueta="Ayuda sobre coberturas y copagos">{institucion.nombre} · Cobertura por prestación, reservas compartidas y saldos a resolver.</Ayuda></div></div><Link to="/finanzas" className="text-sm font-semibold text-accent hover:underline">Finanzas y cobros</Link></div>
-    {!datos.configuracion?.activo && <Card className="p-4"><div className="flex items-center gap-2"><p className="font-semibold">El circuito de cobertura todavía no está habilitado</p><Ayuda>Un usuario con permiso de configuración puede habilitarlo después de verificar prestaciones, aranceles y convenios.</Ayuda></div></Card>}
-    <div className="overflow-x-auto"><Tabs tabs={tabs} valor={tab} onChange={setTab} /></div>
-    {!tabs.some((item) => item.key === tab) && <Card className="p-5"><p role="alert">Esta sección no está disponible con tus permisos en este hospital.</p><Button className="mt-3" variant="secondary" onClick={() => setTab("reservas")}>Ver reservas y saldos</Button></Card>}
-    {tab === "reservas" && <ReservasHospital scope={scope} institucion={institucion} opciones={datos} actualizar={actualizar} />}
-    {tab === "seguimiento" && permisos.seguimiento && <SeguimientoCobros usuarioId={usuarioId} institucion={institucion} onReservas={() => setTab("reservas")} />}
-    {tab === "atencion" && permisos.operar && <AtencionCobertura scope={scope} institucion={institucion} opciones={datos} actualizar={actualizar} />}
-    {tab === "configuracion" && permisos.configurar && <ConfiguracionHospital opciones={datos} institucion={institucion} actualizar={actualizar} />}
+    {deshabilitado && <Card className="max-w-5xl p-5">
+      <h3 className="font-bold">La cobertura todavía no está habilitada en {institucion.nombre}</h3>
+      <p className="mt-1 text-sm text-texto-suave">Para calcular coberturas y registrar copagos, revisá el arancel general y los convenios del hospital. Quien tenga permiso de configuración puede habilitar el circuito.</p>
+      <div className="mt-4 divide-y divide-division overflow-hidden rounded-md border border-borde">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+          <div><strong className="text-sm">Arancel general del hospital</strong><p className="mt-0.5 text-xs text-texto-suave">Revisá los precios de las prestaciones del hospital.</p></div>
+          <Link to="/finanzas?tab=dinero" className="rounded-md border border-borde px-3 py-1.5 text-xs font-semibold text-accent hover:border-accent">Ver aranceles</Link>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-accent-50 p-3">
+          <div><strong className="text-sm">Convenio con un financiador</strong><p className="mt-0.5 text-xs text-texto-suave">Los convenios se proponen y aceptan desde Configuración.</p></div>
+          {permisos.configurar ? <Button size="sm" onClick={() => setTab("configuracion")}>Revisar convenios</Button> : <span className="text-xs text-texto-suave">Requiere administración financiera</span>}
+        </div>
+      </div>
+    </Card>}
+    {deshabilitado && tab === "reservas" && <Button variant="ghost" aria-expanded={mostrarSecciones} onClick={() => setMostrarSecciones(!mostrarSecciones)}>{mostrarSecciones ? "Ocultar secciones" : "Ver reservas anteriores y otras secciones"}</Button>}
+    {verSecciones && <>
+      <div className="overflow-x-auto"><Tabs tabs={tabs} valor={tab} onChange={setTab} /></div>
+      {!tabs.some((item) => item.key === tab) && <Card className="p-5"><p role="alert">Esta sección no está disponible con tus permisos en este hospital.</p><Button className="mt-3" variant="secondary" onClick={() => setTab("reservas")}>Ver reservas y saldos</Button></Card>}
+      {tab === "reservas" && <ReservasHospital scope={scope} institucion={institucion} opciones={datos} actualizar={actualizar} />}
+      {tab === "seguimiento" && permisos.seguimiento && <SeguimientoCobros usuarioId={usuarioId} institucion={institucion} onReservas={() => setTab("reservas")} />}
+      {tab === "atencion" && permisos.operar && <AtencionCobertura scope={scope} institucion={institucion} opciones={datos} actualizar={actualizar} />}
+      {tab === "configuracion" && permisos.configurar && <ConfiguracionHospital opciones={datos} institucion={institucion} actualizar={actualizar} />}
+    </>}
   </div>;
 }
 
@@ -156,7 +175,7 @@ function ReservasHospital({ scope, institucion, opciones, actualizar }) {
   const filas = filasDe(consulta.data);
   const sinFiltros = !texto.trim() && !buscar && !estado && !saldo && !prestacion && !soloAntiguas;
   if (!opciones.configuracion?.activo && !consulta.isLoading && !consulta.error && sinFiltros && !consulta.data?.count) {
-    return <div className="space-y-4"><Card><EstadoVacio titulo="Circuito de cobertura deshabilitado" detalle="Todavía no hay reservas. Un usuario con permiso de configuración puede habilitarlo; los registros históricos seguirán visibles si existen." /></Card><RecuperablesHospital scope={scope} institucion={institucion} actualizar={actualizar} /></div>;
+    return <div className="space-y-4"><Card><EstadoVacio titulo="Todavía no hay reservas" detalle="Los registros históricos aparecerán acá si existen." /></Card><RecuperablesHospital scope={scope} institucion={institucion} actualizar={actualizar} /></div>;
   }
   return <div className="space-y-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5"><Field label="Buscar"><Input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Paciente, caso o prestación" /></Field><Field label="Estado"><Select value={estado} onChange={(e) => { setEstado(e.target.value); setPage(1); }}><option value="">Todos</option>{Object.entries(ESTADOS).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</Select></Field><Field label="Prestación"><Select value={prestacion} onChange={(e) => { setPrestacion(e.target.value); setPage(1); }}><option value="">Todas</option>{(opciones.prestaciones || []).map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</Select></Field><Checkbox label="Con saldo pendiente" checked={saldo} onChange={(e) => { setSaldo(e.target.checked); setPage(1); }} /><div className="flex items-center gap-2"><Checkbox label="Sólo reservas antiguas" checked={soloAntiguas} onChange={(e) => { setSoloAntiguas(e.target.checked); setPage(1); }} /><Ayuda>Las reservas antiguas no vencen automáticamente. Los filtros de texto se actualizan dos segundos después de escribir.</Ayuda></div></div>{mensaje && <p role="status" className="rounded-md bg-badge-green-bg p-3 text-badge-green-fg">{mensaje}</p>}<Card className="overflow-hidden">{consulta.isLoading ? <Spinner label="Cargando reservas…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : !filas.length ? <EstadoVacio titulo="No hay reservas para este filtro" /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-superficie-2 text-texto-debil"><tr>{["Caso / prestación", "Fecha / cantidad", "Cobertura", "Saldo", "Acciones"].map((label) => <th key={label} scope="col" className="px-4 py-3">{label}</th>)}</tr></thead><tbody>{filas.map((item) => <tr key={item.id} className="border-t border-division"><td className="space-y-1 px-4 py-3"><p className="font-semibold">{item.caso_titulo || `Caso ${item.caso}`}</p><p>{item.prestacion_nombre || item.evaluacion?.nombre_prestacion}</p></td><td className="px-4 py-3">{item.fecha}<p className="text-texto-debil">{plural(item.cantidad, "unidad", "unidades")}</p></td><td className="space-y-2 px-4 py-3"><Badge tone={item.estado === "realizada" ? "green" : "gray"}>{ESTADOS[item.estado] || item.estado}</Badge>{item.antigua && <p className="text-badge-amber-fg">Antigua · revisar realización</p>}{item.discrepancia && <p className="text-badge-amber-fg">Discrepancia · se conserva lo registrado</p>}</td><td className="px-4 py-3">{item.distribucion ? <><p>{ESTADOS[item.distribucion.estado] || item.distribucion.estado}</p><p className="mt-1 font-semibold">Paciente: {importeARS(item.distribucion.importe_paciente)}</p>{item.distribucion.estado === "autorizacion_pendiente" && <p className="mt-1 text-badge-amber-fg">Financiador pendiente de autorización: {importeARS(item.distribucion.importe_financiador)}</p>}</> : "Se determina al realizar"}</td><td className="space-y-2 px-4 py-3">{item.puede_completar && <Button size="sm" variant="secondary" onClick={() => setModal({ tipo: "completar", item })}>Completar datos</Button>}{item.puede_liberar && item.estado === "reservada" && <Button size="sm" variant="secondary" onClick={() => setModal({ tipo: "liberar", item })}>Revisar reserva</Button>}{item.puede_resolver && ["pendiente", "autorizacion_pendiente"].includes(item.distribucion?.estado) && <Button size="sm" variant="secondary" onClick={() => setModal({ tipo: "resolver", item })}>Resolver saldo</Button>}</td></tr>)}</tbody></table></div>}<div className="flex items-center justify-between gap-3 border-t border-division p-3"><span className="text-sm text-texto-debil">Página {page}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={page === 1 || consulta.isFetching} onClick={() => setPage(page - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={!consulta.data?.next || consulta.isFetching} onClick={() => setPage(page + 1)}>Siguiente</Button></div></div></Card><RecuperablesHospital scope={scope} institucion={institucion} actualizar={actualizar} />{modal?.tipo === "completar" ? <CompletarCobertura item={modal.item} scope={scope} institucion={institucion} onClose={() => setModal(null)} onGuardado={async () => { await actualizar(); setMensaje("Evaluación completada conservando los registros anteriores."); setModal(null); }} /> : modal && <ResolverReserva {...modal} onClose={() => setModal(null)} onGuardado={async () => { await actualizar(); setMensaje(modal.tipo === "liberar" ? "Reserva liberada con confirmación de no realización." : "Decisión administrativa registrada."); setModal(null); }} />}</div>;
 }
