@@ -78,6 +78,9 @@ class UsuarioViewSet(BaseModelViewSet):
                 Q(membresias__institucion__in=self.instituciones_del_usuario()) | Q(pk=user.pk)
             )
 
+        if self.request.query_params.get("con_matricula") == "true":
+            qs = qs.filter(legajo__isnull=False).exclude(legajo__matricula="")
+
         # Las membresías son varias por persona: sin esto, quien tiene dos roles
         # sale repetido en la lista y descuadra el total de la paginación.
         return qs.distinct()

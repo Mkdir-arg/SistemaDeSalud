@@ -32,6 +32,7 @@ export default function Legajo() {
   const [texto, setTexto, busqueda] = useBusquedaUrl("q");
   const [rol, setRol] = useFiltroUrl("rol");
   const [area, setArea] = useFiltroUrl("area");
+  const [matricula, setMatricula] = useFiltroUrl("matricula");
   const [sel, setSel] = useFiltroUrl("profesional");
   const institucionAnterior = useRef(institucion?.id);
   const detalleRef = useRef(null);
@@ -43,17 +44,17 @@ export default function Legajo() {
   useEffect(() => {
     if (institucionAnterior.current && institucionAnterior.current !== institucion?.id) {
       const p = new URLSearchParams(params);
-      ["q", "rol", "area", "profesional", "legajo_pag"].forEach((clave) => p.delete(clave));
+      ["q", "rol", "area", "matricula", "profesional", "legajo_pag"].forEach((clave) => p.delete(clave));
       setParams(p, { replace: true });
     }
     institucionAnterior.current = institucion?.id;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [institucion?.id]);
 
-  const activos = [busqueda, rol, area].filter(Boolean).length;
+  const activos = [busqueda, rol, area, matricula].filter(Boolean).length;
   const limpiar = () => {
     const p = new URLSearchParams(params);
-    ["q", "rol", "area", "legajo_pag"].forEach((clave) => p.delete(clave));
+    ["q", "rol", "area", "matricula", "legajo_pag"].forEach((clave) => p.delete(clave));
     setParams(p, { replace: true });
     setTexto("");
   };
@@ -72,12 +73,16 @@ export default function Legajo() {
 
   return (
     <div className="px-lg py-[22px] sm:px-[30px]">
-      <div className="mb-lg">
-        <h2 className="text-xl font-extrabold">Legajos del equipo</h2>
-        <p className="text-sm text-texto-debil">Buscá una persona con membresía activa en {institucion?.nombre} para consultar su legajo.</p>
+      <div className="mb-lg flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-extrabold">Legajo profesional</h2>
+          <p className="text-sm text-texto-debil">Actividad y datos de matrícula del equipo de {institucion?.nombre}.</p>
+        </div>
+        {sel && <Button variant="secondary" onClick={() => setSel("")}>Cambiar persona</Button>}
       </div>
-      <div className="grid items-start gap-lg xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
-        <TablaRecurso
+      <div className="mx-auto max-w-[1100px]">
+        {!sel && (
+          <TablaRecurso
           key={`${user?.id}:${institucion?.id}`}
           clave="legajo"
           recurso="usuarios"
@@ -86,6 +91,7 @@ export default function Legajo() {
             search: busqueda || undefined,
             rol: rol || undefined,
             areas: area || undefined,
+            con_matricula: matricula || undefined,
           }}
           ambitoConsulta={[user?.id, institucion?.id]}
           opcionesConsulta={{ enabled: !!institucion?.id, gcTime: 0, placeholderData: undefined }}
@@ -99,7 +105,7 @@ export default function Legajo() {
           }}
           vacio={{
             titulo: activos ? "Nadie coincide con la búsqueda" : "No hay personas en esta institución",
-            detalle: activos ? "Probá quitar algún filtro." : "Asigná membresías desde Administración para que aparezcan acá.",
+            detalle: activos ? "Probá quitar algún filtro." : "Asigná membresías desde Usuarios y permisos para que aparezcan acá.",
           }}
           barra={
             <>
@@ -110,14 +116,15 @@ export default function Legajo() {
                 opciones={areas.filas.map((a) => ({ value: String(a.id), label: a.nombre }))}
                 todos="Todas las áreas"
               />
+              <FiltroSelect etiqueta="Filtrar por matrícula" valor={matricula} onChange={setMatricula}
+                opciones={[{ value: "true", label: "Con matrícula" }]} todos="Todo el equipo" />
               <LimpiarFiltros activos={activos} onLimpiar={limpiar} />
             </>
           }
-        />
+          />
+        )}
         <section ref={detalleRef} className="min-w-0" aria-label="Detalle del legajo">
-          {sel
-            ? <LegajoDetalle key={`${institucion?.id}:${sel}`} institucionId={institucion?.id} usuarioId={sel} />
-            : <Card><EstadoVacio titulo="Elegí una persona" detalle="Seleccioná alguien del listado para ver su legajo y actividad reciente." icono="users" /></Card>}
+          {sel && <LegajoDetalle key={`${institucion?.id}:${sel}`} institucionId={institucion?.id} usuarioId={sel} />}
         </section>
       </div>
     </div>
@@ -172,7 +179,7 @@ function LegajoDetalle({ institucionId, usuarioId }) {
             {u?.especialidad ? ` · ${u.especialidad}` : ""}
             {nombresArea.length ? ` · ${nombresArea.join(" · ")}` : ""}
           </div>
-          {u?.matricula && <Mono className="mt-1.5 block text-base font-semibold">M.N. {u.matricula}</Mono>}
+          {u?.matricula && <Mono className="mt-1.5 block text-base font-semibold">{u.matricula}</Mono>}
         </div>
         <div className="flex flex-col items-end gap-2">
           {/* La matrícula es la que habilita a firmar una atención (regla del
@@ -186,7 +193,7 @@ function LegajoDetalle({ institucionId, usuarioId }) {
             Editar legajo
           </button>
         </div>
-        <dl className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid w-full gap-4 border-t border-division pt-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["Matrícula", u?.matricula || "—"],
             ["Especialidad", u?.especialidad || "—"],
@@ -212,6 +219,7 @@ function LegajoDetalle({ institucionId, usuarioId }) {
                 <div className="mt-1.5 text-cifra font-bold leading-none">
                   {q.isLoading ? <Skeleton className="h-6 w-12" /> : (m.n ?? "—")}
                 </div>
+                <p className="mt-2 text-xs text-texto-suave">Histórico de esta institución</p>
               </Card>
             ))}
           </div>
@@ -220,7 +228,7 @@ function LegajoDetalle({ institucionId, usuarioId }) {
             {q.isLoading ? (
               <SkeletonTabla filas={5} columnas={4} />
             ) : !legajo?.actividad?.length ? (
-              <div className="px-5 py-[22px] text-base text-texto-tenue">Sin actividad registrada.</div>
+              <div className="px-5 py-[22px] text-base text-texto-tenue">Todavía no hay actividad en esta institución.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-md">

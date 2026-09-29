@@ -272,6 +272,22 @@ class LegajoPorInstitucionTests(APITestCase):
         r = self.client.get(f"/api/usuarios/{self.medico.id}/legajo/?institucion={self.clinica.id}")
         self.assertEqual(r.status_code, 403)
 
+    def test_selector_opcional_con_matricula_conserva_el_equipo_completo(self):
+        LegajoProfesional.objects.create(usuario=self.medico, matricula="MN-123")
+        LegajoProfesional.objects.create(usuario=self.admin, matricula="")
+        solo_clinica = Usuario.objects.create_user("matriculado@clinica.local", "x")
+        Membresia.objects.create(usuario=solo_clinica, institucion=self.clinica, rol="medico", activo=True)
+        LegajoProfesional.objects.create(usuario=solo_clinica, matricula="MP-7")
+
+        base = f"/api/usuarios/?institucion={self.hospital.id}&page_size=100"
+        todos = self.client.get(base)
+        matriculados = self.client.get(base + "&con_matricula=true")
+        self.assertEqual(todos.status_code, 200, todos.data)
+        self.assertEqual(matriculados.status_code, 200, matriculados.data)
+        self.assertEqual({u["id"] for u in todos.data["results"]}, {self.admin.id, self.medico.id})
+        self.assertEqual(matriculados.data["count"], 1)
+        self.assertEqual([u["id"] for u in matriculados.data["results"]], [self.medico.id])
+
     def test_medico_no_puede_leer_actividad_ni_legajos_del_equipo(self):
         legajo = LegajoProfesional.objects.create(usuario=self.medico, matricula="MN-123")
         self.client.force_authenticate(self.medico)
