@@ -4,7 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Clinica, Perfil } from "./Clinica";
 import { AppClinicaProvider } from "./estado";
 import Inicio from "./Inicio";
-import { Bienvenida, Codigo, Datos, Dni, MarcoIngreso } from "./Ingreso";
+import { Bienvenida, Celular, Codigo, ConfirmarIdentidad, Datos, Dni, MarcoIngreso } from "./Ingreso";
 import { CodigoQr, EnFila, Llamado, Llegada } from "./Llegada";
 import { DetalleResultado, Resultados } from "./Resultados";
 import { Confirmar, Especialidad, Horario } from "./SacarTurno";
@@ -31,8 +31,10 @@ export default function AppClinica() {
         <Route element={<MarcoIngreso />}>
           <Route index element={<Bienvenida />} />
           <Route path="ingresar" element={<Dni />} />
-          <Route path="ingresar/datos" element={<Datos />} />
+          <Route path="ingresar/celular" element={<Celular />} />
           <Route path="ingresar/codigo" element={<Codigo />} />
+          <Route path="ingresar/confirmar" element={<ConfirmarIdentidad />} />
+          <Route path="ingresar/datos" element={<Datos />} />
         </Route>
         <Route element={<Marco />}>
           <Route path="inicio" element={<Inicio />} />

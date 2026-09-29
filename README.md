@@ -36,8 +36,9 @@ todo en la pestaña (`sessionStorage`): no autentica pacientes ni crea turnos,
 presencias o resultados reales. Para mostrarla:
 
 - **DNI 34521521** es una paciente con historia: turno para hoy, turnos
-  anteriores y resultados. Cualquier otro DNI recorre el alta de primera vez.
-- El código del SMS acepta cualquier combinación de cuatro dígitos.
+  anteriores y resultados; después del código confirma «¿Sos Martina Sosa?».
+  Cualquier otro DNI es una paciente nueva: pide celular, código y tres datos.
+- El código del SMS acepta cualquier combinación de seis dígitos.
 - Al dar presente queda 3.ª en la fila y avanza un lugar cada 8 segundos: el
   llamado llega solo en menos de medio minuto.
 - «Cerrar sesión» (en el perfil) o cerrar la pestaña deja la demo en cero.
