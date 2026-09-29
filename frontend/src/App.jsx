@@ -10,7 +10,7 @@ import { useTemaDeRuta } from "./lib/tema";
 
 const Login = lazy(() => import("./pages/Login"));
 const Presentacion = lazy(() => import("./pages/Presentacion"));
-const DemoClinica = lazy(() => import("./pages/DemoClinica"));
+const AppClinica = lazy(() => import("./pages/app-clinica/AppClinica"));
 const PantallaLlamados = lazy(() => import("./pages/PantallaLlamados"));
 const Directorio = lazy(() => import("./pages/Directorio"));
 const Inicio = lazy(() => import("./pages/Inicio"));
@@ -167,7 +167,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/presentacion" element={<Presentacion />} />
-      <Route path="/demo/app-clinica" element={<DemoClinica />} />
+      <Route path="/demo/app-clinica/*" element={<AppClinica />} />
       <Route path="/financiadores/activar" element={<ActivarFinanciador />} />
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
       <Route path="/pantalla/:token" element={<PantallaLlamados />} />
