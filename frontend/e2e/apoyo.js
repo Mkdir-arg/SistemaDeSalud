@@ -128,16 +128,32 @@ export async function fallosDeContraste(page) {
       });
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     };
-    // Sube por los ancestros hasta encontrar un fondo realmente opaco.
-    const fondoDe = (el) => {
+    const opaco = (css) => {
+      const m = css.match(/[\d.]+/g);
+      return Boolean(m) && (m.length < 4 || Number(m[3]) > 0.5);
+    };
+    // Colores de parada de un degradé computado (`linear-gradient(..., rgb(...), ...)`).
+    const paradas = (imagen) => imagen.includes("gradient") ? imagen.match(/rgba?\([^)]*\)|color\([^)]*\)/g) || [] : [];
+    /**
+     * Sube por los ancestros hasta encontrar un fondo realmente opaco.
+     *
+     * Devuelve una lista: un degradé (el botón de marca, `hen-cta`) no tiene
+     * `background-color`, y saltearlo medía el texto blanco contra la página que
+     * hay detrás. Se mide contra cada parada opaca y vale la peor; si el degradé
+     * tiene tramos transparentes, también contra lo que se ve a través.
+     */
+    const fondosDe = (el) => {
+      const vistos = [];
       let n = el;
       while (n && n !== document.documentElement) {
-        const bg = getComputedStyle(n).backgroundColor;
-        const m = bg.match(/[\d.]+/g);
-        if (m && (m.length < 4 || Number(m[3]) > 0.5)) return bg;
+        const cs = getComputedStyle(n);
+        const degrade = cs.backgroundClip === "text" ? [] : paradas(cs.backgroundImage);
+        vistos.push(...degrade.filter(opaco));
+        if (opaco(cs.backgroundColor)) return [...vistos, cs.backgroundColor];
+        if (degrade.length && degrade.every(opaco)) return vistos;
         n = n.parentElement;
       }
-      return getComputedStyle(document.body).backgroundColor;
+      return [...vistos, getComputedStyle(document.body).backgroundColor];
     };
 
     const fallos = [];
@@ -152,11 +168,16 @@ export async function fallosDeContraste(page) {
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.opacity === "0") return;
 
-      const lf = lum(cs.color);
-      const lb = lum(fondoDe(el));
-      if (lf === null || lb === null) return;
-      const [hi, lo] = [lf, lb].sort((a, b) => b - a);
-      const razon = (hi + 0.05) / (lo + 0.05);
+      // Texto con degradé recortado (`background-clip: text`): su color es
+      // transparente y lo que se ve son las paradas, sobre el fondo del padre.
+      const recortado = cs.backgroundClip === "text" && paradas(cs.backgroundImage).length;
+      const frentes = (recortado ? paradas(cs.backgroundImage) : [cs.color]).map(lum);
+      const fondos = fondosDe(recortado ? el.parentElement : el).map(lum);
+      if ([...frentes, ...fondos].some((l) => l === null)) return;
+      const razon = Math.min(...frentes.flatMap((lf) => fondos.map((lb) => {
+        const [hi, lo] = [lf, lb].sort((a, b) => b - a);
+        return (hi + 0.05) / (lo + 0.05);
+      })));
 
       // WCAG AA: 3:1 para texto grande (≥24px, o ≥18.66px en negrita), 4.5:1 el resto.
       const px = parseFloat(cs.fontSize);
