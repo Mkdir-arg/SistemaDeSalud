@@ -121,6 +121,43 @@ docker compose -f docker-compose.yml ps
 docker compose -f docker-compose.yml exec backend python manage.py createsuperuser
 ```
 
+### Preparar las cuentas de referencia
+
+«Ver como» simula perfiles con cuentas técnicas, una por perfil y ámbito. Se
+preparan con un comando que se puede correr en **todos los entornos, producción
+incluida**:
+
+- No usa claves de demo ni imprime ni escribe contraseñas.
+- Solo toca las cuentas de referencia y sus membresías.
+- Si se corre de nuevo, no cambia nada o restablece lo que alguien haya modificado.
+
+No reemplaza a `seed_roles` ni a `seed_guardia`, que son de demo y no corren en
+producción.
+
+```bash
+# Primero, ver qué falta. No escribe nada.
+docker compose -f docker-compose.yml exec backend python manage.py preparar_cuentas_referencia \
+  --todas-las-instituciones --todos-los-financiadores --ancla-estatal <id> --verificar
+
+# Después, prepararlas. `--ancla-estatal` es la institución donde cuelgan
+# Autoridad estatal y Auditor estatal, cuyo alcance ya es global.
+docker compose -f docker-compose.yml exec backend python manage.py preparar_cuentas_referencia \
+  --todas-las-instituciones --todos-los-financiadores --ancla-estatal <id>
+```
+
+Cada cuenta queda así:
+
+- Contraseña inutilizable y correo en `referencia.hen.invalid`. Ni el login ni el
+  refresco de tokens la aceptan.
+- Solo la membresía de su perfil. Las áreas y los grupos son los del personal real
+  con ese rol, y el comando solo agrega, nunca quita.
+
+Hay que volver a correrlo cuando se da de alta una institución o un financiador,
+cuando personal del mismo rol recibe áreas o grupos nuevos, o cuando `--verificar`
+informa un problema. Hasta entonces, ese perfil no se puede simular. Correrlo en
+producción escribe en la base real: requiere la misma autorización que cualquier
+cambio de datos.
+
 Desde ahí, la configuración inicial del hospital —institución, áreas, usuarios,
 formularios, flujos, finanzas— se hace **por pantalla**, y hay un recorrido paso a
 paso en

@@ -21,9 +21,17 @@ cobertura.
 ## 2. Qué ve al entrar
 
 Aterriza en el **Directorio de instituciones**, no en una institución puntual. La
-barra muestra el alcance —«todas las instituciones»— y un selector de vista
-**Sistema / Configurador / Administrativo**, que sirve para *previsualizar* qué
-grupos del menú vería cada perfil. Por defecto está en Sistema, que muestra todo.
+barra muestra el alcance —«todas las instituciones»—. En el sidebar, **Ver como**
+permite simular un perfil del backoffice: en una institución, sus perfiles
+institucionales; en plataforma, Autoridad y Auditor estatal; en un financiador, sus
+tres roles. Por defecto está en Sistema, que muestra todo.
+
+Simular no es una vista previa del menú. El servidor autoriza cada pedido con la
+**cuenta de referencia** del perfil («Superusuario Enfermería»), así que se ven los
+datos y se pueden ejecutar exactamente las acciones de ese perfil en ese ámbito. Lo
+que se haga queda **a nombre del superusuario**, con la simulación registrada aparte.
+Un indicador fijo muestra el perfil y el ámbito, y **Volver a Sistema** termina la
+simulación. Ver [`ROLES-Y-PERMISOS.md` §3.3](../ROLES-Y-PERMISOS.md#33-simulacion-de-perfiles-ver-como).
 
 ## 3. Funcionalidades
 
