@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Logo } from "@/components/Logo";
 
@@ -8,9 +8,23 @@ const SOPORTE_URL = import.meta.env.VITE_SOPORTE_URL?.trim();
 const minutosConfigurados = Number(import.meta.env.VITE_IDLE_LOCK_MINUTES);
 const MINUTOS_INACTIVIDAD = Number.isFinite(minutosConfigurados) && minutosConfigurados >= 3 ? minutosConfigurados : 15;
 
+/**
+ * A dónde ir después de autenticar.
+ *
+ * Si se llegó desde un enlace a una pantalla protegida, se vuelve ahí; si no, a
+ * la entrada que resuelve directorio o institución. Nunca a la landing pública
+ * ni al propio login, y solo rutas internas.
+ */
+function destinoTrasIngreso(desde) {
+  const interna = typeof desde === "string" && desde.startsWith("/") && !desde.startsWith("//");
+  const publica = interna && ["/", "/login", "/presentacion"].includes(desde.split(/[?#]/)[0]);
+  return interna && !publica ? desde : "/directorio";
+}
+
 export default function Login() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
+  const destino = destinoTrasIngreso(useLocation().state?.desde);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verPass, setVerPass] = useState(false);
@@ -19,13 +33,16 @@ export default function Login() {
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
 
+  // Con la sesión ya abierta el formulario no tiene nada que hacer.
+  if (user && !cargando) return <Navigate to={destino} replace />;
+
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
     setCargando(true);
     try {
       await login(email, password, { recordar });
-      navigate("/");
+      navigate(destino, { replace: true });
     } catch (err) {
       setError(err.status === 401
         ? "Email o contraseña incorrectos."
@@ -39,7 +56,7 @@ export default function Login() {
     <div className="login-page flex min-h-screen flex-col bg-fondo text-texto">
       <header className="relative z-10 flex h-[46px] items-center justify-between border-b border-borde bg-superficie px-5 sm:px-[max(24px,9.6vw)]">
         <span className="flex items-center gap-2 text-md font-bold"><Logo size={24} /> HEN</span>
-        <Link to="/presentacion" className="text-sm text-texto-suave hover:text-accent">Volver al inicio</Link>
+        <Link to="/" className="text-sm text-texto-suave hover:text-accent">Volver al inicio</Link>
       </header>
 
       <main className="login-main relative flex flex-1 items-center justify-center overflow-hidden px-5 py-12 sm:px-8">

@@ -61,11 +61,11 @@ export default function PortalFinanciadores() {
   const items = SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
     .map((item) => ({ ...item, to: `/financiadores${item.key === "planes" ? "" : `/${item.key}`}${sufijo}` }));
   const actual = items.find((item) => item.key === seccion);
-  if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error && seccion !== "catalogo") return <Navigate to="/?vista=financiadores" replace />;
+  if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error && seccion !== "catalogo") return <Navigate to="/directorio?vista=financiadores" replace />;
   if (organizacion && !actual) return <Navigate to={`/financiadores${sufijo}`} replace />;
   const cuerpo = <div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     {plataforma && <>
-      <div><Link to="/?vista=financiadores" className="text-xs font-semibold text-accent hover:underline">← Volver a financiadores</Link>
+      <div><Link to="/directorio?vista=financiadores" className="text-xs font-semibold text-accent hover:underline">← Volver a financiadores</Link>
         <h2 className="mt-2 text-xl font-bold">{organizacion?.nombre || "Catálogo común"}</h2>
         <p className="mt-1 text-sm text-texto-suave">{actual?.label || "Financiadores"} · Administración de plataforma</p></div>
       <nav aria-label="Secciones del financiador" className="flex flex-wrap gap-2 border-b border-division pb-2">

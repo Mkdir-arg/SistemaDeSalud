@@ -125,7 +125,29 @@ Qué carga, por paso:
 | `seed_roles` | Plataforma, auditoría, reportes y administración de Hospital Central |
 | `seed_farmacia` | Pedidos de reposición en cada estado y consumos imputados a pacientes |
 | `seed_red` | Villa Real y los traslados: resueltos, pendientes y uno aceptado sin despachar |
+| `seed_efectores` | Cuatro efectores más en la red: Zonal Sur (lleno), Clínica San Martín, el CAPS Barrio Norte y Lomas del Este (en puesta en marcha hace 45 días). Treinta días de atenciones de fila, pacientes en sala e internados, también en Villa Real |
+| `seed_comprador` | `comprador@salud.local`, el usuario de quien recibe la demo, y su institución Hospital Piloto a medio configurar (ver abajo) |
 | `seed_accesos` | Registro de accesos clínicos de los últimos 45 días, para la auditoría |
+
+### El usuario de quien recibe la demo
+
+`comprador@salud.local`, con la misma clave que el resto. Es para que la persona
+que evalúa el sistema lo pruebe sola, sin chocar con «Acceso denegado»:
+
+- Entra al **tablero de instituciones** como autoridad de plataforma.
+- En **Hospital Central** tiene los nueve roles, todas las áreas y todos los
+  equipos. Encuentra casos por tomar, pacientes en fila, turnos por confirmar,
+  traslados por responder y notificaciones sin leer. Es el mismo trabajo que el
+  resto del personal: si lo resuelve él, se lo saca a ellos.
+- En **Los Aromos** administra con todos los permisos de finanzas: gastos por
+  aprobar, saldos de cobertura y un convenio por aceptar.
+- En el **portal de Mutual del Valle** es administrador y responde
+  autorizaciones.
+- **Hospital Piloto** es suyo y está en puesta en marcha. Tiene áreas y
+  personal, pero ni agendas ni flujo publicado: la guía de Inicio muestra 3 de
+  6 pasos, y los otros tres quedan para que los haga él.
+
+Tiene todos los roles a la vez, así que la barra lateral lista los nueve.
 
 Cada `seed_*` también se puede correr suelto. Declara en su docstring qué necesita
 antes y qué carga. `seed_los_aromos` y `seed_financiadores` no se mezclan con

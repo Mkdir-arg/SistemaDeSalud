@@ -37,7 +37,7 @@ test("se ve como una app y no como la maqueta de un celular", async ({ page }) =
   for (const resto of ["9:41", "5G", "Explorar pantallas", "simulación"]) await expect(page.getByText(resto)).toHaveCount(0);
   // La app de la clínica mantiene su tema claro aunque la persona use oscuro en HEN.
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await expect(page.getByRole("link", { name: "Conocé HEN" })).toHaveAttribute("href", "/presentacion");
+  await expect(page.getByRole("link", { name: "Conocé HEN" })).toHaveAttribute("href", "/");
 });
 
 test("sin sesión, un link interno vuelve a la bienvenida", async ({ page }) => {

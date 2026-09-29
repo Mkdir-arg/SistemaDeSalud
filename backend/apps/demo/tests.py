@@ -10,13 +10,17 @@ from django.core.management.base import CommandError
 from django.db import connection
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.accounts.models import Membresia, Usuario
 from apps.auditoria.models import AccesoClinico
 from apps.casos.models import Caso
-from apps.finanzas.models import Gasto, HechoAtencionCosteable, MovimientoDinero
+from apps.finanzas.models import ConcesionFinanciera, Gasto, HechoAtencionCosteable, MovimientoDinero
 from apps.financiadores.models import SolicitudAutorizacion
 from apps.instituciones.models import Institucion
+from apps.instituciones.puesta_en_marcha import pasos as pasos_de_puesta_en_marcha
+from apps.registros import integridad
+from apps.registros.models import HistoriaClinica
 
 from .calendario import Calendario
 from .claves import CLAVE_POR_DEFECTO
@@ -167,6 +171,9 @@ class CargaCompletaTests(TransactionTestCase):
         self.assertEqual(sin_datos, [])
         self.assertEqual(sin_trabajo, [])
 
+        self._verificar_tablero_de_plataforma()
+        self._verificar_comprador()
+
         # Todos con la clave de DEMO_PASSWORD, también el superusuario.
         for usuario in Usuario.objects.all():
             self.assertTrue(usuario.check_password("clave-de-prueba-65"), usuario.email)
@@ -177,6 +184,37 @@ class CargaCompletaTests(TransactionTestCase):
             self.cargar()
         self.assertEqual(self.cantidades(), antes)
         self.assertTrue(Usuario.objects.get(email="admin@salud.local").check_password(CLAVE_POR_DEFECTO))
+
+    def _verificar_tablero_de_plataforma(self):
+        """La primera pantalla de la plataforma muestra una red y no un hospital solo."""
+        cliente = APIClient()
+        cliente.force_authenticate(Usuario.objects.get(email="plataforma@salud.local"))
+        tablero = cliente.get("/api/instituciones/tablero-plataforma/").json()
+        self.assertEqual({a["tipo"] for a in tablero["alertas"]}, {"ocupacion", "puesta_en_marcha"})
+        self.assertGreaterEqual(tablero["en_alta"], 2)
+        nombres = dict(Institucion.objects.values_list("id", "nombre"))
+        con_fila_hoy = {nombres[i["institucion"]] for i in tablero["indicadores"]
+                        if i["atendidos_hoy"] and i["espera_minutos"] is not None}
+        self.assertTrue({"Hospital Zonal Sur", "Clínica San Martín", "Centro de Salud Barrio Norte",
+                         "Hospital Municipal de Villa Real"} <= con_fila_hoy, con_fila_hoy)
+        # Las atenciones de los efectores se firman: la cadena de sellos tiene que verificar.
+        rotas = [hc.pk for hc in HistoriaClinica.objects.filter(ciudadano__institucion__nombre="Hospital Zonal Sur")
+                 if not integridad.verificar_historia(hc)["ok"]]
+        self.assertEqual(rotas, [])
+
+    def _verificar_comprador(self):
+        """Quien recibe la demo entra a todo y tiene su propia institución por configurar."""
+        comprador = Usuario.objects.get(email="comprador@salud.local")
+        roles = set(Membresia.objects.filter(usuario=comprador, institucion__nombre="Hospital Central")
+                    .values_list("rol", flat=True))
+        self.assertEqual(roles, set(Membresia.Rol.values))
+        aromos = Membresia.objects.get(usuario=comprador, institucion__nombre="Hospital General Los Aromos")
+        self.assertEqual(aromos.concesiones_financieras.count(), len(ConcesionFinanciera.Accion.values))
+        self.assertTrue(comprador.notificaciones.filter(leida=False).exists())
+        piloto = Institucion.objects.get(nombre="Hospital Piloto")
+        self.assertEqual(piloto.estado, Institucion.Estado.EN_ALTA)
+        pendientes = {paso for paso, hecho in pasos_de_puesta_en_marcha(piloto).items() if not hecho}
+        self.assertEqual(pendientes, {"agenda_profesional", "agenda_recurso", "flujo_operativo"})
 
     def test_un_paso_que_falla_no_deja_la_base_a_medias(self):
         Institucion.objects.create(nombre="Datos previos")

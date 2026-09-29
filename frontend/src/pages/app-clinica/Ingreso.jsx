@@ -39,7 +39,7 @@ export function Bienvenida() {
       <Pie>
         <Boton to={ruta("ingresar")}>Ingresar con mi DNI</Boton>
         <p className="text-center text-xs text-texto-suave">¿Es tu primera vez? También empezás con tu DNI.</p>
-        <p className="pt-4 text-center text-micro text-texto-suave">Demo de HEN con datos ficticios · <Link to="/presentacion" className="font-semibold text-accent hover:underline">Conocé HEN</Link></p>
+        <p className="pt-4 text-center text-micro text-texto-suave">Demo de HEN con datos ficticios · <Link to="/" className="font-semibold text-accent hover:underline">Conocé HEN</Link></p>
       </Pie>
     </div>
   </>;

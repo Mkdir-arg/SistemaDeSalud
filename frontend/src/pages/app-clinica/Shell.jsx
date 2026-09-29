@@ -66,7 +66,7 @@ export function Marco({ enfoque = false }) {
       <Outlet />
     </main>
     <footer className="hidden border-t border-borde py-5 text-center text-xs text-texto-suave md:block">
-      Clínica Modelo · Demo de HEN con datos ficticios · <Link to="/presentacion" className="font-medium text-accent hover:underline">Conocé HEN</Link>
+      Clínica Modelo · Demo de HEN con datos ficticios · <Link to="/" className="font-medium text-accent hover:underline">Conocé HEN</Link>
     </footer>
     {!enfoque && <Pestanas />}
     <Aviso />

@@ -62,6 +62,6 @@ export function Perfil() {
     </Tarjeta>
     <Tarjeta className="mt-4 overflow-hidden"><Fila icono="help" titulo="Ayuda y contacto" detalle="Teléfonos y horarios de la clínica" to={ruta("clinica")} ultimo /></Tarjeta>
     <div className="mt-6"><Boton variante="secundario" icono="enter" onClick={salir}>Cerrar sesión</Boton></div>
-    <p className="mt-6 text-center text-xs text-texto-suave">App de pacientes de HEN, con datos ficticios: nada de lo que hagas acá llega a un sistema real. <Link to="/presentacion" className="font-semibold text-accent hover:underline">Conocé HEN</Link></p>
+    <p className="mt-6 text-center text-xs text-texto-suave">App de pacientes de HEN, con datos ficticios: nada de lo que hagas acá llega a un sistema real. <Link to="/" className="font-semibold text-accent hover:underline">Conocé HEN</Link></p>
   </>;
 }

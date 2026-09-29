@@ -28,11 +28,12 @@ docker compose up -d
 | Documentación de la API | <http://localhost:8000/api/docs/> |
 | Fachada FHIR | <http://localhost:8000/fhir/metadata> |
 
-Para revisar el diseño HEN: la presentación pública está en `/presentacion` y la
-app de pacientes de ejemplo ("Clínica Modelo") en `/demo/app-clinica`. Es
-pública, no usa la API y guarda todo en la pestaña (`sessionStorage`): no
-autentica pacientes ni crea turnos, presencias o resultados reales. Para
-mostrarla:
+Para revisar el diseño HEN: la landing pública está en `/` (`/presentacion` es un
+alias) y, después del login, `/directorio` resuelve el directorio de plataforma, la
+elección de institución o el portal del financiador. La app de pacientes de ejemplo
+("Clínica Modelo") está en `/demo/app-clinica`. Es pública, no usa la API y guarda
+todo en la pestaña (`sessionStorage`): no autentica pacientes ni crea turnos,
+presencias o resultados reales. Para mostrarla:
 
 - **DNI 34521521** es una paciente con historia: turno para hoy, turnos
   anteriores y resultados. Cualquier otro DNI recorre el alta de primera vez.
