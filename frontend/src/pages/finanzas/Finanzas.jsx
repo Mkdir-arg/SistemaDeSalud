@@ -389,13 +389,23 @@ function ContenidoFinanzas({ institucion, permisos }) {
     <div>
       <div role="group" aria-label="Acciones de Finanzas" className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="flex min-h-10 items-center text-xl font-bold">Finanzas y cobros</h2>
-      <div className="ml-auto flex max-w-full min-w-0 items-start gap-2">
+      <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2">
+      <div role="group" aria-label="Filtros de finanzas" className="flex max-w-full flex-wrap items-center gap-2">
+        <Input type="month" required aria-label={tab === "reportes" ? "Mes del informe" : "Mes económico"}
+          className="w-[200px]" value={mes} onChange={(e) => cambiarFiltro("mes", e.target.value)} />
+        <Select aria-label="Área" className="w-[210px] max-w-full" value={area} onChange={(e) => cambiarFiltro("area", e.target.value)}>
+          <option value="">{veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"}</option>
+          {veInstitucional && <option value="null">{INSTITUCIONAL}</option>}
+          {areasVisibles.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+        </Select>
+        <AyudaFinanzas titulo="Carga, aprobación y reparto"><p>Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p><p>La configuración de gastos mensuales indica qué conceptos debe informar el área cada mes. Marcar la carga completa no aprueba sus gastos ni verifica sus atenciones.</p></AyudaFinanzas>
+      </div>
       <div className="flex min-h-10 min-w-0 flex-wrap justify-end gap-2">
         {(areas.isLoading || conceptos.isLoading) ? <span role="status" className="inline-flex h-10 items-center text-sm text-texto-debil">Preparando acciones…</span> : <>
         {acciones.filter(esContextual).map((accion) => botonAccion(accion))}
         </>}
       </div>
-        {!areas.isLoading && !conceptos.isLoading && otrasAcciones.length > 0 && <PanelFlotante key={`${tab}:${modal?.tipo || ""}`} titulo="Acciones de finanzas" icono="list" botonPrincipal>
+        {!areas.isLoading && !conceptos.isLoading && otrasAcciones.length > 0 && <PanelFlotante key={`${tab}:${modal?.tipo || ""}`} titulo="Acciones de finanzas" etiqueta="Acciones" icono="list" botonPrincipal>
           <div className="space-y-1">{otrasAcciones.map((accion) => botonAccion(accion, true))}</div>
         </PanelFlotante>}
       </div>
@@ -405,19 +415,6 @@ function ContenidoFinanzas({ institucion, permisos }) {
       </div>
     </div>
     {tabs.length > 0 && <nav aria-label="Secciones de finanzas" className="border-b border-division"><Tabs className="max-w-full overflow-x-auto [&>button]:whitespace-nowrap [&>button]:px-2.5 [&>button]:text-sm" tabs={tabs} valor={tab} onChange={(valor) => cambiarFiltro("tab", valor)} /></nav>}
-    <Card className="p-4">
-      <div role="group" aria-label="Filtros de finanzas" className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-        <div className="w-[180px]"><Field label={tab === "reportes" ? "Mes del informe" : "Mes económico"}><Input type="month" required value={mes} onChange={(e) => cambiarFiltro("mes", e.target.value)} /></Field></div>
-        <div className="w-[210px] max-w-full"><Field label="Área"><Select value={area} onChange={(e) => cambiarFiltro("area", e.target.value)}>
-          <option value="">{veInstitucional ? "Todas las áreas e institucional" : "Todas mis áreas"}</option>
-          {veInstitucional && <option value="null">{INSTITUCIONAL}</option>}
-          {areasVisibles.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-        </Select></Field></div>
-        <AyudaFinanzas titulo="Carga, aprobación y reparto"><p>Carga, aprobación y reparto son estados separados. Un reparto nunca registra cargos ni pagos.</p><p>La configuración de gastos mensuales indica qué conceptos debe informar el área cada mes. Marcar la carga completa no aprueba sus gastos ni verifica sus atenciones.</p></AyudaFinanzas>
-        </div>
-      </div>
-    </Card>
     {areas.error && <EstadoError error={areas.error} onReintentar={areas.refetch} titulo="No se pudieron cargar las áreas" />}
     {conceptos.error && <EstadoError error={conceptos.error} onReintentar={conceptos.refetch} titulo="No se pudo cargar el catálogo de gastos" />}
     {!tabs.length ? <EstadoVacio titulo="Tu acceso permite operar sin consultar el listado" detalle="Registrar gastos no concede acceso de lectura. Las cargas delegadas se envían a aprobación central." /> : <>
