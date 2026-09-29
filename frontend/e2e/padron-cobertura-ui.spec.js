@@ -153,7 +153,7 @@ test("ingresar paciente a guardia precarga el DNI en Documento", async ({ page }
     capacidades: ["padron_admision", "casos_operar"],
     misTareas: { iniciar: [{ version_id: 5, flujo_titulo: "Guardia", area_nombre: "Guardia", paso: "Ingreso" }] },
   });
-  await page.goto("/");
+  await page.goto("/directorio");
   await page.getByRole("button", { name: "Ingresar paciente" }).click();
   const modal = page.getByRole("dialog", { name: "Ingresar paciente · Guardia" });
   await modal.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");

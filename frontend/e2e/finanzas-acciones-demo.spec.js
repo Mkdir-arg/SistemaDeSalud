@@ -178,7 +178,7 @@ for (const [nombre, opciones, visible] of [
 ]) {
   test(`Inicio: acceso rápido para ${nombre}`, async ({ page }) => {
     await escenario(page, opciones);
-    await page.goto("/");
+    await page.goto("/directorio");
     await expect(page.getByRole("heading", { name: "Secciones de la institución" })).toBeVisible();
     const acceso = page.locator('[data-tour="inicio-finanzas"]');
     if (visible) {
@@ -193,7 +193,7 @@ test("Inicio oculta el acceso mientras consulta permisos", async ({ page }) => {
   let liberar;
   const esperarPermisos = new Promise((resolve) => { liberar = resolve; });
   await escenario(page, { esperarPermisos });
-  await page.goto("/");
+  await page.goto("/directorio");
   await expect(page.getByRole("heading", { name: "Secciones de la institución" })).toBeVisible();
   await expect(page.locator('[data-tour="inicio-finanzas"]')).toHaveCount(0);
   liberar();

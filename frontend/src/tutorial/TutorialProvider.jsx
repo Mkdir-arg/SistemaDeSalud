@@ -330,7 +330,7 @@ export function TutorialProvider({ children }) {
   // ----------------------------------------------------------------------- //
   const salirAlDirectorio = useCallback(async () => {
     setInstitucion(null);
-    navigate("/");
+    navigate("/directorio");
   }, [setInstitucion, navigate]);
 
   const entrarAEscuela = useCallback(async () => {

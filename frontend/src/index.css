@@ -24,10 +24,11 @@
   .hen-cta { background-image: var(--gradient-action); }
   .hen-cta:hover { background-image: var(--gradient-action-hover); }
   .presentacion-hero { background: radial-gradient(circle at 22% 10%, var(--color-accent-50), transparent 42%), var(--color-fondo); }
-  .presentacion-pulso { height: 58px; opacity: .35; }
+  .presentacion-brillo { background: radial-gradient(ellipse at center, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 70%); filter: blur(12px); }
   .presentacion-titulo-gradiente { background: var(--gradient-action); background-clip: text; -webkit-background-clip: text; color: transparent; }
   .dark .presentacion-titulo-gradiente { background-image: linear-gradient(90deg, #B778F5, #62C9D4); }
-  .presentacion-beneficio { background: linear-gradient(125deg, var(--color-accent-50), var(--color-superficie-2)); }
+  .presentacion-beneficio { background: linear-gradient(125deg, var(--color-accent-50), color-mix(in srgb, var(--color-brand-teal) 10%, var(--color-superficie))); }
+  .dark .presentacion-beneficio { background: linear-gradient(125deg, #3A1670, color-mix(in srgb, var(--color-brand-teal) 22%, var(--color-fondo))); }
   .login-main {
     background: radial-gradient(ellipse 70% 58% at 50% 46%, color-mix(in srgb, var(--color-accent) 9%, var(--color-fondo)), var(--color-fondo) 75%);
   }
