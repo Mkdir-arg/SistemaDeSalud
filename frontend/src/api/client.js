@@ -63,6 +63,48 @@ export const tokens = {
   },
 };
 
+/**
+ * Simulación de perfiles del superusuario.
+ *
+ * Mientras hay una, cada pedido lleva `X-HEN-Simulacion` y el backend responde
+ * con los permisos y el alcance de la cuenta de referencia. Vive en
+ * `sessionStorage`: vale solo para esta pestaña y muere con ella. Los pedidos
+ * que administran la simulación (catálogo, inicio, salida) salen sin el
+ * encabezado, con la identidad real del superusuario.
+ */
+const SIMULACION_KEY = "salud.simulacion";
+export const EVENTO_SIMULACION_TERMINADA = "salud:simulacion-terminada";
+
+export const simulacion = {
+  get() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SIMULACION_KEY) || "null");
+    } catch {
+      return null;
+    }
+  },
+  set(datos) {
+    sessionStorage.setItem(SIMULACION_KEY, JSON.stringify(datos));
+  },
+  clear() {
+    sessionStorage.removeItem(SIMULACION_KEY);
+  },
+};
+
+function encabezadoSimulacion(headers, sinSimulacion) {
+  const actual = sinSimulacion ? null : simulacion.get();
+  if (actual?.id) headers["X-HEN-Simulacion"] = actual.id;
+}
+
+// El servidor rechazó la simulación (terminó, venció o la cuenta cambió). Se
+// abandona en el acto: seguir mandando el encabezado dejaría la pantalla sin
+// poder hacer nada, y nunca se reintenta como superusuario sin avisar.
+function simulacionRechazada(status, data) {
+  if (status !== 403 || data?.simulacion !== "rechazada" || !simulacion.get()) return;
+  simulacion.clear();
+  window.dispatchEvent(new CustomEvent(EVENTO_SIMULACION_TERMINADA, { detail: data?.detail || "" }));
+}
+
 export class ApiError extends Error {
   constructor(status, data) {
     super(mensajeRespuesta(status, data));
@@ -150,13 +192,14 @@ function refreshAccess() {
   return refrescoEnVuelo;
 }
 
-async function request(method, path, body, _retried = false, { multipart = false, blob = false } = {}) {
+async function request(method, path, body, _retried = false, { multipart = false, blob = false, sinSimulacion = false } = {}) {
   const epoch = sessionEpoch;
   const headers = multipart ? {} : { "Content-Type": "application/json" };
   // Con cuál salió ESTE pedido. Se guarda para poder distinguir, al volver con
   // 401, si el token sigue siendo el mismo o si mientras tanto ya lo renovaron.
   const usado = tokens.access;
   if (usado) headers.Authorization = `Bearer ${usado}`;
+  encabezadoSimulacion(headers, sinSimulacion);
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -180,11 +223,11 @@ async function request(method, path, body, _retried = false, { multipart = false
      * Si el token cambió, no hay nada que refrescar: alcanza con reintentar.
      */
     if (tokens.access && tokens.access !== usado) {
-      return request(method, path, body, true, { multipart, blob });
+      return request(method, path, body, true, { multipart, blob, sinSimulacion });
     }
     const ok = await refreshAccess();
     if (epoch !== sessionEpoch) throw new ApiError(401, null);
-    if (ok) return request(method, path, body, true, { multipart, blob });
+    if (ok) return request(method, path, body, true, { multipart, blob, sinSimulacion });
     tokens.clear();
   }
 
@@ -195,13 +238,21 @@ async function request(method, path, body, _retried = false, { multipart = false
   }
   const data = await parse(res);
   if (epoch !== sessionEpoch) throw new ApiError(401, null);
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) {
+    simulacionRechazada(res.status, data);
+    throw new ApiError(res.status, data);
+  }
   return data;
 }
 
 export const api = {
   get: (path) => request("GET", path),
   post: (path, body) => request("POST", path, body),
+  // Con la identidad real del superusuario aunque haya una simulación activa.
+  real: {
+    get: (path) => request("GET", path, null, false, { sinSimulacion: true }),
+    post: (path, body) => request("POST", path, body, false, { sinSimulacion: true }),
+  },
   patch: (path, body) => request("PATCH", path, body),
   put: (path, body) => request("PUT", path, body),
   del: (path) => request("DELETE", path),
@@ -238,10 +289,14 @@ export const api = {
     if (institucion) fd.append("institucion", String(institucion));
     const headers = {};
     if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`;
+    encabezadoSimulacion(headers);
     const res = await fetch(`${BASE}/archivos/`, { method: "POST", headers, body: fd });
     if (epoch !== sessionEpoch) throw new ApiError(401, null);
     const data = await parse(res);
-    if (!res.ok) throw new ApiError(res.status, data);
+    if (!res.ok) {
+      simulacionRechazada(res.status, data);
+      throw new ApiError(res.status, data);
+    }
     return data;
   },
 
@@ -253,6 +308,7 @@ export const api = {
       : `${BASE}/archivos/descargar/${s.replace(/^\/+/, "")}`;
     const headers = {};
     if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`;
+    encabezadoSimulacion(headers);
     let res = await fetch(url, { headers });
     if (epoch !== sessionEpoch) throw new ApiError(401, null);
     if (res.status === 401 && tokens.refresh) {
@@ -260,12 +316,16 @@ export const api = {
       if (ok) {
         const retryHeaders = {};
         if (tokens.access) retryHeaders.Authorization = `Bearer ${tokens.access}`;
+        encabezadoSimulacion(retryHeaders);
         res = await fetch(url, { headers: retryHeaders });
         if (epoch !== sessionEpoch) throw new ApiError(401, null);
       }
     }
     const data = res.ok ? null : await parse(res);
-    if (!res.ok) throw new ApiError(res.status, data);
+    if (!res.ok) {
+      simulacionRechazada(res.status, data);
+      throw new ApiError(res.status, data);
+    }
     const blob = await res.blob();
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");

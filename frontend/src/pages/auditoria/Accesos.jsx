@@ -137,6 +137,8 @@ export default function Accesos() {
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{a.usuario_nombre || "—"}</div>
                   <div className="truncate text-sm text-texto-debil">{a.usuario_email}</div>
+                  {/* Quien consultó es el superusuario; el perfil simulado va aparte. */}
+                  {a.simulacion && <div className="truncate text-sm text-texto-debil">Simulando {a.simulacion.perfil} · {a.simulacion.cuenta}</div>}
                 </div>
               </div>
             ),

@@ -13,6 +13,7 @@ import { useEsEscritorio } from "../lib/media";
 import { useTema } from "../lib/tema";
 import { usePermisosFinanzas } from "../api/finanzas";
 import { resumenCobertura } from "./financiadores/CoberturaAdministrativa";
+import { BannerSimulacion, SelectorSimulacion, ambitoSimulable } from "./SimulacionPerfil";
 
 // Estado de "última actualización" que una pantalla publica para mostrarlo en la
 // barra superior (al lado de la campana). Null cuando no aplica.
@@ -73,19 +74,23 @@ function tituloDeRuta(pathname) {
 // Campana de notificaciones: contador de no leídas + dropdown (poll a /resumen/).
 function Campana() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [data, setData] = useState({ no_leidas: 0, items: [] });
   const [abierto, setAbierto] = useState(false);
 
   async function recargar() {
     try { setData(await api.get("/notificaciones/resumen/")); } catch { /* silencioso */ }
   }
+  // Se recarga al cambiar de identidad (simular un perfil o volver a Sistema):
+  // los avisos son de quien consulta y no pueden quedar los de la otra cuenta.
   useEffect(() => {
+    setData({ no_leidas: 0, items: [] });
     recargar();
     const tick = () => { if (!document.hidden) recargar(); };
     const id = setInterval(tick, 30000);
     window.addEventListener("focus", tick);
     return () => { clearInterval(id); window.removeEventListener("focus", tick); };
-  }, []);
+  }, [user?.id]);
 
   async function abrir(n) {
     setAbierto(false);
@@ -359,12 +364,6 @@ const ROL_LABEL = {
 // Clases del ítem de menú. Migrado de estilos inline a tokens semánticos porque
 // con el literal `slate600` sobre la superficie oscura el menú quedaba en 2,22:1
 // �ilegible� y es el marco que se ve en todas las pantallas.
-const VISTA_LABEL = {
-  sistema: "Sistema",
-  configurador: "Configurador",
-  administrativo: "Administrativo",
-};
-
 const itemClase = (col) => ({ isActive }) =>
   cn(
     "flex items-center gap-2 rounded-md text-xs font-medium",
@@ -378,8 +377,8 @@ export function Shell({ children, financiador = null, plataforma = false }) {
   const esFinanciador = Boolean(financiador);
   const esPlataforma = plataforma && !esFinanciador;
   const permisosFinanzas = usePermisosFinanzas({ enabled: !esFinanciador && !esPlataforma });
-  const { user, logout } = useAuth();
-  const { institucion, setInstitucion, roles, puedeVer, vista, setVista } = useInstitucion();
+  const { user, logout, simulacion } = useAuth();
+  const { institucion, setInstitucion, roles, puedeVer } = useInstitucion();
   const navigate = useNavigate();
 
   // "�altima actualización" que publica la pantalla activa (lo muestra la TopBar).
@@ -466,9 +465,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
   const rolLabel = esFinanciador ? financiador.rol : user?.is_superuser
     ? "Super admin"
     : roles.map((r) => ROL_LABEL[r] || r).join(" · ") || "Usuario";
-  const gruposInstitucion = user?.is_superuser && vista === "sistema"
+  const gruposInstitucion = user?.is_superuser
     ? GRUPOS
     : [GRUPOS[1], GRUPOS[0], ...GRUPOS.slice(2)];
+  const ambitoActual = ambitoSimulable({ simulacion, esPlataforma, esFinanciador, institucion, location });
   const itemVisible = (item) => {
     if (item.especial === "finanzas") return permisosFinanzas.acceso && !permisosFinanzas.error;
     if (item.especial === "coberturas") return puedeVer("casos_operar") || (!permisosFinanzas.error && (permisosFinanzas.acceso || permisosFinanzas.tiene("resolver_cobertura")));
@@ -560,6 +560,8 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           <span className="min-w-0"><span className="block truncate font-semibold">{institucion?.nombre || "Institución"}</span><span className="block truncate text-texto-suave">{institucion?.tipo || "Institución"}</span></span>
           {puedeCambiar && <Icon name="chevronRight" size={13} className="rotate-90" />}
         </button>}
+        {/* «Ver como»: solo el superusuario, simule o no, y con el menú expandido. */}
+        {!colapsado && (user?.is_superuser || simulacion) && ambitoActual && <SelectorSimulacion ambito={ambitoActual} />}
         {/* Volver al directorio (super admin) / rol del usuario (no-super) — solo expandido */}
         {!colapsado && !esPlataforma && (
           <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid var(--color-division)` }}>
@@ -573,16 +575,6 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               >
                 <Icon name="back" size={14} /> Volver al directorio
               </button>
-              {institucion && <details className="mt-2 text-xs text-texto-suave">
-                <summary className="cursor-pointer font-semibold">Ver como: {VISTA_LABEL[vista] || vista}</summary>
-                <label className="mt-2 block">
-                  <span className="sr-only">Vista previa del menú</span>
-                  <select value={vista} onChange={(e) => setVista(e.target.value)} className="h-8 w-full rounded-md border border-campo-borde bg-superficie px-2 text-xs text-texto">
-                    {Object.entries(VISTA_LABEL).map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}
-                  </select>
-                </label>
-                <p className="mt-1 text-xs">Vista previa del menú; los permisos del servidor no cambian.</p>
-              </details>}
               </>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--color-texto-tenue)", padding: "4px 2px" }}>
@@ -708,6 +700,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
       </aside>
 
       <main className="flex h-screen min-w-0 flex-1 flex-col">
+        <BannerSimulacion />
         <TopBar onAbrirMenu={() => setCajon(true)}
           titulo={esPlataforma ? (location.pathname.startsWith("/financiadores") ? "Financiadores" : ({ usuarios: "Usuarios", financiadores: "Financiadores" })[new URLSearchParams(location.search).get("vista")] || "Instituciones") : financiador?.titulo}
           contexto={esPlataforma ? "Plataforma" : esFinanciador ? financiador.nombre : institucion?.nombre || "Institución"}
