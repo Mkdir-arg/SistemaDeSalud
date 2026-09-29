@@ -4,7 +4,7 @@ import { api } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 import { useInstitucion } from "./auth/InstitutionContext";
 import { Shell } from "./components/Shell";
-import { Card, Spinner } from "./components/ui";
+import { Button, Card, Spinner } from "./components/ui";
 import { EstadoError } from "./components/ui/estados";
 import { useTemaDeRuta } from "./lib/tema";
 
@@ -44,12 +44,14 @@ const PortalFinanciadores = lazy(() => import("./pages/financiadores/PortalFinan
 const CoberturasHospital = lazy(() => import("./pages/financiadores/CoberturasHospital"));
 const ActivarFinanciador = lazy(() => import("./pages/financiadores/ActivarFinanciador"));
 
-// Entrada después del login: el super admin ve el directorio; el resto entra a
-// su institución. Vive en /directorio porque / es la landing pública.
+// Entrada después del login: el super admin ve el directorio; quien tiene una
+// institución entra directo y quien tiene varias elige. Vive en /directorio
+// porque / es la landing pública.
 function Entrada() {
   const { user } = useAuth();
   const { institucion, setInstitucion } = useInstitucion();
   const [estado, setEstado] = useState("cargando");
+  const [opciones, setOpciones] = useState([]);
   // A dónde iba antes de pasar por acá (lo deja `Protected`). Sin esto, entrar
   // por un link a un caso terminaba siempre en Inicio.
   const destino = useLocation().state?.desde;
@@ -67,9 +69,13 @@ function Entrada() {
       try {
       const d = await api.get("/instituciones/");
       if (!activo) return;
+      // El servidor ya filtra: solo vienen las instituciones autorizadas.
       const lista = d.results || d;
-      if (lista[0]) {
-        setInstitucion(lista[0]); // entra a su institución automáticamente
+      if (lista.length === 1) {
+        setInstitucion(lista[0]);
+      } else if (lista.length > 1) {
+        setOpciones(lista);
+        setEstado("elegir");
       } else {
         setEstado(user?.financiadores?.length ? "financiadores" : "sin-institucion");
       }
@@ -78,15 +84,40 @@ function Entrada() {
       }
     })();
     return () => { activo = false; };
-  }, [user, institucion, setInstitucion]);
+    // `setInstitucion` cambia de identidad en cada render: con él en la lista,
+    // guardar las opciones volvería a disparar la consulta sin fin.
+  }, [user, institucion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (institucion) return <Navigate to={destino || "/inicio"} replace />;
   if (estado === "directorio") return <Directorio />;
+  if (estado === "elegir") return <ElegirInstitucion opciones={opciones} onElegir={setInstitucion} />;
   if (estado === "financiadores") return <Navigate to="/financiadores" replace />;
   if (estado === "error") return <EstadoError error={new Error("No se pudieron consultar tus instituciones.")} onReintentar={() => window.location.reload()} />;
   if (estado === "sin-institucion")
     return <div style={{ padding: 48, textAlign: "center", color: "var(--color-texto-suave)" }}>No tenés ninguna institución asignada. Pedile a un administrador que te dé acceso.</div>;
   return <Spinner label="Cargando…" />;
+}
+
+function ElegirInstitucion({ opciones, onElegir }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-fondo px-5 py-12 text-texto">
+      <Card className="w-full max-w-[28rem] p-6 shadow-card">
+        <h1 className="text-xl font-bold tracking-tight">Elegí una institución</h1>
+        <p className="mt-1 text-sm text-texto-suave">Tu cuenta tiene acceso a {opciones.length} instituciones. Podés cambiarla después desde el menú.</p>
+        <ul className="mt-5 space-y-2">
+          {opciones.map((inst) => (
+            <li key={inst.id} className="flex items-center justify-between gap-3 rounded-md border border-borde bg-superficie-2 px-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">{inst.nombre}</span>
+                <span className="block truncate text-xs text-texto-suave">{inst.tipo || "Institución"}</span>
+              </span>
+              <Button size="sm" onClick={() => onElegir(inst)} aria-label={`Ingresar a ${inst.nombre}`}>Ingresar</Button>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </main>
+  );
 }
 
 // Pantalla de inicio según el rol: el operador puro (administrativo/médico) cae
