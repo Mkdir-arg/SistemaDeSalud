@@ -63,7 +63,7 @@ entorno defina `DEMO_PASSWORD`.
 | Para mostrar | Usuario | Rol |
 |---|---|---|
 | Plataforma completa, editor de flujos, todo | `admin@salud.local` / `demo1234` | superusuario |
-| Quien recibe la demo: todo sin «Acceso denegado» y su propia institución por configurar | `comprador@salud.local` | todos (ver `entornos/README.md`) |
+| Quien recibe la demo: todo sin «Acceso denegado» y su propia institución por configurar | `test@salud.local` | todos (ver `entornos/README.md`) |
 | Gobierno estatal: alta de efectores y redes, directorio | `plataforma@salud.local` | plataforma |
 | Auditoría de accesos con alcance estatal | `auditor@salud.local` | auditor |
 | Administración de la institución, usuarios y estructura | `admin.central@hospital.gob.ar` | admin |

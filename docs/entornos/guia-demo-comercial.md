@@ -74,7 +74,7 @@ pestañas normales comparten la sesión.
 | Perfil | Usuario |
 |---|---|
 | Superusuario / plataforma completa | `admin@salud.local` / `demo1234` |
-| **Quien recibe la demo:** todos los roles, finanzas de Los Aromos, portal de Mutual del Valle y Hospital Piloto por configurar | `comprador@salud.local` |
+| **Quien recibe la demo:** todos los roles, finanzas de Los Aromos, portal de Mutual del Valle y Hospital Piloto por configurar | `test@salud.local` |
 | Gobierno estatal: efectores y redes | `plataforma@salud.local` |
 | Auditoría con alcance estatal | `auditor@salud.local` |
 | Administración de la institución | `admin.central@hospital.gob.ar` |

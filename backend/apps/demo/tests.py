@@ -204,7 +204,7 @@ class CargaCompletaTests(TransactionTestCase):
 
     def _verificar_comprador(self):
         """Quien recibe la demo entra a todo y tiene su propia institución por configurar."""
-        comprador = Usuario.objects.get(email="comprador@salud.local")
+        comprador = Usuario.objects.get(email="test@salud.local")
         roles = set(Membresia.objects.filter(usuario=comprador, institucion__nombre="Hospital Central")
                     .values_list("rol", flat=True))
         self.assertEqual(roles, set(Membresia.Rol.values))
