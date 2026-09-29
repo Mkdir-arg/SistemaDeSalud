@@ -24,12 +24,15 @@ from apps.finanzas.permisos import alcance_financiero_q, tiene_concesion_financi
 from apps.financiadores import models as fin
 from apps.financiadores.autorizaciones import casos_permitidos
 from apps.instituciones.models import Institucion
+from apps.instituciones.puesta_en_marcha import pasos as pasos_de_puesta_en_marcha
 from apps.red.models import Traslado
 
 R = Membresia.Rol
 # Roles que no operan: su «trabajo» es consultar.
 ROLES_DE_CONSULTA = {R.PLATAFORMA, R.AUDITOR, R.REPORTES, R.CONFIGURADOR}
 ROLES_CLINICOS = {R.MEDICO, R.ENFERMERIA, R.JEFE_AREA, R.ADMINISTRATIVO, R.ADMIN_INSTITUCION}
+# Quién completa la puesta en marcha de una institución en alta.
+CONFIGURAN_INSTITUCION = {R.ADMIN_INSTITUCION, R.CONFIGURADOR}
 # Quién decide un traslado entrante y quién despacha uno saliente.
 RESPONDEN_TRASLADOS = {R.ADMIN_INSTITUCION, R.JEFE_AREA}
 DESPACHAN_TRASLADOS = {R.ADMIN_INSTITUCION, R.JEFE_AREA, R.ADMINISTRATIVO}
@@ -116,6 +119,10 @@ def _hospital(usuario, membresia):
         t["instituciones"] = Institucion.objects.count()
     if membresia.rol == R.REPORTES:
         t["casos activos en la institución"] = _activos().filter(institucion=inst).count()
+    if membresia.rol in CONFIGURAN_INSTITUCION and inst.estado == Institucion.Estado.EN_ALTA:
+        # Lo que la guía de Inicio le pide completar antes de operar.
+        t["pasos de puesta en marcha pendientes"] = sum(
+            not hecho for hecho in pasos_de_puesta_en_marcha(inst).values())
     if membresia.rol == R.CONFIGURADOR:
         t["flujos publicados"] = inst.flujos.filter(versiones__estado="publicada").distinct().count()
     return {k: v for k, v in t.items() if v}
