@@ -17,9 +17,10 @@
       // turno noche ese fogonazo blanco es exactamente lo que se quiere evitar.
       (function () {
         try {
-          // Llamados y la maqueta clínica usan tema claro. El login sigue
-          // la preferencia, como el resto de la aplicación.
-          if (location.pathname.startsWith("/pantalla/") || location.pathname === "/demo/app-clinica") return;
+          // Llamados y la app clínica de demostración usan tema claro. El login
+          // sigue la preferencia, como el resto de la aplicación.
+          var ruta = location.pathname.replace(/\/+$/, "");
+          if (ruta.indexOf("/pantalla/") === 0 || ruta === "/demo/app-clinica" || ruta.indexOf("/demo/app-clinica/") === 0) return;
           var t = localStorage.getItem("salud.tema");
           var oscuro = t === "oscuro" || (!t && matchMedia("(prefers-color-scheme: dark)").matches);
           if (oscuro) document.documentElement.classList.add("dark");

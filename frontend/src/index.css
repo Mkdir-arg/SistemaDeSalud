@@ -47,8 +47,6 @@
     --color-accent-100: #E0CCF7;
     --color-accent-fuerte: #7031C7;
   }
-  .clinica-phone { width: min(100%, 390px); min-height: 844px; }
-  .clinica-llamado { background: linear-gradient(to top right, #7031C7, #007A70); }
 }
 
 /* Marca blanca: los tokens viven en :root, así que una institución puede pisar su
