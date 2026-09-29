@@ -68,7 +68,7 @@ export function Horario() {
         <h3 className="text-sm font-semibold">{p.nombre}</h3>
         <p className="text-xs text-texto-suave">Consultorio {p.consultorio}</p>
         {horas.length ? <div className="mt-3 flex flex-wrap gap-2">{horas.map((hora) => {
-          const activa = elegido && borrador.hora === hora && borrador.profesionalId === p.id;
+          const activa = Boolean(elegido && borrador.hora === hora && borrador.profesionalId === p.id);
           return <button type="button" key={hora} aria-pressed={activa} onClick={() => acciones.elegir({ dia, hora, profesionalId: p.id })}
             className={`rounded-pill border px-3.5 py-2 text-xs font-semibold ${activa ? "border-accent bg-accent-fuerte text-white" : "border-borde hover:border-accent"}`}>{hora}</button>;
         })}</div> : <p className="mt-3 text-xs text-texto-suave">Sin horarios libres este día.</p>}

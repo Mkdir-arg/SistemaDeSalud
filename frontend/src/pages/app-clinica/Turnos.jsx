@@ -27,7 +27,7 @@ export function agregarAlCalendario(t) {
   const url = URL.createObjectURL(new Blob([evento], { type: "text/calendar;charset=utf-8" }));
   const enlace = document.createElement("a");
   enlace.href = url;
-  enlace.download = `turno-${t.especialidad.toLowerCase().replace(/\s+/g, "-")}-${t.dia}.ics`;
+  enlace.download = `turno-${t.especialidad.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, "-")}-${t.dia}.ics`;
   enlace.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
