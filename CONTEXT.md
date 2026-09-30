@@ -105,6 +105,10 @@ Persona de Finanzas designada por un hospital, con autorización expresa para de
 **Resolución de un saldo pendiente**:
 Decisión registrada que cierra la revisión porque el hospital asume el importe o porque el paciente o financiador acepta expresamente pagarlo, con respaldo para la prestación y el importe. Conserva el historial; el cobro se registra cuando ocurre.
 
+**Solicitud manual de autorización**:
+Pedido de autorización previa que el financiador registra a partir de un requerimiento directo, sin que lo origine un caso de un hospital. Se refiere a una prestación futura en una institución con convenio vigente y, una vez aprobada, se usa como cualquier otra autorización cuando esa institución realiza la prestación. El propio financiador actúa como solicitante y la institución la conoce recién al atender. No documenta autorizaciones de prestaciones ya realizadas.
+_Evitar_: Autorización retroactiva.
+
 **Cargo**:
 Importe atribuido a un responsable de pago por una prestación realizada.
 _Evitar_: Cobro, costo interno.
