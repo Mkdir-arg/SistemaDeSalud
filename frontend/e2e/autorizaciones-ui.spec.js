@@ -90,7 +90,7 @@ test("bandeja en sidebar conserva filtros y paginación y descarta otro financia
   await expect(page.getByRole("navigation", { name: "Menú del financiador" }).getByRole("link", { name: "Autorizaciones", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("30 solicitudes · Página 2")).toBeVisible();
   await page.getByRole("combobox", { name: "Estado de autorización", exact: true }).selectOption("pendiente");
-  await page.getByRole("combobox", { name: "Hospital solicitante", exact: true }).selectOption("2");
+  await page.getByRole("combobox", { name: "Institución", exact: true }).selectOption("2");
   await page.getByRole("combobox", { name: "Urgencia", exact: true }).selectOption("true");
   await page.getByLabel("Solicitada desde", { exact: true }).fill("2026-09-01");
   await page.getByRole("button", { name: "Aplicar filtros", exact: true }).click();
