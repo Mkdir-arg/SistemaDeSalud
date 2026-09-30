@@ -36,6 +36,16 @@
   .dark .presentacion-titulo-gradiente { background-image: linear-gradient(90deg, #B778F5, #62C9D4); }
   .presentacion-beneficio { background: linear-gradient(125deg, var(--color-accent-50), color-mix(in srgb, var(--color-brand-teal) 10%, var(--color-superficie))); }
   .dark .presentacion-beneficio { background: linear-gradient(125deg, #3A1670, color-mix(in srgb, var(--color-brand-teal) 22%, var(--color-fondo))); }
+  @media (prefers-reduced-motion: no-preference) {
+    .es-visible .presentacion-barra { animation: presentacion-crecer 540ms ease-out calc(var(--paso, 0) * 55ms) both; }
+    .es-visible .presentacion-cama { animation: presentacion-llenar 320ms ease-out calc(var(--paso, 0) * 18ms) both; }
+    .es-visible .presentacion-tubo { animation: presentacion-subir 550ms ease-out calc(var(--paso, 0) * 65ms) both; }
+    .es-visible .presentacion-aparece { animation: presentacion-aparecer 440ms ease-out calc(var(--paso, 0) * 95ms) both; }
+    @keyframes presentacion-crecer { from { transform: scaleX(0); } }
+    @keyframes presentacion-llenar { from { background-color: var(--color-superficie-2); opacity: .5; } }
+    @keyframes presentacion-subir { from { transform: scaleY(0); } }
+    @keyframes presentacion-aparecer { from { opacity: 0; transform: translateY(5px); } }
+  }
   .login-main {
     background: radial-gradient(ellipse 70% 58% at 50% 46%, color-mix(in srgb, var(--color-accent) 9%, var(--color-fondo)), var(--color-fondo) 75%);
   }
