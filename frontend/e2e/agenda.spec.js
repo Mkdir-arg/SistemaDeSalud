@@ -66,6 +66,18 @@ test.describe("Agenda", () => {
     await comprobarBarra(page, "Semana");
   });
 
+  test("«Hoy» es primario sólo mientras la fecha elegida es hoy", async ({ page }) => {
+    await abrir(page);
+    const hoy = page.getByRole("button", { name: "Hoy", exact: true });
+    await expect(hoy).toHaveClass(/hen-cta/);
+    // En Semana también cuenta la fecha, no la semana: pasar a la siguiente
+    // deja «Hoy» como el botón para volver.
+    await page.getByRole("button", { name: "Semana siguiente" }).click();
+    await expect(hoy).not.toHaveClass(/hen-cta/);
+    await hoy.click();
+    await expect(hoy).toHaveClass(/hen-cta/);
+  });
+
   test("agenda, vista y fecha viajan en la URL y sobreviven a recargar", async ({ page }) => {
     await abrir(page);
     const [agenda] = await agendasDemo(page);
@@ -141,6 +153,9 @@ test.describe("Agenda", () => {
         (t) =>
           String(t.agenda) !== String(agendaVisible) &&
           ["reservado", "confirmado"].includes(t.estado) &&
+          // `desde` filtra por fecha: un turno de hoy que ya pasó ofrece
+          // «Registrar atención realizada» y no «Llegó».
+          new Date(t.inicio) > new Date() &&
           t.documento,
       );
     }, visible);

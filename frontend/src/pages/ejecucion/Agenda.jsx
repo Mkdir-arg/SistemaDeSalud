@@ -311,17 +311,32 @@ export default function Agenda() {
       {/* Semana y Día comparten navegación, pero sólo la grilla diaria opera
           turnos. Mantener la barra visible evita ocultar el salto de fecha. */}
       <section className="flex flex-wrap items-center gap-2" aria-label="Navegación de la agenda">
-        <div className="flex rounded-md border border-borde" role="group" aria-label="Vista de la agenda">
+        {/* Un solo control con el relleno de marca que se desliza a la vista
+            elegida: dos botones sueltos se leían como dos acciones distintas. */}
+        <div className="relative inline-grid grid-cols-2 rounded-md border border-accent-100 bg-superficie p-0.5"
+          role="group" aria-label="Vista de la agenda">
+          <span aria-hidden="true" className={cn(
+            "hen-cta absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[5px] transition-transform duration-200 ease-out",
+            vista === "dia" && "translate-x-full",
+          )} />
           {[["semana", "Semana"], ["dia", "Día"]].map(([valor, etiqueta]) => (
-            <Button key={valor} size="sm" variant={vista === valor ? "primary" : "secondary"}
-              aria-pressed={vista === valor} onClick={() => cambiarUrl({ vista: valor })}>
+            <button key={valor} type="button" aria-pressed={vista === valor}
+              onClick={() => cambiarUrl({ vista: valor })}
+              className={cn(
+                "relative h-8 rounded-[5px] px-3 text-md font-medium transition-colors duration-200",
+                vista === valor ? "text-sobre-accent" : "text-accent hover:bg-accent-50",
+              )}>
               {etiqueta}
-            </Button>
+            </button>
           ))}
         </div>
         <Input type="date" value={fecha} onChange={(e) => irAFecha(e.target.value)}
           aria-label="Fecha de la agenda" className="w-full sm:w-auto" />
-        <Button size="sm" variant="secondary" onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
+        {/* Primario mientras la fecha elegida es hoy: dice de un vistazo si lo
+            que se mira es el día de hoy, y cuando no lo es vuelve a ser el botón
+            para regresar. */}
+        <Button size="sm" variant={fecha === iso(new Date()) ? "primary" : "secondary"}
+          onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
         <Button size="sm" variant="secondary" onClick={() => mover(vista === "semana" ? -7 : -1)}>
           <Icon name="chevronLeft" size={14} /> {vista === "semana" ? "Semana anterior" : "Día anterior"}
         </Button>
