@@ -119,7 +119,8 @@ Qué carga, por paso:
 | Paso | Qué deja |
 |---|---|
 | `seed_los_aromos` | Finanzas y costos de Los Aromos: gastos, repartos, cuentas y pagos de 12 meses; pendientes de aprobación en el mes en curso |
-| `seed_financiadores` | Tres financiadores (uno con convenio propuesto sin aceptar), padrón con bajas, 12 meses de atenciones con copago, autorizaciones pendientes, observada, aprobadas y rechazadas |
+| `seed_finanzas_central` | El mismo año económico, dentro de Hospital Central, en tres servicios ambulatorios propios (Consultorios de clínica médica, de cardiología y Radiología ambulatoria). Lo administran `admin.central@` y `config.central@` |
+| `seed_financiadores` | Sobre **Hospital Central**, en su área *Consultorios externos*: tres financiadores (uno con convenio propuesto sin aceptar), padrón con bajas, 12 meses de atenciones con copago, autorizaciones pendientes, observada, aprobadas y rechazadas |
 | `seed_guardia` | Estructura de Hospital Central: áreas, staff, grupos, flujos, farmacia, agendas |
 | `seed_volumen` | 365 días de guardia, especialidades, estudios e internación; turnos, bloqueo de agenda y pantallas de llamados |
 | `seed_roles` | Plataforma, auditoría, reportes y administración de Hospital Central |
@@ -139,8 +140,9 @@ que evalúa el sistema lo pruebe sola, sin chocar con «Acceso denegado»:
   equipos. Encuentra casos por tomar, pacientes en fila, turnos por confirmar,
   traslados por responder y notificaciones sin leer. Es el mismo trabajo que el
   resto del personal: si lo resuelve él, se lo saca a ellos.
-- En **Los Aromos** administra con todos los permisos de finanzas: gastos por
-  aprobar, saldos de cobertura y un convenio por aceptar.
+- En **Hospital Central** también administra las finanzas y las coberturas:
+  gastos por aprobar, saldos de cobertura y un convenio por aceptar. En **Los
+  Aromos** tiene los mismos permisos de finanzas.
 - En el **portal de Mutual del Valle** es administrador y responde
   autorizaciones.
 - **Hospital Piloto** es suyo y está en puesta en marcha. Tiene áreas y
@@ -200,9 +202,14 @@ La demo del 01/10 es a las 9: la idea es **no tener que cargar nada esa mañana.
 
 ## Decisiones de esta preparación
 
-**Dos instituciones en el mismo entorno demo.** Conviven Los Aromos (finanzas
-profundas, un año de historia) y Hospital Central (operación clínica densa), y la
-demo puede mostrar la plataforma gobernando dos efectores con madurez distinta.
+**Hospital Central tiene todo.** Desde el 30/09 tiene la operación clínica,
+el año económico de Los Aromos en tres servicios ambulatorios propios
+(`seed_finanzas_central`) y el circuito de financiadores. Así se recorre el
+sistema entero sin cambiar de institución. Los Aromos conserva su escenario de
+finanzas, que es el que verifican `guia-los-aromos.md` y sus tests. Los servicios
+de Central son áreas nuevas por la misma razón que *Consultorios externos* (ver
+abajo): en las áreas de la guardia, el reparto se mezclaría con cientos de
+atenciones de otro circuito.
 
 **El circuito de financiadores entra en un área nueva.** «Consultorios externos»
 la crea `seed_financiadores`. El reparto distribuye cada gasto entre las
