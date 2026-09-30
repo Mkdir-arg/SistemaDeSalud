@@ -259,6 +259,12 @@ class AccesoFinanciero(models.Model):
     periodo_economico = models.DateField(null=True)
     resultados = models.PositiveIntegerField(default=0)
     registrado = models.DateTimeField(auto_now_add=True)
+    # Si la lectura ocurrió simulando un perfil: `usuario` es el superusuario y
+    # la sesión conserva la cuenta, el perfil y el ámbito simulados.
+    simulacion = models.ForeignKey(
+        "simulacion.SesionSimulacion", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="accesos_financieros",
+    )
 
     class Meta:
         ordering = ["-registrado", "-id"]

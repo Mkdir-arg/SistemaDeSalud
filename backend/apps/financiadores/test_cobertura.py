@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from threading import Barrier
+from types import SimpleNamespace
 from unittest import skipUnless
 from unittest.mock import patch
 from uuid import uuid4
@@ -21,6 +22,7 @@ from apps.finanzas.test_cobros import CobrosSetup
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
+from apps.simulacion import contexto
 
 from .cobertura import cantidades_periodo, cotizacion, evaluar, liberar, periodo, reservar, seleccionar_afiliacion
 from .cobros import completar_pendiente, resolver_saldo
@@ -282,6 +284,15 @@ class ReservasYCargosTests(CoberturaSetup, TestCase):
         self.assertEqual(ObligacionFinanciera.objects.filter(hecho=hecho).count(), 2)
         self.assertFalse(PendienteCobro.objects.filter(hecho=hecho).exists())
 
+    def test_aceptacion_json_atribuye_al_superusuario_que_simula(self):
+        root = Usuario.objects.create_superuser("root-cobertura@example.test", "x")
+        contexto.activar(SimpleNamespace(cuenta=self.admin), root)
+        try:
+            reserva = self.reservar(acepta=True)
+        finally:
+            contexto.limpiar()
+        self.assertEqual(reserva.aceptacion["usuario"], root.pk)
+
     def test_sin_aceptacion_solo_financiador_tiene_deuda_y_resto_queda_pendiente(self):
         reserva = self.reservar()
         self.atencion()
@@ -537,6 +548,19 @@ class CompletarPendientesTests(CoberturaSetup, TestCase):
         self.assertEqual(distribucion.importe_paciente, Decimal("20"))
         self.assertEqual(distribucion.estado, "pendiente")
         self.assertIsNone(distribucion.obligacion_paciente_id)
+
+    def test_revision_json_atribuye_al_superusuario_que_simula(self):
+        reserva = self.pendiente_arancel()
+        self.conceder("resolver_cobertura", area=self.area)
+        self.conceder("configurar_cobros")
+        root = Usuario.objects.create_superuser("root-revision@example.test", "x")
+        contexto.activar(SimpleNamespace(cuenta=self.usuario), root)
+        try:
+            completar_pendiente(reserva=reserva, usuario=self.usuario, motivo="Arancel comprobado", arancel=Decimal("100"))
+        finally:
+            contexto.limpiar()
+        reserva.refresh_from_db()
+        self.assertEqual(reserva.evaluacion["revision"]["usuario"], root.pk)
 
     def test_completar_no_aplica_regla_creada_despues_del_hecho(self):
         reserva = self.pendiente_arancel()

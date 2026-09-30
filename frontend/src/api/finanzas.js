@@ -8,7 +8,7 @@ const ACCIONES_GASTOS = ["ver_costos", "configurar_componentes", "ver_gastos", "
 
 export function usePermisosFinanzas({ enabled = true } = {}) {
   const { user } = useAuth();
-  const { institucion, vista } = useInstitucion();
+  const { institucion } = useInstitucion();
   const consulta = useQuery({
     queryKey: ["permisos-finanzas", user?.id],
     queryFn: () => api.get("/concesiones-financieras/mias/"),
@@ -16,7 +16,8 @@ export function usePermisosFinanzas({ enabled = true } = {}) {
     staleTime: 0,
     gcTime: 0,
   });
-  const superusuario = consulta.data?.superusuario && vista === "sistema";
+  // Durante una simulación el servidor responde por la cuenta de referencia.
+  const superusuario = Boolean(consulta.data?.superusuario);
   const concesiones = (consulta.data?.concesiones || []).filter((c) => c.institucion === institucion?.id);
   const tiene = (accion) => Boolean(superusuario || concesiones.some((c) => c.accion === accion));
   const permite = (accion, area, sensible = false, central = false) => Boolean(

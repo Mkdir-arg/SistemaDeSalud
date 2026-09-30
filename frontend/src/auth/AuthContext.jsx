@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, tokens } from "../api/client";
+import { ApiError, EVENTO_SIMULACION_TERMINADA, api, simulacion, tokens } from "../api/client";
 
 const AuthContext = createContext(null);
 const minutosConfigurados = Number(import.meta.env.VITE_IDLE_LOCK_MINUTES);
@@ -35,6 +35,9 @@ async function recuperarUsuario(intentos = 3) {
     try {
       return { user: await api.get("/usuarios/me/") };
     } catch (e) {
+      // Una simulación vencida no es una credencial rechazada: el cliente ya la
+      // abandonó y se vuelve a preguntar como el superusuario.
+      if (e instanceof ApiError && e.data?.simulacion === "rechazada" && i < intentos) continue;
       const credencialRechazada = e instanceof ApiError && (e.status === 401 || e.status === 403);
       if (credencialRechazada) return { user: null };
       if (i >= intentos - 1) return { user: null, error: e };
@@ -51,6 +54,8 @@ export function AuthProvider({ children }) {
   const [intento, setIntento] = useState(0); // lo incrementa `reintentar`
   const [locked, setLocked] = useState(false);
   const [aviso, setAviso] = useState(0);
+  // Motivo por el que el servidor cortó una simulación, para decirlo en pantalla.
+  const [avisoSimulacion, setAvisoSimulacion] = useState("");
   const ultimaActividad = useRef(Date.now());
   const ambitoAlBloquear = useRef(null);
   const bloqueando = useRef(false);
@@ -134,9 +139,63 @@ export function AuthProvider({ children }) {
     };
   }, [intento]);
 
+  // El servidor rechazó la simulación: se vuelve a la identidad real sin
+  // conservar nada de lo que se cargó como la cuenta simulada.
+  useEffect(() => {
+    const alTerminar = async (evento) => {
+      queryClient.clear();
+      setAvisoSimulacion(evento.detail || "La simulación terminó.");
+      try {
+        setUser(await api.get("/usuarios/me/"));
+      } catch {
+        /* el pedido siguiente vuelve a intentarlo */
+      }
+    };
+    window.addEventListener(EVENTO_SIMULACION_TERMINADA, alTerminar);
+    return () => window.removeEventListener(EVENTO_SIMULACION_TERMINADA, alTerminar);
+  }, [queryClient]);
+
   const reintentar = () => setIntento((n) => n + 1);
 
+  /** Pasa a operar con la cuenta de referencia del perfil elegido. */
+  async function iniciarSimulacion(destino) {
+    const sesion = await api.real.post("/simulaciones/", destino);
+    simulacion.set({ id: sesion.id });
+    queryClient.clear();
+    setAvisoSimulacion("");
+    try {
+      const me = await api.get("/usuarios/me/");
+      setUser(me);
+      return me;
+    } catch (error) {
+      simulacion.clear();
+      api.real.post(`/simulaciones/${sesion.id}/finalizar/`, {}).catch(() => {});
+      setUser(await api.get("/usuarios/me/"));
+      throw error;
+    }
+  }
+
+  /** Vuelve a Sistema: la identidad y la vista completas del superusuario. */
+  async function salirDeSimulacion(motivo = "salida") {
+    const actual = simulacion.get();
+    simulacion.clear();
+    queryClient.clear();
+    setAvisoSimulacion("");
+    if (actual?.id) {
+      try {
+        await api.real.post(`/simulaciones/${actual.id}/finalizar/`, { motivo });
+      } catch {
+        /* el servidor la vence sola; la pestaña ya no la usa */
+      }
+    }
+    const me = await api.get("/usuarios/me/");
+    setUser(me);
+    return me;
+  }
+
   async function login(email, password, opciones) {
+    // Una sesión nueva nunca hereda la simulación de otra.
+    simulacion.clear();
     await api.login(email, password, opciones);
     const me = await api.get("/usuarios/me/");
     setError(null);
@@ -146,6 +205,11 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    const actual = simulacion.get();
+    // Se avisa antes de borrar el token, que es con lo que se autoriza el cierre.
+    if (actual?.id) api.real.post(`/simulaciones/${actual.id}/finalizar/`, { motivo: "cierre" }).catch(() => {});
+    simulacion.clear();
+    setAvisoSimulacion("");
     api.logout();
     if (window.BroadcastChannel) {
       const canal = new BroadcastChannel("salud-sesion");
@@ -186,7 +250,12 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, reintentar, login, logout }}>
+    <AuthContext.Provider value={{
+      user, loading, error, reintentar, login, logout,
+      simulacion: user?.simulacion || null,
+      iniciarSimulacion, salirDeSimulacion, avisoSimulacion,
+      descartarAvisoSimulacion: () => setAvisoSimulacion(""),
+    }}>
       <div aria-hidden={locked || undefined} inert={locked ? "" : undefined}
         style={locked ? { display: "none" } : undefined}>{children}</div>
       {locked && <PantallaBloqueada onDesbloquear={desbloquear} />}

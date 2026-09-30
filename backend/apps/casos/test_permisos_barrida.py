@@ -44,6 +44,10 @@ SIN_CAPACIDAD_A_PROPOSITO = {
     # Autorización administrativa: caso/hospital/área para solicitar, membresía
     # pagadora y designación explícita para resolver. Matriz HTTP en test_autorizaciones.
     "autorizaciones-cobertura",
+    # Simulación de perfiles: solo el superusuario (`SoloSuperusuario`). Ninguna
+    # capacidad de rol, ni `gobierno_plataforma`, debe habilitar operar con los
+    # permisos de otra cuenta. Matriz HTTP en apps.simulacion.tests.
+    "simulaciones",
 }
 
 # Finanzas no hereda escritura por rol clínico: combina concesión explícita,

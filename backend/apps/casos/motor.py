@@ -1338,12 +1338,15 @@ def agregar_receta(caso: Caso, detalle: str, autor=None):
 def agregar_estudio(caso: Caso, tipo: str, autor=None):
     """El médico o enfermería solicita un estudio (queda pendiente en la HC)."""
     from apps.registros.models import Estudio
+    from apps.simulacion.contexto import autor_real
 
     _exigir_clinico(caso, autor)
     hc = _hc_del_caso(caso)
+    # `Estudio.autor` es texto: `pre_save` no lo corrige si se simula un perfil.
+    firmante = autor_real(autor)
     e = Estudio.objects.create(
         historia=hc, tipo=tipo, fecha=timezone.now().date(),
-        autor=(autor.nombre_completo if (autor and autor.is_authenticated) else ""),
+        autor=(firmante.nombre_completo if (firmante and firmante.is_authenticated) else ""),
     )
     _registrar(caso, "Estudio solicitado", detalle=tipo, autor=autor, nodo=caso.nodo_actual)
     return e

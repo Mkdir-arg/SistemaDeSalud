@@ -31,7 +31,7 @@ Responsabilidades:
 
 - Administrar la plataforma completa.
 - Entrar a cualquier institucion.
-- Ver el sistema como rol operativo para probar experiencias.
+- Simular un perfil del backoffice con su cuenta de referencia para comprobar su experiencia y sus limites (ver §3.3).
 - Resolver soporte, configuracion inicial o contingencias de alto nivel.
 
 Alcance:
@@ -368,6 +368,29 @@ Un usuario de obra social **no tiene membresia institucional**. Tiene una `Membr
 Ademas, resolver autorizaciones exige una **designacion expresa** (`resuelve_autorizaciones`) sobre un rol `admin` u `operador`: ni ser administrador de la organizacion ni ser plataforma alcanza por si solo.
 
 Un usuario con varios ambitos elige una organizacion concreta, y cada consulta vuelve a verificar ese ambito en el servidor.
+
+### 3.3 Simulacion de perfiles ("Ver como")
+
+El superusuario puede operar HEN con los limites reales de un perfil. No es una vista previa: el backend autoriza y acota cada pedido con una **cuenta de referencia** preparada para ese perfil y ese ambito.
+
+| Ambito | Perfiles | Cuenta |
+|---|---|---|
+| Plataforma | `plataforma`, `auditor` | Una por perfil, anclada a una institucion (su alcance ya es global) |
+| Institucion | Los demas valores de `Membresia.Rol` | Una por perfil e institucion |
+| Financiador | Roles de `MembresiaFinanciador` | Una por perfil y organizacion |
+
+Reglas:
+
+- Solo un superusuario abre, cambia o cierra una simulacion. El servidor rechaza el encabezado `X-HEN-Simulacion` de cualquier otro usuario, y tambien en rutas que no autentican con la simulacion.
+- `request.user` es la cuenta de referencia: permisos, alcance, capacidades, concesiones financieras y organizacion son los suyos. `request.usuario_real` es el superusuario.
+- **Autoria:** los campos de autoria (`autor`, `creado_por`, `registrado_por`, `aprobado_por`, `AccesoClinico.usuario`...) quedan a nombre del superusuario. Los operativos (`Caso.asignado_a`, `Box.ocupado_por`, grupos) quedan en la cuenta, para que el recorrido del perfil funcione. La clasificacion vive en `backend/apps/simulacion/contexto.py`, y un test falla si aparece una FK a `Usuario` sin clasificar.
+- **Trazabilidad:** `SesionSimulacion` registra quien simula que, en que ambito y cuando termina. `OperacionSimulada` registra cada escritura, permitida o no. Si este registro falla, la escritura de base de datos se revierte y el pedido responde 503. `AccesoClinico` y `AccesoFinanciero` guardan la sesion junto al superusuario.
+- **Falla cerrada:** si la sesion termino o vencio (8 h), si la cuenta dejo de tener exactamente la membresia de su perfil, o si le faltan areas o grupos activos de sus pares, el pedido recibe 403 y el frontend vuelve a Sistema. Nunca se atiende con el acceso total del superusuario.
+- Las cuentas de referencia no inician sesion por su cuenta: tienen contrasena inutilizable, un correo en `referencia.hen.invalid`, y el login y el refresco de tokens las rechazan.
+- Los permisos financieros institucionales son las concesiones que tenga la cuenta, mas la herencia propia de `admin`. No se deducen del rol clinico.
+- Limite conocido: las acciones que exigen matricula (firmar en la historia clinica) se rechazan, como para cualquier profesional sin matricula. La cuenta no representa a una persona y no se le inventa una matricula.
+
+Las cuentas se preparan con `manage.py preparar_cuentas_referencia`, que es idempotente y apto para produccion (ver [`DESPLIEGUE.md`](DESPLIEGUE.md#preparar-las-cuentas-de-referencia)). Cada cuenta toma las areas y los grupos activos donde ya trabaja personal activo con ese rol; el comando solo agrega, nunca quita. Si los pares ganan areas o grupos nuevos, ese perfil deja de estar disponible hasta volver a prepararlo; `--verificar` tambien informa el desajuste. El operador de financiador queda designado para resolver autorizaciones; admin y auditor, no.
 
 ## 4. Matriz rol-capacidad
 
@@ -793,11 +816,13 @@ Fuente backend:
 - `backend/apps/finanzas/permisos.py`: `tiene_concesion_financiera`, `instituciones_admin_financiero` y el alcance por area y sensibilidad.
 - `backend/apps/financiadores/permisos.py`: `requerir_financiador`, `puede_resolver_autorizaciones` y `requerir_hospital`.
 - Viewsets: `capacidad_requerida`, `protege_lectura`, `capacidad_por_accion`.
+- `backend/apps/simulacion/`: identidad efectiva durante una simulacion (`autenticacion.py`), autoria (`contexto.py`) y catalogo de perfiles (`perfiles.py`).
 
 Fuente frontend:
 
 - `frontend/src/auth/InstitutionContext.jsx`: capacidades por rol para menu.
 - `frontend/src/components/Shell.jsx`: navegacion visible por capacidad.
+- `frontend/src/components/SimulacionPerfil.jsx`: selector "Ver como" e indicador de simulacion.
 - `frontend/src/App.jsx`: rutas protegidas.
 
 ## 11. Endpoints y capacidades principales

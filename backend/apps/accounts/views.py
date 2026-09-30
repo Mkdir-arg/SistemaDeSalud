@@ -125,8 +125,16 @@ class UsuarioViewSet(BaseModelViewSet):
 
     @action(detail=False, methods=["get"])
     def me(self, request):
-        """Datos del usuario autenticado."""
+        """Datos del usuario autenticado.
+
+        Durante una simulación son los de la cuenta de referencia, que es con la
+        que el frontend arma menús y rutas; `simulacion` dice quién la usa.
+        """
         data = self.get_serializer(request.user).data
+        sesion = getattr(request, "simulacion", None)
+        if sesion is not None:
+            from apps.simulacion.perfiles import datos_de_sesion
+            data["simulacion"] = datos_de_sesion(sesion)
         data["roles_por_institucion"] = roles_por_institucion_de(request.user)
         data["capacidades_por_institucion"] = capacidades_por_institucion_de(request.user)
         from apps.financiadores.models import MembresiaFinanciador

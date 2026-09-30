@@ -10,6 +10,8 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 
+from apps.simulacion.contexto import autor_real
+
 from .models import AjusteObligacion, ConcesionFinanciera, Gasto, MovimientoDinero, ObligacionFinanciera
 from .permisos import tiene_concesion_financiera
 
@@ -281,10 +283,12 @@ def _decidir_registro(registro, usuario, aprobar, motivo=""):
             return registro
         raise ValidationError("Esta operación ya fue resuelta. Los registros aprobados o rechazados no se reescriben.")
     campos = {"estado": destino}
+    # `update()` no pasa por `pre_save`: simulando un perfil, decide el superusuario.
+    autor = autor_real(usuario)
     if aprobar:
-        campos.update(aprobado_por=usuario, aprobado_en=timezone.now())
+        campos.update(aprobado_por=autor, aprobado_en=timezone.now())
     else:
-        campos.update(rechazado_por=usuario, rechazado_en=timezone.now(), motivo_rechazo=motivo)
+        campos.update(rechazado_por=autor, rechazado_en=timezone.now(), motivo_rechazo=motivo)
     # Única excepción acotada a la inmutabilidad: resolución auditada del pendiente.
     for nombre, valor in campos.items():
         setattr(registro, nombre, valor)

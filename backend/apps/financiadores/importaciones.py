@@ -21,6 +21,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from apps.registros.models import normalizar_documento
+from apps.simulacion.contexto import autor_real
 from .models import Afiliado, Importacion, Plan
 from .permisos import requerir_financiador
 from .services import catalogo_financiador, registrar_afiliado, registrar_consumo_externo, validar_consumo_externo
@@ -396,7 +397,7 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
                             resultado = registrar_afiliado(financiador=lote.financiador, usuario=usuario, **entrada)
                         else:
                             resultado = registrar_consumo_externo(usuario=usuario, **entrada)
-                    fila.update(estado="aplicada", errores=[], resultado_id=resultado.pk, motivo_duplicado=motivo, aplicado_por=usuario.pk, aplicado_en=timezone.now().isoformat())
+                    fila.update(estado="aplicada", errores=[], resultado_id=resultado.pk, motivo_duplicado=motivo, aplicado_por=autor_real(usuario).pk, aplicado_en=timezone.now().isoformat())
                 except ValidationError as exc:
                     fila.update(estado="revision" if _es_duplicado(exc) else "rechazada", errores=_mensajes(exc))
                 lote.resumen = _resumen(lote.filas)

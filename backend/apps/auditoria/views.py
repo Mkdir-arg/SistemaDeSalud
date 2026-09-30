@@ -83,6 +83,7 @@ class AccesoClinicoSerializer(serializers.ModelSerializer):
     institucion_nombre = serializers.CharField(
         source="institucion.nombre", read_only=True, default=None
     )
+    simulacion = serializers.SerializerMethodField()
 
     class Meta:
         model = AccesoClinico
@@ -90,11 +91,25 @@ class AccesoClinicoSerializer(serializers.ModelSerializer):
             "id", "usuario", "usuario_nombre", "usuario_email", "ciudadano", "paciente",
             "documento", "institucion", "institucion_nombre", "tipo", "tipo_display",
             "recurso", "objeto_id", "detalle", "motivo", "variante", "resultados", "ip", "momento",
+            "simulacion",
         ]
         read_only_fields = fields
 
     def get_usuario_nombre(self, obj) -> str | None:
         return obj.usuario.nombre_completo if obj.usuario_id else None
+
+    def get_simulacion(self, obj) -> dict | None:
+        """Perfil y cuenta simulados, si el acceso ocurrió en una simulación."""
+        sesion = obj.simulacion
+        if sesion is None:
+            return None
+        from apps.simulacion.perfiles import etiqueta
+
+        return {
+            "perfil": etiqueta(sesion.ambito, sesion.rol),
+            "cuenta": sesion.cuenta.email,
+            "ambito": sesion.ambito,
+        }
 
     def get_paciente(self, obj) -> str | None:
         c = obj.ciudadano
@@ -112,7 +127,9 @@ class AccesoClinicoViewSet(
     para auditar nada. Lo escribe el sistema al leer, y nadie más.
     """
 
-    queryset = AccesoClinico.objects.select_related("usuario", "ciudadano", "institucion")
+    queryset = AccesoClinico.objects.select_related(
+        "usuario", "ciudadano", "institucion", "simulacion__cuenta",
+    )
     serializer_class = AccesoClinicoSerializer
     permission_classes = [IsAuthenticated, PuedeAuditar]
     filter_backends = [OrdenEstable, SearchFilter]

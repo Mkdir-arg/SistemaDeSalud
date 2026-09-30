@@ -4,8 +4,9 @@ import { useAuth } from "./AuthContext";
 const InstitutionContext = createContext(null);
 const KEY = "salud.institucion";
 
-// Solo aplica al super admin cuando usa "ver como". Para usuarios reales, las
-// capacidades vienen de /usuarios/me/ y el frontend no replica la matriz de roles.
+// Solo aplica al superusuario, que no tiene membresías. El resto, incluida una
+// cuenta de referencia durante una simulación, recibe sus capacidades de
+// /usuarios/me/: el frontend no replica la matriz de roles.
 const CAPS_SISTEMA = [
   "config", "diseno", "trabajo", "registros", "supervision", "auditoria", "reportes",
   "padron_admision", "historia_clinica", "prescripcion", "solicitud_estudios",
@@ -13,15 +14,6 @@ const CAPS_SISTEMA = [
   "traslados_red", "config_institucional", "diseno_flujos", "gobierno_plataforma",
 ];
 const ROLES_AUDITORIA_GLOBAL = ["auditor", "plataforma"];
-
-export const VISTA_CAPS = {
-  configurador: ["diseno", "diseno_flujos"],
-  administrativo: [
-    "trabajo", "registros", "padron_admision", "turnos", "casos_operar",
-    "filas", "traslados_red",
-  ],
-  sistema: CAPS_SISTEMA,
-};
 
 function institucionGuardada() {
   try {
@@ -47,7 +39,6 @@ function unicos(lista) {
 export function InstitutionProvider({ children }) {
   const { user, loading } = useAuth();
   const [institucion, setInstitucionState] = useState(institucionGuardada);
-  const [vista, setVista] = useState("sistema");
   const capsTodas = valoresDe(user?.capacidades_por_institucion);
   const rolesTodos = valoresDe(user?.roles_por_institucion);
   const tieneGobiernoPlataforma = capsTodas.includes("gobierno_plataforma");
@@ -62,7 +53,7 @@ export function InstitutionProvider({ children }) {
     : listaDe(user?.roles_por_institucion, institucion?.id);
 
   const capacidades = user?.is_superuser
-    ? (VISTA_CAPS[vista] || VISTA_CAPS.sistema)
+    ? CAPS_SISTEMA
     : unicos([
         ...listaDe(user?.capacidades_por_institucion, institucion?.id),
         ...capacidadesGlobales,
@@ -81,7 +72,6 @@ export function InstitutionProvider({ children }) {
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      setVista("sistema");
       setInstitucion(null);
       return;
     }
@@ -105,8 +95,6 @@ export function InstitutionProvider({ children }) {
       capacidades,
       puedeVer,
       cargandoRoles,
-      vista,
-      setVista,
     }}>
       {children}
     </InstitutionContext.Provider>
