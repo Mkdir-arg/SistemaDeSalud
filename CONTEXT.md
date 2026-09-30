@@ -124,3 +124,15 @@ Fin del acuerdo vigente entre un hospital y un financiador. Conserva las prestac
 
 **Acceso histórico pendiente**:
 Consulta limitada del financiador a operaciones propias que todavía requieren atención o resolución económica, aunque haya terminado la afiliación o el convenio. Un saldo del paciente no habilita por sí solo ese acceso.
+
+## Gestión institucional
+
+**Requiere atención**:
+Pendientes que la persona puede resolver desde su rol en la institución activa. Se agrupan en pendientes de configuración, que son pasos de puesta en marcha sin completar, y alertas de operación, que son casos urgentes activos, una espera promedio de 30 minutos o más, y turnos pasados sin presente ni ausente registrado.
+_Evitar_: Alertas a secas, porque no distingue configuración de operación.
+
+**Pendiente de configuración**:
+Paso de puesta en marcha que la institución todavía no completó, como publicar un flujo o cargar horarios de una agenda.
+
+**Alerta de operación**:
+Situación de la atención en curso que requiere que alguien intervenga, calculada sobre los datos de la institución activa.
