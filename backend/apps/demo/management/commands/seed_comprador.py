@@ -4,7 +4,7 @@ Qué carga
 ---------
 Los usuarios de las otras cargas son uno por rol: sirven para mostrar cada
 perfil, pero quien prueba el sistema por su cuenta choca con «Acceso denegado» en
-cada pantalla que no es la suya. Este comando crea `comprador@salud.local`:
+cada pantalla que no es la suya. Este comando crea `test@salud.local`:
 
 - **Plataforma:** entra al tablero de instituciones, como la autoridad estatal.
 - **Hospital Central:** todos los roles, todas las áreas y todos los equipos.
@@ -45,7 +45,7 @@ from apps.finanzas.models import ConcesionFinanciera
 from apps.financiadores.models import Financiador, MembresiaFinanciador
 from apps.instituciones.models import Area, Grupo, Institucion
 
-EMAIL = "comprador@salud.local"
+EMAIL = "test@salud.local"
 CENTRAL = "Hospital Central"
 LOS_AROMOS = "Hospital General Los Aromos"
 FINANCIADOR = "Mutual del Valle"
