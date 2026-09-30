@@ -127,12 +127,36 @@ def dinero(valor):
     return Decimal(str(valor)).quantize(CENTAVOS)
 
 
-def clave(texto):
-    return uuid5(NAMESPACE_URL, f"los-aromos/{texto}")
-
-
 class Command(BaseCommand):
     help = "Carga las finanzas y costos de Los Aromos: doce meses que terminan hoy."
+
+    # Identidad del escenario. `seed_finanzas_central` carga el mismo año
+    # económico dentro de Hospital Central cambiando sólo esto.
+    NOMBRE = NOMBRE
+    DOMINIO = "losaromos.test"
+    # Espacio de las claves de idempotencia de pagos y cuentas: dos escenarios
+    # en la misma base no pueden compartir claves.
+    ESPACIO = "los-aromos"
+    PREFIJO_PACIENTE, PREFIJO_DOCUMENTO = "LA", "FIC"
+    AREAS = AREAS
+    PACIENTES = PACIENTES
+    PERSONAL = {
+        "admin": ("Elena", "Rivas", "elena.rivas"),
+        "configurador": ("Mateo", "Salvatierra", "mateo.salvatierra"),
+        "administrativa": ("Paula", "Benítez", "paula.benitez"),
+    }
+
+    def clave(self, texto):
+        return uuid5(NAMESPACE_URL, f"{self.ESPACIO}/{texto}")
+
+    def _ya_cargado(self):
+        return Institucion.objects.filter(nombre=self.NOMBRE).exists()
+
+    def _crear_institucion(self):
+        return Institucion.objects.create(
+            nombre=self.NOMBRE, tipo="Hospital general",
+            direccion="Av. de los Eucaliptos 1450 · Villa del Arroyo (localidad ficticia)",
+        )
 
     def add_arguments(self, parser):
         parser.add_argument("--salida", help="Archivo JSON nuevo para la guía; nunca sobrescribe otro archivo.")
@@ -150,16 +174,16 @@ class Command(BaseCommand):
             # Dos invocaciones no pueden cargar el escenario a la vez.
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(%s)", [2026091501])
-            if Institucion.objects.filter(nombre=NOMBRE).exists():
+            if self._ya_cargado():
                 raise CommandError(
-                    "Los Aromos ya está cargado. No se borra, mezcla ni duplica por partes: "
+                    f"El escenario de finanzas de {self.NOMBRE} ya está cargado. No se borra, mezcla ni duplica por partes: "
                     "para rehacerlo, corré seed_entorno_demo."
                 )
             self._configurar(clave_demo())
             self._historia()
             self._pendientes_y_recorrido()
             with self.cal.sintetica(self.cal.dia(ACTUAL, 15), 8):
-                for hecho in HechoAtencionCosteable.objects.filter(institucion=self.institucion).order_by("id"):
+                for hecho in HechoAtencionCosteable.objects.filter(area__in=self.areas.values()).order_by("id"):
                     procesar_hecho_atencion(hecho.pk)
                 for _ in range(1000):
                     if not procesar_siguiente():
@@ -177,8 +201,11 @@ class Command(BaseCommand):
         self.stdout.write(contenido)
 
     def _usuario(self, nombre, apellido, email, rol, areas, password, acciones=()):
-        usuario = Usuario.objects.create_user(f"{email}@losaromos.test", password, nombre=nombre, apellido=apellido)
-        membresia = Membresia.objects.create(usuario=usuario, institucion=self.institucion, rol=rol)
+        # Si la persona ya trabaja en la institución (el escenario de Central usa
+        # su dirección y su configurador), se le suman las áreas y los permisos.
+        usuario = Usuario.objects.filter(email=f"{email}@{self.DOMINIO}").first() or Usuario.objects.create_user(
+            f"{email}@{self.DOMINIO}", password, nombre=nombre, apellido=apellido)
+        membresia, _ = Membresia.objects.get_or_create(usuario=usuario, institucion=self.institucion, rol=rol)
         membresia.areas.add(*areas)
         for accion in acciones:
             concesion = ConcesionFinanciera.objects.create(
@@ -197,29 +224,26 @@ class Command(BaseCommand):
         self.escenarios = {}
         inicio = self.meses[0]
         with self.cal.sintetica(inicio - timedelta(days=2)) as desde:
-            self.institucion = Institucion.objects.create(
-                nombre=NOMBRE, tipo="Hospital general",
-                direccion="Av. de los Eucaliptos 1450 · Villa del Arroyo (localidad ficticia)",
-            )
-            for codigo, nombre, _, profesional, apellido, *_ in AREAS:
+            self.institucion = self._crear_institucion()
+            for codigo, nombre, _, profesional, apellido, *_ in self.AREAS:
                 self.areas[codigo] = Area.objects.create(
                     institucion=self.institucion, nombre=nombre,
                     responsable=f"{profesional} {apellido}",
                     descripcion="Servicio ambulatorio. Todos los datos de este entorno son ficticios.",
                 )
             areas = list(self.areas.values())
-            self.admin = self._usuario("Elena", "Rivas", "elena.rivas", Membresia.Rol.ADMIN_INSTITUCION,
+            self.admin = self._usuario(*self.PERSONAL["admin"], Membresia.Rol.ADMIN_INSTITUCION,
                                        areas, password, ConcesionFinanciera.Accion.values)
             self.configurador = self._usuario(
-                "Mateo", "Salvatierra", "mateo.salvatierra", Membresia.Rol.CONFIGURADOR, areas, password,
+                *self.PERSONAL["configurador"], Membresia.Rol.CONFIGURADOR, areas, password,
                 ("ver_gastos", "ver_costos", "configurar_componentes", "configurar_gastos_esperados", "configurar_repartos", "configurar_cobros"),
             )
             self.administrativa = self._usuario(
-                "Paula", "Benítez", "paula.benitez", Membresia.Rol.ADMINISTRATIVO, areas, password,
+                *self.PERSONAL["administrativa"], Membresia.Rol.ADMINISTRATIVO, areas, password,
                 ("ver_gastos", "registrar_gastos", "ver_dinero", "registrar_dinero"),
             )
             fin_valores = self.cal.instante(self.cal.mes(REVISION), 0)
-            for codigo, area_nombre, titulo, nombre, apellido, email, matricula, profesional, insumos, arancel in AREAS:
+            for codigo, area_nombre, titulo, nombre, apellido, email, matricula, profesional, insumos, arancel in self.AREAS:
                 area = self.areas[codigo]
                 medico = self._usuario(nombre, apellido, email, Membresia.Rol.MEDICO, [area], password)
                 LegajoProfesional.objects.create(usuario=medico, especialidad=area_nombre, matricula=matricula)
@@ -282,15 +306,15 @@ class Command(BaseCommand):
             # si no, cada año que pasa el padrón envejece un año.
             self.pacientes = [Ciudadano.objects.create(
                 institucion=self.institucion, nombre=nombre, apellido=apellido,
-                codigo=f"LA-{i + 1:04d}", documento=f"FIC{i + 1:06d}",
+                codigo=f"{self.PREFIJO_PACIENTE}-{i + 1:04d}", documento=f"{self.PREFIJO_DOCUMENTO}{i + 1:06d}",
                 fecha_nacimiento=self.cal.hoy.replace(year=self.cal.hoy.year - 71 + (i * 3) % 48, month=1 + i % 12, day=1 + i % 27),
                 obra_social="Mutual del Valle",
-            ) for i, (nombre, apellido) in enumerate(PACIENTES)]
+            ) for i, (nombre, apellido) in enumerate(self.PACIENTES)]
 
     def _actualizar_valores(self):
         """Revisión de valores y aranceles, cinco meses atrás."""
         with self.cal.sintetica(self.cal.mes(REVISION), 7) as desde:
-            for codigo, _, _, _, _, _, _, profesional, insumos, arancel in AREAS:
+            for codigo, _, _, _, _, _, _, profesional, insumos, arancel in self.AREAS:
                 for cod, valor in (("PROF", profesional), ("INS", insumos)):
                     ValorComponente.objects.create(
                         componente=self.componentes[(codigo, cod)], importe=dinero(valor),
@@ -336,7 +360,7 @@ class Command(BaseCommand):
         with self.cal.sintetica(fecha, 15):
             return registrar_movimiento(
                 obligacion=cuenta, importe=dinero(importe), fecha=self.cal.fecha(fecha, 15),
-                clave=clave(referencia), usuario=self.admin if aprobado else self.administrativa,
+                clave=self.clave(referencia), usuario=self.admin if aprobado else self.administrativa,
                 referencia=referencia, aprobado=aprobado,
             )
 
@@ -402,7 +426,7 @@ class Command(BaseCommand):
                         cuenta = crear_obligacion_pago(
                             gasto=gasto, contraparte_nombre=proveedor,
                             contraparte_referencia=f"Factura {codigo}-{concepto_cod}-{mes:%Y%m}",
-                            clave=clave(f"cuenta-{codigo}-{concepto_cod}-{mes:%Y%m}"), usuario=self.admin,
+                            clave=self.clave(f"cuenta-{codigo}-{concepto_cod}-{mes:%Y%m}"), usuario=self.admin,
                         )
                         if not en_curso:
                             indicar_carga_esperada(self.expectativas[(codigo, concepto_cod)].pk, mes, "carga_completa", self.admin)
@@ -453,7 +477,7 @@ class Command(BaseCommand):
             )
             preview = previsualizar_reintegro(**parametros)
             reintegrar_movimiento(
-                **parametros, clave=clave("devolucion-daniel-peralta"),
+                **parametros, clave=self.clave("devolucion-daniel-peralta"),
                 version_esperada=preview["version_esperada"], pendiente_esperado=preview["pendiente_anterior"],
             )
         self.casos_abiertos = []
@@ -468,9 +492,12 @@ class Command(BaseCommand):
                 integridad = verificar_integridad_actividad(institucion_id=inst.pk, area_id=area.pk, periodo=mes)
                 if not integridad["integridad_tecnica"]:
                     raise CommandError("Un evento clínico no concilia con su hecho económico. Se revierte.")
-        if PendienteCobro.objects.filter(institucion=inst, obligacion__isnull=True).count() != 1:
+        # Lo pendiente se cuenta en las áreas del escenario: en Central conviven
+        # con las atenciones de la guardia, que no tienen prestación.
+        del_escenario = list(self.areas.values())
+        if PendienteCobro.objects.filter(institucion=inst, area__in=del_escenario, obligacion__isnull=True).count() != 1:
             raise CommandError("Se esperaba exactamente un cobro con responsable por confirmar.")
-        if PendienteCosteo.objects.filter(hecho__institucion=inst, resuelto=False).count() != 1:
+        if PendienteCosteo.objects.filter(hecho__area__in=del_escenario, resuelto=False).count() != 1:
             raise CommandError("Se esperaba exactamente un componente sin valor histórico.")
         if PoliticaCobro.objects.filter(institucion=inst, pendientecobro__hecho__ocurrida_en__lt=F("registrado")).exists():
             raise CommandError("Una política fue aplicada antes de existir. Se revierte.")
@@ -502,8 +529,8 @@ class Command(BaseCommand):
         for tipo in ("pago", "cobro", "reintegro"):
             for estado in ("aprobado", "pendiente_aprobacion"):
                 totales_dinero[f"{tipo}_{estado}"] = str(movimientos.filter(tipo=tipo, estado=estado).aggregate(total=Sum("importe"))["total"] or dinero(0))
-        pendientes_cobro = list(PendienteCobro.objects.filter(institucion=inst, obligacion__isnull=True).values("id", "hecho_id", "importe", "contraparte_nombre"))
-        pendientes_costo = list(PendienteCosteo.objects.filter(hecho__institucion=inst, resuelto=False).values("id", "hecho_id", "componente_id", "motivo"))
+        pendientes_cobro = list(PendienteCobro.objects.filter(institucion=inst, area__in=del_escenario, obligacion__isnull=True).values("id", "hecho_id", "importe", "contraparte_nombre"))
+        pendientes_costo = list(PendienteCosteo.objects.filter(hecho__area__in=del_escenario, resuelto=False).values("id", "hecho_id", "componente_id", "motivo"))
         cantidades = {
             "Ciudadano": Ciudadano.objects.filter(institucion=inst),
             "Caso": Caso.objects.filter(institucion=inst),
@@ -517,7 +544,7 @@ class Command(BaseCommand):
             "AtribucionReparto": AtribucionReparto.objects.filter(reparto__gasto__institucion=inst),
         }
         return {
-            "escenario": NOMBRE, "institucion_id": inst.pk,
+            "escenario": self.NOMBRE, "institucion_id": inst.pk,
             "advertencia": "Todos los datos son ficticios. Son tres servicios y gastos seleccionados; no el costo ni el volumen total de un hospital.",
             "periodos": [str(m) for m in self.meses],
             "usuarios": list(Usuario.objects.filter(membresias__institucion=inst).distinct().order_by("id").values("id", "email", "nombre", "apellido")),

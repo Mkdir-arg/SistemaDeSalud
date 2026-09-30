@@ -22,8 +22,8 @@ minutos, hacé el 1, el 4 y el 6.
 
 | Institución | Qué muestra |
 |---|---|
-| **Hospital General Los Aromos** | Finanzas maduras: un año de historia (oct/25 → sep/26), gastos, repartos, costos por atención, cobros y el circuito de obras sociales |
-| **Hospital Central** | Operación clínica densa: guardia con triage, 547 casos, 28 camas, farmacia, agenda, historia clínica sellada |
+| **Hospital Central** | **Todo el sistema en un hospital:** guardia con triage, camas, farmacia, agenda, historia clínica sellada, un año de finanzas (gastos, repartos, costos por atención, pagos y cobros) y el circuito de obras sociales en *Consultorios externos* |
+| **Hospital General Los Aromos** | Finanzas maduras: el escenario verificado en `guia-los-aromos.md` |
 | **Hospital Municipal de Villa Real** | El efector chico de la red que deriva al grande |
 | **Zonal Sur · Clínica San Martín · CAPS Barrio Norte** | Más efectores de la red con guardia andando: el tablero de plataforma muestra una región y no dos hospitales. Zonal Sur está lleno y dispara la alerta de ocupación |
 | **Lomas del Este · Hospital Piloto** | En puesta en marcha. Lomas lleva 45 días y dispara la alerta; Piloto es la institución del comprador |
@@ -61,11 +61,13 @@ pestañas normales comparten la sesión.
 | Configuración | `mateo.salvatierra@losaromos.test` |
 | Médicos | `lucia.ferreyra@` · `andres.molina@` · `valeria.costa@` |
 
-**Consultorios externos y financiadores** — contraseña `demo1234`
+**Consultorios externos y financiadores (Hospital Central)** — contraseña `demo1234`
 
 | Perfil | Usuario |
 |---|---|
-| Médica de consultorios externos | `irene.bustos@losaromos.test` |
+| Médica de consultorios externos | `irene.bustos@hospital.gob.ar` |
+| Admisión, copagos y saldos de cobertura | `guardia.adm@hospital.gob.ar` |
+| Finanzas de Central: administrativa · médicos de los servicios ambulatorios | `m.quintero@hospital.gob.ar` · `nora.villegas@` · `julio.barreto@` · `carolina.espinosa@` |
 | Mutual del Valle (portal) | `admin@mutualdelvalle.test` · `operador@mutualdelvalle.test` (autorizaciones) · `auditor@mutualdelvalle.test` |
 | Obra Social Provincial (portal) | `admin@osprovincial.test` · `auditor@osprovincial.test` |
 

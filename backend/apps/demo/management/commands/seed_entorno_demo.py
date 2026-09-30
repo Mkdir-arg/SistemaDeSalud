@@ -3,16 +3,21 @@
 Es el único comando que conoce el orden entre los `seed_*`. Cada uno carga una
 sola cosa y declara lo que necesita; este los encadena:
 
-    1. seed_los_aromos     finanzas y costos de un hospital (12 meses)
-    2. seed_financiadores  obras sociales, padrón y autorizaciones sobre ese hospital
-    3. seed_guardia        estructura de Hospital Central: áreas, staff, flujos, farmacia, agendas
-    4. seed_volumen        pacientes, casos y turnos de Hospital Central (365 días)
-    5. seed_roles          gobierno estatal y administración de Hospital Central
-    6. seed_farmacia       pedidos de reposición y consumos imputados a pacientes
-    7. seed_red            un segundo hospital y los traslados entre los dos
-    8. seed_efectores      más efectores en la red, para el tablero de plataforma
-    9. seed_comprador      el usuario de quien recibe la demo y su institución por configurar
-   10. seed_accesos        el historial de accesos que revisa la auditoría
+    1. seed_los_aromos        finanzas y costos de un hospital (12 meses)
+    2. seed_guardia           estructura de Hospital Central: áreas, staff, flujos, farmacia, agendas
+    3. seed_volumen           pacientes, casos y turnos de Hospital Central (365 días)
+    4. seed_roles             gobierno estatal y administración de Hospital Central
+    5. seed_finanzas_central  el mismo año económico de Los Aromos, en servicios de Central
+    6. seed_financiadores     obras sociales, padrón y autorizaciones sobre Hospital Central
+    7. seed_farmacia          pedidos de reposición y consumos imputados a pacientes
+    8. seed_red               un segundo hospital y los traslados entre los dos
+    9. seed_efectores         más efectores en la red, para el tablero de plataforma
+   10. seed_comprador         el usuario de quien recibe la demo y su institución por configurar
+   11. seed_accesos           el historial de accesos que revisa la auditoría
+
+Hospital Central es el hospital que tiene todo: clínica, finanzas y
+financiadores. Los Aromos conserva su escenario de finanzas, que es el que
+verifican `guia-los-aromos.md` y sus tests.
 
 Todo corre en UNA transacción, vaciado incluido: si un paso falla, la base
 queda como estaba y no a medio cargar. Mientras corre, la aplicación espera:
@@ -53,10 +58,11 @@ from apps.demo.trabajo import INFORMATIVOS, trabajo_por_usuario
 def pasos(dias, casos):
     return [
         ("seed_los_aromos", {}),
-        ("seed_financiadores", {}),
         ("seed_guardia", {}),
         ("seed_volumen", {"dias": dias, "casos": casos}),
         ("seed_roles", {}),
+        ("seed_finanzas_central", {}),
+        ("seed_financiadores", {"nombre_institucion": "Hospital Central"}),
         ("seed_farmacia", {}),
         ("seed_red", {}),
         ("seed_efectores", {}),

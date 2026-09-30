@@ -1,6 +1,8 @@
 # Financiadores en 8082 — qué tocar y dónde
 
-Recorrido de **20 minutos** sobre <http://localhost:8082>, Hospital General Los Aromos.
+Recorrido de **20 minutos** sobre <http://localhost:8082>, Hospital Central.
+
+> Desde el 30/09 el circuito de financiadores se carga sobre **Hospital Central**, en su área *Consultorios externos*, y no sobre Los Aromos. Los ids de área y de caso que cita esta guía cambian en cada carga: buscalos por nombre.
 Todo verificado contra la app el **18/09/2026**.
 
 > **Fechas relativas desde el #65.** La carga (`seed_entorno_demo`) ahora arma doce meses que
@@ -17,9 +19,9 @@ que los usás, no se repiten sin volver a sembrar.
 
 | Para | Usuario | Contraseña |
 |---|---|---|
-| Administrativa (admisión) | `paula.benitez@losaromos.test` | `demo1234` |
-| Médica de Consultorios externos | `irene.bustos@losaromos.test` | `demo1234` |
-| Administración y finanzas | `elena.rivas@losaromos.test` | `demo1234` |
+| Administrativa (admisión) | `guardia.adm@hospital.gob.ar` | `demo1234` |
+| Médica de Consultorios externos | `irene.bustos@hospital.gob.ar` | `demo1234` |
+| Administración y finanzas | `admin.central@hospital.gob.ar` | `demo1234` |
 | Portal de la obra social | `admin@mutualdelvalle.test` | `demo1234` |
 
 Para cambiar de usuario usá **ventana privada**. Dos pestañas normales comparten sesión.
@@ -34,7 +36,7 @@ Entrás y caés directo en el portal. Menú lateral propio.
 
 | Tocá | Vas a ver |
 |---|---|
-| **Convenios** | Hospital General Los Aromos · 48 horas · **Activo** · Propuesto por Financiador · Aceptado 15/06/2026. Botones **Plazo de autorización** y **Cerrar convenio** |
+| **Convenios** | Hospital Central · 48 horas · **Activo** · Propuesto por Financiador · Aceptado 15/06/2026. Botones **Plazo de autorización** y **Cerrar convenio** |
 | **Cobertura** | 2 reglas: *Consulta ambulatoria externa* **80%**, cupo **6 por año**, autorización *No requerida*; *Radiografía ambulatoria de tórax* **70%**, cupo **2 por año**, autorización **Requerida**. Botón **Nueva regla de cobertura** |
 | **Padrón** | 7 afiliados, `MV00001` a `MV00007`. Botones **Registrar afiliación**, **Importar Excel**, y por fila **Corregir identidad** / **Finalizar afiliación** |
 | **Aranceles** | CEX: general **ARS 28.000**, aplicable **ARS 26.000**, origen *Acordado con el financiador*. RXE: general **ARS 35.000**, aplicable **ARS 35.000**, origen *General del hospital* |
@@ -43,7 +45,7 @@ Entrás y caés directo en el portal. Menú lateral propio.
 28.000 pero aplicable 26.000. Ese 26.000 es el precio acordado, y el 80% se calcula
 sobre él. Por eso el paciente paga 5.200 y no 5.600.
 
-## 1.2 Lado hospital — `elena.rivas@losaromos.test`
+## 1.2 Lado hospital — `admin.central@hospital.gob.ar`
 
 Menú lateral → **Coberturas y copagos** → pestaña **Configuración**. Cuatro bloques:
 
@@ -63,7 +65,7 @@ Menú lateral → **Coberturas y copagos** → pestaña **Configuración**. Cuat
 
 # 2. El uso real: la administrativa en una atención · 6 min
 
-Ventana privada, `paula.benitez@losaromos.test`.
+Ventana privada, `guardia.adm@hospital.gob.ar`.
 
 **Cómo llegar a los casos, sin tipear URL:** menú lateral → **Casos** → en el
 desplegable **Área** elegí **Consultorios externos**. Quedan los tres del
@@ -142,7 +144,7 @@ Este es el que vas a completar en el paso siguiente.
 
 # 3. El médico completa la atención · 2 min
 
-Ventana privada, `irene.bustos@losaromos.test`.
+Ventana privada, `irene.bustos@hospital.gob.ar`.
 
 Entra directo a **Mi trabajo** con sus tres casos listados. Apretá el de
 **Ernesto Bogado**.
@@ -162,7 +164,7 @@ admisión.»
 
 # 4. Cómo se ve en Finanzas y costos · 5 min
 
-Volvé a la ventana de `elena.rivas@losaromos.test`.
+Volvé a la ventana de `admin.central@hospital.gob.ar`.
 
 ## 4.1 La cuenta por cobrar de la obra social
 
@@ -256,7 +258,7 @@ Botón **«Exportar CSV»** — incluye todas las páginas con los filtros aplic
 administrativa. No ve la historia clínica. Y cada consulta que hace queda en el
 registro de accesos del hospital.»
 
-Si te lo piden, mostralo: ventana de Elena → menú lateral → **Registro de accesos**.
+Si te lo piden, mostralo: ventana de la dirección → menú lateral → **Registro de accesos**.
 
 ---
 
@@ -264,7 +266,7 @@ Si te lo piden, mostralo: ventana de Elena → menú lateral → **Registro de a
 
 Si tenés poco tiempo, hacé solo esto:
 
-1. Con Paula: **Casos** → área *Consultorios externos* → **#0196** →
+1. Con la administrativa (`guardia.adm@`): **Casos** → área *Consultorios externos* → **#0196** →
    **Consultar cobertura** → los tres importes (28.000 / 19.600 / 8.400).
 2. **Casos** → **#0195** → **Consultar cobertura** → *cupo agotado*, el paciente
    paga los 35.000 completos.
