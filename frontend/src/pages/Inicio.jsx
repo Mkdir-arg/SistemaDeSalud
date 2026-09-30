@@ -44,7 +44,7 @@ export default function Inicio() {
   const accesos = [
     { titulo: "Bandeja", detalle: "Casos en curso y sin asignar", ruta: "/bandeja", cap: "casos_operar" },
     { titulo: "Turnos de hoy", detalle: "Agenda de profesionales y recursos", ruta: "/agenda", cap: "turnos" },
-    { titulo: "Padrón de pacientes", detalle: "Buscar, registrar o actualizar pacientes", ruta: "/padron", cap: "padron_admision" },
+    { titulo: "Pacientes", detalle: "Buscar, registrar o consultar pacientes", ruta: "/pacientes", cap: "padron_admision" },
   ].filter(({ cap }) => puedeVer(cap));
 
   return <div className="mx-auto max-w-[1500px] px-lg py-6 sm:px-6">

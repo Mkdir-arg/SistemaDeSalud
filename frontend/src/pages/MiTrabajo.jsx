@@ -208,7 +208,7 @@ function Bandas({ d, dd, areaActiva, onIngresar, onBuscarEstado }) {
       <Seccion titulo="Accesos rápidos">
         <div className="flex flex-wrap gap-3">
           <AccesoRapido icon="search" label="Estado de un paciente" hint="Buscar su ingreso o expediente" onClick={onBuscarEstado} />
-          <AccesoRapido icon="clipboard" label="Historias clínicas" hint="Buscar, ver y crear expedientes" onClick={() => navigate("/historia")} />
+          <AccesoRapido icon="idCard" label="Pacientes" hint="Buscar, registrar o consultar pacientes" onClick={() => navigate("/pacientes")} />
         </div>
       </Seccion>
 
@@ -762,7 +762,7 @@ function ModalEstadoPaciente({ institucionId, onIr, onClose }) {
         <div className="flex flex-col gap-3.5">
           <PacienteElegido paciente={paciente} onCambiar={() => setPaciente(null)} />
 
-          <Button variant="secondary" onClick={() => onIr(`/historia/${paciente.id}`)}>
+          <Button variant="secondary" onClick={() => onIr(`/pacientes/${paciente.id}?tab=evolucion`)}>
             <Icon name="clipboard" size={15} /> Ver expediente (historia clínica)
           </Button>
 

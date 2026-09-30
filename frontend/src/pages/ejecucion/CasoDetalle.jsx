@@ -90,7 +90,7 @@ export default function CasoDetalle() {
               {caso.area_nombre && ` · ${caso.area_nombre}`}
             </p>
           </div>
-          {hc && caso.ciudadano && <Button size="sm" variant="secondary" onClick={() => navigate(`/historia/${caso.ciudadano}`)}>Ver historia clínica</Button>}
+          {hc && caso.ciudadano && <Button size="sm" variant="secondary" onClick={() => navigate(`/pacientes/${caso.ciudadano}?tab=evolucion`)}>Ver historia clínica</Button>}
         </header>
         <Card className="px-lg py-lg sm:px-8">
           <div className="flex flex-wrap items-center gap-2 text-sm text-texto-debil">
@@ -147,7 +147,7 @@ export default function CasoDetalle() {
             <ul className="mt-2 flex flex-col gap-1">
               {borradoresCaso.map((entrada) => <li key={entrada.id}>
                 <Link className="text-base font-semibold text-accent underline underline-offset-2"
-                  to={`/historia/${caso.ciudadano}?tab=evolucion#entrada-${entrada.id}`}>
+                  to={`/pacientes/${caso.ciudadano}?tab=evolucion#entrada-${entrada.id}`}>
                   Abrir «{entrada.titulo}»
                 </Link>
               </li>)}
@@ -174,7 +174,7 @@ export default function CasoDetalle() {
             {tabActivo === "atenciones" ? (
               <div role="tabpanel" aria-labelledby={`caso-${id}-tab-atenciones`} className="p-lg">
                 {atencionesCaso.length ? <ul className="space-y-3">{atencionesCaso.map((entrada) => <li key={entrada.id} className="border-b border-division pb-3 last:border-0 last:pb-0">
-                  <Link to={`/historia/${caso.ciudadano}?tab=evolucion#entrada-${entrada.id}`} className="font-semibold text-accent hover:underline">{entrada.titulo}</Link>
+                  <Link to={`/pacientes/${caso.ciudadano}?tab=evolucion#entrada-${entrada.id}`} className="font-semibold text-accent hover:underline">{entrada.titulo}</Link>
                   <p className="text-sm text-texto-debil">{fechaHora(entrada.fecha)} · {entrada.firmada ? "Firmada" : "Borrador"}</p>
                 </li>)}</ul> : <p className="text-sm text-texto-debil">Este caso no tiene atenciones registradas en la historia.</p>}
               </div>
