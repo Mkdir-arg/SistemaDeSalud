@@ -336,15 +336,16 @@ test.describe("médico", () => {
     await pantalla(page, "/red", "23-red.png");
   });
 
-  test("25 historia clínica", async ({ page }) => {
-    await pantalla(page, "/historia", "25-historia.png");
+  test("25 pacientes", async ({ page }) => {
+    await pantalla(page, "/pacientes", "25-pacientes.png");
   });
 
   test("26 detalle de la historia", async ({ page }) => {
-    await page.goto("/historia");
+    await page.goto("/pacientes");
     await esperarPantalla(page);
     await esperarMenu(page);
-    await primeraFila(page, /\/historia\/\d+/);
+    await primeraFila(page, /\/pacientes\/\d+/);
+    await page.getByRole("tab", { name: /Evolución/ }).click();
     await foto(page, "26-historia-detalle.png");
   });
 

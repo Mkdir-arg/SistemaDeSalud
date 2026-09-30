@@ -26,15 +26,16 @@ test.describe("Registro de accesos", () => {
      * sentado que entrar alcanza.
      */
     await entrar(page, "jefe");
-    await page.goto("/historia");
+    await page.goto("/pacientes");
     await esperarPantalla(page);
     // Se sigue al paciente por el documento y no por el apellido: la celda
     // empieza con las iniciales del avatar, que también son texto.
     const celda = await page.locator("tbody tr").first().locator("td").first().innerText();
     const dni = celda.match(/DNI\s+(\S+)/)[1];
     await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/historia\/\d+/);
+    await page.waitForURL(/\/pacientes\/\d+/);
     await esperarPantalla(page);
+    await page.getByRole("tab", { name: /Evolución/ }).click();
 
     await page.getByRole("link", { name: "Registro de accesos" }).click();
     await expect(page.getByRole("heading", { name: "Registro de accesos" })).toBeVisible();
@@ -76,17 +77,17 @@ test.describe("Registro de accesos", () => {
 
 test.describe("Consentimiento e integridad en la historia", () => {
   async function abrirUnaHistoria(page) {
-    await page.goto("/historia");
+    await page.goto("/pacientes");
     await esperarPantalla(page);
     await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/historia\/\d+/);
+    await page.waitForURL(/\/pacientes\/\d+/);
     await esperarPantalla(page);
   }
 
   test("el consentimiento se ve sin tener que buscarlo", async ({ page }) => {
     await entrar(page, "medico");
     await abrirUnaHistoria(page);
-    await expect(page.getByText("CONSENTIMIENTO DE DATOS")).toBeVisible();
+    await expect(page.getByText("Consentimiento de datos")).toBeVisible();
   });
 
   test("aclara que la urgencia no depende del consentimiento", async ({ page }) => {
@@ -143,6 +144,7 @@ test.describe("Consentimiento e integridad en la historia", () => {
   test("se puede verificar que la historia no fue alterada", async ({ page }) => {
     await entrar(page, "medico");
     await abrirUnaHistoria(page);
+    await page.getByRole("tab", { name: /Evolución/ }).click();
     const boton = page.getByRole("button", { name: "Verificar la historia" });
     // Sólo hay panel de integridad si el paciente tiene historia abierta.
     if (!(await boton.isVisible().catch(() => false))) test.skip();
@@ -171,6 +173,7 @@ test.describe("Consentimiento e integridad en la historia", () => {
       }),
     );
     await abrirUnaHistoria(page);
+    await page.getByRole("tab", { name: /Evolución/ }).click();
     await page.getByRole("button", { name: "Verificar la historia" }).click();
     await expect(page.getByText("No verificable")).toBeVisible();
     await expect(page.getByText("Sin alteraciones")).toHaveCount(0);
