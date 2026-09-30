@@ -870,8 +870,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
       )}
       {pendiente && (
         <div className="mt-2 grid grid-cols-2 gap-2">
-          {/* «Llegó» es la acción principal: es la que abre el caso y arranca la
-              atención. El resto son excepciones.
+          {/* «Llegó» abre el caso y arranca la atención de este turno.
 
               En el buscador no va, y «No vino» tampoco: las dos dependen de
               estar parado en el día del turno con el paciente enfrente. Sobre un
@@ -879,7 +878,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
               llaman por altavoz y nadie contesta, y «No vino» le carga un
               ausentismo a alguien que justamente está llamando para avisar. */}
           {!porTelefono && !pasado && (
-          <Button size="sm" disabled={accion.isPending}
+          <Button size="sm" variant="secondary" disabled={accion.isPending}
                   onClick={() => accion.mutate({
                     nombre: "llegada",
                     // El mensaje sale de la RESPUESTA: si la agenda no tiene
@@ -897,7 +896,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
             {virtual ? "Se conectó" : "Llegó"}
           </Button>
           )}
-          {!porTelefono && pasado && onRegistrarPasado && <Button size="sm" disabled={accion.isPending}
+          {!porTelefono && pasado && onRegistrarPasado && <Button size="sm" variant="secondary" disabled={accion.isPending}
             onClick={() => onRegistrarPasado(turno.inicio, {
               id: turno.ciudadano, nombre: turno.paciente, apellido: "", documento: turno.documento,
             })}>

@@ -79,7 +79,7 @@ export default function Bandejas() {
       render: (c) => (
         <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           {c.asignado_a === user?.id ? (
-            <Button size="sm" onClick={() => navigate(`/casos/${c.id}`)}>Continuar</Button>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/casos/${c.id}`)}>Continuar</Button>
           ) : !c.asignado_a && c.puede_tomar && !c.en_fila ? (
             <Button
               size="sm"

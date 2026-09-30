@@ -74,7 +74,7 @@ export default function PadronDetalle() {
             <Icon name="edit" size={15} /> Editar datos
           </Button>
           {puedeVer("historia_clinica") && (
-            <Button onClick={() => navigate(`/historia/${c.id}`)}>
+            <Button variant="secondary" onClick={() => navigate(`/historia/${c.id}`)}>
               <Icon name="clipboard" size={15} /> Abrir historia
             </Button>
           )}

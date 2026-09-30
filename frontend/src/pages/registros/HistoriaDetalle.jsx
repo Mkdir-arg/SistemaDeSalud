@@ -567,7 +567,7 @@ function Consentimiento({ ciudadanoId, estado }) {
 
       <div className="mt-3.5 flex gap-2">
         {(sinRegistro || !estado.otorgado) && (
-          <Button className="text-sm" onClick={() => setPidiendo("otorgar")}>Registrar consentimiento</Button>
+          <Button variant="secondary" className="text-sm" onClick={() => setPidiendo("otorgar")}>Registrar consentimiento</Button>
         )}
         {!sinRegistro && estado.otorgado && (
           <Button variant="secondary" className="text-sm" onClick={() => setPidiendo("revocar")}>
@@ -1035,7 +1035,7 @@ function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
                 Editar
               </Button>
               {puedeFirmar && (
-                <Button className="text-sm" onClick={() => setFirmando(e)}>
+              <Button variant="secondary" className="text-sm" onClick={() => setFirmando(e)}>
                   Firmar
                 </Button>
               )}
