@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
@@ -44,17 +45,30 @@ const CIFRAS = [
   ["18.402", "pacientes por semana"],
   ["9", "financiadores con convenio"],
 ];
+const TRIAGE = [
+  ["Rojo", 1, "var(--color-danger)"],
+  ["Naranja", 3, "var(--color-nodo-integracion-sol)"],
+  ["Amarillo", 6, "var(--color-nodo-decision-sol)"],
+  ["Verde", 4, "var(--color-nodo-inicio-sol)"],
+  ["Azul", 2, "var(--color-nodo-accion-sol)"],
+];
+const CAMAS = Array.from({ length: 24 }, (_, i) => i);
+const TUBOS = [42, 72, 55, 86];
+const FILA = [["Llamando", "Paciente 14", "Consultorio 3"], ["Presente", "Paciente 15", "En sala de espera"]];
+const HISTORIA = [["Alergias", "Penicilina"], ["Firmada por", "Dra. R. · M.N."]];
+const STOCK = [["Ibuprofeno 400", 80, "var(--color-brand-teal)"], ["Guantes M", 15, "var(--color-danger)"]];
+const CIRCUITO = ["Admisión", "Triage", "Sala", "Atención"];
 const BENEFICIOS = [
-  { titulo: "Atención sin filas", detalle: "Turnos, presente al llegar, fila ordenada y llamado al consultorio. El paciente espera donde quiere.", destacado: true, ancho: true },
-  { titulo: "Sistema de Triage", detalle: "Guardias ordenadas según prioridad: cada paciente se atiende en el orden que su urgencia requiere." },
-  { titulo: "Historia clínica firmada", detalle: "Alergias, estudios, recetas y registro de quién accedió a cada dato.", ancho: true },
-  { titulo: "Internación", detalle: "Ocupación de camas por sector, asignación desde el caso, pases y egresos." },
-  { titulo: "Laboratorio e imágenes", detalle: "Órdenes y resultados integrados a la atención de cada paciente.", ancho: true },
-  { titulo: "Farmacia e insumos", detalle: "Stock por depósito y lote, alertas de faltantes y vencimientos, y trazabilidad del lote hasta el paciente." },
-  { titulo: "Coberturas y cobros", detalle: "Cupos, copagos y saldos calculados según cada convenio." },
-  { titulo: "Circuitos configurables", detalle: "Cada institución dibuja su circuito de atención y ese diagrama pasa a ser el sistema. Cambiarlo no afecta los casos en curso.", ancho: true },
-  { titulo: "Red de establecimientos", detalle: "Derivaciones entre instituciones, con aceptación, traslado y recepción en destino.", ancho: true },
-  { titulo: "App para pacientes", detalle: "Turnos, presente al llegar, aviso de llamado, resultados y cobertura desde el celular, con la marca de tu institución.", enlaceApp: true },
+  { titulo: "Atención sin filas", detalle: "Turnos, presente al llegar, fila ordenada y llamado al consultorio. El paciente espera donde quiere.", icono: "users", destacado: true, ancho: true, grafico: "fila" },
+  { titulo: "Sistema de Triage", detalle: "Guardias ordenadas según prioridad: cada paciente se atiende en el orden que su urgencia requiere.", icono: "activity", alto: true, grafico: "triage" },
+  { titulo: "Historia clínica firmada", detalle: "Alergias, estudios, recetas y registro de quién accedió a cada dato.", icono: "fileText", grafico: "historia" },
+  { titulo: "Internación", detalle: "Ocupación de camas por sector, asignación desde el caso, pases y egresos.", icono: "bed", ancho: true, grafico: "camas" },
+  { titulo: "Laboratorio e imágenes", detalle: "Órdenes y resultados integrados a la atención de cada paciente.", icono: "flask", grafico: "laboratorio" },
+  { titulo: "Farmacia e insumos", detalle: "Stock por depósito y lote, alertas de faltantes y vencimientos, y trazabilidad del lote hasta el paciente.", icono: "cube", grafico: "stock" },
+  { titulo: "Coberturas y cobros", detalle: "Cupos, copagos y saldos calculados según cada convenio.", icono: "wallet", completaFila: true, grafico: "cobertura" },
+  { titulo: "App para pacientes", detalle: "Turnos, presente al llegar, aviso de llamado, resultados y cobertura desde el celular, con la marca de tu institución.", icono: "calendar", ancho: true, enlaceApp: true, grafico: "app" },
+  { titulo: "Circuitos configurables", detalle: "Cada institución dibuja su circuito de atención y ese diagrama pasa a ser el sistema. Cambiarlo no afecta los casos en curso.", icono: "workflow", ancho: true, grafico: "circuito" },
+  { titulo: "Red de establecimientos", detalle: "Derivaciones entre instituciones, con aceptación, traslado y recepción en destino.", icono: "map", ancho: true, grafico: "red" },
 ];
 
 const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -127,8 +141,60 @@ function VistaIlustrativa() {
   </figure>;
 }
 
+function GraficoBeneficio({ tipo }) {
+  if (tipo === "fila") return <div aria-hidden="true" className="space-y-2 text-xs">
+    {FILA.map(([estado, paciente, lugar], i) =>
+      <div key={estado} className="presentacion-aparece flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-borde bg-superficie-2 px-3 py-2" style={{ "--paso": i }}>
+        <span className={`rounded-pill px-2 py-0.5 font-semibold ${i ? "bg-badge-green-bg text-badge-green-fg" : "bg-badge-info-bg text-badge-info-fg"}`}>{estado}</span>
+        <span className="font-semibold">{paciente}</span><span className="ml-auto text-texto-suave">{lugar}</span>
+      </div>)}
+  </div>;
+  if (tipo === "triage") return <div aria-hidden="true" className="space-y-3">
+    {TRIAGE.map(([nivel, cantidad, color], i) => <div key={nivel} className="grid grid-cols-[58px_1fr_12px] items-center gap-2 text-xs tabular-nums">
+      <span>{nivel}</span><span className="h-2 overflow-hidden rounded-pill bg-superficie-2"><span className="presentacion-barra block h-full origin-left rounded-pill" style={{ width: `${cantidad / 6 * 100}%`, backgroundColor: color, "--paso": i }} /></span><span>{cantidad}</span>
+    </div>)}
+  </div>;
+  if (tipo === "historia") return <div aria-hidden="true" className="space-y-2 text-xs">
+    {HISTORIA.map(([clave, valor], i) => <div key={clave} className="presentacion-aparece flex justify-between gap-2 border-b border-borde pb-2" style={{ "--paso": i }}><span className="text-texto-suave">{clave}</span><strong className="text-right font-semibold">{valor}</strong></div>)}
+  </div>;
+  if (tipo === "camas") return <div aria-hidden="true">
+    <div className="grid grid-cols-12 gap-1.5">{CAMAS.map((cama) => <span key={cama} className={`presentacion-cama aspect-square rounded-sm border ${cama < 19 ? "border-accent bg-accent" : "border-borde bg-superficie-2"}`} style={{ "--paso": cama }} />)}</div>
+    <div className="mt-3 flex items-end justify-between gap-3"><div><strong className="text-xxl tabular-nums">79 %</strong><span className="ml-2 text-xs text-texto-suave">ocupación</span></div><span className="pb-1 text-xs text-texto-suave">19 de 24 camas</span></div>
+  </div>;
+  if (tipo === "laboratorio") return <div aria-hidden="true" className="flex h-24 items-end justify-center gap-4">
+    {TUBOS.map((nivel, i) => <span key={i} className="relative h-full w-7 overflow-hidden rounded-b-pill border-2 border-borde bg-superficie-2"><span className="presentacion-tubo absolute origin-bottom inset-x-0 bottom-0 rounded-b-pill bg-linear-to-t from-accent to-brand-teal" style={{ height: `${nivel}%`, "--paso": i }} /></span>)}
+  </div>;
+  if (tipo === "stock") return <div aria-hidden="true" className="space-y-3 text-xs">
+    {STOCK.map(([nombre, nivel, color], i) => <div key={nombre}><span className="font-medium">{nombre}</span><span className="mt-1 block h-2 overflow-hidden rounded-pill bg-superficie-2"><span className="presentacion-barra block h-full origin-left rounded-pill" style={{ width: `${nivel}%`, backgroundColor: color, "--paso": i }} /></span></div>)}
+    <span className="inline-block rounded-sm border border-borde bg-superficie-2 px-2 py-0.5 text-texto-suave">Lote L-3-A</span>
+  </div>;
+  if (tipo === "cobertura") return <div aria-hidden="true" className="flex flex-wrap gap-2 text-xs font-semibold">
+    <span className="presentacion-aparece rounded-pill bg-badge-green-bg px-3 py-1.5 text-badge-green-fg" style={{ "--paso": 0 }}>Cubierto 70 %</span><span className="presentacion-aparece rounded-pill bg-badge-amber-bg px-3 py-1.5 text-badge-amber-fg" style={{ "--paso": 1 }}>Copago</span>
+  </div>;
+  if (tipo === "circuito") return <div aria-hidden="true" className="flex flex-wrap items-center gap-1.5 text-xs">
+    {CIRCUITO.map((paso, i) => <span key={paso} className="flex items-center gap-1.5"><span className="rounded-md border border-borde bg-superficie-2 px-2 py-1.5 font-medium">{paso}</span>{i < CIRCUITO.length - 1 && <span className="text-accent">→</span>}</span>)}
+  </div>;
+  if (tipo === "red") return <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] items-center gap-2 text-xs">
+    <span className="flex min-w-0 items-center gap-1 rounded-md border border-borde bg-superficie-2 px-2 py-2"><Icon name="building" size={14} /><span>Villa Real</span></span>
+    <span className="flex min-w-0 flex-col items-center"><span className="rounded-pill bg-badge-green-bg px-2 py-0.5 text-center text-[10px] font-semibold text-badge-green-fg">Aceptada · En viaje</span><span className="mt-1 h-px w-full bg-brand-teal" /></span>
+    <span className="flex min-w-0 items-center gap-1 rounded-md border border-borde bg-superficie-2 px-2 py-2"><Icon name="building" size={14} /><span>Central</span></span>
+  </div>;
+  if (tipo === "app") return <div aria-hidden="true" className="flex justify-end"><div className="w-32 rounded-[20px] border-[3px] border-texto bg-superficie-2 p-2 shadow-card"><div className="mx-auto mb-2 h-1 w-8 rounded-pill bg-texto-suave" /><div className="rounded-md bg-linear-to-br from-accent to-brand-teal p-2 text-[10px] text-sobre-accent"><span className="block">Próximo turno</span><strong className="mt-1 block text-xs">Jueves 10:30</strong></div><div className="mt-2 h-2 rounded-sm bg-borde" /><div className="mt-1.5 h-2 w-3/4 rounded-sm bg-borde" /></div></div>;
+  return null;
+}
+
 export default function Presentacion() {
   const { oscuro, alternar } = useTema();
+  const beneficiosRef = useRef(null);
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const seccion = beneficiosRef.current;
+    const observador = new IntersectionObserver(([entrada]) => {
+      if (entrada.isIntersecting) { seccion.classList.add("es-visible"); observador.disconnect(); }
+    }, { threshold: 0.2 });
+    observador.observe(seccion);
+    return () => observador.disconnect();
+  }, []);
   const [h1, bajada, acciones] = [entrada(0), entrada(80), entrada(160)];
   return <div className="landing min-h-screen overflow-x-clip bg-fondo text-texto">
     <a href="#contenido" className={`sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-md focus:bg-superficie focus:px-3 focus:py-2 focus:text-sm focus:shadow-float ${FOCO}`}>Saltar al contenido</a>
@@ -170,15 +236,17 @@ export default function Presentacion() {
           <p className="mt-3 text-center text-xs text-texto-suave">Cifras de ejemplo para mostrar el diseño; no son datos reales de la red.</p>
         </section>
 
-        <section id="como-funciona" aria-labelledby="como-funciona-titulo" className="mx-auto mt-16 max-w-[980px] scroll-mt-8 sm:mt-20">
+        <section id="como-funciona" ref={beneficiosRef} aria-labelledby="como-funciona-titulo" className="mx-auto mt-16 max-w-[980px] scroll-mt-8 sm:mt-20">
           <h2 id="como-funciona-titulo" className={TITULO_SECCION}>Todo lo que tu institución necesita, en un solo lugar</h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-5">
-            {BENEFICIOS.map(({ titulo, detalle, destacado, ancho, enlaceApp }) => <article key={titulo}
-              className={`rounded-lg border border-borde p-5 ${ancho ? "md:col-span-3" : "md:col-span-2"} ${destacado ? "presentacion-beneficio" : "bg-superficie"}`}>
-              <h3 className="text-xl font-bold tracking-tight">{titulo}</h3>
+          <p className="mt-2 text-xs text-texto-suave">Ilustraciones con datos de ejemplo.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {BENEFICIOS.map(({ titulo, detalle, icono, destacado, ancho, alto, completaFila, enlaceApp, grafico }) => <article key={titulo}
+              className={`flex min-w-0 flex-col rounded-lg border border-borde p-5 ${ancho ? "sm:col-span-2" : ""} ${alto ? "lg:row-span-2" : ""} ${completaFila ? "sm:col-span-2 lg:col-span-1" : ""} ${destacado ? "presentacion-beneficio" : "bg-superficie"}`}>
+              <h3 className="flex items-center gap-2 text-xl font-bold tracking-tight"><Icon name={icono} size={18} className="shrink-0 text-brand-teal" />{titulo}</h3>
               <p className="mt-2 text-sm leading-relaxed text-texto-suave">{detalle}</p>
-              {destacado && <Pulso className="mt-4 h-[40px] w-full max-w-[320px] text-brand-teal" />}
-              {enlaceApp && <Link to="/demo/app-clinica" className={`group mt-4 inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver la app<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link>}
+              <div className="mt-auto pt-6">{destacado && <Pulso className="mb-2 h-6 w-full text-brand-teal" />}
+                {enlaceApp ? <div className="flex items-end justify-between gap-3"><Link to="/demo/app-clinica" className={`group inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver la app<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link><GraficoBeneficio tipo={grafico} /></div> : <GraficoBeneficio tipo={grafico} />}
+              </div>
             </article>)}
           </div>
         </section>
