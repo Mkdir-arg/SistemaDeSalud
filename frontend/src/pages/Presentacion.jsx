@@ -45,10 +45,16 @@ const CIFRAS = [
   ["9", "financiadores con convenio"],
 ];
 const BENEFICIOS = [
-  { titulo: "Atención sin filas", detalle: "Turnos, presente a 500 m, fila ordenada y llamado al consultorio. El paciente espera donde quiere.", destacado: true, ancho: true },
-  { titulo: "Historia clínica firmada", detalle: "Alergias, estudios, recetas y registro de quién accedió.", arriba: true },
+  { titulo: "Atención sin filas", detalle: "Turnos, presente al llegar, fila ordenada y llamado al consultorio. El paciente espera donde quiere.", destacado: true, ancho: true },
+  { titulo: "Sistema de Triage", detalle: "Guardias ordenadas según prioridad: cada paciente se atiende en el orden que su urgencia requiere." },
+  { titulo: "Historia clínica firmada", detalle: "Alergias, estudios, recetas y registro de quién accedió a cada dato.", ancho: true },
+  { titulo: "Internación", detalle: "Ocupación de camas por sector, asignación desde el caso, pases y egresos." },
+  { titulo: "Laboratorio e imágenes", detalle: "Órdenes y resultados integrados a la atención de cada paciente.", ancho: true },
+  { titulo: "Farmacia e insumos", detalle: "Stock por depósito y lote, alertas de faltantes y vencimientos, y trazabilidad del lote hasta el paciente." },
   { titulo: "Coberturas y cobros", detalle: "Cupos, copagos y saldos calculados según cada convenio." },
-  { titulo: "App para pacientes", detalle: "Turnos, resultados y pagos desde el celular, con la marca de tu institución.", ancho: true, maqueta: true },
+  { titulo: "Circuitos configurables", detalle: "Cada institución dibuja su circuito de atención y ese diagrama pasa a ser el sistema. Cambiarlo no afecta los casos en curso.", ancho: true },
+  { titulo: "Red de establecimientos", detalle: "Derivaciones entre instituciones, con aceptación, traslado y recepción en destino.", ancho: true },
+  { titulo: "App para pacientes", detalle: "Turnos, presente al llegar, aviso de llamado, resultados y cobertura desde el celular, con la marca de tu institución.", enlaceApp: true },
 ];
 
 const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -167,12 +173,12 @@ export default function Presentacion() {
         <section id="como-funciona" aria-labelledby="como-funciona-titulo" className="mx-auto mt-16 max-w-[980px] scroll-mt-8 sm:mt-20">
           <h2 id="como-funciona-titulo" className={TITULO_SECCION}>Todo lo que tu institución necesita, en un solo lugar</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-5">
-            {BENEFICIOS.map(({ titulo, detalle, destacado, ancho, arriba, maqueta }) => <article key={titulo}
-              className={`rounded-lg border border-borde p-5 ${ancho ? "md:col-span-3" : "md:col-span-2"} ${destacado ? "presentacion-beneficio" : "bg-superficie"} ${arriba ? "md:self-start" : ""}`}>
+            {BENEFICIOS.map(({ titulo, detalle, destacado, ancho, enlaceApp }) => <article key={titulo}
+              className={`rounded-lg border border-borde p-5 ${ancho ? "md:col-span-3" : "md:col-span-2"} ${destacado ? "presentacion-beneficio" : "bg-superficie"}`}>
               <h3 className="text-xl font-bold tracking-tight">{titulo}</h3>
               <p className="mt-2 text-sm leading-relaxed text-texto-suave">{detalle}</p>
               {destacado && <Pulso className="mt-4 h-[40px] w-full max-w-[320px] text-brand-teal" />}
-              {maqueta && <Link to="/demo/app-clinica" className={`group mt-4 inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver app clínica<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link>}
+              {enlaceApp && <Link to="/demo/app-clinica" className={`group mt-4 inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver la app<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link>}
             </article>)}
           </div>
         </section>
