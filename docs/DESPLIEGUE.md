@@ -123,9 +123,13 @@ docker compose -f docker-compose.yml exec backend python manage.py createsuperus
 
 ### Preparar las cuentas de referencia
 
-«Ver como» simula perfiles con cuentas técnicas, una por perfil y ámbito. Se
-preparan con un comando que se puede correr en **todos los entornos, producción
-incluida**:
+«Ver como» simula perfiles con cuentas técnicas, una por perfil y ámbito. La
+primera vez que un superusuario elige un perfil, la aplicación prepara solo esa
+cuenta automáticamente. Abrir el catálogo no escribe. Los perfiles estatales
+tienen una membresía global, sin institución de anclaje.
+
+El comando permite verificar o preparar cuentas por adelantado en **todos los
+entornos, producción incluida**:
 
 - No usa claves de demo ni imprime ni escribe contraseñas.
 - Solo toca las cuentas de referencia y sus membresías.
@@ -137,12 +141,11 @@ producción.
 ```bash
 # Primero, ver qué falta. No escribe nada.
 docker compose -f docker-compose.yml exec backend python manage.py preparar_cuentas_referencia \
-  --todas-las-instituciones --todos-los-financiadores --ancla-estatal <id> --verificar
+  --todas-las-instituciones --todos-los-financiadores --estatales --verificar
 
-# Después, prepararlas. `--ancla-estatal` es la institución donde cuelgan
-# Autoridad estatal y Auditor estatal, cuyo alcance ya es global.
+# Opcional: prepararlas antes del primer uso.
 docker compose -f docker-compose.yml exec backend python manage.py preparar_cuentas_referencia \
-  --todas-las-instituciones --todos-los-financiadores --ancla-estatal <id>
+  --todas-las-instituciones --todos-los-financiadores --estatales
 ```
 
 Cada cuenta queda así:
@@ -152,11 +155,11 @@ Cada cuenta queda así:
 - Solo la membresía de su perfil. Las áreas y los grupos son los del personal real
   con ese rol, y el comando solo agrega, nunca quita.
 
-Hay que volver a correrlo cuando se da de alta una institución o un financiador,
-cuando personal del mismo rol recibe áreas o grupos nuevos, o cuando `--verificar`
-informa un problema. Hasta entonces, ese perfil no se puede simular. Correrlo en
-producción escribe en la base real: requiere la misma autorización que cualquier
-cambio de datos.
+Si se agregan ámbitos, áreas o grupos, el siguiente intento de simular ese perfil
+lo prepara o actualiza. Una sesión ya abierta que pierde su alcance se invalida
+y debe iniciarse de nuevo. Tanto el primer uso como el comando escriben cuentas
+técnicas en la base del entorno; en producción, además, las acciones simuladas
+modifican datos reales.
 
 Desde ahí, la configuración inicial del hospital —institución, áreas, usuarios,
 formularios, flujos, finanzas— se hace **por pantalla**, y hay un recorrido paso a
