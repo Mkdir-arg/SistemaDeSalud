@@ -1,9 +1,10 @@
 """Decisiones administrativas durables, separadas de la realización clínica."""
 from datetime import timedelta
+from types import SimpleNamespace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
@@ -14,7 +15,7 @@ from apps.finanzas.models import HechoAtencionCosteable
 from apps.registros.models import normalizar_documento
 from . import models as m
 from .cobertura import regla_aplicable
-from .permisos import plataforma, requerir_caso, requerir_resolver_autorizaciones
+from .permisos import plataforma, requerir_carga_manual, requerir_caso, requerir_resolver_autorizaciones
 from .services import auditar
 from .vigencias import convenio_aplicable, convenios_vigentes
 
@@ -93,8 +94,9 @@ def _evento(solicitud, usuario, clave, accion, anterior, motivo, peticion):
     auditar(usuario, f"autorizacion_{accion}", solicitud.pk, financiador=solicitud.financiador,
             institucion=solicitud.institucion, motivo=motivo[:255])
     # La traza clínica sólo informa estado, sin transmitir justificación ni importes.
-    EventoCaso.objects.create(caso=solicitud.caso, nodo=solicitud.nodo, autor=usuario,
-        titulo=f"Autorización {solicitud.get_estado_display().lower()}", detalle=f"Solicitud #{solicitud.pk}")
+    if solicitud.caso_id:
+        EventoCaso.objects.create(caso=solicitud.caso, nodo=solicitud.nodo, autor=usuario,
+            titulo=f"Autorización {solicitud.get_estado_display().lower()}", detalle=f"Solicitud #{solicitud.pk}")
 
 
 @transaction.atomic
@@ -152,24 +154,66 @@ def solicitar(*, caso, prestacion, usuario, intento, cantidad, justificacion, cl
     return obj
 
 
+@transaction.atomic
+def solicitar_manual(*, financiador_id, afiliado, institucion, comun, usuario, cantidad, justificacion, urgente=False, clave):
+    requerir_carga_manual(usuario, financiador_id)
+    clave = _clave(clave)
+    justificacion = _texto(justificacion, 1000, "un motivo para la solicitud")
+    peticion = {"financiador": financiador_id, "afiliado": afiliado.pk, "institucion": institucion.pk,
+                "comun": comun.pk, "cantidad": cantidad, "justificacion": justificacion, "urgente": urgente}
+    if not isinstance(cantidad, int) or isinstance(cantidad, bool) or not 1 <= cantidad <= 100000:
+        raise ValidationError("La cantidad debe estar entre 1 y 100.000.")
+    afiliado = m.Afiliado.objects.select_for_update().get(pk=afiliado.pk)
+    previo = _reintento(clave, usuario, "solicitar_manual", peticion)
+    if previo:
+        return previo
+    if (afiliado.financiador_id != financiador_id or afiliado.finalizado_en
+            or afiliado.desde > timezone.localdate() or not afiliado.financiador.activo):
+        raise ValidationError("La afiliación no está vigente en este financiador.")
+    convenio = convenio_aplicable(financiador_id, institucion.pk, timezone.now(), bloquear=True)
+    if not convenio:
+        raise ValidationError("La institución necesita un convenio vigente con el financiador.")
+    if not comun.activo:
+        raise ValidationError("La prestación común no está activa.")
+    regla = regla_aplicable(SimpleNamespace(afiliado=afiliado, plan_id=afiliado.plan_id), comun,
+                            timezone.localdate(), timezone.now())
+    if not regla or not regla.requiere_autorizacion:
+        raise ValidationError("La regla vigente no requiere autorización previa para esta prestación.")
+    if m.SolicitudAutorizacion.objects.filter(origen="manual", afiliado=afiliado, convenio=convenio,
+            comun=comun, estado__in=m.SolicitudAutorizacion.ABIERTAS).exists():
+        raise ValidationError("Ya existe una solicitud manual abierta para esta prestación.")
+    try:
+        with transaction.atomic():
+            obj = m.SolicitudAutorizacion.objects.create(origen="manual", institucion=institucion,
+                financiador_id=financiador_id, convenio=convenio, afiliado=afiliado, comun=comun,
+                cantidad_solicitada=cantidad, justificacion=justificacion, urgente=urgente, creado_por=usuario)
+    except IntegrityError as error:
+        # Carga simultánea: la restricción parcial deja una sola manual abierta.
+        raise ValidationError("Ya existe una solicitud manual abierta para esta prestación.") from error
+    _evento(obj, usuario, clave, "solicitar_manual", "", justificacion, peticion)
+    efectos_solicitud(obj, usuario)
+    return obj
+
+
 def bloquear_solicitud(solicitud):
-    """Orden compartido con captura: Caso → Hechos → Afiliado → Convenio → solicitud.
+    """Orden compartido: Caso (si existe) → Hechos → Afiliado → Convenio → solicitud.
 
     El llamador ya está en transaction.atomic. Nunca se intenta tomar un Hecho
     después del Afiliado: la captura clínica mantiene el orden inverso a eso.
     """
-    caso = Caso.objects.select_for_update().get(pk=solicitud.caso_id)
-    hechos = HechoAtencionCosteable.objects.filter(
-        Q(caso_origen_id=caso.pk, nodo_origen_id=solicitud.nodo_id)
-        | Q(usoautorizacion__solicitud_id=solicitud.pk),
-    ).order_by("pk")
+    caso = Caso.objects.select_for_update().get(pk=solicitud.caso_id) if solicitud.caso_id else None
+    hechos_filtro = Q(usoautorizacion__solicitud_id=solicitud.pk)
+    if caso:
+        hechos_filtro |= Q(caso_origen_id=caso.pk, nodo_origen_id=solicitud.nodo_id)
+    hechos = HechoAtencionCosteable.objects.filter(hechos_filtro).order_by("pk")
     # Evita DISTINCT + FOR UPDATE y los bloqueos de joins anulables.
     ids = hechos.values_list("pk", flat=True).distinct()
     list(HechoAtencionCosteable.objects.filter(pk__in=ids).order_by("pk").select_for_update())
     m.Afiliado.objects.select_for_update().get(pk=solicitud.afiliado_id)
     m.Convenio.objects.select_for_update().get(pk=solicitud.convenio_id)
     obj = m.SolicitudAutorizacion.objects.select_for_update().get(pk=solicitud.pk)
-    obj.caso = caso
+    if caso:
+        obj.caso = caso
     return obj
 
 
@@ -215,6 +259,8 @@ def resolver(*, solicitud, usuario, revision, decision, motivo, clave, evidencia
             raise ValidationError("La cantidad aprobada debe ser positiva y no superar la solicitada.")
         if not vigencia_desde or not vigencia_hasta or vigencia_hasta < vigencia_desde:
             raise ValidationError("Indicá una vigencia completa con fecha final no anterior al inicio.")
+        if obj.origen == "manual" and vigencia_desde < timezone.localdate():
+            raise ValidationError("La autorización manual sólo puede cubrir prestaciones futuras.")
         evidencia = _texto(evidencia, 1000, "la evidencia de aprobación")
         obj.cantidad_aprobada = cantidad_aprobada
         obj.vigencia_desde, obj.vigencia_hasta = vigencia_desde, vigencia_hasta
@@ -234,7 +280,10 @@ def resolver(*, solicitud, usuario, revision, decision, motivo, clave, evidencia
 @transaction.atomic
 def reenviar(*, solicitud, usuario, revision, justificacion, clave):
     obj = bloquear_solicitud(solicitud)
-    requerir_caso(usuario, obj.caso)
+    if obj.origen == "manual":
+        requerir_carga_manual(usuario, obj.financiador_id)
+    else:
+        requerir_caso(usuario, obj.caso)
     clave, justificacion = _clave(clave), _texto(justificacion, 1000, "una justificación destinada al financiador")
     peticion = {"revision": revision, "justificacion": justificacion}
     previo = _reintento(clave, usuario, "reenviar", peticion, obj)
@@ -242,7 +291,7 @@ def reenviar(*, solicitud, usuario, revision, justificacion, clave):
         return previo
     if obj.revision != revision or obj.estado != "observada":
         raise ValidationError("Sólo se reenvía la versión actual de una solicitud observada.")
-    if obj.caso.estado in Caso.ESTADOS_FINALIZADOS or obj.intento != intento_actual(obj.caso):
+    if obj.caso_id and (obj.caso.estado in Caso.ESTADOS_FINALIZADOS or obj.intento != intento_actual(obj.caso)):
         raise ValidationError("El intento ya no es actual. La solicitud conserva su historia.")
     if not convenios_vigentes().filter(pk=obj.convenio_id).exists() or obj.afiliado.finalizado_en:
         raise ValidationError("La afiliación o el convenio cerraron. No se abre una nueva evaluación.")
@@ -259,7 +308,10 @@ def reenviar(*, solicitud, usuario, revision, justificacion, clave):
 @transaction.atomic
 def anular(*, solicitud, usuario, revision, motivo, clave):
     obj = bloquear_solicitud(solicitud)
-    requerir_caso(usuario, obj.caso)
+    if obj.origen == "manual":
+        requerir_carga_manual(usuario, obj.financiador_id)
+    else:
+        requerir_caso(usuario, obj.caso)
     clave, motivo = _clave(clave), _texto(motivo, 255, "un motivo de anulación")
     peticion = {"revision": revision, "motivo": motivo}
     previo = _reintento(clave, usuario, "anular", peticion, obj)

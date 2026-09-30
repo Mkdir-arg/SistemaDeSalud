@@ -30,6 +30,17 @@ def puede_resolver_autorizaciones(usuario, financiador_id):
     ).exists())
 
 
+def puede_cargar_manual(usuario, financiador_id):
+    return bool(usuario.is_authenticated and usuario.is_active and not plataforma(usuario)
+        and MembresiaFinanciador.objects.filter(usuario=usuario, financiador_id=financiador_id,
+            financiador__activo=True, activo=True, rol__in=["admin", "operador"]).exists())
+
+
+def requerir_carga_manual(usuario, financiador_id):
+    if not puede_cargar_manual(usuario, financiador_id):
+        raise PermissionDenied("No tenés permiso para operar solicitudes manuales de este financiador.")
+
+
 def requerir_resolver_autorizaciones(usuario, financiador_id):
     if not puede_resolver_autorizaciones(usuario, financiador_id):
         raise PermissionDenied("Necesitás designación explícita para resolver autorizaciones de este financiador.")

@@ -162,6 +162,8 @@ def _referencias_aprobadas(caso, espera):
 
 def registrar_espera(solicitud, usuario):
     """El llamador mantiene bloqueado el Caso durante la transacción de solicitud."""
+    if not solicitud.caso_id:
+        return
     caso = solicitud.caso
     if caso.estado in Caso.ESTADOS_FINALIZADOS or str(solicitud.intento) != _intento(caso) or not _programado(caso):
         return
@@ -199,6 +201,8 @@ def _notificar_resolucion(solicitud_id, caso_id, estado):
 
 
 def resolver_espera(solicitud, usuario):
+    if not solicitud.caso_id:
+        return
     transaction.on_commit(lambda: _notificar_resolucion(solicitud.pk, solicitud.caso_id, solicitud.estado))
     caso = solicitud.caso
     espera = _actual(caso)
@@ -284,8 +288,8 @@ def vencer_autorizaciones(*, ahora=None, limite=500, seco=False):
         with transaction.atomic():
             # No retener una solicitud mientras se espera al Caso: mantiene el
             # orden canónico y permite clock simultáneo con aprobación/captura.
-            caso = Caso.objects.select_for_update(skip_locked=True).filter(pk=caso_id).first()
-            if not caso:
+            caso = Caso.objects.select_for_update(skip_locked=True).filter(pk=caso_id).first() if caso_id else None
+            if caso_id and not caso:
                 continue
             original = m.SolicitudAutorizacion.objects.filter(pk=pk).first()
             if not original:
@@ -297,7 +301,8 @@ def vencer_autorizaciones(*, ahora=None, limite=500, seco=False):
                 continue
             anterior = obj.estado
             obj.estado, obj.revision, obj.resuelto_en = "vencida", obj.revision + 1, ahora
-            obj.motivo_resolucion = "Venció el plazo administrativo; requiere revisión hospitalaria."
+            obj.motivo_resolucion = ("Venció la vigencia de la autorización." if obj.origen == "manual"
+                else "Venció el plazo administrativo; requiere revisión hospitalaria.")
             obj.save(update_fields=["estado", "revision", "resuelto_en", "motivo_resolucion", "actualizado"])
             _evento(obj, None, uuid5(NAMESPACE_URL, f"salud:vencer-autorizacion:{pk}:{obj.revision}"),
                     "vencer", anterior, obj.motivo_resolucion, {"origen": "correr_tiempos"})
