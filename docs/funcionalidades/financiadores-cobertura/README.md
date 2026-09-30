@@ -207,7 +207,7 @@ Si no hay ninguna, la prestación no está cubierta por esa cobertura.
 - `/financiadores/activar` — alta de la cuenta de un usuario invitado, sin sesión.
 - `/finanzas/coberturas` — «Coberturas y copagos» del hospital.
 - Panel de cobertura, aceptación y autorizaciones dentro de `/casos/:id`.
-- Afiliaciones vigentes en la ficha del padrón, `/padron/:id`.
+- Afiliaciones vigentes en la ficha del paciente, `/pacientes/:id` (pestaña Datos).
 
 ## Entidades y endpoints
 
