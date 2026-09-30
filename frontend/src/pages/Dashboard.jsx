@@ -11,6 +11,7 @@ import { useFiltroUrl } from "@/components/ui/filtros";
 import { antiguedad, casoId, duracionMinutos } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { estadoCaso, estadoVersion, nombreNodo } from "@/lib/dominio";
+import { KpiDireccion, BarrasIngresos, ResumenDireccion, isoHoy, isoHace, fechaValida, isoAntes, fechaCorta, alertasOperacion } from "@/components/tablero";
 
 /**
  * Tablero del hospital: números, tiempos por área y evolución de ingresos.
@@ -28,32 +29,6 @@ const RANGOS = [
 // que el backend va a recortar sin que se note.
 const MAX_DIAS_RANGO = 366;
 
-// Fecha LOCAL, no UTC: `toISOString()` pasa a UTC antes de recortar y Buenos
-// Aires es UTC-3 fijo, así que de 21:00 a medianoche devolvía la fecha de
-// MAÑANA. El rango se corría un día entero —perdía el más viejo en silencio
-// mientras el rótulo seguía diciendo «30 días»— y la serie terminaba en un
-// bucket futuro que vale 0, que es justo el punto que la línea dibuja más grande
-// porque es «hoy»: el turno noche leía que dejaron de entrar pacientes. Es el
-// mismo helper que ya usa Agenda.jsx.
-const isoLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-const isoHoy = () => isoLocal(new Date());
-const isoHace = (dias) => {
-  const x = new Date();
-  x.setDate(x.getDate() - (dias - 1));
-  return isoLocal(x);
-};
-const fechaValida = (iso) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return false;
-  const fecha = new Date(`${iso}T12:00:00`);
-  return !Number.isNaN(fecha.getTime()) && isoLocal(fecha) === iso;
-};
-const isoAntes = (hasta, dias) => {
-  const fecha = new Date(`${hasta}T12:00:00`);
-  fecha.setDate(fecha.getDate() - (dias - 1));
-  return isoLocal(fecha);
-};
-// "2026-08-15" → "15/08/2026", para poder mostrar el rango que contestó el servidor.
-const fechaCorta = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
 
 // Color por estado, tomado de los tonos de badge: son los mismos estados, así
 // que la dona y las píldoras dicen lo mismo con el mismo color — y siguen al
@@ -372,27 +347,7 @@ function TableroGeneral({ d, navigate }) {
   // con la prolijidad administrativa y no con cuánta gente faltó—, así que el
   // porcentaje no se puede leer sin saber sobre cuántos turnos se calculó.
   const resueltos = (r.turnos_presentes || 0) + (r.turnos_ausentes || 0);
-  const requiereAtencion = [
-    ...(r.urgentes > 0
-      ? [{ l: "Urgentes", v: r.urgentes, icon: "activity", c: "var(--color-danger)", destacado: true }]
-      : []),
-    ...(r.espera_prom_min >= 30
-      ? [{ l: "Espera prom.", ...espera(r.espera_prom_min), icon: "refresh", c: "var(--color-danger)", destacado: true }]
-      : []),
-    ...(r.turnos_sin_registrar
-      ? [{
-          l: "Turnos sin registrar",
-          v: r.turnos_sin_registrar,
-          icon: "calendar",
-          c: "var(--color-badge-amber-fg)",
-          sub: (
-            <button onClick={() => navigate("/agenda")} className="font-semibold text-accent hover:underline">
-              Cerrarlos en la agenda
-            </button>
-          ),
-        }]
-      : []),
-  ];
+  const requiereAtencion = alertasOperacion(r);
   const kpis = [
     { l: "Casos activos", v: r.casos_activos, icon: "fileText", c: "var(--color-accent)" },
     // Ámbar y no el teal de la categoría «espera de fila»: ese teal es un color
@@ -515,24 +470,6 @@ function TableroGeneral({ d, navigate }) {
       </details>
     </>
   );
-}
-
-function KpiDireccion({ titulo, valor, detalle }) {
-  return <Card className="min-w-0 p-3.5"><h3 className="text-xs text-texto-suave">{titulo}</h3><p className="mt-2 text-xxl font-bold tabular-nums">{valor}</p><p className="mt-1 truncate text-xs text-texto-suave" title={detalle}>{detalle}</p></Card>;
-}
-
-function BarrasIngresos({ serie = [] }) {
-  const maximo = Math.max(1, ...serie.map((punto) => punto.casos || 0));
-  return <div className="mt-5"><div className="flex h-36 items-end gap-1.5 border-b border-division">
-    {serie.map((punto) => <div key={punto.fecha} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${fechaCorta(punto.fecha)}: ${punto.casos} ingresos`}><div className="w-full rounded-t-sm bg-accent-fuerte" style={{ height: `${Math.max(punto.casos ? 5 : 0, (punto.casos / maximo) * 100)}%` }} /></div>)}
-  </div><div className="mt-2 flex justify-between text-[10px] text-texto-tenue"><span>{fechaCorta(serie[0]?.fecha)}</span><span>{serie.some((punto) => punto.casos) ? "Ingresos registrados" : "Sin ingresos en el período"}</span><span>{fechaCorta(serie.at(-1)?.fecha)}</span></div></div>;
-}
-
-function ResumenDireccion({ titulo, filas, vacio }) {
-  const tieneDatos = filas.some((fila) => fila.valor);
-  return <Card className="p-4"><h3 className="mb-4 text-sm font-bold">{titulo}</h3>
-    {vacio && !tieneDatos ? <p className="text-xs text-texto-suave">{vacio}</p> : <div className="space-y-3">{filas.slice(0, 4).map((fila) => <div key={fila.nombre} className="text-xs"><div className="mb-1 flex justify-between gap-2"><span>{fila.nombre}</span><span className="tabular-nums text-texto-suave">{fila.valor}{fila.detalle ? ` · ${fila.detalle}` : ""}</span></div><div className="h-1.5 overflow-hidden rounded-pill bg-superficie-2"><div className="h-full rounded-pill bg-accent-fuerte" style={{ width: `${Math.min(100, (fila.valor / fila.total) * 100)}%` }} /></div></div>)}</div>}
-  </Card>;
 }
 
 // --------------------------------------------------------------------------- //
