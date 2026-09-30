@@ -124,3 +124,9 @@ Fin del acuerdo vigente entre un hospital y un financiador. Conserva las prestac
 
 **Acceso histórico pendiente**:
 Consulta limitada del financiador a operaciones propias que todavía requieren atención o resolución económica, aunque haya terminado la afiliación o el convenio. Un saldo del paciente no habilita por sí solo ese acceso.
+
+## Agenda y turnos
+
+**Agenda**:
+Lo que se reserva en un horario: un profesional o un recurso, como un equipo o un consultorio. Se elige por su nombre, sea de profesional o de recurso.
+_Evitar_: Profesional, para referirse a la agenda; un profesional puede no tener agenda y un recurso no es un profesional.
