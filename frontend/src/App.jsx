@@ -58,8 +58,10 @@ function Entrada() {
 
   useEffect(() => {
     if (institucion) return;
-    const esPlataforma = user?.is_superuser || Object.values(user?.capacidades_por_institucion || {})
-      .some((caps) => (caps || []).includes("gobierno_plataforma"));
+    const esPlataforma = user?.is_superuser || user?.simulacion?.ambito === "plataforma"
+      || (user?.roles_por_institucion?.global || []).some((rol) => rol === "plataforma" || rol === "auditor")
+      || Object.values(user?.capacidades_por_institucion || {})
+        .some((caps) => (caps || []).includes("gobierno_plataforma"));
     if (esPlataforma) {
       setEstado("directorio");
       return;
