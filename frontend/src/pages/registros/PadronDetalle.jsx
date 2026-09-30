@@ -1,13 +1,10 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
-import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
-import CoberturaAdministrativa, { AvisoCoberturaCaso, resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
-import { Icon } from "@/components/icons";
-import { Avatar, Badge, Button, Card, Field, Input, Modal, Mono, Spinner, Textarea } from "@/components/ui";
+import CoberturaAdministrativa, { AvisoCoberturaCaso } from "@/components/financiadores/CoberturaAdministrativa";
+import { Badge, Button, Card, Field, Input, Modal, Mono, Textarea } from "@/components/ui";
 import { EstadoError } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { fechaHora } from "@/lib/format";
@@ -16,10 +13,6 @@ function fecha(iso) {
   if (!iso) return "-";
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso);
-}
-
-function nombreCompleto(c) {
-  return `${c?.nombre || ""} ${c?.apellido || ""}`.trim();
 }
 
 function Dato({ label, children }) {
@@ -31,56 +24,8 @@ function Dato({ label, children }) {
   );
 }
 
-export default function PadronDetalle() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { puedeVer } = useInstitucion();
-  const paciente = usePacienteAdministrativo(id);
-  const [editando, setEditando] = useState(false);
-
-  if (paciente.isLoading) return <Spinner label="Cargando ficha..." />;
-  if (paciente.error) return <EstadoError error={paciente.error} onReintentar={paciente.refetch} />;
-
-  const c = paciente.data;
-  const nombre = nombreCompleto(c);
-
+export function DatosPaciente({ c, id, sinHistoriaClinica }) {
   return (
-    <div className="px-lg py-[22px] sm:px-[30px]">
-      <div className="mb-lg flex items-center gap-2.5">
-        <button
-          onClick={() => navigate("/padron")}
-          aria-label="Volver al padrón"
-          className="flex size-8 items-center justify-center rounded-md border border-borde bg-superficie text-texto-debil hover:bg-superficie-2"
-        >
-          <Icon name="back" size={15} />
-        </button>
-        <div className="text-md text-texto-debil">
-          Padrón de pacientes · <strong className="text-texto-suave">{nombre || "Paciente"}</strong>
-        </div>
-      </div>
-
-      <Card className="mb-[18px] flex flex-wrap items-center gap-lg px-6 py-5">
-        <Avatar nombre={nombre} i={c.id} size={52} />
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xxl font-extrabold tracking-tight">{nombre || "Sin nombre"}</h2>
-          <div className="flex flex-wrap items-center gap-x-2 text-base text-texto-debil">
-            <span>{c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}</span>
-            {c.fecha_nacimiento && <span>- {fecha(c.fecha_nacimiento)}</span>}
-            {resumenCobertura(c) && <span>- {resumenCobertura(c)}</span>}
-          </div>
-        </div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Button variant="secondary" onClick={() => setEditando(true)}>
-            <Icon name="edit" size={15} /> Editar datos
-          </Button>
-          {puedeVer("historia_clinica") && (
-            <Button onClick={() => navigate(`/historia/${c.id}`)}>
-              <Icon name="clipboard" size={15} /> Abrir historia
-            </Button>
-          )}
-        </div>
-      </Card>
-
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_22rem]">
         <div className="flex flex-col gap-5">
           <Card className="p-5">
@@ -100,25 +45,15 @@ export default function PadronDetalle() {
 
         <div className="flex flex-col gap-3.5">
           <Consentimiento ciudadanoId={id} estado={c.consentimiento} />
-          <Card className="p-4 text-sm text-texto-debil">
+          {sinHistoriaClinica && <Card className="p-4 text-sm text-texto-debil">
             Esta ficha no muestra evolución, alergias, estudios ni recetas. Para consultar datos clínicos se requiere permiso de historia clínica.
-          </Card>
+          </Card>}
         </div>
       </div>
-
-      {editando && (
-        <EditarPacienteModal
-          key={c.id}
-          paciente={c}
-          onClose={() => setEditando(false)}
-          onListo={() => { setEditando(false); paciente.refetch(); }}
-        />
-      )}
-    </div>
   );
 }
 
-function EditarPacienteModal({ paciente, onClose, onListo }) {
+export function EditarPacienteModal({ paciente, onClose, onListo }) {
   const toast = useToast();
   const coberturaHabilitada = paciente.cobertura_administrativa?.habilitada === true;
   const [f, setF] = useState({
@@ -191,7 +126,10 @@ function Consentimiento({ ciudadanoId, estado }) {
       </h2>
 
       {sinRegistro ? (
-        <div className="text-md text-texto-debil">Sin registro de consentimiento.</div>
+        <div className="text-md text-texto-debil">
+          Sin registro de consentimiento.{" "}
+          <span className="text-texto-medio">No consta que se haya pedido; no es lo mismo que una negativa.</span>
+        </div>
       ) : (
         <>
           <Badge tone={estado.otorgado ? "green" : "amber"}>
@@ -203,7 +141,7 @@ function Consentimiento({ ciudadanoId, estado }) {
           </div>
           {estado.alcance && (
             <div className="mt-1 text-sm text-texto-medio">
-              <span className="text-texto-debil">{estado.otorgado ? "Alcance: " : "Motivo: "}</span>
+              <span className="text-texto-debil">{estado.otorgado ? "Alcance: " : "Motivo de la revocación: "}</span>
               {estado.alcance}
             </div>
           )}
@@ -226,6 +164,10 @@ function Consentimiento({ ciudadanoId, estado }) {
             Registrar revocación
           </Button>
         )}
+      </div>
+
+      <div className="mt-3 text-xs text-texto-debil">
+        La atención de urgencia no depende del consentimiento. Acá se deja constancia, no se bloquea nada.
       </div>
 
       {pidiendo && (
@@ -258,7 +200,7 @@ function HistorialConsentimientos({ ciudadanoId }) {
   if (!q.filas.length) return <div className="mt-2 text-sm text-texto-debil">Sin registros.</div>;
 
   return (
-    <ol className="mt-2.5 flex flex-col gap-2.5 border-t border-division pt-2.5">
+    <><ol className="mt-2.5 flex flex-col gap-2.5 border-t border-division pt-2.5">
       {q.filas.map((c) => (
         <li key={c.id} className="text-sm">
           <div className="flex flex-wrap items-center gap-2">
@@ -279,6 +221,9 @@ function HistorialConsentimientos({ ciudadanoId }) {
         </li>
       ))}
     </ol>
+    {q.total > q.filas.length && <div className="mt-2 text-xs text-texto-debil">
+      Se muestran los {q.filas.length} más recientes de {q.total}.
+    </div>}</>
   );
 }
 
