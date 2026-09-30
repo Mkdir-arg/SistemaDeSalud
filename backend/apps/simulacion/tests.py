@@ -167,13 +167,72 @@ class CatalogoTests(EscenarioSimulacion, APITestCase):
         financiador = self.client.get(f"/api/simulaciones/catalogo/?financiador={self.f.pk}", **jwt(self.root)).data
         self.assertEqual({p["rol"] for p in financiador["perfiles"]}, {"admin", "operador", "auditor"})
 
-    def test_un_ambito_sin_cuentas_lo_dice_y_no_simula(self):
+    def test_el_catalogo_no_escribe_y_el_primer_uso_prepara_solo_el_perfil_elegido(self):
         r = self.client.get(f"/api/simulaciones/catalogo/?institucion={self.b.pk}", **jwt(self.root))
         self.assertTrue(r.data["perfiles"])
         self.assertTrue(all(not p["disponible"] and "Falta preparar" in p["motivo"] for p in r.data["perfiles"]))
+        self.assertFalse(CuentaReferencia.objects.filter(ambito="institucion", institucion=self.b).exists())
+        r = self.client.post("/api/simulaciones/", {"ambito": "institucion", "rol": "medico", "institucion": self.b.pk},
+                             format="json", **jwt(self.root))
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(CuentaReferencia.objects.filter(ambito="institucion", institucion=self.b).count(), 1)
+        self.assertEqual(self.cuenta("medico", institucion=self.b).membresias.get().rol, "medico")
+
+    def test_el_primer_uso_prepara_un_financiador_sin_preparar_otros_perfiles(self):
+        r = self.client.post("/api/simulaciones/", {"ambito": "financiador", "rol": "operador", "financiador": self.g.pk},
+                             format="json", **jwt(self.root))
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(CuentaReferencia.objects.filter(ambito="financiador", financiador=self.g).count(), 1)
+        self.assertFalse(self.cuenta("operador", financiador=self.g).has_usable_password())
+
+    def test_el_primer_uso_prepara_un_perfil_estatal_sin_institucion(self):
+        self.cuenta("auditor", ambito="plataforma").delete()
+        r = self.client.post("/api/simulaciones/", {"ambito": "plataforma", "rol": "auditor"},
+                             format="json", **jwt(self.root))
+        self.assertEqual(r.status_code, 201, r.data)
+        ref = CuentaReferencia.objects.get(ambito="plataforma", rol="auditor")
+        self.assertIsNone(ref.institucion_id)
+        self.assertEqual(list(ref.usuario.membresias.filter(activo=True).values_list("institucion_id", "rol")),
+                         [(None, "auditor")])
+
+    def test_un_perfil_estatal_antiguo_pierde_el_ancla_al_elegirlo(self):
+        ref = CuentaReferencia.objects.get(ambito="plataforma", rol="auditor")
+        ref.institucion = self.a
+        ref.save(update_fields=["institucion"])
+        membresia = ref.usuario.membresias.get(activo=True)
+        membresia.institucion = self.a
+        membresia.save(update_fields=["institucion"])
+        r = self.client.post("/api/simulaciones/", {"ambito": "plataforma", "rol": "auditor"},
+                             format="json", **jwt(self.root))
+        self.assertEqual(r.status_code, 201, r.data)
+        ref.refresh_from_db()
+        self.assertIsNone(ref.institucion_id)
+        self.assertEqual(list(ref.usuario.membresias.filter(activo=True).values_list("institucion_id", "rol")),
+                         [(None, "auditor")])
+
+    def test_un_correo_ocupado_no_se_convierte_en_cuenta_automatica(self):
+        email = f"medico.i{self.b.pk}@referencia.hen.invalid"
+        ajena = Usuario.objects.create_user(email, "clave-123", nombre="Ajena")
         r = self.client.post("/api/simulaciones/", {"ambito": "institucion", "rol": "medico", "institucion": self.b.pk},
                              format="json", **jwt(self.root))
         self.assertEqual(r.status_code, 400)
+        ajena.refresh_from_db()
+        self.assertTrue(ajena.check_password("clave-123"))
+        self.assertFalse(CuentaReferencia.objects.filter(ambito="institucion", institucion=self.b).exists())
+
+    def test_un_ambito_inactivo_no_crea_cuentas(self):
+        self.b.activa = False
+        self.b.save(update_fields=["activa"])
+        r = self.client.post("/api/simulaciones/", {"ambito": "institucion", "rol": "medico", "institucion": self.b.pk},
+                             format="json", **jwt(self.root))
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(CuentaReferencia.objects.filter(ambito="institucion", institucion=self.b).exists())
+
+    def test_la_api_de_membresias_sigue_exigiendo_institucion(self):
+        r = self.client.post("/api/membresias/", {"usuario": self.admin_a.pk, "rol": "auditor"},
+                             format="json", **jwt(self.root))
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(Membresia.objects.filter(usuario=self.admin_a, institucion__isnull=True).exists())
 
     def test_una_cuenta_alterada_no_simula_con_permisos_ampliados(self):
         encabezados = self.simular("enfermeria")
@@ -206,8 +265,7 @@ class CatalogoTests(EscenarioSimulacion, APITestCase):
         grupo.miembros.add(self.enfermera)
         r = self.client.post("/api/simulaciones/", {"ambito": "institucion", "rol": "enfermeria", "institucion": self.a.pk},
                              format="json", **jwt(self.root))
-        self.assertEqual(r.status_code, 400)
-        call_command("preparar_cuentas_referencia", institucion=[self.a.pk], stdout=StringIO())
+        self.assertEqual(r.status_code, 201, r.data)
         self.assertIn(self.cuenta("enfermeria", institucion=self.a), grupo.miembros.all())
         self.assertIn("están listas", self._verificar_cuentas())
 
@@ -227,6 +285,20 @@ class CatalogoTests(EscenarioSimulacion, APITestCase):
         self.assertNotIn("simulacion", self.client.get("/api/usuarios/me/", **jwt(self.root)).data)
 
 
+class PlataformaSinInstitucionesTests(APITestCase):
+    def test_el_auditor_estatal_se_prepara_sin_hospitales(self):
+        root = Usuario.objects.create_superuser("root@test.local", "x")
+        r = self.client.post("/api/simulaciones/", {"ambito": "plataforma", "rol": "auditor"},
+                             format="json", **jwt(root))
+        self.assertEqual(r.status_code, 201, r.data)
+        ref = CuentaReferencia.objects.get(ambito="plataforma", rol="auditor")
+        self.assertIsNone(ref.institucion_id)
+        self.assertEqual(list(ref.usuario.membresias.values_list("institucion_id", "rol")), [(None, "auditor")])
+        from apps.demo.trabajo import trabajo_por_usuario
+        fila = next(f for f in trabajo_por_usuario() if f["email"] == ref.usuario.email)
+        self.assertEqual(fila["donde"], "toda la plataforma")
+
+
 class AlcancePorPerfilTests(EscenarioSimulacion, APITestCase):
     """Una acción permitida y una denegada por perfil representativo."""
 
@@ -239,8 +311,9 @@ class AlcancePorPerfilTests(EscenarioSimulacion, APITestCase):
             with self.subTest(rol=rol):
                 me = self.client.get("/api/usuarios/me/", **self.simular(rol, ambito=ambito)).data
                 esperadas = sorted(ROL_CAPACIDADES[rol] | ROL_CAPACIDADES_UI.get(rol, set()))
-                self.assertEqual(me["capacidades_por_institucion"], {str(self.a.pk): esperadas})
-                self.assertEqual(me["roles_por_institucion"], {str(self.a.pk): [rol]})
+                clave = "global" if ambito == "plataforma" else str(self.a.pk)
+                self.assertEqual(me["capacidades_por_institucion"], {clave: esperadas})
+                self.assertEqual(me["roles_por_institucion"], {clave: [rol]})
                 self.assertEqual(me["financiadores"], [])
                 if "config_institucional" not in esperadas:
                     r = self.client.post("/api/areas/", {"institucion": self.a.pk, "nombre": f"X {rol}"},

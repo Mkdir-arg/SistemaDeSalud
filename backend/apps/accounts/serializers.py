@@ -3,6 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.common import tiene_capacidad
+from apps.instituciones.models import Institucion
 
 from .models import LegajoProfesional, Membresia, Usuario
 
@@ -31,6 +32,9 @@ class LegajoProfesionalSerializer(serializers.ModelSerializer):
 
 
 class MembresiaSerializer(serializers.ModelSerializer):
+    # La API pública sigue asignando membresías a instituciones. Solo la
+    # preparación interna de cuentas estatales crea membresías globales.
+    institucion = serializers.PrimaryKeyRelatedField(queryset=Institucion.objects.all())
     rol_display = serializers.CharField(source="get_rol_display", read_only=True)
     # Evita que el cliente tenga que cruzar membresías con /usuarios/ para poder
     # mostrar un nombre en una lista.

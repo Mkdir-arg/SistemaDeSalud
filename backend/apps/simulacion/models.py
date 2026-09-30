@@ -32,8 +32,8 @@ class CuentaReferencia(models.Model):
     """Cuenta técnica que presta sus permisos a una simulación.
 
     `rol` es un valor de `Membresia.Rol` o del rol de `MembresiaFinanciador`: el
-    catálogo no define roles propios. En el ámbito de plataforma, `institucion`
-    solo ancla la membresía, porque su alcance ya es global.
+    catálogo no define roles propios. En plataforma la membresía es global y
+    `institucion` queda vacía; se admiten anclas antiguas hasta su conversión.
     """
 
     usuario = models.OneToOneField(
@@ -57,7 +57,8 @@ class CuentaReferencia(models.Model):
             models.CheckConstraint(
                 condition=(
                     Q(ambito="financiador", financiador__isnull=False, institucion__isnull=True)
-                    | Q(ambito__in=["plataforma", "institucion"], institucion__isnull=False, financiador__isnull=True)
+                    | Q(ambito="plataforma", financiador__isnull=True)
+                    | Q(ambito="institucion", institucion__isnull=False, financiador__isnull=True)
                 ),
                 name="simulacion_cuenta_ambito_valido",
             ),
