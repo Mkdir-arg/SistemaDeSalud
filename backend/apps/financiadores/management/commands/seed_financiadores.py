@@ -199,6 +199,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--institucion", type=int, default=None,
                             help="Id de la institución destino. Por defecto, la de Los Aromos.")
+        parser.add_argument("--nombre-institucion", default=None,
+                            help="Nombre de la institución destino, en lugar del id (así la pide seed_entorno_demo).")
         parser.add_argument("--salida", help="Archivo JSON nuevo con el manifiesto; nunca sobrescribe otro.")
 
     def handle(self, *args, **options):
@@ -220,7 +222,7 @@ class Command(BaseCommand):
                     "Ya hay financiadores cargados. No se borra, mezcla ni duplica por partes: "
                     "para rehacerlo, corré seed_entorno_demo."
                 )
-            self._institucion(options.get("institucion"))
+            self._institucion(options.get("institucion"), options.get("nombre_institucion"))
             self._configurar(clave_demo())
             self._padron()
             self._historia()
@@ -242,8 +244,12 @@ class Command(BaseCommand):
         self.stdout.write(contenido)
 
     # ------------------------------------------------------------------ #
-    def _institucion(self, id_pedido):
-        if id_pedido:
+    def _institucion(self, id_pedido, nombre_pedido=None):
+        if nombre_pedido:
+            self.institucion = Institucion.objects.filter(nombre=nombre_pedido).first()
+            if not self.institucion:
+                raise CommandError("No existe la institución «%s»." % nombre_pedido)
+        elif id_pedido:
             self.institucion = Institucion.objects.filter(pk=id_pedido).first()
             if not self.institucion:
                 raise CommandError("No existe la institución %s." % id_pedido)
@@ -287,8 +293,10 @@ class Command(BaseCommand):
                     "Todos los datos de este entorno son ficticios."
                 ),
             )
+            # Del mismo dominio que el hospital: en Los Aromos, @losaromos.test.
+            dominio = self.admin.email.rsplit("@", 1)[-1]
             self.medico = Usuario.objects.create_user(
-                "irene.bustos@losaromos.test", password, nombre="Irene", apellido="Bustos",
+                "irene.bustos@%s" % dominio, password, nombre="Irene", apellido="Bustos",
             )
             membresia_medico = Membresia.objects.create(
                 usuario=self.medico, institucion=self.institucion, rol=Membresia.Rol.MEDICO,

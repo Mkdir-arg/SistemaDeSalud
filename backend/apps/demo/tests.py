@@ -173,6 +173,7 @@ class CargaCompletaTests(TransactionTestCase):
 
         self._verificar_tablero_de_plataforma()
         self._verificar_comprador()
+        self._verificar_central_completo()
 
         # Todos con la clave de DEMO_PASSWORD, también el superusuario.
         for usuario in Usuario.objects.all():
@@ -201,6 +202,18 @@ class CargaCompletaTests(TransactionTestCase):
         rotas = [hc.pk for hc in HistoriaClinica.objects.filter(ciudadano__institucion__nombre="Hospital Zonal Sur")
                  if not integridad.verificar_historia(hc)["ok"]]
         self.assertEqual(rotas, [])
+
+    def _verificar_central_completo(self):
+        """Hospital Central tiene todo: finanzas del mes y el circuito de financiadores."""
+        mes = timezone.localdate().replace(day=1)
+        for nombre in ("Hospital Central", "Hospital General Los Aromos"):
+            gastos = Gasto.objects.filter(institucion__nombre=nombre)
+            self.assertTrue(gastos.filter(periodo_economico=mes, estado="aprobado").exists(), nombre)
+            self.assertTrue(gastos.filter(estado="pendiente_aprobacion").exists(), nombre)
+            self.assertTrue(MovimientoDinero.objects.filter(institucion__nombre=nombre, tipo="cobro").exists(), nombre)
+        estados = set(SolicitudAutorizacion.objects.filter(institucion__nombre="Hospital Central")
+                      .values_list("estado", flat=True))
+        self.assertTrue({"pendiente", "observada", "aprobada", "rechazada"} <= estados)
 
     def _verificar_comprador(self):
         """Quien recibe la demo entra a todo y tiene su propia institución por configurar."""
