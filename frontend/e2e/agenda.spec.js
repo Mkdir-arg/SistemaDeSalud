@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { entrar, esperarPantalla } from "./apoyo";
+import { entrar, esperarPantalla, sinDesborde } from "./apoyo";
 
 /**
  * Turnos programados.
@@ -15,12 +15,110 @@ test.describe("Agenda", () => {
     await entrar(page, "medico");
     await page.goto("/agenda");
     await esperarPantalla(page);
-    // Por nivel: la barra superior del Shell también se titula «Turnos programados».
-    await expect(page.getByRole("heading", { name: "Turnos programados", level: 2 })).toBeVisible();
+    // Exacto y por nivel: la pantalla se titula «Turnos» y otros encabezados lo contienen.
+    await expect(page.getByRole("heading", { name: "Turnos", exact: true, level: 2 })).toBeVisible();
   }
 
-  const cabecera = (page) => page.locator("section").first();
+  const cabecera = (page) => page.getByRole("heading", { name: "Turnos", exact: true }).locator("..");
   const resultados = (page) => page.getByRole("list", { name: "Turnos encontrados" });
+  const selector = (page) => page.getByRole("combobox", { name: "Profesional o recurso" });
+  const listado = (page) => page.getByTestId("agenda-listado");
+
+  async function elegirAgenda(page, nombre) {
+    await selector(page).fill(nombre);
+    await page.getByRole("option").filter({ hasText: nombre }).first().click();
+  }
+
+  async function agendasDemo(page) {
+    return page.evaluate(async () => {
+      const tok = sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access");
+      const r = await fetch("/api/agendas/?activa=true&ordering=nombre&page_size=2", {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      return (await r.json()).results || [];
+    });
+  }
+
+  async function comprobarBarra(page, vista) {
+    await expect(page.getByRole("button", { name: vista, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: `${vista} anterior` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `${vista} siguiente` })).toBeVisible();
+    for (const nombre of ["Hoy", "Próximos libres", "Registrar atención pasada"]) {
+      await expect(page.getByRole("button", { name: nombre })).toBeVisible();
+    }
+    // Visible no alcanza: con un ancho mal resuelto el campo quedaba de 26 px,
+    // imposible de leer o de tocar.
+    expect((await selector(page).boundingBox()).width).toBeGreaterThan(200);
+  }
+
+  test("la URL limpia abre Semana y la barra queda visible al cambiar de vista", async ({ page }) => {
+    await abrir(page);
+    await comprobarBarra(page, "Semana");
+    await expect(listado(page)).toContainText("Clic en un horario para ir a ese día");
+    await expect(page.getByRole("button", { name: /Sin confirmar/ })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Día", exact: true }).click();
+    await comprobarBarra(page, "Día");
+    await expect(page.getByRole("button", { name: /Sin confirmar/ })).toBeVisible();
+    await expect(listado(page)).not.toContainText("Bloqueos de esta semana");
+
+    await page.getByRole("button", { name: "Semana", exact: true }).click();
+    await comprobarBarra(page, "Semana");
+  });
+
+  test("agenda, vista y fecha viajan en la URL y sobreviven a recargar", async ({ page }) => {
+    await abrir(page);
+    const [agenda] = await agendasDemo(page);
+    expect(agenda, "la demo no tiene agendas activas").toBeTruthy();
+    await elegirAgenda(page, agenda.nombre);
+    await page.getByRole("button", { name: "Día", exact: true }).click();
+    await page.getByLabel("Fecha de la agenda").fill("2026-08-17");
+    await expect.poll(() => new URL(page.url()).searchParams.get("agenda")).toBe(String(agenda.id));
+    expect(new URL(page.url()).searchParams.get("vista")).toBe("dia");
+    expect(new URL(page.url()).searchParams.get("fecha")).toBe("2026-08-17");
+
+    await page.reload();
+    await esperarPantalla(page);
+    await expect(selector(page)).toHaveValue(agenda.nombre);
+    await comprobarBarra(page, "Día");
+    await expect(page.getByLabel("Fecha de la agenda")).toHaveValue("2026-08-17");
+  });
+
+  test("el selector busca agendas por nombre y anuncia cuando no encuentra", async ({ page }) => {
+    await abrir(page);
+    const [agenda] = await agendasDemo(page);
+    expect(agenda, "la demo no tiene agendas activas").toBeTruthy();
+    await selector(page).fill(agenda.nombre);
+    await expect(page.getByRole("option").filter({ hasText: agenda.nombre }).first()).toBeVisible();
+    await selector(page).fill("zzzzz-agenda-inexistente");
+    await expect(page.getByText("Sin agendas para «zzzzz-agenda-inexistente»")).toBeVisible();
+  });
+
+  test("el buscador del paciente queda debajo del listado en ambas vistas", async ({ page }) => {
+    await abrir(page);
+    const buscador = page.getByLabel("Buscar el turno de un paciente").locator("xpath=ancestor::section");
+    for (const vista of ["Semana", "Día"]) {
+      await expect(listado(page)).toBeVisible();
+      await expect(buscador).toBeVisible();
+      // Las dos cajas se miden juntas y hasta que se estabilicen: medidas por
+      // separado, el listado se leía con el esqueleto de carga, más alto.
+      await expect.poll(async () => {
+        const cajaListado = await listado(page).boundingBox();
+        const cajaBuscador = await buscador.boundingBox();
+        return cajaBuscador.y - (cajaListado.y + cajaListado.height);
+      }).toBeGreaterThanOrEqual(0);
+      if (vista === "Semana") await page.getByRole("button", { name: "Día", exact: true }).click();
+    }
+  });
+
+  test("a 375 px la navegación hace wrap sin desbordar el documento", async ({ page }) => {
+    await abrir(page);
+    await sinDesborde(page, 375);
+    await comprobarBarra(page, "Semana");
+    await page.getByRole("button", { name: "Día", exact: true }).click();
+    await sinDesborde(page, 375);
+    await comprobarBarra(page, "Día");
+  });
 
   /**
    * Un turno futuro de una agenda DISTINTA a la que abre la pantalla.
@@ -29,9 +127,8 @@ test.describe("Agenda", () => {
    * que ya está en pantalla, el test pasa igual sin buscador.
    */
   async function turnoDeOtraAgenda(page) {
-    // Exacto: «Fecha de la agenda» también contiene «agenda» y el localizador
-    // engancharía los dos.
-    const visible = await page.getByLabel("Agenda", { exact: true }).inputValue();
+    // Si no hay id en la URL, se abre la primera activa por nombre.
+    const visible = new URL(page.url()).searchParams.get("agenda") || (await agendasDemo(page))[0]?.id;
     return page.evaluate(async (agendaVisible) => {
       const tok = sessionStorage.getItem("salud.access") ?? localStorage.getItem("salud.access");
       const d = new Date();
@@ -81,6 +178,8 @@ test.describe("Agenda", () => {
       .filter({ hasText: turno.agenda_nombre })
       .filter({ hasText: ddmm });
     await expect(fila).toHaveCount(1);
+    // Las acciones del turno viven en su menú «Ver».
+    await fila.getByLabel(/^Ver acciones del turno/).click();
     await expect(fila.getByRole("button", { name: "Cancelar" })).toBeVisible();
 
     // «Llegó» abriría el caso de un turno de otro día: lo llaman por altavoz, no
@@ -92,8 +191,9 @@ test.describe("Agenda", () => {
     // Y en la grilla del día, que es donde el paciente está enfrente, «Llegó»
     // tiene que seguir estando: es la acción que abre el caso y arranca la
     // atención, o sea lo único que hace que el turno valga algo.
-    await page.getByLabel("Agenda", { exact: true }).selectOption(String(turno.agenda));
-    await page.getByLabel("Fecha de la agenda").fill(turno.inicio.slice(0, 10));
+    await page.goto(`/agenda?agenda=${turno.agenda}&vista=dia&fecha=${turno.inicio.slice(0, 10)}`);
+    await esperarPantalla(page);
+    await page.getByLabel(`Ver acciones del turno de ${turno.paciente}`, { exact: false }).first().click();
     await expect(page.getByRole("button", { name: "Llegó" }).first()).toBeVisible();
   });
 
@@ -160,7 +260,7 @@ test.describe("Agenda", () => {
   async function abrirConDia(page, cuerpo) {
     await entrar(page, "medico");
     await conDia(page, cuerpo);
-    await page.goto("/agenda");
+    await page.goto("/agenda?vista=dia");
     await esperarPantalla(page);
   }
 
@@ -215,7 +315,7 @@ test.describe("Agenda", () => {
     });
     const renglon = page.getByRole("listitem").filter({ hasText: "10:00" }).first();
     await expect(renglon).toContainText("1 de 3 lugares");
-    await expect(renglon.getByRole("button", { name: "Dar turno" })).toBeVisible();
+    await expect(renglon.getByRole("button", { name: "Reservar" })).toBeVisible();
   });
 
   test("la semana se ve de un vistazo, con el bloqueo dibujado encima", async ({ page }) => {
@@ -269,9 +369,9 @@ test.describe("Agenda", () => {
         }),
       }),
     );
-    await page.goto("/agenda");
+    await page.goto(`/agenda?fecha=${lunes}`);
     await esperarPantalla(page);
-    await page.getByRole("button", { name: "Semana" }).click();
+    await expect(page.getByRole("button", { name: "Semana", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     const semana = page.locator("section").filter({ hasText: "Bloqueos de esta semana" });
     // El resumen del día es lo que se busca de reojo: cuántos dados y cuántos
@@ -287,7 +387,7 @@ test.describe("Agenda", () => {
      * por horario antes de darse cuenta de que no existe la opción.
      */
     await abrirConDia(page, unDia(0, [0, 0]));
-    await expect(cabecera(page)).toContainText("Esta agenda no toma sobreturnos");
+    await expect(page.getByText("Esta agenda no toma sobreturnos.")).toBeVisible();
     await expect(page.getByRole("button", { name: /Agregar un sobreturno/ })).toHaveCount(0);
   });
 });

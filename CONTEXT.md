@@ -136,3 +136,8 @@ Paso de puesta en marcha que la institución todavía no completó, como publica
 
 **Alerta de operación**:
 Situación de la atención en curso que requiere que alguien intervenga, calculada sobre los datos de la institución activa.
+## Agenda y turnos
+
+**Agenda**:
+Lo que se reserva en un horario: un profesional o un recurso, como un equipo o un consultorio. Se elige por su nombre, sea de profesional o de recurso.
+_Evitar_: Profesional, para referirse a la agenda; un profesional puede no tener agenda y un recurso no es un profesional.
