@@ -110,6 +110,12 @@ def _finanzas(usuario, inst, t):
 def _hospital(usuario, membresia):
     inst = membresia.institucion
     t = {}
+    if inst is None:
+        if membresia.rol == R.AUDITOR:
+            t["accesos registrados"] = AccesoClinico.objects.count()
+        if membresia.rol == R.PLATAFORMA:
+            t["instituciones"] = Institucion.objects.count()
+        return {k: v for k, v in t.items() if v}
     if membresia.rol in ROLES_CLINICOS:
         _clinico(usuario, membresia, inst, t)
     _finanzas(usuario, inst, t)
@@ -156,7 +162,8 @@ def trabajo_por_usuario():
                           "consulta": True, "trabajo": {"instituciones": Institucion.objects.count()}})
         for membresia in (Membresia.objects.filter(usuario=usuario, activo=True)
                           .select_related("institucion").order_by("institucion_id", "rol")):
-            filas.append({"email": usuario.email, "perfil": membresia.rol, "donde": membresia.institucion.nombre,
+            filas.append({"email": usuario.email, "perfil": membresia.rol,
+                          "donde": membresia.institucion.nombre if membresia.institucion_id else "toda la plataforma",
                           "consulta": membresia.rol in ROLES_DE_CONSULTA, "trabajo": _hospital(usuario, membresia)})
         for membresia in (fin.MembresiaFinanciador.objects.filter(usuario=usuario, activo=True)
                           .select_related("financiador").order_by("financiador_id")):

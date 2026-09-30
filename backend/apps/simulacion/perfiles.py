@@ -16,13 +16,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Membresia, Usuario
-from apps.financiadores.models import MembresiaFinanciador
-from apps.instituciones.models import Area, Grupo
+from apps.financiadores.models import Financiador, MembresiaFinanciador
+from apps.instituciones.models import Area, Grupo, Institucion
 
 from .models import Ambito, CuentaReferencia, SesionSimulacion
 
-# `plataforma` y `auditor` tienen alcance global: una cuenta anclada, desde la
-# vista de plataforma. El resto de `Membresia.Rol` es institucional.
+# `plataforma` y `auditor` tienen membresía global y se ofrecen desde la vista
+# de plataforma. El resto de `Membresia.Rol` es institucional.
 PERFILES_ESTATALES = (Membresia.Rol.PLATAFORMA, Membresia.Rol.AUDITOR)
 DOMINIO = "referencia.hen.invalid"
 DURACION = timedelta(hours=8)
@@ -139,9 +139,28 @@ def iniciar(superusuario, ambito, rol, institucion_id=None, financiador_id=None,
     """Abre una simulación y cierra la que el superusuario tuviera abierta."""
     if rol not in dict(perfiles(ambito)):
         raise ValidationError("Ese perfil no se puede simular en ese ámbito.")
+    institucion = financiador = None
+    if ambito == Ambito.INSTITUCION:
+        institucion = Institucion.objects.select_for_update().filter(pk=institucion_id, activa=True).first()
+        if institucion is None:
+            raise ValidationError("La institución no existe o está inactiva.")
+    elif ambito == Ambito.FINANCIADOR:
+        financiador = Financiador.objects.select_for_update().filter(pk=financiador_id, activo=True).first()
+        if financiador is None:
+            raise ValidationError("El financiador no existe o está inactivo.")
+    else:
+        # Una fila compartida serializa el primer alta estatal entre superusuarios.
+        Usuario.objects.filter(is_superuser=True).order_by("pk").select_for_update().first()
+    # La preparación reutiliza el catálogo de este módulo; importar aquí evita
+    # un ciclo de imports al cargar Django.
+    from .preparacion import ErrorPreparacion, preparar_cuenta
+    try:
+        preparar_cuenta(ambito, rol, institucion, financiador)
+    except ErrorPreparacion as error:
+        raise ValidationError(str(error)) from error
     ref = cuentas_del_ambito(ambito, institucion_id, financiador_id).filter(rol=rol).first()
     if ref is None:
-        raise ValidationError("Falta preparar la cuenta de referencia de ese perfil en ese ámbito.")
+        raise ValidationError("No se pudo preparar la cuenta de referencia.")
     problema = problema_de_cuenta(ref)
     if problema:
         raise ValidationError(problema)

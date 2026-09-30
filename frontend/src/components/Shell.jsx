@@ -589,11 +589,16 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           {esPlataforma ? <>
             {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">PLATAFORMA</div>}
             {[
-              { to: "/directorio?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
-              { to: "/directorio?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
-              { to: "/directorio?vista=financiadores", label: "Financiadores", icon: "users", key: "financiadores" },
+              ...(puedeVer("gobierno_plataforma") ? [
+                { to: "/directorio?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
+                { to: "/directorio?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
+                { to: "/directorio?vista=financiadores", label: "Financiadores", icon: "users", key: "financiadores" },
+              ] : []),
+              ...(puedeVer("auditoria") ? [
+                { to: "/directorio?vista=accesos", label: "Registro de accesos", icon: "search", key: "accesos" },
+              ] : []),
             ].map((item) => {
-              const actual = location.pathname.startsWith("/financiadores") ? "financiadores" : new URLSearchParams(location.search).get("vista") || "instituciones";
+              const actual = location.pathname.startsWith("/financiadores") ? "financiadores" : new URLSearchParams(location.search).get("vista") || (puedeVer("gobierno_plataforma") ? "instituciones" : "accesos");
               return <Link key={item.key} to={item.to} aria-current={actual === item.key ? "page" : undefined}
                 className={itemClase(colapsado)({ isActive: actual === item.key })} title={item.label}>
                 <Icon name={item.icon} size={17} />{!colapsado && item.label}
@@ -702,7 +707,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
       <main className="flex h-screen min-w-0 flex-1 flex-col">
         <BannerSimulacion />
         <TopBar onAbrirMenu={() => setCajon(true)}
-          titulo={esPlataforma ? (location.pathname.startsWith("/financiadores") ? "Financiadores" : ({ usuarios: "Usuarios", financiadores: "Financiadores" })[new URLSearchParams(location.search).get("vista")] || "Instituciones") : financiador?.titulo}
+          titulo={esPlataforma ? (location.pathname.startsWith("/financiadores") ? "Financiadores" : ({ usuarios: "Usuarios", financiadores: "Financiadores", accesos: "Registro de accesos" })[new URLSearchParams(location.search).get("vista")] || (puedeVer("gobierno_plataforma") ? "Instituciones" : "Registro de accesos")) : financiador?.titulo}
           contexto={esPlataforma ? "Plataforma" : esFinanciador ? financiador.nombre : institucion?.nombre || "Institución"}
           hospital={!esFinanciador && !esPlataforma}
           plataforma={esPlataforma}

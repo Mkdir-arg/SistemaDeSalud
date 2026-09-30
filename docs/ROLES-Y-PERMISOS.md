@@ -375,9 +375,13 @@ El superusuario puede operar HEN con los limites reales de un perfil. No es una 
 
 | Ambito | Perfiles | Cuenta |
 |---|---|---|
-| Plataforma | `plataforma`, `auditor` | Una por perfil, anclada a una institucion (su alcance ya es global) |
+| Plataforma | `plataforma`, `auditor` | Una por perfil, con membresía global sin institución |
 | Institucion | Los demas valores de `Membresia.Rol` | Una por perfil e institucion |
 | Financiador | Roles de `MembresiaFinanciador` | Una por perfil y organizacion |
+
+`/usuarios/me/` representa las membresías estatales sin institución con la clave
+`global` en los mapas de roles y capacidades. El auditor estatal entra al registro
+de accesos desde la navegación de plataforma.
 
 Reglas:
 
@@ -390,7 +394,7 @@ Reglas:
 - Los permisos financieros institucionales son las concesiones que tenga la cuenta, mas la herencia propia de `admin`. No se deducen del rol clinico.
 - Limite conocido: las acciones que exigen matricula (firmar en la historia clinica) se rechazan, como para cualquier profesional sin matricula. La cuenta no representa a una persona y no se le inventa una matricula.
 
-Las cuentas se preparan con `manage.py preparar_cuentas_referencia`, que es idempotente y apto para produccion (ver [`DESPLIEGUE.md`](DESPLIEGUE.md#preparar-las-cuentas-de-referencia)). Cada cuenta toma las areas y los grupos activos donde ya trabaja personal activo con ese rol; el comando solo agrega, nunca quita. Si los pares ganan areas o grupos nuevos, ese perfil deja de estar disponible hasta volver a prepararlo; `--verificar` tambien informa el desajuste. El operador de financiador queda designado para resolver autorizaciones; admin y auditor, no.
+Al elegir un perfil, la cuenta se prepara automáticamente si falta o necesita actualizarse. El catálogo solo lee; el comando `manage.py preparar_cuentas_referencia` queda para verificar o anticipar esa preparación (ver [`DESPLIEGUE.md`](DESPLIEGUE.md#preparar-las-cuentas-de-referencia)). Cada cuenta institucional toma las áreas y grupos activos donde ya trabaja personal con ese rol; la preparación solo agrega, nunca quita. Si cambian esas áreas o grupos, una sesión activa se invalida y el siguiente inicio actualiza la cuenta. El operador de financiador queda designado para resolver autorizaciones; admin y auditor, no.
 
 ## 4. Matriz rol-capacidad
 

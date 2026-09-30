@@ -7,6 +7,7 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { Shell } from "@/components/Shell";
+import Accesos from "@/pages/auditoria/Accesos";
 import { Avatar, Badge, Button, Field, Input, Modal, Select } from "@/components/ui";
 import { Buscador, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
@@ -26,12 +27,19 @@ const ROLES_INSTITUCION = [
 
 /** Listados globales dentro del armazón común, sin contexto clínico institucional. */
 export default function Directorio() {
-  const [vista] = useFiltroUrl("vista", "instituciones");
+  const { puedeVer } = useInstitucion();
+  const administra = puedeVer("gobierno_plataforma");
+  const audita = puedeVer("auditoria");
+  const [vista] = useFiltroUrl("vista", administra ? "instituciones" : "accesos");
 
   return (
     <Shell plataforma>
       <div className="mx-auto max-w-[1500px] p-lg sm:p-[24px]">
-        {vista === "usuarios" ? <UsuariosView /> : vista === "financiadores" ? <FinanciadoresView /> : <InstitucionesView />}
+        {vista === "accesos" && audita ? <Accesos />
+          : !administra ? <p>No tenés acceso al directorio.</p>
+          : vista === "usuarios" ? <UsuariosView />
+          : vista === "financiadores" ? <FinanciadoresView />
+          : <InstitucionesView />}
       </div>
     </Shell>
   );

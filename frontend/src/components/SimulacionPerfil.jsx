@@ -11,8 +11,8 @@ import { Icon } from "./icons";
  *
  * No es una vista previa del menú. El backend autoriza y acota cada pedido con
  * esa cuenta, así que lo que se ve y lo que se puede hacer es lo del perfil. La
- * autoría sigue siendo del superusuario. El catálogo sale del servidor: si a un
- * perfil le falta la cuenta, se muestra y no se puede elegir.
+ * autoría sigue siendo del superusuario. El catálogo sale del servidor y la
+ * cuenta técnica se prepara al elegir un perfil.
  */
 
 const AMBITO_LABEL = { plataforma: "Plataforma", institucion: "Institución", financiador: "Financiador" };
@@ -94,35 +94,30 @@ export function SelectorSimulacion({ ambito }) {
     gcTime: 0,
   });
   const perfiles = catalogo.data?.perfiles || [];
-  const faltantes = perfiles.filter((p) => !p.disponible);
 
   return (
     <div className="mx-3 mt-2 rounded-md border border-borde bg-superficie-2 px-2 py-2 text-xs">
       <label htmlFor="selector-simulacion" className="block font-semibold text-texto">Ver como</label>
-      <select
-        id="selector-simulacion"
-        value={simulacion?.rol || "sistema"}
-        disabled={cambiando || catalogo.isLoading}
-        onChange={(e) => elegir(e.target.value)}
-        className="mt-1 h-8 w-full rounded-md border border-campo-borde bg-superficie px-2 text-xs text-texto disabled:opacity-60"
-      >
-        <option value="sistema">Sistema · acceso completo</option>
-        {perfiles.map((p) => (
-          <option key={p.rol} value={p.rol} disabled={!p.disponible} title={p.motivo || undefined}>
-            {p.etiqueta}{p.disponible ? "" : " (no disponible)"}
-          </option>
-        ))}
-      </select>
+      <div className="mt-1 flex items-center gap-1">
+        <select
+          id="selector-simulacion"
+          value={simulacion?.rol || "sistema"}
+          disabled={cambiando || catalogo.isLoading}
+          onChange={(e) => elegir(e.target.value)}
+          className="h-8 min-w-0 flex-1 rounded-md border border-campo-borde bg-superficie px-2 text-xs text-texto disabled:opacity-60"
+        >
+          <option value="sistema">Sistema · acceso completo</option>
+          {perfiles.map((p) => <option key={p.rol} value={p.rol}>{p.etiqueta}</option>)}
+        </select>
+        <details className="group relative shrink-0">
+          <summary aria-label="Ayuda sobre Ver como" className="flex size-8 cursor-pointer list-none items-center justify-center rounded-md border border-campo-borde bg-superficie font-semibold text-texto [&::-webkit-details-marker]:hidden">?</summary>
+          <div className="absolute right-0 z-50 mt-1 w-56 rounded-md border border-borde bg-superficie p-3 text-xs leading-relaxed text-texto shadow-float">
+            Al elegir un perfil, se prepara su cuenta técnica si hace falta. Vas a operar con sus permisos; los cambios afectan los datos de este entorno y quedan registrados a tu nombre. Usá «Volver a Sistema» para salir.
+          </div>
+        </details>
+      </div>
       {catalogo.error && <p role="alert" className="mt-1 text-danger">No se pudo consultar los perfiles de este ámbito.</p>}
-      {faltantes.length > 0 && (
-        <p className="mt-1 text-texto-suave">
-          {faltantes.length === perfiles.length
-            ? "Este ámbito no tiene cuentas de referencia preparadas."
-            : `Sin cuenta de referencia: ${faltantes.map((p) => p.etiqueta).join(", ")}.`}
-        </p>
-      )}
       {error && <p role="alert" className="mt-1 text-danger">{error}</p>}
-      <p className="mt-1 text-texto-suave">Se opera con los permisos reales del perfil; lo que hagas queda a tu nombre.</p>
     </div>
   );
 }
@@ -145,7 +140,6 @@ export function BannerSimulacion() {
   }
 
   const lugar = simulacion.institucion?.nombre || simulacion.financiador?.nombre || "Plataforma";
-  const quien = simulacion.superusuario?.nombre || simulacion.superusuario?.email;
   return (
     <div role="status" aria-label="Simulación de perfil activa"
       className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-accent-100 bg-accent-50 px-lg py-2 text-sm text-texto sm:px-[24px]">
@@ -153,9 +147,6 @@ export function BannerSimulacion() {
       <span>
         <strong>Simulando {simulacion.etiqueta}</strong>
         <span className="text-texto-suave"> · {AMBITO_LABEL[simulacion.ambito]}: {lugar}</span>
-      </span>
-      <span className="text-texto-suave">
-        Permisos de «{simulacion.cuenta?.nombre}». Lo que hagas queda a nombre de {quien}.
       </span>
       {error && <span role="alert" className="text-danger">{error}</span>}
       <button

@@ -30,6 +30,8 @@ Simular no es una vista previa del menú. El servidor autoriza cada pedido con l
 **cuenta de referencia** del perfil («Superusuario Enfermería»), así que se ven los
 datos y se pueden ejecutar exactamente las acciones de ese perfil en ese ámbito. Lo
 que se haga queda **a nombre del superusuario**, con la simulación registrada aparte.
+La cuenta técnica se prepara automáticamente al elegir el perfil. El botón `(?)`
+junto al selector explica el alcance y la autoría sin ocupar espacio permanente.
 Un indicador fijo muestra el perfil y el ámbito, y **Volver a Sistema** termina la
 simulación. Ver [`ROLES-Y-PERMISOS.md` §3.3](../ROLES-Y-PERMISOS.md#33-simulacion-de-perfiles-ver-como).
 

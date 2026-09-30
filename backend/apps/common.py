@@ -136,7 +136,8 @@ def roles_por_institucion_de(user):
         return {}
     por_inst = {}
     for inst_id, rol in user.membresias.filter(activo=True).values_list("institucion_id", "rol"):
-        por_inst.setdefault(str(inst_id), []).append(rol)
+        # La clave "global" identifica los roles estatales sin inventar una institución.
+        por_inst.setdefault(str(inst_id) if inst_id is not None else "global", []).append(rol)
     return {inst: sorted(set(roles)) for inst, roles in por_inst.items()}
 
 
@@ -146,7 +147,7 @@ def capacidades_por_institucion_de(user):
         return {}
     por_inst = {}
     for inst_id, rol in user.membresias.filter(activo=True).values_list("institucion_id", "rol"):
-        caps = por_inst.setdefault(str(inst_id), set())
+        caps = por_inst.setdefault(str(inst_id) if inst_id is not None else "global", set())
         caps |= ROL_CAPACIDADES.get(rol, set())
         caps |= ROL_CAPACIDADES_UI.get(rol, set())
     return {inst: sorted(caps) for inst, caps in por_inst.items()}

@@ -1,12 +1,12 @@
 """
 Usuarios y pertenencia institucional.
 
-Un usuario se autentica por email. Su rol no es global: depende de la
-institución (y opcionalmente del área) en la que actúa. Por eso el rol vive
-en `Membresia`, no en el usuario.
+Un usuario se autentica por email. Sus roles viven en `Membresia`: los roles
+institucionales tienen institución; los estatales pueden ser globales.
 """
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.db.models import Q
 
 
 class UsuarioManager(BaseUserManager):
@@ -71,7 +71,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
 
 class Membresia(models.Model):
     """
-    Vincula un usuario con una institución y le da un rol allí.
+    Da un rol institucional o, para plataforma/auditor, un rol estatal global.
     Un mismo usuario puede tener membresías en varias instituciones, y dentro
     de una institución puede actuar sobre una o más áreas.
     """
@@ -91,7 +91,8 @@ class Membresia(models.Model):
         Usuario, on_delete=models.CASCADE, related_name="membresias"
     )
     institucion = models.ForeignKey(
-        "instituciones.Institucion", on_delete=models.CASCADE, related_name="membresias"
+        "instituciones.Institucion", on_delete=models.CASCADE, related_name="membresias",
+        null=True, blank=True,
     )
     rol = models.CharField(max_length=20, choices=Rol.choices)
     areas = models.ManyToManyField(
@@ -107,9 +108,19 @@ class Membresia(models.Model):
         verbose_name = "membresía"
         verbose_name_plural = "membresías"
         unique_together = [("usuario", "institucion", "rol")]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(institucion__isnull=False) | Q(rol__in=["plataforma", "auditor"]),
+                name="accounts_membresia_global_solo_estatal",
+            ),
+            models.UniqueConstraint(
+                fields=["usuario", "rol"], condition=Q(institucion__isnull=True),
+                name="accounts_membresia_global_unica",
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.usuario} · {self.get_rol_display()} @ {self.institucion}"
+        return f"{self.usuario} · {self.get_rol_display()} @ {self.institucion or 'Plataforma'}"
 
 
 class LegajoProfesional(models.Model):

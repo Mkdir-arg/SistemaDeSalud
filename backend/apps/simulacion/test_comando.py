@@ -46,7 +46,12 @@ class PrepararCuentasTests(TestCase):
         self.assertEqual(list(enfermeria.membresias.values_list("institucion_id", "rol", "activo")),
                          [(self.a.pk, "enfermeria", True)])
         plataforma = CuentaReferencia.objects.get(ambito="plataforma", rol="plataforma").usuario
-        self.assertEqual(list(plataforma.membresias.values_list("institucion_id", "rol")), [(self.a.pk, "plataforma")])
+        self.assertEqual(list(plataforma.membresias.values_list("institucion_id", "rol")), [(None, "plataforma")])
+
+    def test_los_perfiles_estatales_no_necesitan_institucion(self):
+        self.a.delete()
+        preparar(estatales=True)
+        self.assertEqual(CuentaReferencia.objects.filter(ambito="plataforma", institucion__isnull=True).count(), 2)
 
     def test_solo_el_operador_queda_designado_para_resolver_autorizaciones(self):
         preparar(financiador=[self.f.pk])
