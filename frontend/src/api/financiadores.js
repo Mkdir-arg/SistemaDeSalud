@@ -1,6 +1,7 @@
 import { api, mensajeError } from "./client";
 
 export const rutaFinanciador = (id, recurso = "") => `/financiadores/${id}/${recurso ? `${recurso}/` : ""}`;
+export const rutaFacturaFinanciador = (id, facturaId = null) => `${rutaFinanciador(id, "facturas")}${facturaId == null ? "" : `${facturaId}/`}`;
 export const filasDe = (data) => Array.isArray(data) ? data : data?.results || [];
 
 // Las opciones chicas (planes y catálogo) incluyen todas las páginas. Las
@@ -20,6 +21,16 @@ export async function importarFinanciador(id, tipo, archivo, clave) {
   body.append("archivo", archivo);
   body.append("clave", clave);
   return api.multipart(rutaFinanciador(id, "importaciones"), body);
+}
+
+export function adjuntarFactura(id, facturaId, archivo) {
+  const body = new FormData();
+  body.append("archivo", archivo);
+  return api.multipart(`${rutaFacturaFinanciador(id, facturaId)}adjunto/`, body);
+}
+
+export function descargarFactura(id, facturaId, nombre) {
+  return api.download(`${rutaFacturaFinanciador(id, facturaId)}adjunto/`, nombre);
 }
 
 export function errorFinanciador(error) {

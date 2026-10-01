@@ -262,6 +262,23 @@ Si te lo piden, mostralo: ventana de la dirección → menú lateral → **Regis
 
 ---
 
+## Documentación de facturas del financiador (versión preliminar)
+
+Con `admin@mutualdelvalle.test`, abrí **Facturas** → **Documentación de facturas**.
+El listado muestra ocho registros ficticios `DEMO-` por financiador: facturas
+recibidas de Hospital Central, una de prestador externo, un reintegro de afiliado,
+una nota de crédito y facturas emitidas por el financiador. Filtrá **Recibidas** y
+**Emitidas por el financiador**, abrí un número para ver el detalle y usá
+**Nueva factura** para registrar otra constancia. El auditor puede consultar,
+pero no editar. En la demo los adjuntos están deshabilitados y el detalle indica
+«Adjuntos no disponibles en este entorno».
+
+El aviso fijo explica el límite: Salud sólo registra documentación; no emite
+comprobantes fiscales, no valida ante ARCA, no liquida, no concilia ni registra pagos.
+Estos importes no son cargos ni cobros del hospital.
+
+---
+
 # Guion corto (5 minutos)
 
 Si tenés poco tiempo, hacé solo esto:

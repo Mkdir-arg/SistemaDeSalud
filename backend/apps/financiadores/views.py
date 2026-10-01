@@ -4,7 +4,9 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
+from django.conf import settings
+from uuid import uuid4
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.encoding import force_str
@@ -33,6 +35,7 @@ from .actividad import (FiltrosActividad, LIMITE_EXPORTACION, con_importes,
                         filtrar_actividad, resumen_actividad)
 from .acceso import auditar_actividad
 from .autorizaciones import solicitudes_visibles_financiador
+from .facturas import almacenamiento_privado, validar_adjunto
 
 
 def datos(request, campos):
@@ -147,6 +150,102 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         obj = self.get_object()
         requerir_financiador(self.request.user, obj.pk, escritura=escritura, admin=admin)
         return obj
+
+    def _factura(self, org, factura_id, *, bloquear=False):
+        qs = m.RegistroFactura.objects.filter(financiador=org)
+        if bloquear:
+            qs = qs.select_for_update()
+        return get_object_or_404(qs, pk=factura_id)
+
+    @extend_schema(methods=["GET"], responses=s.RegistroFacturaSerializer(many=True))
+    @extend_schema(methods=["POST"], request=s.RegistroFacturaSerializer, responses=s.RegistroFacturaSerializer)
+    @action(detail=True, methods=["get", "post"])
+    def facturas(self, request, pk=None):
+        org = self.organizacion(escritura=request.method == "POST")
+        if request.method == "GET":
+            qs = m.RegistroFactura.objects.filter(financiador=org)
+            if request.query_params.get("direccion"):
+                direccion = serializers.ChoiceField(choices=["recibida", "emitida"]).run_validation(request.query_params["direccion"])
+                qs = qs.filter(direccion=direccion)
+            if request.query_params.get("search"):
+                texto = request.query_params["search"].strip()
+                qs = qs.filter(Q(numero__icontains=texto) | Q(contraparte_nombre__icontains=texto))
+            pagina = self.paginate_queryset(qs)
+            return self.get_paginated_response(s.RegistroFacturaSerializer(pagina, many=True).data)
+        if "archivo" in request.data:
+            if not settings.SALUD_FACTURAS_ADJUNTOS:
+                raise ValidationError("Los adjuntos de facturas no están disponibles en este entorno.")
+            raise ValidationError("Registrá la factura y agregá el archivo desde su detalle.")
+        serializer = s.RegistroFacturaSerializer(data=request.data, context={"financiador": org})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            obj = serializer.save(financiador=org, creado_por=request.user)
+            auditar(request.user, "crear_factura", obj.pk, financiador=org)
+        return Response(s.RegistroFacturaSerializer(obj).data, status=201)
+
+    @extend_schema(methods=["GET"], responses=s.RegistroFacturaSerializer)
+    @extend_schema(methods=["PATCH"], request=s.RegistroFacturaSerializer, responses=s.RegistroFacturaSerializer)
+    @action(detail=True, methods=["get", "patch"], url_path=r"facturas/(?P<factura_id>\d+)")
+    def factura_detalle(self, request, pk=None, factura_id=None):
+        org = self.organizacion(escritura=request.method == "PATCH")
+        if request.method == "GET":
+            return Response(s.RegistroFacturaSerializer(self._factura(org, factura_id)).data)
+        with transaction.atomic():
+            obj = self._factura(org, factura_id, bloquear=True)
+            serializer = s.RegistroFacturaSerializer(obj, data=request.data, partial=True, context={"financiador": org})
+            serializer.is_valid(raise_exception=True)
+            campos = [campo for campo, valor in serializer.validated_data.items() if campo != "clave_duplicado" and getattr(obj, campo) != valor]
+            if campos:
+                serializer.save()
+                auditar(request.user, "editar_factura", obj.pk, financiador=org, motivo="Campos: " + ", ".join(campos))
+        return Response(s.RegistroFacturaSerializer(obj).data)
+
+    @extend_schema(methods=["POST"], request={"multipart/form-data": {"type": "object", "required": ["archivo"], "properties": {"archivo": {"type": "string", "format": "binary"}}}}, responses=s.RegistroFacturaSerializer)
+    @action(detail=True, methods=["get", "post"], url_path=r"facturas/(?P<factura_id>\d+)/adjunto")
+    def factura_adjunto(self, request, pk=None, factura_id=None):
+        org = self.organizacion(escritura=request.method == "POST")
+        if request.method == "GET":
+            obj = self._factura(org, factura_id)
+            if not settings.SALUD_FACTURAS_ADJUNTOS:
+                raise ValidationError("Los adjuntos de facturas no están disponibles en este entorno.")
+            if not obj.adjunto_ruta:
+                return Response({"detail": "No hay adjunto."}, status=404)
+            storage = almacenamiento_privado()
+            if not storage.exists(obj.adjunto_ruta):
+                return Response({"detail": "El adjunto no está disponible."}, status=404)
+            try:
+                archivo = storage.open(obj.adjunto_ruta, "rb")
+            except OSError:
+                return Response({"detail": "El adjunto no está disponible."}, status=404)
+            try:
+                auditar(request.user, "descargar_factura", obj.pk, financiador=org)
+            except Exception:
+                archivo.close()
+                return Response({"detail": "No se pudo registrar la descarga."}, status=503)
+            respuesta = FileResponse(archivo, as_attachment=True, filename=obj.adjunto_nombre, content_type=obj.adjunto_content_type)
+            respuesta["Cache-Control"] = "private, no-store"
+            return respuesta
+        if not settings.SALUD_FACTURAS_ADJUNTOS:
+            raise ValidationError("Los adjuntos de facturas no están disponibles en este entorno.")
+        archivo = datos(request, {"archivo": serializers.FileField()})["archivo"]
+        storage, nombre, content_type, ext, tamano, sha256 = validar_adjunto(archivo)
+        guardado = None
+        try:
+            with transaction.atomic():
+                obj = self._factura(org, factura_id, bloquear=True)
+                if obj.adjunto_ruta:
+                    raise ValidationError("Esta factura ya tiene un adjunto; no se reemplaza.")
+                guardado = storage.save(f"{uuid4().hex}{ext}", archivo)
+                obj.adjunto_ruta, obj.adjunto_nombre = guardado, nombre
+                obj.adjunto_content_type, obj.adjunto_tamano, obj.adjunto_sha256 = content_type, tamano, sha256
+                obj.adjunto_subido_por, obj.adjunto_fecha = request.user, timezone.now()
+                obj.save(update_fields=["adjunto_ruta", "adjunto_nombre", "adjunto_content_type", "adjunto_tamano", "adjunto_sha256", "adjunto_subido_por", "adjunto_fecha", "actualizado"])
+                auditar(request.user, "adjuntar_factura", obj.pk, financiador=org)
+        except Exception:
+            if guardado:
+                storage.delete(guardado)
+            raise
+        return Response(s.RegistroFacturaSerializer(obj).data, status=201)
 
     def list(self, request):
         return self.lista(self.get_queryset(), self.serializer_class)

@@ -151,6 +151,20 @@ Fin del acuerdo vigente entre un hospital y un financiador. Conserva las prestac
 **Acceso histórico pendiente**:
 Consulta limitada del financiador a operaciones propias que todavía requieren atención o resolución económica, aunque haya terminado la afiliación o el convenio. Un saldo del paciente no habilita por sí solo ese acceso.
 
+**Registro de factura**:
+Constancia que un financiador guarda sobre una factura, nota de crédito o nota de débito recibida de una contraparte o emitida por él fuera de Salud. Salud no la emite ni verifica su validez fiscal, y su importe no genera cargos ni cobros.
+_Evitar_: Factura emitida por Salud, factura aprobada, factura paga.
+
+**Factura recibida**:
+Registro de factura emitida por una contraparte al financiador.
+
+**Factura emitida por el financiador**:
+Registro de una factura que el financiador emitió en su propio sistema fiscal.
+_Evitar_: Factura emitida, sin aclarar por quién.
+
+**Contraparte de la factura**:
+Institución o afiliado que emite una factura recibida o recibe una factura emitida por el financiador. Puede estar vinculada a un convenio o a una afiliación del financiador, o identificarse sólo por su nombre.
+
 ## Gestión institucional
 
 **Requiere atención**:

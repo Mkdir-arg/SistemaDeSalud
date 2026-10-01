@@ -67,3 +67,4 @@ npm-debug.log*
 # apenas cambie un endpoint. Se sirve en /api/esquema/ y hay un test que
 # verifica que se genere limpio.
 backend/esquema.yml
+backend/privado/

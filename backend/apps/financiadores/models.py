@@ -106,6 +106,42 @@ class Afiliado(models.Model):
         constraints = [models.UniqueConstraint(fields=["financiador", "documento"], name="fin_afiliado_documento")]
 
 
+class RegistroFactura(models.Model):
+    financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
+    direccion = models.CharField(max_length=10, choices=[("recibida", "Recibida"), ("emitida", "Emitida por el financiador")])
+    contraparte_tipo = models.CharField(max_length=12, choices=[("institucion", "Institución"), ("afiliado", "Afiliado")])
+    convenio = models.ForeignKey(Convenio, null=True, blank=True, on_delete=models.PROTECT)
+    afiliado = models.ForeignKey(Afiliado, null=True, blank=True, on_delete=models.PROTECT)
+    contraparte_nombre = models.CharField(max_length=160)
+    contraparte_identificador = models.CharField(max_length=80, blank=True)
+    tipo = models.CharField(max_length=16, choices=[("factura", "Factura"), ("nota_credito", "Nota de crédito"), ("nota_debito", "Nota de débito"), ("otro", "Otro")])
+    letra = models.CharField(max_length=1, blank=True, choices=[("", "Ninguna"), ("A", "A"), ("B", "B"), ("C", "C"), ("M", "M")])
+    numero = models.CharField(max_length=120)
+    fecha = models.DateField()
+    importe = models.DecimalField(max_digits=14, decimal_places=2)
+    periodo = models.CharField(max_length=100, blank=True)
+    concepto = models.CharField(max_length=255, blank=True)
+    observaciones = models.TextField(blank=True)
+    clave_duplicado = models.CharField(max_length=64)
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="facturas_registradas")
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+    adjunto_ruta = models.CharField(max_length=255, blank=True)
+    adjunto_nombre = models.CharField(max_length=255, blank=True)
+    adjunto_content_type = models.CharField(max_length=80, blank=True)
+    adjunto_tamano = models.PositiveIntegerField(null=True, blank=True)
+    adjunto_sha256 = models.CharField(max_length=64, blank=True)
+    adjunto_subido_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="facturas_adjuntadas")
+    adjunto_fecha = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["financiador", "clave_duplicado"], name="fin_factura_duplicado"),
+            models.CheckConstraint(condition=Q(importe__gt=0), name="fin_factura_importe_positivo"),
+        ]
+
+
 class HistorialAfiliacion(models.Model):
     afiliado = models.ForeignKey(Afiliado, on_delete=models.PROTECT, related_name="historial")
     numero = models.CharField(max_length=80)
