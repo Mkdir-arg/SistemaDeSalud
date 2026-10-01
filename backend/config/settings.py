@@ -399,6 +399,11 @@ STORAGES = {
 # --- Media (archivos subidos) ----------------------------------------------
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+SALUD_FACTURAS_ADJUNTOS = env_bool("SALUD_FACTURAS_ADJUNTOS", False)
+_facturas_dir = Path(env("SALUD_FACTURAS_ADJUNTOS_DIR", BASE_DIR / "privado" / "facturas"))
+SALUD_FACTURAS_ADJUNTOS_DIR = (_facturas_dir if _facturas_dir.is_absolute() else BASE_DIR / _facturas_dir).resolve()
+if SALUD_FACTURAS_ADJUNTOS_DIR == MEDIA_ROOT.resolve() or MEDIA_ROOT.resolve() in SALUD_FACTURAS_ADJUNTOS_DIR.parents:
+    raise ValueError("SALUD_FACTURAS_ADJUNTOS_DIR debe estar fuera de MEDIA_ROOT.")
 # Tope de subida en memoria / tamaño máximo razonable: 10 MB.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
