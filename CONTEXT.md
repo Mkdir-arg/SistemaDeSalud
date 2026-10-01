@@ -35,8 +35,12 @@ Afiliación elegida al ingresar a un caso asistencial. Se conserva durante ese c
 Conjunto de afiliaciones administrado por el financiador. Incluye personas que todavía no fueron atendidas en un hospital de Salud.
 
 **Ficha del afiliado**:
-Consulta del financiador sobre una afiliación de su padrón que reúne las prestaciones y autorizaciones de esa persona en los hospitales dentro de su alcance. No incluye historia clínica ni el texto de las justificaciones.
+Consulta del financiador sobre una afiliación de su padrón que reúne las prestaciones y autorizaciones de esa persona en los hospitales dentro de su alcance. No incluye el texto de las justificaciones; la historia clínica del financiador se muestra sólo a quienes resuelven autorizaciones.
 _Evitar_: Historia clínica del afiliado, resumen clínico.
+
+**Historia clínica del financiador**:
+Evoluciones firmadas de los casos que ingresaron con la cobertura del financiador en hospitales dentro de su alcance, consultadas con un motivo registrado. No incluye alergias, antecedentes, estudios, recetas ni casos de otra cobertura.
+_Evitar_: Historia clínica completa, historia del afiliado.
 
 **Carga incremental del padrón**:
 Incorporación o actualización de las afiliaciones incluidas en una carga. No realiza bajas y conserva las afiliaciones omitidas.
