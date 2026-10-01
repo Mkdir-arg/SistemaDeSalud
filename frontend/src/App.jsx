@@ -40,6 +40,7 @@ const Legajo = lazy(() => import("./pages/registros/Legajo"));
 const Accesos = lazy(() => import("./pages/auditoria/Accesos"));
 const Finanzas = lazy(() => import("./pages/finanzas/Finanzas"));
 const PortalFinanciadores = lazy(() => import("./pages/financiadores/PortalFinanciadores"));
+const FichaAfiliado = lazy(() => import("./pages/financiadores/FichaAfiliado"));
 const CoberturasHospital = lazy(() => import("./pages/financiadores/CoberturasHospital"));
 const ActivarFinanciador = lazy(() => import("./pages/financiadores/ActivarFinanciador"));
 
@@ -217,6 +218,7 @@ export default function App() {
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
       <Route path="/pantalla/:token" element={<PantallaLlamados />} />
       <Route path="/directorio" element={<AuthOnly><Entrada /></AuthOnly>} />
+      <Route path="/financiadores/padron/:afiliado" element={<AuthOnly><FichaAfiliado /></AuthOnly>} />
       <Route path="/financiadores/:seccion?" element={<AuthOnly><PortalFinanciadores /></AuthOnly>} />
 
       <Route path="/inicio" element={P(<InicioHome />)} />

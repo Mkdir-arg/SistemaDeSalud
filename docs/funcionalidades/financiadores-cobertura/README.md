@@ -47,6 +47,10 @@ Ocho secciones en `/financiadores/:seccion`, más el catálogo común para plata
 | Convenios | Proponer, aceptar, rechazar y cerrar convenios; fijar el plazo de respuesta a autorizaciones |
 | Usuarios | Administrar los operadores de la propia organización (sólo `admin`) |
 
+### Ficha del afiliado
+
+Desde cada fila del padrón, la ficha reúne la cabecera de afiliación, prestaciones y autorizaciones ya visibles para el financiador en los hospitales. No expone historia clínica, evoluciones, estudios, recetas ni justificaciones en sus listas. Las consultas registran el evento administrativo y los accesos clínicos por persona e institución realmente devueltos. El CSV de prestaciones conserva el alcance de la ficha, el límite de exportación y la entrega íntegra tras auditar.
+
 ### Lado hospital
 
 Pantalla **Coberturas y copagos** (`/finanzas/coberturas`), con cuatro pestañas
