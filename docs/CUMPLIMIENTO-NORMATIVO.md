@@ -99,6 +99,7 @@ rechaza.
 Una obra social ve **prestación, fecha, cantidad e importe propio**. No accede a la
 historia clínica. Y un financiador no puede consultar el padrón ni los consumos de
 otro, ni siquiera para detectar un cambio de cobertura.
+La ficha del afiliado reúne prestaciones y autorizaciones ya visibles, sin historia clínica ni justificaciones, y audita los accesos por institución.
 
 La auditoría del circuito de cobertura (`EventoCobertura`) registra la operación
 administrativa **sin datos clínicos**.
