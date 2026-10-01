@@ -10,6 +10,7 @@ otra en cero y ninguna alerta. Este comando suma a la Región Sanitaria VI:
   marca en «Requiere atención».
 - **Clínica San Martín:** mediana, con ocupación normal.
 - **Centro de Salud Barrio Norte:** atención primaria, sin camas.
+- **Hospital General Los Aromos:** hospital mediano, con ocupación normal.
 - **Hospital Regional Lomas del Este:** en puesta en marcha hace 45 días, con
   áreas y su administrador, pero sin flujos ni agendas. Es la otra alerta del
   tablero: más de 30 días en alta.
@@ -79,6 +80,13 @@ EFECTORES = [
         "lat": -34.7402, "lon": -58.4123, "boxes": 2, "por_dia": (9, 15), "esperando": 5,
         "camas": 0, "internados": 0,
         "personal": [("Mónica", "Arce", R.MEDICO), ("Julián", "Paz", R.ADMINISTRATIVO)],
+    },
+    {
+        "nombre": "Hospital General Los Aromos", "tipo": "Hospital general", "prefijo": "aromos",
+        "lat": -34.7732, "lon": -58.3341, "boxes": 3, "por_dia": (10, 16), "esperando": 4,
+        "camas": 16, "internados": 10,
+        "personal": [("Lucía", "Ferreyra", R.MEDICO), ("Paula", "Benítez", R.ADMINISTRATIVO),
+                     ("Andrés", "Molina", R.JEFE_AREA)],
     },
 ]
 EN_ALTA = {

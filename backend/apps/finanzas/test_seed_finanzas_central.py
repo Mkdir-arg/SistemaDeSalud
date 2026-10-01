@@ -1,4 +1,4 @@
-"""Guardas y conciliación del escenario ficticio de Los Aromos, con fechas relativas."""
+"""Guardas y conciliación del escenario ficticio de Hospital Central."""
 import json
 from datetime import datetime
 from io import StringIO
@@ -12,7 +12,7 @@ from django.db.models import F
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.accounts.models import Usuario
+from apps.accounts.models import Membresia, Usuario
 from apps.casos.models import Caso
 from apps.instituciones.models import Institucion
 from .models import Gasto, HechoAtencionCosteable, MovimientoDinero, ObligacionFinanciera, PendienteCosteo
@@ -24,39 +24,46 @@ def reloj(texto):
 
 
 @skipUnless(connection.vendor == "postgresql", "La semilla requiere PostgreSQL aislado.")
-class SeedLosAromosTests(TestCase):
+class SeedFinanzasCentralTests(TestCase):
+    def setUp(self):
+        self.central = Institucion.objects.create(nombre="Hospital Central", tipo="Hospital general")
+        for email, rol in (("admin.central", Membresia.Rol.ADMIN_INSTITUCION),
+                           ("config.central", Membresia.Rol.CONFIGURADOR)):
+            usuario = Usuario.objects.create_user(f"{email}@hospital.gob.ar", "clave-inicial")
+            Membresia.objects.create(usuario=usuario, institucion=self.central, rol=rol)
+
     def ejecutar(self, ahora=None, **opciones):
         salida = StringIO()
         if ahora is None:
-            call_command("seed_los_aromos", stdout=salida, **opciones)
+            call_command("seed_finanzas_central", stdout=salida, **opciones)
         else:
             with patch("django.utils.timezone.now", return_value=reloj(ahora)):
-                call_command("seed_los_aromos", stdout=salida, **opciones)
+                call_command("seed_finanzas_central", stdout=salida, **opciones)
         return json.loads(salida.getvalue())
 
     @override_settings(ENTORNO="produccion")
     def test_en_produccion_no_escribe(self):
         with self.assertRaisesMessage(CommandError, "ENTORNO=produccion"):
             self.ejecutar()
-        self.assertFalse(Institucion.objects.exists())
-        self.assertFalse(Usuario.objects.exists())
+        self.assertEqual(Institucion.objects.count(), 1)
+        self.assertEqual(Usuario.objects.count(), 2)
 
     def test_no_sobrescribe_manifiesto(self):
-        with patch("apps.finanzas.management.commands.seed_los_aromos.Path.exists", return_value=True):
+        with patch("apps.finanzas.escenario_economico.Path.exists", return_value=True):
             with self.assertRaisesMessage(CommandError, "archivo nuevo"):
                 self.ejecutar(salida="/tmp/escenario-existente.json")
-        self.assertFalse(Institucion.objects.exists())
+        self.assertEqual(Institucion.objects.count(), 1)
 
     def test_error_intermedio_revierte_toda_la_carga(self):
-        with patch("apps.finanzas.management.commands.seed_los_aromos.Command._historia", side_effect=CommandError("fallo de prueba")):
+        with patch("apps.finanzas.escenario_economico.EscenarioEconomico._historia", side_effect=CommandError("fallo de prueba")):
             with self.assertRaisesMessage(CommandError, "fallo de prueba"):
                 self.ejecutar()
-        self.assertFalse(Institucion.objects.exists())
-        self.assertFalse(Usuario.objects.exists())
+        self.assertEqual(Institucion.objects.count(), 1)
+        self.assertEqual(Usuario.objects.count(), 2)
         self.assertFalse(Gasto.objects.exists())
 
     def test_convive_con_otros_datos_y_no_se_duplica(self):
-        # No depende de que la base esté vacía: sólo de que Los Aromos no esté.
+        # No depende de que la base esté vacía: sólo de que Central no tenga finanzas.
         otra = Institucion.objects.create(nombre="Datos que se conservan")
         Usuario.objects.create_user("existente@example.test", "sin-importancia")
         self.ejecutar()
@@ -70,7 +77,7 @@ class SeedLosAromosTests(TestCase):
     def test_usuarios_con_la_clave_de_la_demo(self):
         with patch.dict("os.environ", {"DEMO_PASSWORD": "otra-clave-de-prueba"}):
             self.ejecutar()
-        usuario = Usuario.objects.get(email="elena.rivas@losaromos.test")
+        usuario = Usuario.objects.get(email="m.quintero@hospital.gob.ar")
         self.assertTrue(usuario.check_password("otra-clave-de-prueba"))
 
     def test_mismas_cifras_en_septiembre_que_antes_de_las_fechas_relativas(self):
@@ -81,16 +88,16 @@ class SeedLosAromosTests(TestCase):
         self.assertEqual(resumen["cantidades"]["HechoAtencionCosteable"], 170)
         self.assertEqual(resumen["cantidades"]["Gasto"], 110)
         esperados = (
-            ("Clínica médica", "ELEC", "2026-01-01", "104000.00"),
-            ("Clínica médica", "ELEC", "2026-03-01", "88000.00"),
-            ("Clínica médica", "ELEC", "2026-07-01", "112000.00"),
-            ("Clínica médica", "ELEC", "2026-08-01", "110000.00"),
-            ("Clínica médica", "LIMP", "2025-11-01", "80000.00"),
-            ("Clínica médica", "LIMP", "2026-01-01", "86400.00"),
-            ("Clínica médica", "LIMP", "2026-04-01", "92800.00"),
-            ("Cardiología", "MANT", "2025-11-01", "18750.00"),
-            ("Cardiología", "MANT", "2026-03-01", "38750.00"),
-            ("Cardiología", "MANT", "2026-04-01", "20000.00"),
+            ("Consultorios de clínica médica", "ELEC", "2026-01-01", "104000.00"),
+            ("Consultorios de clínica médica", "ELEC", "2026-03-01", "88000.00"),
+            ("Consultorios de clínica médica", "ELEC", "2026-07-01", "112000.00"),
+            ("Consultorios de clínica médica", "ELEC", "2026-08-01", "110000.00"),
+            ("Consultorios de clínica médica", "LIMP", "2025-11-01", "80000.00"),
+            ("Consultorios de clínica médica", "LIMP", "2026-01-01", "86400.00"),
+            ("Consultorios de clínica médica", "LIMP", "2026-04-01", "92800.00"),
+            ("Consultorios de cardiología", "MANT", "2025-11-01", "18750.00"),
+            ("Consultorios de cardiología", "MANT", "2026-03-01", "38750.00"),
+            ("Consultorios de cardiología", "MANT", "2026-04-01", "20000.00"),
         )
         for area, concepto, mes, importe in esperados:
             gasto = Gasto.objects.get(area__nombre=area, concepto__codigo=concepto, periodo_economico=mes)

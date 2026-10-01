@@ -89,7 +89,7 @@ validar.
 | Documento | Qué contiene |
 |---|---|
 | [Reportería ejecutiva](funcionalidades/finanzas-costos/reporteria-ejecutiva.md) | Contrato de las cifras de la pestaña Reportes, API, permisos y verificación |
-| [Guía Los Aromos](funcionalidades/finanzas-costos/guia-los-aromos.md) | Recorrido de 25–30 min por el escenario ficticio, con sus cifras |
+| [Guía Finanzas de Central](funcionalidades/finanzas-costos/guia-finanzas-central.md) | Recorrido de 25–30 min por el escenario ficticio, con sus cifras |
 
 ---
 

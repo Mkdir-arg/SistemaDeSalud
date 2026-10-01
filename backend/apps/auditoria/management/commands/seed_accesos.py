@@ -21,7 +21,7 @@ Este comando reconstruye lo que esa operación habría dejado en los últimos
 Requisitos
 ----------
 - `ENTORNO` distinto de `produccion`.
-- Casos ya cargados (`seed_volumen`, `seed_los_aromos`, `seed_financiadores`).
+- Casos ya cargados (`seed_volumen`, `seed_finanzas_central`, `seed_financiadores`).
 
 Agrega sobre lo que haya: correrlo dos veces duplica el historial.
 """

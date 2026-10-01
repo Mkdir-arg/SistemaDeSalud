@@ -1,6 +1,6 @@
 # Guion de demo comercial
 
-Entorno **demo**: <http://localhost:8082> · verificado el **17/09/2026**.
+Entorno **demo**: <http://localhost:8082>. Comprobá los datos de cada carga en las pantallas del recorrido.
 
 > **Fechas relativas desde el #65.** La carga (`seed_entorno_demo`) ahora arma doce meses que
 > terminan el día en que se corre: donde esta guía dice «septiembre» o «agosto», leé «el mes en
@@ -23,26 +23,24 @@ minutos, hacé el 1, el 4 y el 6.
 | Institución | Qué muestra |
 |---|---|
 | **Hospital Central** | **Todo el sistema en un hospital:** guardia con triage, camas, farmacia, agenda, historia clínica sellada, un año de finanzas (gastos, repartos, costos por atención, pagos y cobros) y el circuito de obras sociales en *Consultorios externos* |
-| **Hospital General Los Aromos** | Finanzas maduras: el escenario verificado en `guia-los-aromos.md` |
+| **Hospital General Los Aromos** | Efector mediano de la red: guardia con fila e internación, sin finanzas ni financiadores |
 | **Hospital Municipal de Villa Real** | El efector chico de la red que deriva al grande |
-| **Zonal Sur · Clínica San Martín · CAPS Barrio Norte** | Más efectores de la red con guardia andando: el tablero de plataforma muestra una región y no dos hospitales. Zonal Sur está lleno y dispara la alerta de ocupación |
+| **Zonal Sur · Clínica San Martín · CAPS Barrio Norte** | Más efectores de la red con guardia andando. Zonal Sur está lleno y dispara la alerta de ocupación |
 | **Lomas del Este · Hospital Piloto** | En puesta en marcha. Lomas lleva 45 días y dispara la alerta; Piloto es la institución del comprador |
 
-**Esa diferencia es el argumento, no un defecto.** Una plataforma provincial no
-recibe hospitales parejos: recibe uno con la gestión económica ordenada y otro
-que recién arranca. Mostrar los dos en la misma pantalla vale más que mostrar uno
-perfecto.
+La red muestra distintos niveles de operación: Central concentra la demo
+completa; Los Aromos y los otros efectores aportan demanda e internación al tablero.
 
 | Módulo | Datos |
 |---|---|
-| Casos | 547 en Hospital Central · 196 en Los Aromos · 14 en Villa Real |
+| Casos | Central concentra los circuitos clínicos y económicos; Los Aromos suma atenciones de fila en 30 días. El volumen varía con cada carga |
 | Filas | ~25 esperando en la sala de guardia, urgentes al frente |
 | Internación | 28 camas: libres, ocupadas, en higiene, bloqueadas |
-| Agenda | 410 turnos con los 5 estados (reservado, confirmado, presente, ausente, cancelado) · 1 bloqueo con 4 turnos afectados |
+| Agenda | Turnos en una ventana de tres semanas hacia atrás y dos hacia adelante, con estados variados; el volumen varía con cada carga |
 | Farmacia | Los 6 estados de pedido · 2 lotes trazables hasta el paciente |
 | Red | 1 red · 14 traslados (7 aceptados, 3 rechazados, 4 esperando) |
-| Historia clínica | 617 entradas, selladas y encadenadas · 38 consentimientos |
-| **Finanzas** | $750.000 aprobados en septiembre · 110 gastos · un año de evolución |
+| Historia clínica | Entradas selladas y encadenadas; el volumen varía con cada carga |
+| **Finanzas** | Central: $750.000 aprobados en el mes en curso del escenario · 110 gastos del año económico |
 | **Financiadores** | 2 obras sociales · 12 afiliados · 20 atenciones con cobertura · $463.400 en cargos |
 
 ---
@@ -52,14 +50,14 @@ perfecto.
 Para cambiar de usuario usá **otra ventana del navegador en modo privado**. Dos
 pestañas normales comparten la sesión.
 
-**Hospital General Los Aromos** — contraseña `demo1234`
+**Finanzas de Hospital Central** — clave de `DEMO_PASSWORD`
 
 | Perfil | Usuario |
 |---|---|
-| Administración + todos los permisos financieros | `elena.rivas@losaromos.test` |
-| Administrativa: carga pero **no aprueba** | `paula.benitez@losaromos.test` |
-| Configuración | `mateo.salvatierra@losaromos.test` |
-| Médicos | `lucia.ferreyra@` · `andres.molina@` · `valeria.costa@` |
+| Administración + todos los permisos financieros | `admin.central@hospital.gob.ar` |
+| Administrativa: carga pero **no aprueba** | `m.quintero@hospital.gob.ar` |
+| Configuración | `config.central@hospital.gob.ar` |
+| Médicos | `nora.villegas@hospital.gob.ar` · `julio.barreto@hospital.gob.ar` · `carolina.espinosa@hospital.gob.ar` |
 
 **Consultorios externos y financiadores (Hospital Central)** — contraseña `demo1234`
 
@@ -76,7 +74,7 @@ pestañas normales comparten la sesión.
 | Perfil | Usuario |
 |---|---|
 | Superusuario / plataforma completa | `admin@salud.local` / `demo1234` |
-| **Quien recibe la demo:** todos los roles, finanzas de Los Aromos, portal de Mutual del Valle y Hospital Piloto por configurar | `test@salud.local` |
+| **Quien recibe la demo:** todos los roles y finanzas de Central, portal de Mutual del Valle y Hospital Piloto por configurar | `test@salud.local` |
 | Gobierno estatal: efectores y redes | `plataforma@salud.local` |
 | Auditoría con alcance estatal | `auditor@salud.local` |
 | Administración de la institución | `admin.central@hospital.gob.ar` |
@@ -152,23 +150,22 @@ queda registrada: quién, cuándo, a qué paciente.
 
 ## 3. Dos hospitales, una plataforma · 3 minutos
 
-Entrá con `plataforma@salud.local`. El **Directorio** muestra ocho instituciones,
+Entrá con `plataforma@salud.local`. El **Directorio** muestra la red de instituciones,
 con dos alertas: Zonal Sur por encima del 90 % de camas y Lomas del
 Este con más de 30 días en puesta en marcha.
 
 Cada uno tiene su estructura, sus flujos, sus usuarios y sus finanzas. La
 plataforma da de alta efectores y redes; **no** opera adentro de ellos.
 
-**Qué decir:** «Los Aromos tiene un año de gestión económica cargada. Hospital
-Central tiene la operación clínica andando y las finanzas todavía sin configurar.
-Es exactamente lo que pasa cuando se despliega en una provincia: conviven, y cada
-uno avanza a su ritmo.»
+**Qué decir:** «Hospital Central reúne la operación clínica, económica y de
+financiadores. Los Aromos aporta una guardia con fila e internación a la red,
+sin disparar una alerta del tablero.»
 
 ---
 
 ## 4. Finanzas: cuatro preguntas que no son la misma · 12 minutos
 
-Entrá con **`elena.rivas@losaromos.test`** en **Hospital General Los Aromos**.
+Entrá con **`admin.central@hospital.gob.ar`** en **Hospital Central**.
 Abrí [Finanzas · septiembre](http://localhost:8082/finanzas?mes=2026-09&tab=resumen),
 **Todas las áreas e institucional**.
 
@@ -207,7 +204,7 @@ número todavía no es comparable es un sistema en el que se puede confiar.
 
 ### C. Un gasto y su historia
 
-**Gastos registrados → Clínica médica →** gasto **#100**, electricidad de
+**Gastos → Consultorios de clínica médica →** filtrá el concepto **Electricidad** y abrí el gasto de
 septiembre: **$120.000 aprobados** y un ajuste de **−$10.000 pendiente de
 aprobación**.
 
@@ -216,7 +213,7 @@ tiene motivo y autor, y **todavía no cambió nada**. No se edita el original.»
 
 ### D. El costo de una atención concreta
 
-**Costos por atención → Cardiología → caso 167** (Clara Benítez, 10/09). Abrí
+Buscá a **Nicolás Agüero** en **Casos → Todos** y anotá el número de su caso de Consultorios de cardiología del mes en curso. En **Costos por atención**, seleccioná esa área e ingresá el número en **Número de caso**. Abrí
 **Ver composición**:
 
 | | |
@@ -227,7 +224,7 @@ tiene motivo y autor, y **todavía no cambió nada**. No se edita el original.»
 «El costo compartido no es un prorrateo inventado en una planilla: cada peso sale
 de un gasto concreto, y desde acá se llega a la factura que lo originó.»
 
-Mostrá el contraste con el **caso 170** (Beatriz Correa, imágenes): tiene un
+Mostrá el contraste con **Sergio Páez**: buscalo en **Casos → Todos**, anotá el número de su caso de Radiología ambulatoria e ingresalo en **Costos por atención** con esa área seleccionada. Tiene un
 componente **sin valor** y el responsable del cobro **sin definir**. Aparecen como
 **pendientes**, no como cero.
 
@@ -236,8 +233,7 @@ que hace una planilla y es como se toman decisiones equivocadas.»
 
 ### E. Deber no es haber pagado
 
-**Pagos y cobros → septiembre.** Cuenta **#266** (electricidad, Cooperativa
-Eléctrica del Bosque, del gasto #100):
+**Pagos y cobros → mes en curso → Consultorios de clínica médica.** Elegí **Por pagar**, buscá **Cooperativa Eléctrica del Bosque** en **Buscar cuentas** y abrí la cuenta de **$120.000**. Cotejá el **Gasto de origen #** del detalle con el número del gasto de Electricidad en **Gastos**.
 
 | | |
 |---|---:|
@@ -251,7 +247,7 @@ Eléctrica del Bosque, del gasto #100):
 pagados, pero los reservamos para que nadie los cargue dos veces. Por eso puedo
 registrar otros $40.000 y no $60.000.»
 
-**Las dos fechas.** Cambiá el mes económico a agosto: la cuenta **#247** es de
+**Las dos fechas.** Cambiá el mes económico al anterior: la cuenta de electricidad es de
 agosto y tiene un pago hecho en **septiembre**. «Una cosa es a qué mes corresponde
 el gasto; otra, cuándo salió la plata. Casi ningún sistema chico distingue las dos,
 y es la diferencia entre cerrar un mes y no poder cerrarlo.»
@@ -299,7 +295,7 @@ real, y es acotado.»
 
 ### C. Lo que no cubre no se convierte solo en deuda
 
-Volvé a Elena, **Finanzas → Pagos y cobros**.
+Volvé a la dirección de Central, **Finanzas → Pagos y cobros**.
 
 De las 20 atenciones con cobertura: **13 resueltas**, **6 pendientes** (las de
 septiembre) y **1 esperando autorización** del financiador.
@@ -316,11 +312,10 @@ absorba, y eso queda escrito con quién lo decidió y por qué.»
 
 ### D. Evaluar antes de hacer la prestación
 
-Con `irene.bustos@losaromos.test`, abrí el **caso 195** (Gustavo Ramallo,
-radiografía). **Evaluar la prestación**: aparece **sin cupo**, porque tiene dos
+Con `irene.bustos@hospital.gob.ar`, buscá a **Gustavo Ramallo** en **Casos → Todos** y abrí su caso de radiografía. **Evaluar la prestación**: aparece **sin cupo**, porque tiene dos
 radiografías hechas en otro prestador.
 
-Compará con el **caso 194** (Ernesto Bogado), que sí tiene cupo y ya tiene el
+Compará con el **caso de Ernesto Bogado**: buscalo por nombre en **Casos → Todos** y abrí su caso. Sí tiene cupo y ya tiene el
 copago **aceptado** antes de la práctica.
 
 «Consultar no crea deuda. Se le puede decir a la persona cuánto va a pagar
@@ -396,9 +391,7 @@ algo durante un ensayo, dejá de presentar las cifras de acá como estado inicia
 
 ## Verificación de este guion
 
-Todas las cifras se comprobaron contra la base el 17/09/2026, después de sembrar.
-Las de Los Aromos (§4) coinciden exactamente con
-[`guia-los-aromos.md`](../funcionalidades/finanzas-costos/guia-los-aromos.md), que
-sigue siendo válida: el escenario de financiadores se montó en un área aparte
-justamente para no alterarlas. Las de financiadores (§5) son nuevas y salen de
-`seed_financiadores`, verificadas también por el portal y la API.
+Las cifras de Finanzas (§4) son las expectativas del escenario de Central,
+documentadas en [`guia-finanzas-central.md`](../funcionalidades/finanzas-costos/guia-finanzas-central.md).
+El circuito de financiadores (§5) se carga en un área aparte para conservar
+el reparto económico. Antes de presentar, comprobá las cifras en **Finanzas** y localizá los casos por paciente en **Casos → Todos**.
