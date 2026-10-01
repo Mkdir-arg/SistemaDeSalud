@@ -2,6 +2,24 @@
 
 Lenguaje del sistema para los procesos asistenciales y su gestión administrativa.
 
+## Pacientes y registros
+
+**Paciente**:
+Persona registrada en una institución para recibir atención. Cada institución registra a sus pacientes por separado.
+_Evitar_: Ciudadano, afiliado.
+
+**Padrón de pacientes**:
+Conjunto de pacientes registrados en una institución. Es distinto del padrón de afiliados del financiador.
+
+**Ficha administrativa**:
+Identificación, domicilio, cobertura administrativa y consentimiento de un paciente. Se consulta sin acceso a datos clínicos.
+
+**Historia clínica**:
+Registro clínico de un paciente en una institución: evolución, antecedentes, estudios y recetas. Se abre con su primera atención registrada.
+
+**Paciente sin historia clínica**:
+Paciente registrado que todavía no tiene una atención registrada. Tiene ficha administrativa, pero no historia clínica.
+
 ## Finanzas y cobertura
 
 **Financiador**:

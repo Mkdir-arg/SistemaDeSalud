@@ -1,25 +1,19 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState } from "react";
 
 import { api } from "@/api/client";
 import { useAccion, useDetalle, useLista } from "@/api/queries";
-import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
-import { resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
-import { Badge, Button, Card, Field, Input, Modal, Mono, Tabs, Textarea } from "@/components/ui";
-import { EstadoError, EstadoVacio, Skeleton, SkeletonTabla } from "@/components/ui/estados";
+import { Badge, Button, Card, Field, Input, Modal, Mono, Textarea } from "@/components/ui";
+import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
 
 import { useToast } from "@/components/ui/toast";
-import { useFiltroUrl } from "@/components/ui/filtros";
 // El vocabulario del registro de accesos es compartido con la pantalla de
 // auditoría a propósito: el mismo evento tiene que decirse y pintarse igual en
 // las dos, y la que lo bajaba de tono era justo la que se lee frente al paciente.
 import { nombreRecurso, TONO_ACCESO } from "@/lib/auditoria";
 import { cn } from "@/lib/cn";
 import { fechaHora, plural } from "@/lib/format";
-import HistorialCoberturaPaciente from "../financiadores/HistorialCoberturaPaciente";
-import { ConsentimientoModal, MODO } from "./PadronDetalle";
 
 /*
  * Una fecha SIN hora, en dd/mm/aaaa como el resto del expediente.
@@ -50,234 +44,6 @@ function nombreArchivo(ref) {
 }
 
 /*
- * La edad, al lado de la fecha de nacimiento.
- *
- * Es el dato con el que se decide una dosis pediátrica, y hasta acá había que
- * calcularlo de cabeza: «23/2/2015» es un chico de 11 años y eso no se lee, se
- * hace. Se arma con las partes de la fecha y no con `new Date`, por lo mismo que
- * explica `fecha()`: la fecha nace a medianoche UTC y en Argentina se muestra un
- * día antes, que en el cumpleaños del paciente cambia el número.
- */
-function edad(iso) {
-  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return null;
-  const [a, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const hoy = new Date();
-  const cumplio =
-    hoy.getMonth() + 1 > mes || (hoy.getMonth() + 1 === mes && hoy.getDate() >= dia);
-  const años = hoy.getFullYear() - a - (cumplio ? 0 : 1);
-  if (años < 0) return null;
-  return años < 1 ? "menos de 1 año" : plural(años, "año", "años");
-}
-
-export default function HistoriaDetalle() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { roles } = useInstitucion();
-  // La pestaña va en la URL: «mirá los estudios de este paciente» es un link.
-  const [tab, setTab] = useFiltroUrl("tab", "evolucion");
-  const [nuevaAtencion, setNuevaAtencion] = useState(false);
-  const [editandoAntecedentes, setEditandoAntecedentes] = useState(false);
-
-  const paciente = usePacienteAdministrativo(id);
-  // La historia se busca por paciente; puede no existir todavía.
-  const historias = useLista("historias-clinicas", { ciudadano: id }, { enabled: !!id });
-  const hc = historias.filas[0];
-  useEffect(() => {
-    if (!hc || tab !== "evolucion" || !window.location.hash.startsWith("#entrada-")) return;
-    requestAnimationFrame(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "center" }));
-  }, [hc, tab]);
-
-  if (paciente.error) return <EstadoError error={paciente.error} onReintentar={paciente.refetch} />;
-
-  const c = paciente.data;
-  const nombre = c ? `${c.nombre} ${c.apellido}`.trim() : "";
-  // Firmar una atención lo habilita el rol (regla del motor: `quien_firma`), y
-  // la matrícula la valida el backend al intentarlo. Acá sólo se decide si el
-  // botón «Firmar» tiene sentido: ofrecérselo a quien nunca puede usarlo es
-  // prometer un camino que no existe, que es el defecto que se está corrigiendo.
-  const puedeFirmar = (roles || []).some((r) => r === "medico" || r === "admin");
-
-  // Un estudio SOLICITADO y todavía no hecho también cuenta en «estudios»: el
-  // contador mezclaba pedidos con realizados, y de ahí sale esperar un informe
-  // que nadie pidió o pedir el estudio de nuevo.
-  const estudios = hc?.estudios || [];
-  const pendientes = estudios.filter((e) => !e.realizado).length;
-
-  // Cada dato entero o en el renglón siguiente, nunca partido al medio. A 390 px
-  // «DNI 7775258 · 11/9/1974 · PAMI» salía en cuatro renglones, con el separador
-  // «·» solo en una línea. Confirmar que se está escribiendo en la historia del
-  // paciente correcto es el chequeo de seguridad más básico que hay, y con dos
-  // «Acosta» en el padrón el documento en pedazos deja de servir para eso.
-  const identificacion = !c
-    ? []
-    : [
-        c.documento ? `DNI ${c.documento}` : null,
-        c.fecha_nacimiento
-          ? [fecha(c.fecha_nacimiento), edad(c.fecha_nacimiento)].filter(Boolean).join(" · ")
-          : null,
-        resumenCobertura(c) || null,
-      ].filter(Boolean);
-
-  const metricas = [
-    { n: hc?.entradas?.length || 0, l: "consultas" },
-    {
-      n: estudios.length,
-      l: pendientes ? `estudios · ${plural(pendientes, "pendiente", "pendientes")}` : "estudios",
-    },
-    { n: (hc?.recetas || []).filter((r) => r.activa).length, l: "recetas activas" },
-    {
-      // Con año y en dd/mm/aaaa. Sin el año salía «8/8», que en una fila de
-      // contadores se lee como una razón —8 de 8, el mismo idioma que usa el
-      // panel de integridad al lado— y que además no distingue una paciente
-      // vista la semana pasada de una vista en 2019, en un registro que se
-      // conserva diez años.
-      n: hc?.entradas?.length
-        ? new Date(hc.entradas[0].fecha).toLocaleDateString("es-AR")
-        : "—",
-      l: "última visita",
-      chico: true,
-    },
-  ];
-
-  const TABS = [
-    { key: "evolucion", label: "Evolución", cuenta: hc?.entradas?.length },
-    { key: "estudios", label: "Estudios", cuenta: hc?.estudios?.length },
-    { key: "recetas", label: "Recetas", cuenta: hc?.recetas?.length },
-    { key: "cobertura", label: "Cobertura" },
-    // «Quién la miró» es un derecho del paciente, no una herramienta de
-    // auditoría interna: va acá, en su historia, donde se lo puede contestar
-    // en el momento en que lo pregunta.
-    { key: "accesos", label: "Quién la miró" },
-  ];
-
-  return (
-    <div className="px-lg py-[22px] sm:px-[30px]">
-      <div className="mb-lg flex items-center gap-2.5">
-        <button
-          onClick={() => navigate("/historia")}
-          aria-label="Volver a historias clínicas"
-          className="flex size-8 items-center justify-center rounded-md border border-borde bg-superficie text-texto-debil hover:bg-superficie-2"
-        >
-          <Icon name="back" size={15} />
-        </button>
-        <div className="text-md text-texto-debil">
-          Historias clínicas · <strong className="text-texto-suave">{nombre || "…"}</strong>
-        </div>
-      </div>
-
-      <div className="mb-[18px] flex flex-wrap items-start gap-lg">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xxl font-extrabold tracking-tight">
-            {c ? nombre : <Skeleton className="h-6 w-52" />}
-          </h2>
-          <div className="flex flex-wrap items-center gap-x-2 text-base text-texto-debil">
-            {identificacion.map((d, i) => (
-              <span key={d} className="whitespace-nowrap">
-                {/* El separador viaja pegado al dato que sigue: suelto, quedaba
-                    solo en un renglón. */}
-                {i > 0 && <span className="mr-2 text-texto-tenue" aria-hidden="true">·</span>}
-                {d}
-              </span>
-            ))}
-          </div>
-          {c?.codigo && (
-            <div className="mt-1 text-xs text-texto-debil">
-              Legajo ciudadano · <Mono>{c.codigo}</Mono>
-            </div>
-          )}
-        </div>
-        <Button
-          onClick={() => setNuevaAtencion(true)}
-          // Sin la historia cargada no se sabe si el paciente ya tiene una, y el
-          // alta crearía una segunda.
-          disabled={!!historias.error}
-          // Renglón propio abajo de `sm`. Como hermano del bloque de
-          // identificación en un `flex-wrap`, el botón no bajaba de línea y lo
-          // estrangulaba hasta 60 px: el nombre salía en dos líneas y el
-          // documento en cuatro. `w-full` lo obliga a ocupar su propia fila.
-          className="flex w-full items-center justify-center gap-2 sm:w-auto"
-        >
-          <Icon name="plus" size={15} /> Registrar atención
-        </Button>
-      </div>
-
-      <AlergiaEnCabecera hc={hc} listo={!historias.isLoading && !historias.error} />
-
-      {historias.isLoading ? (
-        <SkeletonTabla filas={4} columnas={4} />
-      ) : historias.error ? (
-        /*
-         * Si la historia no se pudo traer, NO se dibuja nada que cuelgue de
-         * ella. Antes esta consulta fallaba en silencio y la pantalla mostraba
-         * «0 consultas», «Sin entradas de evolución» y «Sin alergias
-         * registradas»: no una lista vacía ambigua, una AFIRMACIÓN. Y arriba de
-         * esa afirmación se prescribe un antibiótico.
-         */
-        <EstadoError
-          error={historias.error}
-          onReintentar={historias.refetch}
-          titulo="No se pudo cargar la historia clínica"
-        />
-      ) : (
-        <>
-          <div className="mb-[22px] grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-            {metricas.map((m) => (
-              <Card key={m.l} className="p-[18px]">
-                <div className={cn("font-extrabold leading-none", m.chico ? "text-cifra" : "text-cifra-lg")}>
-                  {m.n}
-                </div>
-                <div className="mt-1.5 text-sm text-texto-debil">{m.l}</div>
-              </Card>
-            ))}
-          </div>
-
-          {/*
-            El desplazamiento le pertenece a la tira de pestañas, no a la página.
-            A 390 px las cuatro pestañas miden 413 px: sin este contenedor el que
-            se corría para el costado era el panel entero de la app, y eso se lee
-            como pantalla rota y no como pantalla con scroll. `whitespace-nowrap`
-            va en el contenedor de las pestañas porque se hereda: sin él la
-            etiqueta se parte en tres renglones y la tira mide 87 px de alto.
-          */}
-          <div className="mb-5 max-w-full overflow-x-auto">
-            <Tabs tabs={TABS} valor={tab} onChange={setTab} variant="underline" className="whitespace-nowrap" />
-          </div>
-
-          {/* Los antecedentes bajan debajo del contenido hasta `lg`: en una tablet
-              una columna de 280px al lado deja la evolución ilegible. Lo urgente
-              —la alergia— ya no vive acá: está en la cabecera, arriba de todo y
-              en cualquier ancho. Este panel es el detalle (quién la cargó y
-              cuándo) y el lugar donde se edita. */}
-          <div className="grid items-start gap-5 lg:grid-cols-[1fr_17.5rem]">
-            <div>
-              {tab === "evolucion" && <Evolucion entradas={hc?.entradas || []} puedeFirmar={puedeFirmar} pacienteNombre={nombre} />}
-              {tab === "estudios" && <Estudios estudios={estudios} />}
-              {tab === "recetas" && <Recetas recetas={hc?.recetas || []} />}
-              {tab === "cobertura" && <HistorialCoberturaPaciente key={id} ciudadanoId={id} />}
-              {tab === "accesos" && <Accesos ciudadanoId={id} />}
-            </div>
-
-            <div className="flex flex-col gap-3.5">
-              <Antecedentes hc={hc} onEditar={() => setEditandoAntecedentes(true)} />
-              <Consentimiento ciudadanoId={id} estado={c?.consentimiento} />
-              {hc && <Integridad hcId={hc.id} />}
-            </div>
-          </div>
-        </>
-      )}
-
-      {nuevaAtencion && (
-        <NuevaAtencionModal ciudadanoId={id} pacienteNombre={nombre} hcId={hc?.id} puedeFirmar={puedeFirmar} onClose={() => setNuevaAtencion(false)} />
-      )}
-      {editandoAntecedentes && (
-        <AntecedentesModal hc={hc} onClose={() => setEditandoAntecedentes(false)} />
-      )}
-    </div>
-  );
-}
-
-/*
  * La alergia, en la cabecera y en todos los anchos.
  *
  * Vivía sólo en el panel lateral, que por debajo de 1024 px cae DESPUÉS de toda
@@ -292,7 +58,7 @@ export default function HistoriaDetalle() {
  * tiene». Y si la historia no se pudo traer no se dice NADA, porque afirmar
  * «sin alergias» sobre un dato que no llegó es el peor error posible acá.
  */
-function AlergiaEnCabecera({ hc, listo }) {
+export function AlergiaEnCabecera({ hc, listo }) {
   if (!listo) return null;
   return (
     <div className={cn("mb-5 flex flex-wrap items-center gap-x-2 rounded-lg border px-4 py-2.5 text-base",
@@ -327,7 +93,7 @@ function AlergiaEnCabecera({ hc, listo }) {
  * Por eso la marca de quién los cargó y cuándo no es un adorno: es lo único que
  * distingue «se preguntó y no tiene» de «no consta».
  */
-function Antecedentes({ hc, onEditar }) {
+export function Antecedentes({ hc, onEditar }) {
   const consta = !!hc?.antecedentes_at;
 
   return (
@@ -371,7 +137,7 @@ function Antecedentes({ hc, onEditar }) {
   );
 }
 
-function AntecedentesModal({ hc, onClose }) {
+export function AntecedentesModal({ hc, onClose }) {
   const toast = useToast();
   const [alergias, setAlergias] = useState(hc?.alergias || "");
   const [condiciones, setCondiciones] = useState(hc?.condiciones || "");
@@ -379,7 +145,7 @@ function AntecedentesModal({ hc, onClose }) {
   const guardar = useAccion(
     () => api.patch(`/historias-clinicas/${hc.id}/`, { alergias, condiciones }),
     {
-      // El padrón muestra la columna «Condiciones / alergias» derivada de acá.
+      // El listado de pacientes muestra la columna «Alergias» derivada de acá.
       invalida: ["lista", "detalle"],
       onSuccess: () => { toast.ok("Antecedentes actualizados."); onClose(); },
       onError: (e) => toast.deError(e, "No se pudieron guardar los antecedentes."),
@@ -426,7 +192,7 @@ function AntecedentesModal({ hc, onClose }) {
   );
 }
 
-function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, puedeFirmar, onClose }) {
+export function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, puedeFirmar, onClose }) {
   const toast = useToast();
   const { user } = useAuth();
   const [titulo, setTitulo] = useState("");
@@ -501,151 +267,6 @@ function NuevaAtencionModal({ ciudadanoId, pacienteNombre, hcId, puedeFirmar, on
 }
 
 /*
- * Consentimiento para el tratamiento de datos (Ley 25.326).
- *
- * Se agrega, nunca se edita: revocar es un registro nuevo. Lo que vale ante un
- * reclamo es qué se consintió y cuándo, no el estado de hoy.
- */
-function Consentimiento({ ciudadanoId, estado }) {
-  const toast = useToast();
-  const [pidiendo, setPidiendo] = useState(null); // "otorgar" | "revocar"
-  const [historial, setHistorial] = useState(false);
-
-  // Sin registro NO es lo mismo que revocado, y mostrarlos igual haría creer
-  // que el paciente dijo que no.
-  const sinRegistro = estado == null;
-
-  return (
-    <Card className="p-[18px]">
-      <h2 className="mb-3 text-xs font-bold tracking-wider text-texto-debil">
-        CONSENTIMIENTO DE DATOS
-      </h2>
-
-      {sinRegistro ? (
-        <div className="text-md text-texto-debil">
-          Sin registro.{" "}
-          <span className="text-texto-medio">
-            No consta que se haya pedido; no es lo mismo que una negativa.
-          </span>
-        </div>
-      ) : (
-        <>
-          <Badge tone={estado.otorgado ? "green" : "amber"}>
-            {estado.otorgado ? "Otorgado" : "Revocado"}
-          </Badge>
-          <div className="mt-2 text-sm text-texto-debil">
-            {fechaHora(estado.momento)}
-            {estado.modo ? ` · ${MODO[estado.modo] || estado.modo}` : ""}
-          </div>
-          {/* El mismo campo `alcance` guarda dos cosas distintas: para qué se
-              consintió, o por qué se revocó. Sin rótulo, el motivo de una
-              revocación se lee en el mismo renglón y con la misma cara que el
-              alcance de un consentimiento otorgado. */}
-          {estado.alcance && (
-            <div className="mt-1 text-sm text-texto-medio">
-              <span className="text-texto-debil">
-                {estado.otorgado ? "Alcance: " : "Motivo de la revocación: "}
-              </span>
-              {estado.alcance}
-            </div>
-          )}
-          {/* El modelo guarda cada fila justamente porque «lo que importa ante
-              un reclamo no es el estado de hoy sino qué se consintió y cuándo»,
-              y esa era la única pregunta que el producto no podía contestar: las
-              filas estaban en la base y no había ninguna pantalla que las
-              mostrara. Armar la cronología a mano por SQL, además, deja fuera
-              del registro de accesos a quien la arma. */}
-          <button
-            onClick={() => setHistorial((v) => !v)}
-            className="mt-2 text-sm font-semibold text-accent hover:underline"
-          >
-            {historial ? "Ocultar historial" : "Ver historial"}
-          </button>
-          {historial && <HistorialConsentimientos ciudadanoId={ciudadanoId} />}
-        </>
-      )}
-
-      <div className="mt-3.5 flex gap-2">
-        {(sinRegistro || !estado.otorgado) && (
-          <Button variant="secondary" className="text-sm" onClick={() => setPidiendo("otorgar")}>Registrar consentimiento</Button>
-        )}
-        {!sinRegistro && estado.otorgado && (
-          <Button variant="secondary" className="text-sm" onClick={() => setPidiendo("revocar")}>
-            Registrar revocación
-          </Button>
-        )}
-      </div>
-
-      {/* La urgencia no depende de esto y decirlo importa: sin la aclaración,
-          un «revocado» en pantalla invita a dudar antes de atender. */}
-      <div className="mt-3 text-xs text-texto-debil">
-        La atención de urgencia no depende del consentimiento. Acá se deja constancia,
-        no se bloquea nada.
-      </div>
-
-      {pidiendo && (
-        <ConsentimientoModal
-          ciudadanoId={ciudadanoId}
-          otorgar={pidiendo === "otorgar"}
-          referidoId={estado?.id}
-          onClose={() => setPidiendo(null)}
-          onListo={() => { toast.ok("Registrado."); setPidiendo(null); }}
-        />
-      )}
-    </Card>
-  );
-}
-
-/*
- * La cronología: otorgó en 2019, revocó en 2023, volvió a otorgar en 2024.
- *
- * El endpoint ya existía, ya filtra por paciente y ya queda auditado; lo que
- * faltaba era la pantalla. Un dato que se guarda para un momento puntual —el
- * reclamo, la inspección— y no se puede leer en ese momento cuesta lo mismo que
- * no guardarlo.
- */
-function HistorialConsentimientos({ ciudadanoId }) {
-  const q = useLista("consentimientos", { ciudadano: ciudadanoId, pageSize: 50 });
-
-  if (q.isLoading) return <div className="mt-2 text-sm text-texto-debil">Buscando el historial…</div>;
-  if (q.error) {
-    return <div className="mt-2 text-sm text-danger">No se pudo traer el historial. Probá de nuevo.</div>;
-  }
-  if (!q.filas.length) return <div className="mt-2 text-sm text-texto-debil">Sin registros.</div>;
-
-  return (
-    <>
-      <ol className="mt-2.5 flex flex-col gap-2.5 border-t border-division pt-2.5">
-        {q.filas.map((c) => (
-          <li key={c.id} className="text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={c.otorgado ? "green" : "amber"}>{c.otorgado ? "Otorgado" : "Revocado"}</Badge>
-              <span className="text-texto-debil">{fechaHora(c.momento)}</span>
-            </div>
-            <div className="mt-0.5 text-texto-debil">
-              {c.modo_display || c.modo}
-              {c.tomado_por_nombre ? ` · lo tomó ${c.tomado_por_nombre}` : ""}
-            </div>
-            {c.alcance && (
-              <div className="text-texto-medio">
-                {c.otorgado ? "Alcance: " : "Motivo: "}{c.alcance}
-              </div>
-            )}
-          </li>
-        ))}
-      </ol>
-      {q.total > q.filas.length && (
-        // Una lista cortada sin decirlo es la misma respuesta incompleta con
-        // cara de completa que se corrigió en la pestaña de accesos.
-        <div className="mt-2 text-xs text-texto-debil">
-          Se muestran los {q.filas.length} más recientes de {q.total}.
-        </div>
-      )}
-    </>
-  );
-}
-
-/*
  * Verificación de integridad de la historia.
  *
  * Sin esto, «está firmada» es una afirmación que nadie puede comprobar: alguien
@@ -653,7 +274,7 @@ function HistorialConsentimientos({ ciudadanoId }) {
  * rastro. Se dispara a pedido porque es lo que se hace antes de presentar la
  * historia ante un reclamo, no en cada visita.
  */
-function Integridad({ hcId }) {
+export function Integridad({ hcId }) {
   const [verificar, setVerificar] = useState(false);
   // `useDetalle` arma `/historias-clinicas/<id>/verificar/`, que es la acción
   // del backend.
@@ -788,7 +409,7 @@ const POR_PAGINA = 25;
  * contestarla en el momento en que la pregunta, y en ese momento la pregunta es
  * «quiénes»: primero el resumen por persona, después la cronología.
  */
-function Accesos({ ciudadanoId }) {
+export function Accesos({ ciudadanoId }) {
   const [pagina, setPagina] = useState(1);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
@@ -999,7 +620,7 @@ function SelloDeFirma({ entrada }) {
   return <Badge tone="green">Firmada</Badge>;
 }
 
-function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
+export function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
   // `null` = ninguno abierto. Guarda la entrada y qué se va a hacer con ella.
   const [editando, setEditando] = useState(null);
   const [firmando, setFirmando] = useState(null);
@@ -1158,7 +779,7 @@ function EstadoEstudio({ estudio }) {
   );
 }
 
-function Estudios({ estudios }) {
+export function Estudios({ estudios }) {
   const toast = useToast();
   const [descargando, setDescargando] = useState(null);
 
@@ -1205,7 +826,7 @@ function Estudios({ estudios }) {
   );
 }
 
-function Recetas({ recetas }) {
+export function Recetas({ recetas }) {
   const [suspendiendo, setSuspendiendo] = useState(null);
 
   if (!recetas.length) return <EstadoVacio titulo="Sin recetas" detalle="Las recetas se emiten durante la atención." />;

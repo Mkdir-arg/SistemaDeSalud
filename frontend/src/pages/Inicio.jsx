@@ -54,7 +54,7 @@ export default function Inicio() {
   const accesos = [
     { titulo: "Bandeja", detalle: "Casos en curso y sin asignar", ruta: "/bandeja", cap: "casos_operar" },
     { titulo: "Turnos de hoy", detalle: "Agenda de profesionales y recursos", ruta: "/agenda", cap: "turnos" },
-    { titulo: "Padrón de pacientes", detalle: "Buscar, registrar o actualizar pacientes", ruta: "/padron", cap: "padron_admision" },
+    { titulo: "Pacientes", detalle: "Buscar, registrar o consultar pacientes", ruta: "/pacientes", cap: "padron_admision" },
   ].filter(({ cap }) => puedeVer(cap));
   const accesosRapidos = accesos.map(({ titulo, detalle, ruta }) => <Link key={ruta} to={ruta} data-tour={`inicio-${ruta.slice(1)}`} className="flex items-center justify-between rounded-lg border border-borde bg-superficie px-4 py-4 hover:border-accent-100 hover:shadow-card"><span><strong className="text-sm">{titulo}</strong><span className="mt-1 block text-xs text-texto-suave">{detalle}</span></span><span className="text-accent" aria-hidden="true">›</span></Link>);
   const resumen = tablero.data?.resumen;

@@ -40,8 +40,7 @@ const TITULOS = {
   "/farmacia": "Farmacia e insumos",
   "/red": "Red de establecimientos",
   "/casos": "Casos",
-  "/padron": "Padrón de pacientes",
-  "/historia": "Historia clínica",
+  "/pacientes": "Pacientes",
   "/legajo": "Legajo profesional",
   "/accesos": "Registro de accesos",
   "/flujos": "Flujos",
@@ -57,11 +56,10 @@ const TITULOS = {
 // está — que es justamente para lo que sirve el título.
 const TITULOS_DETALLE = [
   ["/casos/", "Detalle del caso"],
-  ["/padron/", "Ficha administrativa"],
+  ["/pacientes/", "Paciente"],
   ["/flujos/", "Diseñador de flujos"],
   ["/puesto/", "Detalle del paso"],
   ["/formularios/", "Constructor de formulario"],
-  ["/historia/", "Historia clínica"],
   ["/estructura/", "Estructura organizativa"],
 ];
 
@@ -151,7 +149,7 @@ function Campana() {
   );
 }
 
-// Buscador de pacientes (barra superior): nombre o documento �  su historia clínica.
+// Buscador de pacientes (barra superior): nombre o documento y ficha del paciente.
 function BuscadorPacientes() {
   const { institucion, puedeVer } = useInstitucion();
   const { user } = useAuth();
@@ -160,8 +158,7 @@ function BuscadorPacientes() {
   const [resultado, setResultado] = useState({});
   const [intento, setIntento] = useState(0);
   const [abierto, setAbierto] = useState(false);
-  const puedeAbrirHistoria = puedeVer("historia_clinica");
-  const puedeBuscarPacientes = puedeAbrirHistoria || puedeVer("padron_admision");
+  const puedeBuscarPacientes = puedeVer("padron_admision");
   const contexto = JSON.stringify([user?.id, institucion?.id, q.trim()]);
   const actual = resultado.contexto === contexto;
   const res = actual ? resultado.filas || [] : [];
@@ -186,7 +183,7 @@ function BuscadorPacientes() {
 
   function ir(c) {
     setQ(""); setResultado({}); setAbierto(false);
-    navigate(`${puedeAbrirHistoria ? "/historia" : "/padron"}/${c.id}`);
+    navigate(`/pacientes/${c.id}`);
   }
 
   if (!puedeBuscarPacientes) return null;
@@ -279,7 +276,7 @@ function TopBar({ onAbrirMenu, titulo, contexto, hospital = true, plataforma = f
         <span>{contexto}</span><span className="mx-2">/</span><span className="text-texto">{titulo || tituloDeRuta(location.pathname)}</span>
       </h1>
       {/* El buscador se esconde en angosto: compite con el título y la campana.
-          Queda accesible desde «Historia clínica». */}
+          Queda accesible desde «Pacientes». */}
       <div className="hidden flex-1 justify-center md:flex">
         {hospital && <BuscadorPacientes />}
       </div>
@@ -299,8 +296,7 @@ function TopBar({ onAbrirMenu, titulo, contexto, hospital = true, plataforma = f
   );
 }
 
-// Las rutas y capacidades siguen siendo las existentes; los grupos corresponden
-// al recorrido de Figma y se abren según la sección activa.
+// Los grupos corresponden al recorrido de Figma y se abren según la sección activa.
 const GRUPOS = [
   {
     label: "DIRECCIÓN",
@@ -317,15 +313,9 @@ const GRUPOS = [
       { to: "/inicio", label: "Inicio", icon: "home" },
       { to: "/bandeja", label: "Bandeja", icon: "inbox", cap: "casos_operar" },
       { to: "/agenda", label: "Turnos", icon: "calendar", cap: "turnos" },
+      { to: "/pacientes", label: "Pacientes", icon: "idCard", cap: "padron_admision" },
       { to: "/internacion", label: "Internación", icon: "bed", cap: "internacion" },
       { to: "/farmacia", label: "Farmacia e insumos", icon: "pill", cap: "farmacia_stock" },
-    ],
-  },
-  {
-    label: "PACIENTES",
-    items: [
-      { to: "/padron", label: "Padrón de pacientes", icon: "idCard", cap: "padron_admision" },
-      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "historia_clinica" },
     ],
   },
   {

@@ -6,7 +6,7 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
 import { AvisoCoberturaCaso, resumenCobertura, useConfiguracionCobertura } from "@/components/financiadores/CoberturaAdministrativa";
-import { Avatar, Badge, Button, Field, Input, Modal, Mono, Select } from "@/components/ui";
+import { Avatar, Badge, Button, Field, Input, Modal, Select } from "@/components/ui";
 import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
@@ -24,7 +24,7 @@ function nombreCompleto(c) {
   return `${c?.nombre || ""} ${c?.apellido || ""}`.trim();
 }
 
-function PacienteCelda({ c, mostrarEdad = false }) {
+function PacienteCelda({ c }) {
   return (
     <div className="flex items-center gap-3">
       <Avatar nombre={nombreCompleto(c)} i={c.id} size={38} />
@@ -32,24 +32,15 @@ function PacienteCelda({ c, mostrarEdad = false }) {
         <div className="truncate font-semibold">{nombreCompleto(c) || "Sin nombre"}</div>
         <div className="truncate text-sm text-texto-debil">
           {c.documento ? `DNI ${c.documento}` : c.codigo || "Sin documento"}
-          {mostrarEdad && c.edad != null ? ` · ${c.edad} años` : ""}
         </div>
       </div>
     </div>
   );
 }
 
-const columnasHistoria = [
-  { key: "paciente", label: "Paciente", orden: "apellido", truncar: true, render: (c) => <PacienteCelda c={c} mostrarEdad /> },
-  { key: "condiciones", label: "Condiciones", envolver: true, render: (c) => c.condiciones || "—" },
-  { key: "alergias", label: "Alergias", envolver: true, render: (c) => c.alergias ? <Badge tone="error">{c.alergias}</Badge> : "—" },
-  { key: "entradas", label: "Entradas", render: (c) => <Mono>{c.entradas}</Mono> },
-  { key: "ultima", label: "Última atención", render: (c) => (c.ultima ? new Date(c.ultima).toLocaleDateString("es-AR") : "—") },
-  { key: "abrir", label: "", render: (c) => <span className="rounded-md border border-borde px-2.5 py-1.5 text-sm text-texto-suave">Abrir</span> },
-];
-
-const columnasPadron = (abrirFicha, revelar, revelando) => [
+const columnasPadron = (abrirFicha, revelar, revelando, verAlergias) => [
   { key: "paciente", label: "Paciente", orden: "apellido", truncar: true, render: (c) => <PacienteCelda c={c} /> },
+  ...(verAlergias ? [{ key: "alergias", label: "Alergias", envolver: true, render: (c) => c.alergias ? <Badge tone="error">{c.alergias}</Badge> : "—" }] : []),
   { key: "edad", label: "Edad", render: (c) => c.edad == null ? "—" : `${c.edad} años` },
   { key: "domicilio", label: "Domicilio", truncar: true, render: (c) => c.domicilio || "—" },
   { key: "cobertura", label: "Cobertura", envolver: true, render: (c) => resumenCobertura(c) || "-" },
@@ -78,16 +69,13 @@ const columnasPadron = (abrirFicha, revelar, revelando) => [
   </div> },
 ];
 
-export default function Registros({ modo = "historia" }) {
+export default function Registros() {
   const toast = useToast();
   const { institucion, puedeVer } = useInstitucion();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [texto, setTexto, busqueda] = useBusquedaUrl("q");
-  const [nuevoModal, setNuevoModal] = useState(() => modo !== "padron" && params.get("nuevo") === "1"
-    ? { busqueda: params.get("q") || "", institucionId: institucion?.id }
-    : null);
   const [exportando, setExportando] = useState(false);
   const [motivoExportacion, setMotivoExportacion] = useState("");
   const [varianteExportacion, setVarianteExportacion] = useState("minimizado");
@@ -96,10 +84,8 @@ export default function Registros({ modo = "historia" }) {
   const [revelando, setRevelando] = useState(null);
   const peticionRevelado = useRef(0);
 
-  const esPadron = modo === "padron";
-  const nuevo = esPadron ? params.get("nuevo") === "1" : !!nuevoModal;
-  const detalleBase = esPadron ? "/padron" : "/historia";
-  const terminoBusqueda = esPadron ? busquedaPaciente(busqueda) : busqueda;
+  const nuevo = params.get("nuevo") === "1";
+  const terminoBusqueda = busquedaPaciente(busqueda);
   const paramsLista = { institucion: institucion?.id, search: terminoBusqueda || undefined };
   useEffect(() => {
     peticionRevelado.current += 1;
@@ -120,7 +106,7 @@ export default function Registros({ modo = "historia" }) {
       await api.downloadPost("/ciudadanos/exportar/", {
         institucion: institucion.id,
         search: terminoBusqueda || "",
-        ordering: params.get(`${esPadron ? "padron" : "hc"}_ord`) || "apellido",
+        ordering: params.get("padron_ord") || "apellido",
         variante: varianteExportacion,
         motivo: motivoExportacion.trim(),
       }, `pacientes-${varianteExportacion}.csv`);
@@ -147,13 +133,12 @@ export default function Registros({ modo = "historia" }) {
     }
   }
 
-  if (esPadron && nuevo) return <NuevoPacienteModal
+  if (nuevo) return <NuevoPaciente
     key={`${user?.id}:${institucion?.id}`}
     institucionId={institucion?.id}
-    modo={modo}
     busquedaInicial={params.get("q") || ""}
-    onClose={() => navigate("/padron")}
-    onCreado={(id) => navigate(`/padron/${id}`)}
+    onClose={() => navigate("/pacientes")}
+    onCreado={(id) => navigate(`/pacientes/${id}`)}
   />;
 
   return (
@@ -161,12 +146,10 @@ export default function Registros({ modo = "historia" }) {
       <div className="mb-[18px] flex flex-wrap items-center justify-between gap-lg">
         <div>
           <h2 className="text-cifra font-extrabold tracking-tight">
-            {esPadron ? "Padrón de pacientes" : "Historias clínicas"}
+            Pacientes
           </h2>
           <div className="text-sm text-texto-debil">
-            {esPadron
-              ? plural(total, "persona registrada", "personas registradas")
-              : plural(total, "paciente con registro", "pacientes con registro")}
+            {plural(total, "persona registrada", "personas registradas")}
           </div>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
@@ -177,35 +160,31 @@ export default function Registros({ modo = "historia" }) {
             className="min-w-0 flex-1 sm:w-70 sm:flex-none"
             aria-label="Buscar paciente"
           />
-          {esPadron
-            ? <Button onClick={() => navigate(`/padron?nuevo=1${texto ? `&q=${encodeURIComponent(texto)}` : ""}`)} className="whitespace-nowrap">+ Registrar paciente</Button>
-            : <Button onClick={() => setNuevoModal({ busqueda: texto, institucionId: institucion?.id })} className="whitespace-nowrap">+ Crear registro</Button>}
-          {esPadron && <Button variant="secondary" onClick={() => setExportando(true)} className="whitespace-nowrap">Exportar…</Button>}
+          <Button onClick={() => navigate(`/pacientes?nuevo=1${texto ? `&q=${encodeURIComponent(texto)}` : ""}`)} className="whitespace-nowrap">+ Registrar paciente</Button>
+          <Button variant="secondary" onClick={() => setExportando(true)} className="whitespace-nowrap">Exportar…</Button>
         </div>
       </div>
 
-      {esPadron && <p className="mb-4 rounded-md border border-accent-100 bg-accent-50 px-4 py-2.5 text-sm text-texto-suave">
+      <p className="mb-4 rounded-md border border-accent-100 bg-accent-50 px-4 py-2.5 text-sm text-texto-suave">
         Por tu rol, el documento, la fecha de nacimiento y el domicilio se muestran parcialmente. Revelar los datos completos queda registrado en el registro de accesos.
-      </p>}
+      </p>
 
       <TablaRecurso
         key={`${user?.id}:${institucion?.id}`}
-        clave={esPadron ? "padron" : "hc"}
+        clave="padron"
         recurso="ciudadanos"
         params={paramsLista}
         ambitoConsulta={[user?.id, institucion?.id]}
         opcionesConsulta={{ gcTime: 0, placeholderData: undefined, enabled: !!institucion?.id }}
         ordenInicial="apellido"
-        onRowClick={(c) => navigate(`${detalleBase}/${c.id}`)}
+        onRowClick={(c) => navigate(`/pacientes/${c.id}`)}
         vacio={{
           titulo: busqueda ? "Ningún paciente coincide" : "Sin pacientes",
           detalle: busqueda
             ? "Probá con el documento, o con parte del apellido."
-            : esPadron
-              ? "Creá el primer registro administrativo del padrón."
-              : "Creá el primer registro para empezar a cargar historia clínica.",
+            : "Creá el primer registro administrativo del padrón.",
         }}
-        columnas={esPadron ? columnasPadron((c) => navigate(`/padron/${c.id}`), revelar, revelando) : columnasHistoria}
+        columnas={columnasPadron((c) => navigate(`/pacientes/${c.id}`), revelar, revelando, puedeVer("historia_clinica"))}
       />
 
       {revelado && <Modal title={`Datos de ${revelado.nombre}`} onClose={() => setRevelado(null)} footer={
@@ -242,16 +221,6 @@ export default function Registros({ modo = "historia" }) {
         </div>
       </Modal>}
 
-      {!esPadron && nuevo && (
-        <NuevoPacienteModal
-          key={`${user?.id}:${institucion?.id}`}
-          institucionId={institucion?.id}
-          modo={modo}
-          busquedaInicial={nuevoModal.institucionId == null || nuevoModal.institucionId === institucion?.id ? nuevoModal.busqueda : ""}
-          onClose={() => setNuevoModal(null)}
-          onCreado={(id) => navigate(`${detalleBase}/${id}`)}
-        />
-      )}
     </div>
   );
 }
@@ -260,7 +229,7 @@ function igualSinAcentos(a, b) {
   return String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base" }) === 0;
 }
 
-function NuevoPacienteModal({ institucionId, modo, busquedaInicial, onClose, onCreado }) {
+function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
   const toast = useToast();
   const { user } = useAuth();
   const configuracion = useConfiguracionCobertura(institucionId);
@@ -270,12 +239,11 @@ function NuevoPacienteModal({ institucionId, modo, busquedaInicial, onClose, onC
   const nombreRef = useRef(null);
   const documentoRef = useRef(null);
   useEffect(() => {
-    // Modal enfoca el diálogo al montarse; después enfocamos el campo precargado.
+    // Al abrir el alta, enfocamos el campo precargado.
     const id = requestAnimationFrame(() => (f.documento ? documentoRef : nombreRef).current?.focus());
     return () => cancelAnimationFrame(id);
   }, []);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const destinoBase = modo === "padron" ? "/padron" : "/historia";
 
   const doc = normalizarDocumento(f.documento);
   const posibles = useLista(
@@ -349,7 +317,7 @@ function NuevoPacienteModal({ institucionId, modo, busquedaInicial, onClose, onC
         <strong>{yaExiste ? "Ese documento ya está cargado:" : "Ya hay un paciente con ese apellido y esa fecha de nacimiento:"}</strong>{" "}
         {parecido.nombre} {parecido.apellido}
         {parecido.documento ? ` · DNI ${parecido.documento}` : ""}
-        <div className="mt-2"><Button variant="secondary" className="text-sm" onClick={() => navigate(`${destinoBase}/${parecido.id}`)}>Abrir este paciente</Button></div>
+        <div className="mt-2"><Button variant="secondary" className="text-sm" onClick={() => navigate(`/pacientes/${parecido.id}`)}>Abrir este paciente</Button></div>
       </div>}
     </section>
     <div className="grid gap-4">
@@ -370,7 +338,7 @@ function NuevoPacienteModal({ institucionId, modo, busquedaInicial, onClose, onC
     </div>
   </div>;
 
-  if (modo === "padron") return <div className="px-lg py-[26px] sm:px-[30px]">
+  return <div className="px-lg py-[26px] sm:px-[30px]">
     <div className="mx-auto max-w-5xl">
       <h2 className="text-cifra font-extrabold tracking-tight">Registrar paciente</h2>
       <p className="mb-5 text-sm text-texto-debil">Primero buscamos en el padrón para evitar duplicar registros.</p>
@@ -385,7 +353,4 @@ function NuevoPacienteModal({ institucionId, modo, busquedaInicial, onClose, onC
     </div>
   </div>;
 
-  return <Modal title="Nuevo registro de paciente" onClose={onClose} width={850} footer={acciones}>
-    {formulario}
-  </Modal>;
 }

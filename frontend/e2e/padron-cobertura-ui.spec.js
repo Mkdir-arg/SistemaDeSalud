@@ -62,7 +62,7 @@ async function preparar(page, opciones = {}) {
 test("Admisión ve afiliaciones actuales múltiples y legado separado sin acceder a historia clínica", async ({ page }, testInfo) => {
   const segunda = { ...afiliacion, id: 11, financiador_id: 6, financiador_nombre: "Obra Social Vigente", plan_nombre: "Plan Integral", numero: "000090" };
   const { lecturas, escrituras } = await preparar(page, { pacientes: [paciente({ cobertura_administrativa: cobertura([afiliacion, segunda]) })] });
-  await page.goto("/padron/7");
+  await page.goto("/pacientes/7");
   const resumen = page.getByRole("region", { name: "Cobertura administrativa" });
   await expect(resumen.getByText("Varias afiliaciones vigentes", { exact: true })).toBeVisible();
   await expect(resumen.getByText("Mutual Actual · Plan Familiar", { exact: true })).toBeVisible();
@@ -84,7 +84,7 @@ test("Admisión ve afiliaciones actuales múltiples y legado separado sin accede
 
 test("listado y buscador común distinguen afiliación vigente y texto sin verificar", async ({ page }) => {
   await preparar(page, { pacientes: [paciente(), paciente({ id: 8, nombre: "Beatriz", cobertura_administrativa: undefined, obra_social: "Mutual declarada" })] });
-  await page.goto("/padron");
+  await page.goto("/pacientes");
   await expect(page.getByRole("cell", { name: "Mutual Actual · Plan Familiar", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Declarada: Mutual declarada", exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "Buscar paciente por nombre o documento", exact: true }).fill("Beatriz");
@@ -95,7 +95,7 @@ test("listado y buscador común distinguen afiliación vigente y texto sin verif
 
 test("el alta del padrón copia documento o nombre de la búsqueda y enfoca el campo correcto", async ({ page }) => {
   await preparar(page);
-  await page.goto("/padron");
+  await page.goto("/pacientes");
 
   for (const [texto, nombre, apellido, documento, foco] of [
     ["30.123.456", "", "", "30.123.456", "Documento"],
@@ -122,7 +122,7 @@ test("el alta del padrón copia documento o nombre de la búsqueda y enfoca el c
 
 test("el padrón encuentra un DNI guardado sin puntos al buscarlo con puntos", async ({ page }) => {
   const { lecturas } = await preparar(page, { pacientes: [paciente({ documento: "30123456" })] });
-  await page.goto("/padron");
+  await page.goto("/pacientes");
   await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
   await expect.poll(() => lecturas.some((ruta) => ruta.startsWith("/ciudadanos/") && ruta.includes("search=30123456"))).toBe(true);
   await expect(page.getByRole("row", { name: /Ana de Prueba/ })).toBeVisible();
@@ -165,35 +165,34 @@ test("ingresar paciente a guardia precarga el DNI en Documento", async ({ page }
   expect(escrituras).toHaveLength(0);
 });
 
-test("el alta de historia clínica precarga el documento buscado", async ({ page }) => {
+test("el alta única de pacientes precarga el documento buscado", async ({ page }) => {
   await preparar(page, { capacidades: ["padron_admision", "historia_clinica"] });
-  await page.goto("/historia");
+  await page.goto("/pacientes");
   await page.getByRole("searchbox", { name: "Buscar paciente" }).fill("30.123.456");
-  await page.getByRole("button", { name: "+ Crear registro" }).click();
-  const modal = page.getByRole("dialog", { name: "Nuevo registro de paciente" });
-  await expect(modal.getByLabel("Nombre *")).toHaveValue("");
-  await expect(modal.getByLabel("Documento (opcional para NN)")).toHaveValue("30.123.456");
+  await page.getByRole("button", { name: "+ Registrar paciente" }).click();
+  await expect(page.getByLabel("Nombre *")).toHaveValue("");
+  await expect(page.getByLabel("Documento (opcional para NN)")).toHaveValue("30.123.456");
 });
 
 test("alta habilitada omite el texto de obra social y conserva los datos personales", async ({ page }) => {
   const { escrituras } = await preparar(page);
-  await page.goto("/padron?nuevo=1");
+  await page.goto("/pacientes?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Paciente Nuevo");
   await expect(page.getByText(/Las declaraciones nuevas se registran en la cobertura del caso/)).toBeVisible();
   await expect(page.getByLabel("Cobertura declarada (sin verificar)")).toHaveCount(0);
   await page.getByRole("button", { name: "Registrar paciente" }).click();
-  await expect(page).toHaveURL(/\/padron\/99$/);
+  await expect(page).toHaveURL(/\/pacientes\/99$/);
   expect(escrituras[0].body).toMatchObject({ institucion: 1, nombre: "Paciente Nuevo" });
   expect(escrituras[0].body).not.toHaveProperty("obra_social");
 });
 
 test("hospital no habilitado permite cargar cobertura etiquetada como declarada", async ({ page }) => {
   const { escrituras } = await preparar(page, { habilitada: false });
-  await page.goto("/padron?nuevo=1");
+  await page.goto("/pacientes?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Nuevo Declarado");
   await page.getByLabel("Financiador (opcional)").fill("Mutual informada");
   await page.getByRole("button", { name: "Registrar paciente" }).click();
-  await expect(page).toHaveURL(/\/padron\/99$/);
+  await expect(page).toHaveURL(/\/pacientes\/99$/);
   expect(escrituras[0].body.obra_social).toBe("Mutual informada");
   const region = page.getByRole("region", { name: "Cobertura administrativa" });
   await expect(region).toContainText("Cobertura estructurada no habilitada en este hospital");
@@ -202,7 +201,7 @@ test("hospital no habilitado permite cargar cobertura etiquetada como declarada"
 
 test("editar otros datos en hospital habilitado conserva el legado sin enviarlo", async ({ page }) => {
   const { escrituras } = await preparar(page);
-  await page.goto("/padron/7");
+  await page.goto("/pacientes/7");
   await page.getByRole("button", { name: "Editar datos", exact: true }).click();
   await expect(page.getByLabel("Cobertura declarada (sin verificar)")).toHaveCount(0);
   await page.getByLabel("Domicilio", { exact: true }).fill("Calle de prueba 123");
@@ -215,7 +214,7 @@ test("editar otros datos en hospital habilitado conserva el legado sin enviarlo"
 
 test("editar un hospital no habilitado conserva la operatoria del dato declarado", async ({ page }) => {
   const { escrituras } = await preparar(page, { habilitada: false, pacientes: [paciente({ cobertura_administrativa: { habilitada: false, estado: "no_habilitada", declaracion_legada: "Obra social anterior", afiliaciones: [] } })] });
-  await page.goto("/padron/7");
+  await page.goto("/pacientes/7");
   await page.getByRole("button", { name: "Editar datos", exact: true }).click();
   await page.getByLabel("Cobertura declarada (sin verificar)").fill("Nueva declaración");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
@@ -225,7 +224,7 @@ test("editar un hospital no habilitado conserva la operatoria del dato declarado
 
 test("un error de configuración se muestra, bloquea el alta y permite reintentar", async ({ page }) => {
   const { estado, escrituras } = await preparar(page, { configuracionError: true });
-  await page.goto("/padron?nuevo=1");
+  await page.goto("/pacientes?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Paciente Seguro");
   await expect(page.getByRole("alert")).toContainText("No se pudo consultar la configuración de cobertura");
   await expect(page.getByRole("button", { name: "Registrar paciente" })).toBeDisabled();
@@ -237,14 +236,14 @@ test("un error de configuración se muestra, bloquea el alta y permite reintenta
 
 test("cambiar de hospital consulta su configuración y descarta el formulario anterior", async ({ page }) => {
   const { estado, lecturas, escrituras } = await preparar(page);
-  await page.goto("/padron?nuevo=1");
+  await page.goto("/pacientes?nuevo=1");
   await page.getByLabel("Nombre *", { exact: true }).fill("Nombre del hospital anterior");
   await expect(page.getByRole("button", { name: "Registrar paciente" })).toBeEnabled();
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
   await page.getByRole("button", { name: /Hospital Central Hospital$/ }).click();
   await page.getByRole("button", { name: "Hospital Norte Hospital", exact: true }).click();
   estado.configuracionError = true;
-  await page.getByRole("link", { name: "Padrón de pacientes", exact: true }).click();
+  await page.getByRole("link", { name: "Pacientes", exact: true }).click();
   await page.getByRole("button", { name: "+ Registrar paciente", exact: true }).click();
   await expect(page.getByLabel("Nombre *", { exact: true })).toHaveValue("");
   await page.getByLabel("Nombre *", { exact: true }).fill("Paciente del nuevo hospital");
@@ -269,7 +268,7 @@ test("el buscador descarta la respuesta tardía del hospital anterior y muestra 
       return false;
     },
   });
-  await page.goto("/padron");
+  await page.goto("/pacientes");
   await page.getByRole("combobox", { name: "Buscar paciente por nombre o documento", exact: true }).fill("Ana");
   await expect.poll(() => pidioAnterior).toBe(true);
   await page.getByRole("combobox", { name: "Buscar paciente por nombre o documento", exact: true }).press("Escape");
