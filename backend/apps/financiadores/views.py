@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.http import FileResponse, HttpResponse
 from django.conf import settings
 from uuid import uuid4
@@ -23,10 +23,11 @@ from apps.auditoria.models import AccesoClinico
 
 from apps.accounts.models import Usuario
 from apps.instituciones.models import Institucion
-from apps.registros.models import normalizar_documento
+from apps.registros.models import EntradaHistoria, normalizar_documento
+from apps.casos.models import Caso
 from . import models as m
 from . import serializers as s
-from .permisos import plataforma, requerir_financiador
+from .permisos import plataforma, requerir_financiador, requerir_resolver_autorizaciones
 from .services import auditar, registrar_afiliado, registrar_consumo_externo, corregir_consumo, corregir_identidad
 from . import vigencias
 from .acceso import actividad_visible
@@ -89,7 +90,9 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     rechazar_convenio=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
     actividad=extend_schema(parameters=[FiltrosActividad], responses={200: OpenApiTypes.OBJECT, (200, "text/csv"): OpenApiTypes.BINARY}),
     ficha_afiliado=extend_schema(parameters=[FiltrosActividad, OpenApiParameter("afiliado", int, required=True)], responses={200: OpenApiTypes.OBJECT, (200, "text/csv"): OpenApiTypes.BINARY}),
-    ficha_afiliado_autorizaciones=extend_schema(parameters=[OpenApiParameter("afiliado", int, required=True)], responses=OpenApiTypes.OBJECT),
+    ficha_afiliado_autorizaciones=extend_schema(parameters=[OpenApiParameter("afiliado", int, required=True), OpenApiParameter("pendientes", bool)], responses=OpenApiTypes.OBJECT),
+    ficha_historia_casos=extend_schema(parameters=[OpenApiParameter("afiliado", int, required=True)], responses=OpenApiTypes.OBJECT),
+    ficha_historia_evoluciones=extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT),
     aranceles=extend_schema(responses=OpenApiTypes.OBJECT),
     instituciones=extend_schema(responses=OpenApiTypes.OBJECT),
     usuarios=extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT),
@@ -390,6 +393,106 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         afiliado_id = entero().run_validation(request.query_params.get("afiliado"))
         return get_object_or_404(m.Afiliado.objects.select_related("plan"), pk=afiliado_id, financiador=org)
 
+    def _casos_historia(self, org, afiliado):
+        # La selección actual es la más reciente sin hecho_revision, igual que clinica.afiliaciones().first().
+        actual = m.AfiliacionCaso.objects.filter(caso_id=OuterRef("pk"), hecho_revision=None).order_by("-pk")
+        convenios = vigencias.convenios_vigentes().filter(financiador=org).values("institucion_id")
+        pendientes = actividad_visible(org).filter(afiliado=afiliado, acceso="pendiente_historico").values("caso_id")
+        vigente = (afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate()
+                   and org.activo)
+        alcanzados = Caso.objects.annotate(
+            afiliado_actual=Subquery(actual.values("afiliado_id")[:1]),
+            estado_afiliacion_actual=Subquery(actual.values("estado")[:1]),
+        ).filter(afiliado_actual=afiliado.pk, estado_afiliacion_actual__in=["verificada", "pendiente"],
+                 ciudadano__isnull=False)
+        if vigente:
+            alcanzados = alcanzados.filter(Q(institucion_id__in=convenios) | Q(pk__in=pendientes))
+        else:
+            alcanzados = alcanzados.filter(pk__in=pendientes)
+        return alcanzados.annotate(
+            evoluciones_firmadas=Count("entradas_historia", filter=Q(entradas_historia__firmada=True), distinct=True),
+        ).select_related("institucion", "ciudadano").order_by("-creado", "-pk")
+
+    def _cupos_ficha(self, afiliado):
+        if not afiliado.plan_id or not afiliado.plan.activo:
+            return []
+        from types import SimpleNamespace
+        from .cobertura import cantidades_periodo, periodo, regla_aplicable
+
+        hoy, corte = timezone.localdate(), timezone.now()
+        seleccion = SimpleNamespace(afiliado=afiliado, plan_id=afiliado.plan_id)
+        reglas = m.ReglaCobertura.objects.filter(financiador=afiliado.financiador, plan_id__in=[afiliado.plan_id, None],
+            cupo__isnull=False, vigente_desde__lte=hoy, creado__lte=corte)
+        codigos = reglas.exclude(prestacion=None).values("prestacion_id")
+        categorias = reglas.filter(prestacion=None).exclude(categoria="").values("categoria")
+        prestaciones = m.PrestacionComun.objects.filter(activo=True).filter(Q(pk__in=codigos) | Q(categoria__in=categorias))
+        resultado = []
+        for prestacion in prestaciones:
+            regla = regla_aplicable(seleccion, prestacion, hoy, corte)
+            if not regla or regla.cupo is None:
+                continue
+            inicio, fin = periodo(hoy, regla.periodo)
+            usado = cantidades_periodo(afiliado, prestacion, inicio, fin)
+            resultado.append({"prestacion": {"codigo": prestacion.codigo, "nombre": prestacion.nombre},
+                "tope": regla.cupo, "periodo": regla.periodo, "desde": inicio, "hasta_exclusivo": fin,
+                "usado": usado, "disponible": max(0, regla.cupo - usado)})
+        return resultado
+
+    @action(detail=True, methods=["get"], url_path="ficha-historia-casos")
+    def ficha_historia_casos(self, request, pk=None):
+        org = self.organizacion()
+        if plataforma(request.user):
+            raise PermissionDenied("Plataforma no consulta la historia clínica del financiador.")
+        requerir_resolver_autorizaciones(request.user, org.pk)
+        afiliado = self._afiliado_ficha(request, org)
+        casos = list(self.paginate_queryset(self._casos_historia(org, afiliado)))
+        convenios = set(vigencias.convenios_vigentes().filter(financiador=org).values_list("institucion_id", flat=True))
+        vigente = afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate() and org.activo
+        with transaction.atomic():
+            registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-historia-casos",
+                ({"ciudadano": caso.ciudadano, "institucion_id": caso.institucion_id,
+                  "objeto_id": caso.pk, "resultados": 1} for caso in casos), estricto=True)
+            auditar(request.user, "consultar_historia_clinica_casos", org.pk, financiador=org)
+        return self.get_paginated_response([{
+            "id": caso.pk, "institucion": {"id": caso.institucion_id, "nombre": caso.institucion.nombre},
+            "creado": caso.creado, "estado": caso.estado,
+            "acceso": "vigente" if vigente and caso.institucion_id in convenios else "pendiente_historico",
+            "evoluciones_firmadas": caso.evoluciones_firmadas,
+        } for caso in casos])
+
+    @action(detail=True, methods=["post"], url_path="ficha-historia-evoluciones")
+    def ficha_historia_evoluciones(self, request, pk=None):
+        org = self.organizacion()
+        if plataforma(request.user):
+            raise PermissionDenied("Plataforma no consulta la historia clínica del financiador.")
+        requerir_resolver_autorizaciones(request.user, org.pk)
+        d = datos(request, {"afiliado": entero(),
+                            "caso": entero(), "motivo": serializers.CharField(min_length=10, max_length=200, trim_whitespace=True)})
+        afiliado = get_object_or_404(m.Afiliado, pk=d["afiliado"], financiador=org)
+        caso = get_object_or_404(self._casos_historia(org, afiliado), pk=d["caso"])
+        entradas = list(EntradaHistoria.objects.filter(caso=caso, firmada=True).select_related("autor").order_by("fecha", "pk"))
+        motivo = d["motivo"]
+        prefijo = f"motivo={motivo}; entradas="
+        bloques, bloque = [], []
+        for entrada in entradas:
+            candidato = ",".join([*bloque, str(entrada.pk)])
+            if bloque and len(prefijo) + len(candidato) > 300:
+                bloques.append(bloque)
+                bloque = [str(entrada.pk)]
+            else:
+                bloque.append(str(entrada.pk))
+        bloques.append(bloque)
+        with transaction.atomic():
+            registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-evoluciones-caso",
+                ({"ciudadano": caso.ciudadano, "institucion_id": caso.institucion_id,
+                  "objeto_id": caso.pk, "resultados": len(ids), "detalle": prefijo + ",".join(ids)}
+                 for ids in bloques), estricto=True)
+            auditar(request.user, "consultar_historia_clinica", org.pk, financiador=org, motivo=motivo)
+        return Response([{"id": entrada.pk, "titulo": entrada.titulo, "contenido": entrada.contenido,
+                          "fecha": entrada.fecha, "firmada_at": entrada.firmada_at,
+                          "autor": entrada.autor.nombre_completo if entrada.autor_id else "",
+                          "matricula": entrada.matricula} for entrada in entradas])
+
     @action(detail=True, methods=["get"], url_path="ficha-afiliado")
     def ficha_afiliado(self, request, pk=None):
         org = self.organizacion()
@@ -411,6 +514,11 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
                       "desde": afiliado.desde, "finalizado_en": afiliado.finalizado_en,
                       "estado": "finalizada" if afiliado.finalizado_en else "futura" if afiliado.desde > timezone.localdate() else "vigente"},
             resumen=resumen_actividad(qs), limite_exportacion=LIMITE_EXPORTACION,
+            cupos=self._cupos_ficha(afiliado),
+            historial=[{"tipo": h.tipo, "plan_nombre": h.plan.nombre if h.plan_id else None,
+                        "numero": h.numero, "desde": h.desde, "motivo": h.motivo,
+                        "registrado": h.registrado, "usuario_nombre": h.registrado_por.nombre_completo}
+                       for h in afiliado.historial.select_related("plan", "registrado_por").order_by("-registrado", "-pk")[:20]],
         )
         with transaction.atomic():
             auditar_actividad(request, org, pagina, recurso="financiadores-ficha-afiliado")
@@ -426,6 +534,9 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         qs = consulta_solicitudes().filter(
             pk__in=solicitudes_visibles_financiador(org.pk).filter(afiliado=afiliado).values("pk"),
         ).order_by("-creado", "-pk")
+        pendientes = serializers.BooleanField().run_validation(request.query_params.get("pendientes", False))
+        if pendientes:
+            qs = qs.filter(estado__in=m.SolicitudAutorizacion.ABIERTAS).order_by(F("plazo_respuesta").asc(nulls_last=True), "creado", "pk")
         pagina = list(self.paginate_queryset(qs))
         response = self.get_paginated_response(FichaAutorizacionSerializer(pagina, many=True).data)
         with transaction.atomic():
