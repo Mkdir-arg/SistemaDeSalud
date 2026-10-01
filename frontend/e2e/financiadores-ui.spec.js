@@ -182,7 +182,7 @@ test("cambiar financiador en actividad separa datos y filtros y vuelve con el na
   await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
   await expect(page.getByText("1 registro · Página 2", { exact: true })).toBeVisible();
 });
-async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false, plataforma = false } = {}) {
+async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false, plataforma = false, designado = false } = {}) {
   const peticiones = [];
   const escrituras = [];
   const planes = { 21: [{ id: 31, codigo: "BAS", nombre: "Plan Río", activo: true }], 22: [{ id: 32, codigo: "NOR", nombre: "Plan Norte", activo: true }] };
@@ -194,10 +194,10 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
     const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
     peticiones.push(path);
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol })) } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol, resuelve_autorizaciones: designado })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista([]) });
     if (path === "/autorizaciones-cobertura/") return route.fulfill({ json: lista([]) });
-    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol }))) });
+    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol, resuelve_autorizaciones: designado }))) });
     const match = path.match(/^\/financiadores\/(\d+)\/(.+)\/$/);
     if (match) {
       const [, id, recurso] = match;
@@ -841,10 +841,44 @@ test("desde el padrón abre la ficha con prestaciones y autorizaciones sin justi
   await page.getByRole("link", { name: "Persona Ficticia" }).click();
   await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "Prestaciones" })).toContainText("Hospital vecino");
-  await expect(page.getByRole("region", { name: "Autorizaciones" })).toContainText("Consulta autorizada");
+  await expect(page.getByRole("region", { name: "Autorizaciones", exact: true })).toContainText("Consulta autorizada");
   await expect(page.getByText("Justificación secreta")).toHaveCount(0);
   await page.getByRole("link", { name: /Volver al padrón/ }).click();
   await expect(page).toHaveURL(/estado=todos/);
+});
+
+test("Historia clínica desde la ficha exige motivo y descarta evoluciones al cerrar", async ({ page }) => {
+  await escenario(page, { designado: true });
+  const consultas = [];
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/ficha-afiliado-autorizaciones/")) return route.fulfill({ json: lista([]) });
+    return route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", plan_nombre: "Plan Río", desde: "2026-01-01", estado: "vigente" }, resumen: { realizadas: 1, cubiertas_realizadas: 1, importe_asignado: "80.00" }, cupos: [], historial: [] } });
+  });
+  await page.route("**/api/financiadores/21/ficha-historia-casos/**", (route) => route.fulfill({ json: lista([{ id: 91, institucion: { id: 2, nombre: "Hospital vecino" }, creado: "2026-09-01T12:00:00Z", estado: "atendido", acceso: "vigente", evoluciones_firmadas: 1 }]) }));
+  await page.route("**/api/financiadores/21/ficha-historia-evoluciones/**", (route) => { consultas.push(route.request().postDataJSON()); return route.fulfill({ json: [{ id: 92, titulo: "Evolución firmada", contenido: "Primera línea\nSegunda línea", fecha: "2026-09-02T12:00:00Z", autor: "Dra. Ejemplo", matricula: "MN 123" }] }); });
+  await page.goto("/financiadores/padron?financiador=21&estado=todos");
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Historia clínica", exact: true }).click();
+  await expect(page).toHaveURL(/#historia-clinica$/);
+  await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
+  const historia = page.getByRole("region", { name: "Historia clínica", exact: true });
+  await historia.getByRole("button", { name: "Ver evoluciones" }).click();
+  await expect(historia.getByRole("button", { name: "Confirmar motivo" })).toBeDisabled();
+  await historia.getByLabel("Motivo de consulta").fill("Auditoría médica del convenio");
+  await historia.getByRole("button", { name: "Confirmar motivo" }).click();
+  await expect(historia).toContainText("Evolución firmada");
+  expect(consultas).toEqual([{ afiliado: 45, caso: 91, motivo: "Auditoría médica del convenio" }]);
+  await historia.getByRole("button", { name: "Cerrar evoluciones" }).click();
+  await expect(historia).not.toContainText("Evolución firmada");
+});
+
+test("auditor no ve Historia clínica en padrón ni ficha", async ({ page }) => {
+  await escenario(page, { rol: "auditor" });
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
+  await page.goto("/financiadores/padron?financiador=21");
+  await expect(page.getByRole("button", { name: "Historia clínica", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Persona Ficticia" }).click();
+  await expect(page.getByRole("region", { name: "Historia clínica", exact: true })).toHaveCount(0);
 });
 
 test("convenios conserva el histórico y sólo acepta o rechaza la propuesta de contraparte", async ({ page }) => {
