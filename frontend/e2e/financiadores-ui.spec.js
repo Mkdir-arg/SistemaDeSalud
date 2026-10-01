@@ -182,7 +182,7 @@ test("cambiar financiador en actividad separa datos y filtros y vuelve con el na
   await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
   await expect(page.getByText("1 registro · Página 2", { exact: true })).toBeVisible();
 });
-async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false } = {}) {
+async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false, plataforma = false } = {}) {
   const peticiones = [];
   const escrituras = [];
   const planes = { 21: [{ id: 31, codigo: "BAS", nombre: "Plan Río", activo: true }], 22: [{ id: 32, codigo: "NOR", nombre: "Plan Norte", activo: true }] };
@@ -194,7 +194,7 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
     const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
     peticiones.push(path);
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol })) } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista([]) });
     if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol }))) });
     const match = path.match(/^\/financiadores\/(\d+)\/(.+)\/$/);
@@ -218,6 +218,16 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
   });
   return { peticiones, escrituras, planes, padron };
 }
+
+test("menú institucional y acceso directo respetan el rol de plataforma", async ({ page }) => {
+  await escenario(page, { mixto: true, plataforma: true });
+  await page.goto("/inicio");
+  await expect(page.getByRole("navigation", { name: "Menú principal" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menú principal" }).getByRole("link", { name: "Financiadores" })).toHaveCount(0);
+  await page.goto("/financiadores");
+  await expect(page).toHaveURL(/\/directorio\?vista=financiadores$/);
+  expect(await page.evaluate(() => localStorage.getItem("salud.institucion"))).toBeNull();
+});
 
 test("un financiador sin hospital entra a su portal y configura un plan", async ({ page }) => {
   const { escrituras, peticiones } = await escenario(page);

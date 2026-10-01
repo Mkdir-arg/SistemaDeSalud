@@ -41,7 +41,7 @@ export function ErrorPortal({ error, reintentar }) {
 
 export default function PortalFinanciadores() {
   const { user } = useAuth();
-  const { institucion } = useInstitucion();
+  const { institucion, setInstitucion } = useInstitucion();
   const { seccion = "planes" } = useParams();
   const [parametros, setParametros] = useSearchParams();
   const seleccion = parametros.get("financiador") || "";
@@ -61,7 +61,9 @@ export default function PortalFinanciadores() {
   const items = SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
     .map((item) => ({ ...item, to: `/financiadores${item.key === "planes" ? "" : `/${item.key}`}${sufijo}` }));
   const actual = items.find((item) => item.key === seccion);
-  if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error && seccion !== "catalogo") return <Navigate to="/directorio?vista=financiadores" replace />;
+  const irAlDirectorio = plataforma && !seleccion && seccion !== "catalogo" && !organizaciones.isLoading && !organizaciones.error;
+  useEffect(() => { if (irAlDirectorio && institucion) setInstitucion(null); }, [irAlDirectorio, institucion, setInstitucion]);
+  if (irAlDirectorio) return institucion ? null : <Navigate to="/directorio?vista=financiadores" replace />;
   if (organizacion && !actual) return <Navigate to={`/financiadores${sufijo}`} replace />;
   const cuerpo = <div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     {plataforma && <>

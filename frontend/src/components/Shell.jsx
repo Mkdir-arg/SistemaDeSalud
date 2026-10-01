@@ -659,7 +659,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               </div>
             );
           })}
-          {(user?.financiadores?.length > 0 || user?.is_superuser || puedeVer("gobierno_plataforma")) && (
+          {user?.financiadores?.length > 0 && !user?.is_superuser && !puedeVer("gobierno_plataforma") && (
             <NavLink to="/financiadores" className={itemClase(colapsado)} title="Portal de financiadores">
               <Icon name="users" size={17} />
               {!colapsado && "Financiadores"}
