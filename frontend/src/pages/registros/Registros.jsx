@@ -317,7 +317,7 @@ function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
         <strong>{yaExiste ? "Ese documento ya está cargado:" : "Ya hay un paciente con ese apellido y esa fecha de nacimiento:"}</strong>{" "}
         {parecido.nombre} {parecido.apellido}
         {parecido.documento ? ` · DNI ${parecido.documento}` : ""}
-        <div className="mt-2"><Button className="text-sm" onClick={() => navigate(`/pacientes/${parecido.id}`)}>Abrir este paciente</Button></div>
+        <div className="mt-2"><Button variant="secondary" className="text-sm" onClick={() => navigate(`/pacientes/${parecido.id}`)}>Abrir este paciente</Button></div>
       </div>}
     </section>
     <div className="grid gap-4">

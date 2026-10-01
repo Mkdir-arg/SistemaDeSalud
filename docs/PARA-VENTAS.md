@@ -30,6 +30,7 @@ Todo está preparado. No hace falta improvisar ni armar datos.
 
 | Tenés… | Usá |
 |---|---|
+| 15 minutos | [Guion breve de demo](comercial/guion-15-minutos.md) |
 | 45–50 minutos | [Guion de demo comercial](entornos/guia-demo-comercial.md) completo |
 | 20 minutos | Del mismo guion, los bloques **1, 4 y 6** |
 | Una reunión sobre obras sociales | [Recorrido de financiadores](entornos/guia-demo-financiadores.md), 20 min |

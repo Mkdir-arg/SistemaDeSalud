@@ -1,5 +1,7 @@
 # Dos entornos locales
 
+Material para la demo comercial: [guion breve y recorrido del comprador](../comercial/).
+
 Levantados y verificados el **17/09/2026** sobre el `main` actual (commit `4947633`).
 
 | | Entorno **vacío** | Entorno **demo** |

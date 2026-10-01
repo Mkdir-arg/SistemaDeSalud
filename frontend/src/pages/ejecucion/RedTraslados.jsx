@@ -160,7 +160,7 @@ export default function RedTraslados() {
               {redes.filas.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
             </Select>
           )}
-          {puedeVer("casos_operar") && <Button onClick={() => navigate("/casos")}>Buscar caso para derivar</Button>}
+          {puedeVer("casos_operar") && <Button variant="secondary" onClick={() => navigate("/casos")}>Buscar caso para derivar</Button>}
         </div>
       </header>
 
@@ -383,13 +383,13 @@ function Fila({ t, accion, navigate, institucion, onResponder, onConfirmar }) {
         )}
         {/* Cada lado ve sólo lo que le toca hacer. */}
         {!t.soy_origen && t.estado === "solicitado" && (
-          <Button size="sm" disabled={ocupado} onClick={onResponder}>Responder</Button>
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={onResponder}>Responder</Button>
         )}
         {/* «Llegó» cierra el caso del otro hospital como DERIVADO y no se
             puede deshacer: sobre un traslado que todavía no salió, un clic de
             más lo saca de su bandeja con el paciente aún en la camilla. */}
         {!t.soy_origen && (t.estado === "aceptado" || t.estado === "en_camino") && (
-          <Button size="sm" disabled={ocupado} onClick={() => onConfirmar({
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => onConfirmar({
             nombre: "recibido",
             titulo: "¿Llegó el paciente?",
             confirmar: "Sí, llegó",
@@ -407,7 +407,7 @@ function Fila({ t, accion, navigate, institucion, onResponder, onConfirmar }) {
           </Button>
         )}
         {t.soy_origen && t.estado === "aceptado" && (
-          <Button size="sm" disabled={ocupado} onClick={() => onConfirmar({
+          <Button size="sm" variant="secondary" disabled={ocupado} onClick={() => onConfirmar({
             nombre: "en-camino",
             titulo: "Salió la ambulancia",
             confirmar: "Registrar salida",

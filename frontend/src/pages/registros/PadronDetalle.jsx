@@ -157,7 +157,7 @@ function Consentimiento({ ciudadanoId, estado }) {
 
       <div className="mt-3.5 flex flex-wrap gap-2">
         {(sinRegistro || !estado.otorgado) && (
-          <Button className="text-sm" onClick={() => setPidiendo("otorgar")}>Registrar consentimiento</Button>
+          <Button variant="secondary" className="text-sm" onClick={() => setPidiendo("otorgar")}>Registrar consentimiento</Button>
         )}
         {!sinRegistro && estado.otorgado && (
           <Button variant="secondary" className="text-sm" onClick={() => setPidiendo("revocar")}>

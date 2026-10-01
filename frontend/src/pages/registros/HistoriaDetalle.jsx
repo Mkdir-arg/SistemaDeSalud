@@ -656,7 +656,7 @@ export function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
                 Editar
               </Button>
               {puedeFirmar && (
-                <Button className="text-sm" onClick={() => setFirmando(e)}>
+              <Button variant="secondary" className="text-sm" onClick={() => setFirmando(e)}>
                   Firmar
                 </Button>
               )}
