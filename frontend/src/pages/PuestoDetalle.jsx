@@ -168,10 +168,10 @@ export default function PuestoDetalle() {
 
 /** La acción depende del estado del caso y del tipo de paso. */
 function AccionCaso({ c, nodo, miBox, ocupado, onAbrir, onTomar, onLlamar }) {
-  if (c.mio) return <Button size="sm" onClick={onAbrir}>Continuar</Button>;
+  if (c.mio) return <Button size="sm" variant="secondary" onClick={onAbrir}>Continuar</Button>;
   if (nodo.con_fila && c.en_fila) {
     return miBox ? (
-      <Button size="sm" disabled={ocupado} onClick={onLlamar}>{ocupado ? "…" : "Llamar"}</Button>
+      <Button size="sm" variant="secondary" disabled={ocupado} onClick={onLlamar}>{ocupado ? "…" : "Llamar"}</Button>
     ) : (
       <Button size="sm" variant="secondary" disabled title="Ocupá tu box en «Mi trabajo»">Ocupá un box</Button>
     );

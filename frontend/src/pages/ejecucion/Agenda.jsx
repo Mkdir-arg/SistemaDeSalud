@@ -1,6 +1,6 @@
-import { Fragment, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
@@ -56,35 +56,81 @@ const iso = (d) =>
   new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 const mismoInstante = (a, b) => new Date(a).getTime() === new Date(b).getTime();
+const fechaValida = (valor) => /^\d{4}-\d{2}-\d{2}$/.test(valor)
+  && !Number.isNaN(new Date(`${valor}T12:00:00`).getTime())
+  && iso(new Date(`${valor}T12:00:00`)) === valor;
+
+const fechaCorta = (fecha) => new Date(`${fecha}T12:00:00`)
+  .toLocaleDateString("es-AR", { day: "numeric", month: "short" }).replace(/\.$/, "");
+const rangoSemana = (fecha) => {
+  const lunes = lunesDe(fecha);
+  const domingo = new Date(`${lunes}T12:00:00`);
+  domingo.setDate(domingo.getDate() + 6);
+  return `${fechaCorta(lunes)} – ${fechaCorta(iso(domingo))} ${domingo.getFullYear()}`;
+};
 
 export default function Agenda() {
   const { institucion } = useInstitucion();
   const toast = useToast();
-  const [agendaSel, setAgendaSel] = useState(null);
-  const [fecha, setFecha] = useState(() => iso(new Date()));
+  const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const idUrl = params.get("agenda") || "";
+  const agendaId = /^\d+$/.test(idUrl) && Number.isSafeInteger(Number(idUrl)) && Number(idUrl) > 0
+    ? Number(idUrl) : null;
+  const fecha = fechaValida(params.get("fecha")) ? params.get("fecha") : iso(new Date());
+  const vista = params.get("vista") === "dia" ? "dia" : "semana";
   const [soloSinConfirmar, setSoloSinConfirmar] = useState(false);
   const [verProximos, setVerProximos] = useState(false);
-  // Día o semana. El día es lo que se opera —los botones que abren el caso o
-  // marcan el ausente viven ahí—; la semana es para ver y para bloquear.
-  const [vista, setVista] = useState("dia");
   // Horario que hay que abrir con el formulario de alta ya desplegado: es a
   // dónde deja parado el salto desde «Próximos libres».
   const [abrir, setAbrir] = useState(null);
   const [registrarPasado, setRegistrarPasado] = useState(null);
-  const [buscarPaciente, setBuscarPaciente] = useState(false);
 
   const agendas = useLista(
     "agendas",
-    { institucion: institucion?.id, activa: true, pageSize: 100 },
+    { institucion: institucion?.id, activa: true, ordering: "nombre", pageSize: 100 },
     { enabled: institucion?.id != null },
   );
   const lista = agendas.filas;
-  const agenda = lista.find((a) => a.id === agendaSel) || lista[0];
+  // La selección puede estar más allá de la primera página. Resolverla por id
+  // evita que un enlace compartido muestre silenciosamente otra agenda.
+  const enPrimeraPagina = lista.find((a) => a.id === agendaId);
+  const agendaPorId = useQuery({
+    queryKey: ["agenda-seleccionada", agendaId],
+    queryFn: () => api.get(`/agendas/${agendaId}/`),
+    enabled: agendaId != null && !enPrimeraPagina && institucion?.id != null && !agendas.isLoading,
+    retry: false,
+  });
+  const detalleValido = agendaPorId.data?.activa
+    && Number(agendaPorId.data.institucion) === Number(institucion?.id);
+  const agenda = enPrimeraPagina || (detalleValido ? agendaPorId.data : null) || lista[0];
+  useEffect(() => {
+    if (!idUrl || agendas.isPlaceholderData || enPrimeraPagina || (agendaId != null && agendaPorId.isPending)
+      || detalleValido || !lista[0]) return;
+    // Un id borrado o ajeno no debe quedar en el enlace mientras se muestra otra agenda.
+    setParams((actual) => {
+      const nuevos = new URLSearchParams(actual);
+      nuevos.set("agenda", String(lista[0].id));
+      return nuevos;
+    }, { replace: true });
+  }, [idUrl, agendaId, agendas.isPlaceholderData, enPrimeraPagina, agendaPorId.isPending, detalleValido, lista, setParams]);
+  const cambiarUrl = (cambios) => {
+    setParams((actual) => {
+      const nuevos = new URLSearchParams(actual);
+      for (const [clave, valor] of Object.entries(cambios)) {
+        if (valor == null || valor === "") nuevos.delete(clave);
+        else nuevos.set(clave, String(valor));
+      }
+      return nuevos;
+    }, { replace: true });
+    setAbrir(null);
+    setVerProximos(false);
+  };
 
   const dia = useQuery({
     queryKey: ["agenda-dia", agenda?.id, fecha],
     queryFn: () => api.get(`/agendas/${agenda.id}/dia/?fecha=${fecha}`),
-    enabled: agenda?.id != null,
+    enabled: vista === "dia" && agenda?.id != null,
   });
   const horarios = dia.data?.horarios || [];
 
@@ -93,7 +139,7 @@ export default function Agenda() {
   const turnos = useQuery({
     queryKey: ["agenda-turnos", agenda?.id, fecha],
     queryFn: () => api.get(`/turnos/?agenda=${agenda.id}&desde=${fecha}&hasta=${fecha}&excluir_retrospectivos=1&page_size=200`),
-    enabled: agenda?.id != null,
+    enabled: vista === "dia" && agenda?.id != null,
   });
   const porHorario = useMemo(() => {
     const m = new Map();
@@ -114,9 +160,14 @@ export default function Agenda() {
 
   const pasados = useLista("turnos", {
     agenda: agenda?.id, desde: fecha, hasta: fecha, estado: "realizado", pageSize: 100,
-  }, { enabled: agenda?.id != null });
+  }, { enabled: vista === "dia" && agenda?.id != null });
 
-  const recargar = () => { dia.refetch(); turnos.refetch(); pasados.refetch(); if (verProximos) proximos.refetch(); };
+  // La semana también: desde el buscador de turnos se cancela o se mueve con la
+  // semana en pantalla, y sin esto seguía mostrando el horario tomado.
+  const recargar = () => {
+    dia.refetch(); turnos.refetch(); pasados.refetch(); if (verProximos) proximos.refetch();
+    qc.invalidateQueries({ queryKey: ["agenda-semana"] });
+  };
 
   const ocupados = horarios.filter((h) => h.ocupado).length;
   // Sale de la grilla del día y no de la consulta de turnos: si esa falla, el
@@ -132,16 +183,15 @@ export default function Agenda() {
   const sinSobreturnosHoy = horarios.length > 0
     ? horarios.every((h) => (h.sobreturnos_max ?? sobreturnosMax) === 0)
     : sobreturnosMax === 0;
-  const irAFecha = (f) => { setFecha(f); setAbrir(null); };
+  const irAFecha = (f) => { if (fechaValida(f)) cambiarUrl({ fecha: f }); };
   const mover = (dias) => {
     const d = new Date(fecha + "T12:00:00");
     d.setDate(d.getDate() + dias);
     irAFecha(iso(d));
   };
   const irA = (inicio) => {
-    setFecha(iso(new Date(inicio)));
+    cambiarUrl({ fecha: iso(new Date(inicio)), vista: "dia" });
     setAbrir(inicio);
-    setVerProximos(false);
   };
 
   const visibles = soloSinConfirmar
@@ -155,10 +205,11 @@ export default function Agenda() {
   const primeraPosterior = enGrilla.findIndex((h) => new Date(h.inicio) > ahora);
   const horaActual = ahora.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-  if (agendas.isLoading) return <Cargando />;
+  if (agendas.isLoading || agendas.isPlaceholderData) return <Cargando />;
   if (agendas.error) {
     return <div className="p-[30px]"><EstadoError error={agendas.error} onReintentar={agendas.refetch} /></div>;
   }
+  if (agendaId != null && !enPrimeraPagina && agendaPorId.isPending) return <Cargando />;
   if (lista.length === 0) {
     return (
       <div className="p-lg sm:p-[26px] lg:px-[30px]">
@@ -196,31 +247,20 @@ export default function Agenda() {
         <div>
           <h2 className="text-xl font-bold">Turnos</h2>
           <p className="mt-1 text-sm text-texto-debil">
-            {new Date(`${fecha}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            {` · ${ocupados} de ${horarios.length} horarios dados`}
-            {sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
+            {vista === "semana" ? rangoSemana(fecha) : <>
+              {new Date(`${fecha}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+              {` · ${ocupados} de ${horarios.length} horarios dados`}
+              {sobreturnos > 0 && ` · ${sobreturnos} sobreturno${sobreturnos === 1 ? "" : "s"}`}
+            </>}
           </p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
       </header>
 
-      <section className="flex flex-wrap items-center gap-2">
-        <Select
-          aria-label="Agenda"
-          value={agenda?.id ?? ""}
-          onChange={(e) => setAgendaSel(Number(e.target.value))}
-          className="w-full sm:w-auto sm:min-w-64"
-        >
-          {lista.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-        </Select>
-        <Input
-          type="date"
-          value={fecha}
-          onChange={(e) => irAFecha(e.target.value)}
-          aria-label="Fecha de la agenda"
-          className="w-full sm:w-auto"
-        />
-      </section>
+      <SelectorAgenda
+        agenda={agenda}
+        institucionId={institucion?.id}
+        onElegir={(a) => cambiarUrl({ agenda: a.id })}
+      />
 
       <div className="text-sm text-texto-debil">
         <p>
@@ -268,19 +308,40 @@ export default function Agenda() {
         toast={toast}
       />}
 
-      {buscarPaciente && <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />}
-
-      {/* Las acciones adicionales quedan disponibles sin competir con la grilla diaria. */}
-      <details className="text-sm text-texto-suave">
-        <summary className="w-fit cursor-pointer rounded-md border border-borde bg-superficie px-3 py-2 font-medium hover:border-accent">Navegación y más acciones ▾</summary>
-      <section className="mt-3 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>Registrar atención pasada</Button>
-        <Button size="sm" variant="secondary" onClick={() => setBuscarPaciente((actual) => !actual)} aria-expanded={buscarPaciente}>Buscar turno de un paciente</Button>
-        <Button size="sm" variant="secondary" onClick={() => mover(-1)}>
-          <Icon name="chevronLeft" size={14} /> Día anterior
+      {/* Semana y Día comparten navegación, pero sólo la grilla diaria opera
+          turnos. Mantener la barra visible evita ocultar el salto de fecha. */}
+      <section className="flex flex-wrap items-center gap-2" aria-label="Navegación de la agenda">
+        {/* Un solo control con el relleno de marca que se desliza a la vista
+            elegida: dos botones sueltos se leían como dos acciones distintas. */}
+        <div className="relative inline-grid grid-cols-2 rounded-md border border-accent-100 bg-superficie p-0.5"
+          role="group" aria-label="Vista de la agenda">
+          <span aria-hidden="true" className={cn(
+            "hen-cta absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[5px] transition-transform duration-200 ease-out",
+            vista === "dia" && "translate-x-full",
+          )} />
+          {[["semana", "Semana"], ["dia", "Día"]].map(([valor, etiqueta]) => (
+            <button key={valor} type="button" aria-pressed={vista === valor}
+              onClick={() => cambiarUrl({ vista: valor })}
+              className={cn(
+                "relative h-8 rounded-[5px] px-3 text-md font-medium transition-colors duration-200",
+                vista === valor ? "text-sobre-accent" : "text-accent hover:bg-accent-50",
+              )}>
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+        <Input type="date" value={fecha} onChange={(e) => irAFecha(e.target.value)}
+          aria-label="Fecha de la agenda" className="w-full sm:w-auto" />
+        {/* Primario mientras la fecha elegida es hoy: dice de un vistazo si lo
+            que se mira es el día de hoy, y cuando no lo es vuelve a ser el botón
+            para regresar. */}
+        <Button size="sm" variant={fecha === iso(new Date()) ? "primary" : "secondary"}
+          onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
+        <Button size="sm" variant="secondary" onClick={() => mover(vista === "semana" ? -7 : -1)}>
+          <Icon name="chevronLeft" size={14} /> {vista === "semana" ? "Semana anterior" : "Día anterior"}
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => mover(1)}>
-          Día siguiente <Icon name="chevronRight" size={14} />
+        <Button size="sm" variant="secondary" onClick={() => mover(vista === "semana" ? 7 : 1)}>
+          {vista === "semana" ? "Semana siguiente" : "Día siguiente"} <Icon name="chevronRight" size={14} />
         </Button>
         {/* «¿Para cuándo tiene?» es la pregunta que más se hace en un mostrador
             de turnos programados. Sin esto había que apretar «Día siguiente»
@@ -290,38 +351,35 @@ export default function Agenda() {
                 onClick={() => setVerProximos(!verProximos)}>
           <Icon name="search" size={14} /> Próximos libres
         </Button>
-        <Button size="sm" variant={vista === "semana" ? "primary" : "secondary"}
-                onClick={() => setVista(vista === "semana" ? "dia" : "semana")}>
-          <Icon name="calendar" size={14} /> Semana
-        </Button>
-        <Button
+        <Button size="sm" variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>Registrar atención pasada</Button>
+        {vista === "dia" && <Button
           size="sm"
           variant={soloSinConfirmar ? "primary" : "secondary"}
           onClick={() => setSoloSinConfirmar(!soloSinConfirmar)}
           title="Los que todavía no avisaron que vienen: es la lista de llamados"
         >
           <Icon name="filter" size={14} /> Sin confirmar ({sinConfirmar})
-        </Button>
+        </Button>}
       </section>
-      </details>
 
       {verProximos && (
         <ProximosLibres consulta={proximos} onElegir={irA} />
       )}
 
-      {/* La semana no reemplaza al día: se apila arriba. Quien la abre para ver
-          cómo viene la semana sigue teniendo abajo el día en el que está
-          operando, y no pierde de vista al paciente que tiene enfrente. */}
+      {/* El clic en la semana abre el día elegido: allí viven las acciones de
+          cada turno, mientras que el bloqueo sigue disponible en la semana. */}
       {vista === "semana" && agenda && (
-        <SemanaAgenda
-          agenda={agenda}
-          desde={lunesDe(fecha)}
-          toast={toast}
-          onIrAlDia={(f) => { irAFecha(f); setVista("dia"); }}
-        />
+        <div data-testid="agenda-listado" className="min-w-0">
+          <SemanaAgenda
+            agenda={agenda}
+            desde={lunesDe(fecha)}
+            toast={toast}
+            onIrAlDia={(f) => cambiarUrl({ fecha: f, vista: "dia" })}
+          />
+        </div>
       )}
 
-      <section className="rounded-lg border border-borde bg-superficie">
+      {vista === "dia" && <section data-testid="agenda-listado" className="min-w-0 rounded-lg border border-borde bg-superficie">
         {dia.isLoading ? (
           <div className="p-xl"><Skeleton className="h-64" /></div>
         ) : dia.error ? (
@@ -387,8 +445,9 @@ export default function Agenda() {
             )}
           </>
         )}
-      </section>
-      {(pasados.total > 0 || pasados.error) && <section className="rounded-lg border border-borde bg-superficie px-xl py-lg">
+      </section>}
+      <BuscarTurnos institucionId={institucion?.id} onCambio={recargar} toast={toast} />
+      {vista === "dia" && (pasados.total > 0 || pasados.error) && <section className="rounded-lg border border-borde bg-superficie px-xl py-lg">
         <h2 className="text-lg font-bold">Atenciones pasadas registradas en este día</h2>
         {pasados.error ? <EstadoError error={pasados.error} onReintentar={pasados.refetch} /> : <>
         <p className="mb-3 text-sm text-texto-debil">Son constancias administrativas; no crean un caso ni una nota clínica.</p>
@@ -403,6 +462,75 @@ export default function Agenda() {
         </p>}
         </>}
       </section>}
+    </div>
+  );
+}
+
+function SelectorAgenda({ agenda, institucionId, onElegir }) {
+  const [texto, setTexto] = useState(agenda?.nombre || "");
+  const [busqueda, setBusqueda] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const [activo, setActivo] = useState(0);
+  const listaId = useId();
+
+  useEffect(() => { setTexto(agenda?.nombre || ""); }, [agenda?.id, agenda?.nombre]);
+  // Con el nombre de la agenda actual en el campo se listan todas: buscar por
+  // ese nombre dejaba una sola opción, la que ya estaba elegida.
+  const termino = texto.trim() === (agenda?.nombre || "") ? "" : texto.trim();
+  useEffect(() => {
+    const id = setTimeout(() => setBusqueda(termino), 350);
+    return () => clearTimeout(id);
+  }, [termino]);
+  // Salir sin elegir vuelve al nombre de la agenda en pantalla: un texto a
+  // medio escribir encima de la grilla de otra agenda se lee como la elegida.
+  const cerrar = () => { setAbierto(false); setTexto(agenda?.nombre || ""); };
+
+  const opciones = useLista("agendas", {
+    institucion: institucionId, activa: true, ordering: "nombre", search: busqueda, pageSize: 25,
+  }, { enabled: abierto && institucionId != null });
+  const buscando = busqueda !== termino || opciones.refrescando;
+  const filas = buscando ? [] : opciones.filas;
+  const elegir = (a) => {
+    setTexto(a.nombre);
+    setAbierto(false);
+    onElegir(a);
+  };
+
+  return (
+    <div className="relative w-full max-w-[28rem] min-w-0">
+      <label htmlFor={`${listaId}-input`} className="mb-1 block text-sm font-medium text-texto-suave">
+        Profesional o recurso
+      </label>
+      <Input id={`${listaId}-input`} role="combobox" value={texto}
+        aria-expanded={abierto} aria-controls={abierto ? listaId : undefined} aria-autocomplete="list"
+        aria-activedescendant={abierto && filas[activo] ? `${listaId}-${filas[activo].id}` : undefined}
+        placeholder="Buscar agenda por nombre…"
+        onChange={(e) => { setTexto(e.target.value); setActivo(0); setAbierto(true); }}
+        onFocus={(e) => { e.target.select(); setAbierto(true); }} onBlur={cerrar}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { cerrar(); return; }
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setAbierto(true);
+            setActivo((i) => Math.max(0, Math.min(filas.length - 1, i + (e.key === "ArrowDown" ? 1 : -1))));
+          }
+          if (e.key === "Enter" && abierto && filas[activo]) {
+            e.preventDefault();
+            elegir(filas[activo]);
+          }
+        }}
+        className="w-full min-w-0" />
+      {abierto && <div id={listaId} role="listbox"
+        className="absolute z-40 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-borde bg-superficie shadow-dropdown">
+        {buscando || opciones.isLoading ? <p className="p-3 text-sm text-texto-debil">Buscando…</p>
+          : opciones.error ? <p className="p-3 text-sm text-texto-debil" role="alert">No se pudieron buscar agendas.</p>
+          : filas.length === 0 ? <p className="p-3 text-sm text-texto-debil">Sin agendas para «{busqueda}»</p>
+          : filas.map((a, i) => <div id={`${listaId}-${a.id}`} key={a.id} role="option"
+            aria-selected={i === activo} onMouseDown={(e) => e.preventDefault()}
+            onClick={() => elegir(a)}
+            className={cn("cursor-pointer px-3 py-2 text-sm hover:bg-superficie-2", i === activo && "bg-superficie-2")}
+          >{a.nombre} · {a.area_nombre} · {a.tipo}</div>)}
+      </div>}
     </div>
   );
 }
@@ -870,8 +998,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
       )}
       {pendiente && (
         <div className="mt-2 grid grid-cols-2 gap-2">
-          {/* «Llegó» es la acción principal: es la que abre el caso y arranca la
-              atención. El resto son excepciones.
+          {/* «Llegó» abre el caso y arranca la atención de este turno.
 
               En el buscador no va, y «No vino» tampoco: las dos dependen de
               estar parado en el día del turno con el paciente enfrente. Sobre un
@@ -879,7 +1006,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
               llaman por altavoz y nadie contesta, y «No vino» le carga un
               ausentismo a alguien que justamente está llamando para avisar. */}
           {!porTelefono && !pasado && (
-          <Button size="sm" disabled={accion.isPending}
+          <Button size="sm" variant="secondary" disabled={accion.isPending}
                   onClick={() => accion.mutate({
                     nombre: "llegada",
                     // El mensaje sale de la RESPUESTA: si la agenda no tiene
@@ -897,7 +1024,7 @@ function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTe
             {virtual ? "Se conectó" : "Llegó"}
           </Button>
           )}
-          {!porTelefono && pasado && onRegistrarPasado && <Button size="sm" disabled={accion.isPending}
+          {!porTelefono && pasado && onRegistrarPasado && <Button size="sm" variant="secondary" disabled={accion.isPending}
             onClick={() => onRegistrarPasado(turno.inicio, {
               id: turno.ciudadano, nombre: turno.paciente, apellido: "", documento: turno.documento,
             })}>
