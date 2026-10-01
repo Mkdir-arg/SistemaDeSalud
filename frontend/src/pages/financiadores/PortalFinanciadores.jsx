@@ -42,7 +42,7 @@ export function ErrorPortal({ error, reintentar }) {
 export default function PortalFinanciadores() {
   const { user } = useAuth();
   const { institucion, setInstitucion } = useInstitucion();
-  const { seccion = "planes" } = useParams();
+  const { seccion } = useParams();
   const [parametros, setParametros] = useSearchParams();
   const seleccion = parametros.get("financiador") || "";
   const organizaciones = useQuery({ queryKey: ["financiadores", user.id, "organizaciones"], queryFn: async () => {
@@ -58,13 +58,16 @@ export default function PortalFinanciadores() {
   const organizacion = seleccion ? lista.find((item) => String(item.id) === seleccion) : plataforma ? null : lista[0];
   const admin = plataforma || organizacion?.rol === "admin";
   const sufijo = seleccion ? `?financiador=${encodeURIComponent(seleccion)}` : "";
+  // La redirección a Inicio conserva la query completa; los ítems del menú, sólo el financiador.
+  const query = parametros.toString() ? `?${parametros}` : "";
   const items = SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
-    .map((item) => ({ ...item, to: `/financiadores${item.key === "planes" ? "" : `/${item.key}`}${sufijo}` }));
+    .map((item) => ({ ...item, to: `/financiadores/${item.key}${sufijo}` }));
   const actual = items.find((item) => item.key === seccion);
   const irAlDirectorio = plataforma && !seleccion && seccion !== "catalogo" && !organizaciones.isLoading && !organizaciones.error;
   useEffect(() => { if (irAlDirectorio && institucion) setInstitucion(null); }, [irAlDirectorio, institucion, setInstitucion]);
   if (irAlDirectorio) return institucion ? null : <Navigate to="/directorio?vista=financiadores" replace />;
-  if (organizacion && !actual) return <Navigate to={`/financiadores${sufijo}`} replace />;
+  if (!seccion && (!plataforma || seleccion)) return <Navigate to={`/financiadores/inicio${query}`} replace />;
+  if (organizacion && !actual) return <Navigate to={`/financiadores/inicio${sufijo}`} replace />;
   const cuerpo = <div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     {plataforma && <>
       <div><Link to="/directorio?vista=financiadores" className="text-xs font-semibold text-accent hover:underline">← Volver a financiadores</Link>

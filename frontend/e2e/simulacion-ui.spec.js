@@ -213,7 +213,7 @@ test("desde un financiador de plataforma simula al operador con su portal", asyn
   await expect(page.getByRole("navigation", { name: "Menú del financiador" })).toBeVisible();
   expect(estado.iniciadas).toEqual([{ ambito: "financiador", rol: "operador", financiador: 21 }]);
   await page.getByRole("button", { name: "Volver a Sistema" }).click();
-  await expect(page).toHaveURL(/\/financiadores\?financiador=21/);
+  await expect(page).toHaveURL(/\/financiadores\/inicio\?financiador=21/);
   await expect(page.getByRole("navigation", { name: "Menú de plataforma" })).toBeVisible();
 });
 
