@@ -119,12 +119,14 @@ class FacturasTests(APITestCase):
                 self.assertEqual(descarga.status_code, 200)
                 self.assertEqual(descarga["Cache-Control"], "private, no-store")
                 self.assertTrue(m.EventoCobertura.objects.filter(accion="descargar_factura", objeto=str(pk)).exists())
-                descarga.close()
+                # Consumir el stream cierra el archivo; close() emitiría
+                # request_finished y en Postgres cerraría la conexión del test.
+                self.assertEqual(b"".join(descarga.streaming_content), b"%PDF-1.4\nprueba")
                 self.membresia.rol = "auditor"
                 self.membresia.save(update_fields=["rol"])
                 descarga_auditor = self.client.get(ruta)
                 self.assertEqual(descarga_auditor.status_code, 200)
-                descarga_auditor.close()
+                b"".join(descarga_auditor.streaming_content)
                 with override_settings(SALUD_FACTURAS_ADJUNTOS_DIR=media / "facturas"):
                     self.assertEqual(self.client.get(ruta).status_code, 400)
 

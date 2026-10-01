@@ -38,6 +38,7 @@ CAMPOS_AUTORIA = {
     "financiadores.EventoCobertura": ("usuario",),
     "financiadores.HistorialAfiliacion": ("registrado_por",),
     "financiadores.Importacion": ("creado_por",),
+    "financiadores.RegistroFactura": ("creado_por", "adjunto_subido_por"),
     "financiadores.ReglaCobertura": ("creado_por",),
     "financiadores.ReservaCobertura": ("creado_por", "cerrado_por"),
     "financiadores.ResolucionSaldo": ("registrado_por",),
