@@ -51,15 +51,22 @@ async function escenario(page, opciones = {}) {
       return route.fulfill({ json: { id: 100, ...body } });
     }
     lecturas.push({ path, params: Object.fromEntries(url.searchParams) });
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, is_superuser: !!opciones.editor, email: "personal@example.test", nombre_completo: "Personal de prueba", capacidades_por_institucion: opciones.hospital ? { 2: ["casos_operar", "historia_clinica", "padron_admision"] } : {}, roles_por_institucion: opciones.hospital ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin" })) } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, is_superuser: !!opciones.editor, email: "personal@example.test", nombre_completo: "Personal de prueba", capacidades_por_institucion: opciones.hospital ? { 2: ["casos_operar", "historia_clinica", "padron_admision"] } : {}, roles_por_institucion: opciones.hospital ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin", carga_solicitudes_manuales: !!opciones.manual })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista(opciones.hospital ? [{ id: 2, nombre: "Hospital Ficticio" }] : []) });
-    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin" }))) });
+    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin", carga_solicitudes_manuales: !!opciones.manual }))) });
     if (path === "/financiadores/21/usuarios/") return route.fulfill({ json: lista([estado.usuario]) });
     if (path === "/financiadores/21/convenios/") return route.fulfill({ json: lista([estado.convenio]) });
     if (/\/financiadores\/\d+\/planes\//.test(path)) return route.fulfill({ json: lista([{ id: 31, nombre: "Plan Río", codigo: "BAS", activo: true }]) });
     if (/\/financiadores\/\d+\/catalogo\//.test(path)) return route.fulfill({ json: lista([{ id: 3, nombre: "Consulta", codigo: "CONS", categoria: "Consultas" }]) });
     if (/\/financiadores\/\d+\/resumen\//.test(path)) return route.fulfill({ json: { discrepancias: 0 } });
     if (path === "/autorizaciones-cobertura/contexto/") return route.fulfill({ json: estado.contexto });
+    if (path === "/autorizaciones-cobertura/opciones-manual/") {
+      const buscar = url.searchParams.get("search") || "";
+      const afiliados = [{ id: 61, nombre: "Ana Ficticia", numero: "00031", documento: "00999888" }, { id: 62, nombre: "Bruno Ficticio", numero: "00032", documento: "00777666" }];
+      return route.fulfill({ json: { afiliados: afiliados.filter((a) => !buscar || a.nombre.toLowerCase().includes(buscar.toLowerCase())),
+        instituciones: [{ id: 2, nombre: "Hospital Ficticio" }],
+        prestaciones: url.searchParams.get("afiliado") && url.searchParams.get("hospital") ? [{ id: 3, nombre: "Resonancia", codigo: "RMN" }] : [] } });
+    }
     if (path === "/autorizaciones-cobertura/") {
       const segunda = url.searchParams.get("page") === "2";
       return route.fulfill({ json: lista(url.searchParams.get("financiador") === "22" || estado.listaVacia ? [] : [{ ...estado.solicitud, id: segunda ? 92 : 91 }], { ...(opciones.paginada ? { count: 30, next: segunda ? null : "?page=2" } : {}), opciones: { instituciones: [{ id: 2, nombre: "Hospital Ficticio" }] } }) });
@@ -320,4 +327,23 @@ test("resolver autorización financiera pendiente identifica importe financiador
   await modal.getByRole("button", { name: "Registrar decisión", exact: true }).click();
   await expect(page.getByText("Decisión administrativa registrada.", { exact: true })).toBeVisible();
   expect(escrituras[0]).toMatchObject({ path: "/coberturas/81/resolver/", body: { parte: "financiador", decision: "paciente", importe: "8000.00", evidencia: "Paciente acepta ARS 8.000,00 por Consulta según constancia 1" } });
+});
+
+test("solicitud manual abre sin error y elige al afiliado desde un único buscador", async ({ page }) => {
+  const { escrituras, lecturas } = await escenario(page, { manual: true });
+  await page.goto("/financiadores/autorizaciones?financiador=21");
+  await page.getByRole("button", { name: "Nueva solicitud manual", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await expect(modal.getByRole("alert")).toHaveCount(0);
+  await modal.getByRole("searchbox", { name: "Buscar afiliado por nombre, número o documento" }).fill("ana");
+  await modal.getByRole("button", { name: /Ana Ficticia/ }).click();
+  await expect(modal.getByText("00031 · Doc. 00999888")).toBeVisible();
+  await expect(modal.getByRole("searchbox")).toHaveCount(0);
+  await modal.getByRole("combobox", { name: "Institución" }).selectOption("2");
+  await modal.getByRole("combobox", { name: "Prestación común que requiere autorización" }).selectOption("3");
+  await modal.getByRole("textbox", { name: "Motivo o justificación" }).fill("Orden médica para resonancia");
+  await modal.getByRole("button", { name: "Crear solicitud", exact: true }).click();
+  const alta = escrituras.find((e) => e.path === "/autorizaciones-cobertura/manual/");
+  expect(alta.body).toMatchObject({ afiliado: 61, institucion: 2, comun: 3, cantidad: 1, justificacion: "Orden médica para resonancia", urgente: false });
+  expect(lecturas.filter((r) => r.path === "/autorizaciones-cobertura/opciones-manual/").every((r) => r.params.search !== "")).toBe(true);
 });

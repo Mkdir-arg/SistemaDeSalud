@@ -31,7 +31,7 @@ class FiltrosAutorizaciones(serializers.Serializer):
     urgente = serializers.BooleanField(required=False)
     desde = serializers.DateField(required=False)
     hasta = serializers.DateField(required=False)
-    search = serializers.CharField(max_length=120, required=False)
+    search = serializers.CharField(max_length=120, required=False, allow_blank=True)
     origen = serializers.ChoiceField(choices=["institucion", "manual"], required=False)
 
     def validate(self, datos):
