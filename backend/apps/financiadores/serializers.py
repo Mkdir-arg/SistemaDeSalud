@@ -1,5 +1,59 @@
 from rest_framework import serializers
+from django.utils import timezone
 from . import models
+from .facturas import clave_duplicado
+
+
+class RegistroFacturaSerializer(serializers.ModelSerializer):
+    convenio = serializers.PrimaryKeyRelatedField(queryset=models.Convenio.objects.none(), allow_null=True, required=False)
+    afiliado = serializers.PrimaryKeyRelatedField(queryset=models.Afiliado.objects.none(), allow_null=True, required=False)
+    contraparte_nombre = serializers.CharField(max_length=160, required=False)
+    contraparte_identificador = serializers.CharField(max_length=80, required=False, allow_blank=True)
+    adjunto_disponible = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.RegistroFactura
+        fields = ["id", "direccion", "contraparte_tipo", "convenio", "afiliado", "contraparte_nombre", "contraparte_identificador", "tipo", "letra", "numero", "fecha", "importe", "periodo", "concepto", "observaciones", "creado_por", "creado", "actualizado", "adjunto_nombre", "adjunto_content_type", "adjunto_tamano", "adjunto_disponible"]
+        read_only_fields = ["creado_por", "creado", "actualizado", "adjunto_nombre", "adjunto_content_type", "adjunto_tamano"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        financiador = self.context.get("financiador")
+        if financiador:
+            self.fields["convenio"].queryset = models.Convenio.objects.filter(financiador=financiador)
+            self.fields["afiliado"].queryset = models.Afiliado.objects.filter(financiador=financiador)
+
+    def get_adjunto_disponible(self, obj):
+        from django.conf import settings
+        return bool(settings.SALUD_FACTURAS_ADJUNTOS)
+
+    def validate(self, attrs):
+        datos = {campo: getattr(self.instance, campo) for campo in ["direccion", "contraparte_tipo", "convenio", "afiliado", "contraparte_nombre", "contraparte_identificador", "tipo", "letra", "numero", "fecha", "importe", "periodo", "concepto", "observaciones"]} if self.instance else {}
+        datos.update(attrs)
+        tipo = datos.get("contraparte_tipo")
+        convenio, afiliado = datos.get("convenio"), datos.get("afiliado")
+        if (tipo == "institucion" and afiliado) or (tipo == "afiliado" and convenio) or (convenio and afiliado):
+            raise serializers.ValidationError("La contraparte y su vínculo deben corresponder al mismo tipo.")
+        vinculo_cambio = not self.instance or any(campo in attrs for campo in ("contraparte_tipo", "convenio", "afiliado"))
+        if convenio and vinculo_cambio:
+            datos["contraparte_nombre"] = convenio.institucion.nombre
+        elif afiliado and vinculo_cambio:
+            datos["contraparte_nombre"] = afiliado.nombre
+        elif not str(datos.get("contraparte_nombre", "")).strip():
+            raise serializers.ValidationError({"contraparte_nombre": "Indicá el nombre de la contraparte sin vínculo."})
+        if datos.get("fecha") and datos["fecha"] > timezone.localdate():
+            raise serializers.ValidationError({"fecha": "La fecha no puede ser futura."})
+        if datos.get("importe") is not None and datos["importe"] <= 0:
+            raise serializers.ValidationError({"importe": "El importe debe ser mayor que cero."})
+        if all(datos.get(campo) is not None for campo in ["direccion", "contraparte_tipo", "tipo", "numero"]):
+            attrs["clave_duplicado"] = clave_duplicado(datos)
+            existentes = models.RegistroFactura.objects.filter(financiador=self.context.get("financiador"), clave_duplicado=attrs["clave_duplicado"])
+            if self.instance:
+                existentes = existentes.exclude(pk=self.instance.pk)
+            if existentes.exists():
+                raise serializers.ValidationError("Ya está registrada una factura con la misma dirección, contraparte, tipo, letra y número.")
+        attrs["contraparte_nombre"] = datos["contraparte_nombre"].strip()
+        return attrs
 
 
 class FinanciadorSerializer(serializers.ModelSerializer):
