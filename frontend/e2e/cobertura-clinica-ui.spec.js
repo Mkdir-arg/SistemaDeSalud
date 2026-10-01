@@ -191,7 +191,7 @@ test("avanzar el caso descarta la cotización y aceptación del paso anterior", 
 
 test("el historial del paciente pagina sin ofrecer enlaces a casos ni importes", async ({ page }) => {
   const { lecturas, escrituras } = await circuito(page);
-  await page.goto("/historia/5?tab=cobertura");
+  await page.goto("/pacientes/5?tab=cobertura");
   const historial = page.locator('[aria-label="Historial de cobertura del paciente"]');
   await expect(historial.getByText("Credencial verificada al ingresar", { exact: true })).toBeVisible();
   await expect(historial.getByRole("button", { name: "Anterior" })).toBeDisabled();
@@ -206,7 +206,7 @@ test("el historial del paciente pagina sin ofrecer enlaces a casos ni importes",
 
 test("un historial 403 no se presenta como vacío", async ({ page }) => {
   await circuito(page, { errorHistorial: true });
-  await page.goto("/historia/5?tab=cobertura");
+  await page.goto("/pacientes/5?tab=cobertura");
   await expect(page.getByRole("alert")).toContainText("No tenés permiso para ver esto");
   await expect(page.getByText("No hay afiliaciones registradas en los casos visibles", { exact: true })).toHaveCount(0);
 });
@@ -222,7 +222,7 @@ test("cobertura e historial conservan el layout móvil I-Core Salud sin desborda
   await expect.poll(() => panel.evaluate((el) => el.getBoundingClientRect().left)).toBeGreaterThanOrEqual(0);
   await expect.poll(() => panel.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(390);
   await panel.screenshot({ path: testInfo.outputPath("cobertura-caso-movil.png") });
-  await page.goto("/historia/5?tab=cobertura");
+  await page.goto("/pacientes/5?tab=cobertura");
   await expect(page.getByRole("heading", { name: "Cobertura por caso" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("historial-cobertura-movil.png"), fullPage: true });

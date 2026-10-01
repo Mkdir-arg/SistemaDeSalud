@@ -13,10 +13,11 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Membresia, Usuario
+from apps.agenda.models import Turno
 from apps.auditoria.models import AccesoClinico
-from apps.casos.models import Caso
+from apps.casos.models import Caso, ItemFila
 from apps.finanzas.models import ConcesionFinanciera, Gasto, HechoAtencionCosteable, MovimientoDinero
-from apps.financiadores.models import SolicitudAutorizacion
+from apps.financiadores.models import Convenio, Plan, ReglaCobertura, SolicitudAutorizacion
 from apps.instituciones.models import Institucion
 from apps.instituciones.puesta_en_marcha import pasos as pasos_de_puesta_en_marcha
 from apps.registros import integridad
@@ -197,7 +198,13 @@ class CargaCompletaTests(TransactionTestCase):
         con_fila_hoy = {nombres[i["institucion"]] for i in tablero["indicadores"]
                         if i["atendidos_hoy"] and i["espera_minutos"] is not None}
         self.assertTrue({"Hospital Zonal Sur", "Clínica San Martín", "Centro de Salud Barrio Norte",
-                         "Hospital Municipal de Villa Real"} <= con_fila_hoy, con_fila_hoy)
+                         "Hospital Municipal de Villa Real", "Hospital General Los Aromos"} <= con_fila_hoy, con_fila_hoy)
+        aromos = Institucion.objects.get(nombre="Hospital General Los Aromos")
+        self.assertFalse(any(a["institucion"] == aromos.nombre for a in tablero["alertas"]))
+        self.assertFalse(Gasto.objects.filter(institucion=aromos).exists())
+        self.assertFalse(MovimientoDinero.objects.filter(institucion=aromos).exists())
+        self.assertFalse(SolicitudAutorizacion.objects.filter(institucion=aromos).exists())
+        self.assertFalse(Convenio.objects.filter(institucion=aromos).exists())
         # Las atenciones de los efectores se firman: la cadena de sellos tiene que verificar.
         rotas = [hc.pk for hc in HistoriaClinica.objects.filter(ciudadano__institucion__nombre="Hospital Zonal Sur")
                  if not integridad.verificar_historia(hc)["ok"]]
@@ -206,12 +213,20 @@ class CargaCompletaTests(TransactionTestCase):
     def _verificar_central_completo(self):
         """Hospital Central tiene todo: finanzas del mes y el circuito de financiadores."""
         mes = timezone.localdate().replace(day=1)
-        for nombre in ("Hospital Central", "Hospital General Los Aromos"):
-            gastos = Gasto.objects.filter(institucion__nombre=nombre)
-            self.assertTrue(gastos.filter(periodo_economico=mes, estado="aprobado").exists(), nombre)
-            self.assertTrue(gastos.filter(estado="pendiente_aprobacion").exists(), nombre)
-            self.assertTrue(MovimientoDinero.objects.filter(institucion__nombre=nombre, tipo="cobro").exists(), nombre)
-        estados = set(SolicitudAutorizacion.objects.filter(institucion__nombre="Hospital Central")
+        central = Institucion.objects.get(nombre="Hospital Central")
+        gastos = Gasto.objects.filter(institucion=central)
+        self.assertTrue(gastos.filter(periodo_economico=mes, estado="aprobado").exists())
+        self.assertTrue(gastos.filter(estado="pendiente_aprobacion").exists())
+        self.assertTrue(MovimientoDinero.objects.filter(institucion=central, tipo="cobro").exists())
+        self.assertTrue(ItemFila.objects.filter(caso__institucion=central,
+                                                nodo__version__flujo__area__nombre="Guardia",
+                                                atendido_at__date=timezone.localdate()).exists())
+        self.assertTrue(Turno.objects.filter(agenda__institucion=central, inicio__gte=timezone.now(),
+                                            inicio__lte=timezone.now() + timedelta(days=14)).exists())
+        self.assertTrue(Convenio.objects.filter(institucion=central).exists())
+        self.assertTrue(Plan.objects.filter(financiador__convenio__institucion=central).exists())
+        self.assertTrue(ReglaCobertura.objects.filter(plan__financiador__convenio__institucion=central).exists())
+        estados = set(SolicitudAutorizacion.objects.filter(institucion=central)
                       .values_list("estado", flat=True))
         self.assertTrue({"pendiente", "observada", "aprobada", "rechazada"} <= estados)
 
@@ -221,8 +236,13 @@ class CargaCompletaTests(TransactionTestCase):
         roles = set(Membresia.objects.filter(usuario=comprador, institucion__nombre="Hospital Central")
                     .values_list("rol", flat=True))
         self.assertEqual(roles, set(Membresia.Rol.values))
-        aromos = Membresia.objects.get(usuario=comprador, institucion__nombre="Hospital General Los Aromos")
-        self.assertEqual(aromos.concesiones_financieras.count(), len(ConcesionFinanciera.Accion.values))
+        self.assertFalse(Membresia.objects.filter(usuario=comprador,
+                                                 institucion__nombre="Hospital General Los Aromos").exists())
+        admin = Membresia.objects.get(usuario=comprador, institucion__nombre="Hospital Central",
+                                     rol=Membresia.Rol.ADMIN_INSTITUCION)
+        self.assertEqual(set(admin.concesiones_financieras.values_list("accion", flat=True)),
+                         set(ConcesionFinanciera.Accion.values))
+        self.assertFalse(admin.concesiones_financieras.filter(todas_las_areas=False).exists())
         self.assertTrue(comprador.notificaciones.filter(leida=False).exists())
         piloto = Institucion.objects.get(nombre="Hospital Piloto")
         self.assertEqual(piloto.estado, Institucion.Estado.EN_ALTA)

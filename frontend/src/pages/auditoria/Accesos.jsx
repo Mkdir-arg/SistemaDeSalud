@@ -156,7 +156,7 @@ export default function Accesos() {
                       firmados con su nombre, en las listas que después leen esos
                       mismos pacientes. */}
                   <Link
-                    to={`/historia/${a.ciudadano}`}
+                    to={`/pacientes/${a.ciudadano}?tab=evolucion`}
                     title={AVISO_HISTORIA}
                     className="text-sm font-semibold text-accent hover:underline"
                   >

@@ -308,17 +308,18 @@ class SolicitudAutorizacion(models.Model):
         ("rechazada", "Rechazada"), ("vencida", "Vencida"), ("anulada", "Anulada"),
     )]
     ABIERTAS = ("pendiente", "observada")
+    origen = models.CharField(max_length=12, choices=[("institucion", "Institución"), ("manual", "Manual")], default="institucion")
     institucion = models.ForeignKey("instituciones.Institucion", on_delete=models.PROTECT)
     financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
     convenio = models.ForeignKey(Convenio, on_delete=models.PROTECT)
     afiliado = models.ForeignKey(Afiliado, on_delete=models.PROTECT)
-    afiliacion = models.ForeignKey(AfiliacionCaso, on_delete=models.PROTECT)
+    afiliacion = models.ForeignKey(AfiliacionCaso, null=True, blank=True, on_delete=models.PROTECT)
     comun = models.ForeignKey(PrestacionComun, on_delete=models.PROTECT)
-    prestacion = models.ForeignKey("finanzas.Prestacion", on_delete=models.PROTECT)
-    caso = models.ForeignKey("casos.Caso", on_delete=models.PROTECT, related_name="autorizaciones")
+    prestacion = models.ForeignKey("finanzas.Prestacion", null=True, blank=True, on_delete=models.PROTECT)
+    caso = models.ForeignKey("casos.Caso", null=True, blank=True, on_delete=models.PROTECT, related_name="autorizaciones")
     ciudadano = models.ForeignKey("registros.Ciudadano", null=True, on_delete=models.PROTECT)
-    nodo = models.ForeignKey("flujos.Nodo", on_delete=models.PROTECT)
-    intento = models.UUIDField()
+    nodo = models.ForeignKey("flujos.Nodo", null=True, blank=True, on_delete=models.PROTECT)
+    intento = models.UUIDField(null=True, blank=True)
     anterior = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="reintentos")
     cantidad_solicitada = models.PositiveIntegerField()
     cantidad_aprobada = models.PositiveIntegerField(default=0)
@@ -344,6 +345,8 @@ class SolicitudAutorizacion(models.Model):
             models.CheckConstraint(condition=Q(cantidad_solicitada__gt=0) & Q(cantidad_aprobada__lte=models.F("cantidad_solicitada")), name="fin_autorizacion_cantidades"),
             models.CheckConstraint(condition=~Q(estado="aprobada") | (Q(cantidad_aprobada__gt=0) & Q(vigencia_desde__isnull=False, vigencia_hasta__isnull=False) & Q(vigencia_hasta__gte=models.F("vigencia_desde"))), name="fin_autorizacion_vigencia"),
             models.UniqueConstraint(fields=["caso", "intento", "prestacion"], condition=Q(estado__in=["pendiente", "observada", "aprobada"]), name="fin_autorizacion_intento_activo"),
+            models.CheckConstraint(condition=(Q(origen="institucion", caso__isnull=False, nodo__isnull=False, intento__isnull=False, afiliacion__isnull=False, prestacion__isnull=False) | Q(origen="manual", caso__isnull=True, nodo__isnull=True, intento__isnull=True, afiliacion__isnull=True, prestacion__isnull=True)), name="fin_autorizacion_origen_coherente"),
+            models.UniqueConstraint(fields=["afiliado", "convenio", "comun"], condition=Q(origen="manual", estado__in=["pendiente", "observada"]), name="fin_autorizacion_manual_abierta"),
         ]
         indexes = [models.Index(fields=["estado", "plazo_respuesta"]), models.Index(fields=["estado", "vigencia_hasta"]), models.Index(fields=["convenio", "afiliado", "comun", "estado"])]
 

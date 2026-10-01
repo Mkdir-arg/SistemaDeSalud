@@ -2,7 +2,7 @@
 
 ## Proposito
 
-Mantener el registro longitudinal del ciudadano dentro de la institucion. El modulo separa dos accesos con permisos distintos sobre la misma persona: la **ficha administrativa** del padron (identificacion, domicilio, cobertura, consentimiento) y la **historia clinica** (antecedentes, evolucion, estudios, recetas).
+Mantener el registro longitudinal del ciudadano dentro de la institucion. La pantalla Pacientes reúne la **ficha administrativa** (identificacion, domicilio, cobertura, consentimiento) y, con permiso clinico, la **historia clinica** (antecedentes, evolucion, estudios, recetas).
 
 ## Actores
 
@@ -23,7 +23,7 @@ Mantener el registro longitudinal del ciudadano dentro de la institucion. El mod
 - Entradas de historia con firma, matricula y sello encadenado.
 - Estudios.
 - Recetas.
-- Busqueda/listado de historias y detalle de historia.
+- Listado unico de pacientes y pestañas clinicas en su ficha.
 
 ## Reglas de negocio
 
@@ -38,10 +38,9 @@ Mantener el registro longitudinal del ciudadano dentro de la institucion. El mod
 
 ## Pantallas y rutas
 
-- `/padron` — padron de pacientes: paciente, cobertura, domicilio y estado del consentimiento.
-- `/padron/:id` — ficha administrativa: documento, codigo, fecha de nacimiento, domicilio, alta en padron, cobertura y consentimiento.
-- `/historia` — listado de historias clinicas.
-- `/historia/:id` — detalle de historia clinica.
+- `/pacientes` — listado de pacientes: identificacion enmascarada, cobertura, domicilio y estado del consentimiento; alergias sólo con `historia_clinica`. El alta abre `/pacientes?nuevo=1`.
+- `/pacientes/:id` — ficha con pestaña Datos (documento, codigo, nacimiento, domicilio, cobertura y consentimiento). Con `historia_clinica` agrega Evolucion, Estudios, Recetas, Cobertura y Quién la miró.
+- `/padron` y `/historia`, con sus detalles, redirigen a las rutas de Pacientes para conservar enlaces anteriores.
 - Acciones clinicas dentro de `/casos/:id`.
 
 ## Entidades y endpoints

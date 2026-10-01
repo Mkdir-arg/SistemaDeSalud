@@ -51,7 +51,7 @@ test.describe("Shell", () => {
       await expect.poll(() => asideVisible(page)).toBe(true);
       // Completo, no una columna de iconos: aunque el menú esté colapsado en
       // escritorio, en el cajón se muestra entero.
-      await expect(page.locator("aside").getByText("Historia clínica")).toBeVisible();
+      await expect(page.locator("aside").getByText("Pacientes")).toBeVisible();
     });
 
     test("Escape lo cierra", async ({ page }) => {
@@ -63,8 +63,8 @@ test.describe("Shell", () => {
 
     test("al navegar se cierra solo", async ({ page }) => {
       await page.getByRole("button", { name: "Abrir menú" }).click();
-      await page.locator("aside").getByText("Historia clínica").click();
-      await expect(page).toHaveURL(/\/historia/);
+      await page.locator("aside").getByText("Pacientes").click();
+      await expect(page).toHaveURL(/\/pacientes/);
       await expect.poll(() => asideVisible(page)).toBe(false);
     });
   });

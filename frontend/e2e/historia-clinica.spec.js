@@ -88,7 +88,7 @@ test.describe("Historia clínica en el celular", () => {
     await entrar(page, "medico");
     await conHistoria(page, historiaDePrueba());
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto(`/historia/${CIUDADANO}`);
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
     await esperarPantalla(page);
 
     const alergia = page.getByText(/^⚠ Alergia:/).first();
@@ -108,7 +108,7 @@ test.describe("Historia clínica en el celular", () => {
     await entrar(page, "medico");
     await conHistoria(page, historiaDePrueba());
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto(`/historia/${CIUDADANO}`);
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
     await esperarPantalla(page);
 
     // El bloque de identificación es el hermano anterior del botón: se lo mide
@@ -129,7 +129,7 @@ test.describe("Historia clínica en el celular", () => {
      */
     await entrar(page, "medico");
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto("/padron");
+    await page.goto("/pacientes");
     await esperarPantalla(page);
 
     const boton = page.getByRole("button", { name: "+ Registrar paciente" });
@@ -153,7 +153,7 @@ test.describe("Estado de cada asiento de la evolución", () => {
       titulo: "Ingresó por guardia",
     });
     await conHistoria(page, h);
-    await page.goto(`/historia/${CIUDADANO}`);
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
     await esperarPantalla(page);
 
     await expect(page.getByText("Sin firmar · borrador")).toBeVisible();
@@ -184,7 +184,7 @@ test.describe("Estado de cada asiento de la evolución", () => {
       },
     );
 
-    await page.goto(`/historia/${CIUDADANO}`);
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
     await esperarPantalla(page);
 
     // Las acciones van EN la tarjeta del borrador: el «Editar» del panel de
@@ -213,7 +213,7 @@ test.describe("Estudios de la historia", () => {
      */
     await entrar(page, "medico");
     await conHistoria(page, historiaDePrueba());
-    await page.goto(`/historia/${CIUDADANO}?tab=estudios`);
+    await page.goto(`/pacientes/${CIUDADANO}?tab=estudios`);
     await esperarPantalla(page);
 
     await expect(page.getByText("Pendiente", { exact: true })).toBeVisible();
@@ -226,7 +226,7 @@ test.describe("Estudios de la historia", () => {
     // usar para nada.
     await entrar(page, "medico");
     await conHistoria(page, historiaDePrueba());
-    await page.goto(`/historia/${CIUDADANO}`);
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
     await esperarPantalla(page);
 
     await expect(page.getByText("estudios · 1 pendiente")).toBeVisible();
@@ -265,7 +265,7 @@ test.describe("Alta de paciente duplicado", () => {
       },
     );
 
-    await page.goto("/historia?nuevo=1");
+    await page.goto("/pacientes?nuevo=1");
     await esperarPantalla(page);
     await page.getByLabel("Documento").fill("30.111.222");
 

@@ -2,6 +2,24 @@
 
 Lenguaje del sistema para los procesos asistenciales y su gestión administrativa.
 
+## Pacientes y registros
+
+**Paciente**:
+Persona registrada en una institución para recibir atención. Cada institución registra a sus pacientes por separado.
+_Evitar_: Ciudadano, afiliado.
+
+**Padrón de pacientes**:
+Conjunto de pacientes registrados en una institución. Es distinto del padrón de afiliados del financiador.
+
+**Ficha administrativa**:
+Identificación, domicilio, cobertura administrativa y consentimiento de un paciente. Se consulta sin acceso a datos clínicos.
+
+**Historia clínica**:
+Registro clínico de un paciente en una institución: evolución, antecedentes, estudios y recetas. Se abre con su primera atención registrada.
+
+**Paciente sin historia clínica**:
+Paciente registrado que todavía no tiene una atención registrada. Tiene ficha administrativa, pero no historia clínica.
+
 ## Finanzas y cobertura
 
 **Financiador**:
@@ -15,6 +33,10 @@ Afiliación elegida al ingresar a un caso asistencial. Se conserva durante ese c
 
 **Padrón de afiliados del financiador**:
 Conjunto de afiliaciones administrado por el financiador. Incluye personas que todavía no fueron atendidas en un hospital de Salud.
+
+**Ficha del afiliado**:
+Consulta del financiador sobre una afiliación de su padrón que reúne las prestaciones y autorizaciones de esa persona en los hospitales dentro de su alcance. No incluye historia clínica ni el texto de las justificaciones.
+_Evitar_: Historia clínica del afiliado, resumen clínico.
 
 **Carga incremental del padrón**:
 Incorporación o actualización de las afiliaciones incluidas en una carga. No realiza bajas y conserva las afiliaciones omitidas.
@@ -105,6 +127,10 @@ Persona de Finanzas designada por un hospital, con autorización expresa para de
 **Resolución de un saldo pendiente**:
 Decisión registrada que cierra la revisión porque el hospital asume el importe o porque el paciente o financiador acepta expresamente pagarlo, con respaldo para la prestación y el importe. Conserva el historial; el cobro se registra cuando ocurre.
 
+**Solicitud manual de autorización**:
+Pedido de autorización previa que el financiador registra a partir de un requerimiento directo, sin que lo origine un caso de un hospital. Se refiere a una prestación futura en una institución con convenio vigente y, una vez aprobada, se usa como cualquier otra autorización cuando esa institución realiza la prestación. El propio financiador actúa como solicitante y la institución la conoce recién al atender. No documenta autorizaciones de prestaciones ya realizadas.
+_Evitar_: Autorización retroactiva.
+
 **Cargo**:
 Importe atribuido a un responsable de pago por una prestación realizada.
 _Evitar_: Cobro, costo interno.
@@ -138,3 +164,20 @@ _Evitar_: Factura emitida, sin aclarar por quién.
 
 **Contraparte de la factura**:
 Institución o afiliado que emite una factura recibida o recibe una factura emitida por el financiador. Puede estar vinculada a un convenio o a una afiliación del financiador, o identificarse sólo por su nombre.
+
+## Gestión institucional
+
+**Requiere atención**:
+Pendientes que la persona puede resolver desde su rol en la institución activa. Se agrupan en pendientes de configuración, que son pasos de puesta en marcha sin completar, y alertas de operación, que son casos urgentes activos, una espera promedio de 30 minutos o más, y turnos pasados sin presente ni ausente registrado.
+_Evitar_: Alertas a secas, porque no distingue configuración de operación.
+
+**Pendiente de configuración**:
+Paso de puesta en marcha que la institución todavía no completó, como publicar un flujo o cargar horarios de una agenda.
+
+**Alerta de operación**:
+Situación de la atención en curso que requiere que alguien intervenga, calculada sobre los datos de la institución activa.
+## Agenda y turnos
+
+**Agenda**:
+Lo que se reserva en un horario: un profesional o un recurso, como un equipo o un consultorio. Se elige por su nombre, sea de profesional o de recurso.
+_Evitar_: Profesional, para referirse a la agenda; un profesional puede no tener agenda y un recurso no es un profesional.

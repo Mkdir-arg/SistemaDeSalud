@@ -1,4 +1,4 @@
-"""Finanzas y costos de un hospital ficticio: Hospital General Los Aromos.
+"""Escenario económico ficticio reutilizable por un comando de carga.
 
 Qué carga
 ---------
@@ -24,7 +24,7 @@ Requisitos
 ----------
 - PostgreSQL migrado.
 - `ENTORNO` distinto de `produccion`.
-- Que Los Aromos no esté cargado. Para rehacerlo se vacía la base con
+- Que el escenario no esté cargado. Para rehacerlo se vacía la base con
   `seed_entorno_demo`: el escenario no se borra ni se mezcla por partes.
 
 Los usuarios toman la clave de `DEMO_PASSWORD` (ver `apps.demo.claves`).
@@ -72,16 +72,10 @@ from apps.finanzas.services import (
 )
 
 
-NOMBRE = "Hospital General Los Aromos"
 # Meses del escenario, por distancia al mes en curso.
 ACTUAL, ANTERIOR, REVISION = 0, -1, -5
 CANTIDAD_DE_MESES = 12
 CENTAVOS = Decimal("0.01")
-AREAS = (
-    ("CM", "Clínica médica", "Consulta de clínica médica", "Lucía", "Ferreyra", "lucia.ferreyra", "76841", 15000, 1000, 30000),
-    ("CAR", "Cardiología", "Consulta cardiológica", "Andrés", "Molina", "andres.molina", "82316", 22000, 1500, 45000),
-    ("IMG", "Diagnóstico por imágenes", "Radiografía digital de tórax", "Valeria", "Costa", "valeria.costa", "91427", 7000, 3000, 35000),
-)
 CONCEPTOS = (
     ("ELEC", "Electricidad", "Cooperativa Eléctrica del Bosque"),
     ("LIMP", "Limpieza de espacios asistenciales", "Higiene Integral del Sur"),
@@ -109,42 +103,19 @@ FACTORES_HISTORICOS = {
 }
 # Atenciones del mes en curso: (día nominal, índice de paciente) por área.
 ATENCIONES_DEL_MES = {"CM": ((4, 2), (8, 1), (11, 4)), "CAR": ((10, 0), (11, 6)), "IMG": ((5, 8), (14, 10))}
-PACIENTES = (
-    ("Clara", "Benítez"), ("Daniel", "Peralta"), ("Julia", "Acosta"),
-    ("Roberto", "Ledesma"), ("Inés", "Quiroga"), ("Esteban", "Ponce"),
-    ("Marta", "Villalba"), ("Hugo", "Cabrera"), ("Natalia", "Soria"),
-    ("Federico", "Almada"), ("Beatriz", "Correa"), ("Julián", "Vera"),
-    ("Alicia", "Figueroa"), ("Gabriel", "Pereyra"), ("Cecilia", "Luna"),
-    ("Pablo", "Arce"), ("Silvia", "Godoy"), ("Marcos", "Medina"),
-    ("Laura", "Oviedo"), ("Sergio", "Páez"), ("Elisa", "Roldán"),
-    ("Tomás", "Navarro"), ("Graciela", "Rivero"), ("Diego", "Bustamante"),
-    ("Teresa", "Ibarra"), ("Adrián", "Franco"), ("Mónica", "Sosa"),
-    ("Ramiro", "Oliva"), ("Patricia", "Bustos"), ("Nicolás", "Agüero"),
-)
 
 
 def dinero(valor):
     return Decimal(str(valor)).quantize(CENTAVOS)
 
 
-class Command(BaseCommand):
-    help = "Carga las finanzas y costos de Los Aromos: doce meses que terminan hoy."
+class EscenarioEconomico(BaseCommand):
+    """Base sin identidad predeterminada; cada comando declara sus personas y áreas."""
 
-    # Identidad del escenario. `seed_finanzas_central` carga el mismo año
-    # económico dentro de Hospital Central cambiando sólo esto.
-    NOMBRE = NOMBRE
-    DOMINIO = "losaromos.test"
-    # Espacio de las claves de idempotencia de pagos y cuentas: dos escenarios
-    # en la misma base no pueden compartir claves.
-    ESPACIO = "los-aromos"
-    PREFIJO_PACIENTE, PREFIJO_DOCUMENTO = "LA", "FIC"
-    AREAS = AREAS
-    PACIENTES = PACIENTES
-    PERSONAL = {
-        "admin": ("Elena", "Rivas", "elena.rivas"),
-        "configurador": ("Mateo", "Salvatierra", "mateo.salvatierra"),
-        "administrativa": ("Paula", "Benítez", "paula.benitez"),
-    }
+    COMANDO = None
+    NOMBRE = DOMINIO = ESPACIO = None
+    PREFIJO_PACIENTE = PREFIJO_DOCUMENTO = None
+    AREAS = PACIENTES = PERSONAL = None
 
     def clave(self, texto):
         return uuid5(NAMESPACE_URL, f"{self.ESPACIO}/{texto}")
@@ -153,16 +124,13 @@ class Command(BaseCommand):
         return Institucion.objects.filter(nombre=self.NOMBRE).exists()
 
     def _crear_institucion(self):
-        return Institucion.objects.create(
-            nombre=self.NOMBRE, tipo="Hospital general",
-            direccion="Av. de los Eucaliptos 1450 · Villa del Arroyo (localidad ficticia)",
-        )
+        raise NotImplementedError
 
     def add_arguments(self, parser):
         parser.add_argument("--salida", help="Archivo JSON nuevo para la guía; nunca sobrescribe otro archivo.")
 
     def handle(self, *args, **options):
-        exigir_entorno_de_prueba("seed_los_aromos")
+        exigir_entorno_de_prueba(self.COMANDO)
         if connection.vendor != "postgresql":
             raise CommandError("La carga requiere PostgreSQL para verificar transacciones y bloqueo exclusivo.")
         salida = Path(options["salida"]).resolve() if options.get("salida") else None
@@ -402,9 +370,9 @@ class Command(BaseCommand):
                         self._movimiento(cuenta, cuenta.importe_original, mes.replace(day=27), f"MV-{mes:%Y%m}-{codigo}-{indice + 1:02d}")
                     elif codigo == "CAR" and indice == 0:
                         primero, segundo = self.cal.dia(ACTUAL, 10), self.cal.dia(ACTUAL, 12)
-                        self._movimiento(cuenta, 15000, primero, self._referencia("MV", primero, "CLARA-01"))
-                        self._movimiento(cuenta, 10000, segundo, self._referencia("MV", segundo, "CLARA-02"), aprobado=False)
-                        self.escenarios["cargo_clara_benitez"] = cuenta
+                        self._movimiento(cuenta, 15000, primero, self._referencia("MV", primero, "CAR-PARCIAL-01"))
+                        self._movimiento(cuenta, 10000, segundo, self._referencia("MV", segundo, "CAR-PARCIAL-02"), aprobado=False)
+                        self.escenarios["cargo_consulta_cardiologia"] = cuenta
                     elif codigo == "CM" and indice == 2:
                         self.escenarios["cargo_sin_cobro"] = cuenta
                     else:
@@ -477,7 +445,7 @@ class Command(BaseCommand):
             )
             preview = previsualizar_reintegro(**parametros)
             reintegrar_movimiento(
-                **parametros, clave=self.clave("devolucion-daniel-peralta"),
+                **parametros, clave=self.clave("devolucion-consulta-clinica"),
                 version_esperada=preview["version_esperada"], pendiente_esperado=preview["pendiente_anterior"],
             )
         self.casos_abiertos = []
@@ -515,7 +483,7 @@ class Command(BaseCommand):
             }
         esperado = {
             "electricidad_mes_en_curso": ("120000.00", "60000.00", "60000.00", "20000.00", "40000.00"),
-            "cargo_clara_benitez": ("45000.00", "15000.00", "30000.00", "10000.00", "20000.00"),
+            "cargo_consulta_cardiologia": ("45000.00", "15000.00", "30000.00", "10000.00", "20000.00"),
             "cargo_con_devolucion": ("25000.00", "25000.00", "0.00", "0.00", "0.00"),
         }
         campos = ("obligacion_actual", "registrado_neto", "pendiente", "por_aprobar", "disponible_registro")

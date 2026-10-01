@@ -47,6 +47,10 @@ Ocho secciones en `/financiadores/:seccion`, más el catálogo común para plata
 | Convenios | Proponer, aceptar, rechazar y cerrar convenios; fijar el plazo de respuesta a autorizaciones |
 | Usuarios | Administrar los operadores de la propia organización (sólo `admin`) |
 
+### Ficha del afiliado
+
+Desde cada fila del padrón, la ficha reúne la cabecera de afiliación, prestaciones y autorizaciones ya visibles para el financiador en los hospitales. No expone historia clínica, evoluciones, estudios, recetas ni justificaciones en sus listas. Las consultas registran el evento administrativo y los accesos clínicos por persona e institución realmente devueltos. El CSV de prestaciones conserva el alcance de la ficha, el límite de exportación y la entrega íntegra tras auditar.
+
 ### Lado hospital
 
 Pantalla **Coberturas y copagos** (`/finanzas/coberturas`), con cuatro pestañas
@@ -99,6 +103,28 @@ descargar el listado de rechazos.
 | Distribución del cobro | `pendiente` (de resolución administrativa) · `resuelta` · `arancel_pendiente` · `evaluacion_pendiente` · `autorizacion_pendiente` · `sin_cobro` |
 | Solicitud de autorización | `pendiente` · `observada` · `aprobada` · `rechazada` · `vencida` · `anulada` |
 | Uso de una autorización | `comprometido` · `consumido` · `liberado` |
+
+### Solicitud manual de autorización
+
+Un administrador u operador activo del financiador puede cargar desde su bandeja una
+preautorización para una prestación **futura**, sin caso hospitalario. Elige afiliado
+vigente, institución con convenio vigente, prestación común activa cuya regla del
+plan requiere autorización, cantidad, motivo y, opcionalmente, urgencia. No puede
+crear otra solicitud manual pendiente u observada para la misma combinación de
+afiliado, convenio y prestación común. El hospital no ve estas solicitudes en su
+bandeja; la evaluación de cobertura sí puede encontrar una aprobación para esa
+institución, afiliado y prestación cuando se registra la atención.
+
+La solicitud nace pendiente y usa las mismas decisiones administrativas: observar,
+aprobar o rechazar. La aprobación no registra una atención ni reliquida hechos
+anteriores; sólo se consume en la institución elegida, dentro de la vigencia y
+cantidad aprobadas. Una manual no tiene plazo de respuesta, pero una aprobada pasa
+a vencida cuando termina su vigencia. El administrador u operador del financiador
+puede reenviar una observada o anular una pendiente u observada. El auditor,
+plataforma y el personal hospitalario no pueden hacerlo. Resolver exige la
+designación `resuelve_autorizaciones`, incluso para quien cargó la solicitud. Se
+acepta que esa persona resuelva su propia carga; autor y decisión quedan trazados
+en el historial.
 
 El historial de una afiliación registra `actualizacion`, `finalizacion` o
 `reactivacion`, siempre con motivo y autor.
@@ -207,7 +233,7 @@ Si no hay ninguna, la prestación no está cubierta por esa cobertura.
 - `/financiadores/activar` — alta de la cuenta de un usuario invitado, sin sesión.
 - `/finanzas/coberturas` — «Coberturas y copagos» del hospital.
 - Panel de cobertura, aceptación y autorizaciones dentro de `/casos/:id`.
-- Afiliaciones vigentes en la ficha del padrón, `/padron/:id`.
+- Afiliaciones vigentes en la ficha del paciente, `/pacientes/:id` (pestaña Datos).
 
 ## Entidades y endpoints
 
@@ -215,7 +241,7 @@ Si no hay ninguna, la prestación no está cubierta por esa cobertura.
 |---|---|
 | `financiadores` | `planes`, `editar-plan`, `reglas`, `catalogo`, `padron`, `corregir-identidad`, `finalizar-afiliacion`, `reactivar-afiliacion`, `consumos`, `corregir-consumo`, `convenios`, `aceptar-convenio`, `rechazar-convenio`, `cerrar-convenio`, `plazo-autorizacion`, `aranceles`, `actividad`, `instituciones`, `usuarios`, `activar`, `importaciones`, `confirmar-importacion`, `plantilla`, `rechazos`, `resumen` |
 | `coberturas` | `opciones`, `configurar`, `vincular-prestacion`, `convenio`, `aceptar-convenio`, `cerrar-convenio`, `rechazar-convenio`, `arancel`, `afiliados`, `afiliacion`, `evaluar`, `reservar`, `liberar`, `resolver`, `completar`, `recuperables`, `revisar-contexto`, `recuperar` |
-| `autorizaciones-cobertura` | `contexto`, `resolver`, `reenviar`, `anular` |
+| `autorizaciones-cobertura` | `contexto`, `manual`, `opciones-manual`, `resolver`, `reenviar`, `anular` |
 | `seguimiento-cobros` | Cuentas por cobrar, pendientes administrativos y atenciones sin captura |
 | Acciones del caso | `casos/{id}/cobertura`, `cobertura-afiliacion`, `cobertura-evaluar`, `cobertura-confirmar` |
 

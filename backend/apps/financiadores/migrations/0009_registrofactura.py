@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('financiadores', '0007_responsabilidad_autorizaciones'),
+        ('financiadores', '0008_solicitudautorizacion_origen_and_more'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

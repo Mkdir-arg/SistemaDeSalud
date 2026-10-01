@@ -2,7 +2,7 @@
 
 Recorrido de **20 minutos** sobre <http://localhost:8082>, Hospital Central.
 
-> Desde el 30/09 el circuito de financiadores se carga sobre **Hospital Central**, en su área *Consultorios externos*, y no sobre Los Aromos. Los ids de área y de caso que cita esta guía cambian en cada carga: buscalos por nombre.
+> El circuito de financiadores se carga sobre **Hospital Central**, en su área *Consultorios externos*. Los ids de área y de caso que cita esta guía cambian en cada carga: buscalos por nombre.
 Todo verificado contra la app el **18/09/2026**.
 
 > **Fechas relativas desde el #65.** La carga (`seed_entorno_demo`) ahora arma doce meses que

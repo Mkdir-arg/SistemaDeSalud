@@ -196,7 +196,7 @@ function Bandas({ d, dd, areaActiva, onIngresar, onBuscarEstado }) {
                   <div className="text-md font-bold">{it.flujo_titulo}</div>
                   <div className="text-base text-texto-tenue">{it.area_nombre} · empieza en «{it.paso}»</div>
                 </div>
-                <Button onClick={() => onIngresar(it)}>
+                <Button variant="secondary" onClick={() => onIngresar(it)}>
                   <Icon name="enter" size={15} /> Ingresar paciente
                 </Button>
               </Card>
@@ -208,7 +208,7 @@ function Bandas({ d, dd, areaActiva, onIngresar, onBuscarEstado }) {
       <Seccion titulo="Accesos rápidos">
         <div className="flex flex-wrap gap-3">
           <AccesoRapido icon="search" label="Estado de un paciente" hint="Buscar su ingreso o expediente" onClick={onBuscarEstado} />
-          <AccesoRapido icon="clipboard" label="Historias clínicas" hint="Buscar, ver y crear expedientes" onClick={() => navigate("/historia")} />
+          <AccesoRapido icon="idCard" label="Pacientes" hint="Buscar, registrar o consultar pacientes" onClick={() => navigate("/pacientes")} />
         </div>
       </Seccion>
 
@@ -488,12 +488,12 @@ function TarjetaTarea({ b }) {
                     </span>
                   </button>
                   {c.mio ? (
-                    <Button size="sm" onClick={() => navigate(`/casos/${c.id}`)}>Continuar</Button>
+                    <Button size="sm" variant="secondary" onClick={() => navigate(`/casos/${c.id}`)}>Continuar</Button>
                   ) : enCurso ? (
                     <Badge tone="neutral">Tomado</Badge>
                   ) : (
                     <Button
-                      size="sm" variant="secondary" disabled={tomar.isPending}
+                      size="sm" disabled={tomar.isPending}
                       onClick={() => tomar.mutate(c.id, { onSuccess: () => navigate(`/casos/${c.id}`) })}
                     >
                       {tomar.isPending ? "…" : "Tomar y abrir"}
@@ -595,7 +595,7 @@ function BarraBox({ f }) {
               </option>
             ))}
           </Select>
-          <Button disabled={!boxSel || ocupado} onClick={() => ocupar.mutate(boxSel)}>
+          <Button variant="secondary" disabled={!boxSel || ocupado} onClick={() => ocupar.mutate(boxSel)}>
             {ocupado ? "…" : "Ocupar box"}
           </Button>
         </>
@@ -629,7 +629,7 @@ function TarjetaFila({ f }) {
 
       <div className="flex items-center gap-2.5 border-t border-division bg-superficie-2 px-lg py-3">
         {f.mi_box ? (
-          <Button disabled={!siguiente || llamar.isPending} onClick={() => alLlamar(siguiente)}>
+          <Button variant="secondary" disabled={!siguiente || llamar.isPending} onClick={() => alLlamar(siguiente)}>
             {llamar.isPending
               ? "Llamando…"
               : siguiente
@@ -762,7 +762,7 @@ function ModalEstadoPaciente({ institucionId, onIr, onClose }) {
         <div className="flex flex-col gap-3.5">
           <PacienteElegido paciente={paciente} onCambiar={() => setPaciente(null)} />
 
-          <Button variant="secondary" onClick={() => onIr(`/historia/${paciente.id}`)}>
+          <Button variant="secondary" onClick={() => onIr(`/pacientes/${paciente.id}?tab=evolucion`)}>
             <Icon name="clipboard" size={15} /> Ver expediente (historia clínica)
           </Button>
 

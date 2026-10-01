@@ -230,7 +230,7 @@ function InstitucionesView() {
           {
             key: "accion", label: "", className: "px-2 text-right", fija: true,
             render: (i) => (
-              <Button onClick={() => entrar(i)} className="inline-flex h-9 items-center gap-1.5 px-lg">
+              <Button variant="secondary" onClick={() => entrar(i)} className="inline-flex h-9 items-center gap-1.5 px-lg">
                 Ingresar <Icon name="enter" size={15} />
               </Button>
             ),

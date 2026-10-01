@@ -3,7 +3,7 @@
 Qué carga
 ---------
 Obras sociales, planes, reglas, convenios, aranceles acordados, padrón, consumos
-externos, autorizaciones previas y atenciones con copago, SOBRE Los Aromos (o la
+externos, autorizaciones previas y atenciones con copago, SOBRE Hospital Central (o la
 institución que se indique), sin tocar sus datos anteriores. Las fechas siguen el
 calendario relativo de `apps.demo.calendario`.
 
@@ -21,8 +21,8 @@ Por qué un área nueva y no las existentes
 Las atenciones nuevas entran en un área propia («Consultorios externos») creada
 por este comando. No es una decisión estética: el reparto distribuye cada gasto
 entre las atenciones elegibles DE SU ÁREA, así que sumar atenciones a un área con
-gastos repartidos le cambia la porción a todas las demás. En Los Aromos eso
-reescribiría en silencio las cifras por atención de `seed_los_aromos`. El área
+gastos repartidos le cambia la porción a todas las demás. En Central eso
+reescribiría en silencio las cifras por atención de `seed_finanzas_central`. El área
 nueva no tiene gastos ni reglas de reparto, así que no entra en ningún reparto
 existente y los importes anteriores quedan intactos.
 
@@ -70,7 +70,7 @@ from apps.financiadores.services import registrar_afiliado, registrar_consumo_ex
 from apps.financiadores.facturas import clave_duplicado
 
 
-INSTITUCION_POR_DEFECTO = "Hospital General Los Aromos"
+INSTITUCION_POR_DEFECTO = "Hospital Central"
 CENTAVOS = Decimal("0.01")
 CANTIDAD_DE_MESES = 12
 # Días nominales del primer mes: la configuración va el 5 y el padrón el 8, así
@@ -91,8 +91,8 @@ PRESTACIONES = (
 FINANCIADORES = (
     {
         "slug": "mutual-del-valle",
-        # Mismo nombre que ya figura como contraparte de cobro en Los Aromos: el
-        # escenario anterior la nombraba sin que existiera como financiador.
+        # Mismo nombre que ya figura como contraparte de cobro en Central: el
+        # escenario económico la nombra sin que exista aún como financiador.
         "nombre": "Mutual del Valle",
         "tipo": "mutual",
         "dominio": "mutualdelvalle.test",
@@ -224,7 +224,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--institucion", type=int, default=None,
-                            help="Id de la institución destino. Por defecto, la de Los Aromos.")
+                            help="Id de la institución destino. Por defecto, Hospital Central.")
         parser.add_argument("--nombre-institucion", default=None,
                             help="Nombre de la institución destino, en lugar del id (así la pide seed_entorno_demo).")
         parser.add_argument("--salida", help="Archivo JSON nuevo con el manifiesto; nunca sobrescribe otro.")
@@ -286,7 +286,7 @@ class Command(BaseCommand):
             self.institucion = Institucion.objects.filter(nombre=INSTITUCION_POR_DEFECTO).first()
             if not self.institucion:
                 raise CommandError(
-                    "No existe «%s». Cargala primero con seed_los_aromos o indicá --institucion." % INSTITUCION_POR_DEFECTO
+                    "No existe «%s». Cargala primero con seed_guardia y seed_roles o indicá --institucion." % INSTITUCION_POR_DEFECTO
                 )
         self.admin = Usuario.objects.filter(
             membresias__institucion=self.institucion,
@@ -322,7 +322,7 @@ class Command(BaseCommand):
                     "Todos los datos de este entorno son ficticios."
                 ),
             )
-            # Del mismo dominio que el hospital: en Los Aromos, @losaromos.test.
+            # Del mismo dominio que el hospital destino.
             dominio = self.admin.email.rsplit("@", 1)[-1]
             self.medico = Usuario.objects.create_user(
                 "irene.bustos@%s" % dominio, password, nombre="Irene", apellido="Bustos",

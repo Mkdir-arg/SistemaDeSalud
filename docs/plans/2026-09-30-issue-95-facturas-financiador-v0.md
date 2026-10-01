@@ -26,7 +26,7 @@ Términos: ver «Registro de factura», «Factura recibida», «Factura emitida 
 
 ## 3. Decisiones técnicas del plan (recomendación del agente, sujetas a aprobación del plan)
 
-- **Modelo nuevo** `RegistroFactura` en `apps/financiadores`, con migración `0008`. FK a `Financiador`, `Convenio` (null) y `Afiliado` (null); campos de D5; `creado_por`/`creado`/`actualizado`. Adjunto como metadatos propios (ruta, nombre original, content_type, tamaño, sha256, subido_por, fecha) en el mismo modelo o en uno 1:1; no reutilizar `ArchivoClinico` porque está atado a institución.
+- **Modelo nuevo** `RegistroFactura` en `apps/financiadores`, con migración `0009` (renumerada al integrar `main`, que ya trae `0008` del #94). FK a `Financiador`, `Convenio` (null) y `Afiliado` (null); campos de D5; `creado_por`/`creado`/`actualizado`. Adjunto como metadatos propios (ruta, nombre original, content_type, tamaño, sha256, subido_por, fecha) en el mismo modelo o en uno 1:1; no reutilizar `ArchivoClinico` porque está atado a institución.
 - **Clave de duplicado**: para contraparte vinculada, el id del convenio/afiliado; sin vínculo, nombre normalizado (minúsculas, espacios colapsados, sin tildes) más identificador. Implementado con una restricción o verificación en transacción; la condición de carrera se cubre con restricción única sobre un campo de clave derivada.
 - **API** como acciones del `FinanciadorViewSet`: `GET/POST /api/financiadores/{pk}/facturas/`, `GET/PATCH …/facturas/{id}/`, `POST/GET …/facturas/{id}/adjunto/`. Permisos por `requerir_financiador` (`escritura=True` para escribir). Querysets siempre filtrados por financiador; vínculos validados contra el mismo financiador. `Cache-Control: private, no-store`.
 - **Auditoría** con `services.auditar` (`EventoCobertura`): alta, edición (campos cambiados en `motivo`), alta de adjunto y cada descarga.
@@ -60,7 +60,7 @@ Emisión fiscal, CAE/ARCA, liquidación, conciliación, pagos, órdenes de pago,
 - **Sensibilidad de reintegros**: comprobantes de afiliados pueden revelar prestaciones. Mitigación: sin visibilidad a terceros, descarga auditada, `no-store`.
 - **Lectura fiscal errónea en la demo**: mitigada por el aviso fijo y ausencia de CAE/estados.
 - **Conflicto con #88** en guías comerciales: cambios limitados a líneas puntuales.
-- **Migración**: aditiva (tabla nueva); rollback revirtiendo `0008` sin afectar datos existentes.
+- **Migración**: aditiva (tabla nueva); rollback con `migrate financiadores 0008`, que borra sólo los registros de factura.
 
 ## 7. Validación prevista
 

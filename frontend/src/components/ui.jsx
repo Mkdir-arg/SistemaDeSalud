@@ -213,14 +213,12 @@ export function Mono({ className, children, ...props }) {
 export function Avatar({ nombre, i = 0, size = 32 }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-pill font-bold text-white"
+      className="inline-flex shrink-0 items-center justify-center rounded-pill bg-accent-fuerte font-bold text-sobre-accent"
       style={{
         width: size,
         height: size,
         fontSize: size * 0.38,
-        // Paleta rotativa: el índice es dinámico, así que no puede ser una clase
-        // (Tailwind no vería `bg-avatar-${i}`). La variable sí sigue al tema.
-        background: `var(--color-avatar-${(i % 6) + 1})`,
+        // `i` se conserva por compatibilidad; todos los avatares usan el mismo acento.
       }}
     >
       {iniciales(nombre)}
