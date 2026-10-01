@@ -13,6 +13,7 @@ import { fechaHora, plural } from "@/lib/format";
 import ImportacionFinanciador from "./ImportacionFinanciador";
 import ActividadFinanciador from "./ActividadFinanciador";
 import AutorizacionesFinanciador from "./AutorizacionesFinanciador";
+import FacturasFinanciador from "./FacturasFinanciador";
 import { POR_PAGINA } from "@/api/queries";
 
 const ROLES = { admin: "Administración", operador: "Operación", auditor: "Sólo lectura" };
@@ -24,6 +25,7 @@ const SECCIONES = [
   { key: "padron", label: "Padrón de afiliados", icon: "idCard" },
   { key: "consumos", label: "Consumos externos", icon: "fileText" },
   { key: "autorizaciones", label: "Autorizaciones", icon: "clipboard" },
+  { key: "facturas", label: "Facturas", icon: "wallet" },
   { key: "actividad", label: "Actividad en hospitales", icon: "activity" },
   { key: "convenios", label: "Convenios", icon: "building" },
   { key: "usuarios", label: "Usuarios", icon: "users" },
@@ -73,7 +75,7 @@ export default function PortalFinanciadores() {
           className={`whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold ${item.key === seccion ? "bg-accent-50 text-accent" : "text-texto-suave hover:bg-superficie-2"}`}>{item.label}</Link>)}
       </nav>
     </>}
-    {organizaciones.isLoading ? <Spinner label="Consultando financiadores…" /> : organizaciones.error ? <ErrorPortal error={organizaciones.error} reintentar={organizaciones.refetch} /> : organizacion ? <EspacioFinanciador key={`${user.id}:${organizacion.id}:${seccion}`} organizacion={organizacion} usuarioId={user.id} plataforma={plataforma} tab={seccion} /> : plataforma && seccion === "catalogo" && !seleccion ? <CatalogoGlobal usuarioId={user.id} /> : <Card><EstadoVacio titulo={seleccion ? "No tenés acceso al financiador seleccionado" : "Todavía no tenés un financiador asignado"} detalle={seleccion && lista.length ? "Elegí un financiador disponible en el directorio." : "El administrador de tu organización puede habilitar tu acceso."} /></Card>}
+    {organizaciones.isLoading ? <Spinner label="Consultando financiadores…" /> : organizaciones.error ? <ErrorPortal error={organizaciones.error} reintentar={organizaciones.refetch} /> : organizacion ? seccion === "facturas" ? <FacturasFinanciador key={`${user.id}:${organizacion.id}`} organizacion={organizacion} usuarioId={user.id} /> : <EspacioFinanciador key={`${user.id}:${organizacion.id}:${seccion}`} organizacion={organizacion} usuarioId={user.id} plataforma={plataforma} tab={seccion} /> : plataforma && seccion === "catalogo" && !seleccion ? <CatalogoGlobal usuarioId={user.id} /> : <Card><EstadoVacio titulo={seleccion ? "No tenés acceso al financiador seleccionado" : "Todavía no tenés un financiador asignado"} detalle={seleccion && lista.length ? "Elegí un financiador disponible en el directorio." : "El administrador de tu organización puede habilitar tu acceso."} /></Card>}
   </div>;
   if (plataforma) return <Shell plataforma>{cuerpo}</Shell>;
   return <Shell financiador={{
