@@ -296,6 +296,12 @@ test("Inicio distingue un error de actividad del valor cero y permite reintentar
   await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("0");
 });
 
+test("Actividad nombra las prestaciones realizadas", async ({ page }) => {
+  await escenario(page);
+  await page.goto("/financiadores/actividad?financiador=21");
+  await expect(page.getByLabel("Resumen de actividad")).toContainText("Prestaciones realizadas");
+});
+
 test("menú institucional y acceso directo respetan el rol de plataforma", async ({ page }) => {
   await escenario(page, { mixto: true, plataforma: true });
   await page.goto("/inicio");

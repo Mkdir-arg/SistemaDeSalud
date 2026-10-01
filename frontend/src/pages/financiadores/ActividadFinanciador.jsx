@@ -54,7 +54,7 @@ function ResumenActividad({ resumen, generado }) {
   if (!resumen) return <p role="status" className="text-sm text-texto-debil">El resumen no está disponible.</p>;
   const indicadores = [
     ["Importe asignado", importeARS(resumen.importe_asignado), "Arancel aplicable × cobertura"],
-    ["Realizadas", resumen.realizadas ?? "—", `De ${resumen.registros ?? "—"} registros`],
+    ["Prestaciones realizadas", resumen.realizadas ?? "—", `De ${resumen.registros ?? "—"} registros`],
     ["Reservas abiertas", resumen.reservadas ?? "—", "Pendientes de realización o liberación"],
     ["Con discrepancia", resumen.discrepancias ?? "—", "Requieren revisión"],
   ];
