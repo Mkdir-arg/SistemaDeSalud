@@ -49,7 +49,9 @@ Ocho secciones en `/financiadores/:seccion`, más el catálogo común para plata
 
 ### Ficha del afiliado
 
-Desde cada fila del padrón, la ficha reúne la cabecera de afiliación, prestaciones y autorizaciones ya visibles para el financiador en los hospitales. No expone historia clínica, evoluciones, estudios, recetas ni justificaciones en sus listas. Las consultas registran el evento administrativo y los accesos clínicos por persona e institución realmente devueltos. El CSV de prestaciones conserva el alcance de la ficha, el límite de exportación y la entrega íntegra tras auditar.
+Desde cada fila del padrón, la ficha reúne la cabecera de afiliación, el resumen de prestaciones, cupos del período, historial de la afiliación y autorizaciones ya visibles, con las pendientes destacadas. El cupo usa la regla aplicable al plan actual y el mismo cálculo de disponibilidad de la evaluación de cobertura: usos en Salud, consumos externos y reservas activas del mes o año calendario. Sin plan o sin regla aplicable con tope no se muestra cupo. Las listas administrativas no incluyen justificaciones. El CSV conserva exclusivamente prestaciones, su límite de exportación y la entrega íntegra tras auditar.
+
+La **Historia clínica del financiador** está disponible sólo para usuarios designados para resolver autorizaciones. Lista casos cuya afiliación actual corresponde al afiliado y cuyo hospital está bajo convenio vigente, o casos con una reserva histórica pendiente visible. Después de escribir un motivo de 10 a 200 caracteres, muestra sólo las evoluciones firmadas de ese caso. Cada consulta deja un acceso clínico y un evento auditado; el hospital puede ver el motivo. No muestra alergias, antecedentes, estudios, recetas, entradas sin firmar ni evoluciones de otros casos.
 
 ### Lado hospital
 
@@ -214,8 +216,7 @@ Si no hay ninguna, la prestación no está cubierta por esa cobertura.
 
 ### Privacidad y alcance
 
-- El financiador ve prestación, fecha, cantidad e importe propio. **No accede a la
-  historia clínica.**
+- El financiador ve prestación, fecha, cantidad e importe propio. Sólo el designado accede a las evoluciones firmadas acotadas de la historia clínica del financiador, con motivo auditado. No accede a alergias, antecedentes, estudios ni recetas.
 - Un financiador no consulta el padrón ni los consumos de otro, ni siquiera para
   detectar un cambio de cobertura.
 - Un usuario con varios ámbitos elige una organización concreta; cada URL,
