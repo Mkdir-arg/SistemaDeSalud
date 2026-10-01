@@ -111,6 +111,12 @@ class ManualApiTests(ManualSetup, APITestCase):
         self.assertEqual([p["id"] for p in respuesta.data["prestaciones"]], [self.comun.pk])
         self.assertEqual([i["id"] for i in respuesta.data["instituciones"]], [self.institucion.pk])
 
+    def test_opciones_aceptan_busqueda_vacia_al_abrir_el_formulario(self):
+        self.client.force_authenticate(self.operador)
+        respuesta = self.client.get(f"{self.url}opciones-manual/", {"financiador": self.financiador.pk, "search": ""})
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual([i["id"] for i in respuesta.data["instituciones"]], [self.institucion.pk])
+
     def test_reenviar_y_anular_solo_financiador_admin_u_operador(self):
         obj = self.manual()
         a.resolver(solicitud=obj, usuario=self.operador, revision=1, decision="observar", motivo="Aclarar", clave=uuid4())
