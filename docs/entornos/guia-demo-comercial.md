@@ -353,7 +353,7 @@ Preguntá: **«¿Cuál de estas preguntas no pueden responder hoy?»** — y cal
 
 | Pregunta | Respuesta honesta |
 |---|---|
-| ¿Factura? | No. No emite facturación fiscal ni concilia bancos. Registra obligaciones y movimientos; la facturación es otro sistema. |
+| ¿Factura? | El portal del financiador registra documentación de facturas recibidas y emitidas por él (versión preliminar). HEN no emite comprobantes fiscales, no valida ante ARCA ni concilia bancos; sus obligaciones y movimientos siguen separados de esos registros. |
 | ¿Se integra con lo que tenemos? | Expone API documentada y una fachada **FHIR** (`Patient`, `Encounter`, `Organization`). |
 | ¿Firma digital? | La firma por rol está y sella la historia. La firma criptográfica con certificado (Ley 25.506) tiene el enganche, **no** el certificador. |
 | ¿La obra social ve la historia clínica? | No. Ve actividad administrativa, y cada consulta suya queda auditada. |

@@ -46,6 +46,15 @@ Lista de verificación. Cada punto tiene una forma concreta de fallar.
 
 ### Variables de entorno
 
+Los adjuntos de registros de facturas del financiador están apagados por defecto
+(`SALUD_FACTURAS_ADJUNTOS=false`). Para habilitarlos, configurá
+`SALUD_FACTURAS_ADJUNTOS=true` y `SALUD_FACTURAS_ADJUNTOS_DIR` en un **volumen
+persistente privado**, accesible al backend y fuera de `MEDIA_ROOT`. No montes ese
+directorio en nginx ni lo sirvas por `/media/`: la descarga requiere autenticación
+y se audita en Django. El arranque rechaza una ruta dentro de `MEDIA_ROOT`.
+Respaldá ese volumen junto con la base; sin persistencia, un redespliegue pierde
+los archivos aunque conserve sus metadatos.
+
 Están todas documentadas en [`.env.example`](../.env.example). Las que no pueden
 quedar en su valor de ejemplo:
 

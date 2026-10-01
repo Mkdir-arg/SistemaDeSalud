@@ -77,8 +77,8 @@ En lenguaje de negocio, sin condicionales. Todo esto funciona y se puede mostrar
 |---|---|
 | **Turnos programados** | **Está construido.** Agendas, cupos, bloqueos, reprogramación y ausentismo. Se puede mostrar |
 | **Farmacia** | **Está construido**, incluida la trazabilidad de lote hasta el paciente |
-| **Facturación** | «HEN no reemplaza el facturador: se integra con el que ya tienen.» Es la respuesta honesta *y* la coherente con el posicionamiento |
-| **Obras sociales** | Cobertura, cupos, copago y cobros **están construidos**. Lo que no hay es facturación fiscal ni conciliación bancaria |
+| **Facturación** | «HEN no reemplaza el facturador. El financiador puede documentar facturas recibidas y emitidas por él en una versión preliminar; HEN no emite ni valida comprobantes fiscales.» |
+| **Obras sociales** | Cobertura, cupos, copago y cobros **están construidos**. También hay documentación preliminar de facturas del financiador; no hay facturación fiscal ni conciliación bancaria |
 | **Historia clínica completa** | Mostrar la que hay: evolución, estudios, recetas, antecedentes. Es real y alcanza |
 | **Integración con nuestro sistema** | Hay API completa y una fachada FHIR de lectura funcionando (pacientes, episodios, instituciones, cobertura). **El conector concreto se define en el relevamiento del piloto** |
 | **Firma digital** | La firma por rol y matrícula **está y es real**: queda registrado quién firmó y con qué matrícula. La firma criptográfica con certificado (Ley 25.506) **no está implementada**; está identificado dónde iría y hace falta que el cliente elija certificador y dispositivo. No decir «está listo, sólo falta el certificado» |
