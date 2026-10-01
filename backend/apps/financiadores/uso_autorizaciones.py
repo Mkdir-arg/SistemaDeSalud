@@ -140,14 +140,13 @@ def aplicar_resolucion(solicitud, usuario=None):
         return
     from .cobros import distribuir
 
+    referencias = Q(uso_autorizacion__solicitud=solicitud) | Q(evaluacion__autorizacion=solicitud.pk)
+    if solicitud.caso_id:
+        referencias |= Q(caso=solicitud.caso, prestacion=solicitud.prestacion,
+            evaluacion__intento_autorizacion=str(solicitud.intento))
     reservas = m.ReservaCobertura.objects.filter(
         afiliado_id=solicitud.afiliado_id, comun_id=solicitud.comun_id,
-    ).filter(
-        Q(uso_autorizacion__solicitud=solicitud)
-        | Q(evaluacion__autorizacion=solicitud.pk)
-        | Q(caso=solicitud.caso, prestacion=solicitud.prestacion,
-            evaluacion__intento_autorizacion=str(solicitud.intento)),
-    ).exclude(estado="liberada").order_by("pk")
+    ).filter(referencias).exclude(estado="liberada").order_by("pk")
     for reserva in reservas:
         realizada = reserva.estado == "realizada" and reserva.hecho_id is not None
         uso = registrar_uso(reserva, consumir=realizada, solicitud=solicitud)

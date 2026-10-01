@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
@@ -249,12 +249,13 @@ function EnlaceActivacion({ ruta, onClose }) {
 
 function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, catalogo, actualizado }) {
   const [parametros, setParametros] = useSearchParams();
+  const filtrosIniciales = useRef(true);
   const planFiltro = ["reglas", "padron"].includes(recurso) ? parametros.get("plan") || "" : "";
   const estadoFiltro = recurso === "padron" ? parametros.get("estado") || "vigentes" : "";
   const convenioFiltro = recurso === "convenios" ? parametros.get("estado") || "activo" : "";
-  const [page, setPage] = useState(1);
-  const [busqueda, setBusqueda] = useState("");
-  const [buscar, setBuscar] = useState("");
+  const [page, setPage] = useState(() => recurso === "padron" ? Math.max(1, Number(parametros.get("page")) || 1) : 1);
+  const [busqueda, setBusqueda] = useState(() => recurso === "padron" ? parametros.get("search") || "" : "");
+  const [buscar, setBuscar] = useState(() => recurso === "padron" ? parametros.get("search") || "" : "");
   const [error, setError] = useState(null);
   const [aceptando, setAceptando] = useState(null);
   const [correccion, setCorreccion] = useState(null);
@@ -272,8 +273,16 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
   useEffect(() => {
     if (page > 1 && (consulta.error?.status === 404 || consulta.isSuccess && page > paginas)) setPage(consulta.error ? 1 : paginas);
   }, [consulta.error, consulta.isSuccess, page, paginas]);
-  useEffect(() => { setPage(1); }, [planFiltro, estadoFiltro, convenioFiltro]);
-  const columnas = columnasDe(recurso, planes, catalogo, organizacion.id);
+  useEffect(() => {
+    if (filtrosIniciales.current) { filtrosIniciales.current = false; return; }
+    setPage(1);
+  }, [planFiltro, estadoFiltro, convenioFiltro]);
+  const fichaQuery = new URLSearchParams({ financiador: organizacion.id });
+  if (planFiltro) fichaQuery.set("plan", planFiltro);
+  if (estadoFiltro) fichaQuery.set("estado", estadoFiltro);
+  if (buscar) fichaQuery.set("search", buscar);
+  if (page > 1) fichaQuery.set("padron_page", page);
+  const columnas = columnasDe(recurso, planes, catalogo, organizacion.id, fichaQuery);
   if (recurso === "consumos" && operador) columnas.push({ key: "corregir", label: "Correcciones", render: (r) => r.corrige ? `Corrige consumo ${r.corrige}` : <Button size="sm" variant="ghost" onClick={() => setCorreccion(r)}>Corregir cantidad</Button> });
   if (recurso === "padron" && operador) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Corregir identidad</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: r.finalizado_en ? "reactivar-afiliacion" : "finalizar-afiliacion", fila: r })}>{r.finalizado_en ? "Reactivar" : "Finalizar"}</Button></div> });
   if (recurso === "usuarios" && admin) columnas.push({ key: "acceso", label: "Acceso", render: (r) => <Button size="sm" variant="ghost" onClick={() => setUsuario(r)}>Cambiar acceso</Button> });
@@ -289,7 +298,7 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
     const nuevos = new URLSearchParams({ financiador: organizacion.id });
     const plan = campo === "plan" ? valor : planFiltro;
     if (plan) nuevos.set("plan", plan);
-    if (recurso === "padron") nuevos.set("estado", campo === "estado" ? valor : estadoFiltro);
+    if (recurso === "padron") { nuevos.set("estado", campo === "estado" ? valor : estadoFiltro); if (buscar) nuevos.set("search", buscar); }
     if (recurso === "convenios") nuevos.set("estado", valor);
     setParametros(nuevos);
   }
@@ -324,7 +333,7 @@ function campoPermisoAutorizaciones(valor = false) {
   return { name: "resuelve_autorizaciones", boolean: true, default: Boolean(valor), render: (checked, onChange) => <div className="flex items-center gap-2"><Checkbox label="Permitir resolver autorizaciones de este financiador" checked={Boolean(checked)} onChange={(e) => onChange(e.target.checked)} /><Ayuda>Concesión explícita para observar, aprobar o rechazar solicitudes. El rol de lectura por sí solo no concede este permiso.</Ayuda></div> };
 }
 
-function columnasDe(recurso, planes, catalogo, financiadorId) {
+function columnasDe(recurso, planes, catalogo, financiadorId, fichaQuery) {
   const nombrePlan = (id) => planes.find((p) => p.id === id)?.nombre || (id ? `Plan ${id}` : "Todos los planes");
   const nombrePrestacion = (id) => catalogo.find((p) => p.id === id)?.nombre || (id ? `Prestación ${id}` : "Todas");
   const codigo = { key: "codigo", label: "Código" };
@@ -338,7 +347,7 @@ function columnasDe(recurso, planes, catalogo, financiadorId) {
     ],
     catalogo: [codigo, { key: "nombre", label: "Prestación" }, { key: "categoria", label: "Tipo" }],
     reglas: [{ key: "prestacion", label: "Prestación", render: (r) => r.prestacion ? nombrePrestacion(r.prestacion) : r.categoria || "Cobertura general" }, { key: "plan", label: "Plan", render: (r) => nombrePlan(r.plan) }, { key: "porcentaje", label: "Cobertura", render: (r) => <>{Number(r.porcentaje).toLocaleString("es-AR")}%{r.requiere_autorizacion && <p className="mt-1 text-xs text-texto-debil">Autorización previa</p>}</> }, { key: "cupo", label: "Tope", render: (r) => r.cupo == null ? "Sin tope" : `${r.cupo} por ${r.periodo === "mes" ? "mes" : "año"} calendario` }, { key: "vigente_desde", label: "Desde", render: (r) => fecha(r.vigente_desde) }],
-    padron: [{ key: "nombre", label: "Afiliado", render: (r) => <><span className="font-medium text-texto">{r.nombre}</span><span className="mt-1 block text-xs text-texto-debil">DNI {documentoParcial(r.documento)}</span></> }, { key: "numero", label: "N.º de afiliado" }, { key: "plan", label: "Plan", render: (r) => r.plan ? nombrePlan(r.plan) : "Sin plan" }, { key: "vigente", label: "Estado", render: (r) => <><Badge tone={r.finalizado_en ? "gray" : r.vigente === false ? "amber" : "green"}>{r.finalizado_en ? "Finalizada" : r.vigente === false ? "Aún no vigente" : "Vigente"}</Badge><p className="mt-1 text-xs text-texto-debil">{r.finalizado_en ? `Finalizada el ${fechaHora(r.finalizado_en)}` : `Desde ${fecha(r.desde)}`}</p></> }],
+    padron: [{ key: "nombre", label: "Afiliado", render: (r) => <><Link className="font-medium text-accent hover:underline" to={`/financiadores/padron/${r.id}?${fichaQuery}`}>{r.nombre}</Link><span className="mt-1 block text-xs text-texto-debil">DNI {documentoParcial(r.documento)}</span></> }, { key: "numero", label: "N.º de afiliado" }, { key: "plan", label: "Plan", render: (r) => r.plan ? nombrePlan(r.plan) : "Sin plan" }, { key: "vigente", label: "Estado", render: (r) => <><Badge tone={r.finalizado_en ? "gray" : r.vigente === false ? "amber" : "green"}>{r.finalizado_en ? "Finalizada" : r.vigente === false ? "Aún no vigente" : "Vigente"}</Badge><p className="mt-1 text-xs text-texto-debil">{r.finalizado_en ? `Finalizada el ${fechaHora(r.finalizado_en)}` : `Desde ${fecha(r.desde)}`}</p></> }],
     consumos: [{ key: "afiliado", label: "Afiliado", render: (r) => <>{r.afiliado_nombre || `Afiliado ${r.afiliado}`}<p className="mt-1 text-xs text-texto-debil">N.º {r.afiliado_numero || "—"} · DNI {documentoParcial(r.afiliado_documento)}</p></> }, { key: "prestacion", label: "Prestación", render: (r) => nombrePrestacion(r.prestacion) }, { key: "fecha", label: "Fecha", render: (r) => fecha(r.fecha) }, { key: "cantidad", label: "Cantidad" }, { key: "referencia", label: "Referencia" }, { key: "correccion", label: "Estado", render: (r) => r.corrige ? <Badge tone="info">Corrección</Badge> : <Badge tone="green">Registrado</Badge> }],
     convenios: [{ key: "institucion_nombre", label: "Hospital" }, { key: "vigencia", label: "Vigencia", render: (r) => r.cerrado_en ? `Cerrado el ${fechaHora(r.cerrado_en)}` : r.aceptado_en ? `Desde ${fechaHora(r.aceptado_en)}` : "Pendiente de aceptación" }, { key: "plazo_autorizacion_horas", label: "Plazo de autorización", render: (r) => r.plazo_autorizacion_horas == null ? "Sin vencimiento automático" : `${r.plazo_autorizacion_horas} horas` }, { key: "estado", label: "Estado", render: (r) => <><Badge tone={r.estado === "activo" ? "green" : r.estado === "propuesto" ? "amber" : "gray"}>{ESTADOS_CONVENIO[r.estado] || r.estado}</Badge>{r.motivo_cierre && <p className="mt-1 text-xs text-texto-debil">{r.motivo_cierre}</p>}</> }],
     usuarios: [{ key: "nombre", label: "Usuario", render: (r) => <><span className="font-medium text-texto">{r.nombre}</span><span className="mt-1 block text-xs text-texto-debil">{r.email}</span></> }, { key: "rol", label: "Permiso", render: (r) => <>{ROLES[r.rol] || r.rol}{r.resuelve_autorizaciones && <p className="mt-1 text-xs text-texto-debil">Resuelve autorizaciones</p>}</> }, { key: "activo", label: "Estado", render: (r) => <Badge tone={r.activo === false ? "gray" : "green"}>{r.activo === false ? "Inactivo" : "Activo"}</Badge> }],

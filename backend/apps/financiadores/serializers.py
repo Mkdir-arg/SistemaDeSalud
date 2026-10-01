@@ -5,16 +5,21 @@ from . import models
 class FinanciadorSerializer(serializers.ModelSerializer):
     rol = serializers.SerializerMethodField()
     resuelve_autorizaciones = serializers.SerializerMethodField()
+    carga_solicitudes_manuales = serializers.SerializerMethodField()
     planes_activos = serializers.SerializerMethodField()
     convenios_vigentes = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "planes_activos", "convenios_vigentes"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "carga_solicitudes_manuales", "planes_activos", "convenios_vigentes"]
 
     def get_resuelve_autorizaciones(self, obj) -> bool:
         from .permisos import puede_resolver_autorizaciones
         return puede_resolver_autorizaciones(self.context["request"].user, obj.pk)
+
+    def get_carga_solicitudes_manuales(self, obj) -> bool:
+        from .permisos import puede_cargar_manual
+        return puede_cargar_manual(self.context["request"].user, obj.pk)
 
     def get_planes_activos(self, obj) -> int:
         if hasattr(obj, "planes_activos"):

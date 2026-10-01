@@ -161,7 +161,7 @@ def celda_csv(campo, valor):
     return texto_csv_seguro(texto, identificador=campo in ("documento", "numero", "codigo"))
 
 
-def exportar_actividad(request, org, qs):
+def exportar_actividad(request, org, qs, *, recurso="financiadores-actividad-csv", evento="exportar_actividad", nombre="actividad-financiador"):
     reservas = list(qs[:LIMITE_EXPORTACION + 1])
     if len(reservas) > LIMITE_EXPORTACION:
         raise serializers.ValidationError(f"La exportación admite hasta {LIMITE_EXPORTACION} registros. Acotá las fechas u otros filtros.")
@@ -173,10 +173,10 @@ def exportar_actividad(request, org, qs):
         escritor.writerow([celda_csv(campo, fila[campo]) for campo, _ in COLUMNAS_CSV])
     # Sin streaming: ningún byte sale si falla la auditoría de cualquier persona.
     with transaction.atomic():
-        auditar_actividad(request, org, reservas, recurso="financiadores-actividad-csv")
-        auditar(request.user, "exportar_actividad", org.pk, financiador=org, motivo=f"CSV; registros={len(reservas)}")
+        auditar_actividad(request, org, reservas, recurso=recurso)
+        auditar(request.user, evento, org.pk, financiador=org, motivo=f"CSV; registros={len(reservas)}")
     response = HttpResponse("\ufeff" + contenido.getvalue(), content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="actividad-financiador-{org.pk}-{timezone.localdate().isoformat()}.csv"'
+    response["Content-Disposition"] = f'attachment; filename="{nombre}-{org.pk}-{timezone.localdate().isoformat()}.csv"'
     response["X-Content-Type-Options"] = "nosniff"
     return response
 

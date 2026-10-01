@@ -718,6 +718,7 @@ Reglas clave:
 Usuario del financiador (`admin` / `operador` / `auditor` de su organizacion):
 
 - Configura planes y reglas de cobertura, mantiene el padron, informa consumos externos y consulta su actividad en los hospitales.
+- Desde el padrón consulta la ficha del afiliado: prestaciones y autorizaciones dentro del alcance vigente o histórico pendiente, con acceso auditado por institución.
 - Resuelve autorizaciones solo con designacion expresa.
 
 Administrativo del hospital:

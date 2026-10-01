@@ -15,7 +15,7 @@ from apps.finanzas.models import Prestacion
 from apps.instituciones.models import Institucion
 from . import autorizaciones as a, models as m
 from .cobertura import regla_aplicable
-from .permisos import puede_resolver_autorizaciones, requerir_financiador
+from .permisos import puede_cargar_manual, puede_resolver_autorizaciones, requerir_carga_manual, requerir_financiador
 from .services import auditar
 from .vigencias import convenios_vigentes
 from .views import CoberturaBaseViewSet
@@ -32,6 +32,7 @@ class FiltrosAutorizaciones(serializers.Serializer):
     desde = serializers.DateField(required=False)
     hasta = serializers.DateField(required=False)
     search = serializers.CharField(max_length=120, required=False)
+    origen = serializers.ChoiceField(choices=["institucion", "manual"], required=False)
 
     def validate(self, datos):
         if bool(datos.get("financiador")) == bool(datos.get("institucion")):
@@ -49,6 +50,16 @@ class SolicitarAutorizacionSerializer(serializers.Serializer):
     intento = serializers.UUIDField()
     cantidad = serializers.IntegerField(min_value=1, max_value=100000)
     justificacion = serializers.CharField(max_length=1000)
+    clave = serializers.UUIDField()
+
+
+class SolicitarManualSerializer(serializers.Serializer):
+    afiliado = serializers.IntegerField(min_value=1)
+    institucion = serializers.IntegerField(min_value=1)
+    comun = serializers.IntegerField(min_value=1)
+    cantidad = serializers.IntegerField(min_value=1, max_value=100000)
+    justificacion = serializers.CharField(max_length=1000)
+    urgente = serializers.BooleanField(required=False, default=False)
     clave = serializers.UUIDField()
 
 
@@ -80,7 +91,8 @@ class SolicitudAutorizacionSerializer(serializers.ModelSerializer):
     anterior = serializers.PrimaryKeyRelatedField(read_only=True)
     financiador_nombre = serializers.CharField(source="financiador.nombre")
     institucion_nombre = serializers.CharField(source="institucion.nombre")
-    prestacion_nombre = serializers.CharField(source="prestacion.nombre")
+    prestacion_nombre = serializers.SerializerMethodField()
+    creado_por_nombre = serializers.CharField(source="creado_por.nombre_completo")
     codigo = serializers.CharField(source="comun.codigo")
     afiliado_nombre = serializers.CharField(source="afiliado.nombre")
     afiliado_numero = serializers.CharField(source="afiliado.numero")
@@ -92,7 +104,7 @@ class SolicitudAutorizacionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = m.SolicitudAutorizacion
-        fields = ["id", "financiador", "financiador_nombre", "institucion", "institucion_nombre",
+        fields = ["id", "origen", "creado_por_nombre", "financiador", "financiador_nombre", "institucion", "institucion_nombre",
             "convenio", "caso", "nodo", "intento", "anterior", "prestacion", "prestacion_nombre", "comun", "codigo",
             "afiliado_nombre", "afiliado_numero", "documento", "estado", "revision", "cantidad_solicitada",
             "cantidad_aprobada", "cantidades", "plazo_respuesta", "vigencia_desde", "vigencia_hasta",
@@ -104,24 +116,32 @@ class SolicitudAutorizacionSerializer(serializers.ModelSerializer):
         return {"comprometida": comprometida, "consumida": consumida,
                 "disponible": max(0, obj.cantidad_aprobada - comprometida - consumida)}
 
+    def get_prestacion_nombre(self, obj) -> str:
+        return obj.prestacion.nombre if obj.prestacion_id else obj.comun.nombre
+
     def get_puede_resolver(self, obj) -> bool:
         return bool(self.context.get("financiador") and obj.estado in obj.ABIERTAS
             and (not obj.plazo_respuesta or obj.plazo_respuesta > timezone.now())
             and self.context.get("resuelve_autorizaciones", False))
 
     def get_puede_reenviar(self, obj) -> bool:
+        if obj.origen == "manual":
+            return bool(self.context.get("puede_cargar_manual") and obj.estado == "observada"
+                and not obj.afiliado.finalizado_en and obj.convenio.estado == "activo")
         return bool(not self.context.get("financiador") and obj.estado == "observada"
             and obj.intento == a.intento_actual(obj.caso) and obj.caso.estado not in obj.caso.ESTADOS_FINALIZADOS
             and (not obj.plazo_respuesta or obj.plazo_respuesta > timezone.now())
             and not obj.afiliado.finalizado_en and obj.convenio.estado == "activo")
 
     def get_puede_anular(self, obj) -> bool:
+        if obj.origen == "manual":
+            return bool(self.context.get("puede_cargar_manual") and obj.estado in obj.ABIERTAS)
         return bool(not self.context.get("financiador") and obj.estado in obj.ABIERTAS)
 
 
 def consulta_solicitudes():
     return m.SolicitudAutorizacion.objects.select_related(
-        "financiador", "institucion", "prestacion", "comun", "afiliado", "ciudadano", "caso", "convenio",
+        "financiador", "institucion", "prestacion", "comun", "afiliado", "ciudadano", "caso", "convenio", "creado_por",
     ).annotate(
         cantidad_comprometida=Sum("usos__cantidad", filter=Q(usos__estado="comprometido"), default=0),
         cantidad_consumida=Sum("usos__cantidad", filter=Q(usos__estado="consumido"), default=0),
@@ -132,6 +152,8 @@ def consulta_solicitudes():
     list=extend_schema(operation_id="api_autorizaciones_cobertura_list", parameters=[FiltrosAutorizaciones], responses=OpenApiTypes.OBJECT),
     retrieve=extend_schema(responses=OpenApiTypes.OBJECT),
     create=extend_schema(request=SolicitarAutorizacionSerializer, responses=OpenApiTypes.OBJECT),
+    manual=extend_schema(request=SolicitarManualSerializer, responses=OpenApiTypes.OBJECT),
+    opciones_manual=extend_schema(responses=OpenApiTypes.OBJECT),
     contexto=extend_schema(responses=OpenApiTypes.OBJECT),
     resolver=extend_schema(request=ResolverAutorizacionSerializer, responses=OpenApiTypes.OBJECT),
     reenviar=extend_schema(request=ReenviarAutorizacionSerializer, responses=OpenApiTypes.OBJECT),
@@ -162,7 +184,7 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         else:
             casos = a.casos_permitidos(self.request.user).filter(institucion_id=f["institucion"])
             qs = consulta_solicitudes().filter(institucion_id=f["institucion"], caso_id__in=casos.values("pk"))
-        for campo, lookup in (("hospital", "institucion_id"), ("caso", "caso_id"), ("estado", "estado"), ("urgente", "urgente"), ("desde", "creado__date__gte"), ("hasta", "creado__date__lte")):
+        for campo, lookup in (("hospital", "institucion_id"), ("caso", "caso_id"), ("estado", "estado"), ("origen", "origen"), ("urgente", "urgente"), ("desde", "creado__date__gte"), ("hasta", "creado__date__lte")):
             if campo in f:
                 qs = qs.filter(**{lookup: f[campo]})
         if f.get("grupo") == "resueltas":
@@ -175,7 +197,10 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
     def serializar(self, obj, *, detalle=False, financiador=None):
         if financiador and not hasattr(self, "_resuelve_autorizaciones"):
             self._resuelve_autorizaciones = puede_resolver_autorizaciones(self.request.user, financiador)
+        if financiador and not hasattr(self, "_puede_cargar_manual"):
+            self._puede_cargar_manual = puede_cargar_manual(self.request.user, financiador)
         datos = self.serializer_class(obj, context={"request": self.request, "financiador": financiador,
+            "puede_cargar_manual": getattr(self, "_puede_cargar_manual", False),
             "resuelve_autorizaciones": getattr(self, "_resuelve_autorizaciones", False)}).data
         if detalle:
             datos["historial"] = [{"id": e.pk, "accion": e.accion, "anterior": e.anterior,
@@ -219,6 +244,56 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         obj = a.solicitar(caso=caso, prestacion=prestacion, usuario=request.user, **valores)
         return Response(self.serializar(consulta_solicitudes().get(pk=obj.pk), detalle=True), status=201)
 
+    @action(detail=False, methods=["post"])
+    def manual(self, request):
+        financiador = self.ambito().get("financiador")
+        if not financiador:
+            raise PermissionDenied("La solicitud manual se carga en el ámbito financiador.")
+        requerir_carga_manual(request.user, financiador)
+        entrada = SolicitarManualSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = dict(entrada.validated_data)
+        afiliado = get_object_or_404(m.Afiliado, pk=datos.pop("afiliado"))
+        institucion = get_object_or_404(Institucion, pk=datos.pop("institucion"))
+        comun = get_object_or_404(m.PrestacionComun, pk=datos.pop("comun"))
+        obj = a.solicitar_manual(financiador_id=financiador, afiliado=afiliado, institucion=institucion,
+            comun=comun, usuario=request.user, **datos)
+        obj = consulta_solicitudes().get(pk=obj.pk)
+        respuesta = self.serializar(obj, detalle=True, financiador=financiador)
+        self.auditar_lectura([obj], financiador)
+        return Response(respuesta, status=201)
+
+    @action(detail=False, methods=["get"], url_path="opciones-manual")
+    def opciones_manual(self, request):
+        financiador = self.ambito().get("financiador")
+        if not financiador:
+            raise PermissionDenied("Las opciones manuales corresponden al financiador.")
+        requerir_carga_manual(request.user, financiador)
+        hoy, ahora = timezone.localdate(), timezone.now()
+        afiliados = m.Afiliado.objects.filter(financiador_id=financiador, finalizado_en__isnull=True,
+            desde__lte=hoy)
+        busqueda = request.query_params.get("search", "").strip()
+        if busqueda:
+            afiliados = afiliados.filter(Q(nombre__icontains=busqueda) | Q(numero__icontains=busqueda)
+                | Q(documento__icontains=busqueda))
+        convenios = convenios_vigentes().filter(financiador_id=financiador)
+        instituciones = list(Institucion.objects.filter(pk__in=convenios.values("institucion_id"))
+            .order_by("nombre", "pk").values("id", "nombre"))
+        prestaciones = []
+        afiliado_id = request.query_params.get("afiliado", "")
+        institucion_id = request.query_params.get("hospital", "")
+        if afiliado_id.isdigit() and institucion_id.isdigit() and convenios.filter(institucion_id=institucion_id).exists():
+            afiliado = afiliados.filter(pk=afiliado_id).first() if not busqueda else m.Afiliado.objects.filter(
+                financiador_id=financiador, finalizado_en__isnull=True, desde__lte=hoy, pk=afiliado_id).first()
+            if afiliado:
+                from types import SimpleNamespace
+                for comun in m.PrestacionComun.objects.filter(activo=True).order_by("nombre", "pk"):
+                    regla = regla_aplicable(SimpleNamespace(afiliado=afiliado, plan_id=afiliado.plan_id), comun, hoy, ahora)
+                    if regla and regla.requiere_autorizacion:
+                        prestaciones.append({"id": comun.pk, "nombre": comun.nombre, "codigo": comun.codigo})
+        return Response({"afiliados": list(afiliados.order_by("nombre", "pk").values("id", "nombre", "numero", "documento")[:30]),
+            "instituciones": instituciones, "prestaciones": prestaciones})
+
     @action(detail=False, methods=["get"])
     def contexto(self, request):
         raw = request.query_params.get("caso", "")
@@ -247,7 +322,8 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
 
     def _mutar(self, serializer, servicio, *, financiador):
         obj = self.get_object()
-        if bool(self.ambito().get("financiador")) != financiador:
+        ambito_financiador = bool(self.ambito().get("financiador"))
+        if ambito_financiador != (financiador or obj.origen == "manual"):
             raise PermissionDenied("Esta operación corresponde al otro ámbito de la solicitud.")
         entrada = serializer(data=self.request.data)
         entrada.is_valid(raise_exception=True)

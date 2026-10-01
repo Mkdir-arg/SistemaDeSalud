@@ -830,6 +830,23 @@ test("auditor consulta planes y padrón sin administrar su vigencia", async ({ p
   await expect(page.getByRole("button", { name: /Finalizar afiliación|Reactivar afiliación/ })).toHaveCount(0);
 });
 
+test("desde el padrón abre la ficha con prestaciones y autorizaciones sin justificación", async ({ page }) => {
+  await escenario(page, { rol: "auditor" });
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/ficha-afiliado-autorizaciones/")) return route.fulfill({ json: { ...lista([{ id: 80, prestacion_nombre: "Consulta autorizada", codigo: "CONS", institucion_nombre: "Hospital vecino", estado: "pendiente", urgente: false, cantidad_solicitada: 1, creado: "2026-09-01T12:00:00Z", justificacion: "Justificación secreta" }]), count: 1 } });
+    return route.fulfill({ json: { ...lista([{ id: 70, fecha: "2026-09-01", prestacion: "Consulta", codigo: "CONS", hospital: "Hospital vecino", estado: "realizada", acceso: "vigente" }]), count: 1, afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", plan: 31, plan_nombre: "Plan Río", desde: "2026-01-01", finalizado_en: null, estado: "vigente" }, limite_exportacion: 5000 } });
+  });
+  await page.goto("/financiadores/padron?financiador=21&estado=todos");
+  await page.getByRole("link", { name: "Persona Ficticia" }).click();
+  await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Prestaciones" })).toContainText("Hospital vecino");
+  await expect(page.getByRole("region", { name: "Autorizaciones" })).toContainText("Consulta autorizada");
+  await expect(page.getByText("Justificación secreta")).toHaveCount(0);
+  await page.getByRole("link", { name: /Volver al padrón/ }).click();
+  await expect(page).toHaveURL(/estado=todos/);
+});
+
 test("convenios conserva el histórico y sólo acepta o rechaza la propuesta de contraparte", async ({ page }) => {
   const { escrituras } = await escenario(page);
   const convenios = [

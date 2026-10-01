@@ -227,6 +227,7 @@ casos.Caso ──> AfiliacionCaso ──> ReservaCobertura ──> DistribucionC
 | Reserva | Pasa a consumo **una sola vez**. Reintentos y recuperación no duplican |
 | Distribución | Las partes suman exactamente el arancel por la cantidad. La del paciente se obtiene **por diferencia** |
 | Evidencia | `EventoCobertura` audita sin datos de la historia clínica |
+| Origen de autorización | `SolicitudAutorizacion.origen` distingue `institucion` (caso, nodo, intento, afiliación y prestación hospitalaria obligatorios) de `manual` (esos campos nulos). Una manual conserva afiliado, convenio, institución y prestación común; sólo puede haber una pendiente u observada por afiliado, convenio y prestación común. |
 
 ### `fhir`
 
