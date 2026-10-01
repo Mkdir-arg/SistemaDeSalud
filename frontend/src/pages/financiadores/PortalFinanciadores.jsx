@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador, filasDe, opcionesFinanciador, rutaFinanciador } from "@/api/financiadores";
@@ -14,6 +14,8 @@ import ImportacionFinanciador from "./ImportacionFinanciador";
 import ActividadFinanciador from "./ActividadFinanciador";
 import AutorizacionesFinanciador from "./AutorizacionesFinanciador";
 import { POR_PAGINA } from "@/api/queries";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { intervaloMes } from "./ActividadFinanciador";
 
 const ROLES = { admin: "Administración", operador: "Operación", auditor: "Sólo lectura" };
 const SECCIONES = [
@@ -41,8 +43,8 @@ export function ErrorPortal({ error, reintentar }) {
 
 export default function PortalFinanciadores() {
   const { user } = useAuth();
-  const { institucion } = useInstitucion();
-  const { seccion = "planes" } = useParams();
+  const { institucion, setInstitucion } = useInstitucion();
+  const { seccion } = useParams();
   const [parametros, setParametros] = useSearchParams();
   const seleccion = parametros.get("financiador") || "";
   const organizaciones = useQuery({ queryKey: ["financiadores", user.id, "organizaciones"], queryFn: async () => {
@@ -58,11 +60,16 @@ export default function PortalFinanciadores() {
   const organizacion = seleccion ? lista.find((item) => String(item.id) === seleccion) : plataforma ? null : lista[0];
   const admin = plataforma || organizacion?.rol === "admin";
   const sufijo = seleccion ? `?financiador=${encodeURIComponent(seleccion)}` : "";
+  // La redirección a Inicio conserva la query completa; los ítems del menú, sólo el financiador.
+  const query = parametros.toString() ? `?${parametros}` : "";
   const items = SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
-    .map((item) => ({ ...item, to: `/financiadores${item.key === "planes" ? "" : `/${item.key}`}${sufijo}` }));
+    .map((item) => ({ ...item, to: `/financiadores/${item.key}${sufijo}` }));
   const actual = items.find((item) => item.key === seccion);
-  if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error && seccion !== "catalogo") return <Navigate to="/directorio?vista=financiadores" replace />;
-  if (organizacion && !actual) return <Navigate to={`/financiadores${sufijo}`} replace />;
+  const irAlDirectorio = plataforma && !seleccion && seccion !== "catalogo" && !organizaciones.isLoading && !organizaciones.error;
+  useEffect(() => { if (irAlDirectorio && institucion) setInstitucion(null); }, [irAlDirectorio, institucion, setInstitucion]);
+  if (irAlDirectorio) return institucion ? null : <Navigate to="/directorio?vista=financiadores" replace />;
+  if (!seccion && (!plataforma || seleccion)) return <Navigate to={`/financiadores/inicio${query}`} replace />;
+  if (organizacion && !actual) return <Navigate to={`/financiadores/inicio${sufijo}`} replace />;
   const cuerpo = <div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     {plataforma && <>
       <div><Link to="/directorio?vista=financiadores" className="text-xs font-semibold text-accent hover:underline">← Volver a financiadores</Link>
@@ -117,7 +124,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
   const scope = ["financiadores", usuarioId, organizacion.id];
   const planes = useQuery({ queryKey: [...scope, "opciones-planes"], queryFn: () => opcionesFinanciador(organizacion.id, "planes"), gcTime: 0 });
   const catalogo = useQuery({ queryKey: [...scope, "catalogo"], queryFn: () => opcionesFinanciador(organizacion.id, "catalogo"), gcTime: 0 });
-  const resumen = useQuery({ queryKey: [...scope, "resumen"], queryFn: () => api.get(rutaFinanciador(organizacion.id, "resumen")), gcTime: 0 });
+  const resumen = useQuery({ queryKey: [...scope, "resumen"], queryFn: () => api.get(rutaFinanciador(organizacion.id, "resumen")), enabled: tab !== "inicio", gcTime: 0 });
   const puedeCrear = tab === "catalogo" ? plataforma : !["inicio", "actividad", "aranceles", "autorizaciones"].includes(tab) && (["padron", "consumos"].includes(tab) ? operador : admin);
   const titulos = { planes: "Nuevo plan", reglas: "Nueva regla de cobertura", padron: "Registrar afiliación", consumos: "Registrar consumo externo", convenios: "Proponer convenio", usuarios: "Invitar usuario", catalogo: "Nueva prestación común" };
   async function actualizado(texto, resultado) {
@@ -127,7 +134,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
     setModal(null);
   }
   const errorOpciones = planes.error || catalogo.error;
-  if (tab === "inicio") return <InicioFinanciador organizacion={organizacion} resumen={resumen} plataforma={plataforma} />;
+  if (tab === "inicio") return <InicioFinanciador organizacion={organizacion} scope={scope} plataforma={plataforma} />;
   const titulo = SECCIONES.find((item) => item.key === tab)?.label || "Financiador";
   const tituloVisual = tab === "catalogo" ? "Catálogo de prestaciones" : titulo;
   return <>
@@ -145,24 +152,51 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
   </>;
 }
 
-function InicioFinanciador({ organizacion, resumen, plataforma }) {
+function InicioFinanciador({ organizacion, scope, plataforma }) {
   const sufijo = `?financiador=${organizacion.id}`;
-  const accesos = [
-    ["Planes", "planes", resumen.data?.planes],
-    ["Padrón de afiliados", "padron", resumen.data?.afiliados],
-    ["Consumos externos", "consumos", resumen.data?.consumos],
-    ["Discrepancias", "actividad", resumen.data?.discrepancias],
+  const meses = Array.from({ length: 6 }, (_, i) => intervaloMes(i - 5));
+  const actual = meses[5];
+  const periodo = `1 al ${Number(actual.hasta.slice(-2))} de ${new Intl.DateTimeFormat("es-AR", { month: "long" }).format(new Date(`${actual.desde}T12:00:00`))} de ${actual.desde.slice(0, 4)}`;
+  const padron = useQuery({ queryKey: [...scope, "padron", "vigentes", "inicio"], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, "padron")}?${new URLSearchParams({ estado: "vigentes", page: 1, page_size: 1 })}`), gcTime: 0, retry: false });
+  const estados = ["pendiente", "observada"];
+  const autorizaciones = useQueries({ queries: estados.flatMap((estado) => [false, true].map((urgente) => ({
+    queryKey: [...scope, "autorizaciones", "inicio", estado, urgente],
+    queryFn: () => api.get(`/autorizaciones-cobertura/?${new URLSearchParams({ financiador: organizacion.id, estado, ...(urgente ? { urgente: "true" } : {}), page: 1, page_size: 1 })}`),
+    gcTime: 0, retry: false,
+  }))) });
+  const actividad = useQueries({ queries: meses.map(({ desde, hasta }) => ({
+    queryKey: [...scope, "actividad", "inicio", desde, hasta],
+    queryFn: () => api.get(`${rutaFinanciador(organizacion.id, "actividad")}?${new URLSearchParams({ desde, hasta, page: 1, page_size: 1 })}`),
+    gcTime: 0, retry: false,
+  })) });
+  const mes = actividad[5];
+  const valor = (consulta, dato) => consulta.isLoading ? "…" : consulta.error ? "—" : dato ?? 0;
+  const totalAutorizaciones = autorizaciones.some((q) => q.isLoading) ? "…" : autorizaciones.some((q) => q.error) ? "—" : (autorizaciones[0].data?.count ?? 0) + (autorizaciones[2].data?.count ?? 0);
+  const urgentes = (autorizaciones[1].data?.count ?? 0) + (autorizaciones[3].data?.count ?? 0);
+  const revision = (mes.data?.resumen?.discrepancias ?? 0) + (mes.data?.resumen?.importes_pendientes ?? 0);
+  const tarjetas = [
+    ["Afiliados vigentes", `/financiadores/padron${sufijo}`, valor(padron, padron.data?.count), "Al día de hoy"],
+    ["Autorizaciones por resolver", `/financiadores/autorizaciones${sufijo}`, totalAutorizaciones, `Al día de hoy · ${autorizaciones.some((q) => q.error || q.isLoading) ? "…" : urgentes} urgentes`],
+    ["Prestaciones realizadas", `/financiadores/actividad${sufijo}&desde=${actual.desde}&hasta=${actual.hasta}`, valor(mes, mes.data?.resumen?.realizadas), periodo],
+    ["Importe asignado", `/financiadores/actividad${sufijo}`, mes.isLoading ? "…" : mes.error ? "—" : importeARS(mes.data?.resumen?.importe_asignado ?? 0), `${periodo} · No representa un saldo pendiente`],
+    ["Requieren revisión", `/financiadores/actividad${sufijo}`, valor(mes, revision), `${periodo} · ${mes.error || mes.isLoading ? "…" : `${mes.data?.resumen?.discrepancias ?? 0} discrepancias y ${mes.data?.resumen?.importes_pendientes ?? 0} importes pendientes`}`],
   ];
+  const grafico = actividad.map((q, i) => ({ mes: new Intl.DateTimeFormat("es-AR", { month: "short" }).format(new Date(`${meses[i].desde}T12:00:00`)) + (i === 5 ? " · parcial" : ""), realizadas: q.data?.resumen?.realizadas ?? 0 }));
+  const errorActividad = actividad.find((q) => q.error);
   return <section>
     {!plataforma && <h2 className="text-xl font-bold">{organizacion.nombre}</h2>}
     <p className="text-sm text-texto-suave">Resumen de cobertura y actividad de la organización.</p>
-    {resumen.error && <div className="mt-4"><ErrorPortal error={resumen.error} reintentar={resumen.refetch} /></div>}
-    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {accesos.map(([titulo, ruta, valor]) => <Link key={ruta} to={`/financiadores/${ruta}${sufijo}`} className="rounded-lg border border-borde bg-superficie p-4 hover:border-accent-100 hover:shadow-card">
-        <h3 className="text-xs text-texto-suave">{titulo}</h3><strong className="mt-2 block text-xxl tabular-nums">{resumen.isLoading ? "…" : valor ?? "—"}</strong><span className="mt-2 block text-xs font-semibold text-accent">Ver sección →</span>
+    {padron.error && <div className="mt-4"><ErrorPortal error={padron.error} reintentar={padron.refetch} /></div>}
+    {autorizaciones.find((q) => q.error) && <div className="mt-4"><ErrorPortal error={autorizaciones.find((q) => q.error).error} reintentar={() => autorizaciones.forEach((q) => { if (q.error) q.refetch(); })} /></div>}
+    {errorActividad && <div className="mt-4"><ErrorPortal error={errorActividad.error} reintentar={() => actividad.forEach((q) => { if (q.error) q.refetch(); })} /></div>}
+    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {tarjetas.map(([titulo, ruta, cifra, detalle]) => <Link key={titulo} to={ruta} className="rounded-lg border border-borde bg-superficie p-4 hover:border-accent-100 hover:shadow-card">
+        <h3 className="text-xs text-texto-suave">{titulo}</h3><strong className="mt-2 block text-xxl tabular-nums">{cifra}</strong><p className="mt-1 text-xs text-texto-debil">{detalle}</p><span className="mt-2 block text-xs font-semibold text-accent">Ver sección →</span>
       </Link>)}
     </div>
-    {resumen.data?.discrepancias > 0 && <p className="mt-5 rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg p-3 text-sm text-badge-amber-fg" role="status">Hay discrepancias que requieren revisión. Las decisiones registradas se conservan.</p>}
+    <Card className="mt-5 p-4"><h3 className="font-semibold">Prestaciones realizadas por mes</h3><p className="mt-1 text-xs text-texto-debil">Últimos 6 meses, hasta {periodo} · Actividad registrada por hospitales de la red. El mes actual es parcial.</p>
+      {actividad.some((q) => q.isLoading) ? <Spinner label="Cargando actividad…" /> : errorActividad ? null : grafico.every((item) => item.realizadas === 0) ? <EstadoVacio titulo="No hay prestaciones realizadas en este período" /> : <div className="mt-4 h-64" role="img" aria-label="Prestaciones realizadas por mes"><ResponsiveContainer width="100%" height="100%"><BarChart data={grafico} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--color-division)" /><XAxis dataKey="mes" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="realizadas" name="Prestaciones realizadas" fill="var(--color-accent)" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>}
+    </Card>
   </section>;
 }
 

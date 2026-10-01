@@ -182,7 +182,7 @@ test("cambiar financiador en actividad separa datos y filtros y vuelve con el na
   await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
   await expect(page.getByText("1 registro · Página 2", { exact: true })).toBeVisible();
 });
-async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false } = {}) {
+async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false, plataforma = false } = {}) {
   const peticiones = [];
   const escrituras = [];
   const planes = { 21: [{ id: 31, codigo: "BAS", nombre: "Plan Río", activo: true }], 22: [{ id: 32, codigo: "NOR", nombre: "Plan Norte", activo: true }] };
@@ -194,8 +194,9 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
     const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
     peticiones.push(path);
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol })) } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista([]) });
+    if (path === "/autorizaciones-cobertura/") return route.fulfill({ json: lista([]) });
     if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol }))) });
     const match = path.match(/^\/financiadores\/(\d+)\/(.+)\/$/);
     if (match) {
@@ -212,6 +213,7 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
       if (recurso === "catalogo") return route.fulfill({ json: lista(catalogo) });
       if (recurso === "resumen") return route.fulfill({ json: { discrepancias: 0 } });
       if (recurso === "padron") return route.fulfill({ json: lista(padron) });
+      if (recurso === "actividad") return route.fulfill({ json: actividadRespuesta([], { resumen: { realizadas: 0, discrepancias: 0, importes_pendientes: 0, importe_asignado: "0.00" } }) });
       return route.fulfill({ json: lista([]) });
     }
     return route.fulfill({ status: 404, json: { detail: `Ruta inesperada: ${path}` } });
@@ -219,10 +221,109 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
   return { peticiones, escrituras, planes, padron };
 }
 
+test("la entrada abre Inicio y Planes tiene ruta propia", async ({ page }) => {
+  await escenario(page);
+  await page.goto("/financiadores?financiador=21&origen=prueba");
+  await expect(page).toHaveURL(/\/financiadores\/inicio\?financiador=21&origen=prueba$/);
+  await expect(page.getByRole("navigation", { name: "Menú del financiador" }).getByRole("link", { name: "Planes", exact: true })).toHaveAttribute("href", "/financiadores/planes?financiador=21");
+});
+
+test("Inicio muestra indicadores del financiador y seis meses de actividad", async ({ page }) => {
+  await escenario(page);
+  const consultas = { actividad: [], autorizaciones: [], padron: [] };
+  await page.route("**/api/financiadores/21/padron/**", (route) => {
+    consultas.padron.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ json: { ...lista([]), count: 37 } });
+  });
+  await page.route("**/api/autorizaciones-cobertura/**", (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    consultas.autorizaciones.push(params);
+    const count = params.estado === "pendiente" ? params.urgente ? 2 : 7 : params.urgente ? 1 : 4;
+    return route.fulfill({ json: { ...lista([]), count } });
+  });
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    consultas.actividad.push(params);
+    return route.fulfill({ json: actividadRespuesta([], { resumen: { realizadas: 8, discrepancias: 2, importes_pendientes: 3, importe_asignado: "1234.50" } }) });
+  });
+  await page.goto("/financiadores?financiador=21");
+  await expect(page).toHaveURL(/\/financiadores\/inicio\?financiador=21$/);
+  const tarjetas = page.locator('a[href^="/financiadores/"]').filter({ has: page.locator("h3") });
+  await expect(tarjetas).toHaveCount(5);
+  await expect(tarjetas.filter({ hasText: "Afiliados vigentes" })).toContainText("37");
+  await expect(tarjetas.filter({ hasText: "Afiliados vigentes" })).toContainText("Al día de hoy");
+  await expect(tarjetas.filter({ hasText: "Autorizaciones por resolver" })).toContainText("11");
+  await expect(tarjetas.filter({ hasText: "Autorizaciones por resolver" })).toContainText("3 urgentes");
+  await expect(tarjetas.filter({ hasText: "Prestaciones realizadas" })).toContainText("8");
+  await expect(tarjetas.filter({ hasText: "Importe asignado" })).toContainText("ARS 1.234,50");
+  await expect(tarjetas.filter({ hasText: "Importe asignado" })).toContainText("No representa un saldo pendiente");
+  await expect(tarjetas.filter({ hasText: "Requieren revisión" })).toContainText("5");
+  await expect(tarjetas.filter({ hasText: "Requieren revisión" })).toContainText("2 discrepancias y 3 importes pendientes");
+  const esperado = await page.evaluate(() => Array.from({ length: 6 }, (_, i) => {
+    const hoy = new Date(); const fecha = new Date(hoy.getFullYear(), hoy.getMonth() + i - 5, 1);
+    const mes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
+    return { desde: `${mes}-01`, hasta: `${mes}-${new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate()}` };
+  }));
+  await expect(tarjetas.filter({ hasText: "Prestaciones realizadas" })).toContainText(`1 al ${Number(esperado[5].hasta.slice(-2))} de`);
+  expect(consultas.actividad).toHaveLength(6);
+  expect(consultas.actividad.map(({ desde, hasta }) => ({ desde, hasta })).sort((a, b) => a.desde.localeCompare(b.desde))).toEqual(esperado);
+  expect(consultas.actividad.every((q) => q.page_size === "1")).toBe(true);
+  expect(consultas.padron).toEqual([{ estado: "vigentes", page: "1", page_size: "1" }]);
+  expect(consultas.autorizaciones).toHaveLength(4);
+  expect(consultas.autorizaciones.every((q) => q.financiador === "21" && ["pendiente", "observada"].includes(q.estado) && !q.grupo)).toBe(true);
+  await expect(page.getByRole("img", { name: "Prestaciones realizadas por mes" })).toBeVisible();
+});
+
+test("Inicio muestra ceros y estado vacío cuando no hay actividad", async ({ page }) => {
+  await escenario(page);
+  await page.route("**/api/financiadores/21/padron/**", (route) => route.fulfill({ json: lista([]) }));
+  await page.goto("/financiadores/inicio?financiador=21");
+  const tarjetas = page.locator('a[href^="/financiadores/"]').filter({ has: page.locator("h3") });
+  await expect(tarjetas).toHaveCount(5);
+  for (const tarjeta of await tarjetas.all()) await expect(tarjeta.locator("strong")).toContainText(/^(0|ARS 0,00)$/);
+  await expect(page.getByText("No hay prestaciones realizadas en este período")).toBeVisible();
+});
+
+test("Inicio distingue un error de actividad del valor cero y permite reintentar", async ({ page }) => {
+  await escenario(page);
+  let fallar = true;
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill(fallar ? { status: 403, json: { detail: "Actividad revocada" } } : { json: actividadRespuesta([], { resumen: { realizadas: 0, discrepancias: 0, importes_pendientes: 0, importe_asignado: "0.00" } }) }));
+  await page.goto("/financiadores/inicio?financiador=21");
+  await expect(page.getByRole("alert")).toContainText("No tenés permiso");
+  await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("—");
+  fallar = false;
+  await page.getByRole("alert").getByRole("button", { name: "Reintentar" }).click();
+  await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("0");
+});
+
+test("Actividad nombra las prestaciones realizadas", async ({ page }) => {
+  await escenario(page);
+  await page.goto("/financiadores/actividad?financiador=21");
+  await expect(page.getByLabel("Resumen de actividad")).toContainText("Prestaciones realizadas");
+});
+
+test("menú institucional y acceso directo respetan el rol de plataforma", async ({ page }) => {
+  await escenario(page, { mixto: true, plataforma: true });
+  await page.goto("/inicio");
+  await expect(page.getByRole("navigation", { name: "Menú principal" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menú principal" }).getByRole("link", { name: "Financiadores" })).toHaveCount(0);
+  await page.goto("/financiadores");
+  await expect(page).toHaveURL(/\/directorio\?vista=financiadores$/);
+  expect(await page.evaluate(() => localStorage.getItem("salud.institucion"))).toBeNull();
+});
+
+test("usuario institucional con financiador abre el portal desde el menú", async ({ page }) => {
+  await escenario(page, { mixto: true });
+  await page.goto("/inicio");
+  await page.getByRole("navigation", { name: "Menú principal" }).getByRole("link", { name: "Financiadores" }).click();
+  await expect(page).toHaveURL(/\/financiadores\/inicio$/);
+});
+
 test("un financiador sin hospital entra a su portal y configura un plan", async ({ page }) => {
   const { escrituras, peticiones } = await escenario(page);
   await page.goto("/directorio");
-  await expect(page).toHaveURL(/\/financiadores$/);
+  await expect(page).toHaveURL(/\/financiadores\/inicio$/);
+  await page.getByRole("link", { name: "Planes", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Planes", exact: true, level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Nuevo plan", exact: true }).click();
   await page.getByLabel("Código del plan").fill("PLUS");
@@ -235,7 +336,7 @@ test("un financiador sin hospital entra a su portal y configura un plan", async 
 
 test("usa el sidebar compartido sin consultar ni mostrar módulos del hospital", async ({ page }) => {
   const { peticiones } = await escenario(page, { mixto: true });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   const menu = page.getByRole("navigation", { name: "Menú del financiador" });
   await expect(menu.getByRole("link", { name: "Planes", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(menu.getByRole("link", { name: "Volver al hospital" })).toHaveAttribute("href", "/inicio");
@@ -253,7 +354,7 @@ test("usa el sidebar compartido sin consultar ni mostrar módulos del hospital",
 
 test("organización y sección se conservan al recargar y al volver", async ({ page }) => {
   await escenario(page);
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
   await page.getByRole("link", { name: "Aranceles", exact: true }).click();
   await expect(page).toHaveURL(/\/financiadores\/aranceles\?financiador=22$/);
@@ -267,7 +368,8 @@ test("organización y sección se conservan al recargar y al volver", async ({ p
 test("auditor no abre usuarios por ruta directa y una organización ajena no se sustituye", async ({ page }) => {
   const { peticiones } = await escenario(page, { rol: "auditor" });
   await page.goto("/financiadores/usuarios");
-  await expect(page).toHaveURL(/\/financiadores$/);
+  await expect(page).toHaveURL(/\/financiadores\/inicio$/);
+  await page.getByRole("link", { name: "Planes", exact: true }).click();
   await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
   expect(peticiones.some((p) => /financiadores\/\d+\/usuarios\//.test(p))).toBe(false);
   await page.goto("/financiadores?financiador=999");
@@ -279,7 +381,7 @@ test("auditor no abre usuarios por ruta directa y una organización ajena no se 
 test("menú móvil navega, se cierra y conserva el tema de Salud", async ({ page }) => {
   await escenario(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
   await page.getByRole("navigation", { name: "Menú del financiador" }).getByRole("link", { name: "Aranceles", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Aranceles" })).toBeVisible();
@@ -291,7 +393,7 @@ test("menú móvil navega, se cierra y conserva el tema de Salud", async ({ page
 
 test("configura porcentaje y cupo calendario sobre una prestación común", async ({ page }) => {
   const { escrituras } = await escenario(page);
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Cobertura", exact: true }).click();
   await page.getByRole("button", { name: "Nueva regla de cobertura" }).click();
   await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("31");
@@ -309,7 +411,7 @@ test("cambiar organización descarta formularios y respuestas de la anterior", a
   let liberar;
   const espera = new Promise((resolve) => { liberar = resolve; });
   await page.route("**/api/financiadores/21/planes/**", async (route) => { await espera; await route.fulfill({ json: lista([{ id: 31, codigo: "SECRETO", nombre: "Plan privado Río" }]) }); });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
   await expect(page.getByRole("cell", { name: "Plan Norte", exact: true })).toBeVisible();
   liberar();
@@ -324,7 +426,7 @@ test("cambiar organización descarta formularios y respuestas de la anterior", a
 
 test("auditor consulta sin acciones de escritura", async ({ page }) => {
   const { escrituras } = await escenario(page, { rol: "auditor" });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await expect(page.getByText("Sólo lectura", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nuevo plan" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
@@ -336,7 +438,7 @@ test("auditor consulta sin acciones de escritura", async ({ page }) => {
 
 test("error de permisos se muestra como error y no como lista vacía", async ({ page }) => {
   await escenario(page, { falloPlanes: true });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await expect(page.getByRole("alert").first()).toContainText("Acceso revocado");
   await expect(page.getByText("Todavía no hay registros", { exact: true })).toHaveCount(0);
 });
@@ -351,7 +453,7 @@ test("preview importa bloques válidos y conserva detalle rechazado", async ({ p
     expect(route.request().postDataJSON()).toEqual({ importacion: 7, revisiones_duplicados: {} });
     await route.fulfill({ json: { ...lote, estado: confirmaciones === 2 ? "aplicada" : "preview", resumen: { ...lote.resumen, valida: 2 - confirmaciones, aplicada: confirmaciones } } });
   });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
   await page.getByLabel("Archivo Excel (.xlsx)").setInputFiles({ name: "consumos.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("archivo-ficticio-API-interceptada") });
@@ -370,7 +472,7 @@ test("importación recuperable permite revisar duplicados con motivo individual"
   const lote = { id: 8, tipo: "consumos", estado: "preview", resumen: { total: 1, valida: 0, rechazada: 0, aplicada: 0, revision: 1, error_tecnico: 0 }, filas: [{ fila: 2, estado: "revision", errores: ["Posible duplicado."] }] };
   await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([lote]) }));
   await page.route("**/api/financiadores/21/confirmar-importacion/", (route) => { body = route.request().postDataJSON(); return route.fulfill({ json: { ...lote, estado: "aplicada", resumen: { ...lote.resumen, aplicada: 1, revision: 0 }, filas: [] } }); });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
   await page.getByRole("button", { name: "Importación 8" }).click();
@@ -384,7 +486,7 @@ test("importación recuperable permite revisar duplicados con motivo individual"
 test("portal se adapta a móvil y conserva contexto del financiador", async ({ page }, testInfo) => {
   await escenario(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("portal-movil.png"), fullPage: true });
@@ -526,7 +628,7 @@ test("multipart y descarga reintentan con token renovado sin cambiar el lote", a
     if (descargas === 1) return route.fulfill({ status: 401, json: { detail: "Access expirado" } });
     return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="plantilla.xlsx"' }, body: "xlsx-ficticio" });
   });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
   await page.getByLabel("Archivo Excel (.xlsx)").setInputFiles({ name: "consumos.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
@@ -545,7 +647,7 @@ test("multipart y descarga reintentan con token renovado sin cambiar el lote", a
 test("financiador consulta actividad hospitalaria y discrepancias sin editarla", async ({ page }) => {
   await escenario(page);
   await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta([{ ...actividadBase, discrepancia: true, importe_asignado: "80.00", importe_acuerdos: "0.00" }]) }));
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Actividad en hospitales", exact: true }).click();
   const region = page.getByRole("region", { name: "Actividad en hospitales", exact: true });
   await expect(region.getByRole("cell", { name: "Hospital Ficticio", exact: true })).toBeVisible();
@@ -562,7 +664,7 @@ for (const rol of ["admin", "operador", "auditor"]) {
       { ...base, id: 1, prestacion: "Radiografía", arancel: "100.00", origen_arancel: "general_hospital" },
       { ...base, id: 2, prestacion: "Consulta", arancel: "80.00", origen_arancel: "acordado_financiador" },
     ]) }));
-    await page.goto("/financiadores");
+    await page.goto("/financiadores/planes");
     await page.getByRole("link", { name: "Aranceles", exact: true }).click();
     const region = page.getByRole("region", { name: "Aranceles", exact: true });
     await expect(region.getByRole("row").filter({ hasText: "Radiografía" })).toContainText("General del hospital");
@@ -595,7 +697,7 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
       { ...base, id: 3, prestacion: "Vacunación", estado: "sin_cobro", cobrar: false, arancel: "0.00" },
     ] } });
   });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Aranceles", exact: true }).click();
   const region = page.getByRole("region", { name: "Aranceles", exact: true });
   const pendiente = region.getByRole("row").filter({ hasText: "Laboratorio" });
@@ -614,7 +716,7 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
 
 test("corregir documento conserva el identificador del afiliado", async ({ page }) => {
   const { escrituras } = await escenario(page);
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Padrón", exact: true }).click();
   await page.getByRole("button", { name: "Corregir identidad" }).click();
   await expect(page.getByLabel("Número de afiliado correcto")).toHaveValue("00025");
@@ -628,7 +730,7 @@ test("corregir documento conserva el identificador del afiliado", async ({ page 
 test("administrador modifica rol y desactiva acceso sin enviar contraseña", async ({ page }) => {
   const { escrituras } = await escenario(page);
   await page.route("**/api/financiadores/21/usuarios/**", (route) => route.request().method() === "GET" ? route.fulfill({ json: lista([{ id: 71, email: "segundo@example.test", nombre: "Usuario Ficticio", rol: "operador", activo: true }]) }) : route.fallback());
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Usuarios", exact: true }).click();
   await page.getByRole("button", { name: "Cambiar acceso" }).click();
   await page.getByRole("combobox", { name: "Rol", exact: true }).selectOption("auditor");
@@ -645,7 +747,7 @@ test("permite retomar un lote fuera de la primera página", async ({ page }) => 
     const pagina = new URL(route.request().url()).searchParams.get("page");
     return route.fulfill({ json: pagina === "2" ? lista([lote]) : { count: 26, next: "?page=2", previous: null, results: [{ ...lote, id: 40, estado: "aplicada" }] } });
   });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
   const dialogo = page.getByRole("dialog");
@@ -656,7 +758,7 @@ test("permite retomar un lote fuera de la primera página", async ({ page }) => 
 
 test("desactivar un plan conserva su código y lo retira de nuevas afiliaciones", async ({ page }) => {
   const { escrituras } = await escenario(page);
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await page.getByRole("button", { name: "Editar plan" }).click();
   const dialogo = page.getByRole("dialog");
   await dialogo.getByRole("button", { name: "Ver ayuda", exact: true }).click();
@@ -720,7 +822,7 @@ test("el error de finalización conserva el motivo y no afirma un cambio de vige
 
 test("auditor consulta planes y padrón sin administrar su vigencia", async ({ page }) => {
   await escenario(page, { rol: "auditor" });
-  await page.goto("/financiadores");
+  await page.goto("/financiadores/planes");
   await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Editar plan" })).toHaveCount(0);
   await page.getByRole("link", { name: "Padrón", exact: true }).click();

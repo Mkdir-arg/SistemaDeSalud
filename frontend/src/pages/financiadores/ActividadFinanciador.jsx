@@ -15,7 +15,7 @@ export const ESTADOS = { reservada: "Reservada", realizada: "Realizada", liberad
 const DISTRIBUCIONES = { autorizacion_pendiente: "Autorización pendiente", resuelta: "Responsable definido", pendiente: "Pendiente de resolución", arancel_pendiente: "Arancel pendiente", evaluacion_pendiente: "Evaluación pendiente", sin_cobro: "Sin cobro" };
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 
-function intervaloMes(desplazamiento = 0) {
+export function intervaloMes(desplazamiento = 0) {
   const hoy = new Date();
   const primero = new Date(hoy.getFullYear(), hoy.getMonth() + desplazamiento, 1);
   const mes = `${primero.getFullYear()}-${String(primero.getMonth() + 1).padStart(2, "0")}`;
@@ -54,7 +54,7 @@ function ResumenActividad({ resumen, generado }) {
   if (!resumen) return <p role="status" className="text-sm text-texto-debil">El resumen no está disponible.</p>;
   const indicadores = [
     ["Importe asignado", importeARS(resumen.importe_asignado), "Arancel aplicable × cobertura"],
-    ["Realizadas", resumen.realizadas ?? "—", `De ${resumen.registros ?? "—"} registros`],
+    ["Prestaciones realizadas", resumen.realizadas ?? "—", `De ${resumen.registros ?? "—"} registros`],
     ["Reservas abiertas", resumen.reservadas ?? "—", "Pendientes de realización o liberación"],
     ["Con discrepancia", resumen.discrepancias ?? "—", "Requieren revisión"],
   ];
