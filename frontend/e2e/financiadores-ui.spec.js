@@ -196,6 +196,7 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
     peticiones.push(path);
     if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista([]) });
+    if (path === "/autorizaciones-cobertura/") return route.fulfill({ json: lista([]) });
     if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol }))) });
     const match = path.match(/^\/financiadores\/(\d+)\/(.+)\/$/);
     if (match) {
@@ -212,6 +213,7 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
       if (recurso === "catalogo") return route.fulfill({ json: lista(catalogo) });
       if (recurso === "resumen") return route.fulfill({ json: { discrepancias: 0 } });
       if (recurso === "padron") return route.fulfill({ json: lista(padron) });
+      if (recurso === "actividad") return route.fulfill({ json: actividadRespuesta([], { resumen: { realizadas: 0, discrepancias: 0, importes_pendientes: 0, importe_asignado: "0.00" } }) });
       return route.fulfill({ json: lista([]) });
     }
     return route.fulfill({ status: 404, json: { detail: `Ruta inesperada: ${path}` } });
@@ -224,6 +226,74 @@ test("la entrada abre Inicio y Planes tiene ruta propia", async ({ page }) => {
   await page.goto("/financiadores?financiador=21&origen=prueba");
   await expect(page).toHaveURL(/\/financiadores\/inicio\?financiador=21&origen=prueba$/);
   await expect(page.getByRole("navigation", { name: "Menú del financiador" }).getByRole("link", { name: "Planes", exact: true })).toHaveAttribute("href", "/financiadores/planes?financiador=21");
+});
+
+test("Inicio muestra indicadores del financiador y seis meses de actividad", async ({ page }) => {
+  await escenario(page);
+  const consultas = { actividad: [], autorizaciones: [], padron: [] };
+  await page.route("**/api/financiadores/21/padron/**", (route) => {
+    consultas.padron.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ json: { ...lista([]), count: 37 } });
+  });
+  await page.route("**/api/autorizaciones-cobertura/**", (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    consultas.autorizaciones.push(params);
+    const count = params.estado === "pendiente" ? params.urgente ? 2 : 7 : params.urgente ? 1 : 4;
+    return route.fulfill({ json: { ...lista([]), count } });
+  });
+  await page.route("**/api/financiadores/21/actividad/**", (route) => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    consultas.actividad.push(params);
+    return route.fulfill({ json: actividadRespuesta([], { resumen: { realizadas: 8, discrepancias: 2, importes_pendientes: 3, importe_asignado: "1234.50" } }) });
+  });
+  await page.goto("/financiadores?financiador=21");
+  await expect(page).toHaveURL(/\/financiadores\/inicio\?financiador=21$/);
+  const tarjetas = page.locator('a[href^="/financiadores/"]').filter({ has: page.locator("h3") });
+  await expect(tarjetas).toHaveCount(5);
+  await expect(tarjetas.filter({ hasText: "Afiliados vigentes" })).toContainText("37");
+  await expect(tarjetas.filter({ hasText: "Afiliados vigentes" })).toContainText("Al día de hoy");
+  await expect(tarjetas.filter({ hasText: "Autorizaciones por resolver" })).toContainText("11");
+  await expect(tarjetas.filter({ hasText: "Autorizaciones por resolver" })).toContainText("3 urgentes");
+  await expect(tarjetas.filter({ hasText: "Prestaciones realizadas" })).toContainText("8");
+  await expect(tarjetas.filter({ hasText: "Importe asignado" })).toContainText("ARS 1.234,50");
+  await expect(tarjetas.filter({ hasText: "Importe asignado" })).toContainText("No representa un saldo pendiente");
+  await expect(tarjetas.filter({ hasText: "Requieren revisión" })).toContainText("5");
+  await expect(tarjetas.filter({ hasText: "Requieren revisión" })).toContainText("2 discrepancias y 3 importes pendientes");
+  const esperado = await page.evaluate(() => Array.from({ length: 6 }, (_, i) => {
+    const hoy = new Date(); const fecha = new Date(hoy.getFullYear(), hoy.getMonth() + i - 5, 1);
+    const mes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
+    return { desde: `${mes}-01`, hasta: `${mes}-${new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate()}` };
+  }));
+  await expect(tarjetas.filter({ hasText: "Prestaciones realizadas" })).toContainText(`1 al ${Number(esperado[5].hasta.slice(-2))} de`);
+  expect(consultas.actividad).toHaveLength(6);
+  expect(consultas.actividad.map(({ desde, hasta }) => ({ desde, hasta })).sort((a, b) => a.desde.localeCompare(b.desde))).toEqual(esperado);
+  expect(consultas.actividad.every((q) => q.page_size === "1")).toBe(true);
+  expect(consultas.padron).toEqual([{ estado: "vigentes", page: "1", page_size: "1" }]);
+  expect(consultas.autorizaciones).toHaveLength(4);
+  expect(consultas.autorizaciones.every((q) => q.financiador === "21" && ["pendiente", "observada"].includes(q.estado) && !q.grupo)).toBe(true);
+  await expect(page.getByRole("img", { name: "Prestaciones realizadas por mes" })).toBeVisible();
+});
+
+test("Inicio muestra ceros y estado vacío cuando no hay actividad", async ({ page }) => {
+  await escenario(page);
+  await page.route("**/api/financiadores/21/padron/**", (route) => route.fulfill({ json: lista([]) }));
+  await page.goto("/financiadores/inicio?financiador=21");
+  const tarjetas = page.locator('a[href^="/financiadores/"]').filter({ has: page.locator("h3") });
+  await expect(tarjetas).toHaveCount(5);
+  for (const tarjeta of await tarjetas.all()) await expect(tarjeta.locator("strong")).toContainText(/^(0|ARS 0,00)$/);
+  await expect(page.getByText("No hay prestaciones realizadas en este período")).toBeVisible();
+});
+
+test("Inicio distingue un error de actividad del valor cero y permite reintentar", async ({ page }) => {
+  await escenario(page);
+  let fallar = true;
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill(fallar ? { status: 403, json: { detail: "Actividad revocada" } } : { json: actividadRespuesta([], { resumen: { realizadas: 0, discrepancias: 0, importes_pendientes: 0, importe_asignado: "0.00" } }) }));
+  await page.goto("/financiadores/inicio?financiador=21");
+  await expect(page.getByRole("alert")).toContainText("No tenés permiso");
+  await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("—");
+  fallar = false;
+  await page.getByRole("alert").getByRole("button", { name: "Reintentar" }).click();
+  await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("0");
 });
 
 test("menú institucional y acceso directo respetan el rol de plataforma", async ({ page }) => {
