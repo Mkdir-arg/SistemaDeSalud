@@ -65,8 +65,9 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
         self.assertTrue(EventoCobertura.objects.filter(accion="consultar_historia_clinica", motivo="Auditoría médica del convenio").exists())
 
     def test_permisos_y_motivo_no_dejan_acceso(self):
+        self.membresia.rol = "operador"
         self.membresia.resuelve_autorizaciones = False
-        self.membresia.save(update_fields=["resuelve_autorizaciones"])
+        self.membresia.save(update_fields=["rol", "resuelve_autorizaciones"])
         for llamada in (self.casos, self.evoluciones):
             self.assertEqual(llamada().status_code, 403)
         self.membresia.rol = "auditor"
@@ -91,6 +92,26 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
         for motivo in ("", "  corto  "):
             self.assertEqual(self.evoluciones(motivo=motivo).status_code, 400)
         self.assertFalse(AccesoClinico.objects.exists())
+
+    def test_admin_del_financiador_consulta_sin_designacion(self):
+        # #93 R6: el admin de la organización ve la historia aunque no resuelva autorizaciones.
+        self.membresia.rol = "admin"
+        self.membresia.resuelve_autorizaciones = False
+        self.membresia.save(update_fields=["rol", "resuelve_autorizaciones"])
+        self.entrada("EVOLUCION_ADMIN")
+        organizacion = next(o for o in self.client.get("/api/financiadores/").data["results"] if o["id"] == self.financiador.pk)
+        self.assertTrue(organizacion["consulta_historia_clinica"])
+        self.assertFalse(organizacion["resuelve_autorizaciones"])
+        self.assertEqual(self.casos().status_code, 200)
+        response = self.evoluciones()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([fila["titulo"] for fila in response.data], ["EVOLUCION_ADMIN"])
+        self.assertTrue(AccesoClinico.objects.filter(recurso="financiadores-evoluciones-caso", usuario=self.operador).exists())
+        self.membresia.rol = "operador"
+        self.membresia.save(update_fields=["rol"])
+        organizacion = next(o for o in self.client.get("/api/financiadores/").data["results"] if o["id"] == self.financiador.pk)
+        self.assertFalse(organizacion["consulta_historia_clinica"])
+        self.assertEqual(self.casos().status_code, 403)
 
     def test_correccion_particular_y_convenio_cerrado_recortan_casos(self):
         otro = Financiador.objects.create(nombre="Otro", tipo="mutual")

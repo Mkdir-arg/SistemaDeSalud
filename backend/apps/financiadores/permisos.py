@@ -41,6 +41,23 @@ def requerir_carga_manual(usuario, financiador_id):
         raise PermissionDenied("No tenés permiso para operar solicitudes manuales de este financiador.")
 
 
+def puede_consultar_historia_clinica(usuario, financiador_id):
+    """Admin de la organización o designado para resolver autorizaciones (#93 R6).
+
+    Plataforma no: la lectura clínica exige una membresía real del financiador.
+    """
+    if not usuario.is_authenticated or not usuario.is_active or plataforma(usuario):
+        return False
+    return MembresiaFinanciador.objects.filter(
+        usuario=usuario, financiador_id=financiador_id, financiador__activo=True, activo=True,
+    ).filter(Q(rol="admin") | Q(resuelve_autorizaciones=True, rol="operador")).exists()
+
+
+def requerir_consultar_historia_clinica(usuario, financiador_id):
+    if not puede_consultar_historia_clinica(usuario, financiador_id):
+        raise PermissionDenied("Sólo el administrador o un usuario designado consulta la historia clínica del financiador.")
+
+
 def requerir_resolver_autorizaciones(usuario, financiador_id):
     if not puede_resolver_autorizaciones(usuario, financiador_id):
         raise PermissionDenied("Necesitás designación explícita para resolver autorizaciones de este financiador.")

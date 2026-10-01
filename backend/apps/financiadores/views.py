@@ -27,7 +27,7 @@ from apps.registros.models import EntradaHistoria, normalizar_documento
 from apps.casos.models import Caso
 from . import models as m
 from . import serializers as s
-from .permisos import plataforma, requerir_financiador, requerir_resolver_autorizaciones
+from .permisos import plataforma, requerir_consultar_historia_clinica, requerir_financiador
 from .services import auditar, registrar_afiliado, registrar_consumo_externo, corregir_consumo, corregir_identidad
 from . import vigencias
 from .acceso import actividad_visible
@@ -441,9 +441,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     @action(detail=True, methods=["get"], url_path="ficha-historia-casos")
     def ficha_historia_casos(self, request, pk=None):
         org = self.organizacion()
-        if plataforma(request.user):
-            raise PermissionDenied("Plataforma no consulta la historia clínica del financiador.")
-        requerir_resolver_autorizaciones(request.user, org.pk)
+        requerir_consultar_historia_clinica(request.user, org.pk)
         afiliado = self._afiliado_ficha(request, org)
         casos = list(self.paginate_queryset(self._casos_historia(org, afiliado)))
         convenios = set(vigencias.convenios_vigentes().filter(financiador=org).values_list("institucion_id", flat=True))
@@ -463,9 +461,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     @action(detail=True, methods=["post"], url_path="ficha-historia-evoluciones")
     def ficha_historia_evoluciones(self, request, pk=None):
         org = self.organizacion()
-        if plataforma(request.user):
-            raise PermissionDenied("Plataforma no consulta la historia clínica del financiador.")
-        requerir_resolver_autorizaciones(request.user, org.pk)
+        requerir_consultar_historia_clinica(request.user, org.pk)
         d = datos(request, {"afiliado": entero(),
                             "caso": entero(), "motivo": serializers.CharField(min_length=10, max_length=200, trim_whitespace=True)})
         afiliado = get_object_or_404(m.Afiliado, pk=d["afiliado"], financiador=org)
