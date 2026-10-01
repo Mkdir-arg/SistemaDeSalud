@@ -14,8 +14,10 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiTypes
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiTypes, OpenApiParameter
 from config.pagination import Paginacion
+from apps.auditoria.mixins import registrar_accesos
+from apps.auditoria.models import AccesoClinico
 
 from apps.accounts.models import Usuario
 from apps.instituciones.models import Institucion
@@ -26,7 +28,11 @@ from .permisos import plataforma, requerir_financiador
 from .services import auditar, registrar_afiliado, registrar_consumo_externo, corregir_consumo, corregir_identidad
 from . import vigencias
 from .acceso import actividad_visible
-from .actividad import FiltrosActividad, consultar_actividad
+from .actividad import (FiltrosActividad, LIMITE_EXPORTACION, con_importes,
+                        consultar_actividad, exportar_actividad, fila_actividad,
+                        filtrar_actividad, resumen_actividad)
+from .acceso import auditar_actividad
+from .autorizaciones import solicitudes_visibles_financiador
 
 
 def datos(request, campos):
@@ -38,6 +44,18 @@ def datos(request, campos):
 
 def entero():
     return serializers.IntegerField(min_value=1)
+
+
+class FichaAutorizacionSerializer(serializers.ModelSerializer):
+    prestacion_nombre = serializers.CharField(source="prestacion.nombre")
+    codigo = serializers.CharField(source="comun.codigo")
+    institucion_nombre = serializers.CharField(source="institucion.nombre")
+
+    class Meta:
+        model = m.SolicitudAutorizacion
+        fields = ("id", "prestacion_nombre", "codigo", "institucion", "institucion_nombre",
+                  "estado", "urgente", "cantidad_solicitada", "cantidad_aprobada",
+                  "numero_externo", "creado", "actualizado", "plazo_respuesta")
 
 
 class CoberturaBaseViewSet(viewsets.GenericViewSet):
@@ -67,6 +85,8 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     cerrar_convenio=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
     rechazar_convenio=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
     actividad=extend_schema(parameters=[FiltrosActividad], responses={200: OpenApiTypes.OBJECT, (200, "text/csv"): OpenApiTypes.BINARY}),
+    ficha_afiliado=extend_schema(parameters=[FiltrosActividad, OpenApiParameter("afiliado", int, required=True)], responses={200: OpenApiTypes.OBJECT, (200, "text/csv"): OpenApiTypes.BINARY}),
+    ficha_afiliado_autorizaciones=extend_schema(parameters=[OpenApiParameter("afiliado", int, required=True)], responses=OpenApiTypes.OBJECT),
     aranceles=extend_schema(responses=OpenApiTypes.OBJECT),
     instituciones=extend_schema(responses=OpenApiTypes.OBJECT),
     usuarios=extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT),
@@ -266,6 +286,55 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     def actividad(self, request, pk=None):
         org = self.organizacion()
         return consultar_actividad(self, request, org)
+
+    def _afiliado_ficha(self, request, org):
+        afiliado_id = entero().run_validation(request.query_params.get("afiliado"))
+        return get_object_or_404(m.Afiliado.objects.select_related("plan"), pk=afiliado_id, financiador=org)
+
+    @action(detail=True, methods=["get"], url_path="ficha-afiliado")
+    def ficha_afiliado(self, request, pk=None):
+        org = self.organizacion()
+        afiliado = self._afiliado_ficha(request, org)
+        filtros = FiltrosActividad(data=request.query_params.dict())
+        filtros.is_valid(raise_exception=True)
+        qs = con_importes(filtrar_actividad(
+            actividad_visible(org).filter(afiliado=afiliado), filtros.validated_data,
+        )).order_by("-fecha", "-pk")
+        if filtros.validated_data["formato"] == "csv":
+            return exportar_actividad(request, org, qs, recurso="financiadores-ficha-afiliado-csv",
+                                     evento="exportar_ficha_afiliado", nombre=f"ficha-afiliado-{afiliado.pk}")
+        pagina = list(self.paginate_queryset(qs))
+        response = self.get_paginated_response([fila_actividad(reserva) for reserva in pagina])
+        response.data.update(
+            afiliado={"id": afiliado.pk, "nombre": afiliado.nombre, "documento": afiliado.documento,
+                      "numero": afiliado.numero, "plan": afiliado.plan_id,
+                      "plan_nombre": afiliado.plan.nombre if afiliado.plan_id else None,
+                      "desde": afiliado.desde, "finalizado_en": afiliado.finalizado_en,
+                      "estado": "finalizada" if afiliado.finalizado_en else "futura" if afiliado.desde > timezone.localdate() else "vigente"},
+            resumen=resumen_actividad(qs), limite_exportacion=LIMITE_EXPORTACION,
+        )
+        with transaction.atomic():
+            auditar_actividad(request, org, pagina, recurso="financiadores-ficha-afiliado")
+            auditar(request.user, "consultar_afiliado", org.pk, financiador=org)
+        return response
+
+    @action(detail=True, methods=["get"], url_path="ficha-afiliado-autorizaciones")
+    def ficha_afiliado_autorizaciones(self, request, pk=None):
+        from .api_autorizaciones import consulta_solicitudes
+
+        org = self.organizacion()
+        afiliado = self._afiliado_ficha(request, org)
+        qs = consulta_solicitudes().filter(
+            pk__in=solicitudes_visibles_financiador(org.pk).filter(afiliado=afiliado).values("pk"),
+        ).order_by("-creado", "-pk")
+        pagina = list(self.paginate_queryset(qs))
+        response = self.get_paginated_response(FichaAutorizacionSerializer(pagina, many=True).data)
+        with transaction.atomic():
+            registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-ficha-afiliado",
+                ({"ciudadano": obj.ciudadano, "institucion_id": obj.institucion_id,
+                  "objeto_id": obj.pk, "detalle": f"solicitud={obj.pk}", "resultados": 1} for obj in pagina), estricto=True)
+            auditar(request.user, "consultar_afiliado", org.pk, financiador=org)
+        return response
 
     @action(detail=True, methods=["get"])
     def aranceles(self, request, pk=None):
