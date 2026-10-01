@@ -67,6 +67,7 @@ from apps.financiadores import autorizaciones
 from apps.financiadores.cobertura import cotizacion, reservar, seleccionar_afiliacion
 from apps.financiadores.cobros import resolver_saldo
 from apps.financiadores.services import registrar_afiliado, registrar_consumo_externo
+from apps.financiadores.facturas import clave_duplicado
 
 
 INSTITUCION_POR_DEFECTO = "Hospital General Los Aromos"
@@ -179,6 +180,31 @@ def dinero(valor):
     return Decimal(str(valor)).quantize(CENTAVOS)
 
 
+def sembrar_facturas_demo(financiador, convenio, afiliado, usuario, fecha):
+    """Ocho registros ficticios; la clave única permite repetir esta parte del seed."""
+    ejemplos = [
+        ("recibida", "institucion", convenio, None, "factura", 1),
+        ("recibida", "institucion", convenio, None, "factura", 2),
+        ("recibida", "institucion", convenio, None, "factura", 3),
+        ("recibida", "institucion", None, None, "factura", 4),
+        ("recibida", "afiliado", None, afiliado, "factura", 5),
+        ("recibida", "institucion", convenio, None, "nota_credito", 6),
+        ("emitida", "institucion", convenio, None, "factura", 7),
+        ("emitida", "afiliado", None, afiliado, "factura", 8),
+    ]
+    for direccion, tipo_contraparte, vinculo, persona, tipo, indice in ejemplos:
+        datos = {
+            "direccion": direccion, "contraparte_tipo": tipo_contraparte,
+            "convenio": vinculo, "afiliado": persona,
+            "contraparte_nombre": vinculo.institucion.nombre if vinculo else persona.nombre if persona else "Prestador externo ficticio",
+            "contraparte_identificador": "", "tipo": tipo, "letra": "A" if tipo_contraparte == "institucion" else "",
+            "numero": f"DEMO-{financiador.pk}-{indice:03d}", "fecha": fecha,
+            "importe": dinero(12000 + indice * 2500), "periodo": str(fecha)[:7],
+            "concepto": "Documentación de ejemplo", "observaciones": "Datos ficticios de demostración.",
+        }
+        m.RegistroFactura.objects.get_or_create(financiador=financiador, clave_duplicado=clave_duplicado(datos), defaults={**datos, "creado_por": usuario})
+
+
 def clave(texto):
     return uuid5(NAMESPACE_URL, "financiadores/" + texto)
 
@@ -225,6 +251,9 @@ class Command(BaseCommand):
             self._institucion(options.get("institucion"), options.get("nombre_institucion"))
             self._configurar(clave_demo())
             self._padron()
+            for slug, financiador in self.financiadores.items():
+                afiliado = m.Afiliado.objects.filter(financiador=financiador).order_by("pk").first()
+                sembrar_facturas_demo(financiador, self.convenios[slug], afiliado, self.operadores[slug], self.cal.hoy)
             self._historia()
             self._resolver_saldos()
             self._pagos()
@@ -796,6 +825,7 @@ class Command(BaseCommand):
                     "plan": self.planes[slug].codigo,
                     "convenio": self.convenios[slug].estado,
                     "afiliados": m.Afiliado.objects.filter(financiador=financiador).count(),
+                    "facturas_demo": m.RegistroFactura.objects.filter(financiador=financiador).count(),
                     "portal": list(m.MembresiaFinanciador.objects.filter(financiador=financiador)
                                    .order_by("id").values_list("usuario__email", flat=True)),
                 }
