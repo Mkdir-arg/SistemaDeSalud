@@ -23,7 +23,7 @@ class RegistroFacturaSerializer(serializers.ModelSerializer):
             self.fields["convenio"].queryset = models.Convenio.objects.filter(financiador=financiador)
             self.fields["afiliado"].queryset = models.Afiliado.objects.filter(financiador=financiador)
 
-    def get_adjunto_disponible(self, obj):
+    def get_adjunto_disponible(self, obj) -> bool:
         from django.conf import settings
         return bool(settings.SALUD_FACTURAS_ADJUNTOS)
 
