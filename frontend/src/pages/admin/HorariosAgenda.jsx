@@ -161,7 +161,7 @@ export function HorariosModal({ agenda, onClose }) {
               ? "Sin franjas: esta agenda todavía no genera ningún turno."
               : `${franjas.length} franja${franjas.length === 1 ? "" : "s"} · ${total} turnos por semana`}
           </span>
-          <Button onClick={onClose}>Listo</Button>
+          <Button variant="secondary" onClick={onClose}>Listo</Button>
         </>
       }
     >

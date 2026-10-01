@@ -322,8 +322,8 @@ Siguen vigentes porque varios roles las conservan, pero **ya no son las que gobi
 | `internacion` | Estadias de cama y la accion `camas/{id}/estado` | Abre `/internacion` |
 | `farmacia_stock` | Lotes, existencias, movimientos y pedidos | Abre `/farmacia`; el catalogo de insumos y depositos es `config_institucional` |
 | `traslados_red` | Traslados entre establecimientos | Abre `/red`; crear la red es `gobierno_plataforma` |
-| `padron_admision` | Alta, busqueda y ficha administrativa de pacientes, y sus consentimientos | Abre `/padron`. No habilita evolucion, alergias, estudios ni recetas |
-| `historia_clinica` | Historia clinica, entradas, estudios y recetas como lectura clinica | Abre `/historia`. Genera auditoria de acceso |
+| `padron_admision` | Alta, busqueda y ficha administrativa de pacientes, y sus consentimientos | Abre `/pacientes` y la pestaña Datos de `/pacientes/:id`. No habilita evolucion, alergias, estudios ni recetas |
+| `historia_clinica` | Historia clinica, entradas, estudios y recetas como lectura clinica | Agrega pestañas clinicas y alergias en `/pacientes/:id` y el listado. Genera auditoria de acceso |
 | `prescripcion` | Crear y suspender recetas | Se suma a `historia_clinica`, que sigue siendo necesaria para leerlas |
 | `solicitud_estudios` | Crear y actualizar estudios | Se suma a `historia_clinica` |
 | `reportes` | Reportes agregados / solo lectura | No debe exponer datos clinicos nominales sin otra capacidad |

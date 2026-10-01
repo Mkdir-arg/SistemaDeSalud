@@ -88,7 +88,7 @@ test.describe("Tema", () => {
  */
 const PANTALLAS_ADMIN = [
   "/dashboard", "/flujos", "/mapa", "/formularios",
-  "/historia", "/legajo", "/estructura", "/administracion",
+  "/pacientes", "/legajo", "/estructura", "/administracion",
 ];
 
 /** Rutas con parámetro dentro del alcance del admin. */
@@ -99,9 +99,10 @@ const DINAMICAS_ADMIN = [
     await page.waitForURL(/\/formularios\/\d+/);
   } },
   { nombre: "historia clínica de un paciente", resolver: async (page) => {
-    await page.goto("/historia");
+    await page.goto("/pacientes");
     await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/historia\/\d+/);
+    await page.waitForURL(/\/pacientes\/\d+/);
+    await page.getByRole("tab", { name: /Evolución/ }).click();
   } },
   // La ficha del área es donde vive casi toda la pantalla de estructura, y el
   // árbol no la abre solo: hay que elegir un área.

@@ -403,7 +403,7 @@ function BloquearRango({ agenda, rango, toast, onListo, onClose }) {
         title="Bloqueado · hay que llamar a estos pacientes"
         onClose={onListo}
         width={520}
-        footer={<Button onClick={onListo}>Listo</Button>}
+      footer={<Button variant="secondary" onClick={onListo}>Listo</Button>}
       >
         <div className="flex flex-col gap-2">
           <p className="text-base text-texto-suave">

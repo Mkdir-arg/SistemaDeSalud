@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { api } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 import { useInstitucion } from "./auth/InstitutionContext";
@@ -35,8 +35,7 @@ const FormularioDetalle = lazy(() => import("./pages/diseno/FormularioDetalle"))
 const Areas = lazy(() => import("./pages/admin/Areas"));
 const Usuarios = lazy(() => import("./pages/admin/Usuarios"));
 const Registros = lazy(() => import("./pages/registros/Registros"));
-const HistoriaDetalle = lazy(() => import("./pages/registros/HistoriaDetalle"));
-const PadronDetalle = lazy(() => import("./pages/registros/PadronDetalle"));
+const PacienteDetalle = lazy(() => import("./pages/registros/PacienteDetalle"));
 const Legajo = lazy(() => import("./pages/registros/Legajo"));
 const Accesos = lazy(() => import("./pages/auditoria/Accesos"));
 const Finanzas = lazy(() => import("./pages/finanzas/Finanzas"));
@@ -195,6 +194,15 @@ function AuthOnly({ children }) {
 
 const P = (el, cap) => <Protected cap={cap}>{el}</Protected>;
 
+function RedirigirPaciente({ historia = false }) {
+  const { id } = useParams();
+  const location = useLocation();
+  const search = new URLSearchParams(location.search);
+  if (historia && id && !search.has("tab")) search.set("tab", "evolucion");
+  const query = search.toString();
+  return <Navigate to={`/pacientes${id ? `/${id}` : ""}${query ? `?${query}` : ""}${location.hash}`} replace />;
+}
+
 export default function App() {
   // El login sigue la preferencia; la pantalla pública de llamados usa claro.
   useTemaDeRuta();
@@ -228,10 +236,12 @@ export default function App() {
       <Route path="/casos/:id" element={P(<CasoDetalle />, "casos_operar")} />
 
       {/* REGISTROS */}
-      <Route path="/padron" element={P(<Registros modo="padron" />, "padron_admision")} />
-      <Route path="/padron/:id" element={P(<PadronDetalle />, "padron_admision")} />
-      <Route path="/historia" element={P(<Registros />, "historia_clinica")} />
-      <Route path="/historia/:id" element={P(<HistoriaDetalle />, "historia_clinica")} />
+      <Route path="/pacientes" element={P(<Registros />, "padron_admision")} />
+      <Route path="/pacientes/:id" element={P(<PacienteDetalle />, "padron_admision")} />
+      <Route path="/padron" element={<RedirigirPaciente />} />
+      <Route path="/padron/:id" element={<RedirigirPaciente />} />
+      <Route path="/historia" element={<RedirigirPaciente historia />} />
+      <Route path="/historia/:id" element={<RedirigirPaciente historia />} />
       <Route path="/legajo" element={P(<Legajo />, "config_institucional")} />
       <Route path="/accesos" element={P(<Accesos />, "auditoria")} />
       <Route path="/finanzas" element={P(<Finanzas />)} />

@@ -40,8 +40,7 @@ const TITULOS = {
   "/farmacia": "Farmacia e insumos",
   "/red": "Red de establecimientos",
   "/casos": "Casos",
-  "/padron": "Padrón de pacientes",
-  "/historia": "Historia clínica",
+  "/pacientes": "Pacientes",
   "/legajo": "Legajo profesional",
   "/accesos": "Registro de accesos",
   "/flujos": "Flujos",
@@ -57,11 +56,10 @@ const TITULOS = {
 // está — que es justamente para lo que sirve el título.
 const TITULOS_DETALLE = [
   ["/casos/", "Detalle del caso"],
-  ["/padron/", "Ficha administrativa"],
+  ["/pacientes/", "Paciente"],
   ["/flujos/", "Diseñador de flujos"],
   ["/puesto/", "Detalle del paso"],
   ["/formularios/", "Constructor de formulario"],
-  ["/historia/", "Historia clínica"],
   ["/estructura/", "Estructura organizativa"],
 ];
 
@@ -151,7 +149,7 @@ function Campana() {
   );
 }
 
-// Buscador de pacientes (barra superior): nombre o documento �  su historia clínica.
+// Buscador de pacientes (barra superior): nombre o documento y ficha del paciente.
 function BuscadorPacientes() {
   const { institucion, puedeVer } = useInstitucion();
   const { user } = useAuth();
@@ -160,8 +158,7 @@ function BuscadorPacientes() {
   const [resultado, setResultado] = useState({});
   const [intento, setIntento] = useState(0);
   const [abierto, setAbierto] = useState(false);
-  const puedeAbrirHistoria = puedeVer("historia_clinica");
-  const puedeBuscarPacientes = puedeAbrirHistoria || puedeVer("padron_admision");
+  const puedeBuscarPacientes = puedeVer("padron_admision");
   const contexto = JSON.stringify([user?.id, institucion?.id, q.trim()]);
   const actual = resultado.contexto === contexto;
   const res = actual ? resultado.filas || [] : [];
@@ -186,7 +183,7 @@ function BuscadorPacientes() {
 
   function ir(c) {
     setQ(""); setResultado({}); setAbierto(false);
-    navigate(`${puedeAbrirHistoria ? "/historia" : "/padron"}/${c.id}`);
+    navigate(`/pacientes/${c.id}`);
   }
 
   if (!puedeBuscarPacientes) return null;
@@ -279,7 +276,7 @@ function TopBar({ onAbrirMenu, titulo, contexto, hospital = true, plataforma = f
         <span>{contexto}</span><span className="mx-2">/</span><span className="text-texto">{titulo || tituloDeRuta(location.pathname)}</span>
       </h1>
       {/* El buscador se esconde en angosto: compite con el título y la campana.
-          Queda accesible desde «Historia clínica». */}
+          Queda accesible desde «Pacientes». */}
       <div className="hidden flex-1 justify-center md:flex">
         {hospital && <BuscadorPacientes />}
       </div>
@@ -299,16 +296,15 @@ function TopBar({ onAbrirMenu, titulo, contexto, hospital = true, plataforma = f
   );
 }
 
-// Las rutas y capacidades siguen siendo las existentes; los grupos corresponden
-// al recorrido de Figma y se abren según la sección activa.
+// Los grupos corresponden al recorrido de Figma y se abren según la sección activa.
 const GRUPOS = [
   {
     label: "DIRECCIÓN",
     items: [
       { to: "/dashboard", label: "Tablero", icon: "activity", cap: "supervision" },
       { to: "/finanzas", label: "Finanzas y cobros", icon: "wallet", especial: "finanzas" },
-      { to: "/finanzas/coberturas", label: "Coberturas y copagos", icon: "users", especial: "coberturas" },
-      { to: "/red", label: "Red de establecimientos", icon: "map", cap: "traslados_red" },
+      { to: "/finanzas/coberturas", label: "Coberturas y copagos", icon: "shieldCheck", especial: "coberturas" },
+      { to: "/red", label: "Red de establecimientos", icon: "mapPin", cap: "traslados_red" },
     ],
   },
   {
@@ -317,34 +313,28 @@ const GRUPOS = [
       { to: "/inicio", label: "Inicio", icon: "home" },
       { to: "/bandeja", label: "Bandeja", icon: "inbox", cap: "casos_operar" },
       { to: "/agenda", label: "Turnos", icon: "calendar", cap: "turnos" },
+      { to: "/pacientes", label: "Pacientes", icon: "idCard", cap: "padron_admision" },
       { to: "/internacion", label: "Internación", icon: "bed", cap: "internacion" },
-      { to: "/farmacia", label: "Farmacia e insumos", icon: "cube", cap: "farmacia_stock" },
-    ],
-  },
-  {
-    label: "PACIENTES",
-    items: [
-      { to: "/padron", label: "Padrón de pacientes", icon: "idCard", cap: "padron_admision" },
-      { to: "/historia", label: "Historia clínica", icon: "clipboard", cap: "historia_clinica" },
+      { to: "/farmacia", label: "Farmacia e insumos", icon: "pill", cap: "farmacia_stock" },
     ],
   },
   {
     label: "SEGUIMIENTO",
     items: [
-      { to: "/casos", label: "Casos", icon: "inbox", cap: "casos_operar" },
-      { to: "/supervision", label: "Supervisión", icon: "users", cap: "supervision" },
+      { to: "/casos", label: "Casos", icon: "fileText", cap: "casos_operar" },
+      { to: "/supervision", label: "Supervisión", icon: "eye", cap: "supervision" },
     ],
   },
   {
     label: "CONFIGURACIÓN",
     items: [
-      { to: "/estructura", label: "Estructura organizativa", icon: "cube", cap: "config_institucional" },
+      { to: "/estructura", label: "Estructura organizativa", icon: "network", cap: "config_institucional" },
       { to: "/administracion", label: "Usuarios y permisos", icon: "users", cap: "config_institucional" },
       { to: "/flujos", label: "Flujos", icon: "workflow", cap: "diseno_flujos" },
       { to: "/mapa", label: "Mapa de flujos", icon: "map", cap: "diseno_flujos" },
       { to: "/formularios", label: "Formularios", icon: "form", cap: "diseno_flujos" },
-      { to: "/legajo", label: "Legajo profesional", icon: "idCard", cap: "config_institucional" },
-      { to: "/accesos", label: "Registro de accesos", icon: "search", cap: "auditoria" },
+      { to: "/legajo", label: "Legajo profesional", icon: "stethoscope", cap: "config_institucional" },
+      { to: "/accesos", label: "Registro de accesos", icon: "enter", cap: "auditoria" },
     ],
   },
 ];
@@ -492,10 +482,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex h-screen w-[264px] flex-col border-r border-borde bg-superficie",
-          "transition-transform duration-150",
+          "transition-transform duration-150 motion-reduce:transition-none",
           // De `md` para arriba deja de ser cajón: vuelve al flujo y lo que
           // cambia es el ancho (colapsado o no).
-          "md:sticky md:top-0 md:shrink-0 md:translate-x-0 md:transition-[width]",
+          "md:sticky md:top-0 md:shrink-0 md:translate-x-0 md:transition-[width] md:duration-200 md:ease-out motion-reduce:md:transition-none",
           colapsadoPref ? "md:w-[68px]" : "md:w-[200px] xl:w-[264px]",
           cajon ? "translate-x-0 shadow-modal" : "-translate-x-full",
         )}
@@ -592,10 +582,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               ...(puedeVer("gobierno_plataforma") ? [
                 { to: "/directorio?vista=instituciones", label: "Instituciones", icon: "building", key: "instituciones" },
                 { to: "/directorio?vista=usuarios", label: "Usuarios", icon: "users", key: "usuarios" },
-                { to: "/directorio?vista=financiadores", label: "Financiadores", icon: "users", key: "financiadores" },
+                { to: "/directorio?vista=financiadores", label: "Financiadores", icon: "handshake", key: "financiadores" },
               ] : []),
               ...(puedeVer("auditoria") ? [
-                { to: "/directorio?vista=accesos", label: "Registro de accesos", icon: "search", key: "accesos" },
+                { to: "/directorio?vista=accesos", label: "Registro de accesos", icon: "enter", key: "accesos" },
               ] : []),
             ].map((item) => {
               const actual = location.pathname.startsWith("/financiadores") ? "financiadores" : new URLSearchParams(location.search).get("vista") || (puedeVer("gobierno_plataforma") ? "instituciones" : "accesos");
@@ -633,7 +623,8 @@ export function Shell({ children, financiador = null, plataforma = false }) {
                       className="flex w-full items-center justify-between rounded-md px-3 pb-1.5 pt-3 text-left text-xs font-bold tracking-wide text-texto-tenue hover:bg-superficie-2 focus-visible:outline-2 focus-visible:outline-accent">
                       {g.label}<Icon name="chevronRight" size={13} className={gruposCerrados.has(g.label) ? "" : "rotate-90"} />
                     </button>}
-                {(colapsado || !gruposCerrados.has(g.label)) && <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div className={cn("grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none", colapsado || !gruposCerrados.has(g.label) ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                <div inert={!colapsado && gruposCerrados.has(g.label) ? "" : undefined} aria-hidden={!colapsado && gruposCerrados.has(g.label)} className="flex min-h-0 flex-col gap-0.5 overflow-hidden">
                   {items.map((n) => (
                     <NavLink
                       key={n.to}
@@ -655,13 +646,13 @@ export function Shell({ children, financiador = null, plataforma = false }) {
                       )}
                     </NavLink>
                   ))}
-                </div>}
+                </div></div>
               </div>
             );
           })}
           {user?.financiadores?.length > 0 && !user?.is_superuser && !puedeVer("gobierno_plataforma") && (
             <NavLink to="/financiadores" className={itemClase(colapsado)} title="Portal de financiadores">
-              <Icon name="users" size={17} />
+              <Icon name="handshake" size={17} />
               {!colapsado && "Financiadores"}
             </NavLink>
           )}

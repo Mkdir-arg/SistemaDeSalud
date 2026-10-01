@@ -231,7 +231,7 @@ Lo que sí está verificado contra la aplicación corriendo, y con fecha:
 | Los dos entornos locales, levantados y recorridos botón por botón | 17–18/09/2026 |
 | Circuito de financiadores en el entorno demo | 18/09/2026 |
 | Guion de demo comercial completo | 17/09/2026 |
-| Escenario de finanzas Los Aromos y sus cifras | 15/09/2026 |
+| Escenario de finanzas en Hospital Central y sus cifras (traslado #65) | 30/09/2026 |
 | Stack de desarrollo y escenario de guardia | 20/08/2026 |
 
 Lo que **no** está validado: la operación real con datos productivos, el

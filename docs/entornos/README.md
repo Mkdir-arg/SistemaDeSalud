@@ -1,5 +1,7 @@
 # Dos entornos locales
 
+Material para la demo comercial: [guion breve y recorrido del comprador](../comercial/).
+
 Levantados y verificados el **17/09/2026** sobre el `main` actual (commit `4947633`).
 
 | | Entorno **vacío** | Entorno **demo** |
@@ -118,15 +120,14 @@ Qué carga, por paso:
 
 | Paso | Qué deja |
 |---|---|
-| `seed_los_aromos` | Finanzas y costos de Los Aromos: gastos, repartos, cuentas y pagos de 12 meses; pendientes de aprobación en el mes en curso |
-| `seed_finanzas_central` | El mismo año económico, dentro de Hospital Central, en tres servicios ambulatorios propios (Consultorios de clínica médica, de cardiología y Radiología ambulatoria). Lo administran `admin.central@` y `config.central@` |
-| `seed_financiadores` | Sobre **Hospital Central**, en su área *Consultorios externos*: tres financiadores (uno con convenio propuesto sin aceptar), padrón con bajas, 12 meses de atenciones con copago, autorizaciones pendientes, observada, aprobadas y rechazadas |
 | `seed_guardia` | Estructura de Hospital Central: áreas, staff, grupos, flujos, farmacia, agendas |
 | `seed_volumen` | 365 días de guardia, especialidades, estudios e internación; turnos, bloqueo de agenda y pantallas de llamados |
 | `seed_roles` | Plataforma, auditoría, reportes y administración de Hospital Central |
+| `seed_finanzas_central` | Año económico de Hospital Central: gastos, repartos, cuentas y pagos de 12 meses en Consultorios de clínica médica, Consultorios de cardiología y Radiología ambulatoria. Lo administran `admin.central@` y `config.central@` |
+| `seed_financiadores` | Sobre **Hospital Central**, en su área *Consultorios externos*: tres financiadores (uno con convenio propuesto sin aceptar), padrón con bajas, 12 meses de atenciones con copago, autorizaciones pendientes, observada, aprobadas y rechazadas |
 | `seed_farmacia` | Pedidos de reposición en cada estado y consumos imputados a pacientes |
 | `seed_red` | Villa Real y los traslados: resueltos, pendientes y uno aceptado sin despachar |
-| `seed_efectores` | Cuatro efectores más en la red: Zonal Sur (lleno), Clínica San Martín, el CAPS Barrio Norte y Lomas del Este (en puesta en marcha hace 45 días). Treinta días de atenciones de fila, pacientes en sala e internados, también en Villa Real |
+| `seed_efectores` | Cinco efectores más en la red: Los Aromos (hospital mediano sin alerta), Zonal Sur (lleno), Clínica San Martín, el CAPS Barrio Norte y Lomas del Este (en puesta en marcha hace 45 días). Treinta días de atenciones de fila, pacientes en sala e internados, también en Villa Real |
 | `seed_comprador` | `test@salud.local`, el usuario de quien recibe la demo, y su institución Hospital Piloto a medio configurar (ver abajo) |
 | `seed_accesos` | Registro de accesos clínicos de los últimos 45 días, para la auditoría |
 
@@ -141,8 +142,7 @@ que evalúa el sistema lo pruebe sola, sin chocar con «Acceso denegado»:
   traslados por responder y notificaciones sin leer. Es el mismo trabajo que el
   resto del personal: si lo resuelve él, se lo saca a ellos.
 - En **Hospital Central** también administra las finanzas y las coberturas:
-  gastos por aprobar, saldos de cobertura y un convenio por aceptar. En **Los
-  Aromos** tiene los mismos permisos de finanzas.
+  gastos por aprobar, saldos de cobertura y un convenio por aceptar.
 - En el **portal de Mutual del Valle** es administrador y responde
   autorizaciones.
 - **Hospital Piloto** es suyo y está en puesta en marcha. Tiene áreas y
@@ -152,7 +152,7 @@ que evalúa el sistema lo pruebe sola, sin chocar con «Acceso denegado»:
 Tiene todos los roles a la vez, así que la barra lateral lista los nueve.
 
 Cada `seed_*` también se puede correr suelto. Declara en su docstring qué necesita
-antes y qué carga. `seed_los_aromos` y `seed_financiadores` no se mezclan con
+antes y qué carga. `seed_finanzas_central` y `seed_financiadores` no se mezclan con
 una carga anterior propia: para rehacerlos se usa `seed_entorno_demo`.
 
 ### En Railway
@@ -202,11 +202,11 @@ La demo del 01/10 es a las 9: la idea es **no tener que cargar nada esa mañana.
 
 ## Decisiones de esta preparación
 
-**Hospital Central tiene todo.** Desde el 30/09 tiene la operación clínica,
-el año económico de Los Aromos en tres servicios ambulatorios propios
+**Hospital Central tiene todo.** Tiene la operación clínica,
+el año económico en tres servicios ambulatorios propios
 (`seed_finanzas_central`) y el circuito de financiadores. Así se recorre el
-sistema entero sin cambiar de institución. Los Aromos conserva su escenario de
-finanzas, que es el que verifican `guia-los-aromos.md` y sus tests. Los servicios
+sistema entero sin cambiar de institución. Los Aromos es un efector de red con
+fila e internación, sin finanzas ni financiadores. Los servicios
 de Central son áreas nuevas por la misma razón que *Consultorios externos* (ver
 abajo): en las áreas de la guardia, el reparto se mezclaría con cientos de
 atenciones de otro circuito.
@@ -216,10 +216,9 @@ la crea `seed_financiadores`. El reparto distribuye cada gasto entre las
 atenciones elegibles *de su área*, así que sumar atenciones a un área con gastos
 repartidos le cambia la porción a todas las demás. Hacerlo sobre las áreas
 existentes habría reescrito en silencio las cifras por atención ya verificadas en
-[`guia-los-aromos.md`](../funcionalidades/finanzas-costos/guia-los-aromos.md). Se
-comprobó después de sembrar: el mes en curso sigue en **$750.000** aprobados y la
-atención de Clara Benítez sigue en **$23.500** directos y **$92.500** compartidos,
-idénticos a los documentados.
+[`guia-finanzas-central.md`](../funcionalidades/finanzas-costos/guia-finanzas-central.md).
+El escenario verifica **$750.000** aprobados en el mes en curso y una
+atención con **$23.500** directos y **$92.500** compartidos.
 
 **Sin TLS y sin HSTS.** Con `DEBUG=false` el sistema fuerza HTTPS; en local no
 hay certificado, así que los dos entornos traen `DJANGO_SSL_REDIRECT=false`. Y

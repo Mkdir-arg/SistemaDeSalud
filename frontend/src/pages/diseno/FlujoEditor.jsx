@@ -1562,7 +1562,7 @@ export default function FlujoEditor() {
         <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, color: "var(--color-danger)", marginBottom: 6 }}>No se pudo cargar el flujo</div>
         <div style={{ fontSize: "var(--text-base)", color: "var(--color-texto-suave)", marginBottom: 16 }}>{errorCarga}</div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Button onClick={cargarTodo}>Reintentar</Button>
+          <Button variant="secondary" onClick={cargarTodo}>Reintentar</Button>
           <Button variant="secondary" onClick={() => navigate("/flujos")}>← Flujos</Button>
         </div>
       </div>

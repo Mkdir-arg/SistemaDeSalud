@@ -553,13 +553,14 @@ No guardar contraseñas en código ni en documentación.
 
 ## Escenario de referencia
 
-El escenario ficticio **Hospital General Los Aromos** —un año de historia, de octubre
-de 2025 a septiembre de 2026— lo siembra `seed_los_aromos` y vive en el entorno demo.
+El escenario ficticio de **Hospital Central** —doce meses que terminan en el mes de
+la carga— lo siembra `seed_finanzas_central` y vive en el entorno demo.
 El recorrido de presentación de 25–30 minutos, con sus cifras, está en
-[`guia-los-aromos.md`](guia-los-aromos.md).
+[`guia-finanzas-central.md`](guia-finanzas-central.md).
 
-`seed_los_aromos` es **exclusivamente manual**: exige PostgreSQL vacío, confirmación
-y una contraseña externa; no borra ni mezcla datos existentes.
+`seed_finanzas_central` requiere PostgreSQL, Hospital Central y sus roles ya
+cargados, y `ENTORNO` distinto de producción. No borra ni mezcla el escenario
+si ya está cargado. La clave de los usuarios nuevos sale de `DEMO_PASSWORD`.
 
 ## Antecedentes
 

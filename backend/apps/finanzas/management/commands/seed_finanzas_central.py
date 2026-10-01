@@ -1,12 +1,10 @@
-"""El año económico de `seed_los_aromos`, dentro de Hospital Central.
+"""El año económico ficticio de Hospital Central.
 
 Qué carga
 ---------
-Hospital Central es el hospital con la operación clínica completa, y sin esto
-tenía Finanzas vacía: quien recorre el sistema desde ahí no veía gastos, costos
-ni cobros. Este comando carga el mismo escenario que Los Aromos —doce meses de
-gastos con su reparto, costos por atención, cuentas, pagos y cobros, y lo
-pendiente de cada rol— en tres servicios ambulatorios propios de Central.
+Hospital Central es el hospital con la operación clínica completa. Este comando
+carga doce meses de gastos con su reparto, costos por atención, cuentas, pagos
+y cobros, y lo pendiente de cada rol, en tres servicios ambulatorios propios.
 
 Van en áreas nuevas y no en las de la guardia o las especialidades por la misma
 razón que `seed_financiadores` usa un área propia: el reparto distribuye cada
@@ -21,8 +19,7 @@ profesionales y la administrativa del escenario son personas nuevas.
 Requisitos
 ----------
 - PostgreSQL migrado y `ENTORNO` distinto de `produccion`.
-- Hospital Central con su dirección y su configurador (`seed_guardia` y
-  `seed_roles`).
+- Hospital Central con su dirección y su configurador (`seed_guardia` y `seed_roles`).
 - El escenario todavía no cargado en Central. Para rehacerlo se vacía la base
   con `seed_entorno_demo`.
 
@@ -31,22 +28,22 @@ Requisitos
 from django.core.management.base import CommandError
 
 from apps.demo.entorno import exigir_entorno_de_prueba
-from apps.finanzas.management.commands import seed_los_aromos
+from apps.finanzas.escenario_economico import EscenarioEconomico
 from apps.finanzas.models import ConceptoGasto
 from apps.instituciones.models import Institucion
 
 CENTRAL = "Hospital Central"
 
 
-class Command(seed_los_aromos.Command):
-    help = "Carga en Hospital Central el año económico de Los Aromos: gastos, costos, pagos y cobros."
+class Command(EscenarioEconomico):
+    help = "Carga en Hospital Central un año económico ficticio: gastos, costos, pagos y cobros."
 
+    COMANDO = "seed_finanzas_central"
     NOMBRE = CENTRAL
     DOMINIO = "hospital.gob.ar"
     ESPACIO = "hospital-central"
     PREFIJO_PACIENTE, PREFIJO_DOCUMENTO = "HC-AMB", "FICHC"
-    # Mismos servicios, importes y aranceles que Los Aromos; otras áreas y otras
-    # personas. Central ya tiene «Cardiología» y «Diagnóstico por imágenes».
+    # Áreas propias: Central ya tiene «Cardiología» y «Diagnóstico por imágenes».
     AREAS = (
         ("CM", "Consultorios de clínica médica", "Consulta de clínica médica", "Nora", "Villegas",
          "nora.villegas", "70412", 15000, 1000, 30000),
@@ -55,9 +52,19 @@ class Command(seed_los_aromos.Command):
         ("IMG", "Radiología ambulatoria", "Radiografía digital de tórax", "Carolina", "Espinosa",
          "carolina.espinosa", "93118", 7000, 3000, 35000),
     )
-    # Otras personas que las de Los Aromos, en el mismo orden: el escenario las
-    # usa por posición.
-    PACIENTES = tuple(reversed(seed_los_aromos.PACIENTES))
+    # El escenario selecciona personas por posición; preservar este orden.
+    PACIENTES = (
+        ("Nicolás", "Agüero"), ("Patricia", "Bustos"), ("Ramiro", "Oliva"),
+        ("Mónica", "Sosa"), ("Adrián", "Franco"), ("Teresa", "Ibarra"),
+        ("Diego", "Bustamante"), ("Graciela", "Rivero"), ("Tomás", "Navarro"),
+        ("Elisa", "Roldán"), ("Sergio", "Páez"), ("Laura", "Oviedo"),
+        ("Marcos", "Medina"), ("Silvia", "Godoy"), ("Pablo", "Arce"),
+        ("Cecilia", "Luna"), ("Gabriel", "Pereyra"), ("Alicia", "Figueroa"),
+        ("Julián", "Vera"), ("Beatriz", "Correa"), ("Federico", "Almada"),
+        ("Natalia", "Soria"), ("Hugo", "Cabrera"), ("Marta", "Villalba"),
+        ("Esteban", "Ponce"), ("Inés", "Quiroga"), ("Roberto", "Ledesma"),
+        ("Julia", "Acosta"), ("Daniel", "Peralta"), ("Clara", "Benítez"),
+    )
     PERSONAL = {
         "admin": ("Dirección", "Hospital Central", "admin.central"),
         "configurador": ("Configurador", "de Procesos", "config.central"),

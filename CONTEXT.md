@@ -2,6 +2,24 @@
 
 Lenguaje del sistema para los procesos asistenciales y su gestión administrativa.
 
+## Pacientes y registros
+
+**Paciente**:
+Persona registrada en una institución para recibir atención. Cada institución registra a sus pacientes por separado.
+_Evitar_: Ciudadano, afiliado.
+
+**Padrón de pacientes**:
+Conjunto de pacientes registrados en una institución. Es distinto del padrón de afiliados del financiador.
+
+**Ficha administrativa**:
+Identificación, domicilio, cobertura administrativa y consentimiento de un paciente. Se consulta sin acceso a datos clínicos.
+
+**Historia clínica**:
+Registro clínico de un paciente en una institución: evolución, antecedentes, estudios y recetas. Se abre con su primera atención registrada.
+
+**Paciente sin historia clínica**:
+Paciente registrado que todavía no tiene una atención registrada. Tiene ficha administrativa, pero no historia clínica.
+
 ## Finanzas y cobertura
 
 **Financiador**:
@@ -124,3 +142,20 @@ Fin del acuerdo vigente entre un hospital y un financiador. Conserva las prestac
 
 **Acceso histórico pendiente**:
 Consulta limitada del financiador a operaciones propias que todavía requieren atención o resolución económica, aunque haya terminado la afiliación o el convenio. Un saldo del paciente no habilita por sí solo ese acceso.
+
+## Gestión institucional
+
+**Requiere atención**:
+Pendientes que la persona puede resolver desde su rol en la institución activa. Se agrupan en pendientes de configuración, que son pasos de puesta en marcha sin completar, y alertas de operación, que son casos urgentes activos, una espera promedio de 30 minutos o más, y turnos pasados sin presente ni ausente registrado.
+_Evitar_: Alertas a secas, porque no distingue configuración de operación.
+
+**Pendiente de configuración**:
+Paso de puesta en marcha que la institución todavía no completó, como publicar un flujo o cargar horarios de una agenda.
+
+**Alerta de operación**:
+Situación de la atención en curso que requiere que alguien intervenga, calculada sobre los datos de la institución activa.
+## Agenda y turnos
+
+**Agenda**:
+Lo que se reserva en un horario: un profesional o un recurso, como un equipo o un consultorio. Se elige por su nombre, sea de profesional o de recurso.
+_Evitar_: Profesional, para referirse a la agenda; un profesional puede no tener agenda y un recurso no es un profesional.
