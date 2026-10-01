@@ -76,6 +76,23 @@ class FichaAfiliadoTests(VigenciasApiSetup, APITestCase):
         self.assertFalse(AccesoClinico.objects.exists())
         self.assertTrue(EventoCobertura.objects.filter(accion="consultar_afiliado").exists())
 
+    def test_cupos_comparten_uso_reservado_y_externo_e_historial_con_motivo(self):
+        self.reservar()
+        self.externo(cantidad=2)
+        response = self.ficha()
+        self.assertEqual(response.status_code, 200, response.data)
+        cupo = next(item for item in response.data["cupos"] if item["prestacion"]["codigo"] == self.comun.codigo)
+        self.assertEqual((cupo["tope"], cupo["usado"], cupo["disponible"]), (6, 3, 3))
+        self.finalizar()
+        self.post("reactivar-afiliacion", {"afiliado": self.afiliado.pk, "plan": self.plan.pk,
+                                          "motivo": "Reactivación solicitada por afiliada"})
+        response = self.ficha()
+        self.assertEqual([h["tipo"] for h in response.data["historial"][:2]], ["reactivacion", "finalizacion"])
+        self.assertIn("Reactivación solicitada", response.data["historial"][0]["motivo"])
+        self.afiliado.plan = None
+        self.afiliado.save(update_fields=["plan"])
+        self.assertEqual(self.ficha().data["cupos"], [])
+
     def test_pagina_fuera_de_rango_no_audita_acceso_y_parametro_invalido_es_400(self):
         self.reservar()
         response = self.ficha(page=2, page_size=1)
@@ -107,6 +124,7 @@ class FichaAfiliadoTests(VigenciasApiSetup, APITestCase):
         self.assertIn("ficha-afiliado-", response["Content-Disposition"])
         filas = list(csv.reader(StringIO(response.content.decode("utf-8-sig")), delimiter=";"))
         self.assertEqual([fila[0] for fila in filas[1:]], [str(reserva.pk)])
+        self.assertFalse({"Cupo", "Historial", "Historia clínica", "Evolución"} & set(filas[0]))
         self.assertEqual(AccesoClinico.objects.filter(recurso="financiadores-ficha-afiliado-csv").count(), 1)
         self.assertTrue(EventoCobertura.objects.filter(accion="exportar_ficha_afiliado").exists())
         actividad = self.client.get(self.base + "actividad/", {"formato": "csv"})
@@ -153,3 +171,12 @@ class FichaAutorizacionesTests(AutorizacionSetup, APITestCase):
         self.assertEqual([fila["id"] for fila in self.client.get(url, {"afiliado": self.afiliado.pk}).data["results"]], [solicitud.pk])
         SolicitudAutorizacion.objects.filter(pk=solicitud.pk).update(estado="rechazada")
         self.assertEqual(self.client.get(url, {"afiliado": self.afiliado.pk}).data["results"], [])
+
+    def test_pendientes_solo_incluye_abiertas(self):
+        solicitud = self.solicitud()
+        self.client.force_authenticate(self.operador)
+        url = f"/api/financiadores/{self.financiador.pk}/ficha-afiliado-autorizaciones/"
+        response = self.client.get(url, {"afiliado": self.afiliado.pk, "pendientes": "true"})
+        self.assertEqual([fila["id"] for fila in response.data["results"]], [solicitud.pk])
+        SolicitudAutorizacion.objects.filter(pk=solicitud.pk).update(estado="rechazada")
+        self.assertEqual(self.client.get(url, {"afiliado": self.afiliado.pk, "pendientes": "true"}).data["results"], [])
