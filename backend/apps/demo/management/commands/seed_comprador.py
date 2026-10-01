@@ -9,11 +9,8 @@ cada pantalla que no es la suya. Este comando crea `test@salud.local`:
 - **Plataforma:** entra al tablero de instituciones, como la autoridad estatal.
 - **Hospital Central:** todos los roles, todas las áreas y todos los equipos.
   Tiene casos por tomar, pacientes en fila, turnos por confirmar y traslados por
-  responder, los mismos que el resto del personal.
-- **Los Aromos:** administración con todos los permisos de finanzas. Es donde
-  están los gastos, los costos, los cobros y las coberturas. Tiene los mismos
-  permisos en las otras dos instituciones donde administra, para que Finanzas
-  no le niegue ninguna pestaña.
+  responder, los mismos que el resto del personal. Su membresía administradora
+  tiene todos los permisos de finanzas para ver gastos, costos, cobros y coberturas.
 - **Mutual del Valle:** administración del portal del financiador, con
   autorizaciones por responder.
 - **Hospital Piloto:** su propia institución, en puesta en marcha. Tiene áreas y
@@ -26,8 +23,7 @@ no entrar con la campana vacía.
 Requisitos
 ----------
 - `ENTORNO` distinto de `produccion`.
-- Cargados Hospital Central (`seed_guardia`), Los Aromos (`seed_los_aromos`) y
-  Mutual del Valle (`seed_financiadores`).
+- Cargados Hospital Central (`seed_guardia`) y Mutual del Valle (`seed_financiadores`).
 
 No es idempotente: se carga una vez por `seed_entorno_demo`, que vacía la base.
 La clave es la de `DEMO_PASSWORD` (ver `apps.demo.claves`).
@@ -47,7 +43,6 @@ from apps.instituciones.models import Area, Grupo, Institucion
 
 EMAIL = "test@salud.local"
 CENTRAL = "Hospital Central"
-LOS_AROMOS = "Hospital General Los Aromos"
 FINANCIADOR = "Mutual del Valle"
 PILOTO = "Hospital Piloto"
 AREAS_PILOTO = ["Guardia", "Consultorios externos", "Internación"]
@@ -64,7 +59,6 @@ class Command(BaseCommand):
     def handle(self, *args, **opciones):
         exigir_entorno_de_prueba("seed_comprador")
         central = self._institucion(CENTRAL, "seed_guardia")
-        aromos = self._institucion(LOS_AROMOS, "seed_los_aromos")
         financiador = Financiador.objects.filter(nombre=FINANCIADOR).first()
         if financiador is None:
             raise CommandError(f"No existe «{FINANCIADOR}». Corré `seed_financiadores` primero.")
@@ -83,10 +77,6 @@ class Command(BaseCommand):
         for grupo in grupos:
             grupo.miembros.add(comprador)
 
-        admin_aromos = Membresia.objects.create(usuario=comprador, institucion=aromos, rol=R.ADMIN_INSTITUCION)
-        admin_aromos.areas.set(aromos.areas.filter(activa=True))
-        self._finanzas(admin_aromos)
-
         MembresiaFinanciador.objects.create(financiador=financiador, usuario=comprador, rol="admin",
                                             resuelve_autorizaciones=True)
 
@@ -95,7 +85,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f"\n{EMAIL}: plataforma y {len(R.values)} roles en {central.nombre} ({grupos.count()} equipos), "
-            f"finanzas completas en {aromos.nombre}, portal de {financiador.nombre} y "
+            f"finanzas completas en {central.nombre}, portal de {financiador.nombre} y "
             f"«{piloto.nombre}» en puesta en marcha · {copiadas} notificaciones sin leer."
         ))
 
