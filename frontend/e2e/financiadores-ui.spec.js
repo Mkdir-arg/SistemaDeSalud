@@ -194,10 +194,10 @@ async function escenario(page, { rol = "admin", falloPlanes = false, mixto = fal
     const url = new URL(req.url()); const path = url.pathname.replace(/^\/api/, "");
     if (!url.pathname.startsWith("/api/")) return route.continue();
     peticiones.push(path);
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol, resuelve_autorizaciones: designado })) } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, email: "persona@example.test", nombre_completo: "Operador de prueba", is_superuser: plataforma, capacidades_por_institucion: mixto ? { 2: ["casos_operar", "historia_clinica"] } : {}, roles_por_institucion: mixto ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol, resuelve_autorizaciones: designado, consulta_historia_clinica: designado || rol === "admin" })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista([]) });
     if (path === "/autorizaciones-cobertura/") return route.fulfill({ json: lista([]) });
-    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol, resuelve_autorizaciones: designado }))) });
+    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol, resuelve_autorizaciones: designado, consulta_historia_clinica: designado || rol === "admin" }))) });
     const match = path.match(/^\/financiadores\/(\d+)\/(.+)\/$/);
     if (match) {
       const [, id, recurso] = match;
@@ -870,6 +870,19 @@ test("Historia clínica desde la ficha exige motivo y descarta evoluciones al ce
   expect(consultas).toEqual([{ afiliado: 45, caso: 91, motivo: "Auditoría médica del convenio" }]);
   await historia.getByRole("button", { name: "Cerrar evoluciones" }).click();
   await expect(historia).not.toContainText("Evolución firmada");
+});
+
+test("admin del financiador ve Historia clínica sin designación", async ({ page }) => {
+  await escenario(page, { rol: "admin" });
+  await page.goto("/financiadores/padron?financiador=21");
+  await expect(page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Historia clínica", exact: true })).toBeVisible();
+});
+
+test("operador sin designación no ve Historia clínica", async ({ page }) => {
+  await escenario(page, { rol: "operador" });
+  await page.goto("/financiadores/padron?financiador=21");
+  await expect(page.getByRole("row").filter({ hasText: "Persona Ficticia" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Historia clínica", exact: true })).toHaveCount(0);
 });
 
 test("auditor no ve Historia clínica en padrón ni ficha", async ({ page }) => {
