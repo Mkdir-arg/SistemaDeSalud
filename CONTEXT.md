@@ -35,7 +35,7 @@ Afiliación elegida al ingresar a un caso asistencial. Se conserva durante ese c
 Conjunto de afiliaciones administrado por el financiador. Incluye personas que todavía no fueron atendidas en un hospital de Salud.
 
 **Ficha del afiliado**:
-Consulta del financiador sobre una afiliación de su padrón que reúne las prestaciones y autorizaciones de esa persona en los hospitales dentro de su alcance. No incluye el texto de las justificaciones; la historia clínica del financiador se muestra sólo a quienes resuelven autorizaciones.
+Consulta del financiador sobre una afiliación de su padrón que reúne las prestaciones y autorizaciones de esa persona en los hospitales dentro de su alcance. No incluye el texto de las justificaciones; la historia clínica del financiador se muestra sólo a su administración y a quienes resuelven autorizaciones.
 _Evitar_: Historia clínica del afiliado, resumen clínico.
 
 **Historia clínica del financiador**:
