@@ -60,12 +60,17 @@ class FinanciadorSerializer(serializers.ModelSerializer):
     rol = serializers.SerializerMethodField()
     resuelve_autorizaciones = serializers.SerializerMethodField()
     carga_solicitudes_manuales = serializers.SerializerMethodField()
+    consulta_historia_clinica = serializers.SerializerMethodField()
     planes_activos = serializers.SerializerMethodField()
     convenios_vigentes = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "carga_solicitudes_manuales", "planes_activos", "convenios_vigentes"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes"]
+
+    def get_consulta_historia_clinica(self, obj) -> bool:
+        from .permisos import puede_consultar_historia_clinica
+        return puede_consultar_historia_clinica(self.context["request"].user, obj.pk)
 
     def get_resuelve_autorizaciones(self, obj) -> bool:
         from .permisos import puede_resolver_autorizaciones

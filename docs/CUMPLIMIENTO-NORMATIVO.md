@@ -96,10 +96,10 @@ rechaza.
 
 ### Minimización en los accesos del financiador
 
-Una obra social ve **prestación, fecha, cantidad e importe propio**. No accede a la
-historia clínica. Y un financiador no puede consultar el padrón ni los consumos de
-otro, ni siquiera para detectar un cambio de cobertura.
-La ficha del afiliado reúne prestaciones y autorizaciones ya visibles, sin historia clínica ni justificaciones, y audita los accesos por institución.
+Una obra social ve **prestación, fecha, cantidad e importe propio**. El administrador del financiador y el usuario designado para resolver autorizaciones pueden consultar evoluciones firmadas de casos con su cobertura dentro del alcance vigente o histórico pendiente, con un motivo auditado visible al hospital. No accede a alergias, antecedentes, estudios ni recetas. Un financiador no puede consultar el padrón ni los consumos de otro, ni siquiera para detectar un cambio de cobertura.
+La ficha del afiliado reúne prestaciones, autorizaciones, cupos e historial administrativo sin textos de justificación. La historia clínica del financiador se consulta por separado y audita cada caso y sus evoluciones por institución.
+
+**Riesgo aceptado (#93, 01/10/2026):** el acceso no exige consentimiento del paciente ni habilitación del hospital y rige en todos los entornos, incluida producción. Es una decisión del responsable del producto contra la recomendación de exigir consentimiento y/o habilitación. Revisar con asesoría legal (Ley 26.529 art. 19; Ley 25.326 art. 5) antes de usar con pacientes reales.
 
 La auditoría del circuito de cobertura (`EventoCobertura`) registra la operación
 administrativa **sin datos clínicos**.
