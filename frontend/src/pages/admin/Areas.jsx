@@ -1205,7 +1205,7 @@ function AsignarModal({ area, onClose }) {
       ) : usuarios.filas.length === 0 ? (
         <EstadoVacio
           titulo="Esta institución todavía no tiene personas"
-          detalle="Creá usuarios en Administración → Usuarios y después asignalos al área."
+          detalle="Creá usuarios en Configuración → Usuarios y permisos y después asignalos al área."
           icono="users"
         />
       ) : (
