@@ -125,12 +125,25 @@ function mensajesValidacion(value) {
   return "";
 }
 
+// En un 4xx el `detail` del servidor le explica a la persona qué pasó («acceso
+// revocado», «antecedente no disponible con tu acceso actual») y se muestra
+// (#112, decisión G1). El genérico queda de respaldo cuando no viene, y siempre
+// en 5xx, para no exponer detalles internos. El 401 sigue genérico: lo maneja
+// el circuito de sesión y no conviene distinguir por qué falló un ingreso.
 export function mensajeRespuesta(status, data) {
   if (status >= 500) return "El servicio no está disponible en este momento. Reintentá más tarde.";
   if (status === 401) return "Tu sesión venció o las credenciales no son válidas. Ingresá nuevamente.";
-  if (status === 403) return "No tenés permiso para realizar esta operación.";
-  if (status === 404) return "No se encontró el recurso solicitado.";
-  if (typeof data === "object" && data !== null) {
+  const objeto = typeof data === "object" && data !== null;
+  if (status === 403 || status === 404) {
+    // Sólo el `detail`: el resto de la respuesta trae marcas para la app
+    // (por ejemplo `simulacion`), no texto para la persona.
+    const detalle = objeto ? mensajesValidacion(data.detail) : "";
+    if (detalle) return detalle;
+    return status === 403
+      ? "No tenés permiso para realizar esta operación."
+      : "No se encontró el recurso solicitado.";
+  }
+  if (objeto) {
     const mensaje = mensajesValidacion(data);
     if (mensaje) return mensaje;
   }
