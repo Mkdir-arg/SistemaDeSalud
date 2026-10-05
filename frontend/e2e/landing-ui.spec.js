@@ -83,6 +83,8 @@ test.describe("Landing pública", () => {
   test("ningún enlace visible queda sin destino", async ({ page }) => {
     await simularApi(page, null);
     await page.goto("/");
+    // evaluateAll no espera: sin esto, en un runner lento la landing (lazy) todavía no pintó.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const enlaces = await page.locator("a:visible").evaluateAll((as) => as.map((a) => ({ texto: a.textContent.trim(), href: a.getAttribute("href") })));
     expect(enlaces.length).toBeGreaterThan(0);
     for (const { texto, href } of enlaces) {
