@@ -103,7 +103,12 @@ export default function Agenda() {
   });
   const detalleValido = agendaPorId.data?.activa
     && Number(agendaPorId.data.institucion) === Number(institucion?.id);
-  const agenda = enPrimeraPagina || (detalleValido ? agendaPorId.data : null) || lista[0];
+  const diaSemana = (new Date(`${fecha}T12:00:00`).getDay() + 6) % 7;
+  const disponibleHoy = lista.find((a) => a.disponibilidades?.some((franja) =>
+    franja.activa !== false && franja.dia_semana === diaSemana
+    && (!franja.vigente_desde || franja.vigente_desde <= fecha)
+    && (!franja.vigente_hasta || franja.vigente_hasta >= fecha)));
+  const agenda = enPrimeraPagina || (detalleValido ? agendaPorId.data : null) || disponibleHoy || lista[0];
   useEffect(() => {
     if (!idUrl || agendas.isPlaceholderData || enPrimeraPagina || (agendaId != null && agendaPorId.isPending)
       || detalleValido || !lista[0]) return;
@@ -529,7 +534,7 @@ function SelectorAgenda({ agenda, institucionId, onElegir }) {
             aria-selected={i === activo} onMouseDown={(e) => e.preventDefault()}
             onClick={() => elegir(a)}
             className={cn("cursor-pointer px-3 py-2 text-sm hover:bg-superficie-2", i === activo && "bg-superficie-2")}
-          >{a.nombre} · {a.area_nombre} · {a.tipo}</div>)}
+          >{a.nombre}{a.area_nombre && !a.nombre.includes(a.area_nombre) ? ` · ${a.area_nombre}` : ""}{a.tipo === "recurso" ? " · Recurso" : ""}</div>)}
       </div>}
     </div>
   );

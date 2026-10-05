@@ -353,7 +353,7 @@ const ROL_LABEL = {
 
 // Clases del ítem de menú. Migrado de estilos inline a tokens semánticos porque
 // con el literal `slate600` sobre la superficie oscura el menú quedaba en 2,22:1
-// �ilegible� y es el marco que se ve en todas las pantallas.
+// «ilegible» y es el marco que se ve en todas las pantallas.
 const itemClase = (col) => ({ isActive }) =>
   cn(
     "flex items-center gap-2 rounded-md text-xs font-medium",
@@ -371,7 +371,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
   const { institucion, setInstitucion, roles, puedeVer } = useInstitucion();
   const navigate = useNavigate();
 
-  // "�altima actualización" que publica la pantalla activa (lo muestra la TopBar).
+  // "Última actualización" que publica la pantalla activa (lo muestra la TopBar).
   const [refresco, setRefresco] = useState(null);
 
   // Menú lateral colapsable (recordado entre sesiones).
@@ -452,12 +452,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
     navigate("/inicio");
   }
 
-  const rolLabel = esFinanciador ? financiador.rol : user?.is_superuser
+  const rolLabel = esFinanciador ? ({ admin: "Administrador", operador: "Operador", auditor: "Auditor" }[financiador.rol] || financiador.rol) : user?.is_superuser
     ? "Super admin"
     : roles.map((r) => ROL_LABEL[r] || r).join(" · ") || "Usuario";
-  const gruposInstitucion = user?.is_superuser
-    ? GRUPOS
-    : [GRUPOS[1], GRUPOS[0], ...GRUPOS.slice(2)];
+  const gruposInstitucion = GRUPOS;
   const ambitoActual = ambitoSimulable({ simulacion, esPlataforma, esFinanciador, institucion, location });
   const itemVisible = (item) => {
     if (item.especial === "finanzas") return permisosFinanzas.acceso && !permisosFinanzas.error;
@@ -516,7 +514,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
             <>
               <div onClick={() => setMenuInst(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
               <div style={{ position: "absolute", top: 112, left: 12, right: 12, background: "var(--color-superficie)", border: `1px solid var(--color-borde)`, borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.16)", zIndex: 21, padding: 6, maxHeight: 280, overflowY: "auto" }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-tenue)", padding: "6px 8px 4px" }}>CAMBIAR DE INSTITUCI�N</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".6px", color: "var(--color-texto-tenue)", padding: "6px 8px 4px" }}>CAMBIAR DE INSTITUCIÓN</div>
                 {misInst.map((inst) => {
                   const activa = inst.id === institucion?.id;
                   return (
@@ -555,7 +553,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
         {/* Volver al directorio (super admin) / rol del usuario (no-super) — solo expandido */}
         {!colapsado && !esPlataforma && (
           <div style={{ flex: "none", padding: "10px 14px", borderBottom: `1px solid var(--color-division)` }}>
-            {esFinanciador ? financiador.selector : user?.is_superuser ? (
+            {esFinanciador ? financiador.selector : (user?.is_superuser || puedeVer("gobierno_plataforma")) && !simulacion ? (
               <>
               <button
                 onClick={() => { setInstitucion(null); navigate("/directorio"); }}

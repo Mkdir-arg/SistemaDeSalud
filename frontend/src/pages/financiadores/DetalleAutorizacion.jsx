@@ -5,7 +5,7 @@ import { api } from "@/api/client";
 import { POR_PAGINA } from "@/api/queries";
 import { errorFinanciador } from "@/api/financiadores";
 import { Ayuda, Badge, Button, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
-import { fechaHora } from "@/lib/format";
+import { fechaHora, plural } from "@/lib/format";
 
 export const ESTADOS_AUTORIZACION = {
   pendiente: "Pendiente", observada: "Observada", aprobada: "Aprobada",
@@ -28,7 +28,7 @@ export function PaginasAutorizacion({ consulta, pagina, cambiar }) {
   const total = consulta.data?.count ?? 0;
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   return <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division p-4 text-sm">
-    <span>{total} solicitudes · {total === 0 ? "Sin páginas" : `Página ${pagina} de ${paginas}`}</span>
+    <span>{plural(total, "solicitud", "solicitudes")} · {total === 0 ? "Sin páginas" : `Página ${pagina} de ${paginas}`}</span>
     <div className="flex gap-2">
       <Button type="button" size="sm" variant="secondary" disabled={pagina <= 1 || consulta.isFetching} onClick={() => cambiar(pagina - 1)}>Anterior</Button>
       <Button type="button" size="sm" variant="secondary" disabled={total === 0 || !consulta.data?.next || consulta.isFetching} onClick={() => cambiar(pagina + 1)}>Siguiente</Button>
@@ -77,7 +77,8 @@ function AccionesAutorizacion({ solicitud: d, ambito, refrescar, onGuardado, blo
   const editar = (campo, valor) => { setFormulario((f) => ({ ...f, [campo]: valor })); clave.current = crypto.randomUUID(); };
   const conflicto = error?.status === 409 || (error?.status === 400 && /cambi[oó]|actualiz/i.test(errorFinanciador(error)));
   const aprobado = formulario.decision === "aprobar";
-  const valido = accion === "resolver" ? formulario.decision && formulario.motivo.trim() && (!aprobado || (formulario.evidencia.trim() && Number(formulario.cantidad_aprobada) > 0 && formulario.vigencia_desde && formulario.vigencia_hasta)) : accion === "reenviar" ? formulario.justificacion.trim() : formulario.motivo.trim();
+  const fechasValidas = formulario.vigencia_desde && formulario.vigencia_hasta && formulario.vigencia_desde <= formulario.vigencia_hasta;
+  const valido = accion === "resolver" ? formulario.decision && formulario.motivo.trim() && (!aprobado || (formulario.evidencia.trim() && Number(formulario.cantidad_aprobada) > 0 && fechasValidas)) : accion === "reenviar" ? formulario.justificacion.trim() : formulario.motivo.trim();
 
   async function guardar(event) {
     event.preventDefault();
@@ -112,6 +113,7 @@ function AccionesAutorizacion({ solicitud: d, ambito, refrescar, onGuardado, blo
           {aprobado && <div className="grid gap-3 sm:grid-cols-3"><Field label="Cantidad autorizada"><Input type="number" min="1" max={d.cantidad_solicitada} step="1" required value={formulario.cantidad_aprobada} onChange={(e) => editar("cantidad_aprobada", e.target.value)} /></Field><Field label="Válida desde"><Input type="date" required value={formulario.vigencia_desde} onChange={(e) => editar("vigencia_desde", e.target.value)} /></Field><Field label="Válida hasta"><Input type="date" min={formulario.vigencia_desde || undefined} required value={formulario.vigencia_hasta} onChange={(e) => editar("vigencia_hasta", e.target.value)} /></Field></div>}
         </>}
       </fieldset>
+      {!valido && <p role="status" className="text-sm text-texto-suave">{aprobado ? "Para aprobar, completá motivo, evidencia, cantidad y ambas fechas de vigencia. La fecha final debe ser igual o posterior a la inicial." : "Completá los campos obligatorios para registrar la decisión."}</p>}
       <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!valido || ocupado || bloqueado || conflicto}>{ocupado ? "Guardando…" : accion === "resolver" ? "Registrar decisión" : accion === "reenviar" ? "Reenviar solicitud" : "Confirmar anulación"}</Button><Button type="button" variant="ghost" disabled={ocupado} onClick={() => { setAccion(""); setError(null); }}>Cancelar</Button></div>
     </form>}
   </section>;

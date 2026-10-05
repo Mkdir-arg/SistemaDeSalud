@@ -1,3 +1,14 @@
+// Una fecha de calendario no es un instante UTC: conservar el día recibido.
+export function fechaCalendario(valor) {
+  const m = String(valor || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : valor || "—";
+}
+
+export function periodoCalendario(valor) {
+  const m = String(valor || "").match(/^(\d{4})-(\d{2})$/);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" }) : valor || "—";
+}
+
 // Formato de fecha/hora estilo expediente: "24/06/2026 · 14:30".
 export function fechaHora(iso) {
   if (!iso) return "—";

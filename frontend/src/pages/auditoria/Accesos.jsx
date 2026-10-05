@@ -202,7 +202,7 @@ export default function Accesos() {
                 {a.tipo === "exportacion" && a.variante && <div className="text-sm text-texto-debil">
                   Variante: {a.variante}
                 </div>}
-                {a.tipo === "exportacion" && a.motivo && <div className="max-w-80 break-words text-sm text-texto-medio">
+                {a.motivo && <div className="max-w-80 break-words whitespace-pre-wrap text-sm text-texto-medio">
                   Motivo: {a.motivo}
                 </div>}
               </div>

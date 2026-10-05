@@ -3,7 +3,7 @@
 // Migrados a Tailwind sobre tokens SEMÁNTICOS, así que responden al tema. Todos
 // siguen aceptando `style` además de `className`: las pantallas que faltan migrar
 // les pasan estilos inline y no se pueden romper hasta que les toque el turno.
-import { Fragment, cloneElement, isValidElement, useEffect, useId, useRef, useState, forwardRef } from "react";
+import { Fragment, cloneElement, isValidElement, useEffect, useLayoutEffect, useId, useRef, useState, forwardRef } from "react";
 
 import { cn } from "@/lib/cn";
 import { iniciales } from "@/lib/dominio";
@@ -112,6 +112,22 @@ export function Popover({ children, className, align = "right", onClose }) {
  */
 export function Ayuda({ children, etiqueta = "Ver ayuda", align = "left", className }) {
   const [abierto, setAbierto] = useState(false);
+  const tooltip = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!abierto) return undefined;
+    const acomodar = () => {
+      const elemento = tooltip.current;
+      if (!elemento) return;
+      elemento.style.transform = "";
+      const caja = elemento.getBoundingClientRect();
+      const desplazamiento = caja.left < 8 ? 8 - caja.left : Math.min(0, window.innerWidth - 8 - caja.right);
+      elemento.style.transform = `translateX(${desplazamiento}px)`;
+    };
+    acomodar();
+    window.addEventListener("resize", acomodar);
+    return () => window.removeEventListener("resize", acomodar);
+  }, [abierto, align]);
 
   // Escape cierra la ayuda, no lo que haya detrás. Va en CAPTURA y corta la
   // propagación: dentro de un diálogo, el Escape del `Modal` está en `window` y
@@ -150,6 +166,7 @@ export function Ayuda({ children, etiqueta = "Ver ayuda", align = "left", classN
             onClick={() => setAbierto(false)}
           />
           <span
+            ref={tooltip}
             role="tooltip"
             className={cn(
               "absolute top-6 z-30 block w-[min(22rem,70vw)] whitespace-normal rounded-lg border border-borde bg-superficie p-3",
