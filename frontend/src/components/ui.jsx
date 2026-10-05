@@ -58,7 +58,7 @@ export function IconButton({
   const lado = size === "sm" ? "size-8" : "size-9";
   const estilo =
     variant === "soft"
-      ? "border border-accent-100 bg-accent-50 text-accent hover:bg-accent-100"
+      ? "border border-secundario-borde bg-secundario text-texto-suave hover:bg-secundario-hover hover:text-texto"
       : "text-texto-debil hover:bg-superficie-2 hover:text-texto-suave";
   return (
     <button
