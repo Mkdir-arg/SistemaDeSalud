@@ -13,7 +13,7 @@ otra en cero y ninguna alerta. Este comando suma a la Región Sanitaria VI:
 - **Hospital General Los Aromos:** hospital mediano, con ocupación normal.
 - **Hospital Regional Lomas del Este:** en configuración hace 45 días, con
   áreas y su administrador, pero sin flujos ni agendas. Es la otra alerta del
-  tablero: más de 30 días en alta.
+  tablero: más de 30 días en configuración.
 
 Y le da a Villa Real lo que le faltaba para no verse en cero: una fila de
 demanda espontánea y pacientes internados.
