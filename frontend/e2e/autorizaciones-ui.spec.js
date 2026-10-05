@@ -140,7 +140,6 @@ test("el antecedente conserva el ámbito y muestra la solicitud anterior sin mod
 });
 
 test("antecedente no disponible conserva su referencia y expone el error de acceso", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page, { antecedenteOculto: true, solicitud: { anterior: 90 } });
   await page.goto("/financiadores/autorizaciones");
   await revisar(page).click();
@@ -169,7 +168,6 @@ async function abrirResolucion(page) {
 }
 
 test("aprobar exige evidencia, conserva clave al reintentar y no realiza la prestación", async ({ page }, testInfo) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   const { escrituras } = await escenario(page, { fallo: "transitorio" });
   await abrirResolucion(page);
   await page.getByRole("combobox", { name: "Decisión", exact: true }).selectOption("aprobar");
@@ -179,7 +177,9 @@ test("aprobar exige evidencia, conserva clave al reintentar y no realiza la pres
   await expect(page.getByRole("button", { name: "Registrar decisión" })).toBeDisabled();
   await page.getByLabel("Evidencia de la decisión", { exact: false }).fill("Acta interna ficticia 123");
   await page.getByRole("button", { name: "Registrar decisión" }).click();
-  await expect(page.getByRole("alert")).toContainText("Reintentá la misma operación");
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo confirmar");
   await page.screenshot({ path: testInfo.outputPath("autorizacion-resolucion.png"), fullPage: true, animations: "disabled" });
   await page.getByRole("button", { name: "Registrar decisión" }).click();
   await expect(page.getByRole("status")).toContainText("Solicitud actualizada");
@@ -203,7 +203,6 @@ test("conflicto de revisión bloquea reenvío ciego y actualiza la decisión vig
 });
 
 test("el caso solicita con intento estable y justificación mínima sin enviar historia ni urgencia", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   const { estado, escrituras } = await escenario(page, { hospital: true, fallo: "transitorio" });
   estado.listaVacia = true;
   await page.goto("/casos/41");
@@ -212,7 +211,9 @@ test("el caso solicita con intento estable y justificación mínima sin enviar h
   await page.getByLabel("Cantidad solicitada", { exact: true }).fill("2");
   await page.getByLabel("Justificación para el financiador", { exact: false }).fill("Consulta por continuidad del tratamiento");
   await page.getByRole("button", { name: "Enviar solicitud", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Reintentá la misma operación");
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo confirmar");
   await page.getByRole("button", { name: "Enviar solicitud", exact: true }).click();
   await expect(page.getByText(/Solicitud enviada al financiador/)).toBeVisible();
   expect(escrituras).toHaveLength(2);

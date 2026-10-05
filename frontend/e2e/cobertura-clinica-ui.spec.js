@@ -134,13 +134,14 @@ test("renovar requiere verificar no realización y una nueva aceptación indepen
 });
 
 test("reintentar una confirmación conserva el UUID y el consentimiento de esa solicitud", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   const { escrituras } = await circuito(page, { fallaPrimerConfirmar: true });
   await page.goto("/casos/41");
   await page.getByRole("button", { name: "Consultar cobertura", exact: true }).click();
   await page.getByRole("checkbox", { name: /El paciente aceptó/ }).check();
   await page.getByRole("button", { name: "Confirmar reserva de cobertura" }).click();
-  await expect(page.getByRole("alert")).toContainText("Reintentá la misma operación");
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo confirmar la respuesta");
   await page.getByRole("button", { name: "Confirmar reserva de cobertura" }).click();
   await expect(page.getByRole("status")).toContainText("Cobertura confirmada");
   const confirmaciones = escrituras.filter((e) => e.path.endsWith("cobertura-confirmar/"));

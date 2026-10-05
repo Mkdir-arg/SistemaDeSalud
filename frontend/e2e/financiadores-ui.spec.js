@@ -146,7 +146,6 @@ test("actividad mantiene filtros y tabla dentro de la pantalla móvil de I-Core 
 });
 
 test("auditor exporta todas las páginas con los filtros aplicados y ve errores de descarga", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   const { escrituras } = await escenario(page, { rol: "auditor" });
   const descargas = [];
   await page.route("**/api/financiadores/21/actividad/**", (route) => {
@@ -168,7 +167,6 @@ test("auditor exporta todas las páginas con los filtros aplicados y ve errores 
 });
 
 test("actividad exige acotar exportaciones grandes y no presenta ceros cuando falla la consulta", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page);
   await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta([actividadBase], { count: 5001 }) }));
   await page.goto("/financiadores/actividad");
@@ -312,7 +310,7 @@ test("Inicio distingue un error de actividad del valor cero y permite reintentar
   let fallar = true;
   await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill(fallar ? { status: 403, json: { detail: "Actividad revocada" } } : { json: actividadRespuesta([], { resumen: { realizadas: 0, discrepancias: 0, importes_pendientes: 0, importe_asignado: "0.00" } }) }));
   await page.goto("/financiadores/inicio?financiador=21");
-  await expect(page.getByRole("alert")).toContainText("No tenés permiso");
+  await expect(page.getByRole("alert")).toContainText("Actividad revocada");
   await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("—");
   fallar = false;
   await page.getByRole("alert").getByRole("button", { name: "Reintentar" }).click();
@@ -463,7 +461,6 @@ test("auditor consulta sin acciones de escritura", async ({ page }) => {
 });
 
 test("error de permisos se muestra como error y no como lista vacía", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page, { falloPlanes: true });
   await page.goto("/financiadores/planes");
   await expect(page.getByRole("alert").first()).toContainText("Acceso revocado");
@@ -839,7 +836,6 @@ test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cup
 });
 
 test("el error de finalización conserva el motivo y no afirma un cambio de vigencia", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page);
   await page.route("**/api/financiadores/21/finalizar-afiliacion/", (route) => route.fulfill({ status: 403, json: { detail: "El acceso fue revocado." } }));
   await page.goto("/financiadores/padron");

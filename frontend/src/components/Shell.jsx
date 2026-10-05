@@ -579,7 +579,8 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               </>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--color-texto-tenue)", padding: "4px 2px" }}>
-                <Icon name="power" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
+                {/* Credencial y no «power»: ese es el de «Salir» y se leía como cerrar sesión. */}
+                <Icon name="idCard" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
               </div>
             )}
           </div>
