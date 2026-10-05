@@ -195,7 +195,6 @@ test("concesión revocada evita una consulta aunque la opción estuviera disponi
 });
 
 test("un error reemplaza cuentas y totales sin aparentar un saldo cero", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page);
   let falla = false;
   await page.route("**/api/seguimiento-cobros/**", (route) => route.fulfill(falla ? { status: 503, json: { detail: "No se pudo consultar el seguimiento" } } : { json: respuesta() }));
@@ -204,7 +203,9 @@ test("un error reemplaza cuentas y totales sin aparentar un saldo cero", async (
   falla = true;
   await page.getByLabel("Desde", { exact: true }).fill("2026-01-01");
   await aplicarConEnter(page);
-  await expect(page.getByRole("alert")).toContainText("No se pudo consultar el seguimiento");
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo consultar el seguimiento");
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toHaveCount(0);
   await expect(page.getByText("Paciente de prueba", { exact: true })).toHaveCount(0);
   falla = false;
@@ -305,7 +306,6 @@ test("saldar la última cuenta de la segunda página permite volver a la primera
 });
 
 test("un 404 ajeno a la paginación conserva el error sin ofrecer recuperación engañosa", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page);
   await page.route("**/api/seguimiento-cobros/**", (route) => route.fulfill({ status: 404, json: { detail: "La institución no está disponible." } }));
   await page.goto(`${entrada}&page=2`);
@@ -368,7 +368,6 @@ test("exportar exige aplicar cambios, respeta el límite y no habilita descargas
 
 for (const status of [400, 503]) {
   test(`un error ${status} de exportación conserva la consulta y no descarga archivo`, async ({ page }) => {
-    test.fixme(status === 503, "#112 G1: decisión pendiente sobre mensajes del servidor");
     await escenario(page);
     const archivos = [];
     page.on("download", (archivo) => archivos.push(archivo));
@@ -378,7 +377,9 @@ for (const status of [400, 503]) {
     });
     await page.goto(entrada);
     await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText(status === 400 ? "El resultado supera el límite permitido" : "No se pudo auditar la exportación");
+    // 4xx muestra el detalle del servidor; 5xx, el genérico y nunca el detalle interno (#112 G1).
+    await expect(page.getByRole("alert")).toContainText(status === 400 ? "El resultado supera el límite permitido" : "El servicio no está disponible en este momento");
+    if (status === 503) await expect(page.getByRole("alert")).not.toContainText("No se pudo auditar la exportación");
     await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toContainText("ARS 6.000,00");
     await expect(page.getByText("Paciente de prueba", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeEnabled();
@@ -428,7 +429,8 @@ test("cambiar de hospital no traslada un error de la descarga anterior", async (
     if (params.formato === "csv") {
       descargas.push(params);
       await espera;
-      return route.fulfill({ status: 503, json: { detail: "Error de exportación del hospital anterior" } });
+      // 4xx: su detalle sí se muestra (#112 G1), así que si el error se trasladara al otro hospital se vería.
+      return route.fulfill({ status: 400, json: { detail: "Error de exportación del hospital anterior" } });
     }
     return route.fulfill({ json: respuesta([{ ...cuenta, contraparte_nombre: params.institucion === "3" ? "Paciente del Sur" : "Paciente de prueba" }]) });
   });
@@ -440,7 +442,7 @@ test("cambiar de hospital no traslada un error de la descarga anterior", async (
   await page.getByRole("link", { name: "Coberturas y copagos", exact: true }).click();
   await page.getByRole("tab", { name: "Seguimiento de cobros", exact: true }).click();
   await expect(page.getByText("Paciente del Sur", { exact: true })).toBeVisible();
-  const respuestaAnterior = page.waitForResponse((response) => response.url().includes("formato=csv") && response.status() === 503);
+  const respuestaAnterior = page.waitForResponse((response) => response.url().includes("formato=csv") && response.status() === 400);
   liberar();
   await respuestaAnterior;
   await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeEnabled();
@@ -449,7 +451,6 @@ test("cambiar de hospital no traslada un error de la descarga anterior", async (
 });
 
 test("sin respuesta válida del listado no ofrece exportar", async ({ page }) => {
-  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   await escenario(page);
   let liberar;
   const espera = new Promise((resolve) => { liberar = resolve; });
@@ -461,6 +462,8 @@ test("sin respuesta válida del listado no ofrece exportar", async ({ page }) =>
   await expect(page.getByText("Consultando seguimiento de cobros…", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
   liberar();
-  await expect(page.getByRole("alert")).toContainText("No se pudo consultar el seguimiento");
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo consultar el seguimiento");
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
 });
