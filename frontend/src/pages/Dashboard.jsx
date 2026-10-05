@@ -63,6 +63,10 @@ function varEspera(min) {
 
 /** Un número de minutos que puede no existir: "—" y sin unidad, nunca 0. */
 const espera = (min) => ({ v: duracionMinutos(min), u: null });
+// La resolución llega en horas con decimales («2.1 h»). Se pasa a minutos para
+// mostrarla con el mismo formato que la espera: en una misma fila convivían
+// «1 h 11 min», «17.9 min» y «2.1 h», con punto decimal y tres criterios.
+const horasAMinutos = (h) => (h == null ? null : Number(h) * 60);
 
 export default function Dashboard() {
   const { institucion } = useInstitucion();
@@ -358,8 +362,8 @@ function TableroGeneral({ d, navigate }) {
     { l: "Ingresos", v: r.ingresos, icon: "enter", c: "var(--color-nodo-derivar-sol)" },
     { l: "Cerrados", v: r.cerrados, icon: "clipboard", c: "var(--color-badge-green-fg)" },
     { l: "Espera prom.", ...espera(r.espera_prom_min), icon: "refresh", c: varEspera(r.espera_prom_min) },
-    { l: "Atención prom.", v: r.atencion_prom_min ?? 0, u: "min", icon: "users", c: "var(--color-nodo-atencion-sol)" },
-    { l: "Resolución prom.", v: r.resolucion_prom_h, u: "h", icon: "map", c: "var(--color-texto-suave)" },
+    { l: "Atención prom.", ...espera(r.atencion_prom_min), icon: "users", c: "var(--color-nodo-atencion-sol)" },
+    { l: "Resolución prom.", ...espera(horasAMinutos(r.resolucion_prom_h)), icon: "map", c: "var(--color-texto-suave)" },
     // Sólo si hay turnos en el período: en un servicio sin agenda un «0 %»
     // ocupa lugar y hace dudar de si está roto.
     ...(r.turnos_periodo
@@ -501,8 +505,8 @@ function TableroArea({ areaId, desde, hasta, navigate }) {
     // se discute dotación decía que el servicio no resuelve nada.
     { l: "Cerrados", v: r.cerrados, icon: "clipboard", c: "var(--color-badge-green-fg)" },
     { l: "Espera prom.", ...espera(r.espera_prom_min), icon: "refresh", c: varEspera(r.espera_prom_min) },
-    { l: "Atención prom.", v: r.atencion_prom_min ?? 0, u: "min", icon: "users", c: "var(--color-nodo-atencion-sol)" },
-    { l: "Resolución prom.", v: r.resolucion_prom_h, u: "h", icon: "map", c: "var(--color-texto-suave)" },
+    { l: "Atención prom.", ...espera(r.atencion_prom_min), icon: "users", c: "var(--color-nodo-atencion-sol)" },
+    { l: "Resolución prom.", ...espera(horasAMinutos(r.resolucion_prom_h)), icon: "map", c: "var(--color-texto-suave)" },
   ];
 
   return (
@@ -642,10 +646,10 @@ function TablaAreas({ areas }) {
                   : duracionMinutos(a.espera_prom_min)}
               </td>
               <td className="whitespace-nowrap px-xl py-3.5 tabular-nums text-texto-suave">
-                {a.atencion_prom_min ? <>{a.atencion_prom_min} <span className="text-texto-tenue">min</span></> : <span className="text-texto-tenue">—</span>}
+                {a.atencion_prom_min ? duracionMinutos(a.atencion_prom_min) : <span className="text-texto-tenue">—</span>}
               </td>
               <td className="whitespace-nowrap px-xl py-3.5 tabular-nums text-texto-suave">
-                {a.resolucion_prom_h ? <>{a.resolucion_prom_h} <span className="text-texto-tenue">h</span></> : <span className="text-texto-tenue">—</span>}
+                {a.resolucion_prom_h ? duracionMinutos(horasAMinutos(a.resolucion_prom_h)) : <span className="text-texto-tenue">—</span>}
               </td>
             </tr>
           ))}
