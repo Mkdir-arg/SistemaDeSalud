@@ -31,11 +31,14 @@ jobs:
     defaults:
       run:
         working-directory: frontend
-    env:
-      # Las configs escriben trazas y capturas en os.tmpdir(); así quedan en un
-      # lugar conocido para subirlas si algo falla.
-      TMPDIR: ${{ runner.temp }}
     steps:
+      - name: Fijar el directorio temporal
+        # Las configs escriben trazas y capturas en os.tmpdir(); así quedan en un
+        # lugar conocido para subirlas si algo falla. (El contexto `runner` no
+        # existe en el `env` del job, por eso va en un paso.)
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+        working-directory: .
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
