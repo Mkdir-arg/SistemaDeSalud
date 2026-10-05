@@ -16,7 +16,11 @@ const BOTON_VARIANTE = {
   // El primario usa el relleno de marca con su color de texto: `accent` a secas
   // es claro en tema oscuro y el blanco encima no llegaría a contraste.
   primary: "hen-cta text-sobre-accent",
-  secondary: "bg-superficie text-accent border border-accent-100 hover:bg-accent-50",
+  // Neutro, como en el DS: el violeta se reserva para la acción principal.
+  secondary: "bg-secundario text-texto-suave border border-secundario-borde hover:bg-secundario-hover hover:text-texto",
+  // Estado «seleccionado» de un toggle o filtro: sin degradé, que es de la
+  // acción principal. Quien lo usa marca el estado con `aria-pressed`.
+  seleccionado: "bg-accent-50 text-accent border border-accent-100 font-semibold",
   dashed: "border-[1.5px] border-dashed border-accent-100 text-accent hover:bg-accent-50",
   danger: "bg-danger-fuerte text-sobre-danger hover:brightness-110",
   ghost: "text-texto-suave hover:bg-superficie-2 hover:text-texto",

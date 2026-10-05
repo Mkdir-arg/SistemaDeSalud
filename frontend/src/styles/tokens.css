@@ -66,6 +66,11 @@
   --color-borde: #E3DDF2;
   --color-division: #E3DDF2;
   --color-campo-borde: #C9C0E0;
+  /* Botón secundario neutro, como `secondary` en el DS (button.md): el violeta
+     queda sólo para la acción principal. */
+  --color-secundario: #F8F6FD;
+  --color-secundario-hover: #F0ECF9;
+  --color-secundario-borde: #E3DDF2;
   --color-accent-fuerte: #7031C7;
   --color-sobre-accent: #FFFFFF;
   --color-danger-fuerte: #9F0712;
@@ -209,6 +214,9 @@
   --color-borde: #2F2A47;
   --color-division: #2F2A47;
   --color-campo-borde: #463F63;
+  --color-secundario: #2F2A47;
+  --color-secundario-hover: #463F63;
+  --color-secundario-borde: #463F63;
   --color-texto: #FFFFFF;
   --color-texto-fuerte: #FFFFFF;
   --color-texto-medio: #C9C0E0;
