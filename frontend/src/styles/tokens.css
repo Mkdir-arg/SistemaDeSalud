@@ -61,6 +61,8 @@
   /* Semánticos (los usa el código migrado; el tema oscuro solo redefine estos) */
   --color-fondo: #F8F6FD;
   --color-superficie: #FFFFFF;
+  /* Velo detrás de un modal. En claro, el ink al 60 % de siempre. */
+  --color-velo: rgb(29 25 48 / 0.6);
   --color-modal-superficie: #FFFFFF;
   --color-superficie-2: #F8F6FD;
   --color-borde: #E3DDF2;
@@ -209,6 +211,12 @@
 .dark {
   --color-fondo: #110E1E;
   --color-superficie: #1D1930;
+  /* Velo medido en Figma (modal «Nuevo usuario», oscuro): lavanda 800 al 60 %.
+     El ink de antes era más claro que el fondo y casi no atenuaba (1,13:1).
+     El modal usa `superficie`, como en el DS (modal.md): queda más oscuro que
+     la página velada y su borde se distingue. `modal-superficie` sigue en los
+     paneles flotantes de Agenda. */
+  --color-velo: rgb(47 42 71 / 0.6);
   --color-modal-superficie: #28223E;
   --color-superficie-2: #110E1E;
   --color-borde: #2F2A47;

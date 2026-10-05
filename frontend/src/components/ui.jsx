@@ -482,7 +482,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
   return (
     <div
       onMouseDown={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-lg animate-[fadeIn_.12s_ease]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-lg animate-[fadeIn_.12s_ease]"
     >
       <div
         ref={ref}
@@ -492,7 +492,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         style={{ width }}
-        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-borde bg-modal-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
+        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-borde bg-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
       >
         <div className="flex items-center justify-between border-b border-division px-xl py-lg">
           <div className="flex items-center gap-2 text-lg font-bold">{title}{ayuda && <Ayuda>{ayuda}</Ayuda>}</div>
