@@ -66,16 +66,18 @@ test.describe("Agenda", () => {
     await comprobarBarra(page, "Semana");
   });
 
-  test("«Hoy» es primario sólo mientras la fecha elegida es hoy", async ({ page }) => {
+  test("«Hoy» queda seleccionado, sin degradé, sólo mientras la fecha elegida es hoy", async ({ page }) => {
     await abrir(page);
     const hoy = page.getByRole("button", { name: "Hoy", exact: true });
-    await expect(hoy).toHaveClass(/hen-cta/);
+    await expect(hoy).toHaveAttribute("aria-current", "date");
+    // El degradé es de la acción principal, no de un estado (#89).
+    await expect(hoy).not.toHaveClass(/hen-cta/);
     // En Semana también cuenta la fecha, no la semana: pasar a la siguiente
     // deja «Hoy» como el botón para volver.
     await page.getByRole("button", { name: "Semana siguiente" }).click();
-    await expect(hoy).not.toHaveClass(/hen-cta/);
+    await expect(hoy).not.toHaveAttribute("aria-current");
     await hoy.click();
-    await expect(hoy).toHaveClass(/hen-cta/);
+    await expect(hoy).toHaveAttribute("aria-current", "date");
   });
 
   test("agenda, vista y fecha viajan en la URL y sobreviven a recargar", async ({ page }) => {
