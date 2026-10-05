@@ -53,6 +53,12 @@ Desde cada fila del padrón, la ficha reúne la cabecera de afiliación, el resu
 
 La **Historia clínica del financiador** está disponible sólo para el `admin` de la organización y para operadores designados para resolver autorizaciones; plataforma y `auditor` no la ven. Lista casos cuya afiliación actual corresponde al afiliado y cuyo hospital está bajo convenio vigente, o casos con una reserva histórica pendiente visible. Después de escribir un motivo de 10 a 200 caracteres, muestra sólo las evoluciones firmadas de ese caso. Cada consulta deja un acceso clínico y un evento auditado; el hospital puede ver el motivo. No muestra alergias, antecedentes, estudios, recetas, entradas sin firmar ni evoluciones de otros casos.
 
+La simulación aplica esos mismos permisos al perfil efectivo: un administrador o
+un operador designado puede consultar esas evoluciones; el superusuario sin
+simulación no obtiene ese acceso. La traza conserva al superusuario como autor y
+la sesión simulada por separado. El motivo se guarda completo en su campo propio;
+los identificadores de evoluciones permanecen en el detalle técnico.
+
 ### Lado hospital
 
 Pantalla **Coberturas y copagos** (`/finanzas/coberturas`), con cuatro pestañas
@@ -116,6 +122,12 @@ crear otra solicitud manual pendiente u observada para la misma combinación de
 afiliado, convenio y prestación común. El hospital no ve estas solicitudes en su
 bandeja; la evaluación de cobertura sí puede encontrar una aprobación para esa
 institución, afiliado y prestación cuando se registra la atención.
+
+Las consultas de solicitudes manuales dejan una traza visible para el hospital
+elegido, aunque la solicitud aún no aparezca en su bandeja. Se vincula al paciente
+sólo cuando su documento normalizado identifica una única persona de esa
+institución; documentos vacíos o NN no identifican personas. Sin coincidencia,
+la traza conserva solicitud, afiliado y financiador, sin crear un paciente.
 
 La solicitud nace pendiente y usa las mismas decisiones administrativas: observar,
 aprobar o rechazar. La aprobación no registra una atención ni reliquida hechos

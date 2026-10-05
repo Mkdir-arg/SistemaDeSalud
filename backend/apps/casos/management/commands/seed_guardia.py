@@ -312,7 +312,8 @@ class Command(BaseCommand):
         # --- Utilidades de construcción de grafos --------------------------
         def nueva_version(area, titulo):
             flujo = Flujo.objects.create(institucion=inst, area=area, titulo=titulo)
-            return VersionFlujo.objects.create(flujo=flujo, numero=1), flujo
+            circuito = VersionFlujo.TipoCircuito.GUARDIA if titulo == "Ingreso a Guardia" else VersionFlujo.TipoCircuito.NO_DEFINIDO
+            return VersionFlujo.objects.create(flujo=flujo, numero=1, tipo_circuito=circuito), flujo
 
         def publicar(ver):
             if motor.puede_publicar(ver):

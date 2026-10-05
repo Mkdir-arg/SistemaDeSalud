@@ -135,6 +135,8 @@ class CargaCompletaTests(TransactionTestCase):
     def _verificar_carga_completa(self):
         with patch.dict("os.environ", {"DEMO_PASSWORD": "clave-de-prueba-65"}):
             self.cargar()
+        from .test_issue111 import verificar_escenas
+        verificar_escenas(self)
         ahora = timezone.now()
         mes = timezone.localdate().replace(day=1)
         self.assertEqual(mes, reloj(self.AHORA).date().replace(day=1))
