@@ -6,7 +6,7 @@ import { useInstitucion } from "@/auth/InstitutionContext";
 import { resumenCobertura, usePacienteAdministrativo } from "@/components/financiadores/CoberturaAdministrativa";
 import { Icon } from "@/components/icons";
 import { Avatar, Button, Card, Spinner, Tabs } from "@/components/ui";
-import { EstadoError, SkeletonTabla } from "@/components/ui/estados";
+import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
 import { useFiltroUrl } from "@/components/ui/filtros";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/format";
@@ -39,6 +39,7 @@ export default function PacienteDetalle() {
   const clinico = puedeVer("historia_clinica");
   const tabActual = clinico && TABS_CLINICAS.some((t) => t.key === tab) ? tab : "datos";
 
+  if (paciente.error?.status === 404) return <EstadoVacio titulo="Paciente no disponible en esta institución" detalle="Volvé al listado de pacientes de la institución actual." />;
   if (paciente.error) return <EstadoError error={paciente.error} onReintentar={paciente.refetch} />;
   if (!paciente.data) return <Spinner label="Cargando ficha..." />;
 

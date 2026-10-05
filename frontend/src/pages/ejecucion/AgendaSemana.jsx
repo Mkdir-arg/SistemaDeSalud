@@ -26,7 +26,7 @@ import { cn } from "@/lib/cn";
  */
 
 const DIAS_CORTO = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-const PX_HORA = 40;
+const PX_HORA = 96;
 const PASO_ARRASTRE = 30;
 
 const minDe = (iso) => {
@@ -326,7 +326,7 @@ function BloqueHorario({ horario: h, top, alto, onClic }) {
     <button
       data-horario={h.inicio}
       onClick={onClic}
-      style={{ top, height: Math.max(alto, 14) }}
+      style={{ top, height: Math.max(1, alto - 2) }}
       aria-label={`${hhmm(h.inicio)} · ${etiqueta}${dados ? ` · ${dados} dados` : ""} · ir a este día`}
       className={cn(
         "absolute inset-x-1 overflow-hidden rounded-sm border px-1 text-left text-xs leading-tight transition-colors",

@@ -144,10 +144,10 @@ SECTORES = ["Clínica médica", "Terapia intensiva", "Unidad coronaria"]
 PARADAS = {
     "admision": (2, 40),        # recién llegó, todavía en el mostrador
     "triage": (10, 90),         # admitido, esperando a enfermería
-    "sala": (20, 300),          # en la sala de espera (hasta 5 h)
-    "atencion": (40, 360),      # llamado a un box, en atención
-    "conducta": (60, 480),      # atendido, falta cerrar la conducta
-    "completo": (60, 600),      # cerró en guardia; sus derivaciones pueden seguir abiertas
+    "sala": (20, 90),          # en la sala de espera
+    "atencion": (40, 120),      # llamado a un box, en atención
+    "conducta": (60, 150),      # atendido, falta cerrar la conducta
+    "completo": (60, 180),      # cerró en guardia; sus derivaciones pueden seguir abiertas
 }
 
 
@@ -258,7 +258,7 @@ class Command(BaseCommand):
         ahora = timezone.localtime()
         # Un caso solo puede quedar EN CURSO si es reciente: nadie espera tres meses
         # sentado en una sala. Sin este límite, el tablero informa demoras de 80 días.
-        self.limite_cola = ahora - timedelta(hours=10)        # filas y estudios pendientes
+        self.limite_cola = ahora - timedelta(hours=3)         # filas y estudios pendientes
         self.limite_internacion = ahora - timedelta(days=15)  # una internación sí dura días
         self.ventana_internados = ahora - timedelta(days=30)  # de dónde salen los internados de hoy
 
@@ -269,7 +269,7 @@ class Command(BaseCommand):
         for i, t0 in enumerate(sorted(self._momento_de_ingreso(ahora, opciones["dias"])
                                       for _ in range(opciones["casos"]))):
             try:
-                self._recorrer_ingreso(random.choice(pacientes), t0, "completo", hechos)
+                self._recorrer_ingreso(self._paciente_disponible(pacientes), t0, "completo", hechos)
             except motor.ErrorMotor as e:
                 self.stderr.write(f"  histórico {i}: {e}")
 
@@ -277,7 +277,15 @@ class Command(BaseCommand):
         #    se completa con un ingreso reciente dirigido a esa área. Va ANTES de
         #    la carga viva, que ocupa todos los consultorios de la guardia: sin
         #    uno libre, a este ingreso no se lo podría atender.
+        # La actividad reciente acompaña la carga viva: evitar un pico artificial
+        # de hoy contra seis días sin actividad comparable.
+        for dias_atras in range(1, min(7, opciones["dias"] + 1)):
+            for _ in range(max(1, opciones["activos"] // 2 + dias_atras % 3)):
+                t0 = ahora - timedelta(days=dias_atras, minutes=random.randint(30, 240))
+                self._recorrer_ingreso(self._paciente_disponible(pacientes), t0, "completo", hechos,
+                                       forzar={"conducta": "Alta"})
         self._asegurar_trabajo_por_area(pacientes, hechos, ahora)
+        self._asegurar_pediatria(pacientes, hechos, ahora)
 
         # 3. Carga viva: lo que se ve al abrir la app. Se rota por las paradas (en vez
         #    de sortearlas) para garantizar que ninguna bandeja ni fila quede vacía, y
@@ -287,7 +295,7 @@ class Command(BaseCommand):
             parada = paradas[i % len(paradas)]
             t0 = ahora - timedelta(minutes=random.randint(*PARADAS[parada]))
             try:
-                self._recorrer_ingreso(random.choice(pacientes), t0, parada, hechos)
+                self._recorrer_ingreso(self._paciente_disponible(pacientes), t0, parada, hechos)
             except motor.ErrorMotor as e:
                 self.stderr.write(f"  activo {i}: {e}")
 
@@ -355,12 +363,34 @@ class Command(BaseCommand):
             if not candidatas:
                 self.stderr.write(f"  trabajo para {nombre}: ninguna especialidad con consultorio libre")
                 continue
-            t0 = ahora - timedelta(minutes=random.randint(150, 240))
+            t0 = ahora - timedelta(minutes=random.randint(90, 150))
             try:
-                self._recorrer_ingreso(random.choice(pacientes), t0, "completo", hechos, forzar={
+                self._recorrer_ingreso(self._paciente_disponible(pacientes), t0, "completo", hechos, forzar={
                     "conducta": "Derivar a especialidad", "especialidad": candidatas[0], **forzar})
             except motor.ErrorMotor as e:
                 self.stderr.write(f"  trabajo para {nombre}: {e}")
+
+    def _paciente_disponible(self, pacientes):
+        ocupados = set(Caso.objects.filter(institucion=self.inst).exclude(
+            estado__in=Caso.ESTADOS_FINALIZADOS).values_list("ciudadano_id", flat=True))
+        disponibles = [p for p in pacientes if p.pk not in ocupados]
+        if not disponibles:
+            disponibles = self._crear_pacientes(1)
+            pacientes.extend(disponibles)
+        return random.choice(disponibles)
+
+    def _asegurar_pediatria(self, pacientes, hechos, ahora):
+        if Cama.objects.filter(subarea__area__institucion=self.inst, subarea__nombre="Pediatría", caso__isnull=False).exists():
+            return
+        # El circuito asigna primero una cama de Clínica y luego hace el pase.
+        # La higiene histórica no debe impedir preparar la escena pediátrica.
+        self._poner_al_dia_la_higiene()
+        paciente = self._crear_pacientes(1)[0]
+        paciente.fecha_nacimiento = timezone.localdate() - timedelta(days=8 * 365)
+        paciente.save(update_fields=["fecha_nacimiento"])
+        pacientes.append(paciente)
+        self._recorrer_ingreso(paciente, ahora - timedelta(days=1), "completo", hechos,
+                               forzar={"conducta": "Internación", "pediatria": True})
 
     def _consultorio_libre(self, area):
         boxes = self.boxes.get(area.id, []) if area else []
@@ -643,10 +673,20 @@ class Command(BaseCommand):
         pacientes = []
         hoy = timezone.localdate()
         usados = set()
+        nombres = set(Ciudadano.objects.filter(institucion=self.inst).values_list("nombre", "apellido"))
+        base_codigo = Ciudadano.objects.filter(institucion=self.inst).count()
         for i in range(cantidad):
             mujer = random.random() < 0.52
             nombre = random.choice(NOMBRES_F if mujer else NOMBRES_M)
             apellido = random.choice(APELLIDOS)
+            intentos = 0
+            while (nombre, apellido) in nombres and intentos < 40:
+                nombre = random.choice(NOMBRES_F if mujer else NOMBRES_M)
+                apellido = random.choice(APELLIDOS)
+                intentos += 1
+            if (nombre, apellido) in nombres:
+                apellido = f"{apellido} Demo {base_codigo + i + 1}"
+            nombres.add((nombre, apellido))
             # Pirámide etaria con sesgo a adultos y adultos mayores (perfil de guardia).
             edad = random.choice([random.randint(1, 17), random.randint(18, 64),
                                   random.randint(18, 64), random.randint(65, 92)])
@@ -654,7 +694,7 @@ class Command(BaseCommand):
             # a nadie. En el rango de los documentos vigentes, un número al azar
             # puede ser el de una persona real.
             documento = str(random.randint(90_000_000, 99_999_999))
-            while documento in usados:
+            while documento in usados or Ciudadano.objects.filter(institucion=self.inst, documento=documento).exists():
                 documento = str(random.randint(90_000_000, 99_999_999))
             usados.add(documento)
 
@@ -665,7 +705,7 @@ class Command(BaseCommand):
                     "apellido": apellido,
                     "fecha_nacimiento": hoy - timedelta(days=edad * 365 + random.randint(0, 364)),
                     "obra_social": random.choice(OBRAS_SOCIALES),
-                    "codigo": f"CIU-{i + 1:04d}",
+                    "codigo": f"CIU-{base_codigo + i + 1:04d}",
                     "domicilio": f"{random.choice(['Av. San Martín', 'Belgrano', 'Rivadavia', 'Sarmiento', 'Mitre', 'Alberdi'])} {random.randint(100, 4800)}",
                 },
             )
@@ -826,7 +866,7 @@ class Command(BaseCommand):
         """
         from apps.instituciones.models import Subarea
 
-        for sub in Subarea.objects.filter(camas__isnull=False).distinct():
+        for sub in Subarea.objects.filter(area__institucion=self.inst, camas__isnull=False).distinct():
             sucias = list(
                 Cama.objects.filter(subarea=sub, estado=Cama.Estado.HIGIENE).order_by("-desde")
             )
@@ -998,7 +1038,7 @@ class Command(BaseCommand):
         for sub in Caso.objects.filter(origen=caso).order_by("pk"):
             if sub.version.flujo.titulo == "Internación":
                 hechos["internados"] += 1
-                self._recorrer_internacion(sub, reloj, hechos)
+                self._recorrer_internacion(sub, reloj, hechos, pediatria=forzar.get("pediatria", False))
             else:
                 hechos["derivados"] += 1
                 self._recorrer_especialidad(sub, reloj, hechos, forzar)
@@ -1114,7 +1154,7 @@ class Command(BaseCommand):
         self._sellar(reloj.t)
         return True
 
-    def _recorrer_internacion(self, caso, reloj, hechos):
+    def _recorrer_internacion(self, caso, reloj, hechos, pediatria=False):
         """Asignar cama → evolución diaria (loop) → alta médica."""
         reloj.mas(20, 70)
         # Se interna en una cama REAL. Si el sector está lleno el caso se queda
@@ -1139,7 +1179,14 @@ class Command(BaseCommand):
         # pasa, es lo que hace que el tablero muestre los tres sectores: sin
         # pases, UTI y Pediatría figuran siempre vacías y el demo sugiere que la
         # ocupación se mira de a un sector.
-        if random.random() < 0.17:
+        if pediatria:
+            cama = Cama.objects.filter(subarea__area__institucion=self.inst,
+                subarea__nombre="Pediatría", estado=Cama.Estado.LIBRE, activa=True).order_by("pk").first()
+            if cama:
+                motor.pasar_de_sector(caso, cama.id, autor=self._autor(caso), motivo="Internación pediátrica")
+                self._sellar(reloj.t)
+                caso.refresh_from_db()
+        if not pediatria and random.random() < 0.17:
             reloj.mas(180, 900)
             uti = Cama.objects.filter(
                 subarea__nombre="UTI", estado=Cama.Estado.LIBRE, activa=True
@@ -1166,13 +1213,13 @@ class Command(BaseCommand):
         # carga, y sin ventana, con un año de historia, los primeros doce la
         # tenían tomada desde el primer mes: el resto del año casi nadie
         # conseguía cama y el sector terminaba con cien pacientes esperando.
-        if (reloj.t >= self.ventana_internados and hechos.get("internados_ahora", 0) < 12
-                and random.random() < 0.6):
+        if pediatria or (reloj.t >= self.ventana_internados and hechos.get("internados_ahora", 0) < 12
+                         and random.random() < 0.6):
             # Los primeros tres van a UTI. Librado al azar del pase general
             # (uno de cada seis, y sólo si además le toca quedar en curso) UTI
             # salía vacía en casi todas las corridas, y un tablero donde un
             # sector nunca se usa sugiere que la ocupación se mira de a uno.
-            if hechos.get("en_uti", 0) < 3:
+            if not pediatria and hechos.get("en_uti", 0) < 3:
                 uti = Cama.objects.filter(
                     subarea__nombre="UTI", estado=Cama.Estado.LIBRE, activa=True
                 ).order_by("?").first()

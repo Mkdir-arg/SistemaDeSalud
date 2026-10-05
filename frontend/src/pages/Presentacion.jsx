@@ -179,7 +179,7 @@ function GraficoBeneficio({ tipo }) {
     <span className="flex min-w-0 flex-col items-center"><span className="rounded-pill bg-badge-green-bg px-2 py-0.5 text-center text-[10px] font-semibold text-badge-green-fg">Aceptada · En viaje</span><span className="mt-1 h-px w-full bg-brand-teal" /></span>
     <span className="flex min-w-0 items-center gap-1 rounded-md border border-borde bg-superficie-2 px-2 py-2"><Icon name="building" size={14} /><span>Central</span></span>
   </div>;
-  if (tipo === "app") return <div aria-hidden="true" className="flex justify-end"><div className="w-32 rounded-[20px] border-[3px] border-texto bg-superficie-2 p-2 shadow-card"><div className="mx-auto mb-2 h-1 w-8 rounded-pill bg-texto-suave" /><div className="rounded-md bg-linear-to-br from-accent to-brand-teal p-2 text-[10px] text-sobre-accent"><span className="block">Próximo turno</span><strong className="mt-1 block text-xs">Jueves 10:30</strong></div><div className="mt-2 h-2 rounded-sm bg-borde" /><div className="mt-1.5 h-2 w-3/4 rounded-sm bg-borde" /></div></div>;
+  if (tipo === "app") return <div aria-hidden="true" className="flex justify-end"><div className="w-32 rounded-[20px] border-[3px] border-texto bg-superficie-2 p-2 shadow-card"><div className="mx-auto mb-2 h-1 w-8 rounded-pill bg-texto-suave" /><div className="rounded-md bg-accent-fuerte p-2 text-[10px] text-sobre-accent"><span className="block">Próximo turno</span><strong className="mt-1 block text-xs">Jueves 10:30</strong></div><div className="mt-2 h-2 rounded-sm bg-borde" /><div className="mt-1.5 h-2 w-3/4 rounded-sm bg-borde" /></div></div>;
   return null;
 }
 

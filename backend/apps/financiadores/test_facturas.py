@@ -92,7 +92,7 @@ class FacturasTests(APITestCase):
         respuesta = self.client.post(self.base + f"{pk}/adjunto/", {"archivo": self.pdf()}, format="multipart")
         self.assertEqual(respuesta.status_code, 400)
         self.assertIn("no están disponibles", str(respuesta.data))
-        self.assertEqual(self.client.get(self.base + f"{pk}/adjunto/").status_code, 400)
+        self.assertEqual(self.client.get(self.base + f"{pk}/adjunto/").status_code, 404)
         self.assertEqual(m.RegistroFactura.objects.get(pk=pk).adjunto_ruta, "")
 
     @staticmethod
@@ -136,4 +136,6 @@ class FacturasTests(APITestCase):
                 sembrar_facturas_demo(org, convenio, afiliado, self.user, timezone.localdate())
             registros = m.RegistroFactura.objects.filter(financiador=org)
             self.assertEqual(registros.count(), 8)
+            self.assertGreater(len(set(registros.values_list("fecha", flat=True))), 1)
+            self.assertTrue(all(x.periodo == x.fecha.strftime("%Y-%m") for x in registros))
             self.assertTrue(all(x.numero.startswith("DEMO-") and not x.adjunto_ruta and not x.contraparte_identificador for x in registros))

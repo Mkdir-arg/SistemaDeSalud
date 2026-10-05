@@ -162,7 +162,7 @@ function AccesoDenegado() {
       <Card className="max-w-[36rem] p-6">
         <h1 className="text-lg font-bold">Acceso denegado</h1>
         <p className="mt-2 text-md text-texto-debil">
-          Tu rol en esta institucion no habilita esta seccion.
+          Tu rol en esta institución no habilita esta sección.
         </p>
       </Card>
     </div>

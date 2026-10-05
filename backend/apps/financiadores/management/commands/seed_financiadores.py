@@ -193,13 +193,14 @@ def sembrar_facturas_demo(financiador, convenio, afiliado, usuario, fecha):
         ("emitida", "afiliado", None, afiliado, "factura", 8),
     ]
     for direccion, tipo_contraparte, vinculo, persona, tipo, indice in ejemplos:
+        fecha_factura = fecha - timedelta(days=(indice - 1) * 9)
         datos = {
             "direccion": direccion, "contraparte_tipo": tipo_contraparte,
             "convenio": vinculo, "afiliado": persona,
             "contraparte_nombre": vinculo.institucion.nombre if vinculo else persona.nombre if persona else "Prestador externo ficticio",
             "contraparte_identificador": "", "tipo": tipo, "letra": "A" if tipo_contraparte == "institucion" else "",
-            "numero": f"DEMO-{financiador.pk}-{indice:03d}", "fecha": fecha,
-            "importe": dinero(12000 + indice * 2500), "periodo": str(fecha)[:7],
+            "numero": f"DEMO-{financiador.pk}-{indice:03d}", "fecha": fecha_factura,
+            "importe": dinero(12000 + indice * 2500), "periodo": str(fecha_factura)[:7],
             "concepto": "Documentación de ejemplo", "observaciones": "Datos ficticios de demostración.",
         }
         m.RegistroFactura.objects.get_or_create(financiador=financiador, clave_duplicado=clave_duplicado(datos), defaults={**datos, "creado_por": usuario})
@@ -565,6 +566,11 @@ class Command(BaseCommand):
             ("RXE", osp, rxe_osp, None), ("CEX", osp, cex_osp[1], None),
             ("CEX", mv, cex_mv[2], None), ("CEX", None, particular, None),
         ]
+        # Variación determinista sin perder los ejemplos de RX, rechazos y particulares.
+        if numero_mes % 3 == 1:
+            filas = [fila for i, fila in enumerate(filas) if i not in {5, 6}]
+        elif numero_mes % 3 == 2:
+            filas = [fila for i, fila in enumerate(filas) if i not in {3, 5, 6}]
         if desplazamiento == 0:
             dias = DIAS_EN_CURSO
         elif numero_mes == 0:

@@ -65,6 +65,10 @@ class MembresiaSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         institucion = attrs.get("institucion", getattr(self.instance, "institucion", None))
+        from apps.simulacion.perfiles import es_cuenta_referencia
+        usuario = attrs.get("usuario", getattr(self.instance, "usuario", None))
+        if es_cuenta_referencia(usuario):
+            raise serializers.ValidationError({"usuario": "Las cuentas de referencia no se editan desde la gestión de usuarios."})
         areas = attrs.get("areas")
         if institucion and areas:
             fuera = [a.id for a in areas if a.institucion_id != institucion.id]
@@ -91,6 +95,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
         read_only_fields = ["creado", "is_staff", "is_superuser"]
 
     def validate(self, attrs):
+        from apps.simulacion.perfiles import DOMINIO, es_cuenta_referencia
+        if es_cuenta_referencia(self.instance) or attrs.get("email", "").lower().endswith(f"@{DOMINIO}"):
+            raise serializers.ValidationError({"email": "El dominio está reservado para cuentas de referencia."})
         password = attrs.get("password")
         if self.instance is None and not password:
             raise serializers.ValidationError({"password": "Indicá una contraseña para la nueva cuenta."})

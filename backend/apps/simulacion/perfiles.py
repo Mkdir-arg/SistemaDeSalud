@@ -91,6 +91,10 @@ def problema_de_cuenta(ref):
             return "La cuenta de referencia no conserva solo la membresía de su perfil."
         if not ref.financiador.activo:
             return "El financiador está inactivo."
+        from .preparacion import ROL_QUE_RESUELVE_AUTORIZACIONES
+        membresia = MembresiaFinanciador.objects.get(usuario=u, financiador_id=ref.financiador_id, activo=True)
+        if membresia.resuelve_autorizaciones != (ref.rol == ROL_QUE_RESUELVE_AUTORIZACIONES):
+            return "La cuenta de referencia no conserva las capacidades de su perfil."
         return None
     if financieras or membresias != {(ref.institucion_id, ref.rol)}:
         return "La cuenta de referencia no conserva solo la membresía de su perfil."

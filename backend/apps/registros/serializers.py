@@ -40,6 +40,14 @@ class HistoriaFija:
 
 
 class EntradaHistoriaSerializer(HistoriaFija, serializers.ModelSerializer):
+    def validate(self, datos):
+        datos = super().validate(datos)
+        historia = datos.get("historia", getattr(self.instance, "historia", None))
+        caso = datos.get("caso", getattr(self.instance, "caso", None))
+        if caso and historia and caso.ciudadano_id != historia.ciudadano_id:
+            raise serializers.ValidationError({"caso": "El caso debe pertenecer al paciente de esta historia clínica."})
+        return datos
+
     # Quién firmó, no sólo su id. Una entrada marcada como «Firmada» sin firmante
     # visible no sirve como registro: la matrícula ya se guarda al firmar, y el
     # nombre evita que el cliente tenga que cruzar contra /usuarios/.

@@ -173,7 +173,7 @@ export default function Fila() {
   });
 
   function alLlamar(box) {
-    if (!siguiente) return;
+    if (user?.is_superuser || !siguiente) return;
     const caso = siguiente.caso;
     const quien = siguiente.persona || casoId(caso);
     llamar.mutate(
@@ -254,7 +254,7 @@ export default function Fila() {
             </span>
             <BotonLlamar
               label="Llamar al siguiente"
-              disabled={!siguiente || llamar.isPending}
+              disabled={user?.is_superuser || !siguiente || llamar.isPending}
               cargando={llamar.isPending}
               onClick={() => alLlamar(null)}
             />
@@ -298,7 +298,7 @@ export default function Fila() {
                   ) : (
                     <BotonLlamar
                       label="Llamar siguiente"
-                      disabled={!siguiente || llamar.isPending}
+                      disabled={user?.is_superuser || !siguiente || llamar.isPending}
                       cargando={llamar.isPending && llamar.variables?.box?.id === b.id}
                       onClick={() => alLlamar(b)}
                     />
@@ -393,7 +393,7 @@ export default function Fila() {
                   <span className="font-mono font-bold">{it.ticket || casoId(it.caso)}</span>
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="truncate text-md text-texto-medio">{it.persona || casoId(it.caso)}</span>
-                    {it.urgente && <Badge tone="error">urgente</Badge>}
+                    {it.rango === 0 || it.urgente ? <Badge tone="error">urgente</Badge> : it.rango === 1 ? <Badge tone="amber">Prioridad alta</Badge> : null}
                   </span>
                   {/* Sobre la fila destacada (tinte índigo) el `texto-debil`
                       quedaba en 4,31:1. Un paso más oscuro y pasa en ambos fondos. */}

@@ -83,7 +83,8 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
             qs = qs.filter(estado="reservada", creado__lte=timezone.now() - timedelta(days=dias))
         if request.query_params.get("con_saldo") == "true":
             qs = qs.filter(distribucion__estado__in=["pendiente", "autorizacion_pendiente"])
-        return self.lista(qs, self.serializer_class)
+        pagina = self.paginate_queryset(qs.order_by("-fecha", "-pk"))
+        return self.get_paginated_response(self.serializer_class(pagina, many=True, context={"request": request}).data)
 
     @action(detail=False, methods=["get"])
     def opciones(self, request):
