@@ -1,7 +1,7 @@
 """Bandeja administrativa acotada; nunca serializa la historia clínica del caso."""
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers
@@ -125,13 +125,14 @@ class SolicitudAutorizacionSerializer(serializers.ModelSerializer):
             and self.context.get("resuelve_autorizaciones", False))
 
     def get_puede_reenviar(self, obj) -> bool:
+        vigente = (not obj.afiliado.finalizado_en and obj.convenio_vigente
+                   and (not obj.plazo_respuesta or obj.plazo_respuesta > timezone.now()))
         if obj.origen == "manual":
             return bool(self.context.get("puede_cargar_manual") and obj.estado == "observada"
-                and not obj.afiliado.finalizado_en and obj.convenio.estado == "activo")
+                and vigente)
         return bool(not self.context.get("financiador") and obj.estado == "observada"
             and obj.intento == a.intento_actual(obj.caso) and obj.caso.estado not in obj.caso.ESTADOS_FINALIZADOS
-            and (not obj.plazo_respuesta or obj.plazo_respuesta > timezone.now())
-            and not obj.afiliado.finalizado_en and obj.convenio.estado == "activo")
+            and vigente)
 
     def get_puede_anular(self, obj) -> bool:
         if obj.origen == "manual":
@@ -143,6 +144,7 @@ def consulta_solicitudes():
     return m.SolicitudAutorizacion.objects.select_related(
         "financiador", "institucion", "prestacion", "comun", "afiliado", "ciudadano", "caso", "convenio", "creado_por",
     ).annotate(
+        convenio_vigente=Exists(convenios_vigentes().filter(pk=OuterRef("convenio_id"))),
         cantidad_comprometida=Sum("usos__cantidad", filter=Q(usos__estado="comprometido"), default=0),
         cantidad_consumida=Sum("usos__cantidad", filter=Q(usos__estado="consumido"), default=0),
     )
@@ -213,8 +215,7 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         # Usuario/hospital/ciudadano original; acceso administrativo obligatorio.
         with transaction.atomic():
             registrar_accesos(self.request, AccesoClinico.Tipo.FINANCIADOR if financiador else AccesoClinico.Tipo.DETALLE,
-                "solicitudautorizacion", ({"ciudadano": obj.ciudadano, "institucion_id": obj.institucion_id,
-                    "objeto_id": obj.pk, "detalle": f"solicitud={obj.pk}", "resultados": 1} for obj in objetos), estricto=True)
+                "solicitudautorizacion", a.accesos_solicitudes(objetos), estricto=True)
             if financiador:
                 auditar(self.request.user, "consultar_autorizaciones", financiador,
                     financiador=m.Financiador.objects.get(pk=financiador))
@@ -253,7 +254,7 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         entrada = SolicitarManualSerializer(data=request.data)
         entrada.is_valid(raise_exception=True)
         datos = dict(entrada.validated_data)
-        afiliado = get_object_or_404(m.Afiliado, pk=datos.pop("afiliado"))
+        afiliado = get_object_or_404(m.Afiliado, pk=datos.pop("afiliado"), financiador_id=financiador)
         institucion = get_object_or_404(Institucion, pk=datos.pop("institucion"))
         comun = get_object_or_404(m.PrestacionComun, pk=datos.pop("comun"))
         obj = a.solicitar_manual(financiador_id=financiador, afiliado=afiliado, institucion=institucion,

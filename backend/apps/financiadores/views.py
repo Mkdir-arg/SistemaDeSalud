@@ -24,6 +24,7 @@ from apps.auditoria.models import AccesoClinico
 from apps.accounts.models import Usuario
 from apps.instituciones.models import Institucion
 from apps.registros.models import EntradaHistoria, normalizar_documento
+from apps.simulacion.perfiles import DOMINIO, es_cuenta_referencia
 from apps.casos.models import Caso
 from . import models as m
 from . import serializers as s
@@ -51,9 +52,12 @@ def entero():
 
 
 class FichaAutorizacionSerializer(serializers.ModelSerializer):
-    prestacion_nombre = serializers.CharField(source="prestacion.nombre")
+    prestacion_nombre = serializers.SerializerMethodField()
     codigo = serializers.CharField(source="comun.codigo")
     institucion_nombre = serializers.CharField(source="institucion.nombre")
+
+    def get_prestacion_nombre(self, obj) -> str:
+        return obj.prestacion.nombre if obj.prestacion_id else obj.comun.nombre
 
     class Meta:
         model = m.SolicitudAutorizacion
@@ -210,7 +214,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         if request.method == "GET":
             obj = self._factura(org, factura_id)
             if not settings.SALUD_FACTURAS_ADJUNTOS:
-                raise ValidationError("Los adjuntos de facturas no están disponibles en este entorno.")
+                return Response({"detail": "El adjunto no está disponible."}, status=404)
             if not obj.adjunto_ruta:
                 return Response({"detail": "No hay adjunto."}, status=404)
             storage = almacenamiento_privado()
@@ -395,22 +399,26 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
 
     def _casos_historia(self, org, afiliado):
         # La selección actual es la más reciente sin hecho_revision, igual que clinica.afiliaciones().first().
-        actual = m.AfiliacionCaso.objects.filter(caso_id=OuterRef("pk"), hecho_revision=None).order_by("-pk")
+        actual = m.AfiliacionCaso.objects.filter(caso_id=OuterRef("caso_id"), hecho_revision=None).order_by("-pk")
         convenios = vigencias.convenios_vigentes().filter(financiador=org).values("institucion_id")
         pendientes = actividad_visible(org).filter(afiliado=afiliado, acceso="pendiente_historico").values("caso_id")
         vigente = (afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate()
                    and org.activo)
-        alcanzados = Caso.objects.annotate(
-            afiliado_actual=Subquery(actual.values("afiliado_id")[:1]),
-            estado_afiliacion_actual=Subquery(actual.values("estado")[:1]),
-        ).filter(afiliado_actual=afiliado.pk, estado_afiliacion_actual__in=["verificada", "pendiente"],
-                 ciudadano__isnull=False)
+        # Resolver la afiliación actual dentro del conjunto del afiliado evita
+        # ejecutar subconsultas correlacionadas para todo el padrón de casos.
+        candidatos = m.AfiliacionCaso.objects.filter(afiliado=afiliado, hecho_revision=None,
+            estado__in=["verificada", "pendiente"]).annotate(
+                ultima=Subquery(actual.values("pk")[:1]),
+            ).filter(pk=F("ultima")).values("caso_id")
+        alcanzados = Caso.objects.filter(pk__in=candidatos, ciudadano__isnull=False)
         if vigente:
             alcanzados = alcanzados.filter(Q(institucion_id__in=convenios) | Q(pk__in=pendientes))
         else:
             alcanzados = alcanzados.filter(pk__in=pendientes)
         return alcanzados.annotate(
-            evoluciones_firmadas=Count("entradas_historia", filter=Q(entradas_historia__firmada=True), distinct=True),
+            evoluciones_firmadas=Count("entradas_historia", filter=Q(
+                entradas_historia__firmada=True,
+                entradas_historia__historia__ciudadano_id=F("ciudadano_id")), distinct=True),
         ).select_related("institucion", "ciudadano").order_by("-creado", "-pk")
 
     def _cupos_ficha(self, afiliado):
@@ -466,9 +474,10 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
                             "caso": entero(), "motivo": serializers.CharField(min_length=10, max_length=200, trim_whitespace=True)})
         afiliado = get_object_or_404(m.Afiliado, pk=d["afiliado"], financiador=org)
         caso = get_object_or_404(self._casos_historia(org, afiliado), pk=d["caso"])
-        entradas = list(EntradaHistoria.objects.filter(caso=caso, firmada=True).select_related("autor").order_by("fecha", "pk"))
+        entradas = list(EntradaHistoria.objects.filter(caso=caso, firmada=True,
+            historia__ciudadano_id=caso.ciudadano_id).select_related("autor").order_by("fecha", "pk"))
         motivo = d["motivo"]
-        prefijo = f"motivo={motivo}; entradas="
+        prefijo = "entradas="
         bloques, bloque = [], []
         for entrada in entradas:
             candidato = ",".join([*bloque, str(entrada.pk)])
@@ -481,7 +490,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         with transaction.atomic():
             registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-evoluciones-caso",
                 ({"ciudadano": caso.ciudadano, "institucion_id": caso.institucion_id,
-                  "objeto_id": caso.pk, "resultados": len(ids), "detalle": prefijo + ",".join(ids)}
+                  "objeto_id": caso.pk, "resultados": len(ids), "motivo": motivo, "detalle": prefijo + ",".join(ids)}
                  for ids in bloques), estricto=True)
             auditar(request.user, "consultar_historia_clinica", org.pk, financiador=org, motivo=motivo)
         return Response([{"id": entrada.pk, "titulo": entrada.titulo, "contenido": entrada.contenido,
@@ -536,9 +545,9 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         pagina = list(self.paginate_queryset(qs))
         response = self.get_paginated_response(FichaAutorizacionSerializer(pagina, many=True).data)
         with transaction.atomic():
+            from .autorizaciones import accesos_solicitudes
             registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-ficha-afiliado",
-                ({"ciudadano": obj.ciudadano, "institucion_id": obj.institucion_id,
-                  "objeto_id": obj.pk, "detalle": f"solicitud={obj.pk}", "resultados": 1} for obj in pagina), estricto=True)
+                accesos_solicitudes(pagina), estricto=True)
             auditar(request.user, "consultar_afiliado", org.pk, financiador=org)
         return response
 
@@ -641,11 +650,15 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     @action(detail=True, methods=["get", "post"])
     def usuarios(self, request, pk=None):
         org = self.organizacion(admin=True)
+        referencias = Q(usuario__email__iendswith=f"@{DOMINIO}") | Q(usuario__cuenta_referencia__isnull=False)
         if request.method == "GET":
-            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones} for x in m.MembresiaFinanciador.objects.filter(financiador=org).select_related("usuario")])
+            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones} for x in m.MembresiaFinanciador.objects.filter(financiador=org).exclude(referencias).select_related("usuario")])
         d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True), "resuelve_autorizaciones": serializers.BooleanField(required=False)})
         if d["rol"] == "auditor" and d.get("resuelve_autorizaciones"):
             raise ValidationError("El rol auditor conserva lectura. Para resolver, designá un operador o administrador explícitamente.")
+        existente = Usuario.objects.filter(email__iexact=d["email"]).first()
+        if d["email"].lower().endswith(f"@{DOMINIO}") or es_cuenta_referencia(existente):
+            raise ValidationError("Las cuentas de referencia se gestionan desde la preparación de simulación.")
         with transaction.atomic():
             m.Financiador.objects.select_for_update().get(pk=org.pk)
             user, nuevo = Usuario.objects.get_or_create(email=d["email"], defaults={"nombre": d["nombre"]})
@@ -653,7 +666,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
                 user.set_unusable_password()
                 user.save(update_fields=["password"])
             anterior = m.MembresiaFinanciador.objects.filter(financiador=org, usuario=user, activo=True, rol="admin").first()
-            if anterior and (d["rol"] != "admin" or not d["activo"]) and not m.MembresiaFinanciador.objects.filter(financiador=org, activo=True, rol="admin").exclude(pk=anterior.pk).exists():
+            if anterior and (d["rol"] != "admin" or not d["activo"]) and not m.MembresiaFinanciador.objects.filter(financiador=org, activo=True, rol="admin").exclude(referencias).exclude(pk=anterior.pk).exists():
                 raise ValidationError("Designá otro administrador antes de retirar este acceso.")
             membresia, _ = m.MembresiaFinanciador.objects.get_or_create(financiador=org, usuario=user, defaults={"rol": d["rol"], "activo": d["activo"], "creo_cuenta": nuevo})
             membresia.rol, membresia.activo = d["rol"], d["activo"]

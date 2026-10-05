@@ -6,7 +6,11 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.auditoria.models import AccesoClinico
+from apps.accounts.models import Usuario
 from apps.registros.models import ArchivoClinico, EntradaHistoria, Estudio, HistoriaClinica, Receta
+from apps.simulacion.models import Ambito
+from apps.simulacion.preparacion import preparar_cuenta
+from apps.simulacion.tests import jwt
 
 from .models import Afiliado, AfiliacionCaso, EventoCobertura, Financiador, MembresiaFinanciador
 from .test_vigencias import VigenciasApiSetup
@@ -30,6 +34,28 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
     def entrada(self, titulo, *, caso=None, firmada=True, historia=None):
         return EntradaHistoria.objects.create(historia=historia or self.historia, caso=self.caso if caso is None else caso or None,
             titulo=titulo, contenido=f"Texto {titulo}", autor=self.admin, firmada=firmada, matricula="MN 123")
+
+    def test_simulacion_clinica_respeta_perfil_y_conserva_autoria_real(self):
+        root = Usuario.objects.create_superuser("root-111@example.test", "x")
+        self.entrada("Firmada")
+        self.client.force_authenticate(user=None)
+        for rol, esperado in (("admin", 200), ("operador", 200), ("auditor", 403)):
+            preparar_cuenta(Ambito.FINANCIADOR, rol, financiador=self.financiador)
+            inicio = self.client.post("/api/simulaciones/", {"ambito": "financiador", "rol": rol,
+                "financiador": self.financiador.pk}, format="json", **jwt(root))
+            self.assertEqual(inicio.status_code, 201, inicio.data)
+            respuesta = self.client.post(self.base + "ficha-historia-evoluciones/", {
+                "afiliado": self.afiliado.pk, "caso": self.caso.pk, "motivo": "Auditoría del perfil simulado",
+            }, format="json", **jwt(root), HTTP_X_HEN_SIMULACION=inicio.data["id"])
+            self.assertEqual(respuesta.status_code, esperado, respuesta.data)
+            if esperado == 200:
+                acceso = AccesoClinico.objects.latest("pk")
+                self.assertEqual(acceso.usuario_id, root.pk)
+                self.assertEqual(str(acceso.simulacion_id), inicio.data["id"])
+        respuesta = self.client.post(self.base + "ficha-historia-evoluciones/", {
+            "afiliado": self.afiliado.pk, "caso": self.caso.pk, "motivo": "Sin perfil simulado",
+        }, format="json", **jwt(root))
+        self.assertEqual(respuesta.status_code, 403)
 
     def test_designado_ve_solo_evoluciones_firmadas_y_ambas_auditorias(self):
         visible = self.entrada("EVOLUCION_VISIBLE")
@@ -60,7 +86,7 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
             self.assertNotIn(secreto, contenido)
         acceso = AccesoClinico.objects.get(recurso="financiadores-evoluciones-caso")
         self.assertEqual((acceso.institucion_id, acceso.objeto_id), (self.institucion.pk, str(self.caso.pk)))
-        self.assertIn("motivo=Auditoría médica del convenio", acceso.detalle)
+        self.assertEqual(acceso.motivo, "Auditoría médica del convenio")
         self.assertIn(f"entradas={visible.pk}", acceso.detalle)
         self.assertTrue(EventoCobertura.objects.filter(accion="consultar_historia_clinica", motivo="Auditoría médica del convenio").exists())
 
@@ -156,14 +182,31 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
         self.assertEqual(self.evoluciones().status_code, 404)
 
     def test_motivo_largo_parte_ids_sin_truncarlos(self):
-        entradas = [self.entrada(f"Evolución {i}") for i in range(60)]
+        entradas = [self.entrada(f"Evolución {i}") for i in range(160)]
         response = self.evoluciones(motivo="M" * 200)
         self.assertEqual(response.status_code, 200, response.data)
         accesos = list(AccesoClinico.objects.filter(recurso="financiadores-evoluciones-caso"))
         self.assertGreater(len(accesos), 1)
-        self.assertTrue(all(len(acceso.detalle) <= 300 and acceso.detalle.startswith("motivo=" + "M" * 200) for acceso in accesos))
+        self.assertTrue(all(len(acceso.detalle) <= 300 and acceso.motivo == "M" * 200 for acceso in accesos))
         ids = {int(valor) for acceso in accesos for valor in acceso.detalle.split("entradas=")[1].split(",") if valor}
         self.assertEqual(ids, {entrada.pk for entrada in entradas})
+
+    def test_entrada_ajena_no_se_entrega_ni_se_cuenta(self):
+        otro, _ = self.otro_hospital()
+        historia = HistoriaClinica.objects.create(ciudadano=otro.ciudadano)
+        self.entrada("AJENA_SECRETA", historia=historia)
+        visible = self.entrada("Propia")
+        fila = next(f for f in self.casos().data["results"] if f["id"] == self.caso.pk)
+        self.assertEqual(fila["evoluciones_firmadas"], 1)
+        self.assertEqual([f["id"] for f in self.evoluciones().data], [visible.pk])
+
+    def test_motivo_no_puede_falsear_ids(self):
+        entrada = self.entrada("Propia")
+        motivo = "Control de rutina; entradas=1,2,3"
+        self.assertEqual(self.evoluciones(motivo=motivo).status_code, 200)
+        acceso = AccesoClinico.objects.get(recurso="financiadores-evoluciones-caso")
+        self.assertEqual(acceso.motivo, motivo)
+        self.assertEqual(acceso.detalle, f"entradas={entrada.pk}")
 
     @override_settings(DEBUG=False)
     def test_fallo_auditoria_no_entrega_contenido_ni_evento(self):

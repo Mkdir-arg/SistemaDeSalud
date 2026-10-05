@@ -3,7 +3,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -12,12 +12,28 @@ from apps.accounts.models import Membresia
 from apps.casos.models import Caso, EventoCaso
 from apps.common import ROL_CAPACIDADES
 from apps.finanzas.models import HechoAtencionCosteable
-from apps.registros.models import normalizar_documento
+from apps.registros.models import Ciudadano, DOCUMENTOS_NN, normalizar_documento
 from . import models as m
 from .cobertura import regla_aplicable
 from .permisos import plataforma, requerir_carga_manual, requerir_caso, requerir_resolver_autorizaciones
 from .services import auditar
 from .vigencias import convenio_aplicable, convenios_vigentes
+
+
+def accesos_solicitudes(objetos):
+    """Atribuye manuales sólo a una identidad inequívoca en el hospital elegido."""
+    objetos = list(objetos)
+    documentos = {normalizar_documento(obj.afiliado.documento) for obj in objetos if not obj.ciudadano_id}
+    documentos -= {"", *DOCUMENTOS_NN}
+    personas = {}
+    instituciones = {obj.institucion_id for obj in objetos}
+    for persona in Ciudadano.objects.filter(institucion_id__in=instituciones, documento__in=documentos):
+        personas.setdefault((persona.institucion_id, persona.documento), []).append(persona)
+    for obj in objetos:
+        candidatos = personas.get((obj.institucion_id, normalizar_documento(obj.afiliado.documento)), [])
+        ciudadano = obj.ciudadano or (candidatos[0] if len(candidatos) == 1 else None)
+        yield {"ciudadano": ciudadano, "institucion_id": obj.institucion_id, "objeto_id": obj.pk,
+               "detalle": f"solicitud={obj.pk} afiliado={obj.afiliado_id} financiador={obj.financiador_id}", "resultados": 1}
 
 
 def intento_actual(caso):

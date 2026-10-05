@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
+from apps.simulacion.perfiles import DOMINIO, es_cuenta_referencia
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -49,6 +50,7 @@ class UsuarioViewSet(BaseModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        qs = qs.exclude(Q(email__iendswith=f"@{DOMINIO}") | Q(cuenta_referencia__isnull=False))
         user = self.request.user
 
         # `?institucion=<id>`: el padrón de esa institución (quien tenga allí una
@@ -219,6 +221,14 @@ class MembresiaViewSet(BaseModelViewSet):
     def get_queryset(self):
         qs = self.queryset
         user = self.request.user
+        # La cuenta efectiva necesita consultar sus propias áreas para operar.
+        # Esa introspección de lectura no habilita la gestión de cuentas técnicas.
+        propia = (self.action == "list" and es_cuenta_referencia(user)
+                  and self.request.query_params.get("usuario") == str(user.pk))
+        if propia:
+            qs = qs.filter(usuario=user)
+        else:
+            qs = qs.exclude(Q(usuario__email__iendswith=f"@{DOMINIO}") | Q(usuario__cuenta_referencia__isnull=False))
         if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
             qs = qs.filter(institucion__in=self.instituciones_del_usuario())
         for field in self.filter_fields:
