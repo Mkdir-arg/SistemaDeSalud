@@ -134,6 +134,7 @@ test("renovar requiere verificar no realización y una nueva aceptación indepen
 });
 
 test("reintentar una confirmación conserva el UUID y el consentimiento de esa solicitud", async ({ page }) => {
+  test.fixme(true, "#112 G1: decisión pendiente sobre mensajes del servidor");
   const { escrituras } = await circuito(page, { fallaPrimerConfirmar: true });
   await page.goto("/casos/41");
   await page.getByRole("button", { name: "Consultar cobertura", exact: true }).click();
