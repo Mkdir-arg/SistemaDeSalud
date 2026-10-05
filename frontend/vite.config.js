@@ -10,6 +10,10 @@ const proxyTarget = process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8000";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Caché de dependencias pre-empaquetadas. Se puede mover con VITE_CACHE_DIR para
+  // que dos servidores que comparten node_modules (worktrees) no choquen al
+  // renombrar node_modules/.vite/deps_temp_* (EPERM en Windows).
+  cacheDir: process.env.VITE_CACHE_DIR || "node_modules/.vite",
   resolve: {
     // Alias «@» → src/. Lo usan los componentes nuevos (y lo requiere shadcn/ui).
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
