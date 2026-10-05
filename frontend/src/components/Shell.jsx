@@ -22,7 +22,7 @@ export function useRefresh() { return useContext(RefreshCtx); }
 
 function textoRefresco(r) {
   if (!r) return null;
-  if (r.refrescando) return "Actualizando⬦";
+  if (r.refrescando) return "Actualizando…";
   if (!r.ultima) return null;
   const s = Math.floor((Date.now() - new Date(r.ultima).getTime()) / 1000);
   return `Actualizado hace ${s < 50 ? "unos segundos" : antiguedad(r.ultima)}`;
@@ -194,7 +194,7 @@ function BuscadorPacientes() {
         <Icon name="search" size={16} />
       </span>
       <input
-        placeholder="Buscar paciente por nombre o documento⬦"
+        placeholder="Buscar paciente por nombre o documento…"
         value={q}
         onChange={(e) => { setQ(e.target.value); setAbierto(true); }}
         onFocus={() => setAbierto(true)}
@@ -209,7 +209,7 @@ function BuscadorPacientes() {
         <Popover align="left" className="right-0 max-h-[360px] overflow-y-auto" onClose={() => setAbierto(false)}>
           <div id="buscador-pacientes-resultados" role="listbox">
             {buscando ? (
-              <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando⬦</div>
+              <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando…</div>
             ) : error ? (
               <div className="p-3.5 text-sm text-texto-debil" role="alert">
                 No se pudo buscar al paciente.
