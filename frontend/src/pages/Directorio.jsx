@@ -111,7 +111,7 @@ function InstitucionesView() {
   const indicadores = Object.fromEntries((datos?.indicadores || []).map((fila) => [fila.institucion, fila]));
   const filtros = [
     { value: "", label: datos ? `Todas (${datos.instituciones})` : "Todas" },
-    { value: "en_alta", label: datos ? `En puesta en marcha (${datos.en_alta})` : "En puesta en marcha" },
+    { value: "en_alta", label: datos ? `En configuración (${datos.en_alta})` : "En configuración" },
   ];
 
   function entrar(inst) {
@@ -149,7 +149,7 @@ function InstitucionesView() {
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <TarjetaMetrica titulo="Instituciones activas" valor={datos?.activas} nota={datos ? `de ${datos.instituciones} en la plataforma` : "Cargando…"} />
-        <TarjetaMetrica titulo="En puesta en marcha" valor={datos?.en_alta} nota="Configuración pendiente" />
+        <TarjetaMetrica titulo="En configuración" valor={datos?.en_alta} nota="Configuración pendiente" />
         <TarjetaMetrica titulo="Atenciones de fila" valor={datos?.atendidos} nota={`Últimos ${dias} días`} />
         <TarjetaMetrica titulo="Ocupación de camas" valor={datos?.ocupacion} sufijo=" %" nota="Camas utilizables" />
         <TarjetaMetrica titulo="Personal activo" valor={datos?.personal_activo} nota="Personas habilitadas" />
@@ -319,7 +319,7 @@ function NuevaInstitucionModal({ onClose }) {
       }
     >
       <div className="flex flex-col gap-3.5">
-        <p className="text-sm text-texto-debil">Se crea en puesta en marcha. Pasa a activa cuando completes la configuración.</p>
+        <p className="text-sm text-texto-debil">Se crea en configuración. Pasa a activa cuando completes la puesta en marcha.</p>
         <Field label="Nombre *">
           <Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} autoFocus placeholder="Hospital Zonal Sur" />
         </Field>

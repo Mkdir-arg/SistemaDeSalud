@@ -29,7 +29,7 @@ cada rol. Para usar dos cuentas a la vez, abrí la segunda en una ventana privad
 
 ![Instituciones de la red](capturas/01-instituciones.png)
 
-Al entrar ves la red: qué instituciones están activas, cuáles están en puesta en marcha, la
+Al entrar ves la red: qué instituciones están activas, cuáles están en configuración, la
 ocupación de camas y la espera promedio de cada una. Con **Ingresar** entrás a una institución.
 
 ---

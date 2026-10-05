@@ -26,7 +26,7 @@ minutos, hacé el 1, el 4 y el 6.
 | **Hospital General Los Aromos** | Efector mediano de la red: guardia con fila e internación, sin finanzas ni financiadores |
 | **Hospital Municipal de Villa Real** | El efector chico de la red que deriva al grande |
 | **Zonal Sur · Clínica San Martín · CAPS Barrio Norte** | Más efectores de la red con guardia andando. Zonal Sur está lleno y dispara la alerta de ocupación |
-| **Lomas del Este · Hospital Piloto** | En puesta en marcha. Lomas lleva 45 días y dispara la alerta; Piloto es la institución del comprador |
+| **Lomas del Este · Hospital Piloto** | En configuración. Lomas lleva 45 días y dispara la alerta; Piloto es la institución del comprador |
 
 La red muestra distintos niveles de operación: Central concentra la demo
 completa; Los Aromos y los otros efectores aportan demanda e internación al tablero.
@@ -152,7 +152,7 @@ queda registrada: quién, cuándo, a qué paciente.
 
 Entrá con `plataforma@salud.local`. El **Directorio** muestra la red de instituciones,
 con dos alertas: Zonal Sur por encima del 90 % de camas y Lomas del
-Este con más de 30 días en puesta en marcha.
+Este con más de 30 días en configuración.
 
 Cada uno tiene su estructura, sus flujos, sus usuarios y sus finanzas. La
 plataforma da de alta efectores y redes; **no** opera adentro de ellos.

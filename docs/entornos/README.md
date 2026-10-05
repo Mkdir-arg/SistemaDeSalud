@@ -127,7 +127,7 @@ Qué carga, por paso:
 | `seed_financiadores` | Sobre **Hospital Central**, en su área *Consultorios externos*: tres financiadores (uno con convenio propuesto sin aceptar), padrón con bajas, 12 meses de atenciones con copago, autorizaciones pendientes, observada, aprobadas y rechazadas |
 | `seed_farmacia` | Pedidos de reposición en cada estado y consumos imputados a pacientes |
 | `seed_red` | Villa Real y los traslados: resueltos, pendientes y uno aceptado sin despachar |
-| `seed_efectores` | Cinco efectores más en la red: Los Aromos (hospital mediano sin alerta), Zonal Sur (lleno), Clínica San Martín, el CAPS Barrio Norte y Lomas del Este (en puesta en marcha hace 45 días). Treinta días de atenciones de fila, pacientes en sala e internados, también en Villa Real |
+| `seed_efectores` | Cinco efectores más en la red: Los Aromos (hospital mediano sin alerta), Zonal Sur (lleno), Clínica San Martín, el CAPS Barrio Norte y Lomas del Este (en configuración hace 45 días). Treinta días de atenciones de fila, pacientes en sala e internados, también en Villa Real |
 | `seed_comprador` | `test@salud.local`, el usuario de quien recibe la demo, y su institución Hospital Piloto a medio configurar (ver abajo) |
 | `seed_accesos` | Registro de accesos clínicos de los últimos 45 días, para la auditoría |
 
@@ -145,7 +145,7 @@ que evalúa el sistema lo pruebe sola, sin chocar con «Acceso denegado»:
   gastos por aprobar, saldos de cobertura y un convenio por aceptar.
 - En el **portal de Mutual del Valle** es administrador y responde
   autorizaciones.
-- **Hospital Piloto** es suyo y está en puesta en marcha. Tiene áreas y
+- **Hospital Piloto** es suyo y está en configuración. Tiene áreas y
   personal, pero ni agendas ni flujo publicado: la guía de Inicio muestra 3 de
   6 pasos, y los otros tres quedan para que los haga él.
 
