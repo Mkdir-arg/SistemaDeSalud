@@ -140,8 +140,12 @@ export default function Bandejas() {
               opciones={flujos.filas.map((f) => ({ value: String(f.id), label: f.titulo }))} todos="Todos los flujos" />
           </>}
           vacio={
+            // Invitar a «Sin asignar» cuando esa bandeja también está vacía es
+            // mandar a la persona a otra pantalla vacía (H-38 de #58).
             tab === "mios"
-              ? { titulo: "No tenés casos asignados", detalle: "Tomá uno de «Sin asignar» para empezar." }
+              ? { titulo: "No tenés casos asignados", detalle: nSin.total !== 0 || nSin.isLoading || nSin.error
+                  ? "Tomá uno de «Sin asignar» para empezar."
+                  : "Tampoco hay casos sin asignar ahora. Los nuevos aparecen en «Sin asignar»." }
               : tab === "sin"
                 ? { titulo: "No hay casos para tomar", detalle: "Los casos encolados se operan desde Filas de espera." }
                 : { titulo: "No hay casos activos", detalle: "Los casos aparecen al iniciarse desde un flujo publicado." }

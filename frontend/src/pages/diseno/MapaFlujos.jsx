@@ -134,13 +134,16 @@ export default function MapaFlujos() {
                     </span>
                     <div className="min-w-0 truncate text-md font-semibold" title={n.titulo}>{n.titulo}</div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-sm text-texto-debil">
+                  {/* `min-w-0` y el nombre recortado: un área larga («Consultorios
+                      de clínica médica») sacaba la insignia por fuera de la tarjeta,
+                      que tiene ancho fijo porque el diagrama la ubica a mano. */}
+                  <div className="flex min-w-0 items-center gap-1.5 text-sm text-texto-debil">
                     {externo ? (
                       "Flujo de otro alcance"
                     ) : (
                       <>
                         <Badge tone={est.tone}>{est.label}</Badge>
-                        <Badge tone="info">{n.area_nombre}</Badge>
+                        <Badge tone="info" className="min-w-0"><span className="truncate" title={n.area_nombre}>{n.area_nombre}</span></Badge>
                       </>
                     )}
                   </div>
