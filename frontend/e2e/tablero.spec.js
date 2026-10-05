@@ -260,6 +260,31 @@ test.describe("Tablero", () => {
     await expect(page.getByText(/Se muestran del/)).toHaveCount(0);
   });
 
+  test("un solo control de período: presets, «Personalizado» y sin «Fechas ▾»", async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-09-28T12:00:00-03:00"));
+    await page.goto("/dashboard");
+    await esperarPantalla(page);
+
+    const periodo = page.getByRole("group", { name: "Período del tablero" });
+    for (const nombre of ["Hoy", "7 días", "30 días", "90 días", "Personalizado"]) {
+      await expect(periodo.getByRole("button", { name: nombre, exact: true })).toBeVisible();
+    }
+    await expect(page.getByText("Fechas ▾")).toHaveCount(0);
+    await expect(page.getByLabel("Elegir fechas del tablero")).toHaveCount(0);
+    // Por defecto, 30 días: preset activo y sin campos.
+    await expect(periodo.getByRole("button", { name: "30 días", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByLabel("Desde")).toHaveCount(0);
+
+    await periodo.getByRole("button", { name: "Personalizado", exact: true }).click();
+    await expect(periodo.getByRole("button", { name: "Personalizado", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(periodo.getByRole("button", { name: "30 días", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByLabel("Desde")).toHaveValue("2026-08-30");
+    await expect(page.getByLabel("Hasta")).toHaveValue("2026-09-28");
+
+    await periodo.getByRole("button", { name: "7 días", exact: true }).click();
+    await expect(page.getByLabel("Desde")).toHaveCount(0);
+  });
+
   test("atajos e inputs cambian ambos extremos sin perder el área", async ({ page }) => {
     await page.clock.setFixedTime(new Date("2026-09-28T12:00:00-03:00"));
     await page.goto("/dashboard?area=1&desde=2026-09-01&hasta=2026-09-20");
@@ -274,6 +299,11 @@ test.describe("Tablero", () => {
       await page.getByRole("button", { name: label }).click();
       const params = new URL((await pedido).url()).searchParams;
       expect(params.get("hasta")).toBe("2026-09-28");
+      await expect(page.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+      // Con un preset activo los campos se esconden; «Personalizado» los abre
+      // con el rango vigente.
+      await expect(page.getByLabel("Desde")).toHaveCount(0);
+      await page.getByRole("button", { name: "Personalizado", exact: true }).click();
       await expect(page.getByLabel("Desde")).toHaveValue(desde);
       await expect(page.getByLabel("Hasta")).toHaveValue("2026-09-28");
       expect(new URL(page.url()).searchParams.get("area")).toBe("1");
@@ -312,6 +342,7 @@ test.describe("Tablero", () => {
     await page.goto("/dashboard");
     await esperarPantalla(page);
 
+    await page.getByRole("button", { name: "Personalizado", exact: true }).click();
     await expect(page.getByLabel("Hasta")).toHaveValue("2026-08-15");
     await expect(page.getByLabel("Desde")).toHaveValue("2026-07-17");
   });

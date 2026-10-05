@@ -19,7 +19,11 @@ import { KpiDireccion, BarrasIngresos, ResumenDireccion, isoHoy, isoHace, fechaV
  */
 const REFRESCO_MS = 60_000;
 
+// Un solo control de período (#58, decisión del 05/10): antes convivían este
+// grupo con «Hoy / 7 / 30» y un desplegable «Fechas ▾» con «7 / 30 / 90» y el
+// calendario. Se unifican los presets sin perder ninguno.
 const RANGOS = [
+  { dias: 1, label: "Hoy" },
   { dias: 7, label: "7 días" },
   { dias: 30, label: "30 días" },
   { dias: 90, label: "90 días" },
@@ -110,19 +114,8 @@ export default function Dashboard() {
         <div><h2 className="text-xl font-bold tracking-tight">Tablero</h2>
           <p className="mt-1 text-xs text-texto-suave">{institucion.nombre} · del {fechaCorta(d.periodo.desde)} al {fechaCorta(d.periodo.hasta)} · {q.isFetching ? "actualizando…" : "se actualiza cada 60 s"}</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-md border border-borde bg-superficie-2 p-1" role="group" aria-label="Período del tablero">
-            {[[1, "Hoy"], [7, "7 días"], [30, "30 días"]].map(([dias, label]) => <button key={dias} type="button"
-              aria-pressed={desde === isoHace(dias) && hasta === isoHoy()}
-              onClick={() => setRango(isoHace(dias), isoHoy())}
-              className={cn("rounded px-3 py-1.5 text-xs", desde === isoHace(dias) && hasta === isoHoy() ? "bg-superficie font-semibold text-texto shadow-card" : "text-texto-suave hover:text-texto")}>{label}</button>)}
-          </div>
+          <PeriodoTablero desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} />
           <SolapasArea areas={d.por_area} tab={tab} setTab={setTab} />
-          <details className="relative text-xs text-texto-suave">
-            <summary className="cursor-pointer list-none rounded-md border border-borde bg-superficie px-3 py-2.5 font-medium hover:border-accent" aria-label="Elegir fechas del tablero">Fechas ▾</summary>
-            <div className="absolute right-0 z-20 mt-2 w-[min(42rem,calc(100vw-2rem))] rounded-lg border border-borde bg-superficie p-3 shadow-dropdown">
-              <RangoFechas desde={desde} hasta={hasta} setRango={setRango} periodo={d.periodo} />
-            </div>
-          </details>
         </div>
       </div>
       <div className="flex flex-col gap-4">
@@ -233,8 +226,14 @@ function SolapasArea({ areas, tab, setTab }) {
   </>;
 }
 
-function RangoFechas({ desde, hasta, setRango, periodo }) {
+function PeriodoTablero({ desde, hasta, setRango, periodo }) {
   const hoy = isoHoy();
+  const preset = RANGOS.find((rg) => desde === isoHace(rg.dias) && hasta === hoy);
+  const [personalizar, setPersonalizar] = useState(false);
+  // Los campos aparecen al elegir «Personalizado» o cuando el rango activo no es
+  // un preset (por ejemplo, porque llegó por la URL): un rango a medida nunca
+  // queda escondido.
+  const conCampos = personalizar || !preset;
   const tope = fechaValida(hasta) ? isoAntes(hasta, MAX_DIAS_RANGO) : isoHace(MAX_DIAS_RANGO);
   // El servidor recorta lo que exceda el tope y devuelve en `periodo` el rango
   // que usó de verdad. Si no se dice, los números cambian igual al mover el
@@ -243,37 +242,29 @@ function RangoFechas({ desde, hasta, setRango, periodo }) {
   // creyendo que son seis años de historia cuando es el último año.
   const recortado = periodo && (periodo.desde !== desde || periodo.hasta !== hasta);
   const campo = "h-9 rounded-md border border-campo-borde bg-superficie px-2.5 text-md text-texto outline-none focus:border-accent";
-  return (
-    <div className="flex flex-wrap items-center gap-2.5">
-      <div className="flex gap-0.5 rounded-md border border-borde bg-superficie-2 p-0.5">
-        {RANGOS.map((rg) => {
-          const activo = desde === isoHace(rg.dias) && hasta === hoy;
-          return (
-            <button
-              key={rg.dias}
-              onClick={() => setRango(isoHace(rg.dias), hoy)}
-              className={cn(
-                "rounded-sm px-3 py-1.5 text-base font-semibold",
-                activo ? "bg-superficie text-accent shadow-card" : "text-texto-debil hover:text-texto-suave",
-              )}
-            >
-              {rg.label}
-            </button>
-          );
-        })}
-      </div>
-      <span className="text-base text-texto-tenue">o</span>
-      <input type="date" value={desde} min={tope} max={hasta} onChange={(e) => e.target.value && setRango(e.target.value, hasta)} className={campo} aria-label="Desde" />
-      <span className="text-texto-tenue">→</span>
-      <input type="date" value={hasta} min={desde} max={hoy} onChange={(e) => e.target.value && setRango(desde, e.target.value)} className={campo} aria-label="Hasta" />
-      {recortado && (
-        <span className="text-base text-texto-medio">
-          Se muestran del <strong>{fechaCorta(periodo.desde)}</strong> al <strong>{fechaCorta(periodo.hasta)}</strong>
-          {" "}({periodo.dias} días): es todo lo que devuelve el tablero.
-        </span>
-      )}
+  const opcion = (activo) => cn("rounded px-3 py-1.5 text-xs", activo ? "bg-superficie font-semibold text-texto shadow-card" : "text-texto-suave hover:text-texto");
+  return <>
+    <div className="flex flex-wrap rounded-md border border-borde bg-superficie-2 p-1" role="group" aria-label="Período del tablero">
+      {RANGOS.map((rg) => {
+        const activo = !personalizar && preset === rg;
+        return <button key={rg.dias} type="button" aria-pressed={activo}
+          onClick={() => { setPersonalizar(false); setRango(isoHace(rg.dias), hoy); }}
+          className={opcion(activo)}>{rg.label}</button>;
+      })}
+      <button type="button" aria-pressed={conCampos} onClick={() => setPersonalizar(true)} className={opcion(conCampos)}>Personalizado</button>
     </div>
-  );
+    {conCampos && <div className="flex flex-wrap items-center gap-2">
+      <input type="date" value={desde} min={tope} max={hasta} onChange={(e) => e.target.value && setRango(e.target.value, hasta)} className={campo} aria-label="Desde" />
+      <span className="text-texto-tenue" aria-hidden="true">→</span>
+      <input type="date" value={hasta} min={desde} max={hoy} onChange={(e) => e.target.value && setRango(desde, e.target.value)} className={campo} aria-label="Hasta" />
+    </div>}
+    {recortado && (
+      <span className="basis-full text-xs text-texto-medio">
+        Se muestran del <strong>{fechaCorta(periodo.desde)}</strong> al <strong>{fechaCorta(periodo.hasta)}</strong>
+        {" "}({periodo.dias} días): es todo lo que devuelve el tablero.
+      </span>
+    )}
+  </>;
 }
 
 function TituloGrafico({ titulo, sub }) {
