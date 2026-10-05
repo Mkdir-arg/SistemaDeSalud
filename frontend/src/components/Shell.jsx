@@ -22,7 +22,7 @@ export function useRefresh() { return useContext(RefreshCtx); }
 
 function textoRefresco(r) {
   if (!r) return null;
-  if (r.refrescando) return "Actualizando⬦";
+  if (r.refrescando) return "Actualizando…";
   if (!r.ultima) return null;
   const s = Math.floor((Date.now() - new Date(r.ultima).getTime()) / 1000);
   return `Actualizado hace ${s < 50 ? "unos segundos" : antiguedad(r.ultima)}`;
@@ -194,7 +194,7 @@ function BuscadorPacientes() {
         <Icon name="search" size={16} />
       </span>
       <input
-        placeholder="Buscar paciente por nombre o documento⬦"
+        placeholder="Buscar paciente por nombre o documento…"
         value={q}
         onChange={(e) => { setQ(e.target.value); setAbierto(true); }}
         onFocus={() => setAbierto(true)}
@@ -209,7 +209,7 @@ function BuscadorPacientes() {
         <Popover align="left" className="right-0 max-h-[360px] overflow-y-auto" onClose={() => setAbierto(false)}>
           <div id="buscador-pacientes-resultados" role="listbox">
             {buscando ? (
-              <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando⬦</div>
+              <div style={{ padding: "14px 16px", fontSize: 13, color: "var(--color-texto-tenue)" }}>Buscando…</div>
             ) : error ? (
               <div className="p-3.5 text-sm text-texto-debil" role="alert">
                 No se pudo buscar al paciente.
@@ -354,13 +354,24 @@ const ROL_LABEL = {
 // Clases del ítem de menú. Migrado de estilos inline a tokens semánticos porque
 // con el literal `slate600` sobre la superficie oscura el menú quedaba en 2,22:1
 // «ilegible» y es el marco que se ve en todas las pantallas.
+// El anillo de foco va hacia ADENTRO del ítem: los grupos del menú recortan con
+// `overflow-hidden` (lo necesita la animación de plegado) y un anillo exterior
+// quedaba cortado justo en el menú, que es por donde más se navega con teclado.
 const itemClase = (col) => ({ isActive }) =>
   cn(
-    "flex items-center gap-2 rounded-md text-xs font-medium",
+    "relative flex items-center gap-2 rounded-md text-xs font-medium focus-visible:-outline-offset-2",
     col ? "justify-center py-2" : "px-2 py-2",
     isActive
       ? "bg-accent-50 text-accent"
       : "text-texto-suave hover:bg-superficie-2 hover:text-texto",
+  );
+
+// Contador de un ítem. Plegado no hay lugar al lado del ícono —lo corría del
+// centro y lo pegaba al número—, así que pasa a la esquina, como en la campana.
+const contadorClase = (col) =>
+  cn(
+    "rounded-pill bg-accent-50 px-1.5 text-xs font-bold text-accent",
+    col ? "absolute right-0.5 top-0.5 border border-accent-100 px-1 text-micro leading-4" : "ml-auto",
   );
 
 export function Shell({ children, financiador = null, plataforma = false }) {
@@ -566,7 +577,8 @@ export function Shell({ children, financiador = null, plataforma = false }) {
               </>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--color-texto-tenue)", padding: "4px 2px" }}>
-                <Icon name="power" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
+                {/* Credencial y no «power»: ese es el de «Salir» y se leía como cerrar sesión. */}
+                <Icon name="idCard" size={12} /> {rolLabel}{puedeCambiar ? "" : " · acceso fijo"}
               </div>
             )}
           </div>
@@ -633,12 +645,15 @@ export function Shell({ children, financiador = null, plataforma = false }) {
                       title={n.label}
                     >
                       <Icon name={n.icon} size={16} />
-                      {!colapsado && (n.to === "/inicio" && operativo ? "Mi trabajo" : n.label)}
+                      {/* Plegado, el nombre sigue en el árbol de accesibilidad: si
+                          no, un ítem con contador se anunciaba solo por el número
+                          («7 casos para tomar») y no decía a dónde lleva. */}
+                      <span className={colapsado ? "sr-only" : undefined}>{n.to === "/inicio" && operativo ? "Mi trabajo" : n.label}</span>
                       {n.to === "/inicio" && operativo && pendientes > 0 && (
-                        <span className="ml-auto rounded-pill bg-accent-50 px-1.5 text-xs font-bold text-accent" aria-label={`${pendientes} tareas pendientes`}>{pendientes > 99 ? "99+" : pendientes}</span>
+                        <span className={contadorClase(colapsado)} aria-label={`${pendientes} tareas pendientes`}>{pendientes > 99 ? "99+" : pendientes}</span>
                       )}
                       {n.to === "/bandeja" && conteoBandeja.total > 0 && (
-                        <span className="ml-auto rounded-full bg-accent-50 px-1.5 text-xs font-bold text-accent" aria-label={`${conteoBandeja.total} casos para tomar`}>
+                        <span className={contadorClase(colapsado)} aria-label={`${conteoBandeja.total} casos para tomar`}>
                           {conteoBandeja.total > 99 ? "99+" : conteoBandeja.total}
                         </span>
                       )}

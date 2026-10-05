@@ -71,6 +71,9 @@ async function escenario(page, { seguimiento = true, permisoDinero = true, edita
 }
 
 const entrada = "/finanzas/coberturas?tab=seguimiento";
+// Ya no hay «Aplicar filtros»: los cambios se aplican solos a los 2 s o con Enter
+// (submit del formulario). Los tests usan Enter para no depender del temporizador.
+const aplicarConEnter = (page) => page.getByLabel("Buscar caso, responsable o prestación").press("Enter");
 
 test("filtra por fecha de prestación y conserva filtros, página y navegación", async ({ page }) => {
   await escenario(page);
@@ -81,7 +84,7 @@ test("filtra por fecha de prestación y conserva filtros, página y navegación"
     return route.fulfill({ json: respuesta([cuenta], { count: 30, next: params.page === "2" ? null : "?page=2" }) });
   });
   await page.goto(`${entrada}&desde=2026-09-01&hasta=2026-09-30&page=2`);
-  await expect(page.getByText("30 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("30 registros · Página 2 de 3", { exact: true })).toBeVisible();
   await page.getByLabel("Desde", { exact: true }).fill("2026-08-01");
   await page.getByLabel("Hasta", { exact: true }).fill("2026-08-31");
   await page.getByRole("combobox", { name: "Área de origen", exact: true }).selectOption("4");
@@ -89,14 +92,16 @@ test("filtra por fecha de prestación y conserva filtros, página y navegación"
   await page.getByRole("combobox", { name: "Responsable del cobro", exact: true }).selectOption("paciente");
   await page.getByRole("combobox", { name: "Estado", exact: true }).selectOption("por_aprobar");
   await page.getByLabel("Buscar caso, responsable o prestación").fill("  Consulta  ");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await aplicarConEnter(page);
   await expect.poll(() => consultas.at(-1)).toEqual({ desde: "2026-08-01", hasta: "2026-08-31", area: "4", financiador: "21", responsable: "paciente", estado: "por_aprobar", search: "Consulta", vista: "cuentas", institucion: "2", page: "1", page_size: "10" });
-  await expect(page.getByText(/aunque se hayan registrado en otra fecha/)).toBeVisible();
+  await page.getByRole("button", { name: "Ayuda sobre el seguimiento de cobros", exact: true }).click();
+  await expect(page.getByRole("tooltip")).toContainText("aunque se hayan registrado en otra fecha");
+  await page.keyboard.press("Escape");
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Responsable del cobro", exact: true })).toHaveValue("paciente");
   await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("2026-08-01");
   await page.goBack();
-  await expect(page.getByText("30 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("30 registros · Página 2 de 3", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("2026-09-01");
 });
 
@@ -172,13 +177,13 @@ test("sin área asignada persiste sin enviar un identificador de área incompati
   const { consultas } = await escenario(page);
   await page.goto(`${entrada}&area=4&desde=&hasta=`);
   await page.getByRole("combobox", { name: "Área de origen", exact: true }).selectOption("sin_area");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect.poll(() => consultas.filter((c) => c.path === "/seguimiento-cobros/").at(-1)?.params).toEqual({ area_sin_asignar: "true", vista: "cuentas", institucion: "2", page: "1" });
+  await aplicarConEnter(page);
+  await expect.poll(() => consultas.filter((c) => c.path === "/seguimiento-cobros/").at(-1)?.params).toEqual({ area_sin_asignar: "true", vista: "cuentas", institucion: "2", page: "1", page_size: "10" });
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Área de origen", exact: true })).toHaveValue("sin_area");
   await page.getByRole("combobox", { name: "Área de origen", exact: true }).selectOption("4");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect.poll(() => consultas.filter((c) => c.path === "/seguimiento-cobros/").at(-1)?.params).toEqual({ area: "4", vista: "cuentas", institucion: "2", page: "1" });
+  await aplicarConEnter(page);
+  await expect.poll(() => consultas.filter((c) => c.path === "/seguimiento-cobros/").at(-1)?.params).toEqual({ area: "4", vista: "cuentas", institucion: "2", page: "1", page_size: "10" });
 });
 
 test("concesión revocada evita una consulta aunque la opción estuviera disponible", async ({ page }) => {
@@ -197,8 +202,10 @@ test("un error reemplaza cuentas y totales sin aparentar un saldo cero", async (
   await expect(page.getByText("Paciente de prueba", { exact: true })).toBeVisible();
   falla = true;
   await page.getByLabel("Desde", { exact: true }).fill("2026-01-01");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect(page.getByRole("alert")).toContainText("No se pudo consultar el seguimiento");
+  await aplicarConEnter(page);
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo consultar el seguimiento");
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toHaveCount(0);
   await expect(page.getByText("Paciente de prueba", { exact: true })).toHaveCount(0);
   falla = false;
@@ -217,7 +224,7 @@ test("cambiar hospital descarta filtros ajenos y datos anteriores", async ({ pag
   });
   await page.goto(`${entrada}&seguimiento_institucion=2&desde=2026-01-01&hasta=2026-01-31&financiador=21&page=2`);
   await expect(page.getByText("Paciente de prueba", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "I-Core Hospital de prueba Institución", exact: true }).click();
+  await page.getByRole("button", { name: "Hospital de prueba Institución", exact: true }).click();
   await page.getByRole("button", { name: "Hospital del Sur Institución", exact: true }).click();
   // El Shell vuelve al inicio cuando cambia la institución; el enlace conservado
   // tampoco debe restaurar los filtros ni el caché del hospital anterior.
@@ -279,7 +286,7 @@ test("saldar la última cuenta de la segunda página permite volver a la primera
     registrado_neto: estado.actualizado ? "9000.00" : "3000.00", pendiente: estado.actualizado ? "0.00" : "6000.00",
   } }));
   await page.goto(`${entrada}&vista=cuentas&desde=2026-09-01&hasta=2026-09-30&financiador=21&responsable=paciente&area=4&estado=pendiente&search=Consulta&page=2`);
-  await expect(page.getByText("26 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("26 registros · Página 2 de 3", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Ver cuenta", exact: true }).click();
   const modal = page.getByRole("dialog", { name: "Cuenta #91" });
   await modal.getByRole("button", { name: "Registrar cobro", exact: true }).click();
@@ -290,7 +297,7 @@ test("saldar la última cuenta de la segunda página permite volver a la primera
   await expect(page.getByText(/Esta página ya no está disponible/)).toBeVisible();
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toHaveCount(0);
   await page.getByRole("button", { name: "Volver a la primera página", exact: true }).click();
-  await expect(page.getByText("25 registros · Página 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("25 registros · Página 1 de 3", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toContainText("ARS 150.000,00");
   expect(consultas.at(-1)).toEqual({ vista: "cuentas", desde: "2026-09-01", hasta: "2026-09-30", area: "4", financiador: "21", responsable: "paciente", estado: "pendiente", search: "Consulta", institucion: "2", page: "1", page_size: "10" });
   expect(escrituras).toHaveLength(1);
@@ -348,12 +355,12 @@ test("exportar exige aplicar cambios, respeta el límite y no habilita descargas
   await expect(boton).toBeEnabled();
   await page.getByLabel("Buscar caso, responsable o prestación").fill("exceso");
   await expect(boton).toBeDisabled();
-  await expect(page.getByText(/Aplicá los cambios para actualizar la consulta y la exportación/)).toBeVisible();
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Actualizando filtros…" })).toBeVisible();
+  await aplicarConEnter(page);
   await expect(page.getByText(/El resultado supera el límite de exportación/)).toBeVisible();
   await expect(boton).toBeDisabled();
   await page.getByLabel("Buscar caso, responsable o prestación").fill("vacio");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await aplicarConEnter(page);
   await expect(page.getByText("Sin registros con estos filtros", { exact: true })).toBeVisible();
   await expect(boton).toBeDisabled();
   expect(descargas).toEqual([]);
@@ -370,7 +377,9 @@ for (const status of [400, 503]) {
     });
     await page.goto(entrada);
     await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText(status === 400 ? "El resultado supera el límite permitido" : "No se pudo auditar la exportación");
+    // 4xx muestra el detalle del servidor; 5xx, el genérico y nunca el detalle interno (#112 G1).
+    await expect(page.getByRole("alert")).toContainText(status === 400 ? "El resultado supera el límite permitido" : "El servicio no está disponible en este momento");
+    if (status === 503) await expect(page.getByRole("alert")).not.toContainText("No se pudo auditar la exportación");
     await expect(page.getByRole("region", { name: "Resumen del seguimiento" })).toContainText("ARS 6.000,00");
     await expect(page.getByText("Paciente de prueba", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeEnabled();
@@ -420,19 +429,20 @@ test("cambiar de hospital no traslada un error de la descarga anterior", async (
     if (params.formato === "csv") {
       descargas.push(params);
       await espera;
-      return route.fulfill({ status: 503, json: { detail: "Error de exportación del hospital anterior" } });
+      // 4xx: su detalle sí se muestra (#112 G1), así que si el error se trasladara al otro hospital se vería.
+      return route.fulfill({ status: 400, json: { detail: "Error de exportación del hospital anterior" } });
     }
     return route.fulfill({ json: respuesta([{ ...cuenta, contraparte_nombre: params.institucion === "3" ? "Paciente del Sur" : "Paciente de prueba" }]) });
   });
   await page.goto(entrada);
   await page.getByRole("button", { name: "Exportar CSV", exact: true }).click();
   await expect.poll(() => descargas.length).toBe(1);
-  await page.getByRole("button", { name: "I-Core Hospital de prueba Institución", exact: true }).click();
+  await page.getByRole("button", { name: "Hospital de prueba Institución", exact: true }).click();
   await page.getByRole("button", { name: "Hospital del Sur Institución", exact: true }).click();
   await page.getByRole("link", { name: "Coberturas y copagos", exact: true }).click();
   await page.getByRole("tab", { name: "Seguimiento de cobros", exact: true }).click();
   await expect(page.getByText("Paciente del Sur", { exact: true })).toBeVisible();
-  const respuestaAnterior = page.waitForResponse((response) => response.url().includes("formato=csv") && response.status() === 503);
+  const respuestaAnterior = page.waitForResponse((response) => response.url().includes("formato=csv") && response.status() === 400);
   liberar();
   await respuestaAnterior;
   await expect(page.getByRole("button", { name: "Exportar CSV", exact: true })).toBeEnabled();
@@ -452,6 +462,8 @@ test("sin respuesta válida del listado no ofrece exportar", async ({ page }) =>
   await expect(page.getByText("Consultando seguimiento de cobros…", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
   liberar();
-  await expect(page.getByRole("alert")).toContainText("No se pudo consultar el seguimiento");
+  // 5xx: genérico siempre, sin el detalle interno (#112 G1).
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible en este momento");
+  await expect(page.getByRole("alert")).not.toContainText("No se pudo consultar el seguimiento");
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toHaveCount(0);
 });

@@ -1,0 +1,72 @@
+# Recorridos de Playwright con la API interceptada (#112).
+#
+# No necesitan backend ni datos sembrados: alcanza con el servidor de Vite que
+# levanta cada config. Los recorridos que sí necesitan el stack completo
+# (`playwright.config.js` y las configs de finanzas) siguen fuera de CI.
+#
+# Corre sólo si cambia el frontend o este workflow: un PR de backend no puede
+# romper estas pantallas porque la API está interceptada.
+name: e2e-ui
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/e2e-ui.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/e2e-ui.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright (API interceptada)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Fijar el directorio temporal
+        # Las configs escriben trazas y capturas en os.tmpdir(); así quedan en un
+        # lugar conocido para subirlas si algo falla. (El contexto `runner` no
+        # existe en el `env` del job, por eso va en un paso.)
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+        working-directory: .
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Portal del financiador, coberturas, landing e Inicio
+        run: npx playwright test -c playwright.financiadores-ui.config.js --reporter=line
+
+      - name: App clínica
+        # Corre aunque falle el paso anterior, para ver todos los rojos de una vez.
+        if: ${{ !cancelled() }}
+        run: npx playwright test -c playwright.app-clinica.config.js --reporter=line
+
+      - name: Subir trazas y capturas
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-ui
+          path: |
+            ${{ runner.temp }}/salud-financiadores-ui
+            ${{ runner.temp }}/salud-app-clinica
+          retention-days: 7
+          if-no-files-found: ignore

@@ -1,6 +1,6 @@
 # Issue #111: corrección integral en un solo PR
 
-Estado: correcciones implementadas y validadas localmente en PostgreSQL y navegador; publicación de PR autorizada. CI, integración contra main actualizado y aceptación humana pendientes.
+Estado: PR #118 publicado; integración de main y merge autorizados. Conflicto de Shell resuelto conservando cambios de #111 y #112. Validación de integración en curso; aceptación humana no demostrada.
 
 Fuente: https://github.com/Mkdir-arg/SistemaDeSalud/issues/111
 
@@ -300,4 +300,22 @@ regresiones del issue tienen pruebas propias con contratos actuales.
 - Revisión técnica realizada; el usuario autorizó continuar después de la oferta de primera revisión. Sigue pendiente su explicación de la causa/corrección clínica y de dos modos de falla. Pruebas y revisión técnica no demuestran comprensión ni aceptación humana.
 - Skill aplicada: `systematic-debugging` para reproducir causas antes de corregir y separar evidencia SQLite/PostgreSQL/API simulada. `playwright` para validación de navegador; se usaron specs del runner existente porque implementar el plan incluye esas pruebas. Se consultó `using-superpowers` para selección; `brainstorming` no aplicada por tratarse de correcciones con criterios ya definidos.
 - Sin migraciones ni dependencias nuevas. Build, OpenAPI y auditor aprobados. Suite completa y CI pendientes de la futura publicación del PR.
-- Estado de sesión: publicación en un solo PR autorizada después de la validación. Base de las pruebas: `f494eda`; `origin/main` al publicar: `d2f6212`. PR en borrador hasta comprobar integración y CI; todavía no se recomienda incorporar ni cerrar #111.
+- Estado de sesión: PR #118 publicado. Base de la validación inicial: `f494eda`; main integrado: `d2f6212`. El usuario autorizó resolver el conflicto e incorporar el PR. Esa autorización no demuestra comprensión humana; su explicación y los modos de falla siguen pendientes.
+
+## Integración del PR #118
+
+Se integró `origin/main` en la rama del PR mediante merge, sin rebase ni force-push.
+El único conflicto estaba en un comentario de `Shell.jsx`: se conservó la cita
+corregida de #111 y la explicación del foco incorporada por #112. La revisión del
+diff contra main confirma que se conservan los cambios de estilo, foco y selector.
+
+Validación posterior a la integración: build aprobado; auditor de clases con
+279 clases sin huérfanas/colisiones; test de formato de duración aprobado;
+23 regresiones de historia y #111 descubiertas, 21 aprobadas y dos omitidas por
+requerir PostgreSQL. La concurrencia había sido comprobada en PostgreSQL antes de
+integrar; la suite completa de CI debe validar el commit integrado antes del merge.
+
+Playwright posterior a la integración: 134 aprobadas y dos omisiones por tema no
+aplicable, en 1,9 minutos. Se ejecutó `npx playwright test -c playwright.issue111.config.js`,
+incluyendo las regresiones propias y los specs de Inicio, autorizaciones,
+pacientes, landing y simulación ya actualizados por #112.

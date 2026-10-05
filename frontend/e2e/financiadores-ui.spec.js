@@ -15,6 +15,19 @@ function actividadRespuesta(results = [actividadBase], extra = {}) {
   };
 }
 
+// Actividad: fechas, prestación, búsqueda y discrepancias viven detrás de «Más filtros»;
+// el botón suma « (activos)» cuando hay prestación o búsqueda aplicadas.
+const masFiltros = (page, activos = false) => page.getByRole("button", { name: activos ? "Más filtros (activos)" : "Más filtros", exact: true });
+// Cada registro de actividad abre su detalle en una fila expandible con «Ver».
+// La fila de detalle repite el afiliado, así que se distingue por su lista <dl>.
+async function detalleActividad(page, nombre, ambito = page) {
+  const fila = ambito.getByRole("row").filter({ hasText: nombre });
+  await fila.getByRole("button", { name: "Ver", exact: true }).click();
+  return fila.filter({ has: page.getByRole("term") });
+}
+// La celda del plan muestra nombre y código.
+const celdaPlan = (page, nombre, codigo) => page.getByRole("cell", { name: `${nombre} Código ${codigo}`, exact: true });
+
 test("actividad aplica filtros en servidor y conserva página, recarga y navegación", async ({ page }) => {
   await escenario(page);
   const consultas = [];
@@ -24,7 +37,8 @@ test("actividad aplica filtros en servidor y conserva página, recarga y navegac
     return route.fulfill({ json: actividadRespuesta([{ ...actividadBase, id: params.get("page") === "2" ? 92 : 91 }], { count: 30, next: params.get("page") === "2" ? null : "?page=2" }) });
   });
   await page.goto("/financiadores/actividad?financiador=21&desde=2026-09-01&hasta=2026-09-30&page=2");
-  await expect(page.getByText("30 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("30 registros · Página 2 de 3", { exact: true })).toBeVisible();
+  await masFiltros(page).click();
   await page.getByLabel("Desde", { exact: true }).fill("2026-08-01");
   await page.getByLabel("Hasta", { exact: true }).fill("2026-08-31");
   await page.getByRole("combobox", { name: "Hospital", exact: true }).selectOption("2");
@@ -35,13 +49,15 @@ test("actividad aplica filtros en servidor y conserva página, recarga y navegac
   await page.getByLabel("Buscar afiliado o prestación").fill("  00025  ");
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toBeDisabled();
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect(page.getByText("30 registros · Página 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("30 registros · Página 1 de 3", { exact: true })).toBeVisible();
   expect(consultas.at(-1)).toEqual({ desde: "2026-08-01", hasta: "2026-08-31", institucion: "2", plan: "31", prestacion: "3", estado: "realizada", discrepancia: "true", search: "00025", page: "1", page_size: "10" });
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Plan registrado", exact: true })).toHaveValue("31");
+  await masFiltros(page, true).click();
   await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
   await page.goBack();
-  await expect(page.getByText("30 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("30 registros · Página 2 de 3", { exact: true })).toBeVisible();
+  await expect(masFiltros(page)).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("2026-09-01");
 });
 
@@ -59,11 +75,13 @@ test("actividad usa mes calendario y limpiar conserva todos los períodos al rec
     return { desde: `${prefijo}-01`, hasta: `${prefijo}-${new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate()}` };
   });
   expect(consultas.at(-1)).toMatchObject(mes);
+  await masFiltros(page).click();
   await page.getByRole("button", { name: "Limpiar filtros" }).click();
   await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("");
   await expect.poll(() => consultas.at(-1)).toEqual({ page: "1", page_size: "10" });
   await page.reload();
   await expect(page.getByRole("cell", { name: "Hospital Ficticio", exact: true })).toBeVisible();
+  await masFiltros(page).click();
   await expect(page.getByLabel("Hasta", { exact: true })).toHaveValue("");
   expect(consultas.at(-1)).toEqual({ page: "1", page_size: "10" });
   await page.getByRole("button", { name: "Mes actual", exact: true }).click();
@@ -95,23 +113,24 @@ test("actividad conserva totales de todas las páginas y diferencia importes pen
     return route.fulfill({ json: actividadRespuesta(segunda ? [
       { ...actividadBase, id: 92, nombre: "Importe pendiente de prueba", importe_asignado: null, importe_financiador: "0.00", importe_acuerdos: "0.00", estado_cobro: "arancel_pendiente" },
       { ...actividadBase, id: 93, nombre: "Reserva de prueba", estado: "reservada", importe_asignado: null, importe_acuerdos: "0.00" },
-    ] : [actividadBase], { count: 3, next: segunda ? null : "?page=2" }) });
+    ] : [actividadBase], { count: 12, next: segunda ? null : "?page=2" }) });
   });
   await page.goto("/financiadores/actividad");
   const resumen = page.getByLabel("Resumen de actividad");
   await expect(resumen).toContainText("ARS 100,00");
-  await resumen.getByRole("button", { name: "Ver ayuda", exact: true }).click();
-  await expect(resumen).toContainText("no representa el saldo pendiente");
-  await page.keyboard.press("Escape");
-  await expect(page.getByText("Incluye ARS 20,00 de acuerdos", { exact: true })).toBeVisible();
+  await resumen.getByText("Ver más indicadores y alcance del importe", { exact: true }).click();
+  await expect(resumen).toContainText("no representa un saldo pendiente");
+  const detalle = await detalleActividad(page, "Ana Ficticia");
+  await expect(detalle.getByText("Incluye ARS 20,00 de acuerdos", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("actividad-escritorio.png"), fullPage: true });
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
-  await expect(page.getByText("3 registros · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("12 registros · Página 2 de 2", { exact: true })).toBeVisible();
   await expect(resumen).toContainText("ARS 100,00");
-  const pendiente = page.getByRole("row").filter({ hasText: "Importe pendiente de prueba" });
+  const pendiente = await detalleActividad(page, "Importe pendiente de prueba");
   await expect(pendiente.getByText("Importe pendiente", { exact: true })).toBeVisible();
   await expect(pendiente).not.toContainText("ARS 0,00");
-  const reserva = page.getByRole("row").filter({ hasText: "Reserva de prueba" });
+  const reserva = await detalleActividad(page, "Reserva de prueba");
+  await expect(reserva).toBeVisible();
   await expect(reserva).not.toContainText("ARS");
   await expect(reserva).not.toContainText("Importe pendiente");
 });
@@ -164,7 +183,7 @@ test("actividad exige acotar exportaciones grandes y no presenta ceros cuando fa
 test("cambiar financiador en actividad separa datos y filtros y vuelve con el navegador", async ({ page }) => {
   await escenario(page);
   const consultasNorte = [];
-  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta() }));
+  await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill({ json: actividadRespuesta([actividadBase], { count: 12 }) }));
   await page.route("**/api/financiadores/22/actividad/**", (route) => {
     consultasNorte.push(Object.fromEntries(new URL(route.request().url()).searchParams));
     return route.fulfill({ json: actividadRespuesta([{ ...actividadBase, nombre: "Paciente Norte", numero: "N001", documento: "00999000", plan: "Plan Norte" }], { opciones: { instituciones: [], planes: [], prestaciones: [] } }) });
@@ -174,13 +193,15 @@ test("cambiar financiador en actividad separa datos y filtros y vuelve con el na
   await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
   await expect(page.getByText("Paciente Norte", { exact: true })).toBeVisible();
   await expect(page.getByText("Ana Ficticia", { exact: true })).toHaveCount(0);
+  await masFiltros(page).click();
   await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("");
   expect(consultasNorte.at(-1)).not.toHaveProperty("search");
   expect(consultasNorte.at(-1).page).toBe("1");
   await page.goBack();
   await expect(page.getByText("Ana Ficticia", { exact: true })).toBeVisible();
+  await masFiltros(page, true).click();
   await expect(page.getByLabel("Buscar afiliado o prestación")).toHaveValue("00025");
-  await expect(page.getByText("1 registro · Página 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("12 registros · Página 2 de 2", { exact: true })).toBeVisible();
 });
 async function escenario(page, { rol = "admin", falloPlanes = false, mixto = false, plataforma = false, designado = false } = {}) {
   const peticiones = [];
@@ -289,7 +310,7 @@ test("Inicio distingue un error de actividad del valor cero y permite reintentar
   let fallar = true;
   await page.route("**/api/financiadores/21/actividad/**", (route) => route.fulfill(fallar ? { status: 403, json: { detail: "Actividad revocada" } } : { json: actividadRespuesta([], { resumen: { realizadas: 0, discrepancias: 0, importes_pendientes: 0, importe_asignado: "0.00" } }) }));
   await page.goto("/financiadores/inicio?financiador=21");
-  await expect(page.getByRole("alert")).toContainText("No tenés permiso");
+  await expect(page.getByRole("alert")).toContainText("Actividad revocada");
   await expect(page.locator("a").filter({ hasText: "Prestaciones realizadas" }).locator("strong")).toHaveText("—");
   fallar = false;
   await page.getByRole("alert").getByRole("button", { name: "Reintentar" }).click();
@@ -329,7 +350,7 @@ test("un financiador sin hospital entra a su portal y configura un plan", async 
   await page.getByLabel("Código del plan").fill("PLUS");
   await page.getByLabel("Nombre del plan").fill("Plan Plus");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "Plan Plus", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Plus", "PLUS")).toBeVisible();
   expect(escrituras).toEqual([{ path: "/financiadores/21/planes/", body: { codigo: "PLUS", nombre: "Plan Plus" } }]);
   expect(peticiones.some((p) => p.includes("casos") || p.includes("historia") || p.includes("concesiones-financieras"))).toBe(false);
 });
@@ -343,12 +364,12 @@ test("usa el sidebar compartido sin consultar ni mostrar módulos del hospital",
   await expect(menu.getByRole("link", { name: "Historia clínica" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Notificaciones", exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: /Buscar paciente/ })).toHaveCount(0);
-  await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Río", "BAS")).toBeVisible();
   expect(peticiones.every((p) => p === "/usuarios/me/" || p.startsWith("/financiadores/"))).toBe(true);
   await page.getByRole("button", { name: "Colapsar menú", exact: true }).click();
   await expect(page.getByRole("button", { name: "Expandir menú", exact: true })).toBeVisible();
   await menu.getByRole("link", { name: "Aranceles", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Aranceles" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Aranceles", exact: true })).toBeVisible();
   await expect(menu.getByRole("link", { name: "Aranceles", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
@@ -360,9 +381,9 @@ test("organización y sección se conservan al recargar y al volver", async ({ p
   await expect(page).toHaveURL(/\/financiadores\/aranceles\?financiador=22$/);
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Financiador", exact: true })).toHaveValue("22");
-  await expect(page.getByRole("heading", { level: 1, name: "Aranceles" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Aranceles", exact: true })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole("cell", { name: "Plan Norte", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Norte", "NOR")).toBeVisible();
 });
 
 test("auditor no abre usuarios por ruta directa y una organización ajena no se sustituye", async ({ page }) => {
@@ -370,12 +391,12 @@ test("auditor no abre usuarios por ruta directa y una organización ajena no se 
   await page.goto("/financiadores/usuarios");
   await expect(page).toHaveURL(/\/financiadores\/inicio$/);
   await page.getByRole("link", { name: "Planes", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Río", "BAS")).toBeVisible();
   expect(peticiones.some((p) => /financiadores\/\d+\/usuarios\//.test(p))).toBe(false);
   await page.goto("/financiadores?financiador=999");
   await expect(page.getByText("No tenés acceso al financiador seleccionado", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nuevo plan" })).toHaveCount(0);
-  await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toHaveCount(0);
+  await expect(celdaPlan(page, "Plan Río", "BAS")).toHaveCount(0);
 });
 
 test("menú móvil navega, se cierra y conserva el tema de Salud", async ({ page }) => {
@@ -384,7 +405,7 @@ test("menú móvil navega, se cierra y conserva el tema de Salud", async ({ page
   await page.goto("/financiadores/planes");
   await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
   await page.getByRole("navigation", { name: "Menú del financiador" }).getByRole("link", { name: "Aranceles", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Aranceles" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Aranceles", exact: true })).toBeVisible();
   await expect.poll(() => page.locator("aside").evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
   await page.getByRole("button", { name: "Cambiar a tema oscuro" }).click();
   await expect(page.getByRole("button", { name: "Cambiar a tema claro" })).toBeVisible();
@@ -394,14 +415,17 @@ test("menú móvil navega, se cierra y conserva el tema de Salud", async ({ page
 test("configura porcentaje y cupo calendario sobre una prestación común", async ({ page }) => {
   const { escrituras } = await escenario(page);
   await page.goto("/financiadores/planes");
-  await page.getByRole("link", { name: "Cobertura", exact: true }).click();
+  await page.getByRole("link", { name: "Reglas de cobertura", exact: true }).click();
   await page.getByRole("button", { name: "Nueva regla de cobertura" }).click();
-  await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("31");
-  await page.getByRole("combobox", { name: "Prestación", exact: true }).selectOption("3");
-  await page.getByLabel("Porcentaje cubierto").fill("80");
-  await page.getByLabel("Cupo por prestación").fill("6");
-  await page.getByLabel("Vigente desde").fill("2027-01-01");
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  const regla = page.getByRole("dialog", { name: "Nueva regla de cobertura" });
+  await regla.getByRole("combobox", { name: "Plan", exact: true }).selectOption("31");
+  await regla.getByRole("combobox", { name: "Prestación o categoría", exact: true }).selectOption("prestacion:3");
+  await regla.getByLabel("Porcentaje de cobertura", { exact: true }).fill("80");
+  await regla.getByRole("checkbox", { name: "Limitar la cantidad cubierta", exact: true }).check();
+  await regla.getByLabel("Cantidad máxima", { exact: true }).fill("6");
+  await expect(regla.getByRole("combobox", { name: "Período", exact: true })).toHaveValue("anio");
+  await regla.getByLabel("Vigente desde").fill("2027-01-01");
+  await regla.getByRole("button", { name: "Guardar regla", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Registro guardado.");
   expect(escrituras[0].body).toMatchObject({ plan: 31, prestacion: 3, porcentaje: "80", cupo: 6, periodo: "anio", vigente_desde: "2027-01-01" });
 });
@@ -413,7 +437,7 @@ test("cambiar organización descarta formularios y respuestas de la anterior", a
   await page.route("**/api/financiadores/21/planes/**", async (route) => { await espera; await route.fulfill({ json: lista([{ id: 31, codigo: "SECRETO", nombre: "Plan privado Río" }]) }); });
   await page.goto("/financiadores/planes");
   await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
-  await expect(page.getByRole("cell", { name: "Plan Norte", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Norte", "NOR")).toBeVisible();
   liberar();
   await expect(page.getByText("Plan privado Río", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Nuevo plan", exact: true }).click();
@@ -430,8 +454,8 @@ test("auditor consulta sin acciones de escritura", async ({ page }) => {
   await expect(page.getByText("Sólo lectura", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nuevo plan" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
-  await page.getByRole("link", { name: "Padrón", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "00123456", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "Persona Ficticia DNI •••456", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Importar Excel" })).toHaveCount(0);
   expect(escrituras).toEqual([]);
 });
@@ -487,7 +511,7 @@ test("portal se adapta a móvil y conserva contexto del financiador", async ({ p
   await escenario(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/financiadores/planes");
-  await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Río", "BAS")).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("portal-movil.png"), fullPage: true });
 });
@@ -575,7 +599,7 @@ test("rechazar asunción guarda decisión sin afirmar que el saldo esté pagado"
   await page.getByRole("button", { name: "Registrar decisión" }).click();
   await expect(page.getByRole("status")).toContainText("Decisión administrativa registrada");
   expect(escritos[0].body).toMatchObject({ decision: "rechazar", importe: "200.00" });
-  await expect(page.getByText("Pendiente de resolución administrativa", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("Pendiente de resolución administrativa", { exact: true })).toBeVisible();
 });
 
 test("sin permisos por reserva no se ofrecen liberación ni resolución", async ({ page }) => {
@@ -651,8 +675,9 @@ test("financiador consulta actividad hospitalaria y discrepancias sin editarla",
   await page.getByRole("link", { name: "Actividad en hospitales", exact: true }).click();
   const region = page.getByRole("region", { name: "Actividad en hospitales", exact: true });
   await expect(region.getByRole("cell", { name: "Hospital Ficticio", exact: true })).toBeVisible();
-  await expect(region.getByRole("cell", { name: "ARS 80,00", exact: true })).toBeVisible();
   await expect(region.getByText("Discrepancia", { exact: true })).toBeVisible();
+  const detalle = await detalleActividad(page, "Ana Ficticia", region);
+  await expect(detalle.getByText("ARS 80,00", { exact: true })).toBeVisible();
   await expect(region.getByRole("button", { name: /Guardar|Crear|Registrar|Corregir/ })).toHaveCount(0);
 });
 
@@ -667,13 +692,13 @@ for (const rol of ["admin", "operador", "auditor"]) {
     await page.goto("/financiadores/planes");
     await page.getByRole("link", { name: "Aranceles", exact: true }).click();
     const region = page.getByRole("region", { name: "Aranceles", exact: true });
-    await expect(region.getByRole("row").filter({ hasText: "Radiografía" })).toContainText("General del hospital");
+    const general = region.getByRole("row").filter({ has: page.getByRole("cell", { name: "Radiografía", exact: true }) });
+    await expect(general.getByRole("cell", { name: "General", exact: true })).toBeVisible();
+    await expect(general.getByRole("cell", { name: "—", exact: true })).toBeVisible();
     const acordado = region.getByRole("row").filter({ has: page.getByRole("cell", { name: "Consulta", exact: true }) });
-    await expect(acordado).toContainText("ARS 100,00");
-    await expect(acordado).toContainText("ARS 80,00");
-    await expect(acordado).toContainText("Acordado con el financiador");
-    await expect(acordado).toContainText("01/09/2026");
-    await expect(acordado).toContainText("15/09/2026");
+    await expect(acordado.getByRole("cell", { name: "ARS 100,00", exact: true })).toBeVisible();
+    await expect(acordado.getByRole("cell", { name: "ARS 80,00", exact: true })).toBeVisible();
+    await expect(acordado.getByRole("cell", { name: "Acordado", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Ayuda sobre Aranceles", exact: true }).click();
     await expect(page.getByRole("tooltip")).toContainText("La cobertura y el copago dependen del plan, el cupo y la prestación");
     await page.keyboard.press("Escape");
@@ -690,8 +715,8 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
     const params = new URL(route.request().url()).searchParams;
     consultas.push({ page: params.get("page"), search: params.get("search") });
     if (params.get("search")) return route.fulfill({ json: lista([]) });
-    if (params.get("page") === "2") return route.fulfill({ json: lista([{ ...base, id: 4, prestacion: "Control", arancel_general: "90.00", arancel: "90.00", estado: "vigente", retorno_arancel_general: true }]) });
-    return route.fulfill({ json: { count: 4, next: "?page=2", previous: null, results: [
+    if (params.get("page") === "2") return route.fulfill({ json: { count: 11, next: null, previous: "?page=1", results: [{ ...base, id: 4, prestacion: "Control", arancel_general: "90.00", arancel: "90.00", estado: "vigente", retorno_arancel_general: true }] } });
+    return route.fulfill({ json: { count: 11, next: "?page=2", previous: null, results: [
       { ...base, id: 1, prestacion: "Laboratorio", estado: "arancel_pendiente" },
       { ...base, id: 2, prestacion: "Ecografía", estado: "politica_pendiente" },
       { ...base, id: 3, prestacion: "Vacunación", estado: "sin_cobro", cobrar: false, arancel: "0.00" },
@@ -702,12 +727,14 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
   const region = page.getByRole("region", { name: "Aranceles", exact: true });
   const pendiente = region.getByRole("row").filter({ hasText: "Laboratorio" });
   await expect(pendiente).toContainText("Arancel pendiente");
-  await expect(pendiente).toContainText("Importe no disponible");
+  await expect(pendiente.getByRole("cell", { name: "Sin definir", exact: true })).toBeVisible();
   await expect(pendiente).not.toContainText("ARS 0,00");
-  await expect(region.getByRole("row").filter({ hasText: "Ecografía" })).toContainText("Política de cobro pendiente");
+  await expect(region.getByRole("row").filter({ hasText: "Ecografía" })).toContainText("Política pendiente");
   await expect(region.getByRole("row").filter({ hasText: "Vacunación" })).toContainText("Sin cobro");
   await region.getByRole("button", { name: "Siguiente", exact: true }).click();
-  await expect(region.getByRole("row").filter({ hasText: "Control" })).toContainText("General del hospital · excepción finalizada");
+  const control = region.getByRole("row").filter({ hasText: "Control" });
+  await expect(control.getByRole("cell", { name: "ARS 90,00", exact: true })).toBeVisible();
+  await expect(control.getByRole("cell", { name: "General", exact: true })).toBeVisible();
   await region.getByLabel("Buscar por hospital o prestación").fill("Hospital sin convenio");
   await region.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(region).toContainText("No hay resultados para esta búsqueda");
@@ -717,8 +744,8 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
 test("corregir documento conserva el identificador del afiliado", async ({ page }) => {
   const { escrituras } = await escenario(page);
   await page.goto("/financiadores/planes");
-  await page.getByRole("link", { name: "Padrón", exact: true }).click();
-  await page.getByRole("button", { name: "Corregir identidad" }).click();
+  await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Corregir identidad" }).click();
   await expect(page.getByLabel("Número de afiliado correcto")).toHaveValue("00025");
   await page.getByLabel("Documento correcto").fill("00123457");
   await page.getByLabel("Motivo de corrección").fill("Corrección de un dígito contrastada con el documento.");
@@ -773,28 +800,29 @@ test("desactivar un plan conserva su código y lo retira de nuevas afiliaciones"
   await dialogo.getByRole("button", { name: "Guardar plan" }).click();
   await expect(page.getByRole("row").filter({ hasText: "Plan Río anterior" })).toContainText("Inactivo");
   expect(escrituras[0]).toEqual({ path: "/financiadores/21/editar-plan/", body: { plan: 31, nombre: "Plan Río anterior", activo: false, motivo: "El plan deja de recibir nuevas afiliaciones." } });
-  await page.getByRole("link", { name: "Padrón", exact: true }).click();
+  await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
   await page.getByRole("button", { name: "Registrar afiliación", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Plan", exact: true }).locator("option")).toHaveText(["Sin plan"]);
+  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Plan", exact: true }).locator("option")).toHaveText(["Sin plan"]);
 });
 
 test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cupos", async ({ page }) => {
   const { escrituras, planes } = await escenario(page, { rol: "operador" });
   planes[21].push({ id: 33, codigo: "ANT", nombre: "Plan inactivo", activo: false });
   await page.goto("/financiadores/padron");
-  await page.getByRole("button", { name: "Finalizar afiliación" }).click();
-  let dialogo = page.getByRole("dialog");
+  const afiliado = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
+  await afiliado.getByRole("button", { name: "Finalizar", exact: true }).click();
+  let dialogo = page.getByRole("dialog", { name: "Finalizar afiliación" });
   await dialogo.getByRole("button", { name: "Ver ayuda", exact: true }).click();
   await expect(dialogo).toContainText("No genera deuda automática al paciente");
   await page.keyboard.press("Escape");
   await dialogo.getByRole("button", { name: "Cancelar" }).click();
   expect(escrituras).toEqual([]);
-  await page.getByRole("button", { name: "Finalizar afiliación" }).click();
+  await afiliado.getByRole("button", { name: "Finalizar", exact: true }).click();
   await dialogo.getByLabel("Motivo", { exact: true }).fill("Baja solicitada por cambio de financiador.");
   await dialogo.getByRole("button", { name: "Confirmar finalización" }).click();
-  await expect(page.getByRole("cell").filter({ hasText: "Finalizada" })).toContainText("Baja solicitada");
-  await page.getByRole("button", { name: "Reactivar afiliación" }).click();
-  dialogo = page.getByRole("dialog");
+  await expect(afiliado.getByRole("cell").filter({ hasText: "Finalizada" })).toContainText("Finalizada el");
+  await afiliado.getByRole("button", { name: "Reactivar", exact: true }).click();
+  dialogo = page.getByRole("dialog", { name: "Reactivar afiliación" });
   await dialogo.getByRole("button", { name: "Ver ayuda", exact: true }).click();
   await expect(dialogo).toContainText("el cupo no se reinicia");
   await page.keyboard.press("Escape");
@@ -802,7 +830,7 @@ test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cup
   await dialogo.getByRole("combobox", { name: "Plan", exact: true }).selectOption("31");
   await dialogo.getByLabel("Motivo", { exact: true }).fill("Reingreso confirmado por el afiliado.");
   await dialogo.getByRole("button", { name: "Confirmar reactivación" }).click();
-  await expect(page.getByRole("cell", { name: "Vigente", exact: true })).toBeVisible();
+  await expect(afiliado.getByText("Vigente", { exact: true })).toBeVisible();
   expect(escrituras.map((item) => item.path)).toEqual(["/financiadores/21/finalizar-afiliacion/", "/financiadores/21/reactivar-afiliacion/"]);
   expect(escrituras[1].body).toEqual({ afiliado: 45, plan: 31, motivo: "Reingreso confirmado por el afiliado." });
 });
@@ -811,8 +839,8 @@ test("el error de finalización conserva el motivo y no afirma un cambio de vige
   await escenario(page);
   await page.route("**/api/financiadores/21/finalizar-afiliacion/", (route) => route.fulfill({ status: 403, json: { detail: "El acceso fue revocado." } }));
   await page.goto("/financiadores/padron");
-  await page.getByRole("button", { name: "Finalizar afiliación" }).click();
-  const dialogo = page.getByRole("dialog");
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Finalizar", exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: "Finalizar afiliación" });
   await dialogo.getByLabel("Motivo", { exact: true }).fill("Solicitud verificada.");
   await dialogo.getByRole("button", { name: "Confirmar finalización" }).click();
   await expect(dialogo.getByRole("alert")).toContainText("El acceso fue revocado");
@@ -823,11 +851,11 @@ test("el error de finalización conserva el motivo y no afirma un cambio de vige
 test("auditor consulta planes y padrón sin administrar su vigencia", async ({ page }) => {
   await escenario(page, { rol: "auditor" });
   await page.goto("/financiadores/planes");
-  await expect(page.getByRole("cell", { name: "Plan Río", exact: true })).toBeVisible();
+  await expect(celdaPlan(page, "Plan Río", "BAS")).toBeVisible();
   await expect(page.getByRole("button", { name: "Editar plan" })).toHaveCount(0);
-  await page.getByRole("link", { name: "Padrón", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "Persona Ficticia", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Finalizar afiliación|Reactivar afiliación/ })).toHaveCount(0);
+  await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "Persona Ficticia DNI •••456", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Finalizar|Reactivar)$/ })).toHaveCount(0);
 });
 
 test("desde el padrón abre la ficha con prestaciones y autorizaciones sin justificación", async ({ page }) => {
@@ -933,7 +961,8 @@ test("actividad identifica el acceso mínimo a una operación histórica pendien
   await page.getByRole("button", { name: "Ayuda sobre Actividad en hospitales", exact: true }).click();
   await expect(page.getByRole("tooltip")).toContainText("sólo se muestran operaciones históricas pendientes de resolución");
   await page.keyboard.press("Escape");
-  await expect(region.getByRole("cell", { name: "Histórico pendiente", exact: true })).toBeVisible();
+  const detalle = await detalleActividad(page, "Ana Ficticia", region);
+  await expect(detalle.getByText("Histórico pendiente", { exact: true })).toBeVisible();
   await expect(region.getByRole("link", { name: /historia/i })).toHaveCount(0);
 });
 
@@ -969,7 +998,8 @@ test("auditoría del hospital filtra las consultas de financiadores y explica su
   });
   await page.goto("/accesos");
   await expect(page.getByRole("heading", { name: "Registro de accesos" })).toBeVisible();
-  await expect(page.getByText(/Consultar esa actividad no da acceso a la historia/)).toBeVisible();
+  await page.getByText("Qué registra este listado", { exact: true }).click();
+  await expect(page.getByText(/Consultar esa actividad no permite abrir la historia clínica/)).toBeVisible();
   await page.getByRole("combobox").filter({ has: page.locator('option[value="financiador"]') }).selectOption("financiador");
   await expect(page).toHaveURL(/tipo=financiador/);
   await expect(page.getByText("actividad hospitalaria del afiliado", { exact: true })).toBeVisible();

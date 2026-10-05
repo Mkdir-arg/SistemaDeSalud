@@ -6,12 +6,11 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
 import { AvisoCoberturaCaso, resumenCobertura, useConfiguracionCobertura } from "@/components/financiadores/CoberturaAdministrativa";
-import { Avatar, Badge, Button, Field, Input, Modal, Select } from "@/components/ui";
+import { Avatar, Badge, Button, Field, IconButton, Input, Modal, Select } from "@/components/ui";
 import { Buscador, useBusquedaUrl } from "@/components/ui/filtros";
 import { TablaRecurso } from "@/components/ui/tabla";
 import { useToast } from "@/components/ui/toast";
 import { EstadoError } from "@/components/ui/estados";
-import { Icon } from "@/components/icons";
 import { plural } from "@/lib/format";
 import { busquedaPaciente, normalizarDocumento, precargarPaciente } from "@/lib/paciente";
 
@@ -53,19 +52,21 @@ const columnasPadron = (abrirFicha, revelar, revelando, verAlergias) => [
           {c.consentimiento.otorgado ? "Otorgado" : "Revocado"}
         </Badge>,
   },
-  { key: "acciones", label: "Acciones", render: (c) => <div className="flex items-center gap-2">
-    <button type="button" onClick={(e) => { e.stopPropagation(); abrirFicha(c); }}
-      onKeyDown={(e) => e.stopPropagation()}
-      className="rounded-md border border-borde px-2.5 py-1.5 text-sm text-texto-suave hover:bg-superficie-2">
+  // Columna fija y botones compartidos, como «Ver» en Bandeja y «Editar» en
+  // Usuarios: con ocho columnas, a 1440 px la acción quedaba cortada por el borde
+  // de la tabla, y su estilo propio no se parecía a ninguna otra acción de fila.
+  { key: "acciones", label: "Acciones", fija: true, render: (c) => <div className="flex items-center gap-2">
+    <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); abrirFicha(c); }}
+      onKeyDown={(e) => e.stopPropagation()}>
       Ver ficha
-    </button>
-    <button type="button" disabled={revelando === c.id}
+    </Button>
+    <IconButton icon="eye" variant="soft" size="sm" disabled={revelando === c.id}
       onClick={(e) => { e.stopPropagation(); revelar(c); }}
       onKeyDown={(e) => e.stopPropagation()}
-      aria-label={`Revelar datos de ${nombreCompleto(c)}`}
+      label={`Revelar datos de ${nombreCompleto(c)}`}
       title="Revelar datos completos; esta consulta queda auditada"
-      className="inline-flex size-8 items-center justify-center rounded-md border border-borde text-accent hover:bg-accent-50 disabled:opacity-50"
-    ><Icon name="eye" size={16} /></button>
+      className="disabled:opacity-50"
+    />
   </div> },
 ];
 

@@ -316,12 +316,13 @@ export default function Agenda() {
       {/* Semana y Día comparten navegación, pero sólo la grilla diaria opera
           turnos. Mantener la barra visible evita ocultar el salto de fecha. */}
       <section className="flex flex-wrap items-center gap-2" aria-label="Navegación de la agenda">
-        {/* Un solo control con el relleno de marca que se desliza a la vista
-            elegida: dos botones sueltos se leían como dos acciones distintas. */}
-        <div className="relative inline-grid grid-cols-2 rounded-md border border-accent-100 bg-superficie p-0.5"
+        {/* Un solo control con la marca de «seleccionado» que se desliza a la
+            vista elegida: dos botones sueltos se leían como dos acciones
+            distintas. Sin degradé: ese queda para la acción principal. */}
+        <div className="relative inline-grid grid-cols-2 rounded-md border border-secundario-borde bg-secundario p-0.5"
           role="group" aria-label="Vista de la agenda">
           <span aria-hidden="true" className={cn(
-            "hen-cta absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[5px] transition-transform duration-200 ease-out",
+            "absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[5px] border border-accent-100 bg-accent-50 transition-transform duration-200 ease-out",
             vista === "dia" && "translate-x-full",
           )} />
           {[["semana", "Semana"], ["dia", "Día"]].map(([valor, etiqueta]) => (
@@ -329,7 +330,7 @@ export default function Agenda() {
               onClick={() => cambiarUrl({ vista: valor })}
               className={cn(
                 "relative h-8 rounded-[5px] px-3 text-md font-medium transition-colors duration-200",
-                vista === valor ? "text-sobre-accent" : "text-accent hover:bg-accent-50",
+                vista === valor ? "font-semibold text-accent" : "text-texto-suave hover:bg-secundario-hover hover:text-texto",
               )}>
               {etiqueta}
             </button>
@@ -337,10 +338,11 @@ export default function Agenda() {
         </div>
         <Input type="date" value={fecha} onChange={(e) => irAFecha(e.target.value)}
           aria-label="Fecha de la agenda" className="w-full sm:w-auto" />
-        {/* Primario mientras la fecha elegida es hoy: dice de un vistazo si lo
-            que se mira es el día de hoy, y cuando no lo es vuelve a ser el botón
-            para regresar. */}
-        <Button size="sm" variant={fecha === iso(new Date()) ? "primary" : "secondary"}
+        {/* Seleccionado mientras la fecha elegida es hoy: dice de un vistazo si
+            lo que se mira es el día de hoy, y cuando no lo es vuelve a ser el
+            botón para regresar. `aria-current` lo dice también sin el color. */}
+        <Button size="sm" variant={fecha === iso(new Date()) ? "seleccionado" : "secondary"}
+          aria-current={fecha === iso(new Date()) ? "date" : undefined}
           onClick={() => irAFecha(iso(new Date()))}>Hoy</Button>
         <Button size="sm" variant="secondary" onClick={() => mover(vista === "semana" ? -7 : -1)}>
           <Icon name="chevronLeft" size={14} /> {vista === "semana" ? "Semana anterior" : "Día anterior"}
@@ -352,14 +354,15 @@ export default function Agenda() {
             de turnos programados. Sin esto había que apretar «Día siguiente»
             veinte o treinta veces, con dos consultas por salto y el paciente en
             el teléfono. */}
-        <Button size="sm" variant={verProximos ? "primary" : "secondary"}
+        <Button size="sm" variant={verProximos ? "seleccionado" : "secondary"} aria-pressed={verProximos}
                 onClick={() => setVerProximos(!verProximos)}>
           <Icon name="search" size={14} /> Próximos libres
         </Button>
         <Button size="sm" variant="secondary" onClick={() => setRegistrarPasado({ agenda })}>Registrar atención pasada</Button>
         {vista === "dia" && <Button
           size="sm"
-          variant={soloSinConfirmar ? "primary" : "secondary"}
+          variant={soloSinConfirmar ? "seleccionado" : "secondary"}
+          aria-pressed={soloSinConfirmar}
           onClick={() => setSoloSinConfirmar(!soloSinConfirmar)}
           title="Los que todavía no avisaron que vienen: es la lista de llamados"
         >

@@ -70,5 +70,5 @@ jobs:
         # integrar. Si deja de generarse, conviene enterarse acá y no ahí.
         run: python manage.py spectacular --fail-on-warn --file /dev/null
 
-# Los recorridos de Playwright no corren todavía: necesitan el stack completo y datos
-# sembrados, que son unos 15 minutos. Van en un workflow aparte cuando se agreguen.
+# Los recorridos de Playwright con la API interceptada corren en `e2e-ui.yml`. Los que
+# necesitan el stack completo y datos sembrados todavía no corren en CI.

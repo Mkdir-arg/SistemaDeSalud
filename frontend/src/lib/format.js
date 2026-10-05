@@ -49,9 +49,13 @@ export function antiguedad(iso) {
 // Una duración recibida en minutos, separada de la antigüedad de una fecha.
 export function duracionMinutos(valor) {
   if (valor == null || valor === "") return "—";
-  const minutos = Number(valor);
-  if (!Number.isFinite(minutos) || minutos < 0) return "—";
-  if (minutos < 60) return `${Math.round(minutos)} min`;
-  if (minutos < 2880) return `${Math.floor(minutos / 60)} h ${Math.round(minutos % 60)} min`;
-  return `${Math.floor(minutos / 1440)} d ${Math.floor(minutos % 1440 / 60)} h`;
+  const exacto = Number(valor);
+  if (!Number.isFinite(exacto) || exacto < 0) return "—";
+  // Se redondea ANTES de partir en horas: si no, 119,6 min salía «1 h 60 min».
+  const minutos = Math.round(exacto);
+  if (minutos < 60) return `${minutos} min`;
+  // Sin el resto en cero: «2 h», no «2 h 0 min».
+  if (minutos < 2880) return `${Math.floor(minutos / 60)} h${minutos % 60 ? ` ${minutos % 60} min` : ""}`;
+  const horas = Math.floor(minutos % 1440 / 60);
+  return `${Math.floor(minutos / 1440)} d${horas ? ` ${horas} h` : ""}`;
 }

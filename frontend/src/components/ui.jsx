@@ -16,7 +16,11 @@ const BOTON_VARIANTE = {
   // El primario usa el relleno de marca con su color de texto: `accent` a secas
   // es claro en tema oscuro y el blanco encima no llegaría a contraste.
   primary: "hen-cta text-sobre-accent",
-  secondary: "bg-superficie text-accent border border-accent-100 hover:bg-accent-50",
+  // Neutro, como en el DS: el violeta se reserva para la acción principal.
+  secondary: "bg-secundario text-texto-suave border border-secundario-borde hover:bg-secundario-hover hover:text-texto",
+  // Estado «seleccionado» de un toggle o filtro: sin degradé, que es de la
+  // acción principal. Quien lo usa marca el estado con `aria-pressed`.
+  seleccionado: "bg-accent-50 text-accent border border-accent-100 font-semibold",
   dashed: "border-[1.5px] border-dashed border-accent-100 text-accent hover:bg-accent-50",
   danger: "bg-danger-fuerte text-sobre-danger hover:brightness-110",
   ghost: "text-texto-suave hover:bg-superficie-2 hover:text-texto",
@@ -54,7 +58,7 @@ export function IconButton({
   const lado = size === "sm" ? "size-8" : "size-9";
   const estilo =
     variant === "soft"
-      ? "border border-accent-100 bg-accent-50 text-accent hover:bg-accent-100"
+      ? "border border-secundario-borde bg-secundario text-texto-suave hover:bg-secundario-hover hover:text-texto"
       : "text-texto-debil hover:bg-superficie-2 hover:text-texto-suave";
   return (
     <button
@@ -495,7 +499,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
   return (
     <div
       onMouseDown={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-lg animate-[fadeIn_.12s_ease]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-lg animate-[fadeIn_.12s_ease]"
     >
       <div
         ref={ref}
@@ -505,7 +509,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         style={{ width }}
-        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-borde bg-modal-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
+        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-borde bg-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
       >
         <div className="flex items-center justify-between border-b border-division px-xl py-lg">
           <div className="flex items-center gap-2 text-lg font-bold">{title}{ayuda && <Ayuda>{ayuda}</Ayuda>}</div>
