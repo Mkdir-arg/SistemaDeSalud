@@ -100,6 +100,8 @@ async function escenario(page, { usuario = ROOT, institucion = HOSPITAL, simulac
     if (path === "/financiadores/") return route.fulfill({ json: lista(simulando?.rol === "operador" ? [{ id: 21, nombre: "Mutual del Río", tipo: "mutual", rol: "operador" }] : [{ id: 21, nombre: "Mutual del Río", tipo: "mutual" }]) });
     if (path === "/notificaciones/resumen/") return route.fulfill({ json: { no_leidas: 0, items: [] } });
     if (path === "/mis-tareas/") return route.fulfill({ json: { tareas: [], filas: [] } });
+    // El Directorio de plataforma (destino del auditor estatal) pide su tablero.
+    if (path === "/instituciones/tablero-plataforma/") return route.fulfill({ json: { instituciones: 2, activas: 2, en_alta: 0, atendidos: 0, ocupacion: 0, personal_activo: 0, serie: [], alertas: [], indicadores: [] } });
     if (path === "/concesiones-financieras/mias/") return route.fulfill({ json: { superusuario: !simulando && usuario.is_superuser, concesiones: [] } });
     if (req.method() === "GET") return route.fulfill({ json: lista([]) });
     return route.fulfill({ json: {} });
@@ -114,22 +116,22 @@ const grupo = (page, nombre) => menu(page).getByRole("button", { name: nombre, e
 test("el superusuario simula enfermería con la cuenta de referencia y vuelve a Sistema", async ({ page }) => {
   const estado = await escenario(page);
   await page.goto("/inicio");
-  const selector = page.getByLabel("Ver como");
+  const selector = page.getByLabel("Ver como", { exact: true });
   await expect(selector).toHaveValue("sistema");
   await expect(grupo(page, "CONFIGURACIÓN")).toBeVisible();
   // Una cuenta ausente se preparará al elegir el perfil, sin bloquear el selector.
   await expect(selector.locator("option", { hasText: "Médico / profesional" })).toBeEnabled();
   await expect(page.getByText("Este ámbito no tiene cuentas de referencia preparadas.")).toHaveCount(0);
   await page.getByLabel("Ayuda sobre Ver como").click();
-  await expect(page.getByText(/se prepara su cuenta técnica si hace falta/)).toBeVisible();
+  // La autoría a nombre del superusuario la explica la ayuda; el banner ya no la repite.
+  await expect(page.getByText(/se prepara su cuenta técnica si hace falta.*quedan registrados a tu nombre/)).toBeVisible();
 
   await selector.selectOption("enfermeria");
   const banner = page.getByRole("status", { name: "Simulación de perfil activa" });
   await expect(banner).toContainText("Simulando Enfermería");
   await expect(banner).toContainText("Institución: Hospital de prueba");
-  await expect(banner).toContainText("queda a nombre de Root Ficticio");
   await expect(page.getByText("Superusuario Enfermería").first()).toBeVisible();
-  await expect(grupo(page, "PACIENTES")).toBeVisible();
+  await expect(menu(page).getByRole("link", { name: "Pacientes", exact: true })).toBeVisible();
   await expect(grupo(page, "CONFIGURACIÓN")).toHaveCount(0);
   expect(estado.iniciadas).toEqual([{ ambito: "institucion", rol: "enfermeria", institucion: 2 }]);
   const tras = estado.pedidos.filter((p) => !p.path.startsWith("/simulaciones/")).slice(-3);
@@ -138,7 +140,7 @@ test("el superusuario simula enfermería con la cuenta de referencia y vuelve a 
 
   await banner.getByRole("button", { name: "Volver a Sistema" }).click();
   await expect(banner).toHaveCount(0);
-  await expect(page.getByLabel("Ver como")).toHaveValue("sistema");
+  await expect(page.getByLabel("Ver como", { exact: true })).toHaveValue("sistema");
   await expect(grupo(page, "CONFIGURACIÓN")).toBeVisible();
   expect(estado.finalizadas).toEqual([{ id: "sesion-1", motivo: "salida" }]);
   expect(await page.evaluate(() => sessionStorage.getItem("salud.simulacion"))).toBeNull();
@@ -151,7 +153,7 @@ test("el superusuario simula enfermería con la cuenta de referencia y vuelve a 
 test("cerrar sesión termina la simulación y no la deja guardada", async ({ page }) => {
   const estado = await escenario(page);
   await page.goto("/inicio");
-  await page.getByLabel("Ver como").selectOption("enfermeria");
+  await page.getByLabel("Ver como", { exact: true }).selectOption("enfermeria");
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toBeVisible();
   await page.getByRole("button", { name: "Salir" }).click();
   await expect(page).toHaveURL(/\/login/);
@@ -162,33 +164,32 @@ test("cerrar sesión termina la simulación y no la deja guardada", async ({ pag
 test("si el servidor rechaza la simulación vuelve a Sistema y lo avisa", async ({ page }) => {
   const estado = await escenario(page);
   await page.goto("/inicio");
-  await page.getByLabel("Ver como").selectOption("enfermeria");
+  await page.getByLabel("Ver como", { exact: true }).selectOption("enfermeria");
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toBeVisible();
   estado.rechazar = true;
-  await grupo(page, "PACIENTES").click();
-  await menu(page).getByRole("link", { name: "Padrón de pacientes" }).click();
+  await menu(page).getByRole("link", { name: "Pacientes", exact: true }).click();
   await expect(page.getByText("La simulación terminó: La simulación venció.")).toBeVisible();
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toHaveCount(0);
-  await expect(page.getByLabel("Ver como")).toHaveValue("sistema");
+  await expect(page.getByLabel("Ver como", { exact: true })).toHaveValue("sistema");
   expect(await page.evaluate(() => sessionStorage.getItem("salud.simulacion"))).toBeNull();
 });
 
 test("abrir otra simulación en una segunda pestaña invalida la primera", async ({ page }) => {
   const estado = await escenario(page);
   await page.goto("/inicio");
-  await page.getByLabel("Ver como").selectOption("enfermeria");
+  await page.getByLabel("Ver como", { exact: true }).selectOption("enfermeria");
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toBeVisible();
 
   const segunda = await page.context().newPage();
   await escenario(segunda, { estadoCompartido: estado });
   await segunda.goto("/inicio");
-  await segunda.getByLabel("Ver como").selectOption("enfermeria");
+  await segunda.getByLabel("Ver como", { exact: true }).selectOption("enfermeria");
   await expect(segunda.getByRole("status", { name: "Simulación de perfil activa" })).toBeVisible();
   expect(estado.iniciadas).toHaveLength(2);
 
   await page.goto("/inicio");
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toHaveCount(0);
-  await expect(page.getByLabel("Ver como")).toHaveValue("sistema");
+  await expect(page.getByLabel("Ver como", { exact: true })).toHaveValue("sistema");
   expect(await page.evaluate(() => sessionStorage.getItem("salud.simulacion"))).toBeNull();
   await expect(segunda.getByRole("status", { name: "Simulación de perfil activa" })).toBeVisible();
   expect(JSON.parse(await segunda.evaluate(() => sessionStorage.getItem("salud.simulacion"))).id).toBe("sesion-2");
@@ -206,7 +207,7 @@ test("al recargar no conserva una institución ajena al ámbito simulado", async
 test("desde un financiador de plataforma simula al operador con su portal", async ({ page }) => {
   const estado = await escenario(page, { institucion: null });
   await page.goto("/financiadores?financiador=21");
-  const selector = page.getByLabel("Ver como");
+  const selector = page.getByLabel("Ver como", { exact: true });
   await expect(selector.locator("option", { hasText: "Operador de financiador" })).toBeEnabled();
   await selector.selectOption("operador");
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toContainText("Financiador: Mutual del Río");
@@ -220,9 +221,10 @@ test("desde un financiador de plataforma simula al operador con su portal", asyn
 test("el auditor estatal sin institución llega al registro de accesos", async ({ page }) => {
   const estado = await escenario(page, { institucion: null });
   await page.goto("/directorio");
-  await page.getByLabel("Ver como").selectOption("auditor");
+  await page.getByLabel("Ver como", { exact: true }).selectOption("auditor");
   await expect(page.getByRole("status", { name: "Simulación de perfil activa" })).toContainText("Auditor estatal");
-  await expect(page.getByRole("heading", { name: "Registro de accesos" })).toBeVisible();
+  // `exact`: el topbar del Shell repite la sección en un h1 «Plataforma/Registro de accesos».
+  await expect(page.getByRole("heading", { name: "Registro de accesos", exact: true })).toBeVisible();
   const navegacion = page.getByRole("navigation", { name: "Menú de plataforma" });
   await expect(navegacion.getByRole("link", { name: "Registro de accesos" })).toBeVisible();
   await expect(navegacion.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
@@ -235,5 +237,5 @@ test("quien no es superusuario no ve el selector", async ({ page }) => {
   });
   await page.goto("/inicio");
   await expect(menu(page)).toBeVisible();
-  await expect(page.getByLabel("Ver como")).toHaveCount(0);
+  await expect(page.getByLabel("Ver como", { exact: true })).toHaveCount(0);
 });

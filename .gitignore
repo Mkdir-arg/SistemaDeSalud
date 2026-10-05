@@ -43,6 +43,8 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/.playwright/
+# Specs y capturas de exploración que no son parte de la suite.
+frontend/e2e/_tmp_*
 
 # === Variables de entorno (solo se versiona .env.example) ===
 .env

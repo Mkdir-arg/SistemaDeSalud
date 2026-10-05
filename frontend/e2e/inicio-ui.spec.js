@@ -4,6 +4,8 @@ const institucion = { id: 2, nombre: "Hospital de prueba", tipo: "Hospital", est
 const lista = (results = []) => ({ count: results.length, next: null, previous: null, results });
 const resumen = { casos_activos: 12, urgentes: 2, en_cola: 3, espera_prom_min: 35, turnos_periodo: 18, turnos_ausentes: 4, turnos_sin_registrar: 1, cerrados: 8, ingresos: 15, camas_total: 10, camas_operativas: 8, camas_ocupadas: 6, ocupacion_camas: 75 };
 
+// Sin `supervision` el usuario conserva `config_institucional`: con sólo
+// `casos_operar` es un operador puro y /inicio muestra «Mi trabajo» (App.jsx).
 async function escenario(page, supervision) {
   const pedidosTablero = [];
   await page.addInitScript((inst) => {
@@ -16,7 +18,7 @@ async function escenario(page, supervision) {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const path = url.pathname.replace(/^\/api/, "");
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 7, email: "prueba@example.test", nombre_completo: "Persona de prueba", is_superuser: false, capacidades_por_institucion: { 2: supervision ? ["supervision", "config_institucional", "casos_operar", "turnos"] : ["casos_operar", "turnos"] }, roles_por_institucion: { 2: [supervision ? "admin" : "administrativo"] }, financiadores: [] } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 7, email: "prueba@example.test", nombre_completo: "Persona de prueba", is_superuser: false, capacidades_por_institucion: { 2: supervision ? ["supervision", "config_institucional", "casos_operar", "turnos"] : ["config_institucional", "casos_operar", "turnos"] }, roles_por_institucion: { 2: [supervision ? "admin" : "administrativo"] }, financiadores: [] } });
     if (path === "/instituciones/") return route.fulfill({ json: lista([institucion]) });
     if (path === "/instituciones/2/metricas/") return route.fulfill({ json: { staff: 5, areas: 2, casos_activos: 12, turnos_hoy: 3 } });
     if (path === "/instituciones/2/puesta-en-marcha/") return route.fulfill({ json: { areas: true, usuarios: true, asignaciones: true, agenda_profesional: true, agenda_recurso: true, flujo_operativo: false } });
