@@ -174,3 +174,37 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
         self.assertEqual(response.status_code, 500)
         self.assertNotIn(b"EVOLUCION_SECRETA", response.content)
         self.assertFalse(EventoCobertura.objects.filter(accion="consultar_historia_clinica").exists())
+
+    def test_ver_como_lee_la_historia_si_el_perfil_simulado_puede(self):
+        # #93 R6 ajustada (05/10/2026): plataforma directa no; simulando, vale lo que podría el perfil.
+        from io import StringIO
+
+        from django.core.management import call_command
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from apps.accounts.models import Usuario
+
+        self.entrada("EVOLUCION_SIMULADA")
+        root = Usuario.objects.create_superuser("root-hc@salud.local", "x", nombre="Root")
+        call_command("preparar_cuentas_referencia", financiador=[self.financiador.pk], stdout=StringIO())
+        self.client.force_authenticate(None)
+        token = {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(root).access_token}"}
+
+        def simular(rol):
+            r = self.client.post("/api/simulaciones/", {"ambito": "financiador", "rol": rol, "financiador": self.financiador.pk},
+                                 format="json", **token)
+            self.assertEqual(r.status_code, 201, r.data)
+            return {**token, "HTTP_X_HEN_SIMULACION": r.data["id"]}, r.data["id"]
+
+        self.assertEqual(self.client.get(self.base + "ficha-historia-casos/", {"afiliado": self.afiliado.pk}, **token).status_code, 403)
+        auditor, _ = simular("auditor")
+        self.assertEqual(self.client.get(self.base + "ficha-historia-casos/", {"afiliado": self.afiliado.pk}, **auditor).status_code, 403)
+        admin, sesion = simular("admin")
+        self.assertEqual(self.client.get(self.base + "ficha-historia-casos/", {"afiliado": self.afiliado.pk}, **admin).status_code, 200)
+        response = self.client.post(self.base + "ficha-historia-evoluciones/", {
+            "afiliado": self.afiliado.pk, "caso": self.caso.pk, "motivo": "Auditoría médica del convenio",
+        }, format="json", **admin)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([fila["titulo"] for fila in response.data], ["EVOLUCION_SIMULADA"])
+        acceso = AccesoClinico.objects.get(recurso="financiadores-evoluciones-caso")
+        self.assertEqual((acceso.usuario_id, str(acceso.simulacion_id)), (root.pk, str(sesion)))
