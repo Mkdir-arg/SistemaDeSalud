@@ -211,7 +211,7 @@ function InstitucionesView() {
           },
           {
             key: "estado", label: "Estado", className: "px-2 text-xs",
-            render: (i) => <Badge tone={ESTADO_TONE[i.activa === false ? "inactiva" : i.estado] || "green"}>{i.activa === false ? "Inactiva" : i.estado_display || "Activa"}</Badge>,
+            render: (i) => <Badge tone={ESTADO_TONE[i.activa === false ? "inactiva" : i.estado] || "green"}>{i.activa === false ? "Inactiva" : i.estado === "en_alta" ? "En configuración" : i.estado_display || "Activa"}</Badge>,
           },
           {
             key: "ocupacion", label: "Ocupación", className: "px-2 text-xs",
