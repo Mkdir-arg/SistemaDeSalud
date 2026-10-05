@@ -720,7 +720,7 @@ Usuario del financiador (`admin` / `operador` / `auditor` de su organizacion):
 - Configura planes y reglas de cobertura, mantiene el padron, informa consumos externos y consulta su actividad en los hospitales.
 - Desde el padrón consulta la ficha del afiliado: prestaciones y autorizaciones dentro del alcance vigente o histórico pendiente, con acceso auditado por institución.
 - Resuelve autorizaciones solo con designacion expresa.
-- El `admin` de la organización, o un operador con esa designación, consulta la historia clínica del financiador (plataforma y `auditor`, no): evoluciones firmadas de casos con su cobertura en hospitales dentro del alcance vigente o histórico pendiente. Debe indicar un motivo, que queda auditado y visible al hospital; alergias, antecedentes, estudios y recetas quedan excluidos.
+- El `admin` de la organización, o un operador con esa designación, consulta la historia clínica del financiador (plataforma y `auditor`, no; un superusuario que simula a un perfil habilitado sí, como ese perfil): evoluciones firmadas de casos con su cobertura en hospitales dentro del alcance vigente o histórico pendiente. Debe indicar un motivo, que queda auditado y visible al hospital; alergias, antecedentes, estudios y recetas quedan excluidos.
 
 Administrativo del hospital:
 
