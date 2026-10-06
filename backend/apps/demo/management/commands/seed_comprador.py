@@ -13,7 +13,7 @@ cada pantalla que no es la suya. Este comando crea `test@salud.local`:
   tiene todos los permisos de finanzas para ver gastos, costos, cobros y coberturas.
 - **Mutual del Valle:** administración del portal del financiador, con
   autorizaciones por responder.
-- **Hospital Piloto:** su propia institución, en puesta en marcha. Tiene áreas y
+- **Hospital Piloto:** su propia institución, en configuración. Tiene áreas y
   personal asignado, pero ni agendas ni flujo publicado: completar la guía de
   Inicio queda para él.
 
@@ -86,7 +86,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"\n{EMAIL}: plataforma y {len(R.values)} roles en {central.nombre} ({grupos.count()} equipos), "
             f"finanzas completas en {central.nombre}, portal de {financiador.nombre} y "
-            f"«{piloto.nombre}» en puesta en marcha · {copiadas} notificaciones sin leer."
+            f"«{piloto.nombre}» en configuración · {copiadas} notificaciones sin leer."
         ))
 
     def _finanzas(self, membresia):

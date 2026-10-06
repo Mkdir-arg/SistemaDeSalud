@@ -14,7 +14,9 @@ class Institucion(models.Model):
 
     class Estado(models.TextChoices):
         ACTIVA = "activa", "Activa"
-        EN_ALTA = "en_alta", "En alta"
+        # El valor sigue siendo `en_alta`; lo que se muestra es «En configuración»
+        # (H-19 de #58), el mismo nombre que usan Inicio y el Directorio.
+        EN_ALTA = "en_alta", "En configuración"
         INACTIVA = "inactiva", "Inactiva"
 
     nombre = models.CharField(max_length=200)

@@ -11,9 +11,9 @@ otra en cero y ninguna alerta. Este comando suma a la Región Sanitaria VI:
 - **Clínica San Martín:** mediana, con ocupación normal.
 - **Centro de Salud Barrio Norte:** atención primaria, sin camas.
 - **Hospital General Los Aromos:** hospital mediano, con ocupación normal.
-- **Hospital Regional Lomas del Este:** en puesta en marcha hace 45 días, con
+- **Hospital Regional Lomas del Este:** en configuración hace 45 días, con
   áreas y su administrador, pero sin flujos ni agendas. Es la otra alerta del
-  tablero: más de 30 días en alta.
+  tablero: más de 30 días en configuración.
 
 Y le da a Villa Real lo que le faltaba para no verse en cero: una fila de
 demanda espontánea y pacientes internados.
@@ -366,4 +366,4 @@ class Command(BaseCommand):
         areas = [Area.objects.create(institucion=inst, nombre=nombre) for nombre in datos["areas"]]
         self._persona(inst, datos["prefijo"], *datos["admin"], R.ADMIN_INSTITUCION, areas)
         red.instituciones.add(inst)
-        return f"{inst.nombre}: en puesta en marcha hace {datos['dias_en_alta']} días, sin flujos ni agendas"
+        return f"{inst.nombre}: en configuración hace {datos['dias_en_alta']} días, sin flujos ni agendas"

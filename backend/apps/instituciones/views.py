@@ -175,7 +175,7 @@ class InstitucionViewSet(BaseModelViewSet):
             if inst["estado"] == Institucion.Estado.EN_ALTA and inst["creada"].date() < hasta - timedelta(days=30):
                 alertas.append({
                     "institucion": inst["nombre"], "tipo": "puesta_en_marcha",
-                    "detalle": "Más de 30 días en alta",
+                    "detalle": "Más de 30 días en configuración",
                 })
 
         return Response({
