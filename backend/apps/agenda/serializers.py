@@ -187,6 +187,7 @@ class TurnoSerializer(serializers.ModelSerializer):
             "motivo", "motivo_registro", "origen", "caso", "observaciones",
             "recordado_at", "cancelado_at", "creado",
             "resuelto_por", "resuelto_por_nombre", "resuelto_at",
+            "confirmado_via", "cancelado_via",
         ]
         # El estado se mueve con las acciones (`cancelar`, `llegada`, `ausente`),
         # que además de cambiarlo abren el caso o liberan el horario. Por PATCH
@@ -210,6 +211,7 @@ class TurnoSerializer(serializers.ModelSerializer):
             "modalidad", "enlace",
             "motivo_registro",
             "recordado_at", "cancelado_at", "creado", "resuelto_por", "resuelto_at",
+            "confirmado_via", "cancelado_via",
         ]
 
     def get_paciente(self, obj) -> str | None:

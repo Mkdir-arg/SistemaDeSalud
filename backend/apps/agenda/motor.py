@@ -445,7 +445,7 @@ def _firma(turno: Turno, autor):
 
 
 @transaction.atomic
-def cancelar(turno: Turno, autor=None, motivo="") -> Turno:
+def cancelar(turno: Turno, autor=None, motivo="", via=Turno.Via.SISTEMA) -> Turno:
     """Cancela el turno y libera el horario."""
     turno = _bajo_candado(turno)
     if turno.estado in (Turno.Estado.PRESENTE, Turno.Estado.AUSENTE, Turno.Estado.REALIZADO):
@@ -454,10 +454,11 @@ def cancelar(turno: Turno, autor=None, motivo="") -> Turno:
         raise ErrorAgenda("El turno ya estaba cancelado.")
     turno.estado = Turno.Estado.CANCELADO
     turno.cancelado_at = timezone.now()
+    turno.cancelado_via = via
     if motivo:
         turno.observaciones = (turno.observaciones + "\n" + motivo).strip()
     _firma(turno, autor)
-    turno.save(update_fields=["estado", "cancelado_at", "observaciones",
+    turno.save(update_fields=["estado", "cancelado_at", "cancelado_via", "observaciones",
                               "resuelto_por", "resuelto_at"])
     return turno
 
@@ -482,15 +483,16 @@ def marcar_ausente(turno: Turno, autor=None) -> Turno:
 
 
 @transaction.atomic
-def confirmar(turno: Turno, autor=None) -> Turno:
+def confirmar(turno: Turno, autor=None, via=Turno.Via.SISTEMA) -> Turno:
     """El paciente avisó que viene (llamado de recordatorio contestado)."""
     turno = _bajo_candado(turno)
     if turno.estado != Turno.Estado.RESERVADO:
         raise ErrorAgenda("Sólo un turno reservado se puede confirmar.")
     turno.estado = Turno.Estado.CONFIRMADO
     turno.recordado_at = timezone.now()
+    turno.confirmado_via = via
     _firma(turno, autor)
-    turno.save(update_fields=["estado", "recordado_at", "resuelto_por", "resuelto_at"])
+    turno.save(update_fields=["estado", "recordado_at", "confirmado_via", "resuelto_por", "resuelto_at"])
     return turno
 
 
