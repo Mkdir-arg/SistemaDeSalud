@@ -1,0 +1,87 @@
+# App del paciente (#122) contra el backend REAL.
+#
+# A diferencia de `e2e-ui.yml`, acá nada se intercepta: el backend corre en
+# SQLite con un escenario mínimo (`seed_guardia` + `seed_portal_e2e`), así que
+# también lo puede romper un cambio de backend.
+name: e2e-portal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - ".github/workflows/e2e-portal.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - ".github/workflows/e2e-portal.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portal-app:
+    name: App del paciente (backend real)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # SQLite (sin DATABASE_URL): el escenario no necesita PostgreSQL.
+      DJANGO_SECRET_KEY: clave-solo-para-ci-no-usar-en-ningun-entorno
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      ENTORNO: desarrollo
+      SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Fijar el directorio temporal
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PORTAL_E2E_ESCENARIO=$RUNNER_TEMP/portal-e2e.json" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Base y escenario
+        working-directory: backend
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_guardia
+          python manage.py seed_portal_e2e --salida "$PORTAL_E2E_ESCENARIO"
+
+      - run: npm ci
+        working-directory: frontend
+
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: App del paciente
+        run: npx playwright test -c playwright.portal-app.config.js --reporter=line
+        working-directory: frontend
+
+      - name: Subir trazas y capturas
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-portal-app
+          path: ${{ runner.temp }}/salud-portal-app
+          retention-days: 7
+          if-no-files-found: ignore
