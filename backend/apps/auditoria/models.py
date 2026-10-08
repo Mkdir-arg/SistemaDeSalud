@@ -40,10 +40,20 @@ class AccesoClinico(models.Model):
         LISTADO = "listado", "Consulta de un listado"
         EXPORTACION = "exportacion", "Exportación a archivo"
         FINANCIADOR = "financiador", "Consulta de un financiador"
+        # El propio paciente, desde el portal (#121). No hay `usuario`: quien
+        # mira es `cuenta_paciente`.
+        PACIENTE = "paciente", "Consulta del propio paciente"
 
     usuario = models.ForeignKey(
         "accounts.Usuario", on_delete=models.PROTECT, related_name="accesos_clinicos",
+        null=True, blank=True,
         help_text="No se borra con el usuario: el registro tiene que sobrevivirlo.",
+    )
+    # Quién miró cuando no es un usuario del sistema. Siempre uno de los dos
+    # (ver `acceso_con_un_solo_autor`).
+    cuenta_paciente = models.ForeignKey(
+        "portal.CuentaPaciente", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="accesos_clinicos",
     )
     # A quién se consultó. Nulo en un listado, donde no hay una sola persona.
     ciudadano = models.ForeignKey(
@@ -84,9 +94,21 @@ class AccesoClinico(models.Model):
             models.Index(fields=["ciudadano", "-momento"]),
             models.Index(fields=["usuario", "-momento"]),
         ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(usuario__isnull=False, cuenta_paciente__isnull=True)
+                    | models.Q(usuario__isnull=True, cuenta_paciente__isnull=False, tipo="paciente")
+                ),
+                name="acceso_con_un_solo_autor",
+            ),
+        ]
 
     def __str__(self):
-        quien = self.usuario.nombre_completo if self.usuario_id else "?"
+        if self.usuario_id:
+            quien = self.usuario.nombre_completo
+        else:
+            quien = "paciente (portal)" if self.cuenta_paciente_id else "?"
         return f"{quien} · {self.recurso} · {self.momento:%d/%m/%Y %H:%M}"
 
 

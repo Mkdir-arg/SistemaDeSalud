@@ -74,9 +74,12 @@ class PuedeAuditar(BasePermission):
         return bool(_instituciones_que_audita(u))
 
 
+PACIENTE_PORTAL = "El paciente, desde el portal"
+
+
 class AccesoClinicoSerializer(serializers.ModelSerializer):
     usuario_nombre = serializers.SerializerMethodField()
-    usuario_email = serializers.CharField(source="usuario.email", read_only=True)
+    usuario_email = serializers.SerializerMethodField()
     paciente = serializers.SerializerMethodField()
     documento = serializers.CharField(source="ciudadano.documento", read_only=True, default=None)
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
@@ -96,7 +99,16 @@ class AccesoClinicoSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_usuario_nombre(self, obj) -> str | None:
-        return obj.usuario.nombre_completo if obj.usuario_id else None
+        if obj.usuario_id:
+            return obj.usuario.nombre_completo
+        # El propio paciente desde el portal (#121): no es un usuario del
+        # sistema, pero la columna «Quién» no puede quedar vacía.
+        return PACIENTE_PORTAL if obj.cuenta_paciente_id else None
+
+    def get_usuario_email(self, obj) -> str | None:
+        if obj.usuario_id:
+            return obj.usuario.email
+        return obj.cuenta_paciente.email if obj.cuenta_paciente_id else None
 
     def get_simulacion(self, obj) -> dict | None:
         """Perfil y cuenta simulados, si el acceso ocurrió en una simulación."""
@@ -128,7 +140,7 @@ class AccesoClinicoViewSet(
     """
 
     queryset = AccesoClinico.objects.select_related(
-        "usuario", "ciudadano", "institucion", "simulacion__cuenta",
+        "usuario", "cuenta_paciente", "ciudadano", "institucion", "simulacion__cuenta",
     )
     serializer_class = AccesoClinicoSerializer
     permission_classes = [IsAuthenticated, PuedeAuditar]
@@ -220,15 +232,18 @@ class AccesoClinicoViewSet(
         return [
             {
                 "usuario": r["usuario"],
-                "nombre": f"{r['usuario__nombre']} {r['usuario__apellido']}".strip()
-                          or r["usuario__email"],
-                "email": r["usuario__email"],
+                "nombre": (
+                    f"{r['usuario__nombre']} {r['usuario__apellido']}".strip() or r["usuario__email"]
+                    if r["usuario"] else PACIENTE_PORTAL
+                ),
+                "email": r["usuario__email"] if r["usuario"] else r["cuenta_paciente__email"],
                 "veces": r["veces"],
                 "primera": r["primera"],
                 "ultima": r["ultima"],
             }
             for r in qs.order_by()
-            .values("usuario", "usuario__nombre", "usuario__apellido", "usuario__email")
+            .values("usuario", "usuario__nombre", "usuario__apellido", "usuario__email",
+                    "cuenta_paciente__email")
             .annotate(veces=Count("id"), primera=Min("momento"), ultima=Max("momento"))
             .order_by("-veces")
         ]
