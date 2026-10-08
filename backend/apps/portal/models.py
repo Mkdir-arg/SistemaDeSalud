@@ -156,11 +156,11 @@ class EnlacePortal(models.Model):
 
 
 class EventoPortal(models.Model):
-    """Auditoría del portal.
+    """Auditoría del portal: la cuenta, no los datos clínicos.
 
-    No reusa `auditoria.AccesoClinico`: ahí `usuario` es un `accounts.Usuario`
-    obligatorio, y acá no hay ninguno. Nunca se guardan contraseñas, tokens ni
-    el número de trámite.
+    Lo que el paciente mira de su historia (por ejemplo, la descarga de un
+    estudio) va a `auditoria.AccesoClinico` con tipo `paciente`, donde lo ve el
+    hospital. Nunca se guardan contraseñas, tokens ni el número de trámite.
     """
 
     class Tipo(models.TextChoices):
@@ -175,6 +175,9 @@ class EventoPortal(models.Model):
         VALIDACION_BLOQUEADA = "validacion_bloqueada", "validación bloqueada"
         DOCUMENTO_EN_USO = "documento_en_uso", "documento validado en otra cuenta"
         RENAPER_NO_DISPONIBLE = "renaper_no_disponible", "RENAPER no disponible"
+        # R1 del #121: un `Ciudadano` con el mismo documento y otra fecha de
+        # nacimiento no se le muestra al paciente.
+        DESCARTE_POR_NACIMIENTO = "descarte_por_nacimiento", "registro descartado por fecha de nacimiento"
 
     tipo = models.CharField(max_length=24, choices=Tipo.choices)
     # Vacía en un ingreso fallido con un email que no tiene cuenta.
