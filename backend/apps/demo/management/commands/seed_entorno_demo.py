@@ -66,6 +66,8 @@ def pasos(dias, casos):
         ("seed_efectores", {}),
         ("seed_comprador", {}),
         ("seed_accesos", {}),
+        # Después de todo: el turno de la paciente busca lugar en agendas ya cargadas.
+        ("seed_portal_demo", {}),
     ]
 
 
