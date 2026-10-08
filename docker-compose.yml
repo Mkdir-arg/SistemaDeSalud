@@ -29,6 +29,19 @@ services:
       ENTORNO: ${ENTORNO:-produccion}
       SEED_DEMO: ${SEED_DEMO:-1}
       SALUD_INTEGRACIONES_PERMITIDAS: ${SALUD_INTEGRACIONES_PERMITIDAS:-}
+      # Portal del paciente (#120). Ver .env.example.
+      PORTAL_URL_BASE: ${PORTAL_URL_BASE:-http://localhost:8080}
+      RENAPER_MODO: ${RENAPER_MODO:-real}
+      RENAPER_URL: ${RENAPER_URL:-}
+      RENAPER_USUARIO: ${RENAPER_USUARIO:-}
+      RENAPER_CLAVE: ${RENAPER_CLAVE:-}
+      RENAPER_TIMEOUT: ${RENAPER_TIMEOUT:-8}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
     volumes:
       - media:/app/media
       - respaldos:/respaldos

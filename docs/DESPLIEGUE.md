@@ -75,6 +75,18 @@ quedar en su valor de ejemplo:
 - [ ] **`SALUD_INTEGRACIONES_PERMITIDAS`** sólo con los hosts efectivamente
       autorizados. Viene vacía a propósito: la función está apagada hasta que
       infraestructura habilite cada host.
+- [ ] **Portal del paciente.** `EMAIL_HOST` y sus credenciales, `DEFAULT_FROM_EMAIL`
+      y `PORTAL_URL_BASE` con el dominio real; sin correo nadie puede confirmar su
+      cuenta ni recuperar la contraseña. `RENAPER_MODO` en `real` (con `simulado`
+      y `ENTORNO=produccion` el backend no arranca), con `RENAPER_URL` (https),
+      `RENAPER_USUARIO` y `RENAPER_CLAVE`; sin ellas, validar identidad responde
+      «no disponible».
+      El correo es un SMTP genérico provisorio: el proveedor se elige en el #123.
+- [ ] **`SALUD_PROXIES_DE_CONFIANZA`** con la cantidad de proxies propios delante
+      del backend, contándolos todos: 1 si el nginx del compose recibe directo,
+      2 si además hay un proxy TLS delante. Con menos, el cliente puede inventar
+      su IP y saltear los límites de intentos del portal; con más, todos los
+      pacientes comparten la IP del proxy y el mismo cupo.
 
 ### TLS
 

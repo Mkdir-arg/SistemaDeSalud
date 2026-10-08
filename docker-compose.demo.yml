@@ -26,6 +26,10 @@ services:
       # navegador lo recordaría para TODOS tus proyectos en localhost.
       DJANGO_HSTS_SECONDS: "${DJANGO_HSTS_SECONDS:-0}"
       CORS_ALLOWED_ORIGINS: http://localhost:8082,http://127.0.0.1:8082
+      # Portal del paciente: RENAPER simulado y correos por la consola.
+      PORTAL_URL_BASE: http://localhost:8082
+      RENAPER_MODO: simulado
+      EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
     ports:
       - "8002:8000"
 
