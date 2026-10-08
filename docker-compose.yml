@@ -176,8 +176,8 @@ services:
     build: ./frontend
     ports:
       - "${WEB_PORT:-8080}:80"
-    volumes:
-      - media:/usr/share/media:ro
+    # Sin el volumen `media`: nginx no sirve archivos clínicos (ver
+    # frontend/nginx.conf). Sólo el backend lo monta.
     depends_on:
       backend:
         condition: service_healthy

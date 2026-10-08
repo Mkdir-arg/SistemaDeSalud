@@ -63,7 +63,9 @@ quedar en su valor de ejemplo:
 - [ ] **`DJANGO_SECRET_KEY`** nueva. Con la de ejemplo, cualquiera que lea el
       repositorio puede firmar sesiones.
 - [ ] **`DJANGO_DEBUG=false`**. Con `true`, Django muestra trazas completas ante un
-      error y sirve `/media` directo.
+      error y sirve `/media` directo (salvo `/media/uploads/`, que bloquea
+      siempre). En producción nginx no sirve `/media/`: ver
+      [Los adjuntos van aparte](#los-adjuntos-van-aparte).
 - [ ] **`DJANGO_ALLOWED_HOSTS`** con el dominio real, o Django rechaza todo con 400.
 - [ ] **`CORS_ALLOWED_ORIGINS`** con el origen real del navegador.
 - [ ] **`ENTORNO=produccion`.** Si falta, la aplicación asume `desarrollo`, y ahí
@@ -296,6 +298,18 @@ implementado** y es una decisión de infraestructura, no de la aplicación.
 
 Las subidas clínicas viven en el volumen `media`, **no** en la base. El respaldo de
 la base no las incluye. Un plan de recuperación completo tiene que cubrir los dos.
+
+Ese volumen lo monta **sólo el backend**. nginx responde 404 a todo `/media/` y
+no tiene el volumen montado: antes lo servía con `alias` directo desde el disco,
+sin pasar por Django, y cualquiera que conociera o adivinara una ruta
+`/media/uploads/<institución>/<uuid>.<ext>` bajaba el archivo clínico sin sesión
+y sin dejar rastro en la auditoría. Hoy no hay media pública: todo lo que se
+guarda en `MEDIA_ROOT` es clínico y sale por Django (`/api/archivos/descargar/…`,
+la evidencia de consentimientos y las vistas del portal del paciente), que valida
+permisos y audita. Si algún día hace falta media pública (logos, por ejemplo),
+va en otra ruta y otro directorio, nunca reabriendo `/media/` en nginx. Un
+proxy delante que no sea el nginx del repositorio tiene que aplicar la misma
+regla.
 
 ## 7. Qué no se puede deshacer
 
