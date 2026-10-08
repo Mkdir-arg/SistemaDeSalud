@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 
 import {
   erroresFormulario, mensajePortal, usePerfilPortal, useSalir, useValidarIdentidad,
 } from "@/api/portal";
 import { fechaCalendario, fechaHora, plural } from "@/lib/format";
-import { Boton, Cabecera, Paso, Pie, Tarjeta } from "@/pages/app-clinica/ui";
+import { Boton, Cabecera, Fila, Paso, Pie, Tarjeta, TEXTO } from "./ui";
 
-import { Alerta, Cargando, CampoTexto, ConCuenta, formatoDni, Pantalla, Resultado, soloDigitos } from "./comun";
+import { Alerta, Cargando, CampoTexto, formatoDni, Pantalla, PasoDeLaCuenta, Resultado, soloDigitos } from "./comun";
 
-// Pantallas con sesión del portal. Cada una vive detrás de `ConCuenta`, que
-// lleva a la persona a la que le corresponde según lo que le falta completar.
+// Pantallas con sesión del portal. Las de validación viven detrás de
+// `PasoDeLaCuenta`, que lleva a la persona a la que le corresponde según lo que
+// le falta completar; `MiCuenta`, dentro del marco de la app.
 
 const LARGO_TRAMITE = 11;
 const SEXOS = [["F", "Femenino"], ["M", "Masculino"], ["X", "X"]];
@@ -27,12 +28,12 @@ function BotonSalir() {
 
 /** Pasa por acá después de ingresar o al volver de un enlace: decide la pantalla. */
 export function Continuar() {
-  return <ConCuenta>{() => null}</ConCuenta>;
+  return <PasoDeLaCuenta>{() => null}</PasoDeLaCuenta>;
 }
 
 /** Validar la identidad contra RENAPER con los datos del DNI. */
 export function ValidarIdentidad() {
-  return <ConCuenta>{(cuenta) => <FormularioIdentidad cuenta={cuenta} />}</ConCuenta>;
+  return <PasoDeLaCuenta>{(cuenta) => <FormularioIdentidad cuenta={cuenta} />}</PasoDeLaCuenta>;
 }
 
 const MOTIVOS = new Set(["no_coincide", "validacion_bloqueada", "documento_en_uso", "servicio_no_disponible", "email_sin_verificar"]);
@@ -76,7 +77,7 @@ function FormularioIdentidad({ cuenta }) {
     <Paso numero={2} total={2} />
     <form onSubmit={enviar} className="flex flex-1 flex-col" noValidate>
       <h2 className="mt-5 text-xl font-bold">Confirmá que sos vos</h2>
-      <p className="mt-2 text-sm text-texto-suave">Con tu DNI y su número de trámite consultamos a RENAPER, el registro nacional de las personas. El número de trámite tiene que ser el de tu DNI más reciente.</p>
+      <p className={`mt-2 ${TEXTO.cuerpo}`}>Con tu DNI y su número de trámite consultamos a RENAPER, el registro nacional de las personas. El número de trámite tiene que ser el de tu DNI más reciente.</p>
       <CampoTexto etiqueta="Número de documento" inputMode="numeric" autoComplete="off" placeholder="Ej.: 34.521.521"
         value={formatoDni(datos.documento)} onChange={cambiar("documento", (v) => soloDigitos(v).slice(0, 8))} error={campos.documento} />
       <fieldset className="mt-5">
@@ -95,7 +96,7 @@ function FormularioIdentidad({ cuenta }) {
         <summary className="cursor-pointer font-semibold text-accent">¿Dónde encuentro el número de trámite?</summary>
         <p className="mt-2 leading-relaxed">En el DNI tarjeta está en el frente, en el dato «Trámite N.º» (también puede figurar como «N.º de trámite»). Es un número largo, distinto del número de documento. Copialo sin puntos ni espacios.</p>
       </details>
-      {typeof intentos === "number" && <p className="mt-4 text-xs text-texto-suave">Te {intentos === 1 ? "queda" : "quedan"} {plural(intentos, "intento", "intentos")} para validar.</p>}
+      {typeof intentos === "number" && <p className={`mt-4 ${TEXTO.nota}`}>Te {intentos === 1 ? "queda" : "quedan"} {plural(intentos, "intento", "intentos")} para validar.</p>}
       <Alerta>{general}</Alerta>
       <Pie>
         <Boton type="submit" disabled={!completo}>Validar identidad</Boton>
@@ -151,27 +152,20 @@ function NoSePudo({ error, onRevisar, onReintentar }) {
   </Pantalla>;
 }
 
-/** Cuenta lista: identidad validada. Los turnos y resultados llegan con el #122. */
-export function CuentaLista() {
-  return <ConCuenta>{(cuenta) => <Lista cuenta={cuenta} />}</ConCuenta>;
-}
-
-function Lista({ cuenta }) {
+/** Mi cuenta: los datos que validó RENAPER y cerrar sesión. Vive dentro de la app (#122), que le pasa la cuenta. */
+export function MiCuenta() {
+  const cuenta = useOutletContext();
   const perfil = usePerfilPortal();
-  if (perfil.isPending) return <Cargando texto="Cargando tu cuenta…" />;
   const p = perfil.data;
-  return <Pantalla>
-    {perfil.isError
-      ? <><h1 className="mt-4 text-xxl font-bold">Tu cuenta está lista</h1><Alerta>{mensajePortal(perfil.error, "No pudimos cargar tus datos.")}</Alerta></>
-      : <>
-        <p className="mt-4 text-sm font-semibold text-accent">Tu cuenta está lista</p>
-        <h1 className="mt-1 text-xxl font-bold leading-tight">Hola, {p.nombre}</h1>
-        <p className="mt-3 text-sm leading-relaxed text-texto-suave">Validamos tu identidad. Muy pronto vas a ver acá tus turnos y tus resultados.</p>
-        <Tarjeta className="mt-6 space-y-4 p-4">
-          {[["Nombre y apellido", `${p.nombre} ${p.apellido}`], ["DNI", formatoDni(p.documento)], ["Fecha de nacimiento", p.fecha_nacimiento ? fechaCalendario(p.fecha_nacimiento) : null], ["Email", cuenta.email]]
-            .filter(([, v]) => v).map(([k, v]) => <div key={k}><p className="text-xs text-texto-suave">{k}</p><strong className="mt-0.5 block break-words text-sm">{v}</strong></div>)}
-        </Tarjeta>
-      </>}
+  return <>
+    <Cabecera titulo="Mi cuenta" atras="/mi/inicio" />
+    {perfil.isPending ? <Cargando texto="Cargando tus datos…" />
+      : perfil.isError ? <Alerta>{mensajePortal(perfil.error, "No pudimos cargar tus datos.")}</Alerta>
+        : <Tarjeta className="overflow-hidden">
+          {[["Nombre y apellido", `${p.nombre} ${p.apellido}`], ["Documento", formatoDni(p.documento)], ["Fecha de nacimiento", p.fecha_nacimiento ? fechaCalendario(p.fecha_nacimiento) : null], ["Email", cuenta.email]]
+            .filter(([, v]) => v).map(([k, v], i, filas) => <Fila key={k} titulo={k} detalle={<span className="break-words">{v}</span>} ultimo={i === filas.length - 1} />)}
+        </Tarjeta>}
+    <p className={`mt-4 ${TEXTO.nota}`}>Ves tus turnos, estudios y cobertura de todas las instituciones de la red donde te atendiste con este documento.</p>
     <Pie><BotonSalir /></Pie>
-  </Pantalla>;
+  </>;
 }

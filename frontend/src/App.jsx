@@ -10,7 +10,6 @@ import { useTemaDeRuta } from "./lib/tema";
 
 const Login = lazy(() => import("./pages/Login"));
 const Presentacion = lazy(() => import("./pages/Presentacion"));
-const AppClinica = lazy(() => import("./pages/app-clinica/AppClinica"));
 const PortalPaciente = lazy(() => import("./pages/portal/Portal"));
 const PantallaLlamados = lazy(() => import("./pages/PantallaLlamados"));
 const Directorio = lazy(() => import("./pages/Directorio"));
@@ -214,7 +213,8 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<Presentacion />} />
       <Route path="/presentacion" element={<Navigate to="/" replace />} />
-      <Route path="/demo/app-clinica/*" element={<AppClinica />} />
+      {/* La maqueta del #66 pasó a ser el portal real (#122): los enlaces viejos llegan ahí. */}
+      <Route path="/demo/app-clinica/*" element={<Navigate to="/mi" replace />} />
       {/* Portal del paciente (#120): público, con su propia sesión (api/portal.js). */}
       <Route path="/mi/*" element={<PortalPaciente />} />
       <Route path="/financiadores/activar" element={<ActivarFinanciador />} />

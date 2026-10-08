@@ -94,7 +94,7 @@ test.describe("Landing pública", () => {
     }
     // Sin canal aprobado, la demo no aparece; la maqueta clínica sigue a mano.
     await expect(page.getByRole("link", { name: "Solicitar una demo" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Ver la app", exact: true })).toHaveAttribute("href", "/demo/app-clinica");
+    await expect(page.getByRole("link", { name: "Ver la app", exact: true })).toHaveAttribute("href", "/mi");
   });
 
   test("se recorre con teclado, con salto al contenido y foco visible", async ({ page }) => {
