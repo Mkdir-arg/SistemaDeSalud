@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_datos
 
 urlpatterns = [
     path("cuenta/", views.CuentaView.as_view(), name="portal_cuenta"),
@@ -15,4 +15,11 @@ urlpatterns = [
     path("cuenta/cambiar-contrasena/", views.CambiarContrasenaView.as_view(), name="portal_cambiar_contrasena"),
     path("cuenta/validar-identidad/", views.ValidarIdentidadView.as_view(), name="portal_validar_identidad"),
     path("perfil/", views.PerfilView.as_view(), name="portal_perfil"),
+    path("turnos/", views_datos.TurnosView.as_view(), name="portal_turnos"),
+    path("turnos/<int:pk>/confirmar/", views_datos.ConfirmarTurnoView.as_view(), name="portal_turno_confirmar"),
+    path("turnos/<int:pk>/cancelar/", views_datos.CancelarTurnoView.as_view(), name="portal_turno_cancelar"),
+    path("llamado/", views_datos.LlamadoView.as_view(), name="portal_llamado"),
+    path("resultados/", views_datos.ResultadosView.as_view(), name="portal_resultados"),
+    path("resultados/<int:pk>/archivo/", views_datos.ArchivoResultadoView.as_view(), name="portal_resultado_archivo"),
+    path("cobertura/", views_datos.CoberturaView.as_view(), name="portal_cobertura"),
 ]

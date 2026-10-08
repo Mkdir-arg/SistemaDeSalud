@@ -9,15 +9,20 @@ va a revisar.
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
 
 from apps.auditoria.management.commands.respaldar import TABLAS, Command
 
 
+# `_comprobar_versiones` le pide la versión al servidor con `SHOW server_version`,
+# que sólo existe en PostgreSQL. `pg_dump` no hace falta: está simulado.
+@skipUnless(connection.vendor == "postgresql", "Pide la versión con SHOW: requiere PostgreSQL.")
 class VersionesTests(TestCase):
     """
     El cliente no puede ser de otra versión mayor que el servidor.

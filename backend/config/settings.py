@@ -350,6 +350,7 @@ devuelve el CapabilityStatement y se sirve sin credenciales.
         "EstadoVersionEnum": "apps.flujos.models.ESTADOS_VERSION",
         "EstadoInstitucionEnum": "apps.instituciones.models.ESTADOS_INSTITUCION",
         "EstadoAprobacionFinancieraEnum": "apps.finanzas.models.EstadoAprobacion",
+        "ViaTurnoEnum": "apps.agenda.models.Turno.Via",
     },
     "TAGS": [
         {"name": "casos", "description": "Casos, su operación y la cola de espera."},

@@ -8,8 +8,9 @@ cadena entre entradas haga que alterar una vieja no alcance con recalcular su
 propio resumen.
 """
 from datetime import timedelta
-from unittest import mock
+from unittest import mock, skipUnless
 
+from django.db import connection
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -247,6 +248,9 @@ class DosAlaVezTests(IntegridadTestCase):
     decir que la historia está intacta pasa a acusarlo—.
     """
 
+    # SQLite no bloquea filas y Django omite el FOR UPDATE en silencio: la
+    # consulta del candado sale igual, pero sin la cláusula que se verifica.
+    @skipUnless(connection.vendor == "postgresql", "Requiere bloqueo de fila PostgreSQL.")
     def test_sellar_toma_el_candado_de_la_historia(self):
         """
         Sin el candado, las dos transacciones leen la misma entrada previa antes

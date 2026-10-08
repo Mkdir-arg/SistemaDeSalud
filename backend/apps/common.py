@@ -535,10 +535,7 @@ class DescargarArchivoView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, ruta):
-        partes = PurePosixPath(ruta).parts
-        if len(partes) < 3 or partes[0] != "uploads" or not partes[1].isdigit():
-            return Response({"detail": "Archivo invalido."}, status=status.HTTP_404_NOT_FOUND)
-        if any(p in ("", ".", "..") for p in partes):
+        if partes_de_ruta_clinica(ruta) is None:
             return Response({"detail": "Archivo invalido."}, status=status.HTTP_404_NOT_FOUND)
 
         from apps.registros.models import ArchivoClinico
@@ -547,22 +544,47 @@ class DescargarArchivoView(APIView):
         if meta and meta.proposito == ArchivoClinico.Proposito.CONSENTIMIENTO:
             return Response({"detail": "Descargá la evidencia desde el consentimiento."},
                             status=status.HTTP_404_NOT_FOUND)
-        institucion_id = meta.institucion_id if meta else int(partes[1])
+        institucion_id = institucion_de_archivo(ruta, meta)
         if "historia_clinica" not in capacidades_de(request.user, institucion_id):
             return Response(
                 {"detail": "No tenes permiso para descargar este archivo."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if not default_storage.exists(ruta):
+        respuesta = respuesta_de_archivo(ruta, meta)
+        if respuesta is None:
             return Response({"detail": "Archivo no encontrado."}, status=status.HTTP_404_NOT_FOUND)
-        respuesta = FileResponse(
-            default_storage.open(ruta, "rb"),
-            as_attachment=False,
-            filename=meta.nombre_original if meta else partes[-1],
-        )
-        if meta and meta.content_type:
-            respuesta["Content-Type"] = meta.content_type
         return respuesta
+
+
+def partes_de_ruta_clinica(ruta):
+    """Las partes de `uploads/<institución>/…`, o None si la ruta no es una de esas."""
+    partes = PurePosixPath(ruta or "").parts
+    if len(partes) < 3 or partes[0] != "uploads" or not partes[1].isdigit():
+        return None
+    if any(p in ("", ".", "..") for p in partes):
+        return None
+    return partes
+
+
+def institucion_de_archivo(ruta, meta):
+    return meta.institucion_id if meta else int(partes_de_ruta_clinica(ruta)[1])
+
+
+def respuesta_de_archivo(ruta, meta):
+    """El archivo para servir, o None si no está en el almacenamiento.
+
+    No valida permisos: quien llama ya decidió que se puede ver.
+    """
+    if not default_storage.exists(ruta):
+        return None
+    respuesta = FileResponse(
+        default_storage.open(ruta, "rb"),
+        as_attachment=False,
+        filename=meta.nombre_original if meta else PurePosixPath(ruta).name,
+    )
+    if meta and meta.content_type:
+        respuesta["Content-Type"] = meta.content_type
+    return respuesta
 
 
 class ExportaCSV:

@@ -307,6 +307,10 @@ class Turno(models.Model):
         PRESENCIAL = "presencial", "Presencial"
         VIRTUAL = "virtual", "Virtual"
 
+    class Via(models.TextChoices):
+        SISTEMA = "sistema", "Sistema"
+        PORTAL = "portal", "Portal del paciente"
+
     class Origen(models.TextChoices):
         MOSTRADOR = "mostrador", "Mostrador"
         TELEFONO = "telefono", "Teléfono"
@@ -368,6 +372,11 @@ class Turno(models.Model):
         related_name="turnos_resueltos",
     )
     resuelto_at = models.DateTimeField(null=True, blank=True)
+    # Por dónde se confirmó o canceló. Con `resuelto_por` vacío no se distingue
+    # al paciente desde el portal de un proceso automático, y el hospital tiene
+    # que poder decir «lo canceló el paciente» (#121).
+    confirmado_via = models.CharField(max_length=10, choices=Via.choices, blank=True)
+    cancelado_via = models.CharField(max_length=10, choices=Via.choices, blank=True)
 
     class Meta:
         verbose_name = "turno"
