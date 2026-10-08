@@ -38,6 +38,20 @@ const ESTADOS = {
   realizado: { label: "Atención pasada registrada", tone: "green" },
 };
 
+// Lo que hizo el paciente desde el portal (#121) se dice en el mismo renglón:
+// un cancelado por el paciente libera el horario sin que nadie del hospital lo
+// haya tocado, y quien mira la agenda tiene que saber a quién preguntarle.
+const estadoDe = (turno) => {
+  const est = ESTADOS[turno.estado] || { label: turno.estado, tone: "neutral" };
+  if (turno.estado === "confirmado" && turno.confirmado_via === "portal") {
+    return { ...est, label: "Confirmado por el paciente" };
+  }
+  if (turno.estado === "cancelado" && turno.cancelado_via === "portal") {
+    return { ...est, label: "Cancelado por el paciente" };
+  }
+  return est;
+};
+
 // 24 horas: es cómo se escriben los horarios en un hospital, y además «02:15
 // p. m.» no entra en la columna y parte el renglón en dos líneas.
 const hhmm = (iso) =>
@@ -909,7 +923,7 @@ function Renglon({ horario, agenda, sobreturnosMax, turnos, turnosListos, abiert
 }
 
 function FichaTurno({ turno, onCambio, onRegistrarPasado, toast, navigate, porTelefono = false }) {
-  const est = ESTADOS[turno.estado] || { label: turno.estado, tone: "neutral" };
+  const est = estadoDe(turno);
   // Las dos acciones irreversibles se confirman antes de disparar. En el
   // mostrador se opera con alguien enfrente y apurado: un clic corrido una
   // columna sobre «No vino» congela el turno como ausente —al paciente que está
