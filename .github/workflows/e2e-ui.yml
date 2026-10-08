@@ -60,6 +60,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx playwright test -c playwright.app-clinica.config.js --reporter=line
 
+      - name: Portal del paciente
+        if: ${{ !cancelled() }}
+        run: npx playwright test -c playwright.portal.config.js --reporter=line
+
       - name: Subir trazas y capturas
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
@@ -68,5 +72,6 @@ jobs:
           path: |
             ${{ runner.temp }}/salud-financiadores-ui
             ${{ runner.temp }}/salud-app-clinica
+            ${{ runner.temp }}/salud-portal
           retention-days: 7
           if-no-files-found: ignore
