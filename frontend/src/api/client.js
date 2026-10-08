@@ -156,7 +156,7 @@ export function mensajeError(error, porDefecto = "No se pudo completar la operac
   return porDefecto;
 }
 
-async function parse(res) {
+export async function parse(res) {
   const text = await res.text();
   if (!text) return null;
   try {

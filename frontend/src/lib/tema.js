@@ -6,17 +6,19 @@ const CLAVE = "salud.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
 /**
  * Rutas que se ven siempre en claro, sin importar la preferencia.
  *
- * Las pantallas públicas de llamados y la app clínica de demostración (con
- * todas sus subrutas) mantienen el tema claro en cualquier puesto.
+ * Las pantallas públicas de llamados, la app clínica de demostración y el
+ * portal del paciente (con todas sus subrutas) mantienen el tema claro en
+ * cualquier puesto: la preferencia de tema es del personal de HEN, no del paciente.
  * El login admite ambas variantes de Figma. La misma
  * regla está repetida en el script del <head> de index.html, que corre antes de
  * que exista este módulo; si cambia una, cambian las dos.
  */
 const APP_CLINICA = "/demo/app-clinica";
+const PORTAL = "/mi";
 
 export const esRutaClara = (pathname) => {
   const ruta = pathname.replace(/\/+$/, "");
-  return ruta === APP_CLINICA || ruta.startsWith(`${APP_CLINICA}/`) || ruta.startsWith("/pantalla/");
+  return ruta === APP_CLINICA || ruta.startsWith(`${APP_CLINICA}/`) || ruta === PORTAL || ruta.startsWith(`${PORTAL}/`) || ruta.startsWith("/pantalla/");
 };
 
 /** Aplica el tema al <html>. Se exporta para poder llamarlo antes de montar React. */

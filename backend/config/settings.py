@@ -182,6 +182,7 @@ INSTALLED_APPS = [
     "apps.fhir",
     "apps.demo",
     "apps.simulacion",
+    "apps.portal",
 ]
 
 MIDDLEWARE = [
@@ -270,6 +271,29 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "config.pagination.Paginacion",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Sólo el portal del paciente declara límites hoy (ver apps/portal/limites.py).
+    # Las tasas van acá porque DRF las busca acá; no hay límite global.
+    "DEFAULT_THROTTLE_RATES": {
+        alcance: env(f"PORTAL_TASA_{alcance.upper()}", tasa)
+        for alcance, tasa in {
+            "portal_ingreso_ip": "30/hour",
+            "portal_ingreso_email_ip": "10/hour",
+            "portal_ingreso_email": "50/hour",
+            "portal_alta_ip": "20/hour",
+            "portal_alta_email": "3/hour",
+            "portal_recupero_ip": "20/hour",
+            "portal_recupero_email": "3/hour",
+            "portal_enlace_ip": "30/hour",
+            "portal_renovar_ip": "600/hour",
+            "portal_identidad_ip": "20/hour",
+            "portal_cuenta": "20/hour",
+        }.items()
+    },
+    # Cuántos proxies propios hay delante de Django: el nginx del frontend en
+    # compose, el balanceador en Railway. Con eso la IP del cliente sale del
+    # `X-Forwarded-For` que agregó el último proxy y no del que mandó el
+    # cliente, que puede inventarlo. Sin proxy delante va 0.
+    "NUM_PROXIES": int(env("SALUD_PROXIES_DE_CONFIANZA", "1")),
 }
 
 # --------------------------------------------------------------------------- #
@@ -360,6 +384,83 @@ INTEGRACIONES_PERMITIDAS = [
 # Tope de espera de una llamada externa. El motor la hace en línea, así que un
 # servicio lento colgaría el avance del caso.
 INTEGRACIONES_TIMEOUT = int(env("SALUD_INTEGRACIONES_TIMEOUT", "6"))
+
+# --- Cache ------------------------------------------------------------------
+# `portal` guarda los contadores de intentos del portal del paciente. Va en la
+# base y no en memoria porque gunicorn corre varios workers: en memoria cada uno
+# contaría por su lado y el límite real sería varias veces el configurado. La
+# tabla la crea una migración de `apps.portal`.
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "portal": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "portal_cache",
+        # Con el tope por defecto (300) Django borra contadores vigentes cuando
+        # hay tráfico, y con ellos el límite. Django recién purga los vencidos
+        # al pasar el tope, así que la tabla crece hasta ahí.
+        "OPTIONS": {"MAX_ENTRIES": int(env("PORTAL_CACHE_MAX", "200000"))},
+    },
+}
+
+# --- Correo ----------------------------------------------------------------- #
+# Lo usa el portal del paciente (verificación y recupero). El proveedor se
+# configura por SMTP, que sirve para cualquiera sin sumar dependencias.
+# Provisorio: el proveedor de producción se elige y configura en el #123. Fuera de
+# producción el correo sale por la consola del backend.
+#
+# La consola se elige sólo con DEBUG y fuera de producción, no por ENTORNO solo:
+# ENTORNO vale `desarrollo` si falta, y un despliegue real que se olvidó de
+# fijarlo imprimiría en el log los enlaces para cambiar contraseñas de
+# cualquiera. La demo, que corre sin DEBUG, la pide explícitamente.
+EMAIL_BACKEND = env("EMAIL_BACKEND") or (
+    "django.core.mail.backends.console.EmailBackend"
+    if DEBUG and ENTORNO != "produccion"
+    else "django.core.mail.backends.smtp.EmailBackend"
+)
+# `or` y no el valor por defecto de env(): el compose pasa las variables vacías
+# cuando no se definen, y un remitente vacío hace que Django no mande nada.
+EMAIL_HOST = env("EMAIL_HOST") or "localhost"
+EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = int(env("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL") or "HEN <no-responder@localhost>"
+# Los correos del portal salen después de responder, en un hilo aparte: si
+# salieran dentro del pedido, la demora del SMTP diría qué emails tienen cuenta
+# (sólo a esas se les manda). Las pruebas lo apagan para leer el buzón.
+PORTAL_CORREO_EN_SEGUNDO_PLANO = env_bool("PORTAL_CORREO_EN_SEGUNDO_PLANO", True)
+
+# --- Portal del paciente (#120) --------------------------------------------- #
+# Dirección pública de la SPA: los enlaces del correo apuntan acá.
+PORTAL_URL_BASE = env("PORTAL_URL_BASE") or "http://localhost:5173"
+PORTAL_ACCESO_MINUTOS = int(env("PORTAL_ACCESO_MINUTOS", "15"))
+PORTAL_RENOVACION_MINUTOS = int(env("PORTAL_RENOVACION_MINUTOS", "120"))
+PORTAL_SESION_MAXIMA_HORAS = int(env("PORTAL_SESION_MAXIMA_HORAS", "12"))
+PORTAL_VERIFICACION_HORAS = int(env("PORTAL_VERIFICACION_HORAS", "24"))
+PORTAL_RECUPERO_MINUTOS = int(env("PORTAL_RECUPERO_MINUTOS", "60"))
+# R5: «no coincide» seguidos antes de bloquear la validación, y por cuánto.
+PORTAL_VALIDACION_INTENTOS = int(env("PORTAL_VALIDACION_INTENTOS", "5"))
+PORTAL_VALIDACION_BLOQUEO_HORAS = int(env("PORTAL_VALIDACION_BLOQUEO_HORAS", "24"))
+
+# RENAPER: `real` salvo que se pida el simulado. El simulado además exige
+# ENTORNO demo o desarrollo (ver apps/portal/renaper.py). En producción ni
+# siquiera arranca: un despliegue que valida identidades con el simulado deja
+# entrar a cualquiera con cualquier DNI.
+RENAPER_MODO = env("RENAPER_MODO", "real").strip().lower()
+if RENAPER_MODO not in ("real", "simulado"):
+    raise RuntimeError(f"RENAPER_MODO={RENAPER_MODO!r} no es válido: usá real o simulado.")
+if RENAPER_MODO == "simulado" and ENTORNO == "produccion":
+    raise RuntimeError("RENAPER_MODO=simulado no se puede usar con ENTORNO=produccion.")
+# Consulta por DNI y sexo (ver apps/portal/renaper.py). RENAPER_URL es la base
+# de la API, sin barra final (`…/api`). Usuario y clave son secretos: sólo por
+# entorno, nunca en el repositorio ni en los logs. Sin alguno de los tres,
+# validar identidad responde «no disponible».
+RENAPER_URL = (env("RENAPER_URL") or "").strip().rstrip("/")
+RENAPER_USUARIO = env("RENAPER_USUARIO") or ""
+RENAPER_CLAVE = env("RENAPER_CLAVE") or ""
+RENAPER_TIMEOUT = int(env("RENAPER_TIMEOUT") or "8")
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),

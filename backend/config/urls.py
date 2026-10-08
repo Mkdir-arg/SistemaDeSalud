@@ -141,6 +141,9 @@ urlpatterns = [
     path("api/mis-tareas/", MisTareasView.as_view(), name="mis_tareas"),
     path("api/puestos/<int:nodo_id>/", PuestoDetalleView.as_view(), name="puesto_detalle"),
     path("api/pantalla/<str:token>/", PantallaLlamadosView.as_view(), name="pantalla_llamados"),
+    # Portal del paciente: autenticación propia, aislada de la del sistema
+    # (ver apps/portal/autenticacion.py).
+    path("api/mi/", include("apps.portal.urls")),
     path("api/", include(router.urls)),
     # Fachada FHIR R4. Fuera de /api/ a propósito: las rutas son las del
     # estándar y un cliente FHIR las arma solo a partir de la URL base, así que
