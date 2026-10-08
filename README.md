@@ -30,21 +30,30 @@ docker compose up -d
 
 Para revisar el diseño HEN: la landing pública está en `/` (`/presentacion` es un
 alias) y, después del login, `/directorio` resuelve el directorio de plataforma, la
-elección de institución o el portal del financiador. La app de pacientes de ejemplo
-("Clínica Modelo") está en `/demo/app-clinica`. Es pública, no usa la API y guarda
-todo en la pestaña (`sessionStorage`): no autentica pacientes ni crea turnos,
-presencias o resultados reales. Para mostrarla:
+elección de institución o el portal del financiador.
 
-- **DNI 34521521** es una paciente con historia: turno para hoy, turnos
-  anteriores y resultados; después del código confirma «¿Sos Martina Sosa?».
-  Cualquier otro DNI es una paciente nueva: pide celular, código y tres datos.
-- El código del SMS acepta cualquier combinación de seis dígitos.
-- Al dar presente queda 3.ª en la fila y avanza un lugar cada 8 segundos: el
-  llamado llega solo en menos de medio minuto.
-- «Cerrar sesión» (en el perfil) o cerrar la pestaña deja la demo en cero.
+El **portal del paciente** está en `/mi`: cuenta con email y contraseña, identidad
+validada contra RENAPER (#120) y, después, sus turnos, estudios, cobertura y el
+llamado de la sala de espera en todas las instituciones de HEN (#121, #122). Usa
+la API `/api/mi/*`, con una sesión propia que no se mezcla con la del sistema.
+Para mostrarlo sin RENAPER:
 
-Sus recorridos se prueban sin backend con
-`npx playwright test -c playwright.app-clinica.config.js` (desde `frontend/`).
+- `seed_entorno_demo` (o `seed_portal_demo` sobre una carga ya hecha) crea la
+  cuenta **`andrea.paniagua@paciente.test`**, con la clave de la demo y la
+  identidad ya validada. Es Andrea Paniagua, la misma persona que el guion
+  muestra en Hospital Central (caso de radiografía) y en Mutual del Valle
+  (afiliada MV00011). Tiene un turno reservado a más de 24 horas, que se puede
+  confirmar y cancelar, un hemograma con archivo y la radiografía pendiente, y queda esperando en la sala de Cardiología: la llama
+  `cardio.med@hospital.gob.ar` desde **Filas**.
+- Lo que hace en el portal escribe en el hospital: al confirmar, la agenda
+  muestra «Confirmado por el paciente».
+- Para registrar una cuenta nueva sin RENAPER: `RENAPER_MODO=simulado` (sólo con
+  `ENTORNO` demo o desarrollo).
+
+Sus recorridos se prueban contra el backend real con
+`npx playwright test -c playwright.portal-app.config.js` (desde `frontend/`; antes
+hay que cargar el escenario: ver el comentario de esa config). `/demo/app-clinica`,
+la maqueta del #66, ya no existe y redirige a `/mi`.
 
 Eso levanta el **stack de desarrollo**, con recarga en caliente y el escenario de
 guardia sembrado. Superusuario: `admin@salud.local` / `demo1234`; el staff del

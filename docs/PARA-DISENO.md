@@ -83,7 +83,7 @@ Agregarlas a `capturas.spec.js` es la forma de que entren al circuito automátic
 Son 39 rutas. Agrupadas por dónde aparecen en el menú:
 
 ### Fuera de la sesión
-- **Login** · **Presentación HEN** · **App de pacientes de ejemplo** (`/demo/app-clinica/*`: ingreso, inicio, turnos, resultados, la clínica y perfil, con datos ficticios) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
+- **Login** · **Presentación HEN** · **Portal del paciente** (`/mi/*`: crear cuenta, ingresar, recuperar la contraseña, validar la identidad; después inicio, turnos, estudios, cobertura, sala de espera y mi cuenta, con datos reales de toda la red) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
 
 ### Entrada
 - **Directorio de instituciones** (sólo para plataforma; el resto entra directo a la suya) · **Inicio / Mi trabajo** · **Notificaciones**
@@ -154,8 +154,17 @@ Deuda visual conocida, por si aparece en una revisión:
 
 - **Modo oscuro HEN:** la paleta base ya está adaptada en la aplicación, pero
   falta contrastarla pantalla por pantalla cuando el diseño final esté listo.
-- **Portal ciudadano:** aplicar la misma base visual cuando exista el diseño y
-  se incorpore el portal.
+- **Portal del paciente (`/mi`):** sigue el Figma «05 · App clínica (MVP)» (nodo
+  61-132): sin barra ni pestañas, «‹ título» en cada pantalla, filas sin íconos,
+  llamado a pantalla completa y cancelar en una hoja. Colores y sombras son
+  tokens del DS. La escala de texto de celular de Figma (13, 15, 16, 17 y 22 px) y
+  sus radios (8, 10, 16, 24 y 28 px) no están en el DS: viven en `TAMANO` y `RADIO`
+  de `pages/portal/ui.jsx`. Diferencias a propósito: el gris secundario de Figma
+  (`#766E94`) es el token `texto-tenue`, para cumplir AA sobre el fondo lila, y los
+  rojos y verdes son los del DS, no los de la librería de Figma. La foto de la
+  bienvenida es la de Figma, marcada «reemplazar»: pesa 2 MB y conviene
+  reemplazarla por una versión liviana (WebP) cuando se elija la definitiva. El nombre y la marca del portal siguen sin
+  acordar (#59): hoy dice «Mi portal de salud» con un isotipo neutro.
 - **El buscador de pacientes se esconde en pantalla angosta**, porque compite con el
   título y la campana. Queda accesible desde Historia clínica, pero la solución buena
   es que se expanda desde un ícono.
