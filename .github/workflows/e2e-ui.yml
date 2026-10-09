@@ -2,7 +2,8 @@
 #
 # No necesitan backend ni datos sembrados: alcanza con el servidor de Vite que
 # levanta cada config. Los recorridos que sí necesitan el stack completo
-# (`playwright.config.js` y las configs de finanzas) siguen fuera de CI.
+# (`playwright.config.js` y las configs de finanzas) siguen fuera de CI; la app
+# del paciente contra el backend real corre en `e2e-portal.yml`.
 #
 # Corre sólo si cambia el frontend o este workflow: un PR de backend no puede
 # romper estas pantallas porque la API está interceptada.
@@ -55,12 +56,8 @@ jobs:
       - name: Portal del financiador, coberturas, landing e Inicio
         run: npx playwright test -c playwright.financiadores-ui.config.js --reporter=line
 
-      - name: App clínica
-        # Corre aunque falle el paso anterior, para ver todos los rojos de una vez.
-        if: ${{ !cancelled() }}
-        run: npx playwright test -c playwright.app-clinica.config.js --reporter=line
-
       - name: Portal del paciente
+        # Corre aunque falle el paso anterior, para ver todos los rojos de una vez.
         if: ${{ !cancelled() }}
         run: npx playwright test -c playwright.portal.config.js --reporter=line
 
@@ -71,7 +68,6 @@ jobs:
           name: playwright-e2e-ui
           path: |
             ${{ runner.temp }}/salud-financiadores-ui
-            ${{ runner.temp }}/salud-app-clinica
             ${{ runner.temp }}/salud-portal
           retention-days: 7
           if-no-files-found: ignore

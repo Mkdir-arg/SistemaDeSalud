@@ -146,8 +146,13 @@ Dos workflows corren en cada push a `main` y en cada pull request:
   Django y generación del esquema OpenAPI. Va aparte porque tarda segundos y no
   necesita una base: juntarlo haría esperar lo rápido por lo lento.
 
-Los recorridos de Playwright **no** corren ahí todavía: necesitan el stack completo
-y datos sembrados, que son unos 15 minutos.
+Los recorridos de Playwright que necesitan el stack completo y datos sembrados
+(unos 15 minutos) **no** corren ahí todavía. Sí corren dos workflows de Playwright:
+
+- **`e2e-ui.yml`** — los recorridos con la API interceptada: alcanza con Vite.
+- **`e2e-portal.yml`** — la app del paciente (`playwright.portal-app.config.js`)
+  contra el backend real, en SQLite, con un escenario mínimo: `seed_guardia` y
+  `seed_portal_e2e`. Corre también si cambia el backend.
 
 ## El estado de hoy
 

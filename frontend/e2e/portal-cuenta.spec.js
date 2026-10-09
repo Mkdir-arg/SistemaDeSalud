@@ -55,6 +55,11 @@ function conSesion(estado, extra = {}) {
     "GET /cuenta/": () => ({ body: estado.cuenta }),
     "GET /perfil/": () => ({ body: PERFIL }),
     "POST /cuenta/salir/": () => ({ status: 204 }),
+    // Lo que pide el Inicio de la app (#122): vacío, estas pruebas son de la cuenta.
+    "GET /turnos/": () => ({ body: { turnos: [] } }),
+    "GET /resultados/": () => ({ body: { resultados: [] } }),
+    "GET /cobertura/": () => ({ body: { coberturas: [] } }),
+    "GET /llamado/": () => ({ body: { estado: "sin_fila" } }),
     ...extra,
   };
 }
@@ -148,7 +153,7 @@ test("una contraseña débil no gasta el enlace: se reintenta con el mismo token
   await expect(page.getByText("La contraseña es demasiado corta.")).toBeVisible();
   await expect(page.getByLabel("Contraseña", { exact: true })).toHaveAttribute("aria-invalid", "true");
   await elegirClave(page, "una-clave-larga");
-  await expect(page).toHaveURL("/mi/cuenta");
+  await expect(page).toHaveURL("/mi/inicio");
   expect(de(pedidos, "POST /cuenta/verificar-email/").map((p) => p.body.token)).toEqual(["tok-debil", "tok-debil"]);
 });
 
@@ -221,17 +226,19 @@ test("ingresar con credenciales inválidas (o sin confirmar) ayuda a quien reci�
   expect(await page.evaluate(() => sessionStorage.getItem("hen.portal.access"))).toBeNull();
 });
 
-test("ingresar con la cuenta validada va a «tu cuenta está lista» y saluda por nombre", async ({ page }) => {
+test("ingresar con la cuenta validada va al inicio de la app y saluda por nombre", async ({ page }) => {
   await api(page, conSesion({ cuenta: VALIDADA }));
   await ingresar(page);
+  await expect(page).toHaveURL("/mi/inicio");
+  await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
+  await page.getByRole("link", { name: "Mi cuenta" }).click();
   await expect(page).toHaveURL("/mi/cuenta");
-  await expect(page.getByRole("heading", { name: "Hola, Ana María" })).toBeVisible();
-  await expect(page.getByText("Tu cuenta está lista")).toBeVisible();
+  await expect(page.getByText("Ana María Pérez")).toBeVisible();
   await expect(page.getByText("34.521.521")).toBeVisible();
   await expect(page.getByText("14/03/1990")).toBeVisible();
-  // Entrar a una pantalla que no le corresponde la devuelve a la suya.
+  // Con la identidad validada, las pantallas de validación la devuelven al inicio.
   await page.goto("/mi/validar-identidad");
-  await expect(page).toHaveURL("/mi/cuenta");
+  await expect(page).toHaveURL("/mi/inicio");
 });
 
 test("olvidé mi contraseña y restablecer con el token del enlace", async ({ page }) => {
@@ -292,7 +299,7 @@ test("validar identidad: muestra «validando…» y llega a la cuenta lista", as
   await expect(page.getByLabel("Número de documento")).toHaveValue("34.521.521");
   await page.getByRole("button", { name: "Validar identidad" }).click();
   await expect(page.getByText("Validando tu identidad con RENAPER…")).toBeVisible();
-  await expect(page).toHaveURL("/mi/cuenta");
+  await expect(page).toHaveURL("/mi/inicio");
   await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
   const cuerpo = de(pedidos, "POST /cuenta/validar-identidad/")[0].body;
   expect(cuerpo).toEqual({ documento: "34521521", sexo: "F", numero_tramite: "00123456789" });
@@ -357,7 +364,7 @@ test("validar identidad: RENAPER no responde, no cuenta como intento y se puede 
   await expect(page.getByRole("heading", { name: "No pudimos consultar a RENAPER" })).toBeVisible();
   await expect(page.getByText(/No cuenta como intento/)).toBeVisible();
   await page.getByRole("button", { name: "Reintentar" }).click();
-  await expect(page).toHaveURL("/mi/cuenta");
+  await expect(page).toHaveURL("/mi/inicio");
   expect(llamadas).toBe(2);
 });
 
@@ -432,7 +439,7 @@ test("401: renueva una sola vez y reintenta con el token nuevo", async ({ page }
     "POST /cuenta/renovar/": () => ({ body: { access: "hp_nuevo", refresh: "hp_r_nuevo", access_vence: SESION.access_vence, cuenta: VALIDADA } }),
   });
   await page.goto("/mi/cuenta");
-  await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
+  await expect(page.getByText("Ana María Pérez")).toBeVisible();
   const renovaciones = de(pedidos, "POST /cuenta/renovar/");
   expect(renovaciones).toHaveLength(1);
   expect(renovaciones[0].body).toEqual({ refresh: "hp_r_viejo" });
@@ -499,6 +506,7 @@ test("cerrar sesión revoca la sesión y olvida los tokens", async ({ page }) =>
   const pedidos = await api(page, conSesion({ cuenta: VALIDADA }));
   await ingresar(page);
   await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
+  await page.getByRole("link", { name: "Mi cuenta" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(page).toHaveURL("/mi/ingresar");
   await expect(page.getByText("Cerraste sesión.")).toBeVisible();
@@ -522,7 +530,7 @@ test("cerrar sesión durante una renovación espera el token rotado y sale con �
     "POST /cuenta/salir/": () => ({ status: 204 }),
   });
   await page.goto("/mi/cuenta");
-  await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
+  await expect(page.getByText("Ana María Pérez")).toBeVisible();
   vencido = true;
   // Un pedido protegido vence y dispara la renovación (mismo cliente que la app).
   await page.evaluate(() => { import("/src/api/portal.js").then(({ portal }) => portal.get("/perfil/").catch(() => null)); });

@@ -13,7 +13,7 @@ entregan por el canal de la demo; no están en este documento.
 | 0–1 | Apertura | — |
 | 1–4 | Clínica: configuración | `admin@salud.local` en Hospital Central |
 | 4–9 | Clínica: uso | la misma |
-| 9–12 | Paciente | ninguna: la app para pacientes |
+| 9–12 | Paciente | `andrea.paniagua@paciente.test`, en el portal del paciente, y `cardio.med@hospital.gob.ar` para llamarla |
 | 12–15 | Financiador | `admin@mutualdelvalle.test`, en ventana privada |
 
 ## Antes de empezar
@@ -22,9 +22,12 @@ entregan por el canal de la demo; no están en este documento.
    **Hospital Central**, **Ingresar**.
 2. **Ventana 2, privada:** entrá con `admin@mutualdelvalle.test`. Dos pestañas de una misma
    ventana comparten la sesión; por eso tiene que ser otra ventana.
-3. **App para pacientes:** abrí `/demo/app-clinica` en el celular o en el modo celular del
-   navegador.
-4. Si ensayaste, pedí que recarguen el entorno **con la misma ancla**. Lo que se opera en el
+3. **Portal del paciente:** en el celular, o en el modo celular del navegador, abrí `/mi` →
+   **Ingresar** y entrá con `andrea.paniagua@paciente.test` y la clave de la demo. Su
+   sesión es aparte: no se mezcla con la del hospital aunque estén en el mismo navegador.
+4. **Ventana 3, privada:** entrá con `cardio.med@hospital.gob.ar` (Laura Méndez, cardióloga de
+   Central) y dejala en **Operación → Filas**, área Cardiología. Es la que llama a Andrea.
+5. Si ensayaste, pedí que recarguen el entorno **con la misma ancla**. Lo que se opera en el
    ensayo queda con la hora real y desordena los datos.
 
 ## 0–1 · Apertura
@@ -79,25 +82,30 @@ de Consultorios externos, abierta hoy a las 08:01.
 
 ## 9–12 · Paciente
 
-En la app para pacientes:
+En el portal del paciente, con **Andrea Paniagua**: la misma persona del caso de radiografía.
 
-1. **Empezar** (o *Ingresar*) → DNI **34521521**. La app reconoce a **Martina Sosa** y pide un
-   código de 6 dígitos: escribí cualquiera. **Sí, soy yo**.
-2. **Inicio:** **señalá** el turno de hoy (Clínica médica con la Dra. Paula Ríos) y el aviso de
-   un resultado listo.
-3. **Sacar otro turno →** Pediatría → Dra. Laura Molina → un horario → **Continuar**. **Señalá**
-   *A pagar en la clínica*: copago de OSDE 210, $ 3.500. **Decí:** «El paciente sabe cuánto va a
-   pagar antes de confirmar».
-4. Volvé al inicio → **Dar presente** → **Dar presente**. **Señalá** *Estás en la fila 3.º* y
-   el aviso de a qué consultorio lo van a llamar. **Decí:** «Avisa que llegó sin pasar por
-   recepción y espera donde quiere».
-5. **Resultados →** *Análisis de sangre completo*.
+1. **Inicio:** **señalá** su próximo turno (el primer horario libre a partir de tres días después de la carga; en
+   la carga verificada, el lunes a las 08:00), en
+   *Dra. Méndez · Cardiología*, **Hospital Central**. **Decí:** «Es la misma paciente que vimos en
+   el hospital, con sus datos reales, de todas las instituciones donde se atendió».
+2. En la tarjeta del turno, **Confirmar asistencia** y, en el turno, **Confirmar asistencia**. Pasá a la ventana 1, **Operación → Turnos**, y
+   abrí ese día en la agenda de la Dra. Méndez: el turno dice **Confirmado por el paciente**.
+   **Decí:** «Lo que hace el paciente llega al hospital en el acto. Nadie tuvo que llamarlo».
+   No lo canceles: se consume el escenario.
+3. **Resultados:** **señalá** la *Radiografía de tórax* «Solicitado el …, todavía sin resultado»,
+   que es la del caso, y el *Hemograma completo* con resultado **Normal** → el ícono de descarga. **Decí:**
+   «Baja el archivo que cargó el hospital, no un resumen armado aparte».
+4. **Cobertura:** **señalá** Mutual del Valle, Plan Integral, **MV00011**, *Confirmada por tu
+   institución*. **Decí:** «Es la misma afiliación que verificó la administrativa».
+5. **Sala de espera:** Andrea está esperando en Cardiología. Dejá esa pantalla abierta en el
+   celular y pasá a la ventana 3: en **Box 1**, **Llamar siguiente** (en esta carga llama a Luis
+   Gómez, que está antes); en **Box 2**, **Llamar siguiente**: es Andrea. En menos de 10 segundos
+   el celular muestra **Te están llamando · Box 2 · Hospital Central**. **Decí:** «Espera donde
+   quiere; el aviso le llega al teléfono». Después, en cada caso, **Volver a la cola**: deja la
+   demo como estaba.
 
-**Nota interna, no para decir:** la app es una versión de demostración, con datos propios.
-Martina Sosa y OSDE 210 no son los pacientes ni las coberturas de Central, y lo que se hace ahí
-no escribe en el hospital. No digas que es la misma persona que viste en Central. Si
-preguntan por la puesta en marcha, contestá: «El acceso definitivo y la integración con la
-historia clínica y los turnos de su institución se definen en la implementación».
+**Si preguntan:** para crear su cuenta, el paciente valida la identidad con los datos del DNI
+contra RENAPER. Sacar turno desde el portal todavía no está disponible.
 
 ## 12–15 · Financiador
 
@@ -124,6 +132,12 @@ la recibe y el financiador que la paga».
 - **El financiador entra en *Planes* y no en *Inicio*:** es lo esperable hoy (lo cambia el #92).
   Andá directo a *Autorizaciones*.
 - **Andrea no tiene autorización pendiente:** la respondieron en un ensayo. Mostrá a Carina Ojeda.
+- **El turno de Andrea ya figura confirmado o cancelado:** lo usaron en un ensayo. Pedí que corran
+  `seed_portal_demo`: le da un turno reservado nuevo sin tocar el resto de la carga.
+- **Andrea no aparece en la fila de Cardiología, o el portal dice «No estás en una sala de
+  espera»:** la atendieron o la dieron por ausente en un ensayo, o pasaron más de 24 horas desde la
+  carga. `seed_portal_demo` la vuelve a poner en la sala. Si la llamaron y no la devolvieron a la
+  cola, el portal sigue mostrando el llamado hasta 8 horas: **Volver a la cola** en su caso.
 - **Internación:** si te piden mostrarla, no uses la vista *Todos*: en esta carga una paciente
   figura en dos camas a la vez y aparece una tarjeta roja «Conflicto». Filtrá por Pediatría.
 - **Un número no coincide:** revisá institución, área, mes y filtros antes de citarlo. Si sigue

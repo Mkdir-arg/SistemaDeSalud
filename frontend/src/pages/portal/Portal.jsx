@@ -2,18 +2,22 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 
-import { Icon } from "@/components/icons";
 import { EVENTO_PORTAL_VENCIDO } from "@/api/portal";
 
-import { NOMBRE_PORTAL } from "./comun";
+import { Cobertura } from "./Cobertura";
+import { ConIdentidadValidada, NOMBRE_PORTAL } from "./comun";
 import { Bienvenida, Ingresar, Olvide, Registro, ReenviarVerificacion, Restablecer, VerificarEmail } from "./Cuenta";
-import { Continuar, CuentaLista, ValidarIdentidad } from "./Identidad";
+import { Estudios } from "./Estudios";
+import { Continuar, MiCuenta, ValidarIdentidad } from "./Identidad";
+import { Inicio } from "./Inicio";
+import { Llamado } from "./Llamado";
+import { DetalleTurno, MisTurnos } from "./Turnos";
 
 /**
- * Portal del paciente (#120): cuenta propia con email y contraseña, e identidad
- * validada contra RENAPER. Es público (no pasa por la sesión de HEN) y usa su
- * propio cliente, `api/portal.js`. Las pantallas de datos (turnos, resultados)
- * llegan con el #122.
+ * Portal del paciente: cuenta propia con email y contraseña e identidad
+ * validada contra RENAPER (#120), y la app con sus datos en toda la red (#122).
+ * Es público (no pasa por la sesión de HEN) y usa su propio cliente,
+ * `api/portal.js`.
  */
 export default function Portal() {
   useEffect(() => {
@@ -23,6 +27,7 @@ export default function Portal() {
   }, []);
 
   return <div className="portal-paciente">
+    <SesionVencida />
     <Routes>
       <Route element={<Marco />}>
         <Route index element={<Bienvenida />} />
@@ -34,24 +39,26 @@ export default function Portal() {
         <Route path="restablecer" element={<Restablecer />} />
         <Route path="continuar" element={<Continuar />} />
         <Route path="validar-identidad" element={<ValidarIdentidad />} />
-        <Route path="cuenta" element={<CuentaLista />} />
-        <Route path="*" element={<Navigate to="/mi" replace />} />
       </Route>
+      <Route element={<MarcoApp />}>
+        <Route path="inicio" element={<Inicio />} />
+        <Route path="turnos" element={<MisTurnos />} />
+        <Route path="turnos/:id" element={<DetalleTurno />} />
+        <Route path="estudios" element={<Estudios />} />
+        <Route path="cobertura" element={<Cobertura />} />
+        <Route path="llamado" element={<Llamado />} />
+        <Route path="cuenta" element={<MiCuenta />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/mi" replace />} />
     </Routes>
   </div>;
 }
 
-/** Isotipo neutro mientras no haya marca. */
-function Marca() {
-  return <span aria-hidden="true" className="flex size-8 flex-none items-center justify-center rounded-md bg-accent text-white"><Icon name="shieldCheck" size={18} /></span>;
-}
-
 /**
- * Marco del portal: una columna angosta, pensada primero para el celular. Si la
- * sesión vence y no se puede renovar, el cliente avisa con un evento y desde
- * acá se vuelve a ingresar.
+ * Si la sesión vence y no se puede renovar, el cliente avisa con un evento y
+ * desde acá se vuelve a ingresar, desde cualquier pantalla.
  */
-function Marco() {
+function SesionVencida() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   useEffect(() => {
@@ -62,13 +69,29 @@ function Marco() {
     window.addEventListener(EVENTO_PORTAL_VENCIDO, vencida);
     return () => window.removeEventListener(EVENTO_PORTAL_VENCIDO, vencida);
   }, [navigate, qc]);
+  return null;
+}
 
+/**
+ * Marco de la cuenta: una columna angosta, pensada primero para el celular. Como
+ * en Figma, sin barra superior: cada pantalla trae su título y su «atrás».
+ */
+function Marco() {
   return <div className="flex min-h-dvh flex-col bg-fondo text-texto">
-    <header className="border-b border-borde bg-superficie">
-      <div className="mx-auto flex h-14 max-w-[28rem] items-center gap-2.5 px-5 text-sm font-bold"><Marca />{NOMBRE_PORTAL}</div>
-    </header>
     <main className="mx-auto flex w-full max-w-[28rem] flex-1 flex-col md:py-8">
       <Outlet />
     </main>
   </div>;
+}
+
+/**
+ * Marco de la app: sólo con la identidad validada. Como en Figma, sin pestañas:
+ * el inicio lleva a cada sección y cada sección vuelve al inicio.
+ */
+function MarcoApp() {
+  return <ConIdentidadValidada>{(cuenta) => <div className="flex min-h-dvh flex-col bg-fondo text-texto">
+    <main className="mx-auto flex w-full max-w-[28rem] flex-1 flex-col px-5 pb-8 pt-4 md:py-10">
+      <Outlet context={cuenta} />
+    </main>
+  </div>}</ConIdentidadValidada>;
 }

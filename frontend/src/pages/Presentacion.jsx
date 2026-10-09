@@ -245,7 +245,7 @@ export default function Presentacion() {
               <h3 className="flex items-center gap-2 text-xl font-bold tracking-tight"><Icon name={icono} size={18} className="shrink-0 text-brand-teal" />{titulo}</h3>
               <p className="mt-2 text-sm leading-relaxed text-texto-suave">{detalle}</p>
               <div className="mt-auto pt-6">{destacado && <Pulso className="mb-2 h-6 w-full text-brand-teal" />}
-                {enlaceApp ? <div className="flex items-end justify-between gap-3"><Link to="/demo/app-clinica" className={`group inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver la app<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link><GraficoBeneficio tipo={grafico} /></div> : <GraficoBeneficio tipo={grafico} />}
+                {enlaceApp ? <div className="flex items-end justify-between gap-3"><Link to="/mi" className={`group inline-flex items-center gap-1 rounded-sm text-sm font-semibold text-accent hover:underline ${FOCO}`}>Ver la app<span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span></Link><GraficoBeneficio tipo={grafico} /></div> : <GraficoBeneficio tipo={grafico} />}
               </div>
             </article>)}
           </div>

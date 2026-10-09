@@ -6,7 +6,9 @@ import {
   erroresFormulario, limpiarHash, mensajePortal, rutaSegunCuenta, sesionPortal,
   useElegirClave, useIngresar, usePedidoPublico,
 } from "@/api/portal";
-import { Boton, Cabecera, Pie } from "@/pages/app-clinica/ui";
+import foto from "@/assets/portal/bienvenida.png";
+
+import { Boton, Cabecera, Pie, RADIO, TAMANO, TEXTO } from "./ui";
 
 import { Alerta, Aviso, CampoTexto, Exito, NOMBRE_PORTAL, Pantalla, Resultado } from "./comun";
 
@@ -17,18 +19,28 @@ import { Alerta, Aviso, CampoTexto, Exito, NOMBRE_PORTAL, Pantalla, Resultado } 
 
 const LINK = "font-semibold text-accent hover:underline";
 
-/** Bienvenida. Con una sesión abierta en la pestaña, sigue de largo a su cuenta. */
+/**
+ * Bienvenida (Figma «1a · Bienvenida — A · Foto a sangre»). La foto es la del
+ * diseño, marcada «reemplazar»: cambia cuando se acuerde la marca (#59). Con una
+ * sesión abierta en la pestaña, sigue de largo a su cuenta.
+ */
 export function Bienvenida() {
   if (sesionPortal.access) return <Navigate to="/mi/continuar" replace />;
-  return <Pantalla>
-    <p className="mt-6 text-xs font-bold uppercase tracking-[.15em] text-accent">{NOMBRE_PORTAL}</p>
-    <h1 className="mt-2 text-xxl font-bold leading-tight">Tu cuenta de paciente</h1>
-    <p className="mt-3 text-sm leading-relaxed text-texto-suave">Creá tu cuenta con tu email y validá tu identidad con los datos de tu DNI. Es una sola vez: después, tus turnos y resultados van a estar acá.</p>
-    <Pie>
-      <Boton to="/mi/crear-cuenta">Crear cuenta</Boton>
-      <Boton to="/mi/ingresar" variante="secundario">Ya tengo cuenta</Boton>
-    </Pie>
-  </Pantalla>;
+  return <div className={`flex flex-1 flex-col bg-superficie ${RADIO.marcoMd} md:border md:border-borde md:overflow-hidden`}>
+    <div className="relative h-[472px] flex-none overflow-hidden rounded-b-[28px] bg-accent-50">
+      <img src={foto} alt="" className="size-full object-cover object-[center_30%]" />
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[92px] bg-gradient-to-b from-transparent to-white" />
+    </div>
+    <div className="flex flex-1 flex-col px-6 pb-8 pt-7">
+      <p className={`${TAMANO.t13} font-bold uppercase tracking-[.08em] text-accent`}>{NOMBRE_PORTAL}</p>
+      <h1 className="mt-3 text-cifra-lg font-extrabold leading-9">Tu cuenta de paciente</h1>
+      <p className={`mt-3 ${TAMANO.t16} text-texto-suave`}>Creá tu cuenta con tu email y validá tu identidad con los datos de tu DNI. Es una sola vez: después, tus turnos y resultados van a estar acá.</p>
+      <Pie>
+        <Boton to="/mi/crear-cuenta">Crear cuenta</Boton>
+        <p className="text-center text-sm leading-[21px] text-texto-suave">¿Ya tenés cuenta? <Link to="/mi/ingresar" className={LINK}>Ingresar</Link></p>
+      </Pie>
+    </div>
+  </div>;
 }
 
 /** Formulario de un solo email (reenviar verificación, olvidé mi contraseña). */
@@ -44,7 +56,7 @@ function FormularioEmail({ titulo, atras, explicacion, path, boton, despues }) {
         {despues}
       </Resultado>
       : <form onSubmit={enviar} className="flex flex-1 flex-col" noValidate>
-        <p className="text-sm text-texto-suave">{explicacion}</p>
+        <p className={TEXTO.cuerpo}>{explicacion}</p>
         <CampoTexto etiqueta="Email" type="email" autoComplete="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} error={campos.email} />
         <Alerta>{general}</Alerta>
         <Pie><Boton type="submit" disabled={!email.trim() || pedido.isPending}>{pedido.isPending ? "Enviando…" : boton}</Boton></Pie>
@@ -78,12 +90,12 @@ export function Registro() {
   </Pantalla>;
   return <Pantalla><Cabecera titulo="Crear cuenta" atras="/mi" />
     <form onSubmit={enviar} className="flex flex-1 flex-col" noValidate>
-      <p className="text-sm text-texto-suave">Escribí tu email. Te mandamos un enlace para elegir tu contraseña.</p>
+      <p className={TEXTO.cuerpo}>Escribí tu email. Te mandamos un enlace para elegir tu contraseña.</p>
       <CampoTexto etiqueta="Email" type="email" autoComplete="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} error={campos.email} />
       <Alerta>{general}</Alerta>
       <Pie>
         <Boton type="submit" disabled={!email.trim() || pedido.isPending}>{pedido.isPending ? "Enviando…" : "Crear cuenta"}</Boton>
-        <p className="text-center text-xs text-texto-suave">¿Ya tenés cuenta? <Link to="/mi/ingresar" className={LINK}>Ingresar</Link></p>
+        <p className="text-center text-sm leading-[21px] text-texto-suave">¿Ya tenés cuenta? <Link to="/mi/ingresar" className={LINK}>Ingresar</Link></p>
       </Pie>
     </form>
   </Pantalla>;
@@ -165,7 +177,7 @@ function ElegirClave({ token }) {
       : elegir.error?.data?.codigo === "enlace_invalido"
         ? <Resultado titulo="El enlace ya no sirve" acciones={pedirOtro}><p role="alert">{mensajePortal(elegir.error)}</p><p>Se usó, venció o no es válido.</p></Resultado>
         : <form onSubmit={enviar} className="flex flex-1 flex-col" noValidate>
-          <p className="text-sm text-texto-suave">Elegí la contraseña de tu cuenta. Con esto también confirmás tu email.</p>
+          <p className={TEXTO.cuerpo}>Elegí la contraseña de tu cuenta. Con esto también confirmás tu email.</p>
           {clave.campos(campos.password)}
           <Alerta>{general}</Alerta>
           <Pie><Boton type="submit" disabled={!clave.completo || elegir.isPending}>{elegir.isPending ? "Guardando…" : "Guardar y entrar"}</Boton></Pie>
@@ -208,10 +220,10 @@ export function Ingresar() {
       <Alerta>{general}</Alerta>
       {/* Una cuenta sin confirmar da el mismo 401 que una clave mala (no se
           revela qué cuentas existen): la ayuda cubre a quien recién se registró. */}
-      {ingresar.error?.data?.codigo === "credenciales_invalidas" && <p className="mt-3 text-xs text-texto-suave">¿Recién creaste tu cuenta? Abrí el enlace que te mandamos para elegir tu contraseña. <Link to="/mi/reenviar-verificacion" className={LINK}>Reenviar el correo</Link></p>}
+      {ingresar.error?.data?.codigo === "credenciales_invalidas" && <p className={`mt-3 ${TEXTO.nota}`}>¿Recién creaste tu cuenta? Abrí el enlace que te mandamos para elegir tu contraseña. <Link to="/mi/reenviar-verificacion" className={LINK}>Reenviar el correo</Link></p>}
       <Pie>
         <Boton type="submit" disabled={!datos.email.trim() || !datos.password || ingresar.isPending}>{ingresar.isPending ? "Ingresando…" : "Ingresar"}</Boton>
-        <p className="text-center text-xs text-texto-suave">¿No tenés cuenta? <Link to="/mi/crear-cuenta" className={LINK}>Creala</Link></p>
+        <p className="text-center text-sm leading-[21px] text-texto-suave">¿No tenés cuenta? <Link to="/mi/crear-cuenta" className={LINK}>Creala</Link></p>
       </Pie>
     </form>
   </Pantalla>;
@@ -248,7 +260,7 @@ function RestablecerConToken({ token }) {
         : pedido.error?.data?.codigo === "enlace_invalido"
           ? <Resultado titulo="El enlace ya no sirve" acciones={pedirOtro}><p role="alert">{mensajePortal(pedido.error)}</p><p>Se usó, venció o no es válido.</p></Resultado>
           : <form onSubmit={enviar} className="flex flex-1 flex-col" noValidate>
-            <p className="text-sm text-texto-suave">Elegí una contraseña nueva para tu cuenta.</p>
+            <p className={TEXTO.cuerpo}>Elegí una contraseña nueva para tu cuenta.</p>
             {clave.campos(campos.password, "Contraseña nueva")}
             <Alerta>{general}</Alerta>
             <Pie><Boton type="submit" disabled={!clave.completo || pedido.isPending}>{pedido.isPending ? "Guardando…" : "Guardar contraseña"}</Boton></Pie>

@@ -98,7 +98,7 @@ function sesionVencida() {
  * Pedido al portal. `publico` no manda token ni intenta renovar: un 401 ahí es
  * la respuesta del endpoint (credenciales inválidas), no una sesión vencida.
  */
-async function pedir(method, path, body, { publico = false, renovado = false, sinRenovar = false } = {}) {
+async function pedir(method, path, body, { publico = false, renovado = false, sinRenovar = false, binario = false } = {}) {
   const headers = { "Content-Type": "application/json" };
   const usado = publico ? null : sesionPortal.access;
   if (usado) headers.Authorization = `Bearer ${usado}`;
@@ -110,22 +110,33 @@ async function pedir(method, path, body, { publico = false, renovado = false, si
 
   if (res.status === 401 && !publico && !sinRenovar) {
     // Si mientras tanto otro pedido ya renovó, alcanza con reintentar.
-    if (!renovado && sesionPortal.access && sesionPortal.access !== usado) return pedir(method, path, body, { renovado: true });
+    if (!renovado && sesionPortal.access && sesionPortal.access !== usado) return pedir(method, path, body, { renovado: true, binario });
     const r = renovado ? { estado: "rechazada" } : await renovar();
-    if (r.estado === "renovada") return pedir(method, path, body, { renovado: true });
+    if (r.estado === "renovada") return pedir(method, path, body, { renovado: true, binario });
     if (r.estado === "fallo") throw r.error;
     sesionVencida();
   }
 
+  if (binario && res.ok) return { blob: await res.blob(), nombre: nombreDeArchivo(res) };
   const data = await parse(res);
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
+}
+
+/** El nombre que manda el backend en `Content-Disposition`, si lo manda. */
+function nombreDeArchivo(res) {
+  const cabecera = res.headers.get("Content-Disposition") || "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cabecera);
+  if (utf8) return decodeURIComponent(utf8[1]);
+  return /filename="?([^";]+)"?/i.exec(cabecera)?.[1] || null;
 }
 
 export const portal = {
   get: (path) => pedir("GET", path),
   post: (path, body) => pedir("POST", path, body),
   publico: (path, body) => pedir("POST", path, body, { publico: true }),
+  /** Un archivo: `{blob, nombre}`. Pasa por la misma renovación que el resto. */
+  archivo: (path) => pedir("GET", path, null, { binario: true }),
 };
 
 /**
@@ -166,7 +177,7 @@ export function erroresFormulario(error, campos) {
  */
 export function rutaSegunCuenta(cuenta) {
   if (cuenta?.identidad !== "validada") return "/mi/validar-identidad";
-  return "/mi/cuenta";
+  return "/mi/inicio";
 }
 
 const CLAVE_CUENTA = ["portal", "cuenta"];
@@ -181,6 +192,69 @@ export function useCuentaPortal() {
 
 export function usePerfilPortal({ enabled = true } = {}) {
   return useQuery({ queryKey: ["portal", "perfil"], queryFn: () => portal.get("/perfil/"), enabled });
+}
+
+// Datos del paciente en toda la red (#121/#122). Todos exigen la identidad
+// validada: la app sólo los pide detrás de `ConIdentidadValidada`.
+
+export const CLAVE_TURNOS = ["portal", "turnos"];
+
+export function useTurnosPortal() {
+  return useQuery({ queryKey: CLAVE_TURNOS, queryFn: () => portal.get("/turnos/").then((d) => d.turnos) });
+}
+
+/** Confirmar o cancelar (`accion`). Devuelve el turno actualizado y lo reemplaza en la lista. */
+export function useAccionTurno(accion) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => portal.post(`/turnos/${id}/${accion}/`),
+    onSuccess: (turno) => qc.setQueryData(CLAVE_TURNOS, (lista) => lista?.map((t) => (t.id === turno.id ? turno : t))),
+    // Un 409 dice que el turno cambió del lado del hospital: se relee.
+    onError: () => qc.invalidateQueries({ queryKey: CLAVE_TURNOS }),
+  });
+}
+
+export const LLAMADO_CADA_MS = 5000;
+
+/** ¿Me están llamando? Mientras la pantalla está abierta, cada 5 segundos. */
+export function useLlamadoPortal({ consultar = true } = {}) {
+  return useQuery({
+    queryKey: ["portal", "llamado"],
+    queryFn: () => portal.get("/llamado/"),
+    refetchInterval: consultar ? LLAMADO_CADA_MS : false,
+    // Una pestaña en segundo plano no consulta; al volver, consulta en el acto.
+    refetchIntervalInBackground: false,
+  });
+}
+
+export function useResultadosPortal() {
+  return useQuery({ queryKey: ["portal", "resultados"], queryFn: () => portal.get("/resultados/").then((d) => d.resultados) });
+}
+
+export function useCoberturaPortal() {
+  return useQuery({ queryKey: ["portal", "cobertura"], queryFn: () => portal.get("/cobertura/").then((d) => d.coberturas) });
+}
+
+/** Baja el archivo real del estudio y lo entrega al navegador como descarga. */
+export function useDescargarResultado() {
+  return useMutation({
+    mutationFn: async (estudio) => {
+      const { blob, nombre } = await portal.archivo(`/resultados/${estudio.id}/archivo/`);
+      guardarArchivo(blob, nombre || `estudio-${estudio.id}`);
+    },
+  });
+}
+
+/** Entrega un archivo al navegador como descarga. Las barras del nombre no se respetan. */
+export function guardarArchivo(blob, nombre) {
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombre.replace(/[\\/]/g, "_");
+  document.body.append(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Pedido público sin efectos en la cache: registro, reenvío, olvido, verificar, restablecer. */

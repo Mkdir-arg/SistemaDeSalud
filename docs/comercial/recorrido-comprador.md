@@ -140,21 +140,23 @@ lo que paga el financiador de lo que paga el paciente, con el cupo que le queda.
 
 ---
 
-## 3. El paciente: la app en el celular
+## 3. El paciente: su portal en el celular
 
-Abrí la app para pacientes desde la landing (**Ver la app**) o desde `/demo/app-clinica`, en el
-celular. Para entrar usá el DNI ficticio **34521521** (Martina Sosa) y cualquier código de 6
-dígitos.
+Abrí el portal del paciente desde la landing (**Ver la app**) o desde `/mi`, en el celular.
+Entrá como **Andrea Paniagua**: `andrea.paniagua@paciente.test`, con la clave de la demo. Es la
+misma persona que viste en Hospital Central y que vas a ver en Mutual del Valle: lo que se ve
+acá sale de la historia, la agenda y el padrón reales, de todas las instituciones de la red.
 
 | | |
 |---|---|
-| ![Inicio de la app](capturas/15-app-inicio.png) | ![Sacar turno](capturas/16-app-sacar-turno.png) |
-| **Inicio:** el turno del día, cómo llegar y los resultados nuevos. | **Sacar turno:** especialidad, profesional y horario, con lo que va a pagar antes de confirmar. |
-| ![En la fila](capturas/17-app-fila.png) | ![Resultados](capturas/18-app-resultados.png) |
-| **Presente y fila:** avisa que llegó y ve su lugar en la fila y a qué consultorio la van a llamar. | **Resultados:** los estudios listos, para ver y descargar. |
+| ![Inicio del portal](capturas/15-app-inicio.png) | ![Un turno](capturas/16-app-turno.png) |
+| **Inicio:** su próximo turno, con la institución que lo dio, y el resumen de estudios y cobertura. | **Turno:** confirma que va a ir o lo cancela hasta 24 horas antes, y la agenda del hospital lo ve en el acto. |
+| ![Estudios](capturas/17-app-estudios.png) | ![Cobertura](capturas/18-app-cobertura.png) |
+| **Estudios:** los que tienen resultado, con el archivo que cargó la institución, y los que esperan resultado. | **Cobertura:** financiador, plan y número de afiliada, con quién la confirmó. |
 
-La integración con la historia clínica y los turnos de tu institución se define en la
-implementación.
+Para crear una cuenta propia, la persona valida su identidad con los datos del DNI contra
+RENAPER. Sacar turno desde el portal, los avisos por WhatsApp y el código QR de llegada no están
+disponibles todavía.
 
 ---
 
@@ -181,8 +183,8 @@ reservas abiertas, con el detalle por afiliado.
 
 ## Qué se define en la implementación
 
-- **Integración:** el conector con los sistemas que ya usa la institución y el acceso definitivo
-  de los pacientes a la app. HEN ya ofrece una API completa y una fachada FHIR de lectura.
+- **Integración:** el conector con los sistemas que ya usa la institución y la puesta en producción
+  de RENAPER y del correo del portal del paciente. HEN ya ofrece una API completa y una fachada FHIR de lectura.
 - **Firma digital con certificado:** la firma profesional con matrícula ya queda registrada en
   cada entrada. El certificado criptográfico y su proveedor se eligen para cada proyecto.
 - **Facturación fiscal:** HEN registra prestaciones, cargos y cobros, y se integra con el

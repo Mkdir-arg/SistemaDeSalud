@@ -50,7 +50,7 @@
     background: radial-gradient(ellipse 70% 58% at 50% 46%, color-mix(in srgb, var(--color-accent) 9%, var(--color-fondo)), var(--color-fondo) 75%);
   }
   .login-pulso { color: color-mix(in srgb, var(--color-accent) 52%, transparent); }
-  .clinica-demo, .portal-paciente {
+  .portal-paciente {
     --color-fondo: #F8F6FD;
     --color-superficie: #FFFFFF;
     --color-superficie-2: #F8F6FD;
