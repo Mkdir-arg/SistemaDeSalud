@@ -988,6 +988,16 @@ test("Historia clínica no es una acción de la fila, ni para el admin", async (
   await expect(fila.getByRole("link", { name: "Persona Ficticia" })).toBeVisible();
 });
 
+test("las búsquedas de consumos, aranceles y catálogo no muestran restos de JSX", async ({ page }) => {
+  await escenario(page, { plataforma: true });
+  for (const seccion of ["consumos", "aranceles"]) {
+    await page.goto(`/financiadores/${seccion}?financiador=21`);
+    const buscar = page.getByRole("button", { name: "Buscar", exact: true });
+    await expect(buscar).toBeVisible();
+    expect(await buscar.locator("xpath=ancestor::form").innerText()).not.toContain("}");
+  }
+});
+
 test("la ficha conserva el menú completo del financiador", async ({ page }) => {
   await escenario(page, { rol: "admin" });
   await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
