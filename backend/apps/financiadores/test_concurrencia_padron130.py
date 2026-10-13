@@ -11,7 +11,7 @@ from uuid import uuid4
 from openpyxl import load_workbook
 
 from django.core.exceptions import ValidationError
-from django.db import close_old_connections, connection, transaction
+from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -239,6 +239,94 @@ class ConcurrenciaPadron130Tests(TransactionTestCase):
         self.assertFalse(miembro.acceso_padron_salud)
         self.assertTrue(padron.m.SaludPadron.objects.get(afiliado=self.a).dbt)
         self.assertEqual(cliente.get(f"/api/financiadores/{self.org.pk}/padron/{self.a.pk}/salud/").status_code, 403)
+
+    def _probar_importacion_y_contacto(self, version):
+        errores_sql = []
+        libro = load_workbook(BytesIO(generar_plantilla(
+            financiador=self.org, usuario=self.usuario, tipo="padron", version=version,
+        )))
+        hoja = libro["Carga"]
+        fila = {"N.º de afiliado": self.a.numero, "Documento": self.a.documento,
+                "Nombre y apellido": "A importado", "Vigente desde": self.a.desde.isoformat()}
+        if version == 2:
+            fila.update(titular_documento=self.b.documento, parentesco="hijo")
+        for columna, celda in enumerate(hoja[1], 1):
+            if celda.value in fila:
+                hoja.cell(2, columna, fila[celda.value])
+        salida = BytesIO()
+        libro.save(salida)
+        lote = previsualizar_importacion(financiador=self.org, usuario=self.usuario,
+            tipo="padron", archivo=salida.getvalue(), clave=uuid4())
+        self.assertEqual(lote.resumen["valida"], 1)
+
+        registrado, continuar = Event(), Event()
+        original = padron.registrar_historial
+
+        def pausar(obj, usuario, delta, motivo, *args, **kwargs):
+            resultado = original(obj, usuario, delta, motivo, *args, **kwargs)
+            if motivo == "Contacto concurrente con importación":
+                registrado.set()
+                if not continuar.wait(timeout=10):
+                    raise RuntimeError("No se liberó el commit del contacto.")
+            return resultado
+
+        def contacto():
+            close_old_connections()
+            try:
+                editar_ficha(afiliado=self.a, usuario=self.usuario, entrada={
+                    "revision": 1, "motivo": "Contacto concurrente con importación", "telefono": "111",
+                })
+            finally:
+                connection.close()
+
+        def liberar(execute, sql, params, many, context):
+            if '"financiadores_afiliado"' in sql and "FOR UPDATE" in sql:
+                continuar.set()
+            try:
+                return execute(sql, params, many, context)
+            except DatabaseError as exc:
+                errores_sql.append(type(exc.__cause__ or exc).__name__)
+                raise
+
+        with ThreadPoolExecutor(max_workers=1) as pool, patch.object(padron, "registrar_historial", side_effect=pausar):
+            futuro = pool.submit(contacto)
+            try:
+                self.assertTrue(registrado.wait(timeout=10))
+                with connection.execute_wrapper(liberar):
+                    aplicar_importacion(importacion=lote, usuario=self.usuario)
+                futuro.result(timeout=15)
+            finally:
+                continuar.set()
+        lote.refresh_from_db()
+        self.a.refresh_from_db()
+        self.assertEqual(errores_sql, [])
+        self.assertEqual(self.a.telefono, "111")
+        if version == 2:
+            self.assertEqual(lote.filas[0]["estado"], "rechazada")
+            self.assertEqual(lote.filas[0]["errores"], [
+                "El afiliado cambió desde la vista previa; generá una nueva importación para revisar el conflicto.",
+            ])
+            self.assertEqual((self.a.nombre, self.a.titular_id, self.a.revision), ("A", None, 2))
+            self.assertEqual(self.a.historial.count(), 1)
+            nuevo = previsualizar_importacion(financiador=self.org, usuario=self.usuario,
+                tipo="padron", archivo=salida.getvalue(), clave=uuid4())
+            self.assertEqual(nuevo.resumen["valida"], 1)
+            aplicar_importacion(importacion=nuevo, usuario=self.usuario)
+            nuevo.refresh_from_db()
+            self.a.refresh_from_db()
+            self.assertEqual(nuevo.filas[0]["estado"], "aplicada", nuevo.filas[0]["errores"])
+            self.assertEqual((self.a.titular_id, self.a.revision), (self.b.pk, 4))
+        else:
+            self.assertEqual(lote.filas[0]["estado"], "aplicada", lote.filas[0]["errores"])
+            self.assertEqual((self.a.titular_id, self.a.revision), (None, 3))
+        self.assertEqual(self.a.nombre, "A importado")
+        self.assertEqual(self.a.telefono, "111")
+
+    def test_importacion_v1_y_contacto_no_bloquean_auditoria(self):
+        self._probar_importacion_y_contacto(1)
+
+    def test_importacion_v2_y_contacto_no_bloquean_auditoria(self):
+        self._probar_importacion_y_contacto(2)
 
     def test_ediciones_misma_revision_solo_una_confirma(self):
         barrera = Barrier(2)

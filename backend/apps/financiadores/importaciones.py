@@ -475,7 +475,9 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
     for indice in posiciones:
         try:
             with transaction.atomic():
-                lote = Importacion.objects.select_for_update().select_related("financiador").get(pk=importacion.pk)
+                # El JOIN sólo carga contexto; bloquearlo también impediría
+                # confirmar auditorías de ediciones concurrentes del padrón.
+                lote = Importacion.objects.select_for_update(of=("self",)).select_related("financiador").get(pk=importacion.pk)
                 requerir_financiador(usuario, lote.financiador_id, escritura=True)
                 fila = lote.filas[indice]
                 motivo = revisiones.get(str(fila["fila"]), revisiones.get(fila["fila"], "")).strip()
