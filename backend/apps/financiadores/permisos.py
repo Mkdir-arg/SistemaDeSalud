@@ -4,6 +4,7 @@ from django.db.models import Q
 from apps.accounts.models import Membresia
 from apps.common import ROL_CAPACIDADES, tiene_capacidad
 from apps.finanzas.permisos import tiene_concesion_financiera
+from apps.simulacion.contexto import autor_real
 from .models import MembresiaFinanciador
 
 
@@ -49,7 +50,7 @@ def requerir_padron_protegido(usuario, financiador_id, bloque, escritura=False):
 
 
 def puede_gestionar_permisos_padron(usuario, financiador_id):
-    return bool(usuario.is_authenticated and usuario.is_active and MembresiaFinanciador.objects.filter(
+    return bool(usuario.is_authenticated and usuario.is_active and not plataforma(autor_real(usuario)) and MembresiaFinanciador.objects.filter(
         usuario=usuario, financiador_id=financiador_id, financiador__activo=True,
         activo=True, rol="admin",
     ).exists())
@@ -57,7 +58,7 @@ def puede_gestionar_permisos_padron(usuario, financiador_id):
 
 def requerir_admin_real(usuario, financiador_id):
     if not puede_gestionar_permisos_padron(usuario, financiador_id):
-        raise PermissionDenied("La designación sensible requiere un administrador con membresía real activa.")
+        raise PermissionDenied("La designación sensible requiere un administrador activo del financiador sin rol de plataforma.")
 
 
 def puede_cargar_manual(usuario, financiador_id):

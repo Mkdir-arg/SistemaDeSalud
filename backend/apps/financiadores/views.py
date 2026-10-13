@@ -25,7 +25,6 @@ from apps.accounts.models import Usuario
 from apps.instituciones.models import Institucion
 from apps.registros.models import EntradaHistoria, normalizar_documento
 from apps.simulacion.perfiles import DOMINIO, es_cuenta_referencia
-from apps.simulacion.contexto import autor_real
 from apps.casos.models import Caso
 from . import models as m
 from . import serializers as s
@@ -686,12 +685,6 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             if anterior and (d["rol"] != "admin" or not d["activo"]) and not m.MembresiaFinanciador.objects.filter(financiador=org, activo=True, rol="admin").exclude(referencias).exclude(pk=anterior.pk).exists():
                 raise ValidationError("Designá otro administrador antes de retirar este acceso.")
             membresia, _ = m.MembresiaFinanciador.objects.get_or_create(financiador=org, usuario=user, defaults={"rol": d["rol"], "activo": d["activo"], "creo_cuenta": nuevo})
-            actor = autor_real(request.user)
-            if plataforma(actor) and user.pk == actor.pk and any(
-                d.get(campo) is True and not getattr(membresia, campo)
-                for campo in ("acceso_padron_salud", "acceso_padron_cobranza")
-            ):
-                raise PermissionDenied("La plataforma necesita la designación de otro administrador del financiador para acceder a estos bloques.")
             membresia.rol, membresia.activo = d["rol"], d["activo"]
             membresia.resuelve_autorizaciones = d.get("resuelve_autorizaciones", membresia.resuelve_autorizaciones) if d["rol"] != "auditor" else False
             for campo in ("acceso_padron_salud", "acceso_padron_cobranza"):

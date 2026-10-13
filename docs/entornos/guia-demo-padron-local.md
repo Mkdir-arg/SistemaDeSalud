@@ -56,6 +56,6 @@ Las columnas nuevas no nulas mantienen defaults en PostgreSQL y en Python. La mi
 
 Cinco pruebas usan los modelos históricos anteriores para insertar afiliados, planes, membresías, historial y lotes sobre el esquema nuevo. Verifican compatibilidad de escritores y defaults sin permisos sensibles implícitos. El ensayo PostgreSQL ampliado pasó 165 pruebas, sin omisiones.
 
-La plataforma no puede concederse salud/cobranza a sí misma tras crear una membresía. La designación de otro administrador real conserva el acceso explícito; los administradores ordinarios mantienen su operatoria. Un test cubre rechazo, ausencia de efectos y designación independiente.
+La plataforma no administra las designaciones de salud/cobranza, incluso cuando tiene una membresía real. La designación de otro administrador del financiador conserva el acceso explícito; los administradores ordinarios mantienen su operatoria. Las pruebas cubren rechazo de autoconcesión y concesión a otra cuenta sin crear usuarios ni emitir activaciones, ausencia de efectos, revocación y designación independiente.
 
 El esquema OpenAPI usa nombres distintos para los enums de sexo del padrón y del paciente; el enum previo del paciente conserva su nombre. La generación estricta sin avisos pasa. Las pruebas de UI actualizadas verifican la corrección parcial con revisión y la clasificación opcional del plan.

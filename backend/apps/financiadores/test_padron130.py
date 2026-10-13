@@ -284,6 +284,18 @@ class Padron130ApiTests(APITestCase):
         datos["acceso_padron_salud"] = False
         self.assertEqual(self.client.post(self.base + "usuarios/", datos, format="json").status_code, 201)
         self.assertEqual(self.client.get(self.url + "salud/").status_code, 403)
+        self.assertEqual(m.EventoCobertura.objects.filter(accion="membresia_financiador").count(), 2)
+
+    def test_plataforma_con_membresia_no_puede_designar_otra_cuenta(self):
+        root = Usuario.objects.create_superuser("root-designador131@test.local", "clave")
+        m.MembresiaFinanciador.objects.create(financiador=self.org, usuario=root, rol="admin")
+        self.client.force_authenticate(root)
+        datos = {"email": "nueva131@test.local", "nombre": "Nueva cuenta", "rol": "admin", "acceso_padron_salud": True}
+        response = self.client.post(self.base + "usuarios/", datos, format="json")
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertFalse(Usuario.objects.filter(email=datos["email"]).exists())
+        org = self.client.get(self.base).data
+        self.assertFalse(org["gestiona_permisos_padron"])
 
     def test_plataforma_no_se_autoconcede_permisos_tras_crear_membresia(self):
         root = Usuario.objects.create_superuser("root131@test.local", "clave")
