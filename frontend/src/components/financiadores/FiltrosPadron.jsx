@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigationType } from "react-router-dom";
 import { Icon } from "@/components/icons";
-import { Input, Select } from "@/components/ui";
+import { Checkbox, Input, Select } from "@/components/ui";
 import { Buscador } from "@/components/ui/filtros";
 import { cn } from "@/lib/cn";
 import { GRUPOS_PADRON, controlesFiltroPadron } from "./padronTablaEstado";
@@ -96,12 +96,14 @@ const coincide = (texto, busca) => texto.toLocaleLowerCase("es").normalize("NFD"
  * Todos los filtros del padrón, agrupados como la ficha. No dependen de las
  * columnas visibles: se puede filtrar por un dato sin mostrarlo.
  */
-export function PanelFiltrosPadron({ id, altoTabla, visible, cerrando, parametros, cambiar, borradores, editarTexto, planes, activos, limpiar, cerrar }) {
+export function PanelFiltrosPadron({ id, visible, cerrando, parametros, cambiar, borradores, editarTexto, planes, activos, limpiar, cerrar }) {
   const [busca, setBusca] = useState("");
   const ref = useRef(null);
   const claveBusca = busca.trim().toLocaleLowerCase("es").normalize("NFD").replace(/\p{Diacritic}/gu, "");
   const activosPorGrupo = (g) => g.columnas.filter((c) => controlesFiltroPadron(c).some((k) => parametros.has(k.clave))).length;
-  const [abiertos, setAbiertos] = useState(() => new Set(GRUPOS_PADRON.filter((g, i) => i < 2 || activosPorGrupo(g)).map((g) => g.titulo)));
+  // Abre todo plegado: el panel muestra el mapa de grupos (con su conteo de
+  // filtros aplicados) y la persona despliega sólo lo que necesita.
+  const [abiertos, setAbiertos] = useState(() => new Set());
   useEffect(() => {
     const previo = document.activeElement;
     ref.current?.querySelector("input")?.focus();
@@ -115,35 +117,35 @@ export function PanelFiltrosPadron({ id, altoTabla, visible, cerrando, parametro
   const grupos = GRUPOS_PADRON.map((g) => ({ ...g, columnas: g.columnas.filter((c) => controlesFiltroPadron(c).length && (!claveBusca || coincide(c.label, claveBusca) || coincide(g.titulo, claveBusca))) })).filter((g) => g.columnas.length);
   const alternar = (titulo) => setAbiertos((previos) => { const nuevos = new Set(previos); if (nuevos.has(titulo)) nuevos.delete(titulo); else nuevos.add(titulo); return nuevos; });
 
-  // En escritorio acompaña a la tabla: no más alto que ella ni que la ventana, y
-  // al menos media pantalla para que una tabla corta no lo deje inutilizable.
-  return <aside ref={ref} id={id} role="dialog" aria-label="Filtros del padrón" inert={cerrando ? "" : undefined} style={{ "--alto-tabla": altoTabla ? `${altoTabla}px` : "100dvh" }}
+  useAltoHastaElBorde(ref);
+
+  return <aside ref={ref} id={id} role="dialog" aria-label="Filtros del padrón" inert={cerrando ? "" : undefined}
     onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); cerrar(); } }}
-    className={cn("fixed inset-y-0 right-0 z-50 flex w-full max-w-[24rem] flex-col border-l border-borde bg-superficie shadow-modal transition-[opacity,translate] duration-200 ease-salida motion-reduce:transition-none lg:sticky lg:ml-4 lg:bottom-auto lg:right-auto lg:top-4 lg:z-auto lg:max-h-[min(var(--alto-tabla),calc(100dvh-6rem))] lg:min-h-[50vh] lg:w-[340px] lg:shrink-0 lg:rounded-lg lg:border lg:shadow-none", visible ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0")}>
-    <div className="flex items-center justify-between gap-2 border-b border-division px-4 py-3">
+    className={cn("fixed inset-y-0 right-0 z-50 flex w-full max-w-[24rem] flex-col border-l border-borde bg-superficie shadow-modal transition-[opacity,translate] duration-200 ease-salida motion-reduce:transition-none lg:sticky lg:ml-4 lg:bottom-auto lg:right-auto lg:top-6 lg:z-auto lg:h-[var(--alto-panel,calc(100dvh-10rem))] lg:w-[340px] lg:shrink-0 lg:rounded-lg lg:border lg:shadow-none", visible ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0")}>
+    <div className="flex items-center gap-2 border-b border-division px-4 py-3">
       <strong className="text-md">Filtros{activos.length > 0 && <span className="ml-1.5 font-normal text-texto-debil">({activos.length})</span>}</strong>
-      <button type="button" aria-label="Cerrar filtros" onClick={cerrar} className="flex rounded-md p-1 text-texto-debil hover:bg-superficie-2 hover:text-texto"><Icon name="x" size={16} /></button>
+      {activos.length > 0 && <button type="button" onClick={limpiar} className="ml-auto rounded-md px-2 py-0.5 text-sm font-medium text-accent hover:bg-accent-50">Limpiar</button>}
+      <button type="button" aria-label="Cerrar filtros" onClick={cerrar} className={cn("flex rounded-md p-1 text-texto-debil hover:bg-superficie-2 hover:text-texto", !activos.length && "ml-auto")}><Icon name="x" size={16} /></button>
     </div>
     <div className="border-b border-division px-4 py-2.5">
       <Buscador aria-label="Buscar filtro" placeholder="Buscar un dato…" valor={busca} onChange={setBusca} />
     </div>
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="min-h-0 flex-1 overflow-y-auto py-1">
       {grupos.map((g) => {
         const abierto = Boolean(claveBusca) || abiertos.has(g.titulo);
         const cuenta = activosPorGrupo(g);
-        return <section key={g.titulo} className="border-b border-division last:border-b-0">
-          <h3><button type="button" aria-expanded={abierto} onClick={() => alternar(g.titulo)} className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm font-semibold text-texto-medio hover:bg-superficie-2">
-            <span>{g.titulo}{cuenta > 0 && <span className="ml-2 rounded-pill bg-accent-50 px-1.5 text-xs font-semibold text-accent tabular-nums">{cuenta}</span>}</span>
+        return <section key={g.titulo}>
+          <h3><button type="button" aria-expanded={abierto} onClick={() => alternar(g.titulo)} className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-texto-debil hover:bg-superficie-2 hover:text-texto-medio">
+            <span>{g.titulo}{cuenta > 0 && <span className="ml-2 rounded-pill bg-accent-50 px-1.5 font-semibold normal-case tracking-normal text-accent tabular-nums">{cuenta}</span>}</span>
             <Icon name="chevronRight" size={14} className={cn("text-texto-tenue transition-transform motion-reduce:transition-none", abierto && "rotate-90")} />
           </button></h3>
-          {abierto && <div className="animate-aparecer space-y-3 px-4 pb-4 pt-1">
+          {abierto && <div className="animate-aparecer space-y-2.5 px-4 pb-3 pt-1">
             {g.columnas.map((col) => <FiltroColumna key={col.key} columna={col} parametros={parametros} cambiar={cambiar} planes={planes} borradores={borradores} editarTexto={editarTexto} />)}
           </div>}
         </section>;
       })}
       {!grupos.length && <p className="px-4 py-6 text-center text-sm text-texto-debil">Ningún dato coincide con «{busca.trim()}».</p>}
     </div>
-    {activos.length > 0 && <div className="border-t border-division px-4 py-2.5"><button type="button" onClick={limpiar} className="text-sm font-medium text-accent hover:underline">Limpiar todos los filtros</button></div>}
   </aside>;
 }
 
@@ -152,20 +154,55 @@ function FiltroColumna({ columna: col, parametros, cambiar, borradores, editarTe
   const valores = controles.filter((c) => c.tipo !== "vacio");
   const vacio = controles.find((c) => c.tipo === "vacio");
   const label = valores[0]?.label || col.label;
-  // Filtra por si el dato está cargado, sin importar su valor (fichas incompletas).
-  const selectVacio = vacio && <Select size="sm" className="w-[8.5rem] shrink-0" aria-label={`${col.label}: ¿cargado?`} title="Filtrar por si el dato está cargado o vacío" value={parametros.get(vacio.clave) || ""} onChange={(e) => cambiar(vacio.clave, e.target.value)}>
-    <option value="">¿Cargado?</option><option value="true">Vacío</option><option value="false">Cargado</option>
-  </Select>;
+  // Encuentra fichas incompletas: sólo ese dato vacío. El «sólo cargados» de
+  // URLs anteriores (`_vacio=false`) se sigue aplicando y se ve como chip.
+  const sinCargar = vacio && <Checkbox className="shrink-0 gap-2 whitespace-nowrap text-sm text-texto-suave" label="Sin cargar" aria-label={`${col.label} sin cargar`}
+    checked={parametros.get(vacio.clave) === "true"} onChange={(e) => cambiar(vacio.clave, e.target.checked ? "true" : "")} />;
+  if (!valores.length) return <div className="flex items-center justify-between gap-2"><span className="text-sm font-medium text-texto-suave">{label}</span>{sinCargar}</div>;
   return <div>
     <div className="mb-1 text-sm font-medium text-texto-suave">{label}</div>
     {valores[0]?.tipo === "date" ? <>
-      <div className="grid grid-cols-2 gap-2">{valores.map((c) => <Input key={c.clave} size="sm" type="date" aria-label={`${label} ${c.extremo}`} title={c.extremo === "desde" ? "Desde" : "Hasta"} value={parametros.get(c.clave) || ""} onChange={(e) => cambiar(c.clave, e.target.value)} />)}</div>
-      {selectVacio && <div className="mt-2">{selectVacio}</div>}
-    </> : <div className="flex gap-2">
+      <div className="flex items-center gap-1.5">{valores.map((c, i) => <Fragment key={c.clave}>{i > 0 && <span aria-hidden="true" className="text-texto-tenue">–</span>}<Input size="sm" type="date" className="min-w-0 flex-1 px-2" aria-label={`${label} ${c.extremo}`} title={c.extremo === "desde" ? "Desde" : "Hasta"} value={parametros.get(c.clave) || ""} onChange={(e) => cambiar(c.clave, e.target.value)} /></Fragment>)}</div>
+      {sinCargar && <div className="mt-1.5">{sinCargar}</div>}
+    </> : <div className="flex items-center gap-2.5">
       {valores.map((c) => c.tipo === "choice"
         ? <Select key={c.clave} size="sm" className="min-w-0 flex-1" aria-label={c.clave.startsWith("flt_") ? `Filtrar ${label}` : label} value={parametros.get(c.clave) || ""} onChange={(e) => cambiar(c.clave, e.target.value)}><option value="">Todos</option>{Object.entries(c.options).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</Select>
         : <Input key={c.clave} size="sm" className="min-w-0 flex-1" aria-label={`Filtrar ${label}`} type={c.tipo === "relation" ? "number" : "text"} min={c.tipo === "relation" ? 1 : undefined} step={c.tipo === "relation" ? 1 : undefined} placeholder={c.tipo === "relation" ? "ID exacto" : "Contiene…"} value={borradores[c.clave] ?? parametros.get(c.clave) ?? ""} onChange={(e) => editarTexto(c.clave, e.target.value)} />)}
-      {selectVacio}
+      {sinCargar}
     </div>}
   </div>;
+}
+
+/**
+ * En escritorio el panel llega siempre hasta 24px del borde inferior: al inicio
+ * arranca debajo del título y es más bajo; al scrollear queda pegado arriba
+ * (sticky top-6) y crece. Escribe `--alto-panel` sin re-renderizar.
+ *
+ * El borde superior sale de dónde DEBERÍA estar (su hueco o el tope del sticky),
+ * no de su rect actual: al final de la tabla el sticky lo empuja hacia arriba y
+ * medir ese rect agrandaría el panel cada vez más.
+ */
+const MARGEN = 24; // = lg:top-6
+function useAltoHastaElBorde(ref) {
+  useEffect(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    const scroll = document.getElementById("contenido-principal");
+    let cuadro = 0;
+    const medir = () => {
+      cuadro = 0;
+      const area = scroll ? scroll.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+      const arriba = Math.max(panel.parentElement.getBoundingClientRect().top, area.top + MARGEN);
+      panel.style.setProperty("--alto-panel", `${Math.max(240, Math.round(area.bottom - arriba - MARGEN))}px`);
+    };
+    const pedir = () => { if (!cuadro) cuadro = requestAnimationFrame(medir); };
+    medir();
+    scroll?.addEventListener("scroll", pedir, { passive: true });
+    window.addEventListener("resize", pedir);
+    return () => {
+      cancelAnimationFrame(cuadro);
+      scroll?.removeEventListener("scroll", pedir);
+      window.removeEventListener("resize", pedir);
+    };
+  }, [ref]);
 }

@@ -134,7 +134,7 @@ export function filtrosActivosPadron(parametros, planes = []) {
       if (!valor) continue;
       const label = control.label || col.label;
       let texto;
-      if (control.tipo === "vacio") texto = `: ${valor === "true" ? "vacío" : "cargado"}`;
+      if (control.tipo === "vacio") texto = `: ${valor === "true" ? "sin cargar" : "cargado"}`;
       else if (control.tipo === "date") texto = ` ${control.extremo} ${fechaAR(valor)}`;
       else if (control.tipo === "choice") texto = `: ${control.options?.[valor] || valor}`;
       else if (control.tipo === "plan") texto = `: ${planes.find((p) => String(p.id) === valor)?.nombre || `Plan ${valor}`}`;
