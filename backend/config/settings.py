@@ -346,6 +346,8 @@ devuelve el CapabilityStatement y se sirve sin credenciales.
     # el esquema los nombra «Estado719Enum», que es lo que termina leyendo quien
     # tiene que integrar.
     "ENUM_NAME_OVERRIDES": {
+        "SexoPadronEnum": ["F", "M", "X"],
+        "SexoEnum": [("F", "femenino"), ("M", "masculino"), ("X", "X")],
         "EstadoCasoEnum": "apps.casos.models.ESTADOS_CASO",
         "EstadoVersionEnum": "apps.flujos.models.ESTADOS_VERSION",
         "EstadoInstitucionEnum": "apps.instituciones.models.ESTADOS_INSTITUCION",
