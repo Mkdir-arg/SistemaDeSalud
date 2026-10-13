@@ -1,4 +1,4 @@
-# HEN
+# PLEXO
 
 **Un sistema donde el hospital dibuja su propio circuito de atención como un
 diagrama, y ese mismo diagrama pasa a ser el sistema que usa el personal.**
@@ -28,13 +28,13 @@ docker compose up -d
 | Documentación de la API | <http://localhost:8000/api/docs/> |
 | Fachada FHIR | <http://localhost:8000/fhir/metadata> |
 
-Para revisar el diseño HEN: la landing pública está en `/` (`/presentacion` es un
+Para revisar el diseño PLEXO: la landing pública está en `/` (`/presentacion` es un
 alias) y, después del login, `/directorio` resuelve el directorio de plataforma, la
 elección de institución o el portal del financiador.
 
 El **portal del paciente** está en `/mi`: cuenta con email y contraseña, identidad
 validada contra RENAPER (#120) y, después, sus turnos, estudios, cobertura y el
-llamado de la sala de espera en todas las instituciones de HEN (#121, #122). Usa
+llamado de la sala de espera en todas las instituciones de PLEXO (#121, #122). Usa
 la API `/api/mi/*`, con una sesión propia que no se mezcla con la del sistema.
 Para mostrarlo sin RENAPER:
 

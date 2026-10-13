@@ -93,7 +93,7 @@ function Turno({ turno: t }) {
   return <>
     <Cabecera titulo="Tu turno" atras={proximo ? "/mi/turnos" : "/mi/turnos?ver=anteriores"} />
     <div className="flex flex-1 flex-col gap-4">
-      <div className={`flex flex-col gap-1.5 ${RADIO.tarjeta} p-5 ${proximo ? "hen-cta text-white" : "border border-borde bg-superficie"}`}>
+      <div className={`flex flex-col gap-1.5 ${RADIO.tarjeta} p-5 ${proximo ? "plexo-cta text-white" : "border border-borde bg-superficie"}`}>
         <p className="text-sm font-medium leading-[21px] first-letter:uppercase">{fechaLarga(t.inicio)}</p>
         <h2 className="text-xxl font-bold leading-[30px]">{hora(t.inicio)} · {tituloTurno(t)}</h2>
         <p className={TAMANO.t15}>{quienYDonde(t)}</p>

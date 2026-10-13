@@ -186,7 +186,7 @@ def informe_pdf(ciudadano, tipo, fecha):
         (11, f"Paciente: {ciudadano.nombre} {ciudadano.apellido} · Documento {ciudadano.documento}"),
         (11, f"{ciudadano.institucion.nombre} · {fecha:%d/%m/%Y}"),
         (11, "Resultado: dentro de los valores de referencia."),
-        (11, "DOCUMENTO FICTICIO DE DEMOSTRACIÓN DE HEN. SIN VALIDEZ CLÍNICA."),
+        (11, "DOCUMENTO FICTICIO DE DEMOSTRACIÓN. SIN VALIDEZ CLÍNICA."),
     ]
     flujo = b"BT /F1 11 Tf 56 780 Td 18 TL\n"
     for tam, linea in lineas:

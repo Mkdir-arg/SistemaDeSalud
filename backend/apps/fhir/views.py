@@ -42,7 +42,10 @@ log = logging.getLogger(__name__)
 # Namespaces que esta fachada emitió alguna vez y ya no. Una consulta que llega
 # con uno de estos es un integrador que quedó en una versión anterior: se le
 # sigue contestando vacío —devolver a otra persona sería peor— pero no callado.
-SISTEMAS_RETIRADOS = {"urn:cauce:id": recursos.SISTEMA_LOCAL}
+SISTEMAS_RETIRADOS = {
+    "urn:cauce:id": recursos.SISTEMA_LOCAL,
+    "urn:icore-salud:id": recursos.SISTEMA_LOCAL,
+}
 
 
 def _avisar_identificador_sin_respuesta(sistema):
@@ -138,7 +141,7 @@ def _id_sin_forma(tipo, pk):
     return _error(
         404, "not-found",
         f"«{tipo}» sí está implementado, pero «{ruta}» no es una ruta de este "
-        f"servidor. Los id de HEN son numéricos ({tipo}/12), la búsqueda va sin "
+        f"servidor. Los id de este servidor son numéricos ({tipo}/12), la búsqueda va sin "
         f"barra final ({tipo}?…) y no hay operaciones ni sufijos del estándar "
         f"(_history, _search); lo que sí hay está en /fhir/metadata.",
     )
@@ -344,7 +347,7 @@ def _por_identificador(qs, identificador):
         return qs.filter(codigo=valor)
     if sistema == f"{recursos.SISTEMA_LOCAL}:ciudadano":
         # Los identificadores que Salud mismo emite tienen que poder volver a
-        # buscarse; hasta acá `urn:icore-salud:id:ciudadano|28` devolvía a la persona
+        # buscarse; hasta acá `urn:icore:id:ciudadano|28` devolvía a la persona
         # con documento 28.
         return qs.filter(pk=valor) if valor.isdigit() else qs.none()
     _avisar_identificador_sin_respuesta(sistema)

@@ -1,14 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-test.skip(!process.env.HEN_111_REAL_PASSWORD || !process.env.HEN_111_REAL_METADATA,
+test.skip(!process.env.PLEXO_111_REAL_PASSWORD || !process.env.PLEXO_111_REAL_METADATA,
   "Requiere datos ficticios y credenciales del PostgreSQL aislado autorizado.");
-const datos = process.env.HEN_111_REAL_METADATA
-  ? JSON.parse(readFileSync(process.env.HEN_111_REAL_METADATA, "utf8")) : {};
+const datos = process.env.PLEXO_111_REAL_METADATA
+  ? JSON.parse(readFileSync(process.env.PLEXO_111_REAL_METADATA, "utf8")) : {};
 
 async function autenticar(request, email) {
   const respuesta = await request.post("/api/auth/token/", {
-    data: { email, password: process.env.HEN_111_REAL_PASSWORD },
+    data: { email, password: process.env.PLEXO_111_REAL_PASSWORD },
   });
   expect(respuesta.status()).toBe(200);
   const { access } = await respuesta.json();
@@ -26,7 +26,7 @@ async function sesion(page, headers, institucion = datos.central, simulacion = n
 test("comprador inicia sesión, vuelve a Instituciones y reingresa en Central", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel(/Email/).fill("test@salud.local");
-  await page.getByLabel(/^Contraseña/).fill(process.env.HEN_111_REAL_PASSWORD);
+  await page.getByLabel(/^Contraseña/).fill(process.env.PLEXO_111_REAL_PASSWORD);
   await page.getByRole("button", { name: "Ingresar", exact: true }).click();
   await expect(page).not.toHaveURL(/\/login/);
   await page.goto("/directorio");
@@ -99,7 +99,7 @@ test("consulta clínica simulada devuelve entradas firmadas y audita al autor re
   expect(inicio.status()).toBe(201);
   const sim = await inicio.json();
   const respuesta = await request.post(`/api/financiadores/${datos.financiador}/ficha-historia-evoluciones/`, {
-    headers: { ...root, "X-HEN-Simulacion": sim.id },
+    headers: { ...root, "X-PLEXO-Simulacion": sim.id },
     data: { afiliado: datos.afiliadoClinico, caso: datos.casoClinico, motivo: "Auditoría clínica del ensayo aislado" } });
   expect(respuesta.status()).toBe(200);
   expect((await respuesta.json()).length).toBeGreaterThan(0);

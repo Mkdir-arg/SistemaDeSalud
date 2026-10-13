@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-const CLAVE = "salud.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
+const CLAVE = "plexo.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
 
 /**
  * Rutas que se ven siempre en claro, sin importar la preferencia.
  *
  * Las pantallas públicas de llamados y el portal del paciente (con todas sus subrutas) mantienen el tema claro en
- * cualquier puesto: la preferencia de tema es del personal de HEN, no del paciente.
+ * cualquier puesto: la preferencia de tema es del personal, no del paciente.
  * El login admite ambas variantes de Figma. La misma
  * regla está repetida en el script del <head> de index.html, que corre antes de
  * que exista este módulo; si cambia una, cambian las dos.

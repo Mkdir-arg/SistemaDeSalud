@@ -1,7 +1,7 @@
 """
 Catálogo de perfiles simulables y verificación de sus cuentas.
 
-Los perfiles salen de las fuentes de verdad de HEN: `Membresia.Rol` para
+Los perfiles salen de las fuentes de verdad del sistema: `Membresia.Rol` para
 plataforma e institución y el rol de `MembresiaFinanciador` para el portal de
 financiadores. Si mañana se agrega un rol, aparece acá sin cambiar este módulo.
 
@@ -24,7 +24,7 @@ from .models import Ambito, CuentaReferencia, SesionSimulacion
 # `plataforma` y `auditor` tienen membresía global y se ofrecen desde la vista
 # de plataforma. El resto de `Membresia.Rol` es institucional.
 PERFILES_ESTATALES = (Membresia.Rol.PLATAFORMA, Membresia.Rol.AUDITOR)
-DOMINIO = "referencia.hen.invalid"
+DOMINIO = "referencia.plexo.invalid"
 DURACION = timedelta(hours=8)
 
 

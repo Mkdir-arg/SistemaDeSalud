@@ -7,7 +7,7 @@ que alguien haya modificado.
 
 Estado en que queda cada cuenta
 -------------------------------
-- Tiene contraseña inutilizable y un correo en `referencia.hen.invalid`, un
+- Tiene contraseña inutilizable y un correo en `referencia.plexo.invalid`, un
   dominio que no recibe mensajes. No es staff ni superusuario. El login y el
   refresco de tokens la rechazan: solo funciona dentro de una simulación.
 - Conserva únicamente la membresía de su perfil. Si alguien le agregó otra, el

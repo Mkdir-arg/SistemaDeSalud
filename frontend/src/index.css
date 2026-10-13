@@ -21,8 +21,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer components {
-  .hen-cta { background-image: var(--gradient-action); }
-  .hen-cta:hover { background-image: var(--gradient-action-hover); }
+  .plexo-cta { background-image: var(--gradient-action); }
+  .plexo-cta:hover { background-image: var(--gradient-action-hover); }
   .presentacion-hero { background: radial-gradient(circle at 22% 10%, var(--color-accent-50), transparent 42%), var(--color-fondo); }
   /* Landing: desplazamiento suave a las anclas y entrada breve del primer
      pantallazo. Solo si la persona no pidió reducir el movimiento. */

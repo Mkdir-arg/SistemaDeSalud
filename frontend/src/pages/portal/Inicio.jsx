@@ -9,7 +9,7 @@ import { ErrorConsulta, Exito, NOMBRE_PORTAL } from "./comun";
 import { esHoy, esProximo, fechaLarga, hora, primerNombre, quienYDonde, tituloTurno } from "./datos";
 import { Boton, Fila, Insignia, RADIO, TAMANO, Tarjeta, TEXTO } from "./ui";
 
-const TARJETA = `hen-cta flex flex-col gap-2 ${RADIO.tarjeta} p-5 text-white`;
+const TARJETA = `plexo-cta flex flex-col gap-2 ${RADIO.tarjeta} p-5 text-white`;
 
 function ProximoTurno({ turno: t }) {
   const confirmado = t.estado === "confirmado";

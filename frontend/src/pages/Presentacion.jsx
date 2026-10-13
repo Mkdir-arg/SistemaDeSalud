@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
 import { Logo } from "@/components/Logo";
+import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { useTema } from "@/lib/tema";
 
 /**
- * Landing pública de HEN (lámina 0 de los paquetes claro y oscuro).
+ * Landing pública del sistema (lámina 0 de los paquetes claro y oscuro).
  *
  * No consulta la API: todo lo que muestra es fijo. Las cifras y alertas son de
  * ejemplo y así se rotulan; reemplazarlas por datos reales requiere una fuente
@@ -72,7 +73,7 @@ const BENEFICIOS = [
 ];
 
 const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-const CTA_PRINCIPAL = `hen-cta inline-flex h-10 items-center rounded-md px-4.5 text-sm font-medium text-sobre-accent ${FOCO}`;
+const CTA_PRINCIPAL = `plexo-cta inline-flex h-10 items-center rounded-md px-4.5 text-sm font-medium text-sobre-accent ${FOCO}`;
 const CTA_TERCIARIO = `inline-flex h-10 items-center rounded-md border border-borde bg-superficie px-4.5 text-sm font-medium text-texto transition-colors hover:border-accent hover:text-accent ${FOCO}`;
 // Títulos de sección: la lámina los lleva a ~36 px en escritorio. La escala del
 // sistema termina en 24 px para texto, por eso el tamaño va acotado acá.
@@ -83,7 +84,7 @@ const ENLACE_SUAVE = `rounded-sm transition-colors hover:text-accent ${FOCO}`;
 const entrada = (retardo) => ({ className: "landing-entrada", style: { "--retardo": `${retardo}ms` } });
 
 function Marca() {
-  return <span translate="no" className="inline-flex items-center gap-2 text-sm font-bold"><span aria-hidden="true"><Logo size={24} /></span>HEN</span>;
+  return <span translate="no" className="inline-flex items-center gap-2 text-sm font-bold"><span aria-hidden="true"><Logo size={24} /></span>{NOMBRE_SISTEMA}</span>;
 }
 
 /**
@@ -200,7 +201,7 @@ export default function Presentacion() {
     <a href="#contenido" className={`sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-md focus:bg-superficie focus:px-3 focus:py-2 focus:text-sm focus:shadow-float ${FOCO}`}>Saltar al contenido</a>
     <header className="border-b border-borde bg-superficie">
       <div className="mx-auto flex h-[70px] max-w-[1120px] items-center justify-between gap-3 px-5 sm:px-8">
-        <Link to="/" aria-label="HEN, inicio" className={`rounded-md ${FOCO}`}><Marca /></Link>
+        <Link to="/" aria-label={`${NOMBRE_SISTEMA}, inicio`} className={`rounded-md ${FOCO}`}><Marca /></Link>
         <nav aria-label="Navegación pública" className="flex items-center gap-3 text-xs sm:gap-5">
           <a href="#como-funciona" className={`text-texto-suave underline underline-offset-4 ${ENLACE_SUAVE}`}>Cómo funciona</a>
           <button type="button" onClick={alternar} aria-label={oscuro ? "Cambiar a tema claro" : "Cambiar a tema oscuro"} className={`flex size-9 items-center justify-center rounded-md border border-borde text-texto-suave transition-colors hover:border-accent hover:text-accent ${FOCO}`}><Icon name={oscuro ? "sol" : "luna"} size={16} /></button>
@@ -218,14 +219,14 @@ export default function Presentacion() {
           <Link to="/login" className={CTA_PRINCIPAL}>Ingresar al sistema</Link>
           {DEMO_URL
             ? <a href={DEMO_URL} className={CTA_TERCIARIO}>Solicitar una demo</a>
-            : <a href="#como-funciona" className={CTA_TERCIARIO}>Conocer HEN</a>}
+            : <a href="#como-funciona" className={CTA_TERCIARIO}>Conocer {NOMBRE_SISTEMA}</a>}
         </div>
         </div>
 
         <VistaIlustrativa />
 
         <section aria-labelledby="cifras-titulo" className="mx-auto mt-16 max-w-[980px]">
-          <h2 id="cifras-titulo" className="sr-only">HEN en números</h2>
+          <h2 id="cifras-titulo" className="sr-only">{NOMBRE_SISTEMA} en números</h2>
           <ul className="grid grid-cols-2 gap-y-6 text-center lg:grid-cols-4">
             {/* Separadores alternados teal y violeta; el borde derecho cierra cada fila. */}
             {CIFRAS.map(([valor, rotulo], i) => <li key={rotulo} className={`border-l-2 px-2 ${i % 2 ? "border-l-accent border-r-2 border-r-brand-teal" : "border-l-brand-teal"} ${i === 1 ? "lg:border-r-0" : ""}`}>

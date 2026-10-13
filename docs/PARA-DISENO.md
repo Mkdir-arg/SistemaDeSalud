@@ -1,8 +1,9 @@
-# HEN para quien lo diseña
+# PLEXO para quien lo diseña
 
 > Qué pantallas existen, dónde vive la marca, qué reglas hay que respetar y qué
-> está sin resolver. Estructura verificada el **22/09/2026**; marca HEN incorporada
-> para el issue #67.
+> está sin resolver. Estructura verificada el **22/09/2026**; diseño de marca vigente
+> (archivo de Figma «HEN») incorporado para el issue #67. El nombre visible sale de
+> `NOMBRE_SISTEMA` ([`NOMBRE-DEL-SISTEMA.md`](NOMBRE-DEL-SISTEMA.md)).
 
 ---
 
@@ -24,7 +25,7 @@ Es la decisión de diseño más vieja del producto y sigue vigente.
 
 | Qué | Dónde | Se edita |
 |---|---|---|
-| Diseño HEN vigente: pantallas, componentes y marca | [Figma HEN](https://www.figma.com/design/BR2ExsfHBsYcar7fLWcOmn/HEN?node-id=8-2) y adjuntos del issue #67 | En Figma |
+| Diseño vigente: pantallas, componentes y marca | [Figma HEN](https://www.figma.com/design/BR2ExsfHBsYcar7fLWcOmn/HEN?node-id=8-2) y adjuntos del issue #67 | En Figma |
 | **Los tokens que usa la aplicación** | `frontend/src/styles/tokens.css` | **Sí, es la fuente única** |
 | Escalas derivadas | `frontend/src/styles/escalas.js` | No, se genera con `npm run escalas` |
 | Prototipo y documentación visual anterior | [`diseño/`](../diseño/README.md) | Archivo histórico; no usar para nueva marca |
@@ -57,7 +58,7 @@ Hay tres carpetas y sirven para cosas distintas. Es la confusión más común.
 
 | Carpeta | Qué es | Vigencia |
 |---|---|---|
-| [`captures-app/`](../diseño/docs/captures-app/) | **29 capturas de la aplicación real**, generadas automáticamente | Registro del 20/08/2026; anterior a HEN |
+| [`captures-app/`](../diseño/docs/captures-app/) | **29 capturas de la aplicación real**, generadas automáticamente | Registro del 20/08/2026; anterior al diseño vigente |
 | [`captures/`](../diseño/docs/captures/) | 17 capturas del **prototipo** original | Junio 2026. Sirve como intención de diseño, no como estado |
 | [`captures-manual/`](../diseño/docs/captures-manual/) | 24 capturas tomadas a mano, para material de capacitación | Agosto 2026 |
 
@@ -83,7 +84,7 @@ Agregarlas a `capturas.spec.js` es la forma de que entren al circuito automátic
 Son 39 rutas. Agrupadas por dónde aparecen en el menú:
 
 ### Fuera de la sesión
-- **Login** · **Presentación HEN** · **Portal del paciente** (`/mi/*`: crear cuenta, ingresar, recuperar la contraseña, validar la identidad; después inicio, turnos, estudios, cobertura, sala de espera y mi cuenta, con datos reales de toda la red) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
+- **Login** · **Presentación** · **Portal del paciente** (`/mi/*`: crear cuenta, ingresar, recuperar la contraseña, validar la identidad; después inicio, turnos, estudios, cobertura, sala de espera y mi cuenta, con datos reales de toda la red) · **Pantalla pública de llamados** (la TV de la sala de espera, entra por token, sin login) · **Activación de cuenta de financiador**
 
 ### Entrada
 - **Directorio de instituciones** (sólo para plataforma; el resto entra directo a la suya) · **Inicio / Mi trabajo** · **Notificaciones**
@@ -108,7 +109,7 @@ Son 39 rutas. Agrupadas por dónde aparecen en el menú:
 
 > **Ojo con `diseño/docs/04-pantallas.md`.** Describe estas pantallas, pero según el
 > prototipo de junio: habla de 10 tipos de nodo (hoy son 13), de una navegación
-> anterior a la agrupación HEN y de un panel lateral para la ficha del área (hoy
+> anterior a la agrupación actual y de un panel lateral para la ficha del área (hoy
 > cada sección es una página). Úsalo como intención original, no como especificación.
 
 ## 5. Quién ve qué
@@ -121,7 +122,7 @@ entrar y qué hace.
 Lo mínimo que conviene tener presente:
 
 - **Bandeja** aparece en Operación y reúne casos propios y casos para tomar.
-  **Filas** conserva una ruta propia, pero no una entrada fija en el menú HEN.
+  **Filas** conserva una ruta propia, pero no una entrada fija en el menú.
   «Casos» aparece en Seguimiento para buscar un caso fuera de la tarea inmediata.
 - El **administrativo no ve Historia clínica**. Ve el Padrón, que es la ficha
   administrativa. Son dos permisos distintos y la diferencia es deliberada.
@@ -152,7 +153,7 @@ Lo mínimo que conviene tener presente:
 
 Deuda visual conocida, por si aparece en una revisión:
 
-- **Modo oscuro HEN:** la paleta base ya está adaptada en la aplicación, pero
+- **Modo oscuro:** la paleta base ya está adaptada en la aplicación, pero
   falta contrastarla pantalla por pantalla cuando el diseño final esté listo.
 - **Portal del paciente (`/mi`):** sigue el Figma «05 · App clínica (MVP)» (nodo
   61-132): sin barra ni pestañas, «‹ título» en cada pantalla, filas sin íconos,
@@ -169,7 +170,7 @@ Deuda visual conocida, por si aparece en una revisión:
   título y la campana. Queda accesible desde Historia clínica, pero la solución buena
   es que se expanda desde un ícono.
 - **`diseño/` describe el prototipo anterior**, no la marca ni las capturas
-  vigentes de HEN. La referencia actual está en Figma y en los tokens de la app.
+  vigentes. La referencia actual está en Figma y en los tokens de la app.
 
 ## 8. Si querés ver el sistema funcionando
 

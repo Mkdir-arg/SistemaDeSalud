@@ -175,7 +175,7 @@ test.describe("Dónde queda la sesión", () => {
 
   test("cambiar de opción no deja el token viejo dando vueltas", async ({ page }) => {
     await entrarCon(page, true);
-    await page.evaluate(() => localStorage.removeItem("salud.tema")); // ruido aparte
+    await page.evaluate(() => localStorage.removeItem("plexo.tema")); // ruido aparte
     await entrarCon(page, false);
     // Lo importante: en localStorage no puede haber quedado el de la vez anterior.
     expect(await donde(page)).toEqual({ local: false, sesion: true });

@@ -149,11 +149,11 @@ class PatientTests(FhirTestCase):
 
     def test_los_identificadores_que_salud_emite_se_pueden_volver_a_buscar(self):
         """
-        La fachada emite `urn:icore-salud:id:ciudadano` en cada Patient. Si buscar por
+        La fachada emite `urn:icore:id:ciudadano` en cada Patient. Si buscar por
         él devuelve a la persona cuyo DOCUMENTO es ese número, un cliente que
         guardó el identificador que le dimos vuelve con otra persona.
         """
-        _, d = self.get(f"/fhir/Patient?identifier=urn:icore-salud:id:ciudadano|{self.paciente.id}")
+        _, d = self.get(f"/fhir/Patient?identifier=urn:icore:id:ciudadano|{self.paciente.id}")
         self.assertEqual(d["total"], 1)
         self.assertEqual(d["entry"][0]["resource"]["id"], str(self.paciente.id))
 
@@ -580,6 +580,14 @@ class VacioQueAvisaTests(FhirTestCase):
         aviso = " ".join(registro.output)
         self.assertIn("urn:cauce:id:ciudadano", aviso)
         self.assertIn(recursos.SISTEMA_LOCAL, aviso)
+
+    def test_el_namespace_icore_salud_tambien_quedo_retirado(self):
+        with self.assertLogs("apps.fhir.views", level="WARNING") as registro:
+            _, d = self.get(
+                f"/fhir/Patient?identifier=urn:icore-salud:id:ciudadano|{self.paciente.id}"
+            )
+        self.assertEqual(d["total"], 0)
+        self.assertIn("namespace retirado", " ".join(registro.output))
 
     def test_un_system_desconocido_tambien_queda_registrado(self):
         with self.assertLogs("apps.fhir.views", level="WARNING") as registro:

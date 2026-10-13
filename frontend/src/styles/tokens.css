@@ -37,7 +37,7 @@
   --color-transparent: transparent;
   --color-current: currentColor;
 
-  /* HEN DS Modern: la API de tokens existente se conserva para todas las vistas. */
+  /* DS Modern: la API de tokens existente se conserva para todas las vistas. */
   --color-accent: #7031C7;
   --color-accent-hover: #5B25A6;
   --color-accent-50: #F7F2FD;
@@ -188,7 +188,7 @@
   --shadow-modal: 0 18px 50px rgba(16,24,40,.28);
 }
 
-/* Figma HEN DS: Action admite texto blanco; Brand se reserva a decoración. */
+/* Figma DS: Action admite texto blanco; Brand se reserva a decoración. */
 :root {
   --gradient-action: linear-gradient(to top right, #7031C7, #007A70);
   --gradient-action-hover: linear-gradient(to top right, #5B25A6, #00615A);

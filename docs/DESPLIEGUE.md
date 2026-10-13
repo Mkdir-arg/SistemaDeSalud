@@ -1,4 +1,4 @@
-# Desplegar y operar HEN
+# Desplegar y operar PLEXO
 
 > Qué necesita una instalación real, cómo se actualiza y **qué hacer cuando se
 > pierde la base**. Escrito el 22/09/2026 contra el compose y los comandos del
@@ -84,6 +84,9 @@ quedar en su valor de ejemplo:
       `RENAPER_USUARIO` y `RENAPER_CLAVE`; sin ellas, validar identidad responde
       «no disponible».
       El correo es un SMTP genérico provisorio: el proveedor se elige en el #123.
+- [ ] **Nombre del sistema.** `NOMBRE_SISTEMA` en el backend y `VITE_NOMBRE_SISTEMA`
+      como variable de *build* del frontend (por defecto, PLEXO). Ver
+      [`NOMBRE-DEL-SISTEMA.md`](NOMBRE-DEL-SISTEMA.md).
 - [ ] **`SALUD_PROXIES_DE_CONFIANZA`** con la cantidad de proxies propios delante
       del backend, contándolos todos: 1 si el nginx del compose recibe directo,
       2 si además hay un proxy TLS delante. Con menos, el cliente puede inventar
@@ -173,7 +176,7 @@ docker compose -f docker-compose.yml exec backend python manage.py preparar_cuen
 
 Cada cuenta queda así:
 
-- Contraseña inutilizable y correo en `referencia.hen.invalid`. Ni el login ni el
+- Contraseña inutilizable y correo en `referencia.plexo.invalid`. Ni el login ni el
   refresco de tokens la aceptan.
 - Solo la membresía de su perfil. Las áreas y los grupos son los del personal real
   con ese rol, y el comando solo agrega, nunca quita.

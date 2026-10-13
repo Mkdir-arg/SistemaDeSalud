@@ -10,7 +10,7 @@ class SimulacionEsquema(OpenApiAuthenticationExtension):
         return {
             "type": "apiKey",
             "in": "header",
-            "name": "X-HEN-Simulacion",
+            "name": "X-PLEXO-Simulacion",
             "description": (
                 "Id de una sesión de simulación, junto con el token JWT del mismo "
                 "superusuario. El pedido se autoriza con la cuenta de referencia."

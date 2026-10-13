@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
 
-// Piezas del portal del paciente, tomadas del Figma de HEN («05 · App clínica
+// Piezas del portal del paciente, tomadas del Figma del sistema («05 · App clínica
 // (MVP)», nodo 61-132). Los colores y las sombras son tokens del DS. Lo que el
 // DS de la aplicación no tiene —la escala de texto de celular de Figma y sus
 // radios— vive acá, en `TAMANO` y `RADIO`, y no se usa fuera del portal.
@@ -44,7 +44,7 @@ const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visib
 // Un link a otro sitio (no `tel:` ni `mailto:`) se abre en otra pestaña.
 const destinoExterno = (href) => (href.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {});
 const VARIANTES = {
-  primario: "hen-cta text-white",
+  primario: "plexo-cta text-white",
   secundario: "border border-borde bg-superficie text-texto-suave hover:bg-fondo",
   // Sobre la tarjeta degradada: fondo lila claro, como en Figma.
   claro: "border border-borde bg-fondo text-texto-suave hover:bg-superficie",

@@ -1,6 +1,6 @@
 """API de la simulación: catálogo, inicio y salida. Solo para superusuarios.
 
-Se llama sin `X-HEN-Simulacion`: durante una simulación `request.user` es la
+Se llama sin `X-PLEXO-Simulacion`: durante una simulación `request.user` es la
 cuenta de referencia, que no es superusuario, así que desde adentro de una
 simulación no se puede abrir otra ni leer el catálogo.
 """

@@ -49,7 +49,7 @@ test.beforeEach(async ({ page }) => {
   // Tema claro desde antes del primer pintado: el script del <head> lo lee de
   // localStorage, así que ponerlo después obliga a recargar. Vale también para
   // las pantallas sin sesión, donde `fijarTema` no se puede usar (pide el aside).
-  await page.addInitScript(() => localStorage.setItem("salud.tema", "claro"));
+  await page.addInitScript(() => localStorage.setItem("plexo.tema", "claro"));
   // Sin animaciones en curso las capturas son reproducibles.
   await page.emulateMedia({ reducedMotion: "reduce" });
 });

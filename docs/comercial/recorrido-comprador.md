@@ -1,9 +1,9 @@
-# HEN: recorrido para evaluar la plataforma
+# PLEXO: recorrido para evaluar la plataforma
 
 **Demo del 01/10/2026.** Pantallas verificadas el 30/09/2026 sobre el entorno preparado para la
 demo. **Todos los datos son ficticios:** instituciones, personas, obras sociales e importes.
 
-HEN es una plataforma donde cada institución **dibuja su circuito de atención como un diagrama, y
+PLEXO es una plataforma donde cada institución **dibuja su circuito de atención como un diagrama, y
 ese diagrama pasa a ser el sistema que usa su personal**. Sobre ese circuito trabajan la guardia,
 los turnos, la historia clínica, las coberturas, la red de establecimientos y la app para
 pacientes.
@@ -184,10 +184,10 @@ reservas abiertas, con el detalle por afiliado.
 ## Qué se define en la implementación
 
 - **Integración:** el conector con los sistemas que ya usa la institución y la puesta en producción
-  de RENAPER y del correo del portal del paciente. HEN ya ofrece una API completa y una fachada FHIR de lectura.
+  de RENAPER y del correo del portal del paciente. PLEXO ya ofrece una API completa y una fachada FHIR de lectura.
 - **Firma digital con certificado:** la firma profesional con matrícula ya queda registrada en
   cada entrada. El certificado criptográfico y su proveedor se eligen para cada proyecto.
-- **Facturación fiscal:** HEN registra prestaciones, cargos y cobros, y se integra con el
+- **Facturación fiscal:** PLEXO registra prestaciones, cargos y cobros, y se integra con el
   facturador que ya use la institución.
 
 El alcance y los plazos se definen al relevar el circuito de cada institución.
