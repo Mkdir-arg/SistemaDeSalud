@@ -16,7 +16,7 @@ test("CUIT/CUIL: dígito verificador y formato mientras se escribe", () => {
 });
 
 test("paso 1 exige identidad y número de afiliado, y cruza CUIL con DNI", () => {
-  assert.deepEqual(Object.keys(validarPaso(0, { tipo_documento: "DNI" }, HOY)), ["documento", "apellidos", "nombres", "numero"]);
+  assert.deepEqual(Object.keys(validarPaso(0, { tipo_documento: "DNI" }, HOY)), ["documento", "numero", "nombres", "apellidos"]);
   assert.deepEqual(validarPaso(0, paso1, HOY), {});
   assert.match(validarPaso(0, { ...paso1, cuil: "20-12345678-6" }, HOY).cuil, /no coincide/);
   assert.match(validarPaso(0, { ...paso1, cuil: "20-30123456-7" }, HOY).cuil, /dígito verificador/);
@@ -54,7 +54,7 @@ test("el cuerpo envía sólo lo visible, con identificadores sin separadores", (
   const body = cuerpoAlta({ ...paso1, ...paso2, titular: 45, parentesco: "conyuge", regimen: "monotributo", cuit_empleador: "30-71234567-1", telefono: " 11 5555-0000 ", email: "" });
   assert.deepEqual(body, {
     solo_crear: true, nombre: "María José González Pérez",
-    tipo_documento: "DNI", documento: "30123456", cuil: "20301234563", apellidos: "González Pérez", nombres: "María José", numero: "00025",
+    tipo_documento: "DNI", documento: "30123456", cuil: "20301234563", numero: "00025", nombres: "María José", apellidos: "González Pérez",
     plan: 31, desde: HOY, delegacion: "Sede Central", motivo: "Adhesión voluntaria",
     telefono: "11 5555-0000", regimen: "monotributo",
   });

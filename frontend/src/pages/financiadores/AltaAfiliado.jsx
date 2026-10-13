@@ -45,8 +45,11 @@ export default function AltaAfiliado() {
 
   if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error) return <Navigate to="/directorio?vista=financiadores" replace />;
 
-  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Nueva afiliación", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
-    <nav aria-label="Ubicación" className="text-sm text-texto-debil"><Link className="font-medium text-accent hover:underline" to={volver}>Padrón de afiliados</Link> / Nueva afiliación</nav>
+  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Nueva afiliación", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="mx-auto max-w-[72rem] space-y-5 p-lg sm:p-[30px] xl:p-[40px]">
+    <div className="space-y-1 text-sm">
+      <nav aria-label="Ubicación" className="text-texto-debil">{organizacion?.nombre && <>{organizacion.nombre} / </>}<Link className="hover:underline" to={volver}>Padrón de afiliados</Link> / <span aria-current="page">Nueva afiliación</span></nav>
+      <Link className="inline-block font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
+    </div>
     {organizaciones.isLoading || planes.isLoading ? <Spinner label="Cargando…" />
       : organizaciones.error || planes.error ? <ErrorCarga error={organizaciones.error || planes.error} reintentar={() => (organizaciones.error ? organizaciones : planes).refetch()} />
       : !organizacion ? <Card><EstadoVacio titulo="No tenés acceso al financiador seleccionado" /></Card>
@@ -200,6 +203,9 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
   const fichaDuplicado = duplicado.id ? `/financiadores/padron/${duplicado.id}?${parametrosFicha(parametros, organizacion.id, Number(parametros.get("padron_page") || 1))}` : null;
   const listaErrores = Object.entries(errores).map(([name, mensaje]) => ({ name, label: CAMPOS_ALTA.find((c) => c.name === name)?.label || name, mensaje: mensaje === "duplicado" ? "ya existe un afiliado con este documento." : mensaje }));
   const opcional = paso > 1 && paso < REVISION;
+  const campo = (name) => CAMPOS_ALTA.find((c) => c.name === name);
+  const props = { datos, errores, errorServidor, cambiar };
+  const controles = (nombres) => nombres.map(campo).filter((c) => !c.visible || c.visible(datos)).map((c) => <Control key={c.name} campo={c} {...props} />);
 
   return <>
     <div>
@@ -208,100 +214,76 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
     </div>
     {borradorInicial?.guardado && <p role="status" className="rounded-md bg-superficie-2 p-3 text-sm">Retomaste el borrador guardado el {new Date(borradorInicial.guardado).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}. <button type="button" className="font-medium text-accent underline" onClick={() => setConfirmarSalida(true)}>Descartar borrador</button></p>}
 
-    <Card className="p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-        <p className="font-semibold">Paso {paso + 1} de {PASOS.length} · {PASOS[paso].titulo}</p>
-        <p className={completos ? "font-medium text-badge-green-fg" : "text-texto-debil"}>{completos ? "Obligatorios completos · ya podés registrar" : "Obligatorios: pasos 1 y 2"}</p>
-      </div>
-      <ol aria-label="Pasos del alta" className="grid gap-2 sm:grid-cols-5">
-        {PASOS.map((item, i) => {
-          const estado = estadoPaso(i);
-          const alcanzable = visitados.has(i) || completos;
-          return <li key={item.key}>
-            <button type="button" disabled={!alcanzable || enviando} aria-current={i === paso ? "step" : undefined} onClick={() => { setDesdeRevision(false); ir(i); }}
-              className={cn("flex w-full items-start gap-2 rounded-md border p-2 text-left text-sm disabled:cursor-not-allowed",
-                estado === "actual" ? "border-accent bg-accent-50" : estado === "revisar" ? "border-badge-error-fg/40 bg-badge-error-bg" : "border-division hover:bg-superficie-2")}>
-              <span aria-hidden="true" className={cn("flex size-6 shrink-0 items-center justify-center rounded-pill text-xs font-bold",
-                estado === "completo" ? "bg-accent-fuerte text-sobre-accent" : estado === "actual" ? "border-2 border-accent text-accent" : estado === "revisar" ? "bg-badge-error-fg text-superficie" : "border-2 border-borde text-texto-tenue")}>{estado === "completo" ? "✓" : estado === "revisar" ? "!" : i + 1}</span>
-              <span><span className="block font-semibold">{item.titulo}{item.obligatorio && " *"}</span>
-                <span className={cn("block text-xs", estado === "revisar" ? "text-badge-error-fg" : "text-texto-debil")}>{ETIQUETAS_ESTADO[estado]}</span></span>
-            </button>
-          </li>;
-        })}
-      </ol>
-    </Card>
+    <Stepper paso={paso} estadoPaso={estadoPaso} alcanzable={(i) => (visitados.has(i) || completos) && !enviando} completos={completos} ir={(i) => { setDesdeRevision(false); ir(i); }} />
 
-    <Card className="space-y-5 p-5">
-      {(listaErrores.length > 0 || errorServidor) && <div ref={resumenRef} tabIndex={-1} role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg outline-none">
-        {listaErrores.length > 0 ? <>
-          <p className="font-semibold">Revisá {listaErrores.length === 1 ? "1 campo" : `${listaErrores.length} campos`} antes de continuar</p>
-          <ul className="mt-1 list-disc pl-5 text-sm">{listaErrores.map((e) => <li key={e.name}><a className="underline" href={`#${idCampo(e.name)}`} onClick={(ev) => { ev.preventDefault(); document.getElementById(idCampo(e.name))?.focus(); }}>{e.label}</a>: {e.mensaje}</li>)}</ul>
-        </> : <p>{errorFinanciador(errorServidor)}</p>}
-      </div>}
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 ref={tituloRef} tabIndex={-1} className="text-lg font-semibold outline-none">{paso + 1}. {PASOS[paso].titulo}</h2>
-        <p className="text-sm text-texto-debil">{paso === REVISION ? "" : opcional ? "Paso opcional" : "* Campo obligatorio"}</p>
-      </div>
+    {(listaErrores.length > 0 || errorServidor) && <div ref={resumenRef} tabIndex={-1} role="alert" className="rounded-lg border border-badge-error-fg/30 bg-badge-error-bg p-4 text-badge-error-fg outline-none">
+      {listaErrores.length > 0 ? <>
+        <p className="font-semibold">Revisá {listaErrores.length === 1 ? "1 campo" : `${listaErrores.length} campos`} antes de continuar</p>
+        <ul className="mt-1 list-disc pl-5 text-sm">{listaErrores.map((e) => <li key={e.name}><a className="hover:underline" href={`#${idCampo(e.name)}`} onClick={(ev) => { ev.preventDefault(); document.getElementById(idCampo(e.name))?.focus(); }}>{e.label}: {e.mensaje} →</a></li>)}</ul>
+      </> : <p>{errorFinanciador(errorServidor)}</p>}
+    </div>}
 
-      <fieldset disabled={enviando} className="space-y-5">
-        {paso === 0 && <Grilla>{camposDelPaso(0, datos).map((campo) => <Control key={campo.name} campo={campo} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar}
-          onBlur={campo.name === "documento" ? () => verificarDocumento() : undefined}
-          mensaje={campo.name === "documento" && errores.documento === "duplicado" || (campo.name === "documento" && duplicado.id && duplicado.documento === String(datos.documento || "").trim())
-            ? <>Ya existe un afiliado con este documento. <Link className="font-medium underline" to={fichaDuplicado}>Abrir su ficha</Link></> : undefined} />)}</Grilla>}
+    <fieldset disabled={enviando} className="min-w-0">
+      {paso === REVISION ? <Revision datos={datos} planes={planes} editar={(i) => { setDesdeRevision(true); ir(i); }} /> : <Card className="space-y-5 p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 ref={tituloRef} tabIndex={-1} className="text-xl font-bold outline-none">{paso + 1}. {PASOS[paso].titulo}</h2>
+          <p className="text-sm text-texto-debil">{opcional ? "Paso opcional" : <><Asterisco /> Campo obligatorio</>}</p>
+        </div>
+
+        {paso === 0 && <Grilla>{camposDelPaso(0, datos).map((c) => <Control key={c.name} campo={c} {...props}
+          onBlur={c.name === "documento" ? () => verificarDocumento() : undefined}
+          mensaje={c.name === "documento" && (errores.documento === "duplicado" || (duplicado.id && duplicado.documento === String(datos.documento || "").trim()))
+            ? <>Ya existe un afiliado con este documento. <Link className="font-medium underline" to={fichaDuplicado}>Abrir su ficha →</Link></> : undefined} />)}</Grilla>}
 
         {paso === 1 && <>
-          <Grilla>{camposDelPaso(1, datos).filter((c) => !["titular", "parentesco"].includes(c.name)).map((campo) => <Control key={campo.name} campo={campo} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar}
-            opciones={campo.name === "plan" ? planes.map((plan) => ({ id: plan.id, nombre: plan.nombre })) : undefined}
-            hint={campo.name === "plan" && !planes.length ? "No hay planes activos. Creá uno en Planes antes de registrar." : undefined} />)}</Grilla>
-          <section className="space-y-3 border-t border-division pt-4" aria-labelledby="alta-grupo">
-            <div><h3 id="alta-grupo" className="font-semibold">Grupo familiar</h3><p className="text-sm text-texto-debil">Indicá si la persona es titular o se suma al grupo de otro afiliado.</p></div>
-            <fieldset><legend className="mb-1.5 text-base font-semibold text-texto-suave">La persona es *</legend>
-              <div className="flex flex-wrap gap-4">{[["titular", "Titular"], ["familiar", "Familiar de un titular existente"]].map(([valor, label]) => <label key={valor} className="flex items-center gap-2 text-md"><input type="radio" name="alta-grupo" value={valor} checked={datos.grupo === valor} onChange={() => cambiar("grupo", valor)} />{label}</label>)}</div>
+          <Grilla>{["plan", "desde", "delegacion", "motivo"].map((name) => <Control key={name} campo={campo(name)} {...props}
+            opciones={name === "plan" ? planes.map((plan) => ({ id: plan.id, nombre: plan.nombre })) : undefined}
+            hint={name === "plan" && !planes.length ? "No hay planes activos. Creá uno en Planes antes de registrar." : undefined} />)}</Grilla>
+          <Seccion titulo="Grupo familiar" detalle="Indicá si la persona es titular o se suma al grupo de otro afiliado.">
+            <fieldset><legend className="mb-1.5 text-base font-semibold text-texto-suave">La persona es <Asterisco /></legend>
+              <div className="flex flex-wrap gap-6">{[["titular", "Titular"], ["familiar", "Familiar de un titular existente"]].map(([valor, label]) => <label key={valor} className="flex items-center gap-2 text-md"><input type="radio" name="alta-grupo" value={valor} checked={datos.grupo === valor} onChange={() => cambiar("grupo", valor)} className="size-4 accent-accent" />{label}</label>)}</div>
             </fieldset>
             {datos.grupo === "familiar" && <Grilla>
               <BuscadorTitular organizacion={organizacion} seleccionado={datos.titular_sel} error={errores.titular || errorCampo(errorServidor, "titular")} onElegir={(fila) => { cambiar("titular", fila?.id ?? ""); cambiar("titular_sel", fila); if (fila) setErrores((previo) => { const resto = { ...previo }; delete resto.titular; return resto; }); }} />
-              <Control campo={CAMPOS_ALTA.find((c) => c.name === "parentesco")} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar} />
+              <Control campo={campo("parentesco")} {...props} />
             </Grilla>}
-          </section>
+          </Seccion>
         </>}
 
         {paso === 2 && <>
-          <section className="space-y-3"><h3 className="font-semibold">Contacto</h3>
-            <Grilla>{camposDelPaso(2, datos).filter((c) => ["telefono", "celular", "email"].includes(c.name)).map((campo) => <Control key={campo.name} campo={campo} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar} />)}</Grilla>
-            {!datos.otro_telefono && !datos.celular && <Button type="button" size="sm" variant="ghost" onClick={() => cambiar("otro_telefono", true)}>+ Agregar otro teléfono</Button>}
-          </section>
-          <section className="space-y-3 border-t border-division pt-4"><div><h3 className="font-semibold">Domicilio</h3><p className="text-sm text-texto-debil">Provincia, partido y localidad se cargan como texto.</p></div>
-            <Grilla>{camposDelPaso(2, datos).filter((c) => !["telefono", "celular", "email"].includes(c.name)).map((campo) => <Control key={campo.name} campo={campo} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar} />)}</Grilla>
-          </section>
+          <Seccion titulo="Contacto">
+            <Grilla>{controles(["telefono", "email", "celular"])}</Grilla>
+            {!datos.otro_telefono && !datos.celular && <button type="button" className="text-sm font-semibold text-accent hover:underline" onClick={() => cambiar("otro_telefono", true)}>+ Agregar otro teléfono</button>}
+          </Seccion>
+          <Seccion titulo="Domicilio" detalle="Provincia, partido y localidad se cargan como texto.">
+            <Grilla>{controles(["provincia", "partido", "localidad", "codigo_postal", "calle", "altura", "piso", "departamento"])}</Grilla>
+          </Seccion>
         </>}
 
         {paso === 3 && <>
-          <Grilla><Control campo={CAMPOS_ALTA.find((c) => c.name === "regimen")} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar} hint="Los campos de abajo cambian según el régimen elegido." /></Grilla>
-          {datos.regimen === "dependencia" && <section className="space-y-3 border-t border-division pt-4"><h3 className="font-semibold">Datos del empleador</h3>
-            <Grilla>{camposDelPaso(3, datos).filter((c) => c.name !== "regimen").map((campo) => <Control key={campo.name} campo={campo} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar} />)}</Grilla></section>}
-          {datos.regimen === "desempleo" && <section className="space-y-3 border-t border-division pt-4"><h3 className="font-semibold">Subsidio por desempleo</h3>
-            <Grilla>{camposDelPaso(3, datos).filter((c) => c.name !== "regimen").map((campo) => <Control key={campo.name} campo={campo} datos={datos} errores={errores} errorServidor={errorServidor} cambiar={cambiar} />)}</Grilla></section>}
+          <Grilla>{controles(["regimen"])}</Grilla>
+          {datos.regimen === "dependencia" && <Seccion titulo="Datos del empleador"><Grilla>{controles(["cuit_empleador", "empleador", "actividad_laboral", "telefono_laboral", "email_laboral", "domicilio_laboral"])}</Grilla></Seccion>}
+          {datos.regimen === "desempleo" && <Seccion titulo="Subsidio por desempleo"><Grilla>{controles(["subsidio_desde", "subsidio_hasta"])}</Grilla></Seccion>}
           {datos.regimen && !["dependencia", "desempleo"].includes(datos.regimen) && <p className="text-sm text-texto-debil">{REGIMENES[datos.regimen]}: sin datos adicionales.</p>}
         </>}
+      </Card>}
+    </fieldset>
 
-        {paso === REVISION && <Revision datos={datos} planes={planes} editar={(i) => { setDesdeRevision(true); ir(i); }} />}
-      </fieldset>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division pt-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" variant="ghost" disabled={enviando} onClick={() => tieneDatos(datos) ? setConfirmarSalida(true) : navigate(volver)}>Cancelar</Button>
-          <p className="text-sm text-texto-debil">{paso === REVISION ? "Al registrar, el afiliado queda con el trámite pendiente y podés gestionar la credencial desde su ficha."
-            : opcional ? "Paso opcional: podés seguir sin completarlo o registrar el alta ahora."
-            : "«Siguiente» valida sólo este paso. «Registrar» se habilita al completar los pasos 1 y 2."}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {paso < 2 && <Button type="button" variant="secondary" disabled={enviando || !tieneDatos(datos)} onClick={guardarYSalir}>Guardar borrador</Button>}
-          {paso > 0 && <Button type="button" variant="secondary" disabled={enviando} onClick={() => { setDesdeRevision(false); ir(paso - 1); }}>Anterior</Button>}
-          {opcional && completos && <Button type="button" variant="secondary" disabled={enviando} onClick={registrar}>{enviando ? "Registrando…" : "Registrar ahora"}</Button>}
-          {paso === REVISION
-            ? <Button type="button" disabled={enviando || !completos} onClick={registrar}>{enviando ? "Registrando…" : "Registrar afiliación"}</Button>
-            : <Button type="button" disabled={enviando} onClick={siguiente}>{desdeRevision ? "Volver a revisión" : `Siguiente: ${PASOS[paso + 1].titulo}`}</Button>}
-        </div>
+    <Card className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <Button type="button" variant="ghost" className="font-semibold text-accent" disabled={enviando} onClick={() => tieneDatos(datos) ? setConfirmarSalida(true) : navigate(volver)}>Cancelar</Button>
+        <p className="min-w-[12rem] flex-1 text-sm text-texto-debil">{paso === REVISION ? "Al registrar, el afiliado queda en estado «Trámite pendiente» y podés gestionar la credencial desde su ficha."
+          : opcional ? "Paso opcional: podés seguir sin completarlo o registrar el alta ahora."
+          : paso === 0 ? "«Registrar» se habilita al completar los pasos 1 y 2. Los pasos 3 y 4 son opcionales."
+          : "Al tocar «Siguiente» se valida solo este paso. El foco va al primer error."}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {paso === 0 && <Button type="button" variant="secondary" disabled={enviando || !tieneDatos(datos)} onClick={guardarYSalir}>Guardar borrador</Button>}
+        {paso > 0 && <Button type="button" variant="secondary" disabled={enviando} onClick={() => { setDesdeRevision(false); ir(paso - 1); }}>← Anterior</Button>}
+        {opcional && completos && <Button type="button" variant="secondary" disabled={enviando} onClick={registrar}>{enviando ? "Registrando…" : "Registrar ahora"}</Button>}
+        {paso === REVISION
+          ? <Button type="button" disabled={enviando || !completos} onClick={registrar}>{enviando ? "Registrando…" : "Registrar afiliación"}</Button>
+          : <Button type="button" disabled={enviando} onClick={siguiente}>{desdeRevision ? "Volver a revisión →" : `Siguiente: ${PASOS[paso + 1].corto || PASOS[paso + 1].titulo} →`}</Button>}
       </div>
     </Card>
 
@@ -309,8 +291,48 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
   </>;
 }
 
+function Stepper({ paso, estadoPaso, alcanzable, completos, ir }) {
+  const avance = Math.round(((paso + 1) / PASOS.length) * 100);
+  return <Card className="p-5">
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+      <p className="font-semibold">Paso {paso + 1} de {PASOS.length} · {PASOS[paso].titulo}</p>
+      <p className={completos ? "font-medium text-badge-green-fg" : "text-texto-debil"}>{completos ? (paso === REVISION ? "Obligatorios completos ✓" : "Obligatorios completos ✓ · ya podés registrar") : "Obligatorios: pasos 1 y 2"}</p>
+    </div>
+    <div className="mt-3 h-1.5 overflow-hidden rounded-pill bg-division" role="progressbar" aria-label="Avance del alta" aria-valuemin={0} aria-valuemax={100} aria-valuenow={avance}>
+      <div className="h-full rounded-pill bg-accent transition-[width]" style={{ width: `${avance}%` }} />
+    </div>
+    <ol aria-label="Pasos del alta" className="mt-4 flex items-center gap-3 overflow-x-auto">
+      {PASOS.map((item, i) => {
+        const estado = estadoPaso(i);
+        const ultimo = i === PASOS.length - 1;
+        return <li key={item.key} className={cn("flex min-w-0 items-center gap-3", !ultimo && "flex-1")}>
+          <button type="button" disabled={!alcanzable(i)} aria-current={estado === "actual" ? "step" : undefined} onClick={() => ir(i)}
+            className="flex shrink-0 items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default">
+            <span aria-hidden="true" className={cn("flex size-7 shrink-0 items-center justify-center rounded-pill text-xs font-bold",
+              estado === "completo" ? "bg-badge-green-fg text-superficie" : estado === "actual" ? "bg-accent text-sobre-accent" : estado === "revisar" ? "bg-badge-error-fg text-superficie" : "border border-texto-tenue text-texto-suave")}>{estado === "completo" ? "✓" : estado === "revisar" ? "!" : i + 1}</span>
+            <span className="leading-tight"><span className={cn("block whitespace-nowrap text-sm", estado === "actual" ? "font-bold text-texto" : "font-medium text-texto-suave")}>{item.titulo}{item.obligatorio && " *"}</span>
+              <span className={cn("block text-xs", estado === "revisar" ? "text-badge-error-fg" : "text-texto-debil")}>{ETIQUETAS_ESTADO[estado]}</span></span>
+          </button>
+          {!ultimo && <span aria-hidden="true" className={cn("h-0.5 min-w-4 flex-1 rounded-pill", estado === "completo" ? "bg-badge-green-fg" : "bg-division")} />}
+        </li>;
+      })}
+    </ol>
+  </Card>;
+}
+
+function Asterisco() {
+  return <span aria-hidden="true" className="text-badge-error-fg">*</span>;
+}
+
+function Seccion({ titulo, detalle, children }) {
+  return <section className="space-y-4 pt-2">
+    <div className="border-b border-division pb-2"><h3 className="text-md font-semibold">{titulo}</h3>{detalle && <p className="text-sm text-texto-debil">{detalle}</p>}</div>
+    {children}
+  </section>;
+}
+
 function Grilla({ children }) {
-  return <div className="grid gap-4 sm:grid-cols-2">{children}</div>;
+  return <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">{children}</div>;
 }
 
 const errorCampo = (error, name) => {
@@ -323,14 +345,14 @@ function Control({ campo, datos, errores, errorServidor, cambiar, opciones, hint
   const obligatorio = requerido(campo, datos);
   const propio = errores[name] === "duplicado" ? undefined : errores[name];
   const error = mensaje || propio || errorCampo(errorServidor, name);
-  const comunes = { id: idCampo(name), name, value: datos[name] ?? "", "aria-required": obligatorio || undefined, onBlur };
+  const comunes = { id: idCampo(name), name, value: datos[name] ?? "", "aria-required": obligatorio || undefined, onBlur, className: "aria-[invalid=true]:border-badge-error-fg" };
   const lista = opciones || options;
   const esCuit = ["cuil", "cuit_empleador"].includes(name);
   const control = lista
     ? <Select {...comunes} onChange={(e) => cambiar(name, e.target.value)}><option value="">{obligatorio ? "Seleccionar" : "Sin informar"}</option>{lista.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</Select>
     : textarea ? <Textarea {...comunes} {...props} rows={2} onChange={(e) => cambiar(name, e.target.value)} />
     : <Input {...comunes} {...props} onChange={(e) => cambiar(name, esCuit ? formatoCuit(e.target.value) : e.target.value)} />;
-  return <div className={textarea ? "sm:col-span-2" : undefined}><Field label={`${label}${obligatorio ? " *" : ""}`} hint={hint || hintCampo} error={error}>{control}</Field></div>;
+  return <div className={textarea ? "sm:col-span-2" : undefined}><Field label={<>{label}{obligatorio && <> <Asterisco /></>}</>} hint={hint || hintCampo} error={error}>{control}</Field></div>;
 }
 
 function BuscadorTitular({ organizacion, seleccionado, error, onElegir }) {
@@ -343,14 +365,15 @@ function BuscadorTitular({ organizacion, seleccionado, error, onElegir }) {
     enabled: busqueda.length >= 3, gcTime: 0, retry: false,
   });
   const filas = filasDe(resultados.data);
-  const describir = (fila) => `${fila.nombre} · ${fila.tipo_documento || "Doc."} ${fila.documento} · ${fila.numero}`;
-  if (seleccionado) return <Field label="Titular *" error={error}>
-    <div id={idCampo("titular")} tabIndex={-1} className="flex items-center justify-between gap-2 rounded-md border border-campo-borde bg-superficie-2 px-3 py-2 text-md">
-      <span>{describir(seleccionado)}</span><Button type="button" size="sm" variant="ghost" onClick={() => onElegir(null)}>Cambiar</Button>
+  const describir = (fila) => `${fila.nombre} · ${fila.tipo_documento || "DNI"} ${fila.documento} · ${fila.numero}`;
+  const etiqueta = <>Titular <Asterisco /></>;
+  if (seleccionado) return <Field label={etiqueta} error={error}>
+    <div id={idCampo("titular")} tabIndex={-1} className="flex h-10 items-center justify-between gap-2 rounded-md border border-campo-borde bg-superficie-2 px-3 text-md">
+      <span className="truncate">{describir(seleccionado)}</span><button type="button" className="text-sm font-semibold text-accent hover:underline" onClick={() => onElegir(null)}>Cambiar</button>
     </div>
   </Field>;
   return <div>
-    <Field label="Titular *" hint="Buscá por DNI, apellido o n.º de afiliado (mínimo 3 caracteres)." error={error}>
+    <Field label={etiqueta} hint="Buscá por DNI, apellido o n.º de afiliado." error={error}>
       <Input id={idCampo("titular")} type="search" aria-required="true" value={texto} onChange={(e) => setTexto(e.target.value)} autoComplete="off" />
     </Field>
     {busqueda.length >= 3 && <div className="mt-1 rounded-md border border-division" aria-live="polite">
@@ -374,27 +397,28 @@ function Revision({ datos, planes, editar }) {
   };
   const domicilio = [[datos.calle, datos.altura].filter(Boolean).join(" "), [datos.piso && `${datos.piso}.º`, datos.departamento].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   const localidad = [[datos.localidad, datos.partido, datos.provincia].filter(Boolean).join(", "), datos.codigo_postal && `CP ${datos.codigo_postal}`].filter(Boolean).join(" · ");
+  const titular = datos.titular_sel ? `${datos.titular_sel.nombre} · ${datos.titular_sel.tipo_documento || "DNI"} ${datos.titular_sel.documento}` : "—";
   const bloques = [
-    { paso: 0, filas: [["Documento", `${valor("tipo_documento")} ${datos.documento || ""}`.trim()], ["CUIL", valor("cuil")], ["Apellidos", valor("apellidos")], ["Nombres", valor("nombres")], ["Fecha de nacimiento", valor("fecha_nacimiento")], ["Sexo registrado", valor("sexo")], ["Número de afiliado", valor("numero")]] },
-    { paso: 1, filas: [["Plan", valor("plan")], ["Inicio de cobertura", valor("desde")], ["Delegación", valor("delegacion")], ["Motivo del alta", valor("motivo")], ...(datos.grupo === "familiar" ? [["Titular", datos.titular_sel?.nombre || "—"], ["Parentesco", valor("parentesco")]] : [["Grupo familiar", "Es titular"]])] },
+    { paso: 0, filas: [["Documento", `${valor("tipo_documento")} ${datos.documento || ""}`.trim()], ["CUIL", valor("cuil")], ["Nombres", valor("nombres")], ["Apellidos", valor("apellidos")], ["Sexo registrado", valor("sexo")], ["Fecha de nacimiento", valor("fecha_nacimiento")], ["Número de afiliado", valor("numero")]] },
+    { paso: 1, filas: [["Plan", valor("plan")], ["Inicio de cobertura", valor("desde")], ["Delegación", valor("delegacion")], ["Motivo del alta", valor("motivo")], ...(datos.grupo === "familiar" ? [["Titular", titular], ["Parentesco", valor("parentesco")]] : [["Titular", "— (es titular)"]])] },
     { paso: 2, filas: pasoConDatos(2, datos) ? [["Teléfono", [datos.telefono, datos.celular].filter(Boolean).join(" · ") || "—"], ["Correo", valor("email")], ["Domicilio", domicilio || "—"], ["Localidad", localidad || "—"]] : null },
     { paso: 3, filas: pasoConDatos(3, datos) ? [["Régimen", valor("regimen")], ...camposDelPaso(3, datos).filter((c) => c.name !== "regimen").map((c) => [c.label, valor(c.name)])] : null },
   ];
-  return <div className="space-y-4">{bloques.map((bloque) => <section key={bloque.paso} className="rounded-md border border-division p-4" aria-labelledby={`revision-${bloque.paso}`}>
-    <div className="flex items-center justify-between gap-2"><h3 id={`revision-${bloque.paso}`} className="font-semibold">{bloque.paso + 1}. {PASOS[bloque.paso].titulo}</h3><Button type="button" size="sm" variant="ghost" onClick={() => editar(bloque.paso)} aria-label={`Editar ${PASOS[bloque.paso].titulo}`}>Editar</Button></div>
-    {bloque.filas ? <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">{bloque.filas.map(([label, v]) => <div key={label}><dt className="text-texto-debil">{label}</dt><dd className="mt-1 whitespace-pre-wrap font-medium">{v}</dd></div>)}</dl>
-      : <p className="mt-2 text-sm text-texto-debil">Sin datos cargados (opcional). Podés completarlo ahora o después desde la ficha.</p>}
-  </section>)}</div>;
+  return <div className="space-y-4">{bloques.map((bloque) => <Card key={bloque.paso} className="p-6" role="region" aria-labelledby={`revision-${bloque.paso}`}>
+    <div className="flex items-center justify-between gap-2"><h2 id={`revision-${bloque.paso}`} className="text-lg font-bold">{bloque.paso + 1}. {PASOS[bloque.paso].titulo}</h2><button type="button" className="text-sm font-semibold text-accent hover:underline" onClick={() => editar(bloque.paso)} aria-label={`Editar ${PASOS[bloque.paso].titulo}`}>Editar</button></div>
+    {bloque.filas ? <dl className="mt-4 grid gap-x-5 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">{bloque.filas.map(([label, v]) => <div key={label}><dt className="text-xs text-texto-debil">{label}</dt><dd className="mt-0.5 whitespace-pre-wrap">{v}</dd></div>)}</dl>
+      : <p className="mt-3 text-sm text-texto-debil">Sin datos cargados (opcional). Podés completarlo ahora o después desde la ficha.</p>}
+  </Card>)}</div>;
 }
 
 function ConfirmarDescarte({ pasos, onSeguir, onGuardar, onDescartar }) {
   // El Modal enfoca el diálogo al montarse; después se pasa a la acción segura.
   useEffect(() => { const t = requestAnimationFrame(() => document.getElementById("alta-seguir-editando")?.focus()); return () => cancelAnimationFrame(t); }, []);
-  return <Modal title="¿Descartar los datos cargados?" onClose={onSeguir} width={520} footer={<>
-    <Button variant="danger" onClick={onDescartar}>Descartar</Button>
+  return <Modal title="¿Descartar los datos cargados?" onClose={onSeguir} width={480} footer={<>
+    <Button variant="ghost" className="font-semibold text-accent" onClick={onDescartar}>Descartar</Button>
     <Button variant="secondary" onClick={onGuardar}>Guardar borrador</Button>
     <Button id="alta-seguir-editando" onClick={onSeguir}>Seguir editando</Button>
   </>}>
-    <p className="text-md text-texto-suave">Cargaste datos en {pasos === 1 ? "1 paso" : `${pasos} pasos`}. Si descartás, se pierden. Podés guardar un borrador y retomarlo desde «Registrar afiliación».</p>
+    <p className="text-md text-texto-suave">Cargaste datos en {pasos === 1 ? "1 paso" : `${pasos} pasos`}. Si salís ahora, se perderán. Podés guardar un borrador y retomarlo desde «Registrar afiliación».</p>
   </Modal>;
 }
