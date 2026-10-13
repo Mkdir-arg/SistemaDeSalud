@@ -1,17 +1,25 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { errorFinanciador } from "@/api/financiadores";
 import { cambiosPadron, errorCampoPadron } from "@/lib/padronEdicion";
 import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from "@/components/ui";
 
 // Sólo envía campos del bloque que la API habilitó y que la persona cambió.
 // No completa recursos sensibles ausentes con valores vacíos.
-export default function FormularioPadron({ titulo, descripcion, campos, inicial = {}, guardar, onClose, onGuardado, recargar, antesCampos, requiereCambio = true }) {
+export default function FormularioPadron({ titulo, descripcion, campos, inicial = {}, guardar, onClose, onGuardado, recargar, antesCampos, requiereCambio = true, integrado = false, onOcupado }) {
   const [datos, setDatos] = useState(() => Object.fromEntries(campos.map((campo) => [campo.name, inicial[campo.name] ?? (campo.boolean ? false : "")])));
   const [guardarVersion] = useState(() => guardar);
   const [original] = useState(() => ({ ...inicial }));
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState(null);
   const [ocupado, setOcupado] = useState(false);
+  const formulario = useRef(null);
+  useEffect(() => {
+    if (!integrado) return;
+    const previo = document.activeElement;
+    formulario.current?.focus();
+    return () => { setTimeout(() => { if (previo?.getClientRects().length) previo.focus(); }, 0); };
+  }, [integrado]);
+  useEffect(() => { onOcupado?.(ocupado); return () => onOcupado?.(false); }, [ocupado, onOcupado]);
   const cambios = cambiosPadron(campos, original, datos);
   const conflicto = error?.status === 409;
   async function enviar(event) {
@@ -27,8 +35,8 @@ export default function FormularioPadron({ titulo, descripcion, campos, inicial 
     try { await onGuardado(); }
     catch { setError({ message: "Los cambios se guardaron. Cerrá y recargá la ficha para consultar el resultado." }); }
   }
-  return <Modal title={titulo} ayuda={descripcion} onClose={ocupado ? undefined : onClose} width={760}>
-    <form onSubmit={enviar} className="space-y-4">
+  const contenido = <>
+    <form ref={formulario} tabIndex={integrado ? -1 : undefined} onSubmit={enviar} className="space-y-4 outline-none">
       {error && <div role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error.status ? errorFinanciador(error) : error.message}{conflicto && <p className="mt-2">Otra persona modificó este registro. Cerrá el formulario y recargá antes de volver a editar; tus cambios no se reenviaron.</p>}{conflicto && recargar && <Button type="button" variant="secondary" className="mt-2" onClick={recargar}>Recargar ficha</Button>}{ocupado && <Button type="button" variant="secondary" className="mt-2" onClick={onClose}>Cerrar</Button>}</div>}
       <fieldset disabled={ocupado || conflicto} className="grid gap-4 sm:grid-cols-2">
         {antesCampos}
@@ -40,5 +48,6 @@ export default function FormularioPadron({ titulo, descripcion, campos, inicial 
       <Field label="Motivo del cambio" error={errorCampoPadron(error, "motivo")} hint="Describí la corrección administrativa. No incluyas diagnósticos ni datos bancarios en el motivo."><Textarea required maxLength={255} disabled={ocupado || conflicto} value={motivo} onChange={(event) => setMotivo(event.target.value)} /></Field>
       <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={ocupado} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={ocupado || conflicto || !motivo.trim() || requiereCambio && !Object.keys(cambios).length}>{ocupado ? "Guardando…" : "Guardar cambios"}</Button></div>
     </form>
-  </Modal>;
+  </>;
+  return integrado ? <section aria-label={titulo}><h2 className="mb-3 text-lg font-semibold">{titulo}</h2>{descripcion && <p className="mb-4 text-sm text-texto-debil">{descripcion}</p>}{contenido}</section> : <Modal title={titulo} ayuda={descripcion} onClose={ocupado ? undefined : onClose} width={760}>{contenido}</Modal>;
 }

@@ -1,0 +1,362 @@
+[
+  {
+    "key": "nombre",
+    "label": "Afiliado",
+    "type": "text",
+    "required": true,
+    "default": true
+  },
+  {
+    "key": "numero",
+    "label": "N.º de afiliado",
+    "type": "text",
+    "required": true,
+    "default": true
+  },
+  {
+    "key": "documento",
+    "label": "Documento",
+    "type": "text"
+  },
+  {
+    "key": "plan",
+    "label": "Plan",
+    "type": "relation",
+    "nullable": true,
+    "default": true
+  },
+  {
+    "key": "derecho",
+    "label": "Estado",
+    "type": "choice",
+    "default": true,
+    "options": {
+      "vigentes": "Vigente",
+      "futuras": "Aún no vigente",
+      "finalizadas": "Finalizada"
+    }
+  },
+  {
+    "key": "estado_administrativo",
+    "label": "Administrativo",
+    "type": "choice",
+    "default": true,
+    "options": {
+      "activo": "Activo administrativamente",
+      "en_tramite": "En trámite",
+      "baja_programada": "Baja programada",
+      "baja_administrativa": "Baja administrativa"
+    }
+  },
+  {
+    "key": "desde",
+    "label": "Afiliación desde",
+    "type": "date"
+  },
+  {
+    "key": "finalizado_en",
+    "label": "Finalización de afiliación",
+    "type": "datetime",
+    "nullable": true
+  },
+  {
+    "key": "motivo_finalizacion",
+    "label": "Motivo de finalización",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "plan_tipo",
+    "label": "Tipo de plan",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "base": "Base",
+      "superador": "Superador",
+      "privado": "Privado"
+    }
+  },
+  {
+    "key": "tipo_documento",
+    "label": "Tipo de documento",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "DNI": "DNI",
+      "LE": "LE",
+      "LC": "LC",
+      "CI": "CI",
+      "PAS": "Pasaporte",
+      "OTRO": "Otro"
+    }
+  },
+  {
+    "key": "cuil",
+    "label": "CUIL",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "nombres",
+    "label": "Nombres",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "apellidos",
+    "label": "Apellidos",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "sexo",
+    "label": "Sexo",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "F": "Femenino",
+      "M": "Masculino",
+      "X": "X"
+    }
+  },
+  {
+    "key": "fecha_nacimiento",
+    "label": "Fecha de nacimiento",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "nacionalidad",
+    "label": "Nacionalidad",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "estado_civil",
+    "label": "Estado civil",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "telefono",
+    "label": "Teléfono",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "celular",
+    "label": "Celular",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "email",
+    "label": "Correo electrónico",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "calle",
+    "label": "Calle",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "altura",
+    "label": "Altura",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "piso",
+    "label": "Piso",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "departamento",
+    "label": "Departamento",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "codigo_postal",
+    "label": "Código postal",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "localidad",
+    "label": "Localidad",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "partido",
+    "label": "Partido",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "provincia",
+    "label": "Provincia",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "regimen",
+    "label": "Régimen",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "dependencia": "Relación de dependencia",
+      "monotributo": "Monotributo",
+      "pasivo": "Jubilado / pensionado",
+      "desempleo": "Desempleo",
+      "adherente": "Adherente"
+    }
+  },
+  {
+    "key": "empleador",
+    "label": "Empleador",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "cuit_empleador",
+    "label": "CUIT del empleador",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "actividad_laboral",
+    "label": "Actividad laboral",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "domicilio_laboral",
+    "label": "Domicilio laboral",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "telefono_laboral",
+    "label": "Teléfono laboral",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "email_laboral",
+    "label": "Correo laboral",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "subsidio_desde",
+    "label": "Subsidio desde",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "subsidio_hasta",
+    "label": "Subsidio hasta",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "alta_administrativa",
+    "label": "Alta administrativa",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "delegacion",
+    "label": "Delegación",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "estado_tramite",
+    "label": "Estado del trámite",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "pendiente": "Pendiente",
+      "en_revision": "En revisión",
+      "observado": "Observado",
+      "completo": "Completo"
+    }
+  },
+  {
+    "key": "credencial_tipo",
+    "label": "Tipo de credencial externa",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "credencial_fecha",
+    "label": "Fecha de credencial externa",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "causa_baja",
+    "label": "Causa de baja administrativa",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "cese_laboral": "Cese laboral",
+      "traspaso": "Traspaso",
+      "fallecimiento": "Fallecimiento",
+      "edad": "Edad",
+      "renuncia": "Renuncia",
+      "mora": "Mora informada",
+      "judicial": "Judicial",
+      "otra": "Otra"
+    }
+  },
+  {
+    "key": "solicitud_baja",
+    "label": "Solicitud de baja",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "baja_efectiva",
+    "label": "Baja administrativa efectiva",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "fin_prestacional_informado",
+    "label": "Fin prestacional informado",
+    "type": "date",
+    "nullable": true
+  },
+  {
+    "key": "motivo_baja",
+    "label": "Motivo de baja administrativa",
+    "type": "text",
+    "nullable": true
+  },
+  {
+    "key": "titular",
+    "label": "ID del titular",
+    "type": "relation",
+    "nullable": true
+  },
+  {
+    "key": "parentesco",
+    "label": "Parentesco",
+    "type": "choice",
+    "nullable": true,
+    "options": {
+      "conyuge": "Cónyuge",
+      "hijo": "Hijo",
+      "hija": "Hija",
+      "conviviente": "Conviviente",
+      "otro": "Otro"
+    }
+  }
+]

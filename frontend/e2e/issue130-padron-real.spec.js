@@ -237,7 +237,13 @@ test("XLSX v2 real: preview sin efectos, aplicación parcial, rechazos y repetic
   await loginUI(page, "admin");
   await page.goto(`/financiadores/padron?financiador=${organizacion}&estado=todos`);
   await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
-  await page.getByRole("dialog").getByLabel("Versión de plantilla").selectOption("2");
+  await expect(page.getByRole("dialog").getByLabel("Versión de plantilla")).toHaveCount(0);
+  const plantillaDescarga = page.waitForEvent("download");
+  await page.getByRole("dialog").getByRole("button", { name: "Descargar plantilla", exact: true }).click();
+  const plantillaVigente = await plantillaDescarga;
+  expect(plantillaVigente.suggestedFilename()).toBe("plantilla-padron.xlsx");
+  expect(await plantillaVigente.failure()).toBeNull();
+  expect([...readFileSync(await plantillaVigente.path()).subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
   await page.getByRole("dialog").getByLabel("Archivo Excel (.xlsx)").setInputFiles(process.env.PADRON130_XLSX);
   const preview = page.waitForResponse((respuesta) => respuesta.request().method() === "POST" && new URL(respuesta.url()).pathname === `/api/financiadores/${organizacion}/importaciones/`);
   await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();

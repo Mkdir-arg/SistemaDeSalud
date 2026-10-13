@@ -1,6 +1,6 @@
 # Demo local del padrón lista para probar
 
-Preparada y verificada el 12/10/2026. URL: http://127.0.0.1:8230/financiadores/padron?financiador=1&estado=todos.
+Preparada el 12/10/2026 y actualizada el 13/10/2026 para el PR #133. URL: http://127.0.0.1:8230/financiadores/padron?financiador=1&estado=todos.
 
 Entrar con `admin@padron130.example.test`. La contraseña y las seis cuentas están en el archivo local `C:\Users\Juanito\AppData\Local\Temp\hen-padron130-20261012\accesos.txt`. Es un archivo privado fuera del repositorio. Para comparar permisos, cerrar sesión y usar operador, salud, cobranza, auditor u organización B.
 
@@ -13,11 +13,29 @@ La aplicación queda encendida en el proyecto Docker `salud-padron-130`. Backend
 3. Navegar sus familiares; abrir P130-A-04 para legajo y vencimientos. El legajo registra presentaciones sin archivos adjuntos. Para observar un documento con trámite completo, pasar primero el trámite a «En revisión».
 4. Comparar la baja administrativa y derechos actuales en P130-A-09; revisar mora informada en P130-A-06 con la cuenta de cobranza.
 5. Usar los perfiles separados: operador no recibe salud/cobranza, auditor consulta sin escribir y B no accede a A.
-6. Descargar plantilla v2 o importar `C:\Users\Juanito\AppData\Local\Temp\hen-padron130-20261012\muestra.xlsx`. La muestra tiene dos filas válidas y cuatro rechazadas. Ya se aplicó durante el ensayo: repetir conserva los datos y no agrega duplicados.
+6. Descargar la plantilla vigente o importar `C:\Users\Juanito\AppData\Local\Temp\hen-padron130-20261012\muestra.xlsx`. La muestra tiene dos filas válidas y cuatro rechazadas. Ya se aplicó durante el ensayo: repetir conserva los datos y no agrega duplicados.
+7. Abrir «Columnas visibles», mostrar documento, CUIL o contacto, ocultarlos y restaurar la vista. Ordenar desde los encabezados y usar los filtros. Estado permite ver finalizadas y futuras; «Reactivar» conserva su acción explícita. Los filtros de texto se aplican al terminar de escribir, sin acumular una consulta ni una entrada de historial por tecla.
+8. Pulsar «Editar» en una fila: abre la ficha administrativa completa en un solo diálogo. Cada bloque conserva motivo, revisión y guardado independiente; un conflicto no sobrescribe el cambio de otra persona. Familia, legajo, salud y cobranza mantienen sus reglas y permisos.
+9. Elegir columnas y pulsar «Exportar XLSX». Descarga todos los resultados filtrados y ordenados, no sólo la página visible. Documentos e identificadores conservan texto y ceros. El límite es 5.000 filas; el exceso exige acotar filtros y no genera un archivo parcial. No incluye salud ni cobranza. Mientras hay criterios pendientes de aplicar, la descarga está bloqueada.
 
 Se crearon trece afiliados ficticios iniciales (doce A y uno B), cuatro planes y seis cuentas. El recorrido de importación agregó dos afiliados A: quedan quince en total. Los ensayos de contacto y legajo restauran sus datos de partida y conservan el historial de prueba. El loader no resiembra ni restablece tus futuras ediciones.
 
 ## Validación realizada
+
+Actualización del PR #133, sobre el código integrado `ce7d2ed` (backend idéntico a `92c1175`):
+
+- 553 pruebas de financiadores y guarda de destino sobre PostgreSQL dedicado: pasan, sin omisiones. La base de tests se destruyó al finalizar; la base de la demo conserva sus quince afiliados, cuatro planes y seis membresías.
+- 25 pruebas Node de edición, navegación, campos, estado/columnas y auditor CSS pasan; 12 recorridos de componente con datos ficticios e interceptores pasan. Los jobs de CI existentes ejecutan ahora estos checks del padrón.
+- Los siete recorridos reales anteriores vuelven a pasar en 16,6 segundos, sin interceptar el backend. Se conservan firma/compatibilidad de importación, idempotencia, persistencia, 409, permisos y auditoría.
+- Se reprodujeron y corrigieron las dos observaciones menores de la revisión final: un refresco de la misma consulta ya no cancela un XLSX iniciado y la búsqueda de afiliados en facturas recorta espacios antes de consultar. Seis pruebas focales de navegador con API interceptada pasan en 9,4 segundos; incluyen cambio de organización, borradores pendientes y descarga durante el refresco.
+- Dos ensayos adicionales con navegador, API y PostgreSQL reales verifican: XLSX de catorce filas frente a una página de diez, ocho columnas elegidas, identificadores textuales sin fórmulas, rechazo de datos protegidos y otras organizaciones, edición desde el diálogo con historial y restauración exclusiva del campo del ensayo; finalizadas/futuras visibles, Reactivar accesible, once caracteres escritos producen un único GET, historial del navegador estable, exportación bloqueada durante el borrador y plantilla visible sin etiquetas de versión.
+- Imágenes backend/frontend y build Vite pasan. El auditor revisa los tres chunks CSS y sus 282 clases; siete fixtures prueban que sigue rechazando clases ausentes, colisiones y builds viejos.
+
+Los ensayos usan exclusivamente cuentas y afiliados ficticios. La auditoría de creación, cambios e importación se consulta desde «Historia administrativa»; salud/cobranza tienen historiales separados. La descarga deja un evento de generación autorizada, sin búsquedas ni datos personales; ese evento no demuestra recepción del archivo ni inmutabilidad. El formato técnico firmado sigue compatible internamente con archivos anteriores.
+
+La incorporación a `main`, CI del head final y publicación en producción se informan en el PR; esta guía acredita la demo local. No se añadieron migraciones ni permisos. Para revertir este cambio se revierte el código del PR y se reconstruyen las aplicaciones; no se revierten las migraciones del padrón anterior ni se borran volúmenes o datos.
+
+Evidencia histórica de la preparación inicial:
 
 - Construcción de las imágenes backend y frontend; build Vite pasó.
 - Migraciones aplicadas sólo sobre la nueva base `padron130`; `check` y `makemigrations --check --dry-run` pasaron.

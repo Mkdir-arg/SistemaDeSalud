@@ -6,6 +6,7 @@ from uuid import uuid4
 from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
+from django.core import signing
 from django.test import SimpleTestCase
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -15,7 +16,7 @@ from apps.accounts.models import Usuario
 from apps.simulacion import contexto
 from . import models as m
 from . import padron as p
-from .importaciones import aplicar_importacion, generar_plantilla, previsualizar_importacion
+from .importaciones import SALT, aplicar_importacion, encabezados, generar_plantilla, previsualizar_importacion
 from .services import registrar_afiliado
 
 
@@ -518,3 +519,43 @@ class Padron130ApiTests(APITestCase):
         self.permisos()
         with self.assertRaises(ValidationError):
             p.editar_protegido(afiliado=self.a, usuario=self.user, bloque='salud', entrada={'revision': 1, 'motivo': 'Intento', 'afiliado_id': self.ajeno.pk})
+
+
+    def test_plantilla_vigente_sin_etiquetas_tecnicas_con_contexto_firmado_intacto(self):
+        libro = load_workbook(BytesIO(generar_plantilla(financiador=self.org, usuario=self.user, tipo="padron", version=2)))
+        self.assertIn("Campos", libro.sheetnames)
+        self.assertNotIn("Campos v2", libro.sheetnames)
+        visibles = " ".join(str(c.value) for hoja in libro if hoja.sheet_state == "visible" for fila in hoja for c in fila if c.value is not None)
+        self.assertNotIn("v2", visibles.lower())
+        self.assertNotIn("padrón ampliado", visibles.lower())
+        self.assertEqual(signing.loads(libro["_contexto"]["A1"].value, salt=SALT), {"financiador": self.org.pk, "tipo": "padron", "version": 2})
+        self.assertEqual(libro["_contexto"].sheet_state, "hidden")
+        self.assertEqual(tuple(c.value for c in libro["Carga"][1]), encabezados("padron", 2))
+
+    def test_plantillas_anteriores_v1_v2_siguen_importables_y_motivo_nuevo_es_humano(self):
+        anterior = m.HistorialAfiliacion.objects.create(afiliado=self.a, numero=self.a.numero, documento=self.a.documento, plan=self.a.plan, desde=self.a.desde, registrado_por=self.user, origen="importacion", motivo="Importación v2 de padrón")
+        for version in (1, 2):
+            libro = load_workbook(BytesIO(self.libro([self.fila(**{"Nombre y apellido": f"Importado anterior {version}", **({"telefono": "001234567"} if version == 2 else {})})], version=version)))
+            contexto = libro["_contexto"]["A1"].value
+            if version == 2:
+                libro["Campos"].title = "Campos v2"
+                libro["LEEME"]["A10"] = "V2: columnas nuevas vacías no borran."
+                libro["LEEME"]["A12"] = "V2: se revalida al confirmar."
+            contenido = BytesIO(); libro.save(contenido)
+            self.assertEqual(libro["_contexto"]["A1"].value, contexto)
+            lote = self.preview(contenido.getvalue())
+            self.assertEqual(lote.version, version)
+            self.assertEqual(lote.resumen["valida"], 1, lote.filas)
+            aplicar_importacion(importacion=lote, usuario=self.user)
+            self.assertEqual(lote.filas[0]["estado"], "aplicada", lote.filas)
+            self.a.refresh_from_db()
+            self.assertEqual(self.a.nombre, f"Importado anterior {version}")
+            historia = self.a.historial.filter(lote=lote)
+            self.assertTrue(historia.exists())
+            self.assertEqual(set(historia.values_list("origen", flat=True)), {"importacion"})
+            if version == 2:
+                self.assertEqual(self.a.telefono, "001234567")
+                self.assertTrue(historia.filter(motivo="Importación de padrón").exists())
+                self.assertFalse(historia.filter(motivo="Importación v2 de padrón").exists())
+        anterior.refresh_from_db()
+        self.assertEqual(anterior.motivo, "Importación v2 de padrón")

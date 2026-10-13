@@ -30,9 +30,12 @@ function archivos(dir, out = []) {
 const distDir = join(RAIZ, "dist/assets");
 let css, cssMtime;
 try {
-  const cssFile = readdirSync(distDir).filter((f) => f.endsWith(".css")).pop();
-  css = readFileSync(join(distDir, cssFile), "utf8");
-  cssMtime = statSync(join(distDir, cssFile)).mtimeMs;
+  const cssFiles = readdirSync(distDir).filter((f) => f.endsWith(".css")).sort();
+  if (!cssFiles.length) throw new Error("Sin CSS compilado");
+  // Vite separa los estilos por chunk: ninguna utilidad debe quedar fuera.
+  css = cssFiles.map((f) => readFileSync(join(distDir, f), "utf8")).join("\n");
+  // Todos los chunks deben ser actuales; uno nuevo no valida otro viejo.
+  cssMtime = Math.min(...cssFiles.map((f) => statSync(join(distDir, f)).mtimeMs));
 } catch {
   console.error("No hay CSS compilado en dist/assets. Corré `npm run build` primero.");
   process.exit(2);
