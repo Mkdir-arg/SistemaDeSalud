@@ -883,7 +883,7 @@ test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cup
   const { escrituras, planes } = await escenario(page, { rol: "operador" });
   planes[21].push({ id: 33, codigo: "ANT", nombre: "Plan inactivo", activo: false });
   await page.goto("/financiadores/padron");
-  await page.getByText(/Columnas visibles/).click();
+  await page.getByRole("button", { name: "Columnas visibles" }).click();
   await page.getByRole("checkbox", { name: "Finalización de afiliación", exact: true }).check();
   const afiliado = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
   await afiliado.getByRole("button", { name: "Finalizar", exact: true }).click();
@@ -1170,13 +1170,13 @@ test("búsqueda global de padrón envía DNI CUIL apellido y número por GET pre
   const { consultas, escrituras } = await consultaPadronMock(page);
   for (const texto of ["00123456", "20123456786", "Pérez", "00025"]) {
     await page.goto(`/financiadores/padron?${contextoBusquedaPadron}`);
-    const buscar = page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true });
+    const buscar = page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true });
     await expect(buscar).toBeVisible();
     await expect.poll(() => consultas.at(-1)?.params.page).toBe("2");
     const antes = consultas.length;
     await buscar.fill(`  ${texto}  `);
     expect(consultas.length).toBe(antes);
-    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await buscar.press("Enter");
     await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", search: texto, page: "1" } });
     const url = new URL(page.url());
     expect(url.searchParams.has("page")).toBe(false);
@@ -1185,8 +1185,8 @@ test("búsqueda global de padrón envía DNI CUIL apellido y número por GET pre
     await page.reload();
     await expect(buscar).toHaveValue(texto);
   }
-  await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("");
-  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("");
+  await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).press("Enter");
   await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", page: "1" } });
   expect(new URL(page.url()).searchParams.has("search")).toBe(false);
   expect(escrituras).toEqual([]);
@@ -1208,7 +1208,7 @@ test("Plan y Estado globales de padrón vuelven a página uno sin perder búsque
   await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("");
   await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "vigentes", search: "previo", page: "1" } });
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true })).toHaveValue("previo");
+  await expect(page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true })).toHaveValue("previo");
   await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue("vigentes");
   expect(escrituras).toEqual([]);
 });
@@ -1274,7 +1274,7 @@ test("filtro de columna agrupa teclas y bloquea XLSX hasta aplicar criterios", a
   const exportar = page.getByRole("button", { name: "Exportar XLSX", exact: true });
   await expect(exportar).toBeEnabled();
   await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
-  await page.getByText("Filtros administrativos", { exact: true }).click();
+  await page.getByRole("button", { name: /^Filtros/ }).click();
   const antes = consultas.length;
   const historial = await page.evaluate(() => history.length);
   await page.getByRole("textbox", { name: "Filtrar Documento", exact: true }).pressSequentially("00123456");
@@ -1317,11 +1317,13 @@ test("descarga XLSX iniciada se suprime si aparece una búsqueda en borrador", a
   const solicitud = page.waitForRequest((r) => r.url().includes("/21/padron/exportar/"));
   await page.getByRole("button", { name: "Exportar XLSX", exact: true }).click();
   await solicitud;
-  await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("nuevo criterio");
+  await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("nuevo criterio");
   const descarga = page.waitForEvent("download", { timeout: 1000 }).catch(() => null);
   liberar();
   expect(await descarga).toBeNull();
-  await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeDisabled();
+  // La búsqueda se aplica sola tras la espera; recién con esa consulta vuelve a exportar.
+  await expect.poll(() => new URL(page.url()).searchParams.get("search")).toBe("nuevo criterio");
+  await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeEnabled();
 });
 
 test("exportación conserva la descarga durante un refresco de la misma consulta", async ({ page }) => {

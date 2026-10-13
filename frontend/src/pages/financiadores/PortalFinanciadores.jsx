@@ -14,7 +14,7 @@ import ImportacionFinanciador from "./ImportacionFinanciador";
 import EditarFichaPadron from "@/components/financiadores/EditarFichaPadron";
 import CrearAfiliadoPadron from "@/components/financiadores/CrearAfiliadoPadron";
 import PadronTabla from "@/components/financiadores/PadronTabla";
-import { parametrosConsultaPadron, obtenerColumnasPadron, estadoDerechoPadron, cambiarEstadoPadron } from "@/components/financiadores/padronTablaEstado";
+import { parametrosConsultaPadron, obtenerColumnasPadron, estadoDerechoPadron } from "@/components/financiadores/padronTablaEstado";
 import ExportarPadron from "@/components/financiadores/ExportarPadron";
 import { ADMINISTRATIVOS, TIPOS_PLAN } from "@/components/financiadores/padronCampos";
 import { parametrosFicha } from "@/lib/padronNavigation";
@@ -274,17 +274,12 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
     if (pagina > 1) nuevos.set("page", String(pagina)); else nuevos.delete("page");
     setParametros(nuevos);
   }
-  const [busqueda, setBusqueda] = useState(() => recurso === "padron" ? parametros.get("search") || "" : "");
-  const [buscarLocal, setBuscarLocal] = useState("");
-  const buscar = recurso === "padron" ? parametros.get("search") || "" : buscarLocal;
-  useEffect(() => { if (recurso === "padron") setBusqueda(parametros.get("search") || ""); }, [recurso, parametros]);
+  // La búsqueda del padrón vive en su propia barra (PadronTabla), en la URL.
+  const [busqueda, setBusqueda] = useState("");
+  const [buscar, setBuscar] = useState("");
   function buscarRegistros(event) {
     event.preventDefault();
-    if (recurso !== "padron") { setPage(1); setBuscarLocal(busqueda.trim()); return; }
-    const nuevos = new URLSearchParams(parametros);
-    nuevos.delete("page");
-    if (busqueda.trim()) nuevos.set("search", busqueda.trim()); else nuevos.delete("search");
-    setParametros(nuevos);
+    setPage(1); setBuscar(busqueda.trim());
   }
   const [error, setError] = useState(null);
   const [aceptando, setAceptando] = useState(null);
@@ -312,12 +307,13 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   }, [planFiltro, estadoFiltro, convenioFiltro]);
   const fichaQuery = parametrosFicha(parametros, organizacion.id, page);
   if (planFiltro) fichaQuery.set("plan", planFiltro);
-  if (buscar) fichaQuery.set("search", buscar);
+  const busquedaFicha = recurso === "padron" ? parametros.get("search") || "" : buscar;
+  if (busquedaFicha) fichaQuery.set("search", busquedaFicha);
   if (page > 1) fichaQuery.set("padron_page", page);
   const columnas = columnasDe(recurso, planes, catalogo, organizacion.id, fichaQuery);
   if (recurso === "padron") columnas.push({ key: "administrativo", label: "Administrativo", render: (r) => <Badge tone={r.estado_administrativo === "activo" ? "green" : "amber"}>{ADMINISTRATIVOS[r.estado_administrativo] || "Sin informar"}</Badge> });
   if (recurso === "consumos" && operador) columnas.push({ key: "corregir", label: "Correcciones", render: (r) => r.corrige ? `Corrige consumo ${r.corrige}` : <Button size="sm" variant="ghost" onClick={() => setCorreccion(r)}>Corregir cantidad</Button> });
-  if (recurso === "padron" && operador) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Editar</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: r.finalizado_en ? "reactivar-afiliacion" : "finalizar-afiliacion", fila: r })}>{r.finalizado_en ? "Reactivar" : "Finalizar"}</Button>{organizacion.consulta_historia_clinica && <Button size="sm" variant="ghost" onClick={() => navigate(`/financiadores/padron/${r.id}?${fichaQuery}#historia-clinica`)}>Historia clínica</Button>}</div> });
+  if (recurso === "padron" && operador) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Editar</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: r.finalizado_en ? "reactivar-afiliacion" : "finalizar-afiliacion", fila: r })}>{r.finalizado_en ? "Reactivar" : "Finalizar"}</Button>{organizacion.consulta_historia_clinica && <Button size="sm" variant="ghost" onClick={() => navigate(`/financiadores/padron/${r.id}?${fichaQuery}#historia-clinica`)}>Historia clínica</Button>}</div> });
   if (recurso === "usuarios" && admin) columnas.push({ key: "acceso", label: "Acceso", render: (r) => <Button size="sm" variant="ghost" onClick={() => setUsuario(r)}>Cambiar acceso</Button> });
   if (recurso === "planes" && admin) columnas.push({ key: "acciones", label: "Administración", render: (r) => <Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "editar-plan", fila: r })}>Editar plan</Button> });
   if (recurso === "convenios" && admin) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex flex-wrap gap-2">{r.estado === "propuesto" && r.propuesto_por === "hospital" && <><Button size="sm" variant="secondary" disabled={aceptando != null} onClick={() => aceptar(r)}>{aceptando === r.id ? "Aceptando…" : "Aceptar convenio"}</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "rechazar-convenio", fila: r })}>Rechazar propuesta</Button></>}{r.estado === "activo" && <><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "plazo-autorizacion", fila: r })}>Plazo de autorización</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "cerrar-convenio", fila: r })}>Cerrar convenio</Button></>}{["rechazado", "finalizado"].includes(r.estado) && "—"}</div> });
@@ -328,23 +324,16 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
     finally { setAceptando(null); }
   }
   function cambiarFiltro(campo, valor) {
-    const nuevos = recurso === "padron" ? new URLSearchParams(parametros) : new URLSearchParams({ financiador: organizacion.id });
-    if (recurso === "padron") {
-      if (campo === "estado") { setParametros(cambiarEstadoPadron(parametros, valor)); return; }
-      nuevos.set("financiador", String(organizacion.id)); nuevos.delete("page");
-      if (campo === "estado") nuevos.delete("derecho");
-      if (valor) nuevos.set(campo, valor); else nuevos.delete(campo);
-      setParametros(nuevos); return;
-    }
+    // Padrón filtra desde su propia barra (PadronTabla).
+    const nuevos = new URLSearchParams({ financiador: organizacion.id });
     const plan = campo === "plan" ? valor : planFiltro;
     if (plan) nuevos.set("plan", plan);
-    if (recurso === "padron") { nuevos.set("estado", campo === "estado" ? valor : estadoFiltro); if (buscar) nuevos.set("search", buscar); }
     if (recurso === "convenios") nuevos.set("estado", valor);
     setParametros(nuevos);
   }
   return <>{recurso === "convenios" && <div aria-label="Estado de convenios" className="mb-4 flex flex-wrap gap-5 border-b border-division">{[["activo", "Vigentes"], ["propuesto", "Propuestos"], ["cerrado", "Cerrados"], ["todos", "Todos"]].map(([valor, etiqueta]) => <button key={valor} type="button" aria-pressed={convenioFiltro === valor} onClick={() => cambiarFiltro("estado", valor)} className={`border-b-2 pb-3 text-sm font-medium ${convenioFiltro === valor ? "border-accent text-accent" : "border-transparent text-texto-suave hover:text-texto"}`}>{etiqueta}</button>)}</div>}
-    {["padron", "consumos", "aranceles", "catalogo"].includes(recurso) && <form className="mb-6 flex flex-wrap items-center gap-3" onSubmit={buscarRegistros}><div className="min-w-[14rem] flex-1"><Input aria-label={recurso === "padron" ? "Buscar por afiliado, documento o nombre" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} placeholder={recurso === "padron" ? "Buscar por n.º de afiliado, DNI, CUIL o apellido" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></div>{recurso === "padron" && <><Select className="w-auto min-w-[11rem]" aria-label="Plan" value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Plan: todos</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select><Select className="w-auto min-w-[11rem]" aria-label="Estado" value={estadoFiltro} onChange={(e) => cambiarFiltro("estado", e.target.value)}><option value="vigentes">Estado: vigentes</option><option value="finalizadas">Finalizadas</option><option value="futuras">Aún no vigentes</option><option value="todos">Todos</option></Select></>}<Button variant="secondary" type="submit">Buscar</Button></form>}
-    {recurso === "padron" ? <PadronTabla key={organizacion.id} filas={filas} total={total} paginas={paginas} estado={{ cargando: consulta.isLoading, refrescando: consulta.isFetching, error: consulta.error, reintentar: consulta.refetch }} parametros={parametros} onParametrosChange={setParametros} onFiltrosPendientesChange={setFiltrosPendientes} planes={planes} fichaHref={(fila) => `/financiadores/padron/${fila.id}?${fichaQuery}`} renderAcciones={columnas.find((col) => col.key === "acciones")?.render} barra={<ExportarPadron key={organizacion.id} organizacion={organizacion} query={query} total={total} consultando={consulta.isFetching} filtrosPendientes={filtrosPendientes || busqueda.trim() !== buscar} errorConsulta={consulta.error} />} /> : <Card className="overflow-hidden">
+    {["consumos", "aranceles", "catalogo"].includes(recurso) && <form className="mb-6 flex flex-wrap items-center gap-3" onSubmit={buscarRegistros}><div className="min-w-[14rem] flex-1"><Input aria-label={recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} placeholder={recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></div>}<Button variant="secondary" type="submit">Buscar</Button></form>}
+    {recurso === "padron" ? <PadronTabla key={organizacion.id} filas={filas} total={total} paginas={paginas} estado={{ cargando: consulta.isLoading, refrescando: consulta.isFetching, error: consulta.error, reintentar: consulta.refetch }} parametros={parametros} onParametrosChange={setParametros} onFiltrosPendientesChange={setFiltrosPendientes} planes={planes} fichaHref={(fila) => `/financiadores/padron/${fila.id}?${fichaQuery}`} renderAcciones={columnas.find((col) => col.key === "acciones")?.render} barra={<ExportarPadron key={organizacion.id} organizacion={organizacion} query={query} total={total} consultando={consulta.isFetching} filtrosPendientes={filtrosPendientes} errorConsulta={consulta.error} />} /> : <Card className="overflow-hidden">
     {recurso === "reglas" && <div className="border-b border-division p-4"><Field label="Plan"><Select value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Todos los planes</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select></Field></div>}
     {error && <div className="p-4"><ErrorPortal error={error} /></div>}
     {consulta.isLoading ? <Spinner label="Cargando registros…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : filas.length === 0 ? <EstadoVacio titulo={buscar ? "No hay resultados para esta búsqueda" : "Todavía no hay registros"} detalle={buscar ? (recurso === "aranceles" ? "Probá con otro hospital o prestación." : "Probá con otro documento, número o nombre.") : recurso === "aranceles" ? "Se mostrarán las prestaciones vinculadas de los hospitales con convenio activo." : VACIOS_PORTAL[recurso] || "Los registros de esta sección aparecerán acá."} /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-division bg-superficie-2 text-texto-debil"><tr>{columnas.map((col) => <th key={col.key} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{col.label}</th>)}</tr></thead><tbody>{filas.map((fila) => <tr key={recurso === "aranceles" ? `${fila.convenio}:${fila.id}` : fila.id} className="border-b border-division last:border-0">{columnas.map((col) => <td key={col.key} className="px-4 py-3 align-top">{col.render ? col.render(fila) : fila[col.key] ?? "—"}</td>)}</tr>)}</tbody></table></div>}

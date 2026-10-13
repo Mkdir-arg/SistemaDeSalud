@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { COLUMNAS_PADRON, COLUMNAS_PREDETERMINADAS, cambiarColumnasPadron, cambiarConsultaPadron, cambiarEstadoPadron, estadoDerechoPadron, obtenerColumnasPadron, ordenarPadron, parametrosConsultaPadron, valorColumnaPadron } from "./padronTablaEstado.js";
+import { COLUMNAS_PADRON, COLUMNAS_PREDETERMINADAS, GRUPOS_PADRON, controlesFiltroPadron, filtrosActivosPadron, cambiarColumnasPadron, cambiarConsultaPadron, cambiarEstadoPadron, estadoDerechoPadron, obtenerColumnasPadron, ordenarPadron, parametrosConsultaPadron, valorColumnaPadron } from "./padronTablaEstado.js";
 
 test("catálogo coincide exactamente con backend; no ofrece datos protegidos", () => {
   const backend = JSON.parse(readFileSync(new URL("../../../../backend/apps/financiadores/padron_columnas.json", import.meta.url), "utf8"));
@@ -84,4 +84,23 @@ test("cambiar Estado canónico limpia aliases y página, conserva otros filtros"
   for (const key of ["derecho", "flt_derecho", "page", "padron_page"]) assert.equal(nuevos.has(key), false);
   assert.equal(nuevos.get("ordering"), "-nombre");
   assert.equal(nuevos.get("flt_apellidos"), "Alfa");
+});
+
+test("cada columna está en un único grupo de presentación", () => {
+  const claves = GRUPOS_PADRON.flatMap((g) => g.columnas.map((c) => c?.key));
+  assert.deepEqual([...claves].sort(), COLUMNAS_PADRON.map((c) => c.key).sort());
+});
+
+test("chips usan los parámetros históricos y los flt_ aunque la columna esté oculta", () => {
+  const params = new URLSearchParams("columnas=nombre,numero&regimen=pasivo&alta_desde=2026-01-02&flt_localidad=Río&flt_plan_vacio=true&flt_plan=3&estado=todos&search=x");
+  assert.deepEqual(filtrosActivosPadron(params, [{ id: 3, nombre: "Base" }]).map((f) => [f.clave, f.etiqueta]), [
+    ["flt_plan", "Plan: Base"], ["flt_plan_vacio", "Plan: vacío"],
+    ["flt_localidad", "Localidad: «Río»"], ["regimen", "Régimen: Jubilado / pensionado"],
+    ["alta_desde", "Alta administrativa desde 02/01/2026"],
+  ]);
+  const historicos = new URLSearchParams("estado_administrativo=en_tramite&flt_regimen=dependencia&baja_hasta=2026-03-04");
+  assert.deepEqual(filtrosActivosPadron(historicos).map((f) => f.etiqueta), ["Estado administrativo: En trámite", "Régimen: Relación de dependencia", "Baja administrativa hasta 04/03/2026"]);
+  // Estado y Plan son controles de la barra: no se duplican en el panel.
+  assert.deepEqual(controlesFiltroPadron(COLUMNAS_PADRON.find((c) => c.key === "derecho")), []);
+  assert.deepEqual(controlesFiltroPadron(COLUMNAS_PADRON.find((c) => c.key === "plan")).map((c) => c.clave), ["flt_plan_vacio"]);
 });

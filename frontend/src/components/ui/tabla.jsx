@@ -167,6 +167,7 @@ export function DataTable({
   vacio = {},
   tabla,
   barra,
+  subbarra,
   onExportar,
   exportando,
   detalleFila,
@@ -185,7 +186,8 @@ export function DataTable({
     <div className={cn("overflow-hidden rounded-lg border border-borde bg-superficie", adaptable && "finance-table")}>
       {/* La barra existe siempre: aunque no haya filtros, aloja la densidad. */}
       <div className="flex flex-wrap items-center justify-between gap-md border-b border-division px-5 py-2.5">
-        <div className="flex flex-wrap items-center gap-md">{barra}</div>
+        {/* Ocupa el ancho libre: si envuelve, envuelve adentro y la densidad no cae sola a otro renglón. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-md">{barra}</div>
         <div className="flex items-center gap-1">
         {onExportar && (
           <button
@@ -210,6 +212,8 @@ export function DataTable({
         </button>
         </div>
       </div>
+      {/* Lo aplicado (chips) va pegado a la barra que lo controla, no en otra tarjeta. */}
+      {subbarra && <div className="border-b border-division px-5 py-2">{subbarra}</div>}
 
       {error && !mantenerEncabezados ? (
         <EstadoError error={error} onReintentar={reintentar} />
