@@ -38,6 +38,7 @@ from .actividad import (FiltrosActividad, LIMITE_EXPORTACION, con_importes,
 from .acceso import auditar_actividad
 from .autorizaciones import solicitudes_visibles_financiador
 from .facturas import almacenamiento_privado, validar_adjunto
+from .padron_api import PadronMixin, filtrar_padron
 
 
 def datos(request, campos):
@@ -106,7 +107,7 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
     plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
-class FinanciadorViewSet(CoberturaBaseViewSet):
+class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
     serializer_class = s.FinanciadorSerializer
 
     @extend_schema(methods=["GET"], responses=s.CatalogoSerializer(many=True))
@@ -257,6 +258,10 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     def list(self, request):
         return self.lista(self.get_queryset(), self.serializer_class)
 
+    def retrieve(self, request, pk=None):
+        org = self.organizacion()
+        return Response(self.get_serializer(org).data)
+
     @transaction.atomic
     def create(self, request):
         if not plataforma(request.user):
@@ -273,7 +278,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         org = self.organizacion(admin=request.method == "POST")
         if request.method == "GET":
             return self.lista(m.Plan.objects.filter(financiador=org), s.PlanSerializer)
-        d = datos(request, {"codigo": serializers.CharField(max_length=60), "nombre": serializers.CharField(max_length=160)})
+        d = datos(request, {"codigo": serializers.CharField(max_length=60), "nombre": serializers.CharField(max_length=160), "tipo": serializers.ChoiceField(choices=m.Plan._meta.get_field("tipo").choices, allow_blank=True, required=False)})
         with transaction.atomic():
             plan = m.Plan.objects.create(financiador=org, **d)
             auditar(request.user, "crear_plan", plan.pk, financiador=org)
@@ -282,7 +287,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
     @action(detail=True, methods=["post"], url_path="editar-plan")
     def editar_plan(self, request, pk=None):
         org = self.organizacion(admin=True)
-        d = datos(request, {"plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org)), "nombre": serializers.CharField(max_length=160), "activo": serializers.BooleanField(), "motivo": serializers.CharField(max_length=255)})
+        d = datos(request, {"plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org)), "nombre": serializers.CharField(max_length=160), "activo": serializers.BooleanField(), "motivo": serializers.CharField(max_length=255), "tipo": serializers.ChoiceField(choices=m.Plan._meta.get_field("tipo").choices, allow_blank=True, required=False)})
         return Response(s.PlanSerializer(vigencias.editar_plan(usuario=request.user, **d)).data)
 
     @action(detail=True, methods=["post"], url_path="finalizar-afiliacion")
@@ -347,8 +352,8 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
             if request.query_params.get("plan"):
                 plan_id = serializers.IntegerField(min_value=1).run_validation(request.query_params["plan"])
                 qs = qs.filter(plan_id=plan_id)
-            if request.query_params.get("estado"):
-                estado = serializers.ChoiceField(choices=["vigentes", "finalizadas", "futuras", "todos"]).run_validation(request.query_params["estado"])
+            if request.query_params.get("derecho") or request.query_params.get("estado"):
+                estado = serializers.ChoiceField(choices=["vigentes", "finalizadas", "futuras", "todos"]).run_validation(request.query_params.get("derecho") or request.query_params["estado"])
                 if estado == "vigentes":
                     qs = qs.filter(finalizado_en__isnull=True, desde__lte=timezone.localdate())
                 elif estado == "finalizadas":
@@ -359,11 +364,19 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
                 qs = qs.filter(documento=normalizar_documento(request.query_params["documento"]))
             if request.query_params.get("search"):
                 busqueda = request.query_params["search"].strip()
-                qs = qs.filter(Q(numero__icontains=busqueda) | Q(nombre__icontains=busqueda) | Q(documento__icontains=normalizar_documento(busqueda)))
+                qs = qs.filter(Q(numero__icontains=busqueda) | Q(nombre__icontains=busqueda) | Q(apellidos__icontains=busqueda) | Q(cuil__icontains=busqueda) | Q(documento__icontains=normalizar_documento(busqueda)))
+            qs = filtrar_padron(qs.select_related("plan"), request.query_params)
             auditar(request.user, "consultar_padron", org.pk, financiador=org)
             return self.lista(qs, s.AfiliadoSerializer)
         d = datos(request, {"numero": serializers.CharField(max_length=80), "documento": serializers.CharField(max_length=80), "nombre": serializers.CharField(max_length=160), "plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org), allow_null=True, required=False, default=None), "desde": serializers.DateField()})
-        obj = registrar_afiliado(financiador=org, usuario=request.user, **d)
+        from . import padron
+        if set(request.data) - set(padron.CAMPOS_EDITABLES) - {"desde", "revision", "motivo", "solo_crear"}:
+            raise ValidationError("La petición contiene campos no admitidos para este recurso.")
+        nuevos = padron.campos_entrada(m.Afiliado, padron.CAMPOS_GENERALES, {k: v for k, v in request.data.items() if k in padron.CAMPOS_GENERALES}, controles=(), requerido=False)
+        revision = serializers.IntegerField(min_value=1).run_validation(request.data["revision"]) if "revision" in request.data else None
+        motivo = serializers.CharField(max_length=255).run_validation(request.data.get("motivo", "Alta de padrón"))
+        solo_crear = serializers.BooleanField().run_validation(request.data.get("solo_crear", False))
+        obj = padron.registrar_ficha(financiador=org, usuario=request.user, basicos=d, nuevos=nuevos, revision=revision, motivo=motivo, solo_crear=solo_crear)
         return Response(s.AfiliadoSerializer(obj).data, status=201)
 
     @extend_schema(methods=["GET"], responses=s.ConsumoSerializer(many=True))
@@ -523,7 +536,7 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
             historial=[{"tipo": h.tipo, "plan_nombre": h.plan.nombre if h.plan_id else None,
                         "numero": h.numero, "desde": h.desde, "motivo": h.motivo,
                         "registrado": h.registrado, "usuario_nombre": h.registrado_por.nombre_completo}
-                       for h in afiliado.historial.select_related("plan", "registrado_por").order_by("-registrado", "-pk")[:20]],
+                       for h in afiliado.historial.filter(Q(cambios={}) | Q(cambios__has_key="plan_id") | Q(cambios__has_key="desde")).select_related("plan", "registrado_por").order_by("-registrado", "-pk")[:20]],
         )
         with transaction.atomic():
             auditar_actividad(request, org, pagina, recurso="financiadores-ficha-afiliado")
@@ -652,15 +665,20 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         org = self.organizacion(admin=True)
         referencias = Q(usuario__email__iendswith=f"@{DOMINIO}") | Q(usuario__cuenta_referencia__isnull=False)
         if request.method == "GET":
-            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones} for x in m.MembresiaFinanciador.objects.filter(financiador=org).exclude(referencias).select_related("usuario")])
-        d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True), "resuelve_autorizaciones": serializers.BooleanField(required=False)})
+            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones, "acceso_padron_salud": x.acceso_padron_salud, "acceso_padron_cobranza": x.acceso_padron_cobranza} for x in m.MembresiaFinanciador.objects.filter(financiador=org).exclude(referencias).select_related("usuario")])
+        d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True), "resuelve_autorizaciones": serializers.BooleanField(required=False), "acceso_padron_salud": serializers.BooleanField(required=False), "acceso_padron_cobranza": serializers.BooleanField(required=False)})
         if d["rol"] == "auditor" and d.get("resuelve_autorizaciones"):
             raise ValidationError("El rol auditor conserva lectura. Para resolver, designá un operador o administrador explícitamente.")
         existente = Usuario.objects.filter(email__iexact=d["email"]).first()
         if d["email"].lower().endswith(f"@{DOMINIO}") or es_cuenta_referencia(existente):
             raise ValidationError("Las cuentas de referencia se gestionan desde la preparación de simulación.")
         with transaction.atomic():
-            m.Financiador.objects.select_for_update().get(pk=org.pk)
+            # Serializa designaciones sin impedir que una escritura protegida
+            # confirme su auditoría antes de liberar la membresía.
+            m.Financiador.objects.select_for_update(no_key=True).get(pk=org.pk)
+            if any(campo in d for campo in ("acceso_padron_salud", "acceso_padron_cobranza")):
+                from .permisos import requerir_admin_real
+                requerir_admin_real(request.user, org.pk)
             user, nuevo = Usuario.objects.get_or_create(email=d["email"], defaults={"nombre": d["nombre"]})
             if nuevo:
                 user.set_unusable_password()
@@ -671,10 +689,13 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
             membresia, _ = m.MembresiaFinanciador.objects.get_or_create(financiador=org, usuario=user, defaults={"rol": d["rol"], "activo": d["activo"], "creo_cuenta": nuevo})
             membresia.rol, membresia.activo = d["rol"], d["activo"]
             membresia.resuelve_autorizaciones = d.get("resuelve_autorizaciones", membresia.resuelve_autorizaciones) if d["rol"] != "auditor" else False
-            membresia.save(update_fields=["rol", "activo", "resuelve_autorizaciones"])
+            for campo in ("acceso_padron_salud", "acceso_padron_cobranza"):
+                if campo in d:
+                    setattr(membresia, campo, d[campo])
+            membresia.save(update_fields=["rol", "activo", "resuelve_autorizaciones", "acceso_padron_salud", "acceso_padron_cobranza"])
             auditar(request.user, "membresia_financiador", membresia.pk, financiador=org,
-                motivo=f"rol={membresia.rol}; activo={membresia.activo}; resuelve_autorizaciones={membresia.resuelve_autorizaciones}")
-        respuesta = {"id": membresia.pk, "email": user.email, "nombre": user.nombre, "rol": membresia.rol, "resuelve_autorizaciones": membresia.resuelve_autorizaciones}
+                motivo=f"rol={membresia.rol}; activo={membresia.activo}; resuelve_autorizaciones={membresia.resuelve_autorizaciones}; acceso_padron_salud={membresia.acceso_padron_salud}; acceso_padron_cobranza={membresia.acceso_padron_cobranza}")
+        respuesta = {"id": membresia.pk, "email": user.email, "nombre": user.nombre, "rol": membresia.rol, "resuelve_autorizaciones": membresia.resuelve_autorizaciones, "acceso_padron_salud": membresia.acceso_padron_salud, "acceso_padron_cobranza": membresia.acceso_padron_cobranza}
         if membresia.creo_cuenta and membresia.activo and not user.has_usable_password():
             uid = urlsafe_base64_encode(str(user.pk).encode())
             respuesta["activacion"] = f"/financiadores/activar?uid={uid}&token={default_token_generator.make_token(user)}"
@@ -733,7 +754,8 @@ class FinanciadorViewSet(CoberturaBaseViewSet):
         org = self.organizacion(escritura=True)
         from .importaciones import generar_plantilla
         tipo = request.query_params.get("tipo", "consumos")
-        contenido = generar_plantilla(financiador=org, usuario=request.user, tipo=tipo)
+        version = serializers.IntegerField(min_value=1, max_value=2).run_validation(request.query_params.get("version", 1))
+        contenido = generar_plantilla(financiador=org, usuario=request.user, tipo=tipo, version=version)
         return self.archivo(contenido, "plantilla", org, "descargar_plantilla", tipo)
 
     @action(detail=True, methods=["get"])

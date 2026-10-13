@@ -35,8 +35,27 @@ Afiliación elegida al ingresar a un caso asistencial. Se conserva durante ese c
 Conjunto de afiliaciones administrado por el financiador. Incluye personas que todavía no fueron atendidas en un hospital de Salud.
 
 **Ficha del afiliado**:
-Consulta del financiador sobre una afiliación de su padrón que reúne las prestaciones y autorizaciones de esa persona en los hospitales dentro de su alcance. No incluye el texto de las justificaciones; la historia clínica del financiador se muestra sólo a su administración y a quienes resuelven autorizaciones.
+Consulta de la identificación y gestión administrativa de una afiliación, junto con sus prestaciones y autorizaciones en los hospitales dentro del alcance del financiador. No incluye el texto de las justificaciones; los datos de salud y cobranza del padrón tienen acceso propio y la historia clínica del financiador conserva su alcance separado.
 _Evitar_: Historia clínica del afiliado, resumen clínico.
+
+**Estado administrativo de la afiliación**:
+Situación del trámite y de la baja registrada por el financiador, independiente del derecho actual a prestaciones.
+
+**Baja administrativa**:
+Fecha y causa informadas del cese administrativo de una afiliación. Puede coexistir con prestaciones vigentes mientras no se registre su finalización.
+
+**Finalización de cobertura**:
+Cierre explícito del derecho actual a nuevas prestaciones de una afiliación, con motivo y autor registrados; conserva las afiliaciones elegidas en casos anteriores.
+
+**Legajo del afiliado**:
+Registro de las presentaciones documentales, su verificación y sus vencimientos para el trámite de afiliación. Una presentación registrada no implica que exista un archivo adjunto.
+
+**Datos de salud del padrón**:
+Condiciones y certificados informados al financiador para administrar la afiliación, con acceso específico. Son distintos de las evoluciones clínicas de los hospitales.
+
+**Situación de cobranza informada**:
+Declaración del financiador sobre el estado de pago y la modalidad de cobranza de una afiliación, con fecha y fuente. No constituye una conciliación ni un cálculo de deuda y no modifica por sí sola el derecho a prestaciones.
+_Evitar_: Cuenta corriente calculada, conciliación bancaria.
 
 **Historia clínica del financiador**:
 Evoluciones firmadas de los casos que ingresaron con la cobertura del financiador en hospitales dentro de su alcance, consultadas con un motivo registrado. No incluye alergias, antecedentes, estudios, recetas ni casos de otra cobertura.

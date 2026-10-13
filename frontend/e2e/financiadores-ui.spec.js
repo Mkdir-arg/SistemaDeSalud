@@ -351,7 +351,7 @@ test("un financiador sin hospital entra a su portal y configura un plan", async 
   await page.getByLabel("Nombre del plan").fill("Plan Plus");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(celdaPlan(page, "Plan Plus", "PLUS")).toBeVisible();
-  expect(escrituras).toEqual([{ path: "/financiadores/21/planes/", body: { codigo: "PLUS", nombre: "Plan Plus" } }]);
+  expect(escrituras).toEqual([{ path: "/financiadores/21/planes/", body: { codigo: "PLUS", nombre: "Plan Plus", tipo: "" } }]);
   expect(peticiones.some((p) => p.includes("casos") || p.includes("historia") || p.includes("concesiones-financieras"))).toBe(false);
 });
 
@@ -742,16 +742,26 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
 });
 
 test("corregir documento conserva el identificador del afiliado", async ({ page }) => {
-  const { escrituras } = await escenario(page);
+  const { escrituras, padron } = await escenario(page);
+  padron[0].revision = 1;
+  await page.route("**/api/financiadores/21/padron/45/", async (route) => {
+    const body = route.request().postDataJSON();
+    escrituras.push({ path: "/financiadores/21/padron/45/", body });
+    Object.assign(padron[0], { documento: body.documento, revision: 2 });
+    return route.fulfill({ json: padron[0] });
+  });
   await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
   await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Corregir identidad" }).click();
   await expect(page.getByLabel("Número de afiliado correcto")).toHaveValue("00025");
   await page.getByLabel("Documento correcto").fill("00123457");
-  await page.getByLabel("Motivo de corrección").fill("Corrección de un dígito contrastada con el documento.");
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Se conservó el consumo del afiliado");
-  expect(escrituras[0]).toMatchObject({ path: "/financiadores/21/corregir-identidad/", body: { afiliado: 45, numero: "00025", documento: "00123457" } });
+  await page.getByLabel("Motivo").fill("Corrección de un dígito contrastada con el documento.");
+  await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Se conservaron los vínculos del afiliado");
+  expect(escrituras).toEqual([{ path: "/financiadores/21/padron/45/", body: {
+    documento: "00123457", revision: 1, motivo: "Corrección de un dígito contrastada con el documento.",
+  } }]);
+  expect(padron[0]).toMatchObject({ id: 45, numero: "00025", documento: "00123457", revision: 2 });
 });
 
 test("administrador modifica rol y desactiva acceso sin enviar contraseña", async ({ page }) => {
@@ -799,10 +809,10 @@ test("desactivar un plan conserva su código y lo retira de nuevas afiliaciones"
   await dialogo.getByLabel("Motivo", { exact: true }).fill("El plan deja de recibir nuevas afiliaciones.");
   await dialogo.getByRole("button", { name: "Guardar plan" }).click();
   await expect(page.getByRole("row").filter({ hasText: "Plan Río anterior" })).toContainText("Inactivo");
-  expect(escrituras[0]).toEqual({ path: "/financiadores/21/editar-plan/", body: { plan: 31, nombre: "Plan Río anterior", activo: false, motivo: "El plan deja de recibir nuevas afiliaciones." } });
+  expect(escrituras[0]).toEqual({ path: "/financiadores/21/editar-plan/", body: { plan: 31, nombre: "Plan Río anterior", activo: false, motivo: "El plan deja de recibir nuevas afiliaciones.", tipo: "" } });
   await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
   await page.getByRole("button", { name: "Registrar afiliación", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Plan", exact: true }).locator("option")).toHaveText(["Sin plan"]);
+  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Plan", exact: true }).locator("option")).toHaveText(["Sin informar"]);
 });
 
 test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cupos", async ({ page }) => {
