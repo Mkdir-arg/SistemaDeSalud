@@ -21,6 +21,11 @@ COPY . .
 ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 
+# Nombre visible del sistema (docs/NOMBRE-DEL-SISTEMA.md). Por la misma razón
+# entra como build arg: cambiarlo exige reconstruir la imagen.
+ARG VITE_NOMBRE_SISTEMA=PLEXO
+ENV VITE_NOMBRE_SISTEMA=$VITE_NOMBRE_SISTEMA
+
 RUN npm run build
 
 # --- Etapa final: nginx sirve los estáticos ---

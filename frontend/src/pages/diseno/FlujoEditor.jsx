@@ -3160,7 +3160,7 @@ function PanelNodo({ nodo, version, soloLectura, enVentana, flujoInstId, flujoAr
               hint={
                 (nodo.config || {}).fhir
                   // Poner acá la URL de búsqueda completa es el error más común:
-                  // HEN le agrega `/Patient?identifier=…` por su cuenta.
+                  // El sistema le agrega `/Patient?identifier=…` por su cuenta.
                   ? "La base del servidor FHIR, sin /Patient: Salud arma la búsqueda."
                   : undefined
               }

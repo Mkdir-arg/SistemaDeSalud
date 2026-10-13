@@ -16,7 +16,7 @@ import { DetalleTurno, MisTurnos } from "./Turnos";
 /**
  * Portal del paciente: cuenta propia con email y contraseña e identidad
  * validada contra RENAPER (#120), y la app con sus datos en toda la red (#122).
- * Es público (no pasa por la sesión de HEN) y usa su propio cliente,
+ * Es público (no pasa por la sesión del sistema) y usa su propio cliente,
  * `api/portal.js`.
  */
 export default function Portal() {

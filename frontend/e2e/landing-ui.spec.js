@@ -8,6 +8,9 @@ import { desbordaHorizontal, fallosDeContraste } from "./apoyo";
  * La API está interceptada entera: ningún test crea sesiones ni lee datos reales.
  * La landing en particular no debe pedir nada a la API.
  */
+// Mismo valor por defecto que src/lib/marca.js. Si la app corre con otro nombre,
+// exportar el mismo VITE_NOMBRE_SISTEMA al correr Playwright.
+const NOMBRE_SISTEMA = process.env.VITE_NOMBRE_SISTEMA?.trim() || "PLEXO";
 const lista = (results = []) => ({ count: results.length, next: null, previous: null, results });
 const CENTRAL = { id: 1, nombre: "Hospital Central", tipo: "Hospital" };
 const NORTE = { id: 2, nombre: "Hospital Norte", tipo: "Hospital" };
@@ -106,7 +109,7 @@ test.describe("Landing pública", () => {
     await expect(saltar).toBeFocused();
     await expect(saltar).toBeInViewport();
     await page.keyboard.press("Tab");
-    const marca = page.getByRole("link", { name: "HEN, inicio" });
+    const marca = page.getByRole("link", { name: `${NOMBRE_SISTEMA}, inicio` });
     await expect(marca).toBeFocused();
     expect(await marca.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none");
     await page.keyboard.press("Tab");
@@ -124,7 +127,7 @@ test.describe("Landing pública", () => {
     });
     expect(animacion.nombre).toBe("landing-entrada");
     expect(animacion.duracion).toBeLessThanOrEqual(0.5);
-    await page.getByRole("link", { name: "Conocer HEN" }).click();
+    await page.getByRole("link", { name: `Conocer ${NOMBRE_SISTEMA}` }).click();
     await expect(page).toHaveURL(/#como-funciona$/);
     await expect(page.getByRole("heading", { name: /Todo lo que tu institución necesita/ })).toBeInViewport();
   });

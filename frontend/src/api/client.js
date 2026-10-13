@@ -1,4 +1,4 @@
-// Cliente HTTP contra la API de HEN.
+// Cliente HTTP contra la API del sistema.
 // Maneja el token JWT (access + refresh) en localStorage y reintenta una vez
 // ante un 401 refrescando el access token.
 

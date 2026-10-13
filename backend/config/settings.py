@@ -1,7 +1,7 @@
 """
-Django settings for the HEN project.
+Django settings del sistema (nombre visible en NOMBRE_SISTEMA).
 
-HEN — constructor y motor de flujos para procesos de salud / Estado.
+Constructor y motor de flujos para procesos de salud / Estado.
 Backend: Django + DRF. Base de datos: Supabase (Postgres). Auth: JWT (SimpleJWT).
 """
 
@@ -28,6 +28,11 @@ def env_bool(key: str, default=False):
     if val is None:
         return default
     return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Nombre visible del producto. Cambia seguido mientras se define la marca, por eso
+# sale del entorno y no está escrito en el código. Ver docs/NOMBRE-DEL-SISTEMA.md.
+NOMBRE_SISTEMA = (env("NOMBRE_SISTEMA") or "").strip() or "PLEXO"
 
 
 # --- Seguridad -------------------------------------------------------------
@@ -304,9 +309,9 @@ REST_FRAMEWORK = {
 # es la referencia que evita tener que leer el código para saber qué devuelve
 # cada endpoint.
 SPECTACULAR_SETTINGS = {
-    "TITLE": "HEN · API",
-    "DESCRIPTION": """
-API de HEN: flujos de trabajo para instituciones de salud.
+    "TITLE": f"{NOMBRE_SISTEMA} · API",
+    "DESCRIPTION": f"""
+API de {NOMBRE_SISTEMA}: flujos de trabajo para instituciones de salud.
 
 **Autenticación.** Todo requiere un token JWT (`Authorization: Bearer <token>`)
 que se obtiene en `POST /api/auth/token/`. Las dos excepciones son ese mismo
@@ -429,7 +434,7 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(env("EMAIL_TIMEOUT", "10"))
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL") or "HEN <no-responder@localhost>"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL") or f"{NOMBRE_SISTEMA} <no-responder@localhost>"
 # Los correos del portal salen después de responder, en un hilo aparte: si
 # salieran dentro del pedido, la demora del SMTP diría qué emails tienen cuenta
 # (sólo a esas se les manda). Las pruebas lo apagan para leer el buzón.

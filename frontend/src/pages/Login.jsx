@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Logo } from "@/components/Logo";
+import { NOMBRE_SISTEMA } from "@/lib/marca";
 
 const SOPORTE_EMAIL = import.meta.env.VITE_SOPORTE_EMAIL?.trim();
 const SOPORTE_URL = import.meta.env.VITE_SOPORTE_URL?.trim();
@@ -55,7 +56,7 @@ export default function Login() {
   return (
     <div className="login-page flex min-h-screen flex-col bg-fondo text-texto">
       <header className="relative z-10 flex h-[46px] items-center justify-between border-b border-borde bg-superficie px-5 sm:px-[max(24px,9.6vw)]">
-        <span className="flex items-center gap-2 text-md font-bold"><Logo size={24} /> HEN</span>
+        <span className="flex items-center gap-2 text-md font-bold"><Logo size={24} /> {NOMBRE_SISTEMA}</span>
         <Link to="/" className="text-sm text-texto-suave hover:text-accent">Volver al inicio</Link>
       </header>
 

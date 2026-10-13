@@ -398,7 +398,7 @@ test("429: demasiados intentos", async ({ page }) => {
 });
 
 test("el portal nunca manda la sesión del sistema ni la simulación", async ({ page }) => {
-  // Una pestaña con sesión de HEN y una simulación activa.
+  // Una pestaña con sesión del sistema y una simulación activa.
   await page.addInitScript(() => {
     sessionStorage.setItem("salud.access", "jwt-del-sistema");
     sessionStorage.setItem("salud.simulacion", JSON.stringify({ id: "sim-1" }));

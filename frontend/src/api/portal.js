@@ -1,7 +1,7 @@
 // Cliente HTTP del portal del paciente (#120), contra `/api/mi/*`.
 //
 // Es un cliente APARTE del de `client.js` a propósito: la persona que entra al
-// portal no es un usuario del sistema. Nunca manda el JWT de HEN ni
+// portal no es un usuario del sistema. Nunca manda el JWT del sistema ni
 // `X-HEN-Simulacion`, aunque en la misma pestaña haya una sesión del sistema o
 // una simulación activa (una médica que se mira su propio portal desde la
 // compu de la guardia no le tiene que prestar su sesión al portal, ni al revés).

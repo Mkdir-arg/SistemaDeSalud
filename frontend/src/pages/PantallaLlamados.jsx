@@ -8,14 +8,14 @@ import { LogoFull } from "@/components/Logo";
 /**
  * Pantalla pública de llamados: la TV de la sala de espera.
  *
- * La pantalla comparte la paleta HEN, pero conserva su layout de cartel:
+ * La pantalla comparte la paleta del sistema, pero conserva su layout de cartel:
  *
  *   · Siempre se ve en claro, independientemente del tema del puesto.
  *   · Su tipografía se mide en `vw`/`vh` porque tiene que leerse igual en un
  *     monitor de 24" y en una TV de 55". Eso no son breakpoints: es escalado
  *     continuo, y expresarlo con clases arbitrarias (`text-[4.4vw]`) sería el
  *     mismo estilo inline con más ruido.
- *   · Comparte la marca HEN y sus tokens de color con el resto de la app.
+ *   · Comparte la marca y los tokens de color con el resto de la app.
  *
  * Lo que sí se migró: la capa de datos (TanStack Query) y la accesibilidad.
  * ────────────────────────────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ function ArteMedico() {
   );
 }
 
-// La llamada mantiene el ámbar semántico; el resto usa los tokens HEN.
+// La llamada mantiene el ámbar semántico; el resto usa los tokens del sistema.
 const TEAL = "var(--color-brand-teal)";
 const NARANJA = "var(--color-badge-amber-fg)";
 const INK = "var(--color-texto)";
@@ -262,7 +262,7 @@ const S = {
   estado: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" },
   // Estado de espera: es lo que se ve la mayor parte del tiempo en la sala.
   //
-  // Las dos líneas se leen a distancia; los colores HEN se medirán en el TV real.
+  // Las dos líneas se leen a distancia; los colores del sistema se medirán en el TV real.
   idle: { fontSize: "3.4vw", fontWeight: 800, color: INK },
   idleSub: { fontSize: "1.4vw", color: MUTE, marginTop: "1.5vh" },
   error: { fontSize: "1.9vw", color: "var(--color-badge-error-fg)", fontWeight: 700 },

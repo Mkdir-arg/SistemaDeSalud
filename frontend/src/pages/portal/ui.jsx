@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
 
-// Piezas del portal del paciente, tomadas del Figma de HEN («05 · App clínica
+// Piezas del portal del paciente, tomadas del Figma del sistema («05 · App clínica
 // (MVP)», nodo 61-132). Los colores y las sombras son tokens del DS. Lo que el
 // DS de la aplicación no tiene —la escala de texto de celular de Figma y sus
 // radios— vive acá, en `TAMANO` y `RADIO`, y no se usa fuera del portal.

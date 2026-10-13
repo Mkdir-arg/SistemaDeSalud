@@ -1,7 +1,7 @@
 """
 Simulación de perfiles del backoffice por un superusuario.
 
-Sirve para recorrer HEN con los límites reales de cada perfil: el backend
+Sirve para recorrer el sistema con los límites reales de cada perfil: el backend
 autoriza y acota con la **cuenta de referencia** elegida, no con el acceso
 total del superusuario. La autoría de lo que se haga sigue siendo del
 superusuario.
