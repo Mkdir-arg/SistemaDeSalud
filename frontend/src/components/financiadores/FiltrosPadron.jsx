@@ -105,7 +105,12 @@ export function PanelFiltrosPadron({ id, altoTabla, visible, cerrando, parametro
   useEffect(() => {
     const previo = document.activeElement;
     ref.current?.querySelector("input")?.focus();
-    return () => { if (previo?.isConnected) previo.focus(); };
+    // Al desmontarse (tras la transición) devuelve el foco sólo si quedó perdido:
+    // si la persona ya hizo clic en otra cosa, no se lo saca.
+    return () => {
+      const actual = document.activeElement;
+      if (previo?.isConnected && (!actual || actual === document.body)) previo.focus();
+    };
   }, []);
   const grupos = GRUPOS_PADRON.map((g) => ({ ...g, columnas: g.columnas.filter((c) => controlesFiltroPadron(c).length && (!claveBusca || coincide(c.label, claveBusca) || coincide(g.titulo, claveBusca))) })).filter((g) => g.columnas.length);
   const alternar = (titulo) => setAbiertos((previos) => { const nuevos = new Set(previos); if (nuevos.has(titulo)) nuevos.delete(titulo); else nuevos.add(titulo); return nuevos; });

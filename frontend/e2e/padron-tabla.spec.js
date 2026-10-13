@@ -268,3 +268,15 @@ test("quitar un chip descarta el borrador del mismo filtro", async ({ page }) =>
   await page.clock.runFor(1000);
   expect(new URL(page.url()).searchParams.has("flt_nombre")).toBe(false);
 });
+
+test("cerrar el panel no le saca el foco a lo que se tocó después", async ({ page }) => {
+  await page.goto(ruta);
+  const filtros = page.getByRole("button", { name: /^Filtros/ });
+  await filtros.click();
+  await expect(page.getByRole("dialog", { name: "Filtros del padrón" })).toBeVisible();
+  await filtros.click();
+  const buscar = page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre" });
+  await buscar.click();
+  await expect(page.getByRole("dialog", { name: "Filtros del padrón" })).toHaveCount(0);
+  await expect(buscar).toBeFocused();
+});
