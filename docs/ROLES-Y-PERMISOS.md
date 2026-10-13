@@ -2,7 +2,7 @@
 
 Actualizado: 2026-09-22 (verificado contra `main` en `fca71e3`)
 
-Este documento describe el modelo funcional de autoridad de HEN: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
+Este documento describe el modelo funcional de autoridad de PLEXO: que roles existen, donde interactuan, que responsabilidades tienen, que funcionalidades habilitan y cuales son sus limites. No es un manual de capacitacion; es una especificacion funcional para analisis, implementacion, auditoria y gobierno del sistema.
 
 ## 1. Principio general
 
@@ -371,7 +371,7 @@ Un usuario con varios ambitos elige una organizacion concreta, y cada consulta v
 
 ### 3.3 Simulacion de perfiles ("Ver como")
 
-El superusuario puede operar HEN con los limites reales de un perfil. No es una vista previa: el backend autoriza y acota cada pedido con una **cuenta de referencia** preparada para ese perfil y ese ambito.
+El superusuario puede operar PLEXO con los limites reales de un perfil. No es una vista previa: el backend autoriza y acota cada pedido con una **cuenta de referencia** preparada para ese perfil y ese ambito.
 
 | Ambito | Perfiles | Cuenta |
 |---|---|---|
@@ -385,12 +385,12 @@ de accesos desde la navegación de plataforma.
 
 Reglas:
 
-- Solo un superusuario abre, cambia o cierra una simulacion. El servidor rechaza el encabezado `X-HEN-Simulacion` de cualquier otro usuario, y tambien en rutas que no autentican con la simulacion.
+- Solo un superusuario abre, cambia o cierra una simulacion. El servidor rechaza el encabezado `X-PLEXO-Simulacion` de cualquier otro usuario, y tambien en rutas que no autentican con la simulacion.
 - `request.user` es la cuenta de referencia: permisos, alcance, capacidades, concesiones financieras y organizacion son los suyos. `request.usuario_real` es el superusuario.
 - **Autoria:** los campos de autoria (`autor`, `creado_por`, `registrado_por`, `aprobado_por`, `AccesoClinico.usuario`...) quedan a nombre del superusuario. Los operativos (`Caso.asignado_a`, `Box.ocupado_por`, grupos) quedan en la cuenta, para que el recorrido del perfil funcione. La clasificacion vive en `backend/apps/simulacion/contexto.py`, y un test falla si aparece una FK a `Usuario` sin clasificar.
 - **Trazabilidad:** `SesionSimulacion` registra quien simula que, en que ambito y cuando termina. `OperacionSimulada` registra cada escritura, permitida o no. Si este registro falla, la escritura de base de datos se revierte y el pedido responde 503. `AccesoClinico` y `AccesoFinanciero` guardan la sesion junto al superusuario.
 - **Falla cerrada:** si la sesion termino o vencio (8 h), si la cuenta dejo de tener exactamente la membresia de su perfil, o si le faltan areas o grupos activos de sus pares, el pedido recibe 403 y el frontend vuelve a Sistema. Nunca se atiende con el acceso total del superusuario.
-- Las cuentas de referencia no inician sesion por su cuenta: tienen contrasena inutilizable, un correo en `referencia.hen.invalid`, y el login y el refresco de tokens las rechazan.
+- Las cuentas de referencia no inician sesion por su cuenta: tienen contrasena inutilizable, un correo en `referencia.plexo.invalid`, y el login y el refresco de tokens las rechazan.
 - Los permisos financieros institucionales son las concesiones que tenga la cuenta, mas la herencia propia de `admin`. No se deducen del rol clinico.
 - Limite conocido: las acciones que exigen matricula (firmar en la historia clinica) se rechazan, como para cualquier profesional sin matricula. La cuenta no representa a una persona y no se le inventa una matricula.
 

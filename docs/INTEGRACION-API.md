@@ -1,4 +1,4 @@
-# Integrarse con HEN
+# Integrarse con PLEXO
 
 > Para el área de sistemas que tiene que conectar otro sistema con éste.
 > Verificado contra el código el 22/09/2026.

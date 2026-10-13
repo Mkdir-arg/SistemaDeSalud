@@ -258,8 +258,8 @@ persistencia, permisos del backend ni concurrencia. Sintaxis JSX comprobada con
 esbuild; `git diff --check` sin errores.
 
 Recorrido con backend/worker/PostgreSQL reales: **7 aprobadas**, con puerto 5219,
-backend 8119 y artefactos temporales. `HEN_111_REAL_PASSWORD` y
-`HEN_111_REAL_METADATA` se cargan del entorno aislado; el spec se omite si faltan.
+backend 8119 y artefactos temporales. `PLEXO_111_REAL_PASSWORD` y
+`PLEXO_111_REAL_METADATA` se cargan del entorno aislado; el spec se omite si faltan.
 No se graban trazas con credenciales. Comando:
 
 ```powershell

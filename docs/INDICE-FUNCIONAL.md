@@ -1,4 +1,4 @@
-# Índice de documentación — HEN
+# Índice de documentación — PLEXO
 
 > Qué documento leer para cada cosa y qué contiene.
 > Actualizado el **22/09/2026** contra `main` en `fca71e3`.
@@ -37,6 +37,7 @@ eso no es el mejor punto de entrada para todo el mundo.
 | **Configurar** un hospital desde cero | [`entornos/guia-configuracion-desde-cero.md`](entornos/guia-configuracion-desde-cero.md) |
 | Saber **quién puede hacer qué** | [`ROLES-Y-PERMISOS.md`](ROLES-Y-PERMISOS.md), o [`roles/`](roles/README.md) rol por rol |
 | **Desarrollar** sobre el frontend | [`FUNDACION-FRONTEND.md`](FUNDACION-FRONTEND.md) |
+| **Cambiar el nombre** visible del sistema | [`NOMBRE-DEL-SISTEMA.md`](NOMBRE-DEL-SISTEMA.md) |
 | Entender **por qué** algo se hizo así | [`historico/`](historico/README.md) |
 
 ---
