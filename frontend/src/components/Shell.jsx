@@ -717,7 +717,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           hospital={!esFinanciador && !esPlataforma}
           plataforma={esPlataforma}
           volverA={esPlataforma ? "/directorio" : esFinanciador ? "/financiadores" : "/inicio"} />
-        <div id="contenido-principal" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">{children}</div>
+        <div id="contenido-principal" tabIndex={-1} className="relative min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>
     </RefreshCtx.Provider>
