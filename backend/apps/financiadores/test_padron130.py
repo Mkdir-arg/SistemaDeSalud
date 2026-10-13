@@ -284,6 +284,27 @@ class Padron130ApiTests(APITestCase):
         datos["acceso_padron_salud"] = False
         self.assertEqual(self.client.post(self.base + "usuarios/", datos, format="json").status_code, 201)
         self.assertEqual(self.client.get(self.url + "salud/").status_code, 403)
+
+    def test_plataforma_no_se_autoconcede_permisos_tras_crear_membresia(self):
+        root = Usuario.objects.create_superuser("root131@test.local", "clave")
+        self.client.force_authenticate(root)
+        datos = {"email": root.email, "nombre": "Plataforma", "rol": "admin"}
+        self.assertEqual(self.client.post(self.base + "usuarios/", datos, format="json").status_code, 201)
+        antes = m.EventoCobertura.objects.filter(accion="membresia_financiador").count()
+        for campo in ("acceso_padron_salud", "acceso_padron_cobranza"):
+            response = self.client.post(self.base + "usuarios/", {**datos, campo: True}, format="json")
+            self.assertEqual(response.status_code, 403, response.data)
+        miembro = m.MembresiaFinanciador.objects.get(financiador=self.org, usuario=root)
+        self.assertFalse(miembro.acceso_padron_salud)
+        self.assertFalse(miembro.acceso_padron_cobranza)
+        self.assertEqual(m.EventoCobertura.objects.filter(accion="membresia_financiador").count(), antes)
+        self.assertEqual(self.client.get(self.url + "salud/").status_code, 403)
+        # Una designación explícita de otro administrador real sí es válida.
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.post(self.base + "usuarios/", {**datos, "acceso_padron_salud": True}, format="json").status_code, 201)
+        self.client.force_authenticate(root)
+        self.assertEqual(self.client.get(self.url + "salud/").status_code, 200)
+        self.assertEqual(self.client.get(self.url + "cobranza/").status_code, 403)
         self.assertEqual(m.EventoCobertura.objects.filter(accion="membresia_financiador").count(), 2)
 
     def test_sensibles_no_filtran_serializer_evento_historial_general(self):
