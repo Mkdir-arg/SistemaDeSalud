@@ -255,9 +255,11 @@ export function DataTable({
                         : undefined
                     }
                     className={cn(
-                      "group border-t border-division",
+                      // El hover marca la fila entera siempre: la celda fija (acciones)
+                      // ya lo hacía por `group-hover` y sola parecía un error.
+                      "group border-t border-division hover:bg-superficie-2",
                       !compacta && "h-14",
-                      onRowClick && "cursor-pointer hover:bg-superficie-2 focus-visible:bg-superficie-2",
+                      onRowClick && "cursor-pointer focus-visible:bg-superficie-2",
                     )}
                   >
                     {columnas.map((c) => {
