@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador, filasDe, opcionesFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { useAuth } from "@/auth/AuthContext";
@@ -12,7 +12,6 @@ import { Shell } from "@/components/Shell";
 import { fechaHora, plural } from "@/lib/format";
 import ImportacionFinanciador from "./ImportacionFinanciador";
 import EditarFichaPadron from "@/components/financiadores/EditarFichaPadron";
-import CrearAfiliadoPadron from "@/components/financiadores/CrearAfiliadoPadron";
 import PadronTabla from "@/components/financiadores/PadronTabla";
 import { parametrosConsultaPadron, obtenerColumnasPadron, estadoDerechoPadron } from "@/components/financiadores/padronTablaEstado";
 import { ROLES, SECCIONES, itemsFinanciador } from "./menuFinanciador";
@@ -110,6 +109,8 @@ function CatalogoGlobal({ usuarioId }) {
 }
 
 function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
+  const navigate = useNavigate();
+  const [parametros] = useSearchParams();
   const [modal, setModal] = useState(null);
   const [mensaje, setMensaje] = useState("");
   const [activacion, setActivacion] = useState("");
@@ -138,7 +139,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
     {mensaje && <div role="status" className="rounded-md bg-badge-green-bg p-3 text-badge-green-fg">{mensaje}</div>}
     {activacion && <EnlaceActivacion ruta={activacion} onClose={() => setActivacion("")} />}
     <section aria-label={titulo}>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><h1 className="text-cifra font-bold">{tituloVisual}</h1><Ayuda etiqueta={`Ayuda sobre ${titulo}`}>{DESCRIPCIONES[tab]}</Ayuda></div><p className="mt-1 text-sm text-texto-suave">{RESUMENES_SECCION[tab]}</p></div>{puedeCrear && <div className="flex flex-wrap gap-2">{["padron", "consumos"].includes(tab) && <Button variant="secondary" onClick={() => setModal("importar")}>Importar Excel</Button>}<Button onClick={() => setModal("crear")}>{titulos[tab]}</Button></div>}</div>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><h1 className="text-cifra font-bold">{tituloVisual}</h1><Ayuda etiqueta={`Ayuda sobre ${titulo}`}>{DESCRIPCIONES[tab]}</Ayuda></div><p className="mt-1 text-sm text-texto-suave">{RESUMENES_SECCION[tab]}</p></div>{puedeCrear && <div className="flex flex-wrap gap-2">{["padron", "consumos"].includes(tab) && <Button variant="secondary" onClick={() => setModal("importar")}>Importar Excel</Button>}{tab === "padron" ? <Button onClick={() => navigate(`/financiadores/padron/nuevo?${parametrosFicha(parametros, organizacion.id, Number(parametros.get("page") || 1))}`)}>{titulos[tab]}</Button> : <Button onClick={() => setModal("crear")}>{titulos[tab]}</Button>}</div>}</div>
       {errorOpciones && <ErrorPortal error={errorOpciones} reintentar={() => { planes.refetch(); catalogo.refetch(); }} />}
       {tab === "autorizaciones" ? <AutorizacionesFinanciador organizacion={organizacion} scope={scope} /> : tab === "actividad" ? <ActividadFinanciador organizacion={organizacion} scope={scope} /> : <ListaPortal key={tab} recurso={tab} organizacion={organizacion} scope={scope} admin={admin} operador={operador} plataforma={plataforma} planes={planes.data || []} catalogo={catalogo.data || []} actualizado={actualizado} />}
     </section>
@@ -383,7 +384,6 @@ function CrearRegistro({ recurso, organizacion, scope, planes, catalogo, titulo,
   const error = (necesitaPlanes && planes.error) || (necesitaCatalogo && catalogo.error) || (recurso === "convenios" && hospitales.error);
   const cargando = (necesitaPlanes && planes.isLoading) || (necesitaCatalogo && catalogo.isLoading) || (recurso === "convenios" && hospitales.isLoading);
   if (error || cargando) return <Modal title={titulo} onClose={onClose}>{error ? <ErrorPortal error={error} reintentar={() => { planes.refetch(); catalogo.refetch(); if (recurso === "convenios") hospitales.refetch(); }} /> : <Spinner label="Cargando opciones…" />}</Modal>;
-  if (recurso === "padron") return <CrearAfiliadoPadron organizacion={organizacion} planes={planes.data || []} onClose={onClose} onGuardado={onGuardado} />;
   if (recurso === "reglas") return <FormularioRegla organizacion={organizacion} planes={planes.data || []} catalogo={catalogo.data || []} onClose={onClose} onGuardado={onGuardado} />;
   const p = (planes.data || []).filter((plan) => recurso !== "padron" || plan.activo !== false).map((plan) => ({ ...plan, nombre: plan.activo === false ? `${plan.nombre} (inactivo)` : plan.nombre }));
   const prestaciones = (catalogo.data || []).map((item) => ({ ...item, nombre: `${item.codigo} · ${item.nombre}` }));
