@@ -41,15 +41,7 @@ function PadronTablaFinanciador({ filas, total, paginas, estado, parametros, onP
     }
   }, [fase]);
   const cerrarPanel = () => setFase((f) => (f === "cerrado" ? f : "cerrando"));
-  const [altoTabla, setAltoTabla] = useState(0);
-  const tablaRef = useRef(null);
   const idPanel = useId();
-  useEffect(() => {
-    if (!panel || !tablaRef.current) return;
-    const observador = new ResizeObserver(([entrada]) => setAltoTabla(Math.round(entrada.borderBoxSize?.[0]?.blockSize ?? entrada.target.offsetHeight)));
-    observador.observe(tablaRef.current);
-    return () => observador.disconnect();
-  }, [panel]);
   const elegidas = obtenerColumnasPadron(parametros);
   const pagina = positivo(parametros.get("page"), 1);
   const tamano = tamanoPadron(parametros);
@@ -103,14 +95,17 @@ function PadronTablaFinanciador({ filas, total, paginas, estado, parametros, onP
     accion: hayQueLimpiar ? <Button type="button" variant="secondary" size="sm" onClick={limpiar}>Limpiar filtros</Button> : undefined };
 
   return <section aria-label="Padrón de afiliados" className="padron-tabla flex min-w-0 items-start">
-    <div ref={tablaRef} className="min-w-0 flex-1" aria-busy={estado.cargando || estado.refrescando || undefined}>
+    <div className="min-w-0 flex-1" aria-busy={estado.cargando || estado.refrescando || undefined}>
       <DataTable titulo="Padrón de afiliados" columnas={columnas} filas={filas} total={total} paginas={paginas} estado={estado} tabla={tabla} mantenerEncabezados adaptable vacio={vacio}
         barra={herramientas} subbarra={(activos.length > 0 || pendientes) && <ChipsFiltrosPadron activos={activos} pendientes={pendientes} quitar={quitar} limpiar={limpiar} />} />
     </div>
     {/* El hueco anima su ancho: la tabla se achica y se agranda con el panel.
-        overflow-clip (no hidden) para no romper el sticky del panel. */}
-    {panel && <div className={cn("lg:flex lg:shrink-0 lg:justify-end lg:self-stretch lg:overflow-clip lg:transition-[width] lg:duration-200 lg:ease-salida motion-reduce:transition-none", visible ? "lg:w-[356px]" : "lg:w-0")}>
-      <PanelFiltrosPadron id={idPanel} altoTabla={altoTabla} visible={visible} cerrando={fase === "cerrando"} parametros={parametros} cambiar={cambiar} borradores={borradores} editarTexto={editarTexto} planes={planes} activos={activos} limpiar={limpiar} cerrar={cerrarPanel} />
+        overflow-clip (no hidden) para no romper el sticky del panel. El margen
+        negativo lo estira dentro del padding inferior de la página (30px en lg,
+        40px en xl) hasta 24px del borde: si terminara con la tabla, al final del
+        scroll el sticky empujaría el panel hacia arriba. */}
+    {panel && <div className={cn("lg:-mb-1.5 lg:flex lg:shrink-0 lg:justify-end lg:self-stretch lg:overflow-clip xl:-mb-4 lg:transition-[width] lg:duration-200 lg:ease-salida motion-reduce:transition-none", visible ? "lg:w-[356px]" : "lg:w-0")}>
+      <PanelFiltrosPadron id={idPanel} visible={visible} cerrando={fase === "cerrando"} parametros={parametros} cambiar={cambiar} borradores={borradores} editarTexto={editarTexto} planes={planes} activos={activos} limpiar={limpiar} cerrar={cerrarPanel} />
     </div>}
   </section>;
 }

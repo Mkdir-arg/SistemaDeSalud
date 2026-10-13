@@ -96,7 +96,7 @@ const coincide = (texto, busca) => texto.toLocaleLowerCase("es").normalize("NFD"
  * Todos los filtros del padrón, agrupados como la ficha. No dependen de las
  * columnas visibles: se puede filtrar por un dato sin mostrarlo.
  */
-export function PanelFiltrosPadron({ id, altoTabla, visible, cerrando, parametros, cambiar, borradores, editarTexto, planes, activos, limpiar, cerrar }) {
+export function PanelFiltrosPadron({ id, visible, cerrando, parametros, cambiar, borradores, editarTexto, planes, activos, limpiar, cerrar }) {
   const [busca, setBusca] = useState("");
   const ref = useRef(null);
   const claveBusca = busca.trim().toLocaleLowerCase("es").normalize("NFD").replace(/\p{Diacritic}/gu, "");
@@ -115,11 +115,11 @@ export function PanelFiltrosPadron({ id, altoTabla, visible, cerrando, parametro
   const grupos = GRUPOS_PADRON.map((g) => ({ ...g, columnas: g.columnas.filter((c) => controlesFiltroPadron(c).length && (!claveBusca || coincide(c.label, claveBusca) || coincide(g.titulo, claveBusca))) })).filter((g) => g.columnas.length);
   const alternar = (titulo) => setAbiertos((previos) => { const nuevos = new Set(previos); if (nuevos.has(titulo)) nuevos.delete(titulo); else nuevos.add(titulo); return nuevos; });
 
-  // En escritorio acompaña a la tabla: no más alto que ella ni que la ventana, y
-  // al menos media pantalla para que una tabla corta no lo deje inutilizable.
-  return <aside ref={ref} id={id} role="dialog" aria-label="Filtros del padrón" inert={cerrando ? "" : undefined} style={{ "--alto-tabla": altoTabla ? `${altoTabla}px` : "100dvh" }}
+  useAltoHastaElBorde(ref);
+
+  return <aside ref={ref} id={id} role="dialog" aria-label="Filtros del padrón" inert={cerrando ? "" : undefined}
     onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); cerrar(); } }}
-    className={cn("fixed inset-y-0 right-0 z-50 flex w-full max-w-[24rem] flex-col border-l border-borde bg-superficie shadow-modal transition-[opacity,translate] duration-200 ease-salida motion-reduce:transition-none lg:sticky lg:ml-4 lg:bottom-auto lg:right-auto lg:top-4 lg:z-auto lg:max-h-[min(var(--alto-tabla),calc(100dvh-6rem))] lg:min-h-[50vh] lg:w-[340px] lg:shrink-0 lg:rounded-lg lg:border lg:shadow-none", visible ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0")}>
+    className={cn("fixed inset-y-0 right-0 z-50 flex w-full max-w-[24rem] flex-col border-l border-borde bg-superficie shadow-modal transition-[opacity,translate] duration-200 ease-salida motion-reduce:transition-none lg:sticky lg:ml-4 lg:bottom-auto lg:right-auto lg:top-6 lg:z-auto lg:h-[var(--alto-panel,calc(100dvh-10rem))] lg:w-[340px] lg:shrink-0 lg:rounded-lg lg:border lg:shadow-none", visible ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0")}>
     <div className="flex items-center justify-between gap-2 border-b border-division px-4 py-3">
       <strong className="text-md">Filtros{activos.length > 0 && <span className="ml-1.5 font-normal text-texto-debil">({activos.length})</span>}</strong>
       <button type="button" aria-label="Cerrar filtros" onClick={cerrar} className="flex rounded-md p-1 text-texto-debil hover:bg-superficie-2 hover:text-texto"><Icon name="x" size={16} /></button>
@@ -168,4 +168,38 @@ function FiltroColumna({ columna: col, parametros, cambiar, borradores, editarTe
       {selectVacio}
     </div>}
   </div>;
+}
+
+/**
+ * En escritorio el panel llega siempre hasta 24px del borde inferior: al inicio
+ * arranca debajo del título y es más bajo; al scrollear queda pegado arriba
+ * (sticky top-6) y crece. Escribe `--alto-panel` sin re-renderizar.
+ *
+ * El borde superior sale de dónde DEBERÍA estar (su hueco o el tope del sticky),
+ * no de su rect actual: al final de la tabla el sticky lo empuja hacia arriba y
+ * medir ese rect agrandaría el panel cada vez más.
+ */
+const MARGEN = 24; // = lg:top-6
+function useAltoHastaElBorde(ref) {
+  useEffect(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    const scroll = document.getElementById("contenido-principal");
+    let cuadro = 0;
+    const medir = () => {
+      cuadro = 0;
+      const area = scroll ? scroll.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+      const arriba = Math.max(panel.parentElement.getBoundingClientRect().top, area.top + MARGEN);
+      panel.style.setProperty("--alto-panel", `${Math.max(240, Math.round(area.bottom - arriba - MARGEN))}px`);
+    };
+    const pedir = () => { if (!cuadro) cuadro = requestAnimationFrame(medir); };
+    medir();
+    scroll?.addEventListener("scroll", pedir, { passive: true });
+    window.addEventListener("resize", pedir);
+    return () => {
+      cancelAnimationFrame(cuadro);
+      scroll?.removeEventListener("scroll", pedir);
+      window.removeEventListener("resize", pedir);
+    };
+  }, [ref]);
 }
