@@ -49,3 +49,13 @@ Se aplicó el parche revisado: `services.py`, `padron.py`, `views.py`, `test_pad
 Se añadieron dos pruebas PostgreSQL en `test_concurrencia_padron130.py` y tres regresiones adicionales en `test_padron130.py`. `LegajoPadron.jsx` explica el orden de revisión; `FichaPadronAdministrativa.jsx` deshabilita cambiar el plan finalizado; `FichaAfiliado.jsx` distingue fecha de afiliación e instantánea del plan. Se corrigieron los selectores/descarga en `issue130-padron-real.spec.js`. La guía y los datos documentan el runtime ejecutado.
 
 El checkout es `juanikitro/issue-130-padron-demo`, base `29886cf26e668c67a224a30145260e0fc62ace81`, El PR y su historial Git registran los commits y la incorporación; el ensayo descrito aquí acredita el runtime local. La aceptación de negocio no se infiere de los checks.
+
+## Compatibilidad del despliegue — PR #131
+
+Las columnas nuevas no nulas mantienen defaults en PostgreSQL y en Python. La migración `0012_padron_legacy_db_defaults` actualiza las instalaciones que ya ensayaron 0010/0011, sin editar esas migraciones ni borrar datos. Para una instalación todavía en 0009, Django usa el reemplazo `0010_padron_expansion_compatible`: ejecuta las tres migraciones en una sola transacción. Así las columnas y sus defaults quedan visibles conjuntamente antes de promover el nuevo backend. Conservar todos los archivos originales y el reemplazo; no eliminar migraciones durante este despliegue.
+
+Cinco pruebas usan los modelos históricos anteriores para insertar afiliados, planes, membresías, historial y lotes sobre el esquema nuevo. Verifican compatibilidad de escritores y defaults sin permisos sensibles implícitos. El ensayo PostgreSQL ampliado pasó 165 pruebas, sin omisiones.
+
+La plataforma no puede concederse salud/cobranza a sí misma tras crear una membresía. La designación de otro administrador real conserva el acceso explícito; los administradores ordinarios mantienen su operatoria. Un test cubre rechazo, ausencia de efectos y designación independiente.
+
+El esquema OpenAPI usa nombres distintos para los enums de sexo del padrón y del paciente; el enum previo del paciente conserva su nombre. La generación estricta sin avisos pasa. Las pruebas de UI actualizadas verifican la corrección parcial con revisión y la clasificación opcional del plan.
