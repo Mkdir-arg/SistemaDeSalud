@@ -998,6 +998,15 @@ test("las búsquedas de consumos, aranceles y catálogo no muestran restos de JS
   }
 });
 
+test("plataforma navega la ficha con su propio menú, como en el portal", async ({ page }) => {
+  await escenario(page, { plataforma: true });
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
+  await page.goto("/financiadores/padron/45?financiador=21");
+  await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menú de plataforma" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menú del financiador" })).toHaveCount(0);
+});
+
 test("la ficha conserva el menú completo del financiador", async ({ page }) => {
   await escenario(page, { rol: "admin" });
   await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
