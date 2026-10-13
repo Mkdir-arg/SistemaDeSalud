@@ -1,4 +1,4 @@
-# HEN para quien lo vende
+# PLEXO para quien lo vende
 
 > Qué es, qué mostrar, qué contestar y qué no prometer.
 > Verificado contra el sistema el **22/09/2026**. No hay una sola línea de código acá.
@@ -78,7 +78,7 @@ En lenguaje de negocio, sin condicionales. Todo esto funciona y se puede mostrar
 |---|---|
 | **Turnos programados** | **Está construido.** Agendas, cupos, bloqueos, reprogramación y ausentismo. Se puede mostrar |
 | **Farmacia** | **Está construido**, incluida la trazabilidad de lote hasta el paciente |
-| **Facturación** | «HEN no reemplaza el facturador. El financiador puede documentar facturas recibidas y emitidas por él en una versión preliminar; HEN no emite ni valida comprobantes fiscales.» |
+| **Facturación** | «PLEXO no reemplaza el facturador. El financiador puede documentar facturas recibidas y emitidas por él en una versión preliminar; PLEXO no emite ni valida comprobantes fiscales.» |
 | **Obras sociales** | Cobertura, cupos, copago y cobros **están construidos**. También hay documentación preliminar de facturas del financiador; no hay facturación fiscal ni conciliación bancaria |
 | **Historia clínica completa** | Mostrar la que hay: evolución, estudios, recetas, antecedentes. Es real y alcanza |
 | **Integración con nuestro sistema** | Hay API completa y una fachada FHIR de lectura funcionando (pacientes, episodios, instituciones, cobertura). **El conector concreto se define en el relevamiento del piloto** |

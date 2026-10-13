@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { importeARS } from "@/api/finanzas";
 import { fechaHora } from "@/lib/format";
+import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { gruposComparados } from "./reportes";
 
 // Se importa sólo al descargar. No se envían datos a un servicio de conversión.
@@ -57,7 +58,7 @@ async function imagenGrafico(svg) {
 
 export async function descargarReportePdf(informe) {
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
-  doc.setProperties({ title: `HEN · Finanzas - ${informe.institucion} - ${informe.mes}`, subject: "Reporte ejecutivo de fuentes financieras registradas", creator: "HEN" });
+  doc.setProperties({ title: `${NOMBRE_SISTEMA} · Finanzas - ${informe.institucion} - ${informe.mes}`, subject: "Reporte ejecutivo de fuentes financieras registradas", creator: NOMBRE_SISTEMA });
   const margen = 16, ancho = 178, limite = 275;
   let y = 32;
   const nuevaPagina = () => { doc.addPage(); y = 32; };
@@ -197,7 +198,7 @@ export async function descargarReportePdf(informe) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(teal);
-    doc.text("HEN / FINANZAS / REPORTE EJECUTIVO", margen, 16);
+    doc.text(`${NOMBRE_SISTEMA.toUpperCase()} / FINANZAS / REPORTE EJECUTIVO`, margen, 16);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(tenue);
     doc.text(informe.mes, 194, 16, { align: "right" });

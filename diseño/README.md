@@ -1,7 +1,7 @@
 # Prototipo histórico de I-Core Salud
 
-> Este entregable de junio de 2026 se conserva como antecedente. La marca
-> vigente de la aplicación es HEN: [diseño en Figma](https://www.figma.com/design/BR2ExsfHBsYcar7fLWcOmn/HEN?node-id=8-2), implementación en
+> Este entregable de junio de 2026 se conserva como antecedente. El diseño
+> vigente de la aplicación está en [Figma (archivo «HEN»)](https://www.figma.com/design/BR2ExsfHBsYcar7fLWcOmn/HEN?node-id=8-2), implementación en
 > [`frontend/src/styles/tokens.css`](../frontend/src/styles/tokens.css). Los
 > logotipos, colores y capturas de esta carpeta no son la referencia actual.
 

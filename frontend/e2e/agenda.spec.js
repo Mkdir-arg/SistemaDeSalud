@@ -71,7 +71,7 @@ test.describe("Agenda", () => {
     const hoy = page.getByRole("button", { name: "Hoy", exact: true });
     await expect(hoy).toHaveAttribute("aria-current", "date");
     // El degradé es de la acción principal, no de un estado (#89).
-    await expect(hoy).not.toHaveClass(/hen-cta/);
+    await expect(hoy).not.toHaveClass(/plexo-cta/);
     // En Semana también cuenta la fecha, no la semana: pasar a la siguiente
     // deja «Hoy» como el botón para volver.
     await page.getByRole("button", { name: "Semana siguiente" }).click();

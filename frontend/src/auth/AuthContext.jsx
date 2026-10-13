@@ -261,7 +261,7 @@ export function AuthProvider({ children }) {
       {locked && <PantallaBloqueada onDesbloquear={desbloquear} />}
       {!!aviso && !locked && <div role="status" className="fixed bottom-4 left-4 z-[1000] rounded-lg border border-division bg-superficie p-4 shadow-float">
         <p>La sesión se bloqueará por inactividad en {aviso} {aviso === 1 ? "minuto" : "minutos"}.</p>
-        <button className="hen-cta mt-2 rounded-md px-3 py-2 text-sobre-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        <button className="plexo-cta mt-2 rounded-md px-3 py-2 text-sobre-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           onClick={() => { ultimaActividad.current = Date.now(); setAviso(0); }}>Continuar trabajando</button>
       </div>}
     </AuthContext.Provider>
@@ -298,7 +298,7 @@ function PantallaBloqueada({ onDesbloquear }) {
           className="mt-1 h-11 w-full rounded-md border border-campo-borde bg-superficie px-3 focus-visible:outline-2 focus-visible:outline-accent" />
       </label>
       {error && <p role="alert" className="mt-3 text-md text-danger">{error}</p>}
-      <button disabled={cargando} className="hen-cta mt-5 h-11 w-full rounded-md font-semibold text-sobre-accent disabled:opacity-50">
+      <button disabled={cargando} className="plexo-cta mt-5 h-11 w-full rounded-md font-semibold text-sobre-accent disabled:opacity-50">
         {cargando ? "Verificando…" : "Reanudar sesión"}
       </button>
     </form>

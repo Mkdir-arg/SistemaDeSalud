@@ -32,9 +32,9 @@ async function ingresar(page) {
     sesion = await r.json();
   }
   await page.addInitScript(({ access, refresh }) => {
-    if (sessionStorage.getItem("hen.portal.access")) return;
-    sessionStorage.setItem("hen.portal.access", access);
-    sessionStorage.setItem("hen.portal.refresh", refresh);
+    if (sessionStorage.getItem("plexo.portal.access")) return;
+    sessionStorage.setItem("plexo.portal.access", access);
+    sessionStorage.setItem("plexo.portal.refresh", refresh);
   }, sesion);
   await page.goto("/mi/inicio");
   await expect(page.getByRole("heading", { name: "Hola, Andrea" })).toBeVisible();
@@ -192,8 +192,8 @@ test("sin estudios ni cobertura lo dice", async ({ page }) => {
 test("con la sesión vencida vuelve a ingresar", async ({ page }) => {
   await ingresar(page);
   await page.evaluate(() => {
-    sessionStorage.setItem("hen.portal.access", "hp_vencido");
-    sessionStorage.setItem("hen.portal.refresh", "hp_vencido");
+    sessionStorage.setItem("plexo.portal.access", "hp_vencido");
+    sessionStorage.setItem("plexo.portal.refresh", "hp_vencido");
   });
   await page.goto("/mi/turnos");
   await expect(page).toHaveURL("/mi/ingresar");

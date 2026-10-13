@@ -1,9 +1,9 @@
-# Estado del proyecto — HEN
+# Estado del proyecto — PLEXO
 
 > Qué está construido, qué falta y qué no está validado.
 > Reescrito el **2026-09-22** contra `main` en `fca71e3` (último commit: 18/09/2026).
 
-HEN es un **constructor y motor de flujos** para procesos asistenciales y su
+PLEXO es un **constructor y motor de flujos** para procesos asistenciales y su
 gestión administrativa. El configurador arma un circuito como diagrama; el mismo
 diagrama se ejecuta: el personal completa casos reales que avanzan paso a paso, se
 derivan entre áreas y quedan registrados. Sobre esa base se apoyan agenda,

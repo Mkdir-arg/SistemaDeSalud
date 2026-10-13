@@ -96,7 +96,7 @@ export default function Inicio() {
             return <li key={clave} className={`flex items-center gap-3 px-4 py-3 ${actual ? "bg-accent-50" : ""}`}>
               <span aria-hidden="true" className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${listo ? "border-badge-green-fg/30 bg-badge-green-bg text-badge-green-fg" : actual ? "border-accent bg-accent-fuerte text-sobre-accent" : "border-borde bg-superficie-2 text-texto-suave"}`}>{listo ? "✓" : indice + 1}</span>
               <div className="min-w-0 flex-1"><strong className="block text-sm">{titulo}</strong><p className="mt-0.5 text-xs text-texto-suave">{detalle}{clave === "agenda_recurso" && " No requiere profesional."}</p></div>
-              {(clave !== "flujo_operativo" || puedeVer("diseno_flujos")) && <Link to={ruta} className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-semibold ${actual ? "hen-cta border-transparent text-sobre-accent" : "border-borde bg-superficie text-accent hover:border-accent"}`}>
+              {(clave !== "flujo_operativo" || puedeVer("diseno_flujos")) && <Link to={ruta} className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-semibold ${actual ? "plexo-cta border-transparent text-sobre-accent" : "border-borde bg-superficie text-accent hover:border-accent"}`}>
                 {listo ? "Ver" : actual ? "Continuar" : "Ir"}
               </Link>}
             </li>;

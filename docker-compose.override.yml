@@ -68,6 +68,7 @@ services:
     environment:
       # Vite proxea /api, /media, etc. hacia el backend dentro de la red de compose.
       VITE_PROXY_TARGET: http://backend:8000
+      VITE_NOMBRE_SISTEMA: ${NOMBRE_SISTEMA:-PLEXO}
     volumes:
       - ./frontend:/app
       # node_modules vive en un volumen propio para no pisarse con el host

@@ -14,6 +14,7 @@ import DetalleAutorizacion, { EstadoAutorizacion, PaginasAutorizacion } from "./
 import { ESTADOS } from "./ActividadFinanciador";
 import { estadoCaso } from "@/lib/dominio";
 import { parametrosListado } from "@/lib/padronNavigation";
+import { NOMBRE_SISTEMA } from "@/lib/marca";
 import FichaPadronAdministrativa from "@/components/financiadores/FichaPadronAdministrativa";
 
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
@@ -108,7 +109,7 @@ function FichaAfiliadoContenido() {
 
   if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error) return <Navigate to="/directorio?vista=financiadores" replace />;
 
-  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || "HEN", titulo: "Ficha del afiliado", rol: organizacion?.rol || "Financiador", items: [{ key: "padron", label: "Padrón de afiliados", icon: "idCard", to: volver }] }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
+  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Ficha del afiliado", rol: organizacion?.rol || "Financiador", items: [{ key: "padron", label: "Padrón de afiliados", icon: "idCard", to: volver }] }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     <Link className="text-sm font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
     <h1 className="text-cifra font-bold">Ficha del afiliado</h1>
     {organizacion && <FichaPadronAdministrativa key={`${id}:${afiliado}`} afiliado={afiliado} organizacion={organizacion} usuarioId={user.id} parametros={parametros} plataforma={plataforma} />}

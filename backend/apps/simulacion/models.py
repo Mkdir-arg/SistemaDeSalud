@@ -1,7 +1,7 @@
 """
 Simulación de perfiles del backoffice por un superusuario.
 
-Sirve para recorrer HEN con los límites reales de cada perfil: el backend
+Sirve para recorrer el sistema con los límites reales de cada perfil: el backend
 autoriza y acota con la **cuenta de referencia** elegida, no con el acceso
 total del superusuario. La autoría de lo que se haga sigue siendo del
 superusuario.
@@ -84,7 +84,7 @@ class SesionSimulacion(models.Model):
 
     El perfil y el ámbito se copian al iniciar para que el registro siga
     diciendo lo que se simuló aunque después cambie el catálogo. El id es el
-    valor que el frontend manda en `X-HEN-Simulacion`; sin la sesión JWT del
+    valor que el frontend manda en `X-PLEXO-Simulacion`; sin la sesión JWT del
     mismo superusuario no sirve de nada.
     """
 

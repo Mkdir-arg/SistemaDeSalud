@@ -20,6 +20,7 @@ import ActividadFinanciador from "./ActividadFinanciador";
 import AutorizacionesFinanciador from "./AutorizacionesFinanciador";
 import FacturasFinanciador from "./FacturasFinanciador";
 import { POR_PAGINA } from "@/api/queries";
+import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { intervaloMes } from "./ActividadFinanciador";
 
@@ -91,7 +92,7 @@ export default function PortalFinanciadores() {
   </div>;
   if (plataforma) return <Shell plataforma>{cuerpo}</Shell>;
   return <Shell financiador={{
-    nombre: organizacion?.nombre || "HEN",
+    nombre: organizacion?.nombre || NOMBRE_SISTEMA,
     rol: ROLES[organizacion?.rol] || "Sin organización asignada",
     titulo: actual?.label || "Financiadores",
     items,
@@ -213,8 +214,8 @@ const DESCRIPCIONES = {
   reglas: "Indicá el porcentaje cubierto y, cuando corresponda, el cupo mensual o anual. Las nuevas vigencias conservan el historial anterior.",
   aranceles: "Aranceles vigentes al consultar, cargados por los hospitales con convenio activo. Se aplica el arancel general salvo una excepción acordada. La cobertura y el copago dependen del plan, el cupo y la prestación, y se confirman antes de realizarla.",
   padron: "Altas y actualizaciones de afiliados. Finalizar o reactivar una afiliación requiere una acción explícita con motivo. Una importación nunca da de baja a quienes no aparecen en el archivo.",
-  consumos: "Prestaciones recibidas fuera de HEN. Se descuentan del cupo del mes o año en que ocurrieron, aunque se registren después.",
-  actividad: "Reservas y prestaciones de tus afiliados registradas por hospitales de HEN. Sin relación vigente, sólo se muestran operaciones históricas pendientes de resolución. Las discrepancias conservan las decisiones previas y requieren revisión administrativa.",
+  consumos: `Prestaciones recibidas fuera de ${NOMBRE_SISTEMA}. Se descuentan del cupo del mes o año en que ocurrieron, aunque se registren después.`,
+  actividad: `Reservas y prestaciones de tus afiliados registradas por hospitales de ${NOMBRE_SISTEMA}. Sin relación vigente, sólo se muestran operaciones históricas pendientes de resolución. Las discrepancias conservan las decisiones previas y requieren revisión administrativa.`,
   convenios: "Los convenios habilitan la relación con cada hospital. La contraparte debe aceptar la propuesta.",
   usuarios: "Cada acceso pertenece a esta organización. El rol determina qué puede consultar o modificar la persona.",
   catalogo: "Catálogo compartido por todos los financiadores y hospitales. La plataforma administra su identidad; cada hospital conserva sus aranceles.",
@@ -418,7 +419,7 @@ function CrearRegistro({ recurso, organizacion, scope, planes, catalogo, titulo,
     convenios: [{ name: "institucion", label: "Hospital", options: hospitales.data || [], numeric: true, required: true }],
     usuarios: [campoPermisoAutorizaciones(), ...camposPermisosPadron(organizacion), { name: "email", label: "Correo electrónico", type: "email", required: true }, { name: "nombre", label: "Nombre y apellido", required: true }, { name: "rol", label: "Rol", options: [{ id: "admin", nombre: "Administración: configura y gestiona accesos" }, { id: "operador", nombre: "Operación: padrón y consumos" }, { id: "auditor", nombre: "Auditoría: sólo lectura" }], required: true }],
   }[recurso];
-  return <FormularioPortal titulo={titulo} campos={campos} onClose={onClose} onGuardado={onGuardado} descripcion={recurso === "usuarios" ? "El acceso se limita a este financiador. La credencial de una persona que ya usa HEN se conserva." : undefined} guardar={(body) => api.post(rutaFinanciador(organizacion.id, recurso), body)} />;
+  return <FormularioPortal titulo={titulo} campos={campos} onClose={onClose} onGuardado={onGuardado} descripcion={recurso === "usuarios" ? `El acceso se limita a este financiador. La credencial de una persona que ya usa ${NOMBRE_SISTEMA} se conserva.` : undefined} guardar={(body) => api.post(rutaFinanciador(organizacion.id, recurso), body)} />;
 }
 
 function FormularioRegla({ organizacion, planes, catalogo, onClose, onGuardado }) {

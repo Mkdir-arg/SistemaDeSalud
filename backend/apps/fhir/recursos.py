@@ -32,7 +32,10 @@ SISTEMA_DNI = "http://www.renaper.gob.ar/dni"
 
 # Los identificadores propios de Salud van bajo una URN de la institución que
 # corre el sistema. No se usa una URL http: sugeriría que hay algo publicado ahí.
-SISTEMA_LOCAL = "urn:icore-salud:id"
+# NO sigue al nombre del producto (docs/NOMBRE-DEL-SISTEMA.md): es un contrato
+# con integradores externos y cambiarlo los deja sin resultados. Los anteriores
+# están en `SISTEMAS_RETIRADOS` de views.py.
+SISTEMA_LOCAL = "urn:icore:id"
 
 VERSION_FHIR = "4.0.1"
 

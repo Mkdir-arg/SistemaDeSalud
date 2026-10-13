@@ -70,7 +70,7 @@ test.describe("Directorio de plataforma", () => {
 
   for (const tema of ["claro", "oscuro"]) {
     test(`sin fallos de contraste AA (${tema})`, async ({ page }) => {
-      await page.evaluate((t) => localStorage.setItem("salud.tema", t), tema);
+      await page.evaluate((t) => localStorage.setItem("plexo.tema", t), tema);
       await page.reload();
       await expect(page.getByRole("heading", { name: "Instituciones" })).toBeVisible();
       await expect(page.locator('[role="status"]')).toHaveCount(0);

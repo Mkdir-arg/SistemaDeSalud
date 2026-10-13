@@ -7,6 +7,7 @@ import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { Shell } from "@/components/Shell";
+import { NOMBRE_SISTEMA } from "@/lib/marca";
 import Accesos from "@/pages/auditoria/Accesos";
 import { Avatar, Badge, Button, Field, Input, Modal, Select } from "@/components/ui";
 import { Buscador, useBusquedaUrl, useFiltroUrl } from "@/components/ui/filtros";
@@ -66,7 +67,7 @@ function FinanciadoresView() {
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 className="text-xl font-bold tracking-tight">Financiadores</h2>
-        <p className="mt-1 text-sm text-texto-suave">Obras sociales, prepagas y mutuales con acceso a HEN.</p>
+        <p className="mt-1 text-sm text-texto-suave">Obras sociales, prepagas y mutuales con acceso a {NOMBRE_SISTEMA}.</p>
       </div>
       <Button onClick={() => setNuevo(true)} className="gap-2"><Icon name="plus" size={15} /> Nuevo financiador</Button>
     </div>

@@ -1,7 +1,7 @@
 """
 Separación entre la identidad autenticada y la identidad efectiva.
 
-Con `X-HEN-Simulacion: <id de sesión>`, un pedido del superusuario se autoriza
+Con `X-PLEXO-Simulacion: <id de sesión>`, un pedido del superusuario se autoriza
 como la cuenta de referencia de esa sesión:
 
 - `request.user` es la cuenta, y con ella se evalúan todos los permisos y
@@ -26,7 +26,7 @@ from . import contexto
 from .models import SesionSimulacion
 from .perfiles import es_cuenta_referencia, problema_de_sesion
 
-ENCABEZADO = "HTTP_X_HEN_SIMULACION"
+ENCABEZADO = "HTTP_X_PLEXO_SIMULACION"
 
 
 class SimulacionRechazada(APIException):

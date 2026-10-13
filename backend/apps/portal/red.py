@@ -1,5 +1,5 @@
 """
-La persona del portal en toda la red de HEN (#121).
+La persona del portal en toda la red del sistema (#121).
 
 `Ciudadano` es por institución: la misma persona tiene un registro en cada
 hospital donde la atendieron. Acá se juntan por el documento validado con

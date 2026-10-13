@@ -15,7 +15,7 @@ import { Icon } from "./icons";
 const BOTON_VARIANTE = {
   // El primario usa el relleno de marca con su color de texto: `accent` a secas
   // es claro en tema oscuro y el blanco encima no llegaría a contraste.
-  primary: "hen-cta text-sobre-accent",
+  primary: "plexo-cta text-sobre-accent",
   // Neutro, como en el DS: el violeta se reserva para la acción principal.
   secondary: "bg-secundario text-texto-suave border border-secundario-borde hover:bg-secundario-hover hover:text-texto",
   // Estado «seleccionado» de un toggle o filtro: sin degradé, que es de la

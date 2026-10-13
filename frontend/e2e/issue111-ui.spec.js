@@ -13,7 +13,7 @@ async function preparar(page, opciones = {}) {
     sessionStorage.setItem("salud.access", "token-ficticio-111");
     localStorage.setItem("salud.institucion", JSON.stringify(inst));
     localStorage.removeItem("salud.menu");
-    localStorage.removeItem("salud.tema");
+    localStorage.removeItem("plexo.tema");
   }, instituciones[0]);
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
