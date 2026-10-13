@@ -46,7 +46,7 @@ CUENTAS = {
 def exigir_destino():
     """Antes de consultas y archivos; desarrollo tampoco es un destino válido."""
     if settings.ENTORNO != "demo":
-        raise CommandError("seed_padron_demo exige ENTORNO=demo. No se modificó ningún dato.")
+        raise CommandError(f"seed_padron_demo exige ENTORNO=demo; destino actual ENTORNO={settings.ENTORNO}. No se modificó ningún dato.")
     if connection.vendor != "postgresql" or connection.settings_dict["NAME"] != "padron130":
         raise CommandError("seed_padron_demo exige PostgreSQL con NAME exacto padron130.")
 
