@@ -8,6 +8,8 @@ export default function ExportarPadron({ organizacion, query, total, consultando
   const [error, setError] = useState(null);
   const activo = useRef(true);
   const actual = useRef(query.toString());
+  const consultaBloqueada = useRef(consultando);
+  consultaBloqueada.current = consultando;
   actual.current = query.toString();
   useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
   async function exportar() {
@@ -17,7 +19,7 @@ export default function ExportarPadron({ organizacion, query, total, consultando
     parametros.delete("page"); parametros.delete("page_size");
     parametros.set("formato", "xlsx");
     setOcupado(true); setError(null);
-    try { await api.download(`${rutaFinanciador(organizacion.id, "padron")}exportar/?${parametros}`, `padron-${organizacion.id}.xlsx`, () => activo.current && actual.current === captura); }
+    try { await api.download(`${rutaFinanciador(organizacion.id, "padron")}exportar/?${parametros}`, `padron-${organizacion.id}.xlsx`, () => activo.current && actual.current === captura && !consultaBloqueada.current); }
     catch (err) { if (activo.current && actual.current === captura) setError(err); }
     finally { if (activo.current) setOcupado(false); }
   }

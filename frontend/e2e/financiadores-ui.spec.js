@@ -1197,7 +1197,7 @@ test("Plan y Estado globales de padrón vuelven a página uno sin perder búsque
   await page.goto(`/financiadores/padron?${contextoBusquedaPadron}&search=previo&derecho=finalizadas`);
   await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue("finalizadas");
   await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("31");
-  await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "finalizadas", derecho: "finalizadas", search: "previo", plan: "31", page: "1" } });
+  await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", derecho: "finalizadas", search: "previo", plan: "31", page: "1" } });
   expect(new URL(page.url()).searchParams.has("page")).toBe(false);
   const segundaPagina = new URL(page.url()); segundaPagina.searchParams.set("page", "2");
   await page.goto(segundaPagina.href);
@@ -1211,4 +1211,115 @@ test("Plan y Estado globales de padrón vuelven a página uno sin perder búsque
   await expect(page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true })).toHaveValue("previo");
   await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue("vigentes");
   expect(escrituras).toEqual([]);
+});
+
+
+test("historial muestra importación humana sin reescribir motivos libres", async ({ page }) => {
+  const { padron } = await escenario(page);
+  await fichaMock(page, padron[0]);
+  await page.route("**/api/financiadores/21/padron/45/", (route) => route.fulfill({ json: { ...padron[0], revision: 1, permisos: {} } }));
+  await page.route("**/api/financiadores/21/padron/45/historial/**", (route) => route.fulfill({ json: lista([
+    { id: 1, registrado: "2026-10-13T12:00:00Z", origen: "importacion", lote: 9, motivo: "Importación v2 de padrón" },
+    { id: 2, registrado: "2026-10-13T12:00:00Z", origen: "manual", motivo: "Importación v2 de padrón" },
+    { id: 3, registrado: "2026-10-13T12:00:00Z", origen: "importacion", lote: 9, motivo: "Nota libre: Importación v2 de padrón revisada" },
+  ]) }));
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Editar", exact: true }).click();
+  const dialogo = page.getByRole("dialog");
+  await expect(dialogo.getByText("Motivo: Importación de padrón", { exact: true })).toBeVisible();
+  await expect(dialogo.getByText("Motivo: Importación v2 de padrón", { exact: true })).toBeVisible();
+  await expect(dialogo.getByText("Motivo: Nota libre: Importación v2 de padrón revisada", { exact: true })).toBeVisible();
+  await expect(dialogo.getByText("Origen: Importación de padrón · Lote 9", { exact: true })).toHaveCount(2);
+  await expect(dialogo.getByText("Origen: Carga manual", { exact: true })).toBeVisible();
+});
+
+test("Estado global respeta Finalizadas y Futuras por alias sin imponer Vigentes", async ({ page }) => {
+  const { padron, escrituras } = await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/padron/?**", (route) => {
+    const request = route.request(); const params = Object.fromEntries(new URL(request.url()).searchParams);
+    consultas.push({ method: request.method(), params });
+    if (request.method() !== "GET") return route.fulfill({ status: 405, json: { detail: "Sólo GET" } });
+    if (params.flt_derecho && params.estado === "vigentes") return route.fulfill({ json: lista([]) });
+    const estado = params.flt_derecho || params.estado;
+    return route.fulfill({ json: lista([{ ...padron[0], vigente: estado === "vigentes", finalizado_en: estado === "finalizadas" ? "2026-09-15T12:00:00Z" : null }]) });
+  });
+  for (const estado of ["finalizadas", "futuras"]) {
+    await page.goto(`/financiadores/padron?financiador=21&flt_derecho=${estado}`);
+    await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue(estado);
+    const fila = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
+    await expect(fila).toBeVisible();
+    await expect(fila.getByRole("button", { name: estado === "finalizadas" ? "Reactivar" : "Finalizar", exact: true })).toBeVisible();
+    expect(consultas.at(-1).method).toBe("GET");
+    expect(consultas.at(-1).params).toMatchObject({ flt_derecho: estado });
+    expect(consultas.at(-1).params).not.toHaveProperty("estado");
+    await page.getByRole("combobox", { name: "Estado", exact: true }).selectOption("vigentes");
+    await expect.poll(() => consultas.at(-1)?.params.estado).toBe("vigentes");
+    expect(new URL(page.url()).searchParams.has("flt_derecho")).toBe(false);
+    expect(new URL(page.url()).searchParams.has("derecho")).toBe(false);
+  }
+  expect(escrituras).toEqual([]);
+});
+
+
+test("filtro de columna agrupa teclas y bloquea XLSX hasta aplicar criterios", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-13T12:00:00Z") });
+  const { consultas, escrituras } = await consultaPadronMock(page);
+  const exportaciones = [];
+  await page.route("**/api/financiadores/21/padron/exportar/**", (route) => {
+    exportaciones.push({ method: route.request().method(), params: Object.fromEntries(new URL(route.request().url()).searchParams) });
+    return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="padron-filtrado.xlsx"' }, body: Buffer.from([0x50, 0x4b, 0x03, 0x04]) });
+  });
+  await page.goto("/financiadores/padron?financiador=21&estado=todos&page=2&ordering=-nombre&columnas=nombre,numero,documento");
+  const exportar = page.getByRole("button", { name: "Exportar XLSX", exact: true });
+  await expect(exportar).toBeEnabled();
+  await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
+  await page.getByText("Filtros administrativos", { exact: true }).click();
+  const antes = consultas.length;
+  const historial = await page.evaluate(() => history.length);
+  await page.getByRole("textbox", { name: "Filtrar Documento", exact: true }).pressSequentially("00123456");
+  await expect(exportar).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "Aplicando filtros…" })).toBeVisible();
+  expect(consultas.length).toBe(antes);
+  await page.clock.fastForward(299);
+  expect(consultas.length).toBe(antes);
+  await page.clock.fastForward(1);
+  await expect.poll(() => consultas.length).toBe(antes + 1);
+  await page.clock.resume();
+  expect(consultas.at(-1)).toEqual({ method: "GET", params: { estado: "todos", ordering: "-nombre", columnas: "nombre,numero,documento", flt_documento: "00123456", page: "1", page_size: "10" } });
+  expect(await page.evaluate(() => history.length)).toBe(historial);
+  await expect(exportar).toBeEnabled();
+  const descargar = page.waitForEvent("download");
+  await exportar.click();
+  expect((await descargar).suggestedFilename()).toBe("padron-filtrado.xlsx");
+  expect(exportaciones).toEqual([{ method: "GET", params: { estado: "todos", ordering: "-nombre", columnas: "nombre,numero,documento", flt_documento: "00123456", formato: "xlsx" } }]);
+  await page.getByRole("textbox", { name: "Filtrar Documento", exact: true }).fill("999");
+  await expect(exportar).toBeDisabled();
+  const antesCambio = consultas.length;
+  await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
+  await expect(page).toHaveURL(/financiador=22/);
+  await page.clock.fastForward(300);
+  await expect(exportar).toBeEnabled();
+  expect(consultas.length).toBe(antesCambio);
+  expect(new URL(page.url()).searchParams.has("flt_documento")).toBe(false);
+  expect(escrituras).toEqual([]);
+});
+
+test("descarga XLSX iniciada se suprime si aparece una búsqueda en borrador", async ({ page }) => {
+  await escenario(page);
+  let liberar;
+  const bloqueo = new Promise((resolve) => { liberar = resolve; });
+  await page.route("**/api/financiadores/21/padron/exportar/**", async (route) => {
+    await bloqueo;
+    await route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: Buffer.from([0x50, 0x4b, 0x03, 0x04]) });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  const solicitud = page.waitForRequest((r) => r.url().includes("/21/padron/exportar/"));
+  await page.getByRole("button", { name: "Exportar XLSX", exact: true }).click();
+  await solicitud;
+  await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("nuevo criterio");
+  const descarga = page.waitForEvent("download", { timeout: 1000 }).catch(() => null);
+  liberar();
+  expect(await descarga).toBeNull();
+  await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeDisabled();
 });
