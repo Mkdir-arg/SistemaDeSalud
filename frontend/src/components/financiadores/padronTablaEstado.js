@@ -5,6 +5,12 @@ export const COLUMNAS_PREDETERMINADAS = catalogo.filter((c) => c.default).map((c
 export const FILTROS_LEGACY_PADRON = ["estado_administrativo", "regimen", "alta_desde", "alta_hasta", "baja_desde", "baja_hasta"];
 const consultaLegacy = ["plan", "estado", "derecho", "documento", "search", ...FILTROS_LEGACY_PADRON];
 
+// Mismos tamaños de DataTable/useTablaUrl; la consulta y el rango visible coinciden.
+export function tamanoPadron(parametros) {
+  const pedido = Number(parametros.get("page_size"));
+  return [10, 25, 50, 100].includes(pedido) ? pedido : 10;
+}
+
 export function obtenerColumnasPadron(parametros) {
   const elegidas = parametros.has("columnas") ? parametros.get("columnas").split(",") : COLUMNAS_PREDETERMINADAS;
   return catalogo.filter((c) => c.required || elegidas.includes(c.key)).map((c) => c.key);
@@ -43,7 +49,7 @@ export function parametrosConsultaPadron(parametros) {
     if (consultaLegacy.includes(clave) || ["ordering", "columnas", "page", "page_size"].includes(clave) || clave.startsWith("flt_")) consulta.append(clave, valor);
   }
   if (!consulta.has("page")) consulta.set("page", "1");
-  if (!consulta.has("page_size")) consulta.set("page_size", "10");
+  consulta.set("page_size", String(tamanoPadron(parametros)));
   if (!consulta.has("estado") && !consulta.has("derecho")) consulta.set("estado", "vigentes");
   return consulta;
 }

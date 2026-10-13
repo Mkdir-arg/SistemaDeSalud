@@ -5,10 +5,9 @@ import { Button, Checkbox } from "@/components/ui";
 import { DataTable } from "@/components/ui/tabla";
 import FiltrosPadron from "./FiltrosPadron";
 import "./PadronTabla.css";
-import { COLUMNAS_PADRON, COLUMNAS_PREDETERMINADAS, cambiarColumnasPadron, cambiarConsultaPadron, obtenerColumnasPadron, ordenarPadron, valorColumnaPadron } from "./padronTablaEstado";
+import { COLUMNAS_PADRON, COLUMNAS_PREDETERMINADAS, cambiarColumnasPadron, cambiarConsultaPadron, obtenerColumnasPadron, ordenarPadron, tamanoPadron, valorColumnaPadron } from "./padronTablaEstado";
 
 const VACIO = [];
-const tamanos = [10, 25, 50, 100];
 const positivo = (v, defecto) => Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : defecto;
 
 /** Presentación/control URL. Consulta, permisos, edición y XLSX los aporta Portal. */
@@ -16,7 +15,7 @@ export default function PadronTabla({ filas, total, paginas, estado, parametros,
   const [densidad, setDensidad] = useState("comoda");
   const elegidas = obtenerColumnasPadron(parametros);
   const pagina = positivo(parametros.get("page"), 1);
-  const tamano = positivo(parametros.get("page_size"), 10);
+  const tamano = tamanoPadron(parametros);
   const orden = parametros.get("ordering") || "";
   const columnas = COLUMNAS_PADRON.filter((c) => elegidas.includes(c.key)).map((col) => ({
     key: col.key, label: col.label, orden: col.key,
@@ -25,7 +24,7 @@ export default function PadronTabla({ filas, total, paginas, estado, parametros,
   if (renderAcciones) columnas.push({ key: "acciones", label: "Acciones", fija: true, render: renderAcciones });
   const cambiar = (campo, valor) => onParametrosChange(cambiarConsultaPadron(parametros, { [campo]: valor }));
   const tabla = {
-    pagina, orden, tamano: tamanos.includes(tamano) ? tamano : 10, densidad, setDensidad,
+    pagina, orden, tamano, densidad, setDensidad,
     irA: (n) => { const p = new URLSearchParams(parametros); if (n > 1) p.set("page", String(n)); else p.delete("page"); onParametrosChange(p); },
     ordenarPor: (campo) => onParametrosChange(ordenarPadron(parametros, campo)),
     cambiarTamano: (n) => cambiar("page_size", n),

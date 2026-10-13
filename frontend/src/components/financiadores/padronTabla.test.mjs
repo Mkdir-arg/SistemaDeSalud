@@ -55,3 +55,9 @@ test("presentación mantiene texto/ceros, nombres de plan y estados diferenciado
   assert.equal(valorColumnaPadron({ vigente: false, finalizado_en: null }, col("derecho")), "Aún no vigente");
   assert.equal(valorColumnaPadron({ vigente: false, finalizado_en: "2026-10-13" }, col("derecho")), "Finalizada");
 });
+
+test("tamaño por URL coincide con selector y consulta; valores fuera del selector usan 10", () => {
+  for (const [pedido, esperado] of [["25", "25"], ["100", "100"], ["200", "10"], ["0", "10"], ["texto", "10"]]) {
+    assert.equal(parametrosConsultaPadron(new URLSearchParams({ page_size: pedido })).get("page_size"), esperado);
+  }
+});
