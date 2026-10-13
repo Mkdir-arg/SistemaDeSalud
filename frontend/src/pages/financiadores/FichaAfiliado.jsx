@@ -113,7 +113,8 @@ function FichaAfiliadoContenido() {
 
   if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error) return <Navigate to="/directorio?vista=financiadores" replace />;
 
-  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Ficha del afiliado", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
+  // Plataforma navega con su propio Shell, igual que en el portal del financiador.
+  return <Shell plataforma={plataforma} financiador={plataforma ? null : { nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Ficha del afiliado", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     <Link className="text-sm font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
     <h1 className="text-cifra font-bold">Ficha del afiliado</h1>
     {organizacion && <FichaPadronAdministrativa key={`${id}:${afiliado}`} afiliado={afiliado} organizacion={organizacion} usuarioId={user.id} parametros={parametros} plataforma={plataforma} />}

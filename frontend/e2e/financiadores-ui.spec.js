@@ -1057,6 +1057,25 @@ test("Historia clínica no es una acción de la fila, ni para el admin", async (
   await expect(fila.getByRole("link", { name: "Persona Ficticia" })).toBeVisible();
 });
 
+test("las búsquedas de consumos, aranceles y catálogo no muestran restos de JSX", async ({ page }) => {
+  await escenario(page, { plataforma: true });
+  for (const seccion of ["consumos", "aranceles"]) {
+    await page.goto(`/financiadores/${seccion}?financiador=21`);
+    const buscar = page.getByRole("button", { name: "Buscar", exact: true });
+    await expect(buscar).toBeVisible();
+    expect(await buscar.locator("xpath=ancestor::form").innerText()).not.toContain("}");
+  }
+});
+
+test("plataforma navega la ficha con su propio menú, como en el portal", async ({ page }) => {
+  await escenario(page, { plataforma: true });
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
+  await page.goto("/financiadores/padron/45?financiador=21");
+  await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menú de plataforma" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menú del financiador" })).toHaveCount(0);
+});
+
 test("la ficha conserva el menú completo del financiador", async ({ page }) => {
   await escenario(page, { rol: "admin" });
   await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
@@ -1357,8 +1376,10 @@ test("filtro de columna agrupa teclas y bloquea XLSX hasta aplicar criterios", a
   await page.goto("/financiadores/padron?financiador=21&estado=todos&page=2&ordering=-nombre&columnas=nombre,numero,documento");
   const exportar = page.getByRole("button", { name: "Exportar XLSX", exact: true });
   await expect(exportar).toBeEnabled();
-  await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
+  // El panel abre con requestAnimationFrame: se abre antes de congelar el reloj.
   await page.getByRole("button", { name: /^Filtros/ }).click();
+  await page.getByRole("button", { name: /^Afiliación/ }).click();
+  await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
   const antes = consultas.length;
   const historial = await page.evaluate(() => history.length);
   await page.getByRole("textbox", { name: "Filtrar Documento", exact: true }).pressSequentially("00123456");

@@ -14,7 +14,7 @@ export default function ColumnasPadron({ elegidas, parametros, onParametrosChang
   const cambiar = (claves) => onParametrosChange(cambiarColumnasPadron(parametros, claves));
   const grupos = GRUPOS_PADRON.map((g) => ({ ...g, columnas: g.columnas.filter((c) => !clave || normalizar(c.label).includes(clave) || normalizar(g.titulo).includes(clave)) })).filter((g) => g.columnas.length);
   const personalizadas = parametros.has("columnas");
-  return <PanelFlotante titulo="Columnas visibles" activo={personalizadas}
+  return <PanelFlotante titulo="Columnas visibles" nombre={`Columnas visibles (${elegidas.length})`} activo={personalizadas}
     etiqueta={<><Icon name="layers" size={15} />Columnas<span className="rounded-pill bg-superficie-2 px-1.5 text-xs font-semibold tabular-nums text-texto-medio">{elegidas.length}</span></>}>
     <Buscador aria-label="Buscar columna" placeholder="Buscar columna…" valor={busca} onChange={setBusca} />
     <div className="-mx-4 mt-3 max-h-[min(55vh,26rem)] overflow-y-auto border-y border-division px-4 py-2">

@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 const ruta = "/e2e/fixtures/padron-tabla.html";
+// El panel abre con todos los grupos plegados: se despliega el que se usa.
+const grupo = (page, nombre) => page.getByRole("button", { name: new RegExp(`^${nombre}`) });
+async function abrirFiltros(page, nombre = "Afiliación") {
+  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await grupo(page, nombre).click();
+}
 const columna = (page, nombre) => page.getByRole("columnheader", { name: `Ordenar por ${nombre}`, exact: false });
 
 test.beforeEach(async ({ page }) => {
@@ -51,7 +57,7 @@ test("orden asc/desc y filtros se comunican al servidor, página1 en URL", async
   await expect(columna(page, "Afiliado")).toHaveAttribute("aria-sort", "descending");
   await page.getByRole("button", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL(/page=2/);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Zeta");
   await expect(page.getByLabel("Consulta aplicada")).toContainText("flt_nombre=Zeta");
   expect(new URL(page.url()).searchParams.has("page")).toBe(false);
@@ -59,7 +65,7 @@ test("orden asc/desc y filtros se comunican al servidor, página1 en URL", async
   await expect(page.getByRole("link", { name: "Afiliado Ficticio A" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Quitar filtro Afiliado: «Zeta»" })).toBeVisible();
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   await expect(page.getByLabel("Filtrar Afiliado", { exact: true })).toHaveValue("Zeta");
   await expect(columna(page, "Afiliado")).toHaveAttribute("aria-sort", "descending");
 });
@@ -69,8 +75,8 @@ test("filtros de columna oculta se ven como chips y se pueden limpiar", async ({
   await expect(page.getByRole("button", { name: /^Filtros/ })).toContainText("2");
   await page.getByRole("button", { name: "Quitar filtro Régimen: Relación de dependencia" }).click();
   expect(new URL(page.url()).searchParams.has("flt_regimen")).toBe(false);
-  // Un grupo con filtros aplicados abre desplegado, aunque la columna no se vea.
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  // La columna no se ve, pero su filtro sigue en el panel.
+  await abrirFiltros(page, "Domicilio");
   await expect(page.getByLabel("Filtrar Localidad", { exact: true })).toHaveValue("Río");
   await page.getByLabel("Filtrar Localidad", { exact: true }).fill("");
   await expect.poll(() => new URL(page.url()).searchParams.has("flt_localidad")).toBe(false);
@@ -79,7 +85,7 @@ test("filtros de columna oculta se ven como chips y se pueden limpiar", async ({
 
 test("filtrar no depende de las columnas visibles; buscar un dato y Escape", async ({ page }) => {
   await page.goto(`${ruta}?columnas=nombre,numero`);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   await page.getByRole("searchbox", { name: "Buscar filtro" }).fill("nacimiento");
   await page.getByLabel("Fecha de nacimiento desde", { exact: true }).fill("2000-01-01");
   await expect(page.getByLabel("Consulta aplicada")).toContainText("flt_fecha_nacimiento_desde=2000-01-01");
@@ -112,7 +118,7 @@ test("ocho letras rápidas producen un GET aplicado y replace, export pendiente"
   await page.goto(ruta);
   await expect.poll(() => pedidos.length).toBe(1);
   const historial = await page.evaluate(() => history.length);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   const campo = page.getByLabel("Filtrar Afiliado", { exact: true });
   await campo.pressSequentially("Gonzalez");
   await expect(campo).toHaveValue("Gonzalez");
@@ -131,7 +137,7 @@ test("ocho letras rápidas producen un GET aplicado y replace, export pendiente"
 test("borrador conserva orden y otro select cambiados mientras espera", async ({ page }) => {
   await page.clock.install();
   await page.goto(`${ruta}?financiador=21&page=3`);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Alfa");
   await page.getByRole("button", { name: "Ordenar por Afiliado", exact: true }).click();
   await page.getByRole("button", { name: "Régimen y trabajo", exact: true }).click();
@@ -148,7 +154,7 @@ test("borrador conserva orden y otro select cambiados mientras espera", async ({
 test("Back cancela borrador y sincroniza el valor aplicado", async ({ page }) => {
   await page.clock.install();
   await page.goto(`${ruta}?flt_nombre=Previo`);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   await page.getByRole("button", { name: "Ordenar por Afiliado", exact: true }).click();
   await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("No aplicar");
   await page.goBack();
@@ -162,7 +168,7 @@ test("desmontar o cambiar organización cancela timer y pendientes", async ({ pa
   await page.clock.install();
   for (const accion of ["Mostrar u ocultar tabla", "Cambiar organización"]) {
     await page.goto(`${ruta}?financiador=21`);
-    await page.getByRole("button", { name: /^Filtros/ }).click();
+    await abrirFiltros(page);
     await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("No aplicar");
     await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeDisabled();
     await page.getByRole("button", { name: accion, exact: true }).click();
@@ -178,7 +184,7 @@ test("texto y número comparten un batch; volver al valor aplicado no consulta",
   page.on("request", (r) => { if (r.url().includes("/__fixture_padron_consulta?")) pedidos.push(r); });
   await page.goto(`${ruta}?columnas=nombre,numero,titular`);
   await expect.poll(() => pedidos.length).toBe(1);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   const nombre = page.getByLabel("Filtrar Afiliado", { exact: true });
   await nombre.fill("Descartar");
   await nombre.fill("");
@@ -199,7 +205,7 @@ test("texto y número comparten un batch; volver al valor aplicado no consulta",
 test("fecha y select se aplican inmediatamente sin borrar texto pendiente", async ({ page }) => {
   await page.clock.install();
   await page.goto(`${ruta}?columnas=nombre,numero,fecha_nacimiento`);
-  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await abrirFiltros(page);
   await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Alfa");
   await page.getByRole("button", { name: "Identidad", exact: true }).click();
   await page.getByLabel("Fecha de nacimiento desde", { exact: true }).fill("2000-01-01");
@@ -244,4 +250,61 @@ test("clic en el texto de una columna la marca sin cerrar el panel", async ({ pa
   await panel.getByText("Documento", { exact: true }).click();
   await expect(columna(page, "Documento")).toBeVisible();
   await expect(panel).toBeVisible();
+});
+
+test("Limpiar todo vuelve al padrón entero y descarta lo que se estaba tipeando", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?flt_localidad=Río&search=Ana&plan=3`);
+  await abrirFiltros(page);
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Zeta");
+  await page.getByRole("button", { name: "Limpiar todo", exact: true }).click();
+  await page.clock.runFor(1000);
+  const url = new URL(page.url()).searchParams;
+  for (const clave of ["flt_localidad", "flt_nombre", "search", "plan"]) expect(url.has(clave)).toBe(false);
+  await expect(page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre" })).toHaveValue("");
+  await expect(page.getByLabel("Filtrar Afiliado", { exact: true })).toHaveValue("");
+});
+
+test("quitar un chip descarta el borrador del mismo filtro", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?flt_nombre=Previo`);
+  await abrirFiltros(page);
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Otro");
+  await page.getByRole("button", { name: "Quitar filtro Afiliado: «Previo»" }).click();
+  await page.clock.runFor(1000);
+  expect(new URL(page.url()).searchParams.has("flt_nombre")).toBe(false);
+});
+
+test("cerrar el panel no le saca el foco a lo que se tocó después", async ({ page }) => {
+  await page.goto(ruta);
+  const filtros = page.getByRole("button", { name: /^Filtros/ });
+  await filtros.click();
+  await expect(page.getByRole("dialog", { name: "Filtros del padrón" })).toBeVisible();
+  await filtros.click();
+  const buscar = page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre" });
+  await buscar.click();
+  await expect(page.getByRole("dialog", { name: "Filtros del padrón" })).toHaveCount(0);
+  await expect(buscar).toBeFocused();
+});
+
+test("el botón de columnas anuncia cuántas hay visibles", async ({ page }) => {
+  await page.goto(ruta);
+  await expect(page.getByRole("button", { name: /^Columnas visibles/ })).toHaveAccessibleName("Columnas visibles (5)");
+});
+
+test("el panel abre plegado y «Sin cargar» filtra datos vacíos", async ({ page }) => {
+  await page.goto(`${ruta}?flt_localidad=Río`);
+  await page.getByRole("button", { name: /^Filtros/ }).click();
+  const panel = page.getByRole("dialog", { name: "Filtros del padrón" });
+  // Plegado aunque Domicilio tenga un filtro: el conteo lo avisa.
+  for (const g of await panel.getByRole("button", { expanded: true }).all()) throw new Error(`grupo abierto: ${await g.textContent()}`);
+  await expect(grupo(page, "Domicilio")).toContainText("1");
+  await grupo(page, "Contacto").click();
+  await panel.getByRole("checkbox", { name: "Teléfono sin cargar" }).check();
+  expect(new URL(page.url()).searchParams.get("flt_telefono_vacio")).toBe("true");
+  await expect(page.getByRole("button", { name: "Quitar filtro Teléfono: sin cargar" })).toBeVisible();
+  await panel.getByRole("checkbox", { name: "Teléfono sin cargar" }).uncheck();
+  expect(new URL(page.url()).searchParams.has("flt_telefono_vacio")).toBe(false);
+  await panel.getByRole("button", { name: "Limpiar", exact: true }).click();
+  expect(new URL(page.url()).searchParams.has("flt_localidad")).toBe(false);
 });
