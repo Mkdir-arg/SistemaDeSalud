@@ -270,8 +270,10 @@ export const api = {
   put: (path, body) => request("PUT", path, body),
   del: (path) => request("DELETE", path),
   multipart: (path, body) => request("POST", path, body, false, { multipart: true }),
-  async download(path, nombre = "archivo") {
+  async download(path, nombre = "archivo", vigente = () => true) {
     const { blob, disposition } = await request("GET", path, null, false, { blob: true });
+    // Una descarga de una vista desmontada o de otra consulta no se entrega.
+    if (!vigente()) return;
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = href;
