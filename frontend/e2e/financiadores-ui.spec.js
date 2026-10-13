@@ -455,7 +455,8 @@ test("auditor consulta sin acciones de escritura", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Nuevo plan" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
   await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "Persona Ficticia DNI •••456", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Persona Ficticia", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Editar", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Importar Excel" })).toHaveCount(0);
   expect(escrituras).toEqual([]);
 });
@@ -741,27 +742,90 @@ test("aranceles distingue datos pendientes de gratuidad y busca desde la primera
   expect(consultas.at(-1)).toEqual({ page: "1", search: "Hospital sin convenio" });
 });
 
-test("corregir documento conserva el identificador del afiliado", async ({ page }) => {
-  const { escrituras, padron } = await escenario(page);
+async function fichaMock(page, persona) {
+  await page.route("**/api/financiadores/21/padron/45/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/familia/")) return route.fulfill({ json: { titular: persona, integrantes: [persona] } });
+    return route.fulfill({ json: lista([]) });
+  });
+}
+
+test("editar documento conserva identificador, vínculos y PATCH parcial", async ({ page }) => {
+  const { escrituras, padron, peticiones } = await escenario(page);
   padron[0].revision = 1;
+  await fichaMock(page, padron[0]);
   await page.route("**/api/financiadores/21/padron/45/", async (route) => {
+    if (route.request().method() === "GET") { peticiones.push("/financiadores/21/padron/45/"); return route.fulfill({ json: { ...padron[0], permisos: {} } }); }
     const body = route.request().postDataJSON();
-    escrituras.push({ path: "/financiadores/21/padron/45/", body });
+    escrituras.push({ path: "/financiadores/21/padron/45/", method: route.request().method(), body });
     Object.assign(padron[0], { documento: body.documento, revision: 2 });
     return route.fulfill({ json: padron[0] });
   });
-  await page.goto("/financiadores/planes");
-  await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
-  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Corregir identidad" }).click();
-  await expect(page.getByLabel("Número de afiliado correcto")).toHaveValue("00025");
-  await page.getByLabel("Documento correcto").fill("00123457");
-  await page.getByLabel("Motivo").fill("Corrección de un dígito contrastada con el documento.");
-  await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Se conservaron los vínculos del afiliado");
-  expect(escrituras).toEqual([{ path: "/financiadores/21/padron/45/", body: {
-    documento: "00123457", revision: 1, motivo: "Corrección de un dígito contrastada con el documento.",
-  } }]);
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Editar", exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: "Editar ficha administrativa" });
+  for (const titulo of ["Identidad", "Contacto", "Domicilio", "Régimen y trabajo", "Trámite y credencial", "Baja administrativa", "Grupo familiar", "Legajo administrativo"]) await expect(dialogo.getByRole("heading", { name: titulo, exact: true })).toBeVisible();
+  expect(peticiones).toContain("/financiadores/21/padron/45/");
+  expect(peticiones.some((path) => /\/(salud|cobranza)\//.test(path))).toBe(false);
+  await dialogo.getByRole("button", { name: "Editar identidad", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(dialogo.getByLabel("Número de afiliado", { exact: true })).toHaveValue("00025");
+  await dialogo.getByLabel("Documento", { exact: true }).fill("00123457");
+  await dialogo.getByLabel(/^Motivo del cambio/).fill("Corrección de un dígito contrastada con el documento.");
+  await dialogo.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialogo.getByRole("heading", { name: "Identidad", exact: true })).toBeVisible();
+  expect(escrituras).toEqual([{ path: "/financiadores/21/padron/45/", method: "PATCH", body: { documento: "00123457", revision: 1, motivo: "Corrección de un dígito contrastada con el documento." } }]);
   expect(padron[0]).toMatchObject({ id: 45, numero: "00025", documento: "00123457", revision: 2 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Editar", exact: true })).toBeFocused();
+});
+
+test("Editar conserva borrador ante 409 y no reenvía ni consulta protegidos", async ({ page }) => {
+  await page.clock.install();
+  const { padron } = await escenario(page);
+  padron[0].revision = 1;
+  await fichaMock(page, padron[0]);
+  const escrituras = [];
+  let lecturas = 0;
+  await page.route("**/api/financiadores/21/padron/45/", (route) => {
+    if (route.request().method() === "GET") { lecturas += 1; return route.fulfill({ json: { ...padron[0], revision: lecturas === 1 ? 1 : 2, permisos: {} } }); }
+    escrituras.push(route.request().postDataJSON());
+    return route.fulfill({ status: 409, json: { detail: "El registro cambió.", revision: 2 } });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Editar", exact: true }).click();
+  const dialogo = page.getByRole("dialog");
+  await dialogo.getByRole("button", { name: "Editar contacto", exact: true }).click();
+  await dialogo.getByLabel("Celular", { exact: true }).fill("0012345678");
+  await dialogo.getByLabel(/^Motivo del cambio/).fill("Contacto actualizado.");
+  // El cliente considera frescos los datos durante 30 segundos.
+  await page.clock.fastForward(31000);
+  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+  await expect.poll(() => lecturas).toBeGreaterThan(1);
+  await dialogo.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialogo.getByRole("alert")).toContainText("Otra persona modificó");
+  await expect(dialogo.getByLabel("Celular", { exact: true })).toHaveValue("0012345678");
+  await expect(dialogo.getByRole("button", { name: "Guardar cambios", exact: true })).toBeDisabled();
+  expect(escrituras).toEqual([{ celular: "0012345678", revision: 1, motivo: "Contacto actualizado." }]);
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+});
+
+test("plantilla visible única pide versión vigente sin etiquetas técnicas", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/plantilla/**", (route) => {
+    consultas.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="plantilla-padron.xlsx"' }, body: "xlsx-ficticio" });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await expect(page.getByLabel("Versión de plantilla")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).not.toContainText(/v1|v2|Padrón ampliado/);
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar plantilla", exact: true }).click();
+  expect((await descarga).suggestedFilename()).toBe("plantilla-padron.xlsx");
+  expect(consultas).toEqual([{ tipo: "padron", version: "2" }]);
 });
 
 test("administrador modifica rol y desactiva acceso sin enviar contraseña", async ({ page }) => {
@@ -819,6 +883,8 @@ test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cup
   const { escrituras, planes } = await escenario(page, { rol: "operador" });
   planes[21].push({ id: 33, codigo: "ANT", nombre: "Plan inactivo", activo: false });
   await page.goto("/financiadores/padron");
+  await page.getByText(/Columnas visibles/).click();
+  await page.getByRole("checkbox", { name: "Finalización de afiliación", exact: true }).check();
   const afiliado = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
   await afiliado.getByRole("button", { name: "Finalizar", exact: true }).click();
   let dialogo = page.getByRole("dialog", { name: "Finalizar afiliación" });
@@ -830,7 +896,8 @@ test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cup
   await afiliado.getByRole("button", { name: "Finalizar", exact: true }).click();
   await dialogo.getByLabel("Motivo", { exact: true }).fill("Baja solicitada por cambio de financiador.");
   await dialogo.getByRole("button", { name: "Confirmar finalización" }).click();
-  await expect(afiliado.getByRole("cell").filter({ hasText: "Finalizada" })).toContainText("Finalizada el");
+  await expect(afiliado.getByRole("cell", { name: "Finalizada", exact: true })).toBeVisible();
+  await expect(afiliado.locator('td[data-label="Finalización de afiliación"]')).toContainText("15/9/2026");
   await afiliado.getByRole("button", { name: "Reactivar", exact: true }).click();
   dialogo = page.getByRole("dialog", { name: "Reactivar afiliación" });
   await dialogo.getByRole("button", { name: "Ver ayuda", exact: true }).click();
@@ -864,7 +931,8 @@ test("auditor consulta planes y padrón sin administrar su vigencia", async ({ p
   await expect(celdaPlan(page, "Plan Río", "BAS")).toBeVisible();
   await expect(page.getByRole("button", { name: "Editar plan" })).toHaveCount(0);
   await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "Persona Ficticia DNI •••456", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Persona Ficticia", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Editar", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^(Finalizar|Reactivar)$/ })).toHaveCount(0);
 });
 
@@ -1015,4 +1083,68 @@ test("auditoría del hospital filtra las consultas de financiadores y explica su
   await expect(page.getByText("actividad hospitalaria del afiliado", { exact: true })).toBeVisible();
   await expect(page.getByText(/1 resultado.*financiador 21.*histórico pendiente/)).toBeVisible();
   expect(filtros).toContain("financiador");
+});
+
+
+test("exportar XLSX usa consulta aplicada y columnas sin página ni contexto UI", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/padron/exportar/**", (route) => {
+    consultas.push({ method: route.request().method(), params: Object.fromEntries(new URL(route.request().url()).searchParams) });
+    return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="padron-ficticio.xlsx"' }, body: Buffer.from([0x50, 0x4b, 0x03, 0x04]) });
+  });
+  await page.goto("/financiadores/padron?financiador=21&estado=todos&ordering=-nombre&search=Ficticia&columnas=nombre,numero,documento");
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar XLSX", exact: true }).click();
+  expect((await descarga).suggestedFilename()).toBe("padron-ficticio.xlsx");
+  expect(consultas).toEqual([{ method: "GET", params: { estado: "todos", ordering: "-nombre", search: "Ficticia", columnas: "nombre,numero,documento", formato: "xlsx" } }]);
+});
+
+
+test("ficha móvil conserva un diálogo en familia, legajo y salud designada", async ({ page }) => {
+  const { padron } = await escenario(page);
+  padron[0].revision = 1;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fichaMock(page, padron[0]);
+  const protegidos = [];
+  await page.route("**/api/financiadores/21/padron/45/salud/", (route) => { protegidos.push(route.request().method()); return route.fulfill({ json: { revision: 1, cronicas: "Dato ficticio" } }); });
+  await page.route("**/api/financiadores/21/padron/45/", (route) => route.fulfill({ json: { ...padron[0], permisos: { salud_consulta: true, salud_edicion: true, cobranza_consulta: false, cobranza_edicion: false } } }));
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Editar", exact: true }).click();
+  const dialogo = page.getByRole("dialog");
+  await expect(dialogo.getByRole("heading", { name: "Condiciones de salud informadas", exact: true })).toBeVisible();
+  await expect(dialogo.getByRole("heading", { name: "Cobranza administrativa informada", exact: true })).toHaveCount(0);
+  for (const accion of ["Editar vínculo familiar", "Registrar presentación", "Editar condiciones de salud"]) {
+    await dialogo.getByRole("button", { name: accion, exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(dialogo.getByRole("button", { name: "Guardar cambios", exact: true })).toBeVisible();
+    await page.keyboard.press("Tab");
+    expect(await dialogo.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await dialogo.getByRole("button", { name: "Cancelar", exact: true }).click();
+  }
+  expect(protegidos).toEqual(["GET"]);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+
+test("exportación tardía no entrega archivo tras cambiar de organización", async ({ page }) => {
+  await escenario(page);
+  let liberar;
+  const bloqueo = new Promise((resolve) => { liberar = resolve; });
+  await page.route("**/api/financiadores/21/padron/exportar/**", async (route) => {
+    await bloqueo;
+    await route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="padron-anterior.xlsx"' }, body: Buffer.from([0x50, 0x4b, 0x03, 0x04]) });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  const solicitud = page.waitForRequest((r) => r.url().includes("/21/padron/exportar/"));
+  await page.getByRole("button", { name: "Exportar XLSX", exact: true }).click();
+  await solicitud;
+  await expect(page.getByRole("button", { name: "Exportando…", exact: true })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Financiador", exact: true }).selectOption("22");
+  await expect(page).toHaveURL(/financiador=22/);
+  const descarga = page.waitForEvent("download", { timeout: 1000 }).catch(() => null);
+  liberar();
+  expect(await descarga).toBeNull();
+  await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeEnabled();
 });
