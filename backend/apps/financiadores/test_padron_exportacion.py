@@ -135,3 +135,22 @@ class ExportacionPadronTests(APITestCase):
                 self.assertIsNone(celda.hyperlink)
         m.Afiliado.objects.bulk_create([m.Afiliado(financiador=self.org, numero=str(i), documento=f"600{i:05}", nombre="Ficticio", desde=timezone.localdate()) for i in range(4999)])
         self.assertEqual(len(list(self.libro()["Padrón"].values)), 5001)
+
+
+    def test_titular_mayor_que_precision_excel_es_texto_y_consulta_numerica(self):
+        id_a, id_b = 2 ** 53 + 17, 2 ** 53 + 117
+        for numero, pk in enumerate((id_a, id_b), 1):
+            m.Afiliado.objects.create(pk=pk, financiador=self.org, numero=f"T{numero}", documento=f"9000000{numero}", nombre=f"Titular {numero}", desde=timezone.localdate())
+        m.Afiliado.objects.filter(pk=self.a.pk).update(nombre="Hijo A", titular_id=id_a, parentesco="hijo")
+        m.Afiliado.objects.create(financiador=self.org, numero="H2", documento="90000003", nombre="Hijo B", desde=timezone.localdate(), titular_id=id_b, parentesco="hijo")
+        parametros = {"search": "Hijo", "ordering": "-titular", "columnas": "nombre,numero,titular"}
+        hoja = self.libro(parametros)["Padrón"]
+        self.assertEqual([hoja.cell(fila, 3).value for fila in (2, 3)], [str(id_b), str(id_a)])
+        self.assertTrue(all(hoja.cell(fila, 3).data_type == "s" and hoja.cell(fila, 3).number_format == "@" for fila in (2, 3)))
+        parametros["flt_titular"] = str(id_a)
+        listado = self.client.get(f"/api/financiadores/{self.org.pk}/padron/", parametros)
+        self.assertEqual(listado.status_code, 200)
+        self.assertEqual(listado.data["count"], 1)
+        self.assertEqual(listado.data["results"][0]["titular"], id_a)
+        filas = list(self.libro(parametros)["Padrón"].values)
+        self.assertEqual(filas[1], ("Hijo A", "00025", str(id_a)))

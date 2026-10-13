@@ -133,10 +133,10 @@ def generar_plantilla(*, financiador, usuario, tipo, version=1):
     contexto = libro.create_sheet("_contexto")
     contexto["A1"] = signing.dumps({"financiador": financiador.pk, "tipo": tipo, "version": version}, salt=SALT)
     if version == 2:
-        _texto_celda(instrucciones.cell(10, 1), "V2: columnas nuevas vacías no borran. Titular por documento: existente o fila válida anterior; un nivel, sin inferencias.")
+        _texto_celda(instrucciones.cell(10, 1), "Columnas nuevas vacías no borran. Titular por documento: existente o fila válida anterior; un nivel, sin inferencias.")
         _texto_celda(instrucciones.cell(11, 1), "No cargar salud, discapacidad, CBU, CUIT de cuenta ni cobranza. Use recursos protegidos; no se almacenan en este lote.")
-        _texto_celda(instrucciones.cell(12, 1), "V2: se revalida al confirmar. Ediciones posteriores al preview requieren una nueva vista previa; no se fuerza identidad.")
-        campos = libro.create_sheet("Campos v2")
+        _texto_celda(instrucciones.cell(12, 1), "Se revalida al confirmar. Ediciones posteriores al preview requieren una nueva vista previa; no se fuerza identidad.")
+        campos = libro.create_sheet("Campos")
         campos.append(["Campo", "Tipo", "Opciones", "Regla"])
         for campo in CAMPOS_V2:
             if campo == "titular_documento":
@@ -503,7 +503,7 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
                                 nuevos = padron.campos_entrada(Afiliado, nuevos.keys(), nuevos, controles=(), requerido=False)
                                 if fila["datos"].get("titular_documento"):
                                     nuevos["titular"] = referencias["afiliados"][fila["datos"]["titular_documento"]].pk
-                                nuevos.update(revision=resultado.revision, motivo="Importación v2 de padrón")
+                                nuevos.update(revision=resultado.revision, motivo="Importación de padrón")
                                 resultado = padron.editar_ficha(afiliado=resultado, usuario=usuario, entrada=nuevos, origen="importacion", lote=lote)
                         else:
                             resultado = registrar_consumo_externo(usuario=usuario, **entrada)
