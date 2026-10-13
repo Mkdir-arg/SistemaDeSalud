@@ -6,7 +6,7 @@ import { join } from "node:path";
 export default defineConfig({
   testDir: "./e2e", testMatch: "issue111-real.spec.js", workers: 1,
   timeout: 45000, expect: { timeout: 10000 }, reporter: "list",
-  outputDir: join(tmpdir(), "hen-issue111-real"),
+  outputDir: join(tmpdir(), "plexo-issue111-real"),
   use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5219",
     locale: "es-AR", timezoneId: "America/Argentina/Buenos_Aires",
     // Evitar capturar credenciales/tokens de sesiones reales en trazas.

@@ -170,7 +170,7 @@ test.describe("Tema · el login", () => {
 
   test("se ve en claro aunque la preferencia sea oscura, y la preferencia sobrevive", async ({ page }) => {
     await page.goto("/login");
-    await page.evaluate(() => localStorage.setItem("salud.tema", "oscuro"));
+    await page.evaluate(() => localStorage.setItem("plexo.tema", "oscuro"));
     await page.reload();
 
     // Apenas carga el DOM: lo decide el script del <head>, no React.

@@ -27,7 +27,7 @@ export function Llamado() {
 /** Pantalla completa, como en Figma «5c · Te están llamando». */
 function TeLlaman({ datos }) {
   useEffect(() => { navigator.vibrate?.([200, 100, 200]); }, [datos.llamado_at]);
-  return <div role="alert" aria-labelledby="titulo-llamado" className="hen-cta fixed inset-0 z-30 flex items-center justify-center px-5 py-8 text-center text-white">
+  return <div role="alert" aria-labelledby="titulo-llamado" className="plexo-cta fixed inset-0 z-30 flex items-center justify-center px-5 py-8 text-center text-white">
     <div className="flex w-full max-w-[28rem] flex-col items-center gap-4">
       <span className="relative flex size-24 items-center justify-center">
         <span className="absolute inset-0 rounded-full bg-white/30 motion-safe:animate-ping" />

@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
  * «Ver como» del superusuario: simulación de perfiles con cuentas de referencia.
  *
  * La API está interceptada entera y responde según el encabezado
- * `X-HEN-Simulacion`, como el backend real: con él, `/usuarios/me/` es la cuenta
+ * `X-PLEXO-Simulacion`, como el backend real: con él, `/usuarios/me/` es la cuenta
  * de referencia. Lo que se prueba es el recorrido de la interfaz: el selector,
  * el encabezado en cada pedido, el indicador, la salida y la limpieza del estado.
  * La autorización del servidor se prueba en `apps/simulacion/tests.py`.
@@ -20,7 +20,7 @@ function sesionDe(id, rol, etiqueta, ambito, lugar) {
     id, rol, etiqueta, ambito,
     institucion: ambito === "institucion" ? lugar : null,
     financiador: ambito === "financiador" ? lugar : null,
-    cuenta: { id: 50, nombre: `Superusuario ${etiqueta}`, email: `${rol}@referencia.hen.invalid` },
+    cuenta: { id: 50, nombre: `Superusuario ${etiqueta}`, email: `${rol}@referencia.plexo.invalid` },
     superusuario: { id: 1, nombre: "Root Ficticio", email: ROOT.email },
     iniciada: "2026-09-29T12:00:00Z", vence: "2026-09-29T20:00:00Z", finalizada: null,
   };
@@ -62,7 +62,7 @@ async function escenario(page, { usuario = ROOT, institucion = HOSPITAL, simulac
     const url = new URL(req.url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const path = url.pathname.replace(/^\/api/, "");
-    const encabezado = req.headers()["x-hen-simulacion"] || null;
+    const encabezado = req.headers()["x-plexo-simulacion"] || null;
     estado.pedidos.push({ path, metodo: req.method(), encabezado });
 
     if (path.startsWith("/simulaciones/")) {

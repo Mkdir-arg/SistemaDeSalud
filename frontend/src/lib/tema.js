@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-const CLAVE = "salud.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
+const CLAVE = "plexo.tema"; // "claro" | "oscuro" | ausente = seguir al sistema
 
 /**
  * Rutas que se ven siempre en claro, sin importar la preferencia.

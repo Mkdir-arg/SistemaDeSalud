@@ -72,7 +72,7 @@ async function ingresar(page, email = "ana@example.com", password = "una-clave-l
 }
 
 test("bienvenida pública, en tema claro y sin la marca de la demo", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("salud.tema", "oscuro"));
+  await page.addInitScript(() => localStorage.setItem("plexo.tema", "oscuro"));
   await api(page, {});
   await page.goto("/mi");
   await expect(page.getByRole("heading", { name: "Tu cuenta de paciente" })).toBeVisible();
@@ -136,7 +136,7 @@ test("el enlace del alta elige la contraseña, deja logueada y lleva a validar l
   const enviados = de(pedidos, "POST /cuenta/verificar-email/");
   expect(enviados).toHaveLength(1);
   expect(enviados[0].body).toEqual({ token: "tok-verif-123", password: "una-clave-larga" });
-  expect(await page.evaluate(() => sessionStorage.getItem("hen.portal.access"))).toBe(SESION.access);
+  expect(await page.evaluate(() => sessionStorage.getItem("plexo.portal.access"))).toBe(SESION.access);
 });
 
 test("una contraseña débil no gasta el enlace: se reintenta con el mismo token", async ({ page }) => {
@@ -223,7 +223,7 @@ test("ingresar con credenciales inválidas (o sin confirmar) ayuda a quien reci�
   await expect(page.getByLabel("Contraseña")).toHaveAttribute("autocomplete", "current-password");
   expect(de(pedidos, "POST /cuenta/renovar/")).toHaveLength(0);
   await expect(page).toHaveURL("/mi/ingresar");
-  expect(await page.evaluate(() => sessionStorage.getItem("hen.portal.access"))).toBeNull();
+  expect(await page.evaluate(() => sessionStorage.getItem("plexo.portal.access"))).toBeNull();
 });
 
 test("ingresar con la cuenta validada va al inicio de la app y saluda por nombre", async ({ page }) => {
@@ -404,14 +404,14 @@ test("el portal nunca manda la sesión del sistema ni la simulación", async ({ 
     sessionStorage.setItem("salud.simulacion", JSON.stringify({ id: "sim-1" }));
   });
   // El sistema la reconoce: así su cliente no descarta la sesión por un 401.
-  const pedidos = await api(page, conSesion({ cuenta: VALIDADA }), { sistema: () => ({ status: 200, body: { id: 1, email: "medica@hen.local" } }) });
+  const pedidos = await api(page, conSesion({ cuenta: VALIDADA }), { sistema: () => ({ status: 200, body: { id: 1, email: "medica@plexo.local" } }) });
   await ingresar(page);
   await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
   // La prueba vale si la sesión del sistema y la simulación estaban activas de verdad.
-  expect(pedidos.sistema.some((p) => p.headers.authorization === "Bearer jwt-del-sistema" && p.headers["x-hen-simulacion"] === "sim-1")).toBe(true);
+  expect(pedidos.sistema.some((p) => p.headers.authorization === "Bearer jwt-del-sistema" && p.headers["x-plexo-simulacion"] === "sim-1")).toBe(true);
   expect(de(pedidos, "GET /cuenta/").length + de(pedidos, "GET /perfil/").length).toBeGreaterThan(0);
   for (const p of pedidos) {
-    expect(p.headers["x-hen-simulacion"], p.clave).toBeUndefined();
+    expect(p.headers["x-plexo-simulacion"], p.clave).toBeUndefined();
     expect(p.headers.authorization || "", p.clave).not.toContain("jwt-del-sistema");
   }
   expect(de(pedidos, "POST /cuenta/ingresar/")[0].headers.authorization).toBeUndefined();
@@ -425,8 +425,8 @@ async function sesionGuardada(page, access, refresh) {
   await page.addInitScript(([a, r]) => {
     if (sessionStorage.getItem("prueba.iniciada")) return;
     sessionStorage.setItem("prueba.iniciada", "1");
-    sessionStorage.setItem("hen.portal.access", a);
-    sessionStorage.setItem("hen.portal.refresh", r);
+    sessionStorage.setItem("plexo.portal.access", a);
+    sessionStorage.setItem("plexo.portal.refresh", r);
   }, [access, refresh]);
 }
 
@@ -445,7 +445,7 @@ test("401: renueva una sola vez y reintenta con el token nuevo", async ({ page }
   expect(renovaciones[0].body).toEqual({ refresh: "hp_r_viejo" });
   expect(renovaciones[0].headers.authorization).toBeUndefined();
   expect(de(pedidos, "GET /cuenta/").map((p) => p.headers.authorization)).toEqual(["Bearer hp_viejo", "Bearer hp_nuevo"]);
-  expect(await page.evaluate(() => [sessionStorage.getItem("hen.portal.access"), sessionStorage.getItem("hen.portal.refresh")])).toEqual(["hp_nuevo", "hp_r_nuevo"]);
+  expect(await page.evaluate(() => [sessionStorage.getItem("plexo.portal.access"), sessionStorage.getItem("plexo.portal.refresh")])).toEqual(["hp_nuevo", "hp_r_nuevo"]);
 });
 
 test("una sola renovación en vuelo: dos 401 a la vez renuevan una vez y reintentan con el token nuevo", async ({ page }) => {
@@ -485,7 +485,7 @@ for (const [status, texto] of [
     await expect(page).toHaveURL("/mi/cuenta");
     await expect(page.getByRole("button", { name: "Reintentar" })).toBeVisible();
     expect(de(pedidos, "POST /cuenta/renovar/").length).toBeGreaterThan(0);
-    expect(await page.evaluate(() => [sessionStorage.getItem("hen.portal.access"), sessionStorage.getItem("hen.portal.refresh")])).toEqual(["hp_viejo", "hp_r_viejo"]);
+    expect(await page.evaluate(() => [sessionStorage.getItem("plexo.portal.access"), sessionStorage.getItem("plexo.portal.refresh")])).toEqual(["hp_viejo", "hp_r_viejo"]);
   });
 }
 
@@ -499,7 +499,7 @@ test("401 sin renovación posible: limpia la sesión y vuelve a ingresar", async
   await expect(page).toHaveURL("/mi/ingresar");
   await expect(page.getByText("Tu sesión venció. Ingresá de nuevo.")).toBeVisible();
   expect(de(pedidos, "POST /cuenta/renovar/")).toHaveLength(1);
-  expect(await page.evaluate(() => [sessionStorage.getItem("hen.portal.access"), sessionStorage.getItem("hen.portal.refresh")])).toEqual([null, null]);
+  expect(await page.evaluate(() => [sessionStorage.getItem("plexo.portal.access"), sessionStorage.getItem("plexo.portal.refresh")])).toEqual([null, null]);
 });
 
 test("cerrar sesión revoca la sesión y olvida los tokens", async ({ page }) => {
@@ -513,7 +513,7 @@ test("cerrar sesión revoca la sesión y olvida los tokens", async ({ page }) =>
   const salidas = de(pedidos, "POST /cuenta/salir/");
   expect(salidas).toHaveLength(1);
   expect(salidas[0].headers.authorization).toBe("Bearer hp_access_1");
-  expect(await page.evaluate(() => [sessionStorage.getItem("hen.portal.access"), sessionStorage.getItem("hen.portal.refresh")])).toEqual([null, null]);
+  expect(await page.evaluate(() => [sessionStorage.getItem("plexo.portal.access"), sessionStorage.getItem("plexo.portal.refresh")])).toEqual([null, null]);
   await page.goto("/mi/cuenta");
   await expect(page).toHaveURL("/mi/ingresar");
 });
@@ -540,5 +540,5 @@ test("cerrar sesión durante una renovación espera el token rotado y sale con �
   const salidas = de(pedidos, "POST /cuenta/salir/");
   expect(salidas).toHaveLength(1);
   expect(salidas[0].headers.authorization).toBe("Bearer hp_nuevo");
-  expect(await page.evaluate(() => [sessionStorage.getItem("hen.portal.access"), sessionStorage.getItem("hen.portal.refresh")])).toEqual([null, null]);
+  expect(await page.evaluate(() => [sessionStorage.getItem("plexo.portal.access"), sessionStorage.getItem("plexo.portal.refresh")])).toEqual([null, null]);
 });

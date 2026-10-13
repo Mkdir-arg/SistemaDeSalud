@@ -13,7 +13,7 @@ import { expect, test } from "@playwright/test";
  * 4.5:1, o 3:1 para texto grande (≥ 24 px, o ≥ 18.66 px en negrita).
  *  - Los colores se pasan a sRGB pintándolos en un canvas: así sirve cualquier
  *    formato que devuelva el navegador (rgb, oklch, color()).
- *  - Sobre `hen-cta` se usan los dos extremos de `--gradient-action` y se exige
+ *  - Sobre `plexo-cta` se usan los dos extremos de `--gradient-action` y se exige
  *    el peor; otro degradado, todas sus paradas. Un fondo con imagen no se puede
  *    medir así y hace fallar la prueba, para que nadie lo dé por bueno sin mirar.
  *  - La opacidad de los ancestros se aplica al texto (aproximación: no
@@ -43,9 +43,9 @@ async function ingresar(page) {
     sesion = await r.json();
   }
   await page.addInitScript(({ access, refresh }) => {
-    if (sessionStorage.getItem("hen.portal.access")) return;
-    sessionStorage.setItem("hen.portal.access", access);
-    sessionStorage.setItem("hen.portal.refresh", refresh);
+    if (sessionStorage.getItem("plexo.portal.access")) return;
+    sessionStorage.setItem("plexo.portal.access", access);
+    sessionStorage.setItem("plexo.portal.refresh", refresh);
   }, sesion);
 }
 
@@ -97,7 +97,7 @@ function medirEnPagina(raiz) {
       const imagen = s.backgroundImage;
       if (imagen && imagen !== "none") {
         if (/url\(/.test(imagen)) return { motivo: `fondo con imagen en ${describir(n)}` };
-        const paradas = n.classList.contains("hen-cta") ? extremosCta : (imagen.match(COLOR) || []).map(rgba);
+        const paradas = n.classList.contains("plexo-cta") ? extremosCta : (imagen.match(COLOR) || []).map(rgba);
         if (!paradas.length) return { motivo: `degradado sin colores legibles en ${describir(n)}` };
         capas.push(paradas);
         if (paradas.every((p) => p.a === 1)) return { candidatos: componer(capas, [{ r: 255, g: 255, b: 255, a: 1 }]) };
@@ -298,8 +298,8 @@ test("sesión vencida", async ({ page }) => {
   await ingresar(page);
   await page.goto("/mi/inicio");
   await page.evaluate(() => {
-    sessionStorage.setItem("hen.portal.access", "hp_vencido");
-    sessionStorage.setItem("hen.portal.refresh", "hp_vencido");
+    sessionStorage.setItem("plexo.portal.access", "hp_vencido");
+    sessionStorage.setItem("plexo.portal.refresh", "hp_vencido");
   });
   await page.goto("/mi/turnos");
   await expect(page.getByText("Tu sesión venció. Ingresá de nuevo.")).toBeVisible();

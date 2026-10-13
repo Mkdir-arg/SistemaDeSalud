@@ -66,7 +66,7 @@ export const tokens = {
 /**
  * Simulación de perfiles del superusuario.
  *
- * Mientras hay una, cada pedido lleva `X-HEN-Simulacion` y el backend responde
+ * Mientras hay una, cada pedido lleva `X-PLEXO-Simulacion` y el backend responde
  * con los permisos y el alcance de la cuenta de referencia. Vive en
  * `sessionStorage`: vale solo para esta pestaña y muere con ella. Los pedidos
  * que administran la simulación (catálogo, inicio, salida) salen sin el
@@ -93,7 +93,7 @@ export const simulacion = {
 
 function encabezadoSimulacion(headers, sinSimulacion) {
   const actual = sinSimulacion ? null : simulacion.get();
-  if (actual?.id) headers["X-HEN-Simulacion"] = actual.id;
+  if (actual?.id) headers["X-PLEXO-Simulacion"] = actual.id;
 }
 
 // El servidor rechazó la simulación (terminó, venció o la cuenta cambió). Se

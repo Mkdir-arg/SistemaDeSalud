@@ -24,7 +24,7 @@ from .models import Ambito, CuentaReferencia, SesionSimulacion
 # `plataforma` y `auditor` tienen membresía global y se ofrecen desde la vista
 # de plataforma. El resto de `Membresia.Rol` es institucional.
 PERFILES_ESTATALES = (Membresia.Rol.PLATAFORMA, Membresia.Rol.AUDITOR)
-DOMINIO = "referencia.hen.invalid"
+DOMINIO = "referencia.plexo.invalid"
 DURACION = timedelta(hours=8)
 
 

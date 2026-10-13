@@ -2,7 +2,7 @@
 //
 // Es un cliente APARTE del de `client.js` a propósito: la persona que entra al
 // portal no es un usuario del sistema. Nunca manda el JWT del sistema ni
-// `X-HEN-Simulacion`, aunque en la misma pestaña haya una sesión del sistema o
+// `X-PLEXO-Simulacion`, aunque en la misma pestaña haya una sesión del sistema o
 // una simulación activa (una médica que se mira su propio portal desde la
 // compu de la guardia no le tiene que prestar su sesión al portal, ni al revés).
 //
@@ -14,11 +14,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, mensajeError, parse } from "./client";
 
 const BASE = `${import.meta.env.VITE_API_URL || "/api"}/mi`;
-const ACCESS_KEY = "hen.portal.access";
-const REFRESH_KEY = "hen.portal.refresh";
+const ACCESS_KEY = "plexo.portal.access";
+const REFRESH_KEY = "plexo.portal.refresh";
 
 /** Se dispara cuando la sesión del portal venció y no se pudo renovar. */
-export const EVENTO_PORTAL_VENCIDO = "hen:portal-vencido";
+export const EVENTO_PORTAL_VENCIDO = "plexo:portal-vencido";
 export const DEMASIADOS_INTENTOS = "Hiciste demasiados intentos. Probá de nuevo en unos minutos.";
 // 429 propio de validar-identidad: hay otra validación de la misma cuenta en curso.
 export const VALIDACION_EN_CURSO = "Ya estamos validando tu identidad. Esperá unos segundos y volvé a intentar.";

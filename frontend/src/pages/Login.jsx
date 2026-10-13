@@ -95,7 +95,7 @@ export default function Login() {
 
             {error && <div role="alert" className="rounded-md border border-badge-error-fg/25 bg-badge-error-bg px-3 py-2 text-sm text-badge-error-fg">{error}</div>}
 
-            <button type="submit" disabled={cargando} className="hen-cta flex h-[36px] w-full items-center justify-center rounded-md text-sm font-medium text-sobre-accent disabled:cursor-not-allowed disabled:opacity-60">
+            <button type="submit" disabled={cargando} className="plexo-cta flex h-[36px] w-full items-center justify-center rounded-md text-sm font-medium text-sobre-accent disabled:cursor-not-allowed disabled:opacity-60">
               {cargando ? "Ingresando…" : "Ingresar"}
             </button>
           </form>

@@ -22,7 +22,7 @@
           // sigue la preferencia, como el resto de la aplicación.
           var ruta = location.pathname.replace(/\/+$/, "");
           if (ruta.indexOf("/pantalla/") === 0 || ruta === "/mi" || ruta.indexOf("/mi/") === 0) return;
-          var t = localStorage.getItem("salud.tema");
+          var t = localStorage.getItem("plexo.tema");
           var oscuro = t === "oscuro" || (!t && matchMedia("(prefers-color-scheme: dark)").matches);
           if (oscuro) document.documentElement.classList.add("dark");
         } catch (e) {}

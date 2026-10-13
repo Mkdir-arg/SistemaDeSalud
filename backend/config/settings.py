@@ -263,7 +263,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # --- DRF + JWT -------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        # Primera a propósito: con `X-HEN-Simulacion` resuelve la cuenta simulada
+        # Primera a propósito: con `X-PLEXO-Simulacion` resuelve la cuenta simulada
         # y, si la sesión no es válida, rechaza el pedido antes de que otro
         # autenticador lo atienda como superusuario.
         "apps.simulacion.autenticacion.SimulacionAuthentication",
@@ -485,7 +485,7 @@ CORS_ALLOWED_ORIGINS = [
     if o.strip()
 ]
 # El frontend identifica la simulación de perfiles con un encabezado propio.
-CORS_ALLOW_HEADERS = (*default_headers, "x-hen-simulacion")
+CORS_ALLOW_HEADERS = (*default_headers, "x-plexo-simulacion")
 
 
 # --- Internacionalización --------------------------------------------------

@@ -44,7 +44,7 @@ const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visib
 // Un link a otro sitio (no `tel:` ni `mailto:`) se abre en otra pestaña.
 const destinoExterno = (href) => (href.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {});
 const VARIANTES = {
-  primario: "hen-cta text-white",
+  primario: "plexo-cta text-white",
   secundario: "border border-borde bg-superficie text-texto-suave hover:bg-fondo",
   // Sobre la tarjeta degradada: fondo lila claro, como en Figma.
   claro: "border border-borde bg-fondo text-texto-suave hover:bg-superficie",

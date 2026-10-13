@@ -92,7 +92,7 @@ export async function esperarPantalla(page) {
 
 /** Fija el tema sin pasar por la interfaz (útil para preparar un test). */
 export async function fijarTema(page, tema) {
-  await page.evaluate((t) => localStorage.setItem("salud.tema", t), tema);
+  await page.evaluate((t) => localStorage.setItem("plexo.tema", t), tema);
   await page.reload();
   await esperarPantalla(page);
   // El tema lo aplica el script del <head>, antes de que pinte React.
@@ -137,7 +137,7 @@ export async function fallosDeContraste(page) {
     /**
      * Sube por los ancestros hasta encontrar un fondo realmente opaco.
      *
-     * Devuelve una lista: un degradé (el botón de marca, `hen-cta`) no tiene
+     * Devuelve una lista: un degradé (el botón de marca, `plexo-cta`) no tiene
      * `background-color`, y saltearlo medía el texto blanco contra la página que
      * hay detrás. Se mide contra cada parada opaca y vale la peor; si el degradé
      * tiene tramos transparentes, también contra lo que se ve a través.

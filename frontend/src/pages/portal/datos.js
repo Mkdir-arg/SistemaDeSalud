@@ -58,7 +58,7 @@ export function eventoIcs(t) {
   const lugar = [t.institucion?.nombre, t.area].filter(Boolean).join(", ");
   return [
     "BEGIN:VCALENDAR", "VERSION:2.0", `PRODID:-//${NOMBRE_SISTEMA}//Portal del paciente//ES`,
-    "BEGIN:VEVENT", `UID:turno-${t.id}@hen`,
+    "BEGIN:VEVENT", `UID:turno-${t.id}@plexo`,
     `DTSTAMP:${fechaIcs(new Date().toISOString())}`,
     `DTSTART:${fechaIcs(t.inicio)}`, `DTEND:${fechaIcs(t.fin || t.inicio)}`,
     `SUMMARY:${textoIcs(`Turno · ${tituloTurno(t)}`)}`,

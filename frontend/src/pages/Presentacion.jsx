@@ -73,7 +73,7 @@ const BENEFICIOS = [
 ];
 
 const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-const CTA_PRINCIPAL = `hen-cta inline-flex h-10 items-center rounded-md px-4.5 text-sm font-medium text-sobre-accent ${FOCO}`;
+const CTA_PRINCIPAL = `plexo-cta inline-flex h-10 items-center rounded-md px-4.5 text-sm font-medium text-sobre-accent ${FOCO}`;
 const CTA_TERCIARIO = `inline-flex h-10 items-center rounded-md border border-borde bg-superficie px-4.5 text-sm font-medium text-texto transition-colors hover:border-accent hover:text-accent ${FOCO}`;
 // Títulos de sección: la lámina los lleva a ~36 px en escritorio. La escala del
 // sistema termina en 24 px para texto, por eso el tamaño va acotado acá.

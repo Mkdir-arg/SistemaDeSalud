@@ -159,7 +159,7 @@ test.describe("Landing pública", () => {
     test(`contraste AA y sin desborde (${tema})`, async ({ page }) => {
       test.fixme(tema === "oscuro", "#111 F6: «Próximo turno» y «Jueves 10:30» quedan en 2,2:1 con tema oscuro");
       await simularApi(page, null);
-      await page.addInitScript((t) => localStorage.setItem("salud.tema", t), tema);
+      await page.addInitScript((t) => localStorage.setItem("plexo.tema", t), tema);
       await page.goto("/");
       await expect(page.locator("html")).toHaveClass(tema === "oscuro" ? /\bdark\b/ : /^(?!.*\bdark\b)/);
       const fallos = await fallosDeContraste(page);
@@ -173,7 +173,7 @@ test.describe("Landing pública", () => {
 
   test("el tema elegido en la landing se conserva en el login", async ({ page }) => {
     await simularApi(page, null);
-    await page.addInitScript(() => { if (!localStorage.getItem("salud.tema")) localStorage.setItem("salud.tema", "claro"); });
+    await page.addInitScript(() => { if (!localStorage.getItem("plexo.tema")) localStorage.setItem("plexo.tema", "claro"); });
     await page.goto("/");
     await page.getByRole("button", { name: "Cambiar a tema oscuro" }).click();
     await expect(page.locator("html")).toHaveClass(/\bdark\b/);

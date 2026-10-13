@@ -42,7 +42,10 @@ log = logging.getLogger(__name__)
 # Namespaces que esta fachada emitió alguna vez y ya no. Una consulta que llega
 # con uno de estos es un integrador que quedó en una versión anterior: se le
 # sigue contestando vacío —devolver a otra persona sería peor— pero no callado.
-SISTEMAS_RETIRADOS = {"urn:cauce:id": recursos.SISTEMA_LOCAL}
+SISTEMAS_RETIRADOS = {
+    "urn:cauce:id": recursos.SISTEMA_LOCAL,
+    "urn:icore-salud:id": recursos.SISTEMA_LOCAL,
+}
 
 
 def _avisar_identificador_sin_respuesta(sistema):
@@ -344,7 +347,7 @@ def _por_identificador(qs, identificador):
         return qs.filter(codigo=valor)
     if sistema == f"{recursos.SISTEMA_LOCAL}:ciudadano":
         # Los identificadores que Salud mismo emite tienen que poder volver a
-        # buscarse; hasta acá `urn:icore-salud:id:ciudadano|28` devolvía a la persona
+        # buscarse; hasta acá `urn:icore:id:ciudadano|28` devolvía a la persona
         # con documento 28.
         return qs.filter(pk=valor) if valor.isdigit() else qs.none()
     _avisar_identificador_sin_respuesta(sistema)

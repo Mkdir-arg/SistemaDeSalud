@@ -84,7 +84,7 @@ class SesionSimulacion(models.Model):
 
     El perfil y el ámbito se copian al iniciar para que el registro siga
     diciendo lo que se simuló aunque después cambie el catálogo. El id es el
-    valor que el frontend manda en `X-HEN-Simulacion`; sin la sesión JWT del
+    valor que el frontend manda en `X-PLEXO-Simulacion`; sin la sesión JWT del
     mismo superusuario no sirve de nada.
     """
 

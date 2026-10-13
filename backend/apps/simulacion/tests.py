@@ -79,7 +79,7 @@ class EscenarioSimulacion:
         r = self.client.post("/api/simulaciones/", cuerpo, format="json", **jwt(self.root))
         self.assertEqual(r.status_code, 201, r.data)
         self.sesion = SesionSimulacion.objects.get(pk=r.data["id"])
-        return {**jwt(self.root), "HTTP_X_HEN_SIMULACION": r.data["id"]}
+        return {**jwt(self.root), "HTTP_X_PLEXO_SIMULACION": r.data["id"]}
 
 
 class AccesoExclusivoTests(EscenarioSimulacion, APITestCase):
@@ -99,7 +99,7 @@ class AccesoExclusivoTests(EscenarioSimulacion, APITestCase):
     def test_sin_token_el_encabezado_no_cae_en_la_sesion_de_django(self):
         encabezados = self.simular("medico")
         self.client.force_login(self.root)
-        r = self.client.get("/api/instituciones/", HTTP_X_HEN_SIMULACION=encabezados["HTTP_X_HEN_SIMULACION"])
+        r = self.client.get("/api/instituciones/", HTTP_X_PLEXO_SIMULACION=encabezados["HTTP_X_PLEXO_SIMULACION"])
         self.assertEqual(r.status_code, 403)
 
     def test_una_simulacion_terminada_no_vuelve_al_acceso_total(self):
@@ -120,14 +120,14 @@ class AccesoExclusivoTests(EscenarioSimulacion, APITestCase):
         self.assertEqual(self.sesion.fin, SesionSimulacion.Fin.VENCIMIENTO)
 
     def test_un_id_invalido_se_rechaza(self):
-        r = self.client.get("/api/ciudadanos/", HTTP_X_HEN_SIMULACION="no-es-un-uuid", **jwt(self.root))
+        r = self.client.get("/api/ciudadanos/", HTTP_X_PLEXO_SIMULACION="no-es-un-uuid", **jwt(self.root))
         self.assertEqual(r.status_code, 403)
 
     def test_encabezado_vacio_no_recupera_el_acceso_total(self):
-        r = self.client.get("/api/instituciones/", HTTP_X_HEN_SIMULACION="", **jwt(self.root))
+        r = self.client.get("/api/instituciones/", HTTP_X_PLEXO_SIMULACION="", **jwt(self.root))
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.data["simulacion"], "rechazada")
-        self.assertEqual(self.client.get("/api/health/", HTTP_X_HEN_SIMULACION="", **jwt(self.root)).status_code, 403)
+        self.assertEqual(self.client.get("/api/health/", HTTP_X_PLEXO_SIMULACION="", **jwt(self.root)).status_code, 403)
 
     def test_desde_una_simulacion_no_se_abre_otra(self):
         encabezados = self.simular("medico")
@@ -211,7 +211,7 @@ class CatalogoTests(EscenarioSimulacion, APITestCase):
                          [(None, "auditor")])
 
     def test_un_correo_ocupado_no_se_convierte_en_cuenta_automatica(self):
-        email = f"medico.i{self.b.pk}@referencia.hen.invalid"
+        email = f"medico.i{self.b.pk}@referencia.plexo.invalid"
         ajena = Usuario.objects.create_user(email, "clave-123", nombre="Ajena")
         r = self.client.post("/api/simulaciones/", {"ambito": "institucion", "rol": "medico", "institucion": self.b.pk},
                              format="json", **jwt(self.root))

@@ -46,7 +46,7 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
             self.assertEqual(inicio.status_code, 201, inicio.data)
             respuesta = self.client.post(self.base + "ficha-historia-evoluciones/", {
                 "afiliado": self.afiliado.pk, "caso": self.caso.pk, "motivo": "Auditoría del perfil simulado",
-            }, format="json", **jwt(root), HTTP_X_HEN_SIMULACION=inicio.data["id"])
+            }, format="json", **jwt(root), HTTP_X_PLEXO_SIMULACION=inicio.data["id"])
             self.assertEqual(respuesta.status_code, esperado, respuesta.data)
             if esperado == 200:
                 acceso = AccesoClinico.objects.latest("pk")
@@ -237,7 +237,7 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
             r = self.client.post("/api/simulaciones/", {"ambito": "financiador", "rol": rol, "financiador": self.financiador.pk},
                                  format="json", **token)
             self.assertEqual(r.status_code, 201, r.data)
-            return {**token, "HTTP_X_HEN_SIMULACION": r.data["id"]}, r.data["id"]
+            return {**token, "HTTP_X_PLEXO_SIMULACION": r.data["id"]}, r.data["id"]
 
         self.assertEqual(self.client.get(self.base + "ficha-historia-casos/", {"afiliado": self.afiliado.pk}, **token).status_code, 403)
         auditor, _ = simular("auditor")
