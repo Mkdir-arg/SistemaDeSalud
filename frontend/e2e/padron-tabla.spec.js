@@ -245,3 +245,26 @@ test("clic en el texto de una columna la marca sin cerrar el panel", async ({ pa
   await expect(columna(page, "Documento")).toBeVisible();
   await expect(panel).toBeVisible();
 });
+
+test("Limpiar todo vuelve al padrón entero y descarta lo que se estaba tipeando", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?flt_localidad=Río&search=Ana&plan=3`);
+  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Zeta");
+  await page.getByRole("button", { name: "Limpiar todo", exact: true }).click();
+  await page.clock.runFor(1000);
+  const url = new URL(page.url()).searchParams;
+  for (const clave of ["flt_localidad", "flt_nombre", "search", "plan"]) expect(url.has(clave)).toBe(false);
+  await expect(page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre" })).toHaveValue("");
+  await expect(page.getByLabel("Filtrar Afiliado", { exact: true })).toHaveValue("");
+});
+
+test("quitar un chip descarta el borrador del mismo filtro", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?flt_nombre=Previo`);
+  await page.getByRole("button", { name: /^Filtros/ }).click();
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Otro");
+  await page.getByRole("button", { name: "Quitar filtro Afiliado: «Previo»" }).click();
+  await page.clock.runFor(1000);
+  expect(new URL(page.url()).searchParams.has("flt_nombre")).toBe(false);
+});

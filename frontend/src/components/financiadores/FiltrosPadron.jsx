@@ -53,7 +53,16 @@ export function useBorradoresPadron({ parametros, cambiar, cambiarVarios, onFilt
       return nuevos;
     });
   }
-  return { borradores, pendientes, editarTexto, aplicarYa: () => aplicar(borradores) };
+  // Quitar o limpiar un filtro también descarta lo que se estaba tipeando en
+  // él: si no, el temporizador lo vuelve a aplicar después del clic.
+  function descartar(claves) {
+    setBorradores((previos) => {
+      const nuevos = { ...previos };
+      for (const clave of claves) delete nuevos[clave];
+      return nuevos;
+    });
+  }
+  return { borradores, pendientes, editarTexto, descartar, aplicarYa: () => aplicar(borradores) };
 }
 
 /** Búsqueda global: se aplica sola al dejar de tipear, o al instante con Enter. */
@@ -71,7 +80,6 @@ export function BuscadorPadron({ parametros, editarTexto, aplicarYa }) {
 
 /** Chips de lo aplicado: cada uno se quita solo; «Limpiar todo» vuelve al padrón entero. */
 export function ChipsFiltrosPadron({ activos, pendientes, quitar, limpiar }) {
-  if (!activos.length && !pendientes) return null;
   return <div className="flex flex-wrap items-center gap-2">
     {activos.map((f) => <span key={f.clave} className="inline-flex max-w-full animate-aparecer items-center gap-1 rounded-pill border border-accent-100 bg-accent-50 py-0.5 pl-2.5 pr-1 text-sm text-accent">
       <span className="truncate">{f.etiqueta}</span>

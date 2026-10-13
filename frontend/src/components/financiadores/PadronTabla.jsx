@@ -63,9 +63,18 @@ function PadronTablaFinanciador({ filas, total, paginas, estado, parametros, onP
   if (renderAcciones) columnas.push({ key: "acciones", label: "Acciones", fija: true, render: renderAcciones });
   const cambiar = (campo, valor) => onParametrosChange(cambiarConsultaPadron(parametros, { [campo]: valor }));
   const cambiarVarios = (cambios, opciones) => actuales.current.onParametrosChange(cambiarConsultaPadron(actuales.current.parametros, cambios), opciones);
-  const { borradores, pendientes, editarTexto, aplicarYa } = useBorradoresPadron({ parametros, cambiar, cambiarVarios, onFiltrosPendientesChange });
+  const { borradores, pendientes, editarTexto, descartar, aplicarYa } = useBorradoresPadron({ parametros, cambiar, cambiarVarios, onFiltrosPendientesChange });
   const activos = filtrosActivosPadron(parametros, planes);
-  const limpiar = () => onParametrosChange(cambiarConsultaPadron(parametros, Object.fromEntries(activos.map((f) => [f.clave, ""]))));
+  // «Limpiar todo» vuelve al padrón entero: chips, búsqueda y plan. Estado no:
+  // define qué afiliaciones se miran, no un filtro sobre ellas.
+  const [reinicioBusqueda, setReinicioBusqueda] = useState(0);
+  const hayQueLimpiar = activos.length > 0 || parametros.has("search") || parametros.has("plan");
+  const limpiar = () => {
+    descartar(Object.keys(borradores));
+    setReinicioBusqueda((n) => n + 1);
+    onParametrosChange(cambiarConsultaPadron(parametros, Object.fromEntries([...activos.map((f) => f.clave), "search", "plan"].map((clave) => [clave, ""]))));
+  };
+  const quitar = (clave) => { descartar([clave]); cambiar(clave, ""); };
   const estadoActual = estadoDerechoPadron(parametros);
   const tabla = {
     pagina, orden, tamano, densidad, setDensidad,
@@ -74,7 +83,7 @@ function PadronTablaFinanciador({ filas, total, paginas, estado, parametros, onP
     cambiarTamano: (n) => cambiar("page_size", n),
   };
   const herramientas = <>
-    <BuscadorPadron parametros={parametros} editarTexto={editarTexto} aplicarYa={aplicarYa} />
+    <BuscadorPadron key={reinicioBusqueda} parametros={parametros} editarTexto={editarTexto} aplicarYa={aplicarYa} />
     <select aria-label="Estado" value={estadoActual} onChange={(e) => onParametrosChange(cambiarEstadoPadron(parametros, e.target.value))}
       className={cn("h-8 rounded-md border border-campo-borde bg-superficie px-2 text-base text-texto-medio outline-none focus:border-accent", estadoActual !== "vigentes" && "border-accent-100 bg-accent-50 text-accent")}>
       {ESTADOS.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
@@ -90,13 +99,13 @@ function PadronTablaFinanciador({ filas, total, paginas, estado, parametros, onP
       {barra}
     </div>
   </>;
-  const vacio = { titulo: "Sin afiliados para estos filtros", detalle: activos.length || parametros.get("search") ? "Probá quitar algún filtro o cambiar la búsqueda." : "No hay afiliaciones en este estado.",
-    accion: activos.length > 0 ? <Button type="button" variant="secondary" size="sm" onClick={limpiar}>Limpiar filtros</Button> : undefined };
+  const vacio = { titulo: "Sin afiliados para estos filtros", detalle: hayQueLimpiar ? "Probá quitar algún filtro o cambiar la búsqueda." : "No hay afiliaciones en este estado.",
+    accion: hayQueLimpiar ? <Button type="button" variant="secondary" size="sm" onClick={limpiar}>Limpiar filtros</Button> : undefined };
 
   return <section aria-label="Padrón de afiliados" className="padron-tabla flex min-w-0 items-start">
     <div ref={tablaRef} className="min-w-0 flex-1" aria-busy={estado.cargando || estado.refrescando || undefined}>
       <DataTable titulo="Padrón de afiliados" columnas={columnas} filas={filas} total={total} paginas={paginas} estado={estado} tabla={tabla} mantenerEncabezados adaptable vacio={vacio}
-        barra={herramientas} subbarra={(activos.length > 0 || pendientes) && <ChipsFiltrosPadron activos={activos} pendientes={pendientes} quitar={(clave) => cambiar(clave, "")} limpiar={limpiar} />} />
+        barra={herramientas} subbarra={(activos.length > 0 || pendientes) && <ChipsFiltrosPadron activos={activos} pendientes={pendientes} quitar={quitar} limpiar={limpiar} />} />
     </div>
     {/* El hueco anima su ancho: la tabla se achica y se agranda con el panel.
         overflow-clip (no hidden) para no romper el sticky del panel. */}
