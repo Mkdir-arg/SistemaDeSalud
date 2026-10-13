@@ -11,6 +11,14 @@ export function tamanoPadron(parametros) {
   return [10, 25, 50, 100].includes(pedido) ? pedido : 10;
 }
 
+export function estadoDerechoPadron(parametros) {
+  return parametros.get("derecho") || parametros.get("estado") || parametros.get("flt_derecho") || "vigentes";
+}
+
+export function cambiarEstadoPadron(parametros, valor) {
+  return cambiarConsultaPadron(parametros, { estado: valor || "vigentes" });
+}
+
 export function obtenerColumnasPadron(parametros) {
   const elegidas = parametros.has("columnas") ? parametros.get("columnas").split(",") : COLUMNAS_PREDETERMINADAS;
   return catalogo.filter((c) => c.required || elegidas.includes(c.key)).map((c) => c.key);
@@ -33,7 +41,10 @@ export function cambiarConsultaPadron(parametros, cambios) {
     if (valor === "" || valor == null) nuevos.delete(clave);
     else nuevos.set(clave, String(valor));
   }
-  if (Object.hasOwn(cambios, "estado")) nuevos.delete("derecho");
+  if (Object.hasOwn(cambios, "estado")) {
+    nuevos.delete("derecho");
+    nuevos.delete("flt_derecho");
+  }
   return nuevos;
 }
 
@@ -50,7 +61,7 @@ export function parametrosConsultaPadron(parametros) {
   }
   if (!consulta.has("page")) consulta.set("page", "1");
   consulta.set("page_size", String(tamanoPadron(parametros)));
-  if (!consulta.has("estado") && !consulta.has("derecho")) consulta.set("estado", "vigentes");
+  if (!consulta.get("estado") && !consulta.get("derecho") && !consulta.get("flt_derecho")) consulta.set("estado", "vigentes");
   return consulta;
 }
 

@@ -8,7 +8,8 @@ const legacy = new Set(["estado_administrativo", "regimen", "alta_administrativa
 
 export default function FiltrosPadron({ parametros, cambiar, columnas = VACIO, planes = VACIO }) {
   const conFiltro = (col) => [...parametros.keys()].some((k) => k === `flt_${col.key}` || k.startsWith(`flt_${col.key}_`));
-  const adicionales = COLUMNAS_PADRON.filter((col) => (!legacy.has(col.key) && columnas.includes(col.key)) || conFiltro(col));
+  // Derecho tiene un único control global Estado, incluidos sus aliases de URL.
+  const adicionales = COLUMNAS_PADRON.filter((col) => col.key !== "derecho" && ((!legacy.has(col.key) && columnas.includes(col.key)) || conFiltro(col)));
   const activos = FILTROS_PADRON.some((campo) => parametros.has(campo)) || [...parametros.keys()].some((k) => k.startsWith("flt_"));
   return <details className="mb-4 rounded-md border border-division p-4" open={activos}>
     <summary className="cursor-pointer text-sm font-semibold">Filtros administrativos</summary>

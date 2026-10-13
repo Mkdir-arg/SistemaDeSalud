@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { COLUMNAS_PADRON, COLUMNAS_PREDETERMINADAS, cambiarColumnasPadron, cambiarConsultaPadron, obtenerColumnasPadron, ordenarPadron, parametrosConsultaPadron, valorColumnaPadron } from "./padronTablaEstado.js";
+import { COLUMNAS_PADRON, COLUMNAS_PREDETERMINADAS, cambiarColumnasPadron, cambiarConsultaPadron, cambiarEstadoPadron, estadoDerechoPadron, obtenerColumnasPadron, ordenarPadron, parametrosConsultaPadron, valorColumnaPadron } from "./padronTablaEstado.js";
 
 test("catálogo coincide exactamente con backend; no ofrece datos protegidos", () => {
   const backend = JSON.parse(readFileSync(new URL("../../../../backend/apps/financiadores/padron_columnas.json", import.meta.url), "utf8"));
@@ -60,4 +60,28 @@ test("tamaño por URL coincide con selector y consulta; valores fuera del select
   for (const [pedido, esperado] of [["25", "25"], ["100", "100"], ["200", "10"], ["0", "10"], ["texto", "10"]]) {
     assert.equal(parametrosConsultaPadron(new URLSearchParams({ page_size: pedido })).get("page_size"), esperado);
   }
+});
+
+test("aliases de derecho no se combinan con vigentes implícito", () => {
+  for (const estado of ["finalizadas", "futuras", "vigentes"]) {
+    const params = new URLSearchParams({ flt_derecho: estado });
+    assert.equal(estadoDerechoPadron(params), estado);
+    assert.equal(parametrosConsultaPadron(params).get("estado"), null);
+    assert.equal(parametrosConsultaPadron(params).get("flt_derecho"), estado);
+  }
+  assert.equal(estadoDerechoPadron(new URLSearchParams()), "vigentes");
+  assert.equal(parametrosConsultaPadron(new URLSearchParams()).get("estado"), "vigentes");
+  assert.equal(estadoDerechoPadron(new URLSearchParams("derecho=todos&estado=vigentes&flt_derecho=futuras")), "todos");
+  // No reinterpretar ni descartar criterios explícitos de API, incluso invalidos.
+  assert.equal(parametrosConsultaPadron(new URLSearchParams("estado=vigentes&flt_derecho=futuras")).get("estado"), "vigentes");
+  assert.equal(parametrosConsultaPadron(new URLSearchParams("flt_derecho=invalido")).get("flt_derecho"), "invalido");
+});
+
+test("cambiar Estado canónico limpia aliases y página, conserva otros filtros", () => {
+  const params = new URLSearchParams("financiador=21&page=3&padron_page=3&derecho=todos&flt_derecho=futuras&ordering=-nombre&flt_apellidos=Alfa");
+  const nuevos = cambiarEstadoPadron(params, "finalizadas");
+  assert.equal(estadoDerechoPadron(nuevos), "finalizadas");
+  for (const key of ["derecho", "flt_derecho", "page", "padron_page"]) assert.equal(nuevos.has(key), false);
+  assert.equal(nuevos.get("ordering"), "-nombre");
+  assert.equal(nuevos.get("flt_apellidos"), "Alfa");
 });
