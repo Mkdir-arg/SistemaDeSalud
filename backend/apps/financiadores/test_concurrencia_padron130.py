@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from django.db import close_old_connections, connection, transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 from .models import Afiliado, Financiador, MembresiaFinanciador, Plan
@@ -149,6 +150,95 @@ class ConcurrenciaPadron130Tests(TransactionTestCase):
         self.assertEqual(afiliado.revision, 1)
         self.assertEqual(afiliado.historial.count(), 1)
         self.assertEqual(afiliado.historial.get().motivo, "Alta exclusiva")
+
+    def test_contacto_y_familia_no_bloquean_el_commit_de_auditoria(self):
+        registrado, continuar = Event(), Event()
+        original = padron.registrar_historial
+
+        def pausar(obj, usuario, delta, motivo, *args, **kwargs):
+            resultado = original(obj, usuario, delta, motivo, *args, **kwargs)
+            if motivo == "Contacto concurrente":
+                registrado.set()
+                if not continuar.wait(timeout=10):
+                    raise RuntimeError("No se liberó el commit del contacto.")
+            return resultado
+
+        def contacto():
+            close_old_connections()
+            try:
+                editar_ficha(afiliado=self.a, usuario=self.usuario, entrada={
+                    "revision": 1, "motivo": "Contacto concurrente", "telefono": "111",
+                })
+            finally:
+                connection.close()
+
+        def liberar(execute, sql, params, many, context):
+            if '"financiadores_afiliado"' in sql and "FOR UPDATE" in sql:
+                continuar.set()
+            return execute(sql, params, many, context)
+
+        with ThreadPoolExecutor(max_workers=1) as pool, patch.object(padron, "registrar_historial", side_effect=pausar):
+            futuro = pool.submit(contacto)
+            try:
+                self.assertTrue(registrado.wait(timeout=10))
+                with connection.execute_wrapper(liberar):
+                    editar_ficha(afiliado=self.b, usuario=self.usuario, entrada={
+                        "revision": 1, "motivo": "Familia concurrente", "titular": self.a.pk, "parentesco": "hijo",
+                    })
+                futuro.result(timeout=15)
+            finally:
+                continuar.set()
+        self.a.refresh_from_db()
+        self.b.refresh_from_db()
+        self.assertEqual(self.a.telefono, "111")
+        self.assertEqual(self.b.titular_id, self.a.pk)
+
+    def test_revocacion_y_escritura_protegida_no_bloquean_auditoria(self):
+        miembro = MembresiaFinanciador.objects.get(financiador=self.org, usuario=self.usuario)
+        miembro.rol, miembro.acceso_padron_salud = "admin", True
+        miembro.save(update_fields=["rol", "acceso_padron_salud"])
+        registrado, continuar = Event(), Event()
+        original = padron.auditar
+
+        def pausar(*args, **kwargs):
+            resultado = original(*args, **kwargs)
+            registrado.set()
+            if not continuar.wait(timeout=10):
+                raise RuntimeError("No se liberó el commit protegido.")
+            return resultado
+
+        def escribir():
+            close_old_connections()
+            try:
+                padron.editar_protegido(afiliado=self.a, usuario=self.usuario, bloque="salud",
+                    entrada={"revision": 1, "motivo": "Escritura concurrente", "dbt": True})
+            finally:
+                connection.close()
+
+        def liberar(execute, sql, params, many, context):
+            if sql.startswith("UPDATE") and '"financiadores_membresiafinanciador"' in sql:
+                continuar.set()
+            return execute(sql, params, many, context)
+
+        cliente = APIClient()
+        cliente.force_authenticate(self.usuario)
+        with ThreadPoolExecutor(max_workers=1) as pool, patch.object(padron, "auditar", side_effect=pausar):
+            futuro = pool.submit(escribir)
+            try:
+                self.assertTrue(registrado.wait(timeout=10))
+                with connection.execute_wrapper(liberar):
+                    response = cliente.post(f"/api/financiadores/{self.org.pk}/usuarios/", {
+                        "email": self.usuario.email, "nombre": "Concurrente", "rol": "admin",
+                        "acceso_padron_salud": False,
+                    }, format="json")
+                self.assertEqual(response.status_code, 201, response.data)
+                futuro.result(timeout=15)
+            finally:
+                continuar.set()
+        miembro.refresh_from_db()
+        self.assertFalse(miembro.acceso_padron_salud)
+        self.assertTrue(padron.m.SaludPadron.objects.get(afiliado=self.a).dbt)
+        self.assertEqual(cliente.get(f"/api/financiadores/{self.org.pk}/padron/{self.a.pk}/salud/").status_code, 403)
 
     def test_ediciones_misma_revision_solo_una_confirma(self):
         barrera = Barrier(2)

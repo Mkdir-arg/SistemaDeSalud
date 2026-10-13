@@ -488,7 +488,7 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
                     with transaction.atomic():
                         if lote.tipo == "padron" and lote.version == 2:
                             if fila["datos"].get("titular_documento"):
-                                Financiador.objects.select_for_update().get(pk=lote.financiador_id)
+                                Financiador.objects.select_for_update(no_key=True).get(pk=lote.financiador_id)
                             documentos = [fila["datos"]["documento"], fila["datos"].get("titular_documento", "")]
                             list(Afiliado.objects.select_for_update().filter(financiador=lote.financiador, documento__in=documentos).order_by("pk"))
                         referencias = _referencias(lote.financiador, lote.tipo, [fila["datos"]])

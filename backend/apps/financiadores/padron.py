@@ -128,7 +128,7 @@ def registrar_ficha(*, financiador, usuario, basicos, nuevos, revision=None, mot
     """Alta ampliada atómica; el POST legado conserva su contrato incremental."""
     from .services import registrar_afiliado
     if "titular" in nuevos:
-        m.Financiador.objects.select_for_update().get(pk=financiador.pk)
+        m.Financiador.objects.select_for_update(no_key=True).get(pk=financiador.pk)
     anterior = m.Afiliado.objects.select_for_update().filter(financiador=financiador, documento=normalizar_documento(basicos["documento"])).first()
     if anterior and nuevos and not solo_crear:
         if revision is None:
@@ -174,8 +174,10 @@ def editar_ficha(*, afiliado, usuario, entrada, origen="manual", lote=None):
     validar_entrada_servicio(entrada, CAMPOS_EDITABLES)
     # El lock del financiador serializa cambios estructurales de familia incluso
     # sin integrantes previos; luego se toman filas por PK en orden estable.
+    # NO KEY UPDATE permite confirmar auditorías con FK al financiador mientras
+    # esperamos un afiliado bloqueado por otra edición.
     if "titular" in entrada:
-        m.Financiador.objects.select_for_update().get(pk=afiliado.financiador_id)
+        m.Financiador.objects.select_for_update(no_key=True).get(pk=afiliado.financiador_id)
     requerir_financiador(usuario, afiliado.financiador_id, escritura=True)
     titular_id = entrada.get("titular")
     ids = sorted({afiliado.pk, titular_id} - {None})

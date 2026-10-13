@@ -673,7 +673,9 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         if d["email"].lower().endswith(f"@{DOMINIO}") or es_cuenta_referencia(existente):
             raise ValidationError("Las cuentas de referencia se gestionan desde la preparación de simulación.")
         with transaction.atomic():
-            m.Financiador.objects.select_for_update().get(pk=org.pk)
+            # Serializa designaciones sin impedir que una escritura protegida
+            # confirme su auditoría antes de liberar la membresía.
+            m.Financiador.objects.select_for_update(no_key=True).get(pk=org.pk)
             if any(campo in d for campo in ("acceso_padron_salud", "acceso_padron_cobranza")):
                 from .permisos import requerir_admin_real
                 requerir_admin_real(request.user, org.pk)
