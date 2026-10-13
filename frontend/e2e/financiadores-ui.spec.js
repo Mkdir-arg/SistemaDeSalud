@@ -1148,3 +1148,67 @@ test("exportación tardía no entrega archivo tras cambiar de organización", as
   expect(await descarga).toBeNull();
   await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeEnabled();
 });
+
+
+async function consultaPadronMock(page) {
+  const { padron, escrituras } = await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/padron/?**", (route) => {
+    const request = route.request();
+    consultas.push({ method: request.method(), params: Object.fromEntries(new URL(request.url()).searchParams) });
+    if (request.method() !== "GET") return route.fulfill({ status: 405, json: { detail: "La consulta requiere GET." } });
+    const params = new URL(request.url()).searchParams;
+    return route.fulfill({ json: { count: 30, next: params.get("page") === "3" ? null : "?page=2", previous: null, results: padron } });
+  });
+  return { consultas, escrituras };
+}
+
+const contextoBusquedaPadron = "financiador=21&estado=todos&page=2&ordering=-nombre&columnas=nombre,numero,documento&regimen=dependencia&flt_localidad=Córdoba";
+const filtrosBusquedaPadron = { ordering: "-nombre", columnas: "nombre,numero,documento", regimen: "dependencia", flt_localidad: "Córdoba", page_size: "10" };
+
+test("búsqueda global de padrón envía DNI CUIL apellido y número por GET preservando contexto", async ({ page }) => {
+  const { consultas, escrituras } = await consultaPadronMock(page);
+  for (const texto of ["00123456", "20123456786", "Pérez", "00025"]) {
+    await page.goto(`/financiadores/padron?${contextoBusquedaPadron}`);
+    const buscar = page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true });
+    await expect(buscar).toBeVisible();
+    await expect.poll(() => consultas.at(-1)?.params.page).toBe("2");
+    const antes = consultas.length;
+    await buscar.fill(`  ${texto}  `);
+    expect(consultas.length).toBe(antes);
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", search: texto, page: "1" } });
+    const url = new URL(page.url());
+    expect(url.searchParams.has("page")).toBe(false);
+    expect(url.searchParams.get("financiador")).toBe("21");
+    expect(url.searchParams.get("search")).toBe(texto);
+    await page.reload();
+    await expect(buscar).toHaveValue(texto);
+  }
+  await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", page: "1" } });
+  expect(new URL(page.url()).searchParams.has("search")).toBe(false);
+  expect(escrituras).toEqual([]);
+});
+
+test("Plan y Estado globales de padrón vuelven a página uno sin perder búsqueda filtros columnas ni orden", async ({ page }) => {
+  const { consultas, escrituras } = await consultaPadronMock(page);
+  await page.goto(`/financiadores/padron?${contextoBusquedaPadron}&search=previo&derecho=finalizadas`);
+  await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue("finalizadas");
+  await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("31");
+  await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "finalizadas", derecho: "finalizadas", search: "previo", plan: "31", page: "1" } });
+  expect(new URL(page.url()).searchParams.has("page")).toBe(false);
+  const segundaPagina = new URL(page.url()); segundaPagina.searchParams.set("page", "2");
+  await page.goto(segundaPagina.href);
+  await expect.poll(() => consultas.at(-1)?.params.page).toBe("2");
+  await page.getByRole("combobox", { name: "Estado", exact: true }).selectOption("vigentes");
+  await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "vigentes", search: "previo", plan: "31", page: "1" } });
+  expect(new URL(page.url()).searchParams.has("derecho")).toBe(false);
+  await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("");
+  await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "vigentes", search: "previo", page: "1" } });
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true })).toHaveValue("previo");
+  await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue("vigentes");
+  expect(escrituras).toEqual([]);
+});
