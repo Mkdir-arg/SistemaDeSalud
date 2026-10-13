@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador, filasDe, opcionesFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { useAuth } from "@/auth/AuthContext";
@@ -15,6 +15,7 @@ import EditarFichaPadron from "@/components/financiadores/EditarFichaPadron";
 import CrearAfiliadoPadron from "@/components/financiadores/CrearAfiliadoPadron";
 import PadronTabla from "@/components/financiadores/PadronTabla";
 import { parametrosConsultaPadron, obtenerColumnasPadron, estadoDerechoPadron } from "@/components/financiadores/padronTablaEstado";
+import { ROLES, SECCIONES, itemsFinanciador } from "./menuFinanciador";
 import ExportarPadron from "@/components/financiadores/ExportarPadron";
 import { ADMINISTRATIVOS, TIPOS_PLAN } from "@/components/financiadores/padronCampos";
 import { parametrosFicha } from "@/lib/padronNavigation";
@@ -26,21 +27,6 @@ import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { intervaloMes } from "./ActividadFinanciador";
 
-const ROLES = { admin: "Administración", operador: "Operación", auditor: "Sólo lectura" };
-const SECCIONES = [
-  { key: "inicio", label: "Inicio", icon: "home" },
-  { key: "planes", label: "Planes", icon: "layers" },
-  { key: "reglas", label: "Reglas de cobertura", icon: "clipboard" },
-  { key: "aranceles", label: "Aranceles", icon: "list" },
-  { key: "padron", label: "Padrón de afiliados", icon: "idCard" },
-  { key: "consumos", label: "Consumos externos", icon: "fileText" },
-  { key: "autorizaciones", label: "Autorizaciones", icon: "clipboard" },
-  { key: "facturas", label: "Facturas", icon: "wallet" },
-  { key: "actividad", label: "Actividad en hospitales", icon: "activity" },
-  { key: "convenios", label: "Convenios", icon: "building" },
-  { key: "usuarios", label: "Usuarios", icon: "users" },
-  { key: "catalogo", label: "Catálogo común", icon: "cube" },
-];
 const HOY = () => new Date().toLocaleDateString("en-CA");
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 const documentoParcial = (valor) => valor ? `•••${String(valor).slice(-3)}` : "Sin DNI";
@@ -72,8 +58,7 @@ export default function PortalFinanciadores() {
   const sufijo = seleccion ? `?financiador=${encodeURIComponent(seleccion)}` : "";
   // La redirección a Inicio conserva la query completa; los ítems del menú, sólo el financiador.
   const query = parametros.toString() ? `?${parametros}` : "";
-  const items = SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
-    .map((item) => ({ ...item, to: `/financiadores/${item.key}${sufijo}` }));
+  const items = itemsFinanciador({ organizacion, plataforma, admin, sufijo });
   const actual = items.find((item) => item.key === seccion);
   const irAlDirectorio = plataforma && !seleccion && seccion !== "catalogo" && !organizaciones.isLoading && !organizaciones.error;
   useEffect(() => { if (irAlDirectorio && institucion) setInstitucion(null); }, [irAlDirectorio, institucion, setInstitucion]);
@@ -258,7 +243,6 @@ function EnlaceActivacion({ ruta, onClose }) {
 }
 
 function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma, planes, catalogo, actualizado }) {
-  const navigate = useNavigate();
   const [parametros, setParametros] = useSearchParams();
   const filtrosIniciales = useRef(true);
   const planFiltro = ["reglas", "padron"].includes(recurso) ? parametros.get("plan") || "" : "";
@@ -313,7 +297,7 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   const columnas = columnasDe(recurso, planes, catalogo, organizacion.id, fichaQuery);
   if (recurso === "padron") columnas.push({ key: "administrativo", label: "Administrativo", render: (r) => <Badge tone={r.estado_administrativo === "activo" ? "green" : "amber"}>{ADMINISTRATIVOS[r.estado_administrativo] || "Sin informar"}</Badge> });
   if (recurso === "consumos" && operador) columnas.push({ key: "corregir", label: "Correcciones", render: (r) => r.corrige ? `Corrige consumo ${r.corrige}` : <Button size="sm" variant="ghost" onClick={() => setCorreccion(r)}>Corregir cantidad</Button> });
-  if (recurso === "padron" && operador) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Editar</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: r.finalizado_en ? "reactivar-afiliacion" : "finalizar-afiliacion", fila: r })}>{r.finalizado_en ? "Reactivar" : "Finalizar"}</Button>{organizacion.consulta_historia_clinica && <Button size="sm" variant="ghost" onClick={() => navigate(`/financiadores/padron/${r.id}?${fichaQuery}#historia-clinica`)}>Historia clínica</Button>}</div> });
+  if (recurso === "padron" && operador) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Editar</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: r.finalizado_en ? "reactivar-afiliacion" : "finalizar-afiliacion", fila: r })}>{r.finalizado_en ? "Reactivar" : "Finalizar"}</Button></div> });
   if (recurso === "usuarios" && admin) columnas.push({ key: "acceso", label: "Acceso", render: (r) => <Button size="sm" variant="ghost" onClick={() => setUsuario(r)}>Cambiar acceso</Button> });
   if (recurso === "planes" && admin) columnas.push({ key: "acciones", label: "Administración", render: (r) => <Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "editar-plan", fila: r })}>Editar plan</Button> });
   if (recurso === "convenios" && admin) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex flex-wrap gap-2">{r.estado === "propuesto" && r.propuesto_por === "hospital" && <><Button size="sm" variant="secondary" disabled={aceptando != null} onClick={() => aceptar(r)}>{aceptando === r.id ? "Aceptando…" : "Aceptar convenio"}</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "rechazar-convenio", fila: r })}>Rechazar propuesta</Button></>}{r.estado === "activo" && <><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "plazo-autorizacion", fila: r })}>Plazo de autorización</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: "cerrar-convenio", fila: r })}>Cerrar convenio</Button></>}{["rechazado", "finalizado"].includes(r.estado) && "—"}</div> });

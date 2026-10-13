@@ -964,8 +964,9 @@ test("Historia clínica desde la ficha exige motivo y descarta evoluciones al ce
   await page.route("**/api/financiadores/21/ficha-historia-casos/**", (route) => route.fulfill({ json: lista([{ id: 91, institucion: { id: 2, nombre: "Hospital vecino" }, creado: "2026-09-01T12:00:00Z", estado: "atendido", acceso: "vigente", evoluciones_firmadas: 1 }]) }));
   await page.route("**/api/financiadores/21/ficha-historia-evoluciones/**", (route) => { consultas.push(route.request().postDataJSON()); return route.fulfill({ json: [{ id: 92, titulo: "Evolución firmada", contenido: "Primera línea\nSegunda línea", fecha: "2026-09-02T12:00:00Z", autor: "Dra. Ejemplo", matricula: "MN 123" }] }); });
   await page.goto("/financiadores/padron?financiador=21&estado=todos");
-  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Historia clínica", exact: true }).click();
-  await expect(page).toHaveURL(/#historia-clinica$/);
+  // La historia clínica vive en la ficha: se entra por el nombre del afiliado.
+  await page.getByRole("link", { name: "Persona Ficticia" }).click();
+  await expect(page).toHaveURL(/\/financiadores\/padron\/45\?/);
   await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
   const historia = page.getByRole("region", { name: "Historia clínica", exact: true });
   await historia.getByRole("button", { name: "Ver evoluciones" }).click();
@@ -978,10 +979,24 @@ test("Historia clínica desde la ficha exige motivo y descarta evoluciones al ce
   await expect(historia).not.toContainText("Evolución firmada");
 });
 
-test("admin del financiador ve Historia clínica sin designación", async ({ page }) => {
+test("Historia clínica no es una acción de la fila, ni para el admin", async ({ page }) => {
   await escenario(page, { rol: "admin" });
   await page.goto("/financiadores/padron?financiador=21");
-  await expect(page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Historia clínica", exact: true })).toBeVisible();
+  const fila = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
+  await expect(fila.getByRole("button", { name: "Editar", exact: true })).toBeVisible();
+  await expect(fila.getByRole("button", { name: "Historia clínica", exact: true })).toHaveCount(0);
+  await expect(fila.getByRole("link", { name: "Persona Ficticia" })).toBeVisible();
+});
+
+test("la ficha conserva el menú completo del financiador", async ({ page }) => {
+  await escenario(page, { rol: "admin" });
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
+  await page.goto("/financiadores/padron/45?financiador=21&regimen=pasivo");
+  const menu = page.getByRole("navigation", { name: "Menú del financiador" });
+  for (const nombre of ["Inicio", "Planes", "Padrón de afiliados", "Convenios", "Usuarios"]) await expect(menu.getByRole("link", { name: nombre, exact: true })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Padrón de afiliados", exact: true })).toHaveAttribute("href", /regimen=pasivo/);
+  await expect(menu.getByRole("link", { name: "Padrón de afiliados", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(menu.getByRole("link", { name: "Planes", exact: true })).toHaveAttribute("href", "/financiadores/planes?financiador=21");
 });
 
 test("operador sin designación no ve Historia clínica", async ({ page }) => {

@@ -608,7 +608,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           </> : esFinanciador ? <>
             {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">MI FINANCIADOR</div>}
             {financiador.items.map((item) => (
-              <NavLink key={item.key} to={item.to} end className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
+              <NavLink key={item.key} to={item.to} end={item.end ?? true} className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
                 <Icon name={item.icon} size={17} />
                 {!colapsado && item.label}
               </NavLink>
