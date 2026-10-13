@@ -176,11 +176,13 @@ test("documento, CUIL, apellido y número buscan el mismo afiliado en servidor",
     await expect(page.getByRole("link", { name: titular.nombre, exact: true })).toBeVisible();
   }
   await page.getByRole("button", { name: /^Filtros/ }).click();
+  await page.getByRole("button", { name: /^Trámite y credencial/ }).click();
   await page.getByRole("combobox", { name: "Estado administrativo", exact: true }).selectOption("baja_administrativa");
   await expect.poll(async () => new URL(page.url()).searchParams.get("estado_administrativo")).toBe("baja_administrativa");
   await page.reload();
   await expect(page.getByRole("button", { name: "Quitar filtro Estado administrativo: Baja administrativa" })).toBeVisible();
   await page.getByRole("button", { name: /^Filtros/ }).click();
+  await page.getByRole("button", { name: /^Trámite y credencial/ }).click();
   await expect(page.getByRole("combobox", { name: "Estado administrativo", exact: true })).toHaveValue("baja_administrativa");
 });
 

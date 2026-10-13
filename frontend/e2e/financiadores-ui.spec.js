@@ -1307,8 +1307,10 @@ test("filtro de columna agrupa teclas y bloquea XLSX hasta aplicar criterios", a
   await page.goto("/financiadores/padron?financiador=21&estado=todos&page=2&ordering=-nombre&columnas=nombre,numero,documento");
   const exportar = page.getByRole("button", { name: "Exportar XLSX", exact: true });
   await expect(exportar).toBeEnabled();
-  await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
+  // El panel abre con requestAnimationFrame: se abre antes de congelar el reloj.
   await page.getByRole("button", { name: /^Filtros/ }).click();
+  await page.getByRole("button", { name: /^Afiliación/ }).click();
+  await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
   const antes = consultas.length;
   const historial = await page.evaluate(() => history.length);
   await page.getByRole("textbox", { name: "Filtrar Documento", exact: true }).pressSequentially("00123456");
