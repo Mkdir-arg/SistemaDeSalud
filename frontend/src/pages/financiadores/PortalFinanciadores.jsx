@@ -11,6 +11,11 @@ import { EstadoVacio } from "@/components/ui/estados";
 import { Shell } from "@/components/Shell";
 import { fechaHora, plural } from "@/lib/format";
 import ImportacionFinanciador from "./ImportacionFinanciador";
+import FormularioPadron from "@/components/financiadores/FormularioPadron";
+import CrearAfiliadoPadron from "@/components/financiadores/CrearAfiliadoPadron";
+import FiltrosPadron, { FILTROS_PADRON } from "@/components/financiadores/FiltrosPadron";
+import { ADMINISTRATIVOS, TIPOS_PLAN } from "@/components/financiadores/padronCampos";
+import { parametrosFicha } from "@/lib/padronNavigation";
 import ActividadFinanciador from "./ActividadFinanciador";
 import AutorizacionesFinanciador from "./AutorizacionesFinanciador";
 import FacturasFinanciador from "./FacturasFinanciador";
@@ -130,7 +135,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
   const puedeCrear = tab === "catalogo" ? plataforma : !["inicio", "actividad", "aranceles", "autorizaciones"].includes(tab) && (["padron", "consumos"].includes(tab) ? operador : admin);
   const titulos = { planes: "Nuevo plan", reglas: "Nueva regla de cobertura", padron: "Registrar afiliación", consumos: "Registrar consumo externo", convenios: "Proponer convenio", usuarios: "Invitar usuario", catalogo: "Nueva prestación común" };
   async function actualizado(texto, resultado) {
-    await qc.invalidateQueries({ queryKey: scope });
+    await Promise.all([qc.invalidateQueries({ queryKey: scope }), qc.invalidateQueries({ queryKey: ["financiador", usuarioId, organizacion.id] })]);
     if (resultado?.activacion) setActivacion(resultado.activacion);
     setMensaje(texto);
     setModal(null);
@@ -150,7 +155,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
       {tab === "autorizaciones" ? <AutorizacionesFinanciador organizacion={organizacion} scope={scope} /> : tab === "actividad" ? <ActividadFinanciador organizacion={organizacion} scope={scope} /> : <ListaPortal key={tab} recurso={tab} organizacion={organizacion} scope={scope} admin={admin} operador={operador} planes={planes.data || []} catalogo={catalogo.data || []} actualizado={actualizado} />}
     </section>
     {modal === "crear" && <CrearRegistro recurso={tab} organizacion={organizacion} scope={scope} planes={planes} catalogo={catalogo} titulo={titulos[tab]} onClose={() => setModal(null)} onGuardado={async (resultado) => { if (resultado?.activacion) setActivacion(resultado.activacion); await actualizado("Registro guardado."); }} />}
-    {modal === "importar" && <ImportacionFinanciador organizacion={organizacion} tipo={tab} scope={scope} onClose={() => setModal(null)} onAplicado={() => qc.invalidateQueries({ queryKey: scope })} />}
+    {modal === "importar" && <ImportacionFinanciador organizacion={organizacion} tipo={tab} scope={scope} onClose={() => setModal(null)} onAplicado={() => Promise.all([qc.invalidateQueries({ queryKey: scope }), qc.invalidateQueries({ queryKey: ["financiador", usuarioId, organizacion.id] })])} />}
   </>;
 }
 
@@ -254,11 +259,30 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
   const [parametros, setParametros] = useSearchParams();
   const filtrosIniciales = useRef(true);
   const planFiltro = ["reglas", "padron"].includes(recurso) ? parametros.get("plan") || "" : "";
-  const estadoFiltro = recurso === "padron" ? parametros.get("estado") || "vigentes" : "";
+  const estadoFiltro = recurso === "padron" ? parametros.get("derecho") || parametros.get("estado") || "vigentes" : "";
   const convenioFiltro = recurso === "convenios" ? parametros.get("estado") || "activo" : "";
-  const [page, setPage] = useState(() => recurso === "padron" ? Math.max(1, Number(parametros.get("page")) || 1) : 1);
+  const [paginaLocal, setPaginaLocal] = useState(1);
+  const numeroPagina = Number(parametros.get("page") || 1);
+  const page = recurso === "padron" ? (Number.isSafeInteger(numeroPagina) && numeroPagina > 0 ? numeroPagina : 1) : paginaLocal;
+  function setPage(valor) {
+    const pagina = typeof valor === "function" ? valor(page) : valor;
+    if (recurso !== "padron") { setPaginaLocal(pagina); return; }
+    const nuevos = new URLSearchParams(parametros);
+    if (pagina > 1) nuevos.set("page", String(pagina)); else nuevos.delete("page");
+    setParametros(nuevos);
+  }
   const [busqueda, setBusqueda] = useState(() => recurso === "padron" ? parametros.get("search") || "" : "");
-  const [buscar, setBuscar] = useState(() => recurso === "padron" ? parametros.get("search") || "" : "");
+  const [buscarLocal, setBuscarLocal] = useState("");
+  const buscar = recurso === "padron" ? parametros.get("search") || "" : buscarLocal;
+  useEffect(() => { if (recurso === "padron") setBusqueda(parametros.get("search") || ""); }, [recurso, parametros]);
+  function buscarRegistros(event) {
+    event.preventDefault();
+    if (recurso !== "padron") { setPage(1); setBuscarLocal(busqueda.trim()); return; }
+    const nuevos = new URLSearchParams(parametros);
+    nuevos.delete("page");
+    if (busqueda.trim()) nuevos.set("search", busqueda.trim()); else nuevos.delete("search");
+    setParametros(nuevos);
+  }
   const [error, setError] = useState(null);
   const [aceptando, setAceptando] = useState(null);
   const [correccion, setCorreccion] = useState(null);
@@ -269,6 +293,7 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
   if (planFiltro) query.set("plan", planFiltro);
   if (estadoFiltro) query.set("estado", estadoFiltro);
   if (convenioFiltro) query.set("estado", convenioFiltro);
+  if (recurso === "padron") FILTROS_PADRON.forEach((campo) => { if (parametros.get(campo)) query.set(campo, parametros.get(campo)); });
   const consulta = useQuery({ queryKey: [...scope, recurso, query.toString()], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, recurso)}?${query}`), gcTime: 0 });
   const filas = filasDe(consulta.data);
   const total = consulta.data?.count ?? filas.length;
@@ -277,15 +302,17 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
     if (page > 1 && (consulta.error?.status === 404 || consulta.isSuccess && page > paginas)) setPage(consulta.error ? 1 : paginas);
   }, [consulta.error, consulta.isSuccess, page, paginas]);
   useEffect(() => {
+    if (recurso === "padron") return;
     if (filtrosIniciales.current) { filtrosIniciales.current = false; return; }
     setPage(1);
   }, [planFiltro, estadoFiltro, convenioFiltro]);
-  const fichaQuery = new URLSearchParams({ financiador: organizacion.id });
+  const fichaQuery = parametrosFicha(parametros, organizacion.id, page);
   if (planFiltro) fichaQuery.set("plan", planFiltro);
   if (estadoFiltro) fichaQuery.set("estado", estadoFiltro);
   if (buscar) fichaQuery.set("search", buscar);
   if (page > 1) fichaQuery.set("padron_page", page);
   const columnas = columnasDe(recurso, planes, catalogo, organizacion.id, fichaQuery);
+  if (recurso === "padron") columnas.push({ key: "administrativo", label: "Administrativo", render: (r) => <Badge tone={r.estado_administrativo === "activo" ? "green" : "amber"}>{ADMINISTRATIVOS[r.estado_administrativo] || "Sin informar"}</Badge> });
   if (recurso === "consumos" && operador) columnas.push({ key: "corregir", label: "Correcciones", render: (r) => r.corrige ? `Corrige consumo ${r.corrige}` : <Button size="sm" variant="ghost" onClick={() => setCorreccion(r)}>Corregir cantidad</Button> });
   if (recurso === "padron" && operador) columnas.push({ key: "acciones", label: "Acciones", render: (r) => <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" onClick={() => setIdentidad(r)}>Corregir identidad</Button><Button size="sm" variant="ghost" onClick={() => setVigencia({ accion: r.finalizado_en ? "reactivar-afiliacion" : "finalizar-afiliacion", fila: r })}>{r.finalizado_en ? "Reactivar" : "Finalizar"}</Button>{organizacion.consulta_historia_clinica && <Button size="sm" variant="ghost" onClick={() => navigate(`/financiadores/padron/${r.id}?${fichaQuery}#historia-clinica`)}>Historia clínica</Button>}</div> });
   if (recurso === "usuarios" && admin) columnas.push({ key: "acceso", label: "Acceso", render: (r) => <Button size="sm" variant="ghost" onClick={() => setUsuario(r)}>Cambiar acceso</Button> });
@@ -298,7 +325,13 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
     finally { setAceptando(null); }
   }
   function cambiarFiltro(campo, valor) {
-    const nuevos = new URLSearchParams({ financiador: organizacion.id });
+    const nuevos = recurso === "padron" ? new URLSearchParams(parametros) : new URLSearchParams({ financiador: organizacion.id });
+    if (recurso === "padron") {
+      nuevos.set("financiador", String(organizacion.id)); nuevos.delete("page");
+      if (campo === "estado") nuevos.delete("derecho");
+      if (valor) nuevos.set(campo, valor); else nuevos.delete(campo);
+      setParametros(nuevos); return;
+    }
     const plan = campo === "plan" ? valor : planFiltro;
     if (plan) nuevos.set("plan", plan);
     if (recurso === "padron") { nuevos.set("estado", campo === "estado" ? valor : estadoFiltro); if (buscar) nuevos.set("search", buscar); }
@@ -306,15 +339,16 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, planes, ca
     setParametros(nuevos);
   }
   return <>{recurso === "convenios" && <div aria-label="Estado de convenios" className="mb-4 flex flex-wrap gap-5 border-b border-division">{[["activo", "Vigentes"], ["propuesto", "Propuestos"], ["cerrado", "Cerrados"], ["todos", "Todos"]].map(([valor, etiqueta]) => <button key={valor} type="button" aria-pressed={convenioFiltro === valor} onClick={() => cambiarFiltro("estado", valor)} className={`border-b-2 pb-3 text-sm font-medium ${convenioFiltro === valor ? "border-accent text-accent" : "border-transparent text-texto-suave hover:text-texto"}`}>{etiqueta}</button>)}</div>}
-    {["padron", "consumos", "aranceles", "catalogo"].includes(recurso) && <form className="mb-6 flex flex-wrap items-center gap-3" onSubmit={(e) => { e.preventDefault(); setPage(1); setBuscar(busqueda.trim()); }}><div className="min-w-[14rem] flex-1"><Input aria-label={recurso === "padron" ? "Buscar por afiliado, documento o nombre" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} placeholder={recurso === "padron" ? "Buscar por n.º de afiliado, DNI o nombre" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></div>{recurso === "padron" && <><Select className="w-auto min-w-[11rem]" aria-label="Plan" value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Plan: todos</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select><Select className="w-auto min-w-[11rem]" aria-label="Estado" value={estadoFiltro} onChange={(e) => cambiarFiltro("estado", e.target.value)}><option value="vigentes">Estado: vigentes</option><option value="finalizadas">Finalizadas</option><option value="futuras">Aún no vigentes</option><option value="todos">Todos</option></Select></>}<Button variant="secondary" type="submit">Buscar</Button></form>}
+    {["padron", "consumos", "aranceles", "catalogo"].includes(recurso) && <form className="mb-6 flex flex-wrap items-center gap-3" onSubmit={buscarRegistros}><div className="min-w-[14rem] flex-1"><Input aria-label={recurso === "padron" ? "Buscar por afiliado, documento o nombre" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} placeholder={recurso === "padron" ? "Buscar por n.º de afiliado, DNI, CUIL o apellido" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></div>{recurso === "padron" && <><Select className="w-auto min-w-[11rem]" aria-label="Plan" value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Plan: todos</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select><Select className="w-auto min-w-[11rem]" aria-label="Estado" value={estadoFiltro} onChange={(e) => cambiarFiltro("estado", e.target.value)}><option value="vigentes">Estado: vigentes</option><option value="finalizadas">Finalizadas</option><option value="futuras">Aún no vigentes</option><option value="todos">Todos</option></Select></>}<Button variant="secondary" type="submit">Buscar</Button></form>}
+    {recurso === "padron" && <FiltrosPadron parametros={parametros} cambiar={cambiarFiltro} />}
     <Card className="overflow-hidden">
     {recurso === "reglas" && <div className="border-b border-division p-4"><Field label="Plan"><Select value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Todos los planes</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select></Field></div>}
     {error && <div className="p-4"><ErrorPortal error={error} /></div>}
     {consulta.isLoading ? <Spinner label="Cargando registros…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : filas.length === 0 ? <EstadoVacio titulo={buscar ? "No hay resultados para esta búsqueda" : "Todavía no hay registros"} detalle={buscar ? (recurso === "aranceles" ? "Probá con otro hospital o prestación." : "Probá con otro documento, número o nombre.") : recurso === "aranceles" ? "Se mostrarán las prestaciones vinculadas de los hospitales con convenio activo." : VACIOS_PORTAL[recurso] || "Los registros de esta sección aparecerán acá."} /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-division bg-superficie-2 text-texto-debil"><tr>{columnas.map((col) => <th key={col.key} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{col.label}</th>)}</tr></thead><tbody>{filas.map((fila) => <tr key={recurso === "aranceles" ? `${fila.convenio}:${fila.id}` : fila.id} className="border-b border-division last:border-0">{columnas.map((col) => <td key={col.key} className="px-4 py-3 align-top">{col.render ? col.render(fila) : fila[col.key] ?? "—"}</td>)}</tr>)}</tbody></table></div>}
     {!consulta.error && !consulta.isLoading && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-division px-4 py-3"><span className="text-sm text-texto-debil">{plural(total, "registro", "registros")} · {total === 0 ? "Sin páginas" : `Página ${page} de ${paginas}`}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={total === 0 || page === 1 || consulta.isFetching} onClick={() => setPage((p) => p - 1)}>Anterior</Button><Button size="sm" variant="ghost" disabled={total === 0 || !consulta.data?.next || consulta.isFetching} onClick={() => setPage((p) => p + 1)}>Siguiente</Button></div></div>}
   </Card>{correccion && <FormularioPortal titulo="Corregir consumo externo" descripcion={`La cantidad correcta reemplaza el efecto del consumo ${correccion.id}. El registro original y su motivo se conservan. Cero anula su cantidad consumida.`} campos={[{ name: "cantidad", label: "Cantidad correcta", type: "number", min: 0, max: 100000, step: 1, numeric: true, required: true }, { name: "motivo", label: "Motivo de corrección", maxLength: 255, required: true }]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "corregir-consumo"), { consumo: correccion.id, ...body })} onClose={() => setCorreccion(null)} onGuardado={async () => { setCorreccion(null); await actualizado("Corrección registrada. Se conservó el consumo original."); }} />}
-  {identidad && <FormularioPortal titulo="Corregir identidad del afiliado" descripcion="Esta corrección conserva el afiliado, su consumo y sus vínculos. Usala para corregir un identificador cargado por error." campos={[{ name: "numero", label: "Número de afiliado correcto", default: identidad.numero, maxLength: 80, required: true }, { name: "documento", label: "Documento correcto", default: identidad.documento, maxLength: 80, required: true }, { name: "motivo", label: "Motivo de corrección", maxLength: 255, required: true }]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "corregir-identidad"), { afiliado: identidad.id, ...body })} onClose={() => setIdentidad(null)} onGuardado={async () => { setIdentidad(null); await actualizado("Identidad corregida. Se conservó el consumo del afiliado."); }} />}
-  {usuario && <FormularioPortal titulo="Cambiar acceso al financiador" descripcion="El cambio se aplica sólo a esta organización. Se conserva la contraseña del usuario." campos={[{ name: "email", label: "Correo electrónico", default: usuario.email, readOnly: true, required: true }, { name: "nombre", label: "Nombre y apellido", default: usuario.nombre || "", required: true }, { name: "rol", label: "Rol", default: usuario.rol, options: Object.entries(ROLES).map(([id, nombre]) => ({ id, nombre })), required: true }, { name: "activo", boolean: true, default: usuario.activo !== false, render: (value, onChange) => <Checkbox label="Acceso activo a este financiador" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} /> }, campoPermisoAutorizaciones(usuario.resuelve_autorizaciones)]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "usuarios"), body)} onClose={() => setUsuario(null)} onGuardado={async (resultado) => { setUsuario(null); await actualizado("Acceso actualizado.", resultado); }} />}
+  {identidad && <FormularioPadron titulo="Corregir identidad del afiliado" descripcion="Conserva el afiliado, sus consumos y vínculos; no fusiona identidades." campos={[{ name: "numero", label: "Número de afiliado correcto", maxLength: 80, required: true }, { name: "documento", label: "Documento correcto", maxLength: 80, required: true }]} inicial={identidad} guardar={(cambios, motivo) => api.patch(`${rutaFinanciador(organizacion.id, "padron")}${identidad.id}/`, { ...cambios, revision: identidad.revision, motivo })} recargar={async () => { setIdentidad(null); await actualizado("Padrón actualizado."); }} onClose={() => setIdentidad(null)} onGuardado={async () => { setIdentidad(null); await actualizado("Identidad corregida. Se conservaron los vínculos del afiliado."); }} />}
+  {usuario && <FormularioPortal titulo="Cambiar acceso al financiador" descripcion="El cambio se aplica sólo a esta organización. Se conserva la contraseña del usuario." campos={[{ name: "email", label: "Correo electrónico", default: usuario.email, readOnly: true, required: true }, { name: "nombre", label: "Nombre y apellido", default: usuario.nombre || "", required: true }, { name: "rol", label: "Rol", default: usuario.rol, options: Object.entries(ROLES).map(([id, nombre]) => ({ id, nombre })), required: true }, { name: "activo", boolean: true, default: usuario.activo !== false, render: (value, onChange) => <Checkbox label="Acceso activo a este financiador" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} /> }, campoPermisoAutorizaciones(usuario.resuelve_autorizaciones), ...camposPermisosPadron(organizacion, usuario)]} guardar={(body) => api.post(rutaFinanciador(organizacion.id, "usuarios"), body)} onClose={() => setUsuario(null)} onGuardado={async (resultado) => { setUsuario(null); await actualizado("Acceso actualizado.", resultado); }} />}
   {vigencia && <EditarVigencia {...vigencia} planes={planes} guardar={(body) => api.post(rutaFinanciador(organizacion.id, vigencia.accion), body)} onClose={() => setVigencia(null)} onGuardado={async () => { setVigencia(null); await actualizado("Vigencia actualizada. Se conservaron los registros anteriores."); }} />}</>;
 }
 
@@ -323,13 +357,22 @@ export function EditarVigencia({ accion, fila, planes = [], guardar, onClose, on
   const motivo = { name: "motivo", label: "Motivo", maxLength: 255, required: true };
   const configuracion = {
     "plazo-autorizacion": { titulo: "Plazo de respuesta a autorizaciones", descripcion: "Se aplica a nuevas solicitudes de este convenio. Las solicitudes existentes conservan su vencimiento; dejarlo vacío no genera vencimientos automáticos.", campos: [{ name: "plazo_autorizacion_horas", label: "Plazo de respuesta (horas)", default: fila.plazo_autorizacion_horas ?? "", type: "number", numeric: true, min: 1, max: 8760, step: 1 }, motivo], id: { convenio: fila.id }, confirmacion: "Guardar plazo" },
-    "editar-plan": { titulo: `Editar plan ${fila.codigo}`, descripcion: "El código se conserva. Un plan inactivo no puede asignarse a nuevas afiliaciones ni casos; las asignaciones existentes se mantienen.", campos: [{ name: "nombre", label: "Nombre del plan", default: fila.nombre, maxLength: 160, required: true }, { name: "activo", boolean: true, default: fila.activo !== false, render: (value, onChange) => <Checkbox label="Plan activo para nuevas asignaciones" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} /> }, motivo], id: { plan: fila.id }, confirmacion: "Guardar plan" },
+    "editar-plan": { titulo: `Editar plan ${fila.codigo}`, descripcion: "El código se conserva. Un plan inactivo no puede asignarse a nuevas afiliaciones ni casos; las asignaciones existentes se mantienen.", campos: [campoTipoPlan(fila.tipo), { name: "nombre", label: "Nombre del plan", default: fila.nombre, maxLength: 160, required: true }, { name: "activo", boolean: true, default: fila.activo !== false, render: (value, onChange) => <Checkbox label="Plan activo para nuevas asignaciones" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} /> }, motivo], id: { plan: fila.id }, confirmacion: "Guardar plan" },
     "finalizar-afiliacion": { titulo: "Finalizar afiliación", descripcion: `${fila.numero} · ${fila.nombre}. La finalización rige desde ahora y deja de habilitar nuevas coberturas. Se conservan identidad, cupos consumidos, reservas y cargos registrados. No genera deuda automática al paciente.`, campos: [motivo], id: { afiliado: fila.id }, confirmacion: "Confirmar finalización" },
     "reactivar-afiliacion": { titulo: "Reactivar afiliación", descripcion: `${fila.numero} · ${fila.nombre}. La afiliación volverá a estar vigente desde hoy. Se conservan la identidad y los consumos anteriores del período; el cupo no se reinicia. Elegí un plan activo o continuá sin plan.`, campos: [{ name: "plan", label: "Plan", options: activos, default: activos.some((p) => p.id === fila.plan) ? fila.plan : "", numeric: true, empty: "Sin plan" }, motivo], id: { afiliado: fila.id }, confirmacion: "Confirmar reactivación" },
     "cerrar-convenio": { titulo: "Cerrar convenio", descripcion: `${fila.institucion_nombre || fila.financiador_nombre || "Convenio"}. El cierre rige desde ahora: las nuevas evaluaciones quedan sin cobertura por este convenio. Se conservan reservas y cargos anteriores. No genera deuda automática al paciente. Se puede proponer un nuevo convenio posteriormente.`, campos: [motivo], id: { convenio: fila.id }, confirmacion: "Confirmar cierre" },
     "rechazar-convenio": { titulo: "Rechazar propuesta de convenio", descripcion: `${fila.institucion_nombre || fila.financiador_nombre || "Convenio"}. La propuesta no habilitará cobertura. Quedará registrada con el motivo del rechazo y se podrá proponer otro convenio.`, campos: [motivo], id: { convenio: fila.id }, confirmacion: "Confirmar rechazo" },
   }[accion];
   return <FormularioPortal {...configuracion} guardar={(body) => guardar({ ...configuracion.id, ...body })} onClose={onClose} onGuardado={onGuardado} />;
+}
+
+function camposPermisosPadron(organizacion, miembro = {}) {
+  if (organizacion.gestiona_permisos_padron !== true) return [];
+  return [["acceso_padron_salud", "Permitir consultar condiciones de salud del padrón"], ["acceso_padron_cobranza", "Permitir consultar cobranza informada del padrón"]].map(([name, label]) => ({ name, boolean: true, default: Boolean(miembro[name]), render: (checked, onChange) => <div className="flex items-center gap-2"><Checkbox label={label} checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} /><Ayuda>Designación específica, independiente de autorizaciones y del otro bloque. Administración y operación pueden editar si están designados; auditoría conserva sólo lectura. No habilita historia clínica.</Ayuda></div> }));
+}
+
+function campoTipoPlan(valor = "") {
+  return { name: "tipo", label: "Tipo de plan", default: valor || "", options: Object.entries(TIPOS_PLAN).map(([id, nombre]) => ({ id, nombre })), empty: "Sin informar" };
 }
 
 function campoPermisoAutorizaciones(valor = false) {
@@ -353,7 +396,7 @@ function columnasDe(recurso, planes, catalogo, financiadorId, fichaQuery) {
     padron: [{ key: "nombre", label: "Afiliado", render: (r) => <><Link className="font-medium text-accent hover:underline" to={`/financiadores/padron/${r.id}?${fichaQuery}`}>{r.nombre}</Link><span className="mt-1 block text-xs text-texto-debil">DNI {documentoParcial(r.documento)}</span></> }, { key: "numero", label: "N.º de afiliado" }, { key: "plan", label: "Plan", render: (r) => r.plan ? nombrePlan(r.plan) : "Sin plan" }, { key: "vigente", label: "Estado", render: (r) => <><Badge tone={r.finalizado_en ? "gray" : r.vigente === false ? "amber" : "green"}>{r.finalizado_en ? "Finalizada" : r.vigente === false ? "Aún no vigente" : "Vigente"}</Badge><p className="mt-1 text-xs text-texto-debil">{r.finalizado_en ? `Finalizada el ${fechaHora(r.finalizado_en)}` : `Desde ${fecha(r.desde)}`}</p></> }],
     consumos: [{ key: "afiliado", label: "Afiliado", render: (r) => <>{r.afiliado_nombre || `Afiliado ${r.afiliado}`}<p className="mt-1 text-xs text-texto-debil">N.º {r.afiliado_numero || "—"} · DNI {documentoParcial(r.afiliado_documento)}</p></> }, { key: "prestacion", label: "Prestación", render: (r) => nombrePrestacion(r.prestacion) }, { key: "fecha", label: "Fecha", render: (r) => fecha(r.fecha) }, { key: "cantidad", label: "Cantidad" }, { key: "referencia", label: "Referencia" }, { key: "correccion", label: "Estado", render: (r) => r.corrige ? <Badge tone="info">Corrección</Badge> : <Badge tone="green">Registrado</Badge> }],
     convenios: [{ key: "institucion_nombre", label: "Hospital" }, { key: "vigencia", label: "Vigencia", render: (r) => r.cerrado_en ? `Cerrado el ${fechaHora(r.cerrado_en)}` : r.aceptado_en ? `Desde ${fechaHora(r.aceptado_en)}` : "Pendiente de aceptación" }, { key: "plazo_autorizacion_horas", label: "Plazo de autorización", render: (r) => r.plazo_autorizacion_horas == null ? "Sin vencimiento automático" : `${r.plazo_autorizacion_horas} horas` }, { key: "estado", label: "Estado", render: (r) => <><Badge tone={r.estado === "activo" ? "green" : r.estado === "propuesto" ? "amber" : "gray"}>{ESTADOS_CONVENIO[r.estado] || r.estado}</Badge>{r.motivo_cierre && <p className="mt-1 text-xs text-texto-debil">{r.motivo_cierre}</p>}</> }],
-    usuarios: [{ key: "nombre", label: "Usuario", render: (r) => <><span className="font-medium text-texto">{r.nombre}</span><span className="mt-1 block text-xs text-texto-debil">{r.email}</span></> }, { key: "rol", label: "Permiso", render: (r) => <>{ROLES[r.rol] || r.rol}{r.resuelve_autorizaciones && <p className="mt-1 text-xs text-texto-debil">Resuelve autorizaciones</p>}</> }, { key: "activo", label: "Estado", render: (r) => <Badge tone={r.activo === false ? "gray" : "green"}>{r.activo === false ? "Inactivo" : "Activo"}</Badge> }],
+    usuarios: [{ key: "nombre", label: "Usuario", render: (r) => <><span className="font-medium text-texto">{r.nombre}</span><span className="mt-1 block text-xs text-texto-debil">{r.email}</span></> }, { key: "rol", label: "Permiso", render: (r) => <>{ROLES[r.rol] || r.rol}{r.resuelve_autorizaciones && <p className="mt-1 text-xs text-texto-debil">Resuelve autorizaciones</p>}{r.acceso_padron_salud && <p className="mt-1 text-xs text-texto-debil">Condiciones de salud del padrón</p>}{r.acceso_padron_cobranza && <p className="mt-1 text-xs text-texto-debil">Cobranza informada del padrón</p>}</> }, { key: "activo", label: "Estado", render: (r) => <Badge tone={r.activo === false ? "gray" : "green"}>{r.activo === false ? "Inactivo" : "Activo"}</Badge> }],
   }[recurso];
 }
 
@@ -364,16 +407,16 @@ function CrearRegistro({ recurso, organizacion, scope, planes, catalogo, titulo,
   const error = (necesitaPlanes && planes.error) || (necesitaCatalogo && catalogo.error) || (recurso === "convenios" && hospitales.error);
   const cargando = (necesitaPlanes && planes.isLoading) || (necesitaCatalogo && catalogo.isLoading) || (recurso === "convenios" && hospitales.isLoading);
   if (error || cargando) return <Modal title={titulo} onClose={onClose}>{error ? <ErrorPortal error={error} reintentar={() => { planes.refetch(); catalogo.refetch(); if (recurso === "convenios") hospitales.refetch(); }} /> : <Spinner label="Cargando opciones…" />}</Modal>;
+  if (recurso === "padron") return <CrearAfiliadoPadron organizacion={organizacion} planes={planes.data || []} onClose={onClose} onGuardado={onGuardado} />;
   if (recurso === "reglas") return <FormularioRegla organizacion={organizacion} planes={planes.data || []} catalogo={catalogo.data || []} onClose={onClose} onGuardado={onGuardado} />;
   const p = (planes.data || []).filter((plan) => recurso !== "padron" || plan.activo !== false).map((plan) => ({ ...plan, nombre: plan.activo === false ? `${plan.nombre} (inactivo)` : plan.nombre }));
   const prestaciones = (catalogo.data || []).map((item) => ({ ...item, nombre: `${item.codigo} · ${item.nombre}` }));
   const campos = {
     catalogo: [{ name: "codigo", label: "Código común", maxLength: 60, required: true }, { name: "nombre", label: "Nombre de la prestación", maxLength: 160, required: true }, { name: "categoria", label: "Categoría", maxLength: 80, required: true }],
-    planes: [{ name: "codigo", label: "Código del plan", required: true, maxLength: 50 }, { name: "nombre", label: "Nombre del plan", required: true, maxLength: 160 }],
-    padron: [{ name: "numero", label: "Número de afiliado", required: true, ayuda: "Conservá los ceros iniciales." }, { name: "documento", label: "Documento", required: true }, { name: "nombre", label: "Nombre y apellido", required: true }, { name: "plan", label: "Plan", options: p, numeric: true, empty: "Sin plan" }, { name: "desde", label: "Afiliación vigente desde", type: "date", default: HOY(), required: true }],
+    planes: [campoTipoPlan(), { name: "codigo", label: "Código del plan", required: true, maxLength: 50 }, { name: "nombre", label: "Nombre del plan", required: true, maxLength: 160 }],
     consumos: [{ name: "afiliado", numeric: true, render: (value, onChange) => <BuscarAfiliado scope={scope} organizacion={organizacion} value={value} onChange={onChange} /> }, { name: "prestacion", label: "Prestación", options: prestaciones, numeric: true, required: true }, { name: "fecha", label: "Fecha de la prestación", type: "date", max: HOY(), required: true }, { name: "cantidad", label: "Cantidad", type: "number", min: 1, step: 1, numeric: true, required: true }, { name: "referencia", label: "Referencia externa (opcional)", ayuda: "Usá la misma referencia para reconocer un registro ya enviado." }, { name: "motivo_duplicado", maxLength: 255, label: "Motivo para registrar un posible duplicado (opcional)", ayuda: "Completalo sólo si verificaste que otro registro similar corresponde a una prestación distinta." }],
     convenios: [{ name: "institucion", label: "Hospital", options: hospitales.data || [], numeric: true, required: true }],
-    usuarios: [campoPermisoAutorizaciones(), { name: "email", label: "Correo electrónico", type: "email", required: true }, { name: "nombre", label: "Nombre y apellido", required: true }, { name: "rol", label: "Rol", options: [{ id: "admin", nombre: "Administración: configura y gestiona accesos" }, { id: "operador", nombre: "Operación: padrón y consumos" }, { id: "auditor", nombre: "Auditoría: sólo lectura" }], required: true }],
+    usuarios: [campoPermisoAutorizaciones(), ...camposPermisosPadron(organizacion), { name: "email", label: "Correo electrónico", type: "email", required: true }, { name: "nombre", label: "Nombre y apellido", required: true }, { name: "rol", label: "Rol", options: [{ id: "admin", nombre: "Administración: configura y gestiona accesos" }, { id: "operador", nombre: "Operación: padrón y consumos" }, { id: "auditor", nombre: "Auditoría: sólo lectura" }], required: true }],
   }[recurso];
   return <FormularioPortal titulo={titulo} campos={campos} onClose={onClose} onGuardado={onGuardado} descripcion={recurso === "usuarios" ? "El acceso se limita a este financiador. La credencial de una persona que ya usa HEN se conserva." : undefined} guardar={(body) => api.post(rutaFinanciador(organizacion.id, recurso), body)} />;
 }
