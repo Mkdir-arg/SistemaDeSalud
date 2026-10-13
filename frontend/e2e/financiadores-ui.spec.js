@@ -878,15 +878,15 @@ test("desactivar un plan conserva su código y lo retira de nuevas afiliaciones"
   await page.getByRole("button", { name: "Registrar afiliación", exact: true }).click();
   await completarIdentificacion(page);
   await page.getByRole("button", { name: "Siguiente: Afiliación" }).click();
-  await expect(page.getByLabel("Plan *").locator("option")).toHaveText(["Seleccionar"]);
+  await expect(page.getByRole("combobox", { name: /^Plan/ }).locator("option")).toHaveText(["Seleccionar"]);
 });
 
 async function completarIdentificacion(page) {
-  await page.getByLabel("Número de documento *").fill("30123456");
+  await page.getByLabel("Número de documento").fill("30123456");
   await page.getByRole("textbox", { name: /^CUIL/ }).fill("20301234563");
-  await page.getByLabel("Apellidos *").fill("González Pérez");
-  await page.getByLabel("Nombres *").fill("María José");
-  await page.getByLabel("Número de afiliado *").fill("00099");
+  await page.getByLabel("Apellidos").fill("González Pérez");
+  await page.getByLabel("Nombres").fill("María José");
+  await page.getByLabel("Número de afiliado").fill("00099");
 }
 
 test("registrar afiliación es una pantalla por pasos con borrador, descarte y alta con obligatorios", async ({ page }) => {
@@ -901,8 +901,8 @@ test("registrar afiliación es una pantalla por pasos con borrador, descarte y a
   await expect(page.getByRole("alert")).toContainText("Revisá 4 campos antes de continuar");
   await expect(page.getByRole("heading", { name: "1. Identificación" })).toBeVisible();
 
-  await page.getByLabel("Número de documento *").fill("00123456");
-  await page.getByLabel("Apellidos *").click();
+  await page.getByLabel("Número de documento").fill("00123456");
+  await page.getByLabel("Apellidos").click();
   await expect(page.getByRole("link", { name: "Abrir su ficha" })).toHaveAttribute("href", /\/financiadores\/padron\/45\?/);
   await completarIdentificacion(page);
   await expect(page.getByRole("textbox", { name: /^CUIL/ })).toHaveValue("20-30123456-3");
@@ -912,14 +912,14 @@ test("registrar afiliación es una pantalla por pasos con borrador, descarte y a
   await page.reload();
   await expect(page.getByRole("status").filter({ hasText: "Retomaste el borrador" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "2. Afiliación" })).toBeVisible();
-  await page.getByLabel("Plan *").selectOption("31");
-  await page.getByLabel("Delegación *").fill("Sede Central");
-  await page.getByLabel("Motivo del alta *").fill("Adhesión voluntaria");
+  await page.getByRole("combobox", { name: /^Plan/ }).selectOption("31");
+  await page.getByLabel("Delegación").fill("Sede Central");
+  await page.getByLabel("Motivo del alta").fill("Adhesión voluntaria");
   await page.getByRole("radio", { name: "Familiar de un titular existente" }).check();
-  await page.getByRole("button", { name: "Siguiente: Contacto y domicilio" }).click();
+  await page.getByRole("button", { name: "Siguiente: Contacto" }).click();
   await expect(page.getByRole("alert")).toContainText("Revisá 2 campos antes de continuar");
   await page.getByRole("radio", { name: "Titular", exact: true }).check();
-  await page.getByRole("button", { name: "Siguiente: Contacto y domicilio" }).click();
+  await page.getByRole("button", { name: "Siguiente: Contacto" }).click();
   await expect(page.getByRole("heading", { name: "3. Contacto y domicilio" })).toBeVisible();
 
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
@@ -940,7 +940,7 @@ test("registrar afiliación es una pantalla por pasos con borrador, descarte y a
 test("descartar el alta borra el borrador y vuelve al padrón", async ({ page }) => {
   const { escrituras } = await escenario(page, { rol: "operador" });
   await page.goto("/financiadores/padron/nuevo?financiador=21");
-  await page.getByLabel("Apellidos *").fill("Borrador");
+  await page.getByLabel("Apellidos").fill("Borrador");
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Descartar" }).click();
   await expect(page).toHaveURL(/\/financiadores\/padron\?/);
