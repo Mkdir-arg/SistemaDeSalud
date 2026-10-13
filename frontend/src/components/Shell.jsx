@@ -608,7 +608,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           </> : esFinanciador ? <>
             {!colapsado && <div className="px-3 pb-1.5 pt-3 text-xs font-bold tracking-wide text-texto-tenue">MI FINANCIADOR</div>}
             {financiador.items.map((item) => (
-              <NavLink key={item.key} to={item.to} end className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
+              <NavLink key={item.key} to={item.to} end={item.end ?? true} className={itemClase(colapsado)} title={item.label} aria-label={item.label}>
                 <Icon name={item.icon} size={17} />
                 {!colapsado && item.label}
               </NavLink>
@@ -717,7 +717,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
           hospital={!esFinanciador && !esPlataforma}
           plataforma={esPlataforma}
           volverA={esPlataforma ? "/directorio" : esFinanciador ? "/financiadores" : "/inicio"} />
-        <div id="contenido-principal" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">{children}</div>
+        <div id="contenido-principal" tabIndex={-1} className="relative min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>
     </RefreshCtx.Provider>

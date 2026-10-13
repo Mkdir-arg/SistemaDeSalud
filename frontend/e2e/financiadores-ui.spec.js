@@ -883,7 +883,7 @@ test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cup
   const { escrituras, planes } = await escenario(page, { rol: "operador" });
   planes[21].push({ id: 33, codigo: "ANT", nombre: "Plan inactivo", activo: false });
   await page.goto("/financiadores/padron");
-  await page.getByText(/Columnas visibles/).click();
+  await page.getByRole("button", { name: "Columnas visibles" }).click();
   await page.getByRole("checkbox", { name: "Finalización de afiliación", exact: true }).check();
   const afiliado = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
   await afiliado.getByRole("button", { name: "Finalizar", exact: true }).click();
@@ -964,8 +964,9 @@ test("Historia clínica desde la ficha exige motivo y descarta evoluciones al ce
   await page.route("**/api/financiadores/21/ficha-historia-casos/**", (route) => route.fulfill({ json: lista([{ id: 91, institucion: { id: 2, nombre: "Hospital vecino" }, creado: "2026-09-01T12:00:00Z", estado: "atendido", acceso: "vigente", evoluciones_firmadas: 1 }]) }));
   await page.route("**/api/financiadores/21/ficha-historia-evoluciones/**", (route) => { consultas.push(route.request().postDataJSON()); return route.fulfill({ json: [{ id: 92, titulo: "Evolución firmada", contenido: "Primera línea\nSegunda línea", fecha: "2026-09-02T12:00:00Z", autor: "Dra. Ejemplo", matricula: "MN 123" }] }); });
   await page.goto("/financiadores/padron?financiador=21&estado=todos");
-  await page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Historia clínica", exact: true }).click();
-  await expect(page).toHaveURL(/#historia-clinica$/);
+  // La historia clínica vive en la ficha: se entra por el nombre del afiliado.
+  await page.getByRole("link", { name: "Persona Ficticia" }).click();
+  await expect(page).toHaveURL(/\/financiadores\/padron\/45\?/);
   await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
   const historia = page.getByRole("region", { name: "Historia clínica", exact: true });
   await historia.getByRole("button", { name: "Ver evoluciones" }).click();
@@ -978,10 +979,24 @@ test("Historia clínica desde la ficha exige motivo y descarta evoluciones al ce
   await expect(historia).not.toContainText("Evolución firmada");
 });
 
-test("admin del financiador ve Historia clínica sin designación", async ({ page }) => {
+test("Historia clínica no es una acción de la fila, ni para el admin", async ({ page }) => {
   await escenario(page, { rol: "admin" });
   await page.goto("/financiadores/padron?financiador=21");
-  await expect(page.getByRole("row").filter({ hasText: "Persona Ficticia" }).getByRole("button", { name: "Historia clínica", exact: true })).toBeVisible();
+  const fila = page.getByRole("row").filter({ hasText: "Persona Ficticia" });
+  await expect(fila.getByRole("button", { name: "Editar", exact: true })).toBeVisible();
+  await expect(fila.getByRole("button", { name: "Historia clínica", exact: true })).toHaveCount(0);
+  await expect(fila.getByRole("link", { name: "Persona Ficticia" })).toBeVisible();
+});
+
+test("la ficha conserva el menú completo del financiador", async ({ page }) => {
+  await escenario(page, { rol: "admin" });
+  await page.route("**/api/financiadores/21/ficha-afiliado*/**", (route) => route.fulfill({ json: { ...lista([]), afiliado: { id: 45, nombre: "Persona Ficticia", documento: "00123456", numero: "00025", desde: "2026-01-01", estado: "vigente" }, cupos: [], historial: [] } }));
+  await page.goto("/financiadores/padron/45?financiador=21&regimen=pasivo");
+  const menu = page.getByRole("navigation", { name: "Menú del financiador" });
+  for (const nombre of ["Inicio", "Planes", "Padrón de afiliados", "Convenios", "Usuarios"]) await expect(menu.getByRole("link", { name: nombre, exact: true })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Padrón de afiliados", exact: true })).toHaveAttribute("href", /regimen=pasivo/);
+  await expect(menu.getByRole("link", { name: "Padrón de afiliados", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(menu.getByRole("link", { name: "Planes", exact: true })).toHaveAttribute("href", "/financiadores/planes?financiador=21");
 });
 
 test("operador sin designación no ve Historia clínica", async ({ page }) => {
@@ -1170,13 +1185,13 @@ test("búsqueda global de padrón envía DNI CUIL apellido y número por GET pre
   const { consultas, escrituras } = await consultaPadronMock(page);
   for (const texto of ["00123456", "20123456786", "Pérez", "00025"]) {
     await page.goto(`/financiadores/padron?${contextoBusquedaPadron}`);
-    const buscar = page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true });
+    const buscar = page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true });
     await expect(buscar).toBeVisible();
     await expect.poll(() => consultas.at(-1)?.params.page).toBe("2");
     const antes = consultas.length;
     await buscar.fill(`  ${texto}  `);
     expect(consultas.length).toBe(antes);
-    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await buscar.press("Enter");
     await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", search: texto, page: "1" } });
     const url = new URL(page.url());
     expect(url.searchParams.has("page")).toBe(false);
@@ -1185,8 +1200,8 @@ test("búsqueda global de padrón envía DNI CUIL apellido y número por GET pre
     await page.reload();
     await expect(buscar).toHaveValue(texto);
   }
-  await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("");
-  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("");
+  await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).press("Enter");
   await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "todos", page: "1" } });
   expect(new URL(page.url()).searchParams.has("search")).toBe(false);
   expect(escrituras).toEqual([]);
@@ -1208,7 +1223,7 @@ test("Plan y Estado globales de padrón vuelven a página uno sin perder búsque
   await page.getByRole("combobox", { name: "Plan", exact: true }).selectOption("");
   await expect.poll(() => consultas.at(-1)).toEqual({ method: "GET", params: { ...filtrosBusquedaPadron, estado: "vigentes", search: "previo", page: "1" } });
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true })).toHaveValue("previo");
+  await expect(page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true })).toHaveValue("previo");
   await expect(page.getByRole("combobox", { name: "Estado", exact: true })).toHaveValue("vigentes");
   expect(escrituras).toEqual([]);
 });
@@ -1274,7 +1289,7 @@ test("filtro de columna agrupa teclas y bloquea XLSX hasta aplicar criterios", a
   const exportar = page.getByRole("button", { name: "Exportar XLSX", exact: true });
   await expect(exportar).toBeEnabled();
   await page.clock.pauseAt(new Date("2026-10-13T12:01:00Z"));
-  await page.getByText("Filtros administrativos", { exact: true }).click();
+  await page.getByRole("button", { name: /^Filtros/ }).click();
   const antes = consultas.length;
   const historial = await page.evaluate(() => history.length);
   await page.getByRole("textbox", { name: "Filtrar Documento", exact: true }).pressSequentially("00123456");
@@ -1317,11 +1332,13 @@ test("descarga XLSX iniciada se suprime si aparece una búsqueda en borrador", a
   const solicitud = page.waitForRequest((r) => r.url().includes("/21/padron/exportar/"));
   await page.getByRole("button", { name: "Exportar XLSX", exact: true }).click();
   await solicitud;
-  await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("nuevo criterio");
+  await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill("nuevo criterio");
   const descarga = page.waitForEvent("download", { timeout: 1000 }).catch(() => null);
   liberar();
   expect(await descarga).toBeNull();
-  await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeDisabled();
+  // La búsqueda se aplica sola tras la espera; recién con esa consulta vuelve a exportar.
+  await expect.poll(() => new URL(page.url()).searchParams.get("search")).toBe("nuevo criterio");
+  await expect(page.getByRole("button", { name: "Exportar XLSX", exact: true })).toBeEnabled();
 });
 
 test("exportación conserva la descarga durante un refresco de la misma consulta", async ({ page }) => {

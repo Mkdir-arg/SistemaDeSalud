@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { errorFinanciador, rutaFinanciador } from "@/api/financiadores";
+import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui";
 
 export default function ExportarPadron({ organizacion, query, total, consultando, filtrosPendientes = false, errorConsulta }) {
@@ -23,5 +24,5 @@ export default function ExportarPadron({ organizacion, query, total, consultando
     catch (err) { if (activo.current && actual.current === captura) setError(err); }
     finally { if (activo.current) setOcupado(false); }
   }
-  return <div className="space-y-2"><div className="flex flex-wrap items-center gap-3"><Button variant="secondary" disabled={ocupado || consultando || filtrosPendientes || Boolean(errorConsulta) || total === 0 || total > 5000} onClick={exportar}>{ocupado ? "Exportando…" : "Exportar XLSX"}</Button><p className="text-sm text-texto-debil">Todas las filas filtradas y ordenadas, con las columnas elegidas. Hasta 5000 registros; sin salud ni cobranza.</p></div>{total > 5000 && <p role="status" className="text-sm text-badge-amber-fg">El resultado supera 5000 registros. Acotá los filtros para descargarlo completo.</p>}{error && <p role="alert" className="text-sm text-badge-error-fg">{errorFinanciador(error)}</p>}</div>;
+  return <div className="flex flex-wrap items-center gap-2"><Button variant="secondary" size="sm" className="h-8 gap-1.5" aria-label={ocupado ? undefined : "Exportar XLSX"} title="Todas las filas filtradas y ordenadas, con las columnas elegidas. Hasta 5000 registros; sin salud ni cobranza." disabled={ocupado || consultando || filtrosPendientes || Boolean(errorConsulta) || total === 0 || total > 5000} onClick={exportar}><Icon name="download" size={15} />{ocupado ? "Exportando…" : "Exportar"}</Button>{total > 5000 && <p role="status" className="text-sm text-badge-amber-fg">El resultado supera 5000 registros. Acotá los filtros para descargarlo completo.</p>}{error && <p role="alert" className="text-sm text-badge-error-fg">{errorFinanciador(error)}</p>}</div>;
 }

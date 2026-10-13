@@ -1,4 +1,5 @@
 import catalogo from "./padronColumnas.json" with { type: "json" };
+import { ADMINISTRATIVOS, REGIMENES } from "./padronCampos.js";
 
 export const COLUMNAS_PADRON = catalogo;
 export const COLUMNAS_PREDETERMINADAS = catalogo.filter((c) => c.default).map((c) => c.key);
@@ -74,4 +75,73 @@ export function valorColumnaPadron(fila, columna, planes = []) {
   if (columna.type === "date") return String(valor).split("-").reverse().join("/");
   if (columna.type === "datetime") return new Date(valor).toLocaleString("es-AR");
   return String(valor);
+}
+
+// Agrupación solo de presentación, con los mismos bloques de la ficha. El
+// catálogo es contrato con backend (debe coincidir exacto), por eso no la lleva.
+export const GRUPOS_PADRON = [
+  ["Afiliación", ["nombre", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
+  ["Trámite y credencial", ["estado_administrativo", "estado_tramite", "alta_administrativa", "delegacion", "credencial_tipo", "credencial_fecha"]],
+  ["Identidad", ["tipo_documento", "cuil", "nombres", "apellidos", "sexo", "fecha_nacimiento", "nacionalidad", "estado_civil"]],
+  ["Contacto", ["telefono", "celular", "email"]],
+  ["Domicilio", ["calle", "altura", "piso", "departamento", "codigo_postal", "localidad", "partido", "provincia"]],
+  ["Régimen y trabajo", ["regimen", "empleador", "cuit_empleador", "actividad_laboral", "domicilio_laboral", "telefono_laboral", "email_laboral", "subsidio_desde", "subsidio_hasta"]],
+  ["Baja administrativa", ["causa_baja", "solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja"]],
+  ["Grupo familiar", ["titular", "parentesco"]],
+].map(([titulo, claves]) => ({ titulo, columnas: claves.map((key) => catalogo.find((c) => c.key === key)) }));
+
+const fechaAR = (valor) => String(valor).split("-").reverse().join("/");
+// Cuatro columnas conservan sus parámetros históricos (URLs guardadas, export),
+// con el rótulo que ya tenían en pantalla.
+const LEGACY = {
+  estado_administrativo: [{ clave: "estado_administrativo", tipo: "choice", options: ADMINISTRATIVOS, label: "Estado administrativo" }],
+  regimen: [{ clave: "regimen", tipo: "choice", options: REGIMENES }],
+  alta_administrativa: ["desde", "hasta"].map((extremo) => ({ clave: `alta_${extremo}`, tipo: "date", extremo })),
+  baja_efectiva: ["desde", "hasta"].map((extremo) => ({ clave: `baja_${extremo}`, tipo: "date", extremo, label: "Baja administrativa" })),
+};
+
+function controlesGenericos(col) {
+  const vacio = col.nullable ? [{ clave: `flt_${col.key}_vacio`, tipo: "vacio" }] : [];
+  if (col.type === "date" || col.type === "datetime") return [...["desde", "hasta"].map((extremo) => ({ clave: `flt_${col.key}_${extremo}`, tipo: "date", extremo })), ...vacio];
+  if (col.key === "plan") return [{ clave: "flt_plan", tipo: "plan" }, ...vacio];
+  if (col.type === "choice") return [{ clave: `flt_${col.key}`, tipo: "choice", options: col.options }, ...vacio];
+  return [{ clave: `flt_${col.key}`, tipo: col.type === "relation" ? "relation" : "text" }, ...vacio];
+}
+
+/**
+ * Controles que ofrece el panel para una columna. Estado y Plan viven en la
+ * barra y no se repiten (de Plan queda «sin informar»).
+ */
+export function controlesFiltroPadron(col) {
+  if (col.key === "derecho") return [];
+  const genericos = controlesGenericos(col);
+  if (col.key === "plan") return genericos.filter((c) => c.tipo === "vacio");
+  if (LEGACY[col.key]) return [...LEGACY[col.key], ...genericos.filter((c) => c.tipo === "vacio")];
+  return genericos;
+}
+
+/**
+ * Filtros aplicados (no borradores) como chips, uno por parámetro. Incluye los
+ * flt_ de columnas con parámetro histórico: siguen siendo válidos en la URL.
+ */
+export function filtrosActivosPadron(parametros, planes = []) {
+  const activos = [];
+  for (const col of catalogo) {
+    if (col.key === "derecho") continue;
+    const controles = [...(LEGACY[col.key] || []), ...controlesGenericos(col)];
+    for (const control of controles) {
+      const valor = parametros.get(control.clave);
+      if (!valor) continue;
+      const label = control.label || col.label;
+      let texto;
+      if (control.tipo === "vacio") texto = `: ${valor === "true" ? "vacío" : "cargado"}`;
+      else if (control.tipo === "date") texto = ` ${control.extremo} ${fechaAR(valor)}`;
+      else if (control.tipo === "choice") texto = `: ${control.options?.[valor] || valor}`;
+      else if (control.tipo === "plan") texto = `: ${planes.find((p) => String(p.id) === valor)?.nombre || `Plan ${valor}`}`;
+      else if (control.tipo === "relation") texto = ` ${valor}`;
+      else texto = `: «${valor}»`;
+      activos.push({ clave: control.clave, etiqueta: label + texto });
+    }
+  }
+  return activos;
 }

@@ -164,21 +164,23 @@ test("documento, CUIL, apellido y número buscan el mismo afiliado en servidor",
   await page.goto(`/financiadores/padron?financiador=${organizacion}&estado=todos`);
   for (const termino of [titular.documento, titular.cuil, titular.apellidos, titular.numero]) {
     expect(termino).toBeTruthy();
-    await page.getByRole("textbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill(termino);
+    await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).fill(termino);
     const consulta = page.waitForResponse((respuesta) => {
       const url = new URL(respuesta.url());
       return url.pathname === `/api/financiadores/${organizacion}/padron/` && url.searchParams.get("search") === termino;
     });
-    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await page.getByRole("searchbox", { name: "Buscar por afiliado, documento o nombre", exact: true }).press("Enter");
     const respuesta = await consulta;
     expect(respuesta.status()).toBe(200);
     expect((await respuesta.json()).results.some((item) => item.id === titular.id)).toBe(true);
     await expect(page.getByRole("link", { name: titular.nombre, exact: true })).toBeVisible();
   }
-  await page.getByText("Filtros administrativos", { exact: true }).click();
+  await page.getByRole("button", { name: /^Filtros/ }).click();
   await page.getByRole("combobox", { name: "Estado administrativo", exact: true }).selectOption("baja_administrativa");
   await expect.poll(async () => new URL(page.url()).searchParams.get("estado_administrativo")).toBe("baja_administrativa");
   await page.reload();
+  await expect(page.getByRole("button", { name: "Quitar filtro Estado administrativo: Baja administrativa" })).toBeVisible();
+  await page.getByRole("button", { name: /^Filtros/ }).click();
   await expect(page.getByRole("combobox", { name: "Estado administrativo", exact: true })).toHaveValue("baja_administrativa");
 });
 

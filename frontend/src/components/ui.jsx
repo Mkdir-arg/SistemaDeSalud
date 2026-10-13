@@ -95,7 +95,7 @@ export function Popover({ children, className, align = "right", onClose }) {
       />
       <div
         className={cn(
-          "absolute top-11 z-30 overflow-hidden rounded-lg border border-borde bg-superficie shadow-dropdown",
+          "absolute top-11 z-30 overflow-hidden rounded-lg border border-borde bg-superficie shadow-dropdown animate-aparecer",
           align === "right" ? "right-0" : "left-0",
           className,
         )}
@@ -499,7 +499,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
   return (
     <div
       onMouseDown={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-lg animate-[fadeIn_.12s_ease]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-lg animate-velo"
     >
       <div
         ref={ref}
@@ -509,7 +509,7 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         style={{ width }}
-        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-borde bg-superficie shadow-modal outline-none animate-[fadeUp_.16s_ease]"
+        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-borde bg-superficie shadow-modal outline-none animate-aparecer"
       >
         <div className="flex items-center justify-between border-b border-division px-xl py-lg">
           <div className="flex items-center gap-2 text-lg font-bold">{title}{ayuda && <Ayuda>{ayuda}</Ayuda>}</div>

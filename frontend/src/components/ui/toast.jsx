@@ -81,7 +81,7 @@ function Aviso({ aviso, onCerrar }) {
       role={aviso.tono === "error" ? "alert" : "status"}
       className={cn(
         "pointer-events-auto flex items-start gap-2.5 rounded-md border px-3 py-2.5 shadow-float",
-        "animate-[fadeUp_.16s_ease]",
+        "animate-aparecer",
         t.clase,
       )}
     >

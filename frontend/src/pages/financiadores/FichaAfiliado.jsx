@@ -16,6 +16,7 @@ import { estadoCaso } from "@/lib/dominio";
 import { parametrosListado } from "@/lib/padronNavigation";
 import { NOMBRE_SISTEMA } from "@/lib/marca";
 import FichaPadronAdministrativa from "@/components/financiadores/FichaPadronAdministrativa";
+import { ROLES, itemsFinanciador } from "./menuFinanciador";
 
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 const fechaFin = (exclusivo) => fecha(new Date(Date.parse(`${exclusivo}T00:00:00Z`) - 86400000).toISOString());
@@ -88,6 +89,9 @@ function FichaAfiliadoContenido() {
   const filas = ficha.data?.results || [];
   const filasAutorizaciones = autorizaciones.data?.results || [];
   const volver = `/financiadores/padron?${parametrosListado(parametros, id || seleccion || "")}`;
+  // Mismo menú que el portal; Padrón vuelve al listado con sus filtros.
+  const menu = itemsFinanciador({ organizacion, plataforma, admin: plataforma || organizacion?.rol === "admin", sufijo: seleccion ? `?financiador=${encodeURIComponent(seleccion)}` : "" })
+    .map((item) => item.key === "padron" ? { ...item, to: volver, end: false } : item);
 
   function cambiarPagina(campo, valor) {
     const nuevos = new URLSearchParams(parametros);
@@ -109,7 +113,7 @@ function FichaAfiliadoContenido() {
 
   if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error) return <Navigate to="/directorio?vista=financiadores" replace />;
 
-  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Ficha del afiliado", rol: organizacion?.rol || "Financiador", items: [{ key: "padron", label: "Padrón de afiliados", icon: "idCard", to: volver }] }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
+  return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Ficha del afiliado", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     <Link className="text-sm font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
     <h1 className="text-cifra font-bold">Ficha del afiliado</h1>
     {organizacion && <FichaPadronAdministrativa key={`${id}:${afiliado}`} afiliado={afiliado} organizacion={organizacion} usuarioId={user.id} parametros={parametros} plataforma={plataforma} />}
