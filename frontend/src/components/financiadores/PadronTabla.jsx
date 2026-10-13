@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Button, Checkbox } from "@/components/ui";
@@ -11,18 +11,21 @@ const VACIO = [];
 const positivo = (v, defecto) => Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : defecto;
 
 /** Presentación/control URL. Consulta, permisos, edición y XLSX los aporta Portal. */
-export default function PadronTabla({ filas, total, paginas, estado, parametros, onParametrosChange, planes = VACIO, fichaHref, renderAcciones, barra }) {
+export default function PadronTabla({ filas, total, paginas, estado, parametros, onParametrosChange, onFiltrosPendientesChange, planes = VACIO, fichaHref, renderAcciones, barra }) {
   const [densidad, setDensidad] = useState("comoda");
   const elegidas = obtenerColumnasPadron(parametros);
   const pagina = positivo(parametros.get("page"), 1);
   const tamano = tamanoPadron(parametros);
   const orden = parametros.get("ordering") || "";
+  const actuales = useRef();
+  actuales.current = { parametros, onParametrosChange };
   const columnas = COLUMNAS_PADRON.filter((c) => elegidas.includes(c.key)).map((col) => ({
     key: col.key, label: col.label, orden: col.key,
     render: (fila) => col.key === "nombre" && fichaHref ? <Link className="font-medium text-accent hover:underline" to={fichaHref(fila)}>{fila.nombre}</Link> : valorColumnaPadron(fila, col, planes),
   }));
   if (renderAcciones) columnas.push({ key: "acciones", label: "Acciones", fija: true, render: renderAcciones });
   const cambiar = (campo, valor) => onParametrosChange(cambiarConsultaPadron(parametros, { [campo]: valor }));
+  const cambiarVarios = (cambios, opciones) => actuales.current.onParametrosChange(cambiarConsultaPadron(actuales.current.parametros, cambios), opciones);
   const tabla = {
     pagina, orden, tamano, densidad, setDensidad,
     irA: (n) => { const p = new URLSearchParams(parametros); if (n > 1) p.set("page", String(n)); else p.delete("page"); onParametrosChange(p); },
@@ -39,7 +42,7 @@ export default function PadronTabla({ filas, total, paginas, estado, parametros,
       </fieldset>
       <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={() => onParametrosChange(cambiarColumnasPadron(parametros, COLUMNAS_PREDETERMINADAS))}>Restaurar columnas</Button>
     </details>
-    <FiltrosPadron parametros={parametros} cambiar={cambiar} columnas={elegidas} planes={planes} />
+    <FiltrosPadron key={parametros.get("financiador") || ""} parametros={parametros} cambiar={cambiar} cambiarVarios={cambiarVarios} onFiltrosPendientesChange={onFiltrosPendientesChange} columnas={elegidas} planes={planes} />
     <div aria-busy={estado.cargando || estado.refrescando || undefined}>
       <DataTable titulo="Padrón de afiliados" columnas={columnas} filas={filas} total={total} paginas={paginas} estado={estado} tabla={tabla} barra={barra} mantenerEncabezados adaptable vacio={{ titulo: "Sin afiliados para estos filtros", detalle: "Revisá los filtros administrativos o la búsqueda." }} />
     </div>

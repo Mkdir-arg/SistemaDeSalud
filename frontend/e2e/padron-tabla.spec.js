@@ -3,6 +3,10 @@ import { expect, test } from "@playwright/test";
 const ruta = "/e2e/fixtures/padron-tabla.html";
 const columna = (page, nombre) => page.getByRole("columnheader", { name: `Ordenar por ${nombre}`, exact: false });
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/__fixture_padron_consulta?**", (route) => route.fulfill({ json: {} }));
+});
+
 test("columnas por teclado, reload y restaurar conservan identidad y acciones", async ({ page }) => {
   await page.goto(`${ruta}?financiador=21&page=2`);
   const summary = page.getByText("Columnas visibles (5)", { exact: true });
@@ -57,9 +61,123 @@ test("filtros de columna oculta siguen visibles y se pueden limpiar", async ({ p
   await expect(page.getByLabel("Filtrar Localidad", { exact: true })).toHaveValue("Río");
   await expect(page.getByRole("combobox", { name: "Filtrar Régimen", exact: true })).toHaveValue("dependencia");
   await page.getByLabel("Filtrar Localidad", { exact: true }).fill("");
-  expect(new URL(page.url()).searchParams.has("flt_localidad")).toBe(false);
+  await expect.poll(() => new URL(page.url()).searchParams.has("flt_localidad")).toBe(false);
   await page.getByRole("combobox", { name: "Filtrar Régimen", exact: true }).selectOption("");
   expect(new URL(page.url()).searchParams.has("flt_regimen")).toBe(false);
+});
+
+test("Estado global único respeta aliases finalizadas/futuras y los limpia al cambiar", async ({ page }) => {
+  for (const derecho of ["finalizadas", "futuras"]) {
+    await page.goto(`${ruta}?flt_derecho=${derecho}`);
+    await expect(page.getByRole("combobox", { name: "Estado global" })).toHaveValue(derecho);
+    const query = new URLSearchParams(await page.getByLabel("Consulta aplicada").textContent());
+    expect(query.get("estado")).toBeNull();
+    expect(query.get("flt_derecho")).toBe(derecho);
+    await expect(page.getByRole("combobox", { name: "Filtrar Estado", exact: true })).toHaveCount(0);
+    await page.getByRole("combobox", { name: "Estado global" }).selectOption("vigentes");
+    await expect.poll(() => new URL(page.url()).searchParams.has("flt_derecho")).toBe(false);
+    await expect(page.getByLabel("Consulta aplicada")).toContainText("estado=vigentes");
+  }
+});
+
+test("ocho letras rápidas producen un GET aplicado y replace, export pendiente", async ({ page }) => {
+  await page.clock.install();
+  const pedidos = [];
+  page.on("request", (r) => { if (r.url().includes("/__fixture_padron_consulta?")) pedidos.push(r); });
+  await page.goto(ruta);
+  await expect.poll(() => pedidos.length).toBe(1);
+  const historial = await page.evaluate(() => history.length);
+  await page.getByText("Filtros administrativos", { exact: true }).click();
+  const campo = page.getByLabel("Filtrar Afiliado", { exact: true });
+  await campo.pressSequentially("Gonzalez");
+  await expect(campo).toHaveValue("Gonzalez");
+  await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "Aplicando filtros" })).toBeVisible();
+  expect(pedidos).toHaveLength(1);
+  await page.clock.runFor(300);
+  await expect.poll(() => pedidos.length).toBe(2);
+  expect(pedidos.at(-1).method()).toBe("GET");
+  expect(new URL(pedidos.at(-1).url()).searchParams.get("flt_nombre")).toBe("Gonzalez");
+  await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeEnabled();
+  expect(await page.evaluate(() => history.length)).toBe(historial);
+  await expect(page.getByLabel("Notificaciones pendientes")).toHaveText("3");
+});
+
+test("borrador conserva orden y otro select cambiados mientras espera", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?financiador=21&page=3`);
+  await page.getByText("Filtros administrativos", { exact: true }).click();
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Alfa");
+  await page.getByRole("button", { name: "Ordenar por Afiliado", exact: true }).click();
+  await page.getByRole("combobox", { name: "Régimen", exact: true }).selectOption("monotributo");
+  await expect(page.getByLabel("Filtrar Afiliado", { exact: true })).toHaveValue("Alfa");
+  await page.clock.runFor(300);
+  await expect(page.getByLabel("Consulta aplicada")).toContainText("flt_nombre=Alfa");
+  const query = new URLSearchParams(await page.getByLabel("Consulta aplicada").textContent());
+  expect(query.get("ordering")).toBe("nombre");
+  expect(query.get("regimen")).toBe("monotributo");
+  expect(query.get("page")).toBe("1");
+});
+
+test("Back cancela borrador y sincroniza el valor aplicado", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?flt_nombre=Previo`);
+  await page.getByRole("button", { name: "Ordenar por Afiliado", exact: true }).click();
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("No aplicar");
+  await page.goBack();
+  await expect(page.getByLabel("Filtrar Afiliado", { exact: true })).toHaveValue("Previo");
+  await page.clock.runFor(1000);
+  await expect(page.getByLabel("Consulta aplicada")).not.toContainText("No+aplicar");
+  await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeEnabled();
+});
+
+test("desmontar o cambiar organización cancela timer y pendientes", async ({ page }) => {
+  await page.clock.install();
+  for (const accion of ["Mostrar u ocultar tabla", "Cambiar organización"]) {
+    await page.goto(`${ruta}?financiador=21`);
+    await page.getByText("Filtros administrativos", { exact: true }).click();
+    await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("No aplicar");
+    await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeDisabled();
+    await page.getByRole("button", { name: accion, exact: true }).click();
+    await page.clock.runFor(1000);
+    expect(new URL(page.url()).searchParams.has("flt_nombre")).toBe(false);
+    await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeEnabled();
+  }
+});
+
+test("texto y número comparten un batch; volver al valor aplicado no consulta", async ({ page }) => {
+  await page.clock.install();
+  const pedidos = [];
+  page.on("request", (r) => { if (r.url().includes("/__fixture_padron_consulta?")) pedidos.push(r); });
+  await page.goto(`${ruta}?columnas=nombre,numero,titular`);
+  await expect.poll(() => pedidos.length).toBe(1);
+  await page.getByText("Filtros administrativos", { exact: true }).click();
+  const nombre = page.getByLabel("Filtrar Afiliado", { exact: true });
+  await nombre.fill("Descartar");
+  await nombre.fill("");
+  await page.clock.runFor(300);
+  expect(pedidos).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Exportar ficticio" })).toBeEnabled();
+  await nombre.fill("Alfa");
+  await page.getByRole("spinbutton", { name: "Filtrar ID del titular" }).pressSequentially("12345");
+  expect(pedidos).toHaveLength(1);
+  await page.clock.runFor(300);
+  await expect.poll(() => pedidos.length).toBe(2);
+  const query = new URL(pedidos.at(-1).url()).searchParams;
+  expect(query.get("flt_titular")).toBe("12345");
+  expect(query.get("flt_nombre")).toBe("Alfa");
+});
+
+test("fecha y select se aplican inmediatamente sin borrar texto pendiente", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(`${ruta}?columnas=nombre,numero,fecha_nacimiento`);
+  await page.getByText("Filtros administrativos", { exact: true }).click();
+  await page.getByLabel("Filtrar Afiliado", { exact: true }).fill("Alfa");
+  await page.getByLabel("Fecha de nacimiento desde", { exact: true }).fill("2000-01-01");
+  await expect(page.getByLabel("Consulta aplicada")).toContainText("flt_fecha_nacimiento_desde=2000-01-01");
+  await expect(page.getByLabel("Consulta aplicada")).not.toContainText("flt_nombre");
+  await page.clock.runFor(300);
+  await expect(page.getByLabel("Consulta aplicada")).toContainText("flt_nombre=Alfa");
 });
 
 test("vacío, carga y error accesible conservan controles y reintento", async ({ page }) => {
