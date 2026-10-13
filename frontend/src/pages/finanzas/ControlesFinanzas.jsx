@@ -69,9 +69,11 @@ export function PanelFlotante({ titulo, icono, children, activo = false, ayuda =
       onClick={() => { fijado.current = !fijado.current; setAbierto(fijado.current); }}>
       {etiqueta}{icono && <Icon name={icono} size={17} />}
     </button>
-    {abierto && createPortal(<div ref={panel} id={id} role="dialog" aria-label={titulo} onMouseEnter={cancelarCierre} onMouseLeave={salir}
+    {/* tabIndex -1: un clic en algo no enfocable del panel (un <label>) deja el
+        foco en el panel; sin esto el blur no tiene destino y el panel se cerraba. */}
+    {abierto && createPortal(<div ref={panel} id={id} role="dialog" aria-label={titulo} tabIndex={-1} onMouseEnter={cancelarCierre} onMouseLeave={salir}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget) && e.relatedTarget !== boton.current) cerrar(); }}
-      style={posicion} className="fixed z-[100] w-[320px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-borde bg-superficie p-4 text-left text-md font-normal text-texto shadow-dropdown">
+      style={posicion} className="fixed z-[100] w-[320px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-borde bg-superficie p-4 text-left text-md font-normal text-texto shadow-dropdown outline-none animate-aparecer">
       <div className="mb-3 flex items-center justify-between gap-2"><strong>{titulo}</strong><button type="button" aria-label={`Cerrar ${titulo}`} onClick={() => cerrar(true)} className="rounded px-2 py-1 hover:bg-superficie-2">×</button></div>
       {children}
     </div>, boton.current?.closest('[aria-modal="true"]') || document.body)}
