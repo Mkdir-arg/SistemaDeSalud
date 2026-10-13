@@ -56,6 +56,10 @@ jobs:
       - name: Portal del financiador, coberturas, landing e Inicio
         run: npx playwright test -c playwright.financiadores-ui.config.js --reporter=line
 
+      - name: Columnas y filtros del padrón
+        if: ${{ !cancelled() }}
+        run: npx playwright test -c playwright.padron-tabla.config.js --reporter=line
+
       - name: Portal del paciente
         # Corre aunque falle el paso anterior, para ver todos los rojos de una vez.
         if: ${{ !cancelled() }}
@@ -68,6 +72,7 @@ jobs:
           name: playwright-e2e-ui
           path: |
             ${{ runner.temp }}/salud-financiadores-ui
+            ${{ runner.temp }}/salud-padron-tabla-ui
             ${{ runner.temp }}/salud-portal
           retention-days: 7
           if-no-files-found: ignore
