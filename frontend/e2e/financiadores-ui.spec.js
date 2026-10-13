@@ -876,7 +876,76 @@ test("desactivar un plan conserva su código y lo retira de nuevas afiliaciones"
   expect(escrituras[0]).toEqual({ path: "/financiadores/21/editar-plan/", body: { plan: 31, nombre: "Plan Río anterior", activo: false, motivo: "El plan deja de recibir nuevas afiliaciones.", tipo: "" } });
   await page.getByRole("link", { name: "Padrón de afiliados", exact: true }).click();
   await page.getByRole("button", { name: "Registrar afiliación", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Plan", exact: true }).locator("option")).toHaveText(["Sin informar"]);
+  await completarIdentificacion(page);
+  await page.getByRole("button", { name: "Siguiente: Afiliación" }).click();
+  await expect(page.getByLabel("Plan *").locator("option")).toHaveText(["Seleccionar"]);
+});
+
+async function completarIdentificacion(page) {
+  await page.getByLabel("Número de documento *").fill("30123456");
+  await page.getByRole("textbox", { name: /^CUIL/ }).fill("20301234563");
+  await page.getByLabel("Apellidos *").fill("González Pérez");
+  await page.getByLabel("Nombres *").fill("María José");
+  await page.getByLabel("Número de afiliado *").fill("00099");
+}
+
+test("registrar afiliación es una pantalla por pasos con borrador, descarte y alta con obligatorios", async ({ page }) => {
+  const { escrituras } = await escenario(page, { rol: "operador" });
+  await page.goto("/financiadores/padron");
+  await page.getByRole("button", { name: "Registrar afiliación", exact: true }).click();
+  await expect(page).toHaveURL(/\/financiadores\/padron\/nuevo\?/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Registrar afiliación" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Siguiente: Afiliación" }).click();
+  await expect(page.getByRole("alert")).toContainText("Revisá 4 campos antes de continuar");
+  await expect(page.getByRole("heading", { name: "1. Identificación" })).toBeVisible();
+
+  await page.getByLabel("Número de documento *").fill("00123456");
+  await page.getByLabel("Apellidos *").click();
+  await expect(page.getByRole("link", { name: "Abrir su ficha" })).toHaveAttribute("href", /\/financiadores\/padron\/45\?/);
+  await completarIdentificacion(page);
+  await expect(page.getByRole("textbox", { name: /^CUIL/ })).toHaveValue("20-30123456-3");
+  await page.getByRole("button", { name: "Siguiente: Afiliación" }).click();
+  await expect(page.getByRole("heading", { name: "2. Afiliación" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("status").filter({ hasText: "Retomaste el borrador" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2. Afiliación" })).toBeVisible();
+  await page.getByLabel("Plan *").selectOption("31");
+  await page.getByLabel("Delegación *").fill("Sede Central");
+  await page.getByLabel("Motivo del alta *").fill("Adhesión voluntaria");
+  await page.getByRole("radio", { name: "Familiar de un titular existente" }).check();
+  await page.getByRole("button", { name: "Siguiente: Contacto y domicilio" }).click();
+  await expect(page.getByRole("alert")).toContainText("Revisá 2 campos antes de continuar");
+  await page.getByRole("radio", { name: "Titular", exact: true }).check();
+  await page.getByRole("button", { name: "Siguiente: Contacto y domicilio" }).click();
+  await expect(page.getByRole("heading", { name: "3. Contacto y domicilio" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Cancelar", exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: "¿Descartar los datos cargados?" });
+  await expect(dialogo.getByRole("button", { name: "Seguir editando" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialogo).toHaveCount(0);
+  expect(escrituras).toEqual([]);
+
+  await page.getByRole("button", { name: "Registrar ahora" }).click();
+  await expect(page).toHaveURL(/\/financiadores\/padron\/99\?/);
+  expect(escrituras).toHaveLength(1);
+  expect(escrituras[0].path).toBe("/financiadores/21/padron/");
+  expect(escrituras[0].body).toEqual({ solo_crear: true, nombre: "María José González Pérez", tipo_documento: "DNI", documento: "30123456", cuil: "20301234563", apellidos: "González Pérez", nombres: "María José", numero: "00099", plan: 31, desde: expect.any(String), delegacion: "Sede Central", motivo: "Adhesión voluntaria" });
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("salud.alta-afiliado.")))).toEqual([]);
+});
+
+test("descartar el alta borra el borrador y vuelve al padrón", async ({ page }) => {
+  const { escrituras } = await escenario(page, { rol: "operador" });
+  await page.goto("/financiadores/padron/nuevo?financiador=21");
+  await page.getByLabel("Apellidos *").fill("Borrador");
+  await page.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Descartar" }).click();
+  await expect(page).toHaveURL(/\/financiadores\/padron\?/);
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("salud.alta-afiliado.")))).toEqual([]);
+  expect(escrituras).toEqual([]);
 });
 
 test("finalizar afiliación exige motivo y permite reactivarla sin reiniciar cupos", async ({ page }) => {
