@@ -38,7 +38,9 @@ from .actividad import (FiltrosActividad, LIMITE_EXPORTACION, con_importes,
 from .acceso import auditar_actividad
 from .autorizaciones import solicitudes_visibles_financiador
 from .facturas import almacenamiento_privado, validar_adjunto
-from .padron_api import PadronMixin, filtrar_padron
+from .padron_api import PadronMixin
+from .padron_consulta import consultar_padron
+from .padron_exportacion import exportar_padron, parametros_padron
 
 
 def datos(request, campos):
@@ -342,32 +344,16 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             auditar(request.user, "version_regla", regla.pk, financiador=org)
         return Response(s.ReglaSerializer(regla).data, status=201)
 
-    @extend_schema(methods=["GET"], responses=s.AfiliadoSerializer(many=True))
+    @extend_schema(methods=["GET"], responses=s.AfiliadoSerializer(many=True), parameters=parametros_padron())
     @extend_schema(methods=["POST"], request=s.AfiliadoSerializer, responses=s.AfiliadoSerializer)
     @action(detail=True, methods=["get", "post"])
     def padron(self, request, pk=None):
         org = self.organizacion(escritura=request.method == "POST")
         if request.method == "GET":
-            qs = m.Afiliado.objects.filter(financiador=org)
-            if request.query_params.get("plan"):
-                plan_id = serializers.IntegerField(min_value=1).run_validation(request.query_params["plan"])
-                qs = qs.filter(plan_id=plan_id)
-            if request.query_params.get("derecho") or request.query_params.get("estado"):
-                estado = serializers.ChoiceField(choices=["vigentes", "finalizadas", "futuras", "todos"]).run_validation(request.query_params.get("derecho") or request.query_params["estado"])
-                if estado == "vigentes":
-                    qs = qs.filter(finalizado_en__isnull=True, desde__lte=timezone.localdate())
-                elif estado == "finalizadas":
-                    qs = qs.filter(finalizado_en__isnull=False)
-                elif estado == "futuras":
-                    qs = qs.filter(finalizado_en__isnull=True, desde__gt=timezone.localdate())
-            if request.query_params.get("documento"):
-                qs = qs.filter(documento=normalizar_documento(request.query_params["documento"]))
-            if request.query_params.get("search"):
-                busqueda = request.query_params["search"].strip()
-                qs = qs.filter(Q(numero__icontains=busqueda) | Q(nombre__icontains=busqueda) | Q(apellidos__icontains=busqueda) | Q(cuil__icontains=busqueda) | Q(documento__icontains=normalizar_documento(busqueda)))
-            qs = filtrar_padron(qs.select_related("plan"), request.query_params)
+            qs = consultar_padron(financiador=org, parametros=request.query_params)
             auditar(request.user, "consultar_padron", org.pk, financiador=org)
-            return self.lista(qs, s.AfiliadoSerializer)
+            pagina = self.paginate_queryset(qs)
+            return self.get_paginated_response(s.AfiliadoSerializer(pagina, many=True, context={"request": request}).data)
         d = datos(request, {"numero": serializers.CharField(max_length=80), "documento": serializers.CharField(max_length=80), "nombre": serializers.CharField(max_length=160), "plan": serializers.PrimaryKeyRelatedField(queryset=m.Plan.objects.filter(financiador=org), allow_null=True, required=False, default=None), "desde": serializers.DateField()})
         from . import padron
         if set(request.data) - set(padron.CAMPOS_EDITABLES) - {"desde", "revision", "motivo", "solo_crear"}:
@@ -378,6 +364,11 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         solo_crear = serializers.BooleanField().run_validation(request.data.get("solo_crear", False))
         obj = padron.registrar_ficha(financiador=org, usuario=request.user, basicos=d, nuevos=nuevos, revision=revision, motivo=motivo, solo_crear=solo_crear)
         return Response(s.AfiliadoSerializer(obj).data, status=201)
+
+    @extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}, parameters=[*parametros_padron(), OpenApiParameter("formato", OpenApiTypes.STR, enum=["xlsx"])])
+    @action(detail=True, methods=["get"], url_path="padron/exportar")
+    def padron_exportar(self, request, pk=None):
+        return exportar_padron(request, self.organizacion())
 
     @extend_schema(methods=["GET"], responses=s.ConsumoSerializer(many=True))
     @extend_schema(methods=["POST"], request=s.ConsumoSerializer, responses=s.ConsumoSerializer)
@@ -756,7 +747,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         tipo = request.query_params.get("tipo", "consumos")
         version = serializers.IntegerField(min_value=1, max_value=2).run_validation(request.query_params.get("version", 1))
         contenido = generar_plantilla(financiador=org, usuario=request.user, tipo=tipo, version=version)
-        return self.archivo(contenido, "plantilla", org, "descargar_plantilla", tipo)
+        nombre = "plantilla-padron" if tipo == "padron" and version == 2 else "plantilla"
+        return self.archivo(contenido, nombre, org, "descargar_plantilla", tipo)
 
     @action(detail=True, methods=["get"])
     def rechazos(self, request, pk=None):
