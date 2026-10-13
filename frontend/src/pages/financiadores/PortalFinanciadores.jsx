@@ -14,7 +14,7 @@ import ImportacionFinanciador from "./ImportacionFinanciador";
 import EditarFichaPadron from "@/components/financiadores/EditarFichaPadron";
 import CrearAfiliadoPadron from "@/components/financiadores/CrearAfiliadoPadron";
 import PadronTabla from "@/components/financiadores/PadronTabla";
-import { parametrosConsultaPadron, obtenerColumnasPadron } from "@/components/financiadores/padronTablaEstado";
+import { parametrosConsultaPadron, obtenerColumnasPadron, estadoDerechoPadron, cambiarEstadoPadron } from "@/components/financiadores/padronTablaEstado";
 import ExportarPadron from "@/components/financiadores/ExportarPadron";
 import { ADMINISTRATIVOS, TIPOS_PLAN } from "@/components/financiadores/padronCampos";
 import { parametrosFicha } from "@/lib/padronNavigation";
@@ -261,7 +261,7 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   const [parametros, setParametros] = useSearchParams();
   const filtrosIniciales = useRef(true);
   const planFiltro = ["reglas", "padron"].includes(recurso) ? parametros.get("plan") || "" : "";
-  const estadoFiltro = recurso === "padron" ? parametros.get("derecho") || parametros.get("estado") || "vigentes" : "";
+  const estadoFiltro = recurso === "padron" ? estadoDerechoPadron(parametros) : "";
   const convenioFiltro = recurso === "convenios" ? parametros.get("estado") || "activo" : "";
   const [paginaLocal, setPaginaLocal] = useState(1);
   const numeroPagina = Number(parametros.get("page") || 1);
@@ -291,9 +291,10 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   const [identidad, setIdentidad] = useState(null);
   const [usuario, setUsuario] = useState(null);
   const [vigencia, setVigencia] = useState(null);
+  const [filtrosPendientes, setFiltrosPendientes] = useState(false);
+  useEffect(() => { setFiltrosPendientes(false); }, [organizacion.id, recurso]);
   const query = recurso === "padron" ? parametrosConsultaPadron(parametros) : new URLSearchParams({ page, search: buscar, page_size: POR_PAGINA });
   if (planFiltro) query.set("plan", planFiltro);
-  if (estadoFiltro) query.set("estado", estadoFiltro);
   if (convenioFiltro) query.set("estado", convenioFiltro);
   if (recurso === "padron") query.set("columnas", obtenerColumnasPadron(parametros).join(","));
   const consulta = useQuery({ queryKey: [...scope, recurso, query.toString()], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, recurso)}?${query}`), gcTime: 0 });
@@ -310,7 +311,6 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   }, [planFiltro, estadoFiltro, convenioFiltro]);
   const fichaQuery = parametrosFicha(parametros, organizacion.id, page);
   if (planFiltro) fichaQuery.set("plan", planFiltro);
-  if (estadoFiltro) fichaQuery.set("estado", estadoFiltro);
   if (buscar) fichaQuery.set("search", buscar);
   if (page > 1) fichaQuery.set("padron_page", page);
   const columnas = columnasDe(recurso, planes, catalogo, organizacion.id, fichaQuery);
@@ -329,6 +329,7 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   function cambiarFiltro(campo, valor) {
     const nuevos = recurso === "padron" ? new URLSearchParams(parametros) : new URLSearchParams({ financiador: organizacion.id });
     if (recurso === "padron") {
+      if (campo === "estado") { setParametros(cambiarEstadoPadron(parametros, valor)); return; }
       nuevos.set("financiador", String(organizacion.id)); nuevos.delete("page");
       if (campo === "estado") nuevos.delete("derecho");
       if (valor) nuevos.set(campo, valor); else nuevos.delete(campo);
@@ -342,7 +343,7 @@ function ListaPortal({ recurso, organizacion, scope, admin, operador, plataforma
   }
   return <>{recurso === "convenios" && <div aria-label="Estado de convenios" className="mb-4 flex flex-wrap gap-5 border-b border-division">{[["activo", "Vigentes"], ["propuesto", "Propuestos"], ["cerrado", "Cerrados"], ["todos", "Todos"]].map(([valor, etiqueta]) => <button key={valor} type="button" aria-pressed={convenioFiltro === valor} onClick={() => cambiarFiltro("estado", valor)} className={`border-b-2 pb-3 text-sm font-medium ${convenioFiltro === valor ? "border-accent text-accent" : "border-transparent text-texto-suave hover:text-texto"}`}>{etiqueta}</button>)}</div>}
     {["padron", "consumos", "aranceles", "catalogo"].includes(recurso) && <form className="mb-6 flex flex-wrap items-center gap-3" onSubmit={buscarRegistros}><div className="min-w-[14rem] flex-1"><Input aria-label={recurso === "padron" ? "Buscar por afiliado, documento o nombre" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} placeholder={recurso === "padron" ? "Buscar por n.º de afiliado, DNI, CUIL o apellido" : recurso === "aranceles" ? "Buscar por hospital o prestación" : recurso === "catalogo" ? "Buscar por nombre o código" : "Buscar consumo"} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></div>{recurso === "padron" && <><Select className="w-auto min-w-[11rem]" aria-label="Plan" value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Plan: todos</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select><Select className="w-auto min-w-[11rem]" aria-label="Estado" value={estadoFiltro} onChange={(e) => cambiarFiltro("estado", e.target.value)}><option value="vigentes">Estado: vigentes</option><option value="finalizadas">Finalizadas</option><option value="futuras">Aún no vigentes</option><option value="todos">Todos</option></Select></>}<Button variant="secondary" type="submit">Buscar</Button></form>}
-    {recurso === "padron" ? <PadronTabla filas={filas} total={total} paginas={paginas} estado={{ cargando: consulta.isLoading, refrescando: consulta.isFetching, error: consulta.error, reintentar: consulta.refetch }} parametros={parametros} onParametrosChange={setParametros} planes={planes} fichaHref={(fila) => `/financiadores/padron/${fila.id}?${fichaQuery}`} renderAcciones={columnas.find((col) => col.key === "acciones")?.render} barra={<ExportarPadron key={organizacion.id} organizacion={organizacion} query={query} total={total} consultando={consulta.isFetching} errorConsulta={consulta.error} />} /> : <Card className="overflow-hidden">
+    {recurso === "padron" ? <PadronTabla key={organizacion.id} filas={filas} total={total} paginas={paginas} estado={{ cargando: consulta.isLoading, refrescando: consulta.isFetching, error: consulta.error, reintentar: consulta.refetch }} parametros={parametros} onParametrosChange={setParametros} onFiltrosPendientesChange={setFiltrosPendientes} planes={planes} fichaHref={(fila) => `/financiadores/padron/${fila.id}?${fichaQuery}`} renderAcciones={columnas.find((col) => col.key === "acciones")?.render} barra={<ExportarPadron key={organizacion.id} organizacion={organizacion} query={query} total={total} consultando={consulta.isFetching || filtrosPendientes || busqueda.trim() !== buscar} errorConsulta={consulta.error} />} /> : <Card className="overflow-hidden">
     {recurso === "reglas" && <div className="border-b border-division p-4"><Field label="Plan"><Select value={planFiltro} onChange={(e) => cambiarFiltro("plan", e.target.value)}><option value="">Todos los planes</option>{planes.map((plan) => <option key={plan.id} value={plan.id}>{plan.nombre}</option>)}</Select></Field></div>}
     {error && <div className="p-4"><ErrorPortal error={error} /></div>}
     {consulta.isLoading ? <Spinner label="Cargando registros…" /> : consulta.error ? <div className="p-4"><ErrorPortal error={consulta.error} reintentar={consulta.refetch} /></div> : filas.length === 0 ? <EstadoVacio titulo={buscar ? "No hay resultados para esta búsqueda" : "Todavía no hay registros"} detalle={buscar ? (recurso === "aranceles" ? "Probá con otro hospital o prestación." : "Probá con otro documento, número o nombre.") : recurso === "aranceles" ? "Se mostrarán las prestaciones vinculadas de los hospitales con convenio activo." : VACIOS_PORTAL[recurso] || "Los registros de esta sección aparecerán acá."} /> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-division bg-superficie-2 text-texto-debil"><tr>{columnas.map((col) => <th key={col.key} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{col.label}</th>)}</tr></thead><tbody>{filas.map((fila) => <tr key={recurso === "aranceles" ? `${fila.convenio}:${fila.id}` : fila.id} className="border-b border-division last:border-0">{columnas.map((col) => <td key={col.key} className="px-4 py-3 align-top">{col.render ? col.render(fila) : fila[col.key] ?? "—"}</td>)}</tr>)}</tbody></table></div>}
