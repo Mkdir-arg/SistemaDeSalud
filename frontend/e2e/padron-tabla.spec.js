@@ -280,3 +280,8 @@ test("cerrar el panel no le saca el foco a lo que se tocó después", async ({ p
   await expect(page.getByRole("dialog", { name: "Filtros del padrón" })).toHaveCount(0);
   await expect(buscar).toBeFocused();
 });
+
+test("el botón de columnas anuncia cuántas hay visibles", async ({ page }) => {
+  await page.goto(ruta);
+  await expect(page.getByRole("button", { name: /^Columnas visibles/ })).toHaveAccessibleName("Columnas visibles (5)");
+});
