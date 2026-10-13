@@ -56,10 +56,11 @@ export default function FacturasFinanciador({ organizacion, usuarioId }) {
 function Formulario({ organizacion, base, factura, onCancel, onGuardado }) {
   const [datos, setDatos] = useState(() => factura ? Object.fromEntries(Object.keys(inicial).map((campo) => [campo, factura[campo] ?? ""])) : inicial);
   const [buscar, setBuscar] = useState("");
+  const criterioAfiliado = buscar.trim();
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const convenios = useQuery({ queryKey: ["facturas-convenios", organizacion.id], queryFn: () => opcionesFinanciador(organizacion.id, "convenios"), enabled: datos.contraparte_tipo === "institucion", gcTime: 0 });
-  const afiliados = useQuery({ queryKey: ["facturas-afiliados", organizacion.id, buscar], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, "padron")}?${new URLSearchParams({ search: buscar })}`), enabled: datos.contraparte_tipo === "afiliado" && buscar.length >= 2, gcTime: 0 });
+  const afiliados = useQuery({ queryKey: ["facturas-afiliados", organizacion.id, criterioAfiliado], queryFn: () => api.get(`${rutaFinanciador(organizacion.id, "padron")}?${new URLSearchParams({ search: criterioAfiliado })}`), enabled: datos.contraparte_tipo === "afiliado" && criterioAfiliado.length >= 2, gcTime: 0 });
   const opcionesAfiliado = filasDe(afiliados.data);
   const afiliadoActual = factura?.afiliado && !opcionesAfiliado.some((x) => x.id === factura.afiliado) ? [{ id: factura.afiliado, nombre: factura.contraparte_nombre }] : [];
   const editar = (campo) => (event) => setDatos((previo) => ({ ...previo, [campo]: event.target.value }));
