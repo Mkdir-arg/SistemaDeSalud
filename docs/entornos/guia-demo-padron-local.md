@@ -22,11 +22,12 @@ Se crearon trece afiliados ficticios iniciales (doce A y uno B), cuatro planes y
 
 ## Validación realizada
 
-Actualización del PR #133, sobre el código integrado `92c1175`:
+Actualización del PR #133, sobre el código integrado `ce7d2ed` (backend idéntico a `92c1175`):
 
 - 553 pruebas de financiadores y guarda de destino sobre PostgreSQL dedicado: pasan, sin omisiones. La base de tests se destruyó al finalizar; la base de la demo conserva sus quince afiliados, cuatro planes y seis membresías.
 - 25 pruebas Node de edición, navegación, campos, estado/columnas y auditor CSS pasan; 12 recorridos de componente con datos ficticios e interceptores pasan. Los jobs de CI existentes ejecutan ahora estos checks del padrón.
-- Los siete recorridos reales anteriores vuelven a pasar en 19,5 segundos, sin interceptar el backend. Se conservan firma/compatibilidad de importación, idempotencia, persistencia, 409, permisos y auditoría.
+- Los siete recorridos reales anteriores vuelven a pasar en 16,6 segundos, sin interceptar el backend. Se conservan firma/compatibilidad de importación, idempotencia, persistencia, 409, permisos y auditoría.
+- Se reprodujeron y corrigieron las dos observaciones menores de la revisión final: un refresco de la misma consulta ya no cancela un XLSX iniciado y la búsqueda de afiliados en facturas recorta espacios antes de consultar. Seis pruebas focales de navegador con API interceptada pasan en 9,4 segundos; incluyen cambio de organización, borradores pendientes y descarga durante el refresco.
 - Dos ensayos adicionales con navegador, API y PostgreSQL reales verifican: XLSX de catorce filas frente a una página de diez, ocho columnas elegidas, identificadores textuales sin fórmulas, rechazo de datos protegidos y otras organizaciones, edición desde el diálogo con historial y restauración exclusiva del campo del ensayo; finalizadas/futuras visibles, Reactivar accesible, once caracteres escritos producen un único GET, historial del navegador estable, exportación bloqueada durante el borrador y plantilla visible sin etiquetas de versión.
 - Imágenes backend/frontend y build Vite pasan. El auditor revisa los tres chunks CSS y sus 282 clases; siete fixtures prueban que sigue rechazando clases ausentes, colisiones y builds viejos.
 
