@@ -61,12 +61,27 @@ class FinanciadorSerializer(serializers.ModelSerializer):
     resuelve_autorizaciones = serializers.SerializerMethodField()
     carga_solicitudes_manuales = serializers.SerializerMethodField()
     consulta_historia_clinica = serializers.SerializerMethodField()
+    acceso_padron_salud = serializers.SerializerMethodField()
+    acceso_padron_cobranza = serializers.SerializerMethodField()
+    gestiona_permisos_padron = serializers.SerializerMethodField()
     planes_activos = serializers.SerializerMethodField()
     convenios_vigentes = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
+
+    def get_gestiona_permisos_padron(self, obj) -> bool:
+        from .permisos import puede_gestionar_permisos_padron
+        return puede_gestionar_permisos_padron(self.context["request"].user, obj.pk)
+
+    def get_acceso_padron_salud(self, obj) -> bool:
+        from .permisos import puede_padron_protegido
+        return puede_padron_protegido(self.context["request"].user, obj.pk, "salud")
+
+    def get_acceso_padron_cobranza(self, obj) -> bool:
+        from .permisos import puede_padron_protegido
+        return puede_padron_protegido(self.context["request"].user, obj.pk, "cobranza")
 
     def get_consulta_historia_clinica(self, obj) -> bool:
         from .permisos import puede_consultar_historia_clinica
@@ -102,7 +117,7 @@ class FinanciadorSerializer(serializers.ModelSerializer):
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Plan
-        fields = ["id", "codigo", "nombre", "activo"]
+        fields = ["id", "codigo", "nombre", "activo", "tipo"]
 
 
 class CatalogoSerializer(serializers.ModelSerializer):
@@ -119,6 +134,12 @@ class ReglaSerializer(serializers.ModelSerializer):
 
 class AfiliadoSerializer(serializers.ModelSerializer):
     vigente = serializers.SerializerMethodField()
+    estado_administrativo = serializers.SerializerMethodField()
+    plan_tipo = serializers.CharField(source="plan.tipo", read_only=True, default="")
+
+    def get_estado_administrativo(self, obj) -> str:
+        from .padron import estado_administrativo
+        return estado_administrativo(obj)
 
     def get_vigente(self, obj) -> bool:
         from django.utils import timezone
@@ -126,7 +147,8 @@ class AfiliadoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Afiliado
-        fields = ["id", "numero", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion"]
+        from .padron import CAMPOS_GENERALES
+        fields = ["id", "numero", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES]
 
 
 class ConsumoSerializer(serializers.ModelSerializer):
@@ -150,7 +172,7 @@ class ConvenioSerializer(serializers.ModelSerializer):
 class ImportacionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Importacion
-        fields = ["id", "tipo", "estado", "resumen", "filas", "creado"]
+        fields = ["id", "tipo", "version", "estado", "resumen", "filas", "creado"]
 
 
 class ReservaSerializer(serializers.ModelSerializer):

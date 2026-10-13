@@ -22,6 +22,8 @@ class MembresiaFinanciador(models.Model):
     activo = models.BooleanField(default=True)
     creo_cuenta = models.BooleanField(default=False, editable=False)
     resuelve_autorizaciones = models.BooleanField(default=False)
+    acceso_padron_salud = models.BooleanField(default=False)
+    acceso_padron_cobranza = models.BooleanField(default=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["financiador", "usuario"], name="fin_membresia_unica")]
@@ -47,6 +49,7 @@ class Plan(models.Model):
     codigo = models.CharField(max_length=60)
     nombre = models.CharField(max_length=160)
     activo = models.BooleanField(default=True)
+    tipo = models.CharField(max_length=12, blank=True, choices=[("base", "Base"), ("superador", "Superador"), ("privado", "Privado")])
 
     class Meta:
         ordering = ["codigo", "id"]
@@ -100,10 +103,60 @@ class Afiliado(models.Model):
     finalizado_en = models.DateTimeField(null=True, blank=True)
     finalizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="afiliaciones_finalizadas")
     motivo_finalizacion = models.CharField(max_length=255, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    tipo_documento = models.CharField(max_length=5, blank=True, choices=[(x, x) for x in ("DNI", "LE", "LC", "CI", "PAS", "OTRO")])
+    cuil = models.CharField(max_length=11, blank=True)
+    nombres = models.CharField(max_length=160, blank=True)
+    apellidos = models.CharField(max_length=160, blank=True)
+    sexo = models.CharField(max_length=1, blank=True, choices=[(x, x) for x in ("F", "M", "X")])
+    fecha_nacimiento = models.DateField(null=True, blank=True)
+    nacionalidad = models.CharField(max_length=80, blank=True)
+    estado_civil = models.CharField(max_length=40, blank=True)
+    calle = models.CharField(max_length=160, blank=True)
+    altura = models.CharField(max_length=20, blank=True)
+    piso = models.CharField(max_length=20, blank=True)
+    departamento = models.CharField(max_length=20, blank=True)
+    codigo_postal = models.CharField(max_length=20, blank=True)
+    localidad = models.CharField(max_length=100, blank=True)
+    partido = models.CharField(max_length=100, blank=True)
+    provincia = models.CharField(max_length=100, blank=True)
+    telefono = models.CharField(max_length=60, blank=True)
+    celular = models.CharField(max_length=60, blank=True)
+    email = models.EmailField(blank=True)
+    regimen = models.CharField(max_length=12, blank=True, choices=[(x, x) for x in ("dependencia", "monotributo", "pasivo", "desempleo", "adherente")])
+    empleador = models.CharField(max_length=160, blank=True)
+    actividad_laboral = models.CharField(max_length=160, blank=True)
+    cuit_empleador = models.CharField(max_length=11, blank=True)
+    domicilio_laboral = models.CharField(max_length=255, blank=True)
+    telefono_laboral = models.CharField(max_length=60, blank=True)
+    email_laboral = models.EmailField(blank=True)
+    subsidio_desde = models.DateField(null=True, blank=True)
+    subsidio_hasta = models.DateField(null=True, blank=True)
+    alta_administrativa = models.DateField(null=True, blank=True)
+    delegacion = models.CharField(max_length=100, blank=True)
+    estado_tramite = models.CharField(max_length=12, default="pendiente", choices=[(x, x) for x in ("pendiente", "en_revision", "observado", "completo")])
+    credencial_tipo = models.CharField(max_length=80, blank=True)
+    credencial_fecha = models.DateField(null=True, blank=True)
+    solicitud_baja = models.DateField(null=True, blank=True)
+    baja_efectiva = models.DateField(null=True, blank=True)
+    fin_prestacional_informado = models.DateField(null=True, blank=True)
+    motivo_baja = models.CharField(max_length=255, blank=True)
+    causa_baja = models.CharField(max_length=16, blank=True, choices=[(x, x) for x in ("cese_laboral", "traspaso", "fallecimiento", "edad", "renuncia", "mora", "judicial", "otra")])
+    titular = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="familiares")
+    parentesco = models.CharField(max_length=12, blank=True, choices=[(x, x) for x in ("conyuge", "hijo", "hija", "conviviente", "otro")])
 
     class Meta:
         ordering = ["nombre", "id"]
-        constraints = [models.UniqueConstraint(fields=["financiador", "documento"], name="fin_afiliado_documento")]
+        constraints = [
+            models.UniqueConstraint(fields=["financiador", "documento"], name="fin_afiliado_documento"),
+            models.UniqueConstraint(fields=["financiador", "cuil"], condition=~Q(cuil=""), name="fin_afiliado_cuil"),
+            models.CheckConstraint(condition=~Q(titular=models.F("pk")), name="fin_familia_no_autovinculo"),
+        ]
+        indexes = [
+            models.Index(fields=["financiador", "alta_administrativa"], name="fin_padron_alta"),
+            models.Index(fields=["financiador", "baja_efectiva"], name="fin_padron_baja"),
+            models.Index(fields=["financiador", "regimen"], name="fin_padron_regimen"),
+        ]
 
 
 class RegistroFactura(models.Model):
@@ -152,6 +205,69 @@ class HistorialAfiliacion(models.Model):
     registrado = models.DateTimeField(auto_now_add=True)
     tipo = models.CharField(max_length=15, default="actualizacion", choices=[("actualizacion", "Actualización"), ("finalizacion", "Finalización"), ("reactivacion", "Reactivación")])
     motivo = models.CharField(max_length=255, blank=True)
+    cambios = models.JSONField(default=dict)
+    origen = models.CharField(max_length=20, default="manual")
+    lote = models.ForeignKey("Importacion", null=True, blank=True, on_delete=models.PROTECT)
+
+
+class DocumentoLegajo(models.Model):
+    """Presentación administrativa registrada; sin adjunto binario ni datos de salud."""
+    afiliado = models.ForeignKey(Afiliado, on_delete=models.PROTECT, related_name="legajo")
+    tipo = models.CharField(max_length=12, choices=[(x, x) for x in ("dni", "cuil", "domicilio", "laboral", "estudio", "matrimonio", "nacimiento")])
+    estado = models.CharField(max_length=12, default="pendiente", choices=[(x, x) for x in ("pendiente", "presentado", "observado", "verificado", "exento")])
+    presentado_en = models.DateField(null=True, blank=True)
+    verificado_en = models.DateField(null=True, blank=True)
+    vence_en = models.DateField(null=True, blank=True)
+    referencia = models.CharField(max_length=255, blank=True)
+
+
+class SaludPadron(models.Model):
+    """Condiciones declaradas del padrón. No modifica ni amplía historia clínica."""
+    afiliado = models.OneToOneField(Afiliado, on_delete=models.PROTECT, related_name="salud_padron")
+    revision = models.PositiveIntegerField(default=1)
+    cud = models.BooleanField(null=True, blank=True)
+    cud_numero = models.CharField(max_length=80, blank=True)
+    cud_presentado_en = models.DateField(null=True, blank=True)
+    cud_vencimiento = models.DateField(null=True, blank=True)
+    cud_referencia = models.CharField(max_length=255, blank=True)
+    dbt = models.BooleanField(null=True, blank=True)
+    cronicas = models.CharField(max_length=1000, blank=True)
+    parentesco_sensible = models.CharField(max_length=12, blank=True, choices=[("discapacidad", "Discapacidad")])
+
+
+class CobranzaPadron(models.Model):
+    """Información administrativa declarada, sin saldo contable ni verificación bancaria."""
+    afiliado = models.OneToOneField(Afiliado, on_delete=models.PROTECT, related_name="cobranza_padron")
+    revision = models.PositiveIntegerField(default=1)
+    situacion = models.CharField(max_length=12, default="sin_informar", choices=[(x, x) for x in ("sin_informar", "al_dia", "deuda", "plan_pago", "exento")])
+    fuente = models.CharField(max_length=160, blank=True)
+    informado_en = models.DateField(null=True, blank=True)
+    modalidad = models.CharField(max_length=14, blank=True, choices=[(x, x) for x in ("efectivo", "transferencia", "debito_cbu", "tarjeta", "cupon", "recibo_sueldo")])
+    banco = models.CharField(max_length=120, blank=True)
+    proveedor_cupon = models.CharField(max_length=80, blank=True)
+    dia_vencimiento = models.PositiveSmallIntegerField(null=True, blank=True)
+    cupon = models.CharField(max_length=120, blank=True)
+    cbu = models.CharField(max_length=22, blank=True)
+    cuit_titular = models.CharField(max_length=11, blank=True)
+    titular_cuenta = models.CharField(max_length=160, blank=True)
+    emisor_tarjeta = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(dia_vencimiento__isnull=True) | Q(dia_vencimiento__gte=1, dia_vencimiento__lte=31), name="fin_padron_dia_vencimiento")]
+
+
+class HistorialPadronProtegido(models.Model):
+    """Sólo se consulta con la designación correspondiente al bloque."""
+    afiliado = models.ForeignKey(Afiliado, on_delete=models.PROTECT)
+    bloque = models.CharField(max_length=10, choices=[("salud", "Salud"), ("cobranza", "Cobranza")])
+    revision = models.PositiveIntegerField()
+    cambios = models.JSONField(default=dict)
+    motivo = models.CharField(max_length=255)
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    registrado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["afiliado", "bloque", "-id"], name="fin_padron_hist_protegido")]
 
 
 class VinculoCiudadano(models.Model):
@@ -270,6 +386,7 @@ class ResolucionSaldo(models.Model):
 class Importacion(models.Model):
     financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
     tipo = models.CharField(max_length=10)
+    version = models.PositiveSmallIntegerField(default=1)
     clave = models.UUIDField()
     huella = models.CharField(max_length=64)
     filas = models.JSONField(default=list)

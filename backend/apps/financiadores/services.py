@@ -27,7 +27,7 @@ def catalogo_financiador(financiador):
 
 
 @transaction.atomic
-def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan, desde):
+def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan, desde, origen="manual", lote=None, motivo="", solo_crear=False):
     requerir_financiador(usuario, financiador.pk, escritura=True)
     numero, documento, nombre = str(numero).strip(), normalizar_documento(documento), str(nombre).strip()
     if not numero or not documento or not nombre:
@@ -39,6 +39,8 @@ def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan,
     # El índice único resuelve altas simultáneas; nunca identificar por número familiar.
     afiliado, creado = Afiliado.objects.get_or_create(financiador=financiador, documento=documento, defaults={"numero": numero, "nombre": nombre, "plan": plan, "desde": desde})
     afiliado = Afiliado.objects.select_for_update().get(pk=afiliado.pk)
+    if solo_crear and not creado:
+        raise ValidationError("El documento ya existe en este padrón. Abrí su ficha para editar con la revisión actual.")
     if afiliado.finalizado_en:
         raise ValidationError("La afiliación está finalizada. Reactivala expresamente desde el padrón antes de actualizarla; la importación no reactiva afiliaciones.")
     if plan:
@@ -47,12 +49,17 @@ def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan,
             raise ValidationError("El plan ya no está activo. Actualizá la selección.")
     if not creado and desde < afiliado.desde:
         raise ValidationError("La actualización no puede anteceder la última vigencia del padrón.")
-    cambio = creado or (afiliado.numero, afiliado.plan_id, afiliado.desde) != (numero, getattr(plan, "pk", None), desde)
+    cambio = creado or (afiliado.numero, afiliado.nombre, afiliado.plan_id, afiliado.desde) != (numero, nombre, getattr(plan, "pk", None), desde)
+    from .padron import cambios, validar_generales
+    delta = cambios(afiliado, {"numero": numero, "nombre": nombre, "plan_id": getattr(plan, "pk", None), "desde": desde})
     afiliado.numero, afiliado.nombre, afiliado.plan, afiliado.desde = numero, nombre, plan, desde
+    validar_generales(afiliado)
     afiliado.full_clean()
+    if cambio and not creado:
+        afiliado.revision += 1
     afiliado.save()
     if cambio:
-        HistorialAfiliacion.objects.create(afiliado=afiliado, numero=numero, documento=documento, plan=plan, desde=desde, registrado_por=usuario)
+        HistorialAfiliacion.objects.create(afiliado=afiliado, numero=numero, documento=documento, plan=plan, desde=desde, registrado_por=usuario, cambios=delta, motivo=motivo, origen=origen, lote=lote)
         auditar(usuario, "actualizar_padron", afiliado.pk, financiador=financiador)
     return afiliado
 
@@ -66,10 +73,14 @@ def corregir_identidad(*, afiliado, usuario, numero, documento, motivo):
         raise ValidationError("Completá los identificadores y el motivo de la corrección.")
     if Afiliado.objects.filter(financiador=afiliado.financiador, documento=documento).exclude(pk=afiliado.pk).exists():
         raise ValidationError("Ese documento ya pertenece a otro afiliado. La coincidencia requiere revisión; no se fusionan identidades.")
+    from .padron import cambios, validar_generales
+    delta = cambios(afiliado, {"numero": numero, "documento": documento})
     afiliado.numero, afiliado.documento = numero, documento
+    validar_generales(afiliado)
+    afiliado.revision += 1
     afiliado.full_clean()
-    afiliado.save(update_fields=["numero", "documento"])
-    HistorialAfiliacion.objects.create(afiliado=afiliado, numero=numero, documento=documento, plan=afiliado.plan, desde=afiliado.desde, registrado_por=usuario)
+    afiliado.save(update_fields=["numero", "documento", "revision"])
+    HistorialAfiliacion.objects.create(afiliado=afiliado, numero=numero, documento=documento, plan=afiliado.plan, desde=afiliado.desde, registrado_por=usuario, cambios=delta, motivo=motivo)
     auditar(usuario, "corregir_identidad", afiliado.pk, financiador=afiliado.financiador, motivo=motivo)
     return afiliado
 

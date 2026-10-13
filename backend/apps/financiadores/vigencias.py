@@ -94,15 +94,17 @@ def cerrar_convenio(*, usuario, convenio, origen, motivo, rechazar=False):
 
 
 @transaction.atomic
-def editar_plan(*, usuario, plan, nombre, activo, motivo):
+def editar_plan(*, usuario, plan, nombre, activo, motivo, tipo=None):
     plan = Plan.objects.select_for_update().get(pk=plan.pk)
     requerir_financiador(usuario, plan.financiador_id, admin=True)
     motivo = _motivo(motivo)
     if not nombre.strip():
         raise ValidationError("Indicá el nombre del plan.")
     plan.nombre, plan.activo = nombre.strip(), activo
+    if tipo is not None:
+        plan.tipo = tipo
     plan.full_clean()
-    plan.save(update_fields=["nombre", "activo"])
+    plan.save(update_fields=["nombre", "activo", "tipo"])
     auditar(usuario, "editar_plan", plan.pk, financiador=plan.financiador, motivo=motivo)
     return plan
 
@@ -124,7 +126,8 @@ def finalizar_afiliacion(*, usuario, afiliado, motivo):
             return afiliado
         raise ValidationError("La afiliación ya está finalizada. Su cierre anterior se conserva.")
     afiliado.finalizado_en, afiliado.finalizado_por, afiliado.motivo_finalizacion = timezone.now(), usuario, motivo
-    afiliado.save(update_fields=["finalizado_en", "finalizado_por", "motivo_finalizacion"])
+    afiliado.revision += 1
+    afiliado.save(update_fields=["finalizado_en", "finalizado_por", "motivo_finalizacion", "revision"])
     _historial(afiliado, usuario, "finalizacion", motivo)
     auditar(usuario, "finalizar_afiliacion", afiliado.pk, financiador=afiliado.financiador, motivo=motivo)
     return afiliado
@@ -143,7 +146,8 @@ def reactivar_afiliacion(*, usuario, afiliado, plan, motivo):
             raise ValidationError("Elegí un plan activo del financiador.")
     afiliado.plan, afiliado.desde = plan, timezone.localdate()
     afiliado.finalizado_en, afiliado.finalizado_por, afiliado.motivo_finalizacion = None, None, ""
-    afiliado.save(update_fields=["plan", "desde", "finalizado_en", "finalizado_por", "motivo_finalizacion"])
+    afiliado.revision += 1
+    afiliado.save(update_fields=["plan", "desde", "finalizado_en", "finalizado_por", "motivo_finalizacion", "revision"])
     _historial(afiliado, usuario, "reactivacion", motivo)
     auditar(usuario, "reactivar_afiliacion", afiliado.pk, financiador=afiliado.financiador, motivo=motivo)
     return afiliado

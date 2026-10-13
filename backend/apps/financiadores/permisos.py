@@ -30,6 +30,36 @@ def puede_resolver_autorizaciones(usuario, financiador_id):
     ).exists())
 
 
+def puede_padron_protegido(usuario, financiador_id, bloque, escritura=False):
+    """Designación propia; plataforma y autorizaciones no conceden este acceso."""
+    if bloque not in ("salud", "cobranza") or not usuario.is_authenticated or not usuario.is_active:
+        return False
+    qs = MembresiaFinanciador.objects.filter(
+        usuario=usuario, financiador_id=financiador_id, financiador__activo=True,
+        activo=True, **{f"acceso_padron_{bloque}": True},
+    )
+    if escritura:
+        qs = qs.filter(rol__in=["admin", "operador"])
+    return qs.exists()
+
+
+def requerir_padron_protegido(usuario, financiador_id, bloque, escritura=False):
+    if not puede_padron_protegido(usuario, financiador_id, bloque, escritura):
+        raise PermissionDenied("Necesitás designación específica para este bloque del padrón.")
+
+
+def puede_gestionar_permisos_padron(usuario, financiador_id):
+    return bool(usuario.is_authenticated and usuario.is_active and MembresiaFinanciador.objects.filter(
+        usuario=usuario, financiador_id=financiador_id, financiador__activo=True,
+        activo=True, rol="admin",
+    ).exists())
+
+
+def requerir_admin_real(usuario, financiador_id):
+    if not puede_gestionar_permisos_padron(usuario, financiador_id):
+        raise PermissionDenied("La designación sensible requiere un administrador con membresía real activa.")
+
+
 def puede_cargar_manual(usuario, financiador_id):
     return bool(usuario.is_authenticated and usuario.is_active and not plataforma(usuario)
         and MembresiaFinanciador.objects.filter(usuario=usuario, financiador_id=financiador_id,
