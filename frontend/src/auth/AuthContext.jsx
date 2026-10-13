@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, EVENTO_SIMULACION_TERMINADA, api, simulacion, tokens } from "../api/client";
+import { borrarBorradoresAlta } from "../lib/borradorAlta";
 
 const AuthContext = createContext(null);
 const minutosConfigurados = Number(import.meta.env.VITE_IDLE_LOCK_MINUTES);
@@ -210,6 +211,8 @@ export function AuthProvider({ children }) {
     if (actual?.id) api.real.post(`/simulaciones/${actual.id}/finalizar/`, { motivo: "cierre" }).catch(() => {});
     simulacion.clear();
     setAvisoSimulacion("");
+    // Sólo en el cierre explícito: el bloqueo por inactividad conserva el borrador.
+    borrarBorradoresAlta();
     api.logout();
     if (window.BroadcastChannel) {
       const canal = new BroadcastChannel("salud-sesion");
