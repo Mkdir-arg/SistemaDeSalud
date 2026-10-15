@@ -18,6 +18,21 @@ class ErrorStock(Exception):
     """Regla de stock incumplida. La API la traduce a un 400 con el texto."""
 
 
+def _bloquear_depositos(*depositos):
+    """Orden común antes de planificar FEFO o bloquear/crear existencias.
+
+    NO KEY UPDATE serializa escritores del depósito y permite los KEY SHARE
+    de sus claves foráneas. Una entrega toma el par antes de recorrer insumos;
+    las llamadas anidadas a transferir vuelven a tomar los mismos candados.
+    """
+    ids = {deposito.pk for deposito in depositos}
+    bloqueados = list(
+        Deposito.objects.order_by("pk").select_for_update(no_key=True).filter(pk__in=ids)
+    )
+    if len(bloqueados) != len(ids):
+        raise ErrorStock("El depósito ya no existe. Recarga y volve a intentar.")
+
+
 def _existencia(deposito, insumo, lote, crear=True):
     """La fila de existencia, bloqueada para actualizar.
 
@@ -120,6 +135,7 @@ def ingresar(deposito, insumo, cantidad, lote=None, autor=None, motivo="") -> Mo
     if lote is not None:
         _validar_lote_explicito(insumo, lote, "ingresar")
 
+    _bloquear_depositos(deposito)
     e = _existencia(deposito, insumo, lote)
     e.cantidad = F("cantidad") + cantidad
     e.save(update_fields=["cantidad", "actualizado"])
@@ -152,6 +168,8 @@ def consumir(deposito, insumo, cantidad, caso=None, autor=None, lote=None, motiv
             f"{insumo} es un insumo controlado (Ley 19.303): el consumo tiene que quedar "
             "imputado a un caso, o llevar un motivo que explique a dónde fue."
         )
+
+    _bloquear_depositos(deposito)
 
     if lote is not None:
         _validar_lote_explicito(insumo, lote, "consumir")
@@ -196,6 +214,8 @@ def transferir(origen, destino, insumo, cantidad, autor=None, lote=None, motivo=
         )
     if cantidad <= 0:
         raise ErrorStock("La cantidad tiene que ser mayor que cero.")
+
+    _bloquear_depositos(origen, destino)
 
     if lote is not None:
         # Sin esto se podía mandar lo vencido al botiquín de guardia, donde ocupa
@@ -246,6 +266,7 @@ def ajustar(deposito, insumo, contado, lote=None, autor=None, motivo="") -> Movi
         raise ErrorStock(f"{insumo} lleva lote: el recuento se hace por lote.")
     if lote is not None and lote.insumo_id != insumo.id:
         raise ErrorStock("Ese lote es de otro insumo.")
+    _bloquear_depositos(deposito)
     e = _existencia(deposito, insumo, lote)
     e.refresh_from_db()
     diferencia = contado - e.cantidad
@@ -283,6 +304,8 @@ def dar_de_baja(deposito, insumo, cantidad, lote=None, autor=None, motivo=""):
         # Una baja sin motivo es indistinguible de un faltante, y en un insumo
         # controlado eso es exactamente lo que hay que poder explicar.
         raise ErrorStock("Una baja necesita un motivo.")
+
+    _bloquear_depositos(deposito)
 
     if lote is not None:
         if lote.insumo_id != insumo.id:
@@ -395,6 +418,7 @@ def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
     if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
         raise ErrorStock("El pedido ya está cerrado.")
 
+    _bloquear_depositos(pedido.origen, pedido.destino)
     lineas = list(pedido.lineas.select_related("insumo"))
     algo_entregado = False
     for linea in lineas:

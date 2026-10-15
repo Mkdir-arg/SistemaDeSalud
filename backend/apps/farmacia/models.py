@@ -154,6 +154,13 @@ class Existencia(models.Model):
         verbose_name_plural = "existencias"
         ordering = ["insumo__nombre", "lote__vencimiento"]
         unique_together = [("deposito", "insumo", "lote")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["deposito", "insumo"],
+                condition=models.Q(lote__isnull=True),
+                name="farmacia_existencia_unica_sin_lote",
+            ),
+        ]
         indexes = [models.Index(fields=["deposito", "insumo"])]
 
     def __str__(self):
