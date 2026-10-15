@@ -199,6 +199,8 @@ export function AuthProvider({ children }) {
     simulacion.clear();
     await api.login(email, password, opciones);
     const me = await api.get("/usuarios/me/");
+    bloqueando.current = false;
+    setLocked(false);
     setError(null);
     setUser(me);
     ultimaActividad.current = Date.now();
@@ -206,6 +208,9 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    // El emisor también tiene otro listener del mismo canal en esta pestaña.
+    // Ignorar su aviso antes de publicarlo evita volver a bloquear el login.
+    bloqueando.current = true;
     const actual = simulacion.get();
     // Se avisa antes de borrar el token, que es con lo que se autoriza el cierre.
     if (actual?.id) api.real.post(`/simulaciones/${actual.id}/finalizar/`, { motivo: "cierre" }).catch(() => {});

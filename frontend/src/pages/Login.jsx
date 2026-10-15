@@ -25,7 +25,8 @@ function destinoTrasIngreso(desde) {
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const destino = destinoTrasIngreso(useLocation().state?.desde);
+  const ubicacion = useLocation();
+  const destino = destinoTrasIngreso(ubicacion.state?.desde);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verPass, setVerPass] = useState(false);
@@ -89,10 +90,11 @@ export default function Login() {
                 <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} className="size-3.5 accent-accent" />
                 Mantener la sesión iniciada
               </label>
-              <a href="#ayuda-acceso" onClick={() => setAyudaAbierta(true)} className="text-accent hover:underline">¿Olvidaste tu contraseña?</a>
+              <Link to="/recuperar-acceso" className="text-accent hover:underline">¿Olvidaste tu contraseña?</Link>
             </div>
             <p className="text-[10px] leading-relaxed text-texto-suave">No la actives en equipos compartidos. Si no hay actividad durante {MINUTOS_INACTIVIDAD} minutos, la sesión se bloquea.</p>
 
+            {ubicacion.state?.aviso && <p role="status" className="rounded-md border border-division bg-superficie-2 px-3 py-2 text-sm">{ubicacion.state.aviso}</p>}
             {error && <div role="alert" className="rounded-md border border-badge-error-fg/25 bg-badge-error-bg px-3 py-2 text-sm text-badge-error-fg">{error}</div>}
 
             <button type="submit" disabled={cargando} className="plexo-cta flex h-[36px] w-full items-center justify-center rounded-md text-sm font-medium text-sobre-accent disabled:cursor-not-allowed disabled:opacity-60">

@@ -671,6 +671,10 @@ export function Shell({ children, financiador = null, plataforma = false }) {
             </NavLink>
           )}
           </>}
+          <NavLink to="/mi-cuenta" className={itemClase(colapsado)} title="Mi cuenta institucional">
+            <Icon name="users" size={17} />
+            <span className={colapsado ? "sr-only" : undefined}>Mi cuenta</span>
+          </NavLink>
         </nav>
 
         {/* Usuario */}

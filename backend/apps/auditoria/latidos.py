@@ -15,6 +15,7 @@ Cada proceso periódico deja su latido al terminar. `/api/estado/` compara contr
 el intervalo esperado y dice cuál se quedó callado, que es lo que un monitor
 externo puede vigilar.
 """
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -81,10 +82,25 @@ def estado() -> dict:
     ultimos = {l.servicio: l for l in Latido.objects.all()}
 
     servicios, atrasados = {}, []
-    for nombre, intervalo in ESPERADOS.items():
+    esperados = dict(ESPERADOS)
+    if getattr(settings, "INSTITUCIONAL_CORREO_MODO", "") == "outbox":
+        politica = getattr(settings, "INSTITUCIONAL_OUTBOX_POLITICA", {})
+        lease, espera = politica.get("lease_segundos"), politica.get("espera_segundos")
+        # Margen operativo: un lease más tres esperas. Solo vigila ejecución,
+        # no SMTP recibido; errores/edad de cola se consultan en estado_outbox.
+        esperados["correo_institucional"] = lease + 3 * espera if (
+            type(lease) is int and lease > 0 and type(espera) is int and espera > 0
+        ) else 0
+    for nombre, intervalo in esperados.items():
         l = ultimos.get(nombre)
+        if nombre == "correo_institucional" and intervalo == 0:
+            servicios[nombre] = {"estado": "atrasado", "hace_segundos": None, "detalle": "Configuración de outbox incompleta."}
+            atrasados.append(nombre)
+            continue
         if l is None:
             servicios[nombre] = {"estado": "nunca", "hace_segundos": None, "detalle": ""}
+            if nombre == "correo_institucional":
+                atrasados.append(nombre)
             continue
         hace = int((ahora - l.momento).total_seconds())
         al_dia = hace <= intervalo

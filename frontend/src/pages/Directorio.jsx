@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
+import { useAuth } from "@/auth/AuthContext";
 import { Icon } from "@/components/icons";
 import { Shell } from "@/components/Shell";
 import { NOMBRE_SISTEMA } from "@/lib/marca";
@@ -436,59 +437,59 @@ function UsuariosView() {
 
 function UsuarioModal({ usuario, onClose }) {
   const toast = useToast();
+  const { simulacion } = useAuth();
   const esNuevo = !usuario.id;
   const instituciones = useLista("instituciones", { pageSize: 200 }, { enabled: esNuevo });
   const [f, setF] = useState({
     email: usuario.email || "",
     nombre: usuario.nombre || "",
     apellido: usuario.apellido || "",
-    password: "",
-    confirmarPassword: "",
     institucion: "",
     rol: "medico",
-    is_active: usuario.is_active ?? true,
   });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
-  const passwordRequerida = esNuevo || !!f.password;
-  const passwordCoincide = !passwordRequerida || (f.password && f.password === f.confirmarPassword);
-  const longitudValida = !passwordRequerida || f.password.length >= 8;
-
   const guardar = useAccion(() => {
-    const payload = { email: f.email, nombre: f.nombre, apellido: f.apellido, is_active: f.is_active };
-    if (f.password) payload.password = f.password;
+    const payload = { nombre: f.nombre, apellido: f.apellido };
     if (esNuevo) {
+      payload.email = f.email;
       payload.institucion = Number(f.institucion);
       payload.rol = f.rol;
     }
     return esNuevo ? api.post("/usuarios/", payload) : api.patch(`/usuarios/${usuario.id}/`, payload);
   }, {
-    onSuccess: () => { toast.ok(esNuevo ? "Usuario creado." : "Usuario actualizado."); onClose(); },
+    onSuccess: () => { toast.ok(esNuevo ? "Usuario creado. Invitación solicitada al correo del titular; esto no confirma la entrega." : "Usuario actualizado."); onClose(); },
     onError: (e) => toast.deError(e, "No se pudo guardar el usuario."),
+  });
+
+  const recuperar = useAccion(() => api.post(`/usuarios/${usuario.id}/iniciar-recuperacion/`, {}), {
+    invalida: [],
+    onSuccess: () => toast.ok("Solicitud aceptada. El enlace, si corresponde, se enviará al correo actual del titular; esto no confirma la entrega."),
+    onError: (e) => toast.deError(e, "No se pudo solicitar la recuperación. Podés reintentar."),
   });
 
   return (
     <Modal
-      title={esNuevo ? "Nuevo usuario" : "Editar usuario"}
+      title={esNuevo ? "Invitar nuevo usuario" : "Administrar usuario"}
       width={520}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !f.email || !f.nombre || (esNuevo && (!f.apellido || !f.institucion)) || !passwordCoincide || !longitudValida} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "Guardando…" : esNuevo ? "Crear usuario" : "Guardar"}
+          <Button disabled={guardar.isPending || recuperar.isPending || !!simulacion || !f.email || !f.nombre || (esNuevo && (!f.apellido || !f.institucion))} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "Guardando…" : esNuevo ? "Crear y solicitar invitación" : "Guardar"}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3.5">
-        {esNuevo && <p className="text-sm text-texto-debil">La persona ingresará con su email y la contraseña temporal que le indiques.</p>}
+        {esNuevo && <p className="text-sm text-texto-debil">La persona establecerá su contraseña desde la invitación enviada a su correo.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Nombre *"><Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
           <Field label={esNuevo ? "Apellido *" : "Apellido"}><Input value={f.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
         </div>
-        <Field label="Email *" hint={esNuevo ? "Se usa para ingresar." : undefined}>
-          <Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} autoFocus placeholder="nombre@institucion.gob.ar" autoComplete="email" />
+        <Field label={esNuevo ? "Email *" : "Email de ingreso"} hint={esNuevo ? "El titular establecerá su contraseña desde un enlace enviado a este correo." : "El titular cambia email y contraseña desde Mi cuenta."}>
+          <Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} readOnly={!esNuevo} autoFocus={esNuevo} placeholder="nombre@institucion.gob.ar" autoComplete="email" />
         </Field>
         {esNuevo && <>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -505,43 +506,14 @@ function UsuarioModal({ usuario, onClose }) {
           <p className="text-xs text-texto-debil">La cuenta recibe acceso a esa institución con el rol elegido.</p>
           {instituciones.error && <EstadoError error={instituciones.error} onReintentar={instituciones.refetch} titulo="No se pudieron consultar las instituciones" />}
         </>}
-        <Field label={esNuevo ? "Contraseña temporal *" : "Nueva contraseña (vacío = no cambiar)"}>
-          <ClaveVisible valor={f.password} onChange={(valor) => set("password", valor)} />
-        </Field>
-        {f.password && <FortalezaClave valor={f.password} />}
-        {passwordRequerida && <Field label="Confirmar contraseña *"
-          error={f.confirmarPassword && f.password !== f.confirmarPassword ? "Las contraseñas no coinciden." : undefined}>
-          <ClaveVisible valor={f.confirmarPassword} onChange={(valor) => set("confirmarPassword", valor)} />
-        </Field>}
-        <label className="flex items-center gap-2.5 text-md">
-          <input type="checkbox" checked={f.is_active} onChange={(e) => set("is_active", e.target.checked)} /> Activo
-        </label>
+        {simulacion && <p role="alert" className="text-sm text-danger">Finalizá la simulación antes de gestionar identidades o credenciales.</p>}
+        {!esNuevo && <div className="space-y-2">
+          <p className="text-sm text-texto-debil">Podés solicitar otro enlace al correo actual del titular. La contraseña y el enlace quedan en su poder. El acceso institucional se administra desde las membresías.</p>
+          <Button variant="secondary" disabled={recuperar.isPending || guardar.isPending || !!simulacion} onClick={() => recuperar.mutate()}>
+            {recuperar.isPending ? "Solicitando…" : "Solicitar recuperación de acceso"}
+          </Button>
+        </div>}
       </div>
     </Modal>
   );
-}
-
-function ClaveVisible({ valor, onChange }) {
-  const [visible, setVisible] = useState(false);
-  return <div className="relative">
-    <Input type={visible ? "text" : "password"} value={valor} onChange={(e) => onChange(e.target.value)} autoComplete="new-password" className="pr-12" />
-    <button type="button" onClick={() => setVisible((actual) => !actual)} aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"} aria-pressed={visible}
-      className="absolute right-0 top-0 flex size-11 items-center justify-center rounded-md text-texto-debil hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
-      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" />
-        {visible && <path d="M3 21 21 3" />}
-      </svg>
-    </button>
-  </div>;
-}
-
-function FortalezaClave({ valor }) {
-  const puntos = [valor.length >= 8, /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(valor) && /\d/.test(valor), valor.length >= 12].filter(Boolean).length;
-  const etiqueta = puntos >= 3 ? "Fuerte" : puntos === 2 ? "Buena" : "Básica";
-  return <div className="space-y-1 text-xs text-texto-debil" aria-live="polite">
-    <div className="flex gap-1" role="meter" aria-label="Fortaleza orientativa de la contraseña" aria-valuemin={0} aria-valuemax={3} aria-valuenow={puntos} aria-valuetext={etiqueta}>
-      {[1, 2, 3].map((punto) => <span key={punto} className={`h-1 flex-1 rounded-full ${puntos >= punto ? "bg-accent" : "bg-division"}`} />)}
-    </div>
-    <p>Fortaleza orientativa: {etiqueta}. Mínimo 8 caracteres; evitá claves comunes o parecidas a los datos de la persona.</p>
-  </div>;
 }

@@ -141,3 +141,32 @@ class LegajoProfesional(models.Model):
 
     def __str__(self):
         return f"Legajo de {self.usuario}"
+
+
+class CorreoInstitucionalOutbox(models.Model):
+    """Intención durable; contiene direcciones/IDs, nunca enlaces ni tokens."""
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        PROCESANDO = "procesando", "Procesando"
+        ENVIADO = "enviado", "Aceptado por backend de correo"
+        DESCARTADO = "descartado", "Descartado"
+        ERROR = "error", "Error definitivo"
+
+    solicitud = models.JSONField(default=dict)
+    estado = models.CharField(max_length=12, choices=Estado.choices, default=Estado.PENDIENTE)
+    creado = models.DateTimeField(auto_now_add=True)
+    vence = models.DateTimeField()
+    disponible_en = models.DateTimeField()
+    reserva = models.UUIDField(null=True, blank=True)
+    reservado_hasta = models.DateTimeField(null=True, blank=True)
+    intentos = models.PositiveIntegerField(default=0)
+    terminado_en = models.DateTimeField(null=True, blank=True)
+    resultado = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["estado", "disponible_en"], name="accounts_correo_listo_idx"),
+            models.Index(fields=["estado", "reservado_hasta"], name="accounts_correo_lease_idx"),
+        ]

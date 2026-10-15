@@ -9,6 +9,10 @@ import { EstadoError } from "./components/ui/estados";
 import { useTemaDeRuta } from "./lib/tema";
 
 const Login = lazy(() => import("./pages/Login"));
+const RecuperarAcceso = lazy(() => import("./pages/CredencialesInstitucionales").then((m) => ({ default: m.RecuperarAcceso })));
+const RestablecerAcceso = lazy(() => import("./pages/CredencialesInstitucionales").then((m) => ({ default: m.RestablecerAcceso })));
+const ConfirmarEmail = lazy(() => import("./pages/CredencialesInstitucionales").then((m) => ({ default: m.ConfirmarEmail })));
+const MiCuenta = lazy(() => import("./pages/CredencialesInstitucionales").then((m) => ({ default: m.MiCuenta })));
 const Presentacion = lazy(() => import("./pages/Presentacion"));
 const PortalPaciente = lazy(() => import("./pages/portal/Portal"));
 const PantallaLlamados = lazy(() => import("./pages/PantallaLlamados"));
@@ -212,6 +216,9 @@ export default function App() {
     <Suspense fallback={<PantallaCargando />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/recuperar-acceso" element={<RecuperarAcceso />} />
+      <Route path="/restablecer-acceso" element={<RestablecerAcceso />} />
+      <Route path="/confirmar-email" element={<ConfirmarEmail />} />
       <Route path="/" element={<Presentacion />} />
       <Route path="/presentacion" element={<Navigate to="/" replace />} />
       {/* La maqueta del #66 pasó a ser el portal real (#122): los enlaces viejos llegan ahí. */}
@@ -222,6 +229,7 @@ export default function App() {
       {/* Pantalla pública de llamados (TV de sala de espera): sin login, por token. */}
       <Route path="/pantalla/:token" element={<PantallaLlamados />} />
       <Route path="/directorio" element={<AuthOnly><Entrada /></AuthOnly>} />
+      <Route path="/mi-cuenta" element={<AuthOnly><MiCuenta /></AuthOnly>} />
       <Route path="/financiadores/padron/nuevo" element={<AuthOnly><AltaAfiliado /></AuthOnly>} />
       <Route path="/financiadores/padron/:afiliado" element={<AuthOnly><FichaAfiliado /></AuthOnly>} />
       <Route path="/financiadores/:seccion?" element={<AuthOnly><PortalFinanciadores /></AuthOnly>} />
