@@ -1,8 +1,9 @@
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.response import Response
 
 from apps.casos import motor
@@ -48,8 +49,8 @@ class SoloSobreBorrador:
 
     def perform_create(self, serializer):
         with transaction.atomic():
-            version = VersionFlujo.objects.select_for_update().get(
-                pk=serializer.validated_data["version"].pk,
+            version = get_object_or_404(
+                VersionFlujo.objects.select_for_update(), pk=serializer.validated_data["version"].pk,
             )
             exigir_borrador(version)
             serializer.validated_data["version"] = version
@@ -67,6 +68,8 @@ class SoloSobreBorrador:
                 version.pk: version for version in VersionFlujo.objects
                 .select_for_update().filter(pk__in=ids).order_by("pk")
             }
+            if ids - versiones.keys():
+                raise NotFound("La versión de flujo ya no existe.")
             for version in versiones.values():
                 exigir_borrador(version)
             serializer.instance.version = versiones[origen_id]
@@ -77,7 +80,7 @@ class SoloSobreBorrador:
 
     def perform_destroy(self, instance):
         with transaction.atomic():
-            version = VersionFlujo.objects.select_for_update().get(pk=instance.version_id)
+            version = get_object_or_404(VersionFlujo.objects.select_for_update(), pk=instance.version_id)
             exigir_borrador(version)
             instance.delete()
 
