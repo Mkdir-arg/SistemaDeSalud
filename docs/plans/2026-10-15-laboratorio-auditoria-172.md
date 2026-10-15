@@ -155,3 +155,11 @@ Imagen final API/worker/tests focales48: `sha256:007e39fb108b33f1a702a300544cb95
 La corrida serial de408 tests PostgreSQL de farmacia/flujos/instituciones/cuentas/simulación/permisos pasó sin skips en151,026s; comando y límites en el plan principal. Worker exclusivo detenido durante la suite, sin otra corrida de DB paralela. SQL de farmacia0003 confirmado no-op, chequeo de migraciones y OpenAPI aprobados. Migración aplicada sólo al laboratorio sintético; no se cerraron ni eliminaron pedidos en masa.
 
 Imagen de tests408: `sha256:282effd4382622e965afae7ccdb91d934754013a859b4c3c50dbed2570ee2857`. API/worker se recrean juntos después de la validación; una representación literal Unicode posterior en el mensaje404 de flujos tiene idéntico valor de ejecución. Rama `juanikitro/auditoria-172-implementacion`, PR borrador174. Capturas/JSON permanecen locales e ignorados; archivos privados de entorno no versionados. Sin proveedor real ni producción. CI se informa aparte en el PR.
+
+## Continuación: manifest de CI y stock013/014
+
+Worker detenido antes de los ensayos, ninguna suite DB paralela. Con CompressedManifestStaticFilesStorage real y raíz temporal vacía se reprodujo el error Admin de CI; con collectstatic pasaron46 tests de concurrencia/revisión clínica y boxes en50,056s. No se modificó el storage ni DEBUG productivo; workflow ahora prepara manifest como el Dockerfile.
+
+Snapshot rojo de stock:5 tests/5 fallos; reproducción adicional confirmó deadlock40P01. Snapshot final `sha256:0456b77b92269812c79fbd473a06f814bfd3f5c35e98120c3360ac2aec5a4e83`: suite completa de farmacia114 aprobados sin skips,58,745s. Detalle de migración, trade-off y límites en el plan principal. Diagnóstico del laboratorio sin duplicados; aplicada farmacia0004 sólo en la base sintética. Sin cantidades conciliadas ni pedidos cerrados masivamente. La migración tiene bloqueo ACCESS EXCLUSIVE; no trasladar esta ejecución a producción sin preparar ventana y presupuestos de espera/duración.
+
+La base de test se eliminó tras las corridas. API/worker se actualizan juntos al snapshot final y el worker se reanuda al acabar las pruebas. CI2404 anterior falló9 veces por manifest; su sustituto sigue separado de estos resultados locales. Sin proveedores externos reales, datos de pacientes reales, merge ni despliegue productivo.
