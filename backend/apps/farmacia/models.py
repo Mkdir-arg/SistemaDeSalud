@@ -231,11 +231,11 @@ class Pedido(models.Model):
         RECHAZADO = "rechazado", "Rechazado"
 
     origen = models.ForeignKey(
-        Deposito, on_delete=models.CASCADE, related_name="pedidos_hechos",
+        Deposito, on_delete=models.PROTECT, related_name="pedidos_hechos",
         help_text="Depósito que pide.",
     )
     destino = models.ForeignKey(
-        Deposito, on_delete=models.CASCADE, related_name="pedidos_recibidos",
+        Deposito, on_delete=models.PROTECT, related_name="pedidos_recibidos",
         help_text="Depósito al que se le pide (normalmente la central).",
     )
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)

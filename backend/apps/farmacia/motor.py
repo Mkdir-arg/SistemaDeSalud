@@ -357,6 +357,25 @@ def preparar_pedido(pedido: Pedido, autor=None) -> Pedido:
 
 
 @transaction.atomic
+def rechazar_pedido(pedido: Pedido, motivo="", autor=None) -> Pedido:
+    """Cierra el saldo pendiente sin revertir entregas ni movimientos previos."""
+    estado_entrada = pedido.estado
+    try:
+        pedido = Pedido.objects.select_for_update().get(pk=pedido.pk)
+    except Pedido.DoesNotExist:
+        raise ErrorStock("El pedido ya no existe. Recarga y volve a intentar.") from None
+    if pedido.estado != estado_entrada:
+        raise ErrorStock("El pedido cambio mientras se rechazaba. Recarga y volve a intentar.")
+    if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
+        raise ErrorStock("El pedido ya está cerrado.")
+    pedido.estado = Pedido.Estado.RECHAZADO
+    pedido.observaciones = (pedido.observaciones + "\n" + motivo).strip()
+    pedido.resuelto = timezone.now()
+    pedido.save(update_fields=["estado", "observaciones", "resuelto"])
+    return pedido
+
+
+@transaction.atomic
 def entregar_pedido(pedido: Pedido, entregas: dict, autor=None) -> Pedido:
     """
     Entrega un pedido: transfiere lo que hay y deja registrado lo que faltó.
