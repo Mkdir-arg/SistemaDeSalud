@@ -44,23 +44,42 @@ def exigir_borrador(version):
 
 
 class SoloSobreBorrador:
-    """Mixin: las escrituras del grafo sólo valen sobre una versión borrador."""
+    """Escrituras serializadas con la publicación de la versión del grafo."""
 
     def perform_create(self, serializer):
-        exigir_borrador(serializer.validated_data["version"])
-        serializer.save()
+        with transaction.atomic():
+            version = VersionFlujo.objects.select_for_update().get(
+                pk=serializer.validated_data["version"].pk,
+            )
+            exigir_borrador(version)
+            serializer.validated_data["version"] = version
+            serializer.validate(serializer.validated_data)
+            serializer.save()
 
     def perform_update(self, serializer):
-        exigir_borrador(serializer.instance.version)
-        # Mover el objeto a otra versión también tiene que respetar el destino.
-        destino = serializer.validated_data.get("version")
-        if destino and destino.pk != serializer.instance.version_id:
-            exigir_borrador(destino)
-        serializer.save()
+        with transaction.atomic():
+            # El serializer actual no permite mover entidades por PATCH. También
+            # se protege el destino si un llamador interno aporta otra versión.
+            origen_id = serializer.instance.version_id
+            destino = serializer.validated_data.get("version")
+            ids = {origen_id, destino.pk if destino else origen_id}
+            versiones = {
+                version.pk: version for version in VersionFlujo.objects
+                .select_for_update().filter(pk__in=ids).order_by("pk")
+            }
+            for version in versiones.values():
+                exigir_borrador(version)
+            serializer.instance.version = versiones[origen_id]
+            if destino:
+                serializer.validated_data["version"] = versiones[destino.pk]
+            serializer.validate(serializer.validated_data)
+            serializer.save()
 
     def perform_destroy(self, instance):
-        exigir_borrador(instance.version)
-        instance.delete()
+        with transaction.atomic():
+            version = VersionFlujo.objects.select_for_update().get(pk=instance.version_id)
+            exigir_borrador(version)
+            instance.delete()
 
 
 def clonar_grafo(origen: VersionFlujo, destino: VersionFlujo) -> None:
@@ -322,7 +341,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
             # publicaciones simultáneas dejen dos versiones publicadas a la vez,
             # que es un estado que el resto del código asume imposible.
             hermanas = list(
-                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id)
+                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id).order_by("pk")
             )
             version = next(v for v in hermanas if v.pk == version.pk)
             problemas = motor.validar_version(version)
@@ -394,7 +413,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
         version = self.get_object()
         with transaction.atomic():
             hermanas = list(
-                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id)
+                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id).order_by("pk")
             )
             borrador = next(
                 (v for v in hermanas if v.estado == VersionFlujo.Estado.BORRADOR), None
@@ -431,20 +450,6 @@ class NodoViewSet(SoloSobreBorrador, BaseModelViewSet):
     capacidad_requerida = "diseno_flujos"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")
-
-    def perform_create(self, serializer):
-        with transaction.atomic():
-            version = VersionFlujo.objects.select_for_update().get(pk=serializer.validated_data["version"].pk)
-            serializer.validated_data["version"] = version
-            serializer.validate(serializer.validated_data)
-            super().perform_create(serializer)
-
-    def perform_update(self, serializer):
-        with transaction.atomic():
-            version = VersionFlujo.objects.select_for_update().get(pk=serializer.instance.version_id)
-            serializer.instance.version = version
-            serializer.validate(serializer.validated_data)
-            super().perform_update(serializer)
 
     @action(detail=True, methods=["post"])
     def pantalla(self, request, pk=None):

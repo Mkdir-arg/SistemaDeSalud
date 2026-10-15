@@ -34,8 +34,6 @@ from .autenticacion import IdentidadValidada
 from .red import patron_documento, persona_de
 from .views import ETIQUETA, _ConCuenta, _error, _ip
 
-# R3: cancelar hasta 24 horas antes del turno.
-ANTICIPACION_CANCELAR = timedelta(hours=24)
 # Cuánto hacia atrás se listan los turnos ya pasados.
 TURNOS_RECIENTES = timedelta(days=90)
 # Un paciente que entró a la fila hace más que esto y nunca salió es un ítem
@@ -54,25 +52,8 @@ def _institucion(inst):
     return {"id": inst.id, "nombre": inst.nombre} if inst else None
 
 
-def _no_cancelable(turno, ahora):
-    """Por qué el paciente no puede cancelar este turno, o None si puede."""
-    if turno.estado not in (Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO):
-        return "Este turno ya no se puede cancelar."
-    if turno.inicio - ahora <= ANTICIPACION_CANCELAR:
-        return "Faltan menos de 24 horas para el turno. Para cancelarlo, comunicate con la institución."
-    return None
-
-
-def _no_confirmable(turno, ahora):
-    if turno.estado != Turno.Estado.RESERVADO:
-        return "Sólo se puede confirmar un turno reservado."
-    if turno.inicio <= ahora:
-        return "El turno ya pasó."
-    return None
-
-
 def _turno(t, ahora):
-    no_cancelable = _no_cancelable(t, ahora)
+    no_cancelable = agenda.motivo_no_cancelable_portal(t, ahora)
     agenda_ = t.agenda
     return {
         "id": t.id,
@@ -89,7 +70,7 @@ def _turno(t, ahora):
         "estado_display": t.get_estado_display(),
         "confirmado_via": t.confirmado_via,
         "cancelado_via": t.cancelado_via,
-        "puede_confirmar": _no_confirmable(t, ahora) is None,
+        "puede_confirmar": agenda.motivo_no_confirmable_portal(t, ahora) is None,
         "puede_cancelar": no_cancelable is None,
         "motivo_no_cancelable": no_cancelable,
     }
@@ -127,9 +108,6 @@ class ConfirmarTurnoView(_AccionTurno):
         turno = self._turno(request, pk)
         if turno is None:
             return _error(NO_ENCONTRADO, "no_encontrado", status.HTTP_404_NOT_FOUND)
-        motivo = _no_confirmable(turno, timezone.now())
-        if motivo:
-            return _error(motivo, "no_confirmable", status.HTTP_409_CONFLICT)
         try:
             agenda.confirmar(turno, autor=None, via=Turno.Via.PORTAL)
         except agenda.ErrorAgenda as exc:
@@ -140,13 +118,10 @@ class ConfirmarTurnoView(_AccionTurno):
 class CancelarTurnoView(_AccionTurno):
     @extend_schema(tags=ETIQUETA, summary="Cancelar un turno", request=None, responses=OpenApiTypes.OBJECT)
     def post(self, request, pk):
-        """R3: sólo un turno reservado o confirmado que empieza en más de 24 horas."""
+        """R3: turno pendiente que empieza dentro de al menos 24 horas."""
         turno = self._turno(request, pk)
         if turno is None:
             return _error(NO_ENCONTRADO, "no_encontrado", status.HTTP_404_NOT_FOUND)
-        motivo = _no_cancelable(turno, timezone.now())
-        if motivo:
-            return _error(motivo, "no_cancelable", status.HTTP_409_CONFLICT)
         try:
             agenda.cancelar(turno, autor=None, motivo=MOTIVO_CANCELACION, via=Turno.Via.PORTAL)
         except agenda.ErrorAgenda as exc:
