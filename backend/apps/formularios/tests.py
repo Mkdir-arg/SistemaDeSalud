@@ -65,15 +65,15 @@ class EditarCampoTests(APITestCase):
         self.campo.refresh_from_db()
         self.assertEqual(self.campo.opciones, ["OSDE", "PAMI"])
 
-    def test_se_corrige_la_etiqueta_aunque_el_campo_ya_tenga_datos(self):
-        """Es justo lo que el error del borrado manda a hacer: no puede estar prohibido."""
+    def test_no_se_cambia_la_etiqueta_del_campo_con_datos(self):
+        """La definición usada se conserva completa; se duplica para modificarla."""
         self._con_un_valor_cargado()
         r = self.client.patch(
             f"/api/campos/{self.campo.pk}/", {"label": "Cobertura"}, format="json"
         )
-        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.campo.refresh_from_db()
-        self.assertEqual(self.campo.label, "Cobertura")
+        self.assertEqual(self.campo.label, "Obra social")
 
     def test_se_reordenan_los_campos(self):
         """El orden es el de la pantalla que completa el administrativo."""
@@ -105,7 +105,7 @@ class EditarCampoTests(APITestCase):
             f"/api/campos/{self.campo.pk}/", {"tipo": "fecha"}, format="json"
         )
         self.assertEqual(r.status_code, 409, r.data)
-        self.assertEqual(int(r.data["valores"]), 1)
+        self.assertEqual(self.client.get(f"/api/campos/{self.campo.pk}/").data["valores_cargados"], 1)
         self.campo.refresh_from_db()
         self.assertEqual(self.campo.tipo, Campo.Tipo.SELECCION_UNICA)
 
@@ -127,7 +127,7 @@ class EditarCampoTests(APITestCase):
         self._con_un_valor_cargado()
         r = self.client.delete(f"/api/campos/{self.campo.pk}/")
         self.assertEqual(r.status_code, 409, r.data)
-        self.assertEqual(int(r.data["valores"]), 1)
+        self.assertEqual(self.client.get(f"/api/campos/{self.campo.pk}/").data["valores_cargados"], 1)
         self.assertTrue(Campo.objects.filter(pk=self.campo.pk).exists())
 
     def test_el_serializer_dice_cuantos_valores_cuelgan_del_campo(self):
@@ -365,7 +365,7 @@ class FormularioEnUsoTests(APITestCase):
         self._asignado_a_un_paso()
         r = self.client.delete(f"/api/formularios/{self.form.pk}/")
         self.assertEqual(r.status_code, 409, r.data)
-        self.assertEqual(r.data["flujos"], ["Guardia"])
+        self.assertEqual(self.client.get(f"/api/formularios/{self.form.pk}/usos/").data["usos"][0]["flujo"], "Guardia")
         self.assertTrue(Formulario.objects.filter(pk=self.form.pk).exists())
 
     def test_no_se_borra_un_formulario_con_datos_cargados(self):
@@ -377,7 +377,7 @@ class FormularioEnUsoTests(APITestCase):
 
         r = self.client.delete(f"/api/formularios/{self.form.pk}/")
         self.assertEqual(r.status_code, 409, r.data)
-        self.assertEqual(int(r.data["valores"]), 1)
+        self.assertTrue(ValorCampo.objects.filter(caso=caso, campo=self.c1, valor="dolor").exists())
         self.assertTrue(Formulario.objects.filter(pk=self.form.pk).exists())
 
     def test_se_borra_el_formulario_que_nadie_usa(self):
@@ -534,17 +534,17 @@ class TiposNuevosTests(APITestCase):
              "Persona@EJEMPLO.COM", True),
             ("telefono", "+54 (11) 1234-5678", "+541112345678", "=", "+54 (11) 1234-5678", True),
         ]
-        for tipo, enviado, guardado, operador, esperado, resultado in muestras:
+        # Definir todos los campos antes de que el primer caso use el formulario.
+        campos = [self._nuevo(tipo, **({"opciones": ["A, B", "Niñez"]} if tipo == "seleccion_multiple" else {}))
+                  for tipo, *_ in muestras]
+        for (tipo, enviado, guardado, operador, esperado, resultado), campo in zip(muestras, campos):
             with self.subTest(tipo=tipo):
-                extras = {"opciones": ["A, B", "Niñez"]} if tipo == "seleccion_multiple" else {}
-                campo = self._nuevo(tipo, **extras)
                 caso, _ = self._caso_parado_en_el_formulario()
                 motor.avanzar(caso, {"valores": {str(campo.pk): enviado}}, autor=self.user)
                 self.assertEqual(ValorCampo.objects.get(caso=caso, campo=campo).valor, guardado)
                 self.assertEqual(motor._cumple_simple(
                     {"campo": campo.pk, "operador": operador, "valor": esperado}, caso,
                 ), resultado)
-                campo.delete()
 
     def test_valores_invalidos_se_rechazan_sin_guardar(self):
         from apps.casos import motor
@@ -557,14 +557,13 @@ class TiposNuevosTests(APITestCase):
             ("email", "sin arroba", {}),
             ("telefono", "123", {}),
         ]
-        for tipo, enviado, extras in muestras:
+        campos = [self._nuevo(tipo, **extras) for tipo, _, extras in muestras]
+        for (tipo, enviado, extras), campo in zip(muestras, campos):
             with self.subTest(tipo=tipo, enviado=enviado):
-                campo = self._nuevo(tipo, **extras)
                 caso, _ = self._caso_parado_en_el_formulario()
                 with self.assertRaises(motor.ErrorMotor):
                     motor.avanzar(caso, {"valores": {str(campo.pk): enviado}}, autor=self.user)
                 self.assertFalse(ValorCampo.objects.filter(caso=caso, campo=campo).exists())
-                campo.delete()
 
     def test_seleccion_multiple_requerida_no_acepta_lista_vacia_y_conserva_opciones_usadas(self):
         from apps.casos import motor

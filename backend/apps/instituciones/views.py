@@ -545,6 +545,12 @@ class AreaViewSet(BaseModelViewSet):
 
         with transaction.atomic():
             area = get_object_or_404(Area.objects.select_for_update(), pk=instance.pk)
+            # SET_NULL también modificaría la definición de un formulario.
+            # Se consulta antes de tomar locks de hijos para mantener el orden.
+            if area.formularios.exists():
+                error = APIException("El área tiene formularios vinculados y debe conservarse. Reasigná primero los que sean editables.")
+                error.status_code = status.HTTP_409_CONFLICT
+                raise error
             boxes = list(Box.objects.select_for_update().filter(area=area).order_by("pk"))
             if any(box.ocupado_por_id is not None for box in boxes):
                 error = APIException("El área tiene boxes ocupados. Liberalos antes de eliminarla.")

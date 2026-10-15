@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from apps.casos import motor
 from apps.casos.models import Caso
 from apps.common import BaseModelViewSet
+from apps.formularios.integridad import bloquear_formularios, congelar_formularios, ids_formularios_de_version
 
 from .models import Conexion, Flujo, Nodo, VersionFlujo
 from .serializers import (
@@ -53,6 +54,9 @@ class SoloSobreBorrador:
                 VersionFlujo.objects.select_for_update(), pk=serializer.validated_data["version"].pk,
             )
             exigir_borrador(version)
+            formulario = serializer.validated_data.get("formulario")
+            if formulario is not None:
+                bloquear_formularios([formulario.pk])
             serializer.validated_data["version"] = version
             serializer.validate(serializer.validated_data)
             serializer.save()
@@ -72,6 +76,9 @@ class SoloSobreBorrador:
                 raise NotFound("La versión de flujo ya no existe.")
             for version in versiones.values():
                 exigir_borrador(version)
+            formulario = serializer.validated_data.get("formulario")
+            if formulario is not None:
+                bloquear_formularios([formulario.pk])
             serializer.instance.version = versiones[origen_id]
             if destino:
                 serializer.validated_data["version"] = versiones[destino.pk]
@@ -85,6 +92,7 @@ class SoloSobreBorrador:
             instance.delete()
 
 
+@transaction.atomic
 def clonar_grafo(origen: VersionFlujo, destino: VersionFlujo) -> None:
     """Copia nodos (con su config y sus grupos) y conexiones de una versión a otra.
 
@@ -92,6 +100,12 @@ def clonar_grafo(origen: VersionFlujo, destino: VersionFlujo) -> None:
     condiciones, grupos responsables y configuración, la copia es un lienzo vacío
     con el nombre del original.
     """
+    versiones = {v.pk: v for v in VersionFlujo.objects.select_for_update()
+                 .filter(pk__in=[origen.pk, destino.pk]).order_by("pk")}
+    if origen.pk not in versiones or destino.pk not in versiones:
+        raise NotFound("La versión de flujo ya no existe.")
+    exigir_borrador(versiones[destino.pk])
+    bloquear_formularios(ids_formularios_de_version(origen.pk))
     mapa = {}
     for n in origen.nodos.all().prefetch_related("grupos"):
         copia = Nodo.objects.create(
@@ -346,11 +360,16 @@ class VersionFlujoViewSet(BaseModelViewSet):
             hermanas = list(
                 VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id).order_by("pk")
             )
-            version = next(v for v in hermanas if v.pk == version.pk)
+            version = next((v for v in hermanas if v.pk == version.pk), None)
+            if version is None:
+                raise NotFound("La versión de flujo ya no existe.")
+            formularios_ids = ids_formularios_de_version(version.pk)
+            bloquear_formularios(formularios_ids)
             problemas = motor.validar_version(version)
             if any(p["sev"] == "error" for p in problemas):
                 return Response({"detail": "La versión cambió y tiene errores; revisá el diseño.", "problemas": problemas},
                                 status=status.HTTP_400_BAD_REQUEST)
+            congelar_formularios(formularios_ids)
             for v in hermanas:
                 if v.pk != version.pk and v.estado == VersionFlujo.Estado.PUBLICADA:
                     v.estado = VersionFlujo.Estado.REEMPLAZADA

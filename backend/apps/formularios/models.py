@@ -33,6 +33,7 @@ class Formulario(models.Model):
     titulo = models.CharField("título", max_length=200)
     descripcion = models.TextField("descripción", blank=True)
     creado = models.DateTimeField(auto_now_add=True)
+    congelado_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "formulario"

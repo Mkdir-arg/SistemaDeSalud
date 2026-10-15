@@ -48,6 +48,8 @@ class AreaAdmin(admin.ModelAdmin):
     def delete_model(self, request, obj):
         with transaction.atomic():
             area = Area.objects.select_for_update().get(pk=obj.pk)
+            if area.formularios.exists():
+                raise PermissionDenied("El área tiene formularios vinculados. Reasigná primero los que sean editables.")
             boxes = list(Box.objects.select_for_update().filter(area=area).order_by("pk"))
             if any(box.ocupado_por_id is not None for box in boxes):
                 raise PermissionDenied("El área tiene boxes ocupados. Liberalos antes de eliminarla.")
@@ -56,6 +58,8 @@ class AreaAdmin(admin.ModelAdmin):
     def delete_queryset(self, request, queryset):
         with transaction.atomic():
             areas = list(Area.objects.select_for_update().filter(pk__in=queryset.values("pk")).order_by("pk"))
+            if any(area.formularios.exists() for area in areas):
+                raise PermissionDenied("Hay áreas con formularios vinculados. Reasigná primero los que sean editables.")
             boxes = list(Box.objects.select_for_update().filter(area__in=areas).order_by("pk"))
             if any(box.ocupado_por_id is not None for box in boxes):
                 raise PermissionDenied("Hay áreas con boxes ocupados. Liberalos antes de eliminarlas.")

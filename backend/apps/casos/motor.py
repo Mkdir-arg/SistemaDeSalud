@@ -44,9 +44,11 @@ from apps.http_seguro import abrir_sin_redirecciones as urlopen
 
 from django.db import transaction
 from django.db.models import Case, F, IntegerField, Max, Value, When
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from apps.formularios.models import Campo
+from apps.formularios.integridad import asegurar_congelados, ids_formularios_de_version
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Cama, EstadiaCama, Grupo
 from apps.registros.models import EntradaHistoria, HistoriaClinica
@@ -840,13 +842,18 @@ def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
             campo_id = int(campo_id)
         except (TypeError, ValueError):
             return fallar("el campo destino de la integracion no es valido")
-        if not Campo.objects.filter(pk=campo_id, formulario__institucion_id=caso.institucion_id).exists():
+        campo = Campo.objects.filter(pk=campo_id, formulario__institucion_id=caso.institucion_id).first()
+        if campo is None:
             return fallar("el campo destino de la integracion no pertenece a la institucion del caso")
-        valor = _extraer(respuesta, cfg.get("ruta", ""))
-        ValorCampo.objects.update_or_create(
-            caso=caso, campo_id=campo_id,
-            defaults={"nodo": nodo, "valor": "" if valor is None else str(valor)},
-        )
+        with transaction.atomic():
+            _preparar_definiciones(caso, extras=[campo.formulario_id])
+            if not Campo.objects.filter(pk=campo_id, formulario_id=campo.formulario_id).exists():
+                return fallar("el campo destino de la integracion ya no existe")
+            valor = _extraer(respuesta, cfg.get("ruta", ""))
+            ValorCampo.objects.update_or_create(
+                caso=caso, campo_id=campo_id,
+                defaults={"nodo": nodo, "valor": "" if valor is None else str(valor)},
+            )
         # La trazabilidad general no debe duplicar el contenido de ValorCampo:
         # la respuesta externa puede contener información clínica o personal.
         _registrar(caso, nodo.titulo or "Integración", detalle=f"dato recibido para campo #{campo_id}", autor=autor, nodo=nodo)
@@ -1268,12 +1275,19 @@ def cambiar_estado_cama(cama: Cama, estado: str, autor=None, motivo: str = "") -
 # --------------------------------------------------------------------------- #
 # Avance del caso
 # --------------------------------------------------------------------------- #
+def _preparar_definiciones(caso, *, extras=()):
+    # Preparar todo el conjunto antes del primer lock: dos casos pueden
+    # recorrer Form A → integración B y Form B → integración A.
+    asegurar_congelados(ids_formularios_de_version(caso.version_id) | set(extras))
+
+
 def _correr_automaticos(caso: Caso, autor=None):
     """
     Desde el `nodo_actual`, aplica efectos y avanza mientras el nodo sea
     automático. Se detiene en un nodo de detención (form/atención/espera/fin) o
     en un callejón sin salida.
     """
+    _preparar_definiciones(caso)
     visitados = set()
     while caso.nodo_actual is not None:
         nodo = caso.nodo_actual
@@ -1780,6 +1794,7 @@ def rellamar(caso: Caso, autor=None) -> Caso:
 @transaction.atomic
 def iniciar(caso: Caso, autor=None) -> Caso:
     """Coloca el caso en el nodo Inicio de su versión y corre hasta la 1ª parada."""
+    _preparar_definiciones(caso)
     asegurar_historia(caso)
     inicio = caso.version.nodos.filter(tipo=Nodo.Tipo.INICIO).first()
     if inicio is None:
@@ -1829,9 +1844,14 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
     if nodo.tipo == Nodo.Tipo.CAMA:
         raise ErrorMotor("Este paso se completa asignando una cama.")
 
+    _preparar_definiciones(caso, extras=[nodo.formulario_id] if nodo.formulario_id else [])
+
     # Completar el nodo actual.
     if nodo.tipo == Nodo.Tipo.FORMULARIO:
         valores = datos.get("valores", {})
+        if nodo.formulario_id:
+            # Mantener la misma definición durante validación y persistencia.
+            nodo._state.fields_cache.pop("formulario", None)
         valores = _validar_valores(nodo, valores)
         _guardar_valores(caso, nodo, valores)
         # «Requerido» se pintaba con un asterisco y no lo exigía ninguna capa: un
@@ -2124,13 +2144,15 @@ def _entero(valor):
         return None
 
 
+@transaction.atomic
 def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
     if not valores:
         return
     if not nodo.formulario_id:
         raise ErrorMotor("Este paso no tiene formulario para cargar valores.")
 
-    campos_permitidos = set(nodo.formulario.campos.values_list("id", flat=True))
+    _preparar_definiciones(caso, extras=[nodo.formulario_id])
+    campos_permitidos = set(Campo.objects.filter(formulario_id=nodo.formulario_id).values_list("id", flat=True))
     normalizados, invalidos = {}, []
     for campo_id, valor in valores.items():
         campo_id_normalizado = _entero(campo_id)
@@ -2334,6 +2356,10 @@ def ensayar(version: VersionFlujo, pasos: list[dict] | None = None, autor=None) 
     # rollback alcanza a la base y no a los sistemas de afuera, así que los nodos
     # de integración se anotan pero no se ejecutan.
     with transaction.atomic(), _ensayando():
+        # Un ensayo de borrador fija el grafo antes de tocar sus definiciones.
+        # La marca y todos los datos del ensayo se deshacen al final.
+        version = get_object_or_404(VersionFlujo.objects.select_for_update(), pk=version.pk)
+        asegurar_congelados(ids_formularios_de_version(version.pk))
         with trazar() as camino:
             caso = Caso.objects.create(
                 institucion=version.flujo.institucion,
