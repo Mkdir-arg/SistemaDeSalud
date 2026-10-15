@@ -1,25 +1,24 @@
 """
 Sellado de integridad de la historia clínica.
 
-**Qué es y qué no es esto, sin vueltas.** Esto NO es firma digital en el sentido
-de la Ley 25.506: eso exige un certificado emitido por un certificador
-licenciado y un dispositivo (token o HSM) que guarde la clave privada, y hasta
-que el cliente diga cuál usa no se puede implementar sin inventar. Ver
-`FIRMA_DIGITAL` al final del archivo para el enganche que queda preparado.
+Esto no es firma digital certificada ni prueba por sí solo quién escribió una
+entrada. Compara el contenido cubierto por el formato con su resumen SHA-256
+y comprueba los enlaces entre resúmenes de una misma historia.
 
-Lo que SÍ hace, que es lo que faltaba: permite **demostrar que una entrada no se
-tocó después de firmarse**. Hasta acá «firmada» era un booleano; alguien con
-acceso a la base podía editar el texto de una atención de hace dos años y no
-quedaba ni rastro. Con esto, cualquier cambio se detecta.
+V2 preserva fronteras entre campos mediante JSON. Los formatos legados v1
+conservan su algoritmo y su ambigüedad: un traslado del separador U+001F entre
+campos puede conservar el resumen. Su coincidencia se informa con ese límite;
+no se resellan registros históricos para aparentar una garantía posterior.
 
-Cómo: al firmar se calcula un resumen (SHA-256) del contenido y se encadena con
-el de la entrada firmada anterior de esa misma historia. Encadenarlas es lo que
-hace la diferencia entre «se puede verificar una entrada» y «se puede verificar
-la historia»: sin la cadena, quien altera una entrada sólo tiene que recalcular
-su propio resumen; con la cadena, tendría que recalcular todas las posteriores,
-y eso deja la última en evidencia contra cualquier copia o respaldo.
+La cadena ayuda a detectar modificaciones respecto de la evidencia guardada,
+pero alguien con acceso suficiente a la base puede recalcular toda la cadena.
+Detectar esa reescritura exige contrastar con una referencia externa confiable
+que el mismo actor no pueda alterar; no cualquier copia o respaldo la ofrece.
+No se afirma autenticidad legal ni inmutabilidad frente al administrador de DB.
+Ver FIRMA_DIGITAL_PENDIENTE para el alcance de la integración certificada.
 """
 import hashlib
+import json
 from datetime import timezone as tz
 
 from django.db import transaction
@@ -31,7 +30,8 @@ from django.utils import timezone
 # historia, que sería peor que no tener sellado. La versión previa era
 # `cauce-sha256-v1`, del nombre anterior del sistema; lo sellado con ella se
 # sigue verificando con ella.
-VERSION = "salud-sha256-v1"
+VERSION = "salud-sha256-v2"
+VERSIONES_LEGADAS = frozenset({"salud-sha256-v1", "cauce-sha256-v1"})
 
 
 def _canonico(entrada) -> str:
@@ -59,9 +59,16 @@ def _canonico(entrada) -> str:
         entrada.fecha.astimezone(tz.utc).isoformat() if entrada.fecha else "",
         entrada.sello_previo or "",
     ]
-    # Separador que no puede aparecer en los campos: sin él, mover texto de un
-    # campo al siguiente daría el mismo resumen.
-    return "\x1f".join(campos)
+    version = campos[0]
+    if version in VERSIONES_LEGADAS:
+        # Compatibilidad byte por byte, incluso su ambigüedad con U+001F.
+        # No corregir el formato histórico ni resellar evidencia existente.
+        return "\x1f".join(campos)
+    if version == "salud-sha256-v2":
+        # Array posicional de strings, escapado JSON determinista. No se
+        # normaliza Unicode ni se eliminan controles del texto firmado.
+        return json.dumps(campos, ensure_ascii=True, separators=(",", ":"))
+    raise ValueError("Versión de sello no soportada.")
 
 
 def calcular(entrada) -> str:
@@ -123,11 +130,17 @@ def verificar(entrada) -> dict:
         # Firmada antes de que existiera el sellado. Se dice, no se inventa un
         # resultado: no se puede afirmar que esté intacta ni que esté alterada.
         return {"ok": None, "motivo": "firmada antes del sellado: no verificable"}
-    return (
-        {"ok": True, "motivo": "intacta"}
-        if calcular(entrada) == entrada.sello
-        else {"ok": False, "motivo": "el contenido cambió después de firmarse"}
-    )
+    if entrada.sello_version not in VERSIONES_LEGADAS | {"salud-sha256-v2"}:
+        return {"ok": False, "motivo": "versión de sello no soportada: no verificable"}
+    if calcular(entrada) != entrada.sello:
+        return {"ok": False, "motivo": "el contenido cambió después de firmarse"}
+    if entrada.sello_version in VERSIONES_LEGADAS:
+        return {
+            "ok": True,
+            "motivo": "coincide con el algoritmo legado v1; no detecta traslados "
+                      "del separador U+001F entre campos",
+        }
+    return {"ok": True, "motivo": "intacta"}
 
 
 def sellado_desde():

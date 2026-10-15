@@ -40,6 +40,22 @@ class HistoriaFija:
 
 
 class EntradaHistoriaSerializer(HistoriaFija, serializers.ModelSerializer):
+    revision = serializers.SerializerMethodField()
+    revision_esperada = serializers.CharField(write_only=True, required=False, allow_blank=True, trim_whitespace=False)
+
+    def get_revision(self, obj) -> str:
+        from .revision_borrador import revision_de_entrada
+
+        return revision_de_entrada(obj)
+
+    def create(self, validated_data):
+        validated_data.pop("revision_esperada", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("revision_esperada", None)
+        return super().update(instance, validated_data)
+
     def validate(self, datos):
         datos = super().validate(datos)
         historia = datos.get("historia", getattr(self.instance, "historia", None))
@@ -61,7 +77,8 @@ class EntradaHistoriaSerializer(HistoriaFija, serializers.ModelSerializer):
         model = EntradaHistoria
         fields = [
             "id", "historia", "titulo", "contenido", "autor", "autor_nombre",
-            "caso", "firmada", "matricula", "fecha", "firmada_at", "sello", "integra",
+            "caso", "firmada", "matricula", "fecha", "firmada_at", "sello", "sello_version", "integra",
+            "revision", "revision_esperada",
         ]
         # El sello no se escribe desde afuera: lo calcula el sistema al firmar, y
         # poder mandarlo permitiría sellar contenido alterado.
@@ -69,7 +86,7 @@ class EntradaHistoriaSerializer(HistoriaFija, serializers.ModelSerializer):
         # `autor` tampoco: quién atendió sale de la sesión. Mandarlo en el cuerpo
         # permitía dejar un «Alta médica» firmado a nombre de una médica que
         # nunca vio al paciente.
-        read_only_fields = ["fecha", "matricula", "firmada_at", "sello", "autor"]
+        read_only_fields = ["fecha", "matricula", "firmada_at", "sello", "sello_version", "autor"]
 
     def get_integra(self, obj) -> bool | None:
         from .integridad import verificar
