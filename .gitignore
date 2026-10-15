@@ -40,6 +40,7 @@ frontend/test-results/
 # Playwright a veces escribe en la raíz según desde dónde se lo invoque.
 /test-results/
 /playwright-report/
+/output/playwright/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/.playwright/
