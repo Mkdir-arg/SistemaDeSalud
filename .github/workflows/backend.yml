@@ -63,5 +63,9 @@ jobs:
       - name: Migraciones al día
         run: python manage.py makemigrations --check --dry-run
 
+      # Como el build de producción: el Admin resuelve assets desde el manifest.
+      - name: Preparar estáticos
+        run: python manage.py collectstatic --noinput
+
       - name: Suite completa
         run: python manage.py test --noinput
