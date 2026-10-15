@@ -38,7 +38,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from apps.http_seguro import abrir_sin_redirecciones as urlopen
 
 from django.db import transaction
 from django.db.models import Case, F, IntegerField, Max, Value, When
@@ -845,7 +847,9 @@ def _llamar_externo(caso: Caso, nodo: Nodo, autor=None):
             caso=caso, campo_id=campo_id,
             defaults={"nodo": nodo, "valor": "" if valor is None else str(valor)},
         )
-        _registrar(caso, nodo.titulo or "Integración", detalle=f"dato recibido: {valor}", autor=autor, nodo=nodo)
+        # La trazabilidad general no debe duplicar el contenido de ValorCampo:
+        # la respuesta externa puede contener información clínica o personal.
+        _registrar(caso, nodo.titulo or "Integración", detalle=f"dato recibido para campo #{campo_id}", autor=autor, nodo=nodo)
     else:
         _registrar(caso, nodo.titulo or "Integración", detalle="consulta realizada", autor=autor, nodo=nodo)
 
