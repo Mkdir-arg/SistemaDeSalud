@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "@/api/client";
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
+import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { Badge, Button, Card, Field, Input, Modal, Mono, Textarea } from "@/components/ui";
 import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
@@ -887,6 +888,14 @@ function EstadoEstudio({ estudio }) {
 export function Estudios({ estudios }) {
   const toast = useToast();
   const [descargando, setDescargando] = useState(null);
+  const { puedeVer } = useInstitucion();
+  // Un adjunto sin dueño confirmado no llega al portal del paciente (#172,
+  // AUD-050). Solo un admin de la institución confirma que es de este estudio.
+  const puedeConfirmar = puedeVer("config_institucional");
+  const confirmar = useAccion((estudio) => api.post(`/estudios/${estudio.id}/confirmar-archivo/`), {
+    onSuccess: () => toast.ok("Archivo confirmado para este estudio."),
+    onError: (e) => toast.deError(e, "No se pudo confirmar el archivo."),
+  });
 
   async function descargar(estudio) {
     setDescargando(estudio.id);
@@ -923,6 +932,18 @@ export function Estudios({ estudios }) {
                 <Mono className="ml-1.5">{s.archivo}</Mono>
               ))}
             </div>
+            {s.archivo && !s.archivo_asociado && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-texto-debil">
+                <Badge tone="amber">Archivo sin confirmar</Badge>
+                <span>No se muestra al paciente hasta que un administrador lo confirme.</span>
+                {puedeConfirmar && (
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-sm"
+                    disabled={confirmar.isPending} onClick={() => confirmar.mutate(s)}>
+                    Confirmar archivo de este estudio
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           <EstadoEstudio estudio={s} />
         </Card>
