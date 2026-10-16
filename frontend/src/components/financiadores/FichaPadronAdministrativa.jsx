@@ -45,9 +45,8 @@ export default function FichaPadronAdministrativa({ afiliado, organizacion, usua
         {persona.fin_prestacional_informado && persona.vigente && <p role="status" className="mt-4 rounded-md bg-badge-amber-bg p-3 text-sm text-badge-amber-fg">Hay un fin prestacional informado ({persona.fin_prestacional_informado}) y los derechos siguen vigentes. La finalización prestacional requiere la acción explícita de cobertura.</p>}
       </TarjetaFicha>
       <div className={integrado ? "space-y-4" : "grid items-start gap-4 xl:grid-cols-2"}>{BLOQUES_PADRON.map((bloque) => <section key={bloque.titulo} aria-label={bloque.titulo} className={!integrado && bloque.titulo === "Identidad" ? "xl:col-span-2" : undefined}>
-        <TarjetaFicha titulo={bloque.titulo} icono={ICONOS[bloque.titulo]} descripcion={bloque.descripcion} accion={puedeEditar && <Button size="sm" variant="secondary" onClick={() => setEdicion(bloque)}>Editar {bloque.titulo.toLocaleLowerCase("es-AR")}</Button>}>
+        <TarjetaFicha titulo={bloque.titulo} icono={ICONOS[bloque.titulo]} descripcion={bloque.titulo === "Régimen y trabajo" ? "Empleador y actividad según el régimen; subsidio aplicable a desempleo. Campos sin informar se conservan para el legado. No hay validación automática ante ARCA o ANSES." : bloque.descripcion} accion={puedeEditar && <Button size="sm" variant="secondary" onClick={() => setEdicion(bloque)}>Editar {bloque.titulo.toLocaleLowerCase("es-AR")}</Button>}>
           <DatosFicha campos={bloque.campos} valores={persona} className={!integrado && bloque.titulo !== "Identidad" ? "lg:grid-cols-2" : undefined} />
-          {bloque.titulo === "Régimen y trabajo" && <p className="mt-4 text-sm text-texto-debil">Empleador y actividad según el régimen; subsidio aplicable a desempleo. Campos sin informar se conservan para el legado. No hay validación automática ante ARCA o ANSES.</p>}
         </TarjetaFicha>
       </section>)}</div>
     </div>}
