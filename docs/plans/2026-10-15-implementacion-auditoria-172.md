@@ -497,3 +497,27 @@ Validación:
 - PostgreSQL 16 del laboratorio, imagen reconstruida y worker de correo detenido: `manage.py test apps.accounts apps.simulacion apps.instituciones apps.red apps.registros apps.fhir apps.farmacia apps.casos.test_permisos_barrida apps.portal.tests --noinput --verbosity 1`: **819 aprobadas sin skips**, 387 s. Sobre la misma imagen pasan `check` y `makemigrations --check --dry-run` sin cambios; `sqlmigrate accounts 0009` crea solo la tabla, dos FK diferidas y tres índices; OpenAPI `--fail-on-warn` aprobado. La migración no se aplicó a la base sintética del laboratorio, porque no hay API levantada que la use. La suite global queda para el CI.
 
 Rollback: revertir el código deja la tabla sin uso, sin riesgo, y vuelve a rehabilitar sesiones viejas al reactivar. La tabla no se borra como parte del rollback. Al desplegar, `accounts.0009` es expansiva y no requiere ventana.
+
+### Bloque K3: dueño autoritativo de adjuntos — 16/10/2026
+
+Entre opciones que propuso el agente, el dueño eligió: asociar automáticamente solo los adjuntos legacy inequívocos; que un archivo nuevo lo asocie únicamente quien lo subió; y que los admins confirmen los huérfanos con un botón en la historia. Se mantiene la deuda de comprensión de K1 y K2: no hubo revisión ni modos de fallo del dueño.
+
+Contrato (AUD-050, la parte backend de AUD-002 y el paciente de AUD-003):
+
+- Un `ArchivoClinico` pertenece a un único paciente y a un único estudio (`ciudadano`, `objeto_tipo="Estudio"`, `objeto_id`, `asociado_por`, `asociado_at`). Lo fija `registros/adjuntos.py` bajo `select_for_update`, y no se reasigna.
+- Las dos vías que cargan `Estudio.archivo` —la API de estudios (POST/PATCH) y el resultado del estudio en el motor— pasan por esa función. Se rechazan las referencias externas o sin metadata, otra institución, los consentimientos, un archivo ya asociado a otro estudio y un archivo sin dueño que subió otra persona. En simulación, «quien lo subió» se compara con el actor real.
+- `POST /api/estudios/{id}/confirmar-archivo/`, con `config_institucional`: un admin confirma el archivo actual de un estudio sin dueño. Si no hay metadata, la crea leyendo el almacenamiento (tamaño, SHA-256); nunca reasigna. La historia muestra «Archivo sin confirmar» y, a quien puede, el botón.
+- El portal publica y descarga solo archivos asociados a ese estudio y a su paciente. La descarga institucional registra al paciente en `AccesoClinico` cuando el dueño está confirmado.
+- El Admin de `ArchivoClinico` no edita pertenencia, propósito ni institución.
+
+Migración `registros.0012`: tres columnas nulas y un backfill que asocia solo la metadata inequívoca (ya dice Estudio=id, un único estudio usa la ruta, misma institución). El resto queda sin dueño y oculto del portal hasta su confirmación, incluidos los estudios legacy sin metadata. Cambio visible: esos estudios dejan de ser descargables en el portal hasta que un admin los confirme.
+
+Límites: los adjuntos de formularios de caso siguen sin dueño de paciente (no se publican en el portal; su descarga institucional exige `historia_clinica` en la institución). `archivo_asociado` hace una consulta por estudio al serializar. La confirmación del admin no compara el contenido con el estudio: es una declaración trazable de la persona, no una verificación. El botón no tiene prueba de navegador.
+
+Validación:
+
+- SQLite local: 8 tests nuevos; contra las vistas de HEAD fallan 7 (13 subfallos) y pasan con el cambio. El fixture del portal se actualizó a un dueño confirmado y se agregó el negativo de legacy oculto. Tanda focal de 68 aprobada.
+- Frontend: build 1190 módulos y auditor CSS 287 sin incidencias.
+- PostgreSQL 16 del laboratorio, imagen reconstruida y worker de correo detenido: `manage.py test apps.registros apps.portal apps.casos apps.simulacion apps.auditoria --noinput --verbosity 1`: **762 aprobadas sin skips**, 260 s. Sobre la misma imagen pasan `check` y `makemigrations --check --dry-run` sin cambios; `sqlmigrate registros 0012` solo agrega tres columnas nulas con FK, además del backfill; OpenAPI `--fail-on-warn` aprobado. La migración no se aplicó a la base sintética del laboratorio. La suite global queda para el CI.
+
+Rollback: revertir el código vuelve a publicar en el portal por institución (reabre AUD-050). Las columnas y asociaciones se conservan y no se borran.
