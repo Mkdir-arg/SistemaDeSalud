@@ -198,6 +198,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.accounts.middleware.CorteMembresiasMiddleware",
     # Limpia el contexto de simulación de cada pedido y registra sus escrituras.
     "apps.simulacion.middleware.SimulacionMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -267,8 +268,9 @@ REST_FRAMEWORK = {
         # y, si la sesión no es válida, rechaza el pedido antes de que otro
         # autenticador lo atienda como superusuario.
         "apps.simulacion.autenticacion.SimulacionAuthentication",
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        "apps.accounts.autenticacion.AutenticacionInstitucional",
+        # Sin SessionAuthentication (#172, D-b): la cookie del Admin no abre la
+        # API. Así «Salir» y la revocación por SID cubren todo acceso a la API.
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -440,6 +442,24 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL") or f"{NOMBRE_SISTEMA} <no-respond
 # (sólo a esas se les manda). Las pruebas lo apagan para leer el buzón.
 PORTAL_CORREO_EN_SEGUNDO_PLANO = env_bool("PORTAL_CORREO_EN_SEGUNDO_PLANO", True)
 
+# Correo institucional opt-in: sin modo/plazos/cupos/política no se habilita.
+# La outbox requiere PostgreSQL y un worker supervisado aparte del servidor web.
+INSTITUCIONAL_CORREO_MODO = env("INSTITUCIONAL_CORREO_MODO", "")
+INSTITUCIONAL_URL_BASE = env("INSTITUCIONAL_URL_BASE", "")
+INSTITUCIONAL_PROVEEDOR_CONFIRMADO = env_bool("INSTITUCIONAL_PROVEEDOR_CONFIRMADO", False)
+INSTITUCIONAL_INVITACION_TIMEOUT = int(env("INSTITUCIONAL_INVITACION_TIMEOUT") or "0")
+INSTITUCIONAL_RECUPERACION_TIMEOUT = int(env("INSTITUCIONAL_RECUPERACION_TIMEOUT") or "0")
+INSTITUCIONAL_EMAIL_TIMEOUT = int(env("INSTITUCIONAL_EMAIL_TIMEOUT") or "0")
+INSTITUCIONAL_THROTTLE_RATES = {
+    "ip": env("INSTITUCIONAL_TASA_IP", ""),
+    "email": env("INSTITUCIONAL_TASA_EMAIL", ""),
+    "usuario": env("INSTITUCIONAL_TASA_USUARIO", ""),
+}
+INSTITUCIONAL_OUTBOX_POLITICA = {
+    clave: int(env(f"INSTITUCIONAL_OUTBOX_{clave.upper()}") or "0")
+    for clave in ("max_intentos", "lease_segundos", "backoff_inicial_segundos", "backoff_maximo_segundos", "espera_segundos")
+}
+
 # --- Portal del paciente (#120) --------------------------------------------- #
 # Dirección pública de la SPA: los enlaces del correo apuntan acá.
 PORTAL_URL_BASE = env("PORTAL_URL_BASE") or "http://localhost:5173"
@@ -474,6 +494,9 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
+    "CHECK_REVOKE_TOKEN": True,
+    "TOKEN_OBTAIN_SERIALIZER": "apps.accounts.jwt.TokenObtainPairInstitucionalSerializer",
+    "TOKEN_REFRESH_SERIALIZER": "apps.accounts.jwt.TokenRefreshInstitucionalSerializer",
     "USER_AUTHENTICATION_RULE": "apps.simulacion.autenticacion.regla_de_autenticacion",
 }
 

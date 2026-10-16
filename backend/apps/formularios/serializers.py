@@ -41,6 +41,9 @@ class CampoSerializer(serializers.ModelSerializer):
         compara ese número recibe texto libre. Con PATCH parcial el valor
         efectivo sale de `attrs` o, si no vino, de lo que ya tiene el campo.
         """
+        if self.instance is not None and all(getattr(self.instance, k) == v for k, v in attrs.items()):
+            return attrs
+
         def efectivo(k, default=None):
             return attrs[k] if k in attrs else getattr(self.instance, k, default)
 
@@ -169,9 +172,9 @@ class FormularioSerializer(serializers.ModelSerializer):
         model = Formulario
         fields = [
             "id", "institucion", "area", "area_nombre", "titulo", "descripcion",
-            "creado", "campos", "usos_n",
+            "creado", "campos", "usos_n", "congelado_at",
         ]
-        read_only_fields = ["creado"]
+        read_only_fields = ["creado", "congelado_at"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

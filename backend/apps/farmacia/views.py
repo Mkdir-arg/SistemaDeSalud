@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q, Sum
-from django.utils import timezone
+from django.db.models.deletion import ProtectedError
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -22,6 +24,11 @@ class DatoInvalido(APIException):
     """Un id del cuerpo que no resuelve. 400 con el texto, no un 500 ni un 201."""
 
     status_code = status.HTTP_400_BAD_REQUEST
+
+
+class PedidoNoEliminable(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Los pedidos se conservan. Para cerrar el saldo pendiente, rechazá el pedido."
 
 
 # Ruta ORM de cada modelo hacia su institución. Los ids que llegan en el cuerpo se
@@ -107,6 +114,17 @@ class DepositoViewSet(BaseModelViewSet):
     capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area", "central", "activo")
+
+
+    def perform_destroy(self, instance):
+        try:
+            with transaction.atomic():
+                deposito = get_object_or_404(Deposito.objects.select_for_update(), pk=instance.pk)
+                deposito.delete()
+        except ProtectedError:
+            error = APIException("El depósito tiene pedidos o movimientos protegidos y debe conservarse.")
+            error.status_code = status.HTTP_409_CONFLICT
+            raise error from None
 
 
 class LoteViewSet(BaseModelViewSet):
@@ -379,6 +397,19 @@ class PedidoViewSet(BaseModelViewSet):
     filter_fields = ("origen", "destino", "estado", "urgente", "origen__institucion")
     ordering_fields = ("creado", "urgente")
 
+    @transaction.atomic
+    def perform_update(self, serializer):
+        # El serializer validó una copia anterior al bloqueo. Guardar esa copia
+        # completa puede restaurar el estado previo a una entrega concurrente.
+        pedido = get_object_or_404(Pedido.objects.select_for_update(), pk=serializer.instance.pk)
+        serializer.instance = pedido
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # No existe un estado borrador: también se conserva el pedido pendiente.
+        # Las limpiezas ORM privilegiadas de escenarios sintéticos son aparte.
+        raise PedidoNoEliminable()
+
     @action(detail=True, methods=["post"])
     def preparar(self, request, pk=None):
         """
@@ -412,15 +443,12 @@ class PedidoViewSet(BaseModelViewSet):
     @action(detail=True, methods=["post"])
     def rechazar(self, request, pk=None):
         pedido = self.get_object()
-        if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
-            return Response({"detail": "El pedido ya está cerrado."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        pedido.estado = Pedido.Estado.RECHAZADO
-        pedido.observaciones = (
-            pedido.observaciones + "\n" + (request.data.get("motivo") or "")
-        ).strip()
-        pedido.resuelto = timezone.now()
-        pedido.save(update_fields=["estado", "observaciones", "resuelto"])
+        try:
+            pedido = motor.rechazar_pedido(
+                pedido, motivo=request.data.get("motivo") or "", autor=request.user,
+            )
+        except motor.ErrorStock as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(pedido).data)
 
     @action(detail=False, methods=["get"])

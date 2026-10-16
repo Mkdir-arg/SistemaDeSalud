@@ -1,6 +1,7 @@
 
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.decorators import action
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 
 from apps.common import BaseModelViewSet
 
+from .integridad import bloquear_formularios, exigir_editable
 from .models import Campo, Formulario
 from .serializers import (
     CampoSerializer,
@@ -16,12 +18,6 @@ from .serializers import (
     FormularioSerializer,
     UsoFormularioSerializer,
 )
-
-
-class CampoConDatos(APIException):
-    """Se intentó borrar un campo del que ya cuelgan valores de casos reales."""
-
-    status_code = status.HTTP_409_CONFLICT
 
 
 class FormularioEnUso(APIException):
@@ -66,6 +62,14 @@ class FormularioViewSet(BaseModelViewSet):
     # buscar por algo que está a la vista y no encontrarlo se siente roto.
     search_fields = ["titulo", "descripcion"]
     ordering_fields = ["titulo", "creado"]
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        formulario = bloquear_formularios([serializer.instance.pk])[serializer.instance.pk]
+        serializer.instance = formulario
+        serializer._validated_data = serializer.run_validation(serializer.initial_data)
+        exigir_editable(formulario, cambios=serializer.validated_data)
+        serializer.save()
 
     @extend_schema(
         responses=inline_serializer(
@@ -167,6 +171,8 @@ class FormularioViewSet(BaseModelViewSet):
         """
         formulario = self.get_object()
         with transaction.atomic():
+            formulario = bloquear_formularios([formulario.pk])[formulario.pk]
+            campos = list(Campo.objects.select_for_update().filter(formulario=formulario).order_by("pk"))
             copia = Formulario.objects.create(
                 institucion=formulario.institucion,
                 area=formulario.area,
@@ -190,7 +196,7 @@ class FormularioViewSet(BaseModelViewSet):
                     orden=i,
                 )
                 for i, c in enumerate(
-                    Campo.objects.filter(formulario=formulario).order_by("orden", "id")
+                    sorted(campos, key=lambda c: (c.orden, c.pk))
                 )
             ])
         return Response(
@@ -221,19 +227,15 @@ class FormularioViewSet(BaseModelViewSet):
         except (TypeError, ValueError):
             raise ValidationError({"campos": "Los ids de los campos tienen que ser números."})
 
-        propios = Campo.objects.filter(formulario=formulario)
-        actuales = list(propios.values_list("id", flat=True))
-        if sorted(pedido) != sorted(actuales):
-            raise ValidationError({
-                "campos": "La lista no coincide con los campos del formulario "
-                          "(alguien los cambió mientras tanto). Recargá la pantalla.",
-            })
-
         with transaction.atomic():
-            campos = {c.id: c for c in propios.select_for_update()}
+            formulario = bloquear_formularios([formulario.pk])[formulario.pk]
+            campos = {c.pk: c for c in Campo.objects.select_for_update().filter(formulario=formulario).order_by("pk")}
+            if sorted(pedido) != sorted(campos):
+                raise ValidationError({"campos": "La lista no coincide con los campos del formulario. Recargá la pantalla."})
             cambiados = []
             for i, campo_id in enumerate(pedido):
                 campo = campos[campo_id]
+                exigir_editable(formulario, instancia=campo, cambios={"orden": i})
                 if campo.orden != i:
                     campo.orden = i
                     cambiados.append(campo)
@@ -241,6 +243,7 @@ class FormularioViewSet(BaseModelViewSet):
                 Campo.objects.bulk_update(cambiados, ["orden"])
         return Response(self.get_serializer(self.get_object()).data)
 
+    @transaction.atomic
     def perform_destroy(self, instance):
         """No se borra un formulario que un flujo todavía pide, ni uno con datos cargados.
 
@@ -251,6 +254,8 @@ class FormularioViewSet(BaseModelViewSet):
         borrar el formulario de admisión se lleva el motivo de consulta y el nivel
         de triage de cada caso que pasó por ahí, sin dejar rastro.
         """
+        instance = bloquear_formularios([instance.pk])[instance.pk]
+        exigir_editable(instance)
         nodos = list(
             instance.nodos.exclude(version__estado="archivada").select_related(
                 "version", "version__flujo"
@@ -300,52 +305,26 @@ class CampoViewSet(BaseModelViewSet):
     institucion_path = "formulario__institucion"
     filter_fields = ("formulario", "tipo", "requerido", "origen")
 
-    def perform_update(self, serializer):
-        """La etiqueta, la ayuda, las opciones y el orden se editan siempre; el TIPO no.
+    @transaction.atomic
+    def perform_create(self, serializer):
+        pk = serializer.validated_data["formulario"].pk
+        formulario = bloquear_formularios([pk])[pk]
+        exigir_editable(formulario)
+        serializer.save(formulario=formulario)
 
-        Corregir «Tensión artrial», agregar una obra social nueva a la lista o
-        volver obligatorio el motivo de consulta son cambios que un hospital hace
-        todo el tiempo y no tocan un solo dato guardado. El tipo sí: los valores
-        se guardan como texto, así que pasar «Nivel de triage» de selección única
-        a fecha deja los valores ya cargados sin significado —el detalle del caso
-        muestra «Rojo - Emergencia» en un campo fecha— y las Decisiones que
-        comparaban ese campo empiezan a mandar los casos por la rama que no era.
-        """
-        campo = serializer.instance
-        nuevo_tipo = serializer.validated_data.get("tipo", campo.tipo)
-        if nuevo_tipo != campo.tipo:
-            cargados = campo.valores.count()
-            if cargados:
-                raise CampoConDatos({
-                    "detail": (
-                        f"«{campo.label}» ya tiene {cargados} "
-                        f"{'valor cargado' if cargados == 1 else 'valores cargados'} en casos: "
-                        "cambiarle el tipo los dejaría sin sentido. Podés editar la etiqueta, "
-                        "la ayuda, las opciones y el orden."
-                    ),
-                    "valores": cargados,
-                })
+    @transaction.atomic
+    def perform_update(self, serializer):
+        pk = serializer.instance.formulario_id
+        formulario = bloquear_formularios([pk])[pk]
+        campo = get_object_or_404(Campo.objects.order_by().select_for_update(), pk=serializer.instance.pk, formulario_id=pk)
+        serializer.instance = campo
+        serializer._validated_data = serializer.run_validation(serializer.initial_data)
+        exigir_editable(formulario, instancia=campo, cambios=serializer.validated_data)
         serializer.save()
 
+    @transaction.atomic
     def perform_destroy(self, instance):
-        """No se borra un campo del que ya cuelgan datos cargados.
-
-        `ValorCampo.campo` es CASCADE: borrar el campo «Motivo de consulta» del
-        formulario de admisión se lleva puestos todos los valores cargados de
-        todos los casos, y el EventoCaso sólo guarda «Formulario X completado ·
-        5 campos cargados», sin los valores. Motivo de consulta, nivel de triage,
-        alergias o tensión arterial son el registro del proceso asistencial:
-        desaparecen sin dejar rastro y no hay de dónde recuperarlos.
-        """
-        cargados = instance.valores.count()
-        if cargados:
-            raise CampoConDatos({
-                "detail": (
-                    f"«{instance.label}» tiene {cargados} "
-                    f"{'valor cargado' if cargados == 1 else 'valores cargados'} en casos. "
-                    "Borrarlo los borraría a todos y no hay de dónde recuperarlos: "
-                    "editá la etiqueta o las opciones en vez de rehacer el campo."
-                ),
-                "valores": cargados,
-            })
-        instance.delete()
+        formulario = bloquear_formularios([instance.formulario_id])[instance.formulario_id]
+        campo = get_object_or_404(Campo.objects.order_by().select_for_update(), pk=instance.pk, formulario_id=formulario.pk)
+        exigir_editable(formulario)
+        campo.delete()

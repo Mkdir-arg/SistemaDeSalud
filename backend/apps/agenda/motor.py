@@ -28,6 +28,23 @@ class ErrorAgenda(Exception):
         self.caso_id = caso_id
 
 
+def motivo_no_cancelable_portal(turno, ahora):
+    """La misma política orienta el listado y se exige bajo lock al operar."""
+    if turno.estado not in (Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO):
+        return "Este turno ya no se puede cancelar."
+    if turno.inicio - ahora < timedelta(hours=24):
+        return "Faltan menos de 24 horas para el turno. Para cancelarlo, comunicate con la institución."
+    return None
+
+
+def motivo_no_confirmable_portal(turno, ahora):
+    if turno.estado != Turno.Estado.RESERVADO:
+        return "Sólo se puede confirmar un turno reservado."
+    if turno.inicio <= ahora:
+        return "El turno ya pasó."
+    return None
+
+
 def _zona(fecha, hora):
     return timezone.make_aware(datetime.combine(fecha, hora), timezone.get_current_timezone())
 
@@ -448,6 +465,10 @@ def _firma(turno: Turno, autor):
 def cancelar(turno: Turno, autor=None, motivo="", via=Turno.Via.SISTEMA) -> Turno:
     """Cancela el turno y libera el horario."""
     turno = _bajo_candado(turno)
+    if via == Turno.Via.PORTAL:
+        impedimento = motivo_no_cancelable_portal(turno, timezone.now())
+        if impedimento:
+            raise ErrorAgenda(impedimento)
     if turno.estado in (Turno.Estado.PRESENTE, Turno.Estado.AUSENTE, Turno.Estado.REALIZADO):
         raise ErrorAgenda("El turno ya fue resuelto: no se puede cancelar.")
     if turno.estado == Turno.Estado.CANCELADO:
@@ -486,6 +507,10 @@ def marcar_ausente(turno: Turno, autor=None) -> Turno:
 def confirmar(turno: Turno, autor=None, via=Turno.Via.SISTEMA) -> Turno:
     """El paciente avisó que viene (llamado de recordatorio contestado)."""
     turno = _bajo_candado(turno)
+    if via == Turno.Via.PORTAL:
+        impedimento = motivo_no_confirmable_portal(turno, timezone.now())
+        if impedimento:
+            raise ErrorAgenda(impedimento)
     if turno.estado != Turno.Estado.RESERVADO:
         raise ErrorAgenda("Sólo un turno reservado se puede confirmar.")
     turno.estado = Turno.Estado.CONFIRMADO

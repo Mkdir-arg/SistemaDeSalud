@@ -7,11 +7,13 @@ from django.db import transaction
 from django.db.models import IntegerField, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.http import StreamingHttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -20,7 +22,7 @@ from apps.auditoria.models import AccesoClinico
 from apps.common import BaseModelViewSet, ROL_CAPACIDADES, capacidades_de, tiene_capacidad
 from apps.simulacion.contexto import usuario_real
 
-from . import integridad, reglas
+from . import adjuntos, integridad, reglas
 from .models import (
     Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta,
 )
@@ -400,7 +402,7 @@ class EntradaHistoriaViewSet(AuditaLecturaClinica, BaseModelViewSet):
         if serializer.validated_data.get("firmada"):
             matricula = reglas.exigir_firmante(historia.ciudadano.institucion, self.request.user)
         with transaction.atomic():
-            entrada = serializer.save(autor=self.request.user, matricula=matricula)
+            entrada = serializer.save(autor=usuario_real(self.request), matricula=matricula)
             # Sellar en la misma transacción que el alta: una entrada firmada
             # que quedara sin sellar es exactamente el disfraz de arriba.
             integridad.sellar(entrada)
@@ -409,29 +411,46 @@ class EntradaHistoriaViewSet(AuditaLecturaClinica, BaseModelViewSet):
         """
         El borrador se corrige; lo firmado, no.
 
-        Una entrada sin firmar es un borrador y editarla es lo esperable. Una
+        Solo su autor real puede editar o firmar el borrador; no se transfiere
+        autoría ni hay excepción de superusuario. Un borrador legacy sin autor
+        exige registrar una entrada nueva, no apropiarse del anterior. Una
         firmada es el registro legal que se presenta ante un reclamo: pisarla
         deja `integra=False` para siempre y no hay forma de saber qué decía.
         """
-        entrada = serializer.instance
-        if entrada.firmada:
-            raise reglas.RegistroInviolable(
-                "Esta atención ya está firmada y no se puede modificar. "
-                "Para corregirla, registrá una atención nueva."
-            )
-        if not serializer.validated_data.get("firmada"):
-            serializer.save()
-            return
-
-        matricula = reglas.exigir_firmante(
-            entrada.historia.ciudadano.institucion, self.request.user
-        )
         with transaction.atomic():
-            # Firma quien firma, no quien escribió el borrador: la matrícula que
-            # se asienta es la de esta persona, y tiene que ir con su autoría o
-            # el sello certificaría una atribución falsa.
-            obj = serializer.save(autor=self.request.user, matricula=matricula)
+            # Mismo orden que el sellado: historia primero y entrada después.
+            # No bloquear el queryset con joins nullable de autor/caso.
+            get_object_or_404(HistoriaClinica.objects.select_for_update(), pk=serializer.instance.historia_id)
+            entrada = get_object_or_404(EntradaHistoria.objects.select_for_update(), pk=serializer.instance.pk)
+            self.check_object_permissions(self.request, entrada)
+            if entrada.firmada:
+                raise reglas.RegistroInviolable(
+                    "Esta atención ya está firmada y no se puede modificar. "
+                    "Para corregirla, registrá una atención nueva."
+                )
+            if entrada.autor_id is None or entrada.autor_id != usuario_real(self.request).pk:
+                raise PermissionDenied(
+                    "Solo el autor puede editar o firmar este borrador. Registrá una atención nueva."
+                )
+            from .revision_borrador import exigir_revision
+
+            exigir_revision(entrada, serializer.validated_data.get("revision_esperada"))
+            # La validación original ocurrió antes del lock. Validar y guardar
+            # contra la instancia actual evita persistir firma/sello obsoletos.
+            actual = self.get_serializer(entrada, data=self.request.data, partial=serializer.partial)
+            actual.is_valid(raise_exception=True)
+            if not actual.validated_data.get("firmada"):
+                serializer.instance = actual.save()
+                return
+
+            matricula = reglas.exigir_firmante(
+                entrada.historia.ciudadano.institucion, self.request.user
+            )
+            # La capacidad y matrícula corresponden al perfil efectivo; la
+            # autoría real ya fue comprobada y no se reasigna al firmar.
+            obj = actual.save(matricula=matricula)
             integridad.sellar(obj)
+            serializer.instance = obj
 
 
 class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
@@ -443,6 +462,7 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         "create": "solicitud_estudios",
         "update": "solicitud_estudios",
         "partial_update": "solicitud_estudios",
+        "confirmar_archivo": "config_institucional",
     }
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
@@ -460,8 +480,18 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         # quién lo pidió sería una cadena que nadie puede verificar.
         historia = serializer.validated_data["historia"]
         reglas.exigir_clinico(historia.ciudadano.institucion, self.request.user)
-        # `Estudio.autor` es texto: simulando un perfil, lo pide el superusuario.
-        serializer.save(autor=usuario_real(self.request).nombre_completo)
+        with transaction.atomic():
+            # `Estudio.autor` es texto: simulando un perfil, lo pide el superusuario.
+            estudio = serializer.save(autor=usuario_real(self.request).nombre_completo)
+            self._asociar_archivo(estudio)
+
+    def _asociar_archivo(self, estudio, *, confirmacion_admin=False):
+        try:
+            adjuntos.asociar_archivo_a_estudio(
+                estudio, estudio.archivo, self.request.user, confirmacion_admin=confirmacion_admin,
+            )
+        except adjuntos.ErrorAdjunto as error:
+            raise drf_serializers.ValidationError({"archivo": [str(error)]}) from None
 
     def perform_update(self, serializer):
         # Informar un resultado es tan clínico como pedirlo, y hasta acá sólo el
@@ -472,7 +502,26 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         # que se blindó el alta.
         estudio = serializer.instance
         reglas.exigir_clinico(estudio.historia.ciudadano.institucion, self.request.user)
-        serializer.save()
+        with transaction.atomic():
+            estudio = serializer.save()
+            self._asociar_archivo(estudio)
+
+    @extend_schema(request=None, responses=EstudioSerializer)
+    @action(detail=True, methods=["post"], url_path="confirmar-archivo")
+    def confirmar_archivo(self, request, pk=None):
+        """Un admin de la institución confirma que el archivo actual es de este estudio.
+
+        Es la vía para adjuntos sin dueño (legacy o subidos por otra persona). No
+        reasigna un archivo que ya pertenece a otro estudio.
+        """
+        estudio = self.get_object()
+        if not tiene_capacidad(request.user, "config_institucional", estudio.historia.ciudadano.institucion_id):
+            raise PermissionDenied("Solo un administrador de la institución confirma adjuntos sin dueño.")
+        if not estudio.archivo:
+            raise drf_serializers.ValidationError({"archivo": ["El estudio no tiene archivo."]})
+        with transaction.atomic():
+            self._asociar_archivo(estudio, confirmacion_admin=True)
+        return Response(self.get_serializer(estudio).data)
 
 
 class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):
@@ -529,18 +578,20 @@ class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):
             raise drf_serializers.ValidationError({
                 "motivo": "Decí por qué se suspende: es lo que va a leer quien retome el tratamiento."
             })
-        if not receta.activa:
-            raise reglas.ReglaClinica("Esta receta ya estaba suspendida.")
-
-        institucion = receta.historia.ciudadano.institucion
-        reglas.exigir_clinico(institucion, request.user)
-        # La matrícula del legajo si la hay. La entrada se firma igual: es un
-        # asiento que arma el sistema con contenido fijo, no texto que alguien
-        # escribió a nombre de otro, y el sello cubre la matrícula, así que lo
-        # que quedó registrado se puede verificar tal como quedó.
-        matricula = (getattr(getattr(request.user, "legajo", None), "matricula", "") or "").strip()
-
         with transaction.atomic():
+            # Mismo orden que el sellado: historia antes de sus registros.
+            # No bloquear joins nullable; releer después del snapshot inicial.
+            historia = get_object_or_404(
+                HistoriaClinica.objects.select_for_update(), pk=receta.historia_id,
+            )
+            receta = get_object_or_404(
+                Receta.objects.select_for_update(), pk=receta.pk, historia_id=historia.pk,
+            )
+            if not receta.activa:
+                raise reglas.ReglaClinica("Esta receta ya estaba suspendida.")
+            reglas.exigir_clinico(historia.ciudadano.institucion, request.user)
+            matricula = (getattr(getattr(request.user, "legajo", None), "matricula", "") or "").strip()
+
             receta.activa = False
             receta.save(update_fields=["activa"])
             entrada = EntradaHistoria.objects.create(

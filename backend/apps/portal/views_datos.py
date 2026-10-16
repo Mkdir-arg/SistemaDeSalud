@@ -28,14 +28,13 @@ from apps.casos.views import VIGENCIA_LLAMADO_H
 from apps.common import institucion_de_archivo, partes_de_ruta_clinica, respuesta_de_archivo
 from apps.financiadores.models import VinculoCiudadano
 from apps.financiadores.vigencias import afiliados_vigentes
+from apps.registros.adjuntos import pertenece_al_estudio
 from apps.registros.models import ArchivoClinico, Estudio
 
 from .autenticacion import IdentidadValidada
 from .red import patron_documento, persona_de
 from .views import ETIQUETA, _ConCuenta, _error, _ip
 
-# R3: cancelar hasta 24 horas antes del turno.
-ANTICIPACION_CANCELAR = timedelta(hours=24)
 # Cuánto hacia atrás se listan los turnos ya pasados.
 TURNOS_RECIENTES = timedelta(days=90)
 # Un paciente que entró a la fila hace más que esto y nunca salió es un ítem
@@ -54,25 +53,8 @@ def _institucion(inst):
     return {"id": inst.id, "nombre": inst.nombre} if inst else None
 
 
-def _no_cancelable(turno, ahora):
-    """Por qué el paciente no puede cancelar este turno, o None si puede."""
-    if turno.estado not in (Turno.Estado.RESERVADO, Turno.Estado.CONFIRMADO):
-        return "Este turno ya no se puede cancelar."
-    if turno.inicio - ahora <= ANTICIPACION_CANCELAR:
-        return "Faltan menos de 24 horas para el turno. Para cancelarlo, comunicate con la institución."
-    return None
-
-
-def _no_confirmable(turno, ahora):
-    if turno.estado != Turno.Estado.RESERVADO:
-        return "Sólo se puede confirmar un turno reservado."
-    if turno.inicio <= ahora:
-        return "El turno ya pasó."
-    return None
-
-
 def _turno(t, ahora):
-    no_cancelable = _no_cancelable(t, ahora)
+    no_cancelable = agenda.motivo_no_cancelable_portal(t, ahora)
     agenda_ = t.agenda
     return {
         "id": t.id,
@@ -89,7 +71,7 @@ def _turno(t, ahora):
         "estado_display": t.get_estado_display(),
         "confirmado_via": t.confirmado_via,
         "cancelado_via": t.cancelado_via,
-        "puede_confirmar": _no_confirmable(t, ahora) is None,
+        "puede_confirmar": agenda.motivo_no_confirmable_portal(t, ahora) is None,
         "puede_cancelar": no_cancelable is None,
         "motivo_no_cancelable": no_cancelable,
     }
@@ -127,9 +109,6 @@ class ConfirmarTurnoView(_AccionTurno):
         turno = self._turno(request, pk)
         if turno is None:
             return _error(NO_ENCONTRADO, "no_encontrado", status.HTTP_404_NOT_FOUND)
-        motivo = _no_confirmable(turno, timezone.now())
-        if motivo:
-            return _error(motivo, "no_confirmable", status.HTTP_409_CONFLICT)
         try:
             agenda.confirmar(turno, autor=None, via=Turno.Via.PORTAL)
         except agenda.ErrorAgenda as exc:
@@ -140,13 +119,10 @@ class ConfirmarTurnoView(_AccionTurno):
 class CancelarTurnoView(_AccionTurno):
     @extend_schema(tags=ETIQUETA, summary="Cancelar un turno", request=None, responses=OpenApiTypes.OBJECT)
     def post(self, request, pk):
-        """R3: sólo un turno reservado o confirmado que empieza en más de 24 horas."""
+        """R3: turno pendiente que empieza dentro de al menos 24 horas."""
         turno = self._turno(request, pk)
         if turno is None:
             return _error(NO_ENCONTRADO, "no_encontrado", status.HTTP_404_NOT_FOUND)
-        motivo = _no_cancelable(turno, timezone.now())
-        if motivo:
-            return _error(motivo, "no_cancelable", status.HTTP_409_CONFLICT)
         try:
             agenda.cancelar(turno, autor=None, motivo=MOTIVO_CANCELACION, via=Turno.Via.PORTAL)
         except agenda.ErrorAgenda as exc:
@@ -198,10 +174,16 @@ def _estudios_de(persona):
 
 
 def _archivo_del_estudio(estudio):
-    """La ruta del archivo de un estudio realizado, o None si no tiene uno válido."""
+    """La ruta del archivo de un estudio realizado, o None si no tiene uno publicable.
+
+    Publicable = asociado a ESTE estudio y a su paciente (#172, AUD-050). Compartir
+    institución no alcanza: un archivo de otro paciente del mismo hospital no se
+    publica aunque alguien haya copiado su ruta en este estudio.
+    """
     if not estudio.realizado or partes_de_ruta_clinica(estudio.archivo) is None:
         return None
-    return estudio.archivo
+    meta = ArchivoClinico.objects.filter(ruta=estudio.archivo).first()
+    return estudio.archivo if pertenece_al_estudio(meta, estudio) else None
 
 
 class ResultadosView(_DelPaciente):

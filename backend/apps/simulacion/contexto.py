@@ -66,7 +66,7 @@ CAMPOS_AUTORIA = {
     "flujos.VersionFlujo": ("autor",),
     "instituciones.EstadiaCama": ("autor",),
     "red.Traslado": ("solicitado_por", "resuelto_por"),
-    "registros.ArchivoClinico": ("subido_por",),
+    "registros.ArchivoClinico": ("subido_por", "asociado_por"),
     "registros.ConsentimientoDatos": ("tomado_por",),
     "registros.EntradaHistoria": ("autor",),
     "registros.HistoriaClinica": ("antecedentes_por",),
@@ -78,6 +78,10 @@ CAMPOS_AUTORIA = {
 CAMPOS_OPERATIVOS = {
     "accounts.LegajoProfesional": ("usuario",),
     "accounts.Membresia": ("usuario",),
+    # Titular real de credenciales; no es autoría clínica ni se sustituye.
+    "accounts.SesionInstitucional": ("usuario",),
+    # Titular de la pertenencia dada de baja: no es autoría.
+    "accounts.BajaMembresia": ("usuario",),
     "admin.LogEntry": ("user",),
     "agenda.Agenda": ("profesional",),
     "casos.Caso": ("asignado_a",),

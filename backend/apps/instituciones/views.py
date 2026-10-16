@@ -1,12 +1,14 @@
 from datetime import date, timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Avg, Case, Count, DurationField, ExpressionWrapper, F, IntegerField, Q, When
 from django.db.models.functions import TruncDate
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -31,13 +33,13 @@ from .serializers import (
 # panel operativo mira; lo que exceda se recorta y se informa en `periodo`.
 MAX_DIAS_RANGO = 366
 
-# La institución de capacitación del recorrido guiado. Es el único nombre que
-# `reset-escuela` acepta vaciar: ver InstitucionViewSet.reset_escuela.
+# Comprobación heredada del recorrido guiado. El nombre es mutable y NO
+# constituye una identidad segura del escenario; esa identidad queda pendiente.
 NOMBRE_ESCUELA = "Hospital Escuela Salud"
 
 # Los usuarios de práctica del escenario: `escuela.med@salud.local` y compañía.
-# `reset-escuela` los borra junto con la institución, y el prefijo más el dominio
-# son lo que evita que se lleve puesto a nadie más.
+# El prefijo/dominio sólo reduce candidatos: también se exige pertenencia
+# exclusiva al escenario y ausencia de privilegios.
 PREFIJO_USUARIO_ESCUELA = "escuela."
 DOMINIO_USUARIO_ESCUELA = "@salud.local"
 
@@ -103,6 +105,9 @@ class InstitucionViewSet(BaseModelViewSet):
     filter_fields = ("activa", "estado")
     search_fields = ["nombre", "cuit"]
     ordering_fields = ["nombre", "creada"]
+
+    def perform_destroy(self, instance):
+        raise PermissionDenied("Las instituciones no se eliminan. Realizá la baja desde su estado.")
 
     def get_queryset(self):
         qs = Institucion.objects.all()
@@ -433,13 +438,13 @@ class InstitucionViewSet(BaseModelViewSet):
         recorrido se comería un «ya existe un área con ese nombre»—, así que
         necesita poder arrancar de una institución limpia.
 
-        Sólo super admin, y sólo sobre la institución escuela: es un borrado en
-        cascada, y apuntarlo a un hospital real vaciaría el hospital. El nombre
-        es el candado, no una convención.
+        Sólo super admin en demo. El nombre heredado se conserva como control
+        adicional, pero falta una identidad estable del escenario para aislarlo
+        también de otras instituciones renombradas dentro de demo.
         """
         from django.db.models import ProtectedError
 
-        from apps.accounts.models import Usuario
+        from apps.accounts.models import Membresia, Usuario
         from apps.auditoria.models import AccesoClinico
         from apps.casos.models import Caso
         from apps.farmacia.models import Movimiento
@@ -451,57 +456,75 @@ class InstitucionViewSet(BaseModelViewSet):
                 {"detail": "Vaciar una institución es exclusivo de super admin."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        if getattr(settings, "ENTORNO", None) != "demo":
+            return Response(
+                {"detail": "El reset de capacitación sólo está permitido en entorno demo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if inst.nombre != NOMBRE_ESCUELA:
             return Response(
                 {"detail": f"Sólo se puede vaciar «{NOMBRE_ESCUELA}», la institución de capacitación."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        with transaction.atomic():
-            # Las tres tablas que hay que borrar a mano, y por qué.
-            #
-            # PROTECT aborta el borrado SIEMPRE, incluso cuando lo que protege se
-            # está borrando en la misma operación —esa tolerancia es de RESTRICT,
-            # no de PROTECT—. Así que no alcanza con que todo cuelgue de la
-            # institución por CASCADE: hay que sacar a los protectores primero, y
-            # en orden.
-            #
-            # - AccesoClinico.institucion y .ciudadano: quién miró una historia
-            #   clínica no se borra por arrastre. Acá sí, son pacientes de práctica.
-            # - Movimiento.insumo: Movimiento no cuelga de nada que se borre, así
-            #   que protege a los insumos de la escuela.
-            # - Caso.version protege a VersionFlujo, que sí cuelga de la
-            #   institución (Institucion → Flujo → VersionFlujo). Los casos tienen
-            #   que irse ANTES que el flujo que los originó.
-            # Los usuarios de práctica no cuelgan de la institución —una persona
-            # puede tener membresías en varias—, así que vaciar la escuela los
-            # dejaba vivos y el recorrido siguiente se comía un «ese email ya
-            # existe» al querer darlos de alta de nuevo. Se van con la escuela,
-            # acotados a los del escenario por prefijo y dominio.
-            del_usuarios = Usuario.objects.filter(
-                email__startswith=PREFIJO_USUARIO_ESCUELA,
-                email__endswith=DOMINIO_USUARIO_ESCUELA,
-                is_superuser=False,
-            )
-            accesos, _ = AccesoClinico.objects.filter(
-                Q(institucion=inst) | Q(ciudadano__institucion=inst) | Q(usuario__in=del_usuarios)
-            ).delete()
-            movimientos, _ = Movimiento.objects.filter(insumo__institucion=inst).delete()
-            casos, _ = Caso.objects.filter(
-                Q(institucion=inst) | Q(version__flujo__institucion=inst)
-            ).delete()
-            usuarios, _ = del_usuarios.delete()
-            try:
+        try:
+            with transaction.atomic():
+                # Las tres tablas que hay que borrar a mano, y por qué.
+                #
+                # PROTECT aborta el borrado SIEMPRE, incluso cuando lo que protege se
+                # está borrando en la misma operación —esa tolerancia es de RESTRICT,
+                # no de PROTECT—. Así que no alcanza con que todo cuelgue de la
+                # institución por CASCADE: hay que sacar a los protectores primero, y
+                # en orden.
+                #
+                # - AccesoClinico.institucion y .ciudadano: quién miró una historia
+                #   clínica no se borra por arrastre. Acá sí, son pacientes de práctica.
+                # - Movimiento.insumo: Movimiento no cuelga de nada que se borre, así
+                #   que protege a los insumos de la escuela.
+                # - Caso.version protege a VersionFlujo, que sí cuelga de la
+                #   institución (Institucion → Flujo → VersionFlujo). Los casos tienen
+                #   que irse ANTES que el flujo que los originó.
+                # Los usuarios de práctica no cuelgan de la institución —una persona
+                # puede tener membresías en varias—, así que vaciar la escuela los
+                # dejaba vivos y el recorrido siguiente se comía un «ese email ya
+                # existe» al querer darlos de alta de nuevo. Se van con la escuela,
+                # limitados a cuentas operativas exclusivamente de esta institución.
+                # Una cuenta sin membresía no tiene procedencia demostrada; una
+                # cuenta compartida/global o privilegiada nunca se elimina.
+                membresias_ajenas = Membresia.objects.filter(
+                    Q(institucion__isnull=True) | ~Q(institucion=inst)
+                ).values("usuario_id")
+                roles_privilegiados = Membresia.objects.filter(rol__in=(
+                    Membresia.Rol.PLATAFORMA, Membresia.Rol.AUDITOR,
+                    Membresia.Rol.ADMIN_INSTITUCION, Membresia.Rol.CONFIGURADOR,
+                )).values("usuario_id")
+                del_usuarios = Usuario.objects.filter(
+                    email__startswith=PREFIJO_USUARIO_ESCUELA,
+                    email__endswith=DOMINIO_USUARIO_ESCUELA,
+                    is_superuser=False,
+                    is_staff=False,
+                    membresias__institucion=inst,
+                ).exclude(pk__in=membresias_ajenas).exclude(
+                    pk__in=roles_privilegiados,
+                ).exclude(groups__isnull=False).exclude(user_permissions__isnull=False).distinct()
+                accesos, _ = AccesoClinico.objects.filter(
+                    Q(institucion=inst) | Q(ciudadano__institucion=inst)
+                ).delete()
+                movimientos, _ = Movimiento.objects.filter(insumo__institucion=inst).delete()
+                casos, _ = Caso.objects.filter(
+                    Q(institucion=inst) | Q(version__flujo__institucion=inst)
+                ).delete()
+                usuarios, _ = del_usuarios.delete()
                 borrados, detalle = inst.delete()
-            except ProtectedError as e:
-                # Si el grafo gana un PROTECT nuevo, que se vea qué lo frenó en
-                # vez de un 500 opaco.
-                modelos = sorted({type(o)._meta.label for o in e.protected_objects})
-                return Response(
-                    {"detail": "No se pudo vaciar la escuela: hay datos protegidos.",
-                     "protegido_por": modelos},
-                    status=status.HTTP_409_CONFLICT,
-                )
+        except ProtectedError as e:
+            # La excepción debe salir de atomic: retornar dentro permitiría
+            # confirmar borrados anteriores aunque la institución sobreviviera.
+            modelos = sorted({type(o)._meta.label for o in e.protected_objects})
+            return Response(
+                {"detail": "No se pudo vaciar la escuela: hay datos protegidos.",
+                 "protegido_por": modelos},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         return Response({
             "vaciada": NOMBRE_ESCUELA,
@@ -516,6 +539,24 @@ class AreaViewSet(BaseModelViewSet):
     capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "activa")
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import APIException
+
+        with transaction.atomic():
+            area = get_object_or_404(Area.objects.select_for_update(), pk=instance.pk)
+            # SET_NULL también modificaría la definición de un formulario.
+            # Se consulta antes de tomar locks de hijos para mantener el orden.
+            if area.formularios.exists():
+                error = APIException("El área tiene formularios vinculados y debe conservarse. Reasigná primero los que sean editables.")
+                error.status_code = status.HTTP_409_CONFLICT
+                raise error
+            boxes = list(Box.objects.select_for_update().filter(area=area).order_by("pk"))
+            if any(box.ocupado_por_id is not None for box in boxes):
+                error = APIException("El área tiene boxes ocupados. Liberalos antes de eliminarla.")
+                error.status_code = status.HTTP_409_CONFLICT
+                raise error
+            area.delete()
 
     @action(detail=True, methods=["get"])
     def tablero(self, request, pk=None):
@@ -731,6 +772,24 @@ class BoxViewSet(BaseModelViewSet):
     institucion_path = "area__institucion"
     filter_fields = ("area", "area__institucion", "activo", "ocupado_por")
 
+    def perform_update(self, serializer):
+        # PATCH guarda todas las columnas del modelo, incluso las readonly del
+        # serializer. Releer evita restaurar una ocupación cargada antes.
+        with transaction.atomic():
+            serializer.instance = get_object_or_404(Box.objects.select_for_update(), pk=serializer.instance.pk)
+            serializer.save()
+
+    def perform_destroy(self, instance):
+        with transaction.atomic():
+            box = get_object_or_404(Box.objects.select_for_update(), pk=instance.pk)
+            if box.ocupado_por_id is not None:
+                from rest_framework.exceptions import APIException
+
+                error = APIException("El box está ocupado. Liberalo antes de eliminarlo.")
+                error.status_code = status.HTTP_409_CONFLICT
+                raise error
+            box.delete()
+
     def get_permissions(self):
         # Ocupar/liberar son acciones OPERATIVAS (no de configuración): cualquier
         # miembro de la institución del box puede hacerlas (el scope ya lo limita).
@@ -742,21 +801,48 @@ class BoxViewSet(BaseModelViewSet):
     def ocupar(self, request, pk=None):
         """El profesional se registra en el box; libera cualquier otro que ocupara."""
         box = self.get_object()
-        Box.objects.filter(ocupado_por=request.user).exclude(pk=box.pk).update(ocupado_por=None, ocupado_desde=None)
-        box.ocupado_por = request.user
-        box.ocupado_desde = timezone.now()
-        box.save(update_fields=["ocupado_por", "ocupado_desde"])
+        from apps.accounts.models import Usuario
+
+        with transaction.atomic():
+            # El usuario es el punto de serialización incluso cuando sus dos
+            # solicitudes apuntan a boxes distintos. Luego, siempre por PK.
+            Usuario.objects.select_for_update().get(pk=request.user.pk)
+            afectados = list(Box.objects.select_for_update().filter(
+                Q(pk=box.pk) | Q(ocupado_por=request.user),
+            ).order_by("pk"))
+            box = next((b for b in afectados if b.pk == box.pk), None)
+            if box is None:
+                raise NotFound("El box ya no existe.")
+            if box.ocupado_por_id not in (None, request.user.pk):
+                return Response({"detail": "El box ya está ocupado por otro profesional."},
+                                status=status.HTTP_409_CONFLICT)
+            Box.objects.filter(ocupado_por=request.user).exclude(pk=box.pk).update(
+                ocupado_por=None, ocupado_desde=None,
+            )
+            if box.ocupado_por_id != request.user.pk:
+                box.ocupado_por = request.user
+                box.ocupado_desde = timezone.now()
+                box.save(update_fields=["ocupado_por", "ocupado_desde"])
         return Response(self.get_serializer(box).data)
 
     @action(detail=True, methods=["post"])
     def liberar(self, request, pk=None):
         """Libera el box. Solo quien lo ocupa (o el super admin)."""
         box = self.get_object()
-        if box.ocupado_por_id and box.ocupado_por_id != request.user.id and not request.user.is_superuser:
-            return Response({"detail": "Solo quien ocupa el box puede liberarlo."}, status=status.HTTP_403_FORBIDDEN)
-        box.ocupado_por = None
-        box.ocupado_desde = None
-        box.save(update_fields=["ocupado_por", "ocupado_desde"])
+        from apps.accounts.models import Usuario
+
+        ocupacion_leida = (box.ocupado_por_id, box.ocupado_desde)
+        with transaction.atomic():
+            Usuario.objects.select_for_update().get(pk=request.user.pk)
+            box = get_object_or_404(Box.objects.select_for_update(), pk=box.pk)
+            if box.ocupado_por_id and box.ocupado_por_id != request.user.id and not request.user.is_superuser:
+                return Response({"detail": "Solo quien ocupa el box puede liberarlo."}, status=status.HTTP_403_FORBIDDEN)
+            if (box.ocupado_por_id, box.ocupado_desde) != ocupacion_leida:
+                return Response({"detail": "La ocupación del box cambió. Recargá antes de liberarlo."},
+                                status=status.HTTP_409_CONFLICT)
+            box.ocupado_por = None
+            box.ocupado_desde = None
+            box.save(update_fields=["ocupado_por", "ocupado_desde"])
         return Response(self.get_serializer(box).data)
 
 

@@ -627,6 +627,20 @@ class ExportacionCSVTests(APITestCase):
         """Sin el BOM, Excel muestra «PÃ©rez» y el usuario dice que está roto."""
         self.assertTrue(self._csv("/api/casos/?formato=csv").startswith("﻿"))
 
+    def test_nombre_peligroso_se_exporta_literal_en_ambos_separadores(self):
+        import csv
+        from io import StringIO
+
+        nombre = '=HYPERLINK("https://example.test";"abrir")'
+        self.ciudadano.nombre = nombre
+        self.ciudadano.save(update_fields=["nombre"])
+        for separador in (";", ","):
+            with self.subTest(separador=separador):
+                texto = self._csv(f"/api/casos/?formato=csv&sep={separador}")
+                filas = list(csv.reader(StringIO(texto.lstrip("\ufeff")), delimiter=separador))
+                self.assertEqual(len(filas), 2)
+                self.assertIn(f"'{nombre} Pérez", filas[1])
+
     def test_separa_con_punto_y_coma_salvo_que_pidan_coma(self):
         """
         Excel en configuración regional española abre un CSV con comas metiendo

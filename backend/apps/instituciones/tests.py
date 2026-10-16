@@ -281,6 +281,11 @@ class ResetEscuelaTests(APITestCase):
     """
 
     def setUp(self):
+        from django.test import override_settings
+
+        entorno_demo = override_settings(ENTORNO="demo")
+        entorno_demo.enable()
+        self.addCleanup(entorno_demo.disable)
         self.escuela = Institucion.objects.create(nombre="Hospital Escuela Salud")
         self.real = Institucion.objects.create(nombre="Hospital Central")
         self.super = Usuario.objects.create_superuser("super-reset@test.local", "x")
@@ -301,7 +306,7 @@ class ResetEscuelaTests(APITestCase):
         self.assertFalse(Area.objects.filter(nombre="Guardia escuela").exists())
 
     def test_no_vacia_una_institucion_real(self):
-        """El candado del nombre: apuntarlo a un hospital vaciaría el hospital."""
+        """El control heredado del nombre sigue aplicando dentro de demo."""
         Area.objects.create(institucion=self.real, nombre="Guardia")
         self.client.force_authenticate(self.super)
 
@@ -310,6 +315,18 @@ class ResetEscuelaTests(APITestCase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertTrue(Institucion.objects.filter(pk=self.real.pk).exists())
         self.assertTrue(Area.objects.filter(nombre="Guardia").exists())
+
+    def test_no_vacia_la_escuela_fuera_de_demo(self):
+        from django.test import override_settings
+
+        area = Area.objects.create(institucion=self.escuela, nombre="Guardia escuela")
+        self.client.force_authenticate(self.super)
+        for entorno in ("produccion", "desarrollo", ""):
+            with self.subTest(entorno=entorno), override_settings(ENTORNO=entorno):
+                r = self.client.post(f"/api/instituciones/{self.escuela.id}/reset-escuela/")
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertTrue(Institucion.objects.filter(pk=self.escuela.pk).exists())
+                self.assertTrue(Area.objects.filter(pk=area.pk).exists())
 
     def test_gobierno_de_plataforma_no_alcanza(self):
         """Escribir instituciones y vaciarlas en cascada no son el mismo permiso."""
@@ -332,13 +349,15 @@ class ResetEscuelaTests(APITestCase):
         AccesoClinico.objects.create(
             usuario=self.super, ciudadano=paciente, institucion=self.escuela,
         )
+        acceso_ajeno = AccesoClinico.objects.create(usuario=self.super, institucion=self.real)
         self.client.force_authenticate(self.super)
 
         r = self.client.post(f"/api/instituciones/{self.escuela.id}/reset-escuela/")
 
         self.assertEqual(r.status_code, 200, r.data)
         self.assertFalse(Institucion.objects.filter(pk=self.escuela.pk).exists())
-        self.assertFalse(AccesoClinico.objects.exists())
+        self.assertFalse(AccesoClinico.objects.filter(institucion=self.escuela).exists())
+        self.assertTrue(AccesoClinico.objects.filter(pk=acceso_ajeno.pk).exists())
 
     def test_borra_los_casos_que_protegen_la_version_del_flujo(self):
         """`Caso.version` es PROTECT, y PROTECT aborta el borrado incluso cuando
@@ -370,8 +389,13 @@ class ResetEscuelaTests(APITestCase):
     def test_se_lleva_los_usuarios_de_practica_pero_no_a_los_demas(self):
         """Los usuarios no cuelgan de la institución. Si el reset los dejaba
         vivos, el recorrido siguiente moría al darlos de alta de nuevo: el email
-        es único. El prefijo y el dominio son lo que acota el borrado."""
+        es único. Sólo se borran cuentas operativas con pertenencia exclusiva
+        a la escuela; el prefijo no demuestra esa pertenencia."""
         practica = Usuario.objects.create_user("escuela.med@salud.local", "x")
+        Membresia.objects.create(
+            usuario=practica, institucion=self.escuela, rol=Membresia.Rol.MEDICO,
+        )
+        sin_membresia = Usuario.objects.create_user("escuela.sin-pertenencia@salud.local", "x")
         ajeno = Usuario.objects.create_user("medico@hospital.gob.ar", "x")
         parecido = Usuario.objects.create_user("escuela.med@hospital.gob.ar", "x")
         self.client.force_authenticate(self.super)
@@ -380,6 +404,7 @@ class ResetEscuelaTests(APITestCase):
 
         self.assertEqual(r.status_code, 200, r.data)
         self.assertFalse(Usuario.objects.filter(pk=practica.pk).exists())
+        self.assertTrue(Usuario.objects.filter(pk=sin_membresia.pk).exists())
         self.assertTrue(Usuario.objects.filter(pk=ajeno.pk).exists())
         self.assertTrue(Usuario.objects.filter(pk=parecido.pk).exists())
         self.assertTrue(Usuario.objects.filter(pk=self.super.pk).exists())

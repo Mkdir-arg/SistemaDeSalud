@@ -33,7 +33,9 @@ function entrada(i, extra = {}) {
     fecha: "2026-07-0" + ((i % 9) + 1) + "T10:00:00Z",
     firmada_at: "2026-07-01T10:05:00Z",
     sello: "abc123",
+    sello_version: "salud-sha256-v2",
     integra: true,
+    revision: `rev1-sintetica-${i}`,
     ...extra,
   };
 }
@@ -139,6 +141,54 @@ test.describe("Historia clínica en el celular", () => {
 });
 
 test.describe("Estado de cada asiento de la evolución", () => {
+  for (const ok of [true, false]) {
+    test(`panel de verificación informa alcance sin certificar alteración (${ok})`, async ({ page }) => {
+      await entrar(page, "medico");
+      await conHistoria(page, historiaDePrueba({ entradas: [entrada(0, { sello_version: "salud-sha256-v1" })] }));
+      await page.route("**/api/historias-clinicas/9999/verificar/", (ruta) => ruta.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify({ ok, firmadas: 1, selladas: 1, fuera_de_alcance: 0, problemas: [] }),
+      }));
+      await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
+      await esperarPantalla(page);
+      await page.getByRole("button", { name: "Verificar la historia", exact: true }).click();
+      await expect(page.getByText(ok ? "No se detectaron diferencias" : "Hay problemas de verificación", { exact: true })).toBeVisible();
+      await expect(page.getByText("Se compararon 1 entradas con sus sellos.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Los sellos históricos tienen límites de verificación.", { exact: true })).toBeVisible();
+      await expect(page.getByText(/Sin alteraciones|Hay entradas alteradas/)).toHaveCount(0);
+    });
+  }
+
+  for (const [nombre, entradas, etiquetas] of [
+    ["sello histórico no se presenta como formato actual", [
+      entrada(0, { sello_version: "salud-sha256-v1" }),
+      entrada(1, { sello_version: "cauce-sha256-v1" }),
+    ], ["Firmada · sello histórico", "Firmada · sello histórico"]],
+    ["formato desconocido o ausente no acusa alteración ni certifica integridad", [
+      entrada(0, { sello_version: "futuro-v3", integra: false }),
+      entrada(1, { sello_version: undefined, integra: true }),
+    ], ["Firmada · formato no compatible", "Firmada · formato no compatible"]],
+    ["formato conocido distingue alteración, integridad y ausencia de sello", [
+      entrada(0, { integra: false }),
+      entrada(1),
+      entrada(2, { sello: "", integra: null }),
+    ], ["⚠ Alterada después de firmarse", "Firmada", "Firmada · no verificable"]],
+  ]) {
+    test(nombre, async ({ page }) => {
+      await entrar(page, "medico");
+      await conHistoria(page, historiaDePrueba({ entradas }));
+      await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
+      await esperarPantalla(page);
+      for (const etiqueta of new Set(etiquetas)) {
+        await expect(page.getByText(etiqueta, { exact: true })).toHaveCount(etiquetas.filter((e) => e === etiqueta).length);
+      }
+      if (nombre.startsWith("formato desconocido")) {
+        await expect(page.getByText("⚠ Alterada después de firmarse", { exact: true })).toHaveCount(0);
+        await expect(page.getByText("Firmada", { exact: true })).toHaveCount(0);
+      }
+    });
+  }
+
   test("un borrador se distingue de una atención firmada", async ({ page }) => {
     /*
      * La única señal era la AUSENCIA de chapa, que se lee igual que «no cargó» o
@@ -167,19 +217,33 @@ test.describe("Estado de cada asiento de la evolución", () => {
      * quedaba en la historia para siempre, sin marca y sin forma de terminarla
      * —no se borran por diseño—. La API ya lo aceptaba.
      */
+    const perfilRecibido = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/usuarios/me/" && r.status() === 200);
     await entrar(page, "medico");
+    const perfil = await (await perfilRecibido).json();
     const h = historiaDePrueba();
     h.results[0].entradas[0] = entrada(0, {
       firmada: false, matricula: "", firmada_at: null, sello: "", integra: true,
       titulo: "Ingresó por guardia",
+      autor: perfil.id,
+      autor_nombre: perfil.nombre_completo,
     });
     await conHistoria(page, h);
 
     let firmado = null;
+    let pausarLectura = false;
+    let liberarLectura;
+    const lecturaDemorada = new Promise((resolve) => { liberarLectura = resolve; });
     await page.route(
       (url) => /\/api\/entradas-historia\/\d+\/$/.test(url.pathname),
       (ruta) => {
+        if (ruta.request().method() === "GET") return ruta.fulfill({ status: 200, json: h.results[0].entradas[0] });
         firmado = ruta.request().postDataJSON();
+        if (firmado.revision_esperada !== h.results[0].entradas[0].revision) return ruta.fulfill({ status: 409, json: { detail: "El borrador cambió." } });
+        if ("contenido" in firmado) {
+          h.results[0].entradas[0].contenido = firmado.contenido;
+          h.results[0].entradas[0].revision = "rev1-actualizada";
+          pausarLectura = true;
+        }
         return ruta.fulfill({ status: 200, contentType: "application/json", body: "{}" });
       },
     );
@@ -191,14 +255,128 @@ test.describe("Estado de cada asiento de la evolución", () => {
     // antecedentes es otra cosa y machearía igual.
     const tarjeta = page.locator("h3", { hasText: "Ingresó por guardia" }).locator("xpath=../..");
     await expect(tarjeta.getByRole("button", { name: "Editar" })).toBeVisible();
+    // Retener el refetch después del PATCH reproduce abrir Firmar sobre la
+    // tarjeta anterior. Un refetch no puede sustituir el texto que se confirma.
+    await page.route((url) => url.pathname === "/api/historias-clinicas/", async (ruta) => {
+      if (pausarLectura) await lecturaDemorada;
+      return ruta.fulfill({ status: 200, json: h });
+    });
+    await tarjeta.getByRole("button", { name: "Editar" }).click();
+    const editor = page.getByRole("dialog", { name: "Corregir borrador" });
+    await editor.getByLabel("Evolución / observaciones").fill("Contenido actualizado antes de firmar");
+    await editor.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect(editor).not.toBeVisible();
     await tarjeta.getByRole("button", { name: "Firmar" }).click();
 
     // Firmar no tiene deshacer: se confirma leyendo lo que se firma.
     const dialogo = page.getByRole("dialog", { name: "Firmar la atención" });
     await expect(dialogo.getByText(/no se puede editar/)).toBeVisible();
+    liberarLectura();
+    await expect(dialogo.getByRole("alert")).toContainText("El borrador cambió");
+    await expect(dialogo.getByRole("button", { name: "Firmar", exact: true })).toBeDisabled();
+    await expect(dialogo.getByLabel("Texto que se firmará")).not.toContainText("Contenido actualizado antes de firmar");
+    await dialogo.getByRole("button", { name: "Revisar versión del servidor", exact: true }).click();
+    await expect(dialogo.getByRole("region", { name: "Versión actual del servidor" })).toContainText("Contenido actualizado antes de firmar");
+    await dialogo.getByRole("button", { name: "Leer esta versión para firmar", exact: true }).click();
+    await expect(dialogo.getByLabel("Texto que se firmará")).toContainText("Contenido actualizado antes de firmar");
     await dialogo.getByRole("button", { name: "Firmar" }).click();
 
-    await expect.poll(() => firmado, { message: "no se pidió la firma a la API" }).toEqual({ firmada: true });
+    await expect.poll(() => firmado, { message: "no se pidió la firma a la API" }).toEqual({ firmada: true, revision_esperada: "rev1-actualizada" });
+  });
+
+  test("un conflicto conserva el texto local y exige revisar el servidor antes de guardar", async ({ page }) => {
+    const perfilRecibido = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/usuarios/me/" && r.status() === 200);
+    await entrar(page, "medico");
+    const perfil = await (await perfilRecibido).json();
+    const borrador = entrada(0, { firmada: false, autor: perfil.id, titulo: "Borrador concurrente", contenido: "Texto leído", revision: "rev1-leida" });
+    await conHistoria(page, historiaDePrueba({ entradas: [borrador] }));
+    const escrituras = [];
+    let lecturas = 0;
+    await page.route((url) => /\/api\/entradas-historia\/\d+\/$/.test(url.pathname), (ruta) => {
+      if (ruta.request().method() === "GET") {
+        lecturas += 1;
+        return lecturas === 1 ? ruta.fulfill({ status: 503, json: { detail: "Fallo sintético" } })
+          : ruta.fulfill({ status: 200, json: { ...borrador, contenido: "Texto guardado desde otra pestaña", revision: "rev1-servidor" } });
+      }
+      escrituras.push(ruta.request().postDataJSON());
+      return escrituras.length === 1 ? ruta.fulfill({ status: 409, json: { detail: "El borrador cambió." } })
+        : ruta.fulfill({ status: 200, json: {} });
+    });
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
+    await esperarPantalla(page);
+    await page.locator("#entrada-1000").getByRole("button", { name: "Editar", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "Corregir borrador" });
+    const textoLocal = editor.getByLabel("Evolución / observaciones");
+    await textoLocal.fill("Mi texto local sin perder");
+    await editor.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect(editor.getByRole("alert")).toContainText("Tu texto no se perdió");
+    await expect(textoLocal).toHaveValue("Mi texto local sin perder");
+    await expect(editor.getByRole("button", { name: "Guardar", exact: true })).toBeDisabled();
+    await editor.getByRole("button", { name: "Revisar versión del servidor", exact: true }).click();
+    await expect(editor.getByText(/No se pudo consultar la versión actual/)).toBeVisible();
+    await expect(textoLocal).toHaveValue("Mi texto local sin perder");
+    await editor.getByRole("button", { name: "Revisar versión del servidor", exact: true }).click();
+    await expect(editor.getByRole("region", { name: "Versión actual del servidor" })).toContainText("Texto guardado desde otra pestaña");
+    await expect(textoLocal).toHaveValue("Mi texto local sin perder");
+    await editor.getByRole("button", { name: "Continuar con mi texto revisado", exact: true }).click();
+    await editor.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect(editor).not.toBeVisible();
+    expect(escrituras).toEqual([
+      { titulo: "Borrador concurrente", contenido: "Mi texto local sin perder", revision_esperada: "rev1-leida" },
+      { titulo: "Borrador concurrente", contenido: "Mi texto local sin perder", revision_esperada: "rev1-servidor" },
+    ]);
+  });
+
+  for (const tipo of ["ajeno", "sin autor"]) {
+    test(`un borrador ${tipo} conserva contenido pero no permite editar ni firmar`, async ({ page }) => {
+      const perfilRecibido = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/usuarios/me/" && r.status() === 200);
+      await entrar(page, "medico");
+      const perfil = await (await perfilRecibido).json();
+      const h = historiaDePrueba({ entradas: [entrada(0, {
+        titulo: "Borrador de lectura", contenido: "Contenido clínico permitido para lectura",
+        firmada: false, autor: tipo === "ajeno" ? Number(perfil.id) + 100000 : null,
+        autor_nombre: tipo === "ajeno" ? "Otro profesional" : null,
+        matricula: "", firmada_at: null, sello: "",
+      })] });
+      await conHistoria(page, h);
+      await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
+      await esperarPantalla(page);
+      const tarjeta = page.locator("h3", { hasText: "Borrador de lectura" }).locator("xpath=../..");
+      await expect(tarjeta.getByText("Contenido clínico permitido para lectura")).toBeVisible();
+      await expect(tarjeta.getByRole("button", { name: "Editar", exact: true })).toHaveCount(0);
+      await expect(tarjeta.getByRole("button", { name: "Firmar", exact: true })).toHaveCount(0);
+      await expect(tarjeta.getByText(tipo === "ajeno" ? /Solo Otro profesional puede editar o firmar/ : /no tiene autor identificado: solo lectura/)).toBeVisible();
+    });
+  }
+
+  test("en simulación la autoría del borrador corresponde al actor real", async ({ page }) => {
+    const perfilRecibido = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/usuarios/me/" && r.status() === 200);
+    await entrar(page, "medico");
+    const perfil = await (await perfilRecibido).json();
+    const institucionId = Number(Object.keys(perfil.capacidades_por_institucion || {}).find((id) => id !== "global"));
+    const perfilSimulado = { ...perfil, id: Number(perfil.id) + 100000, simulacion: {
+      id: "sesion-sintetica", ambito: "institucion", rol: "medico", etiqueta: "Médico",
+      institucion: { id: institucionId, nombre: "Hospital sintético" },
+      cuenta: { id: Number(perfil.id) + 100000, nombre: "Cuenta de referencia" },
+      superusuario: { id: perfil.id, nombre: "Actor real" },
+    } };
+    await page.route((url) => url.pathname === "/api/usuarios/me/", (ruta) => ruta.fulfill({ status: 200, json: perfilSimulado }));
+    await conHistoria(page, historiaDePrueba({ entradas: [entrada(0, {
+      titulo: "Borrador del actor real", firmada: false, autor: perfil.id,
+      matricula: "", firmada_at: null, sello: "",
+    })] }));
+    await page.goto(`/pacientes/${CIUDADANO}?tab=evolucion`);
+    await esperarPantalla(page);
+    const tarjeta = page.locator("h3", { hasText: "Borrador del actor real" }).locator("xpath=../..");
+    await expect(tarjeta.getByRole("button", { name: "Editar", exact: true })).toBeVisible();
+    await tarjeta.getByRole("button", { name: "Firmar", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Firmar la atención" }).getByText("Actor real", { exact: true })).toBeVisible();
+    delete perfilSimulado.simulacion.superusuario;
+    await page.reload();
+    await esperarPantalla(page);
+    await expect(tarjeta.getByRole("button", { name: "Editar", exact: true })).toHaveCount(0);
+    await expect(tarjeta.getByRole("button", { name: "Firmar", exact: true })).toHaveCount(0);
+    await expect(tarjeta.getByText(/No se pudo verificar tu identidad real/)).toBeVisible();
   });
 });
 

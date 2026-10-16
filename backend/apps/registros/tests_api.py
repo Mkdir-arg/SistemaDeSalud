@@ -424,20 +424,57 @@ class HistoriaInviolableTests(RegistrosAPITestCase):
         """Corregir un borrador es lo esperable; trabarlo sería trabar el trabajo."""
         e = EntradaHistoria.objects.create(historia=self.hc, titulo="Nota", autor=self.enf)
         self.como(self.enf)
-        r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"contenido": "corregido"})
+        revision = self.client.get(f"/api/entradas-historia/{e.id}/").data["revision"]
+        r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"contenido": "corregido", "revision_esperada": revision})
         self.assertEqual(r.status_code, 200, r.data)
         e.refresh_from_db()
         self.assertEqual(e.contenido, "corregido")
 
-    def test_firmar_un_borrador_lo_sella_a_nombre_de_quien_firma(self):
+    def test_medico_no_puede_firmar_borrador_de_enfermeria(self):
         e = EntradaHistoria.objects.create(historia=self.hc, titulo="Consulta", autor=self.enf)
         self.como(self.med)
         r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"firmada": True})
+        self.assertEqual(r.status_code, 403, r.data)
+        e.refresh_from_db()
+        self.assertEqual(e.autor_id, self.enf.id)
+        self.assertFalse(e.firmada)
+        self.assertEqual(e.matricula, "")
+        self.assertEqual(e.sello, "")
+
+    def test_autor_medico_firma_su_borrador_sin_reasignar_autoria(self):
+        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Consulta", autor=self.med)
+        self.como(self.med)
+        revision = self.client.get(f"/api/entradas-historia/{e.id}/").data["revision"]
+        r = self.client.patch(f"/api/entradas-historia/{e.id}/", {"firmada": True, "revision_esperada": revision})
         self.assertEqual(r.status_code, 200, r.data)
         e.refresh_from_db()
         self.assertEqual(e.autor_id, self.med.id)
         self.assertEqual(e.matricula, "MP 12345")
         self.assertTrue(integridad.verificar(e)["ok"])
+
+    def test_otro_profesional_y_superusuario_no_editan_ni_firman_borrador_ajeno(self):
+        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Nota", contenido="Original", autor=self.enf)
+        root = Usuario.objects.create_superuser("root-borrador@example.test", "x")
+        for actor in (self.med, root):
+            self.como(actor)
+            for datos in ({"contenido": "Ajeno", "autor": actor.pk}, {"firmada": True}):
+                with self.subTest(actor=actor.pk, datos=datos):
+                    respuesta = self.client.patch(f"/api/entradas-historia/{e.pk}/", datos)
+                    self.assertEqual(respuesta.status_code, 403, respuesta.data)
+                    e.refresh_from_db()
+                    self.assertEqual(e.contenido, "Original")
+                    self.assertEqual(e.autor_id, self.enf.pk)
+                    self.assertFalse(e.firmada)
+
+    def test_borrador_legacy_sin_autor_no_se_reasigna(self):
+        e = EntradaHistoria.objects.create(historia=self.hc, titulo="Legacy", autor=None)
+        self.como(self.med)
+        for datos in ({"contenido": "Asignar implícitamente"}, {"firmada": True}):
+            respuesta = self.client.patch(f"/api/entradas-historia/{e.pk}/", datos)
+            self.assertEqual(respuesta.status_code, 403, respuesta.data)
+            e.refresh_from_db()
+            self.assertIsNone(e.autor_id)
+            self.assertFalse(e.firmada)
 
 
 class AntecedentesTests(RegistrosAPITestCase):
