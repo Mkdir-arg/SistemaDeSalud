@@ -11,7 +11,7 @@ import { Badge, Button, Card, ConfirmDialog, Field, Modal, Select } from "@/comp
 import { EstadoError, EstadoVacio, Skeleton } from "@/components/ui/estados";
 import { BuscadorPaciente, PacienteElegido } from "@/components/ui/paciente";
 import { useToast } from "@/components/ui/toast";
-import { antiguedad } from "@/lib/format";
+import { antiguedad, duracionMinutos } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { estadoCaso } from "@/lib/dominio";
 
@@ -311,7 +311,7 @@ function Pulso({ r }) {
     { label: "En atención", n: r.en_atencion },
     { label: "Ingresos hoy", n: r.ingresos_hoy },
     { label: "Urgentes", n: r.urgentes, alerta: r.urgentes > 0 },
-    { label: "Espera prom.", n: `${r.espera_prom_min} min` },
+    { label: "Espera prom.", n: duracionMinutos(r.espera_prom_min) },
   ];
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
