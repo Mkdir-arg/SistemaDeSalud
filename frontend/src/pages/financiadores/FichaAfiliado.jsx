@@ -5,7 +5,7 @@ import { api } from "@/api/client";
 import { errorFinanciador, filasDe, rutaFinanciador } from "@/api/financiadores";
 import { POR_PAGINA } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { Avatar, Badge, Button, Card, Spinner, Tabs, Textarea } from "@/components/ui";
+import { Avatar, Ayuda, Badge, Button, Card, Spinner, Tabs, Textarea } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { EstadoVacio } from "@/components/ui/estados";
@@ -51,17 +51,8 @@ function HistoriaFinanciador({ id, afiliado, scope }) {
     <section id="historia-clinica" className="scroll-mt-8 space-y-4" aria-label="Historia clínica">
       <div className="flex flex-wrap items-center gap-3">
         <span className="flex size-9 items-center justify-center rounded-md bg-badge-info-bg text-badge-info-fg"><Icon name="stethoscope" size={18} /></span>
-        <h2 className="text-lg font-semibold">Historia clínica</h2>
+        <h2 className="text-lg font-semibold">Historia clínica</h2><Ayuda etiqueta="Ayuda: Historia clínica">Evoluciones firmadas de los casos que ingresaron con tu cobertura en hospitales dentro de tu alcance. No incluye alergias, antecedentes, estudios ni recetas. Cada consulta queda registrada con tu motivo y la ve el hospital.</Ayuda>
         {total > 0 && <Badge tone="neutral">{plural(total, "caso alcanzado", "casos alcanzados")}</Badge>}
-      </div>
-      {/* El recorte se dice antes de los datos: quien lee tiene que saber qué NO está. */}
-      <div className="flex gap-3 rounded-lg border border-borde bg-superficie-2 p-4 text-sm">
-        <Icon name="shieldCheck" size={18} className="mt-0.5 shrink-0 text-texto-debil" />
-        <ul className="space-y-1 text-texto-suave">
-          <li>Evoluciones firmadas de los casos que ingresaron con tu cobertura en hospitales dentro de tu alcance.</li>
-          <li className="text-texto-debil">No incluye alergias, antecedentes, estudios ni recetas.</li>
-          <li className="text-texto-debil">Cada consulta queda registrada con tu motivo y la ve el hospital.</li>
-        </ul>
       </div>
       {casos.isLoading ? <Card className="p-4"><Spinner label="Consultando casos…" /></Card>
         : casos.error ? <ErrorFicha error={casos.error} reintentar={casos.refetch} />
