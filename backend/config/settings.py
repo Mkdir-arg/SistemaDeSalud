@@ -198,6 +198,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.accounts.middleware.CorteMembresiasMiddleware",
     # Limpia el contexto de simulación de cada pedido y registra sus escrituras.
     "apps.simulacion.middleware.SimulacionMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",

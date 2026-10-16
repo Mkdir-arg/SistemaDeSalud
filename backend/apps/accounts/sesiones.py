@@ -5,6 +5,7 @@ pertenencias institucionales ni administra las cookies de Django o el portal.
 """
 import hashlib
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone as tz
 
 from django.contrib.auth import get_user_model
@@ -19,6 +20,42 @@ from rest_framework_simplejwt.utils import get_md5_hash_password
 from .models import SesionInstitucional
 
 MENSAJE_INVALIDO = "La sesión ya no es válida."
+
+# Corte de pertenencias de la solicitud: (usuario_id, inicio de sesión, ids con
+# baja posterior o None si aún no se consultaron). Lo fija el autenticador y lo
+# limpia CorteMembresiasMiddleware al entrar y al salir de cada solicitud.
+_corte = ContextVar("accounts_corte_membresias", default=None)
+
+
+def activar_corte_membresias(usuario_id, inicio):
+    _corte.set([usuario_id, inicio, None])
+
+
+def limpiar_corte_membresias():
+    _corte.set(None)
+
+
+def aplicar_corte_membresias(qs):
+    corte = _corte.get()
+    if corte is None:
+        return qs
+    usuario_id, inicio, cortadas = corte
+    if cortadas is None:
+        from .models import BajaMembresia
+
+        # Una sola consulta por solicitud; las bajas no se cachean entre ellas.
+        cortadas = set(BajaMembresia.objects.filter(
+            usuario_id=usuario_id, momento__gte=inicio,
+        ).values_list("institucion_id", flat=True))
+        corte[2] = cortadas
+    if not cortadas:
+        return qs
+    ids = [i for i in cortadas if i is not None]
+    if ids:
+        qs = qs.exclude(usuario_id=usuario_id, institucion_id__in=ids)
+    if None in cortadas:
+        qs = qs.exclude(usuario_id=usuario_id, institucion__isnull=True)
+    return qs
 
 
 def huella_jti(token):

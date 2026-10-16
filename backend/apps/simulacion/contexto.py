@@ -80,6 +80,8 @@ CAMPOS_OPERATIVOS = {
     "accounts.Membresia": ("usuario",),
     # Titular real de credenciales; no es autoría clínica ni se sustituye.
     "accounts.SesionInstitucional": ("usuario",),
+    # Titular de la pertenencia dada de baja: no es autoría.
+    "accounts.BajaMembresia": ("usuario",),
     "admin.LogEntry": ("user",),
     "agenda.Agenda": ("profesional",),
     "casos.Caso": ("asignado_a",),
