@@ -268,7 +268,8 @@ REST_FRAMEWORK = {
         # autenticador lo atienda como superusuario.
         "apps.simulacion.autenticacion.SimulacionAuthentication",
         "apps.accounts.autenticacion.AutenticacionInstitucional",
-        "rest_framework.authentication.SessionAuthentication",
+        # Sin SessionAuthentication (#172, D-b): la cookie del Admin no abre la
+        # API. Así «Salir» y la revocación por SID cubren todo acceso a la API.
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
