@@ -122,6 +122,25 @@ class ConsultaPadronTests(TestCase):
         self.assertEqual(self.consulta(estado_administrativo="en_tramite").count(), 4)
         self.assertEqual(self.consulta(regimen="monotributo").count(), 0)
 
+    def test_search_coincide_en_cualquiera_de_los_cuatro_campos(self):
+        afiliado = m.Afiliado.objects.create(
+            financiador=self.org, numero="SOC-008", documento="32123456",
+            nombre="Identidad administrativa", nombres="Mariana", apellidos="Figueroa",
+            desde=self.hoy,
+        )
+        m.Afiliado.objects.filter(pk=self.ajeno.pk).update(
+            numero=afiliado.numero, documento=afiliado.documento,
+            nombres=afiliado.nombres, apellidos=afiliado.apellidos,
+        )
+        for campo, texto in (
+            ("numero", "oc-00"), ("nombres", "  rIaN  "),
+            ("apellidos", "gUeR"), ("documento", "32.123.456"),
+            ("documento_parcial", "1234"),
+        ):
+            with self.subTest(campo=campo):
+                self.assertEqual(list(self.consulta(search=texto).values_list("pk", flat=True)), [afiliado.pk])
+        self.assertFalse(self.consulta(search="Sin coincidencias").exists())
+
     def test_catalogo_proyeccion_solo_administrativo_y_columnas(self):
         self.assertTrue(set(CAMPOS_GENERALES).issubset(COLUMNAS_PADRON))
         self.assertFalse({"cbu", "cud", "dbt", "situacion", "parentesco_sensible", "acciones", "revision"} & set(COLUMNAS_PADRON))

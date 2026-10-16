@@ -114,7 +114,7 @@ def _consultar_padron(*, financiador, parametros):
         qs = qs.filter(documento=normalizar_documento(parametros["documento"]))
     if parametros.get("search"):
         texto = serializers.CharField(max_length=255).run_validation(parametros["search"])
-        qs = qs.filter(Q(numero__icontains=texto) | Q(nombre__icontains=texto) | Q(apellidos__icontains=texto) | Q(cuil__icontains=texto) | Q(documento__icontains=normalizar_documento(texto)))
+        qs = qs.filter(Q(numero__icontains=texto) | Q(nombre__icontains=texto) | Q(nombres__icontains=texto) | Q(apellidos__icontains=texto) | Q(cuil__icontains=texto) | Q(documento__icontains=normalizar_documento(texto)))
     qs = filtrar_padron(qs, parametros)
     activos = [(k, *_FILTROS[k]) for k in parametros if k in _FILTROS and parametros.get(k) != ""]
     qs = _anotar(qs, {clave_orden, *(clave for _, clave, _ in activos)})
