@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.accounts.auth_views import (
+    LogoutInstitucionalView,
     CambiarPasswordInstitucionalView,
     CambioEmailInstitucionalView,
     ConfirmarEmailInstitucionalView,
@@ -143,6 +144,7 @@ urlpatterns = [
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="esquema"), name="docs"),
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/logout/", LogoutInstitucionalView.as_view(), name="logout_institucional"),
     path("api/auth/recuperacion/", RecuperacionInstitucionalView.as_view(), name="recuperacion_institucional"),
     path("api/auth/restablecer/", RestablecerPasswordInstitucionalView.as_view(), name="restablecer_institucional"),
     path("api/auth/cambiar-password/", CambiarPasswordInstitucionalView.as_view(), name="cambiar_password_institucional"),

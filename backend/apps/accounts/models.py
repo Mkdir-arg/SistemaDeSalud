@@ -4,6 +4,8 @@ Usuarios y pertenencia institucional.
 Un usuario se autentica por email. Sus roles viven en `Membresia`: los roles
 institucionales tienen institución; los estatales pueden ser globales.
 """
+import uuid
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.db.models import Q
@@ -170,3 +172,17 @@ class CorreoInstitucionalOutbox(models.Model):
             models.Index(fields=["estado", "disponible_en"], name="accounts_correo_listo_idx"),
             models.Index(fields=["estado", "reservado_hasta"], name="accounts_correo_lease_idx"),
         ]
+
+
+class SesionInstitucional(models.Model):
+    """Familia JWT revocable; guarda huella del refresh vigente, nunca tokens."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="sesiones_institucionales")
+    creada = models.DateTimeField(auto_now_add=True)
+    revocada_at = models.DateTimeField(null=True, blank=True)
+    refresh_jti_hash = models.CharField(max_length=64, editable=False)
+    refresh_vence = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "sesión institucional"
+        verbose_name_plural = "sesiones institucionales"

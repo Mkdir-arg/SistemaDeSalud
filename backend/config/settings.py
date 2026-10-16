@@ -267,7 +267,7 @@ REST_FRAMEWORK = {
         # y, si la sesión no es válida, rechaza el pedido antes de que otro
         # autenticador lo atienda como superusuario.
         "apps.simulacion.autenticacion.SimulacionAuthentication",
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.autenticacion.AutenticacionInstitucional",
         "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
@@ -493,6 +493,7 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "CHECK_REVOKE_TOKEN": True,
+    "TOKEN_OBTAIN_SERIALIZER": "apps.accounts.jwt.TokenObtainPairInstitucionalSerializer",
     "TOKEN_REFRESH_SERIALIZER": "apps.accounts.jwt.TokenRefreshInstitucionalSerializer",
     "USER_AUTHENTICATION_RULE": "apps.simulacion.autenticacion.regla_de_autenticacion",
 }

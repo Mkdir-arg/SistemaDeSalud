@@ -66,9 +66,10 @@ class RevocacionPasswordInstitucionalTests(APITestCase):
         acceso = respuesta.data["access"]
         self.assertEqual(self.client.get("/api/usuarios/me/", HTTP_AUTHORIZATION=f"Bearer {acceso}").status_code, 200)
 
-    def test_tokens_legacy_sin_huella_no_reabren_sesion(self):
-        access = AccessToken.for_user(self.usuario)
-        refresh = RefreshToken.for_user(self.usuario)
+    def test_tokens_sin_huella_no_reabren_sesion_aun_con_sid_valido(self):
+        par = self.login(self.inicial)
+        access = AccessToken(par["access"])
+        refresh = RefreshToken(par["refresh"])
         for token in (access, refresh):
             token.payload.pop(api_settings.REVOKE_TOKEN_CLAIM, None)
         self.assertEqual(self.client.get("/api/usuarios/me/", HTTP_AUTHORIZATION=f"Bearer {access}").status_code, 401)

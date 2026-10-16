@@ -19,7 +19,7 @@ from unittest.mock import patch
 from django.apps import apps
 from django.core.management import CommandError, call_command
 from django.utils import timezone
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import Membresia, Usuario
@@ -35,7 +35,14 @@ from .models import CuentaReferencia, OperacionSimulada, SesionSimulacion
 
 
 def jwt(usuario):
-    return {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(usuario).access_token}"}
+    # Los fixtures legítimos pasan por emisión real con sesión durable. La
+    # prueba negativa de cuenta de referencia conserva su JWT manual legacy.
+    respuesta = APIClient().post("/api/auth/token/", {
+        "email": usuario.email, "password": "x",
+    }, format="json")
+    if respuesta.status_code != 200:
+        raise AssertionError("No se pudo iniciar sesión del fixture de simulación")
+    return {"HTTP_AUTHORIZATION": f"Bearer {respuesta.data['access']}"}
 
 
 class EscenarioSimulacion:

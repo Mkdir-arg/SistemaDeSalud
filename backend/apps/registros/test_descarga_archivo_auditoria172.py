@@ -9,7 +9,6 @@ from django.core.files.storage import default_storage
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import Membresia, Usuario
 from apps.auditoria.models import AccesoClinico
@@ -154,8 +153,10 @@ class DescargaArchivoAuditoria172Tests(APITestCase):
             institucion=self.institucion, vence=timezone.now() + timedelta(minutes=10),
         )
         cliente = APIClient()
+        tokens = cliente.post("/api/auth/token/", {"email": real.email, "password": "x"}, format="json")
+        self.assertEqual(tokens.status_code, 200)
         respuesta = cliente.get(f"/api/archivos/descargar/{ruta}",
-            HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(real).access_token}",
+            HTTP_AUTHORIZATION=f"Bearer {tokens.data['access']}",
             HTTP_X_PLEXO_SIMULACION=str(sesion.pk),
         )
         self.comprobar_bytes(respuesta)

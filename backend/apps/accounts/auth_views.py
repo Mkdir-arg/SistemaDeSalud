@@ -157,3 +157,48 @@ class ConfirmarEmailInstitucionalView(_CredencialesView):
         datos = self.datos(_ConfirmacionEmailSerializer, request)
         credenciales.confirmar_email(datos["uid"], datos["token"], datos["nuevo_email"])
         return Response(status=204)
+
+
+class _LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField(write_only=True, trim_whitespace=False, max_length=4096)
+
+    def validate(self, attrs):
+        if set(self.initial_data) != {"refresh"}:
+            raise serializers.ValidationError({"detail": "Enviá únicamente el refresh de la sesión a cerrar."})
+        return attrs
+
+
+class LogoutInstitucionalView(APIView):
+    # El refresh firmado del cuerpo es la autoridad. Un access vencido o cookie
+    # ajena no deben impedir cerrar la sesión indicada ni cambiar su identidad.
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = _LogoutSerializer
+
+    def get_authenticate_header(self, request):
+        # APIView sin autenticadores convertiría AuthenticationFailed en 403.
+        return "Bearer"
+
+    def initial(self, request, *args, **kwargs):
+        if "HTTP_X_PLEXO_SIMULACION" in request.META or getattr(request, "simulacion", None):
+            raise PermissionDenied("Esta operación no admite simulación.")
+        super().initial(request, *args, **kwargs)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "no-store"
+        response["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @extend_schema(request=_LogoutSerializer, responses={204: None, 401: _MensajeSerializer})
+    def post(self, request):
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+        from .sesiones import MENSAJE_INVALIDO, revocar_sesion
+
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            revocar_sesion(serializer.validated_data["refresh"])
+        except TokenError:
+            raise InvalidToken(MENSAJE_INVALIDO) from None
+        return Response(status=204)

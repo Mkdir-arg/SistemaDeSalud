@@ -78,6 +78,8 @@ CAMPOS_AUTORIA = {
 CAMPOS_OPERATIVOS = {
     "accounts.LegajoProfesional": ("usuario",),
     "accounts.Membresia": ("usuario",),
+    # Titular real de credenciales; no es autoría clínica ni se sustituye.
+    "accounts.SesionInstitucional": ("usuario",),
     "admin.LogEntry": ("user",),
     "agenda.Agenda": ("profesional",),
     "casos.Caso": ("asignado_a",),

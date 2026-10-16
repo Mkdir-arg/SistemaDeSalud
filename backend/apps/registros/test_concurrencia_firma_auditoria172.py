@@ -10,7 +10,6 @@ from django.forms.models import BaseInlineFormSet
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import LegajoProfesional, Membresia, Usuario
 from apps.instituciones.models import Institucion
@@ -342,8 +341,10 @@ class AutorRealSimulacionAuditoria172Tests(APITestCase):
                 institucion=institucion, vence=timezone.now() + timedelta(minutes=10),
             )
             cliente = APIClient()
+            tokens = cliente.post("/api/auth/token/", {"email": actor.email, "password": "x"}, format="json")
+            self.assertEqual(tokens.status_code, 200)
             cliente.credentials(
-                HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(actor).access_token}",
+                HTTP_AUTHORIZATION=f"Bearer {tokens.data['access']}",
                 HTTP_X_PLEXO_SIMULACION=str(sesion.pk),
             )
             return cliente
