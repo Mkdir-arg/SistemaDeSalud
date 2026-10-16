@@ -16,6 +16,8 @@ async function sesionSintetica(page) {
   // configuración privada ni backend. Las rutas de cada prueba tienen prioridad.
   await page.route("**/api/**", ruta => {
     const pathname = new URL(ruta.request().url()).pathname;
+    // El glob también coincide con /src/api/client.js en Vite DEV.
+    if (!pathname.startsWith("/api/")) return ruta.continue();
     if (pathname === "/api/usuarios/me/") return json(ruta, {
       id: 12, email: "diseno-aud012@example.test", nombre_completo: "Diseño sintético",
       is_superuser: false, capacidades_por_institucion: { 1: ["diseno_flujos", "config_institucional"] },
