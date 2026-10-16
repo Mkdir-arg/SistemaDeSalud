@@ -190,9 +190,15 @@ function refreshAccess() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh: tokens.refresh }),
     });
-    if (!res.ok || epoch !== sessionEpoch) return false;
+    if (epoch !== sessionEpoch) return false;
     const data = await parse(res);
     if (epoch !== sessionEpoch) return false;
+    // Como en el portal: un fallo temporal no demuestra que la credencial
+    // esté revocada. Propagarlo permite reintentar sin perder la sesión.
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 401) return false;
+      throw new ApiError(res.status, data);
+    }
     tokens.set({ access: data.access, refresh: data.refresh });
     return true;
   })().finally(() => {

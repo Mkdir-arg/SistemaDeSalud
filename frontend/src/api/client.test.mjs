@@ -140,6 +140,75 @@ test("un enlace público rechazado no renueva ni borra la sesión existente", as
   assert.equal(client.tokens.refresh, "synthetic-refresh");
 });
 
+for (const status of [429, 503]) {
+  test(`refresh institucional con ${status} conserva tokens y permite reintentar`, async () => {
+    let disponible = false;
+    const client = await cliente({ responder: (url, options) => {
+      if (url.endsWith("/auth/token/refresh/")) return disponible
+        ? Response.json({ access: "synthetic-renewed", refresh: "synthetic-rotated" })
+        : Response.json({ detail: "Fallo temporal sintético" }, { status });
+      return options.headers.Authorization === "Bearer synthetic-renewed"
+        ? Response.json({ id: 1 }) : new Response("", { status: 401 });
+    } });
+    await assert.rejects(client.api.get("/usuarios/me/"), { status });
+    assert.equal(client.tokens.access, "synthetic-access");
+    assert.equal(client.tokens.refresh, "synthetic-refresh");
+    assert.equal(client.peticiones.length, 2);
+    disponible = true;
+    assert.equal((await client.api.get("/usuarios/me/")).id, 1);
+    assert.equal(client.tokens.refresh, "synthetic-rotated");
+  });
+}
+
+for (const status of [400, 401]) {
+  test(`refresh institucional rechazado con${status} sí elimina las credenciales`, async () => {
+    const client = await cliente({ responder: (url) => new Response("", {
+      status: url.endsWith("/auth/token/refresh/") ? status : 401,
+    }) });
+    await assert.rejects(client.api.get("/usuarios/me/"), { status: 401 });
+    assert.equal(client.tokens.access, null);
+    assert.equal(client.tokens.refresh, null);
+    assert.equal(client.peticiones.length, 2);
+  });
+}
+
+test("dos401 concurrentes comparten el refresh503 sin borrar credenciales", async () => {
+  let completar, iniciado;
+  const listo = new Promise(resolve => { iniciado = resolve; });
+  const pendiente = new Promise(resolve => { completar = resolve; });
+  const client = await cliente({ responder: url => {
+    if (url.endsWith("/auth/token/refresh/")) { iniciado(); return pendiente; }
+    return new Response("", { status: 401 });
+  } });
+  const resultados = Promise.allSettled([client.api.get("/usuarios/me/"), client.api.get("/formularios/")]);
+  await listo;
+  completar(new Response("", { status: 503 }));
+  for (const r of await resultados) {
+    assert.equal(r.status, "rejected");
+    assert.equal(r.reason.status, 503);
+  }
+  assert.equal(client.peticiones.filter(p => p.url.endsWith("/auth/token/refresh/")).length, 1);
+  assert.equal(client.tokens.refresh, "synthetic-refresh");
+  assert.equal(client.tokens.access, "synthetic-access");
+});
+
+test("fallo de red al renovar conserva la sesión y se puede recuperar", async () => {
+  let caida = true;
+  const client = await cliente({ responder: (url, options) => {
+    if (url.endsWith("/auth/token/refresh/")) {
+      if (caida) throw new TypeError("Fallo de red sintético");
+      return Response.json({ access: "synthetic-renewed", refresh: "synthetic-rotated" });
+    }
+    return options.headers.Authorization === "Bearer synthetic-renewed"
+      ? Response.json({ id: 1 }) : new Response("", { status: 401 });
+  } });
+  await assert.rejects(client.api.get("/usuarios/me/"), TypeError);
+  assert.equal(client.tokens.refresh, "synthetic-refresh");
+  assert.equal(client.tokens.access, "synthetic-access");
+  caida = false;
+  assert.equal((await client.api.get("/usuarios/me/")).id, 1);
+});
+
 test("una operación pública no depende de cambios de sesión locales mientras espera", async () => {
   let responder;
   const client = await cliente({ responder: () => new Promise((resolve) => { responder = resolve; }) });
