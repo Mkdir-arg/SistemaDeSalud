@@ -54,6 +54,8 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [intento, setIntento] = useState(0); // lo incrementa `reintentar`
   const [locked, setLocked] = useState(false);
+  const [estadoCierre, setEstadoCierre] = useState("");
+  const cierreActual = useRef(0);
   const [aviso, setAviso] = useState(0);
   // Motivo por el que el servidor cortó una simulación, para decirlo en pantalla.
   const [avisoSimulacion, setAvisoSimulacion] = useState("");
@@ -195,6 +197,8 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password, opciones) {
+    cierreActual.current += 1;
+    setEstadoCierre("");
     // Una sesión nueva nunca hereda la simulación de otra.
     simulacion.clear();
     await api.login(email, password, opciones);
@@ -218,7 +222,9 @@ export function AuthProvider({ children }) {
     setAvisoSimulacion("");
     // Sólo en el cierre explícito: el bloqueo por inactividad conserva el borrador.
     borrarBorradoresAlta();
-    api.logout();
+    const numeroCierre = ++cierreActual.current;
+    setEstadoCierre("pendiente");
+    const cierre = api.cerrarSesion();
     if (window.BroadcastChannel) {
       const canal = new BroadcastChannel("salud-sesion");
       canal.postMessage("bloquear");
@@ -228,6 +234,9 @@ export function AuthProvider({ children }) {
     setUser(null);
     setLocked(false);
     setAviso(0);
+    cierre.then(confirmado => {
+      if (cierreActual.current === numeroCierre) setEstadoCierre(confirmado === false ? "no-confirmado" : "");
+    });
   }
 
   async function desbloquear(email, password) {
@@ -266,6 +275,13 @@ export function AuthProvider({ children }) {
     }}>
       <div aria-hidden={locked || undefined} inert={locked ? "" : undefined}
         style={locked ? { display: "none" } : undefined}>{children}</div>
+      {!!estadoCierre && <div role={estadoCierre === "no-confirmado" ? "alert" : "status"}
+        className="fixed bottom-4 left-4 right-4 z-[1000] rounded-lg border border-division bg-superficie p-4 shadow-float">
+        <p>{estadoCierre === "pendiente"
+          ? "La sesión se cerró en este equipo. Confirmando el cierre en el servidor…"
+          : "La sesión se cerró en este equipo, pero no se pudo confirmar el cierre en el servidor."}</p>
+        {estadoCierre === "no-confirmado" && <button type="button" className="mt-2 font-semibold underline" onClick={() => setEstadoCierre("")}>Entendido</button>}
+      </div>}
       {locked && <PantallaBloqueada onDesbloquear={desbloquear} />}
       {!!aviso && !locked && <div role="status" className="fixed bottom-4 left-4 z-[1000] rounded-lg border border-division bg-superficie p-4 shadow-float">
         <p>La sesión se bloqueará por inactividad en {aviso} {aviso === 1 ? "minuto" : "minutos"}.</p>

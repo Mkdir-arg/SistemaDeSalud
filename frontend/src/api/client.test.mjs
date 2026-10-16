@@ -7,7 +7,7 @@ import vm from "node:vm";
 // import.meta.env y las superficies del navegador son explícitas y sintéticas.
 const source = await readFile(new URL("./client.js", import.meta.url), "utf8");
 
-async function cliente({ base, responder = () => new Response("archivo") } = {}) {
+async function cliente({ base, responder = () => new Response("archivo"), abortSignal = AbortSignal } = {}) {
   const peticiones = [];
   const descargas = [];
   const storage = () => {
@@ -23,6 +23,7 @@ async function cliente({ base, responder = () => new Response("archivo") } = {})
     static revokeObjectURL() {}
   }
   const context = vm.createContext({
+    AbortSignal: abortSignal, setTimeout, clearTimeout,
     localStorage: storage(), sessionStorage: storage(), URL: BrowserURL,
     window: { location: { href: "https://plexo.test/historia/1", origin: "https://plexo.test" } },
     document: {
@@ -62,6 +63,94 @@ test("descargas rechazan referencias externas antes de enviar credenciales o ref
   assert.equal(client.peticiones.length, 0);
   assert.equal(client.descargas.length, 0);
 });
+
+test("cierre explícito limpia localmente y revoca con refresh sin cabeceras de sesión", async () => {
+  const client = await cliente({ responder: () => new Response(null, { status: 204 }) });
+  const cerrado = client.api.cerrarSesion();
+  assert.equal(client.tokens.access, null);
+  assert.equal(client.tokens.refresh, null);
+  assert.equal(await cerrado, true);
+  assert.equal(client.peticiones.length, 1);
+  const peticion = client.peticiones[0];
+  assert.equal(peticion.url, "/api/auth/logout/");
+  assert.deepEqual(JSON.parse(peticion.body), { refresh: "synthetic-refresh" });
+  assert.equal(peticion.headers.Authorization, undefined);
+  assert.equal(peticion.headers["X-PLEXO-Simulacion"], undefined);
+  assert.equal(peticion.credentials, "omit");
+  assert.equal(peticion.redirect, "error");
+});
+
+test("logout local usado por bloqueo no solicita revocación remota", async () => {
+  const client = await cliente();
+  client.api.logout();
+  assert.equal(client.tokens.access, null);
+  assert.equal(client.tokens.refresh, null);
+  assert.equal(client.peticiones.length, 0);
+});
+
+test("cierre espera refresh rotado sin restaurarlo y no altera un login nuevo", async () => {
+  let iniciar, terminar;
+  const iniciado = new Promise(resolve => { iniciar = resolve; });
+  const pendiente = new Promise(resolve => { terminar = resolve; });
+  const client = await cliente({ responder: url => {
+    if (url.endsWith("/auth/token/refresh/")) { iniciar(); return pendiente; }
+    if (url.endsWith("/auth/logout/")) {
+      const cierre = client.peticiones.at(-1);
+      return new Response(null, { status: JSON.parse(cierre.body).refresh === "refresh-anterior-rotado" ? 204 : 401 });
+    }
+    if (url.endsWith("/auth/token/")) return Response.json({ access: "access-nueva-persona", refresh: "refresh-nueva-persona" });
+    return Response.json({}, { status: 401 });
+  } });
+  const anterior = client.api.get("/usuarios/me/");
+  const rechazada = assert.rejects(anterior, { status: 401 });
+  await iniciado;
+  const cierre = client.api.cerrarSesion();
+  assert.equal(client.tokens.access, null);
+  assert.equal(client.tokens.refresh, null);
+  assert.equal(client.peticiones.filter(p => p.url.endsWith("/auth/logout/")).length, 0);
+  await client.api.login("nueva-persona@example.test", "clave-sintética");
+  terminar(Response.json({ access: "access-anterior-rotado", refresh: "refresh-anterior-rotado" }));
+  assert.equal(await cierre, true);
+  await rechazada;
+  const remota = client.peticiones.find(p => p.url.endsWith("/auth/logout/"));
+  assert.deepEqual(JSON.parse(remota.body), { refresh: "refresh-anterior-rotado" });
+  assert.equal(client.tokens.access, "access-nueva-persona");
+  assert.equal(client.tokens.refresh, "refresh-nueva-persona");
+});
+
+test("el límite de espera no restaura tokens ni envía un cierre tardío tras renovar", async () => {
+  const limite = new AbortController();
+  let iniciar, terminar;
+  const iniciado = new Promise(resolve => { iniciar = resolve; });
+  const pendiente = new Promise(resolve => { terminar = resolve; });
+  const client = await cliente({ abortSignal: { timeout: () => limite.signal }, responder: url => {
+    if (url.endsWith("/auth/token/refresh/")) { iniciar(); return pendiente; }
+    return Response.json({}, { status: 401 });
+  } });
+  const rechazada = assert.rejects(client.api.get("/usuarios/me/"), { status: 401 });
+  await iniciado;
+  const cierre = client.api.cerrarSesion();
+  limite.abort();
+  assert.equal(await cierre, false);
+  terminar(Response.json({ access: "access-anterior-rotado", refresh: "refresh-anterior-rotado" }));
+  await rechazada;
+  assert.equal(client.tokens.access, null);
+  assert.equal(client.tokens.refresh, null);
+  assert.equal(client.peticiones.filter(p => p.url.endsWith("/auth/logout/")).length, 0);
+});
+
+for (const fallo of ["red", 401, 503]) {
+  test(`cierre ${fallo} conserva salida local e informa revocación no confirmada`, async () => {
+    const client = await cliente({ responder: () => {
+      if (fallo === "red") throw new TypeError("Fallo de red sintético");
+      return Response.json({}, { status: fallo });
+    } });
+    assert.equal(await client.api.cerrarSesion(), false);
+    assert.equal(client.tokens.access, null);
+    assert.equal(client.tokens.refresh, null);
+    assert.equal(client.peticiones.length, 1);
+  });
+}
 
 test("solo admite el endpoint de archivos, sin rutas vacías ni escapes normalizados", async () => {
   const client = await cliente();

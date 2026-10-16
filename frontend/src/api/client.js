@@ -176,6 +176,7 @@ export async function parse(res) {
 // medio de la carga.
 let refrescoEnVuelo = null;
 let refrescoEpoch = null;
+let credencialesDelRefresco = null;
 
 function refreshAccess() {
   if (!tokens.refresh) return Promise.resolve(false);
@@ -184,14 +185,18 @@ function refreshAccess() {
 
   const epoch = sessionEpoch;
   refrescoEpoch = epoch;
+  const captura = { refresh: tokens.refresh };
+  credencialesDelRefresco = captura;
   refrescoEnVuelo = (async () => {
     const res = await fetch(`${BASE}/auth/token/refresh/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh: tokens.refresh }),
+      body: JSON.stringify({ refresh: captura.refresh }),
     });
-    if (epoch !== sessionEpoch) return false;
     const data = await parse(res);
+    // Un cierre explícito puede necesitar revocar el refresh recién rotado,
+    // aunque ya se haya limpiado esta sesión. Nunca reinstalarlo en ese caso.
+    if (res.ok && typeof data?.refresh === "string") captura.refresh = data.refresh;
     if (epoch !== sessionEpoch) return false;
     // Como en el portal: un fallo temporal no demuestra que la credencial
     // esté revocada. Propagarlo permite reintentar sin perder la sesión.
@@ -205,10 +210,41 @@ function refreshAccess() {
     if (refrescoEpoch === epoch) {
       refrescoEnVuelo = null;
       refrescoEpoch = null;
+      credencialesDelRefresco = null;
     }
   });
 
   return refrescoEnVuelo;
+}
+
+async function cerrarSesionRemota(pendiente, captura) {
+  // Es un límite de espera local: un timeout no demuestra que el servidor
+  // haya cancelado el efecto ni confirma la revocación.
+  const limite = AbortSignal.timeout(10_000);
+  let alVencer;
+  const vencimiento = new Promise(resolve => {
+    alVencer = () => resolve(false);
+    limite.addEventListener("abort", alVencer, { once: true });
+  });
+  const cierre = (async () => {
+    if (pendiente) await pendiente.catch(() => null);
+    if (limite.aborted) return false;
+    try {
+      const respuesta = await fetch(`${BASE}/auth/logout/`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: captura.refresh }),
+        credentials: "omit", redirect: "error", cache: "no-store", signal: limite,
+      });
+      return respuesta.status === 204;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await Promise.race([cierre, vencimiento]);
+  } finally {
+    limite.removeEventListener("abort", alVencer);
+  }
 }
 
 async function request(method, path, body, _retried = false, { multipart = false, blob = false, sinSimulacion = false, publico = false } = {}) {
@@ -390,5 +426,16 @@ export const api = {
   },
   logout() {
     tokens.clear();
+  },
+  cerrarSesion() {
+    const mismaSesion = refrescoEpoch === sessionEpoch;
+    const pendiente = mismaSesion ? refrescoEnVuelo : null;
+    const captura = mismaSesion && credencialesDelRefresco
+      ? credencialesDelRefresco : { refresh: tokens.refresh };
+    const habiaAccess = Boolean(tokens.access);
+    // Inmediato y único: ninguna continuación remota vuelve a tocar storage.
+    tokens.clear();
+    if (!captura.refresh) return Promise.resolve(habiaAccess ? false : null);
+    return cerrarSesionRemota(pendiente, captura).catch(() => false);
   },
 };
