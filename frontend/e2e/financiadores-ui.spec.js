@@ -1015,6 +1015,7 @@ test("desde el padrón abre la ficha con prestaciones y autorizaciones sin justi
   await page.goto("/financiadores/padron?financiador=21&estado=todos");
   await page.getByRole("link", { name: "Persona Ficticia" }).click();
   await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
+  await page.getByRole("tab", { name: "Cobertura y actividad" }).click();
   await expect(page.getByRole("region", { name: "Prestaciones" })).toContainText("Hospital vecino");
   await expect(page.getByRole("region", { name: "Autorizaciones", exact: true })).toContainText("Consulta autorizada");
   await expect(page.getByText("Justificación secreta")).toHaveCount(0);
@@ -1037,6 +1038,7 @@ test("Historia clínica desde la ficha exige motivo y descarta evoluciones al ce
   await page.getByRole("link", { name: "Persona Ficticia" }).click();
   await expect(page).toHaveURL(/\/financiadores\/padron\/45\?/);
   await expect(page.getByRole("heading", { name: "Ficha del afiliado", exact: true, level: 1 })).toBeVisible();
+  await page.getByRole("tab", { name: "Historia clínica" }).click();
   const historia = page.getByRole("region", { name: "Historia clínica", exact: true });
   await historia.getByRole("button", { name: "Ver evoluciones" }).click();
   await expect(historia.getByRole("button", { name: "Confirmar motivo" })).toBeDisabled();
@@ -1100,6 +1102,7 @@ test("auditor no ve Historia clínica en padrón ni ficha", async ({ page }) => 
   await page.goto("/financiadores/padron?financiador=21");
   await expect(page.getByRole("button", { name: "Historia clínica", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Persona Ficticia" }).click();
+  await expect(page.getByRole("tab", { name: "Historia clínica" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Historia clínica", exact: true })).toHaveCount(0);
 });
 

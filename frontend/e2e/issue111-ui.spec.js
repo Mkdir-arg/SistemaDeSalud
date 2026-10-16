@@ -133,7 +133,7 @@ test("motivo completo no se interpreta como ids de auditoría", async ({ page })
 
 test("ficha: estados y singular legibles, cero evoluciones sin pedir motivo", async ({ page }) => {
   const pedidos = await preparar(page, { financiador: true });
-  await page.goto("/financiadores/padron/7?financiador=21");
+  await page.goto("/financiadores/padron/7?financiador=21&tab=historia");
   const historia = page.getByRole("region", { name: "Historia clínica", exact: true });
   await expect(historia.getByText("Caso 41").locator("../..")).toContainText(/Recibido.*0 evoluciones firmadas/);
   await expect(historia.getByText("Caso 42").locator("../..")).toContainText(/Cerrado.*1 evolución firmada/);
