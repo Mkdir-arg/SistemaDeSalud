@@ -66,7 +66,7 @@ CAMPOS_AUTORIA = {
     "flujos.VersionFlujo": ("autor",),
     "instituciones.EstadiaCama": ("autor",),
     "red.Traslado": ("solicitado_por", "resuelto_por"),
-    "registros.ArchivoClinico": ("subido_por",),
+    "registros.ArchivoClinico": ("subido_por", "asociado_por"),
     "registros.ConsentimientoDatos": ("tomado_por",),
     "registros.EntradaHistoria": ("autor",),
     "registros.HistoriaClinica": ("antecedentes_por",),

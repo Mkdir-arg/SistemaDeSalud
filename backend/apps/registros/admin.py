@@ -151,4 +151,7 @@ class ArchivoClinicoAdmin(admin.ModelAdmin):
     list_display = ("nombre_original", "institucion", "content_type", "tamano", "proposito", "creado")
     list_filter = ("institucion", "content_type", "proposito")
     search_fields = ("nombre_original", "ruta", "sha256")
-    readonly_fields = ("ruta", "sha256", "tamano", "content_type", "creado", "subido_por")
+    # La pertenencia la fija `registros.adjuntos` (#172, AUD-050); el Admin no la
+    # reasigna ni la crea por fuera de esa regla.
+    readonly_fields = ("ruta", "sha256", "tamano", "content_type", "creado", "subido_por", "institucion",
+                       "proposito", "objeto_tipo", "objeto_id", "ciudadano", "asociado_por", "asociado_at")

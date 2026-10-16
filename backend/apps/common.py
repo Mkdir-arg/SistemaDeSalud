@@ -558,8 +558,9 @@ class DescargarArchivoView(APIView):
         from apps.auditoria.mixins import registrar_acceso
         from apps.auditoria.models import AccesoClinico
 
-        # Las referencias actuales no demuestran un dueño único del archivo.
-        # Se registra el objeto autorizado, sin atribuir un paciente por inferencia.
+        # Solo un dueño confirmado (#172, AUD-050) atribuye la descarga a un
+        # paciente; si no, se registra el objeto sin inferir a quién pertenece.
+        ciudadano = meta.ciudadano if meta is not None and meta.asociado_at is not None else None
         detalle = "Descarga iniciada de archivo"
         if meta is None:
             # Es una referencia técnica para correlacionar rutas legacy, no una
@@ -569,7 +570,7 @@ class DescargarArchivoView(APIView):
         registrar_acceso(
             request, AccesoClinico.Tipo.DETALLE, "archivoclinico",
             objeto_id=meta.pk if meta else "", institucion_id=institucion_id,
-            ciudadano=None, detalle=detalle,
+            ciudadano=ciudadano, detalle=detalle,
         )
         respuesta["Cache-Control"] = "private, no-store"
         return respuesta

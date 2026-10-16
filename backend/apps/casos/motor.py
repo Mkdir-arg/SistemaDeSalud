@@ -1915,6 +1915,14 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
                 est.archivo = archivo
             est.realizado = True
             est.save(update_fields=["resultado", "archivo", "realizado"])
+            if archivo:
+                from apps.registros.adjuntos import ErrorAdjunto, asociar_archivo_a_estudio
+
+                # El adjunto queda con dueño único: este estudio y su paciente.
+                try:
+                    asociar_archivo_a_estudio(est, archivo, autor)
+                except ErrorAdjunto as error:
+                    raise ErrorMotor(str(error)) from None
 
     elif nodo.tipo == Nodo.Tipo.ESPERA_FILA:
         box_id = datos.get("box_id")

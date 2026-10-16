@@ -28,6 +28,7 @@ from apps.casos.views import VIGENCIA_LLAMADO_H
 from apps.common import institucion_de_archivo, partes_de_ruta_clinica, respuesta_de_archivo
 from apps.financiadores.models import VinculoCiudadano
 from apps.financiadores.vigencias import afiliados_vigentes
+from apps.registros.adjuntos import pertenece_al_estudio
 from apps.registros.models import ArchivoClinico, Estudio
 
 from .autenticacion import IdentidadValidada
@@ -173,10 +174,16 @@ def _estudios_de(persona):
 
 
 def _archivo_del_estudio(estudio):
-    """La ruta del archivo de un estudio realizado, o None si no tiene uno válido."""
+    """La ruta del archivo de un estudio realizado, o None si no tiene uno publicable.
+
+    Publicable = asociado a ESTE estudio y a su paciente (#172, AUD-050). Compartir
+    institución no alcanza: un archivo de otro paciente del mismo hospital no se
+    publica aunque alguien haya copiado su ruta en este estudio.
+    """
     if not estudio.realizado or partes_de_ruta_clinica(estudio.archivo) is None:
         return None
-    return estudio.archivo
+    meta = ArchivoClinico.objects.filter(ruta=estudio.archivo).first()
+    return estudio.archivo if pertenece_al_estudio(meta, estudio) else None
 
 
 class ResultadosView(_DelPaciente):

@@ -22,7 +22,7 @@ from apps.auditoria.models import AccesoClinico
 from apps.common import BaseModelViewSet, ROL_CAPACIDADES, capacidades_de, tiene_capacidad
 from apps.simulacion.contexto import usuario_real
 
-from . import integridad, reglas
+from . import adjuntos, integridad, reglas
 from .models import (
     Ciudadano, ConsentimientoDatos, EntradaHistoria, Estudio, HistoriaClinica, Receta,
 )
@@ -462,6 +462,7 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         "create": "solicitud_estudios",
         "update": "solicitud_estudios",
         "partial_update": "solicitud_estudios",
+        "confirmar_archivo": "config_institucional",
     }
     protege_lectura = True
     institucion_path = "historia__ciudadano__institucion"
@@ -479,8 +480,18 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         # quién lo pidió sería una cadena que nadie puede verificar.
         historia = serializer.validated_data["historia"]
         reglas.exigir_clinico(historia.ciudadano.institucion, self.request.user)
-        # `Estudio.autor` es texto: simulando un perfil, lo pide el superusuario.
-        serializer.save(autor=usuario_real(self.request).nombre_completo)
+        with transaction.atomic():
+            # `Estudio.autor` es texto: simulando un perfil, lo pide el superusuario.
+            estudio = serializer.save(autor=usuario_real(self.request).nombre_completo)
+            self._asociar_archivo(estudio)
+
+    def _asociar_archivo(self, estudio, *, confirmacion_admin=False):
+        try:
+            adjuntos.asociar_archivo_a_estudio(
+                estudio, estudio.archivo, self.request.user, confirmacion_admin=confirmacion_admin,
+            )
+        except adjuntos.ErrorAdjunto as error:
+            raise drf_serializers.ValidationError({"archivo": [str(error)]}) from None
 
     def perform_update(self, serializer):
         # Informar un resultado es tan clínico como pedirlo, y hasta acá sólo el
@@ -491,7 +502,26 @@ class EstudioViewSet(AuditaLecturaClinica, BaseModelViewSet):
         # que se blindó el alta.
         estudio = serializer.instance
         reglas.exigir_clinico(estudio.historia.ciudadano.institucion, self.request.user)
-        serializer.save()
+        with transaction.atomic():
+            estudio = serializer.save()
+            self._asociar_archivo(estudio)
+
+    @extend_schema(request=None, responses=EstudioSerializer)
+    @action(detail=True, methods=["post"], url_path="confirmar-archivo")
+    def confirmar_archivo(self, request, pk=None):
+        """Un admin de la institución confirma que el archivo actual es de este estudio.
+
+        Es la vía para adjuntos sin dueño (legacy o subidos por otra persona). No
+        reasigna un archivo que ya pertenece a otro estudio.
+        """
+        estudio = self.get_object()
+        if not tiene_capacidad(request.user, "config_institucional", estudio.historia.ciudadano.institucion_id):
+            raise PermissionDenied("Solo un administrador de la institución confirma adjuntos sin dueño.")
+        if not estudio.archivo:
+            raise drf_serializers.ValidationError({"archivo": ["El estudio no tiene archivo."]})
+        with transaction.atomic():
+            self._asociar_archivo(estudio, confirmacion_admin=True)
+        return Response(self.get_serializer(estudio).data)
 
 
 class RecetaViewSet(AuditaLecturaClinica, BaseModelViewSet):

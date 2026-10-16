@@ -96,10 +96,21 @@ class EntradaHistoriaSerializer(HistoriaFija, serializers.ModelSerializer):
 
 class EstudioSerializer(HistoriaFija, serializers.ModelSerializer):
     resultado_display = serializers.CharField(source="get_resultado_display", read_only=True)
+    # El archivo tiene dueño confirmado: este estudio y su paciente (#172, AUD-050).
+    archivo_asociado = serializers.SerializerMethodField()
+
+    def get_archivo_asociado(self, obj) -> bool:
+        from .adjuntos import pertenece_al_estudio
+        from .models import ArchivoClinico
+
+        if not obj.archivo:
+            return False
+        return pertenece_al_estudio(ArchivoClinico.objects.filter(ruta=obj.archivo).first(), obj)
 
     class Meta:
         model = Estudio
-        fields = ["id", "historia", "tipo", "resultado", "resultado_display", "realizado", "archivo", "autor", "fecha"]
+        fields = ["id", "historia", "tipo", "resultado", "resultado_display", "realizado", "archivo",
+                  "archivo_asociado", "autor", "fecha"]
         # `autor` acá es texto libre: si además se manda desde el cuerpo, quién
         # pidió el estudio es una cadena que nadie puede verificar. Sale de la
         # sesión.

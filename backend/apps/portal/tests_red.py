@@ -25,7 +25,7 @@ from apps.casos.models import Caso, ItemFila, Notificacion
 from apps.financiadores.models import Afiliado, Financiador, Plan, VinculoCiudadano
 from apps.flujos.models import Flujo, Nodo, VersionFlujo
 from apps.instituciones.models import Area, Box, Institucion
-from apps.registros.models import Ciudadano, Estudio, HistoriaClinica
+from apps.registros.models import ArchivoClinico, Ciudadano, Estudio, HistoriaClinica
 
 from .models import EventoPortal
 from .tests import CLAVE, Base
@@ -210,6 +210,20 @@ class ResultadosTests(RedBase):
         self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
         self.ruta = default_storage.save(f"uploads/{self.central.id}/eco.pdf", ContentFile(b"%PDF-eco"))
         self.estudio = self.estudio_de(self.en_central, realizado=True, archivo=self.ruta, resultado="alterado")
+        # Dueño confirmado (#172, AUD-050): sin él el portal no publica el archivo.
+        ArchivoClinico.objects.create(
+            institucion=self.central, ruta=self.ruta, nombre_original="eco.pdf", content_type="application/pdf",
+            tamano=8, sha256="0" * 64, proposito=ArchivoClinico.Proposito.ESTUDIO, objeto_tipo="Estudio",
+            objeto_id=self.estudio.pk, ciudadano=self.en_central, asociado_at=timezone.now(),
+        )
+
+    def test_archivo_legacy_sin_dueno_confirmado_no_se_publica(self):
+        legacy = default_storage.save(f"uploads/{self.central.id}/legacy.pdf", ContentFile(b"%PDF-legacy"))
+        estudio = self.estudio_de(self.en_central, realizado=True, archivo=legacy)
+        por_id = {e["id"]: e for e in self.get("resultados/").data["resultados"]}
+        self.assertFalse(por_id[estudio.id]["descargable"])
+        self.assertEqual(self.get(f"resultados/{estudio.id}/archivo/").status_code, 404)
+        self.assertFalse(AccesoClinico.objects.exists())
 
     def estudio_de(self, ciudadano, **campos):
         hc, _ = HistoriaClinica.objects.get_or_create(ciudadano=ciudadano)
