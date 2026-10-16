@@ -66,6 +66,17 @@ class ExportacionPadronTests(APITestCase):
         self.assertIn("columnas=nombre,numero,documento", evento.motivo)
         self.assertNotIn("Ficticio", evento.motivo)
 
+    def test_listado_y_xlsx_comparten_busqueda_sin_tildes(self):
+        m.Afiliado.objects.filter(pk=self.a.pk).update(nombre="Identidad administrativa", nombres="José", apellidos="Pérez")
+        m.Afiliado.objects.filter(financiador=self.otra).update(nombres="José", apellidos="Pérez")
+        params = {"search": "  PEREZ   jose  ", "columnas": "nombre,numero,nombres,apellidos,documento"}
+        listado = self.client.get(f"/api/financiadores/{self.org.pk}/padron/", params)
+        self.assertEqual(listado.status_code, 200)
+        self.assertEqual(listado.data["count"], 1)
+        self.assertEqual([fila["id"] for fila in listado.data["results"]], [self.a.pk])
+        filas = list(self.libro(params)["Padrón"].values)[1:]
+        self.assertEqual(filas, [("Identidad administrativa", "00025", "José", "Pérez", "00123456")])
+
     def test_roles_consulta_scope_y_revocacion(self):
         for rol in ("admin", "operador", "auditor"):
             self.member.rol = rol; self.member.save()

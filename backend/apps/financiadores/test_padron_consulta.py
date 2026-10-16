@@ -1,4 +1,5 @@
 from datetime import timedelta
+import unicodedata
 
 from django.core.paginator import Paginator
 from django.http import QueryDict
@@ -140,6 +141,37 @@ class ConsultaPadronTests(TestCase):
             with self.subTest(campo=campo):
                 self.assertEqual(list(self.consulta(search=texto).values_list("pk", flat=True)), [afiliado.pk])
         self.assertFalse(self.consulta(search="Sin coincidencias").exists())
+
+    def test_search_ignora_tildes_mayusculas_y_unicode_descompuesto(self):
+        afiliado = self.filas[0]
+        for campo in ("nombre", "nombres", "apellidos"):
+            for guardado in ("José Álvarez Muñoz Güemes Íñigo Óscar Úrsula", "Jose Alvarez Munoz Guemes Inigo Oscar Ursula", unicodedata.normalize("NFD", "José Álvarez Muñoz Güemes Íñigo Óscar Úrsula")):
+                datos = {"nombre": "Identidad administrativa", "nombres": "", "apellidos": ""}
+                datos[campo] = guardado
+                m.Afiliado.objects.filter(pk=afiliado.pk).update(**datos)
+                for texto in ("jose", "JOSÉ", "alvarez", "ALVAREZ", "munoz", "muñoz", "guemes", "iñigo", "oscar", "ursula", unicodedata.normalize("NFD", "JOSÉ")):
+                    with self.subTest(campo=campo, guardado=guardado, texto=texto):
+                        self.assertEqual(list(self.consulta(search=texto).values_list("pk", flat=True)), [afiliado.pk])
+
+    def test_search_palabras_en_cualquier_orden_y_campos_independientes(self):
+        afiliado = self.filas[0]
+        m.Afiliado.objects.filter(pk=afiliado.pk).update(nombres="José María", apellidos="Pérez", cuil="20345678901")
+        m.Afiliado.objects.filter(pk=self.ajeno.pk).update(nombres="José María", apellidos="Pérez")
+        for texto in ("jose perez", "  PEREZ   JOSE  ", "pérez\tmaría", "jose 000", "perez 90.000.000", "jose 20345678901"):
+            with self.subTest(texto=texto):
+                self.assertEqual(list(self.consulta(search=texto).values_list("pk", flat=True)), [afiliado.pk])
+        self.assertFalse(self.consulta(search="jose inexistente").exists())
+        self.assertFalse(self.consulta(search="jose", flt_localidad="Monte").exists())
+
+    def test_search_simbolos_literales_y_sin_coincidencias_no_devuelve_todo(self):
+        afiliado = self.filas[0]
+        m.Afiliado.objects.filter(pk=afiliado.pk).update(nombre="José (A+B)")
+        for texto in ("(A+B)", "jose (A+B)"):
+            with self.subTest(texto=texto):
+                self.assertEqual(list(self.consulta(search=texto).values_list("pk", flat=True)), [afiliado.pk])
+        for texto in (".*", "...", "[", "%", "\u0301", "Sin coincidencias"):
+            with self.subTest(texto=texto):
+                self.assertFalse(self.consulta(search=texto).exists())
 
     def test_catalogo_proyeccion_solo_administrativo_y_columnas(self):
         self.assertTrue(set(CAMPOS_GENERALES).issubset(COLUMNAS_PADRON))

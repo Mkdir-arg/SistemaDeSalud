@@ -4,6 +4,8 @@ El llamador autoriza el financiador antes de invocar consultar_padron. La consul
 se construye aquí, nunca a partir de un queryset o un scope recibido por URL.
 """
 import json
+import re
+import unicodedata
 from pathlib import Path
 
 from django.db.models import Case, CharField, F, Q, Value, When
@@ -21,6 +23,19 @@ COLUMNAS_PREDETERMINADAS = tuple(k for k, c in COLUMNAS_PADRON.items() if c.get(
 _LEGACY = {"plan", "estado", "derecho", "documento", "search", "estado_administrativo", "regimen", "alta_desde", "alta_hasta", "baja_desde", "baja_hasta"}
 _TRANSPORTE = {"ordering", "columnas", "page", "page_size", "formato"}
 _ERROR = "Consulta de padrón inválida. Revisá los filtros, el orden y las columnas."
+_LETRAS_BUSQUEDA = {
+    "a": "[aáàâäãå]", "e": "[eéèêë]", "i": "[iíìîï]",
+    "o": "[oóòôöõ]", "u": "[uúùûü]", "n": "[nñ]", "c": "[cç]",
+}
+
+
+def _patron_nombre(texto):
+    """Equivalencias de letras latinas, con símbolos literales y sin extensión SQL."""
+    letras = unicodedata.normalize("NFD", texto).casefold()
+    return "".join(
+        _LETRAS_BUSQUEDA.get(letra, re.escape(letra)) + ("[\u0300-\u036f]*" if letra.isalpha() else "")
+        for letra in letras if not unicodedata.combining(letra)
+    )
 
 
 def _invalida():
@@ -114,7 +129,18 @@ def _consultar_padron(*, financiador, parametros):
         qs = qs.filter(documento=normalizar_documento(parametros["documento"]))
     if parametros.get("search"):
         texto = serializers.CharField(max_length=255).run_validation(parametros["search"])
-        qs = qs.filter(Q(numero__icontains=texto) | Q(nombre__icontains=texto) | Q(nombres__icontains=texto) | Q(apellidos__icontains=texto) | Q(cuil__icontains=texto) | Q(documento__icontains=normalizar_documento(texto)))
+        # Cada palabra debe coincidir en algún campo; nombre y apellido pueden
+        # estar separados o en distinto orden. El filtrado sigue siendo SQL.
+        for palabra in texto.split():
+            condicion = Q(numero__icontains=palabra) | Q(cuil__icontains=palabra)
+            patron = _patron_nombre(palabra)
+            if patron:
+                condicion |= Q(nombre__iregex=patron) | Q(nombres__iregex=patron) | Q(apellidos__iregex=patron)
+            documento = normalizar_documento(palabra)
+            if documento:
+                # Un documento vacío produciría icontains="" y devolvería todo.
+                condicion |= Q(documento__icontains=documento)
+            qs = qs.filter(condicion)
     qs = filtrar_padron(qs, parametros)
     activos = [(k, *_FILTROS[k]) for k in parametros if k in _FILTROS and parametros.get(k) != ""]
     qs = _anotar(qs, {clave_orden, *(clave for _, clave, _ in activos)})
