@@ -178,6 +178,26 @@ let refrescoEnVuelo = null;
 let refrescoEpoch = null;
 let credencialesDelRefresco = null;
 
+// Lo mismo entre pestañas. Con «mantener la sesión» todas comparten el refresh
+// de localStorage, y el backend lo acepta una sola vez: la segunda pestaña
+// recibe 401 aunque la sesión siga viva (#172, «conservar la renovación
+// válida»). Si ese 401 llevara a `tokens.clear()`, borraría también la
+// renovación ganadora. Web Locks serializa la renovación; sin soporte, el
+// almacén releído después del 401 distingue carrera de revocación.
+function conCandadoEntrePestanas(renovar) {
+  const locks = globalThis.navigator?.locks;
+  if (!persistente() || typeof locks?.request !== "function") return renovar();
+  return locks.request("salud.renovacion", renovar);
+}
+
+// Otra pestaña ya guardó una renovación distinta de la que esta iba a usar.
+function renovadoEnOtraPestana(captura) {
+  const vigente = tokens.refresh;
+  if (!vigente || vigente === captura.refresh) return false;
+  captura.refresh = vigente;
+  return true;
+}
+
 function refreshAccess() {
   if (!tokens.refresh) return Promise.resolve(false);
   // Si ya hay uno en curso, todos esperan ese mismo resultado.
@@ -187,7 +207,9 @@ function refreshAccess() {
   refrescoEpoch = epoch;
   const captura = { refresh: tokens.refresh };
   credencialesDelRefresco = captura;
-  refrescoEnVuelo = (async () => {
+  refrescoEnVuelo = conCandadoEntrePestanas(async () => {
+    if (epoch !== sessionEpoch) return false;
+    if (renovadoEnOtraPestana(captura)) return true;
     const res = await fetch(`${BASE}/auth/token/refresh/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -201,12 +223,12 @@ function refreshAccess() {
     // Como en el portal: un fallo temporal no demuestra que la credencial
     // esté revocada. Propagarlo permite reintentar sin perder la sesión.
     if (!res.ok) {
-      if (res.status === 400 || res.status === 401) return false;
+      if (res.status === 400 || res.status === 401) return renovadoEnOtraPestana(captura);
       throw new ApiError(res.status, data);
     }
     tokens.set({ access: data.access, refresh: data.refresh });
     return true;
-  })().finally(() => {
+  }).finally(() => {
     if (refrescoEpoch === epoch) {
       refrescoEnVuelo = null;
       refrescoEpoch = null;

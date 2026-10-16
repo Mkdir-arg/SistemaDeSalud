@@ -7,24 +7,40 @@ import vm from "node:vm";
 // import.meta.env y las superficies del navegador son explícitas y sintéticas.
 const source = await readFile(new URL("./client.js", import.meta.url), "utf8");
 
-async function cliente({ base, responder = () => new Response("archivo"), abortSignal = AbortSignal } = {}) {
+const storage = () => {
+  const values = new Map();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+};
+
+// Web Locks sintético: una cola por origen, compartida entre «pestañas».
+const candados = () => {
+  let cola = Promise.resolve();
+  return { request: (_nombre, fn) => {
+    const turno = cola.then(() => fn());
+    cola = turno.catch(() => null);
+    return turno;
+  } };
+};
+
+async function cliente({
+  base, responder = () => new Response("archivo"), abortSignal = AbortSignal,
+  localStorage = storage(), navigator, persistir = false,
+} = {}) {
   const peticiones = [];
   const descargas = [];
-  const storage = () => {
-    const values = new Map();
-    return {
-      getItem: (key) => values.get(key) ?? null,
-      setItem: (key, value) => values.set(key, String(value)),
-      removeItem: (key) => values.delete(key),
-    };
-  };
+  if (persistir) localStorage.setItem("salud.persistir", "1");
   class BrowserURL extends URL {
     static createObjectURL() { return "blob:synthetic"; }
     static revokeObjectURL() {}
   }
   const context = vm.createContext({
     AbortSignal: abortSignal, setTimeout, clearTimeout,
-    localStorage: storage(), sessionStorage: storage(), URL: BrowserURL,
+    localStorage, sessionStorage: storage(), URL: BrowserURL,
+    ...(navigator ? { navigator } : {}),
     window: { location: { href: "https://plexo.test/historia/1", origin: "https://plexo.test" } },
     document: {
       body: { appendChild() {} },
@@ -305,4 +321,88 @@ test("una operación pública no depende de cambios de sesión locales mientras 
   client.tokens.clear();
   responder(Response.json({ detail: "Solicitud recibida" }, { status: 202 }));
   assert.equal((await solicitud).detail, "Solicitud recibida");
+});
+
+// Servidor sintético con refresh de un solo uso: el consumido responde 401 y
+// la renovación ganadora sigue válida (#172, «conservar la renovación válida»).
+function servidorDeUnSoloUso() {
+  let vigente = "synthetic-refresh";
+  // El access del cliente ya venció: el primer pedido de cada pestaña recibe 401.
+  let acceso = "access-vigente-solo-tras-renovar";
+  let ronda = 0;
+  const demorados = [];
+  const responder = (url, options) => {
+    if (url.endsWith("/auth/token/refresh/")) {
+      const enviado = JSON.parse(options.body).refresh;
+      const respuesta = new Promise(resolve => demorados.push(() => {
+        if (enviado !== vigente) return resolve(new Response("", { status: 401 }));
+        ronda += 1;
+        vigente = `refresh-rotado-${ronda}`;
+        acceso = `access-rotado-${ronda}`;
+        resolve(Response.json({ access: acceso, refresh: vigente }));
+      }));
+      return respuesta;
+    }
+    return options.headers.Authorization === `Bearer ${acceso}`
+      ? Response.json({ id: 1 }) : new Response("", { status: 401 });
+  };
+  const esperarRefresh = async (cantidad) => {
+    while (demorados.length < cantidad) await new Promise(r => setTimeout(r, 1));
+  };
+  return { responder, demorados, esperarRefresh, actual: () => ({ vigente, acceso }) };
+}
+
+async function dosPestanas({ conCandados }) {
+  const compartido = storage();
+  const server = servidorDeUnSoloUso();
+  const navigator = conCandados ? { locks: candados() } : undefined;
+  const opciones = { responder: server.responder, localStorage: compartido, navigator, persistir: true };
+  const a = await cliente(opciones);
+  const b = await cliente(opciones);
+  return { a, b, server, compartido };
+}
+
+test("sin Web Locks, la pestaña que pierde la carrera de refresh no borra la sesión compartida", async () => {
+  const { a, b, server } = await dosPestanas({ conCandados: false });
+  // El servidor da el triunfo a la pestaña A y responde 401 a B después de
+  // que A ya guardó su renovación en el almacén compartido.
+  const pedidoA = a.api.get("/usuarios/me/");
+  await server.esperarRefresh(1);
+  const pedidoB = b.api.get("/formularios/");
+  await server.esperarRefresh(2);
+  server.demorados[0]();
+  assert.equal((await pedidoA).id, 1);
+  server.demorados[1]();
+  assert.equal((await pedidoB).id, 1);
+  assert.equal(a.tokens.refresh, server.actual().vigente);
+  assert.equal(b.tokens.refresh, server.actual().vigente);
+});
+
+test("con Web Locks, una sola pestaña renueva y la otra reutiliza la renovación ganadora", async () => {
+  const { a, b, server } = await dosPestanas({ conCandados: true });
+  const pedidoA = a.api.get("/usuarios/me/");
+  await server.esperarRefresh(1);
+  const pedidoB = b.api.get("/formularios/");
+  // B espera el candado: no presenta el refresh consumido.
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(server.demorados.length, 1);
+  server.demorados[0]();
+  assert.equal((await pedidoA).id, 1);
+  assert.equal((await pedidoB).id, 1);
+  const renovaciones = [...a.peticiones, ...b.peticiones].filter(p => p.url.endsWith("/auth/token/refresh/"));
+  assert.equal(renovaciones.length, 1);
+  assert.equal(b.tokens.access, server.actual().acceso);
+});
+
+test("con Web Locks, un refresh revocado sin renovación ajena sigue cerrando la sesión", async () => {
+  const compartido = storage();
+  const opciones = {
+    responder: () => new Response("", { status: 401 }),
+    localStorage: compartido, navigator: { locks: candados() }, persistir: true,
+  };
+  const a = await cliente(opciones);
+  await assert.rejects(a.api.get("/usuarios/me/"), { status: 401 });
+  assert.equal(a.tokens.access, null);
+  assert.equal(a.tokens.refresh, null);
+  assert.equal(compartido.getItem("salud.refresh"), null);
 });
