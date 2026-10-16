@@ -70,7 +70,7 @@ function HistoriaFinanciador({ id, afiliado, scope }) {
             const abierto = casoAbierto === caso.id;
             const estado = estadoCaso[caso.estado];
             return (
-              <Card key={caso.id} className={cn("overflow-hidden transition-shadow", abierto && "shadow-md ring-1 ring-accent")}>
+              <Card key={caso.id} className={cn("overflow-hidden transition-shadow", abierto && "shadow-card ring-1 ring-accent")}>
                 <div className="flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
                   <div className="flex min-w-0 gap-3">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-superficie-2 text-texto-debil"><Icon name="building" size={18} /></span>
