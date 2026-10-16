@@ -134,8 +134,9 @@ test("motivo completo no se interpreta como ids de auditoría", async ({ page })
 test("ficha: estados y singular legibles, cero evoluciones sin pedir motivo", async ({ page }) => {
   const pedidos = await preparar(page, { financiador: true });
   await page.goto("/financiadores/padron/7?financiador=21");
-  await expect(page.getByText(/Recibido · 0 evoluciones firmadas/)).toBeVisible();
-  await expect(page.getByText(/Cerrado · 1 evolución firmada/)).toBeVisible();
+  const historia = page.getByRole("region", { name: "Historia clínica", exact: true });
+  await expect(historia.getByText("Caso 41").locator("../..")).toContainText(/Recibido.*0 evoluciones firmadas/);
+  await expect(historia.getByText("Caso 42").locator("../..")).toContainText(/Cerrado.*1 evolución firmada/);
   await expect(page.getByRole("button", { name: "Ver evoluciones" })).toHaveCount(1);
   await expect(page.getByRole("textbox", { name: "Motivo de consulta" })).toHaveCount(0);
   expect(pedidos.some((p) => p.path.endsWith("/ficha-historia-evoluciones/"))).toBe(false);

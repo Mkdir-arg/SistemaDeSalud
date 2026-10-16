@@ -5,7 +5,9 @@ import { api } from "@/api/client";
 import { errorFinanciador, filasDe, rutaFinanciador } from "@/api/financiadores";
 import { POR_PAGINA } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Card, Spinner } from "@/components/ui";
+import { Badge, Button, Card, Spinner, Textarea } from "@/components/ui";
+import { Icon } from "@/components/icons";
+import { cn } from "@/lib/cn";
 import { EstadoVacio } from "@/components/ui/estados";
 import { Shell } from "@/components/Shell";
 import { fechaHora, plural } from "@/lib/format";
@@ -42,10 +44,94 @@ function HistoriaFinanciador({ id, afiliado, scope }) {
     catch (err) { setError(err); }
     finally { setConsultando(false); }
   }
-  return <section id="historia-clinica" className="space-y-3 scroll-mt-8" aria-label="Historia clínica"><h2 className="text-lg font-semibold">Historia clínica</h2><p className="text-sm text-texto-debil">Evoluciones firmadas de los casos que ingresaron con tu cobertura en hospitales dentro de tu alcance. No incluye alergias, antecedentes, estudios ni recetas. Cada consulta queda registrada con tu motivo y la ve el hospital.</p>
-    <Card className="p-4">{casos.isLoading ? <Spinner label="Consultando casos…" /> : casos.error ? <ErrorFicha error={casos.error} reintentar={casos.refetch} /> : !casos.data?.results?.length ? <EstadoVacio titulo="No hay casos alcanzados" /> : <div className="space-y-3">{casos.data.results.map((caso) => <div key={caso.id} className="rounded-md border border-division p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-medium">{caso.institucion.nombre} · Caso {caso.id}</p><p className="text-sm text-texto-debil">Ingreso {fechaHora(caso.creado)} · {estadoCaso[caso.estado]?.label || caso.estado} · {plural(caso.evoluciones_firmadas, "evolución firmada", "evoluciones firmadas")} · {caso.acceso === "pendiente_historico" ? "Histórico pendiente" : "Relación vigente"}</p></div>{caso.evoluciones_firmadas > 0 ? <Button size="sm" variant="secondary" onClick={() => { cerrar(); setCasoAbierto(caso.id); }}>Ver evoluciones</Button> : <span className="text-sm text-texto-debil">No hay evoluciones firmadas</span>}</div>
-      {casoAbierto === caso.id && <div className="mt-4 border-t border-division pt-4">{evoluciones === null ? <form className="space-y-3" onSubmit={consultar}><label className="block text-sm font-medium" htmlFor={`motivo-${caso.id}`}>Motivo de consulta</label><textarea id={`motivo-${caso.id}`} className="w-full rounded-md border border-borde bg-superficie p-2" required minLength={10} maxLength={200} value={motivo} onChange={(e) => setMotivo(e.target.value)} /><p className="text-xs text-texto-debil">Entre 10 y 200 caracteres. Quedará registrado y visible para el hospital.</p>{error && <ErrorFicha error={error} />}<div className="flex gap-2"><Button type="submit" disabled={consultando || motivo.trim().length < 10 || motivo.trim().length > 200}>{consultando ? "Consultando…" : "Confirmar motivo"}</Button><Button type="button" variant="ghost" onClick={cerrar}>Cerrar</Button></div></form> : <div className="space-y-3"><Button size="sm" variant="ghost" onClick={cerrar}>Cerrar evoluciones</Button>{!evoluciones.length ? <EstadoVacio titulo="No hay evoluciones firmadas" /> : evoluciones.map((entrada) => <article key={entrada.id} className="rounded-md border border-division p-4"><h3 className="font-semibold">{entrada.titulo}</h3><p className="text-sm text-texto-debil">{fechaHora(entrada.fecha)} · {entrada.autor || "Autor no disponible"}{entrada.matricula && ` · Matrícula ${entrada.matricula}`}</p><p className="mt-3 whitespace-pre-wrap text-sm">{entrada.contenido}</p></article>)}</div>}</div>}</div>)}<div className="flex justify-end gap-2"><Button size="sm" variant="secondary" disabled={pagina <= 1} onClick={() => { cerrar(); setPagina(pagina - 1); }}>Anterior</Button><Button size="sm" variant="secondary" disabled={!casos.data.next} onClick={() => { cerrar(); setPagina(pagina + 1); }}>Siguiente</Button></div></div>}</Card>
-  </section>;
+  const largo = motivo.trim().length;
+  const total = casos.data?.count ?? 0;
+  return (
+    <section id="historia-clinica" className="scroll-mt-8 space-y-4" aria-label="Historia clínica">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="flex size-9 items-center justify-center rounded-md bg-badge-info-bg text-badge-info-fg"><Icon name="stethoscope" size={18} /></span>
+        <h2 className="text-lg font-semibold">Historia clínica</h2>
+        {total > 0 && <Badge tone="neutral">{plural(total, "caso alcanzado", "casos alcanzados")}</Badge>}
+      </div>
+      {/* El recorte se dice antes de los datos: quien lee tiene que saber qué NO está. */}
+      <div className="flex gap-3 rounded-lg border border-borde bg-superficie-2 p-4 text-sm">
+        <Icon name="shieldCheck" size={18} className="mt-0.5 shrink-0 text-texto-debil" />
+        <ul className="space-y-1 text-texto-suave">
+          <li>Evoluciones firmadas de los casos que ingresaron con tu cobertura en hospitales dentro de tu alcance.</li>
+          <li className="text-texto-debil">No incluye alergias, antecedentes, estudios ni recetas.</li>
+          <li className="text-texto-debil">Cada consulta queda registrada con tu motivo y la ve el hospital.</li>
+        </ul>
+      </div>
+      {casos.isLoading ? <Card className="p-4"><Spinner label="Consultando casos…" /></Card>
+        : casos.error ? <ErrorFicha error={casos.error} reintentar={casos.refetch} />
+        : !casos.data?.results?.length ? <Card><EstadoVacio icono="clipboard" titulo="No hay casos alcanzados" detalle="Cuando el afiliado ingrese con tu cobertura a un hospital con convenio, sus casos aparecen acá." /></Card>
+        : <div className="space-y-3">
+          {casos.data.results.map((caso) => {
+            const abierto = casoAbierto === caso.id;
+            const estado = estadoCaso[caso.estado];
+            return (
+              <Card key={caso.id} className={cn("overflow-hidden transition-shadow", abierto && "shadow-card ring-1 ring-accent")}>
+                <div className="flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
+                  <div className="flex min-w-0 gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-superficie-2 text-texto-debil"><Icon name="building" size={18} /></span>
+                    <div className="min-w-0 space-y-1.5">
+                      <p className="font-semibold">{caso.institucion.nombre} <span className="font-normal text-texto-debil">· Caso {caso.id}</span></p>
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-texto-debil">
+                        <Badge tone={estado?.tone}>{estado?.label || caso.estado}</Badge>
+                        {caso.acceso === "pendiente_historico" ? <Badge tone="amber">Histórico pendiente</Badge> : <Badge tone="green">Relación vigente</Badge>}
+                        <span className="inline-flex items-center gap-1"><Icon name="calendar" size={14} />Ingreso {fechaHora(caso.creado)}</span>
+                        <span className="inline-flex items-center gap-1"><Icon name="fileText" size={14} />{plural(caso.evoluciones_firmadas, "evolución firmada", "evoluciones firmadas")}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {caso.evoluciones_firmadas > 0
+                    ? !abierto && <Button size="sm" variant="secondary" onClick={() => { cerrar(); setCasoAbierto(caso.id); }}><Icon name="eye" size={15} />Ver evoluciones</Button>
+                    : <span className="text-sm text-texto-debil">No hay evoluciones firmadas</span>}
+                </div>
+                {abierto && <div className="border-t border-division bg-superficie-2 p-4 sm:p-5">
+                  {evoluciones === null ? <form className="max-w-2xl space-y-3" onSubmit={consultar}>
+                    <div>
+                      <label className="block font-medium" htmlFor={`motivo-${caso.id}`}>Motivo de consulta</label>
+                      <p className="text-sm text-texto-debil">Queda registrado y visible para el hospital antes de ver las evoluciones.</p>
+                    </div>
+                    <Textarea id={`motivo-${caso.id}`} required minLength={10} maxLength={200} autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: auditoría médica de la prestación facturada en septiembre" />
+                    <p className={cn("text-xs tabular-nums", largo > 0 && largo < 10 ? "text-badge-amber-fg" : "text-texto-debil")}>{largo}/200 · mínimo 10 caracteres</p>
+                    {error && <ErrorFicha error={error} />}
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={consultando || largo < 10 || largo > 200}>{consultando ? "Consultando…" : "Confirmar motivo"}</Button>
+                      <Button type="button" variant="ghost" onClick={cerrar}>Cerrar</Button>
+                    </div>
+                  </form> : <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm text-texto-debil">Motivo registrado: <span className="text-texto-suave">«{motivo.trim()}»</span></p>
+                      <Button size="sm" variant="ghost" onClick={cerrar}>Cerrar evoluciones</Button>
+                    </div>
+                    {!evoluciones.length ? <EstadoVacio titulo="No hay evoluciones firmadas" /> : <ol className="relative space-y-4 border-l border-borde pl-6">
+                      {evoluciones.map((entrada) => <li key={entrada.id} className="relative">
+                        <span className="absolute -left-[31px] top-5 size-3 rounded-full border-2 border-superficie bg-accent" aria-hidden="true" />
+                        <article className="rounded-lg border border-borde bg-superficie p-4 sm:p-5">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <h3 className="font-semibold">{entrada.titulo}</h3>
+                            <Badge tone="green">Firmada</Badge>
+                          </div>
+                          <p className="mt-1 text-sm text-texto-debil">{fechaHora(entrada.fecha)} · {entrada.autor || "Autor no disponible"}{entrada.matricula && ` · Matrícula ${entrada.matricula}`}</p>
+                          <p className="mt-3 max-w-prose whitespace-pre-wrap leading-relaxed text-texto-medio">{entrada.contenido}</p>
+                        </article>
+                      </li>)}
+                    </ol>}
+                  </div>}
+                </div>}
+              </Card>
+            );
+          })}
+          {(pagina > 1 || casos.data.next) && <div className="flex items-center justify-end gap-3 text-sm text-texto-debil">
+            <span>Página {pagina}</span>
+            <Button size="sm" variant="secondary" disabled={pagina <= 1} onClick={() => { cerrar(); setPagina(pagina - 1); }}>Anterior</Button>
+            <Button size="sm" variant="secondary" disabled={!casos.data.next} onClick={() => { cerrar(); setPagina(pagina + 1); }}>Siguiente</Button>
+          </div>}
+        </div>}
+    </section>
+  );
 }
 
 export default function FichaAfiliado() {
