@@ -1,6 +1,6 @@
 # Contrato propuesto: identidad institucional y sesiones — AUD-001/009
 
-Fecha: 15/10/2026. Estado: **flujo institucional aprobado; implementación y validación locales en curso**. Sin incorporación ni despliegue.
+Fecha inicial: 15/10/2026. Estado al16/10: **flujo institucional y primer corte de sesiones durables aprobados, implementados y validados localmente**. Detalle de evidencia en el plan principal; sin incorporación ni despliegue.
 
 ## Decisiones confirmadas y alcance
 
@@ -97,7 +97,7 @@ Activar huella invalida JWT legacy: anunciar nuevo login y verificar todos los a
 Antes de implementación el dueño debe decidir: (a) API y onboarding propuestos; (b) administración de nombre/apellido y excepciones de plataforma/Admin; (c) vigencias, varios enlaces válidos y reautenticación/email; (d) cierre global o por dispositivo y estado durable; (e) garantía de correo, presupuesto y tasas; (f) latencia de revocación/operaciones en vuelo y comunicación de cierre legacy. No se ejecutaron Django, DB, Docker, tests ni servicios para esta propuesta.
 
 
-## Continuación AUD-009: propuesta de sesión durable, pendiente de política concreta
+## Propuesta original AUD-009 — 15/10/2026, resuelta en el apartado siguiente
 
 El dueño autorizó continuar el trabajo tras la propuesta de revocación durable. Esto no registra todavía una decisión humana sobre el diseño específico, replay o retención. La consulta sobre replay está pendiente; las siguientes opciones son recomendaciones de agentes.
 
@@ -115,3 +115,13 @@ Refresh de un solo uso: bloquear **Usuario→Sesión**, validar revocación/cont
 Activar la exigencia de `sid` rechazará JWT legacy: requiere nuevo login planificado. Las cookies de Django y `SessionAuthentication` son una frontera distinta, también utilizada por Admin; no atribuirles revocación por logout JWT ni deshabilitarlas sin decisión expresa. No hay purga automática ni plazo de retención productivo decidido; especificar conservación y limpieza antes de habilitar producción. Una fila ausente o revocada nunca vuelve a autorizar tokens anteriores.
 
 **Segundo corte pendiente: revocación institucional sin afectar otras instituciones.** La propuesta requiere una generación durable usuario/institución y una fotografía por sesión: retirar A invalida A, conserva B y reactivar A no rehabilita tokens anteriores. Refresh no recaptura esa fotografía. El esquema y los cambios que incrementan la generación todavía necesitan contrato específico. La inspección encontró consultas de membresías en aproximadamente 23 módulos, además de helpers/scopes de `common.py`; revisar las vías API/Admin/inlines/M2M y los accesos directos antes de afirmar cobertura. El primer corte no modifica esos permisos ni cierra esa parte de AUD-009.
+
+### Decisión del dueño y alcance de ejecución — 16/10/2026
+
+El dueño eligió expresamente **«conservar la renovación válida»** y autorizó continuar. Esto resuelve la consulta de replay anterior: refresh consumido se rechaza sin revocar al ganador. Ratificó avanzar tras explicitar sesión durable PostgreSQL, cierre de ese login, invalidación de todas las credenciales previas por cambio/reset de contraseña, vigencias actuales y nuevo login obligatorio para JWT legacy sin identificador de sesión. La retención y limpieza se definirán antes de producción; no se añade purga automática.
+
+Detalle técnico del agente dentro de ese alcance: `POST /api/auth/logout/` recibe únicamente `{refresh}` y responde204 al cerrar o repetir el cierre con el token terminal vigente. Valida firma, propósito, propietario, sesión y JTI; no utiliza cookies ni una identidad simulada. Rechaza refresh consumido/expirado/inválido con401, conservando la renovación válida. Esto evita que el mismo token rechazado en refresh pueda cerrar al ganador por otra ruta. El cliente espera su renovación en vuelo, captura el token vigente y distingue confirmación remota de limpieza local; un fallo no se presenta como revocación acreditada.
+
+La autenticación ordinaria y la de simulación validan la sesión del actor real antes de resolver identidad efectiva. El orden de bloqueo para login/refresh/logout se mantiene Usuario→Sesión. Revocación se verifica al autenticar solicitudes posteriores al commit; no cancela operaciones que ya estaban en vuelo. Cookies Django/Admin y revocación institucional durable siguen siendo fronteras separadas: este corte no sustituye su contrato ni la matriz de permisos.
+
+Implementación: backend `443adfe`, frontend `6e70327`;325 pruebas PostgreSQL,25 Node y validación navegador/HTTP reales documentados con comandos y límites en el plan principal. Logout local por inactividad/propagación permanece distinto del cierre remoto explícito. La activación productiva y la aceptación humana siguen pendientes; no se declara AUD-009 completamente cerrado.
