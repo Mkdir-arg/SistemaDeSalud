@@ -476,3 +476,24 @@ Validación:
 - Backend PostgreSQL 16 del laboratorio, imagen reconstruida con este corte y worker de correo detenido: `manage.py test apps.accounts apps.simulacion apps.registros.test_revision_borrador_auditoria172 apps.registros.test_concurrencia_firma_auditoria172 apps.formularios.test_admin_congelado_auditoria172 apps.formularios.test_rutas_congelacion_auditoria172 apps.instituciones.test_boxes_auditoria172 apps.portal.tests apps.casos.test_permisos_barrida --noinput --verbosity 1`: **362 aprobadas sin skips**, 194 s; incluye 10 nuevas de Admin, comando y cookie. Sobre la misma imagen pasan `check`, `makemigrations --check --dry-run` sin cambios y OpenAPI `--fail-on-warn`; la base de test quedó eliminada. No se corrió la suite global local: queda para el CI del push.
 
 No hay migración. Para revertir alcanza con revertir el código; volver a aceptar la cookie en la API o la edición de credenciales en el Admin reabre las vías que este bloque cierra.
+
+### Bloque K2: retiro institucional durable A/B — 16/10/2026
+
+El dueño pidió continuar sin hacer antes la revisión ni la contrastación de modos de fallo de K1: ambas quedan como deuda de comprensión pendiente, no como aceptación. Para K2 eligió, entre opciones que propuso el agente, el **corte central en el manager** frente a un helper explícito, y aceptó tres consecuencias: un cambio de rol, un borrado con recreación y la baja de un rol global también cortan las sesiones anteriores.
+
+Contrato: si una pertenencia de U en la institución A se desactiva, se borra, cambia de rol o cambia de institución, se registra `BajaMembresia(usuario, institución, momento)` (append-only; institución nula = alcance global). En las solicitudes autenticadas con una `SesionInstitucional` creada en o antes de esa baja, el manager por defecto de `Membresia` oculta a U sus pertenencias en A, aunque se reactiven. Renovar conserva la sesión y no recupera A; un login nuevo sí. B, los demás usuarios y la gestión de terceros no cambian.
+
+Implementación:
+
+- `accounts/models.py`: `MembresiaManager` (manager por defecto) y `objects_sin_corte` (base manager, usado en cascadas y en la detección de cambios). `Membresia.save()` compara contra la fila guardada; una señal `post_delete` registra los borrados, salvo en la cascada de un Usuario o una Institución. Migración `accounts.0009`: solo crea la tabla y el índice; las opciones y managers no generan SQL.
+- `accounts/sesiones.py` y `autenticacion.py`: el autenticador fija el corte (usuario, inicio de la sesión) en una variable de contexto, con una consulta de bajas como máximo por solicitud. `CorteMembresiasMiddleware` lo limpia al entrar y al salir de cada solicitud. Con simulación, el corte se fija sobre el actor real.
+- La simulación clasifica `BajaMembresia.usuario` como dato operativo.
+
+Límites: no cubre los filtros por join (`membresias__activo`), que hoy solo se usan sobre terceros; tampoco `.update()` masivo (solo lo usan la preparación de simulación sobre cuentas de referencia y los seeds), ni workers, comandos o Admin (sin sesión institucional), ni `MembresiaFinanciador`, que es otro modelo y queda pendiente. Revocar no cancela operaciones ya en vuelo. La UI no explica por qué desapareció A hasta un nuevo login. Comparar momentos supone relojes coherentes entre instancias. Hay una consulta extra por solicitud que lee membresías.
+
+Validación:
+
+- SQLite local: 5 tests nuevos; 4 fallan sin el corte y pasan con él (el quinto prueba que borrar la identidad no deja bajas huérfanas).
+- PostgreSQL 16 del laboratorio, imagen reconstruida y worker de correo detenido: `manage.py test apps.accounts apps.simulacion apps.instituciones apps.red apps.registros apps.fhir apps.farmacia apps.casos.test_permisos_barrida apps.portal.tests --noinput --verbosity 1`: **819 aprobadas sin skips**, 387 s. Sobre la misma imagen pasan `check` y `makemigrations --check --dry-run` sin cambios; `sqlmigrate accounts 0009` crea solo la tabla, dos FK diferidas y tres índices; OpenAPI `--fail-on-warn` aprobado. La migración no se aplicó a la base sintética del laboratorio, porque no hay API levantada que la use. La suite global queda para el CI.
+
+Rollback: revertir el código deja la tabla sin uso, sin riesgo, y vuelve a rehabilitar sesiones viejas al reactivar. La tabla no se borra como parte del rollback. Al desplegar, `accounts.0009` es expansiva y no requiere ventana.
