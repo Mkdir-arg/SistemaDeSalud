@@ -464,6 +464,10 @@ INSTITUCIONAL_OUTBOX_POLITICA = {
     clave: int(env(f"INSTITUCIONAL_OUTBOX_{clave.upper()}") or "0")
     for clave in ("max_intentos", "lease_segundos", "backoff_inicial_segundos", "backoff_maximo_segundos", "espera_segundos")
 }
+# Retención técnica (#172) que aplica `purgar_datos`: sesiones revocadas o
+# vencidas y contenido de correos terminales. Ver apps/auditoria/retencion.py.
+RETENCION_SESIONES_DIAS = int(env("RETENCION_SESIONES_DIAS") or "90")
+RETENCION_CORREOS_DIAS = int(env("RETENCION_CORREOS_DIAS") or "30")
 
 # --- Portal del paciente (#120) --------------------------------------------- #
 # Dirección pública de la SPA: los enlaces del correo apuntan acá.
