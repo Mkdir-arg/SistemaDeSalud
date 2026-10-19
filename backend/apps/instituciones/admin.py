@@ -2,22 +2,24 @@ from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 
+from apps.admin_alcance import AlcanceInstitucionalAdmin, AlcanceInstitucionalInline
+
 from .models import Area, Box, Grupo, Institucion, Subarea
 
 
-class SubareaInline(admin.TabularInline):
+class SubareaInline(AlcanceInstitucionalInline, admin.TabularInline):
     model = Subarea
     extra = 0
 
 
-class AreaInline(admin.TabularInline):
+class AreaInline(AlcanceInstitucionalInline, admin.TabularInline):
     model = Area
     extra = 0
     can_delete = False
 
 
 @admin.register(Institucion)
-class InstitucionAdmin(admin.ModelAdmin):
+class InstitucionAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("nombre", "cuit", "activa", "creada")
     list_filter = ("activa",)
     search_fields = ("nombre", "cuit")
@@ -39,7 +41,7 @@ class InstitucionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Area)
-class AreaAdmin(admin.ModelAdmin):
+class AreaAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("nombre", "institucion", "activa")
     list_filter = ("institucion", "activa")
     search_fields = ("nombre",)
@@ -67,14 +69,14 @@ class AreaAdmin(admin.ModelAdmin):
 
 
 @admin.register(Subarea)
-class SubareaAdmin(admin.ModelAdmin):
+class SubareaAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("nombre", "area", "activa")
     list_filter = ("area__institucion", "activa")
     search_fields = ("nombre",)
 
 
 @admin.register(Grupo)
-class GrupoAdmin(admin.ModelAdmin):
+class GrupoAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("nombre", "area", "activo", "creado")
     list_filter = ("area__institucion", "activo")
     search_fields = ("nombre",)
@@ -82,7 +84,7 @@ class GrupoAdmin(admin.ModelAdmin):
 
 
 @admin.register(Box)
-class BoxAdmin(admin.ModelAdmin):
+class BoxAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("nombre", "area", "activo", "creado")
     list_filter = ("area__institucion", "activo")
     search_fields = ("nombre",)

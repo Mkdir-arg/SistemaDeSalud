@@ -1,10 +1,12 @@
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 
+from apps.admin_alcance import AlcanceInstitucionalAdmin, AlcanceInstitucionalInline
+
 from .models import Conexion, Flujo, Nodo, VersionFlujo
 
 
-class DefinicionSoloLecturaAdmin(admin.ModelAdmin):
+class DefinicionSoloLecturaAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     """El constructor/API valida y publica; Admin sólo consulta definiciones.
 
     Incluye borradores: no mantener un segundo escritor del grafo que omita
@@ -35,7 +37,7 @@ class DefinicionSoloLecturaAdmin(admin.ModelAdmin):
         raise PermissionDenied("Las definiciones se administran desde el constructor de flujos.")
 
 
-class DefinicionSoloLecturaInline(admin.TabularInline):
+class DefinicionSoloLecturaInline(AlcanceInstitucionalInline, admin.TabularInline):
     extra = 0
     can_delete = False
 

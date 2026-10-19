@@ -11,9 +11,10 @@ from django.contrib.auth.models import Permission
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
+from apps.instituciones.models import Institucion
 from apps.simulacion.perfiles import DOMINIO
 
-from .models import CorreoInstitucionalOutbox, Usuario
+from .models import CorreoInstitucionalOutbox, Membresia, Usuario
 from .test_credenciales_auditoria172 import CONFIGURACION
 
 CLAVE = "Clave-ficticia-admin-172!"
@@ -69,6 +70,11 @@ class AdminCuentasAuditoria172Tests(TestCase):
     def test_staff_sin_superusuario_no_modifica_a_un_superusuario(self):
         staff = Usuario.objects.create_user("staff-admin@example.test", CLAVE, nombre="Staff", is_staff=True)
         staff.user_permissions.add(*Permission.objects.filter(codename__in=["view_usuario", "change_usuario"]))
+        # Desde AUD-042 el staff solo alcanza cuentas de la institución que administra.
+        institucion = Institucion.objects.create(nombre="Institución sintética de cuentas")
+        Membresia.objects.create(usuario=staff, institucion=institucion, rol="admin")
+        Membresia.objects.create(usuario=self.root, institucion=institucion, rol="medico")
+        Membresia.objects.create(usuario=self.titular, institucion=institucion, rol="medico")
         self.client.force_login(staff)
         respuesta = self.client.post(f"/admin/accounts/usuario/{self.root.pk}/change/", self.datos(nombre="Root", is_active=""))
         self.assertEqual(respuesta.status_code, 403)

@@ -7,11 +7,13 @@ aviso de `/api/estado/` y deja quién lo revisó y cuándo.
 from django.contrib import admin, messages
 from django.utils import timezone
 
+from apps.admin_alcance import AlcanceInstitucionalAdmin
+
 from .models import FalloAuditoria
 
 
 @admin.register(FalloAuditoria)
-class FalloAuditoriaAdmin(admin.ModelAdmin):
+class FalloAuditoriaAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("momento", "tipo", "recurso", "institucion", "error", "revisado_at", "revisado_por")
     list_filter = (("revisado_at", admin.EmptyFieldListFilter), "error", "institucion")
     readonly_fields = ("momento", "tipo", "recurso", "institucion", "error", "revisado_at", "revisado_por")

@@ -6,6 +6,8 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound
 
+from apps.admin_alcance import AlcanceInstitucionalAdmin, AlcanceInstitucionalInline
+
 from .integridad import FormularioCongelado, bloquear_formularios, esta_congelado, exigir_editable
 from .models import Campo, Formulario
 
@@ -56,7 +58,7 @@ class CamposDefinicionFormSet(BaseInlineFormSet):
                 raise ValidationError(str(error.detail)) from None
 
 
-class CampoInline(admin.TabularInline):
+class CampoInline(AlcanceInstitucionalInline, admin.TabularInline):
     model = Campo
     formset = CamposDefinicionFormSet
     extra = 0
@@ -72,7 +74,7 @@ class CampoInline(admin.TabularInline):
 
 
 @admin.register(Formulario)
-class FormularioAdmin(admin.ModelAdmin):
+class FormularioAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("titulo", "institucion", "area", "congelado_at")
     list_filter = ("institucion", "area")
     search_fields = ("titulo",)
@@ -111,7 +113,7 @@ class FormularioAdmin(admin.ModelAdmin):
 
 
 @admin.register(Campo)
-class CampoAdmin(admin.ModelAdmin):
+class CampoAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("label", "formulario", "tipo", "requerido", "origen")
     list_filter = ("tipo", "requerido", "origen")
     search_fields = ("label",)

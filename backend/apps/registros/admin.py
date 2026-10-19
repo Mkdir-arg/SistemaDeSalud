@@ -4,6 +4,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.forms.models import BaseInlineFormSet
 
+from apps.admin_alcance import AlcanceInstitucionalAdmin, AlcanceInstitucionalInline
 from apps.simulacion.contexto import usuario_real
 
 from .models import ArchivoClinico, Ciudadano, EntradaHistoria, Estudio, HistoriaClinica, Receta
@@ -56,7 +57,7 @@ class EntradaHistoriaFormSet(BaseInlineFormSet):
                     raise ValidationError(REVISION_OBSOLETA)
 
 
-class EntradaHistoriaInline(admin.TabularInline):
+class EntradaHistoriaInline(AlcanceInstitucionalInline, admin.TabularInline):
     model = EntradaHistoria
     form = EntradaHistoriaAdminForm
     formset = EntradaHistoriaFormSet
@@ -76,7 +77,7 @@ class EntradaHistoriaInline(admin.TabularInline):
         return FormSetDelAutor
 
 
-class ConservaEntradasFirmadasAdmin(admin.ModelAdmin):
+class ConservaEntradasFirmadasAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     """La eliminación del padre tampoco permite borrar entradas firmadas."""
 
     def _historias(self, obj):
@@ -111,7 +112,7 @@ class ConservaEntradasFirmadasAdmin(admin.ModelAdmin):
             super().delete_model(request, obj)
 
 
-class EstudioInline(admin.TabularInline):
+class EstudioInline(AlcanceInstitucionalInline, admin.TabularInline):
     model = Estudio
     extra = 0
 
@@ -135,19 +136,19 @@ class HistoriaClinicaAdmin(ConservaEntradasFirmadasAdmin):
 
 
 @admin.register(Estudio)
-class EstudioAdmin(admin.ModelAdmin):
+class EstudioAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("tipo", "historia", "resultado", "fecha", "autor")
     list_filter = ("resultado",)
 
 
 @admin.register(Receta)
-class RecetaAdmin(admin.ModelAdmin):
+class RecetaAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("historia", "activa", "autor", "fecha")
     list_filter = ("activa",)
 
 
 @admin.register(ArchivoClinico)
-class ArchivoClinicoAdmin(admin.ModelAdmin):
+class ArchivoClinicoAdmin(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     list_display = ("nombre_original", "institucion", "content_type", "tamano", "proposito", "creado")
     list_filter = ("institucion", "content_type", "proposito")
     search_fields = ("nombre_original", "ruta", "sha256")
