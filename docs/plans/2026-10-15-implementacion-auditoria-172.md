@@ -606,3 +606,16 @@ Validación de K7 y de la cadena de sellos:
 - SQLite: pruebas de settings y del candado; 4 nuevas de cadena. Rojo: con los settings de HEAD fallan los 4 subcasos de producción incompleta, y con la `integridad` de HEAD la cadena falla con `IntegrityError`.
 - PostgreSQL 16 del laboratorio: `manage.py test apps.registros apps.demo apps.auditoria apps.portal`: **405 aprobadas**, incluida `apps.demo.test_issue111`, que antes fallaba; `check` y migraciones sin cambios.
 - **Ensayo real de AUD-023** sobre la base sintética del laboratorio, con dos `migrar_con_candado` lanzados juntos. A aplicó `accounts.0009`, `auditoria.0007`, `farmacia.0005`, `instituciones.0011` y `registros.0012` (con su backfill) sobre los datos existentes; B informó «Otro proceso está migrando; espero…» y después «No migrations to apply». No quedan migraciones pendientes. La base sintética quedó migrada al esquema de este corte; la API y el worker del laboratorio siguen con imágenes anteriores y detenidos.
+
+### Decisiones del dueño para los cortes siguientes — 19/10/2026
+
+Elegidas entre opciones con recomendación del agente; ninguna está implementada en este registro.
+
+1. **Tolerancia de reloj JWT:** `SIMPLE_JWT["LEEWAY"] = 30 s`. Un access vencido puede servir hasta 30 s más; la revocación por SID y por contraseña sigue siendo inmediata.
+2. **AUD-027, contenedor sin root:** el entrypoint hace un `chown` acotado a media y respaldos solo si hace falta, y baja a UID 10001 con `gosu` (dependencia chica de imagen aceptada).
+3. **Nombre y apellido de una cuenta compartida:** si la cuenta tiene pertenencias en otra institución, solo los cambian el titular o el gobierno de plataforma, no un admin institucional.
+4. **Retención técnica:** purga de sesiones cerradas o vencidas hace más de 90 días y del contenido de correos terminales a los 30 días, con un comando con modo de prueba. Se conservan bajas de membresía, operaciones de stock y fallos de auditoría. Historia y accesos clínicos quedan fuera (plazos legales).
+5. **`MembresiaFinanciador`:** la misma regla de retiro durable que K2.
+6. **Adjuntos de formularios de caso:** dueño paciente + caso, asociado solo por quien lo subió; descarga auditada con paciente; los ya cargados quedan sin dueño.
+7. **Infraestructura de la primera instalación:** preparar sin gasto el diseño de una VM con Docker Compose, NGINX con TLS y copia diaria de base y media hacia almacenamiento externo, con retención, costo estimado y runbook de restauración. Nada se contrata sin aprobación.
+8. **Prioridad siguiente:** Admin con alcance institucional y matriz de permisos (AUD-042/039/008).
