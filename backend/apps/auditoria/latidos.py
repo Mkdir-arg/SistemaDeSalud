@@ -72,16 +72,36 @@ ESPERADOS = {
 }
 
 
+# Un trabajo de reparto disponible no debería esperar más que esto con el
+# listener sano (se procesa en segundos).
+ESPERA_MAXIMA_REPARTOS = 15 * 60
+
+
+def _arranque(ultimos):
+    """Desde cuándo el sistema está en marcha, para dar por vencido un `nunca`."""
+    if ultimos:
+        return min(l.momento for l in ultimos.values())
+    from django.db.migrations.recorder import MigrationRecorder
+    from django.db.models import Max
+
+    return MigrationRecorder.Migration.objects.aggregate(m=Max("applied"))["m"]
+
+
 def estado() -> dict:
     """
     Qué procesos están al día y cuáles se quedaron callados.
 
     `nunca` no es lo mismo que `atrasado`: un sistema recién instalado todavía
     no corrió nada, y confundirlo con un proceso muerto haría que la primera
-    alarma de la vida del sistema sea falsa.
+    alarma de la vida del sistema sea falsa. Pero `nunca` tampoco puede durar
+    para siempre (#172, AUD-018): un worker que no arrancó nunca deja de ser
+    «nuevo» cuando el sistema ya lleva andando más que su intervalo. La
+    referencia es el latido más viejo de cualquier proceso o, sin ninguno, la
+    última migración aplicada.
     """
     ahora = timezone.now()
     ultimos = {l.servicio: l for l in Latido.objects.all()}
+    arranque = _arranque(ultimos)
 
     servicios, atrasados = {}, []
     esperados = dict(ESPERADOS)
@@ -100,8 +120,12 @@ def estado() -> dict:
             atrasados.append(nombre)
             continue
         if l is None:
-            servicios[nombre] = {"estado": "nunca", "hace_segundos": None, "detalle": ""}
-            if nombre == "correo_institucional":
+            vencida = arranque is not None and (ahora - arranque).total_seconds() > intervalo
+            servicios[nombre] = {
+                "estado": "atrasado" if vencida else "nunca", "hace_segundos": None,
+                "detalle": "Nunca corrió desde que el sistema está en marcha." if vencida else "",
+            }
+            if vencida or nombre == "correo_institucional":
                 atrasados.append(nombre)
             continue
         hace = int((ahora - l.momento).total_seconds())
@@ -129,5 +153,22 @@ def estado() -> dict:
         atrasados.append("registro_accesos")
     else:
         servicios["registro_accesos"] = {"estado": "al día", "hace_segundos": None, "detalle": ""}
+
+    # La cola de repartos (#172, AUD-018): NOTIFY despierta, TrabajoReparto es
+    # la cola. Un listener vivo que no procesa no deja latido distinto; la edad
+    # del trabajo disponible más viejo sí lo muestra.
+    from django.db.models import F
+
+    from apps.finanzas.models import TrabajoReparto
+
+    viejo = TrabajoReparto.objects.filter(revision__gt=F("revision_procesada"), reintentar_en__lte=ahora) \
+        .order_by("reintentar_en").values_list("reintentar_en", flat=True).first()
+    espera = int((ahora - viejo).total_seconds()) if viejo else None
+    if espera is not None and espera > ESPERA_MAXIMA_REPARTOS:
+        servicios["cola_repartos"] = {"estado": "atrasado", "hace_segundos": espera,
+                                      "detalle": "Hay repartos disponibles sin procesar."}
+        atrasados.append("cola_repartos")
+    else:
+        servicios["cola_repartos"] = {"estado": "al día", "hace_segundos": espera, "detalle": ""}
 
     return {"servicios": servicios, "atrasados": atrasados}

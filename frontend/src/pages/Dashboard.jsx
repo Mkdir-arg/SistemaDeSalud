@@ -148,6 +148,11 @@ const QUE_SE_ROMPE = {
   recordar_turnos: "No se están avisando los turnos por confirmar del día siguiente.",
   alertar_saturacion: "No se avisa cuando un establecimiento de la red se satura.",
   respaldar: "Hace más de un día que no se guarda —ni se verifica— un respaldo de la base.",
+  procesar_costos: "Los costos de las atenciones no se están calculando.",
+  revisar_boxes: "No se avisa cuando un box queda ocupado sin actividad.",
+  correo_institucional: "Las invitaciones y recuperaciones de acceso no se están enviando.",
+  registro_accesos: "Hubo lecturas clínicas que no quedaron registradas: revisalas en el Admin.",
+  cola_repartos: "Hay repartos de gastos esperando sin que nadie los procese.",
 };
 
 const NOMBRE_PROCESO = {
@@ -155,6 +160,11 @@ const NOMBRE_PROCESO = {
   recordar_turnos: "Recordatorios de turno",
   alertar_saturacion: "Alertas de saturación",
   respaldar: "Respaldo de la base",
+  procesar_costos: "Cálculo de costos",
+  revisar_boxes: "Aviso de boxes inactivos",
+  correo_institucional: "Correo institucional",
+  registro_accesos: "Registro de accesos clínicos",
+  cola_repartos: "Cola de repartos",
 };
 
 function ProcesosDetenidos() {
