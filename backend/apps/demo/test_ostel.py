@@ -10,11 +10,13 @@ from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import close_old_connections, connection, connections
+from django.db.models import Count
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
+from apps.agenda.models import Turno
 from apps.casos.models import Caso
 from apps.demo.management.commands.seed_ostel_demo import Command, DOMINIO, ESCENARIO, ORGANIZACION
 from apps.financiadores import models as m
@@ -118,6 +120,12 @@ class OstelCargaTests(TestCase):
         ocupadas = Cama.objects.filter(area__institucion__nombre__contains="Demo OSTEL", estado="ocupada")
         self.assertEqual(ocupadas.count(), 1)
         self.assertEqual(EstadiaCama.objects.filter(cama__in=ocupadas, hasta=None).count(), 1)
+
+    def test_el_afiliado_no_tiene_turnos_simultaneos_entre_prestadores(self):
+        simultaneos = Turno.objects.filter(agenda__institucion__nombre__contains="Demo OSTEL").values(
+            "ciudadano__documento", "inicio",
+        ).annotate(total=Count("pk")).filter(total__gt=1)
+        self.assertFalse(simultaneos.exists(), "La precarga no debe citar a una persona en dos lugares al mismo tiempo.")
 
     def test_ingreso_real_y_convenios_desde_la_api(self):
         cliente = APIClient()

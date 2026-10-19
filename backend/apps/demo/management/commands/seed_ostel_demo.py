@@ -364,7 +364,7 @@ class Command(BaseCommand):
         for codigo in ("sanatorio", "ambulatorio"):
             sede = self.sedes[codigo]
             self._realizar(self._caso(codigo, "CONS", 0), sede, "CONS")
-        for codigo, sede in self.sedes.items():
+        for orden_sede, (codigo, sede) in enumerate(self.sedes.items()):
             for prestacion in sede["prestaciones"]:
                 self._caso(codigo, prestacion, 2)
             if "RX" in sede["prestaciones"]:
@@ -378,7 +378,10 @@ class Command(BaseCommand):
                 self._caso(codigo, "CONS", 8)
             for prestacion, agenda in sede["agendas"].items():
                 for indice in (0, 1, 3):
-                    libres = agenda_motor.proximos_libres(agenda, desde=timezone.now() + timedelta(days=3 + indice), dias=14, cuantos=1)
+                    # Separar prestadores y prácticas evita citar al afiliado en
+                    # dos lugares al mismo tiempo con el primer horario libre.
+                    desfase = orden_sede * 7 + (2 if prestacion == "RX" else 0)
+                    libres = agenda_motor.proximos_libres(agenda, desde=timezone.now() + timedelta(days=3 + indice + desfase), dias=14, cuantos=1)
                     if not libres:
                         raise CommandError("No se encontraron turnos futuros; se revierte la carga.")
                     agenda_motor.reservar(agenda, sede["pacientes"][indice], libres[0]["inicio"], autor=sede["personal"]["adm"], motivo="Control ficticio OSTEL")
