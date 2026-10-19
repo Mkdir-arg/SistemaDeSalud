@@ -546,6 +546,18 @@ function BarraBox({ f }) {
    */
   const [confirmarSalida, setConfirmarSalida] = useState(false);
 
+  // Un box olvidado lo libera su jefe de área o un admin, siempre confirmado
+  // y avisándole al profesional (#172, AUD-048). Nunca se libera solo.
+  const { roles } = useInstitucion();
+  const supervisa = (roles || []).some((r) => r === "jefe_area" || r === "admin");
+  const ajenos = supervisa ? f.boxes.filter((b) => b.ocupado_por && b.id !== f.mi_box) : [];
+  const [liberando, setLiberando] = useState(null);
+  const liberarAjeno = useAccion((box) => api.post(`/boxes/${box.id}/liberar/`, { confirmar: true }), {
+    invalida: ["lista", "mis-tareas"],
+    onSuccess: () => { setLiberando(null); toast.ok("Box liberado. Se le avisó al profesional."); },
+    onError: (e) => toast.deError(e, "No se pudo liberar el box."),
+  });
+
   function alSalir() {
     if (f.mi_paciente) return setConfirmarSalida(true);
     liberar.mutate(f.mi_box);
@@ -599,6 +611,31 @@ function BarraBox({ f }) {
             {ocupado ? "…" : "Ocupar box"}
           </Button>
         </>
+      )}
+      {ajenos.length > 0 && (
+        <div className="flex w-full flex-wrap items-center gap-2 text-sm text-texto-tenue">
+          <span>Ocupados por otros:</span>
+          {ajenos.map((b) => (
+            <Button key={b.id} size="sm" variant="ghost" className="h-7 px-2 text-sm"
+              disabled={liberarAjeno.isPending} onClick={() => setLiberando(b)}>
+              Liberar {b.nombre} · {b.ocupado_por_nombre}
+            </Button>
+          ))}
+        </div>
+      )}
+      {liberando && (
+        <ConfirmDialog
+          title={`Liberar ${liberando.nombre}`}
+          confirmar="Liberar box"
+          volver="Cancelar"
+          peligroso
+          cargando={liberarAjeno.isPending}
+          onClose={() => setLiberando(null)}
+          onConfirmar={() => liberarAjeno.mutate(liberando)}
+        >
+          <strong>{liberando.ocupado_por_nombre}</strong> figura en {liberando.nombre}. Si lo liberás,
+          otro profesional puede ocuparlo y se le avisa a quien estaba. Hacelo solo si el box quedó olvidado.
+        </ConfirmDialog>
       )}
     </Card>
   );

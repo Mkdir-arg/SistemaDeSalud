@@ -298,7 +298,9 @@ class BoxesConcurrenciaAuditoria172Tests(EscenarioBoxes, TransactionTestCase):
         self.ocupar(self.medico, self.box1)
 
         def cambiar_ocupante():
-            self.assertEqual(self.cliente(self.root).post(f"/api/boxes/{self.box1.pk}/liberar/", {}).status_code, 200)
+            # Liberar el box de otro siempre se confirma, también el superusuario (#172, AUD-048).
+            self.assertEqual(self.cliente(self.root).post(f"/api/boxes/{self.box1.pk}/liberar/", {"confirmar": True},
+                                                          format="json").status_code, 200)
             self.assertEqual(self.ocupar(self.otro, self.box1).status_code, 200)
 
         codigo = self._instancia_vieja("liberar", self.medico, "post", {}, cambiar_ocupante)

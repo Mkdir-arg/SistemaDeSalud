@@ -66,6 +66,8 @@ ESPERADOS = {
     "procesar_costos": 15 * 60,
     "recordar_turnos": 60 * 60,
     "alertar_saturacion": 60 * 60,
+    # Avisos de boxes ocupados sin actividad (#172); corre en el bucle de tiempos.
+    "revisar_boxes": 15 * 60,
     "respaldar": 36 * 60 * 60,
 }
 

@@ -17,6 +17,7 @@ from apps.common import BaseModelViewSet, CapacidadPermission, _coerce, tiene_ca
 
 from apps.agenda.models import Turno
 
+from .boxes import supervisa_box
 from .models import Area, Box, Cama, EstadiaCama, Grupo, Institucion, Subarea
 from .puesta_en_marcha import pasos as pasos_de_puesta_en_marcha
 from .serializers import (
@@ -817,32 +818,51 @@ class BoxViewSet(BaseModelViewSet):
                 return Response({"detail": "El box ya está ocupado por otro profesional."},
                                 status=status.HTTP_409_CONFLICT)
             Box.objects.filter(ocupado_por=request.user).exclude(pk=box.pk).update(
-                ocupado_por=None, ocupado_desde=None,
+                ocupado_por=None, ocupado_desde=None, aviso_inactividad_at=None,
             )
             if box.ocupado_por_id != request.user.pk:
                 box.ocupado_por = request.user
                 box.ocupado_desde = timezone.now()
-                box.save(update_fields=["ocupado_por", "ocupado_desde"])
+                box.aviso_inactividad_at = None
+                box.save(update_fields=["ocupado_por", "ocupado_desde", "aviso_inactividad_at"])
         return Response(self.get_serializer(box).data)
 
     @action(detail=True, methods=["post"])
     def liberar(self, request, pk=None):
-        """Libera el box. Solo quien lo ocupa (o el super admin)."""
+        """Libera el box: quien lo ocupa, o con `confirmar` su jefe de área o un admin.
+
+        Liberar el box de otro profesional es una decisión explícita (#172,
+        AUD-048): nunca automática, se confirma y se le avisa al desplazado.
+        """
         box = self.get_object()
         from apps.accounts.models import Usuario
+        from apps.casos.models import Notificacion
 
         ocupacion_leida = (box.ocupado_por_id, box.ocupado_desde)
+        desplazado = None
         with transaction.atomic():
             Usuario.objects.select_for_update().get(pk=request.user.pk)
-            box = get_object_or_404(Box.objects.select_for_update(), pk=box.pk)
-            if box.ocupado_por_id and box.ocupado_por_id != request.user.id and not request.user.is_superuser:
-                return Response({"detail": "Solo quien ocupa el box puede liberarlo."}, status=status.HTTP_403_FORBIDDEN)
+            box = get_object_or_404(Box.objects.select_for_update(of=("self",)).select_related("area", "ocupado_por"), pk=box.pk)
+            if box.ocupado_por_id and box.ocupado_por_id != request.user.id:
+                if not (request.user.is_superuser or supervisa_box(request.user, box)):
+                    return Response({"detail": "Solo quien ocupa el box, su jefe de área o un administrador pueden liberarlo."},
+                                    status=status.HTTP_403_FORBIDDEN)
+                if request.data.get("confirmar") not in (True, "true"):
+                    return Response({"detail": "Confirmá que querés liberar el box de otro profesional."},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                desplazado = box.ocupado_por
             if (box.ocupado_por_id, box.ocupado_desde) != ocupacion_leida:
                 return Response({"detail": "La ocupación del box cambió. Recargá antes de liberarlo."},
                                 status=status.HTTP_409_CONFLICT)
             box.ocupado_por = None
             box.ocupado_desde = None
-            box.save(update_fields=["ocupado_por", "ocupado_desde"])
+            box.aviso_inactividad_at = None
+            box.save(update_fields=["ocupado_por", "ocupado_desde", "aviso_inactividad_at"])
+            if desplazado is not None:
+                Notificacion.objects.create(
+                    usuario=desplazado, titulo=f"Liberaron tu box {box.nombre}"[:200],
+                    detalle=f"Lo liberó {request.user.nombre_completo or request.user.email}."[:255],
+                )
         return Response(self.get_serializer(box).data)
 
 
