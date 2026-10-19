@@ -21,14 +21,15 @@ from .models import SesionInstitucional
 
 MENSAJE_INVALIDO = "La sesión ya no es válida."
 
-# Corte de pertenencias de la solicitud: (usuario_id, inicio de sesión, ids con
-# baja posterior o None si aún no se consultaron). Lo fija el autenticador y lo
-# limpia CorteMembresiasMiddleware al entrar y al salir de cada solicitud.
+# Corte de pertenencias de la solicitud: (usuario_id, inicio de sesión, ids de
+# institución y de financiador con baja posterior, o None si aún no se
+# consultaron). Lo fija el autenticador y lo limpia CorteMembresiasMiddleware al
+# entrar y al salir de cada solicitud.
 _corte = ContextVar("accounts_corte_membresias", default=None)
 
 
 def activar_corte_membresias(usuario_id, inicio):
-    _corte.set([usuario_id, inicio, None])
+    _corte.set([usuario_id, inicio, None, None])
 
 
 def limpiar_corte_membresias():
@@ -39,7 +40,7 @@ def aplicar_corte_membresias(qs):
     corte = _corte.get()
     if corte is None:
         return qs
-    usuario_id, inicio, cortadas = corte
+    usuario_id, inicio, cortadas, _ = corte
     if cortadas is None:
         from .models import BajaMembresia
 
@@ -55,6 +56,24 @@ def aplicar_corte_membresias(qs):
         qs = qs.exclude(usuario_id=usuario_id, institucion_id__in=ids)
     if None in cortadas:
         qs = qs.exclude(usuario_id=usuario_id, institucion__isnull=True)
+    return qs
+
+
+def aplicar_corte_financiadores(qs):
+    """La misma regla para `MembresiaFinanciador`, con su propia consulta perezosa."""
+    corte = _corte.get()
+    if corte is None:
+        return qs
+    usuario_id, inicio, _, cortados = corte
+    if cortados is None:
+        from apps.financiadores.models import BajaMembresiaFinanciador
+
+        cortados = set(BajaMembresiaFinanciador.objects.filter(
+            usuario_id=usuario_id, momento__gte=inicio,
+        ).values_list("financiador_id", flat=True))
+        corte[3] = cortados
+    if cortados:
+        qs = qs.exclude(usuario_id=usuario_id, financiador_id__in=cortados)
     return qs
 
 

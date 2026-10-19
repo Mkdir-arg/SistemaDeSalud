@@ -89,6 +89,8 @@ CAMPOS_OPERATIVOS = {
     "casos.Caso": ("asignado_a",),
     "casos.Notificacion": ("usuario",),
     "financiadores.MembresiaFinanciador": ("usuario",),
+    # Titular de la pertenencia de financiador dada de baja: no es autoría.
+    "financiadores.BajaMembresiaFinanciador": ("usuario",),
     "instituciones.Box": ("ocupado_por",),
     "instituciones.Grupo": ("miembros",),
     "simulacion.CuentaReferencia": ("usuario",),
