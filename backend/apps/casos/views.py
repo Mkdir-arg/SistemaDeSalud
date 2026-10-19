@@ -10,6 +10,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
+from apps.auditoria.mixins import AuditaDetalleClinico
 from apps.common import BaseModelViewSet, tiene_capacidad
 from apps.flujos.models import Conexion, Nodo, VersionFlujo
 from apps.instituciones.models import Box, Grupo
@@ -50,7 +51,7 @@ PRIORIDAD_ORDEN = Case(
 )
 
 
-class CasoViewSet(CoberturaCasoMixin, BaseModelViewSet):
+class CasoViewSet(AuditaDetalleClinico, CoberturaCasoMixin, BaseModelViewSet):
     queryset = Caso.objects.select_related(
         "institucion", "version__flujo", "ciudadano", "nodo_actual", "area_actual", "asignado_a",
         "origen__version__flujo",
@@ -1141,9 +1142,10 @@ class PantallaLlamadosView(APIView):
         })
 
 
-class ValorCampoViewSet(BaseModelViewSet):
+class ValorCampoViewSet(AuditaDetalleClinico, BaseModelViewSet):
     queryset = ValorCampo.objects.select_related("caso", "campo", "nodo")
     serializer_class = ValorCampoSerializer
+    ciudadano_path = "caso__ciudadano"
     capacidad_requerida = "casos_operar"
     # Leer casos, valores y eventos pide la capacidad (#172, AUD-008): con la
     # lectura abierta, configurador, reportes y auditor veían datos clínicos.
@@ -1235,9 +1237,10 @@ class ItemFilaViewSet(BaseModelViewSet):
         return Response(self.get_serializer(item).data)
 
 
-class EventoCasoViewSet(BaseModelViewSet):
+class EventoCasoViewSet(AuditaDetalleClinico, BaseModelViewSet):
     queryset = EventoCaso.objects.select_related("caso", "autor", "nodo")
     serializer_class = EventoCasoSerializer
+    ciudadano_path = "caso__ciudadano"
     capacidad_requerida = "casos_operar"
     # Leer casos, valores y eventos pide la capacidad (#172, AUD-008): con la
     # lectura abierta, configurador, reportes y auditor veían datos clínicos.

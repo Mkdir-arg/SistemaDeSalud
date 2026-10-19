@@ -334,3 +334,34 @@ class AuditaLecturaClinica:
             .annotate(n=Count("pk"))
         )
         return [(f[campo], f["n"]) for f in filas]
+
+
+class AuditaDetalleClinico(AuditaLecturaClinica):
+    """Audita la lectura de UN caso, no la navegación de bandejas (#172, AUD-008).
+
+    Decisión del dueño: casos, valores y eventos hablan de un paciente, pero la
+    bandeja los lista cada 30 s; registrar esos listados sería ruido que tapa lo
+    relevante. Se registra el detalle, un listado filtrado a un caso (`?caso=`)
+    y la exportación; los listados generales no.
+    """
+
+    def list(self, request, *args, **kwargs):
+        caso_id = (request.query_params.get("caso") or "").strip()
+        if request.query_params.get("formato") == "csv":
+            return super().list(request, *args, **kwargs)
+        # Saltea el registro de listados del mixin clínico, no el listado.
+        respuesta = super(AuditaLecturaClinica, self).list(request, *args, **kwargs)
+        if caso_id.isdigit():
+            try:
+                from apps.casos.models import Caso
+
+                caso = Caso.objects.select_related("ciudadano").filter(pk=caso_id).first()
+                if caso is not None:
+                    datos = getattr(respuesta, "data", None)
+                    cuantos = datos.get("count", 0) if isinstance(datos, dict) else len(datos or [])
+                    self._anotar(AccesoClinico.Tipo.LISTADO, ciudadano=caso.ciudadano,
+                                 detalle=f"caso={caso_id}", resultados=cuantos,
+                                 institucion_id=caso.institucion_id)
+            except Exception:
+                log.exception("no se pudo registrar la lectura del caso")
+        return respuesta
