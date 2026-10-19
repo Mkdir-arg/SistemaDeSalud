@@ -151,6 +151,7 @@ Revisen afiliación, cobertura evaluada, importe, aceptación y reservas.
 Elijan un prestador con el usuario **consultora** o su personal propio.
 
 1. En **Agenda**, hay disponibilidades de lunes a viernes y turnos futuros.
+   Avancen entre las próximas semanas para ver las citas de cada prestador.
    Reserven, confirmen o reprogramen un turno de prueba.
 2. En **Casos** y **Filas**, seleccionen una atención pendiente y llamen al paciente.
 3. Registren una evolución y completen la atención con el profesional de esa
