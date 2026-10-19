@@ -545,3 +545,21 @@ if SALUD_FACTURAS_ADJUNTOS_DIR == MEDIA_ROOT.resolve() or MEDIA_ROOT.resolve() i
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Producción incompleta no arranca (#172, AUD-026) ---------------------- #
+#
+# Al final del módulo para que los errores específicos de arriba (clave de
+# desarrollo, RENAPER simulado) se informen primero. Con ENTORNO=produccion no
+# se arranca con DEBUG prendido —que además es el valor por defecto si falta la
+# variable—, sobre SQLite ni sembrando datos ficticios en cada arranque.
+if ENTORNO == "produccion":
+    _incompleta = []
+    if DEBUG:
+        _incompleta.append("DJANGO_DEBUG=false (prendido muestra trazas y configuración)")
+    if DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
+        _incompleta.append("DATABASE_URL de PostgreSQL (sin ella cae a SQLite local)")
+    for _semilla in ("SEED_DEMO", "SEED_GUARDIA"):
+        if env_bool(_semilla, False):
+            _incompleta.append(f"{_semilla}=0 (siembra datos ficticios en la base real)")
+    if _incompleta:
+        raise RuntimeError("ENTORNO=produccion con configuración incompleta. Falta: " + "; ".join(_incompleta))

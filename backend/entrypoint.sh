@@ -41,7 +41,7 @@ fi
 # el esquema que dejó el web.
 if [ "${EJECUTAR_MIGRACIONES:-1}" = "1" ]; then
   echo "Aplicando migraciones..."
-  python manage.py migrate --noinput
+  python manage.py migrar_con_candado
 else
   echo "EJECUTAR_MIGRACIONES=0: no migro, uso el esquema existente."
 fi

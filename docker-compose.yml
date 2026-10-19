@@ -28,7 +28,7 @@ services:
       # falta la variable, asume `desarrollo`; por eso se fija explícitamente.
       # El override de desarrollo y el compose de demo la cambian.
       ENTORNO: ${ENTORNO:-produccion}
-      SEED_DEMO: ${SEED_DEMO:-1}
+      SEED_DEMO: ${SEED_DEMO:-0}
       SALUD_INTEGRACIONES_PERMITIDAS: ${SALUD_INTEGRACIONES_PERMITIDAS:-}
       # Portal del paciente (#120). Ver .env.example.
       PORTAL_URL_BASE: ${PORTAL_URL_BASE:-http://localhost:8080}

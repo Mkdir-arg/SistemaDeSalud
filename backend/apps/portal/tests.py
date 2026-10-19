@@ -744,7 +744,8 @@ class CorreoTests(Base):
         # nunca los enlaces en el log.
         self.assertEqual(leer(DJANGO_DEBUG="false", DJANGO_SECRET_KEY="x" * 50)[0], smtp)
         self.assertEqual(leer(DJANGO_DEBUG="true", ENTORNO="desarrollo")[0], consola)
-        self.assertEqual(leer(DJANGO_DEBUG="true", ENTORNO="produccion")[0], smtp)
+        self.assertEqual(leer(DJANGO_DEBUG="false", DJANGO_SECRET_KEY="x" * 50, ENTORNO="produccion",
+                              DATABASE_URL="postgres://u:p@localhost:5432/x")[0], smtp)
         # El compose pasa la variable vacía: no puede dejar el remitente vacío.
         self.assertTrue(leer(DJANGO_DEBUG="true", DEFAULT_FROM_EMAIL="")[1].strip())
 
