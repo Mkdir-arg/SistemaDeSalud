@@ -22,6 +22,7 @@ import json
 from datetime import timezone as tz
 
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
 # Versión del formato del resumen, con la que se sella de acá en adelante. La
@@ -99,10 +100,19 @@ def sellar(entrada):
         # historia está intacta pasa a acusarlo.
         HistoriaClinica.objects.select_for_update().filter(pk=entrada.historia_id).first()
 
+        # El eslabón anterior es la CABEZA de la cadena —la sellada que todavía
+        # no tiene sucesora—, no la de `firmada_at` más reciente (#172). Con
+        # fechas retroactivas o relojes desfasados entre réplicas, la más
+        # reciente por hora puede ya tener sucesora: encadenarse a ella violaba
+        # `entrada_un_solo_eslabon_siguiente` y la firma fallaba. La hora queda
+        # solo para desempatar cadenas legacy con más de una cabeza.
+        Modelo = type(entrada)
+        sucesora = Modelo.objects.filter(historia_id=OuterRef("historia_id"), sello_previo=OuterRef("sello"))
         previa = (
-            type(entrada).objects
+            Modelo.objects
             .filter(historia_id=entrada.historia_id, firmada=True, sello__gt="")
             .exclude(pk=entrada.pk)
+            .exclude(Exists(sucesora))
             .order_by("-firmada_at", "-fecha", "-id")
             .first()
         )
@@ -177,7 +187,8 @@ def verificar_historia(historia) -> dict:
         historia.entradas.filter(firmada=True).order_by("firmada_at", "fecha", "id")
     )
     desde = sellado_desde()
-    problemas, previo, fuera_de_alcance = [], "", 0
+    problemas, fuera_de_alcance = [], 0
+    selladas = []
     for e in entradas:
         r = verificar(e)
         if r["ok"] is False:
@@ -201,13 +212,34 @@ def verificar_historia(historia) -> dict:
             else:
                 fuera_de_alcance += 1
             continue  # anterior al sellado: no entra en la cadena
-        elif e.sello_previo != previo:
+        if e.sello:
+            selladas.append(e)
+
+    # La cadena se recorre por sus eslabones y no por hora (#172): con fechas
+    # retroactivas o relojes desfasados el orden de `firmada_at` no es el de la
+    # cadena, y ordenarlas así acusaba de alteración a una historia intacta.
+    # Una entrada sellada que el recorrido desde el primer eslabón no alcanza
+    # —porque su anterior falta o cambió, o porque hay una segunda raíz o una
+    # bifurcación— rompe la cadena igual que antes.
+    por_previo = {}
+    for e in selladas:
+        por_previo.setdefault(e.sello_previo, []).append(e)
+    alcanzadas, actual = set(), ""
+    while True:
+        siguientes = por_previo.get(actual, [])
+        if not siguientes:
+            break
+        e = siguientes[0]
+        if e.id in alcanzadas:
+            break
+        alcanzadas.add(e.id)
+        actual = e.sello
+    for e in selladas:
+        if e.id not in alcanzadas:
             problemas.append({
                 "entrada": e.id, "titulo": e.titulo,
                 "motivo": "la cadena se rompió: falta o cambió una entrada anterior",
             })
-        if e.sello:
-            previo = e.sello
 
     return {
         "ok": not problemas,
