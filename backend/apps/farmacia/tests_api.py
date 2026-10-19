@@ -6,6 +6,7 @@ arma la pantalla. Ya pasó una vez que una acción quedara declarada en el views
 equivocado y los tests del motor no lo vieran.
 """
 from datetime import timedelta
+from uuid import uuid4
 
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -43,7 +44,7 @@ class FarmaciaAPITests(APITestCase):
         )
 
     def _ingresar(self, cant=100, deposito=None):
-        return self.client.post("/api/movimientos-stock/ingreso/", {
+        return self.client.post("/api/movimientos-stock/ingreso/", {"clave": str(uuid4()),
             "deposito": (deposito or self.central).id, "insumo": self.insumo.id,
             "cantidad": cant, "lote": self.lote.id,
         })
@@ -63,7 +64,7 @@ class FarmaciaAPITests(APITestCase):
                       "cantidad": 1, "motivo": "x"}),
         ]:
             with self.subTest(accion=ruta):
-                r = self.client.post(f"/api/movimientos-stock/{ruta}/", cuerpo)
+                r = self.client.post(f"/api/movimientos-stock/{ruta}/", {**cuerpo, "clave": str(uuid4())})
                 self.assertNotEqual(r.status_code, 404, f"{ruta} no existe")
 
     def test_ingresar_por_http(self):
@@ -79,7 +80,7 @@ class FarmaciaAPITests(APITestCase):
         números hasta acertar.
         """
         self._ingresar(5)
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id, "cantidad": 10,
         })
         self.assertEqual(r.status_code, 400)
@@ -115,7 +116,7 @@ class FarmaciaAPITests(APITestCase):
         que son la mayoría: el modal decía «Hay 100» y el toast «hay 0».
         """
         self._ingresar(100)
-        r = self.client.post("/api/movimientos-stock/baja/", {
+        r = self.client.post("/api/movimientos-stock/baja/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id,
             "cantidad": 3, "motivo": "Ampollas rotas en el traslado",
         })
@@ -131,7 +132,7 @@ class FarmaciaAPITests(APITestCase):
         nadie se entera hasta el retiro de lote, cuando ya no hay respuesta.
         """
         self._ingresar(10)
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id,
             "cantidad": 1, "caso": 999999,
         })
@@ -145,7 +146,7 @@ class FarmaciaAPITests(APITestCase):
         lote, que es el único nivel que sirve para trazar.
         """
         self._ingresar(10)
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id,
             "cantidad": 1, "lote": 999999,
         })
@@ -156,7 +157,7 @@ class FarmaciaAPITests(APITestCase):
 
     def test_un_id_que_no_es_numero_no_tira_el_servidor(self):
         """Un pedido mal armado es un 400, no un 500."""
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id,
             "cantidad": 1, "lote": "ninguno",
         })
@@ -168,7 +169,7 @@ class FarmaciaAPITests(APITestCase):
         movimientos apareciera como «Todavía no se registró ninguno».
         """
         self._ingresar(10)
-        self.client.post("/api/movimientos-stock/transferencia/", {
+        self.client.post("/api/movimientos-stock/transferencia/", {"clave": str(uuid4()),
             "origen": self.central.id, "destino": self.botiquin.id,
             "insumo": self.insumo.id, "cantidad": 4,
         })
@@ -180,7 +181,7 @@ class FarmaciaAPITests(APITestCase):
     def test_el_ajuste_que_coincide_lo_dice_en_vez_de_fingir(self):
         """Si dijera «listo», la persona buscaría un movimiento que no existe."""
         self._ingresar()
-        r = self.client.post("/api/movimientos-stock/ajuste/", {
+        r = self.client.post("/api/movimientos-stock/ajuste/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id,
             "contado": 100, "lote": self.lote.id,
         })
@@ -197,7 +198,7 @@ class FarmaciaAPITests(APITestCase):
         for nombre in ("Ana", "Beto"):
             c = Ciudadano.objects.create(institucion=self.inst, nombre=nombre, apellido="T")
             caso = Caso.objects.create(institucion=self.inst, version=ver, ciudadano=c)
-            self.client.post("/api/movimientos-stock/consumo/", {
+            self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
                 "deposito": self.central.id, "insumo": self.insumo.id,
                 "cantidad": 2, "caso": caso.id,
             })
@@ -222,7 +223,7 @@ class FarmaciaAPITests(APITestCase):
             insumo=self.insumo, numero="P1",
             vencimiento=timezone.localdate() + timedelta(days=10),
         )
-        self.client.post("/api/movimientos-stock/ingreso/", {
+        self.client.post("/api/movimientos-stock/ingreso/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": self.insumo.id, "cantidad": 3, "lote": pronto.id,
         })
         r = self.client.get(f"/api/pedidos-stock/alertas/?institucion={self.inst.id}")
@@ -262,7 +263,7 @@ class FarmaciaAPITests(APITestCase):
             institucion=self.inst, nombre="Morfina", presentacion="Ampolla 10 mg",
             unidad="ampolla", requiere_lote=False, controlado=True,
         )
-        self.client.post("/api/movimientos-stock/ingreso/", {
+        self.client.post("/api/movimientos-stock/ingreso/", {"clave": str(uuid4()),
             "deposito": self.central.id, "insumo": morfina.id, "cantidad": 10,
         })
         stock = self.client.get(f"/api/stock/?insumo={morfina.id}").data["results"]
@@ -343,7 +344,7 @@ class FarmaciaAPITests(APITestCase):
         self.client.post(f"/api/pedidos-stock/{p.id}/preparar/")
 
         r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
-                             {"entregas": {str(linea.id): 30}}, format="json")
+                             {"entregas": {str(linea.id): 30}, "clave": str(uuid4())}, format="json")
 
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["estado"], Pedido.Estado.ENTREGADO)
@@ -354,7 +355,7 @@ class FarmaciaAPITests(APITestCase):
         p = Pedido.objects.create(origen=self.botiquin, destino=self.central)
         linea = LineaPedido.objects.create(pedido=p, insumo=self.insumo, pedido_cant=30)
         r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
-                             {"entregas": {str(linea.id): 10}}, format="json")
+                             {"entregas": {str(linea.id): 10}, "clave": str(uuid4())}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["estado"], Pedido.Estado.PARCIAL)
         self.assertIsNone(r.data["resuelto"])
@@ -368,13 +369,13 @@ class FarmaciaAPITests(APITestCase):
         linea = LineaPedido.objects.create(pedido=p, insumo=self.insumo, pedido_cant=30)
 
         r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
-                             {"entregas": {str(linea.id): 10}}, format="json")
+                             {"entregas": {str(linea.id): 10}, "clave": str(uuid4())}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["estado"], Pedido.Estado.PARCIAL)
 
         self._ingresar(20)
         r = self.client.post(f"/api/pedidos-stock/{p.id}/entregar/",
-                             {"entregas": {str(linea.id): 20}}, format="json")
+                             {"entregas": {str(linea.id): 20}, "clave": str(uuid4())}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["estado"], Pedido.Estado.ENTREGADO)
         self.assertIsNotNone(r.data["resuelto"])
@@ -403,11 +404,11 @@ class FarmaciaPermisosTests(APITestCase):
 
     def test_enfermeria_registra_consumo(self):
         self._como("admin")
-        self.client.post("/api/movimientos-stock/ingreso/", {
+        self.client.post("/api/movimientos-stock/ingreso/", {"clave": str(uuid4()),
             "deposito": self.dep.id, "insumo": self.insumo.id, "cantidad": 50,
         })
         self._como("enfermeria")
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.dep.id, "insumo": self.insumo.id, "cantidad": 2,
         })
         self.assertEqual(r.status_code, 201, r.data)
@@ -421,7 +422,7 @@ class FarmaciaPermisosTests(APITestCase):
     def test_el_configurador_no_toca_el_stock(self):
         """Diseña flujos; la farmacia no es suya."""
         self._como("configurador")
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.dep.id, "insumo": self.insumo.id, "cantidad": 1,
         })
         self.assertEqual(r.status_code, 403)
@@ -511,7 +512,7 @@ class StockDeOtroHospitalTests(APITestCase):
         trabajo en alguna institución?» y el depósito no se validaba contra
         nada. Es escritura cruzada sobre stock controlado (Ley 19.303).
         """
-        r = self.client.post("/api/movimientos-stock/consumo/", {
+        r = self.client.post("/api/movimientos-stock/consumo/", {"clave": str(uuid4()),
             "deposito": self.dep_b.id, "insumo": self.insumo_b.id, "cantidad": 30,
         })
         self.assertIn(r.status_code, (400, 403), r.data)
@@ -527,7 +528,7 @@ class StockDeOtroHospitalTests(APITestCase):
             ("ingreso", {"deposito": self.dep_b.id, "insumo": self.insumo_b.id, "cantidad": 5}),
         ]:
             with self.subTest(accion=ruta):
-                r = self.client.post(f"/api/movimientos-stock/{ruta}/", cuerpo)
+                r = self.client.post(f"/api/movimientos-stock/{ruta}/", {**cuerpo, "clave": str(uuid4())})
                 self.assertIn(r.status_code, (400, 403), r.data)
         self.assertEqual(
             Existencia.objects.get(deposito=self.dep_b, insumo=self.insumo_b).cantidad, 30

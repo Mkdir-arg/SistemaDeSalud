@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event, get_ident
 from unittest import skipUnless
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.contrib import admin
 from django.db import connection, connections
@@ -37,7 +38,11 @@ class EscenarioPedido:
         return cliente
 
     def accion(self, accion, datos=None):
-        return self.cliente().post(f"/api/pedidos-stock/{self.pedido.pk}/{accion}/", datos or {}, format="json")
+        datos = dict(datos or {})
+        if accion == "entregar":
+            # Clave de operación obligatoria (#172, AUD-053): cada entrega es nueva.
+            datos.setdefault("clave", str(uuid4()))
+        return self.cliente().post(f"/api/pedidos-stock/{self.pedido.pk}/{accion}/", datos, format="json")
 
     def evidencia(self):
         return (

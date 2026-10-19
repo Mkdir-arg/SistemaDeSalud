@@ -29,6 +29,7 @@ CAMPOS_AUTORIA = {
     "auditoria.FalloAuditoria": ("revisado_por",),
     "casos.EventoCaso": ("autor",),
     "farmacia.Movimiento": ("autor",),
+    "farmacia.OperacionStock": ("autor",),
     "farmacia.Pedido": ("creado_por",),
     "financiadores.AfiliacionCaso": ("registrado_por",),
     "financiadores.Afiliado": ("finalizado_por",),
