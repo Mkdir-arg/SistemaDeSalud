@@ -97,6 +97,9 @@ services:
     build: ./backend
     entrypoint: ["python"]
     command: ["manage.py", "escuchar_repartos"]
+    # No pasa por el entrypoint, que es quien baja de root: corre directo como
+    # el usuario de la app. No escribe en volúmenes (#172, AUD-027).
+    user: "10001:10001"
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-salud}:${POSTGRES_PASSWORD:-salud}@db:5432/${POSTGRES_DB:-salud}
