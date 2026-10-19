@@ -567,3 +567,20 @@ Validación: SQLite 93 instituciones y monitoreo aprobadas (el error del Admin e
 ### Validación combinada K4+K5+K8
 
 - PostgreSQL 16 del laboratorio, imagen del corte final: `check`, `makemigrations --check --dry-run` sin cambios y OpenAPI `--fail-on-warn` aprobados; `sqlmigrate` de `auditoria.0007`, `farmacia.0005` e `instituciones.0011` solo crea tablas o columnas nulas. `manage.py test apps.auditoria apps.accounts apps.simulacion apps.registros apps.portal apps.fhir apps.financiadores apps.farmacia apps.instituciones apps.casos.test_permisos_barrida`: la primera pasada mostró 7 errores, todos corregidos: (1) `select_for_update()` con `select_related` de una FK nula hace LEFT JOIN y PostgreSQL lo rechaza; ahora usa `of=("self",)`. (2) Una prueba previa suponía que el superusuario libera sin confirmar. (3) Un error de financiadores (`test_esperas`) pasó aislado. La segunda pasada: **1438 ejecutadas, 1 falla**: `simulacion.tests.AlcancePorPerfilTests.test_configurador_disena_pero_no_lee_historia` recibió 401 en lugar de 403 con un token recién emitido. Aislado pasó 3 de 3 veces. **Hipótesis, no confirmada:** PyJWT 2.15.1 rechaza `iat` futuro con tolerancia 0 y el reloj del contenedor (Docker Desktop/WSL2) puede ajustarse hacia atrás en corridas largas; coincide con el 401 suelto de la primera corrida K4. Si se confirma, es también un riesgo de producción con varias réplicas desfasadas, mitigable con `SIMPLE_JWT["LEEWAY"]` (decisión pendiente). No se presenta la tanda como aprobada. La suite global queda para el CI.
+
+### Bloque K6: respaldo verificable y salud funcional — 19/10/2026
+
+Paquete propuesto por el agente y aprobado como continuación; no requirió decisiones nuevas. Se mantiene la deuda de comprensión de los bloques anteriores.
+
+- **AUD-015:** `respaldar` abre una transacción REPEATABLE READ, exporta su snapshot y, en esa misma transacción, ejecuta `pg_dump --snapshot` y cuenta **todas** las tablas del esquema `public`. Las cinco tablas críticas siguen siendo obligatorias. Una escritura posterior al snapshot ya no invalida un respaldo válido, y un conteo fallido o una tabla faltante es error: nunca más `None == None` como «verificado».
+- **AUD-016:** la base de verificación tiene un nombre único (`<base>_verif_<sello>_<ficha>`) y un `COMMENT` con una ficha aleatoria. Se borra solo si conserva esa marca; si el nombre ya existe, no se toca. Se eliminó `DROP DATABASE IF EXISTS` sobre un nombre fijo. `psql` corre sin shell y con la sentencia por stdin.
+- **AUD-018:** un servicio esperado que nunca latió pasa a «atrasado» cuando el sistema lleva en marcha más que su intervalo. La referencia es el latido más viejo o, sin latidos, la última migración aplicada. `/api/estado/` suma `cola_repartos`: atrasada si un trabajo disponible espera más de 15 minutos. El tablero nombra los procesos nuevos y explica qué se rompe.
+
+Límites: el rol que crea y borra la base de verificación sigue siendo el de la aplicación (separar un rol de backup es operación, AUD-016/027). No hay copia fuera del dominio de falla ni respaldo de media (AUD-017). Contar todas las tablas recorre la base completa; con volumen grande hay que medir la duración. La imagen del laboratorio no trae cliente PostgreSQL.
+
+Validación:
+
+- SQLite: 108 de auditoría aprobadas; 7 nuevas, todas rojas contra `respaldar` y `latidos` de HEAD.
+- PostgreSQL 16 del laboratorio: `manage.py test apps.auditoria apps.finanzas apps.accounts.test_correo_outbox_auditoria172`: **469 aprobadas**, incluida la prueba de snapshot con dos conexiones; `check` y migraciones sin cambios.
+- **Ensayo real de punta a punta** con una imagen temporal fuera del repo (laboratorio + `postgresql-client-16`, pg_dump 16.15): respaldo de la base sintética, restauración en `auditoria172_verif_20261019153145_…`, **122 tablas comparadas**, «Restauración verificada» y base temporal eliminada. Una base trampa preexistente `auditoria172_verificacion`, que el código anterior habría borrado, quedó intacta y después la eliminé. El latido `respaldar` quedó en la base sintética.
+- Frontend: build y auditor CSS sin incidencias.
