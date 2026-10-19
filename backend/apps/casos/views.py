@@ -69,6 +69,9 @@ class CasoViewSet(CoberturaCasoMixin, BaseModelViewSet):
     )
     capacidad_requerida = "casos_operar"
     institucion_path = "institucion"
+    # Leer casos, valores y eventos pide la capacidad (#172, AUD-008): con la
+    # lectura abierta, configurador, reportes y auditor veían datos clínicos.
+    protege_lectura = True
     # El caso se crea por API, pero su estado, paso, asignacion y trazabilidad se
     # modifican exclusivamente por acciones del motor.
     http_method_names = ["get", "head", "options", "post"]
@@ -1142,6 +1145,9 @@ class ValorCampoViewSet(BaseModelViewSet):
     queryset = ValorCampo.objects.select_related("caso", "campo", "nodo")
     serializer_class = ValorCampoSerializer
     capacidad_requerida = "casos_operar"
+    # Leer casos, valores y eventos pide la capacidad (#172, AUD-008): con la
+    # lectura abierta, configurador, reportes y auditor veían datos clínicos.
+    protege_lectura = True
     institucion_path = "caso__institucion"
     http_method_names = ["get", "head", "options"]
     filter_fields = ("caso", "campo")
@@ -1233,6 +1239,9 @@ class EventoCasoViewSet(BaseModelViewSet):
     queryset = EventoCaso.objects.select_related("caso", "autor", "nodo")
     serializer_class = EventoCasoSerializer
     capacidad_requerida = "casos_operar"
+    # Leer casos, valores y eventos pide la capacidad (#172, AUD-008): con la
+    # lectura abierta, configurador, reportes y auditor veían datos clínicos.
+    protege_lectura = True
     institucion_path = "caso__institucion"
     http_method_names = ["get", "head", "options"]
     filter_fields = ("caso", "autor")
