@@ -521,3 +521,49 @@ Validación:
 - PostgreSQL 16 del laboratorio, imagen reconstruida y worker de correo detenido: `manage.py test apps.registros apps.portal apps.casos apps.simulacion apps.auditoria --noinput --verbosity 1`: **762 aprobadas sin skips**, 260 s. Sobre la misma imagen pasan `check` y `makemigrations --check --dry-run` sin cambios; `sqlmigrate registros 0012` solo agrega tres columnas nulas con FK, además del backfill; OpenAPI `--fail-on-warn` aprobado. La migración no se aplicó a la base sintética del laboratorio. La suite global queda para el CI.
 
 Rollback: revertir el código vuelve a publicar en el portal por institución (reabre AUD-050). Las columnas y asociaciones se conservan y no se borran.
+
+### Bloque K4: IP confiable, alerta de auditoría y límite de login — 19/10/2026
+
+Decisiones del dueño, entre opciones que propuso el agente: un único NGINX propio delante de Django; 10 fallos por email y 100 por IP cada 15 minutos; alerta por registro durable más `/api/estado/`, sin proveedor. Se mantiene la deuda de comprensión de K1 a K3.
+
+- **AUD-044:** `auditoria.mixins.ip_cliente` toma la IP de `get_ident` de DRF (`NUM_PROXIES`, 1 por defecto), el mismo criterio que ya usaban el portal y los limitadores, en lugar del primer valor de `X-Forwarded-For`, que lo escribe el cliente. NGINX reemplaza esa cabecera por `$remote_addr`. Un valor inválido queda en `ip = NULL` (no confiable) sin perder el evento. La simulación (`SesionSimulacion.ip`) usa el mismo helper.
+- **Alerta de auditoría:** el alta de `AccesoClinico` va en un savepoint; si falla, se registra `FalloAuditoria` (tipo, recurso, institución y clase del error, sin datos clínicos ni IP) y `/api/estado/` informa `registro_accesos` como atrasado con 503 hasta que se marque revisado en el Admin. El Admin no crea ni borra fallos. La atención clínica sigue (200); las lecturas estrictas que ya existían, como la ficha del paciente, siguen respondiendo 503 y también dejan su fallo.
+- **AUD-010:** `LoginInstitucionalView` cuenta solo los fallos de autenticación, por huella HMAC del email normalizado y de la IP, en el caché compartido `portal`. Con el cupo agotado responde 429 con `Retry-After`, aunque la clave sea correcta. Las tasas son configurables (`INSTITUCIONAL_LOGIN_*`). La pantalla de login explica el 429.
+
+Límites: la ventana es fija (puede admitir hasta el doble en el borde entre ventanas) y el incremento en `DatabaseCache` no es atómico (AUD-029). Si el caché falla, el login no se bloquea y queda en el log. Un despliegue con un balanceador delante de NGINX (como la demo en Railway) necesita `real_ip`/`NUM_PROXIES` propios. Si se publica el puerto de Django sin pasar por NGINX, `X-Forwarded-For` vuelve a ser falsificable. Un fallo de la propia base no se puede registrar en la base: queda solo en el log. La revisión de fallos es por Admin (staff), sin pantalla institucional. El refresh y las rutas públicas de credenciales conservan sus límites propios.
+
+Validación:
+
+- SQLite local: 11 tests nuevos; contra `mixins`/`latidos`/`urls` de HEAD fallan 10 (los ingresos correctos y el Admin nuevo pasan, como corresponde). Monitoreo y auditoría existentes aprobados (62 en total).
+- Frontend: build 1190 módulos y auditor CSS sin incidencias.
+- Primera corrida PostgreSQL (1242 tests): 2 fallos y 12 errores. Causas confirmadas y corregidas: (a) `ip_cliente` usaba `get_ident`, que en la DRF instalada lee `request.headers`, y los registradores reciben dobles con solo `META`; ahora aplica la misma regla de `NUM_PROXIES` sobre `META`. (b) `test_lotes` fijaba el comportamiento vulnerable (primer valor de `X-Forwarded-For`); su fixture pasó a un caso realista con la IP real al final. (c) Mi prueba de ventana parchaba `time.time` global; ahora parcha un reloj local (`_reloj`). Aparte apareció una falla intermitente previa: `exp - iat` puede diferir en 1 s entre instantes de SimpleJWT; la aserción tolera 1 s. Los fallos de financiadores y de retiro A/B pasaron aislados en PG: dependían del orden de la tanda, con el parche global de tiempo como hipótesis principal. Se validan en la corrida combinada K4+K5+K8 de abajo.
+
+Migración `auditoria.0007`: solo crea la tabla. Rollback: revertir el código vuelve a tomar el primer `X-Forwarded-For`; la tabla queda sin uso y no se borra. Revertir NGINX sin revertir Django es seguro con `NUM_PROXIES=1`.
+
+### Bloque K5: identidad durable de operaciones de stock — 19/10/2026
+
+Decisiones del dueño, entre opciones que propuso el agente: clave obligatoria y conservada para siempre como trazabilidad.
+
+- `OperacionStock(institución, clave UUID, tipo, solicitud, resultado, autor)` con unicidad (institución, clave), como en dinero. `farmacia/operaciones.py` reserva la clave en la misma transacción que los movimientos. Misma clave y mismo contenido devuelven el resultado guardado con `X-Operacion-Repetida: 1` sin mover stock; otro contenido da 409; una operación fallida no deja clave. Dos reintentos simultáneos se ordenan en la unicidad.
+- Aplica a `movimientos-stock/ingreso|consumo|transferencia|ajuste|baja` y `pedidos-stock/{id}/entregar` (AUD-053). Sin `clave` válida, 400. El resultado guarda solo ids; en una repetición se vuelve a serializar. Los seeds y el motor directo no la exigen.
+- Cambio de contrato: ninguna pantalla usaba estas rutas; las pruebas existentes se adaptaron para mandar la clave.
+
+Límites: la solicitud se compara tal como llega normalizada (por ejemplo, `10` y `"10"` en `entregas` se toman como contenidos distintos). La entrega repetida devuelve el estado actual del pedido. Preparar y rechazar siguen con su propia protección de estado.
+
+Validación: SQLite 121 farmacia aprobadas (15 skips son las pruebas PostgreSQL); 7 tests nuevos, 6 de ellos rojos con las vistas de HEAD; la de concurrencia con `pg_blocking_pids` corre solo en PG. PostgreSQL: ver la corrida combinada.
+
+### Bloque K8: boxes olvidados y aviso de turnos — 19/10/2026
+
+Decisiones del dueño, entre opciones que propuso el agente: el aviso del box va al jefe del área y a los admins; el de turno, 24 h antes al administrativo.
+
+- **Turnos:** `recordar_turnos` ya avisa una vez por día al administrativo del área los turnos del día siguiente sin confirmar, con latido e idempotencia. Cubre la decisión, con la diferencia de que es un lote diario (la tarde anterior) y no a las 24 h exactas. No se duplicó.
+- **Boxes:** `revisar_boxes` (en el bucle `tiempos` del Compose y en `ESPERADOS`) avisa una vez por ocupación (`Box.aviso_inactividad_at`, migración `instituciones.0011`) si pasan 3 h sin llamadas, rellamadas ni atenciones desde el box y hay pacientes sin atender en el área. Notifica al jefe del área (o de toda la institución) y a los admins; nunca libera.
+- **Liberar:** además del ocupante y el superusuario, un jefe del área o un admin pueden liberar con `confirmar: true` (sin eso, 400); el profesional desplazado recibe una notificación. `MiTrabajo` muestra a quien supervisa los boxes ocupados por otros con «Liberar», confirmado en un diálogo. Ocupar o liberar limpia el aviso.
+
+Límites: la actividad no incluye acciones fuera de la fila (por ejemplo, una evolución escrita sin llamar). El reinicio diario de boxes sin uso no se implementó (no fue decidido). La pantalla de liberación no tiene prueba de navegador.
+
+Validación: SQLite 93 instituciones y monitoreo aprobadas (el error del Admin es solo el manifest de estáticos local); 5 tests nuevos; las 2 de liberación fallan con las vistas de HEAD. Build 1190 módulos y auditor CSS sin incidencias. PostgreSQL: ver la corrida combinada.
+
+### Validación combinada K4+K5+K8
+
+- PostgreSQL 16 del laboratorio, imagen del corte final: `check`, `makemigrations --check --dry-run` sin cambios y OpenAPI `--fail-on-warn` aprobados; `sqlmigrate` de `auditoria.0007`, `farmacia.0005` e `instituciones.0011` solo crea tablas o columnas nulas. `manage.py test apps.auditoria apps.accounts apps.simulacion apps.registros apps.portal apps.fhir apps.financiadores apps.farmacia apps.instituciones apps.casos.test_permisos_barrida`: la primera pasada mostró 7 errores, todos corregidos: (1) `select_for_update()` con `select_related` de una FK nula hace LEFT JOIN y PostgreSQL lo rechaza; ahora usa `of=("self",)`. (2) Una prueba previa suponía que el superusuario libera sin confirmar. (3) Un error de financiadores (`test_esperas`) pasó aislado. La segunda pasada: **1438 ejecutadas, 1 falla**: `simulacion.tests.AlcancePorPerfilTests.test_configurador_disena_pero_no_lee_historia` recibió 401 en lugar de 403 con un token recién emitido. Aislado pasó 3 de 3 veces. **Hipótesis, no confirmada:** PyJWT 2.15.1 rechaza `iat` futuro con tolerancia 0 y el reloj del contenedor (Docker Desktop/WSL2) puede ajustarse hacia atrás en corridas largas; coincide con el 401 suelto de la primera corrida K4. Si se confirma, es también un riesgo de producción con varias réplicas desfasadas, mitigable con `SIMPLE_JWT["LEEWAY"]` (decisión pendiente). No se presenta la tanda como aprobada. La suite global queda para el CI.
