@@ -173,6 +173,28 @@ class UsuarioViewSet(BaseModelViewSet):
             Membresia.objects.create(usuario=usuario, institucion_id=inst_id, rol=rol)
             invitar_usuario(usuario, actor=user, institucion=institucion)
 
+    def perform_update(self, serializer):
+        """Nombre y apellido de una cuenta compartida son de su titular (#172).
+
+        Si la persona tiene una pertenencia activa en otra institución (o una
+        global), un admin institucional no cambia su identidad visible para
+        todas. Sí el titular, el superusuario y el gobierno de plataforma.
+        """
+        usuario = serializer.instance
+        cambios = [campo for campo in ("nombre", "apellido")
+                   if campo in serializer.validated_data
+                   and serializer.validated_data[campo] != getattr(usuario, campo)]
+        if cambios and usuario.pk != self.request.user.pk and not self._alcance_global():
+            compartida = usuario.membresias.filter(activo=True).exclude(
+                institucion_id__in=self._instituciones_administradas(),
+            ).exists()
+            if compartida:
+                raise PermissionDenied(
+                    "La persona también pertenece a otra institución: su nombre y apellido "
+                    "los cambia el titular o el gobierno de plataforma."
+                )
+        serializer.save()
+
     def perform_destroy(self, instance):
         if not self._alcance_global():
             raise PermissionDenied("La baja institucional se realiza sobre la membresía, no sobre la identidad global.")
