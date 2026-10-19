@@ -112,7 +112,8 @@ class SesionDurableAceptacionTests(EscenarioSesionDurable, APITestCase):
     def test_logout_refresh_firmado_expirado_no_revoca_familia_vigente(self):
         par = self.login()
         expirado = RefreshToken(par["refresh"])
-        expirado.set_exp(lifetime=timedelta(seconds=-1))
+        # Más allá de SIMPLE_JWT["LEEWAY"] (30 s): dentro del margen la firma vale.
+        expirado.set_exp(lifetime=timedelta(seconds=-120))
         respuesta = self.logout({"refresh": str(expirado)})
         self.assertEqual(respuesta.status_code, 401)
         sesion = self.modelo_sesion().objects.get(pk=AccessToken(par["access"])["sid"])

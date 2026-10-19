@@ -500,6 +500,10 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "CHECK_REVOKE_TOKEN": True,
+    # Réplicas con relojes desfasados daban 401 por `iat` futuro: PyJWT
+    # (>= 2.10) valida iat con este margen, que también extiende `exp` hasta
+    # 30 s. La revocación por sesión y por contraseña no depende de él (#172).
+    "LEEWAY": 30,
     "TOKEN_OBTAIN_SERIALIZER": "apps.accounts.jwt.TokenObtainPairInstitucionalSerializer",
     "TOKEN_REFRESH_SERIALIZER": "apps.accounts.jwt.TokenRefreshInstitucionalSerializer",
     "USER_AUTHENTICATION_RULE": "apps.simulacion.autenticacion.regla_de_autenticacion",
