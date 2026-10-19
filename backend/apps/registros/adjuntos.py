@@ -13,6 +13,10 @@ de la ruta ni del nombre:
 - Un archivo ya asociado no se reasigna a otro estudio ni a otro paciente.
 
 El portal solo publica archivos asociados al estudio que los muestra.
+
+Los adjuntos de campos de formulario de caso siguen la misma regla con dueño
+paciente + caso (`asociar_archivo_a_caso`), sin confirmación de admin. Los ya
+cargados antes de esa regla quedan sin dueño.
 """
 import hashlib
 import mimetypes
@@ -66,26 +70,58 @@ def asociar_archivo_a_estudio(estudio, ruta, actor, *, confirmacion_admin=False)
     if partes_de_ruta_clinica(ruta) is None:
         raise ErrorAdjunto("El archivo debe subirse al sistema antes de asociarlo al estudio.")
     ciudadano = estudio.historia.ciudadano
+    return _fijar_dueno(
+        ruta, actor, institucion_id=ciudadano.institucion_id, ciudadano_id=ciudadano.pk,
+        objeto_tipo="Estudio", objeto_id=estudio.pk, proposito=ArchivoClinico.Proposito.ESTUDIO,
+        ya_es_suyo=lambda meta: pertenece_al_estudio(meta, estudio), destino="estudio",
+        confirmacion_admin=confirmacion_admin,
+    )
+
+
+def asociar_archivo_a_caso(caso, ruta, actor):
+    """Fija el dueño del adjunto de un campo de formulario de `caso` (#172, decisión 6).
+
+    Dueño: el paciente del caso y el caso. Solo lo asocia quien lo subió; no hay
+    confirmación de admin ni metadata legacy. Si el caso no tiene paciente, el
+    archivo queda atado solo al caso (`ciudadano` nulo): no se reutiliza en otro
+    caso y su descarga se audita sin paciente. Llamar dentro de una transacción.
+    """
+    if not ruta:
+        return None
+    if partes_de_ruta_clinica(ruta) is None:
+        raise ErrorAdjunto("El archivo debe subirse al sistema antes de adjuntarlo al caso.")
+    return _fijar_dueno(
+        ruta, actor, institucion_id=caso.institucion_id, ciudadano_id=caso.ciudadano_id,
+        objeto_tipo="Caso", objeto_id=caso.pk, proposito=ArchivoClinico.Proposito.ADJUNTO_CASO,
+        ya_es_suyo=lambda meta: (meta.objeto_tipo == "Caso" and meta.objeto_id == caso.pk
+                                 and meta.ciudadano_id == caso.ciudadano_id),
+        destino="caso",
+    )
+
+
+def _fijar_dueno(ruta, actor, *, institucion_id, ciudadano_id, objeto_tipo, objeto_id, proposito,
+                 ya_es_suyo, destino, confirmacion_admin=False):
     with transaction.atomic():
         meta = ArchivoClinico.objects.select_for_update().filter(ruta=ruta).first()
         if meta is None:
             if not confirmacion_admin:
                 raise ErrorAdjunto("El archivo no está registrado en el sistema.")
-            meta = _metadata_legacy(ruta, ciudadano.institucion_id)
-        if meta.institucion_id != ciudadano.institucion_id or meta.proposito == ArchivoClinico.Proposito.CONSENTIMIENTO:
-            raise ErrorAdjunto("El archivo no corresponde a esta institución o a un estudio.")
+            meta = _metadata_legacy(ruta, institucion_id)
+        if meta.institucion_id != institucion_id or meta.proposito == ArchivoClinico.Proposito.CONSENTIMIENTO:
+            raise ErrorAdjunto(f"El archivo no corresponde a esta institución o a un {destino}.")
         if meta.asociado_at is not None:
-            if pertenece_al_estudio(meta, estudio):
+            if ya_es_suyo(meta):
                 return meta
-            raise ErrorAdjunto("El archivo ya pertenece a otro estudio.")
+            raise ErrorAdjunto("El archivo ya pertenece a otro estudio o caso.")
         # En simulación `subido_por` guarda al actor real: comparar con el mismo.
         real = autor_real(actor) if actor is not None else None
         if not confirmacion_admin and (real is None or meta.subido_por_id != real.pk):
-            raise ErrorAdjunto("Solo quien subió el archivo puede asociarlo. Pedí a un administrador que lo confirme.")
-        meta.ciudadano_id = ciudadano.pk
-        meta.objeto_tipo = "Estudio"
-        meta.objeto_id = estudio.pk
-        meta.proposito = ArchivoClinico.Proposito.ESTUDIO
+            raise ErrorAdjunto("Solo quien subió el archivo puede asociarlo. Pedí a un administrador que lo confirme."
+                               if destino == "estudio" else "Solo quien subió el archivo puede adjuntarlo al caso.")
+        meta.ciudadano_id = ciudadano_id
+        meta.objeto_tipo = objeto_tipo
+        meta.objeto_id = objeto_id
+        meta.proposito = proposito
         meta.asociado_por = actor if getattr(actor, "is_authenticated", False) else None
         meta.asociado_at = timezone.now()
         meta.save(update_fields=["ciudadano", "objeto_tipo", "objeto_id", "proposito", "asociado_por", "asociado_at"])

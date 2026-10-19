@@ -1853,7 +1853,7 @@ def avanzar(caso: Caso, datos: dict | None = None, autor=None) -> Caso:
             # Mantener la misma definición durante validación y persistencia.
             nodo._state.fields_cache.pop("formulario", None)
         valores = _validar_valores(nodo, valores)
-        _guardar_valores(caso, nodo, valores)
+        _guardar_valores(caso, nodo, valores, autor=autor)
         # «Requerido» se pintaba con un asterisco y no lo exigía ninguna capa: un
         # triage se completaba vacío de un clic y el caso avanzaba igual. La
         # Decisión que viene después evalúa sobre un campo vacío y manda al
@@ -2153,7 +2153,7 @@ def _entero(valor):
 
 
 @transaction.atomic
-def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
+def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict, autor=None):
     if not valores:
         return
     if not nodo.formulario_id:
@@ -2174,6 +2174,21 @@ def _guardar_valores(caso: Caso, nodo: Nodo, valores: dict):
             + ", ".join(invalidos)
             + "."
         )
+
+    # Adjuntos con dueño paciente + caso (#172, decisión 6). Un valor igual al
+    # ya guardado no es una asociación nueva: los legacy quedan sin dueño.
+    archivos = set(Campo.objects.filter(pk__in=normalizados, tipo=Campo.Tipo.ARCHIVO).values_list("id", flat=True))
+    if archivos:
+        from apps.registros.adjuntos import ErrorAdjunto, asociar_archivo_a_caso
+
+        guardados = dict(ValorCampo.objects.filter(caso=caso, campo_id__in=archivos).values_list("campo_id", "valor"))
+        for campo_id in archivos:
+            valor = "" if normalizados[campo_id] is None else str(normalizados[campo_id])
+            if valor and valor != guardados.get(campo_id):
+                try:
+                    asociar_archivo_a_caso(caso, valor, autor)
+                except ErrorAdjunto as error:
+                    raise ErrorMotor(str(error)) from None
 
     for campo_id, valor in normalizados.items():
         ValorCampo.objects.update_or_create(
