@@ -141,3 +141,5 @@ Lo cubren `apps.test_admin_alcance_auditoria172` (lista, cambio, borrado, histor
 ## Mantenimiento
 
 Agregar un viewset sin capacidad ni alcance hace fallar `apps.test_matriz_permisos_auditoria172`. Agregar un `ModelAdmin` sin el mixin hace fallar `apps.test_admin_alcance_auditoria172`. Las exenciones se justifican en esas pruebas. Para regenerar la tabla: recorrer `config.api.router.registry` con los mismos atributos.
+
+**Actualización 19/10 (decisión del dueño sobre AUD-008):** `CasoViewSet`, `ValorCampoViewSet` y `EventoCasoViewSet` pasan a `protege_lectura = True` con `casos_operar`: configurador, reportes, auditor y plataforma ya no leen casos, valores ni eventos; los roles operativos sí. Esto cierra el hueco 4 y la lectura de AUD-008. La clasificación por campo (administrativo/clínico) queda como evolución posible, no implementada.
