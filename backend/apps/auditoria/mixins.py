@@ -6,10 +6,12 @@ de auditoría rompe, un médico tiene que poder seguir viendo la historia del
 paciente que tiene delante. Se anota el problema y se sigue: perder una línea de
 auditoría es malo, no poder atender es peor.
 """
+import ipaddress
 import logging
 from itertools import islice
 
 from django.db import transaction
+from rest_framework.settings import api_settings
 
 from apps.simulacion.contexto import usuario_real
 
@@ -19,12 +21,44 @@ log = logging.getLogger(__name__)
 TAMANIO_LOTE_ACCESOS = 500
 
 
-def _ip(request):
-    reenviado = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if reenviado:
-        # El primero de la cadena es el cliente; el resto son los proxies.
-        return reenviado.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+def ip_cliente(request):
+    """La IP del cliente para auditoría, o None si no es una IP válida.
+
+    Respeta `NUM_PROXIES` como `get_ident` de DRF (portal y límites): el valor
+    que agregó el proxy propio, no el primero de `X-Forwarded-For`, que lo
+    escribe el cliente (#172, AUD-044). Un valor inválido queda en None —IP no confiable—
+    en lugar de hacer fallar la escritura en la columna `inet` y perder el evento.
+    """
+    # Misma regla que `BaseThrottle.get_ident`, sobre META: así también sirve a
+    # los registradores que reciben un pedido sin `headers`.
+    meta = getattr(request, "META", None) or {}
+    remoto, reenviado = meta.get("REMOTE_ADDR"), meta.get("HTTP_X_FORWARDED_FOR")
+    proxies = api_settings.NUM_PROXIES
+    if proxies is not None and (proxies == 0 or not reenviado):
+        candidato = remoto
+    elif reenviado:
+        saltos = reenviado.split(",")
+        candidato = saltos[-min(proxies, len(saltos))] if proxies is not None else saltos[0]
+    else:
+        candidato = remoto
+    try:
+        return str(ipaddress.ip_address((candidato or "").strip()))
+    except ValueError:
+        return None
+
+
+def _registrar_fallo(tipo, recurso, institucion_id, error):
+    """Deja el hueco de auditoría a la vista de `/api/estado/`; nunca propaga."""
+    from .models import FalloAuditoria
+
+    try:
+        with transaction.atomic():
+            FalloAuditoria.objects.create(
+                tipo=str(tipo)[:20], recurso=str(recurso)[:80],
+                institucion_id=institucion_id, error=type(error).__name__[:120],
+            )
+    except Exception:
+        log.exception("no se pudo registrar el fallo de auditoría")
 
 
 def _institucion_del_pedido(request):
@@ -83,7 +117,7 @@ def _datos_acceso(
         "motivo": motivo,
         "variante": variante,
         "resultados": resultados,
-        "ip": _ip(request),
+        "ip": ip_cliente(request),
     }
 
 
@@ -108,16 +142,20 @@ def registrar_acceso(
     la vista de quien tiene que responder por él.
     """
     try:
-        AccesoClinico.objects.create(**_datos_acceso(
-            request, tipo, recurso, ciudadano=ciudadano, objeto_id=objeto_id,
-            detalle=detalle, resultados=resultados, institucion_id=institucion_id,
-            motivo=motivo, variante=variante,
-        ))
-    except Exception:
+        # Savepoint: si la escritura falla dentro de la transacción de la
+        # lectura, la transacción sigue usable para responder.
+        with transaction.atomic():
+            AccesoClinico.objects.create(**_datos_acceso(
+                request, tipo, recurso, ciudadano=ciudadano, objeto_id=objeto_id,
+                detalle=detalle, resultados=resultados, institucion_id=institucion_id,
+                motivo=motivo, variante=variante,
+            ))
+    except Exception as error:
         # Ver la regla de oro del módulo: la atención no se detiene porque falle
-        # la auditoría. Queda en el log del servidor para que alguien lo vea, en
-        # vez de desaparecer.
+        # la auditoría. Queda en el log y en FalloAuditoria, que `/api/estado/`
+        # muestra hasta que alguien lo revise.
         log.exception("no se pudo registrar el acceso clínico")
+        _registrar_fallo(tipo, recurso, getattr(ciudadano, "institucion_id", None) or institucion_id, error)
         if estricto:
             # Las consultas administrativas de terceros requieren evidencia de
             # lectura. La atención clínica conserva el comportamiento habitual.
@@ -148,8 +186,9 @@ def registrar_accesos(request, tipo, recurso, accesos, *, estricto=False):
                         datos["institucion_id"] = acceso["institucion_id"]
                     objetos.append(AccesoClinico(**datos))
                 AccesoClinico.objects.bulk_create(objetos, batch_size=TAMANIO_LOTE_ACCESOS)
-    except Exception:
+    except Exception as error:
         log.exception("no se pudo registrar el lote de accesos clínicos")
+        _registrar_fallo(tipo, recurso, None, error)
         if estricto:
             raise
 

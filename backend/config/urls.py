@@ -26,9 +26,10 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.accounts.auth_views import (
+    LoginInstitucionalView,
     LogoutInstitucionalView,
     CambiarPasswordInstitucionalView,
     CambioEmailInstitucionalView,
@@ -142,7 +143,7 @@ urlpatterns = [
     # de la institución cuando hay que integrar con lo que ya tienen.
     path("api/esquema/", SpectacularAPIView.as_view(), name="esquema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="esquema"), name="docs"),
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/auth/token/", LoginInstitucionalView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/auth/logout/", LogoutInstitucionalView.as_view(), name="logout_institucional"),
     path("api/auth/recuperacion/", RecuperacionInstitucionalView.as_view(), name="recuperacion_institucional"),

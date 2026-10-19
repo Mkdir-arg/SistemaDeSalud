@@ -26,6 +26,7 @@ from dataclasses import dataclass
 CAMPOS_AUTORIA = {
     "agenda.Turno": ("creado_por", "resuelto_por"),
     "auditoria.AccesoClinico": ("usuario",),
+    "auditoria.FalloAuditoria": ("revisado_por",),
     "casos.EventoCaso": ("autor",),
     "farmacia.Movimiento": ("autor",),
     "farmacia.Pedido": ("creado_por",),

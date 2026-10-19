@@ -112,4 +112,20 @@ def estado() -> dict:
         if not al_dia:
             atrasados.append(nombre)
 
+    # Accesos clínicos que no se pudieron registrar (#172): la atención siguió,
+    # pero el hueco queda visible hasta que alguien lo marque revisado.
+    from .models import FalloAuditoria
+
+    pendientes = FalloAuditoria.objects.filter(revisado_at__isnull=True)
+    cantidad = pendientes.count()
+    if cantidad:
+        ultimo = pendientes.order_by("-momento").values_list("momento", flat=True).first()
+        servicios["registro_accesos"] = {
+            "estado": "atrasado", "hace_segundos": int((ahora - ultimo).total_seconds()),
+            "detalle": f"{cantidad} acceso(s) clínico(s) sin registrar; revisar en Admin.",
+        }
+        atrasados.append("registro_accesos")
+    else:
+        servicios["registro_accesos"] = {"estado": "al día", "hace_segundos": None, "detalle": ""}
+
     return {"servicios": servicios, "atrasados": atrasados}

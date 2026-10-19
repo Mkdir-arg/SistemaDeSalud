@@ -48,7 +48,9 @@ export default function Login() {
     } catch (err) {
       setError(err.status === 401
         ? "Email o contraseña incorrectos."
-        : "No se pudo iniciar sesión. Reintentá en unos segundos.");
+        : err.status === 429
+          ? "Demasiados intentos fallidos. Esperá unos minutos antes de volver a intentar."
+          : "No se pudo iniciar sesión. Reintentá en unos segundos.");
     } finally {
       setCargando(false);
     }

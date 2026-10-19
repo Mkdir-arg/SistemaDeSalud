@@ -455,6 +455,11 @@ INSTITUCIONAL_THROTTLE_RATES = {
     "email": env("INSTITUCIONAL_TASA_EMAIL", ""),
     "usuario": env("INSTITUCIONAL_TASA_USUARIO", ""),
 }
+# Límite de login institucional (#172, AUD-010): fallos por email y por IP en
+# una ventana fija. La IP por NAT de un hospital tolera más que una cuenta.
+INSTITUCIONAL_LOGIN_FALLOS_EMAIL = int(env("INSTITUCIONAL_LOGIN_FALLOS_EMAIL") or "10")
+INSTITUCIONAL_LOGIN_FALLOS_IP = int(env("INSTITUCIONAL_LOGIN_FALLOS_IP") or "100")
+INSTITUCIONAL_LOGIN_VENTANA_SEGUNDOS = int(env("INSTITUCIONAL_LOGIN_VENTANA_SEGUNDOS") or "900")
 INSTITUCIONAL_OUTBOX_POLITICA = {
     clave: int(env(f"INSTITUCIONAL_OUTBOX_{clave.upper()}") or "0")
     for clave in ("max_intentos", "lease_segundos", "backoff_inicial_segundos", "backoff_maximo_segundos", "espera_segundos")

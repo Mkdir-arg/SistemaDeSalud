@@ -78,8 +78,10 @@ class SesionDurableAceptacionTests(EscenarioSesionDurable, APITestCase):
         self.assertIsNone(sesion.revocada_at)
         self.assertTrue(sesion.refresh_jti_hash == sha256(refresh[api_settings.JTI_CLAIM].encode()).hexdigest())
         self.assertEqual(int(sesion.refresh_vence.timestamp()), refresh["exp"])
-        self.assertEqual(acceso["exp"] - acceso["iat"], int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()))
-        self.assertEqual(refresh["exp"] - refresh["iat"], int(api_settings.REFRESH_TOKEN_LIFETIME.total_seconds()))
+        # SimpleJWT fija `iat` y `exp` en instantes distintos: pueden diferir en un
+        # segundo al cruzar el borde (falla intermitente observada en PG).
+        self.assertAlmostEqual(acceso["exp"] - acceso["iat"], int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()), delta=1)
+        self.assertAlmostEqual(refresh["exp"] - refresh["iat"], int(api_settings.REFRESH_TOKEN_LIFETIME.total_seconds()), delta=1)
         self.assertEqual(self.acceso(par), 200)
 
     def test_logout_revoca_access_refresh_y_es_repetible(self):

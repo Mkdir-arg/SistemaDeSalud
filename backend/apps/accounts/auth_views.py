@@ -1,18 +1,24 @@
 """Autoservicio institucional separado del portal de pacientes y simulaciones."""
+import logging
+import time
+
 from django.conf import settings
 from django.core.cache import caches
 from django.utils.crypto import salted_hmac
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.throttling import BaseThrottle, SimpleRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.portal.limites import origen
 
 from . import credenciales
+
+log = logging.getLogger(__name__)
 
 
 class _LimiteInstitucional(SimpleRateThrottle):
@@ -166,6 +172,86 @@ class _LogoutSerializer(serializers.Serializer):
         if set(self.initial_data) != {"refresh"}:
             raise serializers.ValidationError({"detail": "Enviá únicamente el refresh de la sesión a cerrar."})
         return attrs
+
+
+MENSAJE_LOGIN_LIMITADO = "Demasiados intentos fallidos. Esperá unos minutos antes de volver a intentar."
+
+
+def _claves_login(request):
+    """Huellas del email y de la IP del intento; el email nunca va en claro al caché."""
+    datos = request.data if isinstance(request.data, dict) else {}
+    email = str(datos.get("email") or "").strip().lower()[:254]
+    ip = origen(BaseThrottle(), request) or ""
+    return {
+        "email": salted_hmac("accounts.login.email", email).hexdigest(),
+        "ip": salted_hmac("accounts.login.ip", ip).hexdigest(),
+    }
+
+
+def _reloj():
+    # Punto único para las pruebas: parchar `time.time` alteraría todo el proceso.
+    return time.time()
+
+
+def _ventana_login():
+    ventana = settings.INSTITUCIONAL_LOGIN_VENTANA_SEGUNDOS
+    ahora = _reloj()
+    return int(ahora // ventana), max(1, int(ventana - ahora % ventana)), ventana
+
+
+def _clave_cache(tipo, huella, bloque):
+    return f"accounts_login:{tipo}:{huella}:{bloque}"
+
+
+def _espera_login(claves):
+    """Segundos hasta el próximo intento si se agotó algún cupo, o 0."""
+    bloque, restante, _ = _ventana_login()
+    limites = {"email": settings.INSTITUCIONAL_LOGIN_FALLOS_EMAIL, "ip": settings.INSTITUCIONAL_LOGIN_FALLOS_IP}
+    try:
+        cache = caches["portal"]
+        for tipo, limite in limites.items():
+            if cache.get(_clave_cache(tipo, claves[tipo], bloque), 0) >= limite:
+                return restante
+    except Exception:
+        # Sin caché no se bloquea el ingreso de un hospital; queda registrado.
+        log.exception("límite de login institucional no disponible")
+    return 0
+
+
+def _contar_fallo_login(claves):
+    bloque, _, ventana = _ventana_login()
+    try:
+        cache = caches["portal"]
+        for tipo, huella in claves.items():
+            clave = _clave_cache(tipo, huella, bloque)
+            cache.add(clave, 0, timeout=ventana * 2)
+            try:
+                cache.incr(clave)
+            except ValueError:
+                cache.set(clave, 1, timeout=ventana * 2)
+    except Exception:
+        log.exception("límite de login institucional no disponible")
+
+
+class LoginInstitucionalView(TokenObtainPairView):
+    """Login con límite de intentos fallidos por email y por IP (#172, AUD-010).
+
+    Solo cuentan los fallos de autenticación. Con el cupo agotado responde 429
+    genérico aunque las credenciales sean correctas, para no confirmar cuáles lo
+    son. Ventana fija en el caché compartido entre workers; su incremento no es
+    atómico, así que una ráfaga paralela puede pasar algún intento de más.
+    """
+
+    def post(self, request, *args, **kwargs):
+        claves = _claves_login(request)
+        espera = _espera_login(claves)
+        if espera:
+            return Response({"detail": MENSAJE_LOGIN_LIMITADO}, status=429, headers={"Retry-After": str(espera)})
+        try:
+            return super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            _contar_fallo_login(claves)
+            raise
 
 
 class LogoutInstitucionalView(APIView):

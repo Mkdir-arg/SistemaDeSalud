@@ -13,7 +13,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.auditoria.mixins import _ip
+from apps.auditoria.mixins import ip_cliente
 
 from .models import Ambito, SesionSimulacion
 from .perfiles import catalogo, datos_de_sesion, iniciar
@@ -89,7 +89,7 @@ class SimulacionViewSet(viewsets.GenericViewSet):
         try:
             sesion = iniciar(
                 request.user, d["ambito"], d["rol"],
-                institucion_id=d.get("institucion"), financiador_id=d.get("financiador"), ip=_ip(request),
+                institucion_id=d.get("institucion"), financiador_id=d.get("financiador"), ip=ip_cliente(request),
             )
         except ErrorDeModelo as error:
             raise ValidationError({"detail": error.messages}) from error
