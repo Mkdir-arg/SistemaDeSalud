@@ -584,3 +584,25 @@ Validación:
 - PostgreSQL 16 del laboratorio: `manage.py test apps.auditoria apps.finanzas apps.accounts.test_correo_outbox_auditoria172`: **469 aprobadas**, incluida la prueba de snapshot con dos conexiones; `check` y migraciones sin cambios.
 - **Ensayo real de punta a punta** con una imagen temporal fuera del repo (laboratorio + `postgresql-client-16`, pg_dump 16.15): respaldo de la base sintética, restauración en `auditoria172_verif_20261019153145_…`, **122 tablas comparadas**, «Restauración verificada» y base temporal eliminada. Una base trampa preexistente `auditoria172_verificacion`, que el código anterior habría borrado, quedó intacta y después la eliminé. El latido `respaldar` quedó en la base sintética.
 - Frontend: build y auditor CSS sin incidencias.
+
+### Bloque K7: release y configuración productiva — 19/10/2026
+
+Paquete propuesto por el agente; no requirió decisiones nuevas. AUD-027 (contenedor sin root) queda fuera de este corte: los volúmenes de media y respaldos que ya existen pertenecen a root, y cambiar el usuario exige migrar la propiedad de esos volúmenes, una operación que hay que decidir.
+
+- **AUD-023:** `migrar_con_candado` toma un advisory lock de sesión de PostgreSQL antes de `migrate`; un segundo proceso espera (por defecto hasta 600 s) y, si no lo obtiene, falla en lugar de arrancar sin esquema. El entrypoint lo usa, y `EJECUTAR_MIGRACIONES` sigue decidiendo quién migra. Si `migrate` falla, `set -e` impide que el servidor arranque.
+- **AUD-026:** con `ENTORNO=produccion`, los settings no arrancan con DEBUG prendido (el valor por defecto si falta `DJANGO_DEBUG`), sin `DATABASE_URL` de PostgreSQL (el fallback es SQLite) ni con `SEED_DEMO`/`SEED_GUARDIA=1`. La validación está al final del módulo para que los errores específicos previos salgan primero. El Compose base pasa a `SEED_DEMO=0` por defecto: los overrides de desarrollo y demo ya fijaban sus valores, y `DESPLIEGUE.md` ya lo exigía. Corrección de una afirmación anterior: `seed_demo` sí tenía la guarda de entorno.
+- Una prueba de correo que cargaba producción con DEBUG prendido pasó a una producción completa.
+
+### Cadena de sellos por topología — 19/10/2026
+
+Hallazgo de la validación de K7, con decisión expresa del dueño («cadena por topología»). `sellar` elegía el eslabón anterior por `firmada_at` más reciente y `verificar_historia` recorría la cadena por hora. `seed_volumen` sella con fechas generadas que pueden quedar después de la hora actual; en el laboratorio eso hizo fallar `apps.demo.test_issue111` con `entrada_un_solo_eslabon_siguiente`. En producción, réplicas con relojes desfasados bloquearían firmas con `IntegrityError`. Ahora:
+
+- `sellar` se encadena a la **cabeza** de la cadena (la sellada sin sucesora) bajo el mismo lock de historia; la hora solo desempata cadenas legacy con más de una cabeza.
+- `verificar_historia` recorre la cadena desde el primer eslabón siguiendo las sucesoras. Toda entrada sellada que el recorrido no alcanza (anterior faltante o alterado, segunda raíz, bifurcación) se informa como antes. La verificación individual y la detección de firmadas sin sello posteriores al inicio del sellado no cambian.
+- Pruebas: una entrada encadenada con hora anterior a la de su predecesora sigue verificando; borrar una del medio, insertar una segunda raíz o resellar una del medio se siguen denunciando. Con el código de HEAD, la prueba principal falla con el `IntegrityError` descrito.
+
+Validación de K7 y de la cadena de sellos:
+
+- SQLite: pruebas de settings y del candado; 4 nuevas de cadena. Rojo: con los settings de HEAD fallan los 4 subcasos de producción incompleta, y con la `integridad` de HEAD la cadena falla con `IntegrityError`.
+- PostgreSQL 16 del laboratorio: `manage.py test apps.registros apps.demo apps.auditoria apps.portal`: **405 aprobadas**, incluida `apps.demo.test_issue111`, que antes fallaba; `check` y migraciones sin cambios.
+- **Ensayo real de AUD-023** sobre la base sintética del laboratorio, con dos `migrar_con_candado` lanzados juntos. A aplicó `accounts.0009`, `auditoria.0007`, `farmacia.0005`, `instituciones.0011` y `registros.0012` (con su backfill) sobre los datos existentes; B informó «Otro proceso está migrando; espero…» y después «No migrations to apply». No quedan migraciones pendientes. La base sintética quedó migrada al esquema de este corte; la API y el worker del laboratorio siguen con imágenes anteriores y detenidos.
