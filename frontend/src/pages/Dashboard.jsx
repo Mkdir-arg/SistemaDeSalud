@@ -153,6 +153,10 @@ const QUE_SE_ROMPE = {
   correo_institucional: "Las invitaciones y recuperaciones de acceso no se están enviando.",
   registro_accesos: "Hubo lecturas clínicas que no quedaron registradas: revisalas en el Admin.",
   cola_repartos: "Hay repartos de gastos esperando sin que nadie los procese.",
+  wal_archivado:
+    "Los cambios de la base no están saliendo del servidor: ante una caída se perdería más de 15 minutos, y el disco de la base se va llenando.",
+  respaldo_base: "Hace más de una semana que no se saca la copia completa de la base fuera del servidor.",
+  respaldo_archivos: "Los archivos adjuntos y las facturas no se están copiando fuera del servidor.",
 };
 
 const NOMBRE_PROCESO = {
@@ -165,6 +169,9 @@ const NOMBRE_PROCESO = {
   correo_institucional: "Correo institucional",
   registro_accesos: "Registro de accesos clínicos",
   cola_repartos: "Cola de repartos",
+  wal_archivado: "Archivado continuo de la base",
+  respaldo_base: "Copia completa de la base",
+  respaldo_archivos: "Copia de archivos adjuntos",
 };
 
 function ProcesosDetenidos() {
