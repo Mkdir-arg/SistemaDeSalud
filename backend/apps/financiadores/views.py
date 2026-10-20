@@ -725,6 +725,42 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         obj = previsualizar_importacion(financiador=org, usuario=request.user, **d)
         return Response(s.ImportacionSerializer(obj).data, status=201)
 
+    @extend_schema(
+        request={"multipart/form-data": {"type": "object", "required": ["archivo"],
+                 "properties": {"archivo": {"type": "string", "format": "binary"}}}},
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=True, methods=["post"], url_path="prevalidar-ostel")
+    def prevalidar_ostel(self, request, pk=None):
+        """Revisión técnica efímera, sin crear lote ni devolver datos nominales."""
+        from collections import Counter
+        from dataclasses import asdict
+        from .ostel_prevalidacion import ArchivoOstelInvalido, COLUMNAS, MAX_BYTES, prevalidar_ostel
+
+        org = self.organizacion(escritura=True)
+        archivo = datos(request, {"archivo": serializers.FileField()})["archivo"]
+        if not archivo.name.lower().endswith(".xlsx"):
+            raise ValidationError({"archivo": "Sólo se admiten archivos .xlsx."})
+        if archivo.size > MAX_BYTES:
+            raise ValidationError({"archivo": "El archivo supera el máximo de 5 MiB."})
+        try:
+            resultado = prevalidar_ostel(archivo.read(MAX_BYTES + 1))
+        except ArchivoOstelInvalido as exc:
+            raise ValidationError({"archivo": str(exc)}) from None
+        # Auditar únicamente la operación y su ámbito; nunca nombre, celdas ni archivo.
+        auditar(request.user, "prevalidar_ostel", org.pk, financiador=org)
+        limite_detalle = 500
+        response = Response({
+            "resumen": resultado.resumen,
+            "columnas": COLUMNAS,
+            "anomalias_por_codigo": dict(Counter(a.codigo for a in resultado.anomalias)),
+            "anomalias": [asdict(a) for a in resultado.anomalias[:limite_detalle]],
+            "detalle_truncado": len(resultado.anomalias) > limite_detalle,
+            "limite_detalle": limite_detalle,
+        })
+        response["Cache-Control"] = "private, no-store"
+        return response
+
     @action(detail=True, methods=["post"], url_path="confirmar-importacion")
     def confirmar_importacion(self, request, pk=None):
         org = self.organizacion(escritura=True)
@@ -743,11 +779,13 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
     @action(detail=True, methods=["get"])
     def plantilla(self, request, pk=None):
         org = self.organizacion(escritura=True)
-        from .importaciones import generar_plantilla
+        from .formatos_importacion import generar_plantilla_formato
         tipo = request.query_params.get("tipo", "consumos")
         version = serializers.IntegerField(min_value=1, max_value=2).run_validation(request.query_params.get("version", 1))
-        contenido = generar_plantilla(financiador=org, usuario=request.user, tipo=tipo, version=version)
-        nombre = "plantilla-padron" if tipo == "padron" and version == 2 else "plantilla"
+        contenido, nombre = generar_plantilla_formato(
+            request.query_params.get("formato", "sistema"),
+            financiador=org, usuario=request.user, tipo=tipo, version=version,
+        )
         return self.archivo(contenido, nombre, org, "descargar_plantilla", tipo)
 
     @action(detail=True, methods=["get"])
