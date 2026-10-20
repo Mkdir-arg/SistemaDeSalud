@@ -1,0 +1,124 @@
+# Respaldo continuo (#172, AUD-017): WAL de PostgreSQL con WAL-G, copia base
+# semanal y media + facturas con restic, hacia almacenamiento S3-compatible.
+# Objetivo: pérdida máxima de 15 min (RPO) y recuperación en 1 h (RTO).
+# Runbook: docs/plans/2026-10-20-runbook-restauracion-172.md
+#
+# Opt-in en dos niveles, nada cambia si no se usa:
+#
+#   1. Este archivo cambia la imagen de `db` por la de docker/postgres (misma
+#      base postgres:16-alpine, más wal-g y restic). Sin WALG_S3_PREFIX la base
+#      arranca igual que siempre, con archive_mode apagado.
+#   2. El perfil `respaldo-continuo` levanta los trabajos de copia base y de
+#      archivos. Durante una restauración se usa el archivo sin el perfil.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.respaldo.yml \
+#     --profile respaldo-continuo up -d
+#
+# Con WALG_S3_PREFIX definido, la base exige el resto de la configuración y no
+# arranca si falta algo (ver docker/postgres/iniciar-db.sh). El backend recibe
+# RESPALDO_CONTINUO=1 y `/api/estado/` empieza a vigilar `wal_archivado`,
+# `respaldo_base` y `respaldo_archivos`. Las credenciales del almacenamiento
+# nunca llegan al backend.
+#
+# WAL-G y restic pueden usar credenciales distintas (WALG_AWS_* y RESTIC_AWS_*):
+# conviene que sean claves separadas, con permiso solo sobre su prefijo.
+
+x-walg: &walg
+  WALG_S3_PREFIX: ${WALG_S3_PREFIX:-}
+  AWS_ACCESS_KEY_ID: ${WALG_AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${WALG_AWS_SECRET_ACCESS_KEY:-}
+  AWS_REGION: ${WALG_AWS_REGION:-}
+  AWS_ENDPOINT: ${WALG_AWS_ENDPOINT:-}
+  AWS_S3_FORCE_PATH_STYLE: ${WALG_AWS_S3_FORCE_PATH_STYLE:-false}
+  # Cifrado del lado del cliente: el proveedor nunca ve datos clínicos en claro.
+  # 32 bytes al azar, por ejemplo `openssl rand -hex 32`. Perderla es perder
+  # todos los respaldos de la base.
+  WALG_LIBSODIUM_KEY: ${WALG_LIBSODIUM_KEY:-}
+  WALG_LIBSODIUM_KEY_TRANSFORM: ${WALG_LIBSODIUM_KEY_TRANSFORM:-hex}
+  # Si ya hay un segmento distinto con el mismo nombre (dos bases archivando en
+  # el mismo prefijo), wal-push falla en lugar de pisarlo.
+  WALG_PREVENT_WAL_OVERWRITE: "true"
+
+x-latido: &latido
+  # Los trabajos dejan su latido en la base de la aplicación.
+  PGHOST: db
+  PGUSER: ${POSTGRES_USER:-salud}
+  PGPASSWORD: ${POSTGRES_PASSWORD:-salud}
+  PGDATABASE: ${POSTGRES_DB:-salud}
+
+services:
+  db:
+    build: ./docker/postgres
+    image: salud-postgres-respaldo:16-walg-v3.0.9
+    environment:
+      <<: *walg
+      # Fuerza un segmento por período aunque haya poca escritura: es lo que
+      # acota la pérdida con poco tráfico. /api/estado/ lee el valor real.
+      ARCHIVO_WAL_TIMEOUT: ${ARCHIVO_WAL_TIMEOUT:-300}
+
+  backend:
+    environment:
+      # "1" si hay WALG_S3_PREFIX, vacío si no: el monitoreo sigue a la base.
+      RESPALDO_CONTINUO: ${WALG_S3_PREFIX:+1}
+    volumes:
+      # Las facturas pasan a un volumen para que restic las lea; sin esto viven
+      # en la capa del contenedor y se pierden al recrearlo.
+      - facturas:/app/privado/facturas
+
+  # Copia base con WAL-G y retención. Lee PGDATA en solo lectura (WAL-G copia
+  # los archivos; la conexión marca el inicio y el fin de la copia).
+  respaldo-base:
+    build: ./docker/postgres
+    image: salud-postgres-respaldo:16-walg-v3.0.9
+    profiles: ["respaldo-continuo"]
+    entrypoint: ["respaldo-continuo.sh"]
+    command: ["base"]
+    user: postgres
+    restart: unless-stopped
+    environment:
+      <<: [*walg, *latido]
+      PGDATA: /var/lib/postgresql/data
+      # Completa semanal (y al arrancar si no hay ninguna). Con 3 completas
+      # semanales la recuperación a un instante cubre al menos 14 días.
+      WALG_INTERVALO_BASE: ${WALG_INTERVALO_BASE:-604800}
+      WALG_CONSERVAR_BASES: ${WALG_CONSERVAR_BASES:-3}
+      WALG_REVISAR_CADA: ${WALG_REVISAR_CADA:-3600}
+    volumes:
+      - pgdata:/var/lib/postgresql/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      # El latido necesita la tabla que crean las migraciones.
+      backend:
+        condition: service_healthy
+
+  # Media y facturas con restic: cifrado, deduplicado, cada 15 min.
+  respaldo-archivos:
+    build: ./docker/postgres
+    image: salud-postgres-respaldo:16-walg-v3.0.9
+    profiles: ["respaldo-continuo"]
+    entrypoint: ["respaldo-continuo.sh"]
+    command: ["archivos"]
+    # El dueño de los archivos (#172, AUD-027); los volúmenes van en solo lectura.
+    user: "10001:10001"
+    restart: unless-stopped
+    environment:
+      <<: *latido
+      # Por ejemplo s3:https://<endpoint>/<bucket>/archivos
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${RESTIC_AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${RESTIC_AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${RESTIC_AWS_REGION:-}
+      RESTIC_INTERVALO: ${RESTIC_INTERVALO:-900}
+      RESTIC_CONSERVAR: ${RESTIC_CONSERVAR:-14d}
+      RESTIC_INTERVALO_PODA: ${RESTIC_INTERVALO_PODA:-86400}
+    volumes:
+      - media:/datos/media:ro
+      - facturas:/datos/facturas:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  facturas:
