@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Logo } from "./Logo";
+import { LogoFull, LogoMark } from "./Logo";
 import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { Avatar, IconButton, Popover } from "./ui";
 import { Icon } from "./icons";
@@ -502,7 +502,7 @@ export function Shell({ children, financiador = null, plataforma = false }) {
       >
         {/* Marca y control del menú: el contexto queda en el selector inferior. */}
         <div style={{ position: "relative", flex: "none", display: "flex", alignItems: "center", gap: 8, flexDirection: colapsado ? "column" : "row", padding: colapsado ? "14px 0 12px" : "14px 12px", borderBottom: colapsado ? `1px solid var(--color-division)` : "none" }}>
-          <span className="flex min-w-0 flex-1 items-center gap-2 font-bold"><Logo size={24} />{!colapsado && NOMBRE_SISTEMA}</span>
+          <span className="flex min-w-0 flex-1 items-center">{colapsado ? <LogoMark size={24} /> : <LogoFull size={28} />}</span>
           {/* En angosto este botón cierra el cajón; de `md` para arriba colapsa
               el menú. Son dos botones distintos porque también cambia el icono. */}
           <button
