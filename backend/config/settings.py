@@ -535,12 +535,6 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# WhiteNoise: sirve los estáticos (incluido el admin) con gunicorn sin nginx.
-STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
-}
-
 # --- Media (archivos subidos) ----------------------------------------------
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -549,6 +543,17 @@ _facturas_dir = Path(env("SALUD_FACTURAS_ADJUNTOS_DIR", BASE_DIR / "privado" / "
 SALUD_FACTURAS_ADJUNTOS_DIR = (_facturas_dir if _facturas_dir.is_absolute() else BASE_DIR / _facturas_dir).resolve()
 if SALUD_FACTURAS_ADJUNTOS_DIR == MEDIA_ROOT.resolve() or MEDIA_ROOT.resolve() in SALUD_FACTURAS_ADJUNTOS_DIR.parents:
     raise ValueError("SALUD_FACTURAS_ADJUNTOS_DIR debe estar fuera de MEDIA_ROOT.")
+
+# Disco local, o un bucket S3 privado si están BUCKET, ACCESS_KEY_ID,
+# SECRET_ACCESS_KEY y ENDPOINT (#171, ver config/almacenamiento.py).
+from config import almacenamiento as _almacenamiento  # noqa: E402
+
+_archivos, ALMACENAMIENTO_EN_BUCKET = _almacenamiento.storages(os.environ, SALUD_FACTURAS_ADJUNTOS_DIR)
+STORAGES = {
+    **_archivos,
+    # WhiteNoise: sirve los estáticos (incluido el admin) con gunicorn sin nginx.
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 # Tope de subida en memoria / tamaño máximo razonable: 10 MB.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 

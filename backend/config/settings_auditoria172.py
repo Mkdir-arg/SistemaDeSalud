@@ -35,6 +35,11 @@ _opciones = {
     "PORTAL_URL_BASE": "http://127.0.0.1:8172",
     "CORS_ALLOWED_ORIGINS": "http://127.0.0.1:8172",
     "SALUD_FACTURAS_ADJUNTOS_DIR": "/laboratorio/privado/facturas",
+    # Sin bucket aunque el host lo tenga configurado (#171): archivos en disco.
+    "BUCKET": "",
+    "ACCESS_KEY_ID": "",
+    "SECRET_ACCESS_KEY": "",
+    "ENDPOINT": "",
 }
 with patch("dotenv.load_dotenv", return_value=False), patch.dict(os.environ, _opciones):
     from .settings import *  # noqa: F403
