@@ -4,16 +4,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, mensajeError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { leerCredencialesFragmento, limpiarFragmentoCredenciales } from "@/auth/credencialesInstitucionales";
-import { Logo } from "@/components/Logo";
+import { LogoFull } from "@/components/Logo";
 import { Button, Card, Field, Input } from "@/components/ui";
-import { NOMBRE_SISTEMA } from "@/lib/marca";
 
 const SOLICITUD_ACEPTADA = "Si la cuenta puede recibir el enlace, enviaremos las instrucciones a su correo. La solicitud aceptada no confirma la entrega del mensaje.";
 
 function PanelCredenciales({ titulo, children }) {
   return <main className="min-h-screen bg-fondo px-4 py-10 text-texto">
     <div className="mx-auto w-full max-w-[32rem]">
-      <div className="mb-6 flex items-center gap-2 font-bold"><Logo size={26} /> {NOMBRE_SISTEMA}</div>
+      <div className="mb-6"><LogoFull size={32} /></div>
       <Card className="p-6 sm:p-8">
         <h1 className="mb-4 text-xl font-bold">{titulo}</h1>
         {children}
