@@ -22,6 +22,7 @@ export default function Formularios() {
   const [area, setArea] = useFiltroUrl("area");
   const [nuevo, setNuevo] = useState(false);
   const [aBorrar, setABorrar] = useState(null);
+  const [conflictoBorrado, setConflictoBorrado] = useState(false);
 
   const areas = useLista("areas", { institucion: institucion?.id, pageSize: 100 }, { enabled: !!institucion });
 
@@ -47,7 +48,10 @@ export default function Formularios() {
    */
   const borrar = useAccion((f) => api.del(`/formularios/${f.id}/`), {
     onSuccess: () => { toast.ok("Formulario eliminado."); setABorrar(null); },
-    onError: (e) => toast.deError(e, "No se pudo eliminar el formulario."),
+    onError: (e) => {
+      toast.deError(e, "No se pudo eliminar el formulario.");
+      if (e.status === 409) setConflictoBorrado(true);
+    },
   });
 
   return (
@@ -91,6 +95,7 @@ export default function Formularios() {
             render: (f) => (
               <div className="min-w-0">
                 <strong className="block font-semibold">{f.titulo}</strong>
+                {f.congelado_at && <Badge tone="gray">Definición congelada</Badge>}
                 {f.descripcion && <span className="block text-sm text-texto-debil">{f.descripcion}</span>}
               </div>
             ),
@@ -116,9 +121,9 @@ export default function Formularios() {
               // Corta la propagación: la fila entera abre el constructor y sin
               // esto duplicar abriría además el formulario original.
               <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                <Button size="sm" variant="secondary" onClick={() => navigate(`/formularios/${f.id}`)}>Editar</Button>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/formularios/${f.id}`)}>{f.congelado_at ? "Ver" : "Editar"}</Button>
                 <IconButton icon="copy" label="Duplicar" size="sm" disabled={duplicar.isPending} onClick={() => duplicar.mutate(f)} />
-                <IconButton icon="trash" label="Eliminar formulario" size="sm" onClick={() => setABorrar(f)} />
+                <IconButton icon="trash" label="Eliminar formulario" size="sm" disabled={Boolean(f.congelado_at)} onClick={() => { setConflictoBorrado(false); setABorrar(f); }} />
               </div>
             ),
           },
@@ -139,6 +144,7 @@ export default function Formularios() {
           formulario={aBorrar}
           cargando={borrar.isPending}
           onConfirmar={() => borrar.mutate(aBorrar)}
+          bloqueadoPorEstado={conflictoBorrado}
           onClose={() => setABorrar(null)}
         />
       )}
@@ -153,10 +159,11 @@ export default function Formularios() {
  * flujo vigente lo pida y que sus campos tengan datos cargados. Con `usos_n > 0`
  * el diálogo no ofrece borrar, porque el pedido va a volver con 409.
  */
-export function BorrarFormularioDialog({ formulario, cargando, onConfirmar, onClose }) {
+export function BorrarFormularioDialog({ formulario, cargando, bloqueadoPorEstado, onConfirmar, onClose }) {
   const enUso = formulario.usos_n > 0;
   const datos = (formulario.campos || []).reduce((n, c) => n + (c.valores_cargados || 0), 0);
-  const bloqueado = enUso || datos > 0;
+  const congelado = Boolean(formulario.congelado_at) || bloqueadoPorEstado;
+  const bloqueado = congelado || enUso || datos > 0;
 
   return (
     <ConfirmDialog
@@ -167,7 +174,7 @@ export function BorrarFormularioDialog({ formulario, cargando, onConfirmar, onCl
       onConfirmar={bloqueado ? onClose : onConfirmar}
       onClose={onClose}
     >
-      {enUso ? (
+      {congelado ? <p>La definición no se puede eliminar. Abrí el formulario para consultar su estado; para modificarlo, duplicalo sin copiar respuestas.</p> : enUso ? (
         <>
           Se pide en {plural(formulario.usos_n, "flujo", "flujos")}. Si se elimina, esos pasos
           quedan <strong>sin formulario</strong> y el caso que llegue ahí no tiene con qué

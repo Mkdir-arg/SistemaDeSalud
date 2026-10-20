@@ -105,7 +105,7 @@ class CoberturaClinicaTests(CoberturaSetup, TestCase):
 
     def test_financiador_no_puede_consultar_caso_ni_historia_hospitalaria(self):
         self.client.force_authenticate(self.operador)
-        self.assertEqual(self.client.get(self.base + "cobertura/").status_code, 404)
+        self.assertEqual(self.client.get(self.base + "cobertura/").status_code, 403)  # AUD-008: sin casos_operar no se lee el caso (sin enumerar)
         self.assertIn(self.client.get(f"/api/ciudadanos/{self.paciente.pk}/cobertura/").status_code, (403, 404))
         self.assertEqual(self.client.post(self.base + "cobertura-afiliacion/", {}, format="json").status_code, 404)
 

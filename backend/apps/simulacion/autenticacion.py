@@ -20,7 +20,9 @@ import uuid
 
 from django.contrib.auth.backends import ModelBackend
 from rest_framework.exceptions import APIException
-from rest_framework_simplejwt.authentication import JWTAuthentication, default_user_authentication_rule
+from rest_framework_simplejwt.authentication import default_user_authentication_rule
+
+from apps.accounts.autenticacion import AutenticacionInstitucional
 
 from . import contexto
 from .models import SesionSimulacion
@@ -39,7 +41,7 @@ class SimulacionRechazada(APIException):
         super().__init__({"detail": motivo, "simulacion": "rechazada"})
 
 
-class SimulacionAuthentication(JWTAuthentication):
+class SimulacionAuthentication(AutenticacionInstitucional):
     """Va primera en la cadena. Sin el encabezado no interviene."""
 
     def authenticate(self, request):

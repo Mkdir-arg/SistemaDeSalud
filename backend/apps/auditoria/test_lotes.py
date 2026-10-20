@@ -23,7 +23,9 @@ class RegistroPorLotesTests(TestCase):
         self.paciente = Ciudadano.objects.create(institucion=self.hospital, nombre="Persona ficticia")
         self.request = SimpleNamespace(
             user=self.usuario, query_params={},
-            META={"REMOTE_ADDR": "127.0.0.1", "HTTP_X_FORWARDED_FOR": " 192.0.2.1, 127.0.0.1"},
+            # El cliente inventa el primer valor; el proxy propio agrega la IP
+            # real al final, que es la que vale con NUM_PROXIES=1 (#172, AUD-044).
+            META={"REMOTE_ADDR": "10.0.0.2", "HTTP_X_FORWARDED_FOR": " 6.6.6.6, 192.0.2.1"},
         )
 
     def test_misma_normalizacion_y_fecha_que_el_registro_individual(self):

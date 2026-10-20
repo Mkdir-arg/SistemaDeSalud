@@ -141,7 +141,9 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             return m.Financiador.objects.none()
         qs = m.Financiador.objects.all()
         if not plataforma(self.request.user):
-            qs = qs.filter(membresiafinanciador__usuario=self.request.user, membresiafinanciador__activo=True, activo=True)
+            # Por el manager y no por join: así aplica el corte de bajas (#172).
+            propias = m.MembresiaFinanciador.objects.filter(usuario=self.request.user, activo=True)
+            qs = qs.filter(pk__in=propias.values("financiador_id"), activo=True)
         if self.action not in ("list", "retrieve"):
             return qs.distinct()
         corte = timezone.now()

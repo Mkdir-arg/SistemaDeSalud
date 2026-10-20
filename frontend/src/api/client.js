@@ -176,6 +176,27 @@ export async function parse(res) {
 // medio de la carga.
 let refrescoEnVuelo = null;
 let refrescoEpoch = null;
+let credencialesDelRefresco = null;
+
+// Lo mismo entre pestañas. Con «mantener la sesión» todas comparten el refresh
+// de localStorage, y el backend lo acepta una sola vez: la segunda pestaña
+// recibe 401 aunque la sesión siga viva (#172, «conservar la renovación
+// válida»). Si ese 401 llevara a `tokens.clear()`, borraría también la
+// renovación ganadora. Web Locks serializa la renovación; sin soporte, el
+// almacén releído después del 401 distingue carrera de revocación.
+function conCandadoEntrePestanas(renovar) {
+  const locks = globalThis.navigator?.locks;
+  if (!persistente() || typeof locks?.request !== "function") return renovar();
+  return locks.request("salud.renovacion", renovar);
+}
+
+// Otra pestaña ya guardó una renovación distinta de la que esta iba a usar.
+function renovadoEnOtraPestana(captura) {
+  const vigente = tokens.refresh;
+  if (!vigente || vigente === captura.refresh) return false;
+  captura.refresh = vigente;
+  return true;
+}
 
 function refreshAccess() {
   if (!tokens.refresh) return Promise.resolve(false);
@@ -184,44 +205,88 @@ function refreshAccess() {
 
   const epoch = sessionEpoch;
   refrescoEpoch = epoch;
-  refrescoEnVuelo = (async () => {
+  const captura = { refresh: tokens.refresh };
+  credencialesDelRefresco = captura;
+  refrescoEnVuelo = conCandadoEntrePestanas(async () => {
+    if (epoch !== sessionEpoch) return false;
+    if (renovadoEnOtraPestana(captura)) return true;
     const res = await fetch(`${BASE}/auth/token/refresh/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh: tokens.refresh }),
+      body: JSON.stringify({ refresh: captura.refresh }),
     });
-    if (!res.ok || epoch !== sessionEpoch) return false;
     const data = await parse(res);
+    // Un cierre explícito puede necesitar revocar el refresh recién rotado,
+    // aunque ya se haya limpiado esta sesión. Nunca reinstalarlo en ese caso.
+    if (res.ok && typeof data?.refresh === "string") captura.refresh = data.refresh;
     if (epoch !== sessionEpoch) return false;
+    // Como en el portal: un fallo temporal no demuestra que la credencial
+    // esté revocada. Propagarlo permite reintentar sin perder la sesión.
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 401) return renovadoEnOtraPestana(captura);
+      throw new ApiError(res.status, data);
+    }
     tokens.set({ access: data.access, refresh: data.refresh });
     return true;
-  })().finally(() => {
+  }).finally(() => {
     if (refrescoEpoch === epoch) {
       refrescoEnVuelo = null;
       refrescoEpoch = null;
+      credencialesDelRefresco = null;
     }
   });
 
   return refrescoEnVuelo;
 }
 
-async function request(method, path, body, _retried = false, { multipart = false, blob = false, sinSimulacion = false } = {}) {
+async function cerrarSesionRemota(pendiente, captura) {
+  // Es un límite de espera local: un timeout no demuestra que el servidor
+  // haya cancelado el efecto ni confirma la revocación.
+  const limite = AbortSignal.timeout(10_000);
+  let alVencer;
+  const vencimiento = new Promise(resolve => {
+    alVencer = () => resolve(false);
+    limite.addEventListener("abort", alVencer, { once: true });
+  });
+  const cierre = (async () => {
+    if (pendiente) await pendiente.catch(() => null);
+    if (limite.aborted) return false;
+    try {
+      const respuesta = await fetch(`${BASE}/auth/logout/`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: captura.refresh }),
+        credentials: "omit", redirect: "error", cache: "no-store", signal: limite,
+      });
+      return respuesta.status === 204;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await Promise.race([cierre, vencimiento]);
+  } finally {
+    limite.removeEventListener("abort", alVencer);
+  }
+}
+
+async function request(method, path, body, _retried = false, { multipart = false, blob = false, sinSimulacion = false, publico = false } = {}) {
   const epoch = sessionEpoch;
   const headers = multipart ? {} : { "Content-Type": "application/json" };
   // Con cuál salió ESTE pedido. Se guarda para poder distinguir, al volver con
   // 401, si el token sigue siendo el mismo o si mientras tanto ya lo renovaron.
-  const usado = tokens.access;
+  const usado = publico ? null : tokens.access;
   if (usado) headers.Authorization = `Bearer ${usado}`;
-  encabezadoSimulacion(headers, sinSimulacion);
+  if (!publico) encabezadoSimulacion(headers, sinSimulacion);
 
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
     body: body != null ? (multipart ? body : JSON.stringify(body)) : undefined,
+    ...(publico ? { credentials: "omit", redirect: "error", cache: "no-store" } : {}),
   });
-  if (epoch !== sessionEpoch) throw new ApiError(401, null);
+  if (!publico && epoch !== sessionEpoch) throw new ApiError(401, null);
 
-  if (res.status === 401 && !_retried && tokens.refresh) {
+  if (!publico && res.status === 401 && !_retried && tokens.refresh) {
     /*
      * El pedido rezagado.
      *
@@ -236,23 +301,23 @@ async function request(method, path, body, _retried = false, { multipart = false
      * Si el token cambió, no hay nada que refrescar: alcanza con reintentar.
      */
     if (tokens.access && tokens.access !== usado) {
-      return request(method, path, body, true, { multipart, blob, sinSimulacion });
+      return request(method, path, body, true, { multipart, blob, sinSimulacion, publico });
     }
     const ok = await refreshAccess();
     if (epoch !== sessionEpoch) throw new ApiError(401, null);
-    if (ok) return request(method, path, body, true, { multipart, blob, sinSimulacion });
+    if (ok) return request(method, path, body, true, { multipart, blob, sinSimulacion, publico });
     tokens.clear();
   }
 
   if (res.ok && blob) {
     const archivo = await res.blob();
-    if (epoch !== sessionEpoch) throw new ApiError(401, null);
+    if (!publico && epoch !== sessionEpoch) throw new ApiError(401, null);
     return { blob: archivo, disposition: res.headers.get("Content-Disposition") };
   }
   const data = await parse(res);
-  if (epoch !== sessionEpoch) throw new ApiError(401, null);
+  if (!publico && epoch !== sessionEpoch) throw new ApiError(401, null);
   if (!res.ok) {
-    simulacionRechazada(res.status, data);
+    if (!publico) simulacionRechazada(res.status, data);
     throw new ApiError(res.status, data);
   }
   return data;
@@ -261,6 +326,10 @@ async function request(method, path, body, _retried = false, { multipart = false
 export const api = {
   get: (path) => request("GET", path),
   post: (path, body) => request("POST", path, body),
+  // Recuperación y canje no dependen de la sesión institucional del navegador.
+  public: {
+    post: (path, body) => request("POST", path, body, false, { publico: true }),
+  },
   // Con la identidad real del superusuario aunque haya una simulación activa.
   real: {
     get: (path) => request("GET", path, null, false, { sinSimulacion: true }),
@@ -318,13 +387,25 @@ export const api = {
   async downloadArchivo(ref, nombre = "archivo") {
     const epoch = sessionEpoch;
     const s = String(ref || "");
-    const url = /^https?:\/\//.test(s) || s.startsWith("/api/")
-      ? s
-      : `${BASE}/archivos/descargar/${s.replace(/^\/+/, "")}`;
+    // El estudio no decide a qué servidor enviamos el JWT o la simulación.
+    // Admitir claves y URLs del endpoint propio, nunca destinos arbitrarios.
+    let url;
+    try {
+      const base = new URL(`${BASE.replace(/\/+$/, "")}/`, window.location.href);
+      const archivos = new URL("archivos/descargar/", base);
+      url = new URL(/^[a-z][a-z\d+.-]*:|^\//i.test(s) ? s : `${archivos.href}${s}`, base);
+      if (!s || /[\u0000-\u001f\u007f\\]/.test(s)
+        || !["http:", "https:"].includes(url.protocol)
+        || url.origin !== base.origin || url.username || url.password
+        || !url.pathname.startsWith(archivos.pathname)
+        || url.pathname === archivos.pathname) throw new Error("Referencia inválida");
+    } catch {
+      throw new ApiError(400, { detail: "El archivo no tiene una referencia válida en el sistema. Consultá a la institución." });
+    }
     const headers = {};
     if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`;
     encabezadoSimulacion(headers);
-    let res = await fetch(url, { headers });
+    let res = await fetch(url.href, { headers, redirect: "error" });
     if (epoch !== sessionEpoch) throw new ApiError(401, null);
     if (res.status === 401 && tokens.refresh) {
       const ok = await refreshAccess();
@@ -332,7 +413,7 @@ export const api = {
         const retryHeaders = {};
         if (tokens.access) retryHeaders.Authorization = `Bearer ${tokens.access}`;
         encabezadoSimulacion(retryHeaders);
-        res = await fetch(url, { headers: retryHeaders });
+        res = await fetch(url.href, { headers: retryHeaders, redirect: "error" });
         if (epoch !== sessionEpoch) throw new ApiError(401, null);
       }
     }
@@ -367,5 +448,16 @@ export const api = {
   },
   logout() {
     tokens.clear();
+  },
+  cerrarSesion() {
+    const mismaSesion = refrescoEpoch === sessionEpoch;
+    const pendiente = mismaSesion ? refrescoEnVuelo : null;
+    const captura = mismaSesion && credencialesDelRefresco
+      ? credencialesDelRefresco : { refresh: tokens.refresh };
+    const habiaAccess = Boolean(tokens.access);
+    // Inmediato y único: ninguna continuación remota vuelve a tocar storage.
+    tokens.clear();
+    if (!captura.refresh) return Promise.resolve(habiaAccess ? false : null);
+    return cerrarSesionRemota(pendiente, captura).catch(() => false);
   },
 };

@@ -1,0 +1,16 @@
+# Contexto allowlist: no .env, media, logs, virtualenv ni credenciales locales.
+**
+!requirements.txt
+!manage.py
+!config/
+!config/**
+!apps/
+!apps/**
+**/.env*
+**/__pycache__/
+**/*.pyc
+**/*.log
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx

@@ -26,7 +26,17 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
+
+from apps.accounts.auth_views import (
+    LoginInstitucionalView,
+    LogoutInstitucionalView,
+    CambiarPasswordInstitucionalView,
+    CambioEmailInstitucionalView,
+    ConfirmarEmailInstitucionalView,
+    RecuperacionInstitucionalView,
+    RestablecerPasswordInstitucionalView,
+)
 
 from apps.casos.views import MisTareasView, PantallaLlamadosView, PuestoDetalleView
 from apps.common import DescargarArchivoView, SubirArchivoView
@@ -133,8 +143,14 @@ urlpatterns = [
     # de la institución cuando hay que integrar con lo que ya tienen.
     path("api/esquema/", SpectacularAPIView.as_view(), name="esquema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="esquema"), name="docs"),
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/auth/token/", LoginInstitucionalView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/logout/", LogoutInstitucionalView.as_view(), name="logout_institucional"),
+    path("api/auth/recuperacion/", RecuperacionInstitucionalView.as_view(), name="recuperacion_institucional"),
+    path("api/auth/restablecer/", RestablecerPasswordInstitucionalView.as_view(), name="restablecer_institucional"),
+    path("api/auth/cambiar-password/", CambiarPasswordInstitucionalView.as_view(), name="cambiar_password_institucional"),
+    path("api/auth/cambio-email/", CambioEmailInstitucionalView.as_view(), name="cambio_email_institucional"),
+    path("api/auth/confirmar-email/", ConfirmarEmailInstitucionalView.as_view(), name="confirmar_email_institucional"),
     path("api/archivos/", SubirArchivoView.as_view(), name="subir_archivo"),
     path("api/archivos/descargar/<path:ruta>", DescargarArchivoView.as_view(), name="descargar_archivo"),
     path("media/uploads/<path:ruta>", media_clinica_no_publica, name="media_clinica_no_publica"),

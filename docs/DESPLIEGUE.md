@@ -48,12 +48,14 @@ Lista de verificación. Cada punto tiene una forma concreta de fallar.
 
 Los adjuntos de registros de facturas del financiador están apagados por defecto
 (`SALUD_FACTURAS_ADJUNTOS=false`). Para habilitarlos, configurá
-`SALUD_FACTURAS_ADJUNTOS=true` y `SALUD_FACTURAS_ADJUNTOS_DIR` en un **volumen
-persistente privado**, accesible al backend y fuera de `MEDIA_ROOT`. No montes ese
-directorio en nginx ni lo sirvas por `/media/`: la descarga requiere autenticación
-y se audita en Django. El arranque rechaza una ruta dentro de `MEDIA_ROOT`.
-Respaldá ese volumen junto con la base; sin persistencia, un redespliegue pierde
-los archivos aunque conserve sus metadatos.
+`SALUD_FACTURAS_ADJUNTOS=true` y, sin bucket, `SALUD_FACTURAS_ADJUNTOS_DIR` en un
+**volumen persistente privado**, accesible al backend y fuera de `MEDIA_ROOT`. No
+montes ese directorio en nginx ni lo sirvas por `/media/`: la descarga requiere
+autenticación y se audita en Django. El arranque rechaza una ruta dentro de
+`MEDIA_ROOT`. Respaldá ese volumen junto con la base; sin persistencia, un
+redespliegue pierde los archivos aunque conserve sus metadatos. Con un bucket
+configurado, las facturas van al bucket bajo `facturas/`: ver
+[Archivos en un bucket S3](#archivos-en-un-bucket-s3).
 
 Están todas documentadas en [`.env.example`](../.env.example). Las que no pueden
 quedar en su valor de ejemplo:
@@ -313,6 +315,99 @@ permisos y audita. Si algún día hace falta media pública (logos, por ejemplo)
 va en otra ruta y otro directorio, nunca reabriendo `/media/` en nginx. Un
 proxy delante que no sea el nginx del repositorio tiene que aplicar la misma
 regla.
+
+### Archivos en un bucket S3
+
+Un servicio sin disco persistente (Railway sin volumen) pierde los archivos en
+cada redespliegue. Para eso el backend puede guardar los adjuntos clínicos y los
+de facturas en un **bucket S3 compatible y privado** (#171). Se activa solo con
+variables; sin ellas todo sigue en disco.
+
+| Variable | Qué es |
+|---|---|
+| `BUCKET` | Nombre del bucket para la API S3 (en Railway, `BUCKET`, no `RAILWAY_BUCKET_NAME`). |
+| `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY` | Credenciales. Solo en las variables del servicio, nunca en el repositorio. |
+| `ENDPOINT` | Endpoint S3, por ejemplo `https://t3.storageapi.dev` en Railway. |
+| `REGION` | Opcional, `auto` por defecto (Railway). |
+| `BUCKET_ADDRESSING_STYLE` | Opcional: `virtual` (por defecto) o `path` (buckets viejos de Railway, MinIO). |
+
+Las cuatro primeras van juntas: con algunas sí y otras no, el backend **no
+arranca**, para no caer a disco en silencio.
+
+Cómo queda guardado:
+
+- Los adjuntos clínicos (estudios, adjuntos de casos, evidencia de
+  consentimientos) con la clave de siempre, `uploads/<institución>/<uuid>.<ext>`.
+  Las facturas bajo `facturas/<uuid>.<ext>`.
+- **La base guarda claves de objeto, nunca URLs del proveedor.** Por eso migrar es
+  copiar objetos y cambiar variables.
+- El bucket es privado: sin ACL pública ni URLs prefirmadas. **La descarga pasa
+  siempre por Django**, que verifica el permiso, registra el acceso con el
+  paciente y transmite el archivo (`FileResponse`), igual que con el disco. No
+  hay redirecciones: el cliente las rechaza a propósito (AUD-002). Costo: cada
+  descarga ocupa un worker de gunicorn mientras dura (los archivos tienen un
+  máximo de 10 MB).
+
+**Crear el bucket en Railway** (dueño del proyecto, desde el dashboard):
+
+1. Antes, mirar en el dashboard cuánto del crédito del plan consumen hoy la base
+   y los servicios. Si pasa de ~80 %, conviene pasar a Hobby antes de sumar el
+   bucket (decisión P2 del #171).
+2. Crear un Storage Bucket en el proyecto, según la documentación de Railway.
+   Railway no ofrece buckets públicos: queda privado.
+3. En el servicio del backend, agregar variables que referencien las del bucket,
+   por ejemplo `BUCKET=${{<nombre del bucket>.BUCKET}}` y lo mismo para
+   `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `ENDPOINT` y `REGION`. Si la pestaña
+   *Credentials* del bucket indica *path-style*, agregar
+   `BUCKET_ADDRESSING_STYLE=path`.
+4. En la demo, `SALUD_FACTURAS_ADJUNTOS=true` para habilitar los adjuntos de
+   facturas.
+5. Redesplegar. Comprobar subiendo un adjunto clínico y uno de factura,
+   redesplegando otra vez y descargándolos: tienen que dar el mismo sha256.
+
+Los archivos que ya estaban en el disco del contenedor **no se copian solos** al
+bucket: si hay que conservarlos, se suben con la misma clave (`uploads/…`) antes
+de activar las variables. En la demo no hace falta, porque la recarga los
+reemplaza.
+
+**Recarga de la demo.** Con `ENTORNO=demo` y el bucket configurado,
+`seed_entorno_demo` también borra los archivos de la app (`uploads/` y
+`facturas/`) que había antes de la carga. Los lista antes de empezar y los borra
+recién cuando la carga confirmó: si la carga falla, la base y los archivos
+quedan como estaban. Lo que no esté bajo esos prefijos no se toca. Con
+`ENTORNO=produccion` el comando se niega antes de tocar nada, y con disco local
+no borra archivos.
+
+**Migrar a otro proveedor o a la infraestructura propia.** Copiar los objetos y
+cambiar las variables, sin tocar la base. Por ejemplo con
+[rclone](https://rclone.org/s3/), con dos remotos S3 configurados (`origen` y
+`destino`):
+
+```bash
+# 1. Copia inicial con el sistema andando.
+rclone sync origen:<bucket> destino:<bucket-nuevo> --checksum
+# 2. Ventana corta: frenar las subidas (o el servicio), volver a sincronizar y
+#    comparar.
+rclone sync origen:<bucket> destino:<bucket-nuevo> --checksum
+rclone check origen:<bucket> destino:<bucket-nuevo>
+# 3. Cambiar BUCKET, ACCESS_KEY_ID, SECRET_ACCESS_KEY, ENDPOINT (y REGION) en el
+#    servicio y redesplegar.
+```
+
+Para volver atrás alcanza con restaurar las variables anteriores mientras el
+bucket viejo exista.
+
+**Respaldo y datos reales.** Railway no respalda los buckets (uno borrado se
+puede recuperar durante 52 h). Mientras sea demo, con datos ficticios, se acepta
+sin respaldo (decisión P3 del #171). **Antes de subir datos reales de
+pacientes:** el bucket necesita copia a otro destino o haber migrado a la
+infraestructura propia, y como Railway Buckets guarda los datos fuera de
+Argentina hay que validar la transferencia internacional (Ley 25.326, art. 12) o
+migrar antes. Railway tampoco ofrece cifrado configurable, versionado ni
+bloqueo de objetos: si producción exige inmutabilidad (por ejemplo, para la
+evidencia de consentimientos), hace falta otro proveedor.
+
+Referencia: [Railway Storage Buckets](https://docs.railway.com/storage-buckets).
 
 ## 7. Qué no se puede deshacer
 

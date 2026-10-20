@@ -19,7 +19,9 @@ import logging
 from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from apps.http_seguro import abrir_sin_redirecciones as urlopen
 
 log = logging.getLogger(__name__)
 
@@ -83,8 +85,9 @@ def buscar_paciente_con_motivo(base, documento, sistema=None, timeout=6):
     # consultaba por una persona distinta de la que se pidió.
     # `|`, `:` y `/` son legales dentro de un valor de query y son justamente los
     # que forman un `system` (`http://www.renaper.gob.ar/dni|30111222`): dejarlos
-    # tal cual mantiene la URL legible en un log. Lo que se codifica es lo que
-    # rompe —espacios, `#`, `&`, `=`—.
+    # tal cual mantiene el formato del identificador FHIR. Lo que se codifica
+    # es lo que rompe —espacios, `#`, `&`, `=`—. La URL contiene datos personales
+    # y no debe copiarse a los logs, tampoco cuando falla la consulta.
     crudo_id = f"{sistema}|{documento}" if sistema else documento
     url = f"{base.rstrip('/')}/Patient?identifier={quote(crudo_id, safe='|:/')}"
 
@@ -97,13 +100,13 @@ def buscar_paciente_con_motivo(base, documento, sistema=None, timeout=6):
             crudo = r.read(256_000).decode("utf-8", "replace")
         datos = json.loads(crudo) if crudo.strip() else {}
     except HTTPError as e:
-        log.info("padrón FHIR rechazó la consulta (%s): %s", e.code, url)
+        log.info("padrón FHIR rechazó la consulta (%s)", e.code)
         return None, "no_autorizado" if e.code in (401, 403) else "sin_conexion"
     except (URLError, TimeoutError, OSError, HTTPException) as e:
-        log.info("padrón FHIR no respondió (%s): %s", type(e).__name__, url)
+        log.info("padrón FHIR no respondió (%s)", type(e).__name__)
         return None, "sin_conexion"
     except ValueError as e:
-        log.info("padrón FHIR contestó algo ilegible (%s): %s", type(e).__name__, url)
+        log.info("padrón FHIR contestó algo ilegible (%s)", type(e).__name__)
         return None, "respuesta_invalida"
 
     if not isinstance(datos, dict):

@@ -42,16 +42,17 @@ class Command(BaseCommand):
                 )
                 continue
 
-            self.stdout.write(f"  {r.nombre:<24} {cuantos:>7} para borrar ({r.dias} días)")
+            accion = "para vaciar" if r.vaciar else "para borrar"
+            self.stdout.write(f"  {r.nombre:<24} {cuantos:>7} {accion} ({r.dias} días)")
             if aplicar and cuantos:
                 with transaction.atomic():
-                    # `delete()` sobre el queryset y no uno por uno: son miles de
-                    # filas y el objetivo es que esto se pueda correr seguido.
-                    r.vencidos().delete()
+                    # Sobre el queryset y no uno por uno: son miles de filas y
+                    # el objetivo es que esto se pueda correr seguido.
+                    r.aplicar()
                 total += cuantos
 
         if aplicar:
-            self.stdout.write(self.style.SUCCESS(f"\n{total} registro(s) borrado(s)."))
+            self.stdout.write(self.style.SUCCESS(f"\n{total} registro(s) borrado(s) o vaciado(s)."))
         else:
             self.stdout.write(
                 "\nEn seco: no se borró nada. Agregá --aplicar para hacerlo.\n"

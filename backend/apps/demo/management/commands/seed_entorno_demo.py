@@ -22,6 +22,12 @@ Todo corre en UNA transacción, vaciado incluido: si un paso falla, la base
 queda como estaba y no a medio cargar. Mientras corre, la aplicación espera:
 el vaciado bloquea todas las tablas hasta el final (entre 5 y 7 minutos).
 
+Con `ENTORNO=demo` y los archivos en el bucket (#171), también se borran los
+archivos de la app que había antes de la carga (`apps.demo.archivos`). Se
+listan antes de cargar y se borran recién después de que la carga confirmó:
+si un paso falla, la base vuelve atrás y sus archivos siguen ahí; y los que
+crea la carga nueva no están en la lista. En disco local no se borra nada.
+
 Requiere PostgreSQL y `ENTORNO` distinto de `produccion`. Las fechas son
 relativas al momento de la carga (ver `apps.demo.calendario`), y lo pendiente
 —casos abiertos, autorizaciones con 48 h de plazo, pacientes en la sala de
@@ -49,6 +55,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
 
+from apps.demo import archivos
 from apps.demo.claves import CLAVE_POR_DEFECTO, usa_clave_por_defecto
 from apps.demo.entorno import exigir_entorno_de_prueba
 from apps.demo.trabajo import INFORMATIVOS, trabajo_por_usuario
@@ -91,15 +98,18 @@ class Command(BaseCommand):
         base = connection.settings_dict.get("NAME")
         ancla = self._ancla(opciones["ancla"])
         if opciones["interactive"]:
-            respuesta = input(f"Esto BORRA todos los datos de la base «{base}» y carga la demo. "
+            bucket = " y los archivos de la app en el bucket" if archivos.corresponde_vaciar() else ""
+            respuesta = input(f"Esto BORRA todos los datos de la base «{base}»{bucket} y carga la demo. "
                               "Escribí «vaciar» para seguir: ")
             if respuesta.strip().lower() != "vaciar":
                 raise CommandError("Cancelado. No se modificó ningún dato.")
 
+        anteriores = archivos.claves_a_vaciar()
         inicio = time.monotonic()
         with self._reloj_en(ancla):
             self._cargar(base, opciones)
             self.stdout.write(self.style.SUCCESS(f"\nEntorno de demo cargado en {time.monotonic() - inicio:.0f} s.\n"))
+            self._vaciar_archivos(anteriores)
             self._resumen()
         if ancla:
             self.stdout.write(self.style.WARNING(
@@ -158,6 +168,18 @@ class Command(BaseCommand):
                 for linea in lineas:
                     if "trabajo para" in linea:
                         self.stdout.write(self.style.WARNING(f"    {linea.strip()}"))
+
+    def _vaciar_archivos(self, anteriores):
+        if not anteriores:
+            return
+        fallidas = archivos.borrar(anteriores)
+        self.stdout.write(f"Archivos de la carga anterior borrados del bucket: {len(anteriores) - len(fallidas)} "
+                          f"de {len(anteriores)} archivos.")
+        if fallidas:
+            self.stdout.write(self.style.WARNING(
+                f"No se pudieron borrar {len(fallidas)} archivos (ver el log). Ninguna fila los referencia: "
+                "los borra la próxima recarga."
+            ))
 
     def _resumen(self):
         filas = trabajo_por_usuario()
