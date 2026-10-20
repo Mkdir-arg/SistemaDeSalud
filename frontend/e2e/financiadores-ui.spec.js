@@ -1495,3 +1495,85 @@ test("búsqueda de afiliado en factura ignora espacios y recorta el criterio", a
   await expect(dialogo.getByRole("combobox", { name: "Afiliación (opcional)" })).toContainText("Persona Ficticia");
   expect(consultas).toEqual(["Ficticia"]);
 });
+
+
+test("importación muestra instrucciones en ayuda sin repetir el financiador", async ({ page }) => {
+  await escenario(page);
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  const dialogo = page.getByRole("dialog");
+  await expect(dialogo).not.toContainText("Mutual del Río");
+  await expect(dialogo.getByText(/La plantilla incluye identidad/)).toHaveCount(0);
+  await dialogo.getByRole("button", { name: "Ayuda sobre la plantilla", exact: true }).click();
+  await expect(dialogo.getByRole("tooltip")).toContainText("Las celdas nuevas vacías no borran datos existentes");
+  await page.keyboard.press("Escape");
+  await expect(dialogo).toBeVisible();
+  await expect(dialogo.getByRole("tooltip")).toHaveCount(0);
+  await dialogo.getByLabel("Formato del archivo", { exact: true }).selectOption("ostel");
+  await expect(dialogo).toContainText("Por ahora podés revisar el archivo, pero no importar afiliados");
+  await expect(dialogo).not.toContainText("La carga agrega o actualiza afiliados");
+  await expect(dialogo.getByRole("button", { name: "Revisar archivo", exact: true })).toBeDisabled();
+});
+
+test("formato elegido conserva preferencia y descarta archivo al cambiar", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/plantilla/**", (route) => {
+    consultas.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: "xlsx-ficticio" });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  const abrir = () => page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await abrir();
+  const selector = page.getByLabel("Formato del archivo", { exact: true });
+  await selector.selectOption("ostel");
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar plantilla", exact: true }).click();
+  await descarga;
+  expect(consultas).toEqual([{ tipo: "padron", formato: "ostel" }]);
+  await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "ficticio.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
+  await expect(page.getByRole("button", { name: "Revisar archivo", exact: true })).toBeEnabled();
+  await selector.selectOption("sistema");
+  await selector.selectOption("ostel");
+  await expect(page.getByLabel("Archivo Excel (.xlsx)", { exact: true })).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await abrir();
+  await expect(selector).toHaveValue("ostel");
+  await page.reload();
+  await abrir();
+  await expect(selector).toHaveValue("ostel");
+});
+
+
+test("historial vacío permanece entre formatos sin paginación", async ({ page }) => {
+  await escenario(page);
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([]) }));
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  const historial = page.getByRole("region", { name: "Importaciones registradas" });
+  for (const formato of ["sistema", "ostel"]) {
+    await page.getByLabel("Formato del archivo", { exact: true }).selectOption(formato);
+    await expect(historial).toContainText("Todavía no hay importaciones de este tipo.");
+    await expect(historial).not.toContainText("Página 1");
+    await expect(historial.getByRole("button", { name: "Anterior", exact: true })).toHaveCount(0);
+    await expect(historial.getByRole("button", { name: "Siguiente", exact: true })).toHaveCount(0);
+  }
+});
+
+test("historial permite retomar lote desde OSTEL sin cambiar preferencia guardada", async ({ page }) => {
+  await escenario(page);
+  const lote = { id: 99, tipo: "padron", estado: "preview", resumen: { total: 1, valida: 1, aplicada: 0, rechazada: 0 }, filas: [] };
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([lote]) }));
+  await page.goto("/financiadores/padron?financiador=21");
+  const abrir = () => page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await abrir();
+  const selector = page.getByLabel("Formato del archivo", { exact: true });
+  await selector.selectOption("ostel");
+  await page.getByRole("region", { name: "Importaciones registradas" }).getByRole("button", { name: /Importación 99/ }).click();
+  await expect(selector).toHaveValue("sistema");
+  await expect(page.getByRole("region", { name: "Resumen de importación" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Importar 1 fila válida", exact: true })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await abrir();
+  await expect(selector).toHaveValue("ostel");
+});

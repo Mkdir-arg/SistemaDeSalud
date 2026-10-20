@@ -144,7 +144,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
       {tab === "autorizaciones" ? <AutorizacionesFinanciador organizacion={organizacion} scope={scope} /> : tab === "actividad" ? <ActividadFinanciador organizacion={organizacion} scope={scope} /> : <ListaPortal key={tab} recurso={tab} organizacion={organizacion} scope={scope} admin={admin} operador={operador} plataforma={plataforma} planes={planes.data || []} catalogo={catalogo.data || []} actualizado={actualizado} />}
     </section>
     {modal === "crear" && <CrearRegistro recurso={tab} organizacion={organizacion} scope={scope} planes={planes} catalogo={catalogo} titulo={titulos[tab]} onClose={() => setModal(null)} onGuardado={async (resultado) => { if (resultado?.activacion) setActivacion(resultado.activacion); await actualizado("Registro guardado."); }} />}
-    {modal === "importar" && <ImportacionFinanciador organizacion={organizacion} tipo={tab} scope={scope} onClose={() => setModal(null)} onAplicado={() => Promise.all([qc.invalidateQueries({ queryKey: scope }), qc.invalidateQueries({ queryKey: ["financiador", usuarioId, organizacion.id] })])} />}
+    {modal === "importar" && <ImportacionFinanciador usuarioId={usuarioId} organizacion={organizacion} tipo={tab} scope={scope} onClose={() => setModal(null)} onAplicado={() => Promise.all([qc.invalidateQueries({ queryKey: scope }), qc.invalidateQueries({ queryKey: ["financiador", usuarioId, organizacion.id] })])} />}
   </>;
 }
 
