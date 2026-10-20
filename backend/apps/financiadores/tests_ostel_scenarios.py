@@ -3,6 +3,8 @@
 from dataclasses import FrozenInstanceError
 from datetime import date, datetime
 from io import BytesIO
+from hashlib import sha256
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -45,6 +47,8 @@ class EscenariosOSTELTests(unittest.TestCase):
             "referencia_no_aaa", "cuil_invalido", "documento_discordante",
             "filas_vacias", "tipos_mixtos", "baja_repetida", "posible_reingreso",
             "vencimiento_lejano", "baja_anterior_ingreso", "lote_parcial",
+            "referencia_ambigua", "fila_repetida", "codigos_sin_homologar",
+            "contactos_ausentes", "texto_literal", "fuentes_discordantes",
         })
         self.assertEqual(len(generar_escenarios()), len(self.catalogo))
         for escenario in self.catalogo.values():
@@ -67,7 +71,8 @@ class EscenariosOSTELTests(unittest.TestCase):
                         continue
                     datos = campos(fila)
                     self.assertTrue(datos["APENOM"].startswith("PERSONA FICTICIA OSTEL "))
-                    self.assertTrue(datos["EMAIL1"].endswith("@example.invalid"))
+                    if datos["EMAIL1"] is not None:
+                        self.assertTrue(datos["EMAIL1"].endswith("@example.invalid"))
                     self.assertIsNone(datos["A_TEL1"])
                     self.assertIsNone(datos["CELU1"])
 
@@ -129,6 +134,41 @@ class EscenariosOSTELTests(unittest.TestCase):
         self.assertLess(c["FECBAJ"], c["FECING"])
         self.assertEqual(len({f["NROAFI"] for f in (a, b, c)}), 3)
 
+    def test_referencia_ambigua_no_equivale_a_fila_duplicada(self):
+        a, b, familiar = self.filas("referencia_ambigua")
+        self.assertEqual(a["NROAFI"], familiar["NROREF"])
+        self.assertEqual(b["NROAFI"], familiar["NROREF"])
+        self.assertEqual(len({f["NRODOC"] for f in (a, b, familiar)}), 3)
+        duplicadas = self.catalogo["fila_repetida"].lotes[0].filas
+        self.assertEqual(len(duplicadas), 2)
+        self.assertEqual(duplicadas[0], duplicadas[1])
+
+    def test_codigos_contactos_y_texto_sin_inferencias(self):
+        codigos = self.filas("codigos_sin_homologar")[0]
+        for columna, valor in {
+            "NUMERO": "000042", "TIPO": "TIPO-FICTICIO", "TIPODOC": "DOC-FICTICIO",
+            "CODPAR": "PAR-FICTICIO", "MOTIVO": "MOT-FICTICIO", "INCAPA": "INC-FICTICIA",
+        }.items():
+            self.assertEqual(codigos[columna], valor)
+        ausentes = self.filas("contactos_ausentes")[0]
+        for columna in (
+            "A_CALLE", "A_NRO", "A_PISO", "A_DPTO", "A_TEL1", "CELU1", "EMAIL1",
+            "CODPOS", "DESLOCA", "CODPROV", "CODZON", "CODLOCA",
+        ):
+            self.assertIsNone(ausentes[columna])
+        texto = self.filas("texto_literal")[0]
+        self.assertEqual(texto["NROAFI"], " 000185-Ñ ")
+        self.assertEqual(texto["NUMERO"], "000042")
+        self.assertEqual(texto["NROREF"], "REF-FICTICIA/α")
+
+    def test_fuentes_discordantes_no_sugieren_orden_temporal(self):
+        a, b = (self.filas("fuentes_discordantes", i)[0] for i in (0, 1))
+        for columna in ("NROAFI", "NRODOC", "CUIL", "FECING"):
+            self.assertEqual(a[columna], b[columna])
+        self.assertIsNotNone(a["FECBAJ"])
+        self.assertIsNone(b["FECBAJ"])
+        self.assertNotEqual(a["COD_PLAN"], b["COD_PLAN"])
+
     def test_xlsx_ambas_hojas_todos_los_casos(self):
         for escenario in self.catalogo.values():
             for lote in escenario.lotes:
@@ -177,17 +217,38 @@ class EscenariosOSTELTests(unittest.TestCase):
                     for lote in escenario.lotes
                 }
                 self.assertEqual({p.relative_to(destino) for p in destino.rglob("*.xlsx")}, rutas)
+                manifiesto = json.loads((destino / "manifiesto.json").read_text(encoding="utf-8"))
+                self.assertEqual(manifiesto["columnas"], list(COLUMNAS))
+                self.assertEqual(manifiesto["aceptacion_ostel"], "pendiente")
+                entradas = manifiesto["archivos"]
+                self.assertEqual(len(entradas), len(rutas))
+                self.assertEqual({e["archivo"] for e in entradas}, {p.as_posix() for p in rutas})
+                indice = {e["archivo"]: e for e in entradas}
                 for ruta in rutas:
                     libro = load_workbook(destino / ruta)
                     try:
                         self.assertEqual(libro.sheetnames, [ruta.parts[0]])
                         self.assertEqual(next(libro.active.values), COLUMNAS)
+                        entrada = indice[ruta.as_posix()]
+                        self.assertEqual(entrada["hoja"], libro.active.title)
+                        filas = list(libro.active.values)[1:]
+                        self.assertEqual(entrada["filas_fisicas_sin_encabezado"], len(filas))
+                        self.assertEqual(entrada["filas_excel_con_datos"], [
+                            i for i, fila in enumerate(filas, 2)
+                            if any(v is not None for v in fila)
+                        ])
+                        self.assertEqual(entrada["sha256"], sha256((destino / ruta).read_bytes()).hexdigest())
+                        escenario = self.catalogo[entrada["escenario"]]
+                        esperado = escenario.lotes[entrada["orden_en_escenario"] - 1]
+                        self.assertEqual(ruta.stem, esperado.nombre)
                     finally:
                         libro.close()
                 original = {ruta: (destino / ruta).read_bytes() for ruta in rutas}
+                manifiesto_original = (destino / "manifiesto.json").read_bytes()
                 with self.assertRaises(FileExistsError):
                     exportar_temporales()
                 self.assertEqual(original, {ruta: (destino / ruta).read_bytes() for ruta in rutas})
+                self.assertEqual(manifiesto_original, (destino / "manifiesto.json").read_bytes())
 
     def test_texto_literal_no_formula(self):
         fila = list(self.catalogo["base"].lotes[0].filas[0])

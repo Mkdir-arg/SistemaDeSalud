@@ -103,6 +103,25 @@ def generar_escenarios():
         caso("baja_anterior_ingreso", _persona(1, FECBAJ=date(2025, 12, 31))),
         caso("lote_parcial", _persona(1), _persona(2, CUIL=invalido_parcial),
              _persona(3, FECBAJ=date(2025, 12, 31))),
+        caso("referencia_ambigua", _persona(1), _persona(2, NROAFI=referencia),
+             _persona(3, NROREF=referencia, CODPAR="01")),
+        caso("fila_repetida", _persona(1), _persona(1)),
+        caso("codigos_sin_homologar", _persona(
+            1, NUMERO="000042", TIPO="TIPO-FICTICIO", TIPODOC="DOC-FICTICIO",
+            CODPAR="PAR-FICTICIO", MOTIVO="MOT-FICTICIO", INCAPA="INC-FICTICIA",
+        )),
+        caso("contactos_ausentes", _persona(
+            1, A_CALLE=None, A_NRO=None, EMAIL1=None, CODPOS=None, DESLOCA=None,
+            CODPROV=None, CODZON=None, CODLOCA=None,
+        )),
+        caso("texto_literal", _persona(
+            1, NROAFI=" 000185-Ñ ", NUMERO="000042", NROREF="REF-FICTICIA/α",
+            APENOM="PERSONA FICTICIA OSTEL ÑANDÚ",
+        )),
+        Escenario("fuentes_discordantes", (
+            Lote("01_fuente_a", (baja,)),
+            Lote("02_fuente_b", (_persona(1, COD_PLAN="OTRO-PLAN-FICTICIO"),)),
+        )),
     )
 
 
@@ -139,22 +158,47 @@ def generar_xlsx(lote, *, hoja="Hoja1"):
 
 
 def exportar_temporales():
-    """Prepara los 16 lotes en ambas hojas en una carpeta temporal nueva.
+    """Prepara los lotes en ambas hojas y un manifiesto técnico de fixtures.
 
     La carpeta permanece disponible para inspección manual; quien llama debe
     eliminarla cuando termine. No recibe fuentes ni sobrescribe datos existentes.
     """
     from pathlib import Path
     from tempfile import mkdtemp
+    from hashlib import sha256
+    import json
 
     destino = Path(mkdtemp(prefix="ostel-185-ficticio-"))
+    archivos = []
     for hoja in HOJAS:
         for escenario in generar_escenarios():
             carpeta = destino / hoja / escenario.codigo
             carpeta.mkdir(parents=True)
-            for lote in escenario.lotes:
-                with (carpeta / f"{lote.nombre}.xlsx").open("xb") as archivo:
-                    archivo.write(generar_xlsx(lote, hoja=hoja))
+            for orden, lote in enumerate(escenario.lotes, start=1):
+                ruta = carpeta / f"{lote.nombre}.xlsx"
+                contenido = generar_xlsx(lote, hoja=hoja)
+                with ruta.open("xb") as archivo:
+                    archivo.write(contenido)
+                archivos.append({
+                    "archivo": ruta.relative_to(destino).as_posix(),
+                    "escenario": escenario.codigo,
+                    "orden_en_escenario": orden,
+                    "hoja": hoja,
+                    "sha256": sha256(contenido).hexdigest(),
+                    "filas_fisicas_sin_encabezado": len(lote.filas),
+                    "filas_excel_con_datos": [
+                        numero for numero, fila in enumerate(lote.filas, start=2)
+                        if any(valor is not None for valor in fila)
+                    ],
+                })
+    with (destino / "manifiesto.json").open("x", encoding="utf-8") as archivo:
+        json.dump({
+            "version_fixture": 1,
+            "alcance": "Datos ficticios; expectativas de entrada, no resultados del lector.",
+            "columnas": COLUMNAS,
+            "aceptacion_ostel": "pendiente",
+            "archivos": archivos,
+        }, archivo, ensure_ascii=False, indent=2)
     return destino
 
 

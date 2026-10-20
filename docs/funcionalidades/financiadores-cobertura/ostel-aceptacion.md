@@ -7,7 +7,8 @@ basado en el issue, [#142](https://github.com/Mkdir-arg/SistemaDeSalud/issues/14
 Base inspeccionada: `a91faf46290e3f71eb59fc81ba78f04b809d8d39`.
 
 **Estado: evidencia del generador disponible; circuito integral y aceptación
-humana pendientes.** No se modificó GitHub ni Roadmap. Este documento no
+humana pendientes.** Publicación técnica en [PR draft #186](https://github.com/Mkdir-arg/SistemaDeSalud/pull/186);
+Roadmap sin cambios. Este documento no
 homologa códigos, define derechos ni autoriza incorporar datos al padrón.
 
 ## Alcance y plan ejecutable
@@ -37,8 +38,19 @@ API local de fixtures en `apps.financiadores.ostel_synthetic`:
 - Cada `Lote(nombre, filas)` contiene tuplas de 39 celdas en ese orden.
 - `generar_xlsx(lote, hoja="Hoja1")`: bytes XLSX; admite también `afimotook`.
   No escribe en disco. Se puede usar `BytesIO` o un directorio temporal.
-- `exportar_temporales()`: escribe 32 XLSX en una carpeta temporal nueva y
+- `exportar_temporales()`: escribe 46 XLSX y `manifiesto.json` en una carpeta temporal nueva y
   devuelve su ruta. No sobrescribe archivos; no modifica el repositorio.
+
+El manifiesto enumera los 20 escenarios y sus 23 lotes en ambas hojas:
+ruta relativa, orden de lote dentro de cada escenario, hoja, SHA-256 de los
+bytes exportados, cantidad de filas físicas sin encabezado y coordenadas Excel
+de filas con datos. Es un inventario de **entradas esperadas**, no un informe
+de ejecución del lector ni de aceptación. `aceptacion_ostel` permanece pendiente.
+El orden sirve para reproducir una secuencia; no establece precedencia de
+fuentes ni demuestra cuál archivo es cronológicamente posterior.
+El hash identifica ese archivo concreto; puede variar entre exportaciones por
+los metadatos XLSX aunque sus valores sean iguales. No usarlo como identidad
+de persona, clave de movimiento ni mecanismo de deduplicación de negocio.
 
 ### Prueba manual local
 
@@ -139,13 +151,19 @@ los datos generados; no son resultados ya obtenidos de #180 ni del importador.
 | `vencimiento_lejano` | FECVTO = 2099-12-31 | Centinela, vigencia real u otro significado; no fijar umbral |
 | `baja_anterior_ingreso` | FECBAJ = 2025-12-31, menor que FECING = 2026-01-01 | Rechazo, advertencia o interpretación histórica |
 | `lote_parcial` | Tres personas: control estructural, CUIL inválido coincidente con documento y fechas conflictivas | Aplicación parcial frente a atomicidad, revisión, reintentos y resumen |
+| `referencia_ambigua` | Dos personas distintas comparten NROAFI; una tercera usa ese valor en NROREF | Clave familiar inequívoca; no elegir la primera coincidencia |
+| `fila_repetida` | Dos filas idénticas en un mismo archivo | No confundir duplicado técnico con persona repetida o movimiento ya aplicado |
+| `codigos_sin_homologar` | NUMERO `000042` y códigos explícitamente ficticios en TIPO, TIPODOC, CODPAR, MOTIVO e INCAPA | Diccionario, equivalencias, obligatoriedad y severidad |
+| `contactos_ausentes` | Misma identidad control, domicilio y contactos vacíos | No inventar valores ni exigir completitud sin una regla aprobada |
+| `texto_literal` | NROAFI con espacios, ceros y Ñ; NUMERO con ceros y NROREF con Unicode | Normalización permitida y validez del identificador |
+| `fuentes_discordantes` | Dos archivos con misma identidad y FECING; difieren en plan y presencia de baja | Fecha de corte, foto/movimientos, corrección y fuente prevalente; no asumir que el segundo gana |
 
 El lote parcial mezcla calidades de entrada; no acredita que alguna fila sea
 aplicable. FECBAJ y FECVTO no provocan bajas ni restricciones en estas fixtures.
 
 ## Evidencia de esta entrega
 
-Comando focalizado indicado arriba: **14 pruebas aprobadas** el 2026-10-20.
+Comando focalizado indicado arriba: **17 pruebas aprobadas** el 2026-10-20.
 Sin Django, DB, Docker ni suite completa. Las pruebas de serialización usan
 memoria y la exportación usa una carpeta temporal eliminada al terminar.
 No se versionan binarios. El servidor de descargas para prueba manual es
@@ -166,14 +184,75 @@ La revisión estática de calidad y especificación no encontró otros bloqueant
 | Vacías y tipos preservados | `test_vacias_y_tipos_sin_normalizacion` |
 | Baja repetida y posible reingreso | `test_secuencias_entre_archivos` |
 | Fechas conflictivas y mezcla parcial | `test_fechas_y_lote_parcial` |
-| Dos hojas y todos los lotes XLSX | `test_xlsx_ambas_hojas_todos_los_casos`: 16 lotes × 2 hojas |
+| Dos hojas y todos los lotes XLSX | `test_xlsx_ambas_hojas_todos_los_casos`: 23 lotes × 2 hojas |
 | Errores de uso y texto literal | `test_exportador_rechaza_hoja_y_ancho_incorrectos`, `test_texto_literal_no_formula` |
 | Vacías finales, lote de sólo vacías y lote sin filas | `test_xlsx_ambas_hojas_todos_los_casos`, `test_xlsx_solo_filas_vacias_y_lote_sin_filas` |
-| Paquete manual de 32 XLSX sin sobrescritura | `test_exportacion_temporal_completa_sin_sobrescritura` |
+| Paquete manual de 46 XLSX y manifiesto sin sobrescritura, hashes y coordenadas comprobados contra los archivos leídos | `test_exportacion_temporal_completa_sin_sobrescritura` |
+| Referencia ambigua frente a duplicación exacta | `test_referencia_ambigua_no_equivale_a_fila_duplicada` |
+| Códigos opacos, contactos vacíos, ceros, espacios y Unicode | `test_codigos_contactos_y_texto_sin_inferencias` y round-trip XLSX |
+| Fuentes discordantes sin precedencia ni reingreso inferidos | `test_fuentes_discordantes_no_sugieren_orden_temporal` |
 
 Estas pruebas verifican el generador. No prueban rechazo, aceptación, conteos
 ni reportes de un lector externo. La prueba de marcas ficticias no demuestra
 por sí sola procedencia: ésta se sustenta en la construcción local sin entradas.
+
+## Qué bloquea el mensaje enviado a OSTEL
+
+Fuente: mensaje aportado por el usuario en esta sesión. No hay respuesta de
+OSTEL incorporada. Se reutiliza este documento como registro de pendientes,
+sin crear un tracker paralelo. La implementación de #180 continúa a cargo de
+otro agente: no se modifica, no se fija su API y no se importa desde estas pruebas.
+
+| Punto enviado | Preparado sin respuesta | Qué no debe implementarse por inferencia |
+|---|---|---|
+| 1. Diccionario de columnas/códigos | Esquema literal, valores opacos, ceros y tipos preservados | Mapear NUMERO/NROAFI/NROREF, regímenes, planes, parentesco, incapacidad o motivos |
+| 2. Identificación y grupo familiar | Número compartido, documentos discordantes, referencias presente/ausente/no AAA/ambigua | Clave de persona, fusión de identidades, titularidad o vinculación familiar |
+| 3. Significado de fechas | Fechas nativas/textuales, baja anterior y vencimiento lejano | Inicio/fin de cobertura, centinelas y rechazo de fechas por regla de negocio |
+| 4. Alcance/corte de archivos | Baja repetida, posible reingreso y fuentes discordantes reproducibles | Asumir fotografía/movimientos, fecha de corte, prevalencia, reactivación o borrado de ausentes |
+| 5. Estados y primera entrega | Separación explícita entre entrada técnica y aplicación | Traducir estados a derechos, restringir cobertura o otorgar facultades para autorizar cambios |
+
+Los datos agregados del mensaje (por ejemplo, diez coincidencias entre fuentes)
+no se reconstruyen ni se derivan a identidades sintéticas. Cada caso es inventado
+desde cero y sólo reproduce la clase de problema.
+
+Los temas no bloqueantes para esta preparación —pantallas/filtros/reportes,
+legajo/adjuntos, credenciales, completitud de contactos, frecuencia/responsable
+e integraciones— siguen abiertos para etapas posteriores. No son autorización
+para añadir UI, almacenamiento, emisores o conexiones externas ahora.
+
+## Próximo paso independiente de la respuesta de OSTEL
+
+**Disponible ahora:** generación, prueba de conservación XLSX y manifiesto.
+**Pendiente de #180, no de OSTEL:** integrar la prueba del lector cuando su
+responsable dé por estable la interfaz. No usar una copia del lector ni mocks
+como prueba de esa integración.
+
+El futuro ensayo técnico debe:
+
+1. Fijar revisión del generador y del lector; generar un paquete nuevo y conservar
+   su manifiesto. Una carpeta descargada antes puede contener sólo 14 escenarios.
+2. Pasar cada XLSX por el lector sin normalizar previamente sus valores.
+3. Comparar hoja, orden/encabezados y coordenadas de filas no vacías con el
+   manifiesto. Comparar valores y tipos con el formato de salida real del lector;
+   no asumir que devolverá fechas Python o celdas de openpyxl.
+4. Distinguir repetición exacta (`fila_repetida`) de número compartido y referencia
+   ambigua: ningún conteo técnico debe convertirse en deduplicación de personas.
+5. Comprobar que baja repetida y fuentes discordantes se leen como archivos
+   independientes. No exigir consolidación ni cambio de estado en la prevalidación.
+6. Registrar diferencias por caso/hoja/fila/columna, sin valores nominales, y
+   dejar interpretación y aplicación pendientes. No exigir al lector técnico
+   que rechace códigos, checksum, referencias o fechas por reglas no acordadas.
+
+Este ensayo aún no fue ejecutado. Pruebas hostiles y de límites del lector son
+responsabilidad de #180; no se duplican aquí. Persistencia, permisos, concurrencia
+y comparación tabla/exportación requieren circuitos y entornos autorizados;
+su aprobación no se deduce de leer correctamente un archivo.
+
+Al recibir respuestas, completar en este documento para cada punto: respuesta
+textual/referencia, fecha, responsable OSTEL, regla acordada, escenarios afectados,
+resultado esperado aprobado y dudas restantes. Después vincular implementación,
+evidencia observada, versión probada y aceptación humana. No marcar como
+aceptado un resultado esperado que sólo haya propuesto el agente.
 
 ## Validación integral todavía no ejecutada
 
