@@ -1,4 +1,4 @@
-"""Pruebas del generador, sin Django/DB y sin importar la prevalidación #180."""
+"""Pruebas del generador y su contrato con el lector #180, sin Django/DB."""
 
 from dataclasses import FrozenInstanceError
 from datetime import date, datetime
@@ -259,3 +259,77 @@ class EscenariosOSTELTests(unittest.TestCase):
             self.assertEqual(libro.active["E2"].data_type, "s")
         finally:
             libro.close()
+
+
+class ContratoLectorOSTELTests(unittest.TestCase):
+    """Contrato local publicado por #180; no prueba aplicación ni cobertura."""
+
+    def test_manifiesto_y_celdas_de_los_46_archivos_con_lector_real(self):
+        from openpyxl.utils.datetime import to_excel
+        from .ostel_prevalidacion import (
+            COLUMNAS as COLUMNAS_LECTOR, HOJAS as HOJAS_LECTOR, prevalidar_ostel,
+        )
+
+        self.assertEqual(COLUMNAS_LECTOR, COLUMNAS)
+        self.assertEqual(HOJAS_LECTOR, HOJAS)
+        catalogo = {e.codigo: e for e in generar_escenarios()}
+        with TemporaryDirectory() as temporal:
+            with patch("tempfile.mkdtemp", return_value=temporal):
+                destino = exportar_temporales()
+            manifiesto = json.loads((destino / "manifiesto.json").read_text(encoding="utf-8"))
+            for entrada in manifiesto["archivos"]:
+                with self.subTest(archivo=entrada["archivo"]):
+                    contenido = (destino / entrada["archivo"]).read_bytes()
+                    resultado = prevalidar_ostel(contenido)
+                    hoja = entrada["hoja"]
+                    self.assertEqual(set(resultado.filas), {hoja})
+                    filas = resultado.filas[hoja]
+                    self.assertEqual([f.numero for f in filas], entrada["filas_excel_con_datos"])
+                    duplicados = 1 if entrada["escenario"] == "fila_repetida" else 0
+                    self.assertEqual(resultado.resumen, {
+                        "filas_no_vacias": {hoja: len(entrada["filas_excel_con_datos"])},
+                        "duplicados_exactos": duplicados, "anomalias": duplicados,
+                    })
+                    self.assertEqual([
+                        (a.codigo, a.hoja, a.fila, a.columna, a.fila_original)
+                        for a in resultado.anomalias
+                    ], [("fila_duplicada", hoja, 3, None, 2)] if duplicados else [])
+                    lote = catalogo[entrada["escenario"]].lotes[entrada["orden_en_escenario"] - 1]
+                    for fila in filas:
+                        self.assertEqual(len(fila.celdas), len(COLUMNAS))
+                        for columna, (celda, original) in enumerate(
+                            zip(fila.celdas, lote.filas[fila.numero - 2]), start=1
+                        ):
+                            with self.subTest(fila=fila.numero, columna=columna):
+                                self.assertIsNone(celda.formula)
+                                if type(original) is date:
+                                    self.assertEqual(celda.tipo, "n")
+                                    self.assertEqual(celda.valor, str(int(to_excel(original))))
+                                    self.assertEqual(celda.formato, "yyyy-mm-dd")
+                                elif type(original) is bool:
+                                    self.assertEqual((celda.tipo, celda.valor),
+                                                     ("b", "1" if original else "0"))
+                                elif isinstance(original, (int, float)):
+                                    self.assertEqual((celda.tipo, celda.valor), ("n", str(original)))
+                                else:
+                                    self.assertEqual(celda.valor, original)
+                    self.assertEqual(sha256(contenido).hexdigest(), entrada["sha256"])
+                    self.assertEqual((destino / entrada["archivo"]).read_bytes(), contenido)
+
+    def test_lecturas_independientes_sin_consolidar_movimientos(self):
+        from .ostel_prevalidacion import prevalidar_ostel
+
+        for escenario in generar_escenarios():
+            if len(escenario.lotes) < 2:
+                continue
+            for hoja in HOJAS:
+                with self.subTest(escenario=escenario.codigo, hoja=hoja):
+                    archivos = [generar_xlsx(lote, hoja=hoja) for lote in escenario.lotes]
+                    resultados = [prevalidar_ostel(archivo) for archivo in archivos]
+                    # Leer otra fuente no modifica el resultado de volver a leer la primera.
+                    self.assertEqual(prevalidar_ostel(archivos[0]), resultados[0])
+                    self.assertTrue(all(r.resumen["filas_no_vacias"] == {hoja: 1}
+                                        for r in resultados))
+                    self.assertTrue(all(r.anomalias == () for r in resultados))
+                    if escenario.codigo == "baja_repetida":
+                        self.assertEqual(resultados[0], resultados[1])

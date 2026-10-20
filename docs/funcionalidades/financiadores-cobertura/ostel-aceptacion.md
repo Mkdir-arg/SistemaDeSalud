@@ -20,8 +20,9 @@ homologa códigos, define derechos ni autoriza incorporar datos al padrón.
 
 Se reutiliza `openpyxl` ya declarado en `backend/requirements.txt`. No se
 reutiliza el seed de demo ni el importador porque arrastran Django y contratos
-distintos. No se importa ninguna API de `ostel_prevalidacion.py`.
-No hay nuevas dependencias, persistencia, cambios de permisos ni frontend.
+distintos. El generador no importa `ostel_prevalidacion.py`; sus pruebas de
+contrato ahora consumen el lector real tras la entrega documentada de #180.
+Este tramo #185 no añade dependencias, persistencia, permisos ni frontend.
 
 ## Uso reproducible
 
@@ -144,7 +145,7 @@ los datos generados; no son resultados ya obtenidos de #180 ni del importador.
 | `referencia_no_aaa` | Referencia presente a un número terminado en ZZZ | Si es admisible y qué significa; no convertirlo automáticamente en titular |
 | `cuil_invalido` | Documento coincide con el cuerpo del CUIL; sólo el dígito verificador está alterado | Severidad, corrección y procedimiento operativo |
 | `documento_discordante` | Checksum correcto, pero cuerpo documental distinto de NRODOC | Fuente de identidad autoritativa y resolución de discrepancias |
-| `filas_vacias` | Cinco filas físicas: Excel 2, 4 y 6 vacías; Excel 3 y 5 con datos | No requiere definir negocio para contar vacías; aún falta probar su exclusión en #180 |
+| `filas_vacias` | Cinco filas físicas: Excel 2, 4 y 6 vacías; Excel 3 y 5 con datos; exclusión comprobada con lector real | No requiere definir negocio para contar vacías |
 | `tipos_mixtos` | NROAFI texto `000185`, entero 185 y decimal 185.5; documentos texto, entero y booleano; fechas nativa, texto ISO e inválida | Conversiones permitidas y severidades; no normalizar en la fixture |
 | `baja_repetida` | `01_baja` y `02_repeticion` tienen exactamente la misma fila | Idempotencia, clave de movimiento y efecto sobre historial/derechos |
 | `posible_reingreso` | Primer archivo con baja 2026-06-30; segundo con misma identidad, ingreso 2026-08-01 y baja vacía | Si es reingreso, corrección o nuevo período; ninguna reactivación inferida |
@@ -163,7 +164,8 @@ aplicable. FECBAJ y FECVTO no provocan bajas ni restricciones en estas fixtures.
 
 ## Evidencia de esta entrega
 
-Comando focalizado indicado arriba: **17 pruebas aprobadas** el 2026-10-20.
+Comando focalizado indicado arriba: **19 pruebas aprobadas** el 2026-10-20
+(17 del generador y 2 de contrato con el lector real).
 Sin Django, DB, Docker ni suite completa. Las pruebas de serialización usan
 memoria y la exportación usa una carpeta temporal eliminada al terminar.
 No se versionan binarios. El servidor de descargas para prueba manual es
@@ -191,17 +193,21 @@ La revisión estática de calidad y especificación no encontró otros bloqueant
 | Referencia ambigua frente a duplicación exacta | `test_referencia_ambigua_no_equivale_a_fila_duplicada` |
 | Códigos opacos, contactos vacíos, ceros, espacios y Unicode | `test_codigos_contactos_y_texto_sin_inferencias` y round-trip XLSX |
 | Fuentes discordantes sin precedencia ni reingreso inferidos | `test_fuentes_discordantes_no_sugieren_orden_temporal` |
+| Manifiesto, coordenadas y celdas frente al lector real en ambas hojas | `ContratoLectorOSTELTests.test_manifiesto_y_celdas_de_los_46_archivos_con_lector_real` |
+| Relectura independiente de bajas/reingreso/fuentes discordantes | `ContratoLectorOSTELTests.test_lecturas_independientes_sin_consolidar_movimientos` |
 
-Estas pruebas verifican el generador. No prueban rechazo, aceptación, conteos
-ni reportes de un lector externo. La prueba de marcas ficticias no demuestra
+Las pruebas del generador verifican la construcción; las dos de contrato
+comprueban los conteos y celdas del lector, no aplicación de movimientos
+ni aceptación funcional. La prueba de marcas ficticias no demuestra
 por sí sola procedencia: ésta se sustenta en la construcción local sin entradas.
 
 ## Qué bloquea el mensaje enviado a OSTEL
 
 Fuente: mensaje aportado por el usuario en esta sesión. No hay respuesta de
 OSTEL incorporada. Se reutiliza este documento como registro de pendientes,
-sin crear un tracker paralelo. La implementación de #180 continúa a cargo de
-otro agente: no se modifica, no se fija su API y no se importa desde estas pruebas.
+sin crear un tracker paralelo. La implementación de #180 quedó entregada por
+su agente el 20/10/2026 y no se modifica aquí. Se consume su contrato publicado
+en [la entrega de #180](../../plans/2026-10-20-ostel-prevalidacion.md#integración-web-alcance-ampliado-y-contrato-con-185).
 
 | Punto enviado | Preparado sin respuesta | Qué no debe implementarse por inferencia |
 |---|---|---|
@@ -220,33 +226,58 @@ legajo/adjuntos, credenciales, completitud de contactos, frecuencia/responsable
 e integraciones— siguen abiertos para etapas posteriores. No son autorización
 para añadir UI, almacenamiento, emisores o conexiones externas ahora.
 
-## Próximo paso independiente de la respuesta de OSTEL
+## Continuación tras finalizar el agente de #180
 
-**Disponible ahora:** generación, prueba de conservación XLSX y manifiesto.
-**Pendiente de #180, no de OSTEL:** integrar la prueba del lector cuando su
-responsable dé por estable la interfaz. No usar una copia del lector ni mocks
-como prueba de esa integración.
+Se monitorizó su terminal mediante Orca hasta observar su informe final,
+sin interrumpirlo ni editar sus archivos. Skills `orchestration` y `orca-cli`
+permitieron comprobar la entrega antes de continuar.
 
-El futuro ensayo técnico debe:
+**Ejecutado en esta sesión de #185:** generación, conservación XLSX, manifiesto
+y pruebas directas contra `prevalidar_ostel`, sin copia del lector ni mocks
+de sus resultados. Lector versionado en `c6e90ad`, escenarios ampliados en
+`6cf71dd`. El mock usado en exportación sólo redirige la carpeta temporal.
+
+El ensayo técnico queda concretado así:
 
 1. Fijar revisión del generador y del lector; generar un paquete nuevo y conservar
    su manifiesto. Una carpeta descargada antes puede contener sólo 14 escenarios.
-2. Pasar cada XLSX por el lector sin normalizar previamente sus valores.
+2. Pasar cada XLSX por el lector sin normalizar previamente sus valores
+   (ejecutado para los 46 archivos).
 3. Comparar hoja, orden/encabezados y coordenadas de filas no vacías con el
    manifiesto. Comparar valores y tipos con el formato de salida real del lector;
    no asumir que devolverá fechas Python o celdas de openpyxl.
+   Se verificaron textos, números XML, booleanos y serial/formato de fechas.
 4. Distinguir repetición exacta (`fila_repetida`) de número compartido y referencia
    ambigua: ningún conteo técnico debe convertirse en deduplicación de personas.
 5. Comprobar que baja repetida y fuentes discordantes se leen como archivos
    independientes. No exigir consolidación ni cambio de estado en la prevalidación.
-6. Registrar diferencias por caso/hoja/fila/columna, sin valores nominales, y
+6. Localizar diferencias por caso/hoja/fila/columna mediante subtests, y
    dejar interpretación y aplicación pendientes. No exigir al lector técnico
    que rechace códigos, checksum, referencias o fechas por reglas no acordadas.
 
-Este ensayo aún no fue ejecutado. Pruebas hostiles y de límites del lector son
-responsabilidad de #180; no se duplican aquí. Persistencia, permisos, concurrencia
-y comparación tabla/exportación requieren circuitos y entornos autorizados;
-su aprobación no se deduce de leer correctamente un archivo.
+Resultado: no se observaron diferencias; sólo `fila_repetida` produjo una anomalía,
+fila 3 duplicada de fila 2, sin eliminarla. Los estímulos de negocio permanecen
+sin interpretación. Las secuencias de baja repetida, posible reingreso y fuentes
+discordantes se leen independientemente; releer el primer archivo devuelve el
+mismo resultado. Esto no demuestra idempotencia de movimientos persistidos.
+
+**Evidencia reportada por el agente #180, no reejecutada aquí:** 27 pruebas
+(20 de lector y 7 de API), cargas de los 46 archivos mediante navegador/API,
+cinco casos adicionales, permisos de carga y ausencia de altas de afiliados/lotes
+en SQLite aislada. Se inspeccionaron sus pruebas y la documentación; los registros
+y capturas locales están referenciados en su entrega. La API sí registra eventos
+de auditoría: “no aplica padrón” no significa “no escribe nada”.
+
+La UI entregada está en `http://127.0.0.1:5189/financiadores/padron`,
+acción **Revisar Excel OSTEL**; su disponibilidad depende de los procesos locales.
+Los accesos y el reinicio están documentados por #180. No se copiaron ni leyeron
+contraseñas en esta sesión. Esta UI es la revisión técnica, no el importador.
+
+Pruebas hostiles y de límites del lector son responsabilidad de #180; no se
+duplican aquí. Persistencia de movimientos, concurrencia de escrituras,
+permisos del circuito integral y comparación tabla/exportación siguen pendientes;
+su aprobación no se deduce de la prevalidación. No se ejecutaron DB, navegador,
+suite completa, CI ni deploy en esta continuación de #185.
 
 Al recibir respuestas, completar en este documento para cada punto: respuesta
 textual/referencia, fecha, responsable OSTEL, regla acordada, escenarios afectados,
@@ -261,9 +292,9 @@ de #142/#143 y aceptación de OSTEL. No se simula que esos contratos existan.
 
 Cuando estén acordados, usar los escenarios como entradas y registrar:
 
-1. **Prevalidación:** reconocimiento de hojas/encabezados, conservación de códigos,
-   conteo físico frente a filas con datos y diagnósticos con fila/columna.
-   Acordar el adaptador con #180 antes de importar sus APIs.
+1. **Prevalidación:** contrato técnico de los 46 archivos verificado directamente
+   contra #180; API y UI reportadas por su responsable. Pendiente la aceptación
+   manual del usuario y OSTEL, sin convertir la lectura en autorización de carga.
 2. **Mapeo:** equivalencias y obligatoriedad aprobadas por OSTEL; clasificación
    explícita de cada anomalía sin atribuir derechos por inferencia.
 3. **Persistencia/importación:** comparar antes/después, filas aplicadas,
@@ -278,7 +309,7 @@ Cuando estén acordados, usar los escenarios como entradas y registrar:
 7. **OSTEL:** recorrido con responsable humano, resultado observado y decisión
    explícita sobre cada expectativa. Registrar desacuerdos y pendientes.
 
-Esos puntos no se ejecutaron: requieren contratos y circuitos disponibles,
+Salvo la prevalidación descrita, esos puntos no se ejecutaron: requieren contratos y circuitos disponibles,
 definiciones humanas y autorización de entornos fuera del alcance actual.
 Tampoco hay evidencia de capacidad con volúmenes reales ni de seguridad de
 archivos hostiles; corresponden a pruebas específicas del lector y operación.
@@ -288,6 +319,8 @@ archivos hostiles; corresponden a pruebas específicas del lector y operación.
 | Elemento | Estado |
 |---|---|
 | Entrega técnica del generador y pruebas | Verificada localmente en el alcance descrito |
+| Contrato generador → lector #180 | 46 archivos verificados; 19 pruebas propias aprobadas |
+| API/UI de prevalidación | Evidencia del agente #180 inspeccionada; no reejecutada aquí |
 | Reglas de identidad, familia, fechas y movimientos | Pendientes de OSTEL |
 | Persistencia, concurrencia, permisos, tabla/exportación | No ejecutados en esta entrega |
 | Responsable humano, fecha, versión y escenarios aceptados | Sin registrar |
