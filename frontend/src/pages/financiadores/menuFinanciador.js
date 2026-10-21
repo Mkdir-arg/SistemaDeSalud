@@ -16,7 +16,17 @@ export const SECCIONES = [
   { key: "catalogo", label: "Catálogo común", icon: "cube" },
 ];
 
-export function itemsFinanciador({ organizacion, plataforma, admin, sufijo }) {
-  return SECCIONES.filter((item) => (organizacion || item.key === "catalogo" && plataforma) && (item.key !== "usuarios" || admin) && (item.key !== "catalogo" || plataforma))
-    .map((item) => ({ ...item, to: `/financiadores/${item.key}${sufijo}` }));
+export function accesoFinanciador(usuario, organizacion) {
+  // /usuarios/me representa la identidad efectiva; nunca sumar el actor real de «Ver como».
+  const plataforma = Boolean(usuario?.is_superuser || Object.values(usuario?.capacidades_por_institucion || {}).some((caps) => caps.includes("gobierno_plataforma")));
+  const admin = Boolean(usuario?.is_superuser || organizacion?.rol === "admin");
+  return { plataforma, admin, operador: admin || organizacion?.rol === "operador" };
+}
+
+export function itemsFinanciador({ organizacion, plataforma, sufijo }) {
+  // El servidor devuelve el rol real, o admin para el superusuario efectivo.
+  const miembro = Object.hasOwn(ROLES, organizacion?.rol);
+  return SECCIONES.filter((item) => item.key === "catalogo" ? plataforma :
+    item.key === "usuarios" ? organizacion?.rol === "admin" || plataforma && organizacion?.puede_designar_admin_inicial === true : miembro)
+    .map((item) => ({ ...item, to: `/financiadores/${item.key}${item.key === "catalogo" ? "" : sufijo}` }));
 }

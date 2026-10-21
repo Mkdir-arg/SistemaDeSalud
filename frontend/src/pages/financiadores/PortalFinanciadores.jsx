@@ -14,7 +14,7 @@ import ImportacionFinanciador from "./ImportacionFinanciador";
 import EditarFichaPadron from "@/components/financiadores/EditarFichaPadron";
 import PadronTabla from "@/components/financiadores/PadronTabla";
 import { parametrosConsultaPadron, obtenerColumnasPadron, estadoDerechoPadron } from "@/components/financiadores/padronTablaEstado";
-import { ROLES, SECCIONES, itemsFinanciador } from "./menuFinanciador";
+import { ROLES, SECCIONES, accesoFinanciador, itemsFinanciador } from "./menuFinanciador";
 import ExportarPadron from "@/components/financiadores/ExportarPadron";
 import { ADMINISTRATIVOS, TIPOS_PLAN } from "@/components/financiadores/padronCampos";
 import { parametrosFicha } from "@/lib/padronNavigation";
@@ -30,7 +30,6 @@ const HOY = () => new Date().toLocaleDateString("en-CA");
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 const documentoParcial = (valor) => valor ? `•••${String(valor).slice(-3)}` : "Sin DNI";
 export const ESTADOS_CONVENIO = { activo: "Activo", propuesto: "Pendiente de aceptación", rechazado: "Rechazado", finalizado: "Finalizado" };
-const plataformaDe = (user) => Boolean(user?.is_superuser || Object.values(user?.capacidades_por_institucion || {}).some((caps) => caps.includes("gobierno_plataforma")));
 
 export function ErrorPortal({ error, reintentar }) {
   return <div role="alert" className="rounded-md border border-borde bg-badge-error-bg p-4 text-badge-error-fg"><p>{errorFinanciador(error)}</p>{reintentar && <Button className="mt-3" size="sm" variant="secondary" onClick={reintentar}>Reintentar</Button>}</div>;
@@ -40,6 +39,8 @@ export default function PortalFinanciadores() {
   const { user } = useAuth();
   const { institucion, setInstitucion } = useInstitucion();
   const { seccion } = useParams();
+  const [activacionInicial, setActivacionInicial] = useState(null);
+  const qc = useQueryClient();
   const [parametros, setParametros] = useSearchParams();
   const seleccion = parametros.get("financiador") || "";
   const organizaciones = useQuery({ queryKey: ["financiadores", user.id, "organizaciones"], queryFn: async () => {
@@ -51,19 +52,18 @@ export default function PortalFinanciadores() {
     }
   }, gcTime: 0 });
   const lista = organizaciones.data || [];
-  const plataforma = plataformaDe(user);
+  const { plataforma } = accesoFinanciador(user);
   const organizacion = seleccion ? lista.find((item) => String(item.id) === seleccion) : plataforma ? null : lista[0];
-  const admin = plataforma || organizacion?.rol === "admin";
   const sufijo = seleccion ? `?financiador=${encodeURIComponent(seleccion)}` : "";
   // La redirección a Inicio conserva la query completa; los ítems del menú, sólo el financiador.
   const query = parametros.toString() ? `?${parametros}` : "";
-  const items = itemsFinanciador({ organizacion, plataforma, admin, sufijo });
+  const items = itemsFinanciador({ organizacion, plataforma, sufijo });
   const actual = items.find((item) => item.key === seccion);
   const irAlDirectorio = plataforma && !seleccion && seccion !== "catalogo" && !organizaciones.isLoading && !organizaciones.error;
   useEffect(() => { if (irAlDirectorio && institucion) setInstitucion(null); }, [irAlDirectorio, institucion, setInstitucion]);
   if (irAlDirectorio) return institucion ? null : <Navigate to="/directorio?vista=financiadores" replace />;
-  if (!seccion && (!plataforma || seleccion)) return <Navigate to={`/financiadores/inicio${query}`} replace />;
-  if (organizacion && !actual) return <Navigate to={`/financiadores/inicio${sufijo}`} replace />;
+  if (!seccion && (!plataforma || seleccion)) return <Navigate to={organizacion && items[0]?.key !== "inicio" ? items[0]?.to || "/directorio?vista=financiadores" : `/financiadores/inicio${query}`} replace />;
+  if (organizacion && !actual) return <Navigate to={items[0]?.to || "/directorio?vista=financiadores"} replace />;
   const cuerpo = <div className="space-y-6 p-lg sm:p-[30px] xl:p-[40px]">
     {plataforma && <>
       <div><Link to="/directorio?vista=financiadores" className="text-xs font-semibold text-accent hover:underline">← Volver a financiadores</Link>
@@ -74,7 +74,11 @@ export default function PortalFinanciadores() {
           className={`whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold ${item.key === seccion ? "bg-accent-50 text-accent" : "text-texto-suave hover:bg-superficie-2"}`}>{item.label}</Link>)}
       </nav>
     </>}
-    {organizaciones.isLoading ? <Spinner label="Consultando financiadores…" /> : organizaciones.error ? <ErrorPortal error={organizaciones.error} reintentar={organizaciones.refetch} /> : organizacion ? seccion === "facturas" ? <FacturasFinanciador key={`${user.id}:${organizacion.id}`} organizacion={organizacion} usuarioId={user.id} /> : <EspacioFinanciador key={`${user.id}:${organizacion.id}:${seccion}`} organizacion={organizacion} usuarioId={user.id} plataforma={plataforma} tab={seccion} /> : plataforma && seccion === "catalogo" && !seleccion ? <CatalogoGlobal usuarioId={user.id} /> : <Card><EstadoVacio titulo={seleccion ? "No tenés acceso al financiador seleccionado" : "Todavía no tenés un financiador asignado"} detalle={seleccion && lista.length ? "Elegí un financiador disponible en el directorio." : "El administrador de tu organización puede habilitar tu acceso."} /></Card>}
+    {activacionInicial && <EnlaceActivacion ruta={activacionInicial} onClose={() => setActivacionInicial(null)} />}
+    {organizaciones.isLoading ? <Spinner label="Consultando financiadores…" /> : organizaciones.error ? <ErrorPortal error={organizaciones.error} reintentar={organizaciones.refetch} /> : plataforma && seccion === "catalogo" ? <CatalogoGlobal usuarioId={user.id} /> : organizacion ? seccion === "usuarios" && organizacion.rol !== "admin" && organizacion.puede_designar_admin_inicial === true && plataforma ? <AdminInicial key={organizacion.id} organizacion={organizacion} onGuardado={async (resultado) => {
+      setActivacionInicial(resultado.activacion || null);
+      await qc.invalidateQueries({ queryKey: ["financiadores", user.id, "organizaciones"] });
+    }} /> : seccion === "facturas" ? <FacturasFinanciador key={`${user.id}:${organizacion.id}`} organizacion={organizacion} usuarioId={user.id} /> : <EspacioFinanciador key={`${user.id}:${organizacion.id}:${seccion}`} organizacion={organizacion} usuarioId={user.id} plataforma={plataforma} tab={seccion} /> : <Card><EstadoVacio titulo={seleccion ? "No tenés acceso al financiador seleccionado" : "Todavía no tenés un financiador asignado"} detalle={seleccion && lista.length ? "Elegí un financiador disponible en el directorio." : "El administrador de tu organización puede habilitar tu acceso."} /></Card>}
   </div>;
   if (plataforma) return <Shell plataforma>{cuerpo}</Shell>;
   return <Shell financiador={{
@@ -85,6 +89,19 @@ export default function PortalFinanciadores() {
     selector: lista.length > 0 && <div className="rounded-md border border-borde bg-superficie-2 px-2.5 py-2 text-xs"><label className="sr-only" htmlFor="selector-financiador">Financiador</label><select id="selector-financiador" className="w-full bg-transparent font-semibold text-texto outline-none" value={organizacion?.id || ""} onChange={(e) => setParametros({ financiador: e.target.value })}>{!organizacion && <option value="" disabled>Seleccioná un financiador</option>}{lista.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select><p className="mt-1 text-texto-suave">Financiador · {({ obra_social: "Obra social", mutual: "Mutual", otro: "Organización" })[organizacion?.tipo] || "Organización"}</p></div>,
     volver: institucion ? { to: "/inicio", label: "Volver al hospital" } : null,
   }}>{cuerpo}</Shell>;
+}
+
+function AdminInicial({ organizacion, onGuardado }) {
+  const [crear, setCrear] = useState(false);
+  return <Card className="space-y-4 p-4">
+    <h1 className="text-xl font-bold">Primer administrador</h1>
+    <p>Designá al primer administrador de {organizacion.nombre} para que gestione los accesos de su organización.</p>
+    <Button onClick={() => setCrear(true)}>Designar primer administrador</Button>
+    {crear && <FormularioPortal titulo="Designar primer administrador" descripcion="El acceso se crea activo con rol de administrador, sin designaciones sensibles."
+      campos={[{ name: "email", label: "Correo electrónico", type: "email", required: true }, { name: "nombre", label: "Nombre y apellido", required: true }]}
+      guardar={(body) => api.post(rutaFinanciador(organizacion.id, "usuarios"), { email: body.email, nombre: body.nombre, rol: "admin", activo: true })}
+      onClose={() => setCrear(false)} onGuardado={async (resultado) => { setCrear(false); await onGuardado(resultado); }} />}
+  </Card>;
 }
 
 function CatalogoGlobal({ usuarioId }) {
@@ -115,8 +132,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
   const [mensaje, setMensaje] = useState("");
   const [activacion, setActivacion] = useState("");
   const qc = useQueryClient();
-  const admin = plataforma || organizacion.rol === "admin";
-  const operador = admin || organizacion.rol === "operador";
+  const { admin, operador } = accesoFinanciador(null, organizacion);
   const scope = ["financiadores", usuarioId, organizacion.id];
   const planes = useQuery({ queryKey: [...scope, "opciones-planes"], queryFn: () => opcionesFinanciador(organizacion.id, "planes"), gcTime: 0 });
   const catalogo = useQuery({ queryKey: [...scope, "catalogo"], queryFn: () => opcionesFinanciador(organizacion.id, "catalogo"), gcTime: 0 });
