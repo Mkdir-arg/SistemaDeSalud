@@ -28,7 +28,7 @@ from apps.simulacion.perfiles import DOMINIO, es_cuenta_referencia
 from apps.casos.models import Caso
 from . import models as m
 from . import serializers as s
-from .permisos import plataforma, requerir_consultar_historia_clinica, requerir_financiador
+from .permisos import plataforma, puede_designar_admin_inicial, requerir_consultar_historia_clinica, requerir_financiador
 from .services import auditar, registrar_afiliado, registrar_consumo_externo, corregir_consumo, corregir_identidad
 from . import vigencias
 from .acceso import actividad_visible
@@ -263,7 +263,9 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         return self.lista(self.get_queryset(), self.serializer_class)
 
     def retrieve(self, request, pk=None):
-        org = self.organizacion()
+        org = self.get_object()
+        if not plataforma(request.user):
+            requerir_financiador(request.user, org.pk)
         return Response(self.get_serializer(org).data)
 
     @transaction.atomic
@@ -655,7 +657,14 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def usuarios(self, request, pk=None):
-        org = self.organizacion(admin=True)
+        org = self.get_object()
+        inicial = False
+        try:
+            requerir_financiador(request.user, org.pk, admin=True)
+        except PermissionDenied:
+            if request.method != "POST" or not puede_designar_admin_inicial(request.user, org.pk):
+                raise
+            inicial = True
         referencias = Q(usuario__email__iendswith=f"@{DOMINIO}") | Q(usuario__cuenta_referencia__isnull=False)
         if request.method == "GET":
             return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones, "acceso_padron_salud": x.acceso_padron_salud, "acceso_padron_cobranza": x.acceso_padron_cobranza} for x in m.MembresiaFinanciador.objects.filter(financiador=org).exclude(referencias).select_related("usuario")])
@@ -669,6 +678,19 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             # Serializa designaciones sin impedir que una escritura protegida
             # confirme su auditoría antes de liberar la membresía.
             m.Financiador.objects.select_for_update(no_key=True).get(pk=org.pk)
+            if inicial:
+                # El bloqueo también serializa dos intentos de alta inicial.
+                if not puede_designar_admin_inicial(request.user, org.pk):
+                    raise PermissionDenied("La organización ya tiene un administrador activo.")
+                designaciones = ("resuelve_autorizaciones", "acceso_padron_salud", "acceso_padron_cobranza")
+                if d["rol"] != "admin" or not d["activo"] or any(campo in d for campo in designaciones):
+                    raise PermissionDenied("Plataforma sólo puede designar el administrador inicial sin designaciones adicionales.")
+                if existente and (not existente.is_active or plataforma(existente)):
+                    raise PermissionDenied("El administrador inicial debe ser una cuenta activa propia del financiador.")
+                if existente and m.MembresiaFinanciador.objects.filter(
+                    financiador=org, usuario=existente,
+                ).filter(Q(resuelve_autorizaciones=True) | Q(acceso_padron_salud=True) | Q(acceso_padron_cobranza=True)).exists():
+                    raise PermissionDenied("La designación inicial no modifica membresías con permisos especiales.")
             if any(campo in d for campo in ("acceso_padron_salud", "acceso_padron_cobranza")):
                 from .permisos import requerir_admin_real
                 requerir_admin_real(request.user, org.pk)
