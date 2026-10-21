@@ -1,11 +1,21 @@
 # OSTEL: tramo local de prevalidación técnica (#180)
 
+**Estado vigente 21/10:** además del lector técnico, la continuación autorizada implementa carga administrativa OSTEL con aplicación parcial y subsanación. Nuevas altas OSTEL sin habilitación de cobertura; alta habitual habilitada por defecto. Ver la sección «Estado vigente» de `docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md` para alcance, migración, evidencia y límites. Las secciones siguientes conservan el historial técnico.
+
 **Estado actual (ampliación autorizada el 20/10/2026):** lector integrado a
 **Importar Excel → Formato del archivo**, con registro extensible de formatos,
 plantilla por formato y preferencia local por usuario. Se retiró el botón
 independiente “Revisar Excel OSTEL”. Entorno web local disponible para aceptación.
 Las secciones iniciales registran la primera entrega del lector puro; el
 contrato de integración y la evidencia actual están al final de este documento.
+
+**Continuación tras respuestas parciales de OSTEL:** se actualizaron la ayuda
+del formato y la matriz de aceptación de #185. Se agregaron siete escenarios
+ficticios (27 escenarios, 32 lotes, 64 XLSX en total) sobre identidad,
+contradicciones, categorías, parentescos y cambios administrativos. El lector,
+API, plantilla e importador conservan su contrato técnico. Las definiciones y
+los bloqueos vigentes están en la sección «Respuestas OSTEL recibidas el
+20/10/2026 y avance autorizado» de `ostel-aceptacion.md`.
 
 ## Alcance y plan ejecutado
 
