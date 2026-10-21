@@ -49,7 +49,7 @@ export const CAMPOS_ALTA = [
   { paso: 0, name: "fecha_nacimiento", label: "Fecha de nacimiento", type: "date", hint: "No puede ser una fecha futura." },
   { paso: 1, name: "cobertura_habilitada", label: "Habilitar cobertura", boolean: true },
   { paso: 1, name: "plan", label: "Plan", requiredSi: (d) => d.cobertura_habilitada !== false, numeric: true },
-  { paso: 1, name: "desde", label: "Fecha de afiliación", required: true, type: "date", hint: "Por defecto, hoy. Admite fechas retroactivas. Esta fecha no habilita cobertura por sí sola." },
+  { paso: 1, name: "desde", label: "Fecha de afiliación", required: true, type: "date", ayuda: "Por defecto, hoy. Admite fechas retroactivas. Esta fecha no habilita cobertura por sí sola." },
   { paso: 1, name: "delegacion", label: "Delegación", required: true, maxLength: 100, placeholder: "Ej.: Sede Central" },
   { paso: 1, name: "motivo", label: "Motivo del alta", required: true, maxLength: 255, placeholder: "Ej.: adhesión voluntaria" },
   { paso: 1, name: "titular", label: "Titular", numeric: true, visible: (d) => d.grupo === "familiar", requiredSi: (d) => d.grupo === "familiar" },

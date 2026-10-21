@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador, filasDe, opcionesFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { useAuth } from "@/auth/AuthContext";
-import { Button, Card, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
+import { Ayuda, Button, Card, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
 import { EstadoVacio } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { Shell } from "@/components/Shell";
@@ -237,8 +237,11 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
 
         {paso === 1 && <>
           <div className="rounded-md border border-borde bg-superficie-2 p-4">
-            <label className="flex items-center gap-2 font-semibold"><input id={idCampo("cobertura_habilitada")} type="checkbox" checked={datos.cobertura_habilitada !== false} onChange={(event) => cambiar("cobertura_habilitada", event.target.checked)} aria-describedby="alta-cobertura-ayuda" className="size-4 accent-accent" />Habilitar cobertura junto con el registro</label>
-            <p id="alta-cobertura-ayuda" className="mt-2 text-sm text-texto-debil">{datos.cobertura_habilitada === false ? "Se guardará sólo el registro administrativo. Podés habilitar cobertura más adelante desde la ficha, con motivo del cambio." : "Las prestaciones siguen sujetas al plan, las fechas y las reglas de cobertura. Desmarcá esta opción si necesitás registrar a la persona sin habilitar cobertura."}</p>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 font-semibold"><input id={idCampo("cobertura_habilitada")} type="checkbox" checked={datos.cobertura_habilitada !== false} onChange={(event) => cambiar("cobertura_habilitada", event.target.checked)} className="size-4 accent-accent" />Habilitar cobertura junto con el registro</label>
+              <Ayuda etiqueta="Ayuda sobre habilitación de cobertura">Las prestaciones siguen sujetas al plan, las fechas y las reglas de cobertura. Desmarcá esta opción si necesitás registrar a la persona sin habilitar cobertura.</Ayuda>
+            </div>
+            {datos.cobertura_habilitada === false && <p className="mt-2 text-sm text-texto-debil">Se guardará sólo el registro administrativo. Podés habilitar cobertura más adelante desde la ficha, con motivo del cambio.</p>}
           </div>
           <Grilla>{["plan", "desde", "delegacion", "motivo"].map((name) => <Control key={name} campo={campo(name)} {...props}
             opciones={name === "plan" ? planes.map((plan) => ({ id: plan.id, nombre: plan.nombre })) : undefined}
@@ -345,7 +348,7 @@ const errorCampo = (error, name) => {
 };
 
 function Control({ campo, datos, errores, errorServidor, cambiar, opciones, hint, mensaje, onBlur }) {
-  const { name, label, options, textarea, numeric, required, requiredSi, visible, paso, hint: hintCampo, ...props } = campo;
+  const { name, label, options, textarea, numeric, required, requiredSi, visible, paso, ayuda, hint: hintCampo, ...props } = campo;
   const obligatorio = requerido(campo, datos);
   const propio = errores[name] === "duplicado" ? undefined : errores[name];
   const error = mensaje || propio || errorCampo(errorServidor, name);
@@ -356,7 +359,7 @@ function Control({ campo, datos, errores, errorServidor, cambiar, opciones, hint
     ? <Select {...comunes} onChange={(e) => cambiar(name, e.target.value)}><option value="">{obligatorio ? "Seleccionar" : "Sin informar"}</option>{lista.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</Select>
     : textarea ? <Textarea {...comunes} {...props} rows={2} onChange={(e) => cambiar(name, e.target.value)} />
     : <Input {...comunes} {...props} onChange={(e) => cambiar(name, esCuit ? formatoCuit(e.target.value) : e.target.value)} />;
-  return <div className={textarea ? "sm:col-span-2" : undefined}><Field label={<>{label}{obligatorio && <> <Asterisco /></>}</>} hint={hint || hintCampo} error={error}>{control}</Field></div>;
+  return <div className={textarea ? "sm:col-span-2" : undefined}><Field label={<>{label}{obligatorio && <> <Asterisco /></>}</>} hint={hint || hintCampo} ayuda={ayuda} error={error}>{control}</Field></div>;
 }
 
 function BuscadorTitular({ organizacion, seleccionado, error, onElegir }) {
