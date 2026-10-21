@@ -47,8 +47,9 @@ export const CAMPOS_ALTA = [
   { paso: 0, name: "apellidos", label: "Apellidos", required: true, maxLength: 160, autoComplete: "family-name", placeholder: "Ej.: González Pérez" },
   { paso: 0, name: "sexo", label: "Sexo registrado en el DNI", options: SEXOS },
   { paso: 0, name: "fecha_nacimiento", label: "Fecha de nacimiento", type: "date", hint: "No puede ser una fecha futura." },
-  { paso: 1, name: "plan", label: "Plan", required: true, numeric: true },
-  { paso: 1, name: "desde", label: "Inicio de cobertura", required: true, type: "date", hint: "Por defecto, hoy. Admite fechas retroactivas." },
+  { paso: 1, name: "cobertura_habilitada", label: "Habilitar cobertura", boolean: true },
+  { paso: 1, name: "plan", label: "Plan", requiredSi: (d) => d.cobertura_habilitada !== false, numeric: true },
+  { paso: 1, name: "desde", label: "Fecha de afiliación", required: true, type: "date", hint: "Por defecto, hoy. Admite fechas retroactivas. Esta fecha no habilita cobertura por sí sola." },
   { paso: 1, name: "delegacion", label: "Delegación", required: true, maxLength: 100, placeholder: "Ej.: Sede Central" },
   { paso: 1, name: "motivo", label: "Motivo del alta", required: true, maxLength: 255, placeholder: "Ej.: adhesión voluntaria" },
   { paso: 1, name: "titular", label: "Titular", numeric: true, visible: (d) => d.grupo === "familiar", requiredSi: (d) => d.grupo === "familiar" },
@@ -80,12 +81,12 @@ export const requerido = (campo, datos) => Boolean(campo.required || campo.requi
 export const camposDelPaso = (paso, datos) => CAMPOS_ALTA.filter((campo) => campo.paso === paso && visible(campo, datos));
 const vacio = (valor) => valor == null || String(valor).trim() === "";
 
-export const datosIniciales = () => ({ tipo_documento: "DNI", desde: hoyAR(), grupo: "titular" });
+export const datosIniciales = () => ({ tipo_documento: "DNI", desde: hoyAR(), grupo: "titular", cobertura_habilitada: true });
 
 /** ¿Cargó algo más que los valores por defecto? Decide si cancelar pide confirmación. */
 export function tieneDatos(datos) {
   const base = datosIniciales();
-  return Object.entries(datos).some(([k, v]) => !vacio(v) && v !== false && String(v) !== String(base[k] ?? ""));
+  return Object.entries(datos).some(([k, v]) => !vacio(v) && (v !== false || k === "cobertura_habilitada") && String(v) !== String(base[k] ?? ""));
 }
 
 /** ¿El paso opcional tiene algo cargado? Sin datos se muestra «Pendiente», no «Completo». */
@@ -113,7 +114,7 @@ export function validarPaso(paso, datos, hoy = hoyAR()) {
       if (soloDigitos(texto).length !== 11) errores.cuit_empleador = "El CUIT tiene 11 números.";
       else if (!cuitValido(texto)) errores.cuit_empleador = "El CUIT no es válido: revisá el dígito verificador.";
     } else if (campo.name === "fecha_nacimiento" && texto > hoy) errores[campo.name] = "No puede ser una fecha futura.";
-    else if (campo.name === "desde" && texto > hoy) errores[campo.name] = "La cobertura no puede empezar en una fecha futura.";
+    else if (campo.name === "desde" && texto > hoy) errores[campo.name] = "La fecha de afiliación no puede ser futura.";
     else if (campo.name === "codigo_postal" && !CODIGO_POSTAL.test(texto)) errores[campo.name] = "Ingresá 4 números o el CPA (ej.: B1824ABC).";
     else if (campo.name === "subsidio_hasta" && datos.subsidio_desde && texto < datos.subsidio_desde) errores[campo.name] = "Debe ser igual o posterior a «Subsidio desde».";
   }
@@ -128,13 +129,13 @@ export const nombreParaMostrar = (datos) => [datos.nombres, datos.apellidos].map
 
 /** Cuerpo del POST: sólo campos visibles y cargados; identificadores como texto sin separadores. */
 export function cuerpoAlta(datos) {
-  const body = { solo_crear: true, nombre: nombreParaMostrar(datos) };
+  const body = { solo_crear: true, nombre: nombreParaMostrar(datos), cobertura_habilitada: datos.cobertura_habilitada !== false };
   for (const campo of CAMPOS_ALTA) {
     if (!visible(campo, datos)) continue;
     const valor = datos[campo.name];
     if (vacio(valor)) continue;
     const texto = String(valor).trim();
-    body[campo.name] = campo.numeric ? Number(valor) : ["cuil", "cuit_empleador"].includes(campo.name) ? soloDigitos(texto) : texto;
+    body[campo.name] = campo.boolean ? Boolean(valor) : campo.numeric ? Number(valor) : ["cuil", "cuit_empleador"].includes(campo.name) ? soloDigitos(texto) : texto;
   }
   return body;
 }

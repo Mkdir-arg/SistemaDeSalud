@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Field, Modal, Select, Spinner } from "@/components/ui";
 import ImportacionSistema from "./ImportacionSistema";
+import ImportacionAdministrativa from "./ImportacionAdministrativa";
 import RevisionTecnicaExcel from "./RevisionTecnicaExcel";
 import { formatosPara, guardarFormatoPreferido, leerFormatoPreferido } from "./formatosImportacion";
 
@@ -10,7 +11,7 @@ import { errorFinanciador, filasDe, rutaFinanciador } from "@/api/financiadores"
 import { POR_PAGINA } from "@/api/queries";
 
 const EN_PROCESO = new Set(["procesando", "aplicando", "pendiente", "validando"]);
-const FLUJOS = { importacion: ImportacionSistema, revision: RevisionTecnicaExcel };
+const FLUJOS = { administrativa: ImportacionAdministrativa, importacion: ImportacionSistema, revision: RevisionTecnicaExcel };
 
 export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, scope, onClose, onAplicado }) {
   const opciones = formatosPara(tipo);
@@ -60,13 +61,13 @@ export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, 
           <div className="mt-2 space-y-2">
             {registros.length === 0 ? <p className="text-sm text-texto-debil">Todavía no hay importaciones de este tipo.</p> : registros.map((item) =>
               <button key={item.id} type="button" disabled={bloqueos.selector} onClick={() => {
-                // Los lotes existentes pertenecen al importador del sistema.
+                // El formato del lote determina el flujo al retomar.
                 // Consultarlos no cambia la preferencia para archivos nuevos.
-                setPreferencia((actual) => ({ ...actual, id: "sistema" }));
+                setPreferencia((actual) => ({ ...actual, id: item.version === 3 ? "ostel" : "sistema" }));
                 setLote(item);
               }} className="flex w-full flex-wrap justify-between gap-2 rounded-md border border-division px-3 py-2 text-left text-sm hover:bg-superficie-2">
                 <span>{item.nombre_archivo || item.archivo_nombre || `Importación ${item.id}`}</span>
-                <span>{item.estado === "aplicada" ? "Procesada" : EN_PROCESO.has(item.estado) ? "En proceso" : "Revisar resumen"}</span>
+                <span>{item.creado ? new Date(item.creado).toLocaleString("es-AR") : ""}{item.version === 3 ? ` · ${item.resumen?.fuente === "bajas" ? "Evidencia de bajas" : "Padrón base"} · ${item.resumen?.aplicada || 0} aplicadas · ${item.resumen?.revision || 0} pendientes · ` : " "}{item.estado === "aplicada" ? "Procesada" : EN_PROCESO.has(item.estado) ? "En proceso" : "Revisar resumen"}</span>
               </button>)}
           </div>}
         {!lotes.isLoading && !lotes.error && (pagina > 1 || lotes.data?.next) &&

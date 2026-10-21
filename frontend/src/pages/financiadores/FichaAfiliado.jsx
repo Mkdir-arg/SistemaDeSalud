@@ -219,6 +219,7 @@ function FichaAfiliadoContenido() {
           {persona ? <p className="text-cifra font-bold leading-tight">{persona.nombre}</p> : ficha.error ? null : <Spinner label="Consultando ficha…" />}
         </div>
         {persona && <div className="flex flex-wrap items-center gap-2">
+          {persona.cobertura_habilitada === false && <Badge tone="amber">Sólo registro administrativo</Badge>}
           <Badge tone={{ vigente: "green", finalizada: "gray", futura: "info" }[persona.estado] || "neutral"}>{{ vigente: "Vigente", finalizada: "Finalizada", futura: "Aún no vigente" }[persona.estado] || persona.estado}</Badge>
           {pendientes.data?.count > 0 && <Badge tone="amber">{plural(pendientes.data.count, "autorización pendiente", "autorizaciones pendientes")}</Badge>}
         </div>}

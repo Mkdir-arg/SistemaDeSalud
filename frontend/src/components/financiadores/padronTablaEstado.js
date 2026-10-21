@@ -68,7 +68,7 @@ export function parametrosConsultaPadron(parametros) {
 
 export function valorColumnaPadron(fila, columna, planes = []) {
   let valor = fila[columna.key];
-  if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.vigente === false ? "futuras" : "vigentes";
+  if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.cobertura_habilitada === false ? "administrativas" : fila.vigente === false ? "futuras" : "vigentes";
   if (columna.key === "plan") return fila.plan == null ? "Sin plan" : planes.find((p) => String(p.id) === String(fila.plan))?.nombre || `Plan ${fila.plan}`;
   if (valor == null || valor === "") return "Sin informar";
   if (columna.options) return columna.options[valor] || String(valor);
@@ -80,7 +80,7 @@ export function valorColumnaPadron(fila, columna, planes = []) {
 // Agrupación solo de presentación, con los mismos bloques de la ficha. El
 // catálogo es contrato con backend (debe coincidir exacto), por eso no la lleva.
 export const GRUPOS_PADRON = [
-  ["Afiliación", ["nombre", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
+  ["Afiliación", ["cobertura_habilitada", "nombre", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
   ["Trámite y credencial", ["estado_administrativo", "estado_tramite", "alta_administrativa", "delegacion", "credencial_tipo", "credencial_fecha"]],
   ["Identidad", ["tipo_documento", "cuil", "nombres", "apellidos", "sexo", "fecha_nacimiento", "nacionalidad", "estado_civil"]],
   ["Contacto", ["telefono", "celular", "email"]],

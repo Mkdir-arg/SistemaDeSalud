@@ -116,7 +116,7 @@ def _evaluacion_paso(caso, usuario, contexto, prestacion, bloquear=False):
         raise ValidationError("La prestación ya tiene una atención registrada. Revisá su recuperación en Finanzas.")
     seleccion = afiliaciones().filter(caso=caso).first()
     if bloquear and seleccion and seleccion.afiliado_id:
-        m.Afiliado.objects.select_for_update().get(pk=seleccion.afiliado_id)
+        seleccion.afiliado = m.Afiliado.objects.select_for_update().get(pk=seleccion.afiliado_id)
         # Un consumo externo puede haber marcado la reserva mientras esperábamos.
         if reserva:
             reserva.refresh_from_db()

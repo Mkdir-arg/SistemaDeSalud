@@ -236,9 +236,13 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
             ? <>Ya existe un afiliado con este documento. <Link className="font-medium underline" to={fichaDuplicado}>Abrir su ficha →</Link></> : undefined} />)}</Grilla>}
 
         {paso === 1 && <>
+          <div className="rounded-md border border-borde bg-superficie-2 p-4">
+            <label className="flex items-center gap-2 font-semibold"><input id={idCampo("cobertura_habilitada")} type="checkbox" checked={datos.cobertura_habilitada !== false} onChange={(event) => cambiar("cobertura_habilitada", event.target.checked)} aria-describedby="alta-cobertura-ayuda" className="size-4 accent-accent" />Habilitar cobertura junto con el registro</label>
+            <p id="alta-cobertura-ayuda" className="mt-2 text-sm text-texto-debil">{datos.cobertura_habilitada === false ? "Se guardará sólo el registro administrativo. Podés habilitar cobertura más adelante desde la ficha, con motivo del cambio." : "Las prestaciones siguen sujetas al plan, las fechas y las reglas de cobertura. Desmarcá esta opción si necesitás registrar a la persona sin habilitar cobertura."}</p>
+          </div>
           <Grilla>{["plan", "desde", "delegacion", "motivo"].map((name) => <Control key={name} campo={campo(name)} {...props}
             opciones={name === "plan" ? planes.map((plan) => ({ id: plan.id, nombre: plan.nombre })) : undefined}
-            hint={name === "plan" && !planes.length ? "No hay planes activos. Creá uno en Planes antes de registrar." : undefined} />)}</Grilla>
+            hint={name === "plan" && !planes.length ? datos.cobertura_habilitada === false ? "Podés registrar sin plan y asignarlo más adelante." : "No hay planes activos. Creá uno en Planes o registrá sin habilitar cobertura." : undefined} />)}</Grilla>
           <Seccion titulo="Grupo familiar" detalle="Indicá si la persona es titular o se suma al grupo de otro afiliado.">
             <fieldset><legend className="mb-1.5 text-base font-semibold text-texto-suave">La persona es <Asterisco /></legend>
               <div className="flex flex-wrap gap-6">{[["titular", "Titular"], ["familiar", "Familiar de un titular existente"]].map(([valor, label]) => <label key={valor} className="flex items-center gap-2 text-md"><input type="radio" name="alta-grupo" value={valor} checked={datos.grupo === valor} onChange={() => cambiar("grupo", valor)} className="size-4 accent-accent" />{label}</label>)}</div>
@@ -400,7 +404,7 @@ function Revision({ datos, planes, editar }) {
   const titular = datos.titular_sel ? `${datos.titular_sel.nombre} · ${datos.titular_sel.tipo_documento || "DNI"} ${datos.titular_sel.documento}` : "—";
   const bloques = [
     { paso: 0, filas: [["Documento", `${valor("tipo_documento")} ${datos.documento || ""}`.trim()], ["CUIL", valor("cuil")], ["Nombres", valor("nombres")], ["Apellidos", valor("apellidos")], ["Sexo registrado", valor("sexo")], ["Fecha de nacimiento", valor("fecha_nacimiento")], ["Número de afiliado", valor("numero")]] },
-    { paso: 1, filas: [["Plan", valor("plan")], ["Inicio de cobertura", valor("desde")], ["Delegación", valor("delegacion")], ["Motivo del alta", valor("motivo")], ...(datos.grupo === "familiar" ? [["Titular", titular], ["Parentesco", valor("parentesco")]] : [["Titular", "— (es titular)"]])] },
+    { paso: 1, filas: [["Cobertura", datos.cobertura_habilitada === false ? "Sin habilitar · sólo registro administrativo" : "Habilitada · sujeta a reglas y vigencia"], ["Plan", valor("plan")], ["Fecha de afiliación", valor("desde")], ["Delegación", valor("delegacion")], ["Motivo del alta", valor("motivo")], ...(datos.grupo === "familiar" ? [["Titular", titular], ["Parentesco", valor("parentesco")]] : [["Titular", "— (es titular)"]])] },
     { paso: 2, filas: pasoConDatos(2, datos) ? [["Teléfono", [datos.telefono, datos.celular].filter(Boolean).join(" · ") || "—"], ["Correo", valor("email")], ["Domicilio", domicilio || "—"], ["Localidad", localidad || "—"]] : null },
     { paso: 3, filas: pasoConDatos(3, datos) ? [["Régimen", valor("regimen")], ...camposDelPaso(3, datos).filter((c) => c.name !== "regimen").map((c) => [c.label, valor(c.name)])] : null },
   ];

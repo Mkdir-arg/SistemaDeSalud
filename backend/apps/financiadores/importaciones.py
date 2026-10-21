@@ -39,7 +39,7 @@ VERSION = 1
 SALT = "financiadores.plantilla.v1"
 ESTADOS_FILA = ("valida", "rechazada", "revision", "aplicada", "error_tecnico")
 CAMPOS_V2 = tuple("titular_documento" if c == "titular" else c for c in padron.CAMPOS_GENERALES
-                  if c not in ("solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja"))
+                  if c not in ("solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja", "cobertura_habilitada"))
 
 
 def encabezados(tipo, version=1):
@@ -460,6 +460,9 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave):
 
 
 def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
+    if importacion.version == 3:
+        from .ostel_importacion import aplicar
+        return aplicar(importacion=importacion, usuario=usuario)
     """Cada fila y su efecto se confirman juntos; interrumpir permite retomar el lote."""
     requerir_financiador(usuario, importacion.financiador_id, escritura=True)
     revisiones = revisiones_duplicados or {}
@@ -541,12 +544,12 @@ def descargar_rechazadas(*, importacion, usuario):
     libro = Workbook()
     hoja = libro.active
     hoja.title = "Filas para corregir"
-    columnas = encabezados(importacion.tipo, importacion.version)
+    columnas = ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM") if importacion.version == 3 else encabezados(importacion.tipo, importacion.version)
     hoja.append(["Fila original", *columnas, "Estado", "Detalle"])
     for fila in importacion.filas:
         if fila["estado"] not in ("rechazada", "revision", "error_tecnico"):
             continue
-        valores = fila.get("original", [])[:len(columnas)]
+        valores = [fila["original"].get(c) for c in columnas] if importacion.version == 3 else fila.get("original", [])[:len(columnas)]
         valores += [""] * (len(columnas) - len(valores))
         valores = [fila["fila"], *valores, fila["estado"], "; ".join(fila["errores"])]
         numero = hoja.max_row + 1

@@ -63,7 +63,7 @@ def solicitudes_visibles_financiador(financiador_id):
     from .acceso import actividad_visible
 
     vigente = Q(convenio_id__in=convenios_vigentes().values("pk"),
-                afiliado__finalizado_en__isnull=True, afiliado__desde__lte=timezone.localdate())
+                afiliado__cobertura_habilitada=True, afiliado__finalizado_en__isnull=True, afiliado__desde__lte=timezone.localdate())
     usos_pendientes = m.UsoAutorizacion.objects.filter(
         reserva_id__in=actividad_visible(financiador_id).values("pk"),
     ).values("solicitud_id")
@@ -140,7 +140,7 @@ def solicitar(*, caso, prestacion, usuario, intento, cantidad, justificacion, cl
     afiliado = m.Afiliado.objects.select_for_update().get(pk=afiliacion.afiliado_id)
     if not caso.ciudadano_id or not normalizar_documento(caso.ciudadano.documento) or normalizar_documento(caso.ciudadano.documento) != normalizar_documento(afiliado.documento):
         raise ValidationError("El paciente del caso cambió o su documento no coincide. Revisá la afiliación antes de solicitar.")
-    if afiliado.finalizado_en or afiliado.desde > timezone.localdate() or not afiliado.financiador.activo:
+    if not afiliado.cobertura_habilitada or afiliado.finalizado_en or afiliado.desde > timezone.localdate() or not afiliado.financiador.activo:
         raise ValidationError("La afiliación no está vigente para una nueva solicitud.")
     convenio = convenio_aplicable(afiliado.financiador_id, caso.institucion_id, timezone.now(), bloquear=True)
     vinculo = m.VinculoPrestacion.objects.filter(prestacion=prestacion, comun__activo=True).select_related("comun").first()
@@ -183,7 +183,7 @@ def solicitar_manual(*, financiador_id, afiliado, institucion, comun, usuario, c
     previo = _reintento(clave, usuario, "solicitar_manual", peticion)
     if previo:
         return previo
-    if (afiliado.financiador_id != financiador_id or afiliado.finalizado_en
+    if (not afiliado.cobertura_habilitada or afiliado.financiador_id != financiador_id or afiliado.finalizado_en
             or afiliado.desde > timezone.localdate() or not afiliado.financiador.activo):
         raise ValidationError("La afiliación no está vigente en este financiador.")
     convenio = convenio_aplicable(financiador_id, institucion.pk, timezone.now(), bloquear=True)
@@ -309,7 +309,7 @@ def reenviar(*, solicitud, usuario, revision, justificacion, clave):
         raise ValidationError("Sólo se reenvía la versión actual de una solicitud observada.")
     if obj.caso_id and (obj.caso.estado in Caso.ESTADOS_FINALIZADOS or obj.intento != intento_actual(obj.caso)):
         raise ValidationError("El intento ya no es actual. La solicitud conserva su historia.")
-    if not convenios_vigentes().filter(pk=obj.convenio_id).exists() or obj.afiliado.finalizado_en:
+    if not convenios_vigentes().filter(pk=obj.convenio_id).exists() or obj.afiliado.finalizado_en or not obj.afiliado.cobertura_habilitada:
         raise ValidationError("La afiliación o el convenio cerraron. No se abre una nueva evaluación.")
     if obj.plazo_respuesta and obj.plazo_respuesta <= timezone.now():
         raise ValidationError("El plazo venció; reenviar no reinicia el plazo acordado.")

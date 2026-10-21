@@ -27,8 +27,10 @@ def catalogo_financiador(financiador):
 
 
 @transaction.atomic
-def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan, desde, origen="manual", lote=None, motivo="", solo_crear=False):
+def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan, desde, origen="manual", lote=None, motivo="", solo_crear=False, cobertura_habilitada=None):
     requerir_financiador(usuario, financiador.pk, escritura=True)
+    if cobertura_habilitada is not None and not isinstance(cobertura_habilitada, bool):
+        raise ValidationError({"cobertura_habilitada": "Indicá si se habilita la cobertura."})
     numero, documento, nombre = str(numero).strip(), normalizar_documento(documento), str(nombre).strip()
     if not numero or not documento or not nombre:
         raise ValidationError("Completá número de afiliado, documento y nombre.")
@@ -37,7 +39,7 @@ def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan,
     if not isinstance(desde, date) or desde > timezone.localdate():
         raise ValidationError("La vigencia del padrón debe ser una fecha actual o anterior.")
     # El índice único resuelve altas simultáneas; nunca identificar por número familiar.
-    afiliado, creado = Afiliado.objects.get_or_create(financiador=financiador, documento=documento, defaults={"numero": numero, "nombre": nombre, "plan": plan, "desde": desde})
+    afiliado, creado = Afiliado.objects.get_or_create(financiador=financiador, documento=documento, defaults={"numero": numero, "nombre": nombre, "plan": plan, "desde": desde, "cobertura_habilitada": True if cobertura_habilitada is None else cobertura_habilitada})
     afiliado = Afiliado.objects.select_for_update().get(pk=afiliado.pk)
     if solo_crear and not creado:
         raise ValidationError("El documento ya existe en este padrón. Abrí su ficha para editar con la revisión actual.")
@@ -49,10 +51,18 @@ def registrar_afiliado(*, financiador, usuario, numero, documento, nombre, plan,
             raise ValidationError("El plan ya no está activo. Actualizá la selección.")
     if not creado and desde < afiliado.desde:
         raise ValidationError("La actualización no puede anteceder la última vigencia del padrón.")
-    cambio = creado or (afiliado.numero, afiliado.nombre, afiliado.plan_id, afiliado.desde) != (numero, nombre, getattr(plan, "pk", None), desde)
     from .padron import cambios, validar_generales
-    delta = cambios(afiliado, {"numero": numero, "nombre": nombre, "plan_id": getattr(plan, "pk", None), "desde": desde})
+    valores = {"numero": numero, "nombre": nombre, "plan_id": getattr(plan, "pk", None), "desde": desde}
+    # Las cargas legadas que omiten la opción preservan la decisión existente.
+    if cobertura_habilitada is not None:
+        valores["cobertura_habilitada"] = cobertura_habilitada
+    delta = cambios(afiliado, valores)
+    if creado:
+        delta["cobertura_habilitada"] = {"anterior": None, "nuevo": afiliado.cobertura_habilitada}
+    cambio = creado or bool(delta)
     afiliado.numero, afiliado.nombre, afiliado.plan, afiliado.desde = numero, nombre, plan, desde
+    if cobertura_habilitada is not None:
+        afiliado.cobertura_habilitada = cobertura_habilitada
     validar_generales(afiliado)
     afiliado.full_clean()
     if cambio and not creado:

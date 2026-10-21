@@ -5,6 +5,12 @@ sin convertir seriales, redondear identificadores ni reconstruir ceros perdidos.
 `filas` contiene datos privados y NO debe registrarse en logs. `resumen` y las
 anomalías sólo contienen conteos, códigos y coordenadas, nunca valores recibidos.
 No es una autorización de carga ni un reemplazo del importador existente.
+
+Decisión de producto 21/10/2026 (#180/#185): primera entrega de padrón
+administrativo, con aplicación parcial y conflictos de identidad para revisión
+humana. Los derechos de cobertura esperan sus reglas de OSTEL. El adaptador
+ostel_importacion crea registros con cobertura_habilitada=False; este lector
+continúa siendo puro y no autoriza aplicaciones por sí mismo.
 """
 from dataclasses import dataclass, field
 from io import BytesIO

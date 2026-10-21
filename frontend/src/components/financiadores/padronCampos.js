@@ -8,6 +8,7 @@ export const PARENTESCOS = { conyuge: "Cónyuge", hijo: "Hijo", hija: "Hija", co
 export const TIPOS_PLAN = { base: "Base", superador: "Superador", privado: "Privado" };
 
 export const BLOQUES_PADRON = [
+  { titulo: "Habilitación de cobertura", descripcion: "El registro administrativo se conserva aunque la cobertura esté deshabilitada. Habilitarla permite evaluar prestaciones con las reglas y fechas vigentes; no garantiza su aprobación. Cada cambio requiere un motivo y queda en el historial.", campos: [{ name: "cobertura_habilitada", label: "Habilitar cobertura", boolean: true }] },
   { titulo: "Identidad", campos: [texto("numero", "Número de afiliado", 80), texto("documento", "Documento", 80), texto("nombre", "Nombre para mostrar"), opciones("tipo_documento", "Tipo de documento", { DNI: "DNI", LE: "LE", LC: "LC", CI: "CI", PAS: "Pasaporte", OTRO: "Otro" }), texto("cuil", "CUIL", 11), texto("nombres", "Nombres"), texto("apellidos", "Apellidos"), opciones("sexo", "Sexo", { F: "Femenino", M: "Masculino", X: "X" }), fecha("fecha_nacimiento", "Fecha de nacimiento"), texto("nacionalidad", "Nacionalidad", 80), texto("estado_civil", "Estado civil", 40)] },
   { titulo: "Contacto", campos: [texto("telefono", "Teléfono", 60), texto("celular", "Celular", 60), { ...texto("email", "Correo electrónico", 254), type: "email" }] },
   { titulo: "Domicilio", campos: [texto("calle", "Calle"), texto("altura", "Altura", 20), texto("piso", "Piso", 20), texto("departamento", "Departamento", 20), texto("codigo_postal", "Código postal", 20), texto("localidad", "Localidad", 100), texto("partido", "Partido", 100), texto("provincia", "Provincia", 100)] },
@@ -26,6 +27,7 @@ export const CAMPOS_LEGAJO = [opciones("tipo", "Tipo de presentación", TIPOS_LE
 
 export function valorCampoPadron(campo, valor) {
   if (valor == null || valor === "") return "Sin informar";
+  if (campo.boolean) return valor ? "Habilitada" : "Sin habilitar · sólo registro administrativo";
   if (typeof valor === "object") return Object.entries(valor).map(([name, dato]) => {
     const detalle = CAMPOS_LEGAJO.find((item) => item.name === name) || { name, label: name };
     return `${detalle.label}: ${valorCampoPadron(detalle, dato)}`;

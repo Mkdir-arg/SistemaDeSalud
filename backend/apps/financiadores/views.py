@@ -406,7 +406,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         actual = m.AfiliacionCaso.objects.filter(caso_id=OuterRef("caso_id"), hecho_revision=None).order_by("-pk")
         convenios = vigencias.convenios_vigentes().filter(financiador=org).values("institucion_id")
         pendientes = actividad_visible(org).filter(afiliado=afiliado, acceso="pendiente_historico").values("caso_id")
-        vigente = (afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate()
+        vigente = (afiliado.cobertura_habilitada and afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate()
                    and org.activo)
         # Resolver la afiliación actual dentro del conjunto del afiliado evita
         # ejecutar subconsultas correlacionadas para todo el padrón de casos.
@@ -426,7 +426,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         ).select_related("institucion", "ciudadano").order_by("-creado", "-pk")
 
     def _cupos_ficha(self, afiliado):
-        if not afiliado.plan_id or not afiliado.plan.activo:
+        if not afiliado.cobertura_habilitada or not afiliado.plan_id or not afiliado.plan.activo:
             return []
         from types import SimpleNamespace
         from .cobertura import cantidades_periodo, periodo, regla_aplicable
@@ -457,7 +457,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         afiliado = self._afiliado_ficha(request, org)
         casos = list(self.paginate_queryset(self._casos_historia(org, afiliado)))
         convenios = set(vigencias.convenios_vigentes().filter(financiador=org).values_list("institucion_id", flat=True))
-        vigente = afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate() and org.activo
+        vigente = afiliado.cobertura_habilitada and afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate() and org.activo
         with transaction.atomic():
             registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-historia-casos",
                 ({"ciudadano": caso.ciudadano, "institucion_id": caso.institucion_id,
@@ -521,6 +521,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
                       "numero": afiliado.numero, "plan": afiliado.plan_id,
                       "plan_nombre": afiliado.plan.nombre if afiliado.plan_id else None,
                       "desde": afiliado.desde, "finalizado_en": afiliado.finalizado_en,
+                      "cobertura_habilitada": afiliado.cobertura_habilitada, "numero_interno": afiliado.numero_interno,
                       "estado": "finalizada" if afiliado.finalizado_en else "futura" if afiliado.desde > timezone.localdate() else "vigente"},
             resumen=resumen_actividad(qs), limite_exportacion=LIMITE_EXPORTACION,
             cupos=self._cupos_ficha(afiliado),
@@ -758,6 +759,33 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             "detalle_truncado": len(resultado.anomalias) > limite_detalle,
             "limite_detalle": limite_detalle,
         })
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="previsualizar-ostel")
+    def previsualizar_ostel(self, request, pk=None):
+        from .ostel_importacion import previsualizar
+        org = self.organizacion(escritura=True)
+        d = datos(request, {"archivo": serializers.FileField(), "clave": serializers.UUIDField(),
+            "fuente": serializers.ChoiceField(choices=["base", "bajas"])})
+        lote = previsualizar(financiador=org, usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="subsanar-ostel")
+    def subsanar_ostel(self, request, pk=None):
+        from .ostel_importacion import subsanar
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)),
+            "fila": serializers.IntegerField(min_value=1), "revision": serializers.IntegerField(min_value=1),
+            "datos": serializers.DictField(child=serializers.CharField(max_length=160, allow_blank=True)),
+            "motivo": serializers.CharField(max_length=255),
+            "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+        })
+        lote = subsanar(usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
         response["Cache-Control"] = "private, no-store"
         return response
 
