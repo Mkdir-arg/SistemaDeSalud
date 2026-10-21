@@ -70,7 +70,7 @@ export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, 
   return <Modal title={historialAbierto ? "Importaciones registradas" : `Importar ${tipo === "padron" ? "padrón" : "consumos externos"}`}
     onClose={historialAbierto ? bloqueosHistorial.cierre ? undefined : cerrarHistorial : bloqueos.cierre ? undefined : onClose} width={historialAbierto ? 1120 : 840}>
     <div hidden={historialAbierto} className="space-y-5">
-      <Field label="Formato del archivo" ayuda="La selección se recuerda para tu usuario en este navegador.">
+      <Field label="Formato del archivo" ayuda="La selección se recuerda para tu usuario en este navegador. Podés solicitar formatos personalizados contactando a soporte técnico.">
         <Select value={formato.id} onChange={seleccionar} disabled={bloqueos.selector}>
           {opciones.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
         </Select>
