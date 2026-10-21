@@ -32,6 +32,10 @@ if __name__ == "__main__":
     elif accion == "estado":
         ejecutar("-m", "tests.issue43.escenario", "estado", sys.argv[2])
     elif accion in {"suites", "completa"}:
+        if accion == "completa":
+            # Igual que backend.yml: los casos de admin/producción requieren
+            # el manifiesto real; DEBUG del entorno no reemplaza esta preparación.
+            ejecutar("manage.py", "collectstatic", "--noinput", "--verbosity=0")
         ejecutar("manage.py", "test", *(SUITES if accion == "suites" else []), "--noinput", "--verbosity=1")
     elif accion == "checks":
         ejecutar("manage.py", "check")

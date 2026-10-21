@@ -126,13 +126,20 @@ psycopg 3.3.5, Node 24.13.0, PostgreSQL 16.15):
 | `npm run build` | OK, 5,40 s |
 | Guardas negativas del settings | Marcador inválido y ENTORNO=produccion rechazados antes de conectar |
 | Repetir preparación sobre escenario existente | Rechazado; metadata intacta, sin sobrescribir escenario |
+| `collectstatic --noinput` + `apps.accounts.test_admin_cuentas_auditoria172` | Estáticos OK; 10/10 pruebas del admin OK tras corregir la preparación |
 
 Los intentos iniciales de E2E fallaron por selectores escritos incorrectamente
 en el test (Revisar, Decisión y Ver cuenta). Se corrigieron sin cambios de
 producto y se repitió la tanda completa. No se presentan como éxitos.
 El workflow usa Python 3.12/Node 20: sus resultados remotos son independientes
-de esta evidencia local. Suite completa y revisión final: pendientes de finalizar.
-El SHA de publicación y los checks remotos quedan asociados al PR draft;
+de esta evidencia local. La primera suite completa local se interrumpió:
+faltaba `collectstatic`, preparación requerida por `backend.yml`, y ya había
+errores de manifiesto ausente de `admin/css/base.css`. No es una suite aprobada.
+El runner `completa` ahora prepara estáticos antes de ejecutar pruebas. La suite
+completa remota ya incluye ese paso oficial. El resultado actualizado de la suite
+completa y su SHA se consultan en el check `test` de `backend` del
+[PR draft #189](https://github.com/Mkdir-arg/SistemaDeSalud/pull/189).
+El SHA de publicación y los demás checks remotos quedan asociados al PR;
 no atribuir resultados al checkout compartido.
 
 La revisión directa del diff agregó la comprobación explícita de aceptación
