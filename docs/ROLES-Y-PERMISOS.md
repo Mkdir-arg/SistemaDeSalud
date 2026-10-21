@@ -361,13 +361,64 @@ Un usuario de obra social **no tiene membresia institucional**. Tiene una `Membr
 
 | Rol del financiador | Que puede |
 |---|---|
-| `admin` | Todo lo del operador, mas administrar los usuarios de su organizacion, los planes y los convenios |
-| `operador` | Configurar cobertura, mantener padron, cargar consumos externos y consultar actividad |
+| `admin` | Todo lo del operador, mas administrar los usuarios, planes, reglas y convenios de su organizacion |
+| `operador` | Mantener padron, cargar consumos externos y solicitudes manuales, consultar parametria y actividad |
 | `auditor` | Solo lectura sobre su organizacion |
 
 Ademas, resolver autorizaciones exige una **designacion expresa** (`resuelve_autorizaciones`) sobre un rol `admin` u `operador`: ni ser administrador de la organizacion ni ser plataforma alcanza por si solo.
 
 Un usuario con varios ambitos elige una organizacion concreta, y cada consulta vuelve a verificar ese ambito en el servidor.
+
+#### Gobierno estatal y soporte tecnico (#170)
+
+El rol funcional `plataforma` no equivale a un administrador de todos los
+financiadores. Conserva el directorio de organizaciones (incluidos sus conteos
+agregados), el alta de financiadores y el catalogo comun. Sin una membresia activa
+del financiador no consulta ni modifica planes, reglas, convenios, padron,
+facturas, importaciones, actividad ni solicitudes de esa organizacion.
+
+Plataforma puede designar **un administrador inicial** cuando el financiador esta
+activo y no tiene un administrador humano con cuenta y membresia activas. Las
+cuentas de referencia de simulacion no cuentan como administradores humanos.
+Esta operacion no permite listar usuarios, designar otros roles, desactivar
+cuentas ni conceder resolucion de autorizaciones o acceso a salud/cobranza.
+El destinatario debe ser una cuenta propia del financiador, sin plataforma ni
+privilegio de superusuario; no se modifica una membresia con designaciones
+especiales. Dos altas simultaneas se serializan por financiador: solo una puede
+crear el administrador inicial. Despues, los accesos los gestiona el admin de la
+organizacion. Se conserva la proteccion contra retirar al ultimo administrador.
+
+Si plataforma tambien tiene una membresia del financiador, las operaciones
+administrativas usan su **rol real**: un operador o auditor no se convierte en
+admin. El alta inicial sigue siendo una facultad de gobierno acotada, incluso
+en esos perfiles combinados. No habilita acceso a otro financiador. En convenios,
+esa membresia debe respetar la aceptacion por la contraparte: plataforma no activa
+su propuesta unilateralmente.
+
+El superusuario efectivo conserva la administracion tecnica existente y sus
+excepciones de soporte en convenios. Esto no le concede lectura clinica del
+financiador, carga manual de solicitudes, resolucion de autorizaciones ni bloques
+protegidos por si solo. Resolver requiere designacion expresa; salud y cobranza
+requieren sus designaciones propias. Plataforma directa sigue sin lectura clinica
+ni carga manual, aun cuando tenga una membresia del financiador. La designacion
+de permisos protegidos exige el administrador real sin plataforma ya definido.
+
+Las rutas hospitalarias de autorizaciones tampoco conceden acceso transversal por
+`gobierno_plataforma`: verifican los roles, institucion y areas hospitalarias
+correspondientes; se conserva el soporte del superusuario efectivo.
+
+En **Ver como** manda exclusivamente la cuenta simulada. El superusuario real
+solo se utiliza para autoria y auditoria; no amplia sus permisos ni permite
+conceder designaciones protegidas. La clinica conserva el alcance de #93: admin
+del financiador u operador designado, con motivo y auditoria, sin extender el
+contenido visible.
+
+Contrato del portal: `rol` es la membresia real o `null` si no existe; solo el
+superusuario efectivo recibe `admin` sin membresia. El booleano
+`puede_designar_admin_inicial` habilita la pantalla especifica de alta inicial;
+el servidor vuelve a verificarlo dentro de la transaccion. No es un nuevo rol.
+Se conservan los 403/404 de cada ruta: los recursos filtrados por pertenencia
+siguen ocultandose con 404, y los permisos insuficientes se rechazan con 403.
 
 ### 3.3 Simulacion de perfiles ("Ver como")
 

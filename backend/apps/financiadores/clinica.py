@@ -17,7 +17,7 @@ from apps.registros.models import normalizar_documento
 from apps.simulacion.contexto import autor_real
 from . import models as m
 from .cobertura import evaluar, seleccionar_afiliacion
-from .permisos import plataforma, requerir_caso, requerir_hospital
+from .permisos import superusuario, requerir_caso, requerir_hospital
 from .services import auditar
 from .vigencias import afiliados_vigentes, convenios_vigentes
 
@@ -192,7 +192,7 @@ def confirmar_en_paso(*, caso, usuario, contexto, prestacion, firma, clave, acep
 def historial_del_paciente(usuario, ciudadano):
     """Sólo selecciones del hospital y las áreas operables; sin acceso al libro."""
     qs = afiliaciones().filter(caso__ciudadano=ciudadano).select_related("caso__version__flujo")
-    if plataforma(usuario):
+    if superusuario(usuario):
         return qs
     roles = [r for r, caps in ROL_CAPACIDADES.items() if "casos_operar" in caps]
     miembros = Membresia.objects.filter(usuario=usuario, activo=True, institucion=ciudadano.institucion, rol__in=roles)
