@@ -176,7 +176,7 @@ class PermisosPlataformaTests(APITestCase):
         self.assertEqual(self.client.get(self.base + "ficha-historia-casos/", {"afiliado": 1}).status_code, 403)
 
     def test_simulacion_plataforma_no_hereda_admin_y_audita_alta_inicial(self):
-        root = Usuario.objects.create_superuser("simula170@example.test", password=None)
+        root = Usuario.objects.create_superuser("simula170@example.test", "x")
         self.client.force_authenticate(user=None)
         sesion = self.client.post("/api/simulaciones/", {"ambito": "plataforma", "rol": "plataforma"}, format="json", **jwt(root))
         self.assertEqual(sesion.status_code, 201)
@@ -193,7 +193,7 @@ class PermisosPlataformaTests(APITestCase):
         self.assertTrue(OperacionSimulada.objects.filter(sesion_id=sesion.data["id"], ruta=self.base + "planes/", estado=403).exists())
 
     def test_simulacion_financiador_respeta_roles_y_autoria(self):
-        root = Usuario.objects.create_superuser("perfiles170@example.test", password=None)
+        root = Usuario.objects.create_superuser("perfiles170@example.test", "x")
         self.client.force_authenticate(user=None)
         for rol in ("admin", "operador", "auditor"):
             with self.subTest(rol=rol):
