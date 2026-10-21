@@ -1,8 +1,14 @@
 # OSTEL: tramo local de prevalidación técnica (#180)
 
-**Estado vigente 21/10:** además del lector técnico, la continuación autorizada implementa carga administrativa OSTEL con aplicación parcial y subsanación. Nuevas altas OSTEL sin habilitación de cobertura; alta habitual habilitada por defecto. Ver la sección «Estado vigente» de `docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md` para alcance, migración, evidencia y límites. Las secciones siguientes conservan el historial técnico.
+**Estado vigente 21/10:** además del lector técnico, la continuación autorizada implementa importación OSTEL con aplicación parcial y subsanación. Ambos formatos de padrón tienen «Habilitar cobertura» marcado por defecto; la elección sólo afecta altas nuevas. Las personas existentes conservan su habilitación y cualquier discrepancia con la elección del lote bloquea la fila hasta revisión con motivo. Se retiró el selector de contenido; las bajas siguen como evidencia no aplicable. Implementación local commiteada (`e752896`, documentación `f8299e1`), migración 0013 aplicada a SQLite ficticia y comprobación del usuario «probado», sin detalle por escenario. Ver [Estado vigente](../funcionalidades/financiadores-cobertura/ostel-aceptacion.md) y [Prueba local](../funcionalidades/financiadores-cobertura/ostel-prueba-local.md) para alcance, evidencia y límites. PostgreSQL/concurrencia, volumen integral, CI y publicación siguen pendientes; OSTEL aún debe responder.
 
-**Estado actual (ampliación autorizada el 20/10/2026):** lector integrado a
+## Historial técnico anterior al cierre local
+
+Las secciones siguientes conservan las condiciones de cada entrega anterior.
+Sus menciones a revisión técnica sin aplicación, ausencia de commits o
+aceptación humana pendiente no describen el estado vigente indicado arriba.
+
+**Estado de la ampliación autorizada el 20/10/2026:** lector integrado a
 **Importar Excel → Formato del archivo**, con registro extensible de formatos,
 plantilla por formato y preferencia local por usuario. Se retiró el botón
 independiente “Revisar Excel OSTEL”. Entorno web local disponible para aceptación.

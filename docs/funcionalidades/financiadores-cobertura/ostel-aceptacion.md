@@ -1,4 +1,4 @@
-# OSTEL: catálogo sintético y aceptación pendiente
+# OSTEL: catálogo sintético, validación local y homologación pendiente
 
 ## Estado vigente — 21/10/2026: habilitación elegida por lote
 
@@ -15,6 +15,15 @@ en las filas sigue bloqueada, las ausencias no tienen efecto y las diferencias
 entre fuentes requieren revisión. Las reglas de prestaciones aún esperan a OSTEL;
 marcar el checkbox no garantiza autorización de prestaciones ni interpreta FECVTO.
 Las secciones fechadas anteriores describen entregas y bloqueos históricos.
+
+El 21/10/2026 el usuario informó **«probado»** después de la entrega del checkbox
+por lote y sus conflictos. Se registra esa comprobación local, sin atribuirle
+casos individuales, dispositivos o resultados que no detalló. No acredita
+homologación de OSTEL ni aceptación productiva.
+La guía reproducible está en [Prueba local](ostel-prueba-local.md).
+La implementación está commiteada localmente: `e752896` incorpora esta última
+decisión y `f8299e1` su documentación, sobre las entregas anteriores.
+Push, CI, merge y despliegue siguen sin acreditarse para esta entrega.
 
 Implementación de esta decisión: `importacion_cobertura.py` comparte la detección
 de discrepancias; el formato OSTEL usa su subsanación existente y la plantilla del
@@ -66,16 +75,22 @@ revisión, pérdida de borrador y cambio de destinatario con igual revisión.
 sin paso extra; `code-review` separó estándares y contrato; `systematic-debugging`
 atribuyó los fallos observados antes de corregirlos.
 
-Riesgos y despliegue pendiente: la migración sólo se ejercita en bases de pruebas.
+Riesgos y despliegue pendiente: la migración 0013 se aplicó también a la base
+SQLite ficticia del entorno local, con respaldo previo; no a una base productiva.
 No desplegar ni volver a una versión que ignore el flag después de crear registros
 administrativos: podría habilitarlos implícitamente. Revertir el esquema también
 perdería esa distinción y NUMERO; no es un rollback seguro automático. Ante un
 problema, detener la carga y conservar datos/habilitaciones para reparación hacia
-adelante. PostgreSQL/concurrencia real, capacidad con 5.754 registros, comprobación
-visual humana y aceptación funcional no están acreditadas. No hay commit, push,
-merge, despliegue ni carga de datos reales autorizados por esta implementación.
+adelante. PostgreSQL/concurrencia real y capacidad del importador completo con
+5.754 registros siguen pendientes. La comprobación del usuario consta arriba;
+no hay aceptación por caso registrada ni homologación productiva. No se cargaron
+datos reales ni se publicó esta implementación.
 
-### Validación de la implementación administrativa (21/10)
+### Evidencia anterior de la implementación administrativa (21/10)
+
+Estos resultados corresponden a la entrega previa al entorno persistente y al
+checkbox por lote. Sus límites de navegador, servidores y aceptación no reemplazan
+el estado vigente y la comprobación del usuario registrados arriba.
 
 - API/importación/cobertura: `python -B manage.py test apps.financiadores.test_ostel_importacion apps.financiadores.test_ostel_api apps.financiadores.test_importaciones apps.financiadores.test_habilitacion_cobertura --settings=config.settings_financiadores_test --verbosity 0`: 52 pruebas, sin fallos, 1 omitida PostgreSQL.
 - Ampliación padrón/consulta/exportación/FHIR: 87 pruebas, un fallo de catálogo por campo nuevo ausente. Se agregó columna y se reejecutaron el test afectado y las 13 pruebas administrativas: 14 aprobadas. No se repitieron los 86 casos que ya habían pasado.
@@ -93,6 +108,13 @@ de octubre; (6) condición asociada a FECVTO; (7) revisión de casos individuale
 Los puntos 2 y 4 ya no bloquean esta carga identificatoria administrativa: la
 política fue definida por el usuario y no se calculan derechos médicos.
 
+
+## Historial de entregas y decisiones (20–21/10/2026)
+
+Todo lo que sigue conserva el estado de cada etapa. Las menciones a ausencia de
+commits, circuito operativo o aceptación humana, y a la obligación de importar
+OSTEL sin cobertura, describen etapas anteriores; no son el contrato vigente. Para
+comportamiento, evidencia y pendientes actuales, consultar «Estado vigente».
 
 Fecha: 2026-10-20. Alcance parcial de [#185](https://github.com/Mkdir-arg/SistemaDeSalud/issues/185),
 basado en el issue, [#142](https://github.com/Mkdir-arg/SistemaDeSalud/issues/142),
@@ -414,7 +436,7 @@ definiciones humanas y autorización de entornos fuera del alcance actual.
 Tampoco hay evidencia de capacidad con volúmenes reales ni de seguridad de
 archivos hostiles; corresponden a pruebas específicas del lector y operación.
 
-## Registro de aceptación
+## Registro histórico de aceptación del generador
 
 | Elemento | Estado |
 |---|---|
@@ -528,7 +550,7 @@ operativas. No se creó otro plan/tracker ni se reabrieron decisiones de UI.
 
 ## Decisiones del usuario y revisión del 21/10/2026
 
-### Decisiones aprobadas (aún no implementadas como circuito operativo)
+### Decisiones aprobadas antes de implementar el circuito operativo
 
 - Primera entrega: padrón administrativo. Derechos de cobertura fuera de alcance,
   pendientes de reglas de OSTEL. Documentado también en el módulo del lector.

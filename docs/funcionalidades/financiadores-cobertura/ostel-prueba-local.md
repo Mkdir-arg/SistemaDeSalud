@@ -2,6 +2,11 @@
 
 Preparada el 21/10/2026. Todos los datos son ficticios. No importar aquí los archivos reales de OSTEL.
 
+**Comprobación del usuario:** el 21/10/2026 informó «probado», tras la entrega de
+habilitación por lote y conflictos de cobertura. No detalló los pasos ejecutados:
+esta guía conserva resultados esperados, no una certificación de que cada caso
+pasó. La validación local no equivale a homologación de OSTEL ni aceptación de producción.
+
 ## Entrar
 
 - Aplicación: http://127.0.0.1:5189/financiadores/padron
@@ -10,7 +15,7 @@ Preparada el 21/10/2026. Todos los datos son ficticios. No importar aquí los ar
 - Excel: `C:/Users/Juanito/AppData/Local/Temp/salud-ostel-180-zd1jg1g3/prueba-guiada`.
 - Organización: **OSTEL - Prueba local ficticia**.
 
-La base conserva algunos lotes del chequeo automático con personas 0201/0202. Los seis archivos de esta guía usan personas 0101–0107. La persona 0107 ya existe con habilitación de cobertura; el archivo 06 también se usó en el chequeo real de conflictos y puede repetirse sin duplicarla. Los otros cinco quedaron preparados para la prueba humana.
+Al preparar la guía, la base conservaba algunos lotes del chequeo automático con personas 0201/0202. Los seis archivos usan personas 0101–0107. La persona 0107 ya existía con habilitación de cobertura; el archivo 06 también se usó en el chequeo real de conflictos y puede repetirse sin duplicarla. Tras la prueba del usuario puede haber más lotes/personas aplicados: revisar el historial antes de repetir; no borrar ni reiniciar la base para recuperar los conteos iniciales.
 
 ## Recorrido y resultados esperados
 
@@ -32,7 +37,7 @@ La base conserva algunos lotes del chequeo automático con personas 0201/0202. L
 
 9. **Historial, repetición y exportación.** Cerrar/reabrir Importar Excel y seleccionar un lote previo desde Importaciones registradas; debe abrirse con su formato y detalle correctos. Las filas ya aplicadas no deben ofrecer una nueva aplicación. Volver a subir `01-base.xlsx` puede requerir revisión si el nombre fue cambiado en el paso 6; nunca debe duplicar las personas. Cambiar a Plantilla del sistema, descargarla y verificar que sigue disponible el circuito habitual. En el padrón, seleccionar Todos o Sólo registro administrativo, mostrar la columna Habilitación de cobertura y exportar XLSX; contrastar filas y filtro con la pantalla.
 
-10. **Permisos y UX.** Salir y entrar como `auditor`: consultar padrón e historial disponible en sus pantallas, sin botones de alta/importación/edición. Volver como operador y abrir una corrección: el formato, archivo y cierre se bloquean mientras se edita; Cancelar permite salir sin guardar. Probar también ventana angosta y revisar legibilidad, scroll de la tabla, mensajes y foco. Cualquier incomodidad visual queda pendiente de la aceptación humana.
+10. **Permisos y UX.** Salir y entrar como `auditor`: consultar padrón e historial disponible en sus pantallas, sin botones de alta/importación/edición. Volver como operador y abrir una corrección: el formato, archivo y cierre se bloquean mientras se edita; Cancelar permite salir sin guardar. Probar también ventana angosta y revisar legibilidad, scroll de la tabla, mensajes y foco. Registrar cualquier incomodidad visual concreta que aparezca al repetir el recorrido.
 
 ## Evidencia y límites
 
