@@ -1,14 +1,34 @@
 # OSTEL: catálogo sintético y aceptación pendiente
 
-## Estado vigente — 21/10/2026: implementación local administrativa
+## Estado vigente — 21/10/2026: habilitación elegida por lote
 
 El usuario confirmó separación explícita entre registro y habilitación de cobertura:
 por defecto se realizan juntos, sin paso extra; la excepción permite registrar sin
-habilitar. Para las altas OSTEL de esta entrega la excepción es obligatoria mientras
-faltan reglas. Importaciones sobre personas existentes conservan su habilitación.
-La política de archivos también quedó confirmada: base elegida explícitamente,
-bajas como evidencia, ausencias sin efecto y diferencias entre fuentes para revisión.
+habilitar. La decisión posterior elimina la excepción obligatoria para OSTEL:
+todos los formatos de padrón presentan «Habilitar cobertura», marcado por defecto.
+La elección rige sólo las altas nuevas y queda fijada en el lote. Importaciones
+sobre personas existentes conservan su habilitación; una diferencia con la opción
+elegida se reporta como conflicto y bloquea esa fila hasta confirmar con motivo
+que se conserva el valor actual. No se permiten cambios masivos de cobertura por importación.
+El selector «Contenido del archivo» se elimina. La evidencia de baja encontrada
+en las filas sigue bloqueada, las ausencias no tienen efecto y las diferencias
+entre fuentes requieren revisión. Las reglas de prestaciones aún esperan a OSTEL;
+marcar el checkbox no garantiza autorización de prestaciones ni interpreta FECVTO.
 Las secciones fechadas anteriores describen entregas y bloqueos históricos.
+
+Implementación de esta decisión: `importacion_cobertura.py` comparte la detección
+de discrepancias; el formato OSTEL usa su subsanación existente y la plantilla del
+sistema permite confirmar motivos por fila. Ambos revalidan el estado observado.
+La clave de reintento incluye la opción elegida; cambiarla exige revisar un lote
+nuevo. Los lotes anteriores sin opción conservan su contrato original. No hay
+migración nueva ni cambio de permisos. Consumos externos no habilitan afiliaciones.
+
+Validación de esta actualización: 43 pruebas de backend pasaron entre los módulos
+de importación (una prueba adicional de concurrencia omitida por requerir
+PostgreSQL); nueve pruebas Playwright con API simulada pasaron. Una comprobación
+con navegador/API/SQLite reales verificó checkbox predeterminado, ausencia del
+selector de contenido, conflicto de cobertura, revisión con motivo, aplicación y
+conservación de la habilitación existente. No se verificó concurrencia PostgreSQL.
 
 Implementación local: campo `cobertura_habilitada` con default y db_default true;
 `numero_interno` separado de `numero` (NROAFI), único no vacío por financiador;
