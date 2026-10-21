@@ -118,6 +118,38 @@ def generar_escenarios():
             1, NROAFI=" 000185-Ñ ", NUMERO="000042", NROREF="REF-FICTICIA/α",
             APENOM="PERSONA FICTICIA OSTEL ÑANDÚ",
         )),
+        # Respuesta OSTEL recibida el 20/10: escenarios de entrada, no reglas
+        # de aplicación. No se inventa CUILTIT ni se utiliza NROREF en su lugar.
+        caso("identidad_individual", _persona(1, NUMERO="000001"),
+             _persona(2, NUMERO="000002", NROAFI=referencia)),
+        caso("cuil_distinto_mismo_numero", _persona(1, NUMERO="000001"),
+             _persona(2, NUMERO="000001")),
+        caso("numero_distinto_mismo_cuil", _persona(1, NUMERO="000001"),
+             _persona(1, NUMERO="000002")),
+        caso("categorias_sin_cobertura",
+             _persona(1, TIPO="A", COD_PLAN="CC", FECBAJ=date(2026, 6, 30)),
+             _persona(2, TIPO="P", COD_PLAN="CC", FECBAJ=None)),
+        caso("parentescos_confirmados", *(
+            _persona(i, NUMERO=f"{i:06d}", CODPAR=codigo)
+            for i, codigo in enumerate((
+                "AAA", "CO1", "CO2", "CC1", "CC3", "H01", "H15",
+                "HJ1", "HJ6", "ME1", "ME8", "IN1", "IN5", "MD1", "MD5",
+                "MG1", "MG6", "PA1", "PA2", "PP1", "PP2", "HE1", "HE6",
+                "TI1", "TI3", "SO1", "SO4", "AB1", "NI1", "NI8",
+                "MF1", "MF5", "OT1", "OT5", "XC1", "XC2", "XQ1", "XQ2",
+                "XH1", "XH9", "XJ1", "XJ6", "XI1", "XI6", "XM1", "XM6",
+                "XG1", "XG6", "XE1", "XE6", "XP1", "XP2", "XN1", "XO1",
+                "XD1", "XD2",
+            ), start=1)
+        )),
+        Escenario("cambio_empresa", (
+            Lote("01_anterior", (_persona(1, NUMERO="000001", CODEMP="EMP-A"),)),
+            Lote("02_posterior", (_persona(1, NUMERO="000001", CODEMP="EMP-B"),)),
+        )),
+        Escenario("cambio_categoria", (
+            Lote("01_anterior", (_persona(1, NUMERO="000001", TIPO="A"),)),
+            Lote("02_posterior", (_persona(1, NUMERO="000001", TIPO="P"),)),
+        )),
         Escenario("fuentes_discordantes", (
             Lote("01_fuente_a", (baja,)),
             Lote("02_fuente_b", (_persona(1, COD_PLAN="OTRO-PLAN-FICTICIO"),)),

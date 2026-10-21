@@ -49,6 +49,9 @@ class EscenariosOSTELTests(unittest.TestCase):
             "vencimiento_lejano", "baja_anterior_ingreso", "lote_parcial",
             "referencia_ambigua", "fila_repetida", "codigos_sin_homologar",
             "contactos_ausentes", "texto_literal", "fuentes_discordantes",
+            "identidad_individual", "cuil_distinto_mismo_numero",
+            "numero_distinto_mismo_cuil", "categorias_sin_cobertura",
+            "parentescos_confirmados", "cambio_empresa", "cambio_categoria",
         })
         self.assertEqual(len(generar_escenarios()), len(self.catalogo))
         for escenario in self.catalogo.values():
@@ -81,6 +84,42 @@ class EscenariosOSTELTests(unittest.TestCase):
         self.assertEqual(a["NROAFI"], b["NROAFI"])
         for columna in ("APENOM", "NRODOC", "CUIL"):
             self.assertNotEqual(a[columna], b[columna])
+
+    def test_identidad_confirmada_y_conflictos_sin_resolucion_automatica(self):
+        a, b = self.filas("identidad_individual")
+        self.assertEqual(a["NROAFI"], b["NROAFI"])
+        self.assertNotEqual(a["CUIL"], b["CUIL"])
+        self.assertNotEqual(a["NUMERO"], b["NUMERO"])
+        for caso, igual, distinto in (
+            ("cuil_distinto_mismo_numero", "NUMERO", "CUIL"),
+            ("numero_distinto_mismo_cuil", "CUIL", "NUMERO"),
+        ):
+            a, b = self.filas(caso)
+            self.assertEqual(a[igual], b[igual])
+            self.assertNotEqual(a[distinto], b[distinto])
+
+    def test_cambios_administrativos_conservan_identidad_y_fechas(self):
+        for caso, campo in (("cambio_empresa", "CODEMP"), ("cambio_categoria", "TIPO")):
+            a, = self.filas(caso, 0)
+            b, = self.filas(caso, 1)
+            self.assertNotEqual(a[campo], b[campo])
+            self.assertEqual({k: v for k, v in a.items() if k != campo},
+                             {k: v for k, v in b.items() if k != campo})
+            self.assertIsNone(b["FECBAJ"])
+
+    def test_categoria_y_parentesco_no_prueban_vigencia_ni_familia(self):
+        a, p = self.filas("categorias_sin_cobertura")
+        self.assertEqual((a["TIPO"], p["TIPO"]), ("A", "P"))
+        self.assertIsNotNone(a["FECBAJ"])
+        self.assertIsNone(p["FECBAJ"])
+        self.assertEqual((a["COD_PLAN"], p["COD_PLAN"]), ("CC", "CC"))
+        parientes = self.filas("parentescos_confirmados")
+        self.assertEqual(len(parientes), 56)
+        self.assertEqual(len({r["CODPAR"] for r in parientes}), 56)
+        self.assertTrue({"AAA", "H01", "H15", "XD1", "XD2"}.issubset(
+            {r["CODPAR"] for r in parientes}))
+        self.assertNotIn("CUILTIT", COLUMNAS)
+        self.assertTrue(all(r["NROREF"] is None for r in parientes))
 
     def test_referencias(self):
         for codigo in ("referencia_presente", "referencia_no_aaa"):
@@ -264,7 +303,7 @@ class EscenariosOSTELTests(unittest.TestCase):
 class ContratoLectorOSTELTests(unittest.TestCase):
     """Contrato local publicado por #180; no prueba aplicación ni cobertura."""
 
-    def test_manifiesto_y_celdas_de_los_46_archivos_con_lector_real(self):
+    def test_manifiesto_y_celdas_de_todos_los_archivos_con_lector_real(self):
         from openpyxl.utils.datetime import to_excel
         from .ostel_prevalidacion import (
             COLUMNAS as COLUMNAS_LECTOR, HOJAS as HOJAS_LECTOR, prevalidar_ostel,
