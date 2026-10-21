@@ -46,9 +46,9 @@ export default function AltaAfiliado() {
   if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error) return <Navigate to="/directorio?vista=financiadores" replace />;
 
   return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Nueva afiliación", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="mx-auto max-w-[72rem] space-y-5 p-lg sm:p-[30px] xl:p-[40px]">
-    <div className="space-y-1 text-sm">
-      <nav aria-label="Ubicación" className="text-texto-debil">{organizacion?.nombre && <>{organizacion.nombre} / </>}<Link className="hover:underline" to={volver}>Padrón de afiliados</Link> / <span aria-current="page">Nueva afiliación</span></nav>
-      <Link className="inline-block font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
+    <div className="flex items-center justify-between gap-4 text-sm">
+      <nav aria-label="Ubicación" className="min-w-0 text-texto-debil">{organizacion?.nombre && <>{organizacion.nombre} / </>}<Link className="hover:underline" to={volver}>Padrón de afiliados</Link> / <span aria-current="page">Nueva afiliación</span></nav>
+      <Link className="ml-auto shrink-0 font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
     </div>
     {organizaciones.isLoading || planes.isLoading ? <Spinner label="Cargando…" />
       : organizaciones.error || planes.error ? <ErrorCarga error={organizaciones.error || planes.error} reintentar={() => (organizaciones.error ? organizaciones : planes).refetch()} />

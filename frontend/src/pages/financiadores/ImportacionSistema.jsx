@@ -7,7 +7,7 @@ import { plural } from "@/lib/format";
 const APLICADOS = new Set(["aplicada"]);
 const EN_PROCESO = new Set(["procesando", "aplicando", "pendiente", "validando"]);
 
-export default function ImportacionSistema({ organizacion, tipo, formato, onAplicado, onBloqueosChange, lote, setLote, lotes, setPagina }) {
+export default function ImportacionSistema({ organizacion, tipo, formato, onAplicado, onBloqueosChange, lote, setLote, lotes, setPagina, soloDetalle = false }) {
   const [archivo, setArchivo] = useState(null);
   const [error, setError] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -59,7 +59,7 @@ export default function ImportacionSistema({ organizacion, tipo, formato, onApli
   const hayRevision = tipo === "consumos" && Object.values(revisiones).some((motivo) => motivo.trim());
   return <div className="space-y-5">
       {error && <div role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{errorFinanciador(error)}</div>}
-      <Card className="p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">1. Prepará el archivo</h3><Ayuda etiqueta="Ayuda sobre la plantilla">
+      {!soloDetalle && <><Card className="p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">1. Prepará el archivo</h3><Ayuda etiqueta="Ayuda sobre la plantilla">
             {tipo === "padron" ? <>
               <span className="block">La plantilla incluye identidad, contacto, régimen, familia, trámite y credencial registrada externamente. Conservá los identificadores como texto y cargá primero al titular.</span>
               <span className="block">La carga agrega o actualiza afiliados. Las celdas nuevas vacías no borran datos existentes y los afiliados ausentes del archivo no se dan de baja.</span>
@@ -67,6 +67,7 @@ export default function ImportacionSistema({ organizacion, tipo, formato, onApli
             </> : <span className="block">La plantilla incluye las prestaciones de este financiador. Indicá número de afiliado y documento tal como figuran en el padrón.</span>}
           </Ayuda></div></div><div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={descargando} onClick={() => descargar("plantilla", formato.parametrosPlantilla(tipo), formato.nombrePlantilla(tipo))}>Descargar plantilla</Button></div></div></Card>
       <form onSubmit={previsualizar} className="space-y-3"><h3 className="font-semibold">2. Revisá antes de importar</h3><Field label="Archivo Excel (.xlsx)"><Input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={ocupado} onChange={(e) => { setArchivo(e.target.files[0] || null); setLote(null); setRevisiones({}); setError(null); clave.current = crypto.randomUUID(); }} /></Field><Button type="submit" disabled={!archivo || ocupado}>{ocupado && !lote ? "Revisando…" : "Revisar archivo"}</Button></form>
+      </>}
       {lote && <section aria-label="Resumen de importación" className="space-y-4 border-t border-division pt-5">
         <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">3. {terminado ? "Resultado de la importación" : "Confirmá las filas válidas"}</h3><Badge tone={terminado ? "green" : "amber"}>{terminado ? "Procesada" : procesando ? "En proceso" : "Pendiente de confirmación"}</Badge></div>
         <dl className="grid grid-cols-2 gap-3 rounded-lg bg-superficie-2 p-4 sm:grid-cols-4">{[["Filas revisadas", resumen.total], ["Válidas pendientes", resumen.valida], ["Rechazadas", resumen.rechazada], ["Aplicadas", resumen.aplicada ?? 0]].map(([label, value]) => <div key={label}><dt className="text-sm text-texto-debil">{label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{value ?? "—"}</dd></div>)}</dl>

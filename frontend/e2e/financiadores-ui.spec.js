@@ -1553,10 +1553,14 @@ test("historial vacío permanece entre formatos sin paginación", async ({ page 
   const historial = page.getByRole("region", { name: "Importaciones registradas" });
   for (const formato of ["sistema", "ostel"]) {
     await page.getByLabel("Formato del archivo", { exact: true }).selectOption(formato);
+    await expect(historial).toHaveCount(0);
+    await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Importaciones registradas", exact: true })).toBeVisible();
     await expect(historial).toContainText("Todavía no hay importaciones de este tipo.");
     await expect(historial).not.toContainText("Página 1");
     await expect(historial.getByRole("button", { name: "Anterior", exact: true })).toHaveCount(0);
     await expect(historial.getByRole("button", { name: "Siguiente", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "← Volver a importar", exact: true }).click();
   }
 });
 
@@ -1569,10 +1573,15 @@ test("historial permite retomar lote desde OSTEL sin cambiar preferencia guardad
   await abrir();
   const selector = page.getByLabel("Formato del archivo", { exact: true });
   await selector.selectOption("ostel");
+  await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "conservar.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("seleccion local sin enviar") });
+  await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
   await page.getByRole("region", { name: "Importaciones registradas" }).getByRole("button", { name: /Importación 99/ }).click();
-  await expect(selector).toHaveValue("sistema");
+  await expect(selector).toBeHidden();
   await expect(page.getByRole("region", { name: "Resumen de importación" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Importar 1 fila válida", exact: true })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(selector).toHaveValue("ostel");
+  await expect(page.getByLabel("Archivo Excel (.xlsx)", { exact: true })).toHaveValue(/conservar.xlsx$/);
   await page.keyboard.press("Escape");
   await abrir();
   await expect(selector).toHaveValue("ostel");
@@ -1583,6 +1592,7 @@ test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async
   await escenario(page);
   const fila = (n, estado, cuil) => ({ fila: n, fila_excel: n + 1, hoja: "afimotook", revision: 1, estado, errores: estado === "revision" ? ["Documento y CUIL no concuerdan"] : [], bloqueo_fuente: "", datos: { numero_interno: String(n), numero: "FAMILIA", documento: "99018501", cuil, nombre: `PERSONA FICTICIA ${n}` }, original: { CUIL: cuil }, correcciones: [] });
   let lote = { id: 180, tipo: "padron", version: 3, estado: "preview", filas: [fila(1, "valida", "20990185011"), fila(2, "revision", "123")], resumen: { total: 2, valida: 1, revision: 1, aplicada: 0 } };
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([lote]) }));
   await page.route("**/api/financiadores/21/previsualizar-ostel/**", async (route) => {
     expect(route.request().headers()["content-type"]).toContain("multipart/form-data");
     expect(route.request().postData()).toContain('name="fuente"');
@@ -1608,11 +1618,17 @@ test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async
   await expect(page.getByText("Documento y CUIL no concuerdan", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
   await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
+  await page.getByRole("region", { name: "Importaciones registradas" }).getByRole("button", { name: /Importación 180/ }).click();
+  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("aplicada");
+  await expect(page.getByRole("button", { name: "Ver detalle", exact: true })).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("pendientes");
   await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
-  await page.getByLabel("CUIL", { exact: true }).fill("20990185011");
+  await expect(page.getByRole("button", { name: "← Volver al historial", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "CUIL", exact: true }).fill("20990185011");
   await page.getByLabel("Motivo de la revisión", { exact: true }).fill("Verificado contra fuente ficticia");
   await page.getByRole("button", { name: "Guardar y revalidar", exact: true }).click();
-  await expect(page.getByText("No hay filas en esta categoría.")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "No hay filas en esta categoría." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
   await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled();

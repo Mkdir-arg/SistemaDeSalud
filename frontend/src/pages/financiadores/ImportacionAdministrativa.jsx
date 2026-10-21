@@ -6,7 +6,7 @@ import { Ayuda, Button, Field, Input, Select, Textarea } from "@/components/ui";
 const CAMPOS = { numero_interno: "Número interno", numero: "Número de afiliación", documento: "Documento", cuil: "CUIL", nombre: "Nombre completo" };
 const ESTADOS = { valida: "Lista para aplicar", revision: "Requiere revisión", aplicada: "Aplicada", omitida: "Excluida" };
 
-export default function ImportacionAdministrativa({ organizacion, formato, lote, setLote, lotes, onAplicado, onBloqueosChange }) {
+export default function ImportacionAdministrativa({ organizacion, formato, lote, setLote, lotes, onAplicado, onBloqueosChange, soloDetalle = false }) {
   const [archivo, setArchivo] = useState(null);
   const [fuente, setFuente] = useState("base");
   const [ocupado, setOcupado] = useState(false);
@@ -72,13 +72,13 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const visible = Math.min(pagina, ultima);
   return <div className="space-y-5">
     <p role="status" className="rounded-lg bg-superficie-2 p-3 text-sm">Carga administrativa. Las personas nuevas se registran sin habilitar cobertura. La cobertura de personas existentes se conserva.</p>
-    <form onSubmit={revisar} className="space-y-3">
+    {!soloDetalle && <form onSubmit={revisar} className="space-y-3">
       <div className="flex items-center gap-2"><h3 className="font-semibold">1. Elegí el archivo</h3><Ayuda>{formato.descripcion} Las ausencias no generan bajas. Los archivos de bajas sólo se conservan como evidencia para revisión.</Ayuda></div>
       <Button type="button" variant="secondary" disabled={ocupado} onClick={() => ejecutar(() => api.download(`${ruta("plantilla")}?${new URLSearchParams(formato.parametrosPlantilla("padron"))}`, formato.nombrePlantilla("padron")))}>Descargar plantilla</Button>
       <Field label="Contenido del archivo"><Select value={fuente} disabled={ocupado || !!edicion} onChange={(e) => { setFuente(e.target.value); clave.current = crypto.randomUUID(); setLote(null); }}><option value="base">Padrón base administrativo (octubre)</option><option value="bajas">Evidencia de bajas — sin aplicación automática</option></Select></Field>
       <Field label="Archivo Excel (.xlsx)" ayuda="Hasta 5 MiB. Conservá identificadores y ceros tal como fueron informados."><Input type="file" accept=".xlsx" disabled={ocupado || !!edicion} onChange={(e) => { setArchivo(e.target.files[0] || null); setLote(null); clave.current = crypto.randomUUID(); }} /></Field>
       <Button disabled={!archivo || ocupado || !!edicion} type="submit">{ocupado ? "Procesando…" : "Revisar archivo"}</Button>
-    </form>
+    </form>}
     {error && <p role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error}</p>}
     {lote && <section className="space-y-4 border-t border-division pt-4" aria-label="Revisión administrativa">
       <h3 className="font-semibold">2. Aplicá las válidas y resolvé las pendientes</h3>
