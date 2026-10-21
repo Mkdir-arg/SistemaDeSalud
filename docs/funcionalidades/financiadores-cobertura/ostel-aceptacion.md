@@ -37,7 +37,49 @@ de importación (una prueba adicional de concurrencia omitida por requerir
 PostgreSQL); nueve pruebas Playwright con API simulada pasaron. Una comprobación
 con navegador/API/SQLite reales verificó checkbox predeterminado, ausencia del
 selector de contenido, conflicto de cobertura, revisión con motivo, aplicación y
-conservación de la habilitación existente. No se verificó concurrencia PostgreSQL.
+conservación de la habilitación existente. La concurrencia se registra separadamente abajo.
+
+### Medición integral de volumen — 21/10/2026
+
+Una ejecución aislada con 5.754 altas ficticias válidas mediante DRF APIClient,
+endpoints reales, ORM e historial en SQLite `:memory:` terminó sin conflictos ni
+errores: 5.754 personas, todas con la habilitación seleccionada, y reintento final
+sin duplicación. No se usó ni modificó la base de la demo manual.
+
+- XLSX: 603.317 bytes; previsualización: 10,843 s.
+- Aplicación: 327,766 s en 58 llamadas; mediana 5,673 s y máximo 7,387 s por llamada.
+- Cuerpos JSON de aplicación acumulados: 234.182.643 bytes (223,33 MiB), porque
+  cada tanda devuelve el lote completo. Es un hallazgo de rendimiento a resolver
+  o aceptar explícitamente antes de publicar, no una medición de tráfico de red.
+- Evidencia y script reproducible: carpeta temporal
+  `C:/Users/Juanito/AppData/Local/Temp/ostel-benchmark-357cb486` (`result.json`,
+  `benchmark.py`, `README.md`).
+
+Límites: una ejecución sin objetivo de rendimiento acordado; altas válidas, sin
+mezcla de conflictos; sin transporte HTTP, navegador, disco, rendimiento
+PostgreSQL ni carga multiusuario. El proceso incluye DB en memoria y harness;
+su pico observado de 641,8 MiB no representa RAM atribuible a producción. Se midió
+el árbol de trabajo con cambios concurrentes de permisos, no un commit aislado.
+
+### Concurrencia PostgreSQL aislada — 21/10/2026
+
+Con autorización expresa del usuario se ejecutaron tres pruebas en PostgreSQL 16
+local temporal, con datos ficticios: dos confirmaciones simultáneas de un lote
+OSTEL generan una persona; dos lotes con la misma identidad y opciones de
+cobertura contrarias generan una aplicación y una revisión, conservando la
+habilitación del ganador; dos confirmaciones de consumo generan un consumo.
+Las tres pasaron: 1,810 s de tests, 39,875 s totales incluidas migraciones. Tras incorporar los dos casos OSTEL al repositorio se repitieron las tres: aprobadas sin omisiones, 1,912 s de tests y 42,356 s totales. Evidencia de repetición: `postgres-repo-tests.log` y `postgres-repo-result.json`, con limpieza confirmada.
+
+La imagen ya estaba local; el contenedor se limitó a 512 MiB y 1 CPU, puerto
+127.0.0.1:55439 y almacenamiento tmpfs. Se verificó su ID, se detuvo y eliminó
+únicamente ese contenedor y se borró el archivo temporal de credenciales. No se
+tocó la demo ni una base real. Evidencia: `postgres-result.json` y
+`postgres-tests.log` en la misma carpeta temporal del benchmark. Los dos casos
+OSTEL se incorporaron a `backend/apps/financiadores/test_ostel_concurrencia.py` y son descubribles por la suite PostgreSQL existente de CI. La ejecución local no acredita un resultado de CI.
+Comando desde `backend`, con `SALUD_TEST_POSTGRES_URL` apuntando exclusivamente a la base temporal autorizada: `python -B manage.py test apps.financiadores.test_ostel_concurrencia apps.financiadores.test_importaciones.ImportacionesConcurrenciaTests --settings=config.settings_financiadores_postgres_test --noinput --verbosity 2`.
+
+Esto no acredita todos los escritores concurrentes, CI del commit publicado,
+rendimiento PostgreSQL con 5.754 registros ni comportamiento de producción.
 
 Implementación local: campo `cobertura_habilitada` con default y db_default true;
 `numero_interno` separado de `numero` (NROAFI), único no vacío por financiador;
@@ -81,8 +123,8 @@ No desplegar ni volver a una versión que ignore el flag después de crear regis
 administrativos: podría habilitarlos implícitamente. Revertir el esquema también
 perdería esa distinción y NUMERO; no es un rollback seguro automático. Ante un
 problema, detener la carga y conservar datos/habilitaciones para reparación hacia
-adelante. PostgreSQL/concurrencia real y capacidad del importador completo con
-5.754 registros siguen pendientes. La comprobación del usuario consta arriba;
+adelante. La medición de 5.754 altas ficticias consta arriba; rendimiento de
+producción y transporte HTTP/navegador siguen pendientes. La comprobación del usuario consta arriba;
 no hay aceptación por caso registrada ni homologación productiva. No se cargaron
 datos reales ni se publicó esta implementación.
 

@@ -44,7 +44,8 @@ Al preparar la guía, la base conservaba algunos lotes del chequeo automático c
 - Migración `0013_administrativa_cobertura` aplicada a la base SQLite ficticia, con respaldo anterior `ostel-antes-0013.sqlite3`.
 - Chequeo real con navegador, API y SQLite: login operador, carga, aplicación parcial, subsanación, segunda aplicación, historial, filtro administrativo y auditor sin importación: OK.
 - Las pruebas técnicas previas cubren alta predeterminada/excepcional, permisos, revisiones concurrentes, preservación de cobertura y consumidores clínicos/financieros. Este recorrido no configura un hospital ni demuestra prestaciones, reservas o liquidaciones completas mediante navegador.
-- SQLite tuvo un bloqueo al cargar consultas simultáneas de Inicio. El servidor local usa `--nothreading` para esta demo; esto no prueba concurrencia PostgreSQL, rendimiento real ni producción.
+- SQLite tuvo un bloqueo al cargar consultas simultáneas de Inicio. El servidor local usa `--nothreading` para esta demo. Por separado pasaron tres pruebas de concurrencia en PostgreSQL temporal autorizado, ya eliminado; no equivalen a una prueba de rendimiento de producción.
+- Volumen aislado: 5.754 altas ficticias y reintento sin duplicación; revisión 10,843 s, aplicación 327,766 s en 58 llamadas y 223,33 MiB de cuerpos JSON acumulados. No mide HTTP ni navegador. Ver la evidencia y límites en [Estado vigente](ostel-aceptacion.md).
 - Hay trabajo paralelo de permisos/navegación en el mismo checkout, excluido de los commits OSTEL. La UI local también refleja esos archivos. Las verificaciones corresponden al estado observado, no a una copia inmutable del commit.
 - No hubo push, despliegue ni uso de los Excel reales. No restaurar automáticamente una versión antigua: ignorar el nuevo indicador podría tratar registros administrativos como habilitados.
 
