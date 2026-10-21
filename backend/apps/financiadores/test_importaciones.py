@@ -62,6 +62,89 @@ class ImportacionesSetup:
         return importaciones.aplicar_importacion(importacion=lote, usuario=self.usuario, revisiones_duplicados=revisiones)
 
 
+class CoberturaImportacionesTests(ImportacionesSetup, TestCase):
+    def archivo_cobertura(self, version, filas):
+        contenido = importaciones.generar_plantilla(financiador=self.financiador, usuario=self.usuario, tipo="padron", version=version)
+        libro = load_workbook(BytesIO(contenido))
+        for n, fila in enumerate(filas, 2):
+            for c, valor in enumerate(fila, 1):
+                libro["Carga"].cell(n, c, valor)
+        salida = BytesIO()
+        libro.save(salida)
+        libro.close()
+        return salida.getvalue()
+
+    def previa(self, contenido, habilitada, clave=None):
+        return importaciones.previsualizar_importacion(financiador=self.financiador, usuario=self.usuario,
+            tipo="padron", archivo=contenido, clave=clave or uuid4(), cobertura_habilitada=habilitada)
+
+    def test_ambas_versiones_parcial_y_revision_conservan_cobertura(self):
+        for version in (1, 2):
+            for solicitada in (False, True):
+                with self.subTest(version=version, solicitada=solicitada):
+                    self.afiliado.cobertura_habilitada = not solicitada
+                    self.afiliado.save(update_fields=["cobertura_habilitada"])
+                    doc = f"80000{version}{int(solicitada)}"
+                    contenido = self.archivo_cobertura(version, [
+                        ["000123", "00123456", "Persona de prueba", "BASICO", date(2020, 1, 1)],
+                        ["NUEVO", doc, "Persona nueva ficticia", "", date(2020, 1, 1)]])
+                    lote = self.previa(contenido, solicitada)
+                    self.assertEqual((lote.resumen["valida"], lote.resumen["revision"]), (1, 1))
+                    self.aplicar(lote)
+                    self.assertEqual(lote.resumen["aplicada"], 1)
+                    self.assertEqual(Afiliado.objects.get(documento=doc).cobertura_habilitada, solicitada)
+                    fila = lote.filas[0]
+                    lote = importaciones.aplicar_importacion(importacion=lote, usuario=self.usuario,
+                        revisiones_cobertura={str(fila["fila"]): "Confirmo conservar la cobertura actual"})
+                    self.assertEqual(lote.resumen["aplicada"], 2)
+                    self.assertEqual(lote.resumen["cobertura_habilitada"], solicitada)
+                    self.assertTrue(lote.filas[0]["motivo_cobertura"])
+                    self.afiliado.refresh_from_db()
+                    self.assertEqual(self.afiliado.cobertura_habilitada, not solicitada)
+                    self.aplicar(lote)
+                    self.assertEqual(Afiliado.objects.filter(documento=doc).count(), 1)
+
+    def test_revision_cobertura_no_fuerza_identidad_o_foto_vieja(self):
+        contenido = self.archivo_cobertura(2, [["000123", "00123456", "Persona de prueba", "BASICO", date(2020, 1, 1)]])
+        lote = self.previa(contenido, False)
+        self.afiliado.revision += 1
+        self.afiliado.save(update_fields=["revision"])
+        lote = importaciones.aplicar_importacion(importacion=lote, usuario=self.usuario,
+            revisiones_cobertura={"2": "Intento con foto vieja"})
+        self.assertEqual(lote.resumen["aplicada"], 0)
+        self.afiliado.refresh_from_db()
+        self.assertTrue(self.afiliado.cobertura_habilitada)
+
+    def test_opcion_inmutable_y_no_aplicable_a_consumos(self):
+        contenido = self.archivo_cobertura(2, [["NUEVO", "80000111", "Ficticio", "", date(2020, 1, 1)]])
+        clave = uuid4()
+        lote = self.previa(contenido, True, clave)
+        self.assertEqual(self.previa(contenido, True, clave).pk, lote.pk)
+        with self.assertRaises(ValidationError):
+            self.previa(contenido, False, clave)
+        with self.assertRaises(ValidationError):
+            importaciones.previsualizar_importacion(financiador=self.financiador, usuario=self.usuario,
+                tipo="consumos", archivo=b"", clave=uuid4(), cobertura_habilitada=True)
+
+    def test_api_multipart_conserva_false_y_confirma_conflicto(self):
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(self.usuario)
+        base = f"/api/financiadores/{self.financiador.pk}/"
+        contenido = self.archivo_cobertura(2, [["000123", "00123456", "Persona de prueba", "BASICO", date(2020, 1, 1)]])
+        respuesta = client.post(base + "importaciones/", {"tipo": "padron", "clave": str(uuid4()),
+            "archivo": SimpleUploadedFile("ficticio.xlsx", contenido), "cobertura_habilitada": False}, format="multipart")
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        self.assertFalse(respuesta.data["resumen"]["cobertura_habilitada"])
+        self.assertEqual(respuesta.data["resumen"]["revision"], 1)
+        aplicada = client.post(base + "confirmar-importacion/", {"importacion": respuesta.data["id"],
+            "revisiones_cobertura": {"2": "Conservar cobertura actual comprobada"}}, format="json")
+        self.assertEqual(aplicada.status_code, 200, aplicada.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 1)
+        self.afiliado.refresh_from_db()
+        self.assertTrue(self.afiliado.cobertura_habilitada)
+
+
 class ImportacionesTests(ImportacionesSetup, TestCase):
     def test_preview_no_aplica_y_confirmacion_importa_validas_con_ceros(self):
         lote = self.preview(self.archivo(filas=[self.consumo(), self.consumo(documento="DESCONOCIDO")]))

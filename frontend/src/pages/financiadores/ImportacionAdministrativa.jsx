@@ -6,15 +6,15 @@ import { Ayuda, Button, Field, Input, Select, Textarea } from "@/components/ui";
 const CAMPOS = { numero_interno: "Número interno", numero: "Número de afiliación", documento: "Documento", cuil: "CUIL", nombre: "Nombre completo" };
 const ESTADOS = { valida: "Lista para aplicar", revision: "Requiere revisión", aplicada: "Aplicada", omitida: "Excluida" };
 
-export default function ImportacionAdministrativa({ organizacion, formato, lote, setLote, lotes, onAplicado, onBloqueosChange, soloDetalle = false }) {
+export default function ImportacionAdministrativa({ organizacion, formato, lote, setLote, lotes, onAplicado, onBloqueosChange, soloDetalle = false, coberturaHabilitada = true }) {
   const [archivo, setArchivo] = useState(null);
-  const [fuente, setFuente] = useState("base");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
   const [edicion, setEdicion] = useState(null);
   const [pagina, setPagina] = useState(0);
   const [filtro, setFiltro] = useState("pendientes");
   const clave = useRef(crypto.randomUUID());
+  useEffect(() => { clave.current = crypto.randomUUID(); }, [coberturaHabilitada]);
   const activo = useRef(true);
   useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
   useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion, cierre: ocupado || !!edicion }); }, [ocupado, edicion, onBloqueosChange]);
@@ -32,7 +32,7 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
     if (!archivo || ocupado) return;
     await ejecutar(async () => {
       const datos = new FormData();
-      datos.append("archivo", archivo); datos.append("clave", clave.current); datos.append("fuente", fuente);
+      datos.append("archivo", archivo); datos.append("clave", clave.current); datos.append("cobertura_habilitada", String(coberturaHabilitada));
       const nuevo = await api.multipart(ruta(formato.recursoRevision), datos);
       if (activo.current) { setLote(nuevo); lotes.refetch(); }
     });
@@ -71,11 +71,10 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const ultima = Math.max(0, Math.ceil(filas.length / 20) - 1);
   const visible = Math.min(pagina, ultima);
   return <div className="space-y-5">
-    <p role="status" className="rounded-lg bg-superficie-2 p-3 text-sm">Carga administrativa. Las personas nuevas se registran sin habilitar cobertura. La cobertura de personas existentes se conserva.</p>
+    {lote && <p role="status" className="rounded-lg bg-superficie-2 p-3 text-sm">{lote.resumen.cobertura_habilitada === true ? "Personas nuevas: cobertura habilitada, sujeta a plan, fechas y reglas." : "Personas nuevas: sólo registro administrativo, sin habilitar cobertura."} En personas existentes se conserva la habilitación actual.</p>}
     {!soloDetalle && <form onSubmit={revisar} className="space-y-3">
       <div className="flex items-center gap-2"><h3 className="font-semibold">1. Elegí el archivo</h3><Ayuda>{formato.descripcion} Las ausencias no generan bajas. Los archivos de bajas sólo se conservan como evidencia para revisión.</Ayuda></div>
       <Button type="button" variant="secondary" disabled={ocupado} onClick={() => ejecutar(() => api.download(`${ruta("plantilla")}?${new URLSearchParams(formato.parametrosPlantilla("padron"))}`, formato.nombrePlantilla("padron")))}>Descargar plantilla</Button>
-      <Field label="Contenido del archivo"><Select value={fuente} disabled={ocupado || !!edicion} onChange={(e) => { setFuente(e.target.value); clave.current = crypto.randomUUID(); setLote(null); }}><option value="base">Padrón base administrativo (octubre)</option><option value="bajas">Evidencia de bajas — sin aplicación automática</option></Select></Field>
       <Field label="Archivo Excel (.xlsx)" ayuda="Hasta 5 MiB. Conservá identificadores y ceros tal como fueron informados."><Input type="file" accept=".xlsx" disabled={ocupado || !!edicion} onChange={(e) => { setArchivo(e.target.files[0] || null); setLote(null); clave.current = crypto.randomUUID(); }} /></Field>
       <Button disabled={!archivo || ocupado || !!edicion} type="submit">{ocupado ? "Procesando…" : "Revisar archivo"}</Button>
     </form>}
@@ -91,6 +90,7 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
       {edicion && <section className="space-y-3 rounded-lg border border-division p-4" aria-label="Subsanar fila">
         <h4 className="font-semibold">Revisar {edicion.hoja} · fila {edicion.fila_excel}</h4>
         <p className="text-sm">Corregí sólo con información comprobada. Guardar vuelve a validar; no fusiona personas ni aplica la fila.</p>
+        {edicion.conflicto_cobertura && <p role="status" className="rounded-md bg-badge-amber-bg p-3 text-sm">Conflicto de cobertura: actualmente {edicion.conflicto_cobertura.actual ? "habilitada" : "sin habilitar"}; el lote solicita {edicion.conflicto_cobertura.solicitada ? "habilitarla" : "sólo registro administrativo"}. Al guardar con un motivo confirmás que se conserva la habilitación actual.</p>}
         <details><summary className="cursor-pointer">Ver valores originales del archivo</summary><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{Object.entries(edicion.original).map(([k, v]) => <div key={k}><dt className="font-medium">{k}</dt><dd>{v == null ? "Sin informar" : String(v)}</dd></div>)}</dl></details>
         {edicion.padron_actual && <div className="rounded-md bg-superficie-2 p-3 text-sm"><h5 className="font-semibold">Valores actuales en el padrón</h5>{Object.entries(CAMPOS).map(([k, titulo]) => <p key={k}>{titulo}: {edicion.padron_actual[k] || "Sin informar"}</p>)}</div>}
         {edicion.correcciones?.length > 0 && <details><summary>Historial de revisiones</summary>{edicion.correcciones.map((c, i) => <div key={i} className="border-t border-division py-2 text-sm"><p>{c.accion === "omitir" ? "Exclusión" : "Corrección"} · {c.fecha} · Usuario {c.usuario} · {c.motivo}</p>{Object.keys(CAMPOS).filter((k) => c.anterior[k] !== c.nuevo[k]).map((k) => <p key={k}>{CAMPOS[k]}: {c.anterior[k]} → {c.nuevo[k]}</p>)}</div>)}</details>}

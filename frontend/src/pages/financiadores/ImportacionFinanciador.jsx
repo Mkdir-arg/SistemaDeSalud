@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Field, Modal, Select, Spinner } from "@/components/ui";
+import { Ayuda, Button, Field, Modal, Select, Spinner } from "@/components/ui";
 import ImportacionSistema from "./ImportacionSistema";
 import ImportacionAdministrativa from "./ImportacionAdministrativa";
 import RevisionTecnicaExcel from "./RevisionTecnicaExcel";
@@ -17,6 +17,7 @@ export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, 
   const opciones = formatosPara(tipo);
   const [pagina, setPagina] = useState(1);
   const [lote, setLote] = useState(null);
+  const [coberturaHabilitada, setCoberturaHabilitada] = useState(true);
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [loteHistorico, setLoteHistorico] = useState(null);
   const [bloqueosHistorial, setBloqueosHistorial] = useState({ selector: false, cierre: false });
@@ -75,9 +76,14 @@ export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, 
           {opciones.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
         </Select>
       </Field>
+      {tipo === "padron" && <div className="flex items-center gap-2">
+        <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={coberturaHabilitada} disabled={bloqueos.selector}
+          onChange={(event) => { setCoberturaHabilitada(event.target.checked); setLote(null); }} />Habilitar cobertura</label>
+        <Ayuda etiqueta="Ayuda sobre cobertura de la importación">Se aplica a las personas nuevas. Desmarcá para registrar sólo datos administrativos. En personas existentes se conserva la habilitación actual; las diferencias quedan como conflictos para revisión. Las prestaciones siguen sujetas al plan, las fechas y las reglas de cobertura.</Ayuda>
+      </div>}
       {!preferencia.persistencia && <p role="status" className="text-sm text-texto-debil">Este navegador no permite guardar la preferencia. Podés continuar seleccionando el formato en cada apertura.</p>}
       <Flujo key={formato.id} formato={formato} organizacion={organizacion} tipo={tipo} scope={scope}
-        onAplicado={onAplicado} onBloqueosChange={setBloqueos}
+        onAplicado={onAplicado} onBloqueosChange={setBloqueos} coberturaHabilitada={coberturaHabilitada}
         lote={lote} setLote={setLote} lotes={lotes} setPagina={setPagina} />
       <button ref={accesoHistorial} type="button" aria-haspopup="dialog" aria-expanded={historialAbierto}
         disabled={bloqueos.selector} onClick={() => setHistorialAbierto(true)}

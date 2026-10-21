@@ -25,11 +25,11 @@ class ImportacionAdministrativaTests(TestCase):
         self.client.force_authenticate(self.user)
         self.base = f"/api/financiadores/{self.org.pk}/"
 
-    def preview(self, filas=None, fuente="base", clave=None):
+    def preview(self, filas=None, fuente="base", clave=None, **opciones):
         contenido = generar_xlsx(Lote("entrada", tuple(filas or [_persona(1, NUMERO="000001")])) )
         return self.client.post(self.base + "previsualizar-ostel/", {
             "archivo": SimpleUploadedFile("ficticio.xlsx", contenido),
-            "clave": str(clave or uuid4()), "fuente": fuente,
+            "clave": str(clave or uuid4()), "fuente": fuente, **opciones,
         }, format="multipart")
 
     def aplicar(self, lote):
@@ -56,6 +56,57 @@ class ImportacionAdministrativaTests(TestCase):
         self.assertIsNone(obj.plan_id)
         self.aplicar(aplicada.data)
         self.assertEqual(Afiliado.objects.count(), 1)
+
+    def test_opcion_cobertura_altas_y_conflictos_conservan_ambos_estados(self):
+        for n, habilitada in ((21, True), (22, False)):
+            with self.subTest(habilitada=habilitada):
+                filas = [_persona(n, NUMERO=str(n))]
+                lote = self.preview(filas, cobertura_habilitada=habilitada).data
+                self.assertEqual(lote["resumen"]["cobertura_habilitada"], habilitada)
+                self.aplicar(lote)
+                obj = Afiliado.objects.get(numero_interno=str(n))
+                self.assertEqual(obj.cobertura_habilitada, habilitada)
+                conflicto = self.preview(filas, cobertura_habilitada=not habilitada).data
+                self.assertEqual(conflicto["resumen"]["revision"], 1)
+                self.assertEqual(conflicto["filas"][0]["conflicto_cobertura"]["actual"], habilitada)
+                self.assertEqual(self.aplicar(conflicto).data["resumen"]["aplicada"], 0)
+                revisada = self.corregir(conflicto).data
+                self.assertEqual(revisada["resumen"]["valida"], 1)
+                aplicada = self.aplicar(revisada).data
+                self.assertEqual(aplicada["resumen"]["aplicada"], 1)
+                self.assertEqual(aplicada["resumen"]["cobertura_habilitada"], not habilitada)
+                self.assertTrue(aplicada["filas"][0]["motivo_cobertura"])
+                obj.refresh_from_db()
+                self.assertEqual(obj.cobertura_habilitada, habilitada)
+
+    def test_opcion_cobertura_no_fuerza_baja_ni_identidad_y_clave_la_fija(self):
+        from datetime import date
+        r = self.preview([_persona(31, NUMERO="31", FECBAJ=date(2026, 1, 1)),
+                          _persona(32, NUMERO="32", CUIL="123")], cobertura_habilitada=True).data
+        self.assertEqual(r["resumen"]["revision"], 2)
+        self.assertEqual(self.aplicar(r).data["resumen"]["aplicada"], 0)
+        contenido = generar_xlsx(Lote("entrada", (_persona(33, NUMERO="33"),)))
+        clave = str(uuid4())
+        def enviar(valor):
+            return self.client.post(self.base + "previsualizar-ostel/", {
+                "archivo": SimpleUploadedFile("prueba.xlsx", contenido), "clave": clave,
+                "cobertura_habilitada": valor}, format="multipart")
+        self.assertEqual(enviar(True).status_code, 200)
+        self.assertEqual(enviar(True).status_code, 200)
+        self.assertEqual(enviar(False).status_code, 400)
+
+    def test_conflicto_cobertura_revisado_no_acepta_revision_desactualizada(self):
+        self.aplicar(self.preview(cobertura_habilitada=False).data)
+        r = self.preview(cobertura_habilitada=True).data
+        r = self.corregir(r).data
+        obj = Afiliado.objects.get()
+        obj.revision += 1
+        obj.save(update_fields=["revision"])
+        r = self.aplicar(r).data
+        self.assertEqual(r["resumen"]["aplicada"], 0)
+        self.assertEqual(r["resumen"]["revision"], 1)
+        obj.refresh_from_db()
+        self.assertFalse(obj.cobertura_habilitada)
 
     def test_conflictos_en_ambas_direcciones_y_omision(self):
         for filas in (

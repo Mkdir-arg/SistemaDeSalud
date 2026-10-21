@@ -722,7 +722,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             auditar(request.user, "consultar_importaciones", org.pk, financiador=org)
             return self.get_paginated_response(s.ImportacionSerializer(pagina, many=True).data)
         from .importaciones import previsualizar_importacion
-        d = datos(request, {"archivo": serializers.FileField(), "tipo": serializers.ChoiceField(choices=["padron", "consumos"]), "clave": serializers.UUIDField()})
+        d = datos(request, {"archivo": serializers.FileField(), "tipo": serializers.ChoiceField(choices=["padron", "consumos"]), "clave": serializers.UUIDField(),
+            "cobertura_habilitada": serializers.BooleanField(required=False, default=None, allow_null=True)})
         obj = previsualizar_importacion(financiador=org, usuario=request.user, **d)
         return Response(s.ImportacionSerializer(obj).data, status=201)
 
@@ -767,7 +768,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         from .ostel_importacion import previsualizar
         org = self.organizacion(escritura=True)
         d = datos(request, {"archivo": serializers.FileField(), "clave": serializers.UUIDField(),
-            "fuente": serializers.ChoiceField(choices=["base", "bajas"])})
+            "fuente": serializers.ChoiceField(choices=["base", "bajas"], default="base"),
+            "cobertura_habilitada": serializers.BooleanField(required=False, default=None, allow_null=True)})
         lote = previsualizar(financiador=org, usuario=request.user, **d)
         response = Response(s.ImportacionSerializer(lote).data)
         response["Cache-Control"] = "private, no-store"
@@ -793,7 +795,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
     def confirmar_importacion(self, request, pk=None):
         org = self.organizacion(escritura=True)
         from .importaciones import aplicar_importacion
-        d = datos(request, {"importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)), "revisiones_duplicados": serializers.DictField(child=serializers.CharField(max_length=255), required=False)})
+        d = datos(request, {"importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)), "revisiones_duplicados": serializers.DictField(child=serializers.CharField(max_length=255), required=False),
+            "revisiones_cobertura": serializers.DictField(child=serializers.CharField(max_length=255), required=False)})
         obj = aplicar_importacion(usuario=request.user, **d)
         return Response(s.ImportacionSerializer(obj).data)
 

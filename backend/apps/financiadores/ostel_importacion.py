@@ -1,6 +1,6 @@
-"""Carga administrativa OSTEL. Nunca calcula ni habilita derechos de cobertura.
+"""Carga OSTEL con habilitación elegida por lote para personas nuevas.
 
-Octubre es la base elegida por el operador; las bajas son evidencia, no órdenes.
+Las filas con evidencia de baja no son órdenes de alta ni de finalización.
 Se conservan códigos sin homologar. No se deducen familias, bajas o reingresos.
 """
 from collections import Counter
@@ -20,6 +20,7 @@ from .ostel_prevalidacion import prevalidar_ostel, ArchivoOstelInvalido, MAX_BYT
 from .permisos import requerir_financiador
 from . import padron
 from .services import auditar, registrar_afiliado
+from .importacion_cobertura import revisar_cobertura, validar_opcion
 
 VERSION = 3
 CAMPOS = ("numero_interno", "numero", "documento", "cuil", "nombre")
@@ -44,10 +45,13 @@ def _json(valor):
 
 
 def _guardar(lote):
+    opcion = lote.resumen.get("cobertura_habilitada")
     lote.resumen = {"total": len(lote.filas), **{
         estado: sum(f["estado"] == estado for f in lote.filas)
         for estado in ("valida", "revision", "rechazada", "aplicada", "error_tecnico", "omitida")}}
     lote.resumen["fuente"] = lote.filas[0]["fuente"] if lote.filas else "base"
+    if opcion is not None:
+        lote.resumen["cobertura_habilitada"] = opcion
     lote.estado = "preview" if any(f["estado"] not in ("aplicada", "omitida") for f in lote.filas) else "aplicada"
     lote.save(update_fields=["filas", "resumen", "estado"])
 
@@ -87,6 +91,7 @@ def _validar(fila, lote, repetidos, referencias=None):
             raise ValidationError("Hay diferencias con el padrón actual. Compará los valores y confirmá la corrección con un motivo.")
     elif fila.get("revision_padron", 0):
         raise ValidationError("La identidad cambió desde la revisión; volvé a revisar la fila.")
+    revisar_cobertura(fila, obj, lote.resumen.get("cobertura_habilitada"))
     return obj
 
 
@@ -114,8 +119,9 @@ def _revisar(lote):
 
 
 @transaction.atomic
-def previsualizar(*, financiador, usuario, archivo, clave, fuente):
+def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobertura_habilitada=None):
     requerir_financiador(usuario, financiador.pk, escritura=True)
+    validar_opcion(cobertura_habilitada)
     if fuente not in ("base", "bajas"):
         raise ValidationError("Elegí padrón base o evidencia de bajas.")
     try:
@@ -123,7 +129,8 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente):
     except (ValueError, TypeError):
         raise ValidationError("La clave de importación no es válida.") from None
     contenido = archivo.read(MAX_BYTES + 1)
-    huella = sha256(fuente.encode() + contenido).hexdigest()
+    opcion = b"" if cobertura_habilitada is None else str(cobertura_habilitada).encode()
+    huella = sha256(fuente.encode() + opcion + contenido).hexdigest()
     previo = Importacion.objects.filter(financiador=financiador, clave=clave).first()
     if previo:
         if previo.version != VERSION or previo.huella != huella:
@@ -175,7 +182,8 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente):
             raise ValidationError("La clave pertenece a otro archivo o fuente.")
         return previo
     lote = Importacion.objects.create(financiador=financiador, tipo="padron", version=VERSION,
-        clave=clave, huella=huella, filas=filas, creado_por=usuario)
+        clave=clave, huella=huella, filas=filas, creado_por=usuario,
+        resumen={} if cobertura_habilitada is None else {"cobertura_habilitada": cobertura_habilitada})
     _revisar(lote)
     auditar(usuario, "previsualizar_ostel", lote.pk, financiador=financiador)
     return lote
@@ -217,6 +225,11 @@ def subsanar(*, importacion, usuario, fila, revision, datos, motivo, accion="cor
     actual["revision_padron"] = obj.revision if obj else 0
     actual["padron_actual"] = {k: getattr(obj, k) for k in CAMPOS} if obj else None
     actual["cambios_revisados"] = accion == "corregir"
+    if accion == "corregir":
+        try:
+            revisar_cobertura(actual, obj, lote.resumen.get("cobertura_habilitada"), motivo)
+        except ValidationError:
+            pass  # _revisar mantiene la diferencia nueva pendiente de otra revisión.
     _revisar(lote)
     auditar(usuario, "subsanar_ostel", lote.pk, financiador=lote.financiador)
     return lote
@@ -241,9 +254,9 @@ def aplicar(*, importacion, usuario):
                 if obj is None:
                     obj = registrar_afiliado(financiador=lote.financiador, usuario=usuario,
                         numero=d["numero"], documento=d["documento"], nombre=d["nombre"],
-                        plan=None, desde=timezone.localdate(), cobertura_habilitada=False,
+                        plan=None, desde=timezone.localdate(), cobertura_habilitada=lote.resumen.get("cobertura_habilitada", False),
                         solo_crear=True, origen="importacion", lote=lote,
-                        motivo="Registro administrativo OSTEL; cobertura pendiente de reglas")
+                        motivo="Alta OSTEL con habilitación seleccionada al revisar el lote")
                 entrada = {k: d[k] for k in ("numero", "nombre", "cuil")}
                 # NUMERO es clave externa separada del NROAFI familiar.
                 if obj.numero_interno != d["numero_interno"]:

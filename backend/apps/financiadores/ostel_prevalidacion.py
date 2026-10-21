@@ -8,9 +8,10 @@ No es una autorización de carga ni un reemplazo del importador existente.
 
 Decisión de producto 21/10/2026 (#180/#185): primera entrega de padrón
 administrativo, con aplicación parcial y conflictos de identidad para revisión
-humana. Los derechos de cobertura esperan sus reglas de OSTEL. El adaptador
-ostel_importacion crea registros con cobertura_habilitada=False; este lector
-continúa siendo puro y no autoriza aplicaciones por sí mismo.
+humana. La habilitación para altas nuevas se elige por lote; las existentes se
+conservan y las diferencias requieren revisión. Las reglas de prestaciones
+siguen pendientes de OSTEL. Este lector continúa siendo puro y no autoriza
+aplicaciones por sí mismo.
 """
 from dataclasses import dataclass, field
 from io import BytesIO
