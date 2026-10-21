@@ -97,7 +97,7 @@ async function escenario(page, { usuario = ROOT, institucion = HOSPITAL, simulac
     const simulando = encabezado ? estado.activa : null;
     if (path === "/usuarios/me/") return route.fulfill({ json: simulando ? CUENTAS[simulando.rol](simulando) : usuario });
     if (path === "/instituciones/") return route.fulfill({ json: lista(simulando ? [HOSPITAL] : [HOSPITAL, OTRO]) });
-    if (path === "/financiadores/") return route.fulfill({ json: lista(simulando?.rol === "operador" ? [{ id: 21, nombre: "Mutual del Río", tipo: "mutual", rol: "operador" }] : [{ id: 21, nombre: "Mutual del Río", tipo: "mutual" }]) });
+    if (path === "/financiadores/") return route.fulfill({ json: lista(simulando?.rol === "operador" ? [{ id: 21, nombre: "Mutual del Río", tipo: "mutual", rol: "operador" }] : [{ id: 21, nombre: "Mutual del Río", tipo: "mutual", rol: !simulando && usuario.is_superuser ? "admin" : null }]) });
     if (path === "/notificaciones/resumen/") return route.fulfill({ json: { no_leidas: 0, items: [] } });
     if (path === "/mis-tareas/") return route.fulfill({ json: { tareas: [], filas: [] } });
     // El Directorio de plataforma (destino del auditor estatal) pide su tablero.
