@@ -1,0 +1,80 @@
+name: issue43
+
+on:
+  pull_request:
+    paths: ["backend/**", "frontend/**", ".github/workflows/issue43.yml", "docker-compose.issue43.yml"]
+  push:
+    branches: [main]
+    paths: ["backend/**", "frontend/**", ".github/workflows/issue43.yml", "docker-compose.issue43.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  circuito-real:
+    name: Finanzas con navegador, Django y PostgreSQL 16
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: issue43
+          POSTGRES_DB: salud_issue43
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["55443:5432"]
+        options: >-
+          --health-cmd "pg_isready -U issue43 -d salud_issue43"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      SALUD_ISSUE43_AISLADO: "1"
+      ENTORNO: desarrollo
+      PYTHON_DOTENV_DISABLED: "1"
+      PYTHONIOENCODING: utf-8
+      DJANGO_SETTINGS_MODULE: config.settings_issue43_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Directorio de artefactos exclusivo del runner
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Registrar SHA probado
+        run: git rev-parse HEAD
+      - run: pip install -r requirements.txt
+        working-directory: backend
+      - name: Regresiones e integración PostgreSQL
+        run: python tests/issue43/ejecutar.py suites
+        working-directory: backend
+      - name: Preparar escenario exclusivo ficticio
+        run: python tests/issue43/ejecutar.py preparar ../issue43-metadata.json
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Recorrido de navegador sin interceptar API
+        run: npx playwright test -c playwright.issue43-real.config.js
+        working-directory: frontend
+      - name: Capturas de fallos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue43-${{ github.sha }}
+          path: ${{ runner.temp }}/salud-issue43-playwright
+          if-no-files-found: ignore
+          retention-days: 7
+
+# backend.yml conserva suite completa PG y migraciones; calidad.yml conserva
+# OpenAPI/build. Las pruebas UI interceptadas siguen como complemento.
