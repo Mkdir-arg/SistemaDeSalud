@@ -69,7 +69,7 @@ def estado(caso_id):
     return {
         "caso_estado": caso.estado, "nodo": caso.nodo_actual_id,
         "solicitudes": list(m.SolicitudAutorizacion.objects.filter(caso=caso).values("id", "estado", "revision")),
-        "reservas": list(reservas.values("id", "estado", "hecho_id")),
+        "reservas": list(reservas.values("id", "estado", "hecho_id", "aceptacion")),
         "hechos": hechos.count(),
         "cuentas": [{"id": cuenta.pk, "importe_original": cuenta.importe_original,
                      "contraparte_nombre": cuenta.contraparte_nombre,

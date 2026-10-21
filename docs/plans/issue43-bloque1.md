@@ -122,7 +122,7 @@ psycopg 3.3.5, Node 24.13.0, PostgreSQL 16.15):
 | --- | --- |
 | `python tests/issue43/ejecutar.py suites` | 141 pruebas, OK, 41,583 s; sin omisiones |
 | `python tests/issue43/ejecutar.py checks` | Django sin problemas, sin migraciones nuevas y OpenAPI sin avisos |
-| `npx playwright test -c playwright.issue43-real.config.js` | 2/2, OK, 36,3 s, backend/PG reales |
+| `npx playwright test -c playwright.issue43-real.config.js` | 2/2, OK, 39,0 s en la repetición final, backend/PG reales; incluye aceptación exacta y reserva sin cargos |
 | `npm run build` | OK, 5,40 s |
 | Guardas negativas del settings | Marcador inválido y ENTORNO=produccion rechazados antes de conectar |
 | Repetir preparación sobre escenario existente | Rechazado; metadata intacta, sin sobrescribir escenario |
@@ -134,6 +134,18 @@ El workflow usa Python 3.12/Node 20: sus resultados remotos son independientes
 de esta evidencia local. Suite completa y revisión final: pendientes de finalizar.
 El SHA de publicación y los checks remotos quedan asociados al PR draft;
 no atribuir resultados al checkout compartido.
+
+La revisión directa del diff agregó la comprobación explícita de aceptación
+por importe/prestación y uso comprometido antes de realizar; se repitieron los
+dos E2E completos tras ese cambio. Durante el trabajo el checkout compartido
+avanzó a `5905eca2b6a2508cf52fe2572faa7b117f443d57` por trabajo ajeno; no se
+incorpora ni se atribuye a este PR. Sus archivos permanecen sin sobrescribir.
+
+Skills: `brainstorming` para fijar alcance y aprobación, `playwright` para la
+automatización solicitada y `systematic-debugging` para contrastar los fallos
+de selectores con código/capturas antes de corregirlos. La revisión se hace
+directamente, sin lanzar agentes adicionales. El usuario prefirió omitir la
+instancia de proponer modos de fallo; no se acredita comprensión humana.
 
 ## Pendiente del bloque 2: destino
 

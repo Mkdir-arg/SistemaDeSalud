@@ -82,7 +82,11 @@ test("solicitud, observación, reenvío, aprobación, reserva, realización, car
     await page.getByRole("checkbox", { name: /El paciente aceptó expresamente/ }).check();
     await page.getByRole("button", { name: "Confirmar reserva de cobertura", exact: true }).click();
     await expect.poll(() => persistido(datos.caso).reservas.length).toBe(1);
-    expect(persistido(datos.caso).hechos).toBe(0);
+    const reservada = persistido(datos.caso);
+    expect(reservada.hechos).toBe(0);
+    expect(reservada.cuentas).toEqual([]);
+    expect(reservada.reservas[0].aceptacion).toMatchObject({ importe: "20.00", prestacion: datos.prestacion });
+    expect(reservada.usos).toEqual([{ estado: "comprometido", hecho_id: null }]);
     await page.getByLabel("Título de la atención", { exact: true }).fill("Atención ficticia #43");
     await page.getByLabel("Evolución / observaciones", { exact: true }).fill("Prestación realizada en el entorno exclusivo");
     const firma = page.getByRole("checkbox", { name: "Firmar la entrada", exact: true });
