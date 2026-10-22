@@ -112,6 +112,38 @@ class AccesoClinico(models.Model):
         return f"{quien} · {self.recurso} · {self.momento:%d/%m/%Y %H:%M}"
 
 
+class FalloAuditoria(models.Model):
+    """Un acceso clínico que no se pudo registrar (#172, AUD-044).
+
+    La atención sigue aunque falle el registro (regla de oro de `mixins`), pero
+    el hueco no puede quedar solo en un log: queda acá y `/api/estado/` responde
+    503 hasta que alguien lo marque revisado. No guarda datos clínicos, la IP ni
+    el mensaje del error: solo qué se intentaba registrar y el tipo de falla.
+    No se edita ni se borra; revisarlo no lo hace desaparecer.
+    """
+
+    momento = models.DateTimeField(auto_now_add=True)
+    tipo = models.CharField(max_length=20)
+    recurso = models.CharField(max_length=80)
+    institucion = models.ForeignKey(
+        "instituciones.Institucion", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    error = models.CharField("tipo de falla", max_length=120)
+    revisado_at = models.DateTimeField(null=True, blank=True)
+    revisado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "fallo de registro de acceso"
+        verbose_name_plural = "fallos de registro de acceso"
+        ordering = ["-momento", "-id"]
+        indexes = [models.Index(fields=["revisado_at", "momento"], name="auditoria_fallo_pendiente_idx")]
+
+    def __str__(self):
+        return f"{self.recurso} · {self.error} · {self.momento:%d/%m/%Y %H:%M}"
+
+
 # El latido de los procesos periódicos vive en `latidos.py`, con su explicación.
 # Se re-exporta acá para que Django lo descubra como modelo de esta app.
 from .latidos import Latido  # noqa: E402,F401

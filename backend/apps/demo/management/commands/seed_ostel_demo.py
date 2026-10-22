@@ -4,7 +4,6 @@ Una transacción crea el escenario completo y su marcador. Una repetición sólo
 devuelve el inventario actual; no restablece claves, permisos ni pendientes.
 """
 import json
-import os
 from datetime import time, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_URL, uuid5
@@ -21,6 +20,7 @@ from apps.agenda import motor as agenda_motor
 from apps.agenda.models import Agenda, Disponibilidad
 from apps.casos import motor
 from apps.casos.models import Caso
+from apps.demo.claves import clave_demo
 from apps.farmacia import motor as farmacia_motor
 from apps.farmacia.models import Deposito, Insumo, LineaPedido, Lote, Pedido
 from apps.financiadores import autorizaciones, models as m
@@ -93,11 +93,9 @@ class Command(BaseCommand):
                 marcador = Group.objects.filter(name=ESCENARIO).first()
                 existente = marcador is not None
                 if not existente:
-                    password = os.environ.get("DEMO_PASSWORD", "")
-                    if not password.strip() or password.strip().casefold() == "demo1234":
-                        raise CommandError("Provisioná DEMO_PASSWORD externa y distinta de la clave pública de demo.")
                     self._sin_colisiones()
-                    self._crear(password)
+                    # La misma clave que el resto de la demo: una sola para todos.
+                    self._crear(clave_demo())
                     marcador = Group.objects.create(name=ESCENARIO)
                     marcador.user_set.add(*self.usuarios)
                 resumen = self._resumen(marcador)

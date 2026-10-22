@@ -81,6 +81,20 @@ export default function FormularioDetalle() {
   const q = useDetalle("formularios", id);
   const form = q.data;
   const campos = form?.campos || [];
+  const [conflicto, setConflicto] = useState(false);
+  const congelado = Boolean(form?.congelado_at);
+  const soloLectura = congelado || conflicto;
+  const falloEscritura = (error, mensaje) => {
+    toast.deError(error, mensaje);
+    if (error.status === 409) {
+      setConflicto(true);
+      void refrescarEstado();
+    }
+  };
+  const actualizarEstado = async () => {
+    const [actual, usosActuales] = await refrescarEstado();
+    if (actual.isSuccess && usosActuales.isSuccess) { setConflicto(false); setOrdenLocal(null); }
+  };
 
   /*
    * Dónde se usa el formulario: qué pasos de qué flujos lo piden y qué ramas de
@@ -98,6 +112,9 @@ export default function FormularioDetalle() {
     queryFn: () => api.get(`/formularios/${id}/usos/`),
     enabled: id != null,
   });
+  // La publicación cambia ambas lecturas. No quitar el conflicto con una
+  // definición actualizada pero sus usos todavía obsoletos o inaccesibles.
+  const refrescarEstado = () => Promise.all([q.refetch(), usosQ.refetch()]);
   const usos = usosQ.data?.usos || [];
   const condiciones = usosQ.data?.condiciones || [];
   // Casos parados justo en un paso que pide este formulario: son los que un
@@ -109,16 +126,16 @@ export default function FormularioDetalle() {
   const borrar = useAccion((campo) => api.del(`/campos/${campo.id}/`), {
     invalida: ["lista", "detalle"],
     onSuccess: () => { toast.ok("Campo eliminado."); setABorrar(null); },
-    onError: (e) => toast.deError(e, "No se pudo eliminar el campo."),
+    onError: (e) => falloEscritura(e, "No se pudo eliminar el campo."),
   });
 
   const borrarFormulario = useAccion(() => api.del(`/formularios/${id}/`), {
     onSuccess: () => { toast.ok("Formulario eliminado."); navigate("/formularios"); },
-    onError: (e) => toast.deError(e, "No se pudo eliminar el formulario."),
+    onError: (e) => falloEscritura(e, "No se pudo eliminar el formulario."),
   });
 
   const duplicar = useAccion(() => api.post(`/formularios/${id}/duplicar/`, {}), {
-    onSuccess: (nf) => { toast.ok(`Se duplicó como «${nf.titulo}».`); navigate(`/formularios/${nf.id}`); },
+    onSuccess: (nf) => { setConflicto(false); setOrdenLocal(null); toast.ok(`Se duplicó como «${nf.titulo}».`); navigate(`/formularios/${nf.id}`); },
     onError: (e) => toast.deError(e, "No se pudo duplicar el formulario."),
   });
 
@@ -138,10 +155,11 @@ export default function FormularioDetalle() {
   const [ordenLocal, setOrdenLocal] = useState(null);
   const mover = useAccion((ids) => api.post(`/formularios/${id}/reordenar/`, { campos: ids }), {
     invalida: ["lista", "detalle"],
-    onError: (e) => toast.deError(e, "No se pudo cambiar el orden de los campos."),
-    onSettled: () => setOrdenLocal(null),
+    onError: (e) => falloEscritura(e, "No se pudo cambiar el orden de los campos."),
+    onSettled: (_datos, error) => { if (error?.status !== 409) setOrdenLocal(null); },
   });
   const reordenar = (desde, hacia) => {
+    if (soloLectura) return;
     if (hacia < 0 || hacia >= campos.length || desde === hacia) return;
     const ids = campos.map((c) => c.id);
     const [movido] = ids.splice(desde, 1);
@@ -166,7 +184,7 @@ export default function FormularioDetalle() {
   // título que el administrativo va a tener arriba cuando lo complete.
   const pasoQueLoPide = usos[0]?.nodo_titulo;
 
-  if (q.error) return <EstadoError error={q.error} onReintentar={q.refetch} />;
+  if (q.error && !form) return <EstadoError error={q.error} onReintentar={q.refetch} />;
 
   return (
     <div className="px-lg py-[22px] sm:px-[30px]">
@@ -191,17 +209,20 @@ export default function FormularioDetalle() {
             {` · ${requeridos} obligatorios · ${vecesCompletado} completados`}
             {usosQ.data && ` · se pide en ${plural(usos.length, "paso", "pasos")}`}
           </p>}
-          {form?.descripcion ? <p className="mt-1 text-sm text-texto-suave">{form.descripcion}</p> : form && (
+          {congelado && <Badge tone="gray">Definición congelada</Badge>}
+          {form?.descripcion ? <p className="mt-1 text-sm text-texto-suave">{form.descripcion}</p> : form && !soloLectura && (
             <button onClick={() => setEditarForm(true)} className="mt-1 text-sm text-accent hover:underline">Agregá una descripción</button>
           )}
         </div>
         {form && <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" disabled={duplicar.isPending} onClick={() => duplicar.mutate()}>Duplicar</Button>
-          <Button size="sm" variant="secondary" onClick={() => setEditarForm(true)}>Editar datos</Button>
-          <IconButton icon="trash" label="Eliminar formulario" size="sm" onClick={() => setBorrarForm(true)} />
+          <Button size="sm" variant="secondary" disabled={soloLectura} onClick={() => setEditarForm(true)}>Editar datos</Button>
+          <IconButton icon="trash" label="Eliminar formulario" size="sm" disabled={soloLectura} onClick={() => setBorrarForm(true)} />
         </div>}
       </header>
-      {vecesCompletado > 0 && <p role="status" className="mb-lg rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg px-4 py-3 text-sm text-badge-amber-fg">
+      {soloLectura && <AvisoCongelado conflicto={conflicto} actualizar={actualizarEstado} />}
+      {(q.error || usosQ.error) && <p role="alert">No se pudo actualizar el estado del formulario. Tus cambios locales se conservan.</p>}
+      {!soloLectura && vecesCompletado > 0 && <p role="status" className="mb-lg rounded-md border border-badge-amber-fg/25 bg-badge-amber-bg px-4 py-3 text-sm text-badge-amber-fg">
         Hay respuestas cargadas: el tipo de cada campo usado queda fijo. Para cambiarlo, duplicá el formulario y revisá sus usos.
       </p>}
       {casosParados > 0 && <p className="mb-lg rounded-md border border-borde px-4 py-2 text-sm text-texto-suave">
@@ -210,7 +231,7 @@ export default function FormularioDetalle() {
 
       {/* Una columna hasta `lg`: a 1024px dos columnas dejan la vista previa
           demasiado angosta para parecerse a lo que verá el administrativo. */}
-      <div className="grid items-start gap-lg lg:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+      <div className="grid grid-cols-1 items-start gap-lg lg:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
         <div className="flex flex-col gap-lg">
           <Card className="shadow-card">
             <div className="flex items-center gap-2.5 border-b border-division px-lg py-3.5">
@@ -229,7 +250,7 @@ export default function FormularioDetalle() {
                   abre la pantalla es lo normal. */}
               <Button
                 variant="secondary"
-                disabled={!form}
+                disabled={!form || soloLectura}
                 onClick={() => setAgregar(true)}
                 className="ml-auto h-8 px-3"
               >
@@ -249,7 +270,8 @@ export default function FormularioDetalle() {
               <>
                 <ListaCampos
                   campos={enPantalla}
-                  ocupado={mover.isPending}
+                  ocupado={mover.isPending || soloLectura}
+                  soloLectura={soloLectura}
                   condicionesDe={condicionesDe}
                   onReordenar={reordenar}
                   onEditar={setAEditar}
@@ -259,6 +281,7 @@ export default function FormularioDetalle() {
                     mano y la vista cuando se acabó de revisar los campos. */}
                 <div className="px-1.5 pb-1.5 pl-[46px]">
                   <button
+                    disabled={soloLectura}
                     onClick={() => setAgregar(true)}
                     className="w-full rounded-sm border border-dashed border-accent-100 px-3 py-2 text-left text-md font-semibold text-accent hover:bg-accent-50"
                   >
@@ -359,6 +382,10 @@ export default function FormularioDetalle() {
           orden={campos.length ? Math.max(...campos.map((c) => c.orden)) + 1 : 0}
           casosParados={casosParados}
           enPublicado={enPublicado}
+          bloqueado={soloLectura}
+          conflicto={conflicto}
+          onActualizar={actualizarEstado}
+          onError={falloEscritura}
           onClose={() => setAgregar(false)}
         />
       )}
@@ -369,19 +396,25 @@ export default function FormularioDetalle() {
           campo={aEditar}
           casosParados={casosParados}
           enPublicado={enPublicado}
+          bloqueado={soloLectura}
+          conflicto={conflicto}
+          onActualizar={actualizarEstado}
+          onError={falloEscritura}
           onClose={() => setAEditar(null)}
         />
       )}
 
       {editarForm && (
-        <EditarFormularioModal formulario={form} onClose={() => setEditarForm(false)} />
+        <EditarFormularioModal formulario={form} bloqueado={soloLectura} conflicto={conflicto}
+          onActualizar={actualizarEstado} onError={falloEscritura} onClose={() => setEditarForm(false)} />
       )}
 
       {borrarForm && (
         <BorrarFormularioDialog
           formulario={form}
           cargando={borrarFormulario.isPending}
-          onConfirmar={() => borrarFormulario.mutate()}
+          onConfirmar={() => { if (!soloLectura) borrarFormulario.mutate(); }}
+          bloqueadoPorEstado={soloLectura}
           onClose={() => setBorrarForm(false)}
         />
       )}
@@ -393,7 +426,8 @@ export default function FormularioDetalle() {
           condiciones={condicionesDe(aBorrar.id)}
           cargando={borrar.isPending}
           onEditar={() => { setAEditar(aBorrar); setABorrar(null); }}
-          onConfirmar={() => borrar.mutate(aBorrar)}
+          onConfirmar={() => { if (!soloLectura) borrar.mutate(aBorrar); }}
+          bloqueado={soloLectura}
           onClose={() => setABorrar(null)}
         />
       )}
@@ -408,7 +442,7 @@ export default function FormularioDetalle() {
  * campos, pero por sí solo no se puede usar con teclado ni con lector de
  * pantalla, así que subir/bajar se quedan (y hacen exactamente lo mismo).
  */
-function ListaCampos({ campos, ocupado, condicionesDe, onReordenar, onEditar, onQuitar }) {
+function ListaCampos({ campos, ocupado, soloLectura, condicionesDe, onReordenar, onEditar, onQuitar }) {
   const [arrastrado, setArrastrado] = useState(null);
   const [sobre, setSobre] = useState(null);
 
@@ -531,8 +565,8 @@ function ListaCampos({ campos, ocupado, condicionesDe, onReordenar, onEditar, on
                 disabled={i === campos.length - 1 || ocupado}
                 onClick={() => onReordenar(i, i + 1)}
               />
-              <BotonFila title="Editar campo" icono="edit" onClick={() => onEditar(c)} />
-              <BotonFila title="Quitar campo" icono="trash" peligroso onClick={() => onQuitar(c)} />
+              <BotonFila title="Editar campo" icono="edit" disabled={soloLectura} onClick={() => onEditar(c)} />
+              <BotonFila title="Quitar campo" icono="trash" disabled={soloLectura} peligroso onClick={() => onQuitar(c)} />
             </div>
           </li>
         );
@@ -695,7 +729,17 @@ function PreviewInput({ campo }) {
  * la columna «Descripción» del listado sólo podía decir «—» y el filtro por área
  * no podía encontrar nada.
  */
-function EditarFormularioModal({ formulario, onClose }) {
+function AvisoCongelado({ conflicto, actualizar }) {
+  return <div role={conflicto ? "alert" : "status"} className="mb-lg rounded-md bg-badge-amber-bg px-4 py-3 text-sm text-badge-amber-fg">
+    <p>{conflicto ? "El formulario cambió mientras lo editabas. Tus cambios locales se conservan; no se guardaron."
+      : "Esta definición se conserva sin cambios porque ya fue publicada o utilizada. Para modificarla, duplicá el formulario."}</p>
+    <p>La copia tendrá campos nuevos y no copiará respuestas ni cambiará los flujos existentes.</p>
+    <p>Asigná la copia a un borrador del flujo y revisá sus reglas antes de publicarlo.</p>
+    {conflicto && <Button variant="secondary" className="mt-2" onClick={actualizar}>Actualizar estado del formulario</Button>}
+  </div>;
+}
+
+function EditarFormularioModal({ formulario, bloqueado, conflicto, onActualizar, onError, onClose }) {
   const toast = useToast();
   const [f, setF] = useState(() => ({
     titulo: formulario.titulo || "",
@@ -719,7 +763,7 @@ function EditarFormularioModal({ formulario, onClose }) {
     {
       invalida: ["lista", "detalle"],
       onSuccess: () => { toast.ok("Formulario actualizado."); onClose(); },
-      onError: (e) => toast.deError(e, "No se pudo guardar el formulario."),
+      onError: (e) => onError(e, "No se pudo guardar el formulario."),
     },
   );
 
@@ -730,13 +774,14 @@ function EditarFormularioModal({ formulario, onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !f.titulo} onClick={() => guardar.mutate()}>
+          <Button disabled={bloqueado || guardar.isPending || !f.titulo} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "…" : "Guardar"}
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-3.5">
+      {bloqueado && <AvisoCongelado conflicto={conflicto} actualizar={onActualizar} />}
+      <fieldset disabled={bloqueado} className="flex flex-col gap-3.5">
         <Field label="Título *" hint="Es el nombre que se ve en cada paso que lo usa.">
           <Input value={f.titulo} onChange={(e) => set("titulo", e.target.value)} autoFocus />
         </Field>
@@ -749,7 +794,7 @@ function EditarFormularioModal({ formulario, onClose }) {
         <Field label="Descripción" hint="Para qué sirve. Se ve en el listado y al elegirlo en un paso.">
           <Textarea rows={3} value={f.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
         </Field>
-      </div>
+      </fieldset>
     </Modal>
   );
 }
@@ -764,23 +809,23 @@ function EditarFormularioModal({ formulario, onClose }) {
  * queda apuntando a un id que ya no existe, `_valor_de_campo` devuelve None y la
  * rama nunca se cumple. El caso se va por la otra rama sin un solo aviso.
  */
-function QuitarCampoDialog({ campo, condiciones, cargando, onEditar, onConfirmar, onClose }) {
+function QuitarCampoDialog({ campo, condiciones, cargando, bloqueado, onEditar, onConfirmar, onClose }) {
   const conDatos = campo.valores_cargados > 0;
 
   return (
     <ConfirmDialog
-      title={conDatos ? `«${campo.label}» no se puede quitar` : `¿Quitar «${campo.label}»?`}
+      title={bloqueado || conDatos ? `«${campo.label}» no se puede quitar` : `¿Quitar «${campo.label}»?`}
       // Con datos cargados el servidor lo rechaza, así que el botón lleva a
       // lo que sí resuelve el problema: es lo mismo que dice su mensaje
       // («editá la etiqueta o las opciones en vez de rehacer el campo»).
-      confirmar={conDatos ? "Editar el campo" : "Quitar campo"}
+      confirmar={bloqueado ? "Entendido" : conDatos ? "Editar el campo" : "Quitar campo"}
       peligroso={!conDatos}
       cargando={cargando}
-      onConfirmar={conDatos ? onEditar : onConfirmar}
+      onConfirmar={bloqueado ? onClose : conDatos ? onEditar : onConfirmar}
       onClose={onClose}
     >
       <div className="flex flex-col gap-3">
-        {conDatos ? (
+        {bloqueado ? <p>La definición quedó congelada y no se puede quitar el campo. Duplicá el formulario para hacer cambios.</p> : conDatos ? (
           <div>
             Este campo <strong>no se puede quitar</strong>: tiene{" "}
             {plural(campo.valores_cargados, "dato cargado", "datos cargados")} en casos
@@ -795,7 +840,7 @@ function QuitarCampoDialog({ campo, condiciones, cargando, onEditar, onConfirmar
           </div>
         )}
 
-        {condiciones.length > 0 && (
+        {!bloqueado && condiciones.length > 0 && (
           <AvisoImpacto>
             {condiciones.length === 1 ? "Una rama compara este campo" : `${condiciones.length} ramas comparan este campo`}
             {" "}y va a dejar de cumplirse nunca, así que los casos se irán por la otra:
@@ -826,7 +871,7 @@ function QuitarCampoDialog({ campo, condiciones, cargando, onEditar, onConfirmar
  * era, o entrar por el admin de Django: sacar del sistema al usuario al que el
  * producto le prometió que iba a poder configurar sin programar.
  */
-function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onClose }) {
+function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, bloqueado, conflicto, onActualizar, onError, onClose }) {
   const toast = useToast();
   const editando = !!campo;
   // El tipo es lo único que puede invalidar datos ya cargados: los valores se
@@ -871,7 +916,7 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
     {
       invalida: ["lista", "detalle"],
       onSuccess: () => { toast.ok(editando ? "Campo actualizado." : "Campo agregado."); onClose(); },
-      onError: (e) => toast.deError(e, editando ? "No se pudo guardar el campo." : "No se pudo agregar el campo."),
+      onError: (e) => onError(e, editando ? "No se pudo guardar el campo." : "No se pudo agregar el campo."),
     },
   );
 
@@ -899,7 +944,7 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button
-            disabled={guardar.isPending || !f.label || faltanOpciones || opcionesRepetidas || rangoInvertido}
+            disabled={bloqueado || guardar.isPending || !f.label || faltanOpciones || opcionesRepetidas || rangoInvertido}
             onClick={() => guardar.mutate()}
           >
             {guardar.isPending ? "…" : editando ? "Guardar" : "Agregar"}
@@ -907,7 +952,8 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
         </>
       }
     >
-      <div className="flex flex-col gap-3.5">
+      {bloqueado && <AvisoCongelado conflicto={conflicto} actualizar={onActualizar} />}
+      <fieldset disabled={bloqueado} className="flex flex-col gap-3.5">
         <Field label="Etiqueta *">
           <Input value={f.label} onChange={(e) => set("label", e.target.value)} autoFocus placeholder="Nombre, Obra social…" />
         </Field>
@@ -1008,7 +1054,7 @@ function CampoModal({ formularioId, orden, campo, casosParados, enPublicado, onC
             ningún caso podrá pasar ese paso sin completar el campo.
           </AvisoImpacto>
         )}
-      </div>
+      </fieldset>
     </Modal>
   );
 }

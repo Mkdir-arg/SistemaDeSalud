@@ -19,6 +19,7 @@ Necesita `pg_dump`/`psql` en el contenedor y las credenciales de la base, que ya
 salen de DATABASE_URL.
 """
 import os
+import secrets
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -27,7 +28,7 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.auditoria.latidos import latir
 
@@ -91,7 +92,7 @@ class Command(BaseCommand):
         archivo = destino / f"salud-{sello}.sql.gz"
 
         self.stdout.write(f"Respaldando {cred['name']} → {archivo}")
-        self._volcar(cred, archivo)
+        conteos = self._volcar_y_contar(cred, archivo)
 
         tamano = archivo.stat().st_size
         if tamano < 1024:
@@ -106,7 +107,7 @@ class Command(BaseCommand):
                 "no hay forma de saber si este archivo sirve hasta que haga falta."
             ))
         else:
-            self._verificar(cred, archivo)
+            self._verificar(cred, archivo, conteos)
 
         self._rotar(destino, op["conservar"])
 
@@ -164,10 +165,39 @@ class Command(BaseCommand):
         # muestra a cualquiera que esté en la máquina.
         return {**os.environ, "PGPASSWORD": cred["password"] or ""}
 
-    def _volcar(self, cred, archivo):
+    def _volcar_y_contar(self, cred, archivo):
+        """
+        Vuelca y cuenta filas de TODAS las tablas en el mismo snapshot (#172, AUD-015).
+
+        Antes se contaba la base viva después del volcado: una atención cargada
+        entre medio daba «incompleto» a un respaldo válido, y dos conteos fallidos
+        (None == None) daban «verificado» a uno que nadie pudo contar. Acá la
+        transacción REPEATABLE READ exporta su snapshot, cuenta ahí y `pg_dump`
+        vuelca exactamente ese mismo estado.
+        """
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+                cur.execute("SELECT pg_export_snapshot()")
+                snapshot = cur.fetchone()[0]
+                cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+                tablas = [fila[0] for fila in cur.fetchall()]
+                faltan = [t for t in TABLAS if t not in tablas]
+                if faltan:
+                    raise CommandError("Faltan tablas que el respaldo tiene que contener: " + ", ".join(faltan))
+                self._volcar(cred, archivo, snapshot)
+                # Después del volcado y en la misma transacción: el snapshot es el
+                # mismo, así que lo escrito mientras tanto no entra en ninguno.
+                conteos = {}
+                for tabla in tablas:
+                    cur.execute(f"SELECT count(*) FROM {connection.ops.quote_name(tabla)}")
+                    conteos[tabla] = cur.fetchone()[0]
+        return conteos
+
+    def _volcar(self, cred, archivo, snapshot):
         orden = (
             f'pg_dump -h {cred["host"]} -p {cred["port"]} -U {cred["user"]} '
-            f'-d {cred["name"]} --no-owner --no-acl | gzip > "{archivo}"'
+            f'-d {cred["name"]} --snapshot={snapshot} --no-owner --no-acl | gzip > "{archivo}"'
         )
         # `pipefail`: sin eso el código de salida es el de `gzip`, que comprime
         # feliz la nada que le mandó un pg_dump que falló.
@@ -180,48 +210,74 @@ class Command(BaseCommand):
             raise CommandError(f"pg_dump falló: {r.stderr.strip()[:500]}")
 
     # ------------------------------------------------------------------ #
-    def _contar(self, cred, base):
-        """Filas por tabla, tolerando que alguna no exista en el restaurado."""
-        conteos = {}
-        for tabla in TABLAS:
-            orden = (
-                f'psql -h {cred["host"]} -p {cred["port"]} -U {cred["user"]} '
-                f'-d {base} -tAc "SELECT count(*) FROM {tabla}"'
-            )
-            r = subprocess.run(
-                ["sh", "-c", orden], env=self._entorno(cred), capture_output=True, text=True,
-            )
-            conteos[tabla] = int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
-        return conteos
-
-    def _sql(self, cred, sentencia, base="postgres"):
+    def _psql(self, cred, base, sql):
+        """psql sin shell; la sentencia va por stdin para no interpolarla."""
         return subprocess.run(
-            ["sh", "-c",
-             f'psql -h {cred["host"]} -p {cred["port"]} -U {cred["user"]} '
-             f'-d {base} -tAc "{sentencia}"'],
-            env=self._entorno(cred), capture_output=True, text=True,
+            ["psql", "-h", cred["host"], "-p", cred["port"], "-U", cred["user"], "-d", base,
+             "-X", "-tA", "-v", "ON_ERROR_STOP=1", "-F", "|", "-f", "-"],
+            input=sql, env=self._entorno(cred), capture_output=True, text=True,
         )
 
-    def _verificar(self, cred, archivo):
+    def _contar_restaurado(self, cred, base, tablas):
+        """Conteos de la base restaurada; cualquier falla es error, nunca None."""
+        consulta = " UNION ALL ".join(
+            f"SELECT '{t}', count(*) FROM {connection.ops.quote_name(t)}" for t in tablas
+        ) + ";"
+        r = self._psql(cred, base, consulta)
+        if r.returncode != 0:
+            raise CommandError("No se pudieron contar las filas restauradas: " + r.stderr.strip()[:300])
+        conteos = {}
+        for linea in r.stdout.splitlines():
+            if "|" in linea:
+                tabla, n = linea.rsplit("|", 1)
+                conteos[tabla] = int(n)
+        return conteos
+
+    def _base_verificacion(self, cred):
+        """Nombre único y marca propia (#172, AUD-016): nunca se borra una base ajena."""
+        ficha = secrets.token_hex(6)
+        sello = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        nombre = f'{cred["name"][:30]}_verif_{sello}_{ficha}'.lower()
+        return nombre, f"salud-verificacion-respaldo:{ficha}"
+
+    def _crear_verificacion(self, cred, nombre, marca):
+        creada = self._psql(cred, "postgres", f'CREATE DATABASE "{nombre}";')
+        if creada.returncode != 0:
+            # Si ya existe no es nuestra: no se toca.
+            raise CommandError(f"No se pudo crear la base de prueba: {creada.stderr.strip()[:300]}")
+        marcada = self._psql(cred, "postgres", f"COMMENT ON DATABASE \"{nombre}\" IS '{marca}';")
+        if marcada.returncode != 0:
+            self._borrar_verificacion(cred, nombre, marca, forzar_propia=True)
+            raise CommandError(f"No se pudo marcar la base de prueba: {marcada.stderr.strip()[:300]}")
+
+    def _borrar_verificacion(self, cred, nombre, marca, *, forzar_propia=False):
+        """Borra la base de prueba solo si lleva la marca de esta corrida."""
+        if not forzar_propia:
+            r = self._psql(cred, "postgres",
+                           f"SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = '{nombre}';")
+            if r.returncode != 0 or r.stdout.strip() != marca:
+                self.stderr.write(f"No se borra {nombre}: no lleva la marca de esta verificación.")
+                return
+        borrada = self._psql(cred, "postgres", f'DROP DATABASE "{nombre}";')
+        if borrada.returncode != 0:
+            self.stderr.write(f"No se pudo borrar la base de prueba {nombre}: {borrada.stderr.strip()[:200]}")
+
+    def _verificar(self, cred, archivo, conteos):
         """
-        Restaura el archivo en una base descartable y compara los conteos.
+        Restaura el archivo en una base descartable y compara contra el snapshot.
 
         Es lo único que distingue un respaldo de un archivo con nombre de
-        respaldo.
+        respaldo. Los conteos de referencia son los del mismo snapshot que se
+        volcó, así que una escritura posterior no invalida un respaldo válido.
         """
-        prueba = f'{cred["name"]}_verificacion'
+        prueba, marca = self._base_verificacion(cred)
         self.stdout.write(f"Verificando: restauro en {prueba}…")
 
         # La conexión de Django queda abierta contra la base original; no
         # interfiere con crear otra, pero sí conviene cerrarla para no arrastrar
         # una transacción larga mientras corre la restauración.
         connection.close()
-
-        self._sql(cred, f'DROP DATABASE IF EXISTS "{prueba}"')
-        creada = self._sql(cred, f'CREATE DATABASE "{prueba}"')
-        if creada.returncode != 0:
-            raise CommandError(f"No se pudo crear la base de prueba: {creada.stderr.strip()[:300]}")
-
+        self._crear_verificacion(cred, prueba, marca)
         try:
             orden = (
                 f'gunzip -c "{archivo}" | psql -h {cred["host"]} -p {cred["port"]} '
@@ -237,16 +293,15 @@ class Command(BaseCommand):
                     + r.stderr.strip()[:800]
                 )
 
-            original = self._contar(cred, cred["name"])
-            restaurado = self._contar(cred, prueba)
-
+            restaurado = self._contar_restaurado(cred, prueba, list(conteos))
             problemas = []
-            for tabla in TABLAS:
-                a, b = original.get(tabla), restaurado.get(tabla)
-                estado = "ok" if a == b else "NO COINCIDE"
-                self.stdout.write(f"  {tabla:<32} {a} → {b}  {estado}")
+            for tabla in sorted(conteos):
+                a, b = conteos[tabla], restaurado.get(tabla)
                 if a != b:
-                    problemas.append(f"{tabla}: {a} en la base, {b} en el respaldo")
+                    problemas.append(f"{tabla}: {a} en el snapshot, {b} en el respaldo")
+                if tabla in TABLAS or a != b:
+                    self.stdout.write(f"  {tabla:<32} {a} → {b}  {'ok' if a == b else 'NO COINCIDE'}")
+            self.stdout.write(f"  {len(conteos)} tablas comparadas.")
 
             if problemas:
                 raise CommandError("El respaldo está incompleto:\n  " + "\n  ".join(problemas))
@@ -255,8 +310,8 @@ class Command(BaseCommand):
         finally:
             # La base de prueba se borra siempre, incluso si falló: dejarla
             # ocupando disco es cómo se llena el volumen que después trunca el
-            # respaldo siguiente.
-            self._sql(cred, f'DROP DATABASE IF EXISTS "{prueba}"')
+            # respaldo siguiente. Solo la que creó esta corrida.
+            self._borrar_verificacion(cred, prueba, marca)
 
     # ------------------------------------------------------------------ #
     def _rotar(self, destino, conservar):

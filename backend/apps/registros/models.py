@@ -295,6 +295,17 @@ class ArchivoClinico(models.Model):
         related_name="archivos_clinicos_subidos",
     )
     creado = models.DateTimeField(auto_now_add=True)
+    # Dueño autoritativo (#172, AUD-050): un paciente y un estudio, fijados una
+    # sola vez por `registros.adjuntos`. Sin asociación el portal no lo publica.
+    ciudadano = models.ForeignKey(
+        "registros.Ciudadano", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="archivos_clinicos",
+    )
+    asociado_por = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="archivos_clinicos_asociados",
+    )
+    asociado_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "archivo clinico"

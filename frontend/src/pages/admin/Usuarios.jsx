@@ -140,7 +140,7 @@ export default function Usuarios() {
                   <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge>
                 </div>
                 <p className="text-xs text-texto-debil">{f.roles.join(" · ") || "Sin rol activo"}{f.areas.length ? ` · ${f.areas.join(", ")}` : ""}</p>
-                <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Editar a ${f.nombre || f.email}`}>Editar</Button>
+                <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Administrar acceso de ${f.nombre || f.email}`}>Administrar acceso</Button>
               </li>
             ))}
           </ul>
@@ -176,7 +176,7 @@ export default function Usuarios() {
                       <Badge tone={f.activo ? "green" : "gray"}>{f.activo ? "Activo" : "Inactivo"}</Badge>
                     </td>
                     <td className="px-[22px] py-3 text-right">
-                      <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Editar a ${f.nombre || f.email}`}>Editar</Button>
+                      <Button size="sm" variant="secondary" onClick={() => abrir(f)} aria-label={`Administrar acceso de ${f.nombre || f.email}`}>Administrar acceso</Button>
                     </td>
                   </tr>
                 ))}
@@ -201,15 +201,12 @@ export default function Usuarios() {
 function UsuarioModal({ usuario, onClose }) {
   const toast = useToast();
   const { institucion, puedeVer } = useInstitucion();
-  const { user } = useAuth();
+  const { user, simulacion } = useAuth();
   const esNuevo = !usuario.id;
   const [form, setForm] = useState({
     email: usuario.email || "",
     nombre: usuario.nombre || "",
     apellido: usuario.apellido || "",
-    password: "",
-    confirmarPassword: "",
-    is_active: usuario.is_active ?? true,
     rol: "administrativo",
   });
   const [nuevaMemb, setNuevaMemb] = useState({ institucion: "", rol: "administrativo" });
@@ -217,16 +214,13 @@ function UsuarioModal({ usuario, onClose }) {
   const [permisosGuardando, setPermisosGuardando] = useState(false);
   const [detalleAplicado, setDetalleAplicado] = useState(esNuevo);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
-  const passwordRequerida = esNuevo || !!form.password;
-  const passwordCoincide = !passwordRequerida || (form.password && form.password === form.confirmarPassword);
   const detalle = useDetalle("usuarios", usuario.id, { gcTime: 0, refetchOnWindowFocus: false });
   useEffect(() => {
     if (!esNuevo && detalle.data && !detalleAplicado) {
       // La fila sólo trae nombre_completo. No separar apellidos por espacios
       // ni guardar nombres vacíos: el detalle es la fuente del formulario.
       setForm((anterior) => ({ ...anterior, email: detalle.data.email,
-        nombre: detalle.data.nombre, apellido: detalle.data.apellido,
-        is_active: detalle.data.is_active }));
+        nombre: detalle.data.nombre, apellido: detalle.data.apellido }));
       setDetalleAplicado(true);
     }
   }, [esNuevo, detalle.data, detalleAplicado]);
@@ -237,23 +231,22 @@ function UsuarioModal({ usuario, onClose }) {
   const institucionElegida = nuevaMemb.institucion || String(instituciones.filas[0]?.id || "");
 
   const guardar = useAccion(
-    () => {
-      const payload = {
-        email: form.email, nombre: form.nombre, apellido: form.apellido, is_active: form.is_active,
-      };
-      if (form.password) payload.password = form.password;
-      if (esNuevo) {
-        // La membresía va en el mismo alta (el servidor la crea en la misma
-        // transacción): una persona sin membresía no pertenece a ninguna
-        // institución, y con el padrón acotado a la propia no volvía a aparecer
-        // en ninguna lista, ni para darle acceso.
-        return api.post("/usuarios/", { ...payload, institucion: institucion?.id, rol: form.rol });
-      }
-      return api.patch(`/usuarios/${usuario.id}/`, payload);
-    },
+    () => api.post("/usuarios/", {
+      email: form.email, nombre: form.nombre, apellido: form.apellido,
+      institucion: institucion?.id, rol: form.rol,
+    }),
     {
-      onSuccess: () => { toast.ok(esNuevo ? "Usuario creado." : "Usuario actualizado."); onClose(); },
+      onSuccess: () => { toast.ok("Usuario creado. Invitación solicitada al correo del titular; esto no confirma la entrega."); onClose(); },
       onError: (e) => toast.deError(e, "No se pudo guardar el usuario."),
+    },
+  );
+
+  const recuperar = useAccion(
+    () => api.post(`/usuarios/${usuario.id}/iniciar-recuperacion/`, {}),
+    {
+      invalida: [],
+      onSuccess: () => toast.ok("Solicitud aceptada. El enlace, si corresponde, se enviará al correo del titular; esto no confirma la entrega."),
+      onError: (e) => toast.deError(e, "No se pudo solicitar la recuperación."),
     },
   );
 
@@ -276,15 +269,15 @@ function UsuarioModal({ usuario, onClose }) {
 
   return (
     <Modal
-      title={esNuevo ? "Nuevo usuario" : "Editar usuario"}
+      title={esNuevo ? "Invitar nuevo usuario" : "Administrar acceso"}
       width={esNuevo ? 520 : 1040}
       onClose={() => { if (!permisosGuardando) onClose(); }}
       footer={
         <>
           <Button variant="secondary" disabled={permisosGuardando} onClick={onClose}>Cerrar</Button>
-          <Button disabled={guardar.isPending || permisosGuardando || !detalleAplicado || !form.email || !form.nombre || !passwordCoincide} onClick={() => guardar.mutate()}>
-            {guardar.isPending ? "Guardando…" : esNuevo ? "Guardar" : "Guardar datos personales"}
-          </Button>
+          {esNuevo && <Button disabled={guardar.isPending || permisosGuardando || !detalleAplicado || !form.email || !form.nombre || !institucion?.id} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? "Guardando…" : "Crear y solicitar invitación"}
+          </Button>}
         </>
       }
     >
@@ -292,23 +285,20 @@ function UsuarioModal({ usuario, onClose }) {
         ? <EstadoError error={detalle.error} onReintentar={detalle.refetch} />
         : <Spinner label="Consultando datos del usuario…" />
         : <div className="flex flex-col gap-3.5">
-        <Field label="Email *">
-          <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} autoFocus />
+        <Field label={esNuevo ? "Email *" : "Email de ingreso"} hint={esNuevo ? "El titular establecerá su contraseña desde un enlace enviado a este correo." : "El titular gestiona su email y contraseña desde Mi cuenta."}>
+          <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} readOnly={!esNuevo} autoFocus={esNuevo} />
         </Field>
-        <div className={`grid items-end gap-3 ${esNuevo ? "sm:grid-cols-2" : "md:grid-cols-3"}`}>
-          <Field label="Nombre *"><Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} /></Field>
-          <Field label="Apellido"><Input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} /></Field>
-          {!esNuevo && <Field label="Nueva contraseña (dejar vacío para no cambiar)">
-            <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" />
-          </Field>}
+        <div className="grid items-end gap-3 sm:grid-cols-2">
+          <Field label={esNuevo ? "Nombre *" : "Nombre"}><Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} readOnly={!esNuevo} /></Field>
+          <Field label="Apellido"><Input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} readOnly={!esNuevo} /></Field>
         </div>
-        {esNuevo && <Field label="Contraseña *" hint="Usá al menos 8 caracteres. Evitá contraseñas comunes, numéricas o similares a tus datos personales.">
-          <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" required />
-        </Field>}
-        {passwordRequerida && <Field label="Confirmar contraseña *"
-          error={form.confirmarPassword && form.password !== form.confirmarPassword ? "Las contraseñas no coinciden." : undefined}>
-          <Input type="password" value={form.confirmarPassword} onChange={(e) => set("confirmarPassword", e.target.value)} autoComplete="new-password" required />
-        </Field>}
+        {!esNuevo && <div className="space-y-2">
+          <p className="text-sm text-texto-debil">Para ayudar a recuperar el acceso podés solicitar un enlace al correo actual del titular. La contraseña y el enlace quedan en su poder.</p>
+          {simulacion && <p className="text-sm text-danger">Finalizá la simulación para solicitar recuperación de credenciales.</p>}
+          <Button variant="secondary" disabled={recuperar.isPending || permisosGuardando || !!simulacion} onClick={() => recuperar.mutate()}>
+            {recuperar.isPending ? "Solicitando…" : "Solicitar recuperación de acceso"}
+          </Button>
+        </div>}
         {/* Al crear no se elige institución: entra en esta, la del contexto. Lo
             único que falta decidir es con qué rol. */}
         {esNuevo && (
@@ -318,9 +308,6 @@ function UsuarioModal({ usuario, onClose }) {
             </Select>
           </Field>
         )}
-        <label className="flex items-center gap-2.5 text-md">
-          <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} /> Activo
-        </label>
 
         {/* Las membresías son lo que da acceso, así que se administran acá mismo.
             No aparecen al crear: primero tiene que existir el usuario. */}

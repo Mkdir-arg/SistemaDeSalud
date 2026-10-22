@@ -1,6 +1,4 @@
 from rest_framework import serializers
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.common import tiene_capacidad
 from apps.instituciones.models import Institucion
@@ -84,46 +82,40 @@ class MembresiaSerializer(serializers.ModelSerializer):
 
 class UsuarioSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.CharField(read_only=True)
-    password = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
 
     class Meta:
         model = Usuario
         fields = [
             "id", "email", "nombre", "apellido", "nombre_completo",
-            "is_active", "is_staff", "is_superuser", "password", "creado",
+            "is_active", "is_staff", "is_superuser", "creado",
         ]
-        read_only_fields = ["creado", "is_staff", "is_superuser"]
+        read_only_fields = ["creado", "is_active", "is_staff", "is_superuser"]
 
     def validate(self, attrs):
         from apps.simulacion.perfiles import DOMINIO, es_cuenta_referencia
         if es_cuenta_referencia(self.instance) or attrs.get("email", "").lower().endswith(f"@{DOMINIO}"):
             raise serializers.ValidationError({"email": "El dominio está reservado para cuentas de referencia."})
-        password = attrs.get("password")
-        if self.instance is None and not password:
-            raise serializers.ValidationError({"password": "Indicá una contraseña para la nueva cuenta."})
-        if password is not None:
-            candidato = self.instance or Usuario(
-                email=attrs.get("email", ""), nombre=attrs.get("nombre", ""),
-                apellido=attrs.get("apellido", ""),
-            )
-            try:
-                validate_password(password, user=candidato)
-            except DjangoValidationError as error:
-                raise serializers.ValidationError({"password": error.messages}) from error
+        prohibidos = {"password", "is_active", "is_staff", "is_superuser"}
+        if self.instance is not None:
+            prohibidos.add("email")
+        # Revisar el cuerpo original también para campos readonly: DRF los
+        # descartaría silenciosamente, ocultando un intento de cambiar identidad.
+        enviados = prohibidos.intersection(self.initial_data)
+        if enviados:
+            raise serializers.ValidationError({
+                campo: "Este dato no se modifica desde la administración de usuarios."
+                for campo in sorted(enviados)
+            })
         return attrs
 
     def create(self, validated_data):
-        password = validated_data.pop("password", None)
         usuario = Usuario(**validated_data)
-        usuario.set_password(password)
+        usuario.set_unusable_password()
         usuario.save()
         return usuario
 
     def update(self, instance, validated_data):
-        password = validated_data.pop("password", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        if password:
-            instance.set_password(password)
         instance.save()
         return instance

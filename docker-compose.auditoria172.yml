@@ -1,0 +1,59 @@
+# Independiente: NO combinar con compose base, override dev ni padron130.
+# --env-file externo explícito; nunca docker compose config sin --quiet.
+name: salud-auditoria172
+services:
+  db-auditoria172:
+    image: postgres:16-alpine
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_DB: auditoria172
+      POSTGRES_USER: auditoria172
+      POSTGRES_PASSWORD: ${AUDITORIA172_DB_PASSWORD:?Definir clave exclusiva externa y apta para URL}
+    volumes:
+      - pgdata-auditoria172:/var/lib/postgresql/data
+    networks: [laboratorio-auditoria172]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U auditoria172 -d auditoria172]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend-auditoria172:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.auditoria172
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    stop_grace_period: 30s
+    # Evita entrypoint productivo: no migra, no siembra, no inicia workers.
+    entrypoint: [python]
+    command: [manage.py, check]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings_auditoria172
+      SALUD_AUDITORIA172: "1"
+      SALUD_TEST_DOCKER_PROJECT: salud-auditoria172
+      DATABASE_URL: postgres://auditoria172:${AUDITORIA172_DB_PASSWORD:?Definir clave exclusiva externa y apta para URL}@db-auditoria172:5432/auditoria172
+      DJANGO_SECRET_KEY: ${AUDITORIA172_DJANGO_SECRET_KEY:?Definir clave exclusiva externa}
+      ENTORNO: demo
+      SEED_DEMO: "0"
+      SEED_GUARDIA: "0"
+      EJECUTAR_MIGRACIONES: "0"
+    volumes:
+      - media-auditoria172:/laboratorio/media
+      - privado-auditoria172:/laboratorio/privado
+    networks: [laboratorio-auditoria172]
+    depends_on:
+      db-auditoria172:
+        condition: service_healthy
+
+networks:
+  laboratorio-auditoria172:
+    internal: true
+volumes:
+  pgdata-auditoria172:
+  media-auditoria172:
+  privado-auditoria172:

@@ -16,8 +16,8 @@ Ley 26.529 —bastaría con pedir los datos por la otra puerta—. Se usa la MIS
 función que los viewsets (`registrar_acceso`), no una copia.
 
 **Alcance por institución.** Un cliente ve lo de las instituciones donde su
-usuario tiene membresía activa, ni una más. El scope no lo decide el parámetro
-de la consulta.
+usuario tiene membresía activa y la capacidad exigida por el recurso, ni una
+más. El scope no lo decide el parámetro de la consulta.
 """
 import logging
 from urllib.parse import urlencode
@@ -31,7 +31,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from apps.auditoria.mixins import registrar_acceso
 from apps.auditoria.models import AccesoClinico
 from apps.casos.models import Caso
-from apps.common import capacidades_de
+from apps.common import capacidades_de, capacidades_por_institucion_de
 from apps.instituciones.models import Institucion
 from apps.registros.models import Ciudadano, normalizar_documento
 
@@ -119,11 +119,17 @@ def _error(status, codigo, mensaje):
     return _fhir(recursos.operation_outcome(severidad, codigo, mensaje), status=status)
 
 
-def _instituciones(request):
-    """Las instituciones que este usuario puede ver. El superusuario, todas."""
+def _instituciones(request, capacidad=None):
+    """Membresías activas con la capacidad del recurso; el superusuario ve todas."""
     if request.user.is_superuser:
         return Institucion.objects.all()
-    ids = request.user.membresias.filter(activo=True).values_list("institucion_id", flat=True)
+    if capacidad:
+        # El helper agrupa los mismos permisos existentes sin una query por
+        # institución. Una capacidad global no concede alcance institucional.
+        ids = [int(inst) for inst, caps in capacidades_por_institucion_de(request.user).items()
+               if inst != "global" and capacidad in caps]
+    else:
+        ids = request.user.membresias.filter(activo=True).values_list("institucion_id", flat=True)
     return Institucion.objects.filter(id__in=list(ids))
 
 
@@ -364,7 +370,7 @@ def patient_read(request, pk):
         return _id_sin_forma("Patient", pk)
     c = (
         Ciudadano.objects.select_related("institucion")
-        .filter(pk=pk, institucion__in=_instituciones(request))
+        .filter(pk=pk, institucion__in=_instituciones(request, "registros"))
         .first()
     )
     if c is None:
@@ -404,7 +410,7 @@ def patient_search(request):
     # únicos. Paginar sobre un orden con empates hace que una fila aparezca en
     # dos páginas o en ninguna.
     qs = Ciudadano.objects.select_related("institucion").filter(
-        institucion__in=_instituciones(request)
+        institucion__in=_instituciones(request, "registros")
     ).order_by("apellido", "nombre", "id")
 
     identificador = request.query_params.get("identifier", "")
@@ -466,7 +472,7 @@ def _casos(request):
         .annotate(_internado=Exists(
             EstadiaCama.objects.filter(caso=OuterRef("pk"), hasta__isnull=True)
         ))
-        .filter(institucion__in=_instituciones(request))
+        .filter(institucion__in=_instituciones(request, "trabajo"))
     )
 
 

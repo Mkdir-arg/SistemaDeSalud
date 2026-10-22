@@ -1,10 +1,12 @@
 """Consulta de simulaciones para el superusuario. Solo lectura: es evidencia."""
 from django.contrib import admin
 
+from apps.admin_alcance import AlcanceInstitucionalAdmin
+
 from .models import CuentaReferencia, OperacionSimulada, SesionSimulacion
 
 
-class SoloLectura(admin.ModelAdmin):
+class SoloLectura(AlcanceInstitucionalAdmin, admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 

@@ -1,33 +1,39 @@
 import { NOMBRE_SISTEMA } from "@/lib/marca";
+import logoColor from "@/assets/marca/plexo-color.svg";
+import logoBlanco from "@/assets/marca/plexo-blanco.svg";
+
+// Verde oscuro del paquete de marca de Plexo.
+const VERDE_PLEXO = "#079B9D";
 
 /**
- * Logotipo de texto temporal. El archivo definitivo se podrá conectar aquí.
- *
- * La marca cuadrada lleva sólo la inicial: el nombre cambia de largo y siempre
- * aparece escrito al lado, así que el nombre entero no entraría en el cuadrado.
+ * Marca cuadrada para espacios chicos (menú colapsado). El paquete de marca no
+ * trae isotipo: se usa la inicial sobre el verde del logotipo.
  */
 export function LogoMark({ size = 40 }) {
   return (
     <span
       role="img"
       aria-label={NOMBRE_SISTEMA}
-      className="inline-flex flex-none items-center justify-center rounded-md border border-accent-100 bg-accent-50 font-bold tracking-tight text-accent"
-      style={{ width: size, height: size, fontSize: size * 0.5 }}
+      className="inline-flex flex-none items-center justify-center rounded-md font-bold tracking-tight text-white"
+      style={{ width: size, height: size, fontSize: size * 0.5, background: VERDE_PLEXO }}
     >
       {NOMBRE_SISTEMA.charAt(0)}
     </span>
   );
 }
 
+/**
+ * Logotipo de Plexo. Es fijo: no sigue a `VITE_NOMBRE_SISTEMA`. `size` es la
+ * altura en píxeles; `light` fuerza la versión blanca para fondos oscuros. Sin
+ * `light`, la versión blanca aparece sola en tema oscuro.
+ */
 export function LogoFull({ size = 44, light = false }) {
+  const estilo = { height: size, width: "auto" };
+  if (light) return <img src={logoBlanco} alt="PLEXO" className="inline-block flex-none" style={estilo} />;
   return (
-    <span
-      role="img"
-      aria-label={NOMBRE_SISTEMA}
-      className="inline-block whitespace-nowrap font-bold tracking-tight"
-      style={{ fontSize: size * 0.8, lineHeight: 1, color: light ? "#fff" : "var(--color-texto-fuerte)" }}
-    >
-      {NOMBRE_SISTEMA}
+    <span role="img" aria-label="PLEXO" className="inline-flex flex-none">
+      <img src={logoColor} alt="" className="dark:hidden" style={estilo} />
+      <img src={logoBlanco} alt="" className="hidden dark:block" style={estilo} />
     </span>
   );
 }

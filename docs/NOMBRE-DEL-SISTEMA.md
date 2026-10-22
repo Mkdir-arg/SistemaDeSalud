@@ -20,7 +20,7 @@ El compose la reparte a las dos partes:
 | Parte | Variable | Cuándo se lee | Dónde se usa |
 |---|---|---|---|
 | Backend | `NOMBRE_SISTEMA` | Al arrancar | `settings.NOMBRE_SISTEMA`: título y descripción de `/api/docs/`, remitente por defecto de los correos (si `DEFAULT_FROM_EMAIL` no está definido) |
-| Frontend | `VITE_NOMBRE_SISTEMA` | **Al construir** (Vite lo incrusta en el bundle) | `src/lib/marca.js`: logo, barra lateral, login, landing, portal del financiador, reporte PDF de finanzas, calendario `.ics` del portal; `vite.config.js`: `<title>` y favicon de `index.html` |
+| Frontend | `VITE_NOMBRE_SISTEMA` | **Al construir** (Vite lo incrusta en el bundle) | `src/lib/marca.js`: inicial de la marca cuadrada, título por defecto de la barra superior, textos de la landing, portal del financiador, reporte PDF de finanzas, calendario `.ics` del portal; `vite.config.js`: `<title>` y favicon de `index.html` |
 
 Fuera de compose (Railway, servidor propio) hay que definir las dos: `NOMBRE_SISTEMA`
 en el servicio del backend y `VITE_NOMBRE_SISTEMA` como variable de **build** del
@@ -28,9 +28,13 @@ frontend (build arg del `frontend/Dockerfile`). Definirla sólo en tiempo de
 ejecución del frontend no tiene efecto. En desarrollo local sin Docker van en
 `backend/.env` y `frontend/.env`.
 
-El logo es de texto y temporal: la marca cuadrada muestra la inicial del nombre y
-el favicon se genera con esa misma inicial. Cuando haya un logotipo real se
-conecta en `frontend/src/components/Logo.jsx`.
+El logotipo de Plexo (`frontend/src/assets/marca/`, usado por `LogoFull` en
+`frontend/src/components/Logo.jsx`) es **fijo y no sigue a la variable**: cambiar
+`NOMBRE_SISTEMA` cambia títulos y textos, pero el logotipo sigue diciendo «plexo»
+hasta que se reemplacen esos archivos. Se usa la versión color en tema claro y la
+blanca en tema oscuro; el paquete original (blanco, negro, verdes, PNG) quedó fuera
+del repositorio. El paquete no trae isotipo: la marca cuadrada (menú colapsado) y el
+favicon muestran la inicial del nombre sobre el verde de la marca (`#079B9D`).
 
 ## Identificadores internos
 

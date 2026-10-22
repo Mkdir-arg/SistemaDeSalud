@@ -198,6 +198,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.accounts.middleware.CorteMembresiasMiddleware",
     # Limpia el contexto de simulación de cada pedido y registra sus escrituras.
     "apps.simulacion.middleware.SimulacionMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -267,8 +268,9 @@ REST_FRAMEWORK = {
         # y, si la sesión no es válida, rechaza el pedido antes de que otro
         # autenticador lo atienda como superusuario.
         "apps.simulacion.autenticacion.SimulacionAuthentication",
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        "apps.accounts.autenticacion.AutenticacionInstitucional",
+        # Sin SessionAuthentication (#172, D-b): la cookie del Admin no abre la
+        # API. Así «Salir» y la revocación por SID cubren todo acceso a la API.
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -440,6 +442,33 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL") or f"{NOMBRE_SISTEMA} <no-respond
 # (sólo a esas se les manda). Las pruebas lo apagan para leer el buzón.
 PORTAL_CORREO_EN_SEGUNDO_PLANO = env_bool("PORTAL_CORREO_EN_SEGUNDO_PLANO", True)
 
+# Correo institucional opt-in: sin modo/plazos/cupos/política no se habilita.
+# La outbox requiere PostgreSQL y un worker supervisado aparte del servidor web.
+INSTITUCIONAL_CORREO_MODO = env("INSTITUCIONAL_CORREO_MODO", "")
+INSTITUCIONAL_URL_BASE = env("INSTITUCIONAL_URL_BASE", "")
+INSTITUCIONAL_PROVEEDOR_CONFIRMADO = env_bool("INSTITUCIONAL_PROVEEDOR_CONFIRMADO", False)
+INSTITUCIONAL_INVITACION_TIMEOUT = int(env("INSTITUCIONAL_INVITACION_TIMEOUT") or "0")
+INSTITUCIONAL_RECUPERACION_TIMEOUT = int(env("INSTITUCIONAL_RECUPERACION_TIMEOUT") or "0")
+INSTITUCIONAL_EMAIL_TIMEOUT = int(env("INSTITUCIONAL_EMAIL_TIMEOUT") or "0")
+INSTITUCIONAL_THROTTLE_RATES = {
+    "ip": env("INSTITUCIONAL_TASA_IP", ""),
+    "email": env("INSTITUCIONAL_TASA_EMAIL", ""),
+    "usuario": env("INSTITUCIONAL_TASA_USUARIO", ""),
+}
+# Límite de login institucional (#172, AUD-010): fallos por email y por IP en
+# una ventana fija. La IP por NAT de un hospital tolera más que una cuenta.
+INSTITUCIONAL_LOGIN_FALLOS_EMAIL = int(env("INSTITUCIONAL_LOGIN_FALLOS_EMAIL") or "10")
+INSTITUCIONAL_LOGIN_FALLOS_IP = int(env("INSTITUCIONAL_LOGIN_FALLOS_IP") or "100")
+INSTITUCIONAL_LOGIN_VENTANA_SEGUNDOS = int(env("INSTITUCIONAL_LOGIN_VENTANA_SEGUNDOS") or "900")
+INSTITUCIONAL_OUTBOX_POLITICA = {
+    clave: int(env(f"INSTITUCIONAL_OUTBOX_{clave.upper()}") or "0")
+    for clave in ("max_intentos", "lease_segundos", "backoff_inicial_segundos", "backoff_maximo_segundos", "espera_segundos")
+}
+# Retención técnica (#172) que aplica `purgar_datos`: sesiones revocadas o
+# vencidas y contenido de correos terminales. Ver apps/auditoria/retencion.py.
+RETENCION_SESIONES_DIAS = int(env("RETENCION_SESIONES_DIAS") or "90")
+RETENCION_CORREOS_DIAS = int(env("RETENCION_CORREOS_DIAS") or "30")
+
 # --- Portal del paciente (#120) --------------------------------------------- #
 # Dirección pública de la SPA: los enlaces del correo apuntan acá.
 PORTAL_URL_BASE = env("PORTAL_URL_BASE") or "http://localhost:5173"
@@ -474,6 +503,13 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
+    "CHECK_REVOKE_TOKEN": True,
+    # Réplicas con relojes desfasados daban 401 por `iat` futuro: PyJWT
+    # (>= 2.10) valida iat con este margen, que también extiende `exp` hasta
+    # 30 s. La revocación por sesión y por contraseña no depende de él (#172).
+    "LEEWAY": 30,
+    "TOKEN_OBTAIN_SERIALIZER": "apps.accounts.jwt.TokenObtainPairInstitucionalSerializer",
+    "TOKEN_REFRESH_SERIALIZER": "apps.accounts.jwt.TokenRefreshInstitucionalSerializer",
     "USER_AUTHENTICATION_RULE": "apps.simulacion.autenticacion.regla_de_autenticacion",
 }
 
@@ -499,12 +535,6 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# WhiteNoise: sirve los estáticos (incluido el admin) con gunicorn sin nginx.
-STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
-}
-
 # --- Media (archivos subidos) ----------------------------------------------
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -513,7 +543,36 @@ _facturas_dir = Path(env("SALUD_FACTURAS_ADJUNTOS_DIR", BASE_DIR / "privado" / "
 SALUD_FACTURAS_ADJUNTOS_DIR = (_facturas_dir if _facturas_dir.is_absolute() else BASE_DIR / _facturas_dir).resolve()
 if SALUD_FACTURAS_ADJUNTOS_DIR == MEDIA_ROOT.resolve() or MEDIA_ROOT.resolve() in SALUD_FACTURAS_ADJUNTOS_DIR.parents:
     raise ValueError("SALUD_FACTURAS_ADJUNTOS_DIR debe estar fuera de MEDIA_ROOT.")
+
+# Disco local, o un bucket S3 privado si están BUCKET, ACCESS_KEY_ID,
+# SECRET_ACCESS_KEY y ENDPOINT (#171, ver config/almacenamiento.py).
+from config import almacenamiento as _almacenamiento  # noqa: E402
+
+_archivos, ALMACENAMIENTO_EN_BUCKET = _almacenamiento.storages(os.environ, SALUD_FACTURAS_ADJUNTOS_DIR)
+STORAGES = {
+    **_archivos,
+    # WhiteNoise: sirve los estáticos (incluido el admin) con gunicorn sin nginx.
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 # Tope de subida en memoria / tamaño máximo razonable: 10 MB.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Producción incompleta no arranca (#172, AUD-026) ---------------------- #
+#
+# Al final del módulo para que los errores específicos de arriba (clave de
+# desarrollo, RENAPER simulado) se informen primero. Con ENTORNO=produccion no
+# se arranca con DEBUG prendido —que además es el valor por defecto si falta la
+# variable—, sobre SQLite ni sembrando datos ficticios en cada arranque.
+if ENTORNO == "produccion":
+    _incompleta = []
+    if DEBUG:
+        _incompleta.append("DJANGO_DEBUG=false (prendido muestra trazas y configuración)")
+    if DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
+        _incompleta.append("DATABASE_URL de PostgreSQL (sin ella cae a SQLite local)")
+    for _semilla in ("SEED_DEMO", "SEED_GUARDIA"):
+        if env_bool(_semilla, False):
+            _incompleta.append(f"{_semilla}=0 (siembra datos ficticios en la base real)")
+    if _incompleta:
+        raise RuntimeError("ENTORNO=produccion con configuración incompleta. Falta: " + "; ".join(_incompleta))

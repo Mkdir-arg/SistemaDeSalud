@@ -1,13 +1,15 @@
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.response import Response
 
 from apps.casos import motor
 from apps.casos.models import Caso
 from apps.common import BaseModelViewSet
+from apps.formularios.integridad import bloquear_formularios, congelar_formularios, ids_formularios_de_version
 
 from .models import Conexion, Flujo, Nodo, VersionFlujo
 from .serializers import (
@@ -44,25 +46,53 @@ def exigir_borrador(version):
 
 
 class SoloSobreBorrador:
-    """Mixin: las escrituras del grafo sólo valen sobre una versión borrador."""
+    """Escrituras serializadas con la publicación de la versión del grafo."""
 
     def perform_create(self, serializer):
-        exigir_borrador(serializer.validated_data["version"])
-        serializer.save()
+        with transaction.atomic():
+            version = get_object_or_404(
+                VersionFlujo.objects.select_for_update(), pk=serializer.validated_data["version"].pk,
+            )
+            exigir_borrador(version)
+            formulario = serializer.validated_data.get("formulario")
+            if formulario is not None:
+                bloquear_formularios([formulario.pk])
+            serializer.validated_data["version"] = version
+            serializer.validate(serializer.validated_data)
+            serializer.save()
 
     def perform_update(self, serializer):
-        exigir_borrador(serializer.instance.version)
-        # Mover el objeto a otra versión también tiene que respetar el destino.
-        destino = serializer.validated_data.get("version")
-        if destino and destino.pk != serializer.instance.version_id:
-            exigir_borrador(destino)
-        serializer.save()
+        with transaction.atomic():
+            # El serializer actual no permite mover entidades por PATCH. También
+            # se protege el destino si un llamador interno aporta otra versión.
+            origen_id = serializer.instance.version_id
+            destino = serializer.validated_data.get("version")
+            ids = {origen_id, destino.pk if destino else origen_id}
+            versiones = {
+                version.pk: version for version in VersionFlujo.objects
+                .select_for_update().filter(pk__in=ids).order_by("pk")
+            }
+            if ids - versiones.keys():
+                raise NotFound("La versión de flujo ya no existe.")
+            for version in versiones.values():
+                exigir_borrador(version)
+            formulario = serializer.validated_data.get("formulario")
+            if formulario is not None:
+                bloquear_formularios([formulario.pk])
+            serializer.instance.version = versiones[origen_id]
+            if destino:
+                serializer.validated_data["version"] = versiones[destino.pk]
+            serializer.validate(serializer.validated_data)
+            serializer.save()
 
     def perform_destroy(self, instance):
-        exigir_borrador(instance.version)
-        instance.delete()
+        with transaction.atomic():
+            version = get_object_or_404(VersionFlujo.objects.select_for_update(), pk=instance.version_id)
+            exigir_borrador(version)
+            instance.delete()
 
 
+@transaction.atomic
 def clonar_grafo(origen: VersionFlujo, destino: VersionFlujo) -> None:
     """Copia nodos (con su config y sus grupos) y conexiones de una versión a otra.
 
@@ -70,6 +100,12 @@ def clonar_grafo(origen: VersionFlujo, destino: VersionFlujo) -> None:
     condiciones, grupos responsables y configuración, la copia es un lienzo vacío
     con el nombre del original.
     """
+    versiones = {v.pk: v for v in VersionFlujo.objects.select_for_update()
+                 .filter(pk__in=[origen.pk, destino.pk]).order_by("pk")}
+    if origen.pk not in versiones or destino.pk not in versiones:
+        raise NotFound("La versión de flujo ya no existe.")
+    exigir_borrador(versiones[destino.pk])
+    bloquear_formularios(ids_formularios_de_version(origen.pk))
     mapa = {}
     for n in origen.nodos.all().prefetch_related("grupos"):
         copia = Nodo.objects.create(
@@ -322,13 +358,18 @@ class VersionFlujoViewSet(BaseModelViewSet):
             # publicaciones simultáneas dejen dos versiones publicadas a la vez,
             # que es un estado que el resto del código asume imposible.
             hermanas = list(
-                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id)
+                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id).order_by("pk")
             )
-            version = next(v for v in hermanas if v.pk == version.pk)
+            version = next((v for v in hermanas if v.pk == version.pk), None)
+            if version is None:
+                raise NotFound("La versión de flujo ya no existe.")
+            formularios_ids = ids_formularios_de_version(version.pk)
+            bloquear_formularios(formularios_ids)
             problemas = motor.validar_version(version)
             if any(p["sev"] == "error" for p in problemas):
                 return Response({"detail": "La versión cambió y tiene errores; revisá el diseño.", "problemas": problemas},
                                 status=status.HTTP_400_BAD_REQUEST)
+            congelar_formularios(formularios_ids)
             for v in hermanas:
                 if v.pk != version.pk and v.estado == VersionFlujo.Estado.PUBLICADA:
                     v.estado = VersionFlujo.Estado.REEMPLAZADA
@@ -394,7 +435,7 @@ class VersionFlujoViewSet(BaseModelViewSet):
         version = self.get_object()
         with transaction.atomic():
             hermanas = list(
-                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id)
+                VersionFlujo.objects.select_for_update().filter(flujo_id=version.flujo_id).order_by("pk")
             )
             borrador = next(
                 (v for v in hermanas if v.estado == VersionFlujo.Estado.BORRADOR), None
@@ -431,20 +472,6 @@ class NodoViewSet(SoloSobreBorrador, BaseModelViewSet):
     capacidad_requerida = "diseno_flujos"
     institucion_path = "version__flujo__institucion"
     filter_fields = ("version", "tipo")
-
-    def perform_create(self, serializer):
-        with transaction.atomic():
-            version = VersionFlujo.objects.select_for_update().get(pk=serializer.validated_data["version"].pk)
-            serializer.validated_data["version"] = version
-            serializer.validate(serializer.validated_data)
-            super().perform_create(serializer)
-
-    def perform_update(self, serializer):
-        with transaction.atomic():
-            version = VersionFlujo.objects.select_for_update().get(pk=serializer.instance.version_id)
-            serializer.instance.version = version
-            serializer.validate(serializer.validated_data)
-            super().perform_update(serializer)
 
     @action(detail=True, methods=["post"])
     def pantalla(self, request, pk=None):

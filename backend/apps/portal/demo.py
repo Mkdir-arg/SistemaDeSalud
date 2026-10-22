@@ -165,6 +165,8 @@ def _estudio_con_archivo(historia, fecha, autor):
         nombre_original=f"hemograma-{fecha:%Y-%m-%d}.pdf", content_type="application/pdf",
         tamano=len(contenido), sha256=hashlib.sha256(contenido).hexdigest(),
         proposito=ArchivoClinico.Proposito.ESTUDIO, objeto_tipo="Estudio", objeto_id=estudio.pk,
+        # Dueño explícito (#172, AUD-050): el portal solo publica archivos asociados.
+        ciudadano=ciudadano, asociado_at=timezone.now(),
     )
     estudio.archivo = ruta
     estudio.save(update_fields=["archivo"])
