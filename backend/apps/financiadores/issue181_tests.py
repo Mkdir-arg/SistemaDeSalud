@@ -1,4 +1,4 @@
-"""Evidencia pura #181 sobre #186 por SHA: lectura, no aplicación ni familia.
+"""Evidencia pura #181 sobre el árbol integrado: lectura, no aplicación ni familia.
 
 Desde la raíz: python -B -m unittest backend.apps.financiadores.issue181_tests -v
 No requiere settings, Django, DB, red ni escribir XLSX. No reemplaza los tests
@@ -8,16 +8,15 @@ de API/familia existentes ni acredita controles de persistencia.
 from itertools import permutations
 import unittest
 
-from .issue181_fixtures import (
-    cargar_referencia, cambiar_columnas, referencias_crudas,
-)
+from . import ostel_prevalidacion, ostel_synthetic
+from .issue181_fixtures import cambiar_columnas, referencias_crudas
 
 
 class IdentidadLecturaIssue181Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.s = cargar_referencia("ostel_synthetic")
-        cls.lector = cargar_referencia("ostel_prevalidacion")
+        cls.s = ostel_synthetic
+        cls.lector = ostel_prevalidacion
         cls.catalogo = {e.codigo: e for e in cls.s.generar_escenarios()}
 
     def filas(self, codigo):
