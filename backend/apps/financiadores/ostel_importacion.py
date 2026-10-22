@@ -157,8 +157,9 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
                 if numero not in posiciones:
                     continue
                 raw = dict(zip(nombres, valores))
+                # CODPAR se conserva como evidencia, sin asignar parentesco.
                 original = {k: _json(raw[k]) for k in ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM",
-                    "FECING", "FECBAJ", "FECVTO", "TIPODOC", "TIPO", "MOTIVO", "COD_PLAN", "NROREF", "CODEMP", "ESTADO")}
+                    "FECING", "FECBAJ", "FECVTO", "TIPODOC", "TIPO", "MOTIVO", "COD_PLAN", "NROREF", "CODEMP", "ESTADO", "CODPAR")}
                 try:
                     d = {k: _texto(raw[c]) for k, c in zip(CAMPOS, ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM"))}
                     error = ""

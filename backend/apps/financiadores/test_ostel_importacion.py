@@ -134,6 +134,71 @@ class ImportacionAdministrativaTests(TestCase):
         self.aplicar(res.data)
         self.assertEqual(self.corregir(res.data, datos=d).status_code, 400)
 
+    def test_codpar_conserva_tipo_y_literal_sin_crear_familias(self):
+        codigos = ("0007", " ZZ ", 7, None)
+        filas = tuple(_persona(n, NUMERO=f"00000{n}", NROAFI="COMPARTIDO",
+                               CODPAR=codigo, NROREF="000001")
+                      for n, codigo in enumerate(codigos, 1))
+        contenido = generar_xlsx(Lote("codigos-sin-homologar", filas))
+        clave = str(uuid4())
+
+        def enviar():
+            respuesta = self.client.post(self.base + "previsualizar-ostel/", {
+                "archivo": SimpleUploadedFile("ficticio.xlsx", contenido), "clave": clave,
+                "cobertura_habilitada": False,
+            }, format="multipart")
+            self.assertEqual(respuesta.status_code, 200, respuesta.data)
+            return respuesta.data
+
+        lote = enviar()
+        originales = [fila["original"] for fila in lote["filas"]]
+        self.assertEqual([original["CODPAR"] for original in originales], list(codigos))
+        self.assertEqual(lote["resumen"]["valida"], 4)
+        datos = {**lote["filas"][0]["datos"], "nombre": "PERSONA FICTICIA CORREGIDA"}
+        corregida = self.corregir(lote, datos=datos)
+        self.assertEqual(corregida.status_code, 200, corregida.data)
+        self.assertEqual([fila["original"] for fila in corregida.data["filas"]], originales)
+        aplicada = self.aplicar(corregida.data)
+        self.assertEqual(aplicada.status_code, 200, aplicada.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 4)
+        for resultado in (self.aplicar(aplicada.data).data, enviar()):
+            self.assertEqual(resultado["id"], lote["id"])
+            self.assertEqual([fila["original"] for fila in resultado["filas"]], originales)
+        persistida = Importacion.objects.get(pk=lote["id"])
+        self.assertEqual([fila["original"] for fila in persistida.filas], originales)
+        self.assertEqual(len(persistida.filas[0]["correcciones"]), 1)
+        self.assertEqual(Importacion.objects.count(), 1)
+        self.assertEqual(Afiliado.objects.count(), 4)
+        for afiliado in Afiliado.objects.all():
+            self.assertIsNone(afiliado.titular_id)
+            self.assertEqual(afiliado.parentesco, "")
+            self.assertFalse(afiliado.cobertura_habilitada)
+
+    def test_codpar_no_cambia_cobertura_ni_familia_existentes(self):
+        from .ostel_synthetic import _cuil
+
+        titular = Afiliado.objects.create(financiador=self.org, numero="TITULAR",
+            documento="99018502", nombre="PERSONA FICTICIA TITULAR", desde=timezone.localdate())
+        afiliado = Afiliado.objects.create(financiador=self.org, numero="COMPARTIDO",
+            numero_interno="000001", documento="99018501", cuil=_cuil("99018501"),
+            nombre="PERSONA FICTICIA OSTEL 0001", desde=timezone.localdate(),
+            titular=titular, parentesco="hijo", cobertura_habilitada=True)
+        lote = self.preview([_persona(1, NUMERO="000001", NROAFI="COMPARTIDO",
+                                     CODPAR="SIN-DICCIONARIO", NROREF="NO-ES-TITULAR")],
+                            cobertura_habilitada=False)
+        self.assertEqual(lote.status_code, 200, lote.data)
+        self.assertEqual(lote.data["resumen"]["revision"], 1)
+        corregida = self.corregir(lote.data)
+        self.assertEqual(corregida.status_code, 200, corregida.data)
+        aplicada = self.aplicar(corregida.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 1)
+        afiliado.refresh_from_db()
+        self.assertEqual(afiliado.titular_id, titular.pk)
+        self.assertEqual(afiliado.parentesco, "hijo")
+        self.assertTrue(afiliado.cobertura_habilitada)
+        self.assertEqual(Importacion.objects.get(pk=lote.data["id"]).filas[0]["original"]["CODPAR"],
+                         "SIN-DICCIONARIO")
+
     def test_bajas_no_aplican_ni_se_fuerzan_mediante_correccion(self):
         r = self.preview(fuente="bajas").data
         self.assertEqual(r["resumen"]["valida"], 0)
