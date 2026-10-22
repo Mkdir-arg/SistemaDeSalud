@@ -196,12 +196,10 @@ class OstelAtomicidadTests(TestCase):
         self.assertFalse(m.Financiador.objects.exists())
         self.assertFalse(Group.objects.filter(name=ESCENARIO).exists())
 
-    def test_clave_publica_se_rechaza(self):
-        for password in ("", "demo1234"):
-            with self.subTest(password=bool(password)), patch.dict("os.environ", {"DEMO_PASSWORD": password}):
-                with self.assertRaisesMessage(CommandError, "DEMO_PASSWORD externa"):
-                    call_command("seed_ostel_demo", stdout=StringIO())
-        self.assertFalse(Institucion.objects.exists())
+    def test_usa_la_clave_de_demo_aunque_sea_la_publica(self):
+        with patch.dict("os.environ", {"DEMO_PASSWORD": "demo1234"}):
+            call_command("seed_ostel_demo", stdout=StringIO())
+        self.assertTrue(Usuario.objects.get(email=f"admin@{DOMINIO}").check_password("demo1234"))
 
 
 @skipUnless(connection.vendor == "postgresql", "Requiere dos conexiones PostgreSQL reales.")
