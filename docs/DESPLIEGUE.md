@@ -378,6 +378,24 @@ quedan como estaban. Lo que no esté bajo esos prefijos no se toca. Con
 `ENTORNO=produccion` el comando se niega antes de tocar nada, y con disco local
 no borra archivos.
 
+**Resembrar la demo desde GitHub.** El workflow `resembrar-demo` (Actions → Run
+workflow, desde `main`, escribiendo `vaciar`) comprueba el bucket, corre
+`seed_entorno_demo` y `seed_ostel_demo` en `cauce-api` y prueba el ingreso de
+cada cuenta con `DEMO_PASSWORD`. Tarda unos 20 minutos. Un merge a `main`
+mientras corre redespliega `cauce-api` y la carga se revierte: el workflow
+falla con ese aviso y hay que volver a correrlo. Configuración única, en el
+Environment `demo` (rama `main`):
+
+1. Generar una clave solo para esto: `ssh-keygen -t ed25519 -N "" -C resembrar-demo -f resembrar-demo`.
+2. Registrar la pública en Railway: `railway ssh keys add -k resembrar-demo.pub -n resembrar-demo`.
+3. Secretos: `RAILWAY_SSH_KEY` (la privada), `RAILWAY_SSH_USUARIO` (el `User`
+   que muestra `railway ssh config -s cauce-api -e production --dry-run`) y
+   `DEMO_PASSWORD` (el mismo valor que la variable de `cauce-api`). Después,
+   borrar la privada local.
+
+La clave entra como root a todo lo que la cuenta que la registró puede ver por
+SSH: para revocarla, quitarla en Railway.
+
 **Migrar a otro proveedor o a la infraestructura propia.** Copiar los objetos y
 cambiar las variables, sin tocar la base. Por ejemplo con
 [rclone](https://rclone.org/s3/), con dos remotos S3 configurados (`origen` y

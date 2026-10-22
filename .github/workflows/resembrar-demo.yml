@@ -1,0 +1,118 @@
+# Botón «Resembrar demo»: vacía la demo compartida de Railway y la vuelve a cargar.
+#
+# Solo a mano, nunca al desplegar: seed_entorno_demo borra TODA la base y los
+# archivos de la app en el bucket, y tarda unos 16 minutos con las tablas
+# bloqueadas. Railway despliega en cada merge a main; atarlo al despliegue
+# borraría el trabajo del equipo varias veces por día.
+#
+# Reproduce el procedimiento manual del 22/10/2026: comprobar el bucket, cargar
+# el entorno, cargar OSTEL y probar el ingreso de cada cuenta.
+#
+# Entra por SSH con una clave registrada en Railway, sin token de Railway: el
+# usuario SSH es el ID de instancia del servicio cauce-api (sale de
+# `railway ssh config -s cauce-api --dry-run`). No usar `railway run`: ejecuta
+# el código en el runner contra la base remota.
+#
+# Configuración, en el Environment `demo` (limitado a la rama main):
+#   RAILWAY_SSH_KEY      secreto: clave privada ed25519 dedicada, registrada en Railway
+#   RAILWAY_SSH_USUARIO  secreto: ID de instancia de cauce-api en production
+#   DEMO_PASSWORD        secreto: el mismo valor que la variable de cauce-api
+name: resembrar-demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacion:
+        description: "Borra TODOS los datos de la demo compartida. Escribí «vaciar» para seguir."
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # Dos cargas a la vez se bloquean entre sí sobre la misma base. La segunda
+  # espera; nunca se cancela una carga en curso.
+  group: resembrar-demo
+  cancel-in-progress: false
+
+jobs:
+  resembrar:
+    runs-on: ubuntu-latest
+    environment: demo
+    # Los topes de las dos cargas (45 y 10 min) más la verificación.
+    timeout-minutes: 75
+    steps:
+      - name: Confirmación y rama
+        env:
+          CONFIRMACION: ${{ inputs.confirmacion }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Solo se resiembra desde main (se pidió desde $GITHUB_REF)."; exit 1
+          fi
+          if [ "$CONFIRMACION" != "vaciar" ]; then
+            echo "::error::Confirmación incorrecta: no se tocó nada."; exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Acceso SSH a cauce-api
+        env:
+          CLAVE: ${{ secrets.RAILWAY_SSH_KEY }}
+          USUARIO: ${{ secrets.RAILWAY_SSH_USUARIO }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CLAVE" > ~/.ssh/railway && chmod 600 ~/.ssh/railway
+          # Clave de host fijada: si Railway la cambia, el workflow falla en vez
+          # de entregar la sesión a otro servidor.
+          echo "ssh.railway.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8X3z81/tuP7CvmK3ZqWgwEvHUR6b04oi2lQJGld2C1" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host demo
+            HostName ssh.railway.com
+            User $USUARIO
+            IdentityFile ~/.ssh/railway
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 20
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          EOF
+          # ssh.railway.com a veces no acepta la conexión: se reintenta.
+          for _ in 1 2 3; do
+            entorno=$(ssh demo 'echo "$ENTORNO"') && break
+            sleep 20
+          done
+          if [ "${entorno:-}" != demo ]; then
+            echo "::error::No se pudo entrar a cauce-api, o el servicio no tiene ENTORNO=demo."; exit 1
+          fi
+
+      - name: Bucket
+        # Solo lee. Con credenciales viejas falla acá (SignatureDoesNotMatch) y
+        # no se siembra: la carga borraría la base y dejaría huérfanos los archivos.
+        run: |
+          ssh demo 'cd /app && python manage.py shell -c "from apps.demo import archivos; print(len(archivos.claves_a_vaciar()), \"archivos en el bucket\")"'
+
+      - name: seed_entorno_demo
+        run: bash .github/resembrar-demo/correr-remoto.sh entorno 2700 seed_entorno_demo --noinput
+
+      - name: seed_ostel_demo
+        run: bash .github/resembrar-demo/correr-remoto.sh ostel 600 seed_ostel_demo
+
+      - name: Cuentas a verificar
+        run: |
+          # La carga ya terminó: un fallo de conexión acá no la invalida.
+          for _ in 1 2 3; do
+            { ssh demo 'cd /app && python manage.py shell' < .github/resembrar-demo/cuentas.py || true; } | sed -n 's/^CUENTAS=//p' > cuentas.json
+            [ -s cuentas.json ] && exit 0
+            sleep 30
+          done
+          echo "::error::La carga terminó, pero no se pudo leer la lista de cuentas para verificar los ingresos."; exit 1
+
+      - name: Ingresos
+        env:
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+        run: python3 .github/resembrar-demo/verificar_ingresos.py cuentas.json
+
+      - name: Borrar la clave del runner
+        if: always()
+        run: rm -f ~/.ssh/railway
