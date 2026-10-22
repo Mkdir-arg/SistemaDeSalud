@@ -377,6 +377,8 @@ recién cuando la carga confirmó: si la carga falla, la base y los archivos
 quedan como estaban. Lo que no esté bajo esos prefijos no se toca. Con
 `ENTORNO=produccion` el comando se niega antes de tocar nada, y con disco local
 no borra archivos.
+Los pasos para resembrar la demo de Railway, completa o por partes, están en
+[Resembrar la demo compartida](entornos/resembrar-demo-railway.md).
 
 **Migrar a otro proveedor o a la infraestructura propia.** Copiar los objetos y
 cambiar las variables, sin tocar la base. Por ejemplo con
