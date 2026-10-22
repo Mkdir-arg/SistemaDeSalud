@@ -68,10 +68,12 @@ export function parametrosConsultaPadron(parametros) {
 
 export function valorColumnaPadron(fila, columna, planes = []) {
   let valor = fila[columna.key];
-  if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.cobertura_habilitada === false ? "administrativas" : fila.vigente === false ? "futuras" : "vigentes";
+  // Compatible con #186 sin exigir su catálogo antes de integrar ese PR.
+  if (columna.key === "derecho" && !fila.finalizado_en && fila.cobertura_habilitada === false) return "Sólo administrativa";
+  if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.vigente === false ? "futuras" : fila.vigente === true ? "vigentes" : null;
   if (columna.key === "plan") return fila.plan == null ? "Sin plan" : planes.find((p) => String(p.id) === String(fila.plan))?.nombre || `Plan ${fila.plan}`;
   if (valor == null || valor === "") return "Sin informar";
-  if (columna.options) return columna.options[valor] || String(valor);
+  if (columna.options) return Object.hasOwn(columna.options, valor) ? columna.options[valor] : String(valor);
   if (columna.type === "date") return String(valor).split("-").reverse().join("/");
   if (columna.type === "datetime") return new Date(valor).toLocaleString("es-AR");
   return String(valor);
@@ -136,7 +138,7 @@ export function filtrosActivosPadron(parametros, planes = []) {
       let texto;
       if (control.tipo === "vacio") texto = `: ${valor === "true" ? "sin cargar" : "cargado"}`;
       else if (control.tipo === "date") texto = ` ${control.extremo} ${fechaAR(valor)}`;
-      else if (control.tipo === "choice") texto = `: ${control.options?.[valor] || valor}`;
+      else if (control.tipo === "choice") texto = `: ${control.options && Object.hasOwn(control.options, valor) ? control.options[valor] : valor}`;
       else if (control.tipo === "plan") texto = `: ${planes.find((p) => String(p.id) === valor)?.nombre || `Plan ${valor}`}`;
       else if (control.tipo === "relation") texto = ` ${valor}`;
       else texto = `: «${valor}»`;
