@@ -5,22 +5,50 @@ from apps.accounts.models import Membresia
 from apps.common import ROL_CAPACIDADES, tiene_capacidad
 from apps.finanzas.permisos import tiene_concesion_financiera
 from apps.simulacion.contexto import autor_real
-from .models import MembresiaFinanciador
+from .models import Financiador, MembresiaFinanciador
 
 
 def plataforma(usuario):
     return bool(usuario.is_authenticated and usuario.is_active and (usuario.is_superuser or tiene_capacidad(usuario, "gobierno_plataforma")))
 
 
-def requerir_financiador(usuario, financiador_id, escritura=False, admin=False):
-    if plataforma(usuario):
+def superusuario(usuario):
+    """Privilegio técnico de la identidad efectiva, nunca del autor de simulación."""
+    return bool(usuario.is_authenticated and usuario.is_active and usuario.is_superuser)
+
+
+def rol_financiador(usuario, financiador_id):
+    if superusuario(usuario):
         return "admin"
     if not usuario.is_authenticated or not usuario.is_active:
+        return None
+    return MembresiaFinanciador.objects.filter(
+        usuario=usuario, financiador_id=financiador_id, financiador__activo=True, activo=True,
+    ).values_list("rol", flat=True).first()
+
+
+def requerir_financiador(usuario, financiador_id, escritura=False, admin=False):
+    if not usuario.is_authenticated or not usuario.is_active:
         raise PermissionDenied("La sesión no tiene acceso al financiador.")
-    membresia = MembresiaFinanciador.objects.filter(usuario=usuario, financiador_id=financiador_id, financiador__activo=True, activo=True).first()
-    if not membresia or (admin and membresia.rol != "admin") or (escritura and membresia.rol == "auditor"):
+    rol = rol_financiador(usuario, financiador_id)
+    if not rol or (admin and rol != "admin") or (escritura and rol == "auditor"):
         raise PermissionDenied("No tenés permiso para esta operación en el financiador.")
-    return membresia.rol
+    return rol
+
+
+def puede_designar_admin_inicial(usuario, financiador_id):
+    """Alta organizacional acotada; el POST revalida bajo bloqueo del financiador."""
+    from apps.simulacion.perfiles import DOMINIO
+
+    if not plataforma(usuario) or superusuario(usuario):
+        return False
+    if not Financiador.objects.filter(pk=financiador_id, activo=True).exists():
+        return False
+    return not MembresiaFinanciador.objects.filter(
+        financiador_id=financiador_id, activo=True, rol="admin", usuario__is_active=True,
+    ).exclude(
+        Q(usuario__email__iendswith=f"@{DOMINIO}") | Q(usuario__cuenta_referencia__isnull=False),
+    ).exists()
 
 
 def puede_resolver_autorizaciones(usuario, financiador_id):
@@ -100,7 +128,7 @@ def requerir_hospital(usuario, institucion_id, accion, area_id=None, sensible=Fa
 
 
 def requerir_caso(usuario, caso, certificar=False):
-    if plataforma(usuario):
+    if superusuario(usuario):
         return
     if not usuario.is_active or not tiene_capacidad(usuario, "casos_operar", caso.institucion_id):
         raise PermissionDenied("No tenés permiso para operar este caso.")

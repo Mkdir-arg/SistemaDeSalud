@@ -28,7 +28,7 @@ services:
       # falta la variable, asume `desarrollo`; por eso se fija explícitamente.
       # El override de desarrollo y el compose de demo la cambian.
       ENTORNO: ${ENTORNO:-produccion}
-      SEED_DEMO: ${SEED_DEMO:-1}
+      SEED_DEMO: ${SEED_DEMO:-0}
       SALUD_INTEGRACIONES_PERMITIDAS: ${SALUD_INTEGRACIONES_PERMITIDAS:-}
       # Portal del paciente (#120). Ver .env.example.
       PORTAL_URL_BASE: ${PORTAL_URL_BASE:-http://localhost:8080}
@@ -73,6 +73,7 @@ services:
                python manage.py correr_tiempos || true;
                python manage.py recordar_turnos || true;
                python manage.py alertar_saturacion || true;
+               python manage.py revisar_boxes || true;
                sleep ${INTERVALO_TIEMPOS:-120};
              done"
     environment:
@@ -96,6 +97,9 @@ services:
     build: ./backend
     entrypoint: ["python"]
     command: ["manage.py", "escuchar_repartos"]
+    # No pasa por el entrypoint, que es quien baja de root: corre directo como
+    # el usuario de la app. No escribe en volúmenes (#172, AUD-027).
+    user: "10001:10001"
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-salud}:${POSTGRES_PASSWORD:-salud}@db:5432/${POSTGRES_DB:-salud}

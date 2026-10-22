@@ -416,8 +416,9 @@ class VersionDelFormatoTests(IntegridadTestCase):
         siguiente se verifica entera: es el escenario real de un despliegue que
         cambia de versión con historias ya abiertas.
         """
-        vieja = self._entrada(titulo="Antes del cambio")
-        with mock.patch.object(integridad, "VERSION", "otro-formato-v2"):
-            nueva = self._entrada(titulo="Después del cambio")
+        # Usar formatos reales: una etiqueta arbitraria no define un lector.
+        with mock.patch.object(integridad, "VERSION", "salud-sha256-v1"):
+            vieja = self._entrada(titulo="Antes del cambio")
+        nueva = self._entrada(titulo="Después del cambio")
         self.assertNotEqual(vieja.sello_version, nueva.sello_version)
         self.assertTrue(integridad.verificar_historia(self.hc)["ok"])

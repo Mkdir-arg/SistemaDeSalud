@@ -245,7 +245,7 @@ class PilotoIntegralTests(CoberturaSetup, APITestCase):
         actividad = self.get(base_os + "actividad/").data
         self.assertEqual(actividad["count"], 3)
         self.assertEqual(actividad["resumen"]["importe_asignado"], "240.00")
-        self.assertEqual(self.client.get(f"/api/casos/{caso_a.pk}/cobertura/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/casos/{caso_a.pk}/cobertura/").status_code, 403)  # AUD-008: sin casos_operar no se lee el caso (sin enumerar)
         self.assertEqual(self.client.get("/api/seguimiento-cobros/", {"institucion": self.institucion.pk}).status_code, 403)
         self.client.force_authenticate(self.operador_mutual)
         mutual = self.get(base_mutual + "actividad/").data

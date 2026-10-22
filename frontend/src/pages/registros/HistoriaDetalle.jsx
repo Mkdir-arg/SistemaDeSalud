@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "@/api/client";
 import { useAccion, useDetalle, useLista } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
+import { useInstitucion } from "@/auth/InstitutionContext";
 import { Icon } from "@/components/icons";
 import { Badge, Button, Card, Field, Input, Modal, Mono, Textarea } from "@/components/ui";
 import { EstadoError, EstadoVacio, SkeletonTabla } from "@/components/ui/estados";
@@ -344,16 +345,12 @@ function Resultado({ r }) {
   return (
     <>
       <Badge tone={r.ok ? "green" : "error"}>
-        {r.ok ? "Sin alteraciones" : "⚠ Hay entradas alteradas"}
+        {r.ok ? "No se detectaron diferencias" : "Hay problemas de verificación"}
       </Badge>
       <div className="mt-2 text-sm text-texto-debil">
-        {/* El alcance va pegado al veredicto, no como nota al pie: «sin
-            alteraciones» sobre parte de la historia no es lo mismo que sobre
-            toda. */}
-        {sinSellar
-          ? `Verificadas ${r.selladas} de ${r.firmadas} atenciones firmadas.`
-          : `Verificadas las ${r.firmadas} atenciones firmadas.`}
+        Se compararon {r.selladas} entradas con sus sellos.
       </div>
+      <p className="mt-1 text-sm text-texto-medio">Los sellos históricos tienen límites de verificación.</p>
       {!!sinSellar && (
         <div className="mt-1 text-sm text-texto-medio">
           {/* Con la fecha, «anterior al sellado» se puede comprobar. Sin ella era
@@ -611,19 +608,37 @@ function SelloDeFirma({ entrada }) {
   // separar el registro firmado del borrador de alguien, y ante un reclamo esa
   // diferencia es toda la diferencia.
   if (!entrada.firmada) return <Badge tone="amber">Sin firmar · borrador</Badge>;
+  // La API verifica el algoritmo. Estas etiquetas sólo distinguen su alcance:
+  // `integra=false` con un formato desconocido no prueba una alteración.
+  const historico = ["salud-sha256-v1", "cauce-sha256-v1"].includes(entrada.sello_version);
+  const compatible = historico || entrada.sello_version === "salud-sha256-v2";
+  if (entrada.sello && !compatible) {
+    return <Badge tone="gray">Firmada · formato no compatible</Badge>;
+  }
+  if (!entrada.sello || entrada.integra == null) {
+    return <Badge tone="gray">Firmada · no verificable</Badge>;
+  }
   if (entrada.integra === false) {
     return <Badge tone="error">⚠ Alterada después de firmarse</Badge>;
   }
-  if (entrada.integra == null) {
-    return <Badge tone="gray">Firmada · no verificable</Badge>;
+  if (historico) {
+    return <Badge tone="amber">Firmada · sello histórico</Badge>;
   }
   return <Badge tone="green">Firmada</Badge>;
 }
 
 export function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
+  const { user, simulacion } = useAuth();
+  // /usuarios/me distingue la cuenta efectiva de quien actúa en simulación.
+  // Si falta el actor real no se presume autoría de la cuenta de referencia.
+  const autorReal = simulacion ? simulacion.superusuario : user;
+  const puedeEditar = (entrada) => !!entrada && !entrada.firmada && !!entrada.autor && !!autorReal?.id
+    && String(entrada.autor) === String(autorReal.id);
   // `null` = ninguno abierto. Guarda la entrada y qué se va a hacer con ella.
   const [editando, setEditando] = useState(null);
   const [firmando, setFirmando] = useState(null);
+  const entradaEditada = entradas.find((e) => e.id === editando?.id);
+  const entradaFirmada = entradas.find((e) => e.id === firmando?.id);
 
   if (!entradas.length) {
     return <EstadoVacio titulo="Sin entradas de evolución" detalle="Registrá una atención para empezar la historia." />;
@@ -650,7 +665,7 @@ export function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
             y sin forma de terminarlo —las entradas no se borran por diseño—. La
             API ya lo permite (PATCH sobre lo no firmado).
           */}
-          {!e.firmada && (
+          {!e.firmada && (puedeEditar(e) ? (
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="secondary" className="text-sm" onClick={() => setEditando(e)}>
                 Editar
@@ -661,26 +676,56 @@ export function Evolucion({ entradas, puedeFirmar, pacienteNombre }) {
                 </Button>
               )}
             </div>
-          )}
+          ) : <p className="mt-3 text-sm text-texto-debil">
+            {!e.autor ? "Este borrador no tiene autor identificado: solo lectura. Registrá una atención nueva."
+              : !autorReal?.id ? "No se pudo verificar tu identidad real: el borrador queda en solo lectura."
+                : `Solo ${e.autor_nombre || "el autor original"} puede editar o firmar este borrador.`}
+          </p>)}
         </Card>
       ))}
 
-      {editando && <EditarBorradorModal entrada={editando} onClose={() => setEditando(null)} />}
-      {firmando && <FirmarBorradorModal entrada={firmando} pacienteNombre={pacienteNombre} onClose={() => setFirmando(null)} />}
+      {editando && <EditarBorradorModal entrada={entradaEditada || editando} autorizado={puedeEditar(entradaEditada)} onClose={() => setEditando(null)} />}
+      {firmando && <FirmarBorradorModal entrada={entradaFirmada || firmando} autorizado={puedeFirmar && puedeEditar(entradaFirmada)} firmante={autorReal} pacienteNombre={pacienteNombre} onClose={() => setFirmando(null)} />}
     </div>
   );
 }
 
-function EditarBorradorModal({ entrada, onClose }) {
+function EditarBorradorModal({ entrada, autorizado, onClose }) {
   const toast = useToast();
   const [titulo, setTitulo] = useState(entrada.titulo || "");
   const [contenido, setContenido] = useState(entrada.contenido || "");
+  // La revisión pertenece al texto cargado inicialmente, no al último refetch.
+  const [base, setBase] = useState(() => ({ revision: entrada.revision, listado: entrada.revision }));
+  const [conflicto, setConflicto] = useState(false);
+  const [servidor, setServidor] = useState(null);
+  const [consultando, setConsultando] = useState(false);
+  const [errorConsulta, setErrorConsulta] = useState("");
+  const requiereRevision = conflicto || !base.revision
+    || (entrada.revision && entrada.revision !== base.listado && entrada.revision !== base.revision);
+
+  async function consultarServidor() {
+    setConsultando(true); setErrorConsulta("");
+    try {
+      const actual = await api.get(`/entradas-historia/${entrada.id}/`);
+      if (String(actual.id) !== String(entrada.id) || typeof actual.revision !== "string" || !actual.revision
+        || typeof actual.firmada !== "boolean" || typeof actual.titulo !== "string" || typeof actual.contenido !== "string") throw new Error("Respuesta incompleta");
+      setServidor(actual);
+    } catch {
+      setErrorConsulta("No se pudo consultar la versión actual. Tu texto se conserva; reintentá la consulta.");
+    } finally { setConsultando(false); }
+  }
 
   const guardar = useAccion(
-    () => api.patch(`/entradas-historia/${entrada.id}/`, { titulo, contenido }),
+    () => {
+      if (!autorizado || requiereRevision) throw new Error("Revisá la versión actual antes de guardar.");
+      return api.patch(`/entradas-historia/${entrada.id}/`, { titulo, contenido, revision_esperada: base.revision });
+    },
     {
       onSuccess: () => { toast.ok("Borrador actualizado."); onClose(); },
-      onError: (e) => toast.deError(e, "No se pudo guardar el borrador."),
+      onError: (e) => {
+        if (e.status === 409) { setConflicto(true); setServidor(null); }
+        else toast.deError(e, "No se pudo guardar el borrador.");
+      },
     },
   );
 
@@ -691,21 +736,38 @@ function EditarBorradorModal({ entrada, onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !titulo} onClick={() => guardar.mutate()}>
+          <Button disabled={!autorizado || requiereRevision || guardar.isPending || consultando || !titulo} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "Guardando…" : "Guardar"}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3.5">
+        {!autorizado && <p role="alert" className="text-sm text-danger">No se pudo verificar tu autoría: este borrador queda en solo lectura.</p>}
         <Field label="Título *">
-          <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus />
+          <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} readOnly={!autorizado} autoFocus />
         </Field>
         <Field label="Evolución / observaciones">
-          <Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} />
+          <Textarea value={contenido} onChange={(e) => setContenido(e.target.value)} readOnly={!autorizado} />
         </Field>
+        {requiereRevision && <p role="alert" className="text-sm text-danger">El borrador cambió o no tiene una revisión verificable. Tu texto no se perdió. Revisá la versión del servidor antes de guardar.</p>}
+        {errorConsulta && <p role="alert" className="text-sm text-danger">{errorConsulta}</p>}
+        <Button variant="secondary" disabled={consultando || guardar.isPending} onClick={consultarServidor}>
+          {consultando ? "Consultando…" : "Revisar versión del servidor"}
+        </Button>
+        {servidor && <section aria-label="Versión actual del servidor" className="space-y-2 rounded-md border border-borde p-3">
+          <h4 className="font-semibold">Versión actual del servidor</h4>
+          <TextoBorrador entrada={servidor} />
+          {servidor.firmada ? <p className="text-sm text-danger">Esta entrada ya está firmada. Tu texto se conserva para registrar una atención nueva.</p>
+            : <>
+              <p className="text-sm text-texto-debil">Tu texto sigue en el editor. Integrá los cambios necesarios antes de continuar: al guardar se usará lo escrito por vos.</p>
+              <Button variant="secondary" disabled={!autorizado || !servidor.autor || String(servidor.autor) !== String(entrada.autor)} onClick={() => {
+                setBase({ revision: servidor.revision, listado: entrada.revision }); setConflicto(false);
+              }}>Continuar con mi texto revisado</Button>
+            </>}
+        </section>}
         <div className="text-sm text-texto-debil">
-          Sigue siendo un borrador: no cuenta como registro firmado hasta que alguien
+          Sigue siendo un borrador: no cuenta como registro firmado hasta que su autor
           lo firme.
         </div>
       </div>
@@ -713,17 +775,43 @@ function EditarBorradorModal({ entrada, onClose }) {
   );
 }
 
-function FirmarBorradorModal({ entrada, pacienteNombre, onClose }) {
+function FirmarBorradorModal({ entrada, autorizado, firmante, pacienteNombre, onClose }) {
   const toast = useToast();
-  const { user } = useAuth();
+  // El texto mostrado y su revisión cambian únicamente por una lectura explícita.
+  const [mostrada, setMostrada] = useState(() => entrada);
+  const [revisionListado, setRevisionListado] = useState(entrada.revision);
+  const [conflicto, setConflicto] = useState(false);
+  const [servidor, setServidor] = useState(null);
+  const [consultando, setConsultando] = useState(false);
+  const [errorConsulta, setErrorConsulta] = useState("");
+  const requiereRevision = conflicto || !mostrada.revision
+    || (entrada.revision && entrada.revision !== revisionListado && entrada.revision !== mostrada.revision);
+
+  async function consultarServidor() {
+    setConsultando(true); setErrorConsulta("");
+    try {
+      const actual = await api.get(`/entradas-historia/${entrada.id}/`);
+      if (String(actual.id) !== String(entrada.id) || typeof actual.revision !== "string" || !actual.revision
+        || typeof actual.firmada !== "boolean" || typeof actual.titulo !== "string" || typeof actual.contenido !== "string") throw new Error("Respuesta incompleta");
+      setServidor(actual);
+    } catch {
+      setErrorConsulta("No se pudo consultar la versión actual. Se conserva el texto mostrado; reintentá la consulta.");
+    } finally { setConsultando(false); }
+  }
 
   const firmar = useAccion(
-    () => api.patch(`/entradas-historia/${entrada.id}/`, { firmada: true }),
+    () => {
+      if (!autorizado || requiereRevision) throw new Error("Revisá el texto actual antes de firmar.");
+      return api.patch(`/entradas-historia/${entrada.id}/`, { firmada: true, revision_esperada: mostrada.revision });
+    },
     {
       onSuccess: () => { toast.ok("Atención firmada."); onClose(); },
       // Firmar exige rol y matrícula (regla del motor): el backend explica cuál
       // falta, así que se muestra su texto en vez de uno genérico.
-      onError: (e) => toast.deError(e, "No se pudo firmar la atención."),
+      onError: (e) => {
+        if (e.status === 409) { setConflicto(true); setServidor(null); }
+        else toast.deError(e, "No se pudo firmar la atención.");
+      },
     },
   );
 
@@ -734,19 +822,30 @@ function FirmarBorradorModal({ entrada, pacienteNombre, onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={firmar.isPending} onClick={() => firmar.mutate()}>
+          <Button disabled={!autorizado || requiereRevision || firmar.isPending || consultando} onClick={() => firmar.mutate()}>
             {firmar.isPending ? "Firmando…" : "Firmar"}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3.5">
-        <p className="text-md text-texto-suave">Paciente: <strong>{pacienteNombre}</strong> · Firma: <strong>{user?.nombre_completo || user?.email}</strong></p>
+        {!autorizado && <p role="alert" className="text-sm text-danger">No se pudo verificar tu autoría o permiso de firma: el borrador queda en solo lectura.</p>}
+        <p className="text-md text-texto-suave">Paciente: <strong>{pacienteNombre}</strong> · Firma: <strong>{firmante?.nombre_completo || firmante?.nombre || firmante?.email || "Autor no identificado"}</strong></p>
         {/* Se firma lo que se está leyendo, no un id: el texto va delante. */}
-        <div className="rounded-md bg-superficie-2 px-3 py-2.5">
-          <div className="text-md font-bold">{entrada.titulo}</div>
-          {entrada.contenido && <div className="mt-1 text-md text-texto-medio">{entrada.contenido}</div>}
-        </div>
+        <div aria-label="Texto que se firmará"><TextoBorrador entrada={mostrada} /></div>
+        {requiereRevision && <p role="alert" className="text-sm text-danger">El borrador cambió o no tiene una revisión verificable. No se firmó ningún texto nuevo. Revisá la versión del servidor.</p>}
+        {errorConsulta && <p role="alert" className="text-sm text-danger">{errorConsulta}</p>}
+        <Button variant="secondary" disabled={consultando || firmar.isPending} onClick={consultarServidor}>
+          {consultando ? "Consultando…" : "Revisar versión del servidor"}
+        </Button>
+        {servidor && <section aria-label="Versión actual del servidor" className="space-y-2 rounded-md border border-borde p-3">
+          <h4 className="font-semibold">Versión actual del servidor</h4>
+          <TextoBorrador entrada={servidor} />
+          {servidor.firmada ? <p className="text-sm text-danger">Esta entrada ya está firmada y no se puede volver a firmar.</p>
+            : <Button variant="secondary" disabled={!autorizado || !servidor.autor || String(servidor.autor) !== String(entrada.autor)} onClick={() => {
+              setMostrada(servidor); setRevisionListado(entrada.revision); setConflicto(false); setServidor(null);
+            }}>Leer esta versión para firmar</Button>}
+        </section>}
         <div className="text-sm text-texto-debil">
           Queda a tu nombre y con tu matrícula, y se sella: después no se puede
           editar. Para corregirla habría que registrar una atención nueva.
@@ -754,6 +853,13 @@ function FirmarBorradorModal({ entrada, pacienteNombre, onClose }) {
       </div>
     </Modal>
   );
+}
+
+function TextoBorrador({ entrada }) {
+  return <div className="rounded-md bg-superficie-2 px-3 py-2.5">
+    <div className="text-md font-bold">{entrada.titulo}</div>
+    {entrada.contenido && <div className="mt-1 text-md text-texto-medio">{entrada.contenido}</div>}
+  </div>;
 }
 
 /*
@@ -782,6 +888,14 @@ function EstadoEstudio({ estudio }) {
 export function Estudios({ estudios }) {
   const toast = useToast();
   const [descargando, setDescargando] = useState(null);
+  const { puedeVer } = useInstitucion();
+  // Un adjunto sin dueño confirmado no llega al portal del paciente (#172,
+  // AUD-050). Solo un admin de la institución confirma que es de este estudio.
+  const puedeConfirmar = puedeVer("config_institucional");
+  const confirmar = useAccion((estudio) => api.post(`/estudios/${estudio.id}/confirmar-archivo/`), {
+    onSuccess: () => toast.ok("Archivo confirmado para este estudio."),
+    onError: (e) => toast.deError(e, "No se pudo confirmar el archivo."),
+  });
 
   async function descargar(estudio) {
     setDescargando(estudio.id);
@@ -818,6 +932,18 @@ export function Estudios({ estudios }) {
                 <Mono className="ml-1.5">{s.archivo}</Mono>
               ))}
             </div>
+            {s.archivo && !s.archivo_asociado && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-texto-debil">
+                <Badge tone="amber">Archivo sin confirmar</Badge>
+                <span>No se muestra al paciente hasta que un administrador lo confirme.</span>
+                {puedeConfirmar && (
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-sm"
+                    disabled={confirmar.isPending} onClick={() => confirmar.mutate(s)}>
+                    Confirmar archivo de este estudio
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           <EstadoEstudio estudio={s} />
         </Card>

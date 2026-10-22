@@ -4,6 +4,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 
 class Financiador(models.Model):
@@ -13,6 +15,20 @@ class Financiador(models.Model):
 
     class Meta:
         ordering = ["nombre", "id"]
+
+
+class MembresiaFinanciadorManager(models.Manager):
+    """Oculta al actor sus pertenencias con una baja posterior al inicio de su sesión.
+
+    Misma regla que `accounts.MembresiaManager` (#172, decisión 5 del 19/10): una
+    baja en el financiador A cierra A para las sesiones anteriores aunque se
+    reactive. Los filtros por join (`membresiafinanciador__...`) no pasan por acá.
+    """
+
+    def get_queryset(self):
+        from apps.accounts.sesiones import aplicar_corte_financiadores
+
+        return aplicar_corte_financiadores(super().get_queryset())
 
 
 class MembresiaFinanciador(models.Model):
@@ -25,8 +41,51 @@ class MembresiaFinanciador(models.Model):
     acceso_padron_salud = models.BooleanField(default=False, db_default=False)
     acceso_padron_cobranza = models.BooleanField(default=False, db_default=False)
 
+    objects = MembresiaFinanciadorManager()
+    objects_sin_corte = models.Manager()
+
     class Meta:
+        base_manager_name = "objects_sin_corte"
         constraints = [models.UniqueConstraint(fields=["financiador", "usuario"], name="fin_membresia_unica")]
+
+    def save(self, *args, **kwargs):
+        # Igual que `accounts.Membresia`: se compara contra la fila guardada.
+        # `.update()` masivo no pasa por acá.
+        anterior = None
+        if self.pk is not None:
+            anterior = MembresiaFinanciador.objects_sin_corte.filter(pk=self.pk).values("activo", "financiador_id", "rol").first()
+        super().save(*args, **kwargs)
+        if anterior and anterior["activo"] and (
+            not self.activo or anterior["financiador_id"] != self.financiador_id or anterior["rol"] != self.rol
+        ):
+            BajaMembresiaFinanciador.objects.create(usuario_id=self.usuario_id, financiador_id=anterior["financiador_id"])
+
+
+class BajaMembresiaFinanciador(models.Model):
+    """Registro append-only de bajas de pertenencia a un financiador.
+
+    Una sesión institucional creada en o antes de la baja ya no ve ese
+    financiador. Tabla propia y no una FK más en `accounts.BajaMembresia`: allí
+    `institucion` nula significa alcance global y `accounts` no depende de
+    `financiadores` en sus migraciones.
+    """
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    financiador = models.ForeignKey(Financiador, on_delete=models.CASCADE, related_name="+")
+    momento = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["usuario", "momento"], name="fin_baja_usuario_idx")]
+        verbose_name = "baja de membresía de financiador"
+        verbose_name_plural = "bajas de membresía de financiador"
+
+
+@receiver(post_delete, sender=MembresiaFinanciador, dispatch_uid="financiadores_baja_por_borrado")
+def registrar_baja_por_borrado(sender, instance, **kwargs):
+    # Borrar y volver a crear no rehabilita sesiones anteriores. Usuario y
+    # Financiador protegen la membresía: no hay cascada que excluir.
+    if instance.activo:
+        BajaMembresiaFinanciador.objects.create(usuario_id=instance.usuario_id, financiador_id=instance.financiador_id)
 
 
 class PrestacionComun(models.Model):

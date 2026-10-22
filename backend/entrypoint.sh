@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -e
 
+# Sin root (#172, AUD-027). Si el contenedor arranca como root, solo corrige
+# el dueño de los directorios de datos y vuelve a ejecutar este script como
+# 10001: migraciones, seeds y el proceso final nunca corren como root.
+#
+# El chown es recursivo pero solo cuando la raíz del directorio no es ya de
+# 10001 (volúmenes creados con la imagen anterior); un arranque normal no
+# recorre nada. Archivos que alguien deje como root adentro (por ejemplo con
+# `docker compose exec` sin `-u 10001`) no se corrigen solos.
+APP_UID=10001
+if [ "$(id -u)" = "0" ]; then
+  facturas="${SALUD_FACTURAS_ADJUNTOS_DIR:-/app/privado/facturas}"
+  case "$facturas" in /*) ;; *) facturas="/app/$facturas" ;; esac
+  for dir in /app/media /respaldos "$facturas"; do
+    if [ -d "$dir" ] && [ "$(stat -c %u "$dir")" != "$APP_UID" ]; then
+      echo "Corrigiendo el dueño de $dir para el usuario $APP_UID..."
+      chown -R "$APP_UID:$APP_UID" "$dir"
+    fi
+  done
+  exec gosu "$APP_UID:$APP_UID" "$0" "$@"
+fi
+
 # Espera a que Postgres acepte conexiones (si se usa DATABASE_URL).
 if [ -n "$DATABASE_URL" ]; then
   echo "Esperando a la base de datos..."
@@ -41,7 +62,7 @@ fi
 # el esquema que dejó el web.
 if [ "${EJECUTAR_MIGRACIONES:-1}" = "1" ]; then
   echo "Aplicando migraciones..."
-  python manage.py migrate --noinput
+  python manage.py migrar_con_candado
 else
   echo "EJECUTAR_MIGRACIONES=0: no migro, uso el esquema existente."
 fi

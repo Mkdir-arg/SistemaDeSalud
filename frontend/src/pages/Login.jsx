@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
-import { Logo } from "@/components/Logo";
-import { NOMBRE_SISTEMA } from "@/lib/marca";
+import { LogoFull } from "@/components/Logo";
 
 const SOPORTE_EMAIL = import.meta.env.VITE_SOPORTE_EMAIL?.trim();
 const SOPORTE_URL = import.meta.env.VITE_SOPORTE_URL?.trim();
@@ -25,7 +24,8 @@ function destinoTrasIngreso(desde) {
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const destino = destinoTrasIngreso(useLocation().state?.desde);
+  const ubicacion = useLocation();
+  const destino = destinoTrasIngreso(ubicacion.state?.desde);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verPass, setVerPass] = useState(false);
@@ -47,7 +47,9 @@ export default function Login() {
     } catch (err) {
       setError(err.status === 401
         ? "Email o contraseña incorrectos."
-        : "No se pudo iniciar sesión. Reintentá en unos segundos.");
+        : err.status === 429
+          ? "Demasiados intentos fallidos. Esperá unos minutos antes de volver a intentar."
+          : "No se pudo iniciar sesión. Reintentá en unos segundos.");
     } finally {
       setCargando(false);
     }
@@ -56,7 +58,7 @@ export default function Login() {
   return (
     <div className="login-page flex min-h-screen flex-col bg-fondo text-texto">
       <header className="relative z-10 flex h-[46px] items-center justify-between border-b border-borde bg-superficie px-5 sm:px-[max(24px,9.6vw)]">
-        <span className="flex items-center gap-2 text-md font-bold"><Logo size={24} /> {NOMBRE_SISTEMA}</span>
+        <LogoFull size={28} />
         <Link to="/" className="text-sm text-texto-suave hover:text-accent">Volver al inicio</Link>
       </header>
 
@@ -89,10 +91,11 @@ export default function Login() {
                 <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} className="size-3.5 accent-accent" />
                 Mantener la sesión iniciada
               </label>
-              <a href="#ayuda-acceso" onClick={() => setAyudaAbierta(true)} className="text-accent hover:underline">¿Olvidaste tu contraseña?</a>
+              <Link to="/recuperar-acceso" className="text-accent hover:underline">¿Olvidaste tu contraseña?</Link>
             </div>
             <p className="text-[10px] leading-relaxed text-texto-suave">No la actives en equipos compartidos. Si no hay actividad durante {MINUTOS_INACTIVIDAD} minutos, la sesión se bloquea.</p>
 
+            {ubicacion.state?.aviso && <p role="status" className="rounded-md border border-division bg-superficie-2 px-3 py-2 text-sm">{ubicacion.state.aviso}</p>}
             {error && <div role="alert" className="rounded-md border border-badge-error-fg/25 bg-badge-error-bg px-3 py-2 text-sm text-badge-error-fg">{error}</div>}
 
             <button type="submit" disabled={cargando} className="plexo-cta flex h-[36px] w-full items-center justify-center rounded-md text-sm font-medium text-sobre-accent disabled:cursor-not-allowed disabled:opacity-60">

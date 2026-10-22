@@ -2,6 +2,15 @@ import { expect, test } from "@playwright/test";
 
 import { entrar, sinDesborde } from "./apoyo";
 
+async function usarCopiaEditable(page) {
+  if (await page.getByRole("button", { name: "Editar datos", exact: true }).isDisabled()) {
+    const original = page.url();
+    await page.getByRole("button", { name: "Duplicar", exact: true }).click();
+    await expect(page).not.toHaveURL(original);
+    await expect(page.getByRole("button", { name: "Editar datos", exact: true })).toBeEnabled();
+  }
+}
+
 /**
  * Las dos pantallas del módulo de diseño que no son el lienzo: el listado de
  * flujos y el constructor de formularios.
@@ -17,6 +26,7 @@ test.describe("Constructor de formularios", () => {
     await page.locator("tbody tr").first().click();
     await page.waitForURL(/\/formularios\/\d+/);
     await expect(page.getByRole("heading", { name: "Vista previa en vivo" })).toBeVisible();
+    await usarCopiaEditable(page);
   });
 
   test("un campo se puede editar sin rehacerlo", async ({ page }) => {
@@ -156,14 +166,14 @@ test.describe("Formulario: metadatos, uso y campo numérico", () => {
     await page.locator("tbody tr").first().click();
     await page.waitForURL(/\/formularios\/\d+/);
 
-    // La barra superior del Shell también tiene un h1 con el nombre de la pantalla.
-    const titulo = page.getByRole("heading", { level: 1 }).last();
+    await usarCopiaEditable(page);
+    const titulo = page.locator("header h2");
     // Mientras carga, el h1 es un esqueleto vacío: leerlo ahí deja el test
     // restaurando el formulario con el título en blanco.
     await expect(titulo).toHaveText(/\S/);
     const original = (await titulo.innerText()).trim();
 
-    await page.getByRole("button", { name: "Editar", exact: true }).click();
+    await page.getByRole("button", { name: "Editar datos", exact: true }).click();
     const dialogo = page.getByRole("dialog");
     // La descripción original se lee del propio campo: la del demo NO está vacía,
     // y restaurarla con "" dejaría la columna del listado en «—» hasta la próxima
@@ -179,7 +189,7 @@ test.describe("Formulario: metadatos, uso y campo numérico", () => {
     await expect(page.getByRole("paragraph").filter({ hasText: "Descripción de prueba." })).toBeVisible();
 
     // Se deja como estaba: la suite corre sobre datos compartidos.
-    await page.getByRole("button", { name: "Editar", exact: true }).click();
+    await page.getByRole("button", { name: "Editar datos", exact: true }).click();
     await page.getByRole("dialog").getByLabel("Título *").fill(original);
     await page.getByRole("dialog").getByLabel("Descripción").fill(descripcion);
     await page.getByRole("dialog").getByRole("button", { name: "Guardar" }).click();
@@ -229,6 +239,8 @@ test.describe("Formulario: metadatos, uso y campo numérico", () => {
     await page.locator("tbody tr").first().click();
     await page.waitForURL(/\/formularios\/\d+/);
     await expect(page.getByRole("heading", { name: "Vista previa en vivo" })).toBeVisible();
+
+    await usarCopiaEditable(page);
 
     await page.getByRole("button", { name: "+ Agregar campo", exact: true }).click();
     const dialogo = page.getByRole("dialog");

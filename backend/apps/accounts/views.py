@@ -14,6 +14,7 @@ from apps.common import (
 )
 
 from .models import LegajoProfesional, Membresia, Usuario
+from .credenciales import bloquear_destino_email, exigir_configuracion_correo, invitar_usuario, solicitar_recuperacion
 from .serializers import (
     LegajoProfesionalSerializer,
     MembresiaSerializer,
@@ -48,6 +49,38 @@ class UsuarioViewSet(BaseModelViewSet):
     search_fields = ["email", "nombre", "apellido"]
     ordering_fields = ["apellido", "nombre", "creado", "email"]
 
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method not in ("GET", "HEAD", "OPTIONS") and (
+            getattr(request, "simulacion", None) is not None or es_cuenta_referencia(request.user)
+        ):
+            raise PermissionDenied("La identidad se administra fuera de una simulación.")
+
+    def get_throttles(self):
+        if self.action in ("create", "iniciar_recuperacion"):
+            from .auth_views import limites_institucionales
+
+            # Las acciones de detalle autorizan al resolver el objeto scopeado.
+            destino = self.get_object().email if self.action == "iniciar_recuperacion" else None
+            exigir_configuracion_correo()
+            return limites_institucionales(destino=destino)
+        return super().get_throttles()
+
+    @staticmethod
+    def _guardar_identidad_invitada(serializer):
+        email = serializer.validated_data["email"]
+        bloquear_destino_email(email)
+        if Usuario.objects.filter(email__iexact=email).exists():
+            raise ValidationError({"email": ["Ya existe una cuenta con ese email."]})
+        return serializer.save()
+
+    def _alcance_global(self):
+        return self.request.user.is_superuser or tiene_capacidad(self.request.user, "gobierno_plataforma")
+
+    def _instituciones_administradas(self):
+        return [int(inst) for inst, caps in capacidades_por_institucion_de(self.request.user).items()
+                if inst != "global" and "config_institucional" in caps]
+
     def get_queryset(self):
         qs = super().get_queryset()
         qs = qs.exclude(Q(email__iendswith=f"@{DOMINIO}") | Q(cuenta_referencia__isnull=False))
@@ -80,6 +113,10 @@ class UsuarioViewSet(BaseModelViewSet):
                 Q(membresias__institucion__in=self.instituciones_del_usuario()) | Q(pk=user.pk)
             )
 
+        if self.action in ("update", "partial_update", "destroy", "iniciar_recuperacion") and not self._alcance_global():
+            qs = qs.filter(membresias__institucion_id__in=self._instituciones_administradas(),
+                           membresias__activo=True)
+
         if self.request.query_params.get("con_matricula") == "true":
             qs = qs.filter(legajo__isnull=False).exclude(legajo__matricula="")
 
@@ -100,11 +137,15 @@ class UsuarioViewSet(BaseModelViewSet):
         inst = (str(datos.get("institucion") or "")).strip()
         rol = str(datos.get("rol") or Membresia.Rol.ADMINISTRATIVO).strip()
 
-        if not inst.isdigit():
-            if user.is_superuser or tiene_capacidad(user, "gobierno_plataforma"):
-                serializer.save()  # alta desde Plataforma: la membresía se asigna después
+        if inst and not inst.isdigit():
+            raise ValidationError({"institucion": ["Indicá una institución válida."]})
+        if not inst:
+            if self._alcance_global():
+                with transaction.atomic():
+                    usuario = self._guardar_identidad_invitada(serializer)
+                    invitar_usuario(usuario, actor=user)
                 return
-            propias = self.instituciones_del_usuario()
+            propias = self._instituciones_administradas()
             if len(propias) != 1:
                 raise ValidationError({"institucion": ["Indicá en qué institución entra la persona."]})
             inst_id = propias[0]
@@ -113,7 +154,7 @@ class UsuarioViewSet(BaseModelViewSet):
             if (
                 not user.is_superuser
                 and not tiene_capacidad(user, "gobierno_plataforma")
-                and inst_id not in self.instituciones_del_usuario()
+                and inst_id not in self._instituciones_administradas()
             ):
                 raise ValidationError({"institucion": ["No podés dar de alta personas en esa institución."]})
 
@@ -121,9 +162,58 @@ class UsuarioViewSet(BaseModelViewSet):
             raise ValidationError({"rol": [f"Rol inválido: {rol}."]})
         validar_rol_asignable(rol, user)
 
+        from apps.instituciones.models import Institucion
+
+        institucion = Institucion.objects.filter(pk=inst_id).first()
+        if institucion is None:
+            raise ValidationError({"institucion": ["La institución no existe."]})
+
         with transaction.atomic():
-            usuario = serializer.save()
+            usuario = self._guardar_identidad_invitada(serializer)
             Membresia.objects.create(usuario=usuario, institucion_id=inst_id, rol=rol)
+            invitar_usuario(usuario, actor=user, institucion=institucion)
+
+    def perform_update(self, serializer):
+        """Nombre y apellido de una cuenta compartida son de su titular (#172).
+
+        Si la persona tiene una pertenencia activa en otra institución (o una
+        global), un admin institucional no cambia su identidad visible para
+        todas. Sí el titular, el superusuario y el gobierno de plataforma.
+        """
+        usuario = serializer.instance
+        cambios = [campo for campo in ("nombre", "apellido")
+                   if campo in serializer.validated_data
+                   and serializer.validated_data[campo] != getattr(usuario, campo)]
+        if cambios and usuario.pk != self.request.user.pk and not self._alcance_global():
+            compartida = usuario.membresias.filter(activo=True).exclude(
+                institucion_id__in=self._instituciones_administradas(),
+            ).exists()
+            if compartida:
+                raise PermissionDenied(
+                    "La persona también pertenece a otra institución: su nombre y apellido "
+                    "los cambia el titular o el gobierno de plataforma."
+                )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self._alcance_global():
+            raise PermissionDenied("La baja institucional se realiza sobre la membresía, no sobre la identidad global.")
+        super().perform_destroy(instance)
+
+    @action(detail=True, methods=["post"], url_path="iniciar-recuperacion")
+    def iniciar_recuperacion(self, request, pk=None):
+        usuario = self.get_object()
+        if request.data:
+            raise ValidationError({"detail": "La recuperación no admite cambiar el destinatario ni las credenciales."})
+        from apps.instituciones.models import Institucion
+
+        instituciones = usuario.membresias.filter(activo=True, institucion__isnull=False)
+        if not self._alcance_global():
+            instituciones = instituciones.filter(institucion_id__in=self._instituciones_administradas())
+        inst_id = instituciones.order_by("institucion_id").values_list("institucion_id", flat=True).first()
+        institucion = Institucion.objects.filter(pk=inst_id).first() if inst_id else None
+        solicitar_recuperacion(usuario, actor=request.user, institucion=institucion)
+        return Response({"detail": "Se solicitó la recuperación de acceso para el titular."}, status=202)
 
     @action(detail=False, methods=["get"])
     def me(self, request):

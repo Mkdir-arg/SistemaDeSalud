@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
 import { Icon } from "@/components/icons";
-import { Logo } from "@/components/Logo";
+import { LogoFull } from "@/components/Logo";
 import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { useTema } from "@/lib/tema";
 
@@ -84,7 +84,7 @@ const ENLACE_SUAVE = `rounded-sm transition-colors hover:text-accent ${FOCO}`;
 const entrada = (retardo) => ({ className: "landing-entrada", style: { "--retardo": `${retardo}ms` } });
 
 function Marca() {
-  return <span translate="no" className="inline-flex items-center gap-2 text-sm font-bold"><span aria-hidden="true"><Logo size={24} /></span>{NOMBRE_SISTEMA}</span>;
+  return <LogoFull size={28} />;
 }
 
 /**

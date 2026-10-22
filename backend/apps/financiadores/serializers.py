@@ -58,6 +58,7 @@ class RegistroFacturaSerializer(serializers.ModelSerializer):
 
 class FinanciadorSerializer(serializers.ModelSerializer):
     rol = serializers.SerializerMethodField()
+    puede_designar_admin_inicial = serializers.SerializerMethodField()
     resuelve_autorizaciones = serializers.SerializerMethodField()
     carga_solicitudes_manuales = serializers.SerializerMethodField()
     consulta_historia_clinica = serializers.SerializerMethodField()
@@ -69,7 +70,11 @@ class FinanciadorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "puede_designar_admin_inicial", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
+
+    def get_puede_designar_admin_inicial(self, obj) -> bool:
+        from .permisos import puede_designar_admin_inicial
+        return puede_designar_admin_inicial(self.context["request"].user, obj.pk)
 
     def get_gestiona_permisos_padron(self, obj) -> bool:
         from .permisos import puede_gestionar_permisos_padron
@@ -106,12 +111,9 @@ class FinanciadorSerializer(serializers.ModelSerializer):
         from .vigencias import convenios_vigentes
         return convenios_vigentes().filter(financiador=obj).count()
 
-    def get_rol(self, obj) -> str:
-        from .permisos import plataforma
-        user = self.context["request"].user
-        if plataforma(user):
-            return "admin"
-        return models.MembresiaFinanciador.objects.filter(financiador=obj, usuario=user, activo=True).values_list("rol", flat=True).first()
+    def get_rol(self, obj) -> str | None:
+        from .permisos import rol_financiador
+        return rol_financiador(self.context["request"].user, obj.pk)
 
 
 class PlanSerializer(serializers.ModelSerializer):

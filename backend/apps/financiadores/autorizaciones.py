@@ -15,7 +15,7 @@ from apps.finanzas.models import HechoAtencionCosteable
 from apps.registros.models import Ciudadano, DOCUMENTOS_NN, normalizar_documento
 from . import models as m
 from .cobertura import regla_aplicable
-from .permisos import plataforma, requerir_carga_manual, requerir_caso, requerir_resolver_autorizaciones
+from .permisos import superusuario, requerir_carga_manual, requerir_caso, requerir_resolver_autorizaciones
 from .services import auditar
 from .vigencias import convenio_aplicable, convenios_vigentes
 
@@ -45,7 +45,7 @@ def casos_permitidos(usuario):
     qs = Caso.objects.all()
     if not usuario.is_authenticated or not usuario.is_active:
         return qs.none()
-    if plataforma(usuario):
+    if superusuario(usuario):
         return qs
     alcance = Q(pk__in=[])
     roles = [rol for rol, caps in ROL_CAPACIDADES.items() if "casos_operar" in caps]
