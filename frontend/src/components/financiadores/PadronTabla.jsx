@@ -14,7 +14,7 @@ import { COLUMNAS_PADRON, cambiarConsultaPadron, cambiarEstadoPadron, estadoDere
 const VACIO = [];
 const positivo = (v, defecto) => Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : defecto;
 const DURACION_PANEL = 200; // = duration-200 de la transición (tokens.css, «Movimiento»)
-const ESTADOS = [["vigentes", "Vigentes"], ["futuras", "Aún no vigentes"], ["finalizadas", "Finalizadas"], ["todos", "Todos"]];
+const ESTADOS = [["vigentes", "Vigentes"], ["administrativas", "Sólo registro administrativo"], ["futuras", "Aún no vigentes"], ["finalizadas", "Finalizadas"], ["todos", "Todos"]];
 
 /** Presentación/control URL. Consulta, permisos, edición y XLSX los aporta Portal. */
 export default function PadronTabla(props) {

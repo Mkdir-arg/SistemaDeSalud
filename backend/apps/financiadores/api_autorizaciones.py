@@ -125,7 +125,7 @@ class SolicitudAutorizacionSerializer(serializers.ModelSerializer):
             and self.context.get("resuelve_autorizaciones", False))
 
     def get_puede_reenviar(self, obj) -> bool:
-        vigente = (not obj.afiliado.finalizado_en and obj.convenio_vigente
+        vigente = (obj.afiliado.cobertura_habilitada and not obj.afiliado.finalizado_en and obj.convenio_vigente
                    and (not obj.plazo_respuesta or obj.plazo_respuesta > timezone.now()))
         if obj.origen == "manual":
             return bool(self.context.get("puede_cargar_manual") and obj.estado == "observada"
@@ -271,7 +271,7 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
             raise PermissionDenied("Las opciones manuales corresponden al financiador.")
         requerir_carga_manual(request.user, financiador)
         hoy, ahora = timezone.localdate(), timezone.now()
-        afiliados = m.Afiliado.objects.filter(financiador_id=financiador, finalizado_en__isnull=True,
+        afiliados = m.Afiliado.objects.filter(financiador_id=financiador, cobertura_habilitada=True, finalizado_en__isnull=True,
             desde__lte=hoy)
         busqueda = request.query_params.get("search", "").strip()
         if busqueda:
@@ -285,7 +285,7 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         institucion_id = request.query_params.get("hospital", "")
         if afiliado_id.isdigit() and institucion_id.isdigit() and convenios.filter(institucion_id=institucion_id).exists():
             afiliado = afiliados.filter(pk=afiliado_id).first() if not busqueda else m.Afiliado.objects.filter(
-                financiador_id=financiador, finalizado_en__isnull=True, desde__lte=hoy, pk=afiliado_id).first()
+                financiador_id=financiador, cobertura_habilitada=True, finalizado_en__isnull=True, desde__lte=hoy, pk=afiliado_id).first()
             if afiliado:
                 from types import SimpleNamespace
                 for comun in m.PrestacionComun.objects.filter(activo=True).order_by("nombre", "pk"):
@@ -304,7 +304,7 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         activo = m.ConfiguracionHospital.objects.filter(institucion_id=caso.institucion_id, activo=True).exists()
         afiliacion = m.AfiliacionCaso.objects.filter(caso=caso, hecho_revision=None).select_related("afiliado").first()
         puede = bool(activo and afiliacion and afiliacion.afiliado_id and afiliacion.estado == "verificada"
-            and not afiliacion.afiliado.finalizado_en and afiliacion.afiliado.desde <= timezone.localdate()
+            and afiliacion.afiliado.cobertura_habilitada and not afiliacion.afiliado.finalizado_en and afiliacion.afiliado.desde <= timezone.localdate()
             and convenios_vigentes().filter(institucion_id=caso.institucion_id,
                 financiador_id=afiliacion.afiliado.financiador_id, financiador__activo=True).exists()
             and caso.nodo_actual_id and caso.estado not in caso.ESTADOS_FINALIZADOS)

@@ -27,7 +27,7 @@ def convenio_aplicable(financiador_id, institucion_id, corte, bloquear=False):
 
 
 def afiliados_vigentes():
-    return Afiliado.objects.filter(finalizado_en__isnull=True, desde__lte=timezone.localdate(), financiador__activo=True)
+    return Afiliado.objects.filter(cobertura_habilitada=True, finalizado_en__isnull=True, desde__lte=timezone.localdate(), financiador__activo=True)
 
 
 def _motivo(valor):

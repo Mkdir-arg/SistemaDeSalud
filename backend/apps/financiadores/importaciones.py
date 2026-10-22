@@ -28,6 +28,7 @@ from apps.simulacion.contexto import autor_real
 from .models import Afiliado, Financiador, Importacion, Plan
 from .permisos import requerir_financiador
 from .services import catalogo_financiador, registrar_afiliado, registrar_consumo_externo, validar_consumo_externo
+from .importacion_cobertura import es_conflicto_cobertura, revisar_cobertura, validar_opcion
 from . import padron
 
 
@@ -39,7 +40,7 @@ VERSION = 1
 SALT = "financiadores.plantilla.v1"
 ESTADOS_FILA = ("valida", "rechazada", "revision", "aplicada", "error_tecnico")
 CAMPOS_V2 = tuple("titular_documento" if c == "titular" else c for c in padron.CAMPOS_GENERALES
-                  if c not in ("solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja"))
+                  if c not in ("solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja", "cobertura_habilitada"))
 
 
 def encabezados(tipo, version=1):
@@ -346,13 +347,18 @@ def _validar_datos(datos, tipo, financiador, referencias, motivo=""):
     return entrada
 
 
-def _resumen(filas):
-    return {"total": len(filas), **{estado: sum(f["estado"] == estado for f in filas) for estado in ESTADOS_FILA}}
+def _resumen(filas, anterior=None):
+    opcion = (anterior or {}).get("cobertura_habilitada")
+    return {**({"cobertura_habilitada": opcion} if opcion is not None else {}),
+            "total": len(filas), **{estado: sum(f["estado"] == estado for f in filas) for estado in ESTADOS_FILA}}
 
 
-def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave):
+def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave, cobertura_habilitada=None):
     requerir_financiador(usuario, financiador.pk, escritura=True)
     _tipo_valido(tipo)
+    validar_opcion(cobertura_habilitada)
+    if tipo != "padron" and cobertura_habilitada is not None:
+        raise ValidationError("La opción de cobertura corresponde sólo a importaciones de padrón.")
     try:
         clave = UUID(str(clave))
     except (ValueError, TypeError, AttributeError):
@@ -360,7 +366,8 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave):
     inicio = monotonic()
     limite = limites_importacion()
     contenido = _leer_archivo(archivo, limite)
-    huella = sha256(contenido).hexdigest()
+    opcion = b"" if cobertura_habilitada is None else str(cobertura_habilitada).encode()
+    huella = sha256(opcion + contenido).hexdigest()
     anterior = Importacion.objects.filter(financiador=financiador, clave=clave).first()
     if anterior:
         if anterior.huella != huella or anterior.tipo != tipo:
@@ -436,6 +443,8 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave):
                     anterior = referencias["afiliados"].get(documento)
                     fila["datos"]["_revision"] = anterior.revision if anterior else 0
                 _validar_datos(fila["datos"], tipo, financiador, referencias)
+                if tipo == "padron":
+                    revisar_cobertura(fila, referencias["afiliados"].get(fila["datos"]["documento"]), cobertura_habilitada)
                 if version == 2:
                     vistos.add(documento)
                     previo = referencias["afiliados"].get(documento)
@@ -448,21 +457,27 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave):
                     if futuro.cuil:
                         referencias["cuil_lote"][futuro.cuil] = documento
             except ValidationError as exc:
-                fila.update(estado="revision" if _es_duplicado(exc) else "rechazada", errores=_mensajes(exc))
+                fila.update(estado="revision" if _es_duplicado(exc) or es_conflicto_cobertura(exc) else "rechazada", errores=_mensajes(exc))
     finally:
         libro.close()
     if not filas:
         raise ValidationError("La hoja Carga no contiene filas para importar.")
-    lote, creado = Importacion.objects.get_or_create(financiador=financiador, clave=clave, defaults={"tipo": tipo, "version": version, "huella": huella, "filas": filas, "estado": "preview", "resumen": _resumen(filas), "creado_por": usuario})
+    lote, creado = Importacion.objects.get_or_create(financiador=financiador, clave=clave, defaults={"tipo": tipo, "version": version, "huella": huella, "filas": filas, "estado": "preview", "resumen": _resumen(filas, {"cobertura_habilitada": cobertura_habilitada}), "creado_por": usuario})
     if not creado and (lote.huella != huella or lote.tipo != tipo):
         raise ValidationError("La clave ya pertenece a otra importación.")
     return lote
 
 
-def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
+def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None, revisiones_cobertura=None):
+    if importacion.version == 3:
+        from .ostel_importacion import aplicar
+        return aplicar(importacion=importacion, usuario=usuario)
     """Cada fila y su efecto se confirman juntos; interrumpir permite retomar el lote."""
     requerir_financiador(usuario, importacion.financiador_id, escritura=True)
     revisiones = revisiones_duplicados or {}
+    cobertura = revisiones_cobertura or {}
+    if not isinstance(cobertura, dict) or any(not isinstance(v, str) or not v.strip() or len(v) > 255 for v in cobertura.values()):
+        raise ValidationError("Cada conflicto de cobertura necesita un motivo de hasta 255 caracteres.")
     if not isinstance(revisiones, dict) or any(not isinstance(v, str) or not v.strip() or len(v) > 255 for v in revisiones.values()):
         raise ValidationError("Cada revisión de duplicado necesita un motivo de hasta 255 caracteres.")
     inicio, procesadas = monotonic(), 0
@@ -471,6 +486,7 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
         indice for indice, fila in enumerate(importacion.filas)
         if fila["estado"] in ("valida", "error_tecnico")
         or (fila["estado"] == "revision" and (str(fila["fila"]) in revisiones or fila["fila"] in revisiones))
+        or (fila["estado"] == "revision" and fila.get("conflicto_cobertura") and str(fila["fila"]) in cobertura)
     ]
     for indice in posiciones:
         try:
@@ -481,22 +497,29 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
                 requerir_financiador(usuario, lote.financiador_id, escritura=True)
                 fila = lote.filas[indice]
                 motivo = revisiones.get(str(fila["fila"]), revisiones.get(fila["fila"], "")).strip()
-                if fila["estado"] in ("aplicada", "rechazada") or (fila["estado"] == "revision" and not motivo):
+                motivo_cobertura = cobertura.get(str(fila["fila"]), "").strip()
+                if fila["estado"] in ("aplicada", "rechazada") or (fila["estado"] == "revision" and not motivo and not motivo_cobertura):
                     continue
                 if procesadas >= 100 or monotonic() - inicio >= 10:
                     break
                 procesadas += 1
                 try:
                     with transaction.atomic():
-                        if lote.tipo == "padron" and lote.version == 2:
-                            if fila["datos"].get("titular_documento"):
-                                Financiador.objects.select_for_update(no_key=True).get(pk=lote.financiador_id)
+                        if lote.tipo == "padron":
+                            Financiador.objects.select_for_update(no_key=True).get(pk=lote.financiador_id)
                             documentos = [fila["datos"]["documento"], fila["datos"].get("titular_documento", "")]
                             list(Afiliado.objects.select_for_update().filter(financiador=lote.financiador, documento__in=documentos).order_by("pk"))
                         referencias = _referencias(lote.financiador, lote.tipo, [fila["datos"]])
                         entrada = _validar_datos(fila["datos"], lote.tipo, lote.financiador, referencias, motivo)
                         if lote.tipo == "padron":
+                            anterior = referencias["afiliados"].get(fila["datos"]["documento"])
+                            revisar_cobertura(fila, anterior, lote.resumen.get("cobertura_habilitada"), motivo_cobertura)
                             base = {k: entrada[k] for k in ("numero", "documento", "nombre", "plan", "desde")}
+                            # Sólo las altas usan la opción. Una creación concurrente falla
+                            # explícitamente en vez de pisar la habilitación recién registrada.
+                            base.update(solo_crear=anterior is None,
+                                        cobertura_habilitada=lote.resumen.get("cobertura_habilitada") if anterior is None else None,
+                                        motivo=fila.get("motivo_cobertura", "Importación de padrón"))
                             resultado = registrar_afiliado(financiador=lote.financiador, usuario=usuario, origen="importacion", lote=lote, **base)
                             if lote.version == 2:
                                 nuevos = {c: fila["datos"][c] for c in CAMPOS_V2 if c in fila["datos"] and c != "titular_documento"}
@@ -509,8 +532,8 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
                             resultado = registrar_consumo_externo(usuario=usuario, **entrada)
                     fila.update(estado="aplicada", errores=[], resultado_id=resultado.pk, motivo_duplicado=motivo, aplicado_por=autor_real(usuario).pk, aplicado_en=timezone.now().isoformat())
                 except ValidationError as exc:
-                    fila.update(estado="revision" if _es_duplicado(exc) else "rechazada", errores=_mensajes(exc))
-                lote.resumen = _resumen(lote.filas)
+                    fila.update(estado="revision" if _es_duplicado(exc) or es_conflicto_cobertura(exc) else "rechazada", errores=_mensajes(exc))
+                lote.resumen = _resumen(lote.filas, lote.resumen)
                 lote.estado = "preview" if any(f["estado"] in ("valida", "revision", "error_tecnico") for f in lote.filas) else "aplicada"
                 lote.save(update_fields=["filas", "resumen", "estado"])
         except PermissionDenied:
@@ -521,14 +544,14 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None):
                 lote = Importacion.objects.select_for_update().get(pk=importacion.pk)
                 if lote.filas[indice]["estado"] != "aplicada":
                     lote.filas[indice].update(estado="error_tecnico", errores=["No se pudo aplicar la fila; puede reintentar este lote."])
-                    lote.resumen = _resumen(lote.filas)
+                    lote.resumen = _resumen(lote.filas, lote.resumen)
                     lote.estado = "preview"
                     lote.save(update_fields=["filas", "resumen", "estado"])
             break
     with transaction.atomic():
         lote = Importacion.objects.select_for_update().get(pk=importacion.pk)
         requerir_financiador(usuario, lote.financiador_id, escritura=True)
-        lote.resumen = _resumen(lote.filas)
+        lote.resumen = _resumen(lote.filas, lote.resumen)
         lote.estado = "preview" if any(f["estado"] in ("valida", "revision", "error_tecnico") for f in lote.filas) else "aplicada"
         lote.save(update_fields=["resumen", "estado"])
     importacion.refresh_from_db()
@@ -541,12 +564,12 @@ def descargar_rechazadas(*, importacion, usuario):
     libro = Workbook()
     hoja = libro.active
     hoja.title = "Filas para corregir"
-    columnas = encabezados(importacion.tipo, importacion.version)
+    columnas = ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM") if importacion.version == 3 else encabezados(importacion.tipo, importacion.version)
     hoja.append(["Fila original", *columnas, "Estado", "Detalle"])
     for fila in importacion.filas:
         if fila["estado"] not in ("rechazada", "revision", "error_tecnico"):
             continue
-        valores = fila.get("original", [])[:len(columnas)]
+        valores = [fila["original"].get(c) for c in columnas] if importacion.version == 3 else fila.get("original", [])[:len(columnas)]
         valores += [""] * (len(columnas) - len(valores))
         valores = [fila["fila"], *valores, fila["estado"], "; ".join(fila["errores"])]
         numero = hoja.max_row + 1

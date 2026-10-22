@@ -32,8 +32,18 @@
     "default": true,
     "options": {
       "vigentes": "Vigente",
+      "administrativas": "Sólo administrativa",
       "futuras": "Aún no vigente",
       "finalizadas": "Finalizada"
+    }
+  },
+  {
+    "key": "cobertura_habilitada",
+    "label": "Habilitación de cobertura",
+    "type": "choice",
+    "options": {
+      "true": "Habilitada",
+      "false": "Sin habilitar"
     }
   },
   {

@@ -15,12 +15,19 @@ export async function opcionesFinanciador(id, recurso) {
   }
 }
 
-export async function importarFinanciador(id, tipo, archivo, clave) {
+export async function importarFinanciador(id, tipo, archivo, clave, recurso = "importaciones", coberturaHabilitada) {
   const body = new FormData();
   body.append("tipo", tipo);
   body.append("archivo", archivo);
   body.append("clave", clave);
-  return api.multipart(rutaFinanciador(id, "importaciones"), body);
+  if (tipo === "padron" && coberturaHabilitada !== undefined) body.append("cobertura_habilitada", String(coberturaHabilitada));
+  return api.multipart(rutaFinanciador(id, recurso), body);
+}
+
+export function prevalidarFormato(id, recurso, archivo) {
+  const body = new FormData();
+  body.append("archivo", archivo);
+  return api.multipart(rutaFinanciador(id, recurso), body);
 }
 
 export function adjuntarFactura(id, facturaId, archivo) {

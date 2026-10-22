@@ -145,12 +145,13 @@ class AfiliadoSerializer(serializers.ModelSerializer):
 
     def get_vigente(self, obj) -> bool:
         from django.utils import timezone
-        return obj.finalizado_en is None and obj.desde <= timezone.localdate()
+        return obj.cobertura_habilitada and obj.finalizado_en is None and obj.desde <= timezone.localdate()
 
     class Meta:
         model = models.Afiliado
         from .padron import CAMPOS_GENERALES
-        fields = ["id", "numero", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES]
+        fields = ["id", "numero", "numero_interno", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES]
+        read_only_fields = ["numero_interno"]
 
 
 class ConsumoSerializer(serializers.ModelSerializer):

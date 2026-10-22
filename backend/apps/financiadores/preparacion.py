@@ -103,7 +103,7 @@ def verificar_preparacion(*, institucion_id, financiadores=None, usuarios=None, 
         if not miembros.filter(rol="admin").exists():
             registrar("sin_administrador_financiador", "error", "Designá una cuenta activa que administre la parametría del financiador.", financiador=financiador.pk)
         requiere_autorizacion = False
-        padron = Afiliado.objects.filter(financiador=financiador, finalizado_en=None, desde__lte=fecha)
+        padron = Afiliado.objects.filter(financiador=financiador, cobertura_habilitada=True, finalizado_en=None, desde__lte=fecha)
         cantidad = padron.count()
         totales["afiliaciones_vigentes"] += cantidad
         if not cantidad:

@@ -155,6 +155,9 @@ class Afiliado(models.Model):
     """Identidad estable del pagador; cambiar el número/plan no reinicia su cupo."""
     financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
     numero = models.CharField(max_length=80)
+    numero_interno = models.CharField(max_length=80, blank=True, default="", db_default="")
+    # El registro administrativo puede existir sin habilitar usos prestacionales.
+    cobertura_habilitada = models.BooleanField(default=True, db_default=True)
     documento = models.CharField(max_length=80)
     nombre = models.CharField(max_length=160)
     plan = models.ForeignKey(Plan, null=True, blank=True, on_delete=models.PROTECT)
@@ -208,6 +211,7 @@ class Afiliado(models.Model):
         ordering = ["nombre", "id"]
         constraints = [
             models.UniqueConstraint(fields=["financiador", "documento"], name="fin_afiliado_documento"),
+            models.UniqueConstraint(fields=["financiador", "numero_interno"], condition=~Q(numero_interno=""), name="fin_afiliado_numero_interno"),
             models.UniqueConstraint(fields=["financiador", "cuil"], condition=~Q(cuil=""), name="fin_afiliado_cuil"),
             models.CheckConstraint(condition=~Q(titular=models.F("pk")), name="fin_familia_no_autovinculo"),
         ]

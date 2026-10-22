@@ -500,6 +500,7 @@ test("importación recuperable permite revisar duplicados con motivo individual"
   await page.goto("/financiadores/planes");
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
+  await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
   await page.getByRole("button", { name: "Importación 8" }).click();
   await expect(page.getByRole("button", { name: "Importar 0 filas válidas" })).toBeDisabled();
   await page.getByLabel("Motivo de revisión de fila 2").fill("Verificado: fueron dos prestaciones distintas.");
@@ -852,6 +853,7 @@ test("permite retomar un lote fuera de la primera página", async ({ page }) => 
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
   const dialogo = page.getByRole("dialog");
+  await dialogo.getByRole("button", { name: "Importaciones registradas" }).click();
   await dialogo.getByRole("button", { name: "Siguiente", exact: true }).click();
   await dialogo.getByRole("button", { name: "Importación 2" }).click();
   await expect(dialogo.getByRole("button", { name: "Importar 1 fila válida" })).toBeVisible();
@@ -933,7 +935,7 @@ test("registrar afiliación es una pantalla por pasos con borrador, descarte y a
   await expect(page).toHaveURL(/\/financiadores\/padron\/99\?/);
   expect(escrituras).toHaveLength(1);
   expect(escrituras[0].path).toBe("/financiadores/21/padron/");
-  expect(escrituras[0].body).toEqual({ solo_crear: true, nombre: "María José González Pérez", tipo_documento: "DNI", documento: "30123456", cuil: "20301234563", apellidos: "González Pérez", nombres: "María José", numero: "00099", plan: 31, desde: expect.any(String), delegacion: "Sede Central", motivo: "Adhesión voluntaria" });
+  expect(escrituras[0].body).toEqual({ solo_crear: true, cobertura_habilitada: true, nombre: "María José González Pérez", tipo_documento: "DNI", documento: "30123456", cuil: "20301234563", apellidos: "González Pérez", nombres: "María José", numero: "00099", plan: 31, desde: expect.any(String), delegacion: "Sede Central", motivo: "Adhesión voluntaria" });
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("salud.alta-afiliado.")))).toEqual([]);
 });
 
@@ -1495,3 +1497,205 @@ test("búsqueda de afiliado en factura ignora espacios y recorta el criterio", a
   await expect(dialogo.getByRole("combobox", { name: "Afiliación (opcional)" })).toContainText("Persona Ficticia");
   expect(consultas).toEqual(["Ficticia"]);
 });
+
+
+test("importación muestra instrucciones en ayuda sin repetir el financiador", async ({ page }) => {
+  await escenario(page);
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  const dialogo = page.getByRole("dialog");
+  await expect(dialogo).not.toContainText("Mutual del Río");
+  await expect(dialogo.getByText(/La plantilla incluye identidad/)).toHaveCount(0);
+  await dialogo.getByRole("button", { name: "Ayuda sobre la plantilla", exact: true }).click();
+  await expect(dialogo.getByRole("tooltip")).toContainText("Las celdas nuevas vacías no borran datos existentes");
+  await page.keyboard.press("Escape");
+  await expect(dialogo).toBeVisible();
+  await expect(dialogo.getByRole("tooltip")).toHaveCount(0);
+  await dialogo.getByLabel("Formato del archivo", { exact: true }).selectOption("ostel");
+  await expect(dialogo.getByRole("checkbox", { name: "Habilitar cobertura", exact: true })).toBeChecked();
+  await expect(dialogo.getByRole("combobox", { name: "Contenido del archivo", exact: true })).toHaveCount(0);
+  await expect(dialogo).not.toContainText("La carga agrega o actualiza afiliados");
+  await expect(dialogo.getByRole("button", { name: "Revisar archivo", exact: true })).toBeDisabled();
+});
+
+test("formato elegido conserva preferencia y descarta archivo al cambiar", async ({ page }) => {
+  await escenario(page);
+  const consultas = [];
+  await page.route("**/api/financiadores/21/plantilla/**", (route) => {
+    consultas.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+    return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: "xlsx-ficticio" });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  const abrir = () => page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await abrir();
+  const selector = page.getByLabel("Formato del archivo", { exact: true });
+  await selector.selectOption("ostel");
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar plantilla", exact: true }).click();
+  await descarga;
+  expect(consultas).toEqual([{ tipo: "padron", formato: "ostel" }]);
+  await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "ficticio.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
+  await expect(page.getByRole("button", { name: "Revisar archivo", exact: true })).toBeEnabled();
+  await selector.selectOption("sistema");
+  await selector.selectOption("ostel");
+  await expect(page.getByLabel("Archivo Excel (.xlsx)", { exact: true })).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await abrir();
+  await expect(selector).toHaveValue("ostel");
+  await page.reload();
+  await abrir();
+  await expect(selector).toHaveValue("ostel");
+});
+
+
+test("historial vacío permanece entre formatos sin paginación", async ({ page }) => {
+  await escenario(page);
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([]) }));
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  const historial = page.getByRole("region", { name: "Importaciones registradas" });
+  for (const formato of ["sistema", "ostel"]) {
+    await page.getByLabel("Formato del archivo", { exact: true }).selectOption(formato);
+    await expect(historial).toHaveCount(0);
+    await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Importaciones registradas", exact: true })).toBeVisible();
+    await expect(historial).toContainText("Todavía no hay importaciones de este tipo.");
+    await expect(historial).not.toContainText("Página 1");
+    await expect(historial.getByRole("button", { name: "Anterior", exact: true })).toHaveCount(0);
+    await expect(historial.getByRole("button", { name: "Siguiente", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "← Volver a importar", exact: true }).click();
+  }
+});
+
+test("historial permite retomar lote desde OSTEL sin cambiar preferencia guardada", async ({ page }) => {
+  await escenario(page);
+  const lote = { id: 99, tipo: "padron", estado: "preview", resumen: { total: 1, valida: 1, aplicada: 0, rechazada: 0 }, filas: [] };
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([lote]) }));
+  await page.goto("/financiadores/padron?financiador=21");
+  const abrir = () => page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await abrir();
+  const selector = page.getByLabel("Formato del archivo", { exact: true });
+  await selector.selectOption("ostel");
+  await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "conservar.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("seleccion local sin enviar") });
+  await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
+  await page.getByRole("region", { name: "Importaciones registradas" }).getByRole("button", { name: /Importación 99/ }).click();
+  await expect(selector).toBeHidden();
+  await expect(page.getByRole("region", { name: "Resumen de importación" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Importar 1 fila válida", exact: true })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(selector).toHaveValue("ostel");
+  await expect(page.getByLabel("Archivo Excel (.xlsx)", { exact: true })).toHaveValue(/conservar.xlsx$/);
+  await page.keyboard.press("Escape");
+  await abrir();
+  await expect(selector).toHaveValue("ostel");
+});
+
+
+test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async ({ page }) => {
+  await escenario(page);
+  const fila = (n, estado, cuil) => ({ fila: n, fila_excel: n + 1, hoja: "afimotook", revision: 1, estado, errores: estado === "revision" ? ["Documento y CUIL no concuerdan"] : [], bloqueo_fuente: "", datos: { numero_interno: String(n), numero: "FAMILIA", documento: "99018501", cuil, nombre: `PERSONA FICTICIA ${n}` }, original: { CUIL: cuil }, correcciones: [] });
+  let lote = { id: 180, tipo: "padron", version: 3, estado: "preview", filas: [fila(1, "valida", "20990185011"), fila(2, "revision", "123")], resumen: { total: 2, valida: 1, revision: 1, aplicada: 0 } };
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: lista([lote]) }));
+  await page.route("**/api/financiadores/21/previsualizar-ostel/**", async (route) => {
+    expect(route.request().headers()["content-type"]).toContain("multipart/form-data");
+    expect(route.request().postData()).not.toContain('name="fuente"');
+    expect(route.request().postData()).toMatch(/name="cobertura_habilitada"\r?\n\r?\nfalse/);
+    return route.fulfill({ json: lote });
+  });
+  await page.route("**/api/financiadores/21/confirmar-importacion/**", (route) => {
+    lote = { ...lote, filas: lote.filas.map((f) => f.estado === "valida" ? { ...f, estado: "aplicada" } : f), resumen: { ...lote.resumen, aplicada: lote.resumen.aplicada + lote.resumen.valida, valida: 0 } };
+    return route.fulfill({ json: lote });
+  });
+  await page.route("**/api/financiadores/21/subsanar-ostel/**", (route) => {
+    const d = route.request().postDataJSON();
+    expect(d.motivo).toBe("Verificado contra fuente ficticia");
+    expect(d.revision).toBe(1);
+    expect(d.accion).toBe("corregir");
+    lote = { ...lote, filas: [lote.filas[0], { ...lote.filas[1], estado: "valida", errores: [], revision: 2, datos: d.datos }], resumen: { total: 2, valida: 1, revision: 0, aplicada: 1 } };
+    return route.fulfill({ json: lote });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await page.getByLabel("Formato del archivo", { exact: true }).selectOption("ostel");
+  await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "base-ficticia.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
+  await page.getByRole("checkbox", { name: "Habilitar cobertura", exact: true }).uncheck();
+  await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
+  await expect(page.getByText("Documento y CUIL no concuerdan", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
+  await page.getByRole("region", { name: "Importaciones registradas" }).getByRole("button", { name: /Importación 180/ }).click();
+  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("aplicada");
+  await expect(page.getByRole("button", { name: "Ver detalle", exact: true })).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("pendientes");
+  await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
+  await expect(page.getByRole("button", { name: "← Volver al historial", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "CUIL", exact: true }).fill("20990185011");
+  await page.getByLabel("Motivo de la revisión", { exact: true }).fill("Verificado contra fuente ficticia");
+  await page.getByRole("button", { name: "Guardar y revalidar", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "No hay filas en esta categoría." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled();
+});
+
+
+for (const formato of ["sistema", "ostel"]) {
+  test(`cobertura elegida y conflicto conservado en formato ${formato}`, async ({ page }) => {
+    await escenario(page);
+    const claves = [];
+    let lote;
+    const recurso = formato === "ostel" ? "previsualizar-ostel" : "importaciones";
+    await page.route(`**/api/financiadores/21/${recurso}/**`, async (route) => {
+      if (route.request().method() === "GET") return route.fulfill({ json: lista([]) });
+      const body = route.request().postData();
+      const opcion = body.match(/name="cobertura_habilitada"\r?\n\r?\n(true|false)/)?.[1];
+      expect(opcion).toBe(claves.length === 0 ? "true" : "false");
+      expect(body).not.toContain('name="fuente"');
+      claves.push(body.match(/name="clave"\r?\n\r?\n([^\r\n]+)/)?.[1]);
+      lote = { id: 281, tipo: "padron", version: formato === "ostel" ? 3 : 2, estado: "preview",
+        resumen: { total: 1, valida: 0, revision: 1, aplicada: 0, cobertura_habilitada: opcion === "true" },
+        filas: [{ fila: 2, fila_excel: 2, hoja: "Hoja1", revision: 1, estado: "revision", errores: ["Conflicto de cobertura"],
+          conflicto_cobertura: { actual: opcion !== "true", solicitada: opcion === "true", revision: 1, afiliado: 1 },
+          datos: { numero_interno: "1", numero: "1", documento: "99018501", cuil: "20990185019", nombre: "PERSONA FICTICIA" }, original: {}, correcciones: [] }] };
+      return route.fulfill({ status: formato === "ostel" ? 200 : 201, json: lote });
+    });
+    await page.route("**/api/financiadores/21/subsanar-ostel/**", (route) => {
+      expect(route.request().postDataJSON().motivo).toBe("Conservar habilitación verificada");
+      lote = { ...lote, resumen: { ...lote.resumen, valida: 1, revision: 0 }, filas: lote.filas.map(f => ({ ...f, estado: "valida", errores: [] })) };
+      return route.fulfill({ json: lote });
+    });
+    await page.route("**/api/financiadores/21/confirmar-importacion/**", (route) => {
+      if (formato === "sistema") expect(route.request().postDataJSON().revisiones_cobertura).toEqual({ 2: "Conservar habilitación verificada" });
+      lote = { ...lote, estado: "aplicada", resumen: { ...lote.resumen, valida: 0, revision: 0, aplicada: 1 }, filas: lote.filas.map(f => ({ ...f, estado: "aplicada", errores: [] })) };
+      return route.fulfill({ json: lote });
+    });
+    await page.goto("/financiadores/padron?financiador=21");
+    await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+    await page.getByLabel("Formato del archivo", { exact: true }).selectOption(formato);
+    const opcion = page.getByRole("checkbox", { name: "Habilitar cobertura", exact: true });
+    await expect(opcion).toBeChecked();
+    await expect(page.getByRole("combobox", { name: "Contenido del archivo" })).toHaveCount(0);
+    await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "ficticio.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
+    await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
+    await expect(page.getByText("Conflicto de cobertura", { exact: true })).toBeVisible();
+    await opcion.uncheck();
+    await expect(page.getByText("Conflicto de cobertura", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
+    await expect(page.getByText("Conflicto de cobertura", { exact: true })).toBeVisible();
+    expect(claves).toHaveLength(2);
+    expect(claves[0]).not.toBe(claves[1]);
+    if (formato === "ostel") {
+      await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Subsanar fila", exact: true })).toContainText("se conserva la habilitación actual");
+      await page.getByRole("textbox", { name: "Motivo de la revisión", exact: true }).fill("Conservar habilitación verificada");
+      await page.getByRole("button", { name: "Guardar y revalidar", exact: true }).click();
+      await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
+    } else {
+      await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled();
+      await page.getByRole("textbox", { name: "Motivo para conservar cobertura actual de fila 2", exact: true }).fill("Conservar habilitación verificada");
+      await page.getByRole("button", { name: "Importar filas válidas y revisadas", exact: true }).click();
+    }
+    await expect(page.getByRole("status").filter({ hasText: "Personas nuevas: sólo registro administrativo" })).toBeVisible();
+  });
+}

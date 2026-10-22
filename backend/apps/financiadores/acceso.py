@@ -43,7 +43,7 @@ def actividad_visible(financiador):
     qs = ReservaCobertura.objects.filter(afiliado__financiador=financiador).annotate(
         hospital_origen=Case(When(hecho__isnull=False, then=F("hecho__institucion_id")), default=F("caso__institucion_id")),
     ).annotate(convenio_vigente=Exists(convenio), acuerdo_pendiente=Exists(acuerdo_pendiente))
-    vigente = Q(convenio_vigente=True, afiliado__finalizado_en__isnull=True, afiliado__desde__lte=timezone.localdate(), afiliado__financiador__activo=True)
+    vigente = Q(convenio_vigente=True, afiliado__cobertura_habilitada=True, afiliado__finalizado_en__isnull=True, afiliado__desde__lte=timezone.localdate(), afiliado__financiador__activo=True)
     pendiente = (
         Q(estado="reservada", cubiertas__gt=0)
         | Q(distribucion__obligacion_financiador_id__in=pendientes)
