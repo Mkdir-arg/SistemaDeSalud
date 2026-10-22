@@ -57,6 +57,10 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - run: pip install -r requirements.txt
 
       # Una migración sin generar rompe en el despliegue, no acá: que falle acá.
@@ -65,3 +69,6 @@ jobs:
 
       - name: Suite completa
         run: python manage.py test --noinput
+
+      - name: Contraste de presentación y XLSX del padrón (#184)
+        run: python manage.py test apps.financiadores.issue184_exportacion_tests --noinput

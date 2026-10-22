@@ -50,7 +50,7 @@ function PadronTablaFinanciador({ filas, total, paginas, estado, parametros, onP
   actuales.current = { parametros, onParametrosChange };
   const columnas = COLUMNAS_PADRON.filter((c) => elegidas.includes(c.key)).map((col) => ({
     key: col.key, label: col.label, orden: col.key,
-    render: (fila) => col.key === "nombre" && fichaHref ? <Link className="font-medium text-accent hover:underline" to={fichaHref(fila)}>{fila.nombre}</Link> : valorColumnaPadron(fila, col, planes),
+    render: (fila) => col.key === "nombre" && fichaHref ? <Link className="font-medium text-accent hover:underline" to={fichaHref(fila)}>{valorColumnaPadron(fila, col, planes)}</Link> : valorColumnaPadron(fila, col, planes),
   }));
   if (renderAcciones) columnas.push({ key: "acciones", label: "Acciones", fija: true, render: renderAcciones });
   const cambiar = (campo, valor) => onParametrosChange(cambiarConsultaPadron(parametros, { [campo]: valor }));

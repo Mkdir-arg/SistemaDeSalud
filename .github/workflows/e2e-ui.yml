@@ -65,6 +65,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx playwright test -c playwright.portal.config.js --reporter=line
 
+      - name: Vista operativa del padrón (#184, posterior a #186)
+        if: ${{ !cancelled() }}
+        run: npx playwright test -c issue184_playwright.config.js --grep 'issue184:' --reporter=line
+
       - name: Subir trazas y capturas
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
@@ -74,5 +78,6 @@ jobs:
             ${{ runner.temp }}/salud-financiadores-ui
             ${{ runner.temp }}/salud-padron-tabla-ui
             ${{ runner.temp }}/salud-portal
+            ${{ runner.temp }}/salud-issue184-ui
           retention-days: 7
           if-no-files-found: ignore
