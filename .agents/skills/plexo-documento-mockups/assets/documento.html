@@ -8,9 +8,24 @@
 <style>
 /* Selección de frontend/src/styles/tokens.css. Contrastar al generar. */
 :root{--accent:#7031c7;--accent-soft:#f7f2fd;--ink:#1d1930;--muted:#5e5680;--border:#e3ddf2;--canvas:#f8f6fd;--surface:#fff;--info-bg:#ebf9fc;--info-fg:#0a6173;--warn-bg:#fef3c6;--warn-fg:#7b3306}
-*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--canvas);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}a{color:var(--accent);text-underline-offset:3px}a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}.skip{position:absolute;left:12px;top:-100px;background:white;padding:12px;z-index:2}.skip:focus{top:12px}.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}.index{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:32px 24px;background:var(--surface);border-right:1px solid var(--border)}.brand{font-size:25px;font-weight:800;letter-spacing:.08em;color:var(--accent)}.small,.eyebrow{font-size:12px;letter-spacing:.06em}.eyebrow{text-transform:uppercase;font-weight:700;color:var(--muted)}.index h2{font-size:12px;text-transform:uppercase;margin-top:28px;color:var(--muted)}.index a{display:block;padding:7px 0;text-decoration:none;color:var(--ink);font-size:14px}.index a:hover{color:var(--accent)}main{min-width:0;max-width:1440px;width:100%;padding:48px clamp(20px,4vw,64px)}h1,h2,h3,p{margin-top:0}h1{font-size:clamp(30px,4vw,46px);line-height:1.15;letter-spacing:-.035em;margin-bottom:18px}h2{font-size:26px;line-height:1.25}h3{font-size:18px}section{margin-bottom:52px;scroll-margin-top:24px}.intro{max-width:800px;font-size:18px;color:var(--muted)}.meta,.links{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.badge{display:inline-block;border-radius:7px;padding:3px 10px;font-size:12px;font-weight:650;background:var(--info-bg);color:var(--info-fg)}.pending{background:var(--warn-bg);color:var(--warn-fg)}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin:20px 0}.notes{border-left:3px solid var(--accent);padding:10px 18px;color:var(--muted);font-size:14px}.notes p:last-child{margin-bottom:0}.section-id{color:var(--accent);margin-right:10px}.flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);gap:16px;align-items:center}.step{border:1px solid var(--border);border-radius:10px;padding:18px;background:var(--accent-soft)}.step p{font-size:14px;margin:8px 0 0}.arrow{color:var(--accent);font-size:24px}.branch{border:1px dashed var(--accent);padding:16px;margin-top:20px;border-radius:10px}.flow-text{font-size:14px;color:var(--muted);margin:20px 0 0}.screen{overflow:hidden;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin:20px 0}.screen-label{padding:10px 20px;background:var(--accent-soft);font-size:13px;color:var(--muted)}.app{display:grid;grid-template-columns:180px minmax(0,1fr)}.app-menu{padding:24px 16px;border-right:1px solid var(--border)}.app-menu span{display:block;font-size:14px;padding:10px}.app-menu .selected{background:var(--accent-soft);border-radius:8px;color:var(--accent);font-weight:700}.app-main{min-width:0}.topbar{border-bottom:1px solid var(--border);padding:14px 24px;font-size:13px;color:var(--muted)}.workspace{padding:28px}.toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.mock-action{display:inline-block;border-radius:8px;background:var(--accent);color:white;padding:8px 14px;font-size:14px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}caption{text-align:left;font-weight:600;margin:16px 0}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--border)}th{color:var(--muted);font-size:12px}footer{border-top:1px solid var(--border);padding-top:20px;color:var(--muted);font-size:13px}
-@media(max-width:850px){.layout{grid-template-columns:1fr}.index{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}main{padding:28px 20px}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg);justify-self:center}.app{grid-template-columns:1fr}.app-menu{display:none}.workspace{padding:18px}}
-@media print{html{scroll-behavior:auto}body{background:white;font-size:11pt}.layout{display:block}.index,.skip{display:none}main{max-width:none;padding:0}section{margin-bottom:24px}h1{font-size:28pt}.card,.screen,.step,.notes{break-inside:avoid}h2,h3{break-after:avoid}.table-wrap{overflow:visible}table{table-layout:fixed}th,td{overflow-wrap:anywhere}.flow{gap:8px}a{color:inherit}.app{grid-template-columns:1fr}.app-menu{display:none}}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--canvas);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}a{color:var(--accent);text-underline-offset:3px}a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}.skip{position:absolute;left:12px;top:-100px;background:white;padding:12px;z-index:2}.skip:focus{top:12px}.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}.index{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:32px 24px;background:var(--surface);border-right:1px solid var(--border)}.brand{font-size:25px;font-weight:800;letter-spacing:.08em;color:var(--accent)}.small,.eyebrow{font-size:12px;letter-spacing:.06em}.eyebrow{text-transform:uppercase;font-weight:700;color:var(--muted)}.index h2{font-size:12px;text-transform:uppercase;margin-top:28px;color:var(--muted)}.index a{display:block;padding:7px 0;text-decoration:none;color:var(--ink);font-size:14px}.index a:hover{color:var(--accent)}main{min-width:0;max-width:1440px;width:100%;padding:48px clamp(20px,4vw,64px)}h1,h2,h3,p{margin-top:0}h1{font-size:clamp(30px,4vw,46px);line-height:1.15;letter-spacing:-.035em;margin-bottom:18px}h2{font-size:26px;line-height:1.25}h3{font-size:18px}section{margin-bottom:52px;scroll-margin-top:24px}.intro{max-width:800px;font-size:18px;color:var(--muted)}.meta,.links{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.badge{display:inline-block;border-radius:7px;padding:3px 10px;font-size:12px;font-weight:650;background:var(--info-bg);color:var(--info-fg)}.pending{background:var(--warn-bg);color:var(--warn-fg)}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin:20px 0}.notes{border-left:3px solid var(--accent);padding:10px 18px;color:var(--muted);font-size:14px}.notes p:last-child{margin-bottom:0}.section-id{color:var(--accent);margin-right:10px}.flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);gap:16px;align-items:center}.step{border:1px solid var(--border);border-radius:10px;padding:18px;background:var(--accent-soft)}.step p{font-size:14px;margin:8px 0 0}.arrow{color:var(--accent);font-size:24px}.branch{border:1px dashed var(--accent);padding:16px;margin-top:20px;border-radius:10px}.flow-text{font-size:14px;color:var(--muted);margin:20px 0 0}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}caption{text-align:left;font-weight:600;margin:16px 0}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--border)}th{color:var(--muted);font-size:12px}footer{border-top:1px solid var(--border);padding-top:20px;color:var(--muted);font-size:13px}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.index{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}main{padding:28px 20px}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg);justify-self:center}}
+@media print{html{scroll-behavior:auto}body{background:white;font-size:11pt}.layout{display:block}.index,.skip{display:none}main{max-width:none;padding:0}section{margin-bottom:24px}h1{font-size:28pt}.card,.step,.notes{break-inside:avoid}h2,h3{break-after:avoid}.table-wrap{overflow:visible}table{table-layout:fixed}th,td{overflow-wrap:anywhere}.flow{gap:8px}a{color:inherit}}
+
+/* Índice del documento: contraste propio, marca estable y navegación desplazable. */
+.index{display:flex;flex-direction:column;background:var(--ink);color:#fff;overflow:hidden}
+.index>.brand{color:#fff;flex-shrink:0}.index>.small{color:#c9c0e0;flex-shrink:0}
+.index-menu{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#76618e transparent}
+.index-menu summary{display:none}.index h2{color:#c9c0e0;letter-spacing:.1em;font-size:10px;margin:24px 10px 8px}
+.index a{color:#e3ddf2;padding:9px 12px;border:1px solid transparent;border-radius:8px;margin:3px 0;line-height:1.45}
+.index a:hover{background:#302742;color:#fff}.index a:focus-visible{outline-color:#e0ccf7;outline-offset:-3px}
+.index a[aria-current="location"]{background:#46305e;color:#fff;border-color:#76618e;font-weight:700;box-shadow:inset 3px 0 #e0ccf7}
+.capture-pending{border-style:dashed}.capture-pending p:last-child{margin-bottom:0}
+.capture{margin:20px 0;border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden}
+.capture img{display:block;width:100%;height:auto}.capture figcaption{padding:14px 20px;color:var(--muted);font-size:14px}
+@media(max-width:850px){.index{padding:20px}.index-menu{overflow:visible}.index-menu summary{display:block;cursor:pointer;padding:10px 12px;border:1px solid #76618e;border-radius:8px;list-style-position:inside}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{.index{display:none}.capture{break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -19,10 +34,12 @@
 <nav class="index" aria-label="Índice del documento">
   <div class="brand">PLEXO</div>
   <p class="small">Flujos y pantallas · Plantilla</p>
-  <a href="#presentacion">Presentación y alcance</a>
+  <details class="index-menu" open><summary>Explorar el documento</summary>
+  <h2>Resumen</h2><a href="#presentacion">Presentación y alcance</a>
   <h2>Flujos</h2><a href="#f1">F1 · Recorrido de una solicitud</a>
   <h2>Pantallas</h2><a href="#p1">P1 · Bandeja de solicitudes</a>
-  <h2>Revisión</h2><a href="#evidencia">Evidencia y pendientes</a>
+  <h2>Revisión</h2><a href="#evidencia">Alcance y pendientes</a>
+  </details>
 </nav>
 <main id="contenido">
   <!-- Reemplazar el ejemplo completo. No describe funcionalidad existente. -->
@@ -31,13 +48,13 @@
     <h1 id="titulo">Un proceso, de principio a fin</h1>
     <div class="meta"><span class="badge pending">Plantilla · Ejemplo ficticio</span><span>Versión de plantilla 1</span><span>26/10/2026</span></div>
     <p class="intro">Mostrar qué se trabajó, cómo recorre el proceso cada actor y qué pantallas acompañan sus tareas.</p>
-    <div class="card"><h2>Qué explica este ejemplo</h2><p>Un recorrido genérico de recepción y revisión de solicitudes. El contenido ilustra la estructura del documento y debe reemplazarse con el alcance real.</p><p><strong>Fuera de alcance:</strong> este ejemplo no define reglas clínicas, permisos ni integraciones de PLEXO.</p><p><strong>Qué cambió:</strong> completar con el cambio concreto y la fuente que lo respalda al crear un documento.</p></div>
+    <div class="card"><h2>Qué explica este ejemplo</h2><p>Un recorrido genérico de recepción y revisión de solicitudes. El contenido ilustra la estructura del documento y debe reemplazarse con el alcance real.</p><p><strong>Fuera de alcance:</strong> este ejemplo no define reglas clínicas, permisos ni integraciones de PLEXO.</p><p><strong>Qué cambió:</strong> completar con el resultado concreto para quien utiliza PLEXO.</p></div>
   </section>
   <section id="f1" aria-labelledby="titulo-f1">
     <p class="eyebrow">Flujos</p>
     <h2 id="titulo-f1"><span class="section-id">F1</span>Recorrido de una solicitud</h2>
     <p>Ejemplo ficticio: recepción registra una solicitud y el equipo revisor determina si puede continuar.</p>
-    <span class="badge">Propuesto · Sólo ejemplo</span>
+    <span class="badge">Propuesta · Sólo ejemplo</span>
     <div class="card">
       <div class="flow" aria-label="Pasos principales del proceso">
         <div class="step"><strong>1. Registrar</strong><p>Recepción carga la solicitud.</p><a href="#p1">Ver bandeja P1</a></div>
@@ -55,26 +72,44 @@
     <p class="eyebrow">Pantallas</p>
     <h2 id="titulo-p1"><span class="section-id">P1</span>Bandeja de solicitudes</h2>
     <p>Recepción identifica el trabajo pendiente desde un listado. Relacionada con <a href="#f1">F1 · Recorrido de una solicitud</a>.</p>
-    <span class="badge">Propuesto · Sólo ejemplo</span>
-    <div class="screen">
-      <div class="screen-label">Mockup ilustrativo · Datos sintéticos · Controles sin interacción</div>
-      <div class="app">
-        <aside class="app-menu" aria-label="Menú ilustrativo"><div class="brand">PLEXO</div><span>Inicio</span><span class="selected">Solicitudes</span></aside>
-        <div class="app-main"><div class="topbar">Institución de ejemplo · Recepción</div>
-          <div class="workspace"><p class="eyebrow">Gestión · Ejemplo</p><div class="toolbar"><h3>Solicitudes</h3><span class="mock-action">Nueva solicitud</span></div><p>Revisá cuáles pueden continuar y cuáles necesitan información.</p>
-            <div class="table-wrap"><table><caption>2 solicitudes de ejemplo</caption><thead><tr><th scope="col">Solicitud</th><th scope="col">Responsable</th><th scope="col">Estado</th><th scope="col">Próxima tarea</th></tr></thead><tbody><tr><td>SOL-001</td><td>Equipo revisor</td><td><span class="badge">En revisión</span></td><td>Revisar información</td></tr><tr><td>SOL-002</td><td>Recepción</td><td><span class="badge pending">Por completar</span></td><td>Completar datos</td></tr></tbody></table></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="notes"><p><strong>Qué muestra:</strong> responsable, estado y próxima tarea en una misma fila.</p><p><strong>Pendiente para un documento real:</strong> contrastar navegación, acciones y estados con los componentes del módulo. Este shell es esquemático.</p></div>
+    <span class="badge">Propuesta · Sólo ejemplo</span>
+    <div class="card capture-pending"><h3>Captura pendiente</h3><p>Al preparar el documento, insertar aquí una captura de la aplicación con sus estilos completos y datos ficticios. Si la pantalla aún no existe, explicar ese pendiente y conservar el flujo previsto.</p><p class="small">Esta plantilla no incluye una captura ni acredita que exista la bandeja del ejemplo.</p></div>
+    <!-- Para una función existente, reemplazar el bloque anterior por una imagen local o integrada.
+         Añadir texto alternativo, pie funcional y una forma accesible de ampliar la captura.
+         Identificar el uso de respuestas simuladas cuando corresponda. -->
+    <div class="notes"><p><strong>Al explicar la pantalla:</strong> indicar qué tarea permite resolver y cuál es su límite relevante. Un diseño propuesto sólo corresponde si fue solicitado; rotularlo como propuesta.</p></div>
   </section>
   <section id="evidencia" aria-labelledby="titulo-evidencia">
-    <h2 id="titulo-evidencia">Evidencia y pendientes</h2>
-    <div class="card"><h3>Estado de este archivo</h3><p>Plantilla de documentación; no acredita implementación ni aprobación de un proceso. F1 y P1 son ejemplos ficticios.</p><h3>Al generar el entregable</h3><ul><li>Identificar las fuentes del trabajo: issue, PR, archivos o evidencia observada.</li><li>Indicar qué se implementó, qué se verificó y en qué entorno.</li><li>Explicitar propuestas, decisiones abiertas y verificaciones pendientes.</li></ul></div>
+    <h2 id="titulo-evidencia">Alcance y pendientes</h2>
+    <div class="card"><h3>Sobre este ejemplo</h3><p>Plantilla de documentación; no acredita implementación ni aprobación de un proceso. F1 y P1 son ejemplos ficticios.</p><h3>Al generar el entregable</h3><ul><li>Explicar lo incorporado, lo que está en desarrollo y lo que falta completar.</li><li>Indicar qué se observó y si la demostración utiliza datos o respuestas simuladas.</li><li>Explicitar propuestas, decisiones abiertas y verificaciones pendientes.</li></ul></div>
   </section>
   <footer>PLEXO · Documento de flujos y pantallas · Datos exclusivamente sintéticos</footer>
 </main>
 </div>
+
+<script>
+const menu = document.querySelector('.index-menu');
+const links = [...document.querySelectorAll('.index a')];
+const mobile = matchMedia('(max-width:850px)');
+if (mobile.matches) menu.open = false;
+function marcar(id) {
+  for (const link of links) {
+    if (link.hash === `#${id}`) link.setAttribute('aria-current', 'location');
+    else link.removeAttribute('aria-current');
+  }
+}
+marcar(location.hash.slice(1) || 'presentacion');
+const observer = new IntersectionObserver((entries) => {
+  const visible = entries.filter((entry) => entry.isIntersecting)
+    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+  if (visible[0]) marcar(visible[0].target.id);
+}, { rootMargin: '-5% 0px -65% 0px', threshold: 0 });
+document.querySelectorAll('main > section').forEach((section) => observer.observe(section));
+for (const link of links) link.addEventListener('click', () => {
+  marcar(link.hash.slice(1));
+  if (mobile.matches) menu.open = false;
+});
+mobile.addEventListener('change', () => { menu.open = !mobile.matches; });
+</script>
 </body>
 </html>
