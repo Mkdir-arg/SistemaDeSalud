@@ -13,6 +13,7 @@ from math import isfinite
 from uuid import UUID
 
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -32,6 +33,24 @@ CAMPOS = ("numero_interno", "numero", "documento", "cuil", "nombre")
 # significado confirmado por OSTEL; CODLOCA no se homologa.
 ORIGINAL = COLUMNAS
 
+# Ficha que OSTEL actualiza al aplicar (nuevos y existentes). Un valor vacío
+# del archivo no borra el dato existente; un valor inválido no se escribe y
+# queda como advertencia de la fila, sin bloquearla.
+FICHA = (("calle", "A_CALLE"), ("altura", "A_NRO"), ("piso", "A_PISO"),
+         ("departamento", "A_DPTO"), ("codigo_postal", "CODPOS"), ("localidad", "DESLOCA"),
+         ("telefono", "A_TEL1"), ("celular", "CELU1"), ("email", "EMAIL1"))
+# SUPUESTO pendiente de confirmación de OSTEL: CODPROV usa la letra de provincia
+# de ISO 3166-2:AR (la del DNI). Nombres oficiales de Georef, como texto libre
+# en `provincia`. Una letra desconocida no se traduce. CODLOCA no se homologa.
+PROVINCIAS = {
+    "A": "Salta", "B": "Buenos Aires", "C": "Ciudad Autónoma de Buenos Aires",
+    "D": "San Luis", "E": "Entre Ríos", "F": "La Rioja", "G": "Santiago del Estero",
+    "H": "Chaco", "J": "San Juan", "K": "Catamarca", "L": "La Pampa", "M": "Mendoza",
+    "N": "Misiones", "P": "Formosa", "Q": "Neuquén", "R": "Río Negro", "S": "Santa Fe",
+    "T": "Tucumán", "U": "Chubut", "V": "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
+    "W": "Corrientes", "X": "Córdoba", "Y": "Jujuy", "Z": "Santa Cruz",
+}
+
 
 def _texto(valor):
     if valor is None:
@@ -49,6 +68,47 @@ def _json(valor):
     if isinstance(valor, float) and not isfinite(valor):
         raise ValidationError("El archivo contiene un número fuera de rango. Corregí la fuente antes de continuar.")
     return valor.isoformat() if isinstance(valor, (date, datetime)) else valor
+
+
+def _ficha(raw):
+    """Devuelve (ficha, advertencias); nunca rechaza la fila por la ficha."""
+    ficha, avisos = {}, []
+    for campo, columna in FICHA:
+        try:
+            valor = _texto(raw.get(columna))
+        except ValidationError:
+            avisos.append(f"{columna} tiene un tipo no admitido; no se actualiza {campo}.")
+            continue
+        if not valor:
+            continue
+        if len(valor) > Afiliado._meta.get_field(campo).max_length:
+            avisos.append(f"{columna} supera el largo admitido; no se actualiza {campo}.")
+            continue
+        if campo == "email":
+            try:
+                validate_email(valor)
+            except ValidationError:
+                avisos.append("EMAIL1 no es un correo válido; no se actualiza el email.")
+                continue
+        ficha[campo] = valor
+    sexo = raw.get("SEXO")
+    if sexo in ("F", "M"):
+        ficha["sexo"] = sexo
+    elif sexo not in (None, ""):
+        avisos.append("SEXO sin equivalencia; no se actualiza el sexo.")
+    nacimiento = raw.get("FEC_NAC")
+    if isinstance(nacimiento, datetime):
+        nacimiento = nacimiento.date()
+    if isinstance(nacimiento, date) and nacimiento <= timezone.localdate():
+        ficha["fecha_nacimiento"] = nacimiento.isoformat()
+    elif nacimiento not in (None, ""):
+        avisos.append("FEC_NAC no es una fecha válida; no se actualiza la fecha de nacimiento.")
+    provincia = raw.get("CODPROV")
+    if isinstance(provincia, str) and provincia.strip() in PROVINCIAS:
+        ficha["provincia"] = PROVINCIAS[provincia.strip()]
+    elif provincia not in (None, ""):
+        avisos.append("CODPROV sin equivalencia de provincia; no se actualiza la provincia.")
+    return ficha, avisos
 
 
 def _guardar(lote):
@@ -173,11 +233,13 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
                 except ValidationError:
                     d = dict.fromkeys(CAMPOS, "")
                     error = "Tipos de identificadores no admitidos. Corregí el archivo y volvé a cargarlo."
+                ficha, advertencias = _ficha(raw)
                 if fuente == "bajas" or raw.get("ESTADO") == "B" or raw.get("FECBAJ") is not None:
                     error = "Evidencia de baja: no se aplica automáticamente. Requiere resolver sus movimientos."
                 obj = existentes.get(d["documento"])
                 filas.append({"fila": len(filas) + 1, "hoja": hoja.title, "fila_excel": numero,
                               "datos": d, "original": original, "estado": "revision", "errores": [],
+                              "ficha": ficha, "advertencias": advertencias,
                               "revision_padron": obj.revision if obj else 0, "revision": 1,
                               "padron_actual": {k: getattr(obj, k) for k in CAMPOS} if obj else None,
                               "bloqueo_fuente": error, "correcciones": [], "fuente": fuente})
@@ -266,6 +328,12 @@ def aplicar(*, importacion, usuario):
                         solo_crear=True, origen="importacion", lote=lote,
                         motivo="Alta OSTEL con habilitación seleccionada al revisar el lote")
                 entrada = {k: d[k] for k in ("numero", "nombre", "cuil")}
+                # OSTEL pisa la ficha administrativa; editar_ficha registra el
+                # delta anterior/nuevo en el historial y sube la revisión.
+                ficha = dict(fila.get("ficha") or {})
+                if "fecha_nacimiento" in ficha:
+                    ficha["fecha_nacimiento"] = date.fromisoformat(ficha["fecha_nacimiento"])
+                entrada.update(ficha)
                 # NUMERO es la clave externa individual; NROAFI se guarda en numero
                 # para mostrarlo, sin sentido de familia (pendiente de OSTEL).
                 if obj.numero_interno != d["numero_interno"]:

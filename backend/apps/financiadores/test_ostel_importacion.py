@@ -228,6 +228,74 @@ class ImportacionAdministrativaTests(TestCase):
             self.assertEqual(afiliado.parentesco, "")
             self.assertFalse(afiliado.cobertura_habilitada)
 
+    FICHA_COMPLETA = dict(SEXO="F", A_CALLE="CALLE NUEVA FICTICIA", A_NRO="0123", A_PISO="2",
+                          A_DPTO="B", A_TEL1="0000-0001", CELU1="0000-0002",
+                          EMAIL1="nuevo@example.invalid", CODPOS="0001",
+                          DESLOCA="LOCALIDAD FICTICIA", CODPROV="C", CODLOCA="000999")
+
+    def test_alta_nueva_completa_la_ficha_desde_ostel(self):
+        from datetime import date
+        from .models import HistorialAfiliacion
+        r = self.preview([_persona(1, NUMERO="000001", FEC_NAC=date(1990, 5, 6), **self.FICHA_COMPLETA)])
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["filas"][0]["advertencias"], [])
+        aplicada = self.aplicar(r.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 1, aplicada.data)
+        obj = Afiliado.objects.get()
+        self.assertEqual(
+            (obj.sexo, obj.fecha_nacimiento, obj.calle, obj.altura, obj.piso, obj.departamento,
+             obj.codigo_postal, obj.localidad, obj.provincia, obj.telefono, obj.celular, obj.email),
+            ("F", date(1990, 5, 6), "CALLE NUEVA FICTICIA", "0123", "2", "B", "0001",
+             "LOCALIDAD FICTICIA", "Ciudad Autónoma de Buenos Aires", "0000-0001", "0000-0002",
+             "nuevo@example.invalid"))
+        historial = HistorialAfiliacion.objects.filter(afiliado=obj, origen="importacion").last()
+        self.assertEqual(historial.cambios["provincia"],
+                         {"anterior": "", "nuevo": "Ciudad Autónoma de Buenos Aires"})
+        self.assertEqual(historial.cambios["fecha_nacimiento"], {"anterior": None, "nuevo": "1990-05-06"})
+
+    def test_existente_se_pisa_sin_borrar_con_vacios_ni_bloquear_por_invalidos(self):
+        from .models import HistorialAfiliacion
+        from .ostel_synthetic import _cuil
+        existente = Afiliado.objects.create(
+            financiador=self.org, numero="FIC185-0001-AAA", numero_interno="000001",
+            documento="99018501", cuil=_cuil("99018501"), nombre="PERSONA FICTICIA OSTEL 0001",
+            desde=timezone.localdate(), calle="CALLE VIEJA", piso="9", provincia="Mendoza",
+            email="viejo@example.invalid", sexo="M")
+        revision = existente.revision
+        filas = [_persona(1, NUMERO="000001", SEXO="F", A_CALLE="CALLE NUEVA FICTICIA",
+                          A_PISO=None, EMAIL1="no-es-un-correo", CODPROV="9"),
+                 _persona(2, NUMERO="000002", **self.FICHA_COMPLETA)]
+        r = self.preview(filas)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["resumen"]["valida"], 2, r.data["filas"][0]["errores"])
+        avisos = " ".join(r.data["filas"][0]["advertencias"])
+        self.assertIn("EMAIL1", avisos)
+        self.assertIn("CODPROV", avisos)
+        aplicada = self.aplicar(r.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 2, aplicada.data)
+        existente.refresh_from_db()
+        self.assertEqual((existente.calle, existente.piso, existente.provincia, existente.email, existente.sexo),
+                         ("CALLE NUEVA FICTICIA", "9", "Mendoza", "viejo@example.invalid", "F"))
+        self.assertGreater(existente.revision, revision)
+        cambios = HistorialAfiliacion.objects.filter(afiliado=existente, origen="importacion").last().cambios
+        self.assertEqual(cambios["calle"], {"anterior": "CALLE VIEJA", "nuevo": "CALLE NUEVA FICTICIA"})
+        self.assertEqual(cambios["sexo"], {"anterior": "M", "nuevo": "F"})
+        self.assertNotIn("email", cambios)
+        self.assertNotIn("provincia", cambios)
+        self.assertNotIn("piso", cambios)
+        self.assertEqual(Afiliado.objects.get(numero_interno="000002").provincia,
+                         "Ciudad Autónoma de Buenos Aires")
+
+    def test_provincias_por_letra_son_supuesto_iso(self):
+        from .ostel_importacion import PROVINCIAS, _ficha
+        self.assertEqual(len(PROVINCIAS), 24)
+        self.assertEqual({k: PROVINCIAS[k] for k in "BCSXM"}, {
+            "B": "Buenos Aires", "C": "Ciudad Autónoma de Buenos Aires", "S": "Santa Fe",
+            "X": "Córdoba", "M": "Mendoza"})
+        ficha, avisos = _ficha({"CODPROV": "I", "CODLOCA": "000001"})
+        self.assertEqual(ficha, {})
+        self.assertEqual(len(avisos), 1)
+
     def test_sin_cuiltit_o_con_otra_columna_40_no_crea_lote(self):
         from openpyxl import Workbook
         from .ostel_synthetic import COLUMNAS
