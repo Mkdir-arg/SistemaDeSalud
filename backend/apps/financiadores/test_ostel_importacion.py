@@ -271,8 +271,11 @@ class ImportacionAdministrativaTests(TestCase):
         avisos = " ".join(r.data["filas"][0]["advertencias"])
         self.assertIn("EMAIL1", avisos)
         self.assertIn("CODPROV", avisos)
+        self.assertEqual(r.data["resumen"]["advertencias"], 1)
         aplicada = self.aplicar(r.data)
         self.assertEqual(aplicada.data["resumen"]["aplicada"], 2, aplicada.data)
+        # La advertencia sigue visible en el lote después de aplicar.
+        self.assertEqual(aplicada.data["resumen"]["advertencias"], 1)
         existente.refresh_from_db()
         self.assertEqual((existente.calle, existente.piso, existente.provincia, existente.email, existente.sexo),
                          ("CALLE NUEVA FICTICIA", "9", "Mendoza", "viejo@example.invalid", "F"))

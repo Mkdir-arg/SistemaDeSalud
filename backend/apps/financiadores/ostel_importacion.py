@@ -116,6 +116,8 @@ def _guardar(lote):
     lote.resumen = {"total": len(lote.filas), **{
         estado: sum(f["estado"] == estado for f in lote.filas)
         for estado in ("valida", "revision", "rechazada", "aplicada", "error_tecnico", "omitida")}}
+    # Filas cuya ficha no se actualiza completa: la UI lo avisa antes de aplicar.
+    lote.resumen["advertencias"] = sum(bool(f.get("advertencias")) for f in lote.filas)
     lote.resumen["fuente"] = lote.filas[0]["fuente"] if lote.filas else "base"
     if opcion is not None:
         lote.resumen["cobertura_habilitada"] = opcion
