@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
+import { confirmarTanda } from "@/lib/importacionRespuesta.mjs";
 import { errorFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { Ayuda, Button, Field, Input, Select, Textarea } from "@/components/ui";
 
@@ -10,6 +11,7 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const [archivo, setArchivo] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
+  const [sincronizacionPendiente, setSincronizacionPendiente] = useState(false);
   const [edicion, setEdicion] = useState(null);
   const [pagina, setPagina] = useState(0);
   const [filtro, setFiltro] = useState("pendientes");
@@ -18,7 +20,7 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const activo = useRef(true);
   useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
   useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion, cierre: ocupado || !!edicion }); }, [ocupado, edicion, onBloqueosChange]);
-  useEffect(() => { setEdicion(null); setPagina(0); setError(null); }, [lote?.id]);
+  useEffect(() => { setEdicion(null); setPagina(0); setError(null); setSincronizacionPendiente(false); }, [lote?.id]);
   const ruta = (recurso) => rutaFinanciador(organizacion.id, recurso);
 
   async function ejecutar(accion) {
@@ -40,12 +42,23 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   async function confirmar() {
     await ejecutar(async () => {
       let actual = lote;
-      while (activo.current && actual.resumen.valida > 0) {
-        const nuevo = await api.post(ruta("confirmar-importacion"), { importacion: actual.id });
-        if (!activo.current) return;
-        setLote(nuevo);
-        if (nuevo.resumen.valida >= actual.resumen.valida) break;
-        actual = nuevo;
+      try {
+        while (activo.current && actual.resumen.valida > 0) {
+          const nuevo = await confirmarTanda(actual, (datos) => api.post(ruta("confirmar-importacion"), datos));
+          if (!activo.current) return;
+          setLote(nuevo);
+          setSincronizacionPendiente(false);
+          if (nuevo.resumen.valida >= actual.resumen.valida) break;
+          actual = nuevo;
+        }
+      } catch (e) {
+        if (activo.current) {
+          // Un error de transporte no demuestra rollback. El próximo intento
+          // omite la huella y recibe el lote completo ya confirmado en servidor.
+          setLote((previo) => previo?.id === actual.id ? { ...previo, huella_lote: null } : previo);
+          setSincronizacionPendiente(true);
+        }
+        throw e;
       }
       lotes.refetch(); await onAplicado();
     });
@@ -78,6 +91,7 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
       <Field label="Archivo Excel (.xlsx)" ayuda="Hasta 5 MiB. Conservá identificadores y ceros tal como fueron informados."><Input type="file" accept=".xlsx" disabled={ocupado || !!edicion} onChange={(e) => { setArchivo(e.target.files[0] || null); setLote(null); clave.current = crypto.randomUUID(); }} /></Field>
       <Button disabled={!archivo || ocupado || !!edicion} type="submit">{ocupado ? "Procesando…" : "Revisar archivo"}</Button>
     </form>}
+    {sincronizacionPendiente && <p role="status">No se pudo verificar el último resultado. La tanda puede haberse guardado. Reintentá la confirmación para recuperar el estado actual.</p>}
     {error && <p role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error}</p>}
     {lote && <section className="space-y-4 border-t border-division pt-4" aria-label="Revisión administrativa">
       <h3 className="font-semibold">2. Aplicá las válidas y resolvé las pendientes</h3>

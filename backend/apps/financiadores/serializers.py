@@ -178,6 +178,36 @@ class ImportacionSerializer(serializers.ModelSerializer):
         fields = ["id", "tipo", "version", "estado", "resumen", "filas", "creado"]
 
 
+class ConfirmarImportacionSerializer(serializers.Serializer):
+    importacion = serializers.IntegerField(min_value=1)
+    revisiones_duplicados = serializers.DictField(child=serializers.CharField(max_length=255), required=False)
+    revisiones_cobertura = serializers.DictField(child=serializers.CharField(max_length=255), required=False)
+    modo_respuesta = serializers.ChoiceField(choices=["completa", "cambios"], default="completa")
+    huella_lote = serializers.RegexField(regex=r"^[0-9a-f]{64}$", required=False)
+
+
+class ImportacionRespuestaCompletaSerializer(ImportacionSerializer):
+    filas = serializers.JSONField(read_only=True)
+    # La respuesta tradicional no incluye estos campos. No declararlos read_only:
+    # drf-spectacular marcaría como obligatorios aun con required=False.
+    modo_respuesta = serializers.ChoiceField(choices=["completa"], required=False)
+    huella_lote = serializers.CharField(required=False)
+
+    class Meta(ImportacionSerializer.Meta):
+        fields = [*ImportacionSerializer.Meta.fields, "modo_respuesta", "huella_lote"]
+
+
+class ImportacionCambiosSerializer(ImportacionSerializer):
+    modo_respuesta = serializers.ChoiceField(choices=["cambios"], read_only=True)
+    huella_lote = serializers.CharField(read_only=True)
+    base_huella = serializers.CharField(read_only=True)
+    filas_cambiadas = serializers.JSONField(read_only=True)
+
+    class Meta(ImportacionSerializer.Meta):
+        fields = ["id", "tipo", "version", "estado", "resumen", "creado",
+                  "modo_respuesta", "huella_lote", "base_huella", "filas_cambiadas"]
+
+
 class ReservaSerializer(serializers.ModelSerializer):
     distribucion = serializers.SerializerMethodField()
     uso_autorizacion = serializers.SerializerMethodField()

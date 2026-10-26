@@ -16,7 +16,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiTypes, OpenApiParameter
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiTypes, OpenApiParameter, PolymorphicProxySerializer
 from config.pagination import Paginacion
 from apps.auditoria.mixins import registrar_accesos
 from apps.auditoria.models import AccesoClinico
@@ -103,7 +103,10 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     aranceles=extend_schema(responses=OpenApiTypes.OBJECT),
     instituciones=extend_schema(responses=OpenApiTypes.OBJECT),
     usuarios=extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT),
-    confirmar_importacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ImportacionSerializer),
+    confirmar_importacion=extend_schema(request=s.ConfirmarImportacionSerializer,
+        responses=PolymorphicProxySerializer(component_name="ConfirmacionImportacionRespuesta",
+            serializers=[s.ImportacionRespuestaCompletaSerializer, s.ImportacionCambiosSerializer],
+            resource_type_field_name=None)),
     plantilla=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     rechazos=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
@@ -819,10 +822,23 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
     def confirmar_importacion(self, request, pk=None):
         org = self.organizacion(escritura=True)
         from .importaciones import aplicar_importacion
-        d = datos(request, {"importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)), "revisiones_duplicados": serializers.DictField(child=serializers.CharField(max_length=255), required=False),
-            "revisiones_cobertura": serializers.DictField(child=serializers.CharField(max_length=255), required=False)})
-        obj = aplicar_importacion(usuario=request.user, **d)
-        return Response(s.ImportacionSerializer(obj).data)
+        entrada = s.ConfirmarImportacionSerializer(data=request.data)
+        entrada.fields["importacion"] = serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org))
+        entrada.is_valid(raise_exception=True)
+        d = entrada.validated_data
+        modo = d.pop("modo_respuesta")
+        huella = d.pop("huella_lote", None)
+        if modo == "completa":
+            obj = aplicar_importacion(usuario=request.user, **d)
+            return Response(s.ImportacionSerializer(obj).data)
+        if d["importacion"].version != 3:
+            raise ValidationError("La respuesta acotada corresponde sólo al formato OSTEL.")
+        from .importacion_respuesta import confirmar_con_cambios
+        obj = confirmar_con_cambios(importacion=d["importacion"], usuario=request.user, huella_cliente=huella)
+        serializer = s.ImportacionCambiosSerializer if obj.modo_respuesta == "cambios" else s.ImportacionRespuestaCompletaSerializer
+        response = Response(serializer(obj).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     def archivo(self, contenido, nombre, org, accion, objeto):
         auditar(self.request.user, accion, objeto, financiador=org)
