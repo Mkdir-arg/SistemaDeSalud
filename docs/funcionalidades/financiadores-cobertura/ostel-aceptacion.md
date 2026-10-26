@@ -2,11 +2,20 @@
 
 ## Actualización 26/10/2026: entrega con CUILTIT
 
-OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos. El lector
-acepta 39 columnas, o 40 con encabezado exacto `CUILTIT`. El lote conserva CUILTIT,
-FEC_NAC y el domicilio crudo en `original`, sin armar familias, homologar domicilio
-ni aplicar bajas. Donde las secciones siguientes digan que falta CUILTIT, rige esta
-actualización. Detalle, supuestos y pendientes: `docs/plans/2026-10-26-issue186-avance.md`.
+OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos.
+Decisiones del usuario:
+
+- CUILTIT es obligatorio: un archivo de 39 columnas no crea lote.
+- El lote conserva las 40 columnas.
+- Al aplicar, OSTEL actualiza la ficha (sexo, fecha de nacimiento y domicilio),
+  con historial.
+- CODPROV se traduce como ISO 3166-2:AR. Es un supuesto pendiente de confirmación.
+- El diccionario se carga en `CodigoFinanciador` con `cargar_diccionario_ostel`.
+
+Las familias no se arman todavía: #181 las construirá a partir de CUILTIT y CODPAR.
+Donde las secciones siguientes digan que falta CUILTIT, rige esta actualización.
+
+Detalle, supuestos y pendientes: `docs/plans/2026-10-26-issue186-avance.md`.
 
 ## Estado vigente — 21/10/2026: habilitación elegida por lote
 
