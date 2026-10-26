@@ -231,9 +231,12 @@ class EscenariosOSTELTests(unittest.TestCase):
     def test_exportador_rechaza_hoja_y_ancho_incorrectos(self):
         with self.assertRaises(ValueError):
             generar_xlsx(self.catalogo["base"].lotes[0], hoja="Carga")
-        for ancho in (0, 38, 40):
+        # 40 es válido desde la entrega con CUILTIT (26/10/2026).
+        for ancho in (0, 38, 41):
             with self.subTest(ancho=ancho), self.assertRaises(ValueError):
                 generar_xlsx(Lote("malformado", ((None,) * ancho,)))
+        with self.assertRaises(ValueError):
+            generar_xlsx(Lote("mezclado", ((None,) * 39, (None,) * 40)))
 
     def test_xlsx_solo_filas_vacias_y_lote_sin_filas(self):
         for cantidad in (0, 1, 3):

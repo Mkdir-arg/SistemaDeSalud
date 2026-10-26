@@ -349,6 +349,67 @@ def demo():
                 print(f"  {campo}: {fila.celdas[ostel.COLUMNAS.index(campo)].valor!r}")
 
 
+class CuiltitOstelTests(TestCase):
+    """Entrega OSTEL del 26/10/2026: CUILTIT como columna 40, con datos ficticios."""
+
+    def fila(self, cuiltit="20990185011"):
+        return [f"FICTICIO-{i:02}" for i in range(39)] + [cuiltit]
+
+    def test_columna_40_cuiltit_se_acepta_y_conserva_texto(self):
+        resultado = ostel.prevalidar_ostel(archivo(
+            [self.fila("00990185011"), self.fila()], encabezados=ostel.COLUMNAS_CON_TITULAR,
+        ))
+        self.assertEqual(resultado.anomalias, ())
+        self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS_CON_TITULAR})
+        self.assertEqual([f.celdas[39].valor for f in resultado.filas["Hoja1"]],
+                         ["00990185011", "20990185011"])
+        self.assertEqual(ostel.COLUMNAS_CON_TITULAR[:39], ostel.COLUMNAS)
+
+    def test_formato_de_39_columnas_sigue_vigente(self):
+        resultado = ostel.prevalidar_ostel(archivo([self.fila()[:39]]))
+        self.assertEqual(resultado.anomalias, ())
+        self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS})
+
+    def test_columna_40_sin_encabezado_exacto_es_adicional(self):
+        for encabezado in ("CUILTIT ", "cuiltit", "OTRA", None):
+            with self.subTest(encabezado=encabezado):
+                resultado = ostel.prevalidar_ostel(archivo(
+                    [self.fila()], encabezados=ostel.COLUMNAS + (encabezado,),
+                ))
+                self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS})
+                self.assertIn(ostel.Anomalia("columna_adicional", "Hoja1", 2, 40), resultado.anomalias)
+
+    def test_encabezado_cuiltit_formula_o_numero_no_habilita_columna(self):
+        # openpyxl escribe el encabezado como cadena en línea (posición 40 = AN).
+        original = b'<c r="AN1" t="inlineStr"><is><t>CUILTIT</t></is></c>'
+        for nuevo in (b'<c r="AN1" t="str"><f>"CUILTIT"</f><v>CUILTIT</v></c>',
+                      b'<c r="AN1"><v>1</v></c>'):
+            with self.subTest(nuevo=nuevo):
+                base = archivo([self.fila()], encabezados=ostel.COLUMNAS_CON_TITULAR)
+                def reemplazar(d):
+                    self.assertIn(original, d)
+                    return d.replace(original, nuevo)
+                contenido = cambiar(base, "xl/worksheets/sheet1.xml", reemplazar)
+                resultado = ostel.prevalidar_ostel(contenido)
+                self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS})
+                self.assertIn(ostel.Anomalia("columna_adicional", "Hoja1", 2, 40), resultado.anomalias)
+
+    def test_columna_41_con_cuiltit_sigue_siendo_adicional(self):
+        resultado = ostel.prevalidar_ostel(archivo(
+            [self.fila() + ["extra"]], encabezados=ostel.COLUMNAS_CON_TITULAR,
+        ))
+        self.assertEqual(resultado.anomalias, (ostel.Anomalia("columna_adicional", "Hoja1", 2, 41),))
+
+    def test_esquema_se_decide_por_hoja(self):
+        def preparar(libro):
+            otra = libro.create_sheet("afimotook")
+            otra.append(ostel.COLUMNAS_CON_TITULAR)
+            otra.append(self.fila())
+        resultado = ostel.prevalidar_ostel(archivo([self.fila()[:39]], preparar=preparar))
+        self.assertEqual(resultado.anomalias, ())
+        self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS, "afimotook": ostel.COLUMNAS_CON_TITULAR})
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--demo"]:
         demo()

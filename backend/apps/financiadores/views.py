@@ -761,7 +761,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         """Revisión técnica efímera, sin crear lote ni devolver datos nominales."""
         from collections import Counter
         from dataclasses import asdict
-        from .ostel_prevalidacion import ArchivoOstelInvalido, COLUMNAS, MAX_BYTES, prevalidar_ostel
+        from .ostel_prevalidacion import ArchivoOstelInvalido, COLUMNAS_CON_TITULAR, MAX_BYTES, prevalidar_ostel
 
         org = self.organizacion(escritura=True)
         archivo = datos(request, {"archivo": serializers.FileField()})["archivo"]
@@ -778,7 +778,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         limite_detalle = 500
         response = Response({
             "resumen": resultado.resumen,
-            "columnas": COLUMNAS,
+            # Referencia para señalar lo esperado por posición; CUILTIT (40) es opcional.
+            "columnas": COLUMNAS_CON_TITULAR,
             "anomalias_por_codigo": dict(Counter(a.codigo for a in resultado.anomalias)),
             "anomalias": [asdict(a) for a in resultado.anomalias[:limite_detalle]],
             "detalle_truncado": len(resultado.anomalias) > limite_detalle,

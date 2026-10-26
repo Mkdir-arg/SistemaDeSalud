@@ -199,6 +199,59 @@ class ImportacionAdministrativaTests(TestCase):
         self.assertEqual(Importacion.objects.get(pk=lote.data["id"]).filas[0]["original"]["CODPAR"],
                          "SIN-DICCIONARIO")
 
+    def test_cuiltit_y_datos_crudos_se_conservan_sin_crear_familia(self):
+        """Entrega del 26/10/2026: CUILTIT es evidencia; #181 decide la familia."""
+        from .ostel_importacion import ORIGINAL
+        from .ostel_synthetic import _cuil, con_titular
+        cuiltit = _cuil("99018501")
+        filas = (con_titular(_persona(1, NUMERO="000001", CODPAR="AAA", CODPROV="B",
+                                      CODLOCA="000123", CODZON="B04"), cuiltit),
+                 con_titular(_persona(2, NUMERO="000002", CODPAR="H01"), cuiltit))
+        r = self.preview(filas, cobertura_habilitada=False)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["resumen"]["valida"], 2)
+        originales = [fila["original"] for fila in r.data["filas"]]
+        self.assertEqual(set(originales[0]), set(ORIGINAL))
+        self.assertEqual([o["CUILTIT"] for o in originales], [cuiltit, cuiltit])
+        self.assertEqual([o["CODPAR"] for o in originales], ["AAA", "H01"])
+        self.assertEqual((originales[0]["CODPROV"], originales[0]["CODLOCA"], originales[0]["CODZON"]),
+                         ("B", "000123", "B04"))
+        self.assertTrue(originales[0]["FEC_NAC"].startswith("1990-01-01"))
+        self.assertNotIn("EMAIL1", originales[0])
+        aplicada = self.aplicar(r.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 2)
+        self.assertEqual([f["original"] for f in Importacion.objects.get(pk=r.data["id"]).filas], originales)
+        for afiliado in Afiliado.objects.all():
+            self.assertIsNone(afiliado.titular_id)
+            self.assertEqual(afiliado.parentesco, "")
+            self.assertFalse(afiliado.cobertura_habilitada)
+            self.assertEqual((afiliado.provincia, afiliado.localidad, afiliado.fecha_nacimiento),
+                             ("", "", None))
+
+    def test_formato_de_39_columnas_registra_cuiltit_ausente(self):
+        from .ostel_importacion import ORIGINAL
+        r = self.preview()
+        self.assertEqual(r.status_code, 200, r.data)
+        original = r.data["filas"][0]["original"]
+        self.assertEqual(set(original), set(ORIGINAL))
+        self.assertIsNone(original["CUILTIT"])
+
+    def test_columna_40_ajena_sigue_bloqueando_el_lote(self):
+        from openpyxl import Workbook
+        from .ostel_synthetic import COLUMNAS
+        libro = Workbook()
+        libro.active.title = "Hoja1"
+        libro.active.append(COLUMNAS + ("OTRA_COL",))
+        libro.active.append(_persona(1) + ("dato ficticio",))
+        salida = BytesIO()
+        libro.save(salida)
+        contenido = salida.getvalue()
+        respuesta = self.client.post(self.base + "previsualizar-ostel/", {
+            "archivo": SimpleUploadedFile("ficticio.xlsx", contenido), "clave": str(uuid4()),
+        }, format="multipart")
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(Importacion.objects.exists())
+
     def test_bajas_no_aplican_ni_se_fuerzan_mediante_correccion(self):
         r = self.preview(fuente="bajas").data
         self.assertEqual(r["resumen"]["valida"], 0)

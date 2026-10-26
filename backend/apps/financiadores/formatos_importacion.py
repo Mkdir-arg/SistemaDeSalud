@@ -14,13 +14,14 @@ def _ostel(**contexto):
     from openpyxl import Workbook
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
-    from .ostel_prevalidacion import COLUMNAS
+    from .ostel_prevalidacion import COLUMNAS_CON_TITULAR
 
     libro = Workbook()
     try:
         hoja = libro.active
         hoja.title = "Hoja1"
-        hoja.append(COLUMNAS)
+        # Formato vigente de OSTEL (26/10/2026); el lector acepta también 39.
+        hoja.append(COLUMNAS_CON_TITULAR)
         hoja.freeze_panes = "A2"
         for numero, celda in enumerate(hoja[1], 1):
             celda.font = Font(bold=True)

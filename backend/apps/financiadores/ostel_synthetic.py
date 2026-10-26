@@ -17,6 +17,8 @@ COLUMNAS = tuple(
     .split(",")
 )
 HOJAS = ("Hoja1", "afimotook")
+# Formato de la entrega OSTEL del 26/10/2026: CUILTIT agregado al final.
+COLUMNAS_CON_TITULAR = COLUMNAS + ("CUILTIT",)
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,16 @@ def _persona(indice, **cambios):
         raise ValueError(f"Columnas desconocidas: {sorted(desconocidas)}")
     valores.update(cambios)
     return tuple(valores[c] for c in COLUMNAS)
+
+
+def con_titular(fila, cuiltit):
+    """Agrega un CUILTIT ficticio a una fila de 39 columnas.
+
+    Sólo arma el estímulo de entrada; no decide titular ni parentesco.
+    """
+    if len(fila) != len(COLUMNAS):
+        raise ValueError("CUILTIT se agrega a filas de exactamente 39 columnas")
+    return (*fila, cuiltit)
 
 
 def generar_escenarios():
@@ -161,8 +173,10 @@ def generar_xlsx(lote, *, hoja="Hoja1"):
     """Devuelve bytes para uso temporal, sin escribir archivos ni importar Django."""
     if hoja not in HOJAS:
         raise ValueError(f"Hoja no soportada: {hoja}")
-    if any(len(fila) != len(COLUMNAS) for fila in lote.filas):
-        raise ValueError("Cada fila debe tener exactamente 39 columnas")
+    anchos = {len(fila) for fila in lote.filas} or {len(COLUMNAS)}
+    if len(anchos) != 1 or not anchos <= {len(COLUMNAS), len(COLUMNAS_CON_TITULAR)}:
+        raise ValueError("Todas las filas deben tener 39 columnas, o 40 con CUILTIT")
+    columnas = COLUMNAS if anchos == {len(COLUMNAS)} else COLUMNAS_CON_TITULAR
 
     from openpyxl import Workbook
 
@@ -170,13 +184,13 @@ def generar_xlsx(lote, *, hoja="Hoja1"):
     try:
         tabla = libro.active
         tabla.title = hoja
-        tabla.append(COLUMNAS)
+        tabla.append(columnas)
         for fila in lote.filas:
             tabla.append(fila)
             if all(valor is None for valor in fila):
                 # Excel omite celdas vacías sin estilo, perdiendo filas finales.
                 # Una celda con formato conserva la posición sin inventar datos.
-                tabla.cell(tabla.max_row, len(COLUMNAS)).number_format = "@"
+                tabla.cell(tabla.max_row, len(columnas)).number_format = "@"
         # El texto es literal, incluso si un futuro estímulo comienza con '='.
         for fila in tabla:
             for celda in fila:

@@ -2,6 +2,8 @@
 
 Las filas con evidencia de baja no son órdenes de alta ni de finalización.
 Se conservan códigos sin homologar. No se deducen familias, bajas o reingresos.
+CUILTIT (entrega del 26/10/2026) se conserva como evidencia; vincular grupos
+familiares queda para #181.
 """
 from collections import Counter
 from datetime import date, datetime
@@ -24,6 +26,13 @@ from .importacion_cobertura import revisar_cobertura, validar_opcion
 
 VERSION = 3
 CAMPOS = ("numero_interno", "numero", "documento", "cuil", "nombre")
+# Columnas conservadas en `original` de cada fila. CODPAR y CUILTIT son la
+# evidencia familiar para #181; FEC_NAC sustenta los vencimientos por edad del
+# diccionario de parentescos. El domicilio se guarda crudo: OSTEL no informó
+# todavía el estándar de CODPROV/CODLOCA, así que no se homologa a Georef.
+ORIGINAL = ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM", "FECING", "FECBAJ", "FECVTO",
+            "TIPODOC", "TIPO", "MOTIVO", "COD_PLAN", "NROREF", "CODEMP", "ESTADO", "CODPAR",
+            "CUILTIT", "FEC_NAC", "CODPOS", "DESLOCA", "CODPROV", "CODZON", "CODLOCA")
 
 
 def _texto(valor):
@@ -150,16 +159,18 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
         for hoja in libro:
             posiciones = {f.numero for f in lectura.filas[hoja.title]}
             # Las dimensiones declaradas del XLSX no son confiables. El lector
-            # ya verificó las coordenadas reales y el ancho exacto de 39 columnas.
-            it = hoja.iter_rows(min_row=1, max_row=max(posiciones, default=1), max_col=39, values_only=True)
+            # ya verificó las coordenadas reales y el ancho exacto: 39 columnas
+            # o 40 con CUILTIT.
+            ancho = len(lectura.columnas[hoja.title])
+            it = hoja.iter_rows(min_row=1, max_row=max(posiciones, default=1), max_col=ancho, values_only=True)
             nombres = next(it)
             for numero, valores in enumerate(it, 2):
                 if numero not in posiciones:
                     continue
                 raw = dict(zip(nombres, valores))
-                # CODPAR se conserva como evidencia, sin asignar parentesco.
-                original = {k: _json(raw[k]) for k in ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM",
-                    "FECING", "FECBAJ", "FECVTO", "TIPODOC", "TIPO", "MOTIVO", "COD_PLAN", "NROREF", "CODEMP", "ESTADO", "CODPAR")}
+                # Evidencia cruda, sin homologar ni asignar titular, parentesco,
+                # domicilio o derechos. Ver ORIGINAL; CUILTIT es None sin columna.
+                original = {k: _json(raw.get(k)) for k in ORIGINAL}
                 try:
                     d = {k: _texto(raw[c]) for k, c in zip(CAMPOS, ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM"))}
                     error = ""
@@ -259,7 +270,8 @@ def aplicar(*, importacion, usuario):
                         solo_crear=True, origen="importacion", lote=lote,
                         motivo="Alta OSTEL con habilitación seleccionada al revisar el lote")
                 entrada = {k: d[k] for k in ("numero", "nombre", "cuil")}
-                # NUMERO es clave externa separada del NROAFI familiar.
+                # NUMERO es la clave externa individual; NROAFI se guarda en numero
+                # para mostrarlo, sin sentido de familia (pendiente de OSTEL).
                 if obj.numero_interno != d["numero_interno"]:
                     anterior = obj.numero_interno
                     obj.numero_interno = d["numero_interno"]
