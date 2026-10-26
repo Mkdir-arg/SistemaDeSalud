@@ -1,0 +1,32 @@
+# Sólo junto con docker-compose.auditoria172.yml, datos sintéticos exclusivos.
+services:
+  backend-auditoria172:
+    environment: &entorno-visual
+      DJANGO_SETTINGS_MODULE: config.settings_visual_auditoria172
+      SALUD_AUDITORIA172_VISUAL: "1"
+      AUDITORIA172_VISUAL_PASSWORD: ${AUDITORIA172_VISUAL_PASSWORD:?Definir clave sintética externa para el escenario visual}
+    command: [manage.py, runserver, "0.0.0.0:8192", --noreload]
+    ports:
+      - "127.0.0.1:8192:8192"
+    networks: [laboratorio-auditoria172, visual-auditoria172]
+
+  correo-auditoria172:
+    extends:
+      file: docker-compose.auditoria172.yml
+      service: backend-auditoria172
+    image: salud-auditoria172-backend-auditoria172:latest
+    profiles: [correo]
+    environment: *entorno-visual
+    command: [manage.py, procesar_correo_institucional]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    restart: unless-stopped
+    # File backend sintético: no necesita red visual ni puerto publicado.
+    networks: [laboratorio-auditoria172]
+
+networks:
+  visual-auditoria172:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"

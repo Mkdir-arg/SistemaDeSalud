@@ -1,0 +1,19 @@
+# Exclusivo de #43; nunca combinar con el compose operativo.
+name: salud-issue43
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: issue43
+      POSTGRES_DB: salud_issue43
+      # Sólo datos ficticios, puerto loopback y almacenamiento descartable.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:55443:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U issue43 -d salud_issue43"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

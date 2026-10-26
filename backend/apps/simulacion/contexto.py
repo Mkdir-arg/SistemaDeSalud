@@ -26,8 +26,10 @@ from dataclasses import dataclass
 CAMPOS_AUTORIA = {
     "agenda.Turno": ("creado_por", "resuelto_por"),
     "auditoria.AccesoClinico": ("usuario",),
+    "auditoria.FalloAuditoria": ("revisado_por",),
     "casos.EventoCaso": ("autor",),
     "farmacia.Movimiento": ("autor",),
+    "farmacia.OperacionStock": ("autor",),
     "farmacia.Pedido": ("creado_por",),
     "financiadores.AfiliacionCaso": ("registrado_por",),
     "financiadores.Afiliado": ("finalizado_por",),
@@ -66,7 +68,7 @@ CAMPOS_AUTORIA = {
     "flujos.VersionFlujo": ("autor",),
     "instituciones.EstadiaCama": ("autor",),
     "red.Traslado": ("solicitado_por", "resuelto_por"),
-    "registros.ArchivoClinico": ("subido_por",),
+    "registros.ArchivoClinico": ("subido_por", "asociado_por"),
     "registros.ConsentimientoDatos": ("tomado_por",),
     "registros.EntradaHistoria": ("autor",),
     "registros.HistoriaClinica": ("antecedentes_por",),
@@ -78,11 +80,17 @@ CAMPOS_AUTORIA = {
 CAMPOS_OPERATIVOS = {
     "accounts.LegajoProfesional": ("usuario",),
     "accounts.Membresia": ("usuario",),
+    # Titular real de credenciales; no es autoría clínica ni se sustituye.
+    "accounts.SesionInstitucional": ("usuario",),
+    # Titular de la pertenencia dada de baja: no es autoría.
+    "accounts.BajaMembresia": ("usuario",),
     "admin.LogEntry": ("user",),
     "agenda.Agenda": ("profesional",),
     "casos.Caso": ("asignado_a",),
     "casos.Notificacion": ("usuario",),
     "financiadores.MembresiaFinanciador": ("usuario",),
+    # Titular de la pertenencia de financiador dada de baja: no es autoría.
+    "financiadores.BajaMembresiaFinanciador": ("usuario",),
     "instituciones.Box": ("ocupado_por",),
     "instituciones.Grupo": ("miembros",),
     "simulacion.CuentaReferencia": ("usuario",),

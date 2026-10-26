@@ -23,7 +23,7 @@ from . import models as m
 from . import serializers as s
 from .cobertura import cotizacion, liberar, reservar, seleccionar_afiliacion
 from .cobros import completar_pendiente, resolver_saldo, revisar_contexto
-from .permisos import plataforma, requerir_caso, requerir_hospital
+from .permisos import superusuario, requerir_caso, requerir_hospital
 from .services import auditar
 from . import vigencias
 from .seguimiento import puede_seguimiento
@@ -41,7 +41,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
         if getattr(self, "swagger_fake_view", False):
             return m.ReservaCobertura.objects.none()
         qs = m.ReservaCobertura.objects.select_related("caso", "prestacion", "distribucion", "uso_autorizacion")
-        if plataforma(self.request.user):
+        if superusuario(self.request.user):
             return qs
         user = self.request.user
         financiero = Q(pk__in=[])
@@ -94,7 +94,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
         operar = tiene_capacidad(user, "casos_operar", institucion.pk)
         ver = puede_seguimiento(user, institucion.pk)
         resolver = concesiones_financieras_de(user, "resolver_cobertura").filter(membresia__institucion=institucion).exists()
-        if not (configurar or operar or ver or resolver or plataforma(user)):
+        if not (configurar or operar or ver or resolver or superusuario(user)):
             raise PermissionDenied("No tenés acceso a cobertura en este hospital.")
         config = m.ConfiguracionHospital.objects.filter(institucion=institucion).first()
         casos = Caso.objects.filter(institucion=institucion).exclude(estado__in=Caso.ESTADOS_FINALIZADOS).order_by("-pk")
@@ -105,7 +105,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
             valor = request.query_params["search"].strip()
             coincidencias = Q(ciudadano__nombre__icontains=valor) | Q(ciudadano__documento__icontains=valor)
             casos = casos.filter(coincidencias | (Q(pk=int(valor)) if valor.isdigit() else Q(pk__in=[])))
-        if not plataforma(user):
+        if not superusuario(user):
             permitidos = Q(pk__in=[])
             roles = [rol for rol, caps in ROL_CAPACIDADES.items() if "casos_operar" in caps]
             for miembro in Membresia.objects.filter(usuario=user, activo=True, institucion=institucion, rol__in=roles).prefetch_related("areas"):
@@ -114,7 +114,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
             casos = casos.filter(permitidos)
         return Response({
             "configuracion": {"activo": bool(config and config.activo), "dias_reserva_antigua": config.dias_reserva_antigua if config else 7},
-            "permisos": {"configurar": configurar, "operar": operar or plataforma(user), "seguimiento": ver, "registrar_aceptacion": tiene_concesion_financiera(user, "registrar_aceptacion", institucion.pk), "resolver": tiene_concesion_financiera(user, "resolver_cobertura", institucion.pk)},
+            "permisos": {"configurar": configurar, "operar": operar or superusuario(user), "seguimiento": ver, "registrar_aceptacion": tiene_concesion_financiera(user, "registrar_aceptacion", institucion.pk), "resolver": tiene_concesion_financiera(user, "resolver_cobertura", institucion.pk)},
             "catalogo": s.CatalogoSerializer(m.PrestacionComun.objects.filter(activo=True), many=True).data,
             "prestaciones": [{"id": p.pk, "codigo": p.codigo, "nombre": p.nombre, "nodo_id": p.nodo_id, "comun": getattr(getattr(p, "vinculoprestacion", None), "comun_id", None)} for p in Prestacion.objects.filter(institucion=institucion, activo=True).select_related("vinculoprestacion")],
             "casos": [self.opcion_caso(c) for c in casos.select_related("ciudadano")[:100]],
@@ -197,7 +197,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
     def afiliados(self, request):
         institucion = self.institucion()
         documento = normalizar_documento(request.query_params.get("documento", ""))
-        if not tiene_capacidad(request.user, "casos_operar", institucion.pk) and not plataforma(request.user):
+        if not tiene_capacidad(request.user, "casos_operar", institucion.pk) and not superusuario(request.user):
             reserva = get_object_or_404(self.get_queryset(), pk=request.query_params.get("reserva"), caso__institucion=institucion)
             requerir_hospital(request.user, institucion.pk, "resolver_cobertura", reserva.hecho.area_origen_id if reserva.hecho_id else reserva.caso.area_actual_id, reserva.evaluacion.get("sensible", True))
             ciudadano = reserva.hecho.ciudadano if reserva.hecho_id else reserva.caso.ciudadano
@@ -259,7 +259,7 @@ class CoberturaHospitalViewSet(CoberturaBaseViewSet):
     def recuperables(self, request):
         institucion = self.institucion()
         qs = HechoAtencionCosteable.objects.filter(institucion=institucion).filter(Q(snapshot_cobro__isnull=True) | Q(snapshot_cobro__capturado=False)).exclude(cobertura_contexto={})
-        if not plataforma(request.user):
+        if not superusuario(request.user):
             qs = qs.filter(alcance_financiero_q(request.user, "resolver_cobertura", institucion_path="institucion_id", area_path="area_origen_id", sensible_path=None))
             # La sensibilidad todavía puede ser desconocida: exigir concesión sensible.
             qs = [h for h in qs.order_by("pk")[:100] if tiene_concesion_financiera(request.user, "resolver_cobertura", h.institucion_id, h.area_origen_id, sensible=True)]

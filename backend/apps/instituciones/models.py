@@ -95,6 +95,9 @@ class Box(models.Model):
         "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="boxes_ocupados"
     )
     ocupado_desde = models.DateTimeField(null=True, blank=True)
+    # Cuándo se avisó que la ocupación actual quedó inactiva (#172, AUD-048):
+    # un aviso por ocupación; se limpia al ocupar o liberar.
+    aviso_inactividad_at = models.DateTimeField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:

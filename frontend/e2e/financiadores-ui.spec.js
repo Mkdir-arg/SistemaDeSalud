@@ -853,7 +853,7 @@ test("permite retomar un lote fuera de la primera página", async ({ page }) => 
   await page.getByRole("link", { name: "Consumos externos" }).click();
   await page.getByRole("button", { name: "Importar Excel" }).click();
   const dialogo = page.getByRole("dialog");
-  await dialogo.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
+  await dialogo.getByRole("button", { name: "Importaciones registradas" }).click();
   await dialogo.getByRole("button", { name: "Siguiente", exact: true }).click();
   await dialogo.getByRole("button", { name: "Importación 2" }).click();
   await expect(dialogo.getByRole("button", { name: "Importar 1 fila válida" })).toBeVisible();

@@ -4,6 +4,8 @@ import hashlib
 import re
 import uuid
 
+from apps.csv_seguro import texto_csv_seguro
+
 from django.core.files.storage import default_storage
 from django.http import FileResponse
 from rest_framework import status, viewsets
@@ -553,6 +555,24 @@ class DescargarArchivoView(APIView):
         respuesta = respuesta_de_archivo(ruta, meta)
         if respuesta is None:
             return Response({"detail": "Archivo no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        from apps.auditoria.mixins import registrar_acceso
+        from apps.auditoria.models import AccesoClinico
+
+        # Solo un dueño confirmado (#172, AUD-050) atribuye la descarga a un
+        # paciente; si no, se registra el objeto sin inferir a quién pertenece.
+        ciudadano = meta.ciudadano if meta is not None and meta.asociado_at is not None else None
+        detalle = "Descarga iniciada de archivo"
+        if meta is None:
+            # Es una referencia técnica para correlacionar rutas legacy, no una
+            # PK. No copiar ruta/nombre potencialmente sensibles al registro.
+            referencia = hashlib.sha256(ruta.encode("utf-8")).hexdigest()
+            detalle = f"Descarga iniciada de archivo sin metadatos legacy:{referencia}"
+        registrar_acceso(
+            request, AccesoClinico.Tipo.DETALLE, "archivoclinico",
+            objeto_id=meta.pk if meta else "", institucion_id=institucion_id,
+            ciudadano=ciudadano, detalle=detalle,
+        )
+        respuesta["Cache-Control"] = "private, no-store"
         return respuesta
 
 
@@ -677,14 +697,15 @@ def _texto_csv(valor):
         if m:
             a, me, d, h, mi = m.groups()
             return f"{d}/{me}/{a}" + (f" {h}:{mi}" if h else "")
+        return texto_csv_seguro(valor)
     if isinstance(valor, bool):
         return "Sí" if valor else "No"
     if isinstance(valor, (list, tuple)):
-        return " · ".join(_texto_csv(v) for v in valor)
+        return texto_csv_seguro(" · ".join(_texto_csv(v) for v in valor))
     if isinstance(valor, dict):
         # Los anidados suelen traer un nombre legible; si no, se descarta en vez
         # de volcar un JSON crudo en una celda.
-        return str(valor.get("nombre") or valor.get("titulo") or valor.get("label") or "")
+        return texto_csv_seguro(valor.get("nombre") or valor.get("titulo") or valor.get("label") or "")
     return str(valor)
 
 

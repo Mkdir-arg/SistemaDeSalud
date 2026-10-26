@@ -154,6 +154,13 @@ class Existencia(models.Model):
         verbose_name_plural = "existencias"
         ordering = ["insumo__nombre", "lote__vencimiento"]
         unique_together = [("deposito", "insumo", "lote")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["deposito", "insumo"],
+                condition=models.Q(lote__isnull=True),
+                name="farmacia_existencia_unica_sin_lote",
+            ),
+        ]
         indexes = [models.Index(fields=["deposito", "insumo"])]
 
     def __str__(self):
@@ -231,11 +238,11 @@ class Pedido(models.Model):
         RECHAZADO = "rechazado", "Rechazado"
 
     origen = models.ForeignKey(
-        Deposito, on_delete=models.CASCADE, related_name="pedidos_hechos",
+        Deposito, on_delete=models.PROTECT, related_name="pedidos_hechos",
         help_text="Depósito que pide.",
     )
     destino = models.ForeignKey(
-        Deposito, on_delete=models.CASCADE, related_name="pedidos_recibidos",
+        Deposito, on_delete=models.PROTECT, related_name="pedidos_recibidos",
         help_text="Depósito al que se le pide (normalmente la central).",
     )
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
@@ -282,3 +289,38 @@ class LineaPedido(models.Model):
     @property
     def faltante(self):
         return max(0, self.pedido_cant - self.entregado)
+
+
+class OperacionStock(models.Model):
+    """Identidad durable de una operación de stock (#172, AUD-053).
+
+    Mismo patrón que las operaciones de dinero: la `clave` (UUID que elige el
+    cliente y repite al reintentar) se reserva en la misma transacción que los
+    movimientos. Misma clave y mismo contenido devuelven el resultado ya
+    registrado sin volver a mover stock; con otro contenido se rechaza. Una
+    operación fallida no deja clave. `resultado` guarda solo ids, no datos de
+    pacientes. Se conserva como trazabilidad, sin purga.
+    """
+
+    institucion = models.ForeignKey(
+        "instituciones.Institucion", on_delete=models.PROTECT, related_name="operaciones_stock",
+    )
+    clave = models.UUIDField()
+    tipo = models.CharField(max_length=30)
+    solicitud = models.JSONField()
+    resultado = models.JSONField(default=dict)
+    autor = models.ForeignKey(
+        "accounts.Usuario", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "operación de stock"
+        verbose_name_plural = "operaciones de stock"
+        ordering = ["-creado", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["institucion", "clave"], name="farmacia_operacion_clave_unica"),
+        ]
+
+    def __str__(self):
+        return f"{self.tipo} · {self.clave}"

@@ -5,7 +5,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import Afiliado, Convenio, Financiador, HistorialAfiliacion, Plan
-from .permisos import plataforma, requerir_financiador, requerir_hospital
+from .permisos import superusuario, requerir_financiador, requerir_hospital
 from .services import auditar
 
 
@@ -52,7 +52,7 @@ def proponer_convenio(*, usuario, financiador, institucion, origen):
     _permiso_convenio(usuario, obj, origen)
     if Convenio.objects.filter(financiador=financiador, institucion=institucion, estado__in=["activo", "propuesto"]).exists():
         raise ValidationError("Ya existe un convenio activo o una propuesta pendiente con este hospital.")
-    if origen == "financiador" and plataforma(usuario):
+    if origen == "financiador" and superusuario(usuario):
         obj.propuesto_por, obj.estado = "plataforma", "activo"
         obj.aceptado_por, obj.aceptado_en = usuario, timezone.now()
     obj.save()
@@ -65,7 +65,7 @@ def aceptar_convenio(*, usuario, convenio, origen):
     obj = Convenio.objects.select_for_update().get(pk=convenio.pk)
     _permiso_convenio(usuario, obj, origen)
     contraparte = "hospital" if origen == "financiador" else "financiador"
-    if obj.propuesto_por != contraparte and not plataforma(usuario):
+    if obj.propuesto_por != contraparte and not superusuario(usuario):
         raise ValidationError("La aceptación corresponde a la otra parte del convenio.")
     if obj.estado != "propuesto":
         raise ValidationError("Sólo se puede aceptar una propuesta pendiente. Un convenio cerrado no se reactiva.")
@@ -81,7 +81,7 @@ def cerrar_convenio(*, usuario, convenio, origen, motivo, rechazar=False):
     _permiso_convenio(usuario, obj, origen)
     motivo = _motivo(motivo)
     destino = "rechazado" if rechazar else "finalizado"
-    if rechazar and obj.propuesto_por == origen and not plataforma(usuario):
+    if rechazar and obj.propuesto_por == origen and not superusuario(usuario):
         raise ValidationError("El rechazo corresponde a la otra parte de la propuesta.")
     if obj.estado == destino and obj.motivo_cierre == motivo:
         return obj

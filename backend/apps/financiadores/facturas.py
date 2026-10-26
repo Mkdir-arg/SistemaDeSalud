@@ -5,7 +5,7 @@ import unicodedata
 from pathlib import Path
 
 from django.conf import settings
-from django.core.files.storage import FileSystemStorage
+from django.core.files.storage import FileSystemStorage, storages
 from rest_framework.exceptions import ValidationError
 
 from apps.common import ARCHIVO_CLINICO_MAX_BYTES, _sha256_archivo, _validar_archivo_clinico
@@ -25,6 +25,15 @@ def clave_duplicado(datos):
 
 
 def almacenamiento_privado():
+    """`STORAGES["facturas"]`: el bucket bajo `facturas/` o, sin bucket, el disco (#171).
+
+    En disco la carpeta se lee de la configuración vigente en cada llamada, y no
+    de la instancia ya creada, para seguir rechazando una ruta dentro de
+    MEDIA_ROOT aunque la configuración cambie después del arranque.
+    """
+    almacenamiento = storages["facturas"]
+    if not isinstance(almacenamiento, FileSystemStorage):
+        return almacenamiento
     ruta = Path(settings.SALUD_FACTURAS_ADJUNTOS_DIR).resolve()
     media = Path(settings.MEDIA_ROOT).resolve()
     if ruta == media or media in ruta.parents:

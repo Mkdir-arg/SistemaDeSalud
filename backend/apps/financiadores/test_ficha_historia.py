@@ -223,7 +223,6 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
         from io import StringIO
 
         from django.core.management import call_command
-        from rest_framework_simplejwt.tokens import RefreshToken
 
         from apps.accounts.models import Usuario
 
@@ -231,7 +230,7 @@ class HistoriaFinanciadorTests(VigenciasApiSetup, APITestCase):
         root = Usuario.objects.create_superuser("root-hc@salud.local", "x", nombre="Root")
         call_command("preparar_cuentas_referencia", financiador=[self.financiador.pk], stdout=StringIO())
         self.client.force_authenticate(None)
-        token = {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(root).access_token}"}
+        token = jwt(root)
 
         def simular(rol):
             r = self.client.post("/api/simulaciones/", {"ambito": "financiador", "rol": rol, "financiador": self.financiador.pk},

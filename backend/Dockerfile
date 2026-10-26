@@ -30,7 +30,7 @@ RUN apt-get update \
 https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}" \
+    && apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}" gosu \
     && apt-get purge -y curl gnupg && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
@@ -43,6 +43,15 @@ COPY . .
 
 # Estáticos del admin/DRF para que WhiteNoise los sirva.
 RUN python manage.py collectstatic --noinput
+
+# Usuario sin privilegios (#172, AUD-027). El código queda de root y solo
+# lectura para la app; escribe únicamente en los directorios de datos. Un
+# volumen nuevo hereda este dueño; uno existente lo corrige el entrypoint.
+# El home es escribible: gunicorn deja ahí su socket de control.
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid 10001 --create-home \
+       --home-dir /home/app --shell /usr/sbin/nologin app \
+    && install -d -o 10001 -g 10001 /app/media /app/privado/facturas /respaldos
 
 COPY entrypoint.sh /entrypoint.sh
 # El checkout de Windows puede entregar CRLF; Linux debe recibir un shebang LF.

@@ -13,7 +13,7 @@ const proxyTarget = process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8000";
 // docs/NOMBRE-DEL-SISTEMA.md.
 function nombreSistema(nombre) {
   const escapar = (t) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#7031C7"/><text x="32" y="34" fill="#fff" font-family="Arial, sans-serif" font-size="36" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapar(nombre.charAt(0))}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#079B9D"/><text x="32" y="34" fill="#fff" font-family="Arial, sans-serif" font-size="36" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapar(nombre.charAt(0))}</text></svg>`;
   return {
     name: "nombre-sistema",
     // «pre»: Vite decodifica las URL del HTML y `%FAVICON_SISTEMA%` no es válida.

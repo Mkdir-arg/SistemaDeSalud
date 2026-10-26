@@ -12,7 +12,7 @@ export const FORMATOS_IMPORTACION = Object.freeze([
   Object.freeze({
     id: "ostel", nombre: "OSTEL",
     tipos: ["padron"], modo: "administrativa",
-    descripcion: "Hojas Hoja1 y afimotook, con las 39 columnas OSTEL. CUIL y NUMERO identifican individualmente; NROAFI puede compartirse. TIPO distingue activo/pasivo, no vigencia de cobertura. FECVTO no equivale a baja. Estos archivos no contienen CUILTIT para vincular familias. El importador no interpreta códigos pendientes ni aplica movimientos de baja.",
+    descripcion: "Hojas Hoja1 y afimotook, con las 40 columnas OSTEL: CUILTIT (columna 40) es obligatorio. CUIL y NUMERO identifican individualmente; NROAFI puede compartirse. TIPO distingue activo/pasivo, no vigencia de cobertura. FECVTO no equivale a baja. CUILTIT se conserva como evidencia, pero todavía no se vinculan familias. El importador no interpreta códigos pendientes ni aplica movimientos de baja.",
     aviso: "La habilitación para personas nuevas se elige al cargar. En personas existentes se conserva la habilitación actual y las diferencias requieren revisión. Las reglas de prestaciones siguen pendientes de OSTEL.",
     recursoRevision: "previsualizar-ostel",
     parametrosPlantilla: (tipo) => ({ tipo, formato: "ostel" }),

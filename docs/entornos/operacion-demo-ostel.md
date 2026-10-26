@@ -10,8 +10,8 @@ dirigido a OSTEL; el estado técnico se conserva únicamente en este documento.
 
 Comando nuevo: `python manage.py seed_ostel_demo`.
 
-Requiere `ENTORNO=demo`, PostgreSQL migrado y `DEMO_PASSWORD` externa, no vacía y
-distinta de la clave pública. No guardar ni imprimir esa variable. La primera
+Requiere `ENTORNO=demo` y PostgreSQL migrado. Las cuentas usan la misma clave que
+el resto de la demo: `DEMO_PASSWORD`, o `demo1234` si no está definida. La primera
 carga agrega datos; una repetición devuelve el inventario actual y no cambia
 contraseñas ni repara lo operado. No tiene opción de borrado.
 
@@ -67,7 +67,7 @@ base de Railway ni compartir `test_salud` con otros procesos.
 
 Las pruebas cubren guardas, convivencia, roles acotados, tres convenios,
 familias, cupo compartido, separación de fichas, repetición sin restablecimiento,
-camas/estadía, colisión, rollback, rechazo de la clave pública, ingreso real por
+camas/estadía, colisión, rollback, clave compartida de la demo, ingreso real por
 API, permisos protegidos, portal del paciente y dos cargas concurrentes con
 conexiones PostgreSQL independientes. Su resultado
 no sustituye la verificación del frontend y del despliegue publicado.

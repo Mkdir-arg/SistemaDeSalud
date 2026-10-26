@@ -20,6 +20,7 @@ def _ostel(**contexto):
     try:
         hoja = libro.active
         hoja.title = "Hoja1"
+        # 40 columnas: CUILTIT es obligatorio desde la entrega del 26/10/2026.
         hoja.append(COLUMNAS)
         hoja.freeze_panes = "A2"
         for numero, celda in enumerate(hoja[1], 1):

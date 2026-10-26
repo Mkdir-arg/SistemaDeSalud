@@ -7,6 +7,9 @@ que el aislamiento entre instituciones no lo da el mixin genérico sino
 entre «el admin del Hospital A ve a su gente» y «el admin del Hospital A ve el
 padrón completo de la plataforma, con nombre y email».
 """
+from unittest.mock import patch
+
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from apps.casos.models import Caso, EventoCaso
@@ -15,8 +18,10 @@ from apps.instituciones.models import Area, Institucion
 from apps.registros.models import Ciudadano
 
 from .models import LegajoProfesional, Membresia, Usuario
+from .test_credenciales_auditoria172 import CONFIGURACION
 
 
+@override_settings(**CONFIGURACION)
 class PadronPorInstitucionTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
@@ -142,19 +147,21 @@ class PadronPorInstitucionTests(APITestCase):
             self._emails(f"?institucion={self.clinica.id}&rol=medico"), set()
         )
 
-    def test_alta_requiere_password_y_aplica_validadores(self):
+    @patch("apps.accounts.views.invitar_usuario")
+    @patch("apps.accounts.views.exigir_configuracion_correo")
+    def test_alta_invita_sin_password_y_rechaza_clave_del_administrador(self, configurar, invitar):
         self.client.force_authenticate(self.root)
         datos = {"email": "nuevo@salud.local", "nombre": "Nuevo"}
+        for password in ("12345678", "Guardia-Diente-84"):
+            respuesta = self.client.post("/api/usuarios/", {**datos, "password": password}, format="json")
+            self.assertEqual(respuesta.status_code, 400)
+            self.assertIn("password", respuesta.data)
+            self.assertFalse(Usuario.objects.filter(email=datos["email"]).exists())
         sin_password = self.client.post("/api/usuarios/", datos, format="json")
-        self.assertEqual(sin_password.status_code, 400)
-        self.assertIn("password", sin_password.data)
-        debil = self.client.post("/api/usuarios/", {**datos, "password": "12345678"}, format="json")
-        self.assertEqual(debil.status_code, 400)
-        self.assertIn("password", debil.data)
-        self.assertFalse(Usuario.objects.filter(email=datos["email"]).exists())
-        fuerte = self.client.post("/api/usuarios/", {**datos, "password": "Guardia-Diente-84"}, format="json")
-        self.assertEqual(fuerte.status_code, 201, fuerte.data)
-        self.assertTrue(Usuario.objects.get(email=datos["email"]).check_password("Guardia-Diente-84"))
+        self.assertEqual(sin_password.status_code, 201, sin_password.data)
+        self.assertFalse(Usuario.objects.get(pk=sin_password.data["id"]).has_usable_password())
+        self.assertEqual(configurar.call_count, 3)
+        invitar.assert_called_once()
 
 
 class PerfilConCapacidadesTests(APITestCase):
@@ -314,6 +321,7 @@ class LegajoPorInstitucionTests(APITestCase):
         self.assertEqual(self.client.get(f"/api/legajos/{legajo_clinica.id}/").status_code, 404)
 
 
+@override_settings(**CONFIGURACION)
 class AltaDePersonaTests(APITestCase):
     """
     El alta crea la membresía junto con la persona.
@@ -333,9 +341,15 @@ class AltaDePersonaTests(APITestCase):
     def _alta(self, **extra):
         return self.client.post(
             "/api/usuarios/",
-            {"email": "nueva@hospital.local", "nombre": "Nueva", "password": "Guardia-Diente-84", **extra},
+            {"email": "nueva@hospital.local", "nombre": "Nueva", **extra},
             format="json",
         )
+
+    def setUp(self):
+        for servicio in ("exigir_configuracion_correo", "invitar_usuario"):
+            parche = patch(f"apps.accounts.views.{servicio}")
+            parche.start()
+            self.addCleanup(parche.stop)
 
     def test_el_alta_deja_a_la_persona_con_membresia_y_visible(self):
         self.client.force_authenticate(self.admin)
@@ -411,11 +425,12 @@ class ConfiguracionDeAccesosTests(APITestCase):
 
     def test_no_se_escala_a_staff_desde_la_api_de_usuarios(self):
         r = self.client.patch(f"/api/usuarios/{self.usuario.pk}/", {"is_staff": True}, format="json")
-        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.status_code, 400, r.data)
         self.usuario.refresh_from_db()
         self.assertFalse(self.usuario.is_staff)
 
 
+@override_settings(**CONFIGURACION)
 class GobiernoPlataformaTests(APITestCase):
     def setUp(self):
         self.base = Institucion.objects.create(nombre="Direccion provincial")
@@ -441,16 +456,21 @@ class GobiernoPlataformaTests(APITestCase):
         emails = {u["email"] for u in r.data["results"]}
         self.assertIn("ajeno@test.local", emails)
 
-    def test_plataforma_crea_usuario_sin_membresia_institucional(self):
+    @patch("apps.accounts.views.invitar_usuario")
+    @patch("apps.accounts.views.exigir_configuracion_correo")
+    def test_plataforma_crea_usuario_sin_membresia_institucional(self, configurar, invitar):
         self.client.force_authenticate(self.plataforma)
         r = self.client.post("/api/usuarios/", {
-            "email": "nuevo@test.local", "nombre": "Nuevo", "password": "Guardia-Diente-84",
+            "email": "nuevo@test.local", "nombre": "Nuevo",
         }, format="json")
         self.assertEqual(r.status_code, 201, r.data)
         self.assertFalse(
             Membresia.objects.filter(usuario_id=r.data["id"]).exists(),
             "el alta de plataforma no debe enganchar al usuario a la institucion base",
         )
+        self.assertFalse(Usuario.objects.get(pk=r.data["id"]).has_usable_password())
+        configurar.assert_called_once()
+        invitar.assert_called_once()
 
     def test_admin_institucional_no_asigna_roles_estatales(self):
         self.client.force_authenticate(self.admin)

@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q, Sum
-from django.utils import timezone
+from django.db.models.deletion import ProtectedError
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -10,7 +12,7 @@ from apps.casos.models import Caso
 from apps.common import BaseModelViewSet, capacidades_de
 from apps.instituciones.models import Institucion
 
-from . import motor
+from . import motor, operaciones
 from .models import Deposito, Existencia, Insumo, Lote, Movimiento, Pedido
 from .serializers import (
     DepositoSerializer, ExistenciaSerializer, InsumoSerializer, LoteSerializer,
@@ -22,6 +24,11 @@ class DatoInvalido(APIException):
     """Un id del cuerpo que no resuelve. 400 con el texto, no un 500 ni un 201."""
 
     status_code = status.HTTP_400_BAD_REQUEST
+
+
+class PedidoNoEliminable(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Los pedidos se conservan. Para cerrar el saldo pendiente, rechazá el pedido."
 
 
 # Ruta ORM de cada modelo hacia su institución. Los ids que llegan en el cuerpo se
@@ -107,6 +114,17 @@ class DepositoViewSet(BaseModelViewSet):
     capacidad_requerida = "config_institucional"
     institucion_path = "institucion"
     filter_fields = ("institucion", "area", "central", "activo")
+
+
+    def perform_destroy(self, instance):
+        try:
+            with transaction.atomic():
+                deposito = get_object_or_404(Deposito.objects.select_for_update(), pk=instance.pk)
+                deposito.delete()
+        except ProtectedError:
+            error = APIException("El depósito tiene pedidos o movimientos protegidos y debe conservarse.")
+            error.status_code = status.HTTP_409_CONFLICT
+            raise error from None
 
 
 class LoteViewSet(BaseModelViewSet):
@@ -244,10 +262,41 @@ class MovimientoViewSet(BaseModelViewSet):
         except (TypeError, ValueError):
             return None
 
-    def _responder(self, movs):
-        datos = self.get_serializer(movs, many=True).data if isinstance(movs, list) else \
-            self.get_serializer(movs).data
-        return Response(datos, status=status.HTTP_201_CREATED)
+    def _operar(self, request, tipo, insumo, solicitud, mover):
+        """Mueve stock una sola vez por clave de operación (#172, AUD-053)."""
+        clave = operaciones.clave_de(request.data)
+
+        def operar():
+            movs = mover()
+            if movs is None:
+                return {"movimientos": [], "lista": False}
+            lista = isinstance(movs, list)
+            return {"movimientos": [m.pk for m in (movs if lista else [movs])], "lista": lista}
+
+        try:
+            resultado, repetida = operaciones.ejecutar(
+                institucion_id=insumo.institucion_id, clave=clave, tipo=tipo,
+                solicitud=solicitud, autor=request.user, operar=operar,
+            )
+        except motor.ErrorStock as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if not resultado["movimientos"]:
+            # No es un error: el recuento coincidió. Decirlo evita que la
+            # pantalla muestre «listo» y la persona busque un movimiento que no
+            # existe.
+            respuesta = Response({"detail": "El recuento coincide con el sistema: no hubo ajuste."})
+        else:
+            movs = list(self.queryset.filter(pk__in=resultado["movimientos"]).order_by("pk"))
+            datos = self.get_serializer(movs, many=True).data if resultado["lista"] else \
+                self.get_serializer(movs[0]).data
+            respuesta = Response(datos, status=status.HTTP_201_CREATED)
+        if repetida:
+            respuesta["X-Operacion-Repetida"] = "1"
+        return respuesta
+
+    @staticmethod
+    def _solicitud(**campos):
+        return {nombre: (valor.pk if hasattr(valor, "pk") else valor) for nombre, valor in campos.items()}
 
     @action(detail=False, methods=["post"])
     def ingreso(self, request):
@@ -259,12 +308,11 @@ class MovimientoViewSet(BaseModelViewSet):
             return Response({"detail": "Faltan depósito, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
         self._autorizar(request, insumo, deposito)
-        try:
-            return self._responder(
-                motor.ingresar(deposito, insumo, cantidad, lote=lote, autor=request.user, motivo=motivo)
-            )
-        except motor.ErrorStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._operar(
+            request, "ingreso", insumo,
+            self._solicitud(deposito=deposito, insumo=insumo, lote=lote, cantidad=cantidad, motivo=motivo),
+            lambda: motor.ingresar(deposito, insumo, cantidad, lote=lote, autor=request.user, motivo=motivo),
+        )
 
     @action(detail=False, methods=["post"])
     def consumo(self, request):
@@ -279,13 +327,13 @@ class MovimientoViewSet(BaseModelViewSet):
         self._autorizar(request, insumo, deposito)
         if caso is not None and caso.institucion_id != insumo.institucion_id:
             raise PermissionDenied("Ese caso es de otra institución.")
-        try:
-            return self._responder(
-                motor.consumir(deposito, insumo, cantidad, caso=caso, autor=request.user,
-                               lote=lote, motivo=motivo)
-            )
-        except motor.ErrorStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._operar(
+            request, "consumo", insumo,
+            self._solicitud(deposito=deposito, insumo=insumo, lote=lote, cantidad=cantidad,
+                            caso=caso, motivo=motivo),
+            lambda: motor.consumir(deposito, insumo, cantidad, caso=caso, autor=request.user,
+                                   lote=lote, motivo=motivo),
+        )
 
     @action(detail=False, methods=["post"])
     def transferencia(self, request):
@@ -298,13 +346,13 @@ class MovimientoViewSet(BaseModelViewSet):
             return Response({"detail": "Faltan origen, destino, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
         self._autorizar(request, insumo, origen, destino)
-        try:
-            return self._responder(
-                motor.transferir(origen, destino, insumo, cantidad, autor=request.user,
-                                 lote=lote, motivo=motivo)
-            )
-        except motor.ErrorStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._operar(
+            request, "transferencia", insumo,
+            self._solicitud(origen=origen, destino=destino, insumo=insumo, lote=lote,
+                            cantidad=cantidad, motivo=motivo),
+            lambda: motor.transferir(origen, destino, insumo, cantidad, autor=request.user,
+                                     lote=lote, motivo=motivo),
+        )
 
     @action(detail=False, methods=["post"])
     def ajuste(self, request):
@@ -316,16 +364,11 @@ class MovimientoViewSet(BaseModelViewSet):
             return Response({"detail": "Faltan depósito, insumo o lo contado."},
                             status=status.HTTP_400_BAD_REQUEST)
         self._autorizar(request, insumo, deposito)
-        try:
-            mov = motor.ajustar(deposito, insumo, contado, lote=lote, autor=request.user, motivo=motivo)
-        except motor.ErrorStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        if mov is None:
-            # No es un error: el recuento coincidió. Decirlo evita que la
-            # pantalla muestre «listo» y la persona busque un movimiento que no
-            # existe.
-            return Response({"detail": "El recuento coincide con el sistema: no hubo ajuste."})
-        return self._responder(mov)
+        return self._operar(
+            request, "ajuste", insumo,
+            self._solicitud(deposito=deposito, insumo=insumo, lote=lote, contado=contado, motivo=motivo),
+            lambda: motor.ajustar(deposito, insumo, contado, lote=lote, autor=request.user, motivo=motivo),
+        )
 
     @action(detail=False, methods=["post"])
     def baja(self, request):
@@ -337,13 +380,12 @@ class MovimientoViewSet(BaseModelViewSet):
             return Response({"detail": "Faltan depósito, insumo o cantidad."},
                             status=status.HTTP_400_BAD_REQUEST)
         self._autorizar(request, insumo, deposito)
-        try:
-            return self._responder(
-                motor.dar_de_baja(deposito, insumo, cantidad, lote=lote, autor=request.user,
-                                  motivo=motivo)
-            )
-        except motor.ErrorStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._operar(
+            request, "baja", insumo,
+            self._solicitud(deposito=deposito, insumo=insumo, lote=lote, cantidad=cantidad, motivo=motivo),
+            lambda: motor.dar_de_baja(deposito, insumo, cantidad, lote=lote, autor=request.user,
+                                      motivo=motivo),
+        )
 
     @action(detail=False, methods=["get"], url_path="trazar-lote")
     def trazar_lote(self, request):
@@ -379,6 +421,19 @@ class PedidoViewSet(BaseModelViewSet):
     filter_fields = ("origen", "destino", "estado", "urgente", "origen__institucion")
     ordering_fields = ("creado", "urgente")
 
+    @transaction.atomic
+    def perform_update(self, serializer):
+        # El serializer validó una copia anterior al bloqueo. Guardar esa copia
+        # completa puede restaurar el estado previo a una entrega concurrente.
+        pedido = get_object_or_404(Pedido.objects.select_for_update(), pk=serializer.instance.pk)
+        serializer.instance = pedido
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # No existe un estado borrador: también se conserva el pedido pendiente.
+        # Las limpiezas ORM privilegiadas de escenarios sintéticos son aparte.
+        raise PedidoNoEliminable()
+
     @action(detail=True, methods=["post"])
     def preparar(self, request, pk=None):
         """
@@ -402,25 +457,35 @@ class PedidoViewSet(BaseModelViewSet):
         quedó sin cubrir queda visible en la línea.
         """
         pedido = self.get_object()
+        entregas = request.data.get("entregas") or {}
+        if not isinstance(entregas, dict):
+            return Response({"detail": "`entregas` debe ser {línea: cantidad}."}, status=status.HTTP_400_BAD_REQUEST)
+        clave = operaciones.clave_de(request.data)
+        # Repetir la misma entrega con la misma clave no vuelve a mover stock
+        # (#172, AUD-053); una entrega parcial nueva lleva una clave nueva.
+        solicitud = {"pedido": pedido.pk, "entregas": {str(k): v for k, v in sorted(entregas.items(), key=lambda kv: str(kv[0]))}}
         try:
-            pedido = motor.entregar_pedido(pedido, request.data.get("entregas") or {},
-                                           autor=request.user)
+            _, repetida = operaciones.ejecutar(
+                institucion_id=pedido.origen.institucion_id, clave=clave, tipo="entrega_pedido",
+                solicitud=solicitud, autor=request.user,
+                operar=lambda: {"pedido": motor.entregar_pedido(pedido, entregas, autor=request.user).pk},
+            )
         except motor.ErrorStock as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(self.get_serializer(pedido).data)
+        respuesta = Response(self.get_serializer(Pedido.objects.get(pk=pedido.pk)).data)
+        if repetida:
+            respuesta["X-Operacion-Repetida"] = "1"
+        return respuesta
 
     @action(detail=True, methods=["post"])
     def rechazar(self, request, pk=None):
         pedido = self.get_object()
-        if pedido.estado in (Pedido.Estado.ENTREGADO, Pedido.Estado.RECHAZADO):
-            return Response({"detail": "El pedido ya está cerrado."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        pedido.estado = Pedido.Estado.RECHAZADO
-        pedido.observaciones = (
-            pedido.observaciones + "\n" + (request.data.get("motivo") or "")
-        ).strip()
-        pedido.resuelto = timezone.now()
-        pedido.save(update_fields=["estado", "observaciones", "resuelto"])
+        try:
+            pedido = motor.rechazar_pedido(
+                pedido, motivo=request.data.get("motivo") or "", autor=request.user,
+            )
+        except motor.ErrorStock as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(pedido).data)
 
     @action(detail=False, methods=["get"])

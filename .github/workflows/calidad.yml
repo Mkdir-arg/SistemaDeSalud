@@ -40,6 +40,9 @@ jobs:
       - name: Contratos y estado del padrón
         run: node --test src/lib/padronEdicion.test.mjs src/lib/padronNavigation.test.mjs src/components/financiadores/padronCampos.test.mjs src/components/financiadores/padronTabla.test.mjs src/components/financiadores/issue184_presentacion.test.mjs scripts/auditar-clases.test.mjs
 
+      - name: Seguridad de descargas y credenciales
+        run: node --experimental-vm-modules --test src/api/client.test.mjs src/auth/credencialesInstitucionales.test.mjs
+
       - name: Auditor de clases
         # Tailwind escanea el código como texto: una clase mal escrita no rompe el
         # build, simplemente no pinta. Sin esto se descubre mirando la pantalla.
