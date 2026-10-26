@@ -38,10 +38,10 @@ class EscenariosOSTELTests(unittest.TestCase):
             "TIPO,NROAFI,CODEMP,CODPAR,APENOM,TIPODOC,NRODOC,CUIL,SEXO,COD_PLAN,"
             "FEC_NAC,FECING,FECBAJ,FECVTO,MOTIVO,NROBENE,NROPENS,CARNET,NIV,INCAPA,"
             "FACTURA,TABVAL,NUMERO,NROREF,A_CALLE,A_NRO,A_PISO,A_DPTO,A_TEL1,CELU1,"
-            "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO"
+            "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO,CUILTIT"
         )
         self.assertEqual(COLUMNAS, tuple(esperado.split(",")))
-        self.assertEqual(len(COLUMNAS), 39)
+        self.assertEqual(len(COLUMNAS), 40)
         self.assertEqual(set(self.catalogo), {
             "base", "numero_compartido", "referencia_presente", "referencia_ausente",
             "referencia_no_aaa", "cuil_invalido", "documento_discordante",
@@ -57,7 +57,7 @@ class EscenariosOSTELTests(unittest.TestCase):
         for escenario in self.catalogo.values():
             for lote in escenario.lotes:
                 for fila in lote.filas:
-                    self.assertEqual(len(fila), 39)
+                    self.assertEqual(len(fila), 40)
 
     def test_determinismo_e_inmutabilidad(self):
         self.assertEqual(generar_escenarios(), generar_escenarios())
@@ -118,7 +118,11 @@ class EscenariosOSTELTests(unittest.TestCase):
         self.assertEqual(len({r["CODPAR"] for r in parientes}), 56)
         self.assertTrue({"AAA", "H01", "H15", "XD1", "XD2"}.issubset(
             {r["CODPAR"] for r in parientes}))
-        self.assertNotIn("CUILTIT", COLUMNAS)
+        # CUILTIT ficticio coherente: el titular se apunta a sí mismo y los
+        # familiares al CUIL del titular. No arma familias (eso es #181).
+        titular, = (r for r in parientes if r["CODPAR"] == "AAA")
+        self.assertEqual(titular["CUILTIT"], titular["CUIL"])
+        self.assertTrue(all(r["CUILTIT"] == titular["CUIL"] for r in parientes))
         self.assertTrue(all(r["NROREF"] is None for r in parientes))
 
     def test_referencias(self):
@@ -129,6 +133,9 @@ class EscenariosOSTELTests(unittest.TestCase):
         self.assertFalse(self.filas("referencia_no_aaa")[0]["NROAFI"].endswith("AAA"))
         ausentes = self.filas("referencia_ausente")
         self.assertNotIn(ausentes[0]["NROREF"], {f["NROAFI"] for f in ausentes})
+        presente = self.filas("referencia_presente")
+        self.assertEqual(presente[1]["CUILTIT"], presente[0]["CUIL"])
+        self.assertNotIn(ausentes[0]["CUILTIT"], {f["CUIL"] for f in ausentes})
 
     def test_checksum_y_discrepancia_son_estimulos_distintos(self):
         base = self.filas("base")[0]
@@ -231,12 +238,10 @@ class EscenariosOSTELTests(unittest.TestCase):
     def test_exportador_rechaza_hoja_y_ancho_incorrectos(self):
         with self.assertRaises(ValueError):
             generar_xlsx(self.catalogo["base"].lotes[0], hoja="Carga")
-        # 40 es válido desde la entrega con CUILTIT (26/10/2026).
-        for ancho in (0, 38, 41):
+        # 39 ya no es válido: CUILTIT es obligatorio desde el 26/10/2026.
+        for ancho in (0, 38, 39, 41):
             with self.subTest(ancho=ancho), self.assertRaises(ValueError):
                 generar_xlsx(Lote("malformado", ((None,) * ancho,)))
-        with self.assertRaises(ValueError):
-            generar_xlsx(Lote("mezclado", ((None,) * 39, (None,) * 40)))
 
     def test_xlsx_solo_filas_vacias_y_lote_sin_filas(self):
         for cantidad in (0, 1, 3):

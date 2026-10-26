@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 from .models import Afiliado, EventoCobertura, Financiador, Importacion, MembresiaFinanciador
-from .ostel_prevalidacion import COLUMNAS, COLUMNAS_CON_TITULAR, HOJAS, MAX_BYTES, prevalidar_ostel
+from .ostel_prevalidacion import COLUMNAS, HOJAS, MAX_BYTES, prevalidar_ostel
 from .ostel_synthetic import COLUMNAS as COLUMNAS_SINTETICAS, Lote, generar_escenarios, generar_xlsx
 
 
@@ -129,7 +129,7 @@ class OstelApiTests(TestCase):
                 try:
                     self.assertIn(hoja, libro.sheetnames)
                     if hoja == "Hoja1":
-                        self.assertEqual(tuple(c.value for c in libro[hoja][1]), COLUMNAS_CON_TITULAR)
+                        self.assertEqual(tuple(c.value for c in libro[hoja][1]), COLUMNAS)
                         self.assertEqual(prevalidar_ostel(respuesta.content).anomalias, ())
                         self.assertEqual(libro[hoja].max_row, 1)
                         self.assertEqual(libro[hoja].column_dimensions["B"].number_format, "@")

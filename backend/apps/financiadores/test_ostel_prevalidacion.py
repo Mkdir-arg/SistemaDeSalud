@@ -93,13 +93,13 @@ class PrevalidacionOstelTests(TestCase):
         encabezados = list(ostel.COLUMNAS)
         encabezados[0], encabezados[1] = encabezados[1], encabezados[0]
         resultado = ostel.prevalidar_ostel(archivo(
-            [["valor"] + [None] * 38 + ["extra"]], encabezados=encabezados,
+            [["valor"] + [None] * 39 + ["extra"]], encabezados=encabezados,
         ))
         self.assertEqual(resultado.resumen["filas_no_vacias"], {"Hoja1": 1})
         self.assertIn(ostel.Anomalia("encabezado_incorrecto", "Hoja1", 1, 1), resultado.anomalias)
         self.assertIn(ostel.Anomalia("encabezado_incorrecto", "Hoja1", 1, 2), resultado.anomalias)
-        self.assertIn(ostel.Anomalia("columna_adicional", "Hoja1", 2, 40), resultado.anomalias)
-        self.assertEqual(resultado.filas["Hoja1"][0].celdas[39].valor, "extra")
+        self.assertIn(ostel.Anomalia("columna_adicional", "Hoja1", 2, 41), resultado.anomalias)
+        self.assertEqual(resultado.filas["Hoja1"][0].celdas[40].valor, "extra")
 
     def test_hoja_desconocida_no_filtra_nombre(self):
         resultado = ostel.prevalidar_ostel(archivo(nombre="NOMBRE_PRIVADO"))
@@ -131,7 +131,7 @@ class PrevalidacionOstelTests(TestCase):
                             lambda d: d.replace(b'<row r="1">', b'<row r="2">').replace(b'1"', b'2"'))
         self.assertIn("encabezado_ausente", self.codigos(ostel.prevalidar_ostel(contenido)))
         resultado = ostel.prevalidar_ostel(archivo(encabezados=ostel.COLUMNAS[:-1]))
-        self.assertEqual(resultado.anomalias, (ostel.Anomalia("encabezado_incorrecto", "Hoja1", 1, 39),))
+        self.assertEqual(resultado.anomalias, (ostel.Anomalia("encabezado_incorrecto", "Hoja1", 1, 40),))
 
     def test_archivos_invalidos_y_limites(self):
         for contenido in (b"", b"no zip", "no bytes"):
@@ -350,65 +350,34 @@ def demo():
 
 
 class CuiltitOstelTests(TestCase):
-    """Entrega OSTEL del 26/10/2026: CUILTIT como columna 40, con datos ficticios."""
+    """Desde la entrega del 26/10/2026 CUILTIT (columna 40) es obligatorio."""
 
     def fila(self, cuiltit="20990185011"):
         return [f"FICTICIO-{i:02}" for i in range(39)] + [cuiltit]
 
-    def test_columna_40_cuiltit_se_acepta_y_conserva_texto(self):
-        resultado = ostel.prevalidar_ostel(archivo(
-            [self.fila("00990185011"), self.fila()], encabezados=ostel.COLUMNAS_CON_TITULAR,
-        ))
+    def test_columna_40_cuiltit_conserva_texto(self):
+        self.assertEqual(ostel.COLUMNAS[39], "CUILTIT")
+        resultado = ostel.prevalidar_ostel(archivo([self.fila("00990185011"), self.fila()]))
         self.assertEqual(resultado.anomalias, ())
-        self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS_CON_TITULAR})
         self.assertEqual([f.celdas[39].valor for f in resultado.filas["Hoja1"]],
                          ["00990185011", "20990185011"])
-        self.assertEqual(ostel.COLUMNAS_CON_TITULAR[:39], ostel.COLUMNAS)
 
-    def test_formato_de_39_columnas_sigue_vigente(self):
-        resultado = ostel.prevalidar_ostel(archivo([self.fila()[:39]]))
-        self.assertEqual(resultado.anomalias, ())
-        self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS})
+    def test_archivo_de_39_columnas_es_encabezado_incorrecto(self):
+        resultado = ostel.prevalidar_ostel(archivo([self.fila()[:39]], encabezados=ostel.COLUMNAS[:39]))
+        self.assertEqual(resultado.anomalias, (ostel.Anomalia("encabezado_incorrecto", "Hoja1", 1, 40),))
 
-    def test_columna_40_sin_encabezado_exacto_es_adicional(self):
-        for encabezado in ("CUILTIT ", "cuiltit", "OTRA", None):
+    def test_columna_40_con_otro_encabezado_es_incorrecta(self):
+        for encabezado in ("CUILTIT ", "cuiltit", "OTRA"):
             with self.subTest(encabezado=encabezado):
                 resultado = ostel.prevalidar_ostel(archivo(
-                    [self.fila()], encabezados=ostel.COLUMNAS + (encabezado,),
+                    [self.fila()], encabezados=ostel.COLUMNAS[:39] + (encabezado,),
                 ))
-                self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS})
-                self.assertIn(ostel.Anomalia("columna_adicional", "Hoja1", 2, 40), resultado.anomalias)
+                self.assertEqual(resultado.anomalias,
+                                 (ostel.Anomalia("encabezado_incorrecto", "Hoja1", 1, 40),))
 
-    def test_encabezado_cuiltit_formula_o_numero_no_habilita_columna(self):
-        # openpyxl escribe el encabezado como cadena en línea (posición 40 = AN).
-        original = b'<c r="AN1" t="inlineStr"><is><t>CUILTIT</t></is></c>'
-        for nuevo in (b'<c r="AN1" t="str"><f>"CUILTIT"</f><v>CUILTIT</v></c>',
-                      b'<c r="AN1"><v>1</v></c>'):
-            with self.subTest(nuevo=nuevo):
-                base = archivo([self.fila()], encabezados=ostel.COLUMNAS_CON_TITULAR)
-                def reemplazar(d):
-                    self.assertIn(original, d)
-                    return d.replace(original, nuevo)
-                contenido = cambiar(base, "xl/worksheets/sheet1.xml", reemplazar)
-                resultado = ostel.prevalidar_ostel(contenido)
-                self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS})
-                self.assertIn(ostel.Anomalia("columna_adicional", "Hoja1", 2, 40), resultado.anomalias)
-
-    def test_columna_41_con_cuiltit_sigue_siendo_adicional(self):
-        resultado = ostel.prevalidar_ostel(archivo(
-            [self.fila() + ["extra"]], encabezados=ostel.COLUMNAS_CON_TITULAR,
-        ))
+    def test_columna_41_es_adicional(self):
+        resultado = ostel.prevalidar_ostel(archivo([self.fila() + ["extra"]]))
         self.assertEqual(resultado.anomalias, (ostel.Anomalia("columna_adicional", "Hoja1", 2, 41),))
-
-    def test_esquema_se_decide_por_hoja(self):
-        def preparar(libro):
-            otra = libro.create_sheet("afimotook")
-            otra.append(ostel.COLUMNAS_CON_TITULAR)
-            otra.append(self.fila())
-        resultado = ostel.prevalidar_ostel(archivo([self.fila()[:39]], preparar=preparar))
-        self.assertEqual(resultado.anomalias, ())
-        self.assertEqual(resultado.columnas, {"Hoja1": ostel.COLUMNAS, "afimotook": ostel.COLUMNAS_CON_TITULAR})
-
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--demo"]:

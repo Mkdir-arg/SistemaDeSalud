@@ -31,13 +31,11 @@ COLUMNAS = tuple(
     "TIPO,NROAFI,CODEMP,CODPAR,APENOM,TIPODOC,NRODOC,CUIL,SEXO,COD_PLAN,"
     "FEC_NAC,FECING,FECBAJ,FECVTO,MOTIVO,NROBENE,NROPENS,CARNET,NIV,INCAPA,"
     "FACTURA,TABVAL,NUMERO,NROREF,A_CALLE,A_NRO,A_PISO,A_DPTO,A_TEL1,CELU1,"
-    "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO".split(",")
+    "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO,CUILTIT".split(",")
 )
-# Entrega OSTEL del 26/10/2026: las mismas 39 columnas más CUILTIT al final.
-# Se acepta sólo con ese encabezado exacto; sin él, la columna 40 sigue siendo
-# una columna adicional. El lector no interpreta CUILTIT ni arma familias.
-COLUMNA_TITULAR = "CUILTIT"
-COLUMNAS_CON_TITULAR = COLUMNAS + (COLUMNA_TITULAR,)
+# Desde la entrega del 26/10/2026 CUILTIT (columna 40) es obligatorio: un archivo
+# de 39 columnas tiene encabezado incorrecto. El lector no interpreta CUILTIT;
+# las familias se arman en #181 a partir de CUILTIT y CODPAR.
 HOJAS = ("Hoja1", "afimotook")
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -82,8 +80,6 @@ class Fila:
 class Resultado:
     filas: dict[str, tuple[Fila, ...]] = field(repr=False)
     anomalias: tuple[Anomalia, ...]
-    # Esquema verificado por hoja: COLUMNAS o COLUMNAS_CON_TITULAR.
-    columnas: dict[str, tuple[str, ...]] = field(default_factory=dict, repr=False)
 
     @property
     def resumen(self):
@@ -198,10 +194,6 @@ def _parte_opcional(arboles, relaciones, tipo):
     return arboles[_ruta_relacion(partes[0])] if partes else None
 
 
-def _encabezado(celda, esperado):
-    return celda.valor == esperado and celda.tipo in ("s", "inlineStr", "str") and celda.formula is None
-
-
 def _presente(celda):
     # Espacios, 0, False y fórmulas sin resultado NO son filas vacías.
     return celda.valor not in (None, "") or celda.formula is not None
@@ -211,7 +203,6 @@ def _leer_hoja(raiz, nombre, cadenas, formatos, anomalias):
     filas, vistas = [], {}
     anterior = 0
     encabezado = False
-    esperadas = COLUMNAS
     for nodo in raiz.findall(f"{NS}sheetData/{NS}row"):
         numero = int(nodo.attrib["r"])
         if numero <= anterior or numero > MAX_FILAS + 1:
@@ -248,20 +239,18 @@ def _leer_hoja(raiz, nombre, cadenas, formatos, anomalias):
             elif celda.tipo == "d" and celda.valor not in (None, ""):
                 if not _fecha_xml_valida(celda.valor):
                     anomalias.append(Anomalia("fecha_xml_invalida", nombre, numero, columna))
-            if (numero == 1 and columna == len(COLUMNAS_CON_TITULAR)
-                    and _encabezado(celda, COLUMNA_TITULAR)):
-                esperadas = COLUMNAS_CON_TITULAR
-            if columna > len(esperadas) and _presente(celda):
+            if columna > len(COLUMNAS) and _presente(celda):
                 anomalias.append(Anomalia("columna_adicional", nombre, numero, columna))
         if numero == 1:
             encabezado = True
-            for columna, esperado in enumerate(esperadas, 1):
-                if not _encabezado(celdas.get(columna, Celda(None)), esperado):
+            for columna, esperado in enumerate(COLUMNAS, 1):
+                celda = celdas.get(columna, Celda(None))
+                if celda.valor != esperado or celda.tipo not in ("s", "inlineStr", "str") or celda.formula is not None:
                     anomalias.append(Anomalia("encabezado_incorrecto", nombre, 1, columna))
             continue
         if not any(_presente(c) for c in celdas.values()):
             continue
-        ancho = max(len(esperadas), max(celdas))
+        ancho = max(len(COLUMNAS), max(celdas))
         valores = tuple(celdas.get(c, Celda(None)) for c in range(1, ancho + 1))
         filas.append(Fila(numero, valores))
         # Las fórmulas compartidas/matriciales dependen de otras coordenadas;
@@ -277,7 +266,7 @@ def _leer_hoja(raiz, nombre, cadenas, formatos, anomalias):
             vistas[clave] = numero
     if not encabezado:
         anomalias.append(Anomalia("encabezado_ausente", nombre, 1))
-    return tuple(filas), esperadas
+    return tuple(filas)
 
 
 def prevalidar_ostel(contenido: bytes) -> Resultado:
@@ -298,7 +287,7 @@ def prevalidar_ostel(contenido: bytes) -> Resultado:
         compartidas = _parte_opcional(arboles, relaciones, "sharedStrings")
         cadenas = [] if compartidas is None else [_texto(n) for n in compartidas.findall(f"{NS}si")]
         formatos = _formatos(_parte_opcional(arboles, relaciones, "styles"))
-        filas, anomalias, columnas = {}, [], {}
+        filas, anomalias = {}, []
         for hoja in arboles["xl/workbook.xml"].findall(f"{NS}sheets/{NS}sheet"):
             nombre = hoja.attrib["name"]
             if nombre not in HOJAS:
@@ -310,10 +299,10 @@ def prevalidar_ostel(contenido: bytes) -> Resultado:
             if relacion.get("Type") != f"{REL[1:-1]}/worksheet":
                 raise ArchivoOstelInvalido("La hoja no es una hoja de celdas.")
             ruta = _ruta_relacion(relacion)
-            filas[nombre], columnas[nombre] = _leer_hoja(arboles[ruta], nombre, cadenas, formatos, anomalias)
+            filas[nombre] = _leer_hoja(arboles[ruta], nombre, cadenas, formatos, anomalias)
         if not filas:
             anomalias.append(Anomalia("sin_hojas_reconocidas"))
-        return Resultado(filas, tuple(anomalias), columnas)
+        return Resultado(filas, tuple(anomalias))
     except ArchivoOstelInvalido:
         raise
     except (BadZipFile, DefusedXmlException, ParseError, ZlibError, OSError,

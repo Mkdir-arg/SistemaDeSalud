@@ -18,7 +18,7 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from .models import Afiliado, Financiador, Importacion
-from .ostel_prevalidacion import prevalidar_ostel, ArchivoOstelInvalido, MAX_BYTES
+from .ostel_prevalidacion import prevalidar_ostel, ArchivoOstelInvalido, COLUMNAS, MAX_BYTES
 from .permisos import requerir_financiador
 from . import padron
 from .services import auditar, registrar_afiliado
@@ -159,17 +159,15 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
         for hoja in libro:
             posiciones = {f.numero for f in lectura.filas[hoja.title]}
             # Las dimensiones declaradas del XLSX no son confiables. El lector
-            # ya verificó las coordenadas reales y el ancho exacto: 39 columnas
-            # o 40 con CUILTIT.
-            ancho = len(lectura.columnas[hoja.title])
-            it = hoja.iter_rows(min_row=1, max_row=max(posiciones, default=1), max_col=ancho, values_only=True)
+            # ya verificó las coordenadas reales y el ancho exacto de 40 columnas.
+            it = hoja.iter_rows(min_row=1, max_row=max(posiciones, default=1), max_col=len(COLUMNAS), values_only=True)
             nombres = next(it)
             for numero, valores in enumerate(it, 2):
                 if numero not in posiciones:
                     continue
                 raw = dict(zip(nombres, valores))
                 # Evidencia cruda, sin homologar ni asignar titular, parentesco,
-                # domicilio o derechos. Ver ORIGINAL; CUILTIT es None sin columna.
+                # domicilio o derechos. Ver ORIGINAL.
                 original = {k: _json(raw.get(k)) for k in ORIGINAL}
                 try:
                     d = {k: _texto(raw[c]) for k, c in zip(CAMPOS, ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM"))}
