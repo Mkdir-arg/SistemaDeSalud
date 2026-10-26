@@ -10,6 +10,39 @@ Pendientes de OSTEL que no resuelve esta entrega: CUILTIT/correspondencia verifi
 
 Merge, retarget a main, promoción y despliegue siguen fuera de autorización. Un CI aprobado no levanta la espera de #186 ni acredita aceptación humana de reglas de negocio. Los cambios futuros de la base requerirán comprobar el conjunto final antes de incorporarlo.
 
+## Ampliación de CI autorizada el 26/10/2026
+
+El usuario autorizó incorporar al CI los cuatro recorridos reales de importación que hasta entonces sólo se habían ejecutado localmente. Se amplió el job existente `circuito-real` de `.github/workflows/issue43.yml`: reutiliza PostgreSQL 16, Python, Node y Chromium, conserva el nombre del check y su timeout, y ejecuta los cuatro casos después de los recorridos existentes de finanzas. No se creó otro workflow, servicio ni dependencia.
+
+`backend/tests/importacion_real.py` prepara una base nueva `salud_financiadores_test` dentro del PostgreSQL descartable del job; no reutiliza ni elimina bases existentes. Requiere marca explícita `SALUD_IMPORTACION_E2E_AISLADO=1`, desarrollo, URL validada por el guard PostgreSQL existente y directorio propio directamente bajo el temporal del runner. No lee `.env` ni hereda conexiones operativas. Reutiliza el preparador de fixtures y los settings de pruebas de financiadores, sin ampliar sus destinos permitidos.
+
+La configuración Playwright conserva el modo manual. Con la marca de aislamiento, inicia Django en `127.0.0.1:8232` y Vite en `127.0.0.1:5189`, con `reuseExistingServer: false`, y los retira al terminar. No usa los puertos ni la base del escenario de finanzas. El runner genera una clave Django efímera para el proceso, mantiene correo en memoria y RENAPER simulado. Las credenciales de usuarios ficticios quedan sólo en el manifiesto temporal, nunca en logs ni artefactos.
+
+Un paso `always()` elimina el manifiesto aunque falle la preparación o el navegador. La captura de fallos incorpora únicamente las carpetas de resultados de ambos grupos de Playwright; excluye la carpeta de fixtures y su manifiesto. Traces y video permanecen desactivados. El servicio PostgreSQL se retira con el job; el runner no introduce un DROP automático ni operaciones sobre una base operativa.
+
+Validación local de esta ampliación:
+
+- 7 pruebas puras del runner aprobadas: marca/entorno, destino PostgreSQL, sustitución de variables heredadas, rechazo de directorio o base existentes y limpieza limitada/repetible.
+- 141 pruebas PostgreSQL existentes de #43 aprobadas.
+- 2 recorridos existentes de finanzas aprobados.
+- 4 recorridos de importación aprobados con arranque automático de los servidores y PostgreSQL real, en la otra base del mismo contenedor.
+- YAML, conexión del paso al workflow y limpieza incondicional comprobados. Los cuatro puertos quedaron sin servidores al finalizar; se ejecutó la limpieza real y se retiró el contenedor propio con sus volúmenes. No se modificaron API, modelos, migraciones ni reglas de negocio.
+
+El resultado remoto de esta ampliación se registra en el PR para su SHA correspondiente; el verde previo de `3cfe8c8` no se atribuye a los commits nuevos. No se levantó el bloqueo de #186/OSTEL.
+
+Reproducción del runner desde backend, con un PostgreSQL local descartable que permita crear la base y variables de aislamiento preparadas:
+
+```powershell
+python -m unittest tests.test_importacion_real -v
+python tests/importacion_real.py preparar
+# Desde frontend, con las mismas variables:
+npx playwright test -c playwright.importacion-real.config.js
+# Desde backend, ejecutar siempre, incluso ante un fallo:
+python tests/importacion_real.py limpiar
+```
+
+`SALUD_IMPORTACION_DIRECTORIO` debe ser una carpeta nueva cuyo nombre empiece por `salud-importacion182-`, directamente bajo el directorio temporal. `SALUD_IMPORTACION_MANIFEST`, si se define, debe apuntar a su `manifiesto.json`. `SALUD_TEST_POSTGRES_URL` sólo admite la base local dedicada de financiadores; nunca una URL de producción. El workflow configura esas rutas con `RUNNER_TEMP` y conserva la base `salud_issue43` para el escenario anterior.
+
 ## Resultado y alcance
 
 Implementación real en `C:/Users/Juanito/orca/workspaces/SistemaDeSalud/Salud-182-integracion`, rama `juanikitro/Salud-182-integracion`. Sustituye el corte preparatorio anterior; no requiere aplicar un archivo de diferencias ni copiar código manualmente.
@@ -35,7 +68,10 @@ El worktree compartido `Salud-padron-avance-sin-OSTEL` y los archivos de los dem
 | `frontend/src/lib/importacionRespuesta.test.mjs` | 5 controles de combinación/compatibilidad/errores |
 | `frontend/e2e/importacion-real.spec.js` | 4 recorridos navegador → HTTP → PostgreSQL real |
 | `frontend/e2e/fixtures/preparar_importacion_real.py` | Fixtures completamente ficticias, sólo para la DB local dedicada |
-| `frontend/playwright.importacion-real.config.js` | Configuración de navegador local, sin servicios ni seeds automáticos |
+| `frontend/playwright.importacion-real.config.js` | Navegador local y arranque de servidores sólo en modo explícitamente aislado |
+| `backend/tests/importacion_real.py` | Preparación de la base E2E nueva, entorno del servidor y retiro del manifiesto |
+| `backend/tests/test_importacion_real.py` | 7 controles del aislamiento, rechazo de reutilización y limpieza |
+| `.github/workflows/issue43.yml` | Ejecuta los cuatro recorridos de importación reutilizando el job real existente |
 | `.github/workflows/calidad.yml` | Agrega los controles del helper al paso existente de contratos; no crea otro workflow |
 | Este informe | Evidencia, reproducción, límites y estado de integración |
 
