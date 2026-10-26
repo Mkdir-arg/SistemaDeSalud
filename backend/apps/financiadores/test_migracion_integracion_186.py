@@ -20,7 +20,11 @@ class IntegracionMigraciones186Tests(TransactionTestCase):
     def comprobar_desde(self, anterior):
         executor = MigrationExecutor(connection)
         finales = executor.loader.graph.leaf_nodes()
-        self.assertEqual(executor.loader.graph.leaf_nodes("financiadores"), [self.integrada])
+        # Una sola hoja que desciende de la convergencia; migraciones posteriores
+        # (por ejemplo 0015) no reabren la bifurcación.
+        hojas = executor.loader.graph.leaf_nodes("financiadores")
+        self.assertEqual(len(hojas), 1)
+        self.assertIn(self.integrada, executor.loader.graph.forwards_plan(hojas[0]))
         try:
             executor.migrate([self.comun])
             executor = MigrationExecutor(connection)
