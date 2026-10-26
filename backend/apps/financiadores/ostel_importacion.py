@@ -26,13 +26,11 @@ from .importacion_cobertura import revisar_cobertura, validar_opcion
 
 VERSION = 3
 CAMPOS = ("numero_interno", "numero", "documento", "cuil", "nombre")
-# Columnas conservadas en `original` de cada fila. CODPAR y CUILTIT son la
-# evidencia familiar para #181; FEC_NAC sustenta los vencimientos por edad del
-# diccionario de parentescos. El domicilio se guarda crudo: OSTEL no informó
-# todavía el estándar de CODPROV/CODLOCA, así que no se homologa a Georef.
-ORIGINAL = ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM", "FECING", "FECBAJ", "FECVTO",
-            "TIPODOC", "TIPO", "MOTIVO", "COD_PLAN", "NROREF", "CODEMP", "ESTADO", "CODPAR",
-            "CUILTIT", "FEC_NAC", "CODPOS", "DESLOCA", "CODPROV", "CODZON", "CODLOCA")
+# `original` conserva las 40 columnas del archivo, sin homologar: es la
+# evidencia completa de cada fila. Las familias NO se arman aquí: #181 las
+# construirá a partir de CUILTIT y CODPAR. NROREF y NROAFI siguen sin
+# significado confirmado por OSTEL; CODLOCA no se homologa.
+ORIGINAL = COLUMNAS
 
 
 def _texto(valor):
@@ -166,8 +164,8 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
                 if numero not in posiciones:
                     continue
                 raw = dict(zip(nombres, valores))
-                # Evidencia cruda, sin homologar ni asignar titular, parentesco,
-                # domicilio o derechos. Ver ORIGINAL.
+                # Evidencia cruda de las 40 columnas, sin asignar titular,
+                # parentesco ni derechos. Ver ORIGINAL.
                 original = {k: _json(raw.get(k)) for k in ORIGINAL}
                 try:
                     d = {k: _texto(raw[c]) for k, c in zip(CAMPOS, ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM"))}

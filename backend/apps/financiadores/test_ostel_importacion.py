@@ -211,7 +211,11 @@ class ImportacionAdministrativaTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["resumen"]["valida"], 2)
         originales = [fila["original"] for fila in r.data["filas"]]
-        self.assertEqual(set(originales[0]), set(ORIGINAL))
+        from .ostel_prevalidacion import COLUMNAS
+        self.assertEqual(ORIGINAL, COLUMNAS)
+        self.assertEqual(list(originales[0]), list(COLUMNAS))
+        self.assertEqual(originales[0]["EMAIL1"], "ostel-1@example.invalid")
+        self.assertEqual(originales[0]["A_CALLE"], "CALLE FICTICIA")
         self.assertEqual([o["CUILTIT"] for o in originales], [cuiltit, cuiltit])
         self.assertEqual([o["CODPAR"] for o in originales], ["AAA", "H01"])
         self.assertEqual((originales[0]["CODPROV"], originales[0]["CODLOCA"], originales[0]["CODZON"]),
