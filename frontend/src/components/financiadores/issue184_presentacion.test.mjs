@@ -54,3 +54,17 @@ test("issue184: cambios de filtro conservan columnas y consulta reproducible de 
   assert.equal(consulta.has("historial_page"), false);
   assert.equal(origen.get("page"), "3");
 });
+
+
+test("issue184: tabla y ficha comparten precedencia sin deducir fechas", () => {
+  for (const [fila, esperado] of [
+    [{ estado: "vigente" }, "Vigente"],
+    [{ estado: "futura" }, "Aún no vigente"],
+    [{ estado: "finalizada", cobertura_habilitada: false }, "Finalizada"],
+    [{ estado: "vigente", cobertura_habilitada: false }, "Sólo administrativa"],
+    [{ estado: "futura", vigente: true }, "Vigente"],
+    [{ estado: "vigente", vigente: false }, "Aún no vigente"],
+    [{ estado: "vigente", vigente: "false" }, "Sin informar"],
+    [{ estado: "constructor", desde: "2020-01-01" }, "Sin informar"],
+  ]) assert.equal(valorColumnaPadron(fila, columna("derecho")), esperado);
+});

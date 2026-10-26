@@ -66,11 +66,21 @@ export function parametrosConsultaPadron(parametros) {
   return consulta;
 }
 
+// Listado y ficha usan el mismo derecho; la ficha histórica entrega `estado`
+// en lugar de `vigente`. No se deducen derechos a partir de fechas o códigos.
+export function derechoAfiliacionPadron(fila) {
+  if (fila.finalizado_en || fila.estado === "finalizada") return "finalizadas";
+  if (fila.cobertura_habilitada === false) return "administrativas";
+  if (fila.vigente === true) return "vigentes";
+  if (fila.vigente === false) return "futuras";
+  if (fila.vigente == null && fila.estado === "vigente") return "vigentes";
+  if (fila.vigente == null && fila.estado === "futura") return "futuras";
+  return null;
+}
+
 export function valorColumnaPadron(fila, columna, planes = []) {
   let valor = fila[columna.key];
-  // Compatible con #186 sin exigir su catálogo antes de integrar ese PR.
-  if (columna.key === "derecho" && !fila.finalizado_en && fila.cobertura_habilitada === false) return "Sólo administrativa";
-  if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.vigente === false ? "futuras" : fila.vigente === true ? "vigentes" : null;
+  if (columna.key === "derecho") valor = derechoAfiliacionPadron(fila);
   if (columna.key === "plan") return fila.plan == null ? "Sin plan" : planes.find((p) => String(p.id) === String(fila.plan))?.nombre || `Plan ${fila.plan}`;
   if (valor == null || valor === "") return "Sin informar";
   if (columna.options) return Object.hasOwn(columna.options, valor) ? columna.options[valor] : String(valor);
