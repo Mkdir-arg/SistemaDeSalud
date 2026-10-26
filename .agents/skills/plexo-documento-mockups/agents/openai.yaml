@@ -1,0 +1,4 @@
+interface:
+  display_name: "PLEXO · Flujos y mockups"
+  short_description: "Documentos HTML para explicar procesos y avances"
+  default_prompt: "Usá $plexo-documento-mockups para documentar el trabajo indicado con flujos, pantallas y notas funcionales de PLEXO."
