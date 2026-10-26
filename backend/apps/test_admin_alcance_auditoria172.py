@@ -29,6 +29,7 @@ SIN_INSTITUCION = {
     "auth.group": "Grupos de permisos de Django: son globales, no institucionales.",
     "portal.cuentapaciente": "La cuenta del portal es del paciente, no de una institución (decisión pendiente).",
     "portal.eventoportal": "Eventos de la cuenta del portal: misma situación que la cuenta.",
+    "financiadores.codigofinanciador": "Diccionario de un financiador, no de una institución: sólo superusuario.",
 }
 
 
