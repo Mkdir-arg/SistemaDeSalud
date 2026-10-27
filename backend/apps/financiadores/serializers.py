@@ -216,7 +216,7 @@ class ImportacionCambiosSerializer(ImportacionSerializer):
     filas_cambiadas = serializers.JSONField(read_only=True)
 
     class Meta(ImportacionSerializer.Meta):
-        fields = ["id", "tipo", "version", "estado", "resumen", "creado",
+        fields = ["id", "tipo", "version", "estado", "resumen", "creado", "columnas",
                   "modo_respuesta", "huella_lote", "base_huella", "filas_cambiadas"]
 
 

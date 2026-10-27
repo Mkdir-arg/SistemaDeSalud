@@ -34,7 +34,7 @@ async function cargar(page, caso) {
   await acceso(page);
   await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles(caso.archivo);
   await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
-  await expect(page.getByRole("button", { name: `Aplicar ${caso.validas} filas válidas`, exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: `Importar ${caso.validas} filas válidas`, exact: true })).toBeEnabled();
 }
 
 async function headers(request) {
@@ -68,17 +68,17 @@ test("UI real aplica varias tandas, conserva conflicto y persiste respuesta acot
     await route.fulfill({ response: respuesta });
   });
   await cargar(page, caso);
-  await page.getByRole("button", { name: `Aplicar ${caso.validas} filas válidas`, exact: true }).click();
-  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
+  await page.getByRole("button", { name: `Importar ${caso.validas} filas válidas`, exact: true }).click();
+  await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
   expect(respuestas.map((r) => r.modo_respuesta)).toEqual(["completa", "cambios", "cambios"]);
   expect(respuestas[1].filas).toBeUndefined();
   expect(respuestas[1].filas_cambiadas).toHaveLength(100);
   expect(respuestas[2].filas_cambiadas).toHaveLength(5);
   await expect(page.getByRole("button", { name: "Revisar fila", exact: true })).toHaveCount(1);
-  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("aplicada");
+  await page.getByRole("tab", { name: /^Aplicadas/ }).click();
   await expect(page.getByRole("button", { name: "Ver detalle", exact: true })).toHaveCount(20);
   await page.getByRole("button", { name: "Ver detalle", exact: true }).first().click();
-  await page.getByText("Ver valores originales del archivo", { exact: true }).click();
+  await page.getByText("Valores originales del archivo", { exact: true }).click();
   await expect(page.getByText(`${caso.prefijo}-1`, { exact: true }).first()).toBeVisible();
   const h = await headers(request);
   const lote = await persistido(request, respuestas[0].id, h);
@@ -100,13 +100,13 @@ test("respuesta perdida después del commit se recupera con reintento explícito
     else await route.fulfill({ response: respuesta });
   });
   await cargar(page, caso);
-  await page.getByRole("button", { name: "Aplicar 205 filas válidas", exact: true }).click();
+  await page.getByRole("button", { name: "Importar 205 filas válidas", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "La tanda puede haberse guardado" })).toBeVisible({ timeout: 60000 });
   expect(pedidos).toHaveLength(2);
   const h = await headers(request);
   expect((await persistido(request, respuestas[0].id, h)).resumen.aplicada).toBe(200);
-  await page.getByRole("button", { name: "Aplicar 105 filas válidas", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
+  await page.getByRole("button", { name: "Importar 105 filas válidas", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
   expect(pedidos).toHaveLength(3);
   expect(pedidos[2].huella_lote).toBeUndefined();
   expect(respuestas[2].modo_respuesta).toBe("completa");
@@ -132,10 +132,10 @@ test("otra sesión excluye una fila y el cliente recupera la evidencia actual", 
     await route.fulfill({ response: respuesta });
   });
   await cargar(page, caso);
-  await page.getByRole("button", { name: "Aplicar 101 filas válidas", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
+  await page.getByRole("button", { name: "Importar 101 filas válidas", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
   expect(respuestas.map((r) => r.modo_respuesta)).toEqual(["completa", "completa"]);
-  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("omitida");
+  await page.getByRole("tab", { name: /^Excluidas/ }).click();
   await expect(page.getByRole("button", { name: "Ver detalle", exact: true })).toHaveCount(1);
   const lote = await persistido(request, respuestas[0].id, h);
   expect(lote.resumen.aplicada).toBe(100);
@@ -153,8 +153,8 @@ test("frontend acepta confirmaciones tradicionales completas de API real", async
     await route.fulfill({ response: respuesta });
   });
   await cargar(page, caso);
-  await page.getByRole("button", { name: "Aplicar 101 filas válidas", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
+  await page.getByRole("button", { name: "Importar 101 filas válidas", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled({ timeout: 60000 });
   expect(respuestas).toHaveLength(2);
   expect(respuestas.every((r) => Array.isArray(r.filas) && !r.modo_respuesta)).toBe(true);
   await comprobarPadron(request, caso, 101, await headers(request));

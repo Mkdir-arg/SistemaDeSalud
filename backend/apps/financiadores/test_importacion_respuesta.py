@@ -27,8 +27,9 @@ class DatosRespuesta:
         self.client.force_authenticate(self.usuario)
         self.url = f"/api/financiadores/{self.org.pk}/confirmar-importacion/"
 
-    def preview(self, cantidad=1):
-        filas = tuple(_persona(n, NUMERO=f"RESP-{n:05d}") for n in range(1, cantidad + 1))
+    def preview(self, cantidad=1, cambios=None):
+        filas = tuple(_persona(n, NUMERO=f"RESP-{n:05d}", **(cambios or {}).get(n, {}))
+                      for n in range(1, cantidad + 1))
         return ostel_importacion.previsualizar(financiador=self.org, usuario=self.usuario,
             archivo=BytesIO(generar_xlsx(Lote("respuesta-ficticia", filas))), clave=uuid4(),
             cobertura_habilitada=False)
@@ -65,7 +66,7 @@ class RespuestaImportacionTests(DatosRespuesta, TestCase):
         lote = self.preview()
         respuesta = self.confirmar(lote)
         self.assertEqual(respuesta.status_code, 200, respuesta.data)
-        self.assertEqual(set(respuesta.data), {"id", "tipo", "version", "estado", "resumen", "filas", "creado"})
+        self.assertEqual(set(respuesta.data), {"id", "tipo", "version", "estado", "resumen", "filas", "creado", "columnas"})
         historial = HistorialAfiliacion.objects.count()
         self.confirmar(lote)
         self.assertEqual(Afiliado.objects.count(), 1)
@@ -101,6 +102,35 @@ class RespuestaImportacionTests(DatosRespuesta, TestCase):
         self.assertTrue(all(f["estado"] == "aplicada" for f in recuperada.data["filas"]))
         self.assertEqual(Afiliado.objects.count(), 101)
         self.assertEqual(HistorialAfiliacion.objects.count(), historial)
+
+    def test_cambios_conservan_columnas_errores_advertencias_y_exclusion(self):
+        from datetime import date
+        from .serializers import ImportacionSerializer
+
+        lote = self.preview(104, cambios={102: {"EMAIL1": "correo-invalido"},
+            103: {"CUIL": "123"}, 104: {"FECBAJ": date(2020, 1, 1)}})
+        fila = lote.filas[100]
+        ostel_importacion.subsanar(importacion=lote, usuario=self.usuario, fila=fila["fila"],
+            revision=fila["revision"], datos=fila["datos"], motivo="Exclusión ficticia verificada", accion="omitir")
+        primera = self.confirmar(lote, modo_respuesta="cambios").data
+        segunda = self.confirmar(lote, modo_respuesta="cambios", huella_lote=primera["huella_lote"]).data
+        self.assertEqual(segunda["modo_respuesta"], "cambios")
+        self.assertEqual(segunda["columnas"], primera["columnas"])
+        self.assertEqual(len(segunda["columnas"]), 40)
+        self.assertEqual([f["fila"] for f in segunda["filas_cambiadas"]], [102])
+        advertida = segunda["filas_cambiadas"][0]
+        self.assertIn("email", advertida["advertidos"])
+        self.assertTrue(advertida["advertencias"])
+        self.assertEqual(advertida["original"]["EMAIL1"], "correo-invalido")
+        self.assertEqual(len(advertida["original"]), 40)
+        self.assertEqual(primera["filas"][100]["estado"], "omitida")
+        self.assertIn("CUIL", primera["filas"][102]["columnas_error"])
+        self.assertIn("FECBAJ", primera["filas"][103]["columnas_bloqueo"])
+        cambiadas = {f["fila"]: f for f in segunda["filas_cambiadas"]}
+        reconstruido = {**segunda, "filas": [cambiadas.get(f["fila"], f) for f in primera["filas"]]}
+        lote.refresh_from_db()
+        esperado = ImportacionSerializer(lote).data
+        self.assertEqual({k: reconstruido[k] for k in esperado}, esperado)
 
     def test_subsanacion_ajena_invalida_base_y_preserva_motivo_y_original(self):
         lote = self.preview(101)
