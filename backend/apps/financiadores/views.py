@@ -821,6 +821,22 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         response["Cache-Control"] = "private, no-store"
         return response
 
+    @action(detail=True, methods=["post"], url_path="subsanar-importacion")
+    def subsanar_importacion(self, request, pk=None):
+        from .importaciones import subsanar_importacion
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)),
+            "fila": serializers.IntegerField(min_value=1), "revision": serializers.IntegerField(min_value=1),
+            "valores": serializers.ListField(child=serializers.CharField(max_length=300, allow_blank=True), required=False),
+            "motivo": serializers.CharField(max_length=255),
+            "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+        })
+        lote = subsanar_importacion(usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
     @action(detail=True, methods=["post"], url_path="confirmar-importacion")
     def confirmar_importacion(self, request, pk=None):
         org = self.organizacion(escritura=True)

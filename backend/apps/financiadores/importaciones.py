@@ -27,7 +27,7 @@ from apps.registros.models import normalizar_documento
 from apps.simulacion.contexto import autor_real
 from .models import Afiliado, Financiador, Importacion, Plan
 from .permisos import requerir_financiador
-from .services import catalogo_financiador, registrar_afiliado, registrar_consumo_externo, validar_consumo_externo
+from .services import auditar, catalogo_financiador, registrar_afiliado, registrar_consumo_externo, validar_consumo_externo
 from .importacion_cobertura import es_conflicto_cobertura, revisar_cobertura, validar_opcion
 from . import padron
 
@@ -38,7 +38,7 @@ ENCABEZADOS = {
 }
 VERSION = 1
 SALT = "financiadores.plantilla.v1"
-ESTADOS_FILA = ("valida", "rechazada", "revision", "aplicada", "error_tecnico")
+ESTADOS_FILA = ("valida", "rechazada", "revision", "aplicada", "error_tecnico", "omitida")
 CAMPOS_V2 = tuple("titular_documento" if c == "titular" else c for c in padron.CAMPOS_GENERALES
                   if c not in ("solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja", "cobertura_habilitada"))
 
@@ -449,36 +449,8 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave, cob
             except ValidationError as exc:
                 _rechazar(fila, exc)
             filas.append(fila)
-        referencias = _referencias(financiador, tipo, [f["datos"] for f in filas if f["estado"] == "valida"])
-        vistos = set()
-        for fila in filas:
-            if monotonic() - inicio > limite["segundos"]:
-                raise ValidationError("La lectura excedió el tiempo permitido; divida la planilla.")
-            if fila["estado"] != "valida":
-                continue
-            try:
-                if version == 2:
-                    documento = fila["datos"]["documento"]
-                    if documento in vistos:
-                        raise _error("Documento repetido dentro del lote; dejá una única fila por identidad.", "Documento")
-                    anterior = referencias["afiliados"].get(documento)
-                    fila["datos"]["_revision"] = anterior.revision if anterior else 0
-                _validar_datos(fila["datos"], tipo, financiador, referencias)
-                if tipo == "padron":
-                    revisar_cobertura(fila, referencias["afiliados"].get(fila["datos"]["documento"]), cobertura_habilitada)
-                if version == 2:
-                    vistos.add(documento)
-                    previo = referencias["afiliados"].get(documento)
-                    futuro = copy(previo) if previo else Afiliado(financiador=financiador, documento=documento, pk=-fila["fila"])
-                    if fila["datos"].get("titular_documento"):
-                        futuro.titular_id = referencias["afiliados"][fila["datos"]["titular_documento"]].pk
-                    if "cuil" in fila["datos"]:
-                        futuro.cuil = fila["datos"]["cuil"]
-                    referencias["afiliados"][documento] = futuro
-                    if futuro.cuil:
-                        referencias["cuil_lote"][futuro.cuil] = documento
-            except ValidationError as exc:
-                _rechazar(fila, exc)
+        _validar_lote(filas, financiador, tipo, version, cobertura_habilitada,
+                      lambda: monotonic() - inicio > limite["segundos"])
     finally:
         libro.close()
     if not filas:
@@ -486,6 +458,100 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave, cob
     lote, creado = Importacion.objects.get_or_create(financiador=financiador, clave=clave, defaults={"tipo": tipo, "version": version, "huella": huella, "filas": filas, "estado": "preview", "resumen": _resumen(filas, {"cobertura_habilitada": cobertura_habilitada}), "creado_por": usuario})
     if not creado and (lote.huella != huella or lote.tipo != tipo):
         raise ValidationError("La clave ya pertenece a otra importación.")
+    return lote
+
+
+def _validar_lote(filas, financiador, tipo, version, cobertura_habilitada, vencido=lambda: False):
+    """Valida contra el padrón y entre filas (documento repetido, CUIL, titular)
+    las filas en estado `valida`, en orden: una fila válida anterior cuenta como
+    referencia de las siguientes."""
+    referencias = _referencias(financiador, tipo, [f["datos"] for f in filas if f["estado"] == "valida"])
+    vistos = set()
+    for fila in filas:
+        if vencido():
+            raise ValidationError("La lectura excedió el tiempo permitido; divida la planilla.")
+        if fila["estado"] != "valida":
+            continue
+        try:
+            if version == 2:
+                documento = fila["datos"]["documento"]
+                if documento in vistos:
+                    raise _error("Documento repetido dentro del lote; dejá una única fila por identidad.", "Documento")
+                anterior = referencias["afiliados"].get(documento)
+                fila["datos"]["_revision"] = anterior.revision if anterior else 0
+            _validar_datos(fila["datos"], tipo, financiador, referencias)
+            if tipo == "padron":
+                revisar_cobertura(fila, referencias["afiliados"].get(fila["datos"]["documento"]), cobertura_habilitada)
+            if version == 2:
+                vistos.add(documento)
+                previo = referencias["afiliados"].get(documento)
+                futuro = copy(previo) if previo else Afiliado(financiador=financiador, documento=documento, pk=-fila["fila"])
+                if fila["datos"].get("titular_documento"):
+                    futuro.titular_id = referencias["afiliados"][fila["datos"]["titular_documento"]].pk
+                if "cuil" in fila["datos"]:
+                    futuro.cuil = fila["datos"]["cuil"]
+                referencias["afiliados"][documento] = futuro
+                if futuro.cuil:
+                    referencias["cuil_lote"][futuro.cuil] = documento
+        except ValidationError as exc:
+            _rechazar(fila, exc)
+
+
+@transaction.atomic
+def subsanar_importacion(*, importacion, usuario, fila, revision, motivo, valores=None, accion="corregir"):
+    """Corrige o excluye una fila de la plantilla del sistema y revalida el lote.
+
+    Sólo la fila corregida se vuelve a leer, desde los valores que escribió una
+    persona; las demás conservan su lectura del archivo (un número que perdió
+    sus ceros sigue rechazado). Las validaciones entre filas corren de nuevo
+    para todas las que pasaron la lectura.
+    """
+    requerir_financiador(usuario, importacion.financiador_id, escritura=True)
+    lote = Importacion.objects.select_for_update().select_related("financiador").get(pk=importacion.pk)
+    if lote.version not in (1, 2):
+        raise ValidationError("El lote no admite esta corrección.")
+    columnas = encabezados(lote.tipo, lote.version)
+    actual = next((f for f in lote.filas if f["fila"] == fila), None)
+    if not actual or actual["estado"] in ("aplicada", "omitida") or actual.get("revision", 1) != revision:
+        raise ValidationError("La fila cambió o ya fue aplicada. Recargá el lote.")
+    if accion not in ("corregir", "omitir"):
+        raise ValidationError("Acción no admitida.")
+    motivo = (motivo or "").strip()
+    if not motivo or len(motivo) > 255:
+        raise ValidationError("Indicá el motivo de la revisión, de hasta 255 caracteres.")
+    if accion == "corregir" and (not isinstance(valores, list) or len(valores) != len(columnas)
+                                 or any(not isinstance(v, str) or len(v) > 300 for v in valores)):
+        raise ValidationError("Completá los valores de la fila con texto de hasta 300 caracteres.")
+    correcciones = actual.setdefault("correcciones", [])
+    if accion == "corregir" and len(correcciones) >= 50:
+        raise ValidationError("Se alcanzó el límite de revisiones de esta fila; excluila y prepará un nuevo lote corregido.")
+    anterior = list(actual.get("original") or [])
+    nuevos = [v.strip() for v in valores] if accion == "corregir" else anterior
+    correcciones.append({"anterior": anterior, "nuevo": nuevos, "accion": accion, "motivo": motivo,
+                         "usuario": usuario.pk, "fecha": timezone.now().isoformat()})
+    actual["revision"] = actual.get("revision", 1) + 1
+    if accion == "omitir":
+        actual.update(estado="omitida", errores=[], columnas_error=[])
+    else:
+        actual["original"] = nuevos
+        try:
+            actual["datos"] = _normalizar(nuevos, lote.tipo, lote.version)
+            if lote.version == 2:
+                actual["datos"]["_version"] = 2
+            actual.update(estado="valida", errores=[], columnas_error=[])
+        except ValidationError as exc:
+            actual["datos"] = {}
+            _rechazar(actual, exc)
+    # Las que pasaron la lectura vuelven a validarse; una corrección puede
+    # resolver (o crear) un repetido en otra fila.
+    for otra in lote.filas:
+        if otra["datos"] and otra["estado"] in ("valida", "rechazada", "revision"):
+            otra.update(estado="valida", errores=[], columnas_error=[])
+    _validar_lote(lote.filas, lote.financiador, lote.tipo, lote.version, lote.resumen.get("cobertura_habilitada"))
+    lote.resumen = _resumen(lote.filas, lote.resumen)
+    lote.estado = "preview" if any(f["estado"] in ("valida", "revision", "error_tecnico") for f in lote.filas) else "aplicada"
+    lote.save(update_fields=["filas", "resumen", "estado"])
+    auditar(usuario, "subsanar_importacion", lote.pk, financiador=lote.financiador)
     return lote
 
 

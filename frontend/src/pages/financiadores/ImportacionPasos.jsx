@@ -59,3 +59,24 @@ export function BotonArchivoAnotado({ organizacion, archivo, importacion, deshab
     <Ayuda>Es tu mismo archivo con un comentario en cada celda con error (y en amarillo, las advertencias). Corregilo y volvé a revisarlo.</Ayuda>
   </div>;
 }
+
+// Tabla paginada de filas del lote, igual en todos los formatos. Quien la usa
+// le pasa un `key` que cambia con el lote y la pestaña para volver a la página 1.
+export function TablaFilas({ filas, persona, detalle, accion, porPagina = 20 }) {
+  const [pagina, setPagina] = useState(0);
+  const ultima = Math.max(0, Math.ceil(filas.length / porPagina) - 1);
+  const visible = Math.min(pagina, ultima);
+  if (filas.length === 0) return <p role="status">No hay filas en esta categoría.</p>;
+  return <>
+    <div className="overflow-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Registros del lote</caption>
+      <thead><tr>{["Origen", "Persona", "Estado y observaciones", "Acción"].map((t) => <th key={t} scope="col" className="p-2">{t}</th>)}</tr></thead>
+      <tbody>{filas.slice(visible * porPagina, (visible + 1) * porPagina).map((f) => <tr key={f.fila} className="border-t border-division align-top">
+        <td className="whitespace-nowrap p-2">{f.hoja || "Carga"} · fila {f.fila_excel ?? f.fila}</td>
+        <td className="p-2">{persona(f)}</td>
+        <td className="p-2">{detalle(f)}</td>
+        <td className="p-2">{accion(f)}</td>
+      </tr>)}</tbody>
+    </table></div>
+    {filas.length > porPagina && <div className="flex items-center justify-between"><Button variant="ghost" disabled={visible === 0} onClick={() => setPagina(visible - 1)}>Anterior</Button><span>Página {visible + 1} de {ultima + 1}</span><Button variant="ghost" disabled={visible === ultima} onClick={() => setPagina(visible + 1)}>Siguiente</Button></div>}
+  </>;
+}

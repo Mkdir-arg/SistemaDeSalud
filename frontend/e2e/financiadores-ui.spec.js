@@ -515,8 +515,37 @@ test("importación recuperable permite revisar duplicados con motivo individual"
   await expect(page.getByRole("button", { name: "Importar 0 filas válidas" })).toBeDisabled();
   await page.getByLabel("Motivo de revisión de fila 2").fill("Verificado: fueron dos prestaciones distintas.");
   await page.getByRole("button", { name: "Importar filas válidas y revisadas" }).click();
-  await expect(page.getByRole("status")).toContainText("Se aplicó 1 fila");
+  await expect(page.getByRole("status").filter({ hasText: "Se aplicó 1 fila" })).toBeVisible();
   expect(body.revisiones_duplicados).toEqual({ 2: "Verificado: fueron dos prestaciones distintas." });
+});
+
+test("plantilla del sistema revisa una fila rechazada en su diálogo", async ({ page }) => {
+  await escenario(page);
+  const columnas = ["N.º de afiliado", "Documento", "Nombre y apellido", "Plan", "Vigente desde"];
+  let lote = { id: 9, tipo: "padron", version: 1, estado: "preview", columnas, resumen: { total: 1, valida: 0, rechazada: 1, aplicada: 0, revision: 0, error_tecnico: 0, omitida: 0 },
+    filas: [{ fila: 2, estado: "rechazada", errores: ["El plan no pertenece al financiador o no está activo."], columnas_error: ["Plan"], datos: {}, original: ["000123", "00123456", "PERSONA FICTICIA", "NOEXISTE", "2020-01-01"] }] };
+  let body;
+  await page.route("**/api/financiadores/21/importaciones/**", (route) => route.fulfill({ json: route.request().method() === "POST" ? lote : lista([lote]) }));
+  await page.route("**/api/financiadores/21/subsanar-importacion/", (route) => {
+    body = route.request().postDataJSON();
+    lote = { ...lote, resumen: { ...lote.resumen, valida: 1, rechazada: 0 }, filas: [{ ...lote.filas[0], estado: "valida", errores: [], columnas_error: [], revision: 2, original: body.valores }] };
+    return route.fulfill({ json: lote });
+  });
+  await page.goto("/financiadores/padron?financiador=21");
+  await page.getByRole("button", { name: "Importar Excel", exact: true }).click();
+  await page.getByLabel("Formato del archivo", { exact: true }).selectOption("sistema");
+  await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "padron.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
+  await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
+  await expect(page.getByRole("tab", { name: /^A revisar/ })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
+  const revision = page.getByRole("region", { name: "Subsanar fila", exact: true });
+  await expect(revision.getByText("Revisá este valor.")).toHaveCount(1);
+  await revision.getByRole("textbox", { name: "Plan", exact: true }).fill("");
+  await revision.getByLabel("Motivo de la revisión", { exact: true }).fill("Sin plan, verificado");
+  await page.getByRole("button", { name: "Guardar y revalidar", exact: true }).click();
+  await expect(revision).toHaveCount(0);
+  expect(body).toEqual({ importacion: 9, fila: 2, revision: 1, motivo: "Sin plan, verificado", accion: "corregir", valores: ["000123", "00123456", "PERSONA FICTICIA", "", "2020-01-01"] });
+  await expect(page.getByRole("button", { name: "Importar 1 fila válida", exact: true })).toBeEnabled();
 });
 
 test("portal se adapta a móvil y conserva contexto del financiador", async ({ page }, testInfo) => {

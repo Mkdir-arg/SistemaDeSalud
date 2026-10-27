@@ -3,7 +3,7 @@ import { api } from "@/api/client";
 import { errorFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { Ayuda, Button } from "@/components/ui";
 import { plural } from "@/lib/format";
-import { BotonArchivoAnotado, PasoPreparar, PasoRevisar, PestanasFilas, pestanaInicial } from "./ImportacionPasos";
+import { BotonArchivoAnotado, PasoPreparar, PasoRevisar, PestanasFilas, TablaFilas, pestanaInicial } from "./ImportacionPasos";
 import RevisionFilaOstel, { fichaInicial } from "./RevisionFilaOstel";
 
 const ESTADOS = { valida: "Lista para importar", revision: "Requiere revisión", aplicada: "Aplicada", omitida: "Excluida" };
@@ -21,14 +21,13 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
   const [edicion, setEdicion] = useState(null);
-  const [pagina, setPagina] = useState(0);
   const [filtro, setFiltro] = useState(() => pestanaInicial(PESTANAS, lote?.filas || []));
   const clave = useRef(crypto.randomUUID());
   useEffect(() => { clave.current = crypto.randomUUID(); }, [coberturaHabilitada]);
   const activo = useRef(true);
   useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
   useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion, cierre: ocupado || !!edicion }); }, [ocupado, edicion, onBloqueosChange]);
-  useEffect(() => { setEdicion(null); setPagina(0); setError(null); setFiltro(pestanaInicial(PESTANAS, lote?.filas || [])); }, [lote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setEdicion(null); setError(null); setFiltro(pestanaInicial(PESTANAS, lote?.filas || [])); }, [lote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const ruta = (recurso) => rutaFinanciador(organizacion.id, recurso);
 
   async function ejecutar(accion) {
@@ -79,8 +78,6 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
     });
   }
   const filas = (lote?.filas || []).filter(PESTANAS.find((p) => p.key === filtro).incluye);
-  const ultima = Math.max(0, Math.ceil(filas.length / 20) - 1);
-  const visible = Math.min(pagina, ultima);
   return <div className="space-y-5">
     {!soloDetalle && <>
       <PasoPreparar deshabilitado={ocupado} ayuda={<>{formato.descripcion} Las ausencias no generan bajas. Los archivos de bajas sólo se conservan como evidencia para revisión.</>}
@@ -97,9 +94,11 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
       <h3 className="font-semibold">3. Confirmá las filas válidas</h3>
       <div className="flex items-center gap-2"><Button disabled={ocupado || !lote.resumen.valida || !!edicion} onClick={confirmar}>{ocupado ? "Importando…" : `Importar ${plural(lote.resumen.valida || 0, "fila válida", "filas válidas")}`}</Button><Ayuda>Las pendientes no bloquean las válidas. Cada fila se revalida al importar; las ya aplicadas no se repiten.</Ayuda></div>
       {!soloDetalle && archivo && (lote.resumen.revision > 0 || lote.resumen.advertencias > 0) && <BotonArchivoAnotado organizacion={organizacion} archivo={archivo} importacion={lote.id} deshabilitado={ocupado || !!edicion} onError={(e) => setError(e && errorFinanciador(e))} />}
-      <PestanasFilas pestanas={PESTANAS} filas={lote.filas} valor={filtro} onChange={(valor) => { setFiltro(valor); setPagina(0); }} />
-      {filas.length === 0 ? <p role="status">No hay filas en esta categoría.</p> : <div className="overflow-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Registros del lote</caption><thead><tr>{["Origen", "Persona", "Estado y observaciones", "Acción"].map((t) => <th key={t} scope="col" className="p-2">{t}</th>)}</tr></thead><tbody>{filas.slice(visible * 20, visible * 20 + 20).map((f) => <tr key={f.fila} className="border-t border-division"><td className="p-2">{f.hoja} · fila {f.fila_excel}</td><td className="p-2">{f.datos.nombre || "Sin nombre"}<br /><span className="text-texto-debil">CUIL {f.datos.cuil || "sin informar"} · interno {f.datos.numero_interno || "sin informar"}</span></td><td className="p-2">{ESTADOS[f.estado]}<p>{f.errores.join(" ")}</p>{f.advertencias?.length ? <p className="text-texto-debil">Advertencias: {f.advertencias.join(" ")}</p> : null}</td><td className="p-2">{<Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>}</td></tr>)}</tbody></table></div>}
-      {filas.length > 20 && <div className="flex items-center justify-between"><Button variant="ghost" disabled={visible === 0} onClick={() => setPagina(visible - 1)}>Anterior</Button><span>Página {visible + 1} de {ultima + 1}</span><Button variant="ghost" disabled={visible === ultima} onClick={() => setPagina(visible + 1)}>Siguiente</Button></div>}
+      <PestanasFilas pestanas={PESTANAS} filas={lote.filas} valor={filtro} onChange={setFiltro} />
+      <TablaFilas key={`${lote.id}:${filtro}`} filas={filas}
+        persona={(f) => <>{f.datos.nombre || "Sin nombre"}<br /><span className="text-texto-debil">CUIL {f.datos.cuil || "sin informar"} · interno {f.datos.numero_interno || "sin informar"}</span></>}
+        detalle={(f) => <>{ESTADOS[f.estado]}<p>{f.errores.join(" ")}</p>{f.advertencias?.length ? <p className="text-texto-debil">Advertencias: {f.advertencias.join(" ")}</p> : null}</>}
+        accion={(f) => <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>} />
       {edicion && <RevisionFilaOstel edicion={edicion} setEdicion={setEdicion} ocupado={ocupado} error={error}
         onGuardar={guardar} onCerrar={() => { setEdicion(null); setError(null); }} />}
     </section>}
