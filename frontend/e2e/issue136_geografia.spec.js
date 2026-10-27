@@ -33,7 +33,7 @@ async function elegir(page, nivel, nombre) {
 test("un campo por nivel permite elegir con teclado sin enviar el formulario", async ({ page }) => {
   await preparar(page);
   await expect(page.getByRole("combobox")).toHaveCount(3);
-  await expect(page.getByRole("combobox", { name: "Localidad", exact: true })).toBeDisabled();
+  await expect(page.getByText("Primero elegí provincia y partido o departamento.", { exact: true })).toBeVisible();
   for (const [nivel, nombre] of [["Provincia", "Provincia A"], ["Partido / Departamento / Comuna", "Departamento A"], ["Localidad", "Localidad A"]]) {
     const campo = page.getByRole("combobox", { name: nivel, exact: true });
     await campo.focus();
@@ -142,17 +142,57 @@ test("pagina resultados y vuelve a la primera página al reabrir", async ({ page
   await expect(page.getByRole("button", { name: "Anteriores", exact: true })).toHaveCount(0);
 });
 
-test("una búsqueda inexistente se conserva al optar por carga manual", async ({ page }) => {
+test("una búsqueda inexistente se conserva al optar por carga manual", async ({ page }, testInfo) => {
   await preparar(page);
   const campo = page.getByRole("combobox", { name: "Provincia", exact: true });
+  await campo.click();
+  await expect(page.getByRole("option", { name: "Provincia A", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Cargar manualmente", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cargar manualmente", exact: true })).toHaveCount(0);
   await campo.fill("Ausente");
   await expect(page.getByText("No hay coincidencias.", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Cargar manualmente", exact: true }).first().click();
+  await expect(page.getByRole("listbox", { name: "Provincia", exact: true }).getByRole("option", { name: "Cargar manualmente", exact: true })).toBeVisible();
+  await page.getByLabel("Ubicación territorial", { exact: true }).screenshot({ path: testInfo.outputPath("manual-en-desplegable.png") });
+  await campo.press("ArrowDown");
+  await campo.press("Enter");
   await expect(page.getByRole("textbox", { name: "Provincia · carga manual", exact: true })).toHaveValue("Ausente");
   await expect(page.getByLabel("Estado sintético")).toContainText('"provincia":{"manual":"Ausente"}');
   await page.getByRole("button", { name: "Buscar en catálogo", exact: true }).click();
   await expect(campo).toHaveValue("Ausente");
   await expect(page.getByText("Manual · sin verificar", { exact: true })).toBeVisible();
+});
+
+test("la selección oficial no muestra Georef ni acciones Quitar", async ({ page }) => {
+  await preparar(page);
+  await elegir(page, "Provincia", "Provincia A");
+  const ubicacion = page.getByLabel("Ubicación territorial", { exact: true });
+  await expect(ubicacion).not.toContainText("Georef");
+  await expect(ubicacion.getByRole("button", { name: /^Quitar/ })).toHaveCount(0);
+  await expect(ubicacion.getByRole("option", { name: "Cargar manualmente", exact: true })).toHaveCount(0);
+});
+
+test("borrar el campo quita la selección y conserva descendientes para revisión", async ({ page }) => {
+  await preparar(page);
+  await elegir(page, "Provincia", "Provincia A");
+  await elegir(page, "Partido / Departamento / Comuna", "Departamento A");
+  await elegir(page, "Localidad", "Localidad A");
+  const campo = page.getByRole("combobox", { name: "Provincia", exact: true });
+  await campo.fill("");
+  await page.getByRole("heading", { name: "Domicilio ficticio" }).click();
+  await expect(campo).toHaveValue("");
+  await expect(page.getByLabel("Estado sintético")).toContainText('"provincia":null');
+  await expect(page.getByRole("combobox", { name: "Localidad", exact: true })).toHaveValue("Localidad A");
+  await expect(page.getByRole("button", { name: "Guardar domicilio ficticio" })).toBeDisabled();
+});
+
+test("la carga manual sigue disponible sin padres homologados y no consulta fuera de ámbito", async ({ page }) => {
+  const consultas = await preparar(page);
+  const campo = page.getByRole("combobox", { name: "Localidad", exact: true });
+  await campo.fill("Lugar rural ficticio");
+  await page.getByRole("listbox", { name: "Localidad", exact: true }).getByRole("option", { name: "Cargar manualmente", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Localidad · carga manual", exact: true })).toHaveValue("Lugar rural ficticio");
+  await expect(page.getByLabel("Estado sintético")).toContainText('"localidad":{"manual":"Lugar rural ficticio"}');
+  expect(consultas.filter((u) => u.searchParams.get("tipo") === "localidad")).toEqual([]);
 });
 
 for (const ancho of [320, 460, 760, 1024]) {
@@ -205,7 +245,7 @@ test("API caída permite carga manual distinguida y guardado", async ({ page }) 
   await preparar(page, true);
   await page.getByRole("combobox", { name: "Provincia", exact: true }).click();
   await expect(page.getByText("No se pudo consultar el catálogo.", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Cargar manualmente", exact: true }).first().click();
+  await page.getByRole("option", { name: "Cargar manualmente", exact: true }).click();
   await page.getByLabel("Provincia · carga manual", { exact: true }).fill("Provincia ficticia");
   await expect(page.getByLabel("Estado sintético")).toContainText('"manual":"Provincia ficticia"');
   await expect(page.getByText("Manual · sin verificar. Se reutiliza sólo", { exact: false })).toBeVisible();
@@ -221,7 +261,7 @@ test("lugar ausente permite manual y cambio de padre pide revisión sin borrar t
   await elegir(page, "Partido / Departamento / Comuna", "Departamento A");
   await page.getByRole("combobox", { name: "Localidad", exact: true }).fill("Ausente");
   await expect(page.getByText("No hay coincidencias.", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Cargar manualmente", exact: true }).last().click();
+  await page.getByRole("option", { name: "Cargar manualmente", exact: true }).click();
   await page.getByLabel("Localidad · carga manual", { exact: true }).fill("Lugar rural ficticio");
   await elegir(page, "Provincia", "Provincia B");
   await expect(page.getByRole("button", { name: "Guardar domicilio ficticio" })).toBeDisabled();

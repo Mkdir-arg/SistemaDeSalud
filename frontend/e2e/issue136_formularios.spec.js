@@ -34,7 +34,8 @@ async function provinciaManual(page, nombre) {
   const ancho = (await ubicacion.boundingBox()).width;
   const anchos = await ubicacion.locator("input, select").evaluateAll((controles) => controles.map((c) => c.getBoundingClientRect().width));
   expect(anchos.every((valor) => valor >= Math.min(240, ancho) - 1)).toBeTruthy();
-  await page.getByRole("button", { name: "Cargar manualmente", exact: true }).first().click();
+  await page.getByRole("combobox", { name: "Provincia", exact: true }).first().fill(nombre);
+  await page.getByRole("option", { name: "Cargar manualmente", exact: true }).click();
   await page.getByRole("textbox", { name: "Provincia · carga manual", exact: true }).fill(nombre);
 }
 

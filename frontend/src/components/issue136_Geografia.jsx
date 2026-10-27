@@ -30,7 +30,7 @@ function Nivel({ nivel, geo, onChange, ambito, organizacion, disabled }) {
   const [pagina, setPagina] = useState(1);
   // El nombre ya elegido se muestra en el campo, pero al abrir se permite
   // recorrer todas las opciones, como en el selector de agendas.
-  const termino = entrada.trim() === nombre.trim() ? "" : entrada.trim();
+  const termino = !valor?.pendiente && entrada.trim() === nombre.trim() ? "" : entrada.trim();
   useEffect(() => {
     const id = setTimeout(() => setTexto(termino), 250);
     return () => clearTimeout(id);
@@ -54,8 +54,10 @@ function Nivel({ nivel, geo, onChange, ambito, organizacion, disabled }) {
   const consulta = useQuery({ queryKey: ["geografia", user?.id, ambito, organizacion, nivel, provincia, partido, texto, pagina],
     queryFn: () => api.get(`/geografia/lugares/?${filtro}`), enabled: habilitada && abierto && !manual && !disabled, retry: false, gcTime: 0 });
   // No permitir elegir resultados de la búsqueda anterior durante el debounce.
-  const buscando = texto !== termino || consulta.isFetching || consulta.isPending;
-  const filas = buscando || consulta.error ? [] : consulta.data?.results || [];
+  const buscando = habilitada && (texto !== termino || consulta.isFetching || consulta.isPending);
+  const filas = !habilitada || buscando || consulta.error ? [] : consulta.data?.results || [];
+  const ofrecerManual = !buscando && filas.length === 0;
+  const cantidadOpciones = filas.length + (ofrecerManual ? 1 : 0);
   useEffect(() => {
     if (abierto && activo >= 0) document.getElementById(`${listaId}-${activo}`)?.scrollIntoView({ block: "nearest" });
   }, [activo, abierto, listaId]);
@@ -71,35 +73,44 @@ function Nivel({ nivel, geo, onChange, ambito, organizacion, disabled }) {
     if (candidato) onChange({ manual: candidato });
   };
   return <div className="min-w-0 space-y-2" onBlur={(e) => {
-    if (!e.currentTarget.contains(e.relatedTarget)) cerrar();
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      // Borrar el campo y salir reemplaza la acción «Quitar». Una búsqueda
+      // no vacía abandonada sigue restaurando la selección confirmada.
+      if (!manual && !entrada.trim() && nombre) onChange(null);
+      cerrar();
+    }
   }}>
-    {valor?.pendiente && <div role="alert" className="text-sm text-badge-amber-fg">Cambió una unidad anterior. Elegí nuevamente este lugar o confirmá su carga manual.
-      <Button type="button" size="sm" variant="secondary" onClick={() => { setManual(true); onChange({ manual: nombreGeo(valor) }); }} disabled={disabled}>Conservar como manual</Button></div>}
+    {valor?.pendiente && <div role="alert" className="text-sm text-badge-amber-fg">Cambió una unidad anterior. Elegí nuevamente este lugar o confirmá su carga manual desde los resultados.</div>}
     {manual ? <>
       <Field label={`${ETIQUETAS[nivel]} · carga manual`}><Input maxLength={100} value={nombreGeo(valor)} disabled={disabled} onChange={(e) => onChange(e.target.value.trim() ? { manual: e.target.value } : null)} /></Field>
       <p className="text-xs text-texto-debil">Manual · sin verificar. Se reutiliza sólo en tu organización. Ingresá el nombre del lugar, sin datos personales ni calle y altura.</p>
       <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => { setManual(false); cerrar(); }}>Buscar en catálogo</Button>
     </> : <>
       <Field label={ETIQUETAS[nivel]}><Input role="combobox" autoComplete="off" value={entrada}
-        disabled={disabled || !habilitada} maxLength={100} placeholder="Escribí o elegí una opción"
-        aria-expanded={abierto && habilitada && !disabled} aria-controls={abierto && habilitada && !disabled ? listaId : undefined}
+        disabled={disabled} maxLength={100} placeholder="Escribí o elegí una opción"
+        aria-expanded={abierto && !disabled} aria-controls={abierto && !disabled ? listaId : undefined}
         aria-autocomplete="list" aria-describedby={`${listaId}-ayuda`}
-        aria-activedescendant={abierto && habilitada && !disabled && filas[activo] ? `${listaId}-${activo}` : undefined}
+        aria-activedescendant={abierto && !disabled && activo >= 0 && activo < cantidadOpciones ? `${listaId}-${activo}` : undefined}
         onChange={(e) => { setEntrada(e.target.value); setPagina(1); setActivo(-1); setAbierto(true); }}
         onFocus={(e) => { e.target.select(); setAbierto(true); }}
         onKeyDown={(e) => {
           if (e.key === "Escape" && abierto) { e.preventDefault(); e.stopPropagation(); cerrar(); }
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault(); setAbierto(true);
-            setActivo((i) => Math.max(0, Math.min(filas.length - 1, i + (e.key === "ArrowDown" ? 1 : -1))));
+            setActivo((i) => Math.max(0, Math.min(cantidadOpciones - 1, i + (e.key === "ArrowDown" ? 1 : -1))));
           }
           if (e.key === "Enter") {
             e.preventDefault();
             if (abierto && filas[activo]) elegir(filas[activo]);
+            else if (abierto && ofrecerManual && activo === filas.length) cargarManual();
             else setAbierto(true);
           }
         }} /></Field>
-      {abierto && habilitada && !disabled && <div className="rounded-md border border-borde bg-superficie shadow-dropdown">
+      {abierto && !disabled && <div className="rounded-md border border-borde bg-superficie shadow-dropdown">
+        {buscando ? <p role="status" className="p-3 text-sm text-texto-debil">Buscando…</p>
+          : !habilitada ? <p role="status" className="p-3 text-sm text-texto-debil">Elegí las unidades anteriores para buscar en el catálogo, o cargá este lugar manualmente.</p>
+          : consulta.error ? <p role="status" className="p-3 text-sm text-texto-debil">No se pudo consultar el catálogo. Podés cargar el lugar manualmente.</p>
+          : filas.length === 0 ? <p role="status" className="p-3 text-sm text-texto-debil">No hay coincidencias.</p> : null}
         <div id={listaId} role="listbox" aria-label={ETIQUETAS[nivel]} aria-busy={buscando}
           className="max-h-48 overflow-y-auto">
           {filas.map((f, i) => <div id={`${listaId}-${i}`} key={f.id} role="option" aria-selected={i === activo}
@@ -107,10 +118,12 @@ function Nivel({ nivel, geo, onChange, ambito, organizacion, disabled }) {
             className={`cursor-pointer break-words px-3 py-2 text-sm hover:bg-superficie-2 ${i === activo ? "bg-superficie-2" : ""}`}>
             {f.nombre}{f.origen === "manual" && <span className="text-texto-debil"> · Manual · sin verificar</span>}
           </div>)}
+          {ofrecerManual && <div id={`${listaId}-${filas.length}`} role="option" aria-label="Cargar manualmente" aria-selected={activo === filas.length}
+            onMouseDown={(e) => e.preventDefault()} onClick={cargarManual}
+            className={`cursor-pointer break-words px-3 py-2 text-sm font-semibold text-accent hover:bg-superficie-2 ${activo === filas.length ? "bg-superficie-2" : ""}`}>
+            Cargar manualmente
+          </div>}
         </div>
-        {buscando ? <p role="status" className="p-3 text-sm text-texto-debil">Buscando…</p>
-          : consulta.error ? <p role="status" className="p-3 text-sm text-texto-debil">No se pudo consultar el catálogo. Podés cargar el lugar manualmente.</p>
-          : filas.length === 0 ? <p role="status" className="p-3 text-sm text-texto-debil">No hay coincidencias. Podés cargar el lugar manualmente.</p> : null}
         {consulta.error && <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => consulta.refetch()}>Reintentar catálogo</Button>}
         {!buscando && !consulta.error && (pagina > 1 || consulta.data?.next) && <div className="flex flex-wrap gap-2 border-t border-borde p-1">
           {pagina > 1 && <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => { setPagina((p) => p - 1); setActivo(-1); }}>Anteriores</Button>}
@@ -119,14 +132,12 @@ function Nivel({ nivel, geo, onChange, ambito, organizacion, disabled }) {
       </div>}
       <p id={`${listaId}-ayuda`} className="min-h-4 text-xs text-texto-debil" aria-live="polite">
         {!habilitada ? (nivel === "partido" ? "Primero elegí una provincia." : "Primero elegí provincia y partido o departamento.")
-          : abierto ? "Elegí un resultado para confirmar." : nombre ? origenGeo(valor) : ""}
+          : abierto ? "Elegí un resultado para confirmar." : nombre && origenGeo(valor) !== "Georef" ? origenGeo(valor) : ""}
       </p>
-      <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={cargarManual}>Cargar manualmente</Button>
     </>}
-    {nombreGeo(valor) && <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => { setManual(false); onChange(null); }}>Quitar {ETIQUETAS[nivel].toLocaleLowerCase("es-AR")}</Button>}
   </div>;
 }
 
 export function GeografiaTexto({ value }) {
-  return <div className="text-sm text-texto-debil">{NIVELES_GEO.map((n) => nombreGeo(value?.[n]) ? <p key={n}>{ETIQUETAS[n]}: {nombreGeo(value[n])} · {origenGeo(value[n])}</p> : null)}</div>;
+  return <div className="text-sm text-texto-debil">{NIVELES_GEO.map((n) => nombreGeo(value?.[n]) ? <p key={n}>{ETIQUETAS[n]}: {nombreGeo(value[n])}{origenGeo(value[n]) !== "Georef" && ` · ${origenGeo(value[n])}`}</p> : null)}</div>;
 }
