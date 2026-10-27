@@ -50,6 +50,8 @@ PROVINCIAS = {
     "T": "Tucumán", "U": "Chubut", "V": "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
     "W": "Corrientes", "X": "Córdoba", "Y": "Jujuy", "Z": "Santa Cruz",
 }
+# Campos de ficha que una persona puede corregir al revisar la fila.
+EDITABLES = tuple(campo for campo, _ in FICHA) + ("sexo", "fecha_nacimiento", "provincia")
 
 
 def _texto(valor):
@@ -71,44 +73,90 @@ def _json(valor):
 
 
 def _ficha(raw):
-    """Devuelve (ficha, advertencias); nunca rechaza la fila por la ficha."""
-    ficha, avisos = {}, []
+    """Devuelve (ficha, advertencias, campos advertidos); nunca rechaza la fila por la ficha.
+
+    `campos` va alineado con las advertencias: al corregir un campo en la
+    revisión, su advertencia deja de aplicar.
+    """
+    ficha, avisos, campos = {}, [], []
+
+    def avisar(campo, texto):
+        avisos.append(texto)
+        campos.append(campo)
+
     for campo, columna in FICHA:
         try:
             valor = _texto(raw.get(columna))
         except ValidationError:
-            avisos.append(f"{columna} tiene un tipo no admitido; no se actualiza {campo}.")
+            avisar(campo, f"{columna} tiene un tipo no admitido; no se actualiza {campo}.")
             continue
         if not valor:
             continue
         if len(valor) > Afiliado._meta.get_field(campo).max_length:
-            avisos.append(f"{columna} supera el largo admitido; no se actualiza {campo}.")
+            avisar(campo, f"{columna} supera el largo admitido; no se actualiza {campo}.")
             continue
         if campo == "email":
             try:
                 validate_email(valor)
             except ValidationError:
-                avisos.append("EMAIL1 no es un correo válido; no se actualiza el email.")
+                avisar(campo, "EMAIL1 no es un correo válido; no se actualiza el email.")
                 continue
         ficha[campo] = valor
     sexo = raw.get("SEXO")
     if sexo in ("F", "M"):
         ficha["sexo"] = sexo
     elif sexo not in (None, ""):
-        avisos.append("SEXO sin equivalencia; no se actualiza el sexo.")
+        avisar("sexo", "SEXO sin equivalencia; no se actualiza el sexo.")
     nacimiento = raw.get("FEC_NAC")
     if isinstance(nacimiento, datetime):
         nacimiento = nacimiento.date()
     if isinstance(nacimiento, date) and nacimiento <= timezone.localdate():
         ficha["fecha_nacimiento"] = nacimiento.isoformat()
     elif nacimiento not in (None, ""):
-        avisos.append("FEC_NAC no es una fecha válida; no se actualiza la fecha de nacimiento.")
+        avisar("fecha_nacimiento", "FEC_NAC no es una fecha válida; no se actualiza la fecha de nacimiento.")
     provincia = raw.get("CODPROV")
     if isinstance(provincia, str) and provincia.strip() in PROVINCIAS:
         ficha["provincia"] = PROVINCIAS[provincia.strip()]
     elif provincia not in (None, ""):
-        avisos.append("CODPROV sin equivalencia de provincia; no se actualiza la provincia.")
-    return ficha, avisos
+        avisar("provincia", "CODPROV sin equivalencia de provincia; no se actualiza la provincia.")
+    return ficha, avisos, campos
+
+
+def _ficha_corregida(valores):
+    """Valida la ficha corregida por una persona. A diferencia del archivo, un
+    valor inválido rechaza la corrección: quien revisa lo puede arreglar. Vacío
+    significa «no actualizar», igual que en el archivo."""
+    if not isinstance(valores, dict) or set(valores) - set(EDITABLES):
+        raise ValidationError("La ficha corregida tiene campos no admitidos.")
+    ficha = {}
+    for campo, valor in valores.items():
+        if not isinstance(valor, str):
+            raise ValidationError("La ficha corregida sólo admite texto.")
+        valor = valor.strip()
+        if not valor:
+            continue
+        if campo == "sexo":
+            if valor not in ("F", "M"):
+                raise ValidationError("Elegí el sexo F o M, o dejalo vacío.")
+        elif campo == "fecha_nacimiento":
+            try:
+                fecha = date.fromisoformat(valor)
+            except ValueError:
+                raise ValidationError("La fecha de nacimiento debe tener el formato AAAA-MM-DD.") from None
+            if fecha > timezone.localdate():
+                raise ValidationError("La fecha de nacimiento no puede ser futura.")
+        elif campo == "provincia":
+            if valor not in PROVINCIAS.values():
+                raise ValidationError("Elegí una provincia de la lista.")
+        elif len(valor) > Afiliado._meta.get_field(campo).max_length:
+            raise ValidationError(f"El campo {campo} supera el largo admitido.")
+        elif campo == "email":
+            try:
+                validate_email(valor)
+            except ValidationError:
+                raise ValidationError("El email corregido no es un correo válido.") from None
+        ficha[campo] = valor
+    return ficha
 
 
 def _guardar(lote):
@@ -235,13 +283,13 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
                 except ValidationError:
                     d = dict.fromkeys(CAMPOS, "")
                     error = "Tipos de identificadores no admitidos. Corregí el archivo y volvé a cargarlo."
-                ficha, advertencias = _ficha(raw)
+                ficha, advertencias, advertidos = _ficha(raw)
                 if fuente == "bajas" or raw.get("ESTADO") == "B" or raw.get("FECBAJ") is not None:
                     error = "Evidencia de baja: no se aplica automáticamente. Requiere resolver sus movimientos."
                 obj = existentes.get(d["documento"])
                 filas.append({"fila": len(filas) + 1, "hoja": hoja.title, "fila_excel": numero,
                               "datos": d, "original": original, "estado": "revision", "errores": [],
-                              "ficha": ficha, "advertencias": advertencias,
+                              "ficha": ficha, "advertencias": advertencias, "advertidos": advertidos,
                               "revision_padron": obj.revision if obj else 0, "revision": 1,
                               "padron_actual": {k: getattr(obj, k) for k in CAMPOS} if obj else None,
                               "bloqueo_fuente": error, "correcciones": [], "fuente": fuente})
@@ -262,7 +310,7 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
 
 
 @transaction.atomic
-def subsanar(*, importacion, usuario, fila, revision, datos, motivo, accion="corregir"):
+def subsanar(*, importacion, usuario, fila, revision, datos, motivo, accion="corregir", ficha=None):
     requerir_financiador(usuario, importacion.financiador_id, escritura=True)
     lote = Importacion.objects.select_for_update().get(pk=importacion.pk)
     if lote.version != VERSION or lote.tipo != "padron":
@@ -279,6 +327,7 @@ def subsanar(*, importacion, usuario, fila, revision, datos, motivo, accion="cor
     if accion == "corregir" and len(actual["correcciones"]) >= 50:
         raise ValidationError("Se alcanzó el límite de revisiones de esta fila; excluila y prepará un nuevo lote corregido.")
     corregidos = {k: _texto(v) for k, v in datos.items()}
+    ficha_nueva = _ficha_corregida(ficha) if accion == "corregir" and ficha is not None else None
     obj = Afiliado.objects.filter(financiador=lote.financiador, documento=corregidos["documento"]).first()
     destino_cambio = obj and (actual.get("padron_actual") or {}).get("documento") != obj.documento
     if accion == "corregir" and (destino_cambio or (obj.revision if obj else 0) != actual["revision_padron"]):
@@ -289,8 +338,18 @@ def subsanar(*, importacion, usuario, fila, revision, datos, motivo, accion="cor
         _guardar(lote)
         return lote
     actual["correcciones"].append({"anterior": actual["datos"], "nuevo": corregidos, "accion": accion,
-        "motivo": motivo, "usuario": usuario.pk, "fecha": timezone.now().isoformat()})
+        "motivo": motivo, "usuario": usuario.pk, "fecha": timezone.now().isoformat(),
+        **({"ficha_anterior": actual.get("ficha") or {}, "ficha_nueva": ficha_nueva} if ficha_nueva is not None else {})})
     actual["datos"] = corregidos
+    if ficha_nueva is not None:
+        actual["ficha"] = ficha_nueva
+    if ficha_nueva is not None and "advertidos" in actual:
+        # Una persona revisó la ficha: lo que corrigió deja de estar advertido y
+        # lo que dejó vacío sigue sin actualizarse. Los lotes anteriores a
+        # `advertidos` conservan sus advertencias tal cual.
+        pares = [(c, a) for c, a in zip(actual.get("advertidos") or [], actual.get("advertencias") or [])
+                 if c not in ficha_nueva]
+        actual.update(advertidos=[c for c, _ in pares], advertencias=[a for _, a in pares])
     actual["revision"] += 1
     if accion == "omitir":
         actual["estado"] = "omitida"

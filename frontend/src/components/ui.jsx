@@ -466,6 +466,11 @@ export function Modal({ title, ayuda, acciones, onClose, children, footer, width
       // El bloqueo por inactividad conserva el árbol oculto para recuperar el
       // borrador. Un diálogo oculto no debe capturar Tab/Escape del reingreso.
       if (!ref.current || ref.current.getClientRects().length === 0) return;
+      // Con un diálogo encima (montado después, en un portal), sólo el de arriba
+      // atiende Escape y Tab: si no, Escape cerraría los dos.
+      const abiertos = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+        .filter((d) => d.getClientRects().length > 0);
+      if (abiertos[abiertos.length - 1] !== ref.current) return;
       if (e.key === "Escape") { onClose?.(); return; }
       if (e.key !== "Tab" || !ref.current) return;
       // El foco cicla DENTRO del diálogo. Sin esto, un par de tabulaciones de

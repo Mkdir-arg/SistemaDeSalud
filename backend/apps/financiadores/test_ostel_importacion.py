@@ -295,9 +295,49 @@ class ImportacionAdministrativaTests(TestCase):
         self.assertEqual({k: PROVINCIAS[k] for k in "BCSXM"}, {
             "B": "Buenos Aires", "C": "Ciudad Autónoma de Buenos Aires", "S": "Santa Fe",
             "X": "Córdoba", "M": "Mendoza"})
-        ficha, avisos = _ficha({"CODPROV": "I", "CODLOCA": "000001"})
+        ficha, avisos, campos = _ficha({"CODPROV": "I", "CODLOCA": "000001"})
         self.assertEqual(ficha, {})
         self.assertEqual(len(avisos), 1)
+        self.assertEqual(campos, ["provincia"])
+
+    def test_revisar_fila_corrige_la_ficha_advertida(self):
+        r = self.preview([_persona(1, NUMERO="000001", SEXO="F", EMAIL1="no-es-un-correo", CODPROV="9", A_CALLE="CALLE ARCHIVO")]).data
+        fila = r["filas"][0]
+        self.assertEqual(fila["advertidos"], ["email", "provincia"])
+        editable = {"email": "corregido@example.invalid", "provincia": "", "calle": "CALLE CORREGIDA"}
+        res = self.corregir(r, ficha=editable)
+        self.assertEqual(res.status_code, 200, res.data)
+        fila = res.data["filas"][0]
+        # El email corregido deja de estar advertido; la provincia vacía sigue sin actualizarse.
+        self.assertEqual(fila["advertidos"], ["provincia"])
+        self.assertEqual(len(fila["advertencias"]), 1)
+        self.assertEqual(fila["ficha"], {"email": "corregido@example.invalid", "calle": "CALLE CORREGIDA"})
+        self.assertEqual(fila["correcciones"][0]["ficha_nueva"], fila["ficha"])
+        self.assertEqual(fila["correcciones"][0]["ficha_anterior"]["calle"], "CALLE ARCHIVO")
+        self.assertEqual(res.data["resumen"]["advertencias"], 1)
+        self.assertEqual(self.aplicar(res.data).data["resumen"]["aplicada"], 1)
+        obj = Afiliado.objects.get()
+        self.assertEqual((obj.email, obj.calle, obj.provincia), ("corregido@example.invalid", "CALLE CORREGIDA", ""))
+
+    def test_revisar_fila_rechaza_ficha_invalida_sin_cambiar_el_lote(self):
+        r = self.preview([_persona(1, NUMERO="000001", SEXO="F", CODPROV="B", EMAIL1="no-es-un-correo")]).data
+        for ficha in ({"email": "sigue-mal"}, {"provincia": "Narnia"}, {"sexo": "X"},
+                      {"fecha_nacimiento": "2999-01-01"}, {"fecha_nacimiento": "06/05/1990"}, {"nombre": "OTRO"}):
+            with self.subTest(ficha=ficha):
+                self.assertEqual(self.corregir(r, ficha=ficha).status_code, 400)
+        persistida = Importacion.objects.get(pk=r["id"]).filas[0]
+        self.assertEqual((persistida["revision"], persistida["correcciones"]), (1, []))
+        self.assertEqual(persistida["advertidos"], ["email"])
+
+    def test_revisar_fila_de_lote_previo_conserva_sus_advertencias(self):
+        r = self.preview([_persona(1, NUMERO="000001", SEXO="F", CODPROV="B", EMAIL1="no-es-un-correo")]).data
+        lote = Importacion.objects.get(pk=r["id"])
+        del lote.filas[0]["advertidos"]  # lote guardado antes de registrar los campos advertidos
+        lote.save(update_fields=["filas"])
+        res = self.corregir(r, ficha={"email": "corregido@example.invalid"})
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["filas"][0]["ficha"]["email"], "corregido@example.invalid")
+        self.assertEqual(len(res.data["filas"][0]["advertencias"]), 1)
 
     def test_sin_cuiltit_o_con_otra_columna_40_no_crea_lote(self):
         from openpyxl import Workbook

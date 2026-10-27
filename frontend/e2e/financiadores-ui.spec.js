@@ -1611,6 +1611,8 @@ test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async
     expect(d.motivo).toBe("Verificado contra fuente ficticia");
     expect(d.revision).toBe(1);
     expect(d.accion).toBe("corregir");
+    // La ficha viaja con la corrección; vacío significa «no actualizar».
+    expect(d.ficha).toMatchObject({ email: "", provincia: "", sexo: "" });
     lote = { ...lote, filas: [lote.filas[0], { ...lote.filas[1], estado: "valida", errores: [], revision: 2, datos: d.datos }], resumen: { total: 2, valida: 1, revision: 0, aplicada: 1 } };
     return route.fulfill({ json: lote });
   });
@@ -1628,6 +1630,11 @@ test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async
   await page.getByRole("tab", { name: /^Aplicadas/ }).click();
   await expect(page.getByRole("button", { name: "Ver detalle", exact: true })).toHaveCount(1);
   await page.getByRole("tab", { name: /^A revisar/ }).click();
+  await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
+  // La revisión es un diálogo propio: Escape lo cierra sin cerrar la importación.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Subsanar fila", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(1);
   await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
   await expect(page.getByRole("button", { name: "← Volver al historial", exact: true })).toBeDisabled();
   await page.getByRole("textbox", { name: "CUIL", exact: true }).fill("20990185011");

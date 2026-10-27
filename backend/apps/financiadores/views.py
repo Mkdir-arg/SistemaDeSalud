@@ -810,6 +810,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             "datos": serializers.DictField(child=serializers.CharField(max_length=160, allow_blank=True)),
             "motivo": serializers.CharField(max_length=255),
             "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+            "ficha": serializers.DictField(child=serializers.CharField(max_length=254, allow_blank=True), required=False),
         })
         lote = subsanar(usuario=request.user, **d)
         response = Response(s.ImportacionSerializer(lote).data)
