@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { errorFinanciador, importarFinanciador, rutaFinanciador } from "@/api/financiadores";
-import { Ayuda, Badge, Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
+import { Ayuda, Badge, Button, Field, Spinner, Textarea } from "@/components/ui";
+import { PasoPreparar, PasoRevisar } from "./ImportacionPasos";
 import { plural } from "@/lib/format";
 
 const APLICADOS = new Set(["aplicada"]);
@@ -63,14 +64,15 @@ export default function ImportacionSistema({ organizacion, tipo, formato, onApli
   const hayRevision = tipo === "consumos" ? Object.values(revisiones).some((motivo) => motivo.trim()) : (lote?.filas || []).some((f) => f.estado === "revision" && f.conflicto_cobertura && revisionesCobertura[f.fila]?.trim());
   return <div className="space-y-5">
       {error && <div role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{errorFinanciador(error)}</div>}
-      {!soloDetalle && <><Card className="p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">1. Prepará el archivo</h3><Ayuda etiqueta="Ayuda sobre la plantilla">
-            {tipo === "padron" ? <>
+      {!soloDetalle && <>
+        <PasoPreparar deshabilitado={descargando} onDescargar={() => descargar("plantilla", formato.parametrosPlantilla(tipo), formato.nombrePlantilla(tipo))} ayuda={tipo === "padron" ? <>
               <span className="block">La plantilla incluye identidad, contacto, régimen, familia, trámite y credencial registrada externamente. Conservá los identificadores como texto y cargá primero al titular.</span>
               <span className="block">La carga agrega o actualiza afiliados. Las celdas nuevas vacías no borran datos existentes y los afiliados ausentes del archivo no se dan de baja.</span>
               <span className="block">No se importan bajas, reactivaciones, datos de salud, parentesco protegido ni datos de cobranza o bancarios. Esas operaciones se realizan desde los recursos correspondientes de la ficha.</span>
-            </> : <span className="block">La plantilla incluye las prestaciones de este financiador. Indicá número de afiliado y documento tal como figuran en el padrón.</span>}
-          </Ayuda></div></div><div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={descargando} onClick={() => descargar("plantilla", formato.parametrosPlantilla(tipo), formato.nombrePlantilla(tipo))}>Descargar plantilla</Button></div></div></Card>
-      <form onSubmit={previsualizar} className="space-y-3"><h3 className="font-semibold">2. Revisá antes de importar</h3><Field label="Archivo Excel (.xlsx)"><Input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={ocupado} onChange={(e) => { setArchivo(e.target.files[0] || null); setLote(null); setRevisiones({}); setError(null); clave.current = crypto.randomUUID(); }} /></Field><Button type="submit" disabled={!archivo || ocupado}>{ocupado && !lote ? "Revisando…" : "Revisar archivo"}</Button></form>
+            </> : <span className="block">La plantilla incluye las prestaciones de este financiador. Indicá número de afiliado y documento tal como figuran en el padrón.</span>} />
+        <PasoRevisar onSubmit={previsualizar} enviable={!!archivo} ocupado={ocupado && !lote} deshabilitado={ocupado}
+          ayuda="Hasta 5 MiB. Conservá identificadores y ceros tal como fueron informados."
+          onArchivo={(nuevo) => { setArchivo(nuevo); setLote(null); setRevisiones({}); setError(null); clave.current = crypto.randomUUID(); }} />
       </>}
       {lote && <section aria-label="Resumen de importación" className="space-y-4 border-t border-division pt-5">
         {tipo === "padron" && <p role="status">{resumen.cobertura_habilitada === false ? "Personas nuevas: sólo registro administrativo, sin habilitar cobertura." : "Personas nuevas: cobertura habilitada, sujeta a plan, fechas y reglas."} En personas existentes se conserva la habilitación actual.</p>}

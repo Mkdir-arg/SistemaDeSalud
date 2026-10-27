@@ -1621,22 +1621,22 @@ test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async
   await page.getByRole("checkbox", { name: "Habilitar cobertura", exact: true }).uncheck();
   await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
   await expect(page.getByText("Documento y CUIL no concuerdan", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Importar 1 fila válida", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
   await page.getByRole("region", { name: "Importaciones registradas" }).getByRole("button", { name: /Importación 180/ }).click();
-  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("aplicada");
+  await page.getByRole("tab", { name: /^Aplicadas/ }).click();
   await expect(page.getByRole("button", { name: "Ver detalle", exact: true })).toHaveCount(1);
-  await page.getByRole("combobox", { name: "Mostrar filas", exact: true }).selectOption("pendientes");
+  await page.getByRole("tab", { name: /^A revisar/ }).click();
   await page.getByRole("button", { name: "Revisar fila", exact: true }).click();
   await expect(page.getByRole("button", { name: "← Volver al historial", exact: true })).toBeDisabled();
   await page.getByRole("textbox", { name: "CUIL", exact: true }).fill("20990185011");
   await page.getByLabel("Motivo de la revisión", { exact: true }).fill("Verificado contra fuente ficticia");
   await page.getByRole("button", { name: "Guardar y revalidar", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "No hay filas en esta categoría." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Aplicar 0 filas válidas", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Importar 1 fila válida", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Importar 1 fila válida", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled();
 });
 
 
@@ -1690,7 +1690,7 @@ for (const formato of ["sistema", "ostel"]) {
       await expect(page.getByRole("region", { name: "Subsanar fila", exact: true })).toContainText("se conserva la habilitación actual");
       await page.getByRole("textbox", { name: "Motivo de la revisión", exact: true }).fill("Conservar habilitación verificada");
       await page.getByRole("button", { name: "Guardar y revalidar", exact: true }).click();
-      await page.getByRole("button", { name: "Aplicar 1 filas válidas", exact: true }).click();
+      await page.getByRole("button", { name: "Importar 1 fila válida", exact: true }).click();
     } else {
       await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled();
       await page.getByRole("textbox", { name: "Motivo para conservar cobertura actual de fila 2", exact: true }).fill("Conservar habilitación verificada");

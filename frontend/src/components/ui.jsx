@@ -26,9 +26,11 @@ const BOTON_VARIANTE = {
   ghost: "text-texto-suave hover:bg-superficie-2 hover:text-texto",
 };
 
-export function Button({ variant = "primary", size = "md", className, children, disabled, ...props }) {
+// `forwardRef` para devolver el foco al botón que abrió una vista (React 18).
+export const Button = forwardRef(function Button({ variant = "primary", size = "md", className, children, disabled, ...props }, ref) {
   return (
     <button
+      ref={ref}
       disabled={disabled}
       className={cn(
         "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors",
@@ -43,7 +45,7 @@ export function Button({ variant = "primary", size = "md", className, children, 
       {children}
     </button>
   );
-}
+});
 
 export function IconButton({
   icon,
@@ -310,7 +312,10 @@ export const Input = forwardRef(function Input({ className, size = "md", ...prop
   return (
     <input
       ref={ref}
-      className={cn(CONTROL, size === "sm" ? "h-9 px-3 text-md" : "h-10 px-3 text-md", className)}
+      className={cn(CONTROL, size === "sm" ? "h-9 px-3 text-md" : "h-10 px-3 text-md",
+        // El selector nativo de archivos no centra su texto: se le da el alto de línea del campo.
+        props.type === "file" && "py-0 file:mr-3 file:h-full file:border-0 file:border-r file:border-campo-borde file:bg-transparent file:pr-3 file:font-semibold file:text-texto-suave",
+        className)}
       {...props}
     />
   );
@@ -432,7 +437,7 @@ const ENFOCABLES =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),' +
   'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) {
+export function Modal({ title, ayuda, acciones, onClose, children, footer, width = 460 }) {
   const ref = useRef(null);
 
   // Montaje: foco al diálogo, scroll del fondo bloqueado, y al cerrar el foco
@@ -513,9 +518,12 @@ export function Modal({ title, ayuda, onClose, children, footer, width = 460 }) 
       >
         <div className="flex items-center justify-between border-b border-division px-xl py-lg">
           <div className="flex items-center gap-2 text-lg font-bold">{title}{ayuda && <Ayuda>{ayuda}</Ayuda>}</div>
-          <button onClick={onClose} aria-label="Cerrar" className="flex rounded-sm p-1 text-texto-debil hover:text-texto">
-            <Icon name="x" size={18} />
-          </button>
+          <div className="flex items-center gap-3">
+            {acciones}
+            <button onClick={onClose} aria-label="Cerrar" className="flex rounded-sm p-1 text-texto-debil hover:text-texto">
+              <Icon name="x" size={18} />
+            </button>
+          </div>
         </div>
         <div className="p-xl">{children}</div>
         {footer && (
