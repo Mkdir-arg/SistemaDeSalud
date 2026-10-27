@@ -1,5 +1,74 @@
 # #182: implementación y validación de confirmaciones OSTEL
 
+## Reconciliación con los cinco criterios de #182 — 27/10/2026
+
+El usuario pidió analizar el issue completo y terminar los pendientes posibles.
+El faltante técnico principal era la validación funcional de los tamaños citados
+en el issue: las pruebas anteriores llegaban a 205 filas. Se agregó cobertura
+sin cambiar código productivo, límites, permisos, contratos ni reglas de negocio.
+
+| Criterio del issue | Implementación y evidencia |
+| --- | --- |
+| Confirmación explícita, aislamiento y permisos | Botón de confirmación y acción POST por financiador; `test_permisos_ambito_y_entrada_invalida_no_aplican`, pruebas de lectura/carga de `test_ostel_api` y los recorridos reales. La previsualización del caso grande no incorpora personas. |
+| Procedencia y auditoría sin exponer datos protegidos | `Importacion` conserva huella de fuente, autor, financiador y evidencia por fila. Los escenarios grandes conservan las 40 columnas originales; el historial corresponde al lote, autor y financiador. La prueba de repetición comprueba que los textos de auditoría no contienen nombre, documento ni CUIL del archivo. |
+| Repetición, rectificaciones y concurrencia | Se verifican reintento del mismo lote y otro lote con los mismos datos, rollback de una tanda y recuperación tras perder la respuesta. Las correcciones con motivo/revisión y las conexiones PostgreSQL concurrentes ya tienen pruebas focales y recorridos reales. No se duplican personas, historial ni eventos de alta/cambio. |
+| Ausencias nunca dan de baja | Los dos escenarios grandes incluyen una afiliación fuera del archivo y comparan todos sus campos antes/después, incluida su cobertura. El escenario de 7.486 bajas no crea ni modifica afiliaciones: conserva evidencia para revisión. |
+| Partición/límites y fallos parciales | 5.754 altas en 58 tandas y 7.486 altas en 75 tandas, de hasta 100 por confirmación. Se provocan fallo de tanda y pérdida de respuesta. Los límites existentes se describen abajo; su aceptación expresa es una decisión del usuario. |
+
+### Cobertura nueva
+
+`test_issue182_aceptacion.py` usa `TransactionTestCase`, endpoints mediante
+APIClient, PostgreSQL 16 y el generador sintético existente. No usa escrituras
+masivas que eviten las validaciones del importador:
+
+- **5.754 altas:** una falla de auditoría revierte sólo la tanda en curso y
+  conserva las anteriores; después se pierde una respuesta posterior al commit.
+  El siguiente intento recupera el lote completo y termina sin duplicar efectos.
+- **7.486 altas completamente ficticias:** aplicación hasta el final, persistencia,
+  procedencia, repetición segura y conservación íntegra de la persona ausente.
+  No representa una orden de aplicar el histórico real de bajas.
+- **7.486 filas marcadas como fuente de bajas:** permanecen en revisión como
+  evidencia; la confirmación no las convierte en altas ni bajas efectivas.
+
+Los tres escenarios aprobaron localmente, sin omisiones, en 1.152,566 s en
+conjunto. Es duración del harness de aceptación, no una medición de rendimiento
+productivo. `test_importacion_respuesta.py` agrega un caso pequeño de otro lote
+con los mismos datos y privacidad de la auditoría. La regresión focal de
+respuesta, importación OSTEL, concurrencia, API y prevalidación aprobó sus
+73 pruebas, sin omisiones, en una ejecución separada de 62,541 s.
+
+Comandos ejecutados en la base PostgreSQL local dedicada:
+
+```powershell
+python manage.py test apps.financiadores.test_issue182_aceptacion --noinput --verbosity 2
+python manage.py test apps.financiadores.test_importacion_respuesta apps.financiadores.test_ostel_importacion apps.financiadores.test_ostel_concurrencia apps.financiadores.test_ostel_api apps.financiadores.test_ostel_prevalidacion --noinput
+```
+
+La auditoría de intentos se conserva: reconfirmar un lote terminado registra
+otro intento `aplicar_ostel`. Eso no genera otra alta/cambio ni otro historial.
+La prueba distingue y verifica ambos conteos; no se elimina trazabilidad para
+aparentar idempotencia. Las tandas anteriores ya confirmadas no se revierten si
+una posterior falla; la carga completa no se presenta como una transacción única.
+
+### Límites y condición de cierre
+
+OSTEL mantiene **10.000 posiciones por hoja**, archivo de **5 MiB**, contenido
+expandido de 25 MiB, 128 entradas ZIP y hasta 100 filas válidas por tanda. La
+plantilla genérica conserva su límite predeterminado de 2.000 filas. El issue
+mezclaba ese límite con el formato OSTEL; no fue necesario ampliarlo.
+
+Se solicitó al usuario confirmar los límites vigentes, porque el último criterio
+exige acordarlos. Esa confirmación no se deduce del silencio ni de pruebas verdes;
+su estado actualizado se registra en el PR. No hay un SLA acordado ni ensayo de
+carga multiusuario. Los volúmenes grandes se verifican por APIClient/ORM, sin
+transporte HTTP ni navegador; los cuatro recorridos pequeños sí usan navegador
+y HTTP reales y complementan esta evidencia.
+
+No se declara completada la homologación semántica de #181/#142 por estas pruebas.
+Se mantiene el alcance administrativo ya confirmado y los valores no homologados
+como evidencia. Cerrar/incorporar el issue requiere la aceptación pertinente y
+la incorporación del PR #200; este encargo no autoriza su merge ni despliegue.
+
 ## Estado vigente: integración con main del 27/10/2026
 
 La orden del usuario reemplaza el bloqueo anterior: #186 se incorporó a main
