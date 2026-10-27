@@ -87,8 +87,10 @@ def patient(c) -> dict:
     }
     if c.fecha_nacimiento:
         recurso["birthDate"] = c.fecha_nacimiento.isoformat()
-    if c.domicilio:
-        recurso["address"] = [{"use": "home", "text": c.domicilio}]
+    from apps.geografia.servicios import domicilio_completo
+    domicilio = domicilio_completo(c)
+    if domicilio:
+        recurso["address"] = [{"use": "home", "text": domicilio}]
 
     # Compatibilidad del dato declarado. Coverage se ofrece por separado sólo
     # con afiliación estructurada vigente; este texto nunca la acredita.
@@ -150,8 +152,10 @@ def organization(i) -> dict:
         # Sin `system`: el tipo de establecimiento es texto libre en Salud y no
         # hay forma honesta de mapearlo a la tabla de FHIR sin adivinar.
         recurso["type"] = [{"text": i.tipo}]
-    if i.direccion:
-        recurso["address"] = [{"text": i.direccion}]
+    from apps.geografia.servicios import domicilio_completo
+    domicilio = domicilio_completo(i)
+    if domicilio:
+        recurso["address"] = [{"text": domicilio}]
     return recurso
 
 

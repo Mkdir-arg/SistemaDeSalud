@@ -259,6 +259,8 @@ def completar(ciudadano, patient) -> list:
     nuevos = a_ciudadano(patient)
     completados = []
     for campo in COMPLETABLES:
+        if campo == "domicilio" and getattr(ciudadano, "geografia_id", None):
+            continue  # Una selección territorial explícita también se respeta.
         if campo not in nuevos:
             continue
         actual = getattr(ciudadano, campo, None)

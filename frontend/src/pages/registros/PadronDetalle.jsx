@@ -8,6 +8,8 @@ import { Badge, Button, Card, Field, Input, Modal, Mono, Textarea } from "@/comp
 import { EstadoError } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { fechaHora } from "@/lib/format";
+import Geografia, { GeografiaTexto } from "@/components/issue136_Geografia";
+import { cuerpoGeo, geografiaInicial, hayGeoPendiente } from "@/lib/issue136_geografia";
 
 function fecha(iso) {
   if (!iso) return "-";
@@ -37,6 +39,7 @@ export function DatosPaciente({ c, id, sinHistoriaClinica }) {
               <Dato label="Código">{c.codigo ? <Mono>{c.codigo}</Mono> : "-"}</Dato>
               <Dato label="Fecha de nacimiento">{fecha(c.fecha_nacimiento)}</Dato>
               <Dato label="Domicilio">{c.domicilio || "-"}</Dato>
+              <GeografiaTexto value={c.geografia} />
               <Dato label="Alta en padrón">{fechaHora(c.creado)}</Dato>
             </div>
           </Card>
@@ -56,6 +59,8 @@ export function DatosPaciente({ c, id, sinHistoriaClinica }) {
 export function EditarPacienteModal({ paciente, onClose, onListo }) {
   const toast = useToast();
   const coberturaHabilitada = paciente.cobertura_administrativa?.habilitada === true;
+  const [geo, setGeo] = useState(() => geografiaInicial(paciente.geografia));
+  const [geoEditada, setGeoEditada] = useState(false);
   const [f, setF] = useState({
     nombre: paciente.nombre || "",
     apellido: paciente.apellido || "",
@@ -73,6 +78,7 @@ export function EditarPacienteModal({ paciente, onClose, onListo }) {
         ...datos,
         ...(!coberturaHabilitada ? { obra_social } : {}),
         fecha_nacimiento: f.fecha_nacimiento || null,
+        ...(geoEditada || paciente.geografia && f.domicilio !== paciente.domicilio ? { geografia: cuerpoGeo(geo) } : {}),
       });
     },
     {
@@ -89,7 +95,7 @@ export function EditarPacienteModal({ paciente, onClose, onListo }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={guardar.isPending || !f.nombre.trim()} onClick={() => guardar.mutate()}>
+          <Button disabled={guardar.isPending || !f.nombre.trim() || hayGeoPendiente(geo)} onClick={() => guardar.mutate()}>
             {guardar.isPending ? "Guardando..." : "Guardar"}
           </Button>
         </>
@@ -106,6 +112,7 @@ export function EditarPacienteModal({ paciente, onClose, onListo }) {
           <Field label="Cobertura declarada (sin verificar)"><Input value={f.obra_social} onChange={(e) => set("obra_social", e.target.value)} /></Field>
         )}
         <Field label="Domicilio"><Input value={f.domicilio} onChange={(e) => set("domicilio", e.target.value)} /></Field>
+        <Geografia value={geo} ambito="institucion" organizacion={paciente.institucion} disabled={guardar.isPending} onChange={(valor) => { setGeo(valor); setGeoEditada(true); }} />
       </div>
     </Modal>
   );

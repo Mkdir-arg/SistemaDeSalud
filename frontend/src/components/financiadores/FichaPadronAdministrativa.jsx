@@ -11,6 +11,7 @@ import RecursoProtegidoPadron from "./RecursoProtegidoPadron";
 import TarjetaFicha, { DatosFicha } from "./TarjetaFicha";
 import { derechoAfiliacionPadron } from "./padronTablaEstado";
 import { ADMINISTRATIVOS, BLOQUES_PADRON, TIPOS_PLAN } from "./padronCampos";
+import { GeografiaTexto } from "@/components/issue136_Geografia";
 
 const ICONOS = { Identidad: "idCard", Contacto: "bell", Domicilio: "mapPin", "Régimen y trabajo": "building", "Trámite y credencial": "clipboard", "Baja administrativa": "power" };
 
@@ -49,6 +50,8 @@ export default function FichaPadronAdministrativa({ afiliado, organizacion, usua
       <div className={integrado ? "space-y-4" : "grid items-start gap-4 xl:grid-cols-2"}>{BLOQUES_PADRON.map((bloque) => <section key={bloque.titulo} aria-label={bloque.titulo} className={!integrado && bloque.titulo === "Identidad" ? "xl:col-span-2" : undefined}>
         <TarjetaFicha titulo={bloque.titulo} icono={ICONOS[bloque.titulo]} descripcion={bloque.titulo === "Régimen y trabajo" ? "Empleador y actividad según el régimen; subsidio aplicable a desempleo. Campos sin informar se conservan para el legado. No hay validación automática ante ARCA o ANSES." : bloque.descripcion} accion={puedeEditar && <Button size="sm" variant="secondary" onClick={() => setEdicion(bloque)}>Editar {bloque.titulo.toLocaleLowerCase("es-AR")}</Button>}>
           <DatosFicha campos={bloque.campos} valores={persona} className={!integrado && bloque.titulo !== "Identidad" ? "lg:grid-cols-2" : undefined} />
+          {bloque.titulo === "Domicilio" && <GeografiaTexto value={persona.geografia} />}
+          {bloque.titulo === "Régimen y trabajo" && <GeografiaTexto value={persona.geografia_laboral} />}
         </TarjetaFicha>
       </section>)}</div>
     </div>}
@@ -59,6 +62,6 @@ export default function FichaPadronAdministrativa({ afiliado, organizacion, usua
     <div hidden={Boolean(activo) && activo !== "cobranza"}>{permisos.cobranza_consulta === true && <RecursoProtegidoPadron key={`cobranza:${persona.id}`} recurso="cobranza" ruta={ruta} scope={scope} puedeEditar={permisos.cobranza_edicion === true} actualizado={actualizado} integrado={integrado} onEdicion={setRecursoActivo} onOcupado={onOcupado} />}</div>
     </>}
     {ver("historial") && <div hidden={Boolean(activo)}><HistorialPadron key={`historial:${persona.id}`} ruta={`${ruta}historial/`} scope={scope} /></div>}
-    {edicion && (edicion.titulo === "Plan de cobertura" && (planes.isLoading || planes.error) ? <Card className="p-4">{planes.error ? <p role="alert">{errorFinanciador(planes.error)} <Button onClick={() => planes.refetch()}>Reintentar</Button></p> : <Spinner label="Consultando planes…" />}<Button variant="ghost" onClick={() => setEdicion(null)}>Cancelar</Button></Card> : <FormularioPadron integrado={integrado} onOcupado={onOcupado} titulo={`Editar ${edicion.titulo.toLocaleLowerCase("es-AR")}`} descripcion={edicion.descripcion} campos={edicion.campos || camposPlan} inicial={persona} guardar={(cambios, motivo) => api.patch(ruta, { ...cambios, revision: persona.revision, motivo })} recargar={async () => { setEdicion(null); await actualizado(); }} onClose={() => setEdicion(null)} onGuardado={async () => { setEdicion(null); await actualizado(); }} />)}
+    {edicion && (edicion.titulo === "Plan de cobertura" && (planes.isLoading || planes.error) ? <Card className="p-4">{planes.error ? <p role="alert">{errorFinanciador(planes.error)} <Button onClick={() => planes.refetch()}>Reintentar</Button></p> : <Spinner label="Consultando planes…" />}<Button variant="ghost" onClick={() => setEdicion(null)}>Cancelar</Button></Card> : <FormularioPadron geografiaOrganizacion={organizacion.id} integrado={integrado} onOcupado={onOcupado} titulo={`Editar ${edicion.titulo.toLocaleLowerCase("es-AR")}`} descripcion={edicion.descripcion} campos={edicion.campos || camposPlan} inicial={persona} guardar={(cambios, motivo) => api.patch(ruta, { ...cambios, revision: persona.revision, motivo })} recargar={async () => { setEdicion(null); await actualizado(); }} onClose={() => setEdicion(null)} onGuardado={async () => { setEdicion(null); await actualizado(); }} />)}
   </section>;
 }

@@ -177,6 +177,23 @@ services:
       backend:
         condition: service_healthy
 
+  # Catálogo propio: no descarga en peticiones ni en el reloj clínico.
+  geografia:
+    build: ./backend
+    command: ["python", "manage.py", "sincronizar_geografia", "--periodico"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-salud}:${POSTGRES_PASSWORD:-salud}@db:5432/${POSTGRES_DB:-salud}
+      DATABASE_SSL: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-me}
+      ENTORNO: ${ENTORNO:-produccion}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      SEED_DEMO: "0"
+      EJECUTAR_MIGRACIONES: "0"
+    depends_on:
+      backend:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend

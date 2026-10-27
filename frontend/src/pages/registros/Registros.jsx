@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "@/api/client";
+import Geografia, { GeografiaTexto } from "@/components/issue136_Geografia";
+import { cuerpoGeo, hayGeoPendiente } from "@/lib/issue136_geografia";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
@@ -194,7 +196,7 @@ export default function Registros() {
         <dl className="grid gap-4 sm:grid-cols-2">
           <div><dt className="text-sm text-texto-debil">DNI</dt><dd className="font-semibold">{revelado.documento || "Sin documento"}</dd></div>
           <div><dt className="text-sm text-texto-debil">Fecha de nacimiento</dt><dd className="font-semibold">{fechaCorta(revelado.fecha_nacimiento) || "Sin registrar"}</dd></div>
-          <div className="sm:col-span-2"><dt className="text-sm text-texto-debil">Domicilio</dt><dd className="font-semibold">{revelado.domicilio || "Sin registrar"}</dd></div>
+          <div className="sm:col-span-2"><dt className="text-sm text-texto-debil">Domicilio</dt><dd className="font-semibold">{revelado.domicilio || "Sin registrar"}<GeografiaTexto value={revelado.geografia} /></dd></div>
         </dl>
       </Modal>}
 
@@ -237,6 +239,7 @@ function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
   const configuracionLista = typeof configuracion.data?.habilitada === "boolean" && !configuracion.error;
   const navigate = useNavigate();
   const [f, setF] = useState(() => ({ ...precargarPaciente(busquedaInicial), fecha_nacimiento: "", domicilio: "", obra_social: "" }));
+  const [geo, setGeo] = useState(null);
   const nombreRef = useRef(null);
   const documentoRef = useRef(null);
   useEffect(() => {
@@ -283,6 +286,7 @@ function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
       const { obra_social, ...datos } = f;
       return api.post("/ciudadanos/", {
         institucion: institucionId,
+        ...(geo ? { geografia: cuerpoGeo(geo) } : {}),
         ...datos,
         ...(!configuracion.data.habilitada ? { obra_social } : {}),
         fecha_nacimiento: f.fecha_nacimiento || null,
@@ -296,7 +300,7 @@ function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
 
   const acciones = <>
     <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-    <Button disabled={crear.isPending || !f.nombre.trim() || !!yaExiste || !configuracionLista} onClick={() => crear.mutate()}>
+    <Button disabled={crear.isPending || !f.nombre.trim() || !!yaExiste || !configuracionLista || hayGeoPendiente(geo)} onClick={() => crear.mutate()}>
       {crear.isPending ? "Registrando…" : "Registrar paciente"}
     </Button>
   </>;
@@ -327,6 +331,7 @@ function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
         <Field label="Domicilio (opcional)">
           <Input value={f.domicilio} onChange={(e) => set("domicilio", e.target.value)} placeholder="Calle y número" maxLength={255} />
         </Field>
+        <Geografia value={geo} ambito="institucion" organizacion={institucionId} disabled={crear.isPending} onChange={setGeo} />
       </section>
       <section className="rounded-lg border border-borde bg-superficie p-5">
         <h3 className="mb-4 text-base font-bold">Cobertura declarada</h3>

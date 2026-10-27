@@ -111,7 +111,7 @@ class InstitucionViewSet(BaseModelViewSet):
         raise PermissionDenied("Las instituciones no se eliminan. Realizá la baja desde su estado.")
 
     def get_queryset(self):
-        qs = Institucion.objects.all()
+        qs = Institucion.objects.select_related("geografia__provincia", "geografia__partido", "geografia__localidad")
         user = self.request.user
         if user.is_authenticated and not user.is_superuser and not tiene_capacidad(user, "gobierno_plataforma"):
             qs = qs.filter(id__in=self.instituciones_del_usuario())

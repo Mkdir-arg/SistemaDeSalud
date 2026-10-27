@@ -137,6 +137,16 @@ class ReglaSerializer(serializers.ModelSerializer):
 
 class AfiliadoSerializer(serializers.ModelSerializer):
     titular_nombre = serializers.SerializerMethodField()
+    geografia = serializers.SerializerMethodField()
+    geografia_laboral = serializers.SerializerMethodField()
+
+    def get_geografia(self, obj) -> dict | None:
+        from apps.geografia.servicios import presentacion
+        return presentacion(obj)
+
+    def get_geografia_laboral(self, obj) -> dict | None:
+        from apps.geografia.servicios import presentacion
+        return presentacion(obj, "geografia_laboral")
     vigente = serializers.SerializerMethodField()
     estado_administrativo = serializers.SerializerMethodField()
     plan_tipo = serializers.CharField(source="plan.tipo", read_only=True, default="")
@@ -156,7 +166,7 @@ class AfiliadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Afiliado
         from .padron import CAMPOS_GENERALES
-        fields = ["id", "numero", "numero_interno", "titular_nombre", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES]
+        fields = ["id", "numero", "numero_interno", "titular_nombre", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES, "geografia", "geografia_laboral"]
         read_only_fields = ["numero_interno"]
 
 

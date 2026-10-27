@@ -76,3 +76,15 @@ jobs:
 
       - name: Contraste de presentación y XLSX del padrón (#184)
         run: python manage.py test apps.financiadores.issue184_exportacion_tests --noinput
+
+      - name: Geografía aislada (#136)
+        env:
+          ISSUE136_PG_HOST: localhost
+          ISSUE136_PG_PORT: "5432"
+          ISSUE136_PG_NAME: salud
+          ISSUE136_PG_USER: salud
+          ISSUE136_PG_PASSWORD: salud
+        run: |
+          python -m unittest apps.geografia.issue136_test_puros -v
+          python -m django test apps.geografia.issue136_test_integracion apps.geografia.issue136_test_concurrencia apps.geografia.issue136_test_http apps.geografia.issue136_test_ostel --settings=apps.geografia.issue136_settings_http --noinput
+          python -m django test apps.geografia.issue136_test_runtime --settings=apps.geografia.issue136_settings_runtime --noinput
