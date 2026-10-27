@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Corte integrado #186 + #184. Sólo UI ficticia y API interceptada.
+// Regresiones de #184 sobre main. Sólo UI ficticia y API interceptada.
 export default defineConfig({
   testDir: "./e2e",
   testMatch: ["issue184_padron.spec.js", "issue184_ficha.spec.js", "padron-tabla.spec.js", "financiadores-ui.spec.js"],

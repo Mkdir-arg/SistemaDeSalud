@@ -65,7 +65,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx playwright test -c playwright.portal.config.js --reporter=line
 
-      - name: Vista operativa del padrón (#184, posterior a #186)
+      - name: Vista operativa del padrón (#184)
         if: ${{ !cancelled() }}
         run: npx playwright test -c issue184_playwright.config.js --grep 'issue184:' --reporter=line
 
