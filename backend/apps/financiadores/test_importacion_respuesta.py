@@ -215,6 +215,28 @@ class RespuestaImportacionTests(DatosRespuesta, TestCase):
         self.assertEqual(self.confirmar(lote, modo_respuesta="cambios").status_code, 400)
         self.assertFalse(Afiliado.objects.exists())
 
+    def test_otro_lote_con_mismos_datos_no_duplica_historial_ni_eventos_de_cambio(self):
+        primero = self.preview(2)
+        self.confirmar(primero, modo_respuesta="cambios")
+        historial = HistorialAfiliacion.objects.count()
+        eventos = EventoCobertura.objects.filter(accion__in=("actualizar_padron", "editar_ficha_padron")).count()
+        otro = self.preview(2)
+        respuesta = self.confirmar(otro, modo_respuesta="cambios")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data["resumen"]["aplicada"], 2)
+        self.assertEqual(Afiliado.objects.count(), 2)
+        self.assertEqual(HistorialAfiliacion.objects.count(), historial)
+        self.assertEqual(EventoCobertura.objects.filter(
+            accion__in=("actualizar_padron", "editar_ficha_padron")).count(), eventos)
+        self.assertFalse(HistorialAfiliacion.objects.exclude(
+            lote=primero, origen="importacion", registrado_por=self.usuario, afiliado__financiador=self.org).exists())
+        auditoria = EventoCobertura.objects.filter(financiador=self.org)
+        self.assertFalse(auditoria.exclude(usuario=self.usuario).exists())
+        textos = str(list(auditoria.values("accion", "objeto", "motivo")))
+        for fila in primero.filas:
+            for campo in ("nombre", "documento", "cuil"):
+                self.assertNotIn(fila["datos"][campo], textos)
+
 
 @skipUnless(connection.vendor == "postgresql", "El control de locks exige PostgreSQL.")
 class RespuestaConcurrenteTests(DatosRespuesta, TransactionTestCase):
