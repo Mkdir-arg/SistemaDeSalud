@@ -1,6 +1,9 @@
 // Pasos comunes del modal de importación. Todos los formatos los usan para que
 // elegir otro formato no cambie la forma de trabajar: mismos títulos, mismo
 // orden y mismas pestañas de filas.
+import { useState } from "react";
+import { api } from "@/api/client";
+import { rutaFinanciador } from "@/api/financiadores";
 import { Ayuda, Button, Field, Input, Tabs } from "@/components/ui";
 
 export function PasoPreparar({ ayuda, deshabilitado, onDescargar }) {
@@ -32,4 +35,27 @@ export function PestanasFilas({ pestanas, filas, valor, onChange }) {
 // Primera pestaña con filas, para no abrir el lote en una pestaña vacía.
 export function pestanaInicial(pestanas, filas) {
   return (pestanas.find((p) => p.key !== "todas" && filas.some(p.incluye)) || pestanas[0]).key;
+}
+
+// Reenvía el archivo elegido y descarga una copia con comentarios de Excel en
+// las celdas con error. El servidor no guarda el archivo; por eso sólo se
+// ofrece mientras el modal lo tiene (no desde «Importaciones registradas»).
+// `onError` recibe el error crudo (o null al reintentar); cada flujo lo muestra.
+export function BotonArchivoAnotado({ organizacion, archivo, importacion, deshabilitado, onError }) {
+  const [descargando, setDescargando] = useState(false);
+  async function descargar() {
+    setDescargando(true); onError(null);
+    try {
+      const datos = new FormData();
+      datos.append("archivo", archivo);
+      if (importacion) datos.append("importacion", String(importacion));
+      const nombre = archivo.name.replace(/\.xlsx$/i, "") + "-con-comentarios.xlsx";
+      await api.downloadPost(rutaFinanciador(organizacion.id, "anotar-importacion"), datos, nombre);
+    } catch (e) { onError(e); }
+    finally { setDescargando(false); }
+  }
+  return <div className="flex items-center gap-2">
+    <Button type="button" variant="secondary" disabled={deshabilitado || descargando} onClick={descargar}>{descargando ? "Preparando…" : "Descargar archivo con comentarios"}</Button>
+    <Ayuda>Es tu mismo archivo con un comentario en cada celda con error (y en amarillo, las advertencias). Corregilo y volvé a revisarlo.</Ayuda>
+  </div>;
 }

@@ -265,9 +265,9 @@ test("XLSX v2 real: preview sin efectos, aplicación parcial, rechazos y repetic
   expect(aplicado.length).toBeLessThanOrEqual(previo.length + 2);
   expect((await leer(request, rutaAPI("finalizado"), headers)).finalizado_en).toBe(finalizado.finalizado_en);
   const descarga = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Descargar filas rechazadas", exact: true }).click();
+  await page.getByRole("button", { name: "Descargar archivo con comentarios", exact: true }).click();
   const archivoRechazos = await descarga;
-  expect(archivoRechazos.suggestedFilename()).toBe("filas-para-corregir.xlsx");
+  expect(archivoRechazos.suggestedFilename()).toBe("archivo-con-comentarios.xlsx");
   expect(await archivoRechazos.failure()).toBeNull();
   const contenidoRechazos = readFileSync(await archivoRechazos.path());
   expect([...contenidoRechazos.subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);

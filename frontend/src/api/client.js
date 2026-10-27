@@ -354,7 +354,7 @@ export const api = {
   },
 
   async downloadPost(path, body, nombre = "archivo") {
-    const { blob, disposition } = await request("POST", path, body, false, { blob: true });
+    const { blob, disposition } = await request("POST", path, body, false, { blob: true, multipart: body instanceof FormData });
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = href;

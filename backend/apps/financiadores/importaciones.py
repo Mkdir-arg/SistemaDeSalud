@@ -204,20 +204,38 @@ def _verificar_zip(contenido, limite, inicio):
         raise ValidationError("El archivo no es una planilla .xlsx válida y segura.") from exc
 
 
-def _texto(valor, campo, *, obligatorio=True, maximo=120):
+def _error(texto, *columnas):
+    """Error de fila con los encabezados de Carga donde se origina (puede no haber)."""
+    return ValidationError(texto, params={"columnas": columnas})
+
+
+def _columnas(exc):
+    """Encabezados señalados por el error; los errores de modelo usan el nombre del campo."""
+    if hasattr(exc, "error_dict"):
+        return list(exc.error_dict)
+    return list(dict.fromkeys(c for e in getattr(exc, "error_list", ()) for c in (e.params or {}).get("columnas", ())))
+
+
+def _rechazar(fila, exc):
+    fila.update(estado="revision" if _es_duplicado(exc) or es_conflicto_cobertura(exc) else "rechazada",
+                errores=_mensajes(exc), columnas_error=_columnas(exc) if isinstance(exc, ValidationError) else [])
+
+
+def _texto(valor, campo, *, obligatorio=True, maximo=120, columna=None):
+    columna = columna or campo
     if valor is None or valor == "":
         if obligatorio:
-            raise ValidationError(f"{campo} es obligatorio.")
+            raise _error(f"{campo} es obligatorio.", columna)
         return ""
     if not isinstance(valor, str):
-        raise ValidationError(f"{campo} debe estar guardado como texto para conservar sus ceros iniciales.")
+        raise _error(f"{campo} debe estar guardado como texto para conservar sus ceros iniciales.", columna)
     valor = valor.strip()
     if (obligatorio and not valor) or len(valor) > maximo:
-        raise ValidationError(f"{campo} debe contener entre {1 if obligatorio else 0} y {maximo} caracteres.")
+        raise _error(f"{campo} debe contener entre {1 if obligatorio else 0} y {maximo} caracteres.", columna)
     return valor
 
 
-def _fecha(valor):
+def _fecha(valor, columna=None):
     if isinstance(valor, datetime):
         return valor.date().isoformat()
     if isinstance(valor, date):
@@ -227,7 +245,7 @@ def _fecha(valor):
             return date.fromisoformat(valor.strip()).isoformat()
         except ValueError:
             pass
-    raise ValidationError("La fecha debe ser una fecha de Excel o texto AAAA-MM-DD.")
+    raise _error("La fecha debe ser una fecha de Excel o texto AAAA-MM-DD.", *([columna] if columna else []))
 
 
 def _cantidad(valor):
@@ -239,32 +257,32 @@ def _cantidad(valor):
             raise ValueError
         return int(cantidad)
     except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError("La cantidad debe ser un entero entre 1 y 100.000.")
+        raise _error("La cantidad debe ser un entero entre 1 y 100.000.", "Cantidad")
 
 
 def _codigo(valor, campo, *, obligatorio=True):
     codigo = _texto(valor, campo, obligatorio=obligatorio, maximo=300).split(" — ", 1)[0].strip()
     if len(codigo) > 60:
-        raise ValidationError(f"El código de {campo.lower()} no puede superar 60 caracteres.")
+        raise _error(f"El código de {campo.lower()} no puede superar 60 caracteres.", campo)
     return codigo
 
 
 def _normalizar(valores, tipo, version=1):
     documento = normalizar_documento(_texto(valores[1], "Documento", maximo=80))
     if not documento:
-        raise ValidationError("El documento debe contener letras o números.")
+        raise _error("El documento debe contener letras o números.", "Documento")
     datos = {"numero": _texto(valores[0], "N.º de afiliado", maximo=80), "documento": documento}
     if tipo == "padron":
-        datos.update(nombre=_texto(valores[2], "Nombre y apellido", maximo=160), plan=_codigo(valores[3], "Plan", obligatorio=False), desde=_fecha(valores[4]))
+        datos.update(nombre=_texto(valores[2], "Nombre y apellido", maximo=160), plan=_codigo(valores[3], "Plan", obligatorio=False), desde=_fecha(valores[4], "Vigente desde"))
     else:
-        datos.update(prestacion=_codigo(valores[2], "Prestación"), fecha=_fecha(valores[3]), cantidad=_cantidad(valores[4]), referencia=_texto(valores[5], "Referencia externa", obligatorio=False, maximo=120))
+        datos.update(prestacion=_codigo(valores[2], "Prestación"), fecha=_fecha(valores[3], "Fecha de prestación"), cantidad=_cantidad(valores[4]), referencia=_texto(valores[5], "Referencia externa", obligatorio=False, maximo=120))
     if tipo == "padron" and version == 2:
         nuevos = {}
         for campo, valor in zip(CAMPOS_V2, valores[5:]):
             if valor is None or valor == "":
                 continue
             if campo == "titular_documento":
-                datos[campo] = normalizar_documento(_texto(valor, "Documento del titular", maximo=80))
+                datos[campo] = normalizar_documento(_texto(valor, "Documento del titular", maximo=80, columna=campo))
                 continue
             if isinstance(valor, (date, datetime)):
                 valor = _fecha(valor)
@@ -307,15 +325,15 @@ def _validar_datos(datos, tipo, financiador, referencias, motivo=""):
     if tipo == "padron":
         plan = referencias["planes"].get(datos["plan"]) if datos["plan"] else None
         if datos["plan"] and plan is None:
-            raise ValidationError("El plan no pertenece al financiador o no está activo.")
+            raise _error("El plan no pertenece al financiador o no está activo.", "Plan")
         desde = date.fromisoformat(datos["desde"])
         anterior = referencias["afiliados"].get(datos["documento"])
         if anterior and anterior.finalizado_en:
             raise ValidationError("La afiliación está finalizada. Reactivala expresamente desde el padrón; la importación no reactiva afiliaciones.")
         if desde > timezone.localdate():
-            raise ValidationError("La vigencia del padrón debe ser una fecha actual o anterior.")
+            raise _error("La vigencia del padrón debe ser una fecha actual o anterior.", "Vigente desde")
         if anterior and desde < anterior.desde:
-            raise ValidationError("La actualización no puede anteceder la última vigencia del padrón.")
+            raise _error("La actualización no puede anteceder la última vigencia del padrón.", "Vigente desde")
         if datos.get("_version") == 2:
             if anterior and "_revision" in datos and anterior.revision != datos["_revision"]:
                 raise ValidationError("El afiliado cambió desde la vista previa; generá una nueva importación para revisar el conflicto.")
@@ -329,19 +347,19 @@ def _validar_datos(datos, tipo, financiador, referencias, motivo=""):
             if datos.get("titular_documento"):
                 titular = referencias["afiliados"].get(datos["titular_documento"])
                 if not titular or titular.documento == obj.documento or titular.titular_id or (anterior and anterior.pk and Afiliado.objects.filter(titular_id=anterior.pk).exists()):
-                    raise ValidationError("El titular debe existir en este financiador o en una fila válida anterior, sin ciclos ni familiares de familiares.")
+                    raise _error("El titular debe existir en este financiador o en una fila válida anterior, sin ciclos ni familiares de familiares.", "titular_documento")
                 obj.titular_id = titular.pk or -1
             padron.validar_generales(obj)
             if obj.cuil:
                 if Afiliado.objects.filter(financiador=financiador, cuil=obj.cuil).exclude(documento=obj.documento).exists() or referencias["cuil_lote"].get(obj.cuil, obj.documento) != obj.documento:
-                    raise ValidationError("El CUIL corresponde a otra identidad; requiere revisión, sin fusión automática.")
+                    raise _error("El CUIL corresponde a otra identidad; requiere revisión, sin fusión automática.", "cuil")
         return {**datos, "plan": plan, "desde": desde}
     afiliado = referencias["afiliados"].get((datos["numero"], datos["documento"]))
     if afiliado is None:
-        raise ValidationError("El número y documento no corresponden a un afiliado del padrón; actualice primero el padrón.")
+        raise _error("El número y documento no corresponden a un afiliado del padrón; actualice primero el padrón.", "N.º de afiliado", "Documento")
     prestacion = referencias["prestaciones"].get(datos["prestacion"])
     if prestacion is None:
-        raise ValidationError("La prestación no pertenece al catálogo configurado del financiador.")
+        raise _error("La prestación no pertenece al catálogo configurado del financiador.", "Prestación")
     entrada = dict(financiador=financiador, afiliado=afiliado, prestacion=prestacion, fecha=date.fromisoformat(datos["fecha"]), cantidad=datos["cantidad"], referencia=datos["referencia"], motivo_duplicado=motivo)
     validar_consumo_externo(**entrada)
     return entrada
@@ -415,18 +433,21 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave, cob
                     parentesco_invalido = True
                     fila["original"][posicion] = "[omitido: parentesco no admitido]"
             try:
+                # Fuera de la plantilla no hay encabezado: se señala la posición (base 1).
                 if len(celdas) > len(columnas) and any(c.value is not None for c in celdas[len(columnas):]):
-                    raise ValidationError("La fila contiene columnas adicionales a la plantilla.")
+                    raise _error("La fila contiene columnas adicionales a la plantilla.",
+                                 *(i for i, c in enumerate(celdas[len(columnas):], len(columnas) + 1) if c.value is not None))
                 if any(c.data_type in ("f", "e") for c in celdas):
-                    raise ValidationError("No se admiten fórmulas ni errores de Excel en las filas de carga.")
+                    raise _error("No se admiten fórmulas ni errores de Excel en las filas de carga.",
+                                 *(columnas[i] if i < len(columnas) else i + 1 for i, c in enumerate(celdas) if c.data_type in ("f", "e")))
                 if parentesco_invalido:
-                    raise ValidationError("El parentesco sensible se carga únicamente por el recurso de salud; su valor fue omitido del lote.")
+                    raise _error("El parentesco sensible se carga únicamente por el recurso de salud; su valor fue omitido del lote.", "parentesco")
                 valores += [None] * (len(columnas) - len(valores))
                 fila["datos"] = _normalizar(valores, tipo, version)
                 if version == 2:
                     fila["datos"]["_version"] = 2
             except ValidationError as exc:
-                fila.update(estado="revision" if _es_duplicado(exc) else "rechazada", errores=_mensajes(exc))
+                _rechazar(fila, exc)
             filas.append(fila)
         referencias = _referencias(financiador, tipo, [f["datos"] for f in filas if f["estado"] == "valida"])
         vistos = set()
@@ -439,7 +460,7 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave, cob
                 if version == 2:
                     documento = fila["datos"]["documento"]
                     if documento in vistos:
-                        raise ValidationError("Documento repetido dentro del lote; dejá una única fila por identidad.")
+                        raise _error("Documento repetido dentro del lote; dejá una única fila por identidad.", "Documento")
                     anterior = referencias["afiliados"].get(documento)
                     fila["datos"]["_revision"] = anterior.revision if anterior else 0
                 _validar_datos(fila["datos"], tipo, financiador, referencias)
@@ -457,7 +478,7 @@ def previsualizar_importacion(*, financiador, usuario, tipo, archivo, clave, cob
                     if futuro.cuil:
                         referencias["cuil_lote"][futuro.cuil] = documento
             except ValidationError as exc:
-                fila.update(estado="revision" if _es_duplicado(exc) or es_conflicto_cobertura(exc) else "rechazada", errores=_mensajes(exc))
+                _rechazar(fila, exc)
     finally:
         libro.close()
     if not filas:
@@ -530,9 +551,9 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None, rev
                                 resultado = padron.editar_ficha(afiliado=resultado, usuario=usuario, entrada=nuevos, origen="importacion", lote=lote)
                         else:
                             resultado = registrar_consumo_externo(usuario=usuario, **entrada)
-                    fila.update(estado="aplicada", errores=[], resultado_id=resultado.pk, motivo_duplicado=motivo, aplicado_por=autor_real(usuario).pk, aplicado_en=timezone.now().isoformat())
+                    fila.update(estado="aplicada", errores=[], columnas_error=[], resultado_id=resultado.pk, motivo_duplicado=motivo, aplicado_por=autor_real(usuario).pk, aplicado_en=timezone.now().isoformat())
                 except ValidationError as exc:
-                    fila.update(estado="revision" if _es_duplicado(exc) or es_conflicto_cobertura(exc) else "rechazada", errores=_mensajes(exc))
+                    _rechazar(fila, exc)
                 lote.resumen = _resumen(lote.filas, lote.resumen)
                 lote.estado = "preview" if any(f["estado"] in ("valida", "revision", "error_tecnico") for f in lote.filas) else "aplicada"
                 lote.save(update_fields=["filas", "resumen", "estado"])

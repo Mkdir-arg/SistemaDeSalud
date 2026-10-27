@@ -3,7 +3,7 @@ import { api } from "@/api/client";
 import { errorFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { Ayuda, Button } from "@/components/ui";
 import { plural } from "@/lib/format";
-import { PasoPreparar, PasoRevisar, PestanasFilas, pestanaInicial } from "./ImportacionPasos";
+import { BotonArchivoAnotado, PasoPreparar, PasoRevisar, PestanasFilas, pestanaInicial } from "./ImportacionPasos";
 import RevisionFilaOstel, { fichaInicial } from "./RevisionFilaOstel";
 
 const ESTADOS = { valida: "Lista para importar", revision: "Requiere revisión", aplicada: "Aplicada", omitida: "Excluida" };
@@ -87,13 +87,16 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
         onDescargar={() => ejecutar(() => api.download(`${ruta("plantilla")}?${new URLSearchParams(formato.parametrosPlantilla("padron"))}`, formato.nombrePlantilla("padron")))} />
       <PasoRevisar onSubmit={revisar} enviable={!!archivo} ocupado={ocupado && !lote} deshabilitado={ocupado || !!edicion}
         ayuda="Hasta 5 MiB. Conservá identificadores y ceros tal como fueron informados."
-        onArchivo={(nuevo) => { setArchivo(nuevo); setLote(null); clave.current = crypto.randomUUID(); }} />
+        onArchivo={(nuevo) => { setArchivo(nuevo); setLote(null); setError(null); clave.current = crypto.randomUUID(); }} />
     </>}
     {error && !edicion && <p role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error}</p>}
+    {/* Archivo rechazado entero: la copia marca las celdas que lo impidieron. */}
+    {!soloDetalle && archivo && !lote && error && <BotonArchivoAnotado organizacion={organizacion} archivo={archivo} deshabilitado={ocupado} onError={(e) => e && setError(errorFinanciador(e))} />}
     {lote && <section className="space-y-4 border-t border-division pt-5" aria-label="Revisión administrativa">
       <p role="status">{lote.resumen.cobertura_habilitada === true ? "Personas nuevas: cobertura habilitada, sujeta a plan, fechas y reglas." : "Personas nuevas: sólo registro administrativo, sin habilitar cobertura."} En personas existentes se conserva la habilitación actual.</p>
       <h3 className="font-semibold">3. Confirmá las filas válidas</h3>
       <div className="flex items-center gap-2"><Button disabled={ocupado || !lote.resumen.valida || !!edicion} onClick={confirmar}>{ocupado ? "Importando…" : `Importar ${plural(lote.resumen.valida || 0, "fila válida", "filas válidas")}`}</Button><Ayuda>Las pendientes no bloquean las válidas. Cada fila se revalida al importar; las ya aplicadas no se repiten.</Ayuda></div>
+      {!soloDetalle && archivo && (lote.resumen.revision > 0 || lote.resumen.advertencias > 0) && <BotonArchivoAnotado organizacion={organizacion} archivo={archivo} importacion={lote.id} deshabilitado={ocupado || !!edicion} onError={(e) => setError(e && errorFinanciador(e))} />}
       <PestanasFilas pestanas={PESTANAS} filas={lote.filas} valor={filtro} onChange={(valor) => { setFiltro(valor); setPagina(0); }} />
       {filas.length === 0 ? <p role="status">No hay filas en esta categoría.</p> : <div className="overflow-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Registros del lote</caption><thead><tr>{["Origen", "Persona", "Estado y observaciones", "Acción"].map((t) => <th key={t} scope="col" className="p-2">{t}</th>)}</tr></thead><tbody>{filas.slice(visible * 20, visible * 20 + 20).map((f) => <tr key={f.fila} className="border-t border-division"><td className="p-2">{f.hoja} · fila {f.fila_excel}</td><td className="p-2">{f.datos.nombre || "Sin nombre"}<br /><span className="text-texto-debil">CUIL {f.datos.cuil || "sin informar"} · interno {f.datos.numero_interno || "sin informar"}</span></td><td className="p-2">{ESTADOS[f.estado]}<p>{f.errores.join(" ")}</p>{f.advertencias?.length ? <p className="text-texto-debil">Advertencias: {f.advertencias.join(" ")}</p> : null}</td><td className="p-2">{<Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>}</td></tr>)}</tbody></table></div>}
       {filas.length > 20 && <div className="flex items-center justify-between"><Button variant="ghost" disabled={visible === 0} onClick={() => setPagina(visible - 1)}>Anterior</Button><span>Página {visible + 1} de {ultima + 1}</span><Button variant="ghost" disabled={visible === ultima} onClick={() => setPagina(visible + 1)}>Siguiente</Button></div>}

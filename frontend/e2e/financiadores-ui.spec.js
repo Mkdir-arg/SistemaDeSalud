@@ -488,7 +488,17 @@ test("preview importa bloques válidos y conserva detalle rechazado", async ({ p
   await page.getByRole("button", { name: "Importar 2 filas válidas" }).click();
   await expect(page.getByRole("status")).toContainText("Se aplicaron 2 filas");
   expect(confirmaciones).toBe(2);
-  await expect(page.getByRole("button", { name: "Descargar filas rechazadas" })).toBeVisible();
+  // Con el archivo todavía elegido, se descarga la misma planilla con comentarios.
+  let anotado;
+  await page.route("**/api/financiadores/21/anotar-importacion/", (route) => {
+    anotado = route.request().postData();
+    return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="archivo-con-comentarios.xlsx"' }, body: "xlsx-ficticio" });
+  });
+  const descarga = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar archivo con comentarios" }).click();
+  expect((await descarga).suggestedFilename()).toBe("archivo-con-comentarios.xlsx");
+  expect(anotado).toMatch(/name="importacion"\r?\n\r?\n7/);
+  expect(anotado).toContain("archivo-ficticio-API-interceptada");
 });
 
 test("importación recuperable permite revisar duplicados con motivo individual", async ({ page }) => {

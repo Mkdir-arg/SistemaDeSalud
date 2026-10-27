@@ -27,6 +27,8 @@ from .importacion_cobertura import revisar_cobertura, validar_opcion
 
 VERSION = 3
 CAMPOS = ("numero_interno", "numero", "documento", "cuil", "nombre")
+# Columna OSTEL de cada campo de identidad: el archivo con comentarios marca ahí el error.
+COLUMNA = dict(zip(CAMPOS, ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM")))
 # `original` conserva las 40 columnas del archivo, sin homologar: es la
 # evidencia completa de cada fila. Las familias NO se arman aquí: #181 las
 # construirá a partir de CUILTIT y CODPAR. NROREF y NROAFI siguen sin
@@ -173,6 +175,20 @@ def _guardar(lote):
     lote.save(update_fields=["filas", "resumen", "estado"])
 
 
+def _error(texto, *campos):
+    """Error de fila con las columnas OSTEL donde se origina (puede no haber)."""
+    return ValidationError(texto, params={"columnas": tuple(COLUMNA[c] for c in campos)})
+
+
+def _columnas(exc):
+    columnas = {c for e in getattr(exc, "error_list", ()) for c in (e.params or {}).get("columnas", ())}
+    return sorted(columnas, key=COLUMNAS.index)
+
+
+def _marcar(fila, exc):
+    fila.update(estado="revision", errores=list(exc.messages), columnas_error=_columnas(exc))
+
+
 def _validar(fila, lote, repetidos, referencias=None):
     d = fila["datos"]
     if fila.get("bloqueo_fuente"):
@@ -182,23 +198,26 @@ def _validar(fila, lote, repetidos, referencias=None):
     for campo in CAMPOS:
         valor = d[campo]
         if not isinstance(valor, str) or not valor.strip() or len(valor) > (160 if campo == "nombre" else 80):
-            raise ValidationError(f"Completá {campo} con un valor válido.")
+            raise _error(f"Completá {campo} con un valor válido.", campo)
     if not d["documento"].isascii() or not d["documento"].isdigit():
-        raise ValidationError("Revisá el documento; se requiere su representación numérica sin separadores.")
-    padron.validar_cuit(d["cuil"])
+        raise _error("Revisá el documento; se requiere su representación numérica sin separadores.", "documento")
+    try:
+        padron.validar_cuit(d["cuil"])
+    except ValidationError as exc:
+        raise _error(" ".join(exc.messages), "cuil") from None
     if len(d["documento"]) > 8 or d["cuil"][2:10] != d["documento"].zfill(8):
-        raise ValidationError("Documento y CUIL no concuerdan; requiere revisión humana.")
+        raise _error("Documento y CUIL no concuerdan; requiere revisión humana.", "documento", "cuil")
     for campo in ("numero_interno", "documento", "cuil"):
         if repetidos[campo][d[campo]] > 1:
-            raise ValidationError(f"{campo} repetido en el lote. Revisá todas las filas relacionadas.")
+            raise _error(f"{campo} repetido en el lote. Revisá todas las filas relacionadas.", campo)
     qs = Afiliado.objects.filter(financiador=lote.financiador)
     obj = referencias["documento"].get(d["documento"]) if referencias is not None else qs.filter(documento=d["documento"]).first()
     for campo in ("numero_interno", "cuil"):
         otro = referencias[campo].get(d[campo]) if referencias is not None else qs.filter(**{campo: d[campo]}).first()
         if otro and (obj is None or otro.pk != obj.pk):
-            raise ValidationError(f"{campo} pertenece a otra identidad del padrón; no se fusionan personas.")
+            raise _error(f"{campo} pertenece a otra identidad del padrón; no se fusionan personas.", campo)
         if obj and getattr(obj, campo) and getattr(obj, campo) != d[campo]:
-            raise ValidationError(f"{campo} contradice el padrón; revisá la identidad antes de aplicar.")
+            raise _error(f"{campo} contradice el padrón; revisá la identidad antes de aplicar.", campo)
     if obj:
         if obj.finalizado_en:
             raise ValidationError("Afiliación finalizada: un posible reingreso requiere gestión expresa.")
@@ -229,9 +248,9 @@ def _revisar(lote):
             continue
         try:
             _validar(fila, lote, repetidos, referencias)
-            fila.update(estado="valida", errores=[])
+            fila.update(estado="valida", errores=[], columnas_error=[])
         except ValidationError as exc:
-            fila.update(estado="revision", errores=list(exc.messages))
+            _marcar(fila, exc)
     _guardar(lote)
 
 
@@ -409,9 +428,9 @@ def aplicar(*, importacion, usuario):
                 padron.editar_ficha(afiliado=obj, usuario=usuario,
                     entrada={**entrada, "revision": obj.revision, "motivo": "Carga administrativa OSTEL"},
                     origen="importacion", lote=lote)
-                fila.update(estado="aplicada", errores=[], afiliado=obj.pk)
+                fila.update(estado="aplicada", errores=[], columnas_error=[], afiliado=obj.pk)
         except ValidationError as exc:
-            fila.update(estado="revision", errores=list(exc.messages))
+            _marcar(fila, exc)
             actual = Afiliado.objects.filter(financiador=lote.financiador, documento=fila["datos"]["documento"]).first()
             fila.update(padron_actual={k: getattr(actual, k) for k in CAMPOS} if actual else None,
                         revision_padron=actual.revision if actual else 0, cambios_revisados=False,
