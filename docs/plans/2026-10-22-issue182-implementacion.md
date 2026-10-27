@@ -1,5 +1,56 @@
 # #182: implementación y validación de confirmaciones OSTEL
 
+## Estado vigente: integración con main del 27/10/2026
+
+La orden del usuario reemplaza el bloqueo anterior: #186 se incorporó a main
+en `2cb8464929c585d7f8281d9d0235f96e5776742c`. Se integró `origin/main` mediante
+el merge `4c44e2de0c43e7028a9ade00fe7e87dcd26dbc31`, sin rebase ni reescritura
+de historia. El PR #200 debe apuntar a main y conservar su estado draft;
+mergearlo o desplegarlo sigue fuera de autorización. Las secciones del 22 y
+26/10 que siguen son evidencia histórica, no restricciones actuales.
+
+El único conflicto textual fue `ImportacionAdministrativa.jsx`. Se conservan
+los componentes de pasos, pestañas, revisión de ficha y descarga anotada de
+main, y se integra la confirmación por cambios y el aviso de resultado incierto
+de #182. `views.py` y `serializers.py` se fusionaron automáticamente y se
+revisaron sus acciones: mantienen los endpoints de subsanación y anotación,
+la ficha corregida y el alcance por financiador.
+
+La respuesta por cambios incorpora `columnas`, como la respuesta completa de
+main. Se reprodujo su ausencia con una prueba HTTP antes de corregir el
+serializer. La prueba reconstruye el lote y lo compara con el estado persistido:
+preserva las 40 columnas originales, `columnas_error`, `columnas_bloqueo`,
+advertencias, campos advertidos y una fila excluida con su historial. No se
+modifican `ostel_importacion.py`, `importaciones.py`, modelos, migraciones ni
+reglas de main. Los e2e usan el botón «Importar N filas válidas», las pestañas
+«Aplicadas»/«Excluidas» y el diálogo de detalle nuevos.
+
+Validación local del 27/10, con PostgreSQL 16 exclusivo y datos ficticios:
+
+- 15 pruebas focales aprobadas: 12 de respuesta/recuperación/concurrencia y las
+  3 de integración de migraciones. El fallo anterior de la hoja 0014 desapareció
+  al integrar main, sin editar ni omitir esas pruebas.
+- Regresión completa de financiadores: 713 pruebas aprobadas, sin omisiones,
+  después de preparar los estáticos con el comando oficial de CI.
+- 4 recorridos reales navegador → API → PostgreSQL aprobados en 49,5 s:
+  varias tandas con conflicto, pérdida de respuesta posterior al commit,
+  exclusión desde otra sesión y compatibilidad con respuesta tradicional.
+- 4 recorridos existentes de historial, subsanación y cobertura de los dos
+  formatos aprobados con API interceptada, en 8,6 s.
+- 7 controles del runner, 32 contratos frontend y 29 controles de descargas y
+  credenciales aprobados. Build, auditor de clases (294), OpenAPI estricto y
+  `makemigrations --check --dry-run` aprobados.
+
+La primera regresión de 713 pruebas tuvo un error porque este checkout no
+tenía el manifiesto de estáticos del admin. Se ejecutó el paso oficial
+`python manage.py collectstatic --noinput` y se repitió la suite; no se cambió
+código para ocultarlo. La base de prueba y la del navegador son distintas y
+pertenecen al mismo contenedor local descartable. No se usan archivos OSTEL
+reales, servicios operativos ni credenciales reales.
+
+El CI remoto del head publicado se registra en el PR, separado de estos
+resultados locales. La corrección de compatibilidad es `d5984a6`.
+
 ## Publicación autorizada el 26/10/2026
 
 El usuario autorizó commits separados, creación de PR dependiente y ejecución/monitoreo de CI remoto. Se verificó que #186 sigue OPEN/draft en `20dd78eb3845f7ded08c9ecd76cd12db7e5ada4b`, con main `45f8e3319761747efb9df2702ae6048262a0262a` ya integrado. No se cambió esa dependencia ni su bloqueo.
@@ -150,6 +201,6 @@ No se seguirá trabajando en benchmarks por decisión del usuario. Se conserva e
 
 Se detuvieron Django y Vite de esta validación y se eliminó el contenedor PostgreSQL propio con su volumen y credenciales efímeras. También se retiraron los manifiestos temporales que contenían contraseñas ficticias. Las dependencias y el build locales del checkout quedan ignorados por Git y disponibles para reproducir verificaciones; no se alteraron dependencias de otros worktrees.
 
-El cierre técnico de este arreglo no responde las preguntas de OSTEL ni cierra todo #182. El bloqueo para incorporar/desplegar el conjunto es la espera de #186 definida por el usuario. La publicación y CI sí fueron autorizados el 26/10. Cuando se habilite la incorporación, verificar CI del SHA final y su base vigente. Si se revierte esta optimización, volver al modo completo conservando el esquema y las reglas de habilitación de cobertura de #186; no regresar a código que ignore registros administrativos.
+El cierre técnico de este arreglo no responde por sí mismo las preguntas de negocio ni cierra todo #182. La espera de #186 registrada en este corte histórico quedó superada por su merge y la orden del 27/10 descrita al inicio. La incorporación de #200 y el despliegue requieren autorización del usuario y validación del SHA final. Si se revierte esta optimización, volver al modo completo conservando el esquema y las reglas vigentes de main; no regresar a código que ignore registros administrativos.
 
 Skills utilizadas: `orca-cli` para aislar el checkout sin perder avances; `systematic-debugging` para reproducir y corregir la brecha real de esquema; `vercel-react-best-practices` para combinación inmutable con índices; se consultó `playwright` y se reutilizó el runner de pruebas establecido por el repo para verificar UI y HTTP. `brainstorming` se aplicó en la etapa de elección del contrato, ya aprobada; no se reabrieron esas decisiones.
