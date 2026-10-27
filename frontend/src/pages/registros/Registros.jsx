@@ -305,7 +305,7 @@ function NuevoPaciente({ institucionId, busquedaInicial, onClose, onCreado }) {
     </Button>
   </>;
 
-  const formulario = <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+  const formulario = <div className="grid gap-4">
     <section className="rounded-lg border border-borde bg-superficie p-5">
       <h3 className="mb-4 text-base font-bold">Identidad</h3>
       <div className="grid gap-3 sm:grid-cols-2">

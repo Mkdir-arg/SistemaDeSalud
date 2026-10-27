@@ -15,9 +15,11 @@ import "../../src/index.css";
 function Prueba() {
   const [geo, setGeo] = useState(null);
   const [guardado, setGuardado] = useState(false);
+  const [cerrado, setCerrado] = useState(false);
   const modo = new URLSearchParams(location.search).get("modo");
   if (guardado) return <p>Edición ficticia guardada</p>;
-  if (modo === "editar-paciente") return <EditarPacienteModal paciente={{ id: 45, institucion: 21, nombre: "Paciente ficticio", domicilio: "Detalle anterior", geografia: { provincia: { id: 1, nombre: "Provincia A", origen: "georef" } } }} onClose={() => {}} onListo={() => setGuardado(true)} />;
+  if (cerrado) return <p>Edición ficticia cancelada</p>;
+  if (modo === "editar-paciente") return <EditarPacienteModal paciente={{ id: 45, institucion: 21, nombre: "Paciente ficticio", domicilio: "Detalle anterior", geografia: { provincia: { id: 1, nombre: "Provincia A", origen: "georef" } } }} onClose={() => setCerrado(true)} onListo={() => setGuardado(true)} />;
   if (modo === "editar-afiliado") return <FormularioPadron titulo="Editar domicilio" campos={BLOQUES_PADRON.find((b) => b.titulo === "Domicilio").campos}
     inicial={{ calle: "Detalle anterior", provincia: "Provincia legada", localidad: "Localidad legada" }} geografiaOrganizacion={21}
     guardar={(cambios, motivo) => api.patch("/financiadores/21/padron/45/", { ...cambios, revision: 1, motivo })}
