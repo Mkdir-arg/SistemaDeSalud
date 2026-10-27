@@ -124,6 +124,11 @@ process.stdout.write(JSON.stringify(filas.map(fila => columnas.map(key =>
         columnas = validar_columnas_padron()
         self.assertEqual(list(columnas), ["nombre", "numero_interno", "numero", "documento", "plan", "derecho", "estado_administrativo", "alta_administrativa", "baja_efectiva", "motivo_baja", "titular_nombre"])
         m.Afiliado.objects.filter(pk=self.a.pk).update(numero_interno="000184")
+        # NROAFI puede repetirse: NUMERO identifica el registro individual.
+        m.Afiliado.objects.create(financiador=self.org, numero=self.a.numero, numero_interno="000185", documento="99018499", nombre="Otro registro ficticio del mismo NROAFI", desde=timezone.localdate())
+        compartida = {"search": self.a.numero, "estado": "todos"}
+        self.assertEqual(self.client.get(f"/api/financiadores/{self.org.pk}/padron/", compartida).data["count"], 2)
+        self.assertEqual(self.libro(compartida)["Padrón"].max_row, 3)
         params = {"search": "000184", "estado": "todos"}
         listado = self.client.get(f"/api/financiadores/{self.org.pk}/padron/", params)
         self.assertEqual(listado.status_code, 200)
