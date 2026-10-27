@@ -1,5 +1,31 @@
 # #182: implementación y validación de confirmaciones OSTEL
 
+## Integración actual: main con #136 — 27/10/2026
+
+Durante el CI de `f6af866`, main incorporó #203 en
+`e9626ad585b56c67c0d87463a496bcb9ff7a21a7`. La corrida anterior terminó con
+6/6 checks aprobados y 2.806 pruebas backend (1 omitida), pero su base era
+`2cb8464`; no se atribuye ese resultado al main posterior.
+
+Se integró el nuevo main mediante el merge `34a3b8a`, sin conflictos ni
+reescritura de historia. Se conservan los nuevos campos geográficos,
+serializadores, migraciones y pasos de CI de main. No se editaron módulos de
+#136 ni se hizo otra modificación productiva para esta reconciliación.
+
+Sobre esta integración aprobaron localmente:
+
+- **79 pruebas PostgreSQL**, sin omisiones, en 121,029 s: las 73 regresiones de
+  aceptación anteriores, 3 recorridos de migraciones y 3 de convivencia OSTEL y
+  geografía. Incluyen conservación de textos, sustitución de referencias cuando
+  cambia la fuente y conservación de geografía ante valores vacíos.
+- **37 contratos frontend**, build y auditor de 294 clases.
+- OpenAPI estricto y `makemigrations --check --dry-run`, sin cambios.
+
+Los tres escenarios grandes no se repitieron localmente después de este merge;
+la nueva ejecución de CI los incluye junto con las suites geográficas heredadas
+de main. El resultado del head final se registra en el PR. La decisión de límites
+y el alcance semántico pendientes descritos abajo no cambian con esta integración.
+
 ## Reconciliación con los cinco criterios de #182 — 27/10/2026
 
 El usuario pidió analizar el issue completo y terminar los pendientes posibles.
@@ -69,7 +95,7 @@ Se mantiene el alcance administrativo ya confirmado y los valores no homologados
 como evidencia. Cerrar/incorporar el issue requiere la aceptación pertinente y
 la incorporación del PR #200; este encargo no autoriza su merge ni despliegue.
 
-## Estado vigente: integración con main del 27/10/2026
+## Integración inicial con main 2cb8464 del 27/10/2026
 
 La orden del usuario reemplaza el bloqueo anterior: #186 se incorporó a main
 en `2cb8464929c585d7f8281d9d0235f96e5776742c`. Se integró `origin/main` mediante
