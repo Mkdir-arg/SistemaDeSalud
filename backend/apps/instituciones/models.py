@@ -23,6 +23,7 @@ class Institucion(models.Model):
     tipo = models.CharField("tipo", max_length=120, blank=True, help_text="Hospital general, Centro de salud, Organismo…")
     cuit = models.CharField("CUIT", max_length=20, blank=True)
     direccion = models.CharField("dirección", max_length=255, blank=True)
+    geografia = models.ForeignKey("geografia.Ubicacion", null=True, blank=True, on_delete=models.PROTECT)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVA)
     # Ubicación, para poder ordenar los destinos de un traslado por cercanía.
     #

@@ -41,6 +41,7 @@ from apps.accounts.auth_views import (
 from apps.casos.views import MisTareasView, PantallaLlamadosView, PuestoDetalleView
 from apps.common import DescargarArchivoView, SubirArchivoView
 from config.api import router
+from apps.geografia.api import LugaresView, EstadoCatalogoView
 
 
 def media_clinica_no_publica(_request, ruta):
@@ -134,6 +135,8 @@ class EstadoView(APIView):
 
 
 urlpatterns = [
+    path("api/geografia/lugares/", LugaresView.as_view(), name="geografia-lugares"),
+    path("api/geografia/estado/", EstadoCatalogoView.as_view(), name="geografia-estado"),
     path("admin/", admin.site.urls),
     path("api/health/", health, name="health"),
     # Estado de los procesos periódicos. Separado de `health` porque muestra

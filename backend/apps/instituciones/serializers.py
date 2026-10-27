@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.geografia.serializers import CampoGeografia, DomicilioSerializerMixin
 
 from .models import Area, Box, Cama, EstadiaCama, Grupo, Institucion, Subarea
 
@@ -99,7 +100,8 @@ class AreaSerializer(serializers.ModelSerializer):
         return obj.miembros.filter(activo=True, usuario__is_active=True).values("usuario").distinct().count()
 
 
-class InstitucionSerializer(serializers.ModelSerializer):
+class InstitucionSerializer(DomicilioSerializerMixin, serializers.ModelSerializer):
+    geografia = CampoGeografia(required=False)
     areas_count = serializers.IntegerField(source="areas.count", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     staff = serializers.SerializerMethodField()
@@ -109,7 +111,7 @@ class InstitucionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Institucion
-        fields = ["id", "nombre", "tipo", "cuit", "direccion", "estado", "estado_display", "activa", "creada", "areas_count", "staff"]
+        fields = ["id", "nombre", "tipo", "cuit", "direccion", "geografia", "estado", "estado_display", "activa", "creada", "areas_count", "staff"]
         read_only_fields = ["creada"]
 
 

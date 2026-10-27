@@ -67,6 +67,7 @@ def _paciente_en(institucion, base):
             raise ErrorTraslado("El documento identifica fichas conflictivas en destino. Revisá la identidad antes de vincularlas.")
         if existentes:
             return existentes[0]
+    from apps.geografia.servicios import para_traslado
     return Ciudadano.objects.create(
         institucion=institucion,
         nombre=base.nombre,
@@ -77,6 +78,7 @@ def _paciente_en(institucion, base):
         # padrón y convenio del destino y se elige expresamente en el nuevo caso.
         obra_social=base.obra_social,
         domicilio=base.domicilio,
+        geografia=para_traslado(base.geografia),
     )
 
 

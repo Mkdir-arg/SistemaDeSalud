@@ -125,7 +125,7 @@ def _consultar_padron(*, financiador, parametros):
     clave_orden = orden.removeprefix("-")
     if orden and clave_orden not in COLUMNAS_PADRON:
         _invalida()
-    qs = m.Afiliado.objects.filter(financiador=financiador).select_related("plan")
+    qs = m.Afiliado.objects.filter(financiador=financiador).select_related("plan", "geografia__provincia", "geografia__partido", "geografia__localidad", "geografia_laboral__provincia", "geografia_laboral__partido", "geografia_laboral__localidad")
     if parametros.get("plan"):
         qs = qs.filter(plan_id=serializers.IntegerField(min_value=1).run_validation(parametros["plan"]))
     derecho = parametros.get("derecho") or parametros.get("estado")
@@ -189,6 +189,13 @@ def valor_columna_padron(afiliado, clave):
     """Proyección administrativa tipada; XLSX protege las cadenas al escribirlas."""
     if clave not in COLUMNAS_PADRON:
         _invalida()
+    if clave in ("provincia", "partido", "localidad") and afiliado.geografia_id:
+        dato = afiliado.geografia.datos()[clave]
+        if dato["origen"] == "manual" and dato["nombre"]:
+            return f"{dato['nombre']} · Manual · sin verificar"
+    if clave == "domicilio_laboral" and afiliado.geografia_laboral_id:
+        from apps.geografia.servicios import texto_territorial
+        return " · ".join(v for v in (afiliado.domicilio_laboral, texto_territorial(afiliado, "geografia_laboral")) if v)
     if clave == "plan":
         return afiliado.plan.nombre if afiliado.plan_id else None
     if clave == "plan_tipo":

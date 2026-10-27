@@ -3,6 +3,7 @@ from datetime import datetime
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from apps.geografia.serializers import CampoGeografia, DomicilioSerializerMixin
 
 from apps.common import capacidades_de
 
@@ -186,7 +187,8 @@ class CiudadanoListSerializer(serializers.ListSerializer):
         return super().to_representation(filas)
 
 
-class CiudadanoSerializer(serializers.ModelSerializer):
+class CiudadanoSerializer(DomicilioSerializerMixin, serializers.ModelSerializer):
+    geografia = CampoGeografia(required=False)
     # Resumen de la historia clínica (para la lista de HC).
     condiciones = serializers.SerializerMethodField()
     alergias = serializers.SerializerMethodField()
@@ -204,7 +206,7 @@ class CiudadanoSerializer(serializers.ModelSerializer):
         model = Ciudadano
         fields = [
             "id", "institucion", "codigo", "nombre", "apellido", "documento",
-            "fecha_nacimiento", "obra_social", "domicilio", "creado",
+            "fecha_nacimiento", "obra_social", "domicilio", "geografia", "creado",
             "condiciones", "alergias", "entradas", "estudios", "recetas_activas", "ultima",
             "consentimiento", "cobertura_administrativa",
         ]
@@ -375,6 +377,7 @@ class CiudadanoSerializer(serializers.ModelSerializer):
 
 class CiudadanoListadoSerializer(CiudadanoSerializer):
     """El listado permite ubicar pacientes sin entregar sus datos completos."""
+    ocultar_geografia = True
 
     documento = serializers.SerializerMethodField()
     fecha_nacimiento = serializers.SerializerMethodField()
