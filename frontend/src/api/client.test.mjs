@@ -38,7 +38,7 @@ async function cliente({
     static revokeObjectURL() {}
   }
   const context = vm.createContext({
-    AbortSignal: abortSignal, setTimeout, clearTimeout,
+    AbortSignal: abortSignal, setTimeout, clearTimeout, atob,
     localStorage, sessionStorage: storage(), URL: BrowserURL,
     ...(navigator ? { navigator } : {}),
     window: { location: { href: "https://plexo.test/historia/1", origin: "https://plexo.test" } },
@@ -312,6 +312,24 @@ test("fallo de red al renovar conserva la sesión y se puede recuperar", async (
   assert.equal(client.tokens.access, "synthetic-access");
   caida = false;
   assert.equal((await client.api.get("/usuarios/me/")).id, 1);
+});
+
+// JWT sintético: sólo importa `exp`; la firma no se verifica en el cliente.
+const jwt = (exp) => `cabecera.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.firma`;
+
+test("una subida con el access por vencer renueva antes de enviar el archivo", async () => {
+  const ahora = Math.floor(Date.now() / 1000);
+  for (const [access, renueva] of [[jwt(ahora + 10), true], [jwt(ahora + 3600), false], ["synthetic-access", false]]) {
+    const client = await cliente({ responder: (url) => url.endsWith("/auth/token/refresh/")
+      ? Response.json({ access: jwt(ahora + 3600), refresh: "synthetic-rotated" }) : Response.json({ ok: true }) });
+    client.tokens.set({ access, refresh: "synthetic-refresh" });
+    await client.api.multipart("/financiadores/1/anotar-importacion/", "cuerpo-sintetico");
+    const urls = client.peticiones.map((p) => p.url);
+    assert.equal(urls.some((u) => u.endsWith("/auth/token/refresh/")), renueva);
+    // La subida sale una sola vez, después de renovar.
+    assert.equal(urls.filter((u) => u.endsWith("/anotar-importacion/")).length, 1);
+    assert.ok(urls.at(-1).endsWith("/anotar-importacion/"));
+  }
 });
 
 test("una operación pública no depende de cambios de sesión locales mientras espera", async () => {

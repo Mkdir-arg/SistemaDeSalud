@@ -44,3 +44,24 @@ export function guardarFormatoPreferido(usuarioId, tipo, id, almacenamiento) {
     return false;
   }
 }
+
+// Columnas OSTEL y su uso en el sistema; lo que no figura se conserva como
+// evidencia. Mismo orden que ostel_prevalidacion.COLUMNAS.
+export const COLUMNAS_OSTEL = Object.freeze([
+  ["TIPO"], ["NROAFI", "Número de afiliación"], ["CODEMP"], ["CODPAR"], ["APENOM", "Nombre completo"],
+  ["TIPODOC"], ["NRODOC", "Documento"], ["CUIL", "CUIL"], ["SEXO", "Sexo"], ["COD_PLAN"],
+  ["FEC_NAC", "Fecha de nacimiento"], ["FECING"], ["FECBAJ", "Marca de baja (bloquea la fila)"], ["FECVTO"], ["MOTIVO"],
+  ["NROBENE"], ["NROPENS"], ["CARNET"], ["NIV"], ["INCAPA"],
+  ["FACTURA"], ["TABVAL"], ["NUMERO", "Número interno"], ["NROREF"], ["A_CALLE", "Calle"],
+  ["A_NRO", "Altura"], ["A_PISO", "Piso"], ["A_DPTO", "Departamento"], ["A_TEL1", "Teléfono"], ["CELU1", "Celular"],
+  ["EMAIL1", "Email"], ["CODPOS", "Código postal"], ["DESLOCA", "Localidad"], ["CODPROV", "Provincia"], ["CODZON"],
+  ["CODLOCA"], ["CODEST"], ["CODNAC"], ["ESTADO", "Marca de baja si es «B» (bloquea la fila)"], ["CUILTIT"],
+]);
+
+// Mismos nombres que ostel_importacion.PROVINCIAS (Georef); el backend los valida.
+export const PROVINCIAS = Object.freeze([
+  "Buenos Aires", "Catamarca", "Chaco", "Chubut", "Ciudad Autónoma de Buenos Aires", "Córdoba", "Corrientes",
+  "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro",
+  "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero",
+  "Tierra del Fuego, Antártida e Islas del Atlántico Sur", "Tucumán",
+]);
