@@ -25,4 +25,9 @@ STATIC_URL = "/static/"
 MEDIA_ROOT = "/tmp/issue136-media"
 SALUD_FACTURAS_ADJUNTOS = False
 SALUD_FACTURAS_ADJUNTOS_DIR = "/tmp/issue136-privado/facturas"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "facturas": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+}
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
