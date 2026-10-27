@@ -43,6 +43,9 @@ jobs:
       - name: Seguridad de descargas y credenciales
         run: node --experimental-vm-modules --test src/api/client.test.mjs src/auth/credencialesInstitucionales.test.mjs
 
+      - name: Contrato geográfico (#136)
+        run: node --test src/lib/issue136_geografia.test.mjs
+
       - name: Auditor de clases
         # Tailwind escanea el código como texto: una clase mal escrita no rompe el
         # build, simplemente no pinta. Sin esto se descubre mirando la pantalla.

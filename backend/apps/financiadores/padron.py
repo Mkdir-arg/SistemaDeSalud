@@ -25,7 +25,9 @@ CAMPOS_GENERALES = (
     "solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja",
     "titular", "parentesco", "cobertura_habilitada",
 )
-CAMPOS_EDITABLES = ("numero", "documento", "nombre", "plan", *CAMPOS_GENERALES)
+CAMPOS_GEOGRAFIA = ("geografia", "geografia_laboral")
+# No agregar geografía a CAMPOS_GENERALES: define el formato XLSX v2 vigente.
+CAMPOS_EDITABLES = ("numero", "documento", "nombre", "plan", *CAMPOS_GENERALES, *CAMPOS_GEOGRAFIA)
 CAMPOS_SALUD = ("cud", "cud_numero", "cud_presentado_en", "cud_vencimiento", "cud_referencia", "dbt", "cronicas", "parentesco_sensible")
 CAMPOS_COBRANZA = ("situacion", "fuente", "informado_en", "modalidad", "dia_vencimiento", "cupon", "cbu", "cuit_titular", "titular_cuenta", "emisor_tarjeta", "banco", "proveedor_cupon")
 CAMPOS_LEGAJO = ("tipo", "estado", "presentado_en", "verificado_en", "vence_en", "referencia")
@@ -159,6 +161,9 @@ def campos_entrada(modelo, campos, data, controles=("revision", "motivo"), reque
     meta = type("Meta", (), {"model": modelo, "fields": list(campos)})
     clase = type("EntradaPadron", (serializers.ModelSerializer,), {"Meta": meta})
     serializer = clase(data={k: v for k, v in data.items() if k in campos}, partial=True)
+    for campo in CAMPOS_GEOGRAFIA:
+        if campo in campos:
+            serializer.fields[campo] = serializers.JSONField(required=False)
     # No construir querysets de otras organizaciones al validar claves relacionadas.
     for campo in ("titular", "plan"):
         if campo in serializer.fields:
@@ -202,7 +207,33 @@ def editar_ficha(*, afiliado, usuario, entrada, origen="manual", lote=None):
         plan = m.Plan.objects.select_for_update().filter(pk=entrada["plan_id"], financiador=obj.financiador).first()
         if not plan or not plan.activo:
             raise ValidationError({"plan": "El plan debe estar activo y pertenecer al financiador."})
+    from apps.geografia.contrato import NIVELES
+    from apps.geografia.models import Ubicacion
+    from apps.geografia.servicios import ambito, presentacion, resolver
+    delta_geo = {}
+    for campo in CAMPOS_GEOGRAFIA:
+        if campo in entrada:
+            antes = presentacion(obj, campo)
+            try:
+                ubicacion = resolver(entrada.pop(campo), dueno=ambito(financiador_id=obj.financiador_id),
+                    anterior=getattr(obj, campo), textos={n: getattr(obj, n) for n in NIVELES} if campo == "geografia" else {})
+            except serializers.ValidationError as exc:
+                raise ValidationError({campo: str(exc.detail)}) from None
+            setattr(obj, campo, ubicacion)
+            despues = ubicacion.datos()
+            if antes != despues:
+                delta_geo[campo] = {"anterior": antes, "nuevo": despues}
+            if campo == "geografia":
+                entrada.update({n: ubicacion.textos.get(n, "") for n in NIVELES})
+        elif campo == "geografia" and any(n in entrada and entrada[n] != getattr(obj, n) for n in NIVELES) and obj.geografia_id:
+            antes = presentacion(obj)
+            obj.geografia = Ubicacion.objects.create(textos={n: entrada.get(n, getattr(obj, n)) for n in NIVELES})
+            delta_geo[campo] = {"anterior": antes, "nuevo": obj.geografia.datos()}
+        elif campo == "geografia_laboral" and "domicilio_laboral" in entrada and entrada["domicilio_laboral"] != obj.domicilio_laboral and obj.geografia_laboral_id:
+            delta_geo[campo] = {"anterior": presentacion(obj, campo), "nuevo": None}
+            obj.geografia_laboral = None
     delta = cambios(obj, entrada)
+    delta.update(delta_geo)
     for campo, valor in entrada.items():
         setattr(obj, campo, valor)
     if obj.titular_id:

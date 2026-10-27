@@ -154,6 +154,8 @@ class Convenio(models.Model):
 class Afiliado(models.Model):
     """Identidad estable del pagador; cambiar el número/plan no reinicia su cupo."""
     financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
+    geografia = models.ForeignKey("geografia.Ubicacion", null=True, blank=True, on_delete=models.PROTECT, related_name="afiliados")
+    geografia_laboral = models.ForeignKey("geografia.Ubicacion", null=True, blank=True, on_delete=models.PROTECT, related_name="afiliados_laboral")
     numero = models.CharField(max_length=80)
     numero_interno = models.CharField(max_length=80, blank=True, default="", db_default="")
     # El registro administrativo puede existir sin habilitar usos prestacionales.

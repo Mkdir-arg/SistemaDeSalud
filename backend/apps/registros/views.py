@@ -66,7 +66,7 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
     # con 30 filas; si alguien saca esto, se pone en rojo.
     queryset = (
         Ciudadano.objects
-        .select_related("institucion", "historia_clinica")
+        .select_related("institucion", "historia_clinica", "geografia__provincia", "geografia__partido", "geografia__localidad")
         .prefetch_related(Prefetch(
             "consentimientos",
             # El orden va acá: el serializer lee `all()` para no saltear la
@@ -259,6 +259,9 @@ class CiudadanoViewSet(AuditaLecturaClinica, BaseModelViewSet):
                             "Otorgado" if consentimiento.otorgado else "Revocado"]
                 else:
                     datos = self.get_serializer(ciudadano).data
+                    if variante == "identificado":
+                        from apps.geografia.servicios import domicilio_completo
+                        datos["domicilio"] = domicilio_completo(ciudadano)
                     claves = [clave for clave, _ in (
                         self.columnas_csv_padron if variante == "identificado" else self.columnas_csv
                     )]

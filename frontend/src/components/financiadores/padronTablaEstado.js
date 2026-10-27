@@ -1,5 +1,6 @@
 import catalogo from "./padronColumnas.json" with { type: "json" };
 import { ADMINISTRATIVOS, REGIMENES } from "./padronCampos.js";
+import { descripcionGeo } from "../../lib/issue136_geografia.js";
 
 export const COLUMNAS_PADRON = catalogo;
 export const COLUMNAS_PREDETERMINADAS = catalogo.filter((c) => c.default).map((c) => c.key);
@@ -68,6 +69,11 @@ export function parametrosConsultaPadron(parametros) {
 
 export function valorColumnaPadron(fila, columna, planes = []) {
   let valor = fila[columna.key];
+  const territorial = ["provincia", "partido", "localidad"].includes(columna.key) ? fila.geografia?.[columna.key] : null;
+  if (territorial?.origen === "manual" && valor) return `${valor} · Manual · sin verificar`;
+  if (columna.key === "domicilio_laboral" && fila.geografia_laboral) {
+    return [valor, descripcionGeo(fila.geografia_laboral)].filter(Boolean).join(" · ") || "Sin informar";
+  }
   if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.cobertura_habilitada === false ? "administrativas" : fila.vigente === false ? "futuras" : "vigentes";
   if (columna.key === "plan") return fila.plan == null ? "Sin plan" : planes.find((p) => String(p.id) === String(fila.plan))?.nombre || `Plan ${fila.plan}`;
   if (valor == null || valor === "") return "Sin informar";
