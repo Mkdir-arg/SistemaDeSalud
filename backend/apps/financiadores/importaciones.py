@@ -217,8 +217,11 @@ def _columnas(exc):
 
 
 def _rechazar(fila, exc):
+    # Sin columna propia (cobertura, afiliado finalizado) el error es de la
+    # persona: se marca en su documento, nunca en toda una columna ajena.
+    columnas = _columnas(exc) if isinstance(exc, ValidationError) else []
     fila.update(estado="revision" if _es_duplicado(exc) or es_conflicto_cobertura(exc) else "rechazada",
-                errores=_mensajes(exc), columnas_error=_columnas(exc) if isinstance(exc, ValidationError) else [])
+                errores=_mensajes(exc), columnas_error=columnas or ["Documento"])
 
 
 def _texto(valor, campo, *, obligatorio=True, maximo=120, columna=None):
@@ -291,10 +294,23 @@ def _normalizar(valores, tipo, version=1):
             nuevos[campo] = valor
         try:
             validados = padron.campos_entrada(Afiliado, [c for c in CAMPOS_V2 if c != "titular_documento"], nuevos, controles=(), requerido=False)
-        except ApiValidationError:
-            raise ValidationError("Los campos nuevos contienen un valor no admitido. Revisá tipos, fechas y opciones de la plantilla.")
+        except ApiValidationError as exc:
+            campos = list(exc.detail) if isinstance(exc.detail, dict) else []
+            raise _error("Los campos nuevos contienen un valor no admitido. Revisá tipos, fechas y opciones de la plantilla.", *campos)
         datos.update({k: v.isoformat() if isinstance(v, date) else v for k, v in validados.items()})
     return datos
+
+
+# Errores de validar_consumo_externo → columnas de Carga (por código o inicio del mensaje).
+COLUMNAS_CONSUMO = (
+    ("posible_duplicado", None, ("Prestación", "Fecha de prestación")),
+    ("referencia_conflictiva", None, ("Referencia externa",)),
+    (None, "El afiliado", ("N.º de afiliado", "Documento")),
+    (None, "La prestación", ("Prestación",)),
+    (None, "La fecha", ("Fecha de prestación",)),
+    (None, "La cantidad", ("Cantidad",)),
+    (None, "La referencia", ("Referencia externa",)),
+)
 
 
 def _mensajes(error):
@@ -329,14 +345,14 @@ def _validar_datos(datos, tipo, financiador, referencias, motivo=""):
         desde = date.fromisoformat(datos["desde"])
         anterior = referencias["afiliados"].get(datos["documento"])
         if anterior and anterior.finalizado_en:
-            raise ValidationError("La afiliación está finalizada. Reactivala expresamente desde el padrón; la importación no reactiva afiliaciones.")
+            raise _error("La afiliación está finalizada. Reactivala expresamente desde el padrón; la importación no reactiva afiliaciones.", "Documento")
         if desde > timezone.localdate():
             raise _error("La vigencia del padrón debe ser una fecha actual o anterior.", "Vigente desde")
         if anterior and desde < anterior.desde:
             raise _error("La actualización no puede anteceder la última vigencia del padrón.", "Vigente desde")
         if datos.get("_version") == 2:
             if anterior and "_revision" in datos and anterior.revision != datos["_revision"]:
-                raise ValidationError("El afiliado cambió desde la vista previa; generá una nueva importación para revisar el conflicto.")
+                raise _error("El afiliado cambió desde la vista previa; generá una nueva importación para revisar el conflicto.", "Documento")
             obj = copy(anterior) if anterior else Afiliado(financiador=financiador, documento=datos["documento"], numero=datos["numero"], nombre=datos["nombre"], desde=desde, plan=plan)
             for campo in CAMPOS_V2:
                 if campo in datos and campo != "titular_documento":
@@ -361,7 +377,14 @@ def _validar_datos(datos, tipo, financiador, referencias, motivo=""):
     if prestacion is None:
         raise _error("La prestación no pertenece al catálogo configurado del financiador.", "Prestación")
     entrada = dict(financiador=financiador, afiliado=afiliado, prestacion=prestacion, fecha=date.fromisoformat(datos["fecha"]), cantidad=datos["cantidad"], referencia=datos["referencia"], motivo_duplicado=motivo)
-    validar_consumo_externo(**entrada)
+    try:
+        validar_consumo_externo(**entrada)
+    except ValidationError as exc:
+        # El servicio no conoce la planilla: se ubica cada error en su columna.
+        columnas = [c for codigo, inicio, c in COLUMNAS_CONSUMO for e in exc.error_list
+                    if getattr(e, "code", None) == codigo or (inicio and e.message.startswith(inicio))]
+        raise ValidationError([ValidationError(e.message, code=e.code, params={"columnas": tuple(dict.fromkeys(
+            c for grupo in columnas for c in grupo))}) for e in exc.error_list]) from None
     return entrada
 
 

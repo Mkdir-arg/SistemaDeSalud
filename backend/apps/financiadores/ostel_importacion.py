@@ -68,6 +68,14 @@ def _texto(valor):
     return str(valor).strip()
 
 
+def _admitido(valor):
+    try:
+        _texto(valor)
+        return True
+    except ValidationError:
+        return False
+
+
 def _json(valor):
     if isinstance(valor, float) and not isfinite(valor):
         raise ValidationError("El archivo contiene un número fuera de rango. Corregí la fuente antes de continuar.")
@@ -186,13 +194,15 @@ def _columnas(exc):
 
 
 def _marcar(fila, exc):
-    fila.update(estado="revision", errores=list(exc.messages), columnas_error=_columnas(exc))
+    # Un error sin columna propia (cobertura, padrón cambiado) es de la persona:
+    # se marca en su documento, nunca en toda una columna ajena.
+    fila.update(estado="revision", errores=list(exc.messages), columnas_error=_columnas(exc) or [COLUMNA["documento"]])
 
 
 def _validar(fila, lote, repetidos, referencias=None):
     d = fila["datos"]
     if fila.get("bloqueo_fuente"):
-        raise ValidationError(fila["bloqueo_fuente"])
+        raise ValidationError(fila["bloqueo_fuente"], params={"columnas": tuple(fila.get("columnas_bloqueo", ()))})
     if set(d) != set(CAMPOS):
         raise ValidationError("Campos administrativos incompletos.")
     for campo in CAMPOS:
@@ -220,11 +230,12 @@ def _validar(fila, lote, repetidos, referencias=None):
             raise _error(f"{campo} contradice el padrón; revisá la identidad antes de aplicar.", campo)
     if obj:
         if obj.finalizado_en:
-            raise ValidationError("Afiliación finalizada: un posible reingreso requiere gestión expresa.")
+            raise _error("Afiliación finalizada: un posible reingreso requiere gestión expresa.", "documento")
         if fila.get("revision_padron", 0) != obj.revision:
-            raise ValidationError("El padrón cambió desde la revisión. Revisá y guardá la fila nuevamente.")
-        if any(getattr(obj, k) != d[k] for k in CAMPOS) and not fila.get("cambios_revisados"):
-            raise ValidationError("Hay diferencias con el padrón actual. Compará los valores y confirmá la corrección con un motivo.")
+            raise _error("El padrón cambió desde la revisión. Revisá y guardá la fila nuevamente.", "documento")
+        distintos = [k for k in CAMPOS if getattr(obj, k) != d[k]]
+        if distintos and not fila.get("cambios_revisados"):
+            raise _error("Hay diferencias con el padrón actual. Compará los valores y confirmá la corrección con un motivo.", *distintos)
     elif fila.get("revision_padron", 0):
         raise ValidationError("La identidad cambió desde la revisión; volvé a revisar la fila.")
     revisar_cobertura(fila, obj, lote.resumen.get("cobertura_habilitada"))
@@ -297,21 +308,28 @@ def previsualizar(*, financiador, usuario, archivo, clave, fuente="base", cobert
                 # parentesco ni derechos. Ver ORIGINAL.
                 original = {k: _json(raw.get(k)) for k in ORIGINAL}
                 try:
-                    d = {k: _texto(raw[c]) for k, c in zip(CAMPOS, ("NUMERO", "NROAFI", "NRODOC", "CUIL", "APENOM"))}
-                    error = ""
+                    d = {k: _texto(raw[COLUMNA[k]]) for k in CAMPOS}
+                    error, bloqueo = "", []
                 except ValidationError:
                     d = dict.fromkeys(CAMPOS, "")
                     error = "Tipos de identificadores no admitidos. Corregí el archivo y volvé a cargarlo."
+                    bloqueo = [COLUMNA[k] for k in CAMPOS if not _admitido(raw[COLUMNA[k]])]
                 ficha, advertencias, advertidos = _ficha(raw)
                 if fuente == "bajas" or raw.get("ESTADO") == "B" or raw.get("FECBAJ") is not None:
                     error = "Evidencia de baja: no se aplica automáticamente. Requiere resolver sus movimientos."
+                    bloqueo = [c for c in ("FECBAJ", "ESTADO") if (raw.get("FECBAJ") is not None if c == "FECBAJ"
+                                                                     else raw.get("ESTADO") == "B")] or ["FECBAJ"]
+                if error:
+                    # Una fila bloqueada nunca se aplica: su ficha no se usa y
+                    # advertir sobre ella sólo agregaría ruido.
+                    advertencias, advertidos = [], []
                 obj = existentes.get(d["documento"])
                 filas.append({"fila": len(filas) + 1, "hoja": hoja.title, "fila_excel": numero,
                               "datos": d, "original": original, "estado": "revision", "errores": [],
                               "ficha": ficha, "advertencias": advertencias, "advertidos": advertidos,
                               "revision_padron": obj.revision if obj else 0, "revision": 1,
                               "padron_actual": {k: getattr(obj, k) for k in CAMPOS} if obj else None,
-                              "bloqueo_fuente": error, "correcciones": [], "fuente": fuente})
+                              "bloqueo_fuente": error, "columnas_bloqueo": bloqueo, "correcciones": [], "fuente": fuente})
     finally:
         libro.close()
     Financiador.objects.select_for_update(no_key=True).get(pk=financiador.pk)

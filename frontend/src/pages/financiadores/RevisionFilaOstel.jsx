@@ -47,18 +47,17 @@ export default function RevisionFilaOstel({ edicion, setEdicion, ocupado, error,
   return createPortal(<Modal title={`${lectura ? "Detalle" : "Revisar"} de ${edicion.hoja} · fila ${edicion.fila_excel}`} width={880}
     onClose={ocupado ? undefined : onCerrar} footer={pie}>
     <div className="space-y-5" aria-label="Subsanar fila" role="region">
-      {!lectura && <p className="text-sm text-texto-suave">Corregí sólo con información comprobada. Guardar vuelve a validar la fila; no fusiona personas ni la importa. Un dato de ficha vacío no se actualiza.</p>}
       {error && <p role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error}</p>}
       {edicion.errores?.length > 0 && <p className="rounded-md bg-badge-amber-bg p-3 text-sm">{edicion.errores.join(" ")}</p>}
       {edicion.conflicto_cobertura && <p role="status" className="rounded-md bg-badge-amber-bg p-3 text-sm">Conflicto de cobertura: actualmente {edicion.conflicto_cobertura.actual ? "habilitada" : "sin habilitar"}; el lote solicita {edicion.conflicto_cobertura.solicitada ? "habilitarla" : "sólo registro administrativo"}. Al guardar con un motivo confirmás que se conserva la habilitación actual.</p>}
 
-      <section className="space-y-3">
+      {!bloqueada && <section className="space-y-3">
         <h4 className="font-semibold">Identidad</h4>
-        {bloqueada ? <p role="status" className="text-sm">{edicion.bloqueo_fuente}</p> : <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           {Object.entries(CAMPOS).map(([k, titulo]) => <Field key={k} label={titulo}><Input value={edicion.datos[k]} maxLength={k === "nombre" ? 160 : 80} disabled={ocupado || lectura} onChange={(e) => cambiar("datos", k, e.target.value)} /></Field>)}
-        </div>}
+        </div>
         {edicion.padron_actual && <div className="rounded-md bg-superficie-2 p-3 text-sm"><h5 className="font-semibold">Valores actuales en el padrón</h5>{Object.entries(CAMPOS).map(([k, titulo]) => <p key={k}>{titulo}: {edicion.padron_actual[k] || "Sin informar"}</p>)}</div>}
-      </section>
+      </section>}
 
       {!bloqueada && <section className="space-y-3 border-t border-division pt-4">
         <h4 className="font-semibold">Ficha</h4>

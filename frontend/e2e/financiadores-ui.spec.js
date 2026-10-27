@@ -483,7 +483,9 @@ test("preview importa bloques válidos y conserva detalle rechazado", async ({ p
   await page.getByRole("button", { name: "Importar Excel" }).click();
   await page.getByLabel("Archivo Excel (.xlsx)").setInputFiles({ name: "consumos.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("archivo-ficticio-API-interceptada") });
   await page.getByRole("button", { name: "Revisar archivo" }).click();
-  await expect(page.getByRole("region", { name: "Resumen de importación" })).toContainText("Afiliado no encontrado.");
+  await page.getByRole("button", { name: "Detalle de la fila 4", exact: true }).click();
+  await expect(page.getByRole("tooltip")).toContainText("Afiliado no encontrado.");
+  await page.getByRole("button", { name: "Cerrar ayuda" }).click();
   expect(confirmaciones).toBe(0);
   await page.getByRole("button", { name: "Importar 2 filas válidas" }).click();
   await expect(page.getByRole("status")).toContainText("Se aplicaron 2 filas");
@@ -495,7 +497,7 @@ test("preview importa bloques válidos y conserva detalle rechazado", async ({ p
     return route.fulfill({ contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers: { "Content-Disposition": 'attachment; filename="archivo-con-comentarios.xlsx"' }, body: "xlsx-ficticio" });
   });
   const descarga = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Descargar archivo con comentarios" }).click();
+  await page.getByRole("button", { name: "Ver errores en el archivo" }).click();
   expect((await descarga).suggestedFilename()).toBe("archivo-con-comentarios.xlsx");
   expect(anotado).toMatch(/name="importacion"\r?\n\r?\n7/);
   expect(anotado).toContain("archivo-ficticio-API-interceptada");
@@ -1661,7 +1663,9 @@ test("OSTEL aplica válidas y subsana pendientes sin habilitar cobertura", async
   await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "base-ficticia.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
   await page.getByRole("checkbox", { name: "Habilitar cobertura", exact: true }).uncheck();
   await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
-  await expect(page.getByText("Documento y CUIL no concuerdan", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Detalle de la fila 3", exact: true }).click();
+  await expect(page.getByRole("tooltip")).toContainText("Documento y CUIL no concuerdan");
+  await page.getByRole("button", { name: "Cerrar ayuda" }).click();
   await page.getByRole("button", { name: "Importar 1 fila válida", exact: true }).click();
   await expect(page.getByRole("button", { name: "Importar 0 filas válidas", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Importaciones registradas", exact: true }).click();
@@ -1724,11 +1728,14 @@ for (const formato of ["sistema", "ostel"]) {
     await expect(page.getByRole("combobox", { name: "Contenido del archivo" })).toHaveCount(0);
     await page.getByLabel("Archivo Excel (.xlsx)", { exact: true }).setInputFiles({ name: "ficticio.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("ficticio") });
     await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
-    await expect(page.getByText("Conflicto de cobertura", { exact: true })).toBeVisible();
+    const detalle = page.getByRole("button", { name: "Detalle de la fila 2", exact: true });
+    await detalle.click();
+    await expect(page.getByRole("tooltip")).toContainText("Conflicto de cobertura");
+    await page.getByRole("button", { name: "Cerrar ayuda" }).click();
     await opcion.uncheck();
-    await expect(page.getByText("Conflicto de cobertura", { exact: true })).toHaveCount(0);
+    await expect(detalle).toHaveCount(0);
     await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
-    await expect(page.getByText("Conflicto de cobertura", { exact: true })).toBeVisible();
+    await expect(detalle).toBeVisible();
     expect(claves).toHaveLength(2);
     expect(claves[0]).not.toBe(claves[1]);
     if (formato === "ostel") {

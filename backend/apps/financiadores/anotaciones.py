@@ -119,7 +119,7 @@ def anotar_ostel(*, financiador, usuario, contenido, lote=None):
     for fila in lote.filas:
         if fila["estado"] == "revision" and fila["errores"]:
             texto = " ".join(fila["errores"])
-            for columna in fila.get("columnas_error") or [COLUMNAS[0]]:
+            for columna in fila.get("columnas_error") or ["NRODOC"]:
                 _agregar(marcas, fila["hoja"], fila["fila_excel"], COLUMNAS.index(columna) + 1, texto)
         if fila["estado"] in ("aplicada", "omitida"):
             continue
@@ -148,7 +148,9 @@ def anotar_sistema(*, financiador, usuario, contenido, lote):
         if fila["estado"] not in ("rechazada", "revision", "error_tecnico") or not fila["errores"]:
             continue
         texto = " ".join(fila["errores"])
-        for columna in fila.get("columnas_error") or [columnas[0]]:
-            posicion = columna if isinstance(columna, int) else columnas.index(columna) + 1 if columna in columnas else 1
+        for columna in fila.get("columnas_error") or ["Documento"]:
+            if not isinstance(columna, int) and columna not in columnas:
+                columna = "Documento"
+            posicion = columna if isinstance(columna, int) else columnas.index(columna) + 1
             _agregar(marcas, "Carga", fila["fila"], posicion, texto)
     return _escribir(contenido, marcas)

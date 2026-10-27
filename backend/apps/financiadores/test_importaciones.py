@@ -256,6 +256,7 @@ class ImportacionesTests(ImportacionesSetup, TestCase):
         registrar_consumo_externo(financiador=self.financiador, usuario=self.usuario, afiliado=self.afiliado, prestacion=self.prestacion, fecha=date(2020, 6, 1), cantidad=1)
         lote = self.preview(self.archivo(filas=[self.consumo()]))
         self.assertEqual(lote.resumen["revision"], 1)
+        self.assertEqual(lote.filas[0]["columnas_error"], ["Prestación", "Fecha de prestación"])
         self.aplicar(lote)
         self.assertEqual(ConsumoExterno.objects.count(), 1)
         self.aplicar(lote, {"2": "Son dos prácticas distintas, verificadas con el prestador."})

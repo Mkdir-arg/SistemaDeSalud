@@ -131,3 +131,20 @@ class AnotacionesTests(TestCase):
         nueva = self.client.post(self.base + "importaciones/", {"tipo": "padron", "clave": str(uuid4()),
             "archivo": SimpleUploadedFile("corregido.xlsx", respuesta.content)}, format="multipart")
         self.assertEqual(nueva.status_code, 201, nueva.data)
+
+    def test_bajas_y_errores_sin_columna_marcan_su_celda_y_nunca_toda_una_columna(self):
+        filas = (_persona(1, NUMERO="000001", SEXO="F", CODPROV="B", FECBAJ=date(2026, 9, 30), EMAIL1="no-es-un-correo"),
+                 _persona(2, NUMERO="000002", SEXO="F", CODPROV="B", ESTADO="B"),
+                 _persona(3, NUMERO="000003", SEXO="F", CODPROV="B", NROAFI=1.5))
+        contenido = generar_xlsx(Lote("entrada", filas))
+        lote = self.client.post(self.base + "previsualizar-ostel/", {
+            "archivo": SimpleUploadedFile("ficticio.xlsx", contenido), "clave": str(uuid4())}, format="multipart").data
+        # Una baja nunca se aplica: su ficha no genera advertencias.
+        self.assertEqual(lote["filas"][0]["advertencias"], [])
+        self.assertEqual([f["columnas_error"] for f in lote["filas"]], [["FECBAJ"], ["ESTADO"], ["NROAFI"]])
+        hoja = libro(self.anotar(contenido, importacion=lote["id"]).content)["Hoja1"]
+        self.assertIn("Evidencia de baja", comentario(hoja, 2, COLUMNAS.index("FECBAJ") + 1))
+        self.assertIn("Evidencia de baja", comentario(hoja, 3, COLUMNAS.index("ESTADO") + 1))
+        self.assertIn("Tipos de identificadores", comentario(hoja, 4, COLUMNAS.index("NROAFI") + 1))
+        self.assertEqual([comentario(hoja, n, 1) for n in (2, 3, 4)], [None, None, None])
+        self.assertIsNone(comentario(hoja, 2, COLUMNAS.index("EMAIL1") + 1))

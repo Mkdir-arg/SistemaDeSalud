@@ -26,10 +26,10 @@ export function PasoRevisar({ onSubmit, onArchivo, deshabilitado, enviable, ocup
 // `pestanas` = [{ key, label, incluye(fila) }]. La cantidad de cada pestaña se
 // calcula sobre las filas del lote, no sobre la página visible.
 export function PestanasFilas({ pestanas, filas, valor, onChange }) {
-  return <Tabs valor={valor} onChange={onChange} className="flex-wrap" tabs={pestanas.map((p) => ({
+  return <div className="max-w-full overflow-x-auto"><Tabs valor={valor} onChange={onChange} className="w-max" tabs={pestanas.map((p) => ({
     key: p.key,
     label: <span className="inline-flex items-center gap-2">{p.label}<span className="min-w-5 rounded-full border border-borde bg-superficie px-1.5 text-xs tabular-nums">{filas.filter(p.incluye).length}</span></span>,
-  }))} />;
+  }))} /></div>;
 }
 
 // Primera pestaña con filas, para no abrir el lote en una pestaña vacía.
@@ -54,10 +54,9 @@ export function BotonArchivoAnotado({ organizacion, archivo, importacion, deshab
     } catch (e) { onError(e); }
     finally { setDescargando(false); }
   }
-  return <div className="flex items-center gap-2">
-    <Button type="button" variant="secondary" disabled={deshabilitado || descargando} onClick={descargar}>{descargando ? "Preparando…" : "Descargar archivo con comentarios"}</Button>
-    <Ayuda>Es tu mismo archivo con un comentario en cada celda con error (y en amarillo, las advertencias). Corregilo y volvé a revisarlo.</Ayuda>
-  </div>;
+  return <Button type="button" variant="secondary" disabled={deshabilitado || descargando} onClick={descargar}
+    title="Descarga tu mismo archivo con un comentario en cada celda con error (en amarillo, las advertencias).">
+    {descargando ? "Preparando…" : "Ver errores en el archivo"}</Button>;
 }
 
 // Tabla paginada de filas del lote, igual en todos los formatos. Quien la usa
@@ -68,7 +67,7 @@ export function TablaFilas({ filas, persona, detalle, accion, porPagina = 20 }) 
   const visible = Math.min(pagina, ultima);
   if (filas.length === 0) return <p role="status">No hay filas en esta categoría.</p>;
   return <>
-    <div className="overflow-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Registros del lote</caption>
+    <div><table className="w-full text-left text-sm"><caption className="sr-only">Registros del lote</caption>
       <thead><tr>{["Origen", "Persona", "Estado y observaciones", "Acción"].map((t) => <th key={t} scope="col" className="p-2">{t}</th>)}</tr></thead>
       <tbody>{filas.slice(visible * porPagina, (visible + 1) * porPagina).map((f) => <tr key={f.fila} className="border-t border-division align-top">
         <td className="whitespace-nowrap p-2">{f.hoja || "Carga"} · fila {f.fila_excel ?? f.fila}</td>

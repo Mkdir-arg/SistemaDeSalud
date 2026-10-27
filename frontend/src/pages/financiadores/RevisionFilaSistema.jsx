@@ -15,12 +15,11 @@ export default function RevisionFilaSistema({ edicion, setEdicion, columnas, ocu
   return createPortal(<Modal title={`${lectura ? "Detalle" : "Revisar"} de Carga · fila ${edicion.fila}`} width={880}
     onClose={ocupado ? undefined : onCerrar} footer={pie}>
     <div className="space-y-5" aria-label="Subsanar fila" role="region">
-      {!lectura && <p className="text-sm text-texto-suave">Corregí sólo con información comprobada. Guardar vuelve a leer la fila y a validar el lote; no la importa. Fechas en formato AAAA-MM-DD.</p>}
       {error && <p role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error}</p>}
       {edicion.errores?.length > 0 && <p className="rounded-md bg-badge-amber-bg p-3 text-sm">{edicion.errores.join(" ")}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         {columnas.map((columna, i) => <Field key={columna} label={columna} error={marcadas.has(columna) || marcadas.has(i + 1) ? "Revisá este valor." : null}>
-          <Input value={edicion.valores[i] ?? ""} maxLength={300} disabled={ocupado || lectura}
+          <Input value={edicion.valores[i] ?? ""} maxLength={300} disabled={ocupado || lectura} placeholder={/fecha|desde|hasta/i.test(columna) ? "AAAA-MM-DD" : undefined}
             onChange={(e) => setEdicion({ ...edicion, valores: edicion.valores.map((v, j) => j === i ? e.target.value : v) })} />
         </Field>)}
       </div>
