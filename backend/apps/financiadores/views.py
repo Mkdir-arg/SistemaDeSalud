@@ -369,7 +369,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         from . import padron
         if set(request.data) - set(padron.CAMPOS_EDITABLES) - {"desde", "revision", "motivo", "solo_crear"}:
             raise ValidationError("La petición contiene campos no admitidos para este recurso.")
-        nuevos = padron.campos_entrada(m.Afiliado, padron.CAMPOS_GENERALES, {k: v for k, v in request.data.items() if k in padron.CAMPOS_GENERALES}, controles=(), requerido=False)
+        campos_nuevos = (*padron.CAMPOS_GENERALES, *padron.CAMPOS_GEOGRAFIA)
+        nuevos = padron.campos_entrada(m.Afiliado, campos_nuevos, {k: v for k, v in request.data.items() if k in campos_nuevos}, controles=(), requerido=False)
         revision = serializers.IntegerField(min_value=1).run_validation(request.data["revision"]) if "revision" in request.data else None
         motivo = serializers.CharField(max_length=255).run_validation(request.data.get("motivo", "Alta de padrón"))
         solo_crear = serializers.BooleanField().run_validation(request.data.get("solo_crear", False))

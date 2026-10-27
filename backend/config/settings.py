@@ -174,6 +174,7 @@ INSTALLED_APPS = [
     # Apps del proyecto
     "apps.accounts",
     "apps.instituciones",
+    "apps.geografia",
     "apps.flujos",
     "apps.formularios",
     "apps.casos",

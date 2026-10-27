@@ -65,6 +65,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx playwright test -c playwright.portal.config.js --reporter=line
 
+      - name: Domicilios en todas las áreas (#136)
+        if: ${{ !cancelled() }}
+        run: npx playwright test -c issue136_playwright.config.mjs --reporter=line
+
       - name: Subir trazas y capturas
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
@@ -74,5 +78,6 @@ jobs:
             ${{ runner.temp }}/salud-financiadores-ui
             ${{ runner.temp }}/salud-padron-tabla-ui
             ${{ runner.temp }}/salud-portal
+            ${{ runner.temp }}/salud-issue136-ui
           retention-days: 7
           if-no-files-found: ignore

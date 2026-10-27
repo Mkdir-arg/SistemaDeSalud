@@ -44,6 +44,7 @@ class Ciudadano(models.Model):
     fecha_nacimiento = models.DateField("fecha de nacimiento", null=True, blank=True)
     obra_social = models.CharField("obra social", max_length=120, blank=True)
     domicilio = models.CharField(max_length=255, blank=True)
+    geografia = models.ForeignKey("geografia.Ubicacion", null=True, blank=True, on_delete=models.PROTECT)
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:

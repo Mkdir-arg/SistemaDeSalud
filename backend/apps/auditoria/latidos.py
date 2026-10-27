@@ -266,4 +266,18 @@ def estado() -> dict:
     else:
         servicios["cola_repartos"] = {"estado": "al día", "hace_segundos": espera, "detalle": ""}
 
+    from apps.geografia.models import Catalogo
+
+    catalogo = Catalogo.objects.filter(pk=1).first()
+    edad = int((ahora - catalogo.actualizado).total_seconds()) if catalogo and catalogo.actualizado else None
+    fallo = bool(catalogo and catalogo.error)
+    vencido = (edad is not None and edad > 8 * 24 * 60 * 60
+               or edad is None and arranque is not None and (ahora - arranque).total_seconds() > 8 * 24 * 60 * 60)
+    servicios["catalogo_geografia"] = {
+        "estado": "atrasado" if fallo or vencido else "al día" if edad is not None else "nunca",
+        "hace_segundos": edad,
+        "detalle": catalogo.error if fallo else "Catálogo sin cargar; carga manual disponible." if edad is None else "",
+    }
+    if fallo or vencido:
+        atrasados.append("catalogo_geografia")
     return {"servicios": servicios, "atrasados": atrasados}

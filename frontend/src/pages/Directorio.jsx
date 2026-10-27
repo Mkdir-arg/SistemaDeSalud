@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
+import Geografia, { GeografiaTexto } from "@/components/issue136_Geografia";
+import { cuerpoGeo, hayGeoPendiente } from "@/lib/issue136_geografia";
 import { useAccion, useLista } from "@/api/queries";
 import { useInstitucion } from "@/auth/InstitutionContext";
 import { useAuth } from "@/auth/AuthContext";
@@ -207,7 +209,7 @@ function InstitucionesView() {
                 <span className="flex size-9 flex-none items-center justify-center rounded-lg bg-accent-50 text-accent">
                   <Icon name="building" size={18} />
                 </span>
-                <span className="min-w-0"><span className="block truncate font-semibold">{i.nombre}</span><span className="block truncate text-xs text-texto-suave">{i.tipo || i.direccion || "Institución"}</span></span>
+                <div className="min-w-0"><span className="block truncate font-semibold">{i.nombre}</span><span className="block truncate text-xs text-texto-suave">{i.tipo || i.direccion || "Institución"}</span><GeografiaTexto value={i.geografia} /></div>
               </div>
             ),
           },
@@ -273,6 +275,7 @@ function diasDelMes(serie) { return serie.length > 7 ? "numeric" : "short"; }
 function NuevaInstitucionModal({ onClose }) {
   const toast = useToast();
   const [f, setF] = useState({ nombre: "", tipo: "", cuit: "", direccion: "", admin: "" });
+  const [geo, setGeo] = useState(null);
   const [tipoOpcion, setTipoOpcion] = useState("");
   const [busquedaAdmin, setBusquedaAdmin] = useState("");
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -286,6 +289,7 @@ function NuevaInstitucionModal({ onClose }) {
   const crear = useAccion(async () => {
     const inst = await api.post("/instituciones/", {
       nombre: f.nombre.trim(), tipo: f.tipo.trim(), cuit: f.cuit.trim(), direccion: f.direccion.trim(), estado: "en_alta",
+      ...(geo ? { geografia: cuerpoGeo(geo) } : {}),
     });
     let errorAdmin = null;
     if (f.admin) {
@@ -314,7 +318,7 @@ function NuevaInstitucionModal({ onClose }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={crear.isPending || !f.nombre.trim() || !f.tipo.trim()} onClick={() => crear.mutate()}>
+          <Button disabled={crear.isPending || !f.nombre.trim() || !f.tipo.trim() || hayGeoPendiente(geo)} onClick={() => crear.mutate()}>
             {crear.isPending ? "Creando…" : "Crear institución"}
           </Button>
         </>
@@ -342,9 +346,10 @@ function NuevaInstitucionModal({ onClose }) {
         {tipoOpcion === "Otro" && <Field label="Especificá el tipo *">
           <Input value={f.tipo} onChange={(e) => set("tipo", e.target.value)} placeholder="Tipo de institución" required />
         </Field>}
-        <Field label="Dirección / localidad (opcional)" hint="La ubicación se guarda como texto; provincia y localidad aún no son campos separados.">
+        <Field label="Dirección (opcional)" hint="Conservá aquí el detalle del domicilio; las unidades territoriales se eligen debajo.">
           <Input value={f.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Lomas de Zamora, Buenos Aires" maxLength={255} />
         </Field>
+        <Geografia value={geo} onChange={setGeo} disabled={crear.isPending} />
         <div>
           <label htmlFor="buscar-admin-institucion" className="mb-1.5 block text-base font-semibold text-texto-suave">Administrador de la institución (opcional)</label>
           <Input id="buscar-admin-institucion" type="search" value={busquedaAdmin} onChange={(e) => { setBusquedaAdmin(e.target.value); set("admin", ""); }} placeholder="Buscar por nombre o email" className="mb-2" />

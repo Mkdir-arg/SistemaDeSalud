@@ -15,6 +15,8 @@ import { parametrosFicha, parametrosListado } from "@/lib/padronNavigation";
 import { borrarBorradorAlta, guardarBorradorAlta, leerBorradorAlta } from "@/lib/borradorAlta";
 import { CAMPOS_ALTA, PASOS, camposDelPaso, cuerpoAlta, datosIniciales, formatoCuit, obligatoriosCompletos, pasoConDatos, pasoDeCampo, requerido, tieneDatos, validarPaso } from "@/lib/altaAfiliado";
 import { REGIMENES } from "@/components/financiadores/padronCampos";
+import Geografia, { GeografiaTexto } from "@/components/issue136_Geografia";
+import { cuerpoGeo, geografiaInicial, hayGeoPendiente, nombreGeo } from "@/lib/issue136_geografia";
 import { ROLES, itemsFinanciador } from "./menuFinanciador";
 
 const REVISION = PASOS.length - 1;
@@ -155,6 +157,10 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
   async function registrar() {
     // Ref y no estado: un doble clic entra dos veces antes del próximo render.
     if (registrando.current) return;
+    if (hayGeoPendiente(datos.geografia) || hayGeoPendiente(datos.geografia_laboral)) {
+      setErrorServidor({ message: "Revisá los lugares pendientes del domicilio antes de registrar." });
+      return;
+    }
     registrando.current = true;
     const existente = await verificarDocumento();
     // Valida todo lo cargado; el primer paso con errores es donde se aterriza.
@@ -164,7 +170,11 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
     }
     setEnviando(true); setErrorServidor(null);
     let resultado;
-    try { resultado = await api.post(rutaFinanciador(organizacion.id, "padron"), cuerpoAlta(datos)); }
+    try { resultado = await api.post(rutaFinanciador(organizacion.id, "padron"), {
+      ...cuerpoAlta(datos),
+      ...(datos.geografia ? { geografia: cuerpoGeo(datos.geografia) } : {}),
+      ...(datos.regimen === "dependencia" && datos.geografia_laboral ? { geografia_laboral: cuerpoGeo(datos.geografia_laboral) } : {}),
+    }); }
     catch (err) {
       registrando.current = false;
       setEnviando(false);
@@ -262,14 +272,15 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
             <Grilla>{controles(["telefono", "email", "celular"])}</Grilla>
             {!datos.otro_telefono && !datos.celular && <button type="button" className="text-sm font-semibold text-accent hover:underline" onClick={() => cambiar("otro_telefono", true)}>+ Agregar otro teléfono</button>}
           </Seccion>
-          <Seccion titulo="Domicilio" detalle="Provincia, partido y localidad se cargan como texto.">
-            <Grilla>{controles(["provincia", "partido", "localidad", "codigo_postal", "calle", "altura", "piso", "departamento"])}</Grilla>
+          <Seccion titulo="Domicilio">
+            <Geografia value={datos.geografia || geografiaInicial(null, datos)} ambito="financiador" organizacion={organizacion.id} disabled={enviando} onChange={(geo) => setDatos((previo) => ({ ...previo, geografia: geo, ...Object.fromEntries(["provincia", "partido", "localidad"].map((n) => [n, nombreGeo(geo[n])])) }))} />
+            <Grilla>{controles(["codigo_postal", "calle", "altura", "piso", "departamento"])}</Grilla>
           </Seccion>
         </>}
 
         {paso === 3 && <>
           <Grilla>{controles(["regimen"])}</Grilla>
-          {datos.regimen === "dependencia" && <Seccion titulo="Datos del empleador"><Grilla>{controles(["cuit_empleador", "empleador", "actividad_laboral", "telefono_laboral", "email_laboral", "domicilio_laboral"])}</Grilla></Seccion>}
+          {datos.regimen === "dependencia" && <Seccion titulo="Datos del empleador"><Grilla>{controles(["cuit_empleador", "empleador", "actividad_laboral", "telefono_laboral", "email_laboral", "domicilio_laboral"])}</Grilla><Geografia value={datos.geografia_laboral} ambito="financiador" organizacion={organizacion.id} disabled={enviando} onChange={(geo) => cambiar("geografia_laboral", geo)} /></Seccion>}
           {datos.regimen === "desempleo" && <Seccion titulo="Subsidio por desempleo"><Grilla>{controles(["subsidio_desde", "subsidio_hasta"])}</Grilla></Seccion>}
           {datos.regimen && !["dependencia", "desempleo"].includes(datos.regimen) && <p className="text-sm text-texto-debil">{REGIMENES[datos.regimen]}: sin datos adicionales.</p>}
         </>}
@@ -415,6 +426,8 @@ function Revision({ datos, planes, editar }) {
     <div className="flex items-center justify-between gap-2"><h2 id={`revision-${bloque.paso}`} className="text-lg font-bold">{bloque.paso + 1}. {PASOS[bloque.paso].titulo}</h2><button type="button" className="text-sm font-semibold text-accent hover:underline" onClick={() => editar(bloque.paso)} aria-label={`Editar ${PASOS[bloque.paso].titulo}`}>Editar</button></div>
     {bloque.filas ? <dl className="mt-4 grid gap-x-5 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">{bloque.filas.map(([label, v]) => <div key={label}><dt className="text-xs text-texto-debil">{label}</dt><dd className="mt-0.5 whitespace-pre-wrap">{v}</dd></div>)}</dl>
       : <p className="mt-3 text-sm text-texto-debil">Sin datos cargados (opcional). Podés completarlo ahora o después desde la ficha.</p>}
+    {bloque.paso === 2 && <GeografiaTexto value={datos.geografia} />}
+    {bloque.paso === 3 && datos.regimen === "dependencia" && <GeografiaTexto value={datos.geografia_laboral} />}
   </Card>)}</div>;
 }
 
