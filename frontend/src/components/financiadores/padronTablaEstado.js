@@ -60,6 +60,13 @@ export function parametrosConsultaPadron(parametros) {
   for (const [clave, valor] of parametros) {
     if (consultaLegacy.includes(clave) || ["ordering", "columnas", "page", "page_size"].includes(clave) || clave.startsWith("flt_")) consulta.append(clave, valor);
   }
+  // La tabla siempre usa el orden del catálogo, también en URLs anteriores.
+  // Ordenar sólo selecciones válidas: no ocultar errores que debe rechazar API.
+  if (consulta.getAll("columnas").length === 1) {
+    const pedidas = consulta.get("columnas").split(",");
+    const visibles = obtenerColumnasPadron(parametros);
+    if (new Set(pedidas).size === pedidas.length && pedidas.length === visibles.length && pedidas.every((key) => visibles.includes(key))) consulta.set("columnas", visibles.join(","));
+  }
   if (!consulta.has("page")) consulta.set("page", "1");
   consulta.set("page_size", String(tamanoPadron(parametros)));
   if (!consulta.get("estado") && !consulta.get("derecho") && !consulta.get("flt_derecho")) consulta.set("estado", "vigentes");
@@ -92,14 +99,14 @@ export function valorColumnaPadron(fila, columna, planes = []) {
 // Agrupación solo de presentación, con los mismos bloques de la ficha. El
 // catálogo es contrato con backend (debe coincidir exacto), por eso no la lleva.
 export const GRUPOS_PADRON = [
-  ["Afiliación", ["cobertura_habilitada", "nombre", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
+  ["Afiliación", ["cobertura_habilitada", "nombre", "numero_interno", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
   ["Trámite y credencial", ["estado_administrativo", "estado_tramite", "alta_administrativa", "delegacion", "credencial_tipo", "credencial_fecha"]],
   ["Identidad", ["tipo_documento", "cuil", "nombres", "apellidos", "sexo", "fecha_nacimiento", "nacionalidad", "estado_civil"]],
   ["Contacto", ["telefono", "celular", "email"]],
   ["Domicilio", ["calle", "altura", "piso", "departamento", "codigo_postal", "localidad", "partido", "provincia"]],
   ["Régimen y trabajo", ["regimen", "empleador", "cuit_empleador", "actividad_laboral", "domicilio_laboral", "telefono_laboral", "email_laboral", "subsidio_desde", "subsidio_hasta"]],
   ["Baja administrativa", ["causa_baja", "solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja"]],
-  ["Grupo familiar", ["titular", "parentesco"]],
+  ["Grupo familiar", ["titular_nombre", "titular", "parentesco"]],
 ].map(([titulo, claves]) => ({ titulo, columnas: claves.map((key) => catalogo.find((c) => c.key === key)) }));
 
 const fechaAR = (valor) => String(valor).split("-").reverse().join("/");

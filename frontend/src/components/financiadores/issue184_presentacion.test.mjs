@@ -68,3 +68,17 @@ test("issue184: tabla y ficha comparten precedencia sin deducir fechas", () => {
     [{ estado: "constructor", desde: "2020-01-01" }, "Sin informar"],
   ]) assert.equal(valorColumnaPadron(fila, columna("derecho")), esperado);
 });
+
+
+test("issue184: URL previa exporta las columnas en el mismo orden visible sin ocultar errores", () => {
+  const parametros = new URLSearchParams("columnas=numero,nombre,localidad,plan&estado=todos&page=2");
+  const original = parametros.toString();
+  assert.deepEqual(parametrosConsultaPadron(parametros).get("columnas").split(","), obtenerColumnasPadron(parametros));
+  assert.equal(parametros.toString(), original);
+  for (const columnas of ["nombre,nombre", "nombre,numero,cbu", "nombre", "nombre,numero,numero", ""]) {
+    const consulta = parametrosConsultaPadron(new URLSearchParams({ columnas }));
+    assert.equal(consulta.get("columnas"), columnas, "Backend debe seguir rechazando selecciones inválidas");
+  }
+  const repetidas = new URLSearchParams("columnas=nombre,numero&columnas=nombre,numero,cbu");
+  assert.deepEqual(parametrosConsultaPadron(repetidas).getAll("columnas"), repetidas.getAll("columnas"));
+});

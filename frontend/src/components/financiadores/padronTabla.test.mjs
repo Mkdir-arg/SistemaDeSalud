@@ -94,7 +94,7 @@ test("cada columna está en un único grupo de presentación", () => {
 test("chips usan los parámetros históricos y los flt_ aunque la columna esté oculta", () => {
   const params = new URLSearchParams("columnas=nombre,numero&regimen=pasivo&alta_desde=2026-01-02&flt_localidad=Río&flt_plan_vacio=true&flt_plan=3&estado=todos&search=x");
   assert.deepEqual(filtrosActivosPadron(params, [{ id: 3, nombre: "Base" }]).map((f) => [f.clave, f.etiqueta]), [
-    ["flt_plan", "Plan: Base"], ["flt_plan_vacio", "Plan: sin cargar"],
+    ["flt_plan", "Plan registrado: Base"], ["flt_plan_vacio", "Plan registrado: sin cargar"],
     ["flt_localidad", "Localidad: «Río»"], ["regimen", "Régimen: Jubilado / pensionado"],
     ["alta_desde", "Alta administrativa desde 02/01/2026"],
   ]);

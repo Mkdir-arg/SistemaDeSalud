@@ -22,8 +22,8 @@ XML_INVALIDO = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff
 
 def parametros_padron():
     parametros = [OpenApiParameter(name, OpenApiTypes.STR, description=descripcion) for name, descripcion in (
-        ("search", "Número, documento, nombre, apellido o CUIL."), ("documento", "Documento exacto."),
-        ("plan", "ID de plan de esta organización."), ("estado", "vigentes, futuras, finalizadas o todos."),
+        ("search", "Número individual, número de afiliado, documento, nombre, apellido o CUIL."), ("documento", "Documento exacto."),
+        ("plan", "ID de plan de esta organización."), ("estado", "vigentes, administrativas, futuras, finalizadas o todos."),
         ("derecho", "Mismos valores que estado; prevalece sobre estado."),
         ("estado_administrativo", "activo, en_tramite, baja_programada o baja_administrativa."),
         ("regimen", "Régimen administrativo."), ("columnas", "Claves separadas por coma; nombre y numero obligatorias. Solo administración."),
