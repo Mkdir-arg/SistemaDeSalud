@@ -30,51 +30,68 @@ async function escenario(page, institucion = true) {
 }
 
 async function provinciaManual(page, nombre) {
+  const ubicacion = page.getByLabel("Ubicación territorial", { exact: true }).first();
+  const ancho = (await ubicacion.boundingBox()).width;
+  const anchos = await ubicacion.locator("input, select").evaluateAll((controles) => controles.map((c) => c.getBoundingClientRect().width));
+  expect(anchos.every((valor) => valor >= Math.min(240, ancho) - 1)).toBeTruthy();
   await page.getByRole("button", { name: "Cargar manualmente", exact: true }).first().click();
   await page.getByRole("textbox", { name: "Provincia · carga manual", exact: true }).fill(nombre);
 }
 
-test("alta institucional envía el domicilio y su procedencia manual", async ({ page }) => {
-  const escrituras = await escenario(page, false);
-  await page.goto("/directorio");
-  await page.getByRole("button", { name: /Nueva institución/ }).click();
-  const dialogo = page.getByRole("dialog");
-  await dialogo.getByRole("textbox", { name: /^Nombre/ }).fill("Institución nueva ficticia");
-  await dialogo.getByRole("combobox", { name: /^Tipo/ }).selectOption({ label: "Hospital" });
-  await provinciaManual(dialogo, "Provincia manual institucional");
-  await dialogo.getByRole("button", { name: "Crear institución", exact: true }).click();
-  await expect.poll(() => escrituras.find((r) => r.path === "/api/instituciones/")?.body.geografia).toEqual({ provincia: { manual: "Provincia manual institucional" }, partido: null, localidad: null });
-});
+for (const ancho of [390, 768, 1440]) {
+  test.describe(`formularios a ${ancho}px`, () => {
+    test.use({ viewport: { width: ancho, height: 900 }, colorScheme: ancho === 1440 ? "dark" : "light" });
 
-test("alta de paciente conserva texto y manda ubicación manual", async ({ page }) => {
-  const escrituras = await escenario(page);
-  await page.goto("/pacientes?nuevo=1");
-  const dialogo = page;
-  await dialogo.getByRole("textbox", { name: /^Nombre/ }).fill("Paciente ficticio");
-  await dialogo.getByRole("textbox", { name: "Domicilio (opcional)", exact: true }).fill("Detalle de prueba");
-  await provinciaManual(dialogo, "Provincia manual paciente");
-  await dialogo.getByRole("button", { name: /Registrar paciente|Crear paciente|Registrar en padrón/ }).click();
-  await expect.poll(() => escrituras.find((r) => r.path === "/api/ciudadanos/")?.body.geografia?.provincia).toEqual({ manual: "Provincia manual paciente" });
-  expect(escrituras.find((r) => r.path === "/api/ciudadanos/").body.domicilio).toBe("Detalle de prueba");
-});
+    test("alta institucional envía el domicilio y su procedencia manual", async ({ page }) => {
+      const escrituras = await escenario(page, false);
+      await page.goto("/directorio");
+      await page.getByRole("button", { name: /Nueva institución/ }).click();
+      const dialogo = page.getByRole("dialog");
+      await dialogo.getByRole("textbox", { name: /^Nombre/ }).fill("Institución nueva ficticia");
+      await dialogo.getByRole("combobox", { name: /^Tipo/ }).selectOption({ label: "Hospital" });
+      await provinciaManual(dialogo, "Provincia manual institucional");
+      await dialogo.getByRole("button", { name: "Crear institución", exact: true }).click();
+      await expect.poll(() => escrituras.find((r) => r.path === "/api/instituciones/")?.body.geografia).toEqual({ provincia: { manual: "Provincia manual institucional" }, partido: null, localidad: null });
+    });
 
-test("alta de afiliación integra domicilio personal y laboral sin mezclar ubicación", async ({ page }) => {
-  const escrituras = await escenario(page);
-  await page.goto("/financiadores/padron/nuevo?financiador=21");
-  await page.getByRole("textbox", { name: /^Número de documento/ }).fill("30123456");
-  await page.getByRole("textbox", { name: /^Apellidos/ }).fill("Apellido ficticio");
-  await page.getByRole("textbox", { name: /^Nombres/ }).fill("Nombre ficticio");
-  await page.getByRole("textbox", { name: /^Número de afiliado/ }).fill("ISSUE136");
-  await page.getByRole("button", { name: "Siguiente: Afiliación" }).click();
-  await page.getByRole("combobox", { name: /^Plan/ }).selectOption("31");
-  await page.getByRole("textbox", { name: /^Delegación/ }).fill("Sede ficticia");
-  await page.getByRole("textbox", { name: /^Motivo del alta/ }).fill("Alta sintética de prueba");
-  await page.getByRole("button", { name: /Siguiente: Contacto/ }).click();
-  await provinciaManual(page, "Provincia personal");
-  await page.getByRole("button", { name: /Siguiente: Situación laboral/ }).click();
-  await page.getByRole("combobox", { name: /^Régimen/ }).selectOption("dependencia");
-  await provinciaManual(page, "Provincia laboral");
-  await page.getByRole("button", { name: "Registrar ahora", exact: true }).click();
-  await expect.poll(() => escrituras.find((r) => r.path === "/api/financiadores/21/padron/")?.body.geografia_laboral?.provincia).toEqual({ manual: "Provincia laboral" });
-  expect(escrituras.find((r) => r.path === "/api/financiadores/21/padron/").body.geografia.provincia).toEqual({ manual: "Provincia personal" });
-});
+    test("alta de paciente conserva texto y manda ubicación manual", async ({ page }, testInfo) => {
+      const escrituras = await escenario(page);
+      await page.goto("/pacientes?nuevo=1");
+      const dialogo = page;
+      await dialogo.getByRole("textbox", { name: /^Nombre/ }).fill("Paciente ficticio");
+      await dialogo.getByRole("textbox", { name: "Domicilio (opcional)", exact: true }).fill("Detalle de prueba");
+      const identidad = await page.locator("section").filter({ has: page.getByRole("heading", { name: "Identidad", exact: true }) }).boundingBox();
+      const contacto = await page.locator("section").filter({ has: page.getByRole("heading", { name: "Contacto y domicilio", exact: true }) }).boundingBox();
+      expect(contacto.y).toBeGreaterThanOrEqual(identidad.y + identidad.height);
+      expect(Math.abs(contacto.width - identidad.width)).toBeLessThan(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+      await page.screenshot({ path: testInfo.outputPath(`paciente-${ancho}.png`), fullPage: true });
+      await page.locator("section").filter({ has: page.getByRole("heading", { name: "Contacto y domicilio", exact: true }) }).screenshot({ path: testInfo.outputPath(`domicilio-${ancho}.png`) });
+      await provinciaManual(dialogo, "Provincia manual paciente");
+      await dialogo.getByRole("button", { name: /Registrar paciente|Crear paciente|Registrar en padrón/ }).click();
+      await expect.poll(() => escrituras.find((r) => r.path === "/api/ciudadanos/")?.body.geografia?.provincia).toEqual({ manual: "Provincia manual paciente" });
+      expect(escrituras.find((r) => r.path === "/api/ciudadanos/").body.domicilio).toBe("Detalle de prueba");
+    });
+
+    test("alta de afiliación integra domicilio personal y laboral sin mezclar ubicación", async ({ page }) => {
+      const escrituras = await escenario(page);
+      await page.goto("/financiadores/padron/nuevo?financiador=21");
+      await page.getByRole("textbox", { name: /^Número de documento/ }).fill("30123456");
+      await page.getByRole("textbox", { name: /^Apellidos/ }).fill("Apellido ficticio");
+      await page.getByRole("textbox", { name: /^Nombres/ }).fill("Nombre ficticio");
+      await page.getByRole("textbox", { name: /^Número de afiliado/ }).fill("ISSUE136");
+      await page.getByRole("button", { name: "Siguiente: Afiliación" }).click();
+      await page.getByRole("combobox", { name: /^Plan/ }).selectOption("31");
+      await page.getByRole("textbox", { name: /^Delegación/ }).fill("Sede ficticia");
+      await page.getByRole("textbox", { name: /^Motivo del alta/ }).fill("Alta sintética de prueba");
+      await page.getByRole("button", { name: /Siguiente: Contacto/ }).click();
+      await provinciaManual(page, "Provincia personal");
+      await page.getByRole("button", { name: /Siguiente: Situación laboral/ }).click();
+      await page.getByRole("combobox", { name: /^Régimen/ }).selectOption("dependencia");
+      await provinciaManual(page, "Provincia laboral");
+      await page.getByRole("button", { name: "Registrar ahora", exact: true }).click();
+      await expect.poll(() => escrituras.find((r) => r.path === "/api/financiadores/21/padron/")?.body.geografia_laboral?.provincia).toEqual({ manual: "Provincia laboral" });
+      expect(escrituras.find((r) => r.path === "/api/financiadores/21/padron/").body.geografia.provincia).toEqual({ manual: "Provincia personal" });
+    });
+  });
+}
