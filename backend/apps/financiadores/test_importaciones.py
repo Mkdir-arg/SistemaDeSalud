@@ -256,6 +256,7 @@ class ImportacionesTests(ImportacionesSetup, TestCase):
         registrar_consumo_externo(financiador=self.financiador, usuario=self.usuario, afiliado=self.afiliado, prestacion=self.prestacion, fecha=date(2020, 6, 1), cantidad=1)
         lote = self.preview(self.archivo(filas=[self.consumo()]))
         self.assertEqual(lote.resumen["revision"], 1)
+        self.assertEqual(lote.filas[0]["columnas_error"], ["Prestación", "Fecha de prestación"])
         self.aplicar(lote)
         self.assertEqual(ConsumoExterno.objects.count(), 1)
         self.aplicar(lote, {"2": "Son dos prácticas distintas, verificadas con el prestador."})
@@ -434,3 +435,77 @@ class ImportacionesConcurrenciaTests(ImportacionesSetup, TransactionTestCase):
             tareas = [procesos.submit(confirmar), procesos.submit(confirmar)]
             self.assertEqual([tarea.result(timeout=20) for tarea in tareas], [1, 1])
         self.assertEqual(ConsumoExterno.objects.count(), 1)
+
+
+class SubsanarImportacionTests(ImportacionesSetup, TestCase):
+    """Revisar fila en la plantilla del sistema: corrige, excluye y revalida el lote."""
+
+    def lote(self, filas, version=1):
+        contenido = importaciones.generar_plantilla(financiador=self.financiador, usuario=self.usuario, tipo="padron", version=version)
+        libro = load_workbook(BytesIO(contenido))
+        for n, fila in enumerate(filas, 2):
+            for c, valor in enumerate(fila, 1):
+                libro["Carga"].cell(n, c, valor)
+        salida = BytesIO()
+        libro.save(salida)
+        libro.close()
+        return importaciones.previsualizar_importacion(financiador=self.financiador, usuario=self.usuario,
+                                                       tipo="padron", archivo=salida.getvalue(), clave=uuid4())
+
+    def subsanar(self, lote, fila, valores=None, accion="corregir", revision=None):
+        actual = next(f for f in lote.filas if f["fila"] == fila)
+        return importaciones.subsanar_importacion(importacion=lote, usuario=self.usuario, fila=fila,
+            revision=revision or actual.get("revision", 1), valores=valores, motivo="Verificado con la fuente", accion=accion)
+
+    def fila(self, lote, numero):
+        return next(f for f in lote.filas if f["fila"] == numero)
+
+    def test_corrige_una_fila_rechazada_y_queda_en_el_historial(self):
+        lote = self.lote([["000200", "00200000", "Persona ficticia", "NOEXISTE", date(2020, 1, 1)]])
+        self.assertEqual(self.fila(lote, 2)["columnas_error"], ["Plan"])
+        valores = ["000200", "00200000", "Persona ficticia", "BASICO", "2020-01-01"]
+        lote = self.subsanar(lote, 2, valores)
+        fila = self.fila(lote, 2)
+        self.assertEqual((fila["estado"], fila["revision"], fila["original"]), ("valida", 2, valores))
+        self.assertEqual(fila["correcciones"][0]["anterior"][3], "NOEXISTE")
+        self.assertEqual(lote.resumen["valida"], 1)
+        self.aplicar(lote)
+        self.assertEqual(Afiliado.objects.get(documento="00200000").plan, self.plan)
+
+    def test_correccion_invalida_sigue_rechazada_con_su_columna(self):
+        lote = self.lote([["000200", "00200000", "Persona ficticia", "", date(2020, 1, 1)]])
+        lote = self.subsanar(lote, 2, ["000200", "00200000", "Persona ficticia", "", "no es fecha"])
+        fila = self.fila(lote, 2)
+        self.assertEqual((fila["estado"], fila["columnas_error"], fila["datos"]), ("rechazada", ["Vigente desde"], {}))
+        with self.assertRaises(ValidationError):
+            self.subsanar(lote, 2, ["000200", "00200000", "Persona ficticia", "", "2020-01-01"], revision=1)
+
+    def test_excluir_no_se_aplica_y_cierra_el_lote(self):
+        lote = self.lote([["000200", "00200000", "Persona ficticia", "NOEXISTE", date(2020, 1, 1)],
+                          ["000201", "00200001", "Persona ficticia", "", date(2020, 1, 1)]])
+        lote = self.subsanar(lote, 2, accion="omitir")
+        self.assertEqual((lote.resumen["omitida"], lote.resumen["valida"]), (1, 1))
+        lote = self.aplicar(lote)
+        self.assertEqual(lote.estado, "aplicada")
+        self.assertFalse(Afiliado.objects.filter(documento="00200000").exists())
+        with self.assertRaises(ValidationError):
+            self.subsanar(lote, 2, ["000200", "00200000", "Persona ficticia", "", "2020-01-01"])
+
+    def test_revalida_entre_filas_sin_releer_las_demas(self):
+        repetida = ["000300", "00300000", "Persona ficticia", "", date(2020, 1, 1)]
+        lote = self.lote([repetida, ["000301", "00300000", "Otra ficticia", "", date(2020, 1, 1)],
+                          [300301, "00300002", "Número sin ceros", "", date(2020, 1, 1)]], version=2)
+        self.assertEqual(self.fila(lote, 3)["errores"], ["Documento repetido dentro del lote; dejá una única fila por identidad."])
+        self.assertEqual(self.fila(lote, 4)["estado"], "rechazada")
+        lote = self.subsanar(lote, 2, accion="omitir")
+        # Al excluir la primera, la repetida deja de serlo; la del número sigue rechazada.
+        self.assertEqual(self.fila(lote, 3)["estado"], "valida")
+        self.assertEqual(self.fila(lote, 4)["estado"], "rechazada")
+
+    def test_valores_incompletos_o_lote_ostel_no_se_corrigen(self):
+        lote = self.lote([["000200", "00200000", "Persona ficticia", "NOEXISTE", date(2020, 1, 1)]])
+        with self.assertRaises(ValidationError):
+            self.subsanar(lote, 2, ["000200"])
+        Importacion.objects.filter(pk=lote.pk).update(version=3)
+        with self.assertRaises(ValidationError):
+            self.subsanar(lote, 2, accion="omitir")

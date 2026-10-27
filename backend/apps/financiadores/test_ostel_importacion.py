@@ -199,6 +199,163 @@ class ImportacionAdministrativaTests(TestCase):
         self.assertEqual(Importacion.objects.get(pk=lote.data["id"]).filas[0]["original"]["CODPAR"],
                          "SIN-DICCIONARIO")
 
+    def test_cuiltit_y_datos_crudos_se_conservan_sin_crear_familia(self):
+        """Entrega del 26/10/2026: CUILTIT es evidencia; las familias se arman en #181."""
+        from .ostel_importacion import ORIGINAL
+        from .ostel_synthetic import _cuil
+        cuiltit = _cuil("99018501")
+        filas = (_persona(1, NUMERO="000001", CODPAR="AAA", CODPROV="B",
+                          CODLOCA="000123", CODZON="B04"),
+                 _persona(2, NUMERO="000002", CODPAR="H01", CUILTIT=cuiltit))
+        r = self.preview(filas, cobertura_habilitada=False)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["resumen"]["valida"], 2)
+        originales = [fila["original"] for fila in r.data["filas"]]
+        from .ostel_prevalidacion import COLUMNAS
+        self.assertEqual(ORIGINAL, COLUMNAS)
+        self.assertEqual(list(originales[0]), list(COLUMNAS))
+        self.assertEqual(originales[0]["EMAIL1"], "ostel-1@example.invalid")
+        self.assertEqual(originales[0]["A_CALLE"], "CALLE FICTICIA")
+        self.assertEqual([o["CUILTIT"] for o in originales], [cuiltit, cuiltit])
+        self.assertEqual([o["CODPAR"] for o in originales], ["AAA", "H01"])
+        self.assertEqual((originales[0]["CODPROV"], originales[0]["CODLOCA"], originales[0]["CODZON"]),
+                         ("B", "000123", "B04"))
+        aplicada = self.aplicar(r.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 2)
+        self.assertEqual([f["original"] for f in Importacion.objects.get(pk=r.data["id"]).filas], originales)
+        for afiliado in Afiliado.objects.all():
+            self.assertIsNone(afiliado.titular_id)
+            self.assertEqual(afiliado.parentesco, "")
+            self.assertFalse(afiliado.cobertura_habilitada)
+
+    FICHA_COMPLETA = dict(SEXO="F", A_CALLE="CALLE NUEVA FICTICIA", A_NRO="0123", A_PISO="2",
+                          A_DPTO="B", A_TEL1="0000-0001", CELU1="0000-0002",
+                          EMAIL1="nuevo@example.invalid", CODPOS="0001",
+                          DESLOCA="LOCALIDAD FICTICIA", CODPROV="C", CODLOCA="000999")
+
+    def test_alta_nueva_completa_la_ficha_desde_ostel(self):
+        from datetime import date
+        from .models import HistorialAfiliacion
+        r = self.preview([_persona(1, NUMERO="000001", FEC_NAC=date(1990, 5, 6), **self.FICHA_COMPLETA)])
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["filas"][0]["advertencias"], [])
+        aplicada = self.aplicar(r.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 1, aplicada.data)
+        obj = Afiliado.objects.get()
+        self.assertEqual(
+            (obj.sexo, obj.fecha_nacimiento, obj.calle, obj.altura, obj.piso, obj.departamento,
+             obj.codigo_postal, obj.localidad, obj.provincia, obj.telefono, obj.celular, obj.email),
+            ("F", date(1990, 5, 6), "CALLE NUEVA FICTICIA", "0123", "2", "B", "0001",
+             "LOCALIDAD FICTICIA", "Ciudad Autónoma de Buenos Aires", "0000-0001", "0000-0002",
+             "nuevo@example.invalid"))
+        historial = HistorialAfiliacion.objects.filter(afiliado=obj, origen="importacion").last()
+        self.assertEqual(historial.cambios["provincia"],
+                         {"anterior": "", "nuevo": "Ciudad Autónoma de Buenos Aires"})
+        self.assertEqual(historial.cambios["fecha_nacimiento"], {"anterior": None, "nuevo": "1990-05-06"})
+
+    def test_existente_se_pisa_sin_borrar_con_vacios_ni_bloquear_por_invalidos(self):
+        from .models import HistorialAfiliacion
+        from .ostel_synthetic import _cuil
+        existente = Afiliado.objects.create(
+            financiador=self.org, numero="FIC185-0001-AAA", numero_interno="000001",
+            documento="99018501", cuil=_cuil("99018501"), nombre="PERSONA FICTICIA OSTEL 0001",
+            desde=timezone.localdate(), calle="CALLE VIEJA", piso="9", provincia="Mendoza",
+            email="viejo@example.invalid", sexo="M")
+        revision = existente.revision
+        filas = [_persona(1, NUMERO="000001", SEXO="F", A_CALLE="CALLE NUEVA FICTICIA",
+                          A_PISO=None, EMAIL1="no-es-un-correo", CODPROV="9"),
+                 _persona(2, NUMERO="000002", **self.FICHA_COMPLETA)]
+        r = self.preview(filas)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["resumen"]["valida"], 2, r.data["filas"][0]["errores"])
+        avisos = " ".join(r.data["filas"][0]["advertencias"])
+        self.assertIn("EMAIL1", avisos)
+        self.assertIn("CODPROV", avisos)
+        self.assertEqual(r.data["resumen"]["advertencias"], 1)
+        aplicada = self.aplicar(r.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 2, aplicada.data)
+        # La advertencia sigue visible en el lote después de aplicar.
+        self.assertEqual(aplicada.data["resumen"]["advertencias"], 1)
+        existente.refresh_from_db()
+        self.assertEqual((existente.calle, existente.piso, existente.provincia, existente.email, existente.sexo),
+                         ("CALLE NUEVA FICTICIA", "9", "Mendoza", "viejo@example.invalid", "F"))
+        self.assertGreater(existente.revision, revision)
+        cambios = HistorialAfiliacion.objects.filter(afiliado=existente, origen="importacion").last().cambios
+        self.assertEqual(cambios["calle"], {"anterior": "CALLE VIEJA", "nuevo": "CALLE NUEVA FICTICIA"})
+        self.assertEqual(cambios["sexo"], {"anterior": "M", "nuevo": "F"})
+        self.assertNotIn("email", cambios)
+        self.assertNotIn("provincia", cambios)
+        self.assertNotIn("piso", cambios)
+        self.assertEqual(Afiliado.objects.get(numero_interno="000002").provincia,
+                         "Ciudad Autónoma de Buenos Aires")
+
+    def test_provincias_por_letra_son_supuesto_iso(self):
+        from .ostel_importacion import PROVINCIAS, _ficha
+        self.assertEqual(len(PROVINCIAS), 24)
+        self.assertEqual({k: PROVINCIAS[k] for k in "BCSXM"}, {
+            "B": "Buenos Aires", "C": "Ciudad Autónoma de Buenos Aires", "S": "Santa Fe",
+            "X": "Córdoba", "M": "Mendoza"})
+        ficha, avisos, campos = _ficha({"CODPROV": "I", "CODLOCA": "000001"})
+        self.assertEqual(ficha, {})
+        self.assertEqual(len(avisos), 1)
+        self.assertEqual(campos, ["provincia"])
+
+    def test_revisar_fila_corrige_la_ficha_advertida(self):
+        r = self.preview([_persona(1, NUMERO="000001", SEXO="F", EMAIL1="no-es-un-correo", CODPROV="9", A_CALLE="CALLE ARCHIVO")]).data
+        fila = r["filas"][0]
+        self.assertEqual(fila["advertidos"], ["email", "provincia"])
+        editable = {"email": "corregido@example.invalid", "provincia": "", "calle": "CALLE CORREGIDA"}
+        res = self.corregir(r, ficha=editable)
+        self.assertEqual(res.status_code, 200, res.data)
+        fila = res.data["filas"][0]
+        # El email corregido deja de estar advertido; la provincia vacía sigue sin actualizarse.
+        self.assertEqual(fila["advertidos"], ["provincia"])
+        self.assertEqual(len(fila["advertencias"]), 1)
+        self.assertEqual(fila["ficha"], {"email": "corregido@example.invalid", "calle": "CALLE CORREGIDA"})
+        self.assertEqual(fila["correcciones"][0]["ficha_nueva"], fila["ficha"])
+        self.assertEqual(fila["correcciones"][0]["ficha_anterior"]["calle"], "CALLE ARCHIVO")
+        self.assertEqual(res.data["resumen"]["advertencias"], 1)
+        self.assertEqual(self.aplicar(res.data).data["resumen"]["aplicada"], 1)
+        obj = Afiliado.objects.get()
+        self.assertEqual((obj.email, obj.calle, obj.provincia), ("corregido@example.invalid", "CALLE CORREGIDA", ""))
+
+    def test_revisar_fila_rechaza_ficha_invalida_sin_cambiar_el_lote(self):
+        r = self.preview([_persona(1, NUMERO="000001", SEXO="F", CODPROV="B", EMAIL1="no-es-un-correo")]).data
+        for ficha in ({"email": "sigue-mal"}, {"provincia": "Narnia"}, {"sexo": "X"},
+                      {"fecha_nacimiento": "2999-01-01"}, {"fecha_nacimiento": "06/05/1990"}, {"nombre": "OTRO"}):
+            with self.subTest(ficha=ficha):
+                self.assertEqual(self.corregir(r, ficha=ficha).status_code, 400)
+        persistida = Importacion.objects.get(pk=r["id"]).filas[0]
+        self.assertEqual((persistida["revision"], persistida["correcciones"]), (1, []))
+        self.assertEqual(persistida["advertidos"], ["email"])
+
+    def test_revisar_fila_de_lote_previo_conserva_sus_advertencias(self):
+        r = self.preview([_persona(1, NUMERO="000001", SEXO="F", CODPROV="B", EMAIL1="no-es-un-correo")]).data
+        lote = Importacion.objects.get(pk=r["id"])
+        del lote.filas[0]["advertidos"]  # lote guardado antes de registrar los campos advertidos
+        lote.save(update_fields=["filas"])
+        res = self.corregir(r, ficha={"email": "corregido@example.invalid"})
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["filas"][0]["ficha"]["email"], "corregido@example.invalid")
+        self.assertEqual(len(res.data["filas"][0]["advertencias"]), 1)
+
+    def test_sin_cuiltit_o_con_otra_columna_40_no_crea_lote(self):
+        from openpyxl import Workbook
+        from .ostel_synthetic import COLUMNAS
+        for encabezados in (COLUMNAS[:39], COLUMNAS[:39] + ("OTRA_COL",)):
+            with self.subTest(ancho=len(encabezados), ultima=encabezados[-1]):
+                libro = Workbook()
+                libro.active.title = "Hoja1"
+                libro.active.append(encabezados)
+                libro.active.append(_persona(1)[:len(encabezados)])
+                salida = BytesIO()
+                libro.save(salida)
+                respuesta = self.client.post(self.base + "previsualizar-ostel/", {
+                    "archivo": SimpleUploadedFile("ficticio.xlsx", salida.getvalue()), "clave": str(uuid4()),
+                }, format="multipart")
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertFalse(Importacion.objects.exists())
+
     def test_bajas_no_aplican_ni_se_fuerzan_mediante_correccion(self):
         r = self.preview(fuente="bajas").data
         self.assertEqual(r["resumen"]["valida"], 0)

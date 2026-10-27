@@ -31,8 +31,11 @@ COLUMNAS = tuple(
     "TIPO,NROAFI,CODEMP,CODPAR,APENOM,TIPODOC,NRODOC,CUIL,SEXO,COD_PLAN,"
     "FEC_NAC,FECING,FECBAJ,FECVTO,MOTIVO,NROBENE,NROPENS,CARNET,NIV,INCAPA,"
     "FACTURA,TABVAL,NUMERO,NROREF,A_CALLE,A_NRO,A_PISO,A_DPTO,A_TEL1,CELU1,"
-    "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO".split(",")
+    "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO,CUILTIT".split(",")
 )
+# Desde la entrega del 26/10/2026 CUILTIT (columna 40) es obligatorio: un archivo
+# de 39 columnas tiene encabezado incorrecto. El lector no interpreta CUILTIT;
+# las familias se arman en #181 a partir de CUILTIT y CODPAR.
 HOJAS = ("Hoja1", "afimotook")
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"

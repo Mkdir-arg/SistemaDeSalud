@@ -69,7 +69,9 @@ export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, 
   }
 
   return <Modal title={historialAbierto ? "Importaciones registradas" : `Importar ${tipo === "padron" ? "padrón" : "consumos externos"}`}
-    onClose={historialAbierto ? bloqueosHistorial.cierre ? undefined : cerrarHistorial : bloqueos.cierre ? undefined : onClose} width={historialAbierto ? 1120 : 840}>
+    onClose={historialAbierto ? bloqueosHistorial.cierre ? undefined : cerrarHistorial : bloqueos.cierre ? undefined : onClose} width={historialAbierto ? 1120 : 840}
+    acciones={!historialAbierto && <Button ref={accesoHistorial} size="sm" variant="secondary" aria-haspopup="dialog" aria-expanded={historialAbierto}
+      disabled={bloqueos.selector} onClick={() => setHistorialAbierto(true)}>Importaciones registradas</Button>}>
     <div hidden={historialAbierto} className="space-y-5">
       <Field label="Formato del archivo" ayuda="La selección se recuerda para tu usuario en este navegador. Podés solicitar formatos personalizados contactando a soporte técnico.">
         <Select value={formato.id} onChange={seleccionar} disabled={bloqueos.selector}>
@@ -85,11 +87,6 @@ export default function ImportacionFinanciador({ usuarioId, organizacion, tipo, 
       <Flujo key={formato.id} formato={formato} organizacion={organizacion} tipo={tipo} scope={scope}
         onAplicado={onAplicado} onBloqueosChange={setBloqueos} coberturaHabilitada={coberturaHabilitada}
         lote={lote} setLote={setLote} lotes={lotes} setPagina={setPagina} />
-      <button ref={accesoHistorial} type="button" aria-haspopup="dialog" aria-expanded={historialAbierto}
-        disabled={bloqueos.selector} onClick={() => setHistorialAbierto(true)}
-        className="flex w-full items-center justify-between border-t border-division py-4 text-left font-semibold hover:text-accent disabled:opacity-50">
-        Importaciones registradas <span aria-hidden="true">▸</span>
-      </button>
     </div>
     {historialAbierto && <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">

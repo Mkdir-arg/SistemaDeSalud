@@ -12,7 +12,7 @@ export const FORMATOS_IMPORTACION = Object.freeze([
   Object.freeze({
     id: "ostel", nombre: "OSTEL",
     tipos: ["padron"], modo: "administrativa",
-    descripcion: "Hojas Hoja1 y afimotook, con las 39 columnas OSTEL. CUIL y NUMERO identifican individualmente; NROAFI puede compartirse. TIPO distingue activo/pasivo, no vigencia de cobertura. FECVTO no equivale a baja. Estos archivos no contienen CUILTIT para vincular familias. El importador no interpreta códigos pendientes ni aplica movimientos de baja.",
+    descripcion: "Hojas Hoja1 y afimotook, con las 40 columnas OSTEL: CUILTIT (columna 40) es obligatorio. CUIL y NUMERO identifican individualmente; NROAFI puede compartirse. TIPO distingue activo/pasivo, no vigencia de cobertura. FECVTO no equivale a baja. CUILTIT se conserva como evidencia, pero todavía no se vinculan familias. El importador no interpreta códigos pendientes ni aplica movimientos de baja.",
     aviso: "La habilitación para personas nuevas se elige al cargar. En personas existentes se conserva la habilitación actual y las diferencias requieren revisión. Las reglas de prestaciones siguen pendientes de OSTEL.",
     recursoRevision: "previsualizar-ostel",
     parametrosPlantilla: (tipo) => ({ tipo, formato: "ostel" }),
@@ -44,3 +44,24 @@ export function guardarFormatoPreferido(usuarioId, tipo, id, almacenamiento) {
     return false;
   }
 }
+
+// Columnas OSTEL y su uso en el sistema; lo que no figura se conserva como
+// evidencia. Mismo orden que ostel_prevalidacion.COLUMNAS.
+export const COLUMNAS_OSTEL = Object.freeze([
+  ["TIPO"], ["NROAFI", "Número de afiliación"], ["CODEMP"], ["CODPAR"], ["APENOM", "Nombre completo"],
+  ["TIPODOC"], ["NRODOC", "Documento"], ["CUIL", "CUIL"], ["SEXO", "Sexo"], ["COD_PLAN"],
+  ["FEC_NAC", "Fecha de nacimiento"], ["FECING"], ["FECBAJ", "Marca de baja (bloquea la fila)"], ["FECVTO"], ["MOTIVO"],
+  ["NROBENE"], ["NROPENS"], ["CARNET"], ["NIV"], ["INCAPA"],
+  ["FACTURA"], ["TABVAL"], ["NUMERO", "Número interno"], ["NROREF"], ["A_CALLE", "Calle"],
+  ["A_NRO", "Altura"], ["A_PISO", "Piso"], ["A_DPTO", "Departamento"], ["A_TEL1", "Teléfono"], ["CELU1", "Celular"],
+  ["EMAIL1", "Email"], ["CODPOS", "Código postal"], ["DESLOCA", "Localidad"], ["CODPROV", "Provincia"], ["CODZON"],
+  ["CODLOCA"], ["CODEST"], ["CODNAC"], ["ESTADO", "Marca de baja si es «B» (bloquea la fila)"], ["CUILTIT"],
+]);
+
+// Mismos nombres que ostel_importacion.PROVINCIAS (Georef); el backend los valida.
+export const PROVINCIAS = Object.freeze([
+  "Buenos Aires", "Catamarca", "Chaco", "Chubut", "Ciudad Autónoma de Buenos Aires", "Córdoba", "Corrientes",
+  "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro",
+  "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero",
+  "Tierra del Fuego, Antártida e Islas del Atlántico Sur", "Tucumán",
+]);

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.utils import timezone
 from . import models
@@ -173,9 +174,20 @@ class ConvenioSerializer(serializers.ModelSerializer):
 
 
 class ImportacionSerializer(serializers.ModelSerializer):
+    # Encabezados del archivo, en orden: la revisión de una fila los usa como campos.
+    columnas = serializers.SerializerMethodField()
+
     class Meta:
         model = models.Importacion
-        fields = ["id", "tipo", "version", "estado", "resumen", "filas", "creado"]
+        fields = ["id", "tipo", "version", "estado", "resumen", "filas", "creado", "columnas"]
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_columnas(self, obj):
+        if obj.version == 3:
+            from .ostel_prevalidacion import COLUMNAS
+            return list(COLUMNAS)
+        from .importaciones import encabezados
+        return list(encabezados(obj.tipo, obj.version))
 
 
 class ConfirmarImportacionSerializer(serializers.Serializer):

@@ -130,6 +130,7 @@ class OstelApiTests(TestCase):
                     self.assertIn(hoja, libro.sheetnames)
                     if hoja == "Hoja1":
                         self.assertEqual(tuple(c.value for c in libro[hoja][1]), COLUMNAS)
+                        self.assertEqual(prevalidar_ostel(respuesta.content).anomalias, ())
                         self.assertEqual(libro[hoja].max_row, 1)
                         self.assertEqual(libro[hoja].column_dimensions["B"].number_format, "@")
                         self.assertEqual(prevalidar_ostel(respuesta.content).resumen["filas_no_vacias"], {"Hoja1": 0})

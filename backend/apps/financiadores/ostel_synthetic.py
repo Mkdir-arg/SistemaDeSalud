@@ -13,7 +13,7 @@ COLUMNAS = tuple(
     "TIPO,NROAFI,CODEMP,CODPAR,APENOM,TIPODOC,NRODOC,CUIL,SEXO,COD_PLAN,"
     "FEC_NAC,FECING,FECBAJ,FECVTO,MOTIVO,NROBENE,NROPENS,CARNET,NIV,INCAPA,"
     "FACTURA,TABVAL,NUMERO,NROREF,A_CALLE,A_NRO,A_PISO,A_DPTO,A_TEL1,CELU1,"
-    "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO"
+    "EMAIL1,CODPOS,DESLOCA,CODPROV,CODZON,CODLOCA,CODEST,CODNAC,ESTADO,CUILTIT"
     .split(",")
 )
 HOJAS = ("Hoja1", "afimotook")
@@ -61,6 +61,9 @@ def _persona(indice, **cambios):
     if desconocidas:
         raise ValueError(f"Columnas desconocidas: {sorted(desconocidas)}")
     valores.update(cambios)
+    # Sin CUILTIT explícito la persona es su propio titular (CUILTIT == CUIL).
+    if "CUILTIT" not in cambios:
+        valores["CUILTIT"] = valores["CUIL"]
     return tuple(valores[c] for c in COLUMNAS)
 
 
@@ -74,6 +77,7 @@ def generar_escenarios():
         return Escenario(codigo, (Lote("entrada", tuple(filas)),))
 
     referencia = "FIC185-0001-AAA"
+    titular = _cuil("99018501")  # CUILTIT ficticio de familiares de la persona 1
     baja = _persona(1, FECBAJ=date(2026, 6, 30), MOTIVO="BAJA-FICTICIA")
     cuil = _cuil("99018501")
     invalido = cuil[:-1] + str((int(cuil[-1]) + 1) % 10)
@@ -83,10 +87,10 @@ def generar_escenarios():
         caso("base", _persona(1)),
         caso("numero_compartido", _persona(1), _persona(2, NROAFI=referencia)),
         caso("referencia_presente", _persona(1),
-             _persona(2, NROREF=referencia, CODPAR="01")),
-        caso("referencia_ausente", _persona(2, NROREF=referencia, CODPAR="01")),
+             _persona(2, NROREF=referencia, CODPAR="01", CUILTIT=titular)),
+        caso("referencia_ausente", _persona(2, NROREF=referencia, CODPAR="01", CUILTIT=titular)),
         caso("referencia_no_aaa", _persona(1, NROAFI="FIC185-0001-ZZZ"),
-             _persona(2, NROREF="FIC185-0001-ZZZ", CODPAR="01")),
+             _persona(2, NROREF="FIC185-0001-ZZZ", CODPAR="01", CUILTIT=titular)),
         caso("cuil_invalido", _persona(1, CUIL=invalido)),
         caso("documento_discordante", _persona(1, CUIL=_cuil("99018502"))),
         caso("filas_vacias", (None,) * len(COLUMNAS), _persona(1),
@@ -104,7 +108,7 @@ def generar_escenarios():
         caso("lote_parcial", _persona(1), _persona(2, CUIL=invalido_parcial),
              _persona(3, FECBAJ=date(2025, 12, 31))),
         caso("referencia_ambigua", _persona(1), _persona(2, NROAFI=referencia),
-             _persona(3, NROREF=referencia, CODPAR="01")),
+             _persona(3, NROREF=referencia, CODPAR="01", CUILTIT=titular)),
         caso("fila_repetida", _persona(1), _persona(1)),
         caso("codigos_sin_homologar", _persona(
             1, NUMERO="000042", TIPO="TIPO-FICTICIO", TIPODOC="DOC-FICTICIO",
@@ -119,7 +123,7 @@ def generar_escenarios():
             APENOM="PERSONA FICTICIA OSTEL ÑANDÚ",
         )),
         # Respuesta OSTEL recibida el 20/10: escenarios de entrada, no reglas
-        # de aplicación. No se inventa CUILTIT ni se utiliza NROREF en su lugar.
+        # de aplicación. CUILTIT es ficticio y coherente; NROREF no lo reemplaza.
         caso("identidad_individual", _persona(1, NUMERO="000001"),
              _persona(2, NUMERO="000002", NROAFI=referencia)),
         caso("cuil_distinto_mismo_numero", _persona(1, NUMERO="000001"),
@@ -130,7 +134,8 @@ def generar_escenarios():
              _persona(1, TIPO="A", COD_PLAN="CC", FECBAJ=date(2026, 6, 30)),
              _persona(2, TIPO="P", COD_PLAN="CC", FECBAJ=None)),
         caso("parentescos_confirmados", *(
-            _persona(i, NUMERO=f"{i:06d}", CODPAR=codigo)
+            _persona(i, NUMERO=f"{i:06d}", CODPAR=codigo,
+                     **({} if codigo == "AAA" else {"CUILTIT": titular}))
             for i, codigo in enumerate((
                 "AAA", "CO1", "CO2", "CC1", "CC3", "H01", "H15",
                 "HJ1", "HJ6", "ME1", "ME8", "IN1", "IN5", "MD1", "MD5",
@@ -162,7 +167,7 @@ def generar_xlsx(lote, *, hoja="Hoja1"):
     if hoja not in HOJAS:
         raise ValueError(f"Hoja no soportada: {hoja}")
     if any(len(fila) != len(COLUMNAS) for fila in lote.filas):
-        raise ValueError("Cada fila debe tener exactamente 39 columnas")
+        raise ValueError("Cada fila debe tener exactamente 40 columnas")
 
     from openpyxl import Workbook
 

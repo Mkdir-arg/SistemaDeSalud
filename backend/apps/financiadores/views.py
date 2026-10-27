@@ -109,6 +109,10 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
             resource_type_field_name=None)),
     plantilla=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     rechazos=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
+    anotar_importacion=extend_schema(
+        request={"multipart/form-data": {"type": "object", "required": ["archivo"], "properties": {
+            "archivo": {"type": "string", "format": "binary"}, "importacion": {"type": "integer"}}}},
+        responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
     plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
@@ -781,6 +785,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         limite_detalle = 500
         response = Response({
             "resumen": resultado.resumen,
+            # 40 columnas; CUILTIT (posición 40) es obligatorio.
             "columnas": COLUMNAS,
             "anomalias_por_codigo": dict(Counter(a.codigo for a in resultado.anomalias)),
             "anomalias": [asdict(a) for a in resultado.anomalias[:limite_detalle]],
@@ -812,8 +817,25 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             "datos": serializers.DictField(child=serializers.CharField(max_length=160, allow_blank=True)),
             "motivo": serializers.CharField(max_length=255),
             "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+            "ficha": serializers.DictField(child=serializers.CharField(max_length=254, allow_blank=True), required=False),
         })
         lote = subsanar(usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="subsanar-importacion")
+    def subsanar_importacion(self, request, pk=None):
+        from .importaciones import subsanar_importacion
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)),
+            "fila": serializers.IntegerField(min_value=1), "revision": serializers.IntegerField(min_value=1),
+            "valores": serializers.ListField(child=serializers.CharField(max_length=300, allow_blank=True), required=False),
+            "motivo": serializers.CharField(max_length=255),
+            "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+        })
+        lote = subsanar_importacion(usuario=request.user, **d)
         response = Response(s.ImportacionSerializer(lote).data)
         response["Cache-Control"] = "private, no-store"
         return response
@@ -865,6 +887,30 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         from .importaciones import descargar_rechazadas
         obj = get_object_or_404(m.Importacion, pk=request.query_params.get("importacion"), financiador=org)
         return self.archivo(descargar_rechazadas(importacion=obj, usuario=request.user), "filas-para-corregir", org, "descargar_rechazos", obj.pk)
+
+    @action(detail=True, methods=["post"], url_path="anotar-importacion")
+    def anotar_importacion(self, request, pk=None):
+        """Devuelve el archivo recibido con comentarios en las celdas con error; no lo guarda.
+
+        Sin `importacion` marca las anomalías que rechazaron un archivo OSTEL;
+        con un lote, sus filas con errores (OSTEL o plantilla del sistema)."""
+        from .anotaciones import anotar_ostel, anotar_sistema
+        from .ostel_prevalidacion import MAX_BYTES
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "archivo": serializers.FileField(),
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org), required=False),
+        })
+        archivo, lote = d["archivo"], d.get("importacion")
+        if not archivo.name.lower().endswith(".xlsx") or archivo.size > MAX_BYTES:
+            raise ValidationError({"archivo": "Sólo se admiten archivos .xlsx de hasta 5 MiB."})
+        contenido = archivo.read(MAX_BYTES + 1)
+        if lote is not None and lote.version != 3:
+            resultado = anotar_sistema(financiador=org, usuario=request.user, contenido=contenido, lote=lote)
+        else:
+            resultado = anotar_ostel(financiador=org, usuario=request.user, contenido=contenido, lote=lote)
+        # Auditar sólo la operación y el lote; nunca el nombre ni las celdas.
+        return self.archivo(resultado, "archivo-con-comentarios", org, "anotar_importacion", lote.pk if lote else org.pk)
 
     @action(detail=True, methods=["get"])
     def resumen(self, request, pk=None):
