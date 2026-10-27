@@ -55,6 +55,8 @@ def seleccionar_afiliacion(*, caso, usuario, afiliado=None, particular=False, de
     elif afiliado:
         afiliado = Afiliado.objects.select_for_update().get(pk=afiliado.pk)
         from .vigencias import convenio_aplicable
+        if not afiliado.cobertura_habilitada:
+            raise ValidationError("El registro es sólo administrativo. Habilitá cobertura antes de seleccionarlo para una atención.")
         if afiliado.finalizado_en or afiliado.desde > timezone.localdate() or not afiliado.financiador.activo:
             raise ValidationError("La afiliación no está vigente para una nueva selección. Los casos anteriores conservan su afiliación.")
         if afiliado.plan_id:
@@ -106,7 +108,7 @@ def arancel_aplicable(*, prestacion, convenio, fecha, corte, nodo_origen_id=None
     return politica, excepcion, arancel
 
 
-def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=None, corte=None, historico=False, nodo_origen_id=None, bloquear_convenio=False, intento_autorizacion=None):
+def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=None, corte=None, historico=False, nodo_origen_id=None, bloquear_convenio=False, intento_autorizacion=None, cobertura_historica=True):
     if not isinstance(cantidad, int) or isinstance(cantidad, bool) or not 1 <= cantidad <= 100000:
         raise ValidationError("La cantidad debe estar entre 1 y 100.000.")
     if prestacion.institucion_id != caso.institucion_id or (not historico and (not prestacion.activo or not prestacion.nodo_id or prestacion.nodo.version_id != caso.version_id)):
@@ -117,9 +119,12 @@ def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=Non
     vinculo = VinculoPrestacion.objects.filter(prestacion=prestacion).select_related("comun").first()
     if not afiliacion or not vinculo:
         raise ValidationError("Seleccioná afiliación y vinculá la prestación al catálogo común antes de evaluar.")
+    habilitada = cobertura_historica if historico else not afiliacion.afiliado_id or afiliacion.afiliado.cobertura_habilitada
+    if not historico and not habilitada:
+        raise ValidationError("El registro es sólo administrativo. No tiene habilitación de cobertura para nuevas prestaciones.")
     corte = corte or timezone.now()
     from .vigencias import convenio_aplicable
-    convenio = convenio_aplicable(afiliacion.afiliado.financiador_id, caso.institucion_id, corte, bloquear=bloquear_convenio) if afiliacion.afiliado_id and afiliacion.estado != "pendiente" else None
+    convenio = convenio_aplicable(afiliacion.afiliado.financiador_id, caso.institucion_id, corte, bloquear=bloquear_convenio) if habilitada and afiliacion.afiliado_id and afiliacion.estado != "pendiente" else None
     politica, excepcion, arancel = arancel_aplicable(prestacion=prestacion, convenio=convenio, fecha=fecha, corte=corte, nodo_origen_id=nodo_origen_id)
     resultado = {
         "caso": caso.pk, "afiliacion": afiliacion.pk, "prestacion": prestacion.pk, "comun": vinculo.comun_id,
@@ -132,9 +137,12 @@ def evaluar(*, caso, prestacion, fecha, cantidad=1, afiliacion=None, excluir=Non
         "origen_arancel": "general_hospital", "retorno_arancel_general": False,
         "politica": politica.pk if politica else None, "regla": None, "excepcion": None,
         "convenio": convenio.pk if convenio else None,
+        "cobertura_habilitada": habilitada,
     }
     porcentaje, regla = Decimal(0), None
-    if afiliacion.estado == "pendiente":
+    if not habilitada:
+        resultado.update(estado="pendiente_evaluacion", motivo="Registro administrativo sin habilitación de cobertura al realizar la atención")
+    elif afiliacion.estado == "pendiente":
         resultado.update(estado="pendiente_evaluacion", motivo="Afiliación pendiente de verificación")
     elif afiliacion.afiliado_id:
         if not convenio:

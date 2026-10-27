@@ -39,7 +39,7 @@ def resumenes_administrativos(ciudadanos):
         for afiliado in por_documento.get(documento, []):
             if afiliado.financiador_id not in convenios[ciudadano.institucion_id]:
                 continue
-            seleccionable = not afiliado.plan_id or afiliado.plan.activo
+            seleccionable = afiliado.cobertura_habilitada and (not afiliado.plan_id or afiliado.plan.activo)
             afiliaciones.append({
                 "id": afiliado.pk,
                 "financiador_id": afiliado.financiador_id,
@@ -48,7 +48,7 @@ def resumenes_administrativos(ciudadanos):
                 "plan_nombre": afiliado.plan.nombre if afiliado.plan_id else "",
                 "numero": afiliado.numero, "desde": afiliado.desde.isoformat(),
                 "seleccionable": seleccionable,
-                "motivo": "" if seleccionable else "El plan está inactivo. Revisá el padrón con el financiador.",
+                "motivo": "" if seleccionable else "Registro sólo administrativo, sin habilitación de cobertura." if not afiliado.cobertura_habilitada else "El plan está inactivo. Revisá el padrón con el financiador.",
             })
         estado = "sin_padron"
         if not habilitada:

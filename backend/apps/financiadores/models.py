@@ -155,6 +155,9 @@ class Afiliado(models.Model):
     """Identidad estable del pagador; cambiar el número/plan no reinicia su cupo."""
     financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
     numero = models.CharField(max_length=80)
+    numero_interno = models.CharField(max_length=80, blank=True, default="", db_default="")
+    # El registro administrativo puede existir sin habilitar usos prestacionales.
+    cobertura_habilitada = models.BooleanField(default=True, db_default=True)
     documento = models.CharField(max_length=80)
     nombre = models.CharField(max_length=160)
     plan = models.ForeignKey(Plan, null=True, blank=True, on_delete=models.PROTECT)
@@ -208,6 +211,7 @@ class Afiliado(models.Model):
         ordering = ["nombre", "id"]
         constraints = [
             models.UniqueConstraint(fields=["financiador", "documento"], name="fin_afiliado_documento"),
+            models.UniqueConstraint(fields=["financiador", "numero_interno"], condition=~Q(numero_interno=""), name="fin_afiliado_numero_interno"),
             models.UniqueConstraint(fields=["financiador", "cuil"], condition=~Q(cuil=""), name="fin_afiliado_cuil"),
             models.CheckConstraint(condition=~Q(titular=models.F("pk")), name="fin_familia_no_autovinculo"),
         ]
@@ -456,6 +460,31 @@ class Importacion(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["financiador", "clave"], name="fin_importacion_clave")]
+
+
+class CodigoFinanciador(models.Model):
+    """Diccionario de códigos propio de un financiador (por ejemplo, OSTEL).
+
+    Es un catálogo de consulta: no asigna parentescos, familias, planes ni
+    derechos por sí mismo. Atributos guarda las columnas propias de cada tabla
+    (VENCE, MOTIVO, TITULAR, CODSSS, etc.) tal como las informa el financiador.
+    """
+    financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT, related_name="codigos")
+    tabla = models.CharField(max_length=40)
+    codigo = models.CharField(max_length=40)
+    descripcion = models.CharField(max_length=160, blank=True)
+    activo = models.BooleanField(default=True)
+    atributos = models.JSONField(default=dict, blank=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["financiador", "tabla", "codigo"]
+        constraints = [models.UniqueConstraint(fields=["financiador", "tabla", "codigo"], name="fin_codigo_tabla_unico")]
+        verbose_name = "código del financiador"
+        verbose_name_plural = "códigos del financiador"
+
+    def __str__(self):
+        return f"{self.tabla} {self.codigo}: {self.descripcion}"
 
 
 class EventoCobertura(models.Model):

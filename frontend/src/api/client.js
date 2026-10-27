@@ -269,7 +269,23 @@ async function cerrarSesionRemota(pendiente, captura) {
   }
 }
 
+// Segundos que le quedan al access token según su `exp`, o null si no se puede leer.
+function vigenciaAccess(token) {
+  try {
+    const carga = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof carga.exp === "number" ? carga.exp - Date.now() / 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 async function request(method, path, body, _retried = false, { multipart = false, blob = false, sinSimulacion = false, publico = false } = {}) {
+  // Subir un archivo con el token vencido no llega a dar 401: el servidor
+  // responde sin leer el cuerpo, corta la conexión y el navegador informa un
+  // error de red, así que el reintento de abajo nunca corre. Se renueva antes.
+  if (multipart && !publico && !_retried && tokens.refresh && tokens.access && (vigenciaAccess(tokens.access) ?? Infinity) < 60) {
+    await refreshAccess();
+  }
   const epoch = sessionEpoch;
   const headers = multipart ? {} : { "Content-Type": "application/json" };
   // Con cuál salió ESTE pedido. Se guarda para poder distinguir, al volver con
@@ -354,7 +370,7 @@ export const api = {
   },
 
   async downloadPost(path, body, nombre = "archivo") {
-    const { blob, disposition } = await request("POST", path, body, false, { blob: true });
+    const { blob, disposition } = await request("POST", path, body, false, { blob: true, multipart: body instanceof FormData });
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = href;

@@ -53,7 +53,7 @@ test("obligatorios y estado de los pasos", () => {
 test("el cuerpo envía sólo lo visible, con identificadores sin separadores", () => {
   const body = cuerpoAlta({ ...paso1, ...paso2, titular: 45, parentesco: "conyuge", regimen: "monotributo", cuit_empleador: "30-71234567-1", telefono: " 11 5555-0000 ", email: "" });
   assert.deepEqual(body, {
-    solo_crear: true, nombre: "María José González Pérez",
+    solo_crear: true, nombre: "María José González Pérez", cobertura_habilitada: true,
     tipo_documento: "DNI", documento: "30123456", cuil: "20301234563", numero: "00025", nombres: "María José", apellidos: "González Pérez",
     plan: 31, desde: HOY, delegacion: "Sede Central", motivo: "Adhesión voluntaria",
     telefono: "11 5555-0000", regimen: "monotributo",
@@ -61,4 +61,14 @@ test("el cuerpo envía sólo lo visible, con identificadores sin separadores", (
   const familiar = cuerpoAlta({ ...paso1, ...paso2, grupo: "familiar", titular: 45, parentesco: "conyuge" });
   assert.equal(familiar.titular, 45);
   assert.equal(familiar.parentesco, "conyuge");
+});
+
+test("el alta habilita cobertura por defecto y admite registro administrativo sin plan", () => {
+  assert.equal(datosIniciales().cobertura_habilitada, true);
+  assert.equal(tieneDatos({ ...datosIniciales(), cobertura_habilitada: false }), true);
+  const administrativo = { ...paso1, ...paso2, cobertura_habilitada: false, plan: "" };
+  assert.deepEqual(validarPaso(1, administrativo, HOY), {});
+  assert.equal(cuerpoAlta(administrativo).cobertura_habilitada, false);
+  assert.equal("plan" in cuerpoAlta(administrativo), false);
+  assert.ok(validarPaso(1, { ...administrativo, cobertura_habilitada: true }, HOY).plan);
 });

@@ -1,4 +1,4 @@
-"""Ficha administrativa ampliada: sin efectos sobre derechos ni integraciones externas."""
+"""Ficha administrativa y habilitación explícita; las fechas no conceden derechos."""
 from datetime import date
 import re
 
@@ -23,7 +23,7 @@ CAMPOS_GENERALES = (
     "telefono_laboral", "email_laboral", "subsidio_desde", "subsidio_hasta",
     "alta_administrativa", "delegacion", "estado_tramite", "credencial_tipo", "credencial_fecha",
     "solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja", "causa_baja",
-    "titular", "parentesco",
+    "titular", "parentesco", "cobertura_habilitada",
 )
 CAMPOS_EDITABLES = ("numero", "documento", "nombre", "plan", *CAMPOS_GENERALES)
 CAMPOS_SALUD = ("cud", "cud_numero", "cud_presentado_en", "cud_vencimiento", "cud_referencia", "dbt", "cronicas", "parentesco_sensible")
@@ -134,6 +134,11 @@ def registrar_ficha(*, financiador, usuario, basicos, nuevos, revision=None, mot
         if revision is None:
             raise ValidationError("Para actualizar una ficha existente con campos nuevos indicá revisión y motivo o usá PATCH.")
         comprobar_revision(anterior, revision)
+    # La opción participa del alta inicial: no crear una habilitación temporal
+    # ni una transición ficticia en el historial del registro administrativo.
+    if "cobertura_habilitada" in nuevos:
+        nuevos = dict(nuevos)
+        basicos = {**basicos, "cobertura_habilitada": nuevos.pop("cobertura_habilitada")}
     obj = registrar_afiliado(financiador=financiador, usuario=usuario, motivo=motivo, solo_crear=solo_crear, **basicos)
     if nuevos:
         obj = editar_ficha(afiliado=obj, usuario=usuario, entrada={**nuevos, "revision": obj.revision, "motivo": motivo})

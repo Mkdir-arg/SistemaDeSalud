@@ -56,14 +56,22 @@ def validar_columnas_padron(valor=None):
 
 
 def _campo(clave):
+    if clave == "cobertura_habilitada":
+        return "_padron_habilitada"
     return {"plan": "plan__nombre", "plan_tipo": "plan__tipo", "derecho": "_padron_derecho", "estado_administrativo": "_padron_administrativo", "titular": "titular_id"}.get(clave, clave)
 
 
 def _anotar(qs, claves):
     hoy = timezone.localdate()
+    if "cobertura_habilitada" in claves:
+        qs = qs.annotate(_padron_habilitada=Case(
+            When(cobertura_habilitada=True, then=Value("true")),
+            default=Value("false"), output_field=CharField(),
+        ))
     if "derecho" in claves:
         qs = qs.annotate(_padron_derecho=Case(
             When(finalizado_en__isnull=False, then=Value("finalizadas")),
+            When(cobertura_habilitada=False, then=Value("administrativas")),
             When(desde__gt=hoy, then=Value("futuras")),
             default=Value("vigentes"), output_field=CharField(),
         ))
@@ -122,7 +130,7 @@ def _consultar_padron(*, financiador, parametros):
         qs = qs.filter(plan_id=serializers.IntegerField(min_value=1).run_validation(parametros["plan"]))
     derecho = parametros.get("derecho") or parametros.get("estado")
     if derecho:
-        derecho = serializers.ChoiceField(choices=["vigentes", "finalizadas", "futuras", "todos"]).run_validation(derecho)
+        derecho = serializers.ChoiceField(choices=["vigentes", "finalizadas", "futuras", "administrativas", "todos"]).run_validation(derecho)
         if derecho != "todos":
             qs = _anotar(qs, {"derecho"}).filter(_padron_derecho=derecho)
     if parametros.get("documento"):
@@ -186,11 +194,13 @@ def valor_columna_padron(afiliado, clave):
     if clave == "plan_tipo":
         valor = afiliado.plan.tipo if afiliado.plan_id else ""
     elif clave == "derecho":
-        valor = "finalizadas" if afiliado.finalizado_en else "futuras" if afiliado.desde > timezone.localdate() else "vigentes"
+        valor = "finalizadas" if afiliado.finalizado_en else "administrativas" if not afiliado.cobertura_habilitada else "futuras" if afiliado.desde > timezone.localdate() else "vigentes"
     elif clave == "estado_administrativo":
         valor = estado_administrativo(afiliado)
     elif clave == "titular":
         return afiliado.titular_id
+    elif clave == "cobertura_habilitada":
+        valor = "true" if afiliado.cobertura_habilitada else "false"
     else:
         valor = getattr(afiliado, clave)
     return COLUMNAS_PADRON[clave].get("options", {}).get(valor, valor)

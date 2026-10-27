@@ -104,7 +104,7 @@ def _clasificar(ciudadano, *, aliases, por_documento, conflictos, vinculados, co
     if ciudadano["documento"] != documento or ids_corregidos or ids_vinculados:
         resultado["afiliados_en_conflicto"] = sorted(ids_corregidos | ids_vinculados)
         return terminar("identidad_en_conflicto", "documento_no_normalizado_o_corregido")
-    vigentes = [a for a in elegidos if a.financiador.activo and not a.finalizado_en and a.desde <= fecha]
+    vigentes = [a for a in elegidos if a.cobertura_habilitada and a.financiador.activo and not a.finalizado_en and a.desde <= fecha]
     if not vigentes:
         return terminar("sin_padron_verificado", "sin_afiliacion_documental_vigente")
     if len(vigentes) > 1:
@@ -151,7 +151,7 @@ def diagnosticar(*, institucion_id, hasta_pk, aliases=None, lote=250, corte=None
             "financiador", "plan",
         ).only(
             "id", "documento", "financiador_id", "financiador__activo", "plan_id",
-            "plan__activo", "plan__financiador_id", "desde", "finalizado_en",
+            "plan__activo", "plan__financiador_id", "desde", "finalizado_en", "cobertura_habilitada",
         ).order_by("pk"):
             por_documento[afiliado.documento].append(afiliado)
         conflictos = defaultdict(set)

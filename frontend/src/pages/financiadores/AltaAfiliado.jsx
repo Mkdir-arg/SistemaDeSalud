@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { errorFinanciador, filasDe, opcionesFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { useAuth } from "@/auth/AuthContext";
-import { Button, Card, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
+import { Ayuda, Button, Card, Field, Input, Modal, Select, Spinner, Textarea } from "@/components/ui";
 import { EstadoVacio } from "@/components/ui/estados";
 import { useToast } from "@/components/ui/toast";
 import { Shell } from "@/components/Shell";
@@ -46,9 +46,9 @@ export default function AltaAfiliado() {
   if (plataforma && !seleccion && !organizaciones.isLoading && !organizaciones.error) return <Navigate to="/directorio?vista=financiadores" replace />;
 
   return <Shell plataforma={plataforma} financiador={{ nombre: organizacion?.nombre || NOMBRE_SISTEMA, titulo: "Nueva afiliación", rol: ROLES[organizacion?.rol] || "Financiador", items: menu }}><div className="mx-auto max-w-[72rem] space-y-5 p-lg sm:p-[30px] xl:p-[40px]">
-    <div className="space-y-1 text-sm">
-      <nav aria-label="Ubicación" className="text-texto-debil">{organizacion?.nombre && <>{organizacion.nombre} / </>}<Link className="hover:underline" to={volver}>Padrón de afiliados</Link> / <span aria-current="page">Nueva afiliación</span></nav>
-      <Link className="inline-block font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
+    <div className="flex items-center justify-between gap-4 text-sm">
+      <nav aria-label="Ubicación" className="min-w-0 text-texto-debil">{organizacion?.nombre && <>{organizacion.nombre} / </>}<Link className="hover:underline" to={volver}>Padrón de afiliados</Link> / <span aria-current="page">Nueva afiliación</span></nav>
+      <Link className="ml-auto shrink-0 font-medium text-accent hover:underline" to={volver}>← Volver al padrón</Link>
     </div>
     {organizaciones.isLoading || planes.isLoading ? <Spinner label="Cargando…" />
       : organizaciones.error || planes.error ? <ErrorCarga error={organizaciones.error || planes.error} reintentar={() => (organizaciones.error ? organizaciones : planes).refetch()} />
@@ -236,9 +236,16 @@ function FormularioAlta({ usuarioId, organizacion, planes, parametros, volver })
             ? <>Ya existe un afiliado con este documento. <Link className="font-medium underline" to={fichaDuplicado}>Abrir su ficha →</Link></> : undefined} />)}</Grilla>}
 
         {paso === 1 && <>
+          <div className="rounded-md border border-borde bg-superficie-2 p-4">
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 font-semibold"><input id={idCampo("cobertura_habilitada")} type="checkbox" checked={datos.cobertura_habilitada !== false} onChange={(event) => cambiar("cobertura_habilitada", event.target.checked)} className="size-4 accent-accent" />Habilitar cobertura junto con el registro</label>
+              <Ayuda etiqueta="Ayuda sobre habilitación de cobertura">Las prestaciones siguen sujetas al plan, las fechas y las reglas de cobertura. Desmarcá esta opción si necesitás registrar a la persona sin habilitar cobertura.</Ayuda>
+            </div>
+            {datos.cobertura_habilitada === false && <p className="mt-2 text-sm text-texto-debil">Se guardará sólo el registro administrativo. Podés habilitar cobertura más adelante desde la ficha, con motivo del cambio.</p>}
+          </div>
           <Grilla>{["plan", "desde", "delegacion", "motivo"].map((name) => <Control key={name} campo={campo(name)} {...props}
             opciones={name === "plan" ? planes.map((plan) => ({ id: plan.id, nombre: plan.nombre })) : undefined}
-            hint={name === "plan" && !planes.length ? "No hay planes activos. Creá uno en Planes antes de registrar." : undefined} />)}</Grilla>
+            hint={name === "plan" && !planes.length ? datos.cobertura_habilitada === false ? "Podés registrar sin plan y asignarlo más adelante." : "No hay planes activos. Creá uno en Planes o registrá sin habilitar cobertura." : undefined} />)}</Grilla>
           <Seccion titulo="Grupo familiar" detalle="Indicá si la persona es titular o se suma al grupo de otro afiliado.">
             <fieldset><legend className="mb-1.5 text-base font-semibold text-texto-suave">La persona es <Asterisco /></legend>
               <div className="flex flex-wrap gap-6">{[["titular", "Titular"], ["familiar", "Familiar de un titular existente"]].map(([valor, label]) => <label key={valor} className="flex items-center gap-2 text-md"><input type="radio" name="alta-grupo" value={valor} checked={datos.grupo === valor} onChange={() => cambiar("grupo", valor)} className="size-4 accent-accent" />{label}</label>)}</div>
@@ -341,7 +348,7 @@ const errorCampo = (error, name) => {
 };
 
 function Control({ campo, datos, errores, errorServidor, cambiar, opciones, hint, mensaje, onBlur }) {
-  const { name, label, options, textarea, numeric, required, requiredSi, visible, paso, hint: hintCampo, ...props } = campo;
+  const { name, label, options, textarea, numeric, required, requiredSi, visible, paso, ayuda, hint: hintCampo, ...props } = campo;
   const obligatorio = requerido(campo, datos);
   const propio = errores[name] === "duplicado" ? undefined : errores[name];
   const error = mensaje || propio || errorCampo(errorServidor, name);
@@ -352,7 +359,7 @@ function Control({ campo, datos, errores, errorServidor, cambiar, opciones, hint
     ? <Select {...comunes} onChange={(e) => cambiar(name, e.target.value)}><option value="">{obligatorio ? "Seleccionar" : "Sin informar"}</option>{lista.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</Select>
     : textarea ? <Textarea {...comunes} {...props} rows={2} onChange={(e) => cambiar(name, e.target.value)} />
     : <Input {...comunes} {...props} onChange={(e) => cambiar(name, esCuit ? formatoCuit(e.target.value) : e.target.value)} />;
-  return <div className={textarea ? "sm:col-span-2" : undefined}><Field label={<>{label}{obligatorio && <> <Asterisco /></>}</>} hint={hint || hintCampo} error={error}>{control}</Field></div>;
+  return <div className={textarea ? "sm:col-span-2" : undefined}><Field label={<>{label}{obligatorio && <> <Asterisco /></>}</>} hint={hint || hintCampo} ayuda={ayuda} error={error}>{control}</Field></div>;
 }
 
 function BuscadorTitular({ organizacion, seleccionado, error, onElegir }) {
@@ -400,7 +407,7 @@ function Revision({ datos, planes, editar }) {
   const titular = datos.titular_sel ? `${datos.titular_sel.nombre} · ${datos.titular_sel.tipo_documento || "DNI"} ${datos.titular_sel.documento}` : "—";
   const bloques = [
     { paso: 0, filas: [["Documento", `${valor("tipo_documento")} ${datos.documento || ""}`.trim()], ["CUIL", valor("cuil")], ["Nombres", valor("nombres")], ["Apellidos", valor("apellidos")], ["Sexo registrado", valor("sexo")], ["Fecha de nacimiento", valor("fecha_nacimiento")], ["Número de afiliado", valor("numero")]] },
-    { paso: 1, filas: [["Plan", valor("plan")], ["Inicio de cobertura", valor("desde")], ["Delegación", valor("delegacion")], ["Motivo del alta", valor("motivo")], ...(datos.grupo === "familiar" ? [["Titular", titular], ["Parentesco", valor("parentesco")]] : [["Titular", "— (es titular)"]])] },
+    { paso: 1, filas: [["Cobertura", datos.cobertura_habilitada === false ? "Sin habilitar · sólo registro administrativo" : "Habilitada · sujeta a reglas y vigencia"], ["Plan", valor("plan")], ["Fecha de afiliación", valor("desde")], ["Delegación", valor("delegacion")], ["Motivo del alta", valor("motivo")], ...(datos.grupo === "familiar" ? [["Titular", titular], ["Parentesco", valor("parentesco")]] : [["Titular", "— (es titular)"]])] },
     { paso: 2, filas: pasoConDatos(2, datos) ? [["Teléfono", [datos.telefono, datos.celular].filter(Boolean).join(" · ") || "—"], ["Correo", valor("email")], ["Domicilio", domicilio || "—"], ["Localidad", localidad || "—"]] : null },
     { paso: 3, filas: pasoConDatos(3, datos) ? [["Régimen", valor("regimen")], ...camposDelPaso(3, datos).filter((c) => c.name !== "regimen").map((c) => [c.label, valor(c.name)])] : null },
   ];

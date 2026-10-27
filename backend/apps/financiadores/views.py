@@ -106,6 +106,10 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     confirmar_importacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ImportacionSerializer),
     plantilla=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     rechazos=extend_schema(responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
+    anotar_importacion=extend_schema(
+        request={"multipart/form-data": {"type": "object", "required": ["archivo"], "properties": {
+            "archivo": {"type": "string", "format": "binary"}, "importacion": {"type": "integer"}}}},
+        responses={(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY}),
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
     plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
@@ -410,7 +414,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         actual = m.AfiliacionCaso.objects.filter(caso_id=OuterRef("caso_id"), hecho_revision=None).order_by("-pk")
         convenios = vigencias.convenios_vigentes().filter(financiador=org).values("institucion_id")
         pendientes = actividad_visible(org).filter(afiliado=afiliado, acceso="pendiente_historico").values("caso_id")
-        vigente = (afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate()
+        vigente = (afiliado.cobertura_habilitada and afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate()
                    and org.activo)
         # Resolver la afiliación actual dentro del conjunto del afiliado evita
         # ejecutar subconsultas correlacionadas para todo el padrón de casos.
@@ -430,7 +434,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         ).select_related("institucion", "ciudadano").order_by("-creado", "-pk")
 
     def _cupos_ficha(self, afiliado):
-        if not afiliado.plan_id or not afiliado.plan.activo:
+        if not afiliado.cobertura_habilitada or not afiliado.plan_id or not afiliado.plan.activo:
             return []
         from types import SimpleNamespace
         from .cobertura import cantidades_periodo, periodo, regla_aplicable
@@ -461,7 +465,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         afiliado = self._afiliado_ficha(request, org)
         casos = list(self.paginate_queryset(self._casos_historia(org, afiliado)))
         convenios = set(vigencias.convenios_vigentes().filter(financiador=org).values_list("institucion_id", flat=True))
-        vigente = afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate() and org.activo
+        vigente = afiliado.cobertura_habilitada and afiliado.finalizado_en is None and afiliado.desde <= timezone.localdate() and org.activo
         with transaction.atomic():
             registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "financiadores-historia-casos",
                 ({"ciudadano": caso.ciudadano, "institucion_id": caso.institucion_id,
@@ -525,6 +529,7 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
                       "numero": afiliado.numero, "plan": afiliado.plan_id,
                       "plan_nombre": afiliado.plan.nombre if afiliado.plan_id else None,
                       "desde": afiliado.desde, "finalizado_en": afiliado.finalizado_en,
+                      "cobertura_habilitada": afiliado.cobertura_habilitada, "numero_interno": afiliado.numero_interno,
                       "estado": "finalizada" if afiliado.finalizado_en else "futura" if afiliado.desde > timezone.localdate() else "vigente"},
             resumen=resumen_actividad(qs), limite_exportacion=LIMITE_EXPORTACION,
             cupos=self._cupos_ficha(afiliado),
@@ -745,15 +750,99 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             auditar(request.user, "consultar_importaciones", org.pk, financiador=org)
             return self.get_paginated_response(s.ImportacionSerializer(pagina, many=True).data)
         from .importaciones import previsualizar_importacion
-        d = datos(request, {"archivo": serializers.FileField(), "tipo": serializers.ChoiceField(choices=["padron", "consumos"]), "clave": serializers.UUIDField()})
+        d = datos(request, {"archivo": serializers.FileField(), "tipo": serializers.ChoiceField(choices=["padron", "consumos"]), "clave": serializers.UUIDField(),
+            "cobertura_habilitada": serializers.BooleanField(required=False, default=None, allow_null=True)})
         obj = previsualizar_importacion(financiador=org, usuario=request.user, **d)
         return Response(s.ImportacionSerializer(obj).data, status=201)
+
+    @extend_schema(
+        request={"multipart/form-data": {"type": "object", "required": ["archivo"],
+                 "properties": {"archivo": {"type": "string", "format": "binary"}}}},
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=True, methods=["post"], url_path="prevalidar-ostel")
+    def prevalidar_ostel(self, request, pk=None):
+        """Revisión técnica efímera, sin crear lote ni devolver datos nominales."""
+        from collections import Counter
+        from dataclasses import asdict
+        from .ostel_prevalidacion import ArchivoOstelInvalido, COLUMNAS, MAX_BYTES, prevalidar_ostel
+
+        org = self.organizacion(escritura=True)
+        archivo = datos(request, {"archivo": serializers.FileField()})["archivo"]
+        if not archivo.name.lower().endswith(".xlsx"):
+            raise ValidationError({"archivo": "Sólo se admiten archivos .xlsx."})
+        if archivo.size > MAX_BYTES:
+            raise ValidationError({"archivo": "El archivo supera el máximo de 5 MiB."})
+        try:
+            resultado = prevalidar_ostel(archivo.read(MAX_BYTES + 1))
+        except ArchivoOstelInvalido as exc:
+            raise ValidationError({"archivo": str(exc)}) from None
+        # Auditar únicamente la operación y su ámbito; nunca nombre, celdas ni archivo.
+        auditar(request.user, "prevalidar_ostel", org.pk, financiador=org)
+        limite_detalle = 500
+        response = Response({
+            "resumen": resultado.resumen,
+            # 40 columnas; CUILTIT (posición 40) es obligatorio.
+            "columnas": COLUMNAS,
+            "anomalias_por_codigo": dict(Counter(a.codigo for a in resultado.anomalias)),
+            "anomalias": [asdict(a) for a in resultado.anomalias[:limite_detalle]],
+            "detalle_truncado": len(resultado.anomalias) > limite_detalle,
+            "limite_detalle": limite_detalle,
+        })
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="previsualizar-ostel")
+    def previsualizar_ostel(self, request, pk=None):
+        from .ostel_importacion import previsualizar
+        org = self.organizacion(escritura=True)
+        d = datos(request, {"archivo": serializers.FileField(), "clave": serializers.UUIDField(),
+            "fuente": serializers.ChoiceField(choices=["base", "bajas"], default="base"),
+            "cobertura_habilitada": serializers.BooleanField(required=False, default=None, allow_null=True)})
+        lote = previsualizar(financiador=org, usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="subsanar-ostel")
+    def subsanar_ostel(self, request, pk=None):
+        from .ostel_importacion import subsanar
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)),
+            "fila": serializers.IntegerField(min_value=1), "revision": serializers.IntegerField(min_value=1),
+            "datos": serializers.DictField(child=serializers.CharField(max_length=160, allow_blank=True)),
+            "motivo": serializers.CharField(max_length=255),
+            "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+            "ficha": serializers.DictField(child=serializers.CharField(max_length=254, allow_blank=True), required=False),
+        })
+        lote = subsanar(usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="subsanar-importacion")
+    def subsanar_importacion(self, request, pk=None):
+        from .importaciones import subsanar_importacion
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)),
+            "fila": serializers.IntegerField(min_value=1), "revision": serializers.IntegerField(min_value=1),
+            "valores": serializers.ListField(child=serializers.CharField(max_length=300, allow_blank=True), required=False),
+            "motivo": serializers.CharField(max_length=255),
+            "accion": serializers.ChoiceField(choices=["corregir", "omitir"], default="corregir"),
+        })
+        lote = subsanar_importacion(usuario=request.user, **d)
+        response = Response(s.ImportacionSerializer(lote).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     @action(detail=True, methods=["post"], url_path="confirmar-importacion")
     def confirmar_importacion(self, request, pk=None):
         org = self.organizacion(escritura=True)
         from .importaciones import aplicar_importacion
-        d = datos(request, {"importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)), "revisiones_duplicados": serializers.DictField(child=serializers.CharField(max_length=255), required=False)})
+        d = datos(request, {"importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org)), "revisiones_duplicados": serializers.DictField(child=serializers.CharField(max_length=255), required=False),
+            "revisiones_cobertura": serializers.DictField(child=serializers.CharField(max_length=255), required=False)})
         obj = aplicar_importacion(usuario=request.user, **d)
         return Response(s.ImportacionSerializer(obj).data)
 
@@ -767,11 +856,13 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
     @action(detail=True, methods=["get"])
     def plantilla(self, request, pk=None):
         org = self.organizacion(escritura=True)
-        from .importaciones import generar_plantilla
+        from .formatos_importacion import generar_plantilla_formato
         tipo = request.query_params.get("tipo", "consumos")
         version = serializers.IntegerField(min_value=1, max_value=2).run_validation(request.query_params.get("version", 1))
-        contenido = generar_plantilla(financiador=org, usuario=request.user, tipo=tipo, version=version)
-        nombre = "plantilla-padron" if tipo == "padron" and version == 2 else "plantilla"
+        contenido, nombre = generar_plantilla_formato(
+            request.query_params.get("formato", "sistema"),
+            financiador=org, usuario=request.user, tipo=tipo, version=version,
+        )
         return self.archivo(contenido, nombre, org, "descargar_plantilla", tipo)
 
     @action(detail=True, methods=["get"])
@@ -780,6 +871,30 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
         from .importaciones import descargar_rechazadas
         obj = get_object_or_404(m.Importacion, pk=request.query_params.get("importacion"), financiador=org)
         return self.archivo(descargar_rechazadas(importacion=obj, usuario=request.user), "filas-para-corregir", org, "descargar_rechazos", obj.pk)
+
+    @action(detail=True, methods=["post"], url_path="anotar-importacion")
+    def anotar_importacion(self, request, pk=None):
+        """Devuelve el archivo recibido con comentarios en las celdas con error; no lo guarda.
+
+        Sin `importacion` marca las anomalías que rechazaron un archivo OSTEL;
+        con un lote, sus filas con errores (OSTEL o plantilla del sistema)."""
+        from .anotaciones import anotar_ostel, anotar_sistema
+        from .ostel_prevalidacion import MAX_BYTES
+        org = self.organizacion(escritura=True)
+        d = datos(request, {
+            "archivo": serializers.FileField(),
+            "importacion": serializers.PrimaryKeyRelatedField(queryset=m.Importacion.objects.filter(financiador=org), required=False),
+        })
+        archivo, lote = d["archivo"], d.get("importacion")
+        if not archivo.name.lower().endswith(".xlsx") or archivo.size > MAX_BYTES:
+            raise ValidationError({"archivo": "Sólo se admiten archivos .xlsx de hasta 5 MiB."})
+        contenido = archivo.read(MAX_BYTES + 1)
+        if lote is not None and lote.version != 3:
+            resultado = anotar_sistema(financiador=org, usuario=request.user, contenido=contenido, lote=lote)
+        else:
+            resultado = anotar_ostel(financiador=org, usuario=request.user, contenido=contenido, lote=lote)
+        # Auditar sólo la operación y el lote; nunca el nombre ni las celdas.
+        return self.archivo(resultado, "archivo-con-comentarios", org, "anotar_importacion", lote.pk if lote else org.pk)
 
     @action(detail=True, methods=["get"])
     def resumen(self, request, pk=None):

@@ -21,14 +21,15 @@ from .services import auditar
 
 
 def contexto_cobertura(caso, nodo):
-    seleccion = AfiliacionCaso.objects.filter(caso=caso, hecho_revision=None).first()
+    seleccion = AfiliacionCaso.objects.filter(caso=caso, hecho_revision=None).select_related("afiliado").first()
     reservas = ReservaCobertura.objects.filter(caso=caso, prestacion__nodo=nodo, estado="reservada")
     if not reservas.exists() and not ConfiguracionHospital.objects.filter(institucion=caso.institucion, activo=True).exists():
         return {}
     # El modo y el catálogo se capturan con el hecho. Una recuperación nunca cae
     # al generador legado, aunque el hospital desactive el módulo después.
     from .autorizaciones import intento_actual
-    return {"afiliacion": seleccion.pk if seleccion else None, "prestaciones": list(Prestacion.objects.filter(institucion=caso.institucion, nodo=nodo, activo=True).values_list("pk", flat=True)), "reservas": list(reservas.values_list("pk", flat=True)), "intento_autorizacion": str(intento_actual(caso))}
+    return {"afiliacion": seleccion.pk if seleccion else None, "prestaciones": list(Prestacion.objects.filter(institucion=caso.institucion, nodo=nodo, activo=True).values_list("pk", flat=True)), "reservas": list(reservas.values_list("pk", flat=True)), "intento_autorizacion": str(intento_actual(caso)),
+            "cobertura_habilitada": not seleccion or not seleccion.afiliado_id or seleccion.afiliado.cobertura_habilitada}
 
 
 def _obligacion(reserva, parte, importe, nombre, referencia):
@@ -61,13 +62,14 @@ def capturar_cobertura(hecho):
             reserva = ReservaCobertura.objects.filter(hecho=hecho, prestacion_id=prestacion_id).first()
         if not reserva:
             prestacion = Prestacion.objects.get(pk=prestacion_id)
-            resultado = evaluar(caso=hecho.caso, prestacion=prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), afiliacion=afiliacion, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id, intento_autorizacion=contexto.get("intento_autorizacion"))
+            # Contextos anteriores a la separación conservan su interpretación.
+            resultado = evaluar(caso=hecho.caso, prestacion=prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), afiliacion=afiliacion, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id, intento_autorizacion=contexto.get("intento_autorizacion"), cobertura_historica=contexto.get("cobertura_habilitada", True))
             reserva = ReservaCobertura.objects.create(caso=hecho.caso, afiliacion=afiliacion, afiliado=afiliacion.afiliado, prestacion=prestacion, comun_id=resultado["comun"], fecha=date.fromisoformat(resultado["fecha"]), cantidad=1, cubiertas=resultado["cubiertas"], evaluacion=resultado, hecho=hecho)
         if reserva.hecho_id and reserva.hecho_id != hecho.pk:
             raise ValidationError("La reserva ya corresponde a otra atención.")
         if reserva.estado != "realizada":
             anterior = reserva.evaluacion
-            actual = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), cantidad=reserva.cantidad, afiliacion=reserva.afiliacion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id, intento_autorizacion=contexto.get("intento_autorizacion"))
+            actual = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=timezone.localtime(hecho.ocurrida_en).date(), cantidad=reserva.cantidad, afiliacion=reserva.afiliacion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id, intento_autorizacion=contexto.get("intento_autorizacion"), cobertura_historica=anterior.get("cobertura_habilitada", True))
             condiciones = ["politica", "regla", "excepcion", "inicio_periodo", "estado"]
             if "convenio" in anterior:
                 condiciones.append("convenio")
@@ -196,10 +198,14 @@ def completar_pendiente(*, reserva, usuario, motivo, arancel=None, afiliado=None
         if particular and afiliado:
             raise ValidationError("Elegí afiliado o atención particular.")
         if afiliado:
+            afiliado = Afiliado.objects.get(pk=afiliado.pk)
+            if not afiliado.cobertura_habilitada:
+                raise ValidationError("El registro es sólo administrativo. No puede asignarse como nueva cobertura.")
             if not hecho.ciudadano_id or normalizar_documento(hecho.ciudadano.documento) != afiliado.documento or not Convenio.objects.filter(financiador=afiliado.financiador, institucion=hecho.institucion, estado="activo").exists():
                 raise ValidationError("La afiliación requiere documento coincidente y convenio activo.")
         seleccion = AfiliacionCaso.objects.create(caso=reserva.caso, afiliado=afiliado, plan=afiliado.plan if afiliado else None, estado="verificada" if afiliado else "particular", hecho_revision=hecho, motivo=motivo, registrado_por=usuario)
-    evaluacion = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=reserva.fecha, cantidad=reserva.cantidad, afiliacion=seleccion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id)
+    evaluacion = evaluar(caso=reserva.caso, prestacion=reserva.prestacion, fecha=reserva.fecha, cantidad=reserva.cantidad, afiliacion=seleccion, excluir=reserva.pk, corte=hecho.ocurrida_en, historico=True, nodo_origen_id=hecho.nodo_origen_id,
+        cobertura_historica=True if seleccion.pk != reserva.afiliacion_id else reserva.evaluacion.get("cobertura_habilitada", True))
     if seleccion.pk == reserva.afiliacion_id and reserva.evaluacion["estado"] == "arancel_pendiente":
         evaluacion["cubiertas"] = reserva.cubiertas
         # El compromiso conservado por Q01 también conserva la exigencia de
@@ -249,6 +255,8 @@ def revisar_contexto(*, hecho, usuario, motivo, afiliacion, prestaciones):
     if not prestaciones or any(p.institucion_id != hecho.institucion_id or p.nodo_id != hecho.nodo_origen_id for p in prestaciones):
         raise ValidationError("Elegí las prestaciones del hospital y nodo originales.")
     contexto = {"afiliacion": afiliacion.pk if afiliacion else None, "prestaciones": sorted(p.pk for p in prestaciones), "reservas": list(ReservaCobertura.objects.filter(caso_id=hecho.caso_origen_id, prestacion__in=prestaciones, creado__lte=hecho.ocurrida_en, estado="reservada").values_list("pk", flat=True))}
+    # Si faltó el contexto original, no se presume una habilitación ausente hoy.
+    contexto["cobertura_habilitada"] = not afiliacion or not afiliacion.afiliado_id or afiliacion.afiliado.cobertura_habilitada
     anterior, creado = RevisionContexto.objects.get_or_create(hecho=hecho, defaults={"contexto": contexto, "motivo": motivo, "registrado_por": usuario})
     if not creado and anterior.contexto != contexto:
         raise ValidationError("El contexto ya fue revisado con otra selección.")
