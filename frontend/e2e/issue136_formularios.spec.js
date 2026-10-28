@@ -29,15 +29,26 @@ async function escenario(page, institucion = true) {
   return escrituras;
 }
 
-async function provinciaManual(page, nombre) {
+async function provinciaManual(page, nombre, pagina = page) {
   const ubicacion = page.getByLabel("Ubicación territorial", { exact: true }).first();
   const ancho = (await ubicacion.boundingBox()).width;
   const anchos = await ubicacion.locator("input, select").evaluateAll((controles) => controles.map((c) => c.getBoundingClientRect().width));
   expect(anchos.every((valor) => valor >= Math.min(240, ancho) - 1)).toBeTruthy();
   await page.getByRole("combobox", { name: "Provincia", exact: true }).first().fill(nombre);
-  await page.getByRole("option", { name: "Cargar manualmente", exact: true }).click();
+  await pagina.getByRole("option", { name: "Cargar manualmente", exact: true }).click();
   await page.getByRole("textbox", { name: "Provincia · carga manual", exact: true }).fill(nombre);
 }
+
+test("abrir los resultados no cambia el tamaño de la tarjeta de domicilio", async ({ page }) => {
+  await escenario(page);
+  await page.goto("/pacientes?nuevo=1");
+  const tarjeta = page.locator("section").filter({ has: page.getByRole("heading", { name: "Contacto y domicilio", exact: true }) });
+  const antes = await tarjeta.boundingBox();
+  await tarjeta.getByRole("combobox", { name: "Provincia", exact: true }).click();
+  await expect(page.getByRole("listbox", { name: "Provincia", exact: true })).toBeVisible();
+  const despues = await tarjeta.boundingBox();
+  expect(Math.abs(despues.height - antes.height)).toBeLessThan(1);
+});
 
 for (const ancho of [390, 768, 1440]) {
   test.describe(`formularios a ${ancho}px`, () => {
@@ -50,7 +61,7 @@ for (const ancho of [390, 768, 1440]) {
       const dialogo = page.getByRole("dialog");
       await dialogo.getByRole("textbox", { name: /^Nombre/ }).fill("Institución nueva ficticia");
       await dialogo.getByRole("combobox", { name: /^Tipo/ }).selectOption({ label: "Hospital" });
-      await provinciaManual(dialogo, "Provincia manual institucional");
+      await provinciaManual(dialogo, "Provincia manual institucional", page);
       await dialogo.getByRole("button", { name: "Crear institución", exact: true }).click();
       await expect.poll(() => escrituras.find((r) => r.path === "/api/instituciones/")?.body.geografia).toEqual({ provincia: { manual: "Provincia manual institucional" }, partido: null, localidad: null });
     });
