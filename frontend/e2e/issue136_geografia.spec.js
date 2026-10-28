@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 async function preparar(page, fallo = false) {
+  await page.addInitScript(() => {
+    sessionStorage.setItem("salud.access", "token-sintetico-issue136");
+    sessionStorage.setItem("salud.refresh", "refresh-sintetico-issue136");
+  });
   page.on("pageerror", (error) => { throw error; });
   const consultas = [];
   await page.route("**/api/**", async (route) => {
@@ -29,6 +33,106 @@ async function elegir(page, nivel, nombre) {
   await page.getByRole("option", { name: nombre, exact: true }).click();
   await expect(campo).toHaveValue(nombre);
 }
+
+test("carga el nivel completo al aparecer y filtra sin consultas por cada letra", async ({ page }) => {
+  await preparar(page);
+  const consultas = [];
+  await page.route("**/api/geografia/lugares/**", (route) => {
+    const u = new URL(route.request().url());
+    consultas.push(u);
+    const segunda = u.searchParams.get("page") === "2";
+    return route.fulfill({ json: { count: 2, next: segunda ? null : 2,
+      results: [{ id: segunda ? 4 : 1, nombre: segunda ? "Provincia B" : "Provincia A", origen: "georef" }] } });
+  });
+  await page.reload();
+  await expect.poll(() => consultas.length).toBe(2);
+  const campo = page.getByRole("combobox", { name: "Provincia", exact: true });
+  await campo.click();
+  await expect(page.getByRole("option", { name: "Provincia B", exact: true })).toBeVisible();
+  for (const texto of ["Provincia", "Provincia B", "Ausente", "provincia a"]) {
+    await campo.fill(texto);
+  }
+  await expect(page.getByRole("option", { name: "Provincia A", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Provincia B", exact: true })).toHaveCount(0);
+  await campo.press("Escape");
+  await campo.click();
+  await expect(page.getByRole("option", { name: "Provincia B", exact: true })).toBeVisible();
+  expect(consultas).toHaveLength(2);
+  expect(consultas.every((u) => !u.searchParams.get("search"))).toBeTruthy();
+});
+
+test("reutiliza la caché al volver a mostrar el selector sin mezclar organizaciones", async ({ page }) => {
+  await preparar(page);
+  const consultas = [];
+  await page.route("**/api/geografia/lugares/**", (route) => {
+    const organizacion = new URL(route.request().url()).searchParams.get("organizacion");
+    consultas.push(organizacion);
+    return route.fulfill({ json: { count: 1, next: null, results: [{ id: Number(organizacion), nombre: `Lugar privado ${organizacion}`, origen: "manual" }] } });
+  });
+  await page.goto("/e2e/fixtures/issue136_geografia.html?modo=cache");
+  await page.getByRole("combobox", { name: "Provincia", exact: true }).click();
+  await expect(page.getByRole("option", { name: /Lugar privado 21/ })).toBeVisible();
+  await page.getByRole("button", { name: "Ocultar ubicación", exact: true }).click();
+  await page.getByRole("button", { name: "Mostrar ubicación", exact: true }).click();
+  await page.getByRole("combobox", { name: "Provincia", exact: true }).click();
+  await expect(page.getByRole("option", { name: /Lugar privado 21/ })).toBeVisible();
+  expect(consultas).toEqual(["21"]);
+  await page.getByRole("button", { name: "Cambiar organización de prueba", exact: true }).click();
+  await page.getByRole("combobox", { name: "Provincia", exact: true }).click();
+  await expect(page.getByRole("option", { name: /Lugar privado 22/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Lugar privado 21/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Cambiar organización de prueba", exact: true }).click();
+  await page.getByRole("combobox", { name: "Provincia", exact: true }).click();
+  await expect(page.getByRole("option", { name: /Lugar privado 21/ })).toBeVisible();
+  expect(consultas).toEqual(["21", "22"]);
+});
+
+test("descarta una respuesta tardía del contexto anterior sin solicitar sus páginas siguientes", async ({ page }) => {
+  await preparar(page);
+  let liberar;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  const consultas = [];
+  await page.route("**/api/geografia/lugares/**", async (route) => {
+    const u = new URL(route.request().url());
+    consultas.push(u);
+    const anterior = u.searchParams.get("organizacion") === "21";
+    if (anterior) await espera;
+    return route.fulfill({ json: { count: anterior ? 2 : 1, next: anterior ? 2 : null,
+      results: [{ id: anterior ? 21 : 22, nombre: anterior ? "Lugar anterior" : "Lugar actual", origen: "manual" }] } });
+  });
+  await page.goto("/e2e/fixtures/issue136_geografia.html?modo=cache");
+  await expect.poll(() => consultas.length).toBe(1);
+  await page.getByRole("button", { name: "Cambiar organización de prueba", exact: true }).click();
+  const campo = page.getByRole("combobox", { name: "Provincia", exact: true });
+  await campo.click();
+  await expect(page.getByRole("option", { name: /Lugar actual/ })).toBeVisible();
+  const anterior = page.waitForResponse((r) => r.url().includes("organizacion=21"));
+  liberar();
+  await anterior;
+  await expect(page.getByRole("option", { name: /Lugar anterior/ })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: /Lugar actual/ })).toBeVisible();
+  expect(consultas.filter((u) => u.searchParams.get("organizacion") === "21")).toHaveLength(1);
+});
+
+test("una página fallida no queda como catálogo completo y permite reintentar", async ({ page }) => {
+  await preparar(page);
+  let falla = true;
+  await page.route("**/api/geografia/lugares/**", (route) => {
+    const segunda = new URL(route.request().url()).searchParams.get("page") === "2";
+    if (segunda && falla) return route.fulfill({ status: 503, json: { detail: "Falla sintética" } });
+    return route.fulfill({ json: { count: 2, next: segunda ? null : 2,
+      results: [{ id: segunda ? 4 : 1, nombre: segunda ? "Provincia B" : "Provincia A", origen: "georef" }] } });
+  });
+  await page.reload();
+  await page.getByRole("combobox", { name: "Provincia", exact: true }).click();
+  await expect(page.getByText("No se pudo consultar el catálogo.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Provincia A", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: "Cargar manualmente", exact: true })).toBeVisible();
+  falla = false;
+  await page.getByRole("button", { name: "Reintentar catálogo", exact: true }).click();
+  await expect(page.getByRole("option", { name: "Provincia B", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Provincia A", exact: true })).toBeVisible();
+});
 
 test("un campo por nivel permite elegir con teclado sin enviar el formulario", async ({ page }) => {
   await preparar(page);
@@ -105,11 +209,10 @@ test("Escape cierra resultados y restaura el valor sin cerrar el modal de pacien
   await expect(page.getByText("Edición ficticia cancelada", { exact: true })).toBeVisible();
 });
 
-test("al escribir no ofrece resultados viejos mientras espera la búsqueda", async ({ page }) => {
+test("al escribir filtra la copia local sin ofrecer coincidencias anteriores", async ({ page }) => {
   await preparar(page);
   await page.route("**/api/geografia/lugares/**", (route) => {
-    const busqueda = new URL(route.request().url()).searchParams.get("search");
-    return route.fulfill({ json: { results: [{ id: busqueda ? 4 : 1, nombre: busqueda ? "Provincia B" : "Provincia A", origen: "georef" }], next: null } });
+    return route.fulfill({ json: { count: 2, results: [{ id: 1, nombre: "Provincia A", origen: "georef" }, { id: 4, nombre: "Provincia B", origen: "georef" }], next: null } });
   });
   const campo = page.getByRole("combobox", { name: "Provincia", exact: true });
   await campo.click();
@@ -128,8 +231,9 @@ test("pagina resultados y vuelve a la primera página al reabrir", async ({ page
   await page.route("**/api/geografia/lugares/**", (route) => {
     const segunda = new URL(route.request().url()).searchParams.get("page") === "2";
     return route.fulfill({ json: {
-      results: [{ id: segunda ? 4 : 1, nombre: segunda ? "Provincia B" : "Provincia A", origen: "georef" }],
-      next: segunda ? null : "/api/geografia/lugares/?page=2",
+      count: 31,
+      results: segunda ? [{ id: 40, nombre: "Provincia B", origen: "georef" }] : Array.from({ length: 30 }, (_, i) => ({ id: i + 1, nombre: `Provincia A ${i + 1}`, origen: "georef" })),
+      next: segunda ? null : 2,
     } });
   });
   const campo = page.getByRole("combobox", { name: "Provincia", exact: true });
@@ -138,7 +242,7 @@ test("pagina resultados y vuelve a la primera página al reabrir", async ({ page
   await page.getByRole("option", { name: "Provincia B", exact: true }).click();
   await expect(campo).toHaveValue("Provincia B");
   await campo.click();
-  await expect(page.getByRole("option", { name: "Provincia A", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Provincia A 1", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Anteriores", exact: true })).toHaveCount(0);
 });
 
@@ -152,7 +256,7 @@ test("una búsqueda inexistente se conserva al optar por carga manual", async ({
   await campo.fill("Ausente");
   await expect(page.getByText("No hay coincidencias.", { exact: false })).toBeVisible();
   await expect(page.getByRole("listbox", { name: "Provincia", exact: true }).getByRole("option", { name: "Cargar manualmente", exact: true })).toBeVisible();
-  await page.getByLabel("Ubicación territorial", { exact: true }).screenshot({ path: testInfo.outputPath("manual-en-desplegable.png") });
+  await page.screenshot({ path: testInfo.outputPath("manual-en-desplegable.png"), fullPage: true });
   await campo.press("ArrowDown");
   await campo.press("Enter");
   await expect(page.getByRole("textbox", { name: "Provincia · carga manual", exact: true })).toHaveValue("Ausente");
@@ -221,9 +325,14 @@ for (const modo of ["editar-paciente", "editar-afiliado"]) {
       expect(anchos.every((valor) => valor >= Math.min(240, limite) - 1)).toBeTruthy();
       expect(await ubicacion.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBeTruthy();
       await ubicacion.getByRole("combobox", { name: "Provincia", exact: true }).click();
-      await expect(ubicacion.getByRole("option", { name: "Provincia A", exact: true })).toBeVisible();
+      await expect(page.getByRole("option", { name: "Provincia A", exact: true })).toBeVisible();
       expect(await ubicacion.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBeTruthy();
-      await ubicacion.screenshot({ path: testInfo.outputPath(`selector-${modo}-${ancho}.png`) });
+      const opcion = page.getByRole("option", { name: "Provincia A", exact: true });
+      expect(await opcion.evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        return e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+      })).toBeTruthy();
+      await page.screenshot({ path: testInfo.outputPath(`selector-${modo}-${ancho}.png`), fullPage: true });
     });
   }
 }
