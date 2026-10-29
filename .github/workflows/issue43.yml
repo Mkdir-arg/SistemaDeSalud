@@ -36,10 +36,15 @@ jobs:
       PYTHON_DOTENV_DISABLED: "1"
       PYTHONIOENCODING: utf-8
       DJANGO_SETTINGS_MODULE: config.settings_issue43_test
+      SALUD_IMPORTACION_E2E_AISLADO: "1"
+      SALUD_TEST_POSTGRES_URL: postgres://issue43@127.0.0.1:55443/salud_financiadores_test
     steps:
       - uses: actions/checkout@v4
       - name: Directorio de artefactos exclusivo del runner
-        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "SALUD_IMPORTACION_DIRECTORIO=$RUNNER_TEMP/salud-importacion182-fixtures" >> "$GITHUB_ENV"
+          echo "SALUD_IMPORTACION_MANIFEST=$RUNNER_TEMP/salud-importacion182-fixtures/manifiesto.json" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -67,12 +72,24 @@ jobs:
       - name: Recorrido de navegador sin interceptar API
         run: npx playwright test -c playwright.issue43-real.config.js
         working-directory: frontend
+      - name: Preparar importación OSTEL ficticia en base exclusiva
+        run: python tests/importacion_real.py preparar
+        working-directory: backend
+      - name: Importación OSTEL con navegador, API y PostgreSQL reales
+        run: npx playwright test -c playwright.importacion-real.config.js
+        working-directory: frontend
+      - name: Retirar credenciales ficticias de importación
+        if: always()
+        run: python tests/importacion_real.py limpiar
+        working-directory: backend
       - name: Capturas de fallos
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: issue43-${{ github.sha }}
-          path: ${{ runner.temp }}/salud-issue43-playwright
+          path: |
+            ${{ runner.temp }}/salud-issue43-playwright
+            ${{ runner.temp }}/salud-importacion182-resultados
           if-no-files-found: ignore
           retention-days: 7
 
