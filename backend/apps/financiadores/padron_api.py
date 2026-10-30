@@ -53,6 +53,22 @@ class CobranzaPadronSerializer(serializers.ModelSerializer):
         fields = ["revision", *p.CAMPOS_COBRANZA, "estado_informado"]
 
 
+class FuenteFamiliaOstelSerializer(serializers.Serializer):
+    importacion = serializers.IntegerField(min_value=1)
+    fila = serializers.IntegerField(min_value=1)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and set(data) - set(self.fields):
+            raise serializers.ValidationError({"non_field_errors": ["La petición contiene campos no admitidos para este recurso."]})
+        return super().to_internal_value(data)
+
+
+class ConfirmarFamiliaOstelSerializer(FuenteFamiliaOstelSerializer):
+    titular = serializers.IntegerField(min_value=1)
+    revision = serializers.IntegerField(min_value=1)
+    revision_titular = serializers.IntegerField(min_value=1)
+
+
 def fila_historial(h):
     fila = {"id": h.pk, "motivo": h.motivo, "registrado": h.registrado,
             "usuario_nombre": h.registrado_por.nombre_completo, "cambios": h.cambios}
@@ -121,6 +137,24 @@ class PadronMixin:
             return {"id": x.pk, "numero": x.numero, "documento": x.documento, "nombre": x.nombre, "parentesco": x.parentesco}
         auditar(request.user, "consultar_familia_padron", obj.pk, financiador=org)
         return Response({"titular": resumen(titular), "integrantes": [resumen(x) for x in integrantes]})
+
+    @extend_schema(methods=["GET"], parameters=[FuenteFamiliaOstelSerializer], responses=OpenApiTypes.OBJECT)
+    @extend_schema(methods=["POST"], request=ConfirmarFamiliaOstelSerializer, responses=AfiliadoSerializer)
+    @action(detail=True, methods=["get", "post"], url_path=r"padron/(?P<afiliado_id>\d+)/familia-ostel")
+    def padron_familia_ostel(self, request, pk=None, afiliado_id=None):
+        from . import familia_ostel
+        escritura = request.method == "POST"
+        org = self.organizacion(escritura=escritura)
+        obj = self._padron_obj(org, afiliado_id)
+        clase = ConfirmarFamiliaOstelSerializer if escritura else FuenteFamiliaOstelSerializer
+        entrada = clase(data=request.data if escritura else request.query_params)
+        entrada.is_valid(raise_exception=True)
+        datos = dict(entrada.validated_data)
+        datos["importacion_id"] = datos.pop("importacion")
+        if escritura:
+            registro = familia_ostel.confirmar(afiliado=obj, usuario=request.user, **datos)
+            return Response(AfiliadoSerializer(registro).data)
+        return Response(familia_ostel.proponer(afiliado=obj, usuario=request.user, **datos))
 
     @extend_schema(responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["get"], url_path=r"padron/(?P<afiliado_id>\d+)/historial")

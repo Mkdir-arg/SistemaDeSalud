@@ -44,6 +44,46 @@ integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
   no otra ejecución de pruebas. La decisión D2 posterior separa la importación
   administrativa del paso protegido descrito a continuación.
 
+### T1d: propuesta y confirmación de vínculo familiar
+
+La importación administrativa no ensambla familias. Después de aplicar las filas
+necesarias, un editor del padrón puede confirmar cada vínculo explícitamente:
+
+1. `GET /api/financiadores/{financiador}/padron/{afiliado}/familia-ostel/?importacion=123&fila=1`
+   consulta una propuesta sin escribir. Devuelve `titular`, `revision` del
+   integrante y `revision_titular`; no devuelve identificadores personales.
+2. `POST` al mismo recurso con `importacion`, `fila` y los tres valores recibidos
+   confirma el vínculo. La respuesta 200 es la ficha administrativa habitual.
+   La consulta usa permiso de lectura; la confirmación requiere escritura.
+
+`fila` es el ordinal estable del lote. Sólo se resuelve CUILTIT contra un CUIL
+original único del mismo lote/financiador, con ambas filas aplicadas y sus
+identidades actuales coincidentes. La fila titular debe autorreferenciarse y
+seguir siendo raíz; no se usa NROAFI ni se busca un titular fuera de ese lote.
+El orden no importa, pero un titular aún pendiente en otra tanda de 100 filas
+requiere terminar su aplicación antes de proponer el vínculo.
+
+- Fuentes incompletas, ambiguas, con baja, discordancias o ciclos requieren
+  revisión: 400; recursos inexistentes o ajenos: 404; permisos insuficientes: 403.
+  Una revisión obsoleta de cualquiera de las dos fichas devuelve 409. Ante
+  conflicto se consulta otra propuesta, sin actualizar revisiones a ciegas.
+- No se reemplaza otro titular ni se convierte una raíz con integrantes en
+  dependiente. El parentesco queda pendiente si estaba vacío; una clasificación
+  existente se conserva. Repetir un vínculo coincidente con revisiones actuales
+  no genera otra modificación. Los rechazos no cambian datos ni historial.
+- La confirmación revalida bajo locks del lote, financiador y ambas fichas por
+  PK; reutiliza `editar_ficha` y registra lote/filas en el historial. No modifica
+  fuente original, CODPAR, salud, plan ni derechos de cobertura.
+
+Este corte es API local, no una pantalla ni aceptación operativa. No hay backfill
+ni migración. Retirar la acción impide nuevos vínculos, pero no revierte los ya
+confirmados: conservar su historial y corregirlos explícitamente si corresponde.
+Verificación independiente: 99 regresiones, cinco probes de rechazo/concurrencia
+y ocho observaciones previas equivalentes al baseline. Probes incorporados;
+repetición local final: 104 tests OK, con PostgreSQL descartable autorizado.
+Incluye `test_familia_ostel` y `test_concurrencia_familia_ostel`; runner completo y
+estado de revisión nativa en el registro de trabajo. No acredita UI, CI ni deploy.
+
 ### T1b: copia explícita de una fila aplicada al bloque de salud
 
 El operador conserva el circuito administrativo existente. Importar un lote no
