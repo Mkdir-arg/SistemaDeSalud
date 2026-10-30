@@ -28,7 +28,7 @@ CAMPOS_GENERALES = (
 CAMPOS_GEOGRAFIA = ("geografia", "geografia_laboral")
 # No agregar geografía a CAMPOS_GENERALES: define el formato XLSX v2 vigente.
 CAMPOS_EDITABLES = ("numero", "documento", "nombre", "plan", *CAMPOS_GENERALES, *CAMPOS_GEOGRAFIA)
-CAMPOS_SALUD = ("cud", "cud_numero", "cud_presentado_en", "cud_vencimiento", "cud_referencia", "dbt", "cronicas", "parentesco_sensible")
+CAMPOS_SALUD = ("cud", "cud_numero", "cud_presentado_en", "cud_vencimiento", "cud_referencia", "dbt", "cronicas", "parentesco_sensible", "codpar_ostel")
 CAMPOS_COBRANZA = ("situacion", "fuente", "informado_en", "modalidad", "dia_vencimiento", "cupon", "cbu", "cuit_titular", "titular_cuenta", "emisor_tarjeta", "banco", "proveedor_cupon")
 CAMPOS_LEGAJO = ("tipo", "estado", "presentado_en", "verificado_en", "vence_en", "referencia")
 
@@ -155,12 +155,17 @@ def campos_entrada(modelo, campos, data, controles=("revision", "motivo"), reque
     if desconocidos:
         # No repetir contenido ni nombres aportados por clientes en auditoría.
         raise serializers.ValidationError("La petición contiene campos no admitidos para este recurso.")
-    for campo in ("documento", "numero", "cuil", "cuit_empleador", "cbu", "cuit_titular"):
+    for campo in ("documento", "numero", "cuil", "cuit_empleador", "cbu", "cuit_titular", "codpar_ostel"):
         if campo in data and not isinstance(data[campo], str):
             raise serializers.ValidationError({campo: "Debe ser texto para conservar sus ceros iniciales."})
     meta = type("Meta", (), {"model": modelo, "fields": list(campos)})
     clase = type("EntradaPadron", (serializers.ModelSerializer,), {"Meta": meta})
     serializer = clase(data={k: v for k, v in data.items() if k in campos}, partial=True)
+    if "codpar_ostel" in campos:
+        serializer.fields["codpar_ostel"] = serializers.CharField(
+            max_length=modelo._meta.get_field("codpar_ostel").max_length,
+            required=False, allow_blank=True, trim_whitespace=False,
+        )
     for campo in CAMPOS_GEOGRAFIA:
         if campo in campos:
             serializer.fields[campo] = serializers.JSONField(required=False)
@@ -254,6 +259,8 @@ def editar_protegido(*, afiliado, usuario, bloque, entrada):
     validar_entrada_servicio(entrada, CAMPOS_SALUD if bloque == "salud" else CAMPOS_COBRANZA)
     m.MembresiaFinanciador.objects.select_for_update().filter(usuario=usuario, financiador_id=afiliado.financiador_id).first()
     requerir_padron_protegido(usuario, afiliado.financiador_id, bloque, escritura=True)
+    if "codpar_ostel" in entrada and not isinstance(entrada["codpar_ostel"], str):
+        raise ValidationError({"codpar_ostel": "Debe ser texto para conservar el código original."})
     afiliado = m.Afiliado.objects.select_for_update().get(pk=afiliado.pk)
     modelo = m.SaludPadron if bloque == "salud" else m.CobranzaPadron
     obj = modelo.objects.filter(afiliado=afiliado).first() or modelo(afiliado=afiliado)

@@ -290,6 +290,8 @@ class SaludPadron(models.Model):
     """Condiciones declaradas del padrón. No modifica ni amplía historia clínica."""
     afiliado = models.OneToOneField(Afiliado, on_delete=models.PROTECT, related_name="salud_padron")
     revision = models.PositiveIntegerField(default=1)
+    # Código de origen, no clasificación ni evidencia de elegibilidad.
+    codpar_ostel = models.CharField(max_length=40, blank=True, default="", db_default="")
     cud = models.BooleanField(null=True, blank=True)
     cud_numero = models.CharField(max_length=80, blank=True)
     cud_presentado_en = models.DateField(null=True, blank=True)

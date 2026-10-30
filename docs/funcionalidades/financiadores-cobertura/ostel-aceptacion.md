@@ -9,10 +9,39 @@ integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
 - **Confirmado en las fuentes documentadas:** NUMERO individual, CUIL de la
   persona, NROAFI compartible; CUILTIT referencia al titular, que se referencia
   a sí mismo. El formato requiere 40 columnas. No falta CUILTIT.
-- **Pendiente de decisión:** representar los códigos CODPAR sin perder relaciones
+- **Decisión aprobada el 30/10:** conservar CODPAR separado, sin perder relaciones
   que no caben en `Afiliado.parentesco` (`conyuge`, `hijo`, `hija`, `conviviente`,
   `otro`). El diccionario de consulta no es una equivalencia aprobada. Los 56
   valores de fixtures son muestras de rangos, no todo el catálogo.
+- **Primer incremento local T1a:** `SaludPadron.codpar_ostel` conserva hasta 40
+  caracteres literales (incluidos ceros y espacios), separado del parentesco
+  genérico. Hay códigos que revelan discapacidad: sólo se consulta/edita mediante
+  el endpoint protegido `padron/{id}/salud/`, con designación de salud y el rol
+  existente. No se agrega al padrón/exportación general.
+- El PATCH requiere revisión y motivo; omitir el campo conserva su valor y
+  enviar `""` lo vacía explícitamente con historial protegido. Se rechazan valores
+  no textuales y de más de 40 caracteres, sin cambiar datos ni revisión. El
+  catálogo no se homologa: registrar un código no prueba que sea válido para
+  prestaciones ni modifica `parentesco_sensible`, familia o cobertura.
+- Migración aditiva `0017_saludpadron_codpar_ostel`: vacío por defecto, sin
+  reconstrucción desde lotes anteriores. Una reversión elimina estos nuevos
+  valores; no es una recuperación segura después de usarlos. En un incidente,
+  conservar datos y reparar hacia adelante antes de considerar una reversión.
+- **Límites:** no hay formulario nuevo ni copia automática desde importación.
+  El importador general y el bloque de salud tienen permisos distintos; no se
+  agregó un bypass. El acceso preexistente a filas originales de importación
+  requiere tratamiento propio antes de ampliar ese flujo. No se construyen
+  familias ni se deriva elegibilidad.
+- T1a: RED observado (400 por campo desconocido), luego GREEN en PostgreSQL
+  descartable autorizado; chequeo de migraciones sin cambios faltantes.
+  Verificador independiente: 79 tests y tres probes aprobados, comparación
+  baseline/candidato de seis respuestas API equivalentes (excepto el campo nuevo
+  intencional y valores volátiles). Incorporados los probes de preservación y
+  rechazo de tipos: suite final de 81 tests OK (14.411 s), incluidos padrón,
+  importación y concurrencia. No constituye entrega publicada ni aceptación.
+
+Comando de regresión (sólo base de pruebas autorizada):
+`python -B manage.py test apps.financiadores.test_codpar_ostel apps.financiadores.test_padron130 apps.financiadores.test_ostel_importacion apps.financiadores.test_concurrencia_padron130 --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
 - **Límite:** todavía no se construyen familias automáticamente; no inferir
   parentesco por NROAFI, sexo por código, ni derechos por relación familiar.
 - **Verificado en `cae9e16`:** `python -B -m unittest
