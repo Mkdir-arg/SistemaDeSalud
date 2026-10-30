@@ -98,6 +98,44 @@ Comando de regresión (sólo base de pruebas autorizada):
 - **PR197:** abierto/draft en `a7cc182`, cinco checks exitosos consultados el
   30/10. No se integró; sus resultados históricos no prueban la rama actual.
 
+### T1c: vínculo conocido, clasificación pendiente (D3 aprobada)
+
+`titular` identifica el vínculo; `parentesco` lo clasifica. Desde la decisión del
+30/10/2026 se admite `titular` presente con `parentesco=""`: clasificación pendiente,
+no ausencia de vínculo ni equivalencia a `otro`. Se conserva CODPAR por separado
+en salud, sin derivar clasificación genérica, sexo, derechos ni elegibilidad.
+
+- PATCH de ficha puede registrar el titular sin clasificación, clasificarlo
+  después o vaciar explícitamente la clasificación sin eliminar el vínculo.
+- `parentesco` no vacío sin titular sigue rechazado. Mensaje actualizado:
+  «Se requiere un titular para informar parentesco.» Para desvincular un integrante
+  clasificado se deben vaciar explícitamente ambos campos en la misma edición.
+- Se conservan revisión optimista, historial, permisos, mismo financiador,
+  estructura de un nivel y rechazo de ciclos. No se modifican locks ni esquema.
+- La importación genérica XLSX v2 acepta el vínculo con clasificación pendiente;
+  una celda vacía sigue significando omisión, no borrado de una clasificación
+  existente. Su resolución por orden de filas no cambia en este corte.
+- Consulta familiar, listado y exportación conservan titular conocido y
+  clasificación vacía. La pantalla existente identifica la raíz por ID y presenta
+  «Parentesco sin informar» para el integrante; no se modificó frontend.
+
+Este corte habilita la representación, **no ensambla familias OSTEL por CUILTIT**.
+Ese siguiente incremento debe resolver el lote completo independientemente de su
+orden y detener referencias ambiguas sin modificar familias existentes por
+inferencia. Tampoco actualiza masivamente datos ni aplica derechos.
+
+Verificación: RED observado al intentar registrar titular sin parentesco; después
+GREEN del mismo caso con revisión e historial. Pruebas API, servicio de importación
+y exportación XLSX sobre datos ficticios. Verificación independiente: 115 tests,
+dos probes de concurrencia con clasificación pendiente y 14 observaciones previas
+equivalentes al baseline; sin bloqueantes. Probes incorporados a las regresiones:
+repetición del padre de 117 tests OK (26.547 s). Revisión nativa pendiente.
+Recorrido navegador no disponible: este worktree no tiene dependencias frontend
+instaladas; no se instaló ni inició ese entorno. No hay aceptación humana ni deploy.
+Una reversión del nuevo guard volvería a rechazar ediciones de vínculos pendientes
+ya creados: conservar esos datos y planificar reparación, nunca borrarlos para
+restaurar la regla anterior.
+
 ## Actualización 26/10/2026: entrega con CUILTIT
 
 OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos.

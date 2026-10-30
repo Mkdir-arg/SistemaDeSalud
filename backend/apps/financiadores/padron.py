@@ -92,8 +92,9 @@ def validar_generales(obj):
         raise ValidationError({"motivo_baja": "Registrá un motivo administrativo de baja."})
     if bool(obj.credencial_tipo) != bool(obj.credencial_fecha):
         raise ValidationError("La credencial externa requiere tipo y fecha conjuntamente.")
-    if bool(obj.titular_id) != bool(obj.parentesco):
-        raise ValidationError("Indicá titular y parentesco conjuntamente; ambos vacíos para un titular.")
+    # El vínculo puede estar confirmado aunque la clasificación siga pendiente.
+    if obj.parentesco and not obj.titular_id:
+        raise ValidationError("Se requiere un titular para informar parentesco.")
     if obj.estado_tramite == "completo":
         documentos = obj.legajo.all() if obj.pk else m.DocumentoLegajo.objects.none()
         if not obj.credencial_tipo or not documentos.exists() or documentos.exclude(estado__in=["verificado", "exento"]).exists():
