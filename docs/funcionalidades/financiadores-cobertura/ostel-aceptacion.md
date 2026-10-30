@@ -129,7 +129,9 @@ GREEN del mismo caso con revisión e historial. Pruebas API, servicio de importa
 y exportación XLSX sobre datos ficticios. Verificación independiente: 115 tests,
 dos probes de concurrencia con clasificación pendiente y 14 observaciones previas
 equivalentes al baseline; sin bloqueantes. Probes incorporados a las regresiones:
-repetición del padre de 117 tests OK (26.547 s). Revisión nativa pendiente.
+repetición del padre de 117 tests OK (26.547 s). Revisión nativa consentida y cerrada
+para `0e2eb40`: riesgo y confiabilidad sin hallazgos, sólo inspección de parches
+inmutables. La revisión no autoriza publicación ni sustituye aceptación.
 Recorrido navegador no disponible: este worktree no tiene dependencias frontend
 instaladas; no se instaló ni inició ese entorno. No hay aceptación humana ni deploy.
 Una reversión del nuevo guard volvería a rechazar ediciones de vínculos pendientes

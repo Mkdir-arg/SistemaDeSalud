@@ -22,7 +22,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
-| T1 | S2–S5,S7–S11 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c verificado, pendiente commit/revisión; T1d ensamblado por lote posterior |
+| T1 | S2–S5,S7–S11 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c completo local/revisado en `0e2eb40`; T1d ensamblado por lote en planificación |
 | T2 | S2,S4,S5 | #143: contrato de fechas, motivos y derechos | Inline | Pendiente de lectura integral y decisiones de negocio |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
@@ -168,3 +168,11 @@ autorizo
 - Verificador `family_contract_verify` (`gpt-6.1-sol/medium`): 115 tests OK (25.551 s), 14 observaciones de interfaces previas equivalentes al baseline `212bc73`, dos probes de concurrencia con parentesco vacío aprobados; sin bloqueantes. Probes integrados en `test_concurrencia_padron130.py` manteniendo también las variantes clasificadas. Repetición padre: 117 tests OK, 26.547 s. La diferencia intencional es aceptar vínculo pendiente y actualizar el mensaje del parentesco sin titular.
 - Scratch adicional retenido por política de limpieza ya registrada: `C:/Users/Juanito/AppData/Local/Temp/ostel_t1c_verify_f49py1mu`. No se intentó eliminarlo por otra vía. Sin datos reales. Browser no ejecutado, sin cambios frontend; no equivale a demostración o aceptación. Revisión nativa de este candidato todavía pendiente.
 - Regresión adicional de los cortes ya entregados: `python -B manage.py test apps.financiadores.test_ostel_importacion apps.financiadores.test_codpar_ostel apps.financiadores.test_codpar_importacion --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`: 40 tests OK, 7.125 s. No se modificaron migraciones ni esquema. Corte T1c parte de `212bc739`; límites locales conservados para futura cadena, sin publicar.
+
+### L15 — Revisión T1c consentida y cerrada (30/10/2026)
+
+1
+
+- Aprueba revisar T1c, no publicar. Commit `0e2eb4079447c83e585de9af5b2f5e208d0310fc`: 225 adiciones + 5 eliminaciones, cinco archivos. Capturas nativas concurrentes de riesgo y confiabilidad inspeccionaron los cinco parches inmutables sin hallazgos; no ejecutaron tests nuevos.
+- Acuse exacto confirmado por `gentle-ai.review-acknowledged/v1`: `action=acknowledged`, `authority=burned`, lineage `review-40d66b2863de36d4`, target `sha256:72845de51ff77c4e440697e17a35891b306a51ba3f83f735ac36f8f3cc88145d`. No reabrir este candidato. T1b mantiene su decisión independiente de omisión.
+- Main remoto revalidado en `cae9e16a80559a1c936dc9e2f8727aa3bf3ad3d7`; sin rebase ni reset. Próxima unidad T1d: ensamblado seguro por CUILTIT, sin equivalencias de CODPAR inventadas ni cambios de derechos. #181 releído completo y su comentario vigente confirma disponibilidad de CUILTIT/diccionario; no se vuelve a bloquear por ausencia histórica.
