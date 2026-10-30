@@ -22,7 +22,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
-| T1 | S2–S5,S7–S11 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c completo local/revisado en `0e2eb40`; T1d API por lote implementada, en verificación independiente |
+| T1 | S2–S5,S7–S11 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c completo local/revisado en `0e2eb40`; T1d API local verificada en `476cfb2`, revisión omitida; integración visual pendiente |
 | T2 | S2,S4,S5 | #143: contrato de fechas, motivos y derechos | Inline | Pendiente de lectura integral y decisiones de negocio |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
@@ -189,3 +189,10 @@ autorizo
 - Verificador `family_lot_verify` (`gpt-6.1-sol/medium`): 99 tests OK (28.292 s), cinco probes OK (3.245 s), ocho observaciones públicas previas idénticas al baseline `e5e55ad` tras normalizar timestamps. Confirmaciones concurrentes 200/409, una sola historia; cambios de identidad de ambas personas y fuente durante espera rechazados sin mutaciones. Generación OpenAPI correcta. Sin bloqueantes; primer fallo de su harness por Client se corrigió a APIClient, sin cambio del candidato.
 - Probes incorporados como regresiones y fixture compartido, sin comprimir el código. Repetición padre: 12 tests focales OK (9.981 s); runner final de L16 más `apps.financiadores.test_concurrencia_familia_ostel`: 104 tests OK (32.913 s). Scratch retenido por la restricción de limpieza: `C:/Users/Juanito/AppData/Local/Temp/ostel_t1d_verify_4981ofuy`. El contenedor de pruebas sigue disponible; no se reintentó eliminarlo.
 - Corte T1d sobre `e5e55ad`, posterior a T1c: API, pruebas y documentación forman una sola conducta revisable. La incorporación de regresiones concurrentes supera la estimación de 400 líneas; separar pruebas del vínculo dejaría un corte sin evidencia propia. Se conserva este corte cohesivo y se recomienda `size:exception` si se autoriza su futura PR; no se publica ni se presume esa excepción concedida. Cadena elegida sin cambios. Revisión nativa pendiente; sin navegador, CI, merge, deploy ni aceptación humana.
+
+### L17 — Revisión T1d omitida por decisión del usuario (30/10/2026)
+
+2
+
+- Selección «Omitir esta vez»: ejecución exacta confirmada con `action=declined`, `consent=declined_this_candidate`, target `sha256:65c20db82a5814c766c904aad31448ea7e375c3b2c5a13e711927c0f78a63c9f`. Sin revisión nativa ni registro de aprobación; las revisiones futuras siguen habilitadas. Se conserva la prueba funcional e independiente de L16.
+- Corte local `476cfb245c73581577f34c952b50df9519412ed5`: 455 adiciones + 1 eliminación, seis archivos, base `e5e55ad`. Sin publicación. Próxima unidad: mapear la integración visual con el circuito de importación existente y comprobar disponibilidad del entorno antes de cambios de UI.
