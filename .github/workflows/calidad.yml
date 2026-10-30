@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
       - name: Contratos y estado del padrón
-        run: node --test src/lib/padronEdicion.test.mjs src/lib/padronNavigation.test.mjs src/lib/importacionRespuesta.test.mjs src/components/financiadores/padronCampos.test.mjs src/components/financiadores/padronTabla.test.mjs scripts/auditar-clases.test.mjs
+        run: node --test src/lib/padronEdicion.test.mjs src/lib/padronNavigation.test.mjs src/lib/importacionRespuesta.test.mjs src/components/financiadores/padronCampos.test.mjs src/components/financiadores/padronTabla.test.mjs src/components/financiadores/issue184_presentacion.test.mjs scripts/auditar-clases.test.mjs
 
       - name: Seguridad de descargas y credenciales
         run: node --experimental-vm-modules --test src/api/client.test.mjs src/auth/credencialesInstitucionales.test.mjs

@@ -65,6 +65,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx playwright test -c playwright.portal.config.js --reporter=line
 
+      - name: Vista operativa del padrón (#184)
+        if: ${{ !cancelled() }}
+        run: npx playwright test -c issue184_playwright.config.js --grep 'issue184:' --reporter=line
+
       - name: Domicilios en todas las áreas (#136)
         if: ${{ !cancelled() }}
         run: npx playwright test -c issue136_playwright.config.mjs --reporter=line
@@ -78,6 +82,7 @@ jobs:
             ${{ runner.temp }}/salud-financiadores-ui
             ${{ runner.temp }}/salud-padron-tabla-ui
             ${{ runner.temp }}/salud-portal
+            ${{ runner.temp }}/salud-issue184-ui
             ${{ runner.temp }}/salud-issue136-ui
           retention-days: 7
           if-no-files-found: ignore

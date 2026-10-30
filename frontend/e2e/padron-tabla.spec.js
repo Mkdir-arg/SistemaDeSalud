@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 test("columnas por teclado, reload y restaurar conservan identidad y acciones", async ({ page }) => {
   await page.goto(`${ruta}?financiador=21&page=2`);
   const columnas = page.getByRole("button", { name: "Columnas visibles" });
-  await expect(columnas).toContainText("5");
+  await expect(columnas).toContainText("11");
   await columnas.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("searchbox", { name: "Buscar columna" })).toBeFocused();
@@ -29,9 +29,9 @@ test("columnas por teclado, reload y restaurar conservan identidad y acciones", 
   await expect(page).toHaveURL(/columnas=/);
   await page.reload();
   await expect(columna(page, "Localidad")).toBeVisible();
-  await expect(columnas).toContainText("6");
+  await expect(columnas).toContainText("12");
   await columnas.click();
-  await page.getByRole("checkbox", { name: "Plan", exact: true }).uncheck();
+  await page.getByRole("checkbox", { name: "Plan registrado", exact: true }).uncheck();
   await expect(columna(page, "Plan")).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "Acciones", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -218,7 +218,7 @@ test("fecha y select se aplican inmediatamente sin borrar texto pendiente", asyn
 test("vacío, carga y error accesible conservan controles y reintento", async ({ page }) => {
   await page.goto(`${ruta}?modo=vacio`);
   await expect(page.getByText("Sin afiliados para estos filtros")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Columnas visibles" })).toContainText("5");
+  await expect(page.getByRole("button", { name: "Columnas visibles" })).toContainText("11");
   await page.goto(`${ruta}?modo=cargando`);
   await expect(page.getByRole("status", { name: "Cargando…" })).toBeVisible();
   await page.goto(`${ruta}?modo=error`);
@@ -241,7 +241,7 @@ test("móvil permite elegir, ordenar y paginar sin scroll global", async ({ page
 });
 
 test("clic en el texto de una columna la marca sin cerrar el panel", async ({ page }) => {
-  await page.goto(ruta);
+  await page.goto(`${ruta}?columnas=nombre,numero`);
   await page.getByRole("button", { name: "Columnas visibles" }).click();
   const panel = page.getByRole("dialog", { name: "Columnas visibles" });
   await panel.getByText("Localidad", { exact: true }).click();
@@ -289,7 +289,7 @@ test("cerrar el panel no le saca el foco a lo que se tocó después", async ({ p
 
 test("el botón de columnas anuncia cuántas hay visibles", async ({ page }) => {
   await page.goto(ruta);
-  await expect(page.getByRole("button", { name: /^Columnas visibles/ })).toHaveAccessibleName("Columnas visibles (5)");
+  await expect(page.getByRole("button", { name: /^Columnas visibles/ })).toHaveAccessibleName("Columnas visibles (11)");
 });
 
 test("el panel abre plegado y «Sin cargar» filtra datos vacíos", async ({ page }) => {

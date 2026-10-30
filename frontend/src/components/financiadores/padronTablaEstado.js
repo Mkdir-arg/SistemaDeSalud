@@ -61,10 +61,29 @@ export function parametrosConsultaPadron(parametros) {
   for (const [clave, valor] of parametros) {
     if (consultaLegacy.includes(clave) || ["ordering", "columnas", "page", "page_size"].includes(clave) || clave.startsWith("flt_")) consulta.append(clave, valor);
   }
+  // La tabla siempre usa el orden del catálogo, también en URLs anteriores.
+  // Ordenar sólo selecciones válidas: no ocultar errores que debe rechazar API.
+  if (consulta.getAll("columnas").length === 1) {
+    const pedidas = consulta.get("columnas").split(",");
+    const visibles = obtenerColumnasPadron(parametros);
+    if (new Set(pedidas).size === pedidas.length && pedidas.length === visibles.length && pedidas.every((key) => visibles.includes(key))) consulta.set("columnas", visibles.join(","));
+  }
   if (!consulta.has("page")) consulta.set("page", "1");
   consulta.set("page_size", String(tamanoPadron(parametros)));
   if (!consulta.get("estado") && !consulta.get("derecho") && !consulta.get("flt_derecho")) consulta.set("estado", "vigentes");
   return consulta;
+}
+
+// Listado y ficha usan el mismo derecho; la ficha histórica entrega `estado`
+// en lugar de `vigente`. No se deducen derechos a partir de fechas o códigos.
+export function derechoAfiliacionPadron(fila) {
+  if (fila.finalizado_en || fila.estado === "finalizada") return "finalizadas";
+  if (fila.cobertura_habilitada === false) return "administrativas";
+  if (fila.vigente === true) return "vigentes";
+  if (fila.vigente === false) return "futuras";
+  if (fila.vigente == null && fila.estado === "vigente") return "vigentes";
+  if (fila.vigente == null && fila.estado === "futura") return "futuras";
+  return null;
 }
 
 export function valorColumnaPadron(fila, columna, planes = []) {
@@ -74,10 +93,10 @@ export function valorColumnaPadron(fila, columna, planes = []) {
   if (columna.key === "domicilio_laboral" && fila.geografia_laboral) {
     return [valor, descripcionGeo(fila.geografia_laboral)].filter(Boolean).join(" · ") || "Sin informar";
   }
-  if (columna.key === "derecho") valor = fila.finalizado_en ? "finalizadas" : fila.cobertura_habilitada === false ? "administrativas" : fila.vigente === false ? "futuras" : "vigentes";
+  if (columna.key === "derecho") valor = derechoAfiliacionPadron(fila);
   if (columna.key === "plan") return fila.plan == null ? "Sin plan" : planes.find((p) => String(p.id) === String(fila.plan))?.nombre || `Plan ${fila.plan}`;
   if (valor == null || valor === "") return "Sin informar";
-  if (columna.options) return columna.options[valor] || String(valor);
+  if (columna.options) return Object.hasOwn(columna.options, valor) ? columna.options[valor] : String(valor);
   if (columna.type === "date") return String(valor).split("-").reverse().join("/");
   if (columna.type === "datetime") return new Date(valor).toLocaleString("es-AR");
   return String(valor);
@@ -86,14 +105,14 @@ export function valorColumnaPadron(fila, columna, planes = []) {
 // Agrupación solo de presentación, con los mismos bloques de la ficha. El
 // catálogo es contrato con backend (debe coincidir exacto), por eso no la lleva.
 export const GRUPOS_PADRON = [
-  ["Afiliación", ["cobertura_habilitada", "nombre", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
+  ["Afiliación", ["cobertura_habilitada", "nombre", "numero_interno", "numero", "documento", "plan", "plan_tipo", "derecho", "desde", "finalizado_en", "motivo_finalizacion"]],
   ["Trámite y credencial", ["estado_administrativo", "estado_tramite", "alta_administrativa", "delegacion", "credencial_tipo", "credencial_fecha"]],
   ["Identidad", ["tipo_documento", "cuil", "nombres", "apellidos", "sexo", "fecha_nacimiento", "nacionalidad", "estado_civil"]],
   ["Contacto", ["telefono", "celular", "email"]],
   ["Domicilio", ["calle", "altura", "piso", "departamento", "codigo_postal", "localidad", "partido", "provincia"]],
   ["Régimen y trabajo", ["regimen", "empleador", "cuit_empleador", "actividad_laboral", "domicilio_laboral", "telefono_laboral", "email_laboral", "subsidio_desde", "subsidio_hasta"]],
   ["Baja administrativa", ["causa_baja", "solicitud_baja", "baja_efectiva", "fin_prestacional_informado", "motivo_baja"]],
-  ["Grupo familiar", ["titular", "parentesco"]],
+  ["Grupo familiar", ["titular_nombre", "titular", "parentesco"]],
 ].map(([titulo, claves]) => ({ titulo, columnas: claves.map((key) => catalogo.find((c) => c.key === key)) }));
 
 const fechaAR = (valor) => String(valor).split("-").reverse().join("/");
@@ -142,7 +161,7 @@ export function filtrosActivosPadron(parametros, planes = []) {
       let texto;
       if (control.tipo === "vacio") texto = `: ${valor === "true" ? "sin cargar" : "cargado"}`;
       else if (control.tipo === "date") texto = ` ${control.extremo} ${fechaAR(valor)}`;
-      else if (control.tipo === "choice") texto = `: ${control.options?.[valor] || valor}`;
+      else if (control.tipo === "choice") texto = `: ${control.options && Object.hasOwn(control.options, valor) ? control.options[valor] : valor}`;
       else if (control.tipo === "plan") texto = `: ${planes.find((p) => String(p.id) === valor)?.nombre || `Plan ${valor}`}`;
       else if (control.tipo === "relation") texto = ` ${valor}`;
       else texto = `: «${valor}»`;
