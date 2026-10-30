@@ -19,7 +19,7 @@ Entrega: `ask-on-risk`, sólo local; sin push, PR nuevo, merge ni deploy. Runner
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
-| T1 | S2–S5,S7,S8 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | En curso: T1a representación protegida; vinculación e importación automática posteriores |
+| T1 | S2–S5,S7,S8 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b pendiente D2 de permisos de importación; familia posterior |
 | T2 | S2,S4,S5 | #143: contrato de fechas, motivos y derechos | Inline | Pendiente de lectura integral y decisiones de negocio |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
@@ -102,3 +102,14 @@ autorizo
 - Probes de preservación de todos los campos en migración y de hash sin cambios ante rechazo incorporados a `test_codpar_ostel.py`. Repetición padre de la suite reportada con esos probes: 81 tests OK, 14.411 s. `makemigrations --check --dry-run`: sin cambios faltantes. Sin cambios de locks ni permisos.
 - La alerta de `staticfiles` ausente no impidió los tests; no se generaron estáticos por no cambiar frontend. No se verificó navegador ni aceptación de OSTEL. CI/push/merge/deploy no ejecutados.
 - Risk: items 1 (migración aditiva), 2 (dato sensible), 3 (servicio compartido). Verificación independiente realizada; evaluación y consentimiento nativos de este candidato pendientes. T1 global permanece en curso: falta integración desde importación y construcción familiar bajo contratos seguros.
+- Commit T1a: `e0aec1201a4109a017ce7db44bd3ead4f1e0ee73`, 240 líneas modificadas en seis archivos. Evaluación nativa contra `fa3f353`: high, `review_due=true`, por migración ejecutable e ítem 2 explícito. Consentimiento pendiente; no equivale a aprobación ni publicación.
+- Limpieza bloqueada por política de la herramienta antes de ejecutar la orden. Readback posterior: contenedor `34b61a9b749e1fe03be37e85adeb14863103c1484083dacf38483f6f84689f06` sigue activo y scratch `ostel_codpar_verify_i38c54az` sigue presente en el directorio temporal del usuario. No se reintentó por otra vía. Limpieza pendiente; no afirmar eliminación. No hay datos reales ni credenciales del usuario en esos recursos.
+
+### L9 — Revisión consentida y continuación (30/10/2026)
+
+1
+
+- Respuesta a «Revisar este cambio» (`granted`). Dos capturas nativas concurrentes, en orden riesgo/confiabilidad, inspeccionaron los seis parches inmutables y devolvieron cero hallazgos. No ejecutaron pruebas; los 81 tests son evidencia separada.
+- Cierre nativo confirmado por `gentle-ai.review-acknowledged/v1`: `action=acknowledged`, `authority=burned`, lineage `review-36eadf9276829d86`, target `sha256:e1712b4dba8ccca5ba2680eccc30922614bd287b5c7383f276332ac0dee89ef7`. No se reinicia esta revisión ni se infiere autorización de entrega.
+- T1a completo sólo como capacidad local protegida; sin publicación, despliegue ni aceptación humana. La limpieza de recursos de prueba sigue pendiente por el bloqueo anterior.
+- D2 a consultar antes de automatizar la copia: mantener la importación administrativa para operadores sin designación de salud y reservar la aplicación de CODPAR a un paso protegido por un usuario designado. Recomendación: esta separación evita conceder acceso de salud a todo importador, a cambio de una intervención adicional. No está aprobada aún y no autoriza el acceso general a códigos sensibles ni elimina el hallazgo preexistente de filas originales.

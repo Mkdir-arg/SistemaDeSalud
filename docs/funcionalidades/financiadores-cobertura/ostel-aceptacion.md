@@ -39,6 +39,10 @@ integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
   intencional y valores volátiles). Incorporados los probes de preservación y
   rechazo de tipos: suite final de 81 tests OK (14.411 s), incluidos padrón,
   importación y concurrencia. No constituye entrega publicada ni aceptación.
+- Revisión nativa consentida del commit `e0aec12`: riesgo y confiabilidad sin
+  hallazgos; cierre confirmado el 30/10/2026. Fue inspección de parches inmutables,
+  no otra ejecución de pruebas. La integración automática sigue pendiente de
+  definir la separación entre importación administrativa y acceso de salud.
 
 Comando de regresión (sólo base de pruebas autorizada):
 `python -B manage.py test apps.financiadores.test_codpar_ostel apps.financiadores.test_padron130 apps.financiadores.test_ostel_importacion apps.financiadores.test_concurrencia_padron130 --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
