@@ -27,7 +27,7 @@ integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
   reconstrucción desde lotes anteriores. Una reversión elimina estos nuevos
   valores; no es una recuperación segura después de usarlos. En un incidente,
   conservar datos y reparar hacia adelante antes de considerar una reversión.
-- **Límites:** no hay formulario nuevo ni copia automática desde importación.
+- **Límites T1a:** no hay formulario nuevo ni copia automática desde importación.
   El importador general y el bloque de salud tienen permisos distintos; no se
   agregó un bypass. El acceso preexistente a filas originales de importación
   requiere tratamiento propio antes de ampliar ese flujo. No se construyen
@@ -41,11 +41,53 @@ integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
   importación y concurrencia. No constituye entrega publicada ni aceptación.
 - Revisión nativa consentida del commit `e0aec12`: riesgo y confiabilidad sin
   hallazgos; cierre confirmado el 30/10/2026. Fue inspección de parches inmutables,
-  no otra ejecución de pruebas. La integración automática sigue pendiente de
-  definir la separación entre importación administrativa y acceso de salud.
+  no otra ejecución de pruebas. La decisión D2 posterior separa la importación
+  administrativa del paso protegido descrito a continuación.
+
+### T1b: copia explícita de una fila aplicada al bloque de salud
+
+El operador conserva el circuito administrativo existente. Importar un lote no
+rellena `codpar_ostel`. Un usuario con designación activa de salud y rol editor
+puede ejecutar `POST /api/financiadores/{financiador}/padron/{afiliado}/salud/codpar-ostel/`
+con `{"importacion": 123, "fila": 1, "revision": 1}` (identificadores ilustrativos).
+La revisión es la del bloque de salud, no la del lote ni la ficha administrativa.
+La respuesta 200 tiene el mismo formato que la consulta protegida de salud.
+
+- El lote debe ser OSTEL versión 3, tipo padrón, del mismo financiador; `fila` es
+  el ordinal estable almacenado, no la posición de la lista ni el número Excel.
+- Sólo se admite una fila aplicada cuyo afiliado persistido coincida con el
+  solicitado. Nunca se vuelve a resolver identidad por números o documentos.
+- Se copia exclusivamente `original.CODPAR`, como texto literal no vacío de hasta
+  40 caracteres. Los códigos numéricos de Excel no se convierten automáticamente:
+  requieren corrección explícita de la fuente o el circuito manual protegido.
+- La procedencia (lote, hoja, fila Excel) queda en el motivo del historial de
+  salud. No se escribe código, motivo ni contenido sensible en eventos generales.
+- Repetir con la revisión actual y el mismo valor no crea otro cambio. Una
+  revisión obsoleta devuelve 409; origen/entrada inválidos, 400; sin designación o
+  rol editor, 403; recurso ajeno/inaccesible, 404. Los rechazos no cambian datos.
+- No se alteran el lote original, familia, parentesco genérico, derechos ni otros
+  campos de salud. La transacción bloquea el lote y reutiliza los locks de
+  membresía/afiliado, revisión e historial de `editar_protegido`.
+
+Verificación local: RED 404 del nuevo recurso, luego GREEN del circuito API real
+con importación sintética sin designación y copia designada.
+La validación de campos inesperados inicialmente generaba un error interno por
+una estructura incorrecta de errores del serializer; corregida y cubierta con
+rechazos 400 sin mutaciones. Verificador independiente: 87 regresiones y tres
+probes aprobados; nueve respuestas de interfaces anteriores equivalentes al
+baseline. Probes incorporados: revocación durante espera del lote, dos copias
+concurrentes y destino de otro financiador. Repetición del padre: 90 tests OK
+(31.171 s). Carrera copia/aplicación administrativa inspeccionada, no ejecutada.
+Revisión nativa y cierre del commit pendientes; sin publicación.
+
+Sin nueva pantalla: no se ejecutó navegador ni se acredita aceptación operativa.
+Permanece la exposición preexistente de filas originales en la consulta general
+de importaciones; este paso protegido no la corrige ni amplía sus permisos.
+Rollback T1b: retirar acción, serializer y servicio de copia; conservar el campo
+protegido T1a y sus datos/historial. No hay migración en este corte.
 
 Comando de regresión (sólo base de pruebas autorizada):
-`python -B manage.py test apps.financiadores.test_codpar_ostel apps.financiadores.test_padron130 apps.financiadores.test_ostel_importacion apps.financiadores.test_concurrencia_padron130 --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
+`python -B manage.py test apps.financiadores.test_codpar_importacion apps.financiadores.test_codpar_ostel apps.financiadores.test_padron130 apps.financiadores.test_ostel_importacion apps.financiadores.test_concurrencia_padron130 --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
 - **Límite:** todavía no se construyen familias automáticamente; no inferir
   parentesco por NROAFI, sexo por código, ni derechos por relación familiar.
 - **Verificado en `cae9e16`:** `python -B -m unittest

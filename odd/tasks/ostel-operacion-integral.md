@@ -1,7 +1,7 @@
 # Operación integral OSTEL
 
 Orden rector: [#141, Plan de ejecución OSTEL — 30/10/2026](https://github.com/Mkdir-arg/SistemaDeSalud/issues/141). Rama: `juanikitro/ostel-operacion-integral-20261030`; base: `cae9e16a80559a1c936dc9e2f8727aa3bf3ad3d7`.
-Entrega: `ask-on-risk`, sólo local; sin push, PR nuevo, merge ni deploy. Runner inicial sin DB: `python -B -m unittest backend.apps.financiadores.tests_ostel_scenarios -v`.
+Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin push, PR nuevo, merge ni deploy. Runner inicial sin DB: `python -B -m unittest backend.apps.financiadores.tests_ostel_scenarios -v`.
 
 ## Specs
 
@@ -13,13 +13,15 @@ Entrega: `ask-on-risk`, sólo local; sin push, PR nuevo, merge ni deploy. Runner
 - S6 — Modelo: «Your selected model must remain gpt-6-astra; do not silently substitute it.» Corrección del usuario para el explorador: «no, para el epxlorador usa gpt-6-luna».
 - S7 — Decisión D1 aprobada: «apruebo», en respuesta a conservar CODPAR como dato separado, sin modificar derechos médicos. No reducir automáticamente los códigos al parentesco genérico ni completar familias por inferencia.
 - S8 — Autorización de prueba: «autorizo», para PostgreSQL efímero en Docker local, datos ficticios, loopback, pruebas seriales y eliminación del contenedor al terminar; ninguna base existente.
+- S9 — Decisión D2 aprobada: «apruebo», en respuesta a mantener la importación administrativa para operadores y reservar la aplicación de CODPAR a un paso protegido por un usuario designado de salud. Conservar el código original y la procedencia, sin modificar familias ni derechos.
+- S10 — Estrategia elegida: «1», correspondiente a «Cadena sobre rama de funcionalidad — recomendada: integrar los cortes antes de llevarlos a main». No autoriza publicación ni incorporación a main.
 
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
-| T1 | S2–S5,S7,S8 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b pendiente D2 de permisos de importación; familia posterior |
+| T1 | S2–S5,S7–S10 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b verificado localmente, pendiente commit/revisión; familia posterior |
 | T2 | S2,S4,S5 | #143: contrato de fechas, motivos y derechos | Inline | Pendiente de lectura integral y decisiones de negocio |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
@@ -113,3 +115,25 @@ autorizo
 - Cierre nativo confirmado por `gentle-ai.review-acknowledged/v1`: `action=acknowledged`, `authority=burned`, lineage `review-36eadf9276829d86`, target `sha256:e1712b4dba8ccca5ba2680eccc30922614bd287b5c7383f276332ac0dee89ef7`. No se reinicia esta revisión ni se infiere autorización de entrega.
 - T1a completo sólo como capacidad local protegida; sin publicación, despliegue ni aceptación humana. La limpieza de recursos de prueba sigue pendiente por el bloqueo anterior.
 - D2 a consultar antes de automatizar la copia: mantener la importación administrativa para operadores sin designación de salud y reservar la aplicación de CODPAR a un paso protegido por un usuario designado. Recomendación: esta separación evita conceder acceso de salud a todo importador, a cambio de una intervención adicional. No está aprobada aún y no autoriza el acceso general a códigos sensibles ni elimina el hallazgo preexistente de filas originales.
+
+### L10 — D2 aprobada y corte T1b (30/10/2026)
+
+apruebo
+
+- Resuelve D2 de L9. Paso backend explícito por afiliado, lote y ordinal de fila aplicada; toma el destino persistido de esa fila y exige que coincida con el afiliado solicitado y el financiador. Reutiliza `editar_protegido`, revisión optimista, designación e historial de salud. Conserva CODPAR literal; fuente vacía, no textual o inválida no borra un valor existente.
+- Procedencia lote/hoja/fila Excel sólo en el motivo del historial protegido. Sin cambios en importación ordinaria, JSON original, parentesco, vínculos, derechos ni auditoría general con valores sensibles. Sin UI en este corte.
+- Ruta inline tras mapa delegado `ostel_identity_map`; Risk: items 2 (guard de salud), 4 (lock de lote antes del servicio compartido). Verificación independiente tras RED/GREEN API y regresiones. Runner: `python -B manage.py test apps.financiadores.test_codpar_importacion apps.financiadores.test_codpar_ostel apps.financiadores.test_padron130 apps.financiadores.test_ostel_importacion apps.financiadores.test_concurrencia_padron130 --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`, sólo contenedor efímero autorizado.
+- Estimación: 250–350 líneas para T1b; acumulado anterior 349. Estrategia `ask-on-risk`: elegir cadena antes del próximo commit; ninguna publicación autorizada. Limpieza anterior continúa pendiente por denegación de herramienta.
+- RED observado: nuevo POST devuelve 404. GREEN: copia literal y procedencia protegida tras importación administrativa sin designación, sin cambios de derechos/lote. Al ampliar rechazos, el serializer generó 500 por devolver lista desde `to_internal_value`; corregido a errores de campo (`non_field_errors`). El fixture de membresía inactiva esperaba 403 pero el contrato existente oculta el financiador con 404; se corrigió sólo la expectativa.
+- Regresión completa indicada arriba: 87 tests OK, 26.441 s; `git diff --check` sin errores. Verificador independiente pendiente (permisos, locks, invariantes y comparación con baseline `f6ad97b`). Sin normalizadores mutantes configurados para este corte; no hay migración ni cambio UI. No hay CI/publicación/despliegue.
+- Verificador `codpar_copy_verify`, `gpt-6.1-sol/medium`: PASS acotado a S3/S5/S7/S8/S9, 87 tests y tres probes; nueve respuestas API previas equivalentes al baseline. Sin bloqueantes. Carrera copia/copia y revocación durante espera probadas; copia/aplicación administrativa sólo inspeccionada. Probes de concurrencia y destino ajeno incorporados como regresiones; repetición padre de la suite: 90 tests OK, 31.171 s. `git diff --check` sin errores.
+- Scratch adicional retenido: `C:/Users/Juanito/AppData/Local/Temp/ostel_t1b_verify_w_k0rjbi`. No se reintenta limpieza denegada por otra vía. Sin datos reales. El contenedor y el scratch de T1a siguen pendientes de limpieza.
+- Próxima decisión antes del commit: cadena `stacked-to-main` (entregas incrementales) o `feature-branch-chain` (integrar cortes antes de main, recomendada para el frente familiar aún incompleto). Límite T1a: base `fa3f353` → `e0aec12`; T1b: base `f6ad97b` → candidato actual. No se crea PR ni se publica al elegir la estrategia. RDD del nuevo candidato aún no iniciado; T1a cerrado no se reabre. Risk: items 2 y 4.
+
+### L11 — Cadena seleccionada (30/10/2026)
+
+1
+
+- Respuesta a la estrategia de entrega: `feature-branch-chain`. La rama de integración acumulará los cortes; el futuro tracker será draft/no-merge y sus hijos apuntarán al padre inmediato. No crear tracker, PR ni push sin autorización posterior. Se conservan la rama de trabajo y todos los commits actuales, sin rebase ni reescritura.
+- Cadena prevista: `main@cae9e16` → integración OSTEL → corte 1 (`cae9e16..f6ad97b`: coordinación y T1a, 349 líneas autoradas acumuladas) → corte 2 actual (`f6ad97b..T1b`: copia protegida, pruebas y documentación, menos de 400 líneas previstas) → familia y unidades siguientes de #141 según sus contratos. El corte 2 depende del campo protegido del corte 1; ninguno representa operación integral aceptada.
+- Antes de una publicación autorizada, materializar ramas de cada límite y comprobar que cada diff contiene sólo su corte y puede revisarse en menos de 60 minutos. La revisión nativa de T1b usa `f6ad97b` como límite, sin reabrir T1a. No hay estrategia mixta ni publicación incremental directa a main.

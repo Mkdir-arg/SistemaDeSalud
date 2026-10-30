@@ -31,6 +31,17 @@ class SaludPadronSerializer(serializers.ModelSerializer):
         fields = ["revision", *p.CAMPOS_SALUD]
 
 
+class CopiaCodparSerializer(serializers.Serializer):
+    importacion = serializers.IntegerField(min_value=1)
+    fila = serializers.IntegerField(min_value=1)
+    revision = serializers.IntegerField(min_value=1)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and set(data) - set(self.fields):
+            raise serializers.ValidationError({"non_field_errors": ["La petición contiene campos no admitidos para este recurso."]})
+        return super().to_internal_value(data)
+
+
 class CobranzaPadronSerializer(serializers.ModelSerializer):
     estado_informado = serializers.SerializerMethodField()
 
@@ -158,6 +169,22 @@ class PadronMixin:
     @action(detail=True, methods=["get", "patch"], url_path=r"padron/(?P<afiliado_id>\d+)/salud")
     def padron_salud(self, request, pk=None, afiliado_id=None):
         return self._padron_protegido(request, self.organizacion(), afiliado_id, "salud")
+
+    @extend_schema(request=CopiaCodparSerializer, responses=SaludPadronSerializer)
+    @action(detail=True, methods=["post"], url_path=r"padron/(?P<afiliado_id>\d+)/salud/codpar-ostel")
+    def padron_copiar_codpar_ostel(self, request, pk=None, afiliado_id=None):
+        from .codpar_ostel import copiar_desde_importacion
+        org = self.organizacion()
+        requerir_padron_protegido(request.user, org.pk, "salud", escritura=True)
+        obj = self._padron_obj(org, afiliado_id)
+        entrada = CopiaCodparSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = entrada.validated_data
+        registro = copiar_desde_importacion(
+            afiliado=obj, usuario=request.user, importacion_id=datos["importacion"],
+            fila=datos["fila"], revision=datos["revision"],
+        )
+        return Response(SaludPadronSerializer(registro).data)
 
     @extend_schema(request=OpenApiTypes.OBJECT, responses=CobranzaPadronSerializer)
     @action(detail=True, methods=["get", "patch"], url_path=r"padron/(?P<afiliado_id>\d+)/cobranza")
