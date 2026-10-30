@@ -75,7 +75,7 @@ requiere terminar su aplicación antes de proponer el vínculo.
   PK; reutiliza `editar_ficha` y registra lote/filas en el historial. No modifica
   fuente original, CODPAR, salud, plan ni derechos de cobertura.
 
-Este corte es API local, no una pantalla ni aceptación operativa. No hay backfill
+El corte T1d es API local, no aceptación operativa. No hay backfill
 ni migración. Retirar la acción impide nuevos vínculos, pero no revierte los ya
 confirmados: conservar su historial y corregirlos explícitamente si corresponde.
 Verificación independiente: 99 regresiones, cinco probes de rechazo/concurrencia
@@ -83,6 +83,36 @@ y ocho observaciones previas equivalentes al baseline. Probes incorporados;
 repetición local final: 104 tests OK, con PostgreSQL descartable autorizado.
 Incluye `test_familia_ostel` y `test_concurrencia_familia_ostel`; runner completo y
 estado de revisión nativa en el registro de trabajo. No acredita UI, CI ni deploy.
+
+### T1e: confirmación desde la pantalla de importación
+
+En **Aplicadas**, la acción **Vincular familia** abre una propuesta para esa fila.
+El diálogo muestra integrante, titular propuesto y procedencia del lote, sin
+agregar CUIL ni valores CODPAR. **Cancelar** no escribe; **Confirmar vínculo**
+envía las revisiones recibidas. El detalle anterior de la fila sigue disponible.
+La propuesta puede rechazarse si esa fila es titular, falta evidencia o existe
+otro vínculo: la pantalla no intenta corregirlo ni elegir otra persona.
+
+Después de un conflicto se descarta la propuesta. Una respuesta perdida muestra
+incertidumbre, no una afirmación de rollback: **Consultar propuesta** obtiene
+revisiones actuales y la persona decide si confirma nuevamente. No hay reintento
+automático del POST. Confirmar no modifica clasificación ni cobertura.
+
+Se reutilizan el modal accesible y los tokens visuales existentes. Escape cierra
+sólo el diálogo superior y devuelve el foco; durante la petición no puede cerrarse
+ni cambiarse el lote. El tablero de filas mantiene scroll horizontal local.
+Runner real focal: `npx --no-install playwright test --config playwright.importacion-real.config.js familia-ostel-real.spec.js`.
+Requiere `SALUD_FAMILIA_MANIFEST` generado por `e2e/fixtures/preparar_familia_ostel.py`
+en un temporal propio, settings PostgreSQL descartables y ambos servidores locales.
+El manifiesto contiene credenciales ficticias efímeras: no imprimir ni publicar.
+No ejecutar la suite general con su siembra de volumen para esta comprobación.
+La demostración local no constituye publicación ni aceptación humana.
+
+Verificación T1e: seis recorridos Playwright locales aprobados, incluidos móvil,
+teclado, 409 real y pérdida de respuesta después del commit. Un 403 inyectado
+verifica sólo la reacción visual, no una nueva prueba de revocación de permisos.
+El verificador independiente compiló la UI y ejecutó cuatro regresiones de
+importación tanto en baseline como en candidato, todas aprobadas. No hubo CI.
 
 ### T1b: copia explícita de una fila aplicada al bloque de salud
 
