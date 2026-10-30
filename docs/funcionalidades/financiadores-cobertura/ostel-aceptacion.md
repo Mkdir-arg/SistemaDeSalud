@@ -78,7 +78,9 @@ probes aprobados; nueve respuestas de interfaces anteriores equivalentes al
 baseline. Probes incorporados: revocación durante espera del lote, dos copias
 concurrentes y destino de otro financiador. Repetición del padre: 90 tests OK
 (31.171 s). Carrera copia/aplicación administrativa inspeccionada, no ejecutada.
-Revisión nativa y cierre del commit pendientes; sin publicación.
+Commit local `4212293`; revisión nativa omitida por decisión del usuario el
+30/10/2026 sólo para este candidato. La verificación independiente se conserva;
+no se presenta como aprobación nativa ni publicación.
 
 Sin nueva pantalla: no se ejecutó navegador ni se acredita aceptación operativa.
 Permanece la exposición preexistente de filas originales en la consulta general

@@ -21,7 +21,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
-| T1 | S2–S5,S7–S10 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b verificado localmente, pendiente commit/revisión; familia posterior |
+| T1 | S2–S5,S7–S10 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`, revisión nativa declinada; familia posterior |
 | T2 | S2,S4,S5 | #143: contrato de fechas, motivos y derechos | Inline | Pendiente de lectura integral y decisiones de negocio |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
@@ -137,3 +137,11 @@ apruebo
 - Respuesta a la estrategia de entrega: `feature-branch-chain`. La rama de integración acumulará los cortes; el futuro tracker será draft/no-merge y sus hijos apuntarán al padre inmediato. No crear tracker, PR ni push sin autorización posterior. Se conservan la rama de trabajo y todos los commits actuales, sin rebase ni reescritura.
 - Cadena prevista: `main@cae9e16` → integración OSTEL → corte 1 (`cae9e16..f6ad97b`: coordinación y T1a, 349 líneas autoradas acumuladas) → corte 2 actual (`f6ad97b..T1b`: copia protegida, pruebas y documentación, menos de 400 líneas previstas) → familia y unidades siguientes de #141 según sus contratos. El corte 2 depende del campo protegido del corte 1; ninguno representa operación integral aceptada.
 - Antes de una publicación autorizada, materializar ramas de cada límite y comprobar que cada diff contiene sólo su corte y puede revisarse en menos de 60 minutos. La revisión nativa de T1b usa `f6ad97b` como límite, sin reabrir T1a. No hay estrategia mixta ni publicación incremental directa a main.
+
+### L12 — Cierre local T1b y revisión declinada (30/10/2026)
+
+2
+
+- Respuesta a «Omitir esta vez». Invocación exacta de `consent/v3` ejecutada una vez: `action=declined`, `consent=declined_this_candidate`, target `sha256:467dd80ba4e60184d9a9c21055ee4733ce1c121b5d309ac4925609814c688d2e`. No se creó aprobación de revisión; el modo global permanece habilitado. No volver a ofrecer revisión de este mismo candidato por una actualización documental.
+- Commit T1b `4212293048ced27a0c69aea91270f86073145a31`: 358 adiciones + 6 eliminaciones, cinco archivos; acumulado autorado del programa 713. Corte 2 dentro de 400 líneas. Evaluación high por ítem 2; verificación independiente y regresiones de L10 conservadas. La negativa sólo afecta la revisión nativa, no revoca la implementación ni habilita publicación.
+- Siguiente trabajo autorizado: determinar el primer incremento de familias según #181/#142, sin deducir vínculos de NROAFI ni comprimir CODPAR en parentesco genérico. Todavía faltan familia/UI y aceptación operativa; los hallazgos de exposición y limpieza de recursos continúan abiertos.
