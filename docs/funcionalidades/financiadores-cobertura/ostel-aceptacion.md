@@ -1,5 +1,26 @@
 # OSTEL: catálogo sintético, validación local y homologación pendiente
 
+## Reconciliación 30/10/2026: identidad y familia (#181/#142)
+
+El orden vigente está en [#141](https://github.com/Mkdir-arg/SistemaDeSalud/issues/141).
+PR186, PR200 y PR196 están incorporados; #184 permanece In QA, sin aceptación
+integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
+
+- **Confirmado en las fuentes documentadas:** NUMERO individual, CUIL de la
+  persona, NROAFI compartible; CUILTIT referencia al titular, que se referencia
+  a sí mismo. El formato requiere 40 columnas. No falta CUILTIT.
+- **Pendiente de decisión:** representar los códigos CODPAR sin perder relaciones
+  que no caben en `Afiliado.parentesco` (`conyuge`, `hijo`, `hija`, `conviviente`,
+  `otro`). El diccionario de consulta no es una equivalencia aprobada. Los 56
+  valores de fixtures son muestras de rangos, no todo el catálogo.
+- **Límite:** todavía no se construyen familias automáticamente; no inferir
+  parentesco por NROAFI, sexo por código, ni derechos por relación familiar.
+- **Verificado en `cae9e16`:** `python -B -m unittest
+  backend.apps.financiadores.tests_ostel_scenarios -v`, 22 pruebas OK, sin DB.
+  Prueba generador y lector, no persistencia familiar, concurrencia ni aceptación.
+- **PR197:** abierto/draft en `a7cc182`, cinco checks exitosos consultados el
+  30/10. No se integró; sus resultados históricos no prueban la rama actual.
+
 ## Actualización 26/10/2026: entrega con CUILTIT
 
 OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos.
