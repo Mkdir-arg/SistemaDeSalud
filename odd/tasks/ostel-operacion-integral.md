@@ -10,7 +10,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 - S3 — Identidad: «Never deduce family from a shared NROAFI.» Conservar NUMERO individual y CUIL; familias desde CUILTIT/CODPAR, sólo bajo equivalencias confirmadas. #181 exige resolución de ambigüedades, orden de filas independiente, ausencia de ciclos y aislamiento por financiador. No fusionar, renumerar ni reactivar automáticamente.
 - S4 — Límite: «No Docker startup or DB connection is granted by this handoff.» Sólo fixtures completamente ficticios y pruebas puras/estáticas hasta autorización específica. Datos reales, secretos, SSH, integraciones, pagos y publicación de código quedan excluidos.
 - S5 — Continuidad: «The user authorizes planning AND necessary in-scope LOCAL implementation, documentation and proportionate verification, not planning-only.» Consultar decisiones materiales sin inventar política. Reutilizar los servicios, revisiones, locks e historial existentes. Separar local, CI, commit, merge, despliegue y aceptación humana.
-- S6 — Modelo: «Your selected model must remain gpt-6-astra; do not silently substitute it.» Corrección del usuario para el explorador: «no, para el epxlorador usa gpt-6-luna».
+- S6 — Modelo vigente: «no, sos gpt-6.1-sol, cambie de decision». Orquestador `gpt-6.1-sol`; explorador `gpt-6-luna/high`; verificador `gpt-6.1-sol/medium`. Historia: «Your selected model must remain gpt-6-astra; do not silently substitute it.» Corrección del usuario para el explorador: «no, para el epxlorador usa gpt-6-luna».
 - S7 — Decisión D1 aprobada: «apruebo», en respuesta a conservar CODPAR como dato separado, sin modificar derechos médicos. No reducir automáticamente los códigos al parentesco genérico ni completar familias por inferencia.
 - S8 — Autorización de prueba: «autorizo», para PostgreSQL efímero en Docker local, datos ficticios, loopback, pruebas seriales y eliminación del contenedor al terminar; ninguna base existente.
 - S9 — Decisión D2 aprobada: «apruebo», en respuesta a mantener la importación administrativa para operadores y reservar la aplicación de CODPAR a un paso protegido por un usuario designado de salud. Conservar el código original y la procedencia, sin modificar familias ni derechos.
@@ -19,6 +19,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 - S12 — Entorno visual autorizado: «autorizo», para instalar dependencias desde el lockfile existente sin agregar ni actualizar, iniciar frontend/backend sólo en localhost con PostgreSQL descartable y datos ficticios, y verificar escritorio, móvil y teclado.
 - S13 — Continuidad local: «sigue sin eso», después del bloqueo de la revisión nativa T1e. Continuar el desarrollo autorizado sin esperar esa revisión, sin declararla aprobada ni desactivar globalmente las revisiones. No amplía permisos de publicación, datos reales ni decisiones de derechos.
 
+- S14 — Parametrización aprobada: «ya fue solicitado esa informacion a ostel. apruebo tu propuesta para parametrizacion. avanza con lo que puedas sin la respuesta de ostel». Autoriza base controlada/versionada y previsualización no operativa, no valores normativos ni activación de derechos.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
@@ -26,6 +28,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
 | T1 | S2–S5,S7–S13 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c completo local/revisado en `0e2eb40`; T1d API local verificada en `476cfb2`, revisión omitida; T1e UI verificada localmente en `f72c89b`, consentimiento omitido, autoridad residual sin cierre (L20). Sin aceptación operativa |
 | T2 | S2,S4,S5,S13 | #143: contrato de fechas, motivos y derechos | Mapa delegado para decidir; análisis y futura escritura inline | Lectura integral y matriz de decisiones pendientes documentadas (L21); falta fuente validada por OSTEL antes de implementar derechos |
+| T2a | S5,S6,S14 | Borrador inmutable versionado y consulta de coincidencias/conflictos por ámbito/fecha, sin efectos | Inline tras mapa delegado por presupuesto; Risk: none (módulo nuevo aislado) | Implementado/verificado local; baseline `5b82a21`; RED→GREEN, runner puro `tests_derechos_borrador`; commit y evaluación nativa pendientes |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
 | T5 | S2,S4,S5 | #184: QA de entrega existente con familias/novedades | Inline | PR196 incorporado; In QA; no reconstruir |
@@ -256,3 +259,17 @@ sigue sin eso
 - Invariantes: no derivar un corte de FECVTO, ausencia en lote, código de parentesco o registro administrativo; no reescribir prestaciones, reservas, autorizaciones, cargos ni selecciones históricas. No confundir deuda diferencial con mora privada. No agregar permisos ni datos sensibles a interfaces generales.
 - Próxima decisión concreta: identificar la fuente vigente validada por OSTEL para completar esta matriz. Después se podrá elegir la primera regla y sus ejemplos públicos deterministas. Regresiones a conservar: `test_cobertura.py` y `test_habilitacion_cobertura.py`; runner y RED se fijarán con el comportamiento aprobado, no se inventan ahora.
 - Esta unidad sólo actualiza el seguimiento y el análisis. RED/GREEN, DB, navegador y pruebas funcionales no aplican porque no cambia comportamiento. Verificación proporcional: readback, espejo completo y `git diff --check`. Sin aceptación humana de la matriz ni implementación de derechos. Rollback: retirar S13 y las actualizaciones de estado/L20–L21 de este documento, sin alterar código, datos o evidencia previa.
+
+### L22 — Parametrización autorizada (02/11/2026)
+
+ya fue solicitado esa informacion a ostel. apruebo tu propuesta para parametrizacion. avanza con lo que puedas sin la respuesta de ostel
+
+no, sos gpt-6.1-sol, cambie de decision
+
+- Baseline/rama verificados; sólo `.atl/` preexistente. Espejo completo #309 y archivo idénticos tras normalizar CRLF. #141/#143 y comentarios releídos íntegros. Mapa `parametrizacion_map` y spot check: `Afiliado.regimen` sí tiene catálogo en models.py:190; no introducir catálogo nuevo ni importar ORM para este corte puro.
+- T2a: descriptor inmutable de versión/fuente/ámbito y vigencia técnica [desde,hasta), consulta pura de coincidencias, conflicto explícito sin elegir ganador. Régimen como clave literal del llamador; plan opcional abarca todos los planes. No verifica existencia/pertenencia en DB ni concede acceso. No es fecha de corte prestacional.
+- Interfaz de prueba autorizada por el alcance: constructor del borrador y `previsualizar_borradores`; ejemplos exclusivamente ficticios. RED→GREEN por regla; regresión pura OSTEL. No se cambian consumidores previos: diferencial de comandos compartidos no aplica. Sin persistencia/API/UI, plazos normativos, causas/acciones de derechos, auditoría operativa ni activación. Esas etapas quedan pendientes, no opcionales.
+- Estimación 250 líneas; cadena `feature-branch-chain` conservada. Rollback: retirar módulo/pruebas/entrada documental nuevos. Risk: none; sin helpers compartidos cambiados.
+
+- RED observado: módulo inexistente; luego validación ausente aceptaba nueve descriptores inválidos, consulta pendiente lanzaba NotImplementedError y consultas inválidas vacías no fallaban. GREEN final: cinco tests focales y 27 tests puros combinados OK (3.017 s). `git diff --check` OK. Ningún consumidor anterior comparte el módulo nuevo; no hay diferencial pendiente de comandos previos. Sin DB, browser (no UI), CI ni aceptación normativa.
+- Espejo #309: servidor truncó actualización al superar 50.000 bytes; se restauró inmediatamente la versión íntegra anterior de 47.950 bytes. Archivo local completo conservado; espejo actualizado PENDIENTE por límite del proveedor. Observación T2a separada conserva recuperación del progreso, no sustituye espejo completo. Sin pérdida silenciosa ni duplicación de documento local.

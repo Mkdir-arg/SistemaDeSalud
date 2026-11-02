@@ -895,3 +895,45 @@ actual encontró el acoplamiento prestacional descrito arriba; no se recomienda
 incorporar una importación administrativa usando directamente el escritor actual.
 No se reejecutaron tests en esta revisión: los cambios de este turno son textos y
 documentación. No hay validación visual, PostgreSQL, migración, CI ni deploy.
+
+
+### Base de parametrización no operativa — T2a (02/11/2026)
+
+`backend/apps/financiadores/derechos_borrador.py` permite construir descriptores
+inmutables con código, versión positiva, fuente explícita, financiador, régimen,
+plan opcional e intervalo técnico `[desde, hasta)`. `hasta=None` no tiene fin.
+No se modifica `ReglaCobertura`, el padrón ni los selectores de afiliación.
+
+`previsualizar_borradores` recibe descriptores y contexto explícito de consulta;
+devuelve coincidencias ordenadas y `conflicto` si hay más de una, incluso si
+una es general y otra específica del plan. No elige precedencia ni la versión
+más alta. Plan vacío en la regla abarca todos los planes; plan vacío en la
+consulta sólo coincide con reglas generales. Duplicados también son conflicto.
+El resultado conserva cada descriptor completo (versión/fuente/ámbito/vigencia).
+El mismo descriptor puede consultarse en fechas anteriores sin alterarlo.
+
+Esta consulta **no es una evaluación de derechos ni una vista de impacto sobre
+personas**. El régimen es una clave literal, no un catálogo alternativo; no se
+comprueba existencia del financiador, régimen o plan ni pertenencia del plan en
+DB. Los identificadores deben ser resueltos por una futura integración protegida.
+El filtro de ámbito no sustituye permisos. La fuente es referencia informativa,
+no prueba de vigencia normativa. No hay persistencia ni garantía de unicidad de
+versiones entre ejecuciones. No hay API, pantalla, activación ni reglas ejecutables.
+No se admiten parámetros arbitrarios (por ejemplo `activar`, scripts o expresiones).
+
+Pendiente: plazos/causales/acciones controlados con ejemplos aprobados, persistencia
+versionada, auditoría, autorización, historial de decisiones, previsualización de
+impacto real y aprobación antes de activar. Esas garantías no serán parámetros
+desactivables. No conectar el borrador al motor actual mientras falte ese contrato.
+Los límites del intervalo son técnicos para consultar borradores, no fechas de
+corte asistencial ni interpretación de FECVTO. OSTEL ya recibió la consulta normativa.
+
+Verificación pura (sin Django, DB, servidores ni datos reales):
+
+```powershell
+python -B -m unittest backend.apps.financiadores.tests_derechos_borrador backend.apps.financiadores.tests_ostel_scenarios -v
+```
+
+Rollback de T2a: retirar el módulo nuevo, su prueba y esta sección; los motores
+y datos anteriores no dependen de ellos. Pruebas locales no acreditan CI,
+despliegue ni aceptación de las reglas por OSTEL.
