@@ -1255,3 +1255,35 @@ Runners: `test_borradores_api`, `test_borradores_derechos`, `test_borradores_int
 y el spec real de borradores. Resultados y límites en L31 del documento de tareas.
 Rollback: retirar endpoint/acción/vista y sus pruebas; restaurar validación inline
 del guardado si se retira el helper. Sin migración ni datos que revertir.
+
+### Convivencia con el padrón familiar — T4a (02/11/2026)
+
+La configuración no operativa de derechos se verificó junto con una familia
+ficticia incorporada por importación y confirmada desde su evidencia aplicada.
+Se reutiliza `FamiliaOstelFixture`, sin construir otro importador ni otro circuito
+para confirmar vínculos.
+
+- **Previsualizar:** devuelve la propuesta y conserva la huella completa,
+  incluidas versiones y auditoría; no incorpora ni habilita afiliados.
+- **Guardar versión:** conserva afiliados, titular, revisiones, habilitación,
+  historial y lote; agrega sólo la versión y su evento `crear_borrador_derechos`,
+  sin reescribir eventos anteriores.
+- **Simular:** administrador, operador y auditor consultan plazo guardado7 o
+  alternativa0 sin mutaciones; el vínculo familiar y su revisión siguen iguales.
+- **Rechazar:** campos de activación y escrituras de lectores no administradores
+  conservan íntegros padrón, configuración y auditoría.
+
+Nuevo runner focal: `python -B manage.py test apps.financiadores.test_derechos_padron_aislamiento
+--settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
+Dos pruebas OK1.321s en PostgreSQL ficticio dedicado. Regresión de coexistencia con
+API de reglas/simulación, cobertura/habilitación y catálogo sintético:104pruebas
+OK18.593s. No hay cambio productivo que requiera un RED previo; se agrega evidencia
+sobre comportamiento existente. No se vuelve a ejecutar todo el recorrido UI T1.
+
+**Límite de esta evidencia:** familia mínima de dos personas, SaludPadron vacío
+preservado, sin medición de volumen, CI, datos reales, nueva aceptación visual
+ni aceptación humana. No acredita el circuito completo de #185 ni reglas
+operativas de #143/#183. La información normativa ya solicitada a OSTEL sigue
+pendiente; no se reemplaza con datos de prueba ni fechas administrativas.
+Rollback de este corte: retirar únicamente el nuevo módulo de pruebas y esta
+sección, sin tocar datos, migraciones ni funcionalidad existente.
