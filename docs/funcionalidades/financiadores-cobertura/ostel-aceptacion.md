@@ -1039,3 +1039,40 @@ Runner: `apps.financiadores.test_borradores_api` con settings PostgreSQL de L24;
 regresiones de servicios/integridad/cobertura. Rollback: retirar `borradores_api`,
 su mixin/import de FinanciadorViewSet, tests y esta sección, conservando T2c.
 T2c quedó sin revisión nativa por «autorizo»; esa decisión no alcanza a T2d.
+
+
+### Pantalla administrativa de borradores — T2e (02/11/2026)
+
+Menú del financiador → **Borradores de derechos**, separado de reglas vigentes.
+Administración consulta el historial completo y registra una nueva versión con
+código/versión/fuente/régimen/plan/intervalo técnico/motivo y fecha de consulta.
+Operador/auditor sólo consultan. No hay edición, borrado, aprobación ni activación.
+Cada versión muestra «No operativo»; guardar no cambia derechos ni valida norma.
+La pantalla no expone autoría que el DTO de consulta todavía no ofrece.
+
+Reutiliza tokens, componentes, catálogo REGIMENES, API y opciones de planes del
+portal. Lista/formulario en escritorio, una columna móvil; controles etiquetados,
+foco de teclado y fechas ISO sin transformación de zona horaria. Los intervalos
+son técnicos: no representan fecha de corte prestacional. No introducir datos
+clínicos, identificadores personales ni secretos en fuente/motivo.
+
+Las consultas tienen clave usuario/financiador y el componente se reinicia al
+cambiar de organización. No hay refetch de foco que sustituya silenciosamente
+la historia mientras se prepara una versión. El guardado envía esa historia
+completa y un descriptor nuevo al servicio existente, que decide la validez.
+Botón y ref bloquean envíos simultáneos. Tras error/conflicto o respuesta perdida,
+se exige «Volver a consultar» antes de otro intento; no se reintenta POST solo.
+Una respuesta perdida puede haber confirmado la escritura: revisar la lista.
+
+Pruebas reales: `frontend/playwright.borradores-real.config.js`, fixture propia
+`e2e/fixtures/preparar_borradores_derechos.py`, `SALUD_BORRADORES_MANIFEST` sólo
+ficticio en temporal externo. Requiere entorno loopback/API/PostgreSQL autorizado
+ya iniciado; no ejecuta siembra general ni usa .env. Comando desde frontend:
+`node node_modules/@playwright/test/cli.js test --config playwright.borradores-real.config.js`.
+El caso de pérdida aborta la respuesta sólo después de un POST real confirmado;
+es prueba de recuperación UI, no simulación de rollback del servidor.
+
+Rollback: retirar sección/import/rama del portal, componente y spec/config/fixture
+nuevos; conservar API T2d y versiones/auditoría existentes. T2d quedó sin revisión
+nativa por autorización específica; no extiende la decisión a esta UI. Navegador
+visible demuestra una fixture, no aceptación de negocio ni despliegue.
