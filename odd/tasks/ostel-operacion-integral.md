@@ -17,14 +17,15 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 - S10 — Estrategia elegida: «1», correspondiente a «Cadena sobre rama de funcionalidad — recomendada: integrar los cortes antes de llevarlos a main». No autoriza publicación ni incorporación a main.
 - S11 — Decisión D3 aprobada: «autorizo», a persistir vínculos CUILTIT→CUIL confirmados con parentesco vacío, cambiando el contrato compartido y sus consumidores. Titular conocido con clasificación pendiente no equivale a titular sin vínculo, ni permite parentesco sin titular, ciclos o cruces de financiador.
 - S12 — Entorno visual autorizado: «autorizo», para instalar dependencias desde el lockfile existente sin agregar ni actualizar, iniciar frontend/backend sólo en localhost con PostgreSQL descartable y datos ficticios, y verificar escritorio, móvil y teclado.
+- S13 — Continuidad local: «sigue sin eso», después del bloqueo de la revisión nativa T1e. Continuar el desarrollo autorizado sin esperar esa revisión, sin declararla aprobada ni desactivar globalmente las revisiones. No amplía permisos de publicación, datos reales ni decisiones de derechos.
 
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Reconciliar base, tablero y primer frente; registrar evidencia sin DB | Inline + mapa delegado por presupuesto de exploración | Completo: commit local `38fe688a07014e964a6e93405bf5b44768bb34dd`; evaluación pasiva |
-| T1 | S2–S5,S7–S12 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c completo local/revisado en `0e2eb40`; T1d API local verificada en `476cfb2`, revisión omitida; T1e UI verificada localmente, pendiente de cierre nativo |
-| T2 | S2,S4,S5 | #143: contrato de fechas, motivos y derechos | Inline | Pendiente de lectura integral y decisiones de negocio |
+| T1 | S2–S5,S7–S13 | #181 + #142: relación familiar y equivalencias internas | Inline; verificación independiente por seguridad/persistencia | T1a verificado/revisado en `e0aec12`; T1b completo local en `4212293`; T1c completo local/revisado en `0e2eb40`; T1d API local verificada en `476cfb2`, revisión omitida; T1e UI verificada localmente en `f72c89b`, consentimiento omitido, autoridad residual sin cierre (L20). Sin aceptación operativa |
+| T2 | S2,S4,S5,S13 | #143: contrato de fechas, motivos y derechos | Mapa delegado para decidir; análisis y futura escritura inline | Lectura integral y matriz de decisiones pendientes documentadas (L21); falta fuente validada por OSTEL antes de implementar derechos |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
 | T5 | S2,S4,S5 | #184: QA de entrega existente con familias/novedades | Inline | PR196 incorporado; In QA; no reconstruir |
@@ -217,3 +218,41 @@ autorizo
 - Verificador `family_ui_verify` (`gpt-6.1-sol/medium`): build OK (4.06 s), cuatro recorridos familiares reales OK (11.1 s), cuatro regresiones de importación en baseline `7459562` OK (44.2 s) y en candidato OK (41.8 s). Dos probes adicionales aprobados: cuerpo POST igual a la propuesta/fuente, bloqueo durante petición y descarte tras 403, consulta pendiente y nueva apertura. 403 inyectado: prueba de UI, no de revocación real. Sin bloqueantes.
 - Incorporados ambos probes. Repetición padre final: seis recorridos OK (11.9 s). Un intento intermedio falló al cerrar el contexto antes del segundo GET de StrictMode; el teardown ahora espera handlers pendientes, sin ocultar errores. La prueba de revisión modifica efectivamente el contacto incluso al repetir la fixture. `git diff --check` OK; manifiesto y lockfile de dependencias sin cambios. Scratch del verificador `ostel_t1e_verify_8mc80mwr` y fixtures ficticios retenidos; sus servidores 5191/5192 detenidos, entorno visible 5189/8232 intacto.
 - Unidad T1e sobre `7459562`: UI + pruebas reales + documentación. Rollback: retirar FamiliaFilaOstel y su acción de ImportacionAdministrativa, el spec/fixture nuevos y su entrada testMatch; conservar API T1d y vínculos/auditoría existentes. El corte cohesivo ronda 400 líneas, sin separar sus pruebas ni comprimirlas; si excede el límite de una futura PR, se recomienda `size:exception`, no concedida por esta implementación local. Revisión nativa pendiente, sin publicación ni aceptación humana.
+
+### L20 — Revisión T1e y límite de la continuación (02/11/2026)
+
+1
+
+- La primera selección autorizó la revisión de T1e. Las cuatro capturas nativas concluyeron en `correction_required`; no se obtuvo aprobación ni detalle accionable de la corrección. La continuación exacta solicitó nuevamente la selección de archivos no versionados previamente excluidos y emitió una presentación sin los selectores del candidato y su linaje.
+
+1
+
+- La segunda selección autorizó reportar y continuar. Ocurrencia registrada una sola vez en [Gentle AI #5424](https://github.com/Gentleman-Programming/gentle-ai/issues/5424#issuecomment-6578919606), sin datos privados ni cambios de etiquetas. El consentimiento exacto de omisión devolvió `declined_this_candidate` para T1e, pero STATUS conservó la autoridad original en `correction_required`. No se interpreta como aprobación, cierre ni descarte de los hallazgos.
+- No repetir el reporte, la omisión ni reconstruir parámetros de recuperación. La continuación de esa revisión requiere una corrección publicada o una recuperación nativa documentada; no se modificó la configuración global. Las pruebas funcionales e independientes de L19 se conservan como evidencia local separada.
+- Tras el reinicio, HEAD `f72c89bec3540ff9bd22ac1274d4819376ca04ce` y archivos versionados intactos; `.atl/` preexistente fuera del candidato. Los servidores 5189/8232 estaban detenidos. No se reinstalaron dependencias ni se repitieron pruebas, cargas o demostraciones.
+
+### L21 — Continuidad autorizada y contrato pendiente de #143 (02/11/2026)
+
+sigue sin eso
+
+- Se continúa el trabajo local sin esperar la revisión T1e; permanece documentada, no aprobada. Mapa delegado `ostel_next_unit_map` (`gpt-6-luna/high`) por necesidad de reconciliar requisitos y costuras antes de decidir. Leyó íntegros #141/#181/#142/#143 y sus comentarios; CodeGraph sincronizado antes de explorar. Sin escrituras ni ejecución de pruebas por el explorador. Main remoto continúa en `cae9e16a80559a1c936dc9e2f8727aa3bf3ad3d7`; no hubo rebase ni cambios de tablero.
+- T1a–T1e cubren el contrato familiar autorizado hasta ahora, no la aceptación completa de #181/#142 ni una homologación de parentescos. CUILTIT/diccionario disponibles, vínculo explícito desde evidencia aplicada, clasificación pendiente y CODPAR protegido siguen separados de los derechos. La secuencia siguiente es #143 → #183.
+- [#143](https://github.com/Mkdir-arg/SistemaDeSalud/issues/143) es un análisis: exige acordar decisiones materiales antes de implementar. Sus referencias al material recibido no acreditan vigencia normativa ni aprobación de las propuestas. La mención de tres meses no se convierte en una constante de negocio.
+
+#### Matriz para validación de OSTEL — no ejecutable ni aprobada
+
+| Situación que debe resolverse | Evidencia necesaria | Decisión pendiente | Ejemplo de límite por acordar |
+| --- | --- | --- | --- |
+| Alta administrativa / trámite | Estado documentado, fuente y fechas | Inicio de derechos y prestaciones permitidas por estado | Evaluar antes, en y después de la fecha aprobada |
+| Cese, falta de aportes, despido o renuncia | Causal confirmada y evidencia de aporte/cese | Inicio, duración y calendario de gracia; continuidad y excepciones | Último día con derechos y primer día sin ellos |
+| Desempleo | Inicio y fin acreditados del subsidio | Relación entre subsidio y derechos del titular/familia | Fin del subsidio y documentación recibida tarde |
+| Edad de familiar, certificado o CUD | Tipo, vigencia y validación de evidencia protegida | Efecto del vencimiento, tolerancias y responsable | Vencimiento frente a renovación pendiente |
+| Mora de superador | Aporte de ley y deuda diferencial discriminados | Condiciones para pasar al plan base; conservar derechos que correspondan | Diferencial impago con aporte acreditado |
+| Mora privada/adherente | Deuda, avisos y constancia de notificación | Avisos, tolerancias y eventual suspensión/corte | Pago o comprobante recibido junto al vencimiento |
+| Opción de otra OS, fallecimiento o decisión judicial | Fuente competente, fecha y alcance de la causal | Fecha efectiva, excepciones y tratamiento de integrantes | Orden judicial vigente frente a otro evento de baja |
+
+- Cada regla acordada deberá identificar régimen/plan, fecha de evaluación, fuente/versionado, evidencia, acción permitida, excepción, quién confirma/revierte y política ante decisiones concurrentes. Ninguna fila habilita por sí sola una transición.
+- Reutilización a preservar: `afiliados_vigentes` para vigencia compartida; `seleccionar_afiliacion` para nuevas selecciones con guards y locks; historial/revisión existentes para cambios confirmados. La selección actual comprueba habilitación explícita, inicio/finalización, financiador/plan y convenio. No equivale a un motor normativo de gracia o mora.
+- Invariantes: no derivar un corte de FECVTO, ausencia en lote, código de parentesco o registro administrativo; no reescribir prestaciones, reservas, autorizaciones, cargos ni selecciones históricas. No confundir deuda diferencial con mora privada. No agregar permisos ni datos sensibles a interfaces generales.
+- Próxima decisión concreta: identificar la fuente vigente validada por OSTEL para completar esta matriz. Después se podrá elegir la primera regla y sus ejemplos públicos deterministas. Regresiones a conservar: `test_cobertura.py` y `test_habilitacion_cobertura.py`; runner y RED se fijarán con el comportamiento aprobado, no se inventan ahora.
+- Esta unidad sólo actualiza el seguimiento y el análisis. RED/GREEN, DB, navegador y pruebas funcionales no aplican porque no cambia comportamiento. Verificación proporcional: readback, espejo completo y `git diff --check`. Sin aceptación humana de la matriz ni implementación de derechos. Rollback: retirar S13 y las actualizaciones de estado/L20–L21 de este documento, sin alterar código, datos o evidencia previa.
