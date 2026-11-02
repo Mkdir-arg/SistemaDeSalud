@@ -6,6 +6,7 @@ import { REGIMENES } from "@/components/financiadores/padronCampos";
 import { Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 
 import SimularPlazoDerechos from "./SimularPlazoDerechos";
+import TrazabilidadReglas from "./TrazabilidadReglas";
 
 const VACIO = { codigo: "", version: "1", fuente: "", regimen: "", plan_id: "", desde: "", hasta: "", fecha: "", motivo: "", plazo_dias_corridos: "" };
 
@@ -15,6 +16,7 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
   const opciones = { gcTime: 0, retry: false, staleTime: Infinity, refetchOnWindowFocus: false };
   const consulta = useQuery({ ...opciones, queryKey: [...scope, "borradores-derechos"], queryFn: () => api.get(ruta) });
   const planes = useQuery({ ...opciones, queryKey: [...scope, "opciones-planes"], queryFn: () => opcionesFinanciador(organizacion.id, "planes") });
+  const [trazabilidad, setTrazabilidad] = useState(false);
   const [simulacion, setSimulacion] = useState(null);
   const [formulario, setFormulario] = useState(VACIO);
   const [vista, setVista] = useState(null);
@@ -78,7 +80,10 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
     </div>}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-semibold">Versiones guardadas</h2>
-      <Button variant="secondary" disabled={guardando || previsualizando || consulta.isFetching || planes.isFetching} onClick={() => Promise.all([planes.refetch(), recargar()])}>Volver a consultar</Button>
+      <div className="flex flex-wrap gap-3">
+        <Button variant="secondary" disabled={guardando || previsualizando} onClick={() => setTrazabilidad(true)}>Ver trazabilidad</Button>
+        <Button variant="secondary" disabled={guardando || previsualizando || consulta.isFetching || planes.isFetching} onClick={() => Promise.all([planes.refetch(), recargar()])}>Volver a consultar</Button>
+      </div>
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-2">
       <Card className="min-w-0 p-4">
@@ -129,6 +134,7 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
         </section>}
       </Card> : <Card className="p-4"><p className="text-sm">Acceso de consulta. La administración del financiador puede registrar versiones.</p></Card>}
     </div>
+    {trazabilidad && <TrazabilidadReglas key={`${usuarioId}:${organizacion.id}`} organizacion={organizacion} usuarioId={usuarioId} onClose={() => setTrazabilidad(false)} />}
     {simulacion && <SimularPlazoDerechos key={`${simulacion.regimen}:${simulacion.plan_id}:${simulacion.codigo}:${simulacion.version}`} organizacion={organizacion} regla={simulacion} onClose={() => setSimulacion(null)} />}
   </section>;
 }

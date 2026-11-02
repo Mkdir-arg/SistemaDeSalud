@@ -1287,3 +1287,36 @@ operativas de #143/#183. La información normativa ya solicitada a OSTEL sigue
 pendiente; no se reemplaza con datos de prueba ni fechas administrativas.
 Rollback de este corte: retirar únicamente el nuevo módulo de pruebas y esta
 sección, sin tocar datos, migraciones ni funcionalidad existente.
+
+### Trazabilidad consultable de versiones — T2k (02/11/2026)
+
+**Ver trazabilidad** abre la consulta de quién registró cada versión, cuándo y
+con qué motivo. Administrador, operador y auditor conservan su permiso existente
+de lectura. El servicio de configuración no consulta perfiles, personas ni datos clínicos:
+el autor se identifica por su ID interno, sin nombre/email. La fuente informada
+sigue siendo una declaración; el registro no acredita normativa ni aprobación.
+
+GET `/api/financiadores/{id}/borradores-derechos/historial/` devuelve
+`{historial: [{regla, creado_por_id, creado, motivo}]}`. `regla` es el mismo
+DTO de configuración de las consultas anteriores; `creado` se transporta como
+fecha/hora ISO UTC y la UI muestra hora local conservando el atributo `datetime`.
+Los metadatos proceden del registro original, no del usuario que consulta.
+Se preservan por separado cuando otra persona registra una versión nueva.
+
+El endpoint no acepta escrituras (405), no agrega eventos de auditoría ni cambia
+versiones/derechos. Usa el guard de lectura y el ámbito de la URL: organización
+no visible o membresía revocada404, sin sesión401. GET/POST anteriores mantienen
+sus cuerpos, permisos y respuestas; no se modifica ninguna migración.
+
+La consulta carga al abrir, con clave React Query por usuario/financiador y sin
+retención deliberada de caché inactiva (gcTime0). Escape devuelve el foco. Se puede volver a consultar;
+una carga o un error oculta datos anteriores, y la respuesta pendiente de otro
+ámbito no se incorpora al diálogo actual. No hay acciones de aprobar o activar.
+
+Pruebas: autoría/motivo/hora persistidos entre escritores, roles/aislamiento,
+rechazo de métodos de escritura y ausencia de mutaciones, contratos anteriores;
+navegador real desktop/móvil/teclado, respuesta tardía y fallo/reintento de lectura.
+Runners `test_borradores_api`, `test_borradores_derechos`,
+`test_derechos_padron_aislamiento` y spec real de borradores; resultados en L33.
+Rollback: retirar acción/serializers/servicio de historial y diálogo/botón nuevos,
+conservando lectores previos y metadatos persistidos. No hay datos que revertir.

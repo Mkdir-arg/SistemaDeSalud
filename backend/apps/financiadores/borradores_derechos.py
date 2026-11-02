@@ -12,10 +12,17 @@ from .services import auditar
 CAMPOS = ("codigo", "version", "fuente", "financiador_id", "regimen", "plan_id", "desde", "hasta", "plazo_dias_corridos")
 
 
-def _descriptores(financiador_id):
-    filas = BorradorReglaDerechos.objects.filter(financiador_id=financiador_id).order_by(
+def _filas(financiador_id):
+    return BorradorReglaDerechos.objects.filter(financiador_id=financiador_id).order_by(
         "regimen", "plan_id", "codigo", "version")
-    return tuple(BorradorDerechos(**{c: getattr(f, c) for c in CAMPOS}) for f in filas)
+
+
+def _descriptor(fila):
+    return BorradorDerechos(**{c: getattr(fila, c) for c in CAMPOS})
+
+
+def _descriptores(financiador_id):
+    return tuple(_descriptor(fila) for fila in _filas(financiador_id))
 
 
 def _validar_id(financiador_id):
@@ -27,6 +34,14 @@ def consultar_borradores(*, usuario, financiador_id):
     _validar_id(financiador_id)
     requerir_financiador(usuario, financiador_id)
     return _descriptores(financiador_id)
+
+
+def consultar_historial_borradores(*, usuario, financiador_id):
+    """Traza de registro de configuración, sin consultar perfiles ni afiliados."""
+    _validar_id(financiador_id)
+    requerir_financiador(usuario, financiador_id)
+    return tuple({"regla": _descriptor(fila), "creado_por_id": fila.creado_por_id,
+                  "creado": fila.creado, "motivo": fila.motivo} for fila in _filas(financiador_id))
 
 
 def _comparar_propuesta(*, financiador_id, propuesta, motivo, regimen, plan_id, fecha, bloquear_planes):

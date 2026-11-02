@@ -1,12 +1,13 @@
 """API administrativa de borradores; no ofrece aprobación ni activación."""
 from collections.abc import Mapping
+from datetime import timezone
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from .models import Afiliado
 from .derechos_borrador import BorradorDerechos, MAX_DIAS_CORRIDOS
-from .borradores_derechos import consultar_borradores, guardar_borradores, previsualizar_propuesta
+from .borradores_derechos import consultar_borradores, guardar_borradores, previsualizar_propuesta, consultar_historial_borradores
 
 
 class EntradaControlada(serializers.Serializer):
@@ -45,6 +46,17 @@ class PropuestaBorradoresSerializer(EntradaControlada):
 
 class ListaBorradoresSerializer(serializers.Serializer):
     borradores = DescriptorBorradorSerializer(many=True)
+
+
+class RegistroBorradorSerializer(serializers.Serializer):
+    regla = DescriptorBorradorSerializer()
+    creado_por_id = serializers.IntegerField()
+    creado = serializers.DateTimeField(default_timezone=timezone.utc)
+    motivo = serializers.CharField()
+
+
+class HistorialBorradoresSerializer(serializers.Serializer):
+    historial = RegistroBorradorSerializer(many=True)
 
 
 class VistaBorradoresSerializer(serializers.Serializer):
@@ -90,3 +102,10 @@ class BorradoresDerechosMixin:
         resultado = previsualizar_propuesta(usuario=request.user, financiador_id=org.pk,
                                            **_leer_propuesta(request, org.pk))
         return Response(ResultadoBorradoresSerializer(resultado).data)
+
+    @extend_schema(responses=HistorialBorradoresSerializer)
+    @action(detail=True, methods=["get"], url_path="borradores-derechos/historial")
+    def historial_borradores(self, request, pk=None):
+        org = self.organizacion()
+        historial = consultar_historial_borradores(usuario=request.user, financiador_id=org.pk)
+        return Response(HistorialBorradoresSerializer({"historial": historial}).data)

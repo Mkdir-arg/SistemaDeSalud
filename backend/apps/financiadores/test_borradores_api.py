@@ -1,6 +1,9 @@
 """API de borradores no operativos con fixtures ficticias."""
 from copy import deepcopy
 from hashlib import sha256
+import json
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
 from apps.accounts.models import Usuario
 from .models import Financiador, MembresiaFinanciador, Plan, EventoCobertura, Afiliado, BorradorReglaDerechos
@@ -188,3 +191,82 @@ class BorradoresAPITests(APITestCase):
         self.assertEqual(r.json()["nuevas"], [nueva])
         self.assertEqual(self.client.get(self.url).json(), antes)
         self.assertEqual(list(EventoCobertura.objects.values()), eventos)
+
+    def test_historial_consulta_autor_fecha_y_motivo_persistidos_sin_escrituras(self):
+        self.assertEqual(self.post().status_code, 200)
+        primera = BorradorReglaDerechos.objects.get()
+        nueva = self.regla | {"version": 2, "desde": "2030-02-01", "hasta": None, "plazo_dias_corridos": 7}
+        motivo_nuevo = "Motivo ficticio de segunda versión"
+        otro_autor = Usuario.objects.create_user("otro-autor-ficticio@example.invalid")
+        MembresiaFinanciador.objects.create(financiador=self.org, usuario=otro_autor, rol="admin")
+        self.client.force_authenticate(otro_autor)
+        self.assertEqual(self.post(self.entrada | {"propuesta": [self.regla, nueva], "motivo": motivo_nuevo}).status_code, 200)
+        segunda = BorradorReglaDerechos.objects.get(version=2)
+        antes = list(EventoCobertura.objects.order_by("pk").values())
+        versiones = self.client.get(self.url).json()
+        r = self.client.get(self.url + "historial/")
+        self.assertEqual(r.status_code, 200)
+        filas = r.json()["historial"]
+        self.assertEqual([f["regla"] for f in filas], [self.regla, nueva])
+        self.assertEqual([f["creado_por_id"] for f in filas], [self.user.pk, otro_autor.pk])
+        self.assertEqual([f["motivo"] for f in filas], [self.entrada["motivo"], motivo_nuevo])
+        self.assertEqual([f["creado"] for f in filas], [primera.creado.isoformat().replace("+00:00", "Z"), segunda.creado.isoformat().replace("+00:00", "Z")])
+        self.assertEqual(set(filas[0]), {"regla", "creado_por_id", "creado", "motivo"})
+        self.assertEqual(self.client.get(self.url).json(), versiones)
+        self.assertEqual(list(EventoCobertura.objects.order_by("pk").values()), antes)
+
+    def test_historial_aisla_organizacion_y_no_escribe_para_ningun_lector(self):
+        self.assertEqual(self.post().status_code, 200)
+        url = self.url + "historial/"
+        def huella():
+            modelos = (Usuario, Financiador, MembresiaFinanciador, Plan, Afiliado, BorradorReglaDerechos, EventoCobertura)
+            return sha256(repr([list(m.objects.order_by("pk").values()) for m in modelos]).encode()).hexdigest()
+        esperado = self.client.get(url).json()
+        for rol in ("admin", "operador", "auditor"):
+            self.member.rol = rol
+            self.member.save()
+            antes = huella()
+            self.assertEqual(self.client.get(url).json(), esperado)
+            for metodo in (self.client.post, self.client.put, self.client.patch, self.client.delete):
+                self.assertEqual(metodo(url, {}, format="json").status_code, 405)
+            self.assertEqual(huella(), antes)
+        ajeno = Financiador.objects.create(nombre="Otro ámbito ficticio", tipo="otro")
+        MembresiaFinanciador.objects.create(financiador=ajeno, usuario=self.user, rol="admin")
+        ajeno_url = url.replace(f"/{self.org.pk}/", f"/{ajeno.pk}/")
+        self.assertEqual(self.client.get(ajeno_url).json(), {"historial": []})
+        self.assertEqual(self.client.get(url).json(), esperado)
+        self.member.activo = False
+        self.member.save()
+        antes = huella()
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(url).status_code, 401)
+        self.assertEqual(huella(), antes)
+
+    def test_historial_no_consulta_perfiles_ni_padron_y_no_cambia_al_renombrar_autor(self):
+        general = self.regla | {"plan_id": None}
+        propuesta = self.entrada | {"propuesta": [general, self.regla]}
+        self.assertEqual(self.post(propuesta).status_code, 200)
+        otro_autor = Usuario.objects.create_user("autor-traza-ficticio@example.invalid", nombre="Nombre original ficticio")
+        MembresiaFinanciador.objects.create(financiador=self.org, usuario=otro_autor, rol="admin")
+        self.client.force_authenticate(otro_autor)
+        nueva = general | {"version": 2}
+        self.assertEqual(self.post(propuesta | {"propuesta": [general, self.regla, nueva]}).status_code, 200)
+        url = self.url + "historial/"
+        anterior = self.client.get(url).json()
+        otro_autor.nombre = "Nombre cambiado ficticio"
+        otro_autor.email = "nombre-cambiado-ficticio@example.invalid"
+        otro_autor.save()
+        # Autenticación ya resuelta: verificar sólo el acceso de datos del dominio.
+        with CaptureQueriesContext(connection) as consultas:
+            respuesta = self.client.get(url)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json(), anterior)
+        self.assertEqual([f["regla"] for f in respuesta.json()["historial"]], [self.regla, general, nueva])
+        texto = json.dumps(respuesta.json())
+        for valor in (otro_autor.nombre, otro_autor.email, self.user.email):
+            self.assertNotIn(valor, texto)
+        for consulta in consultas.captured_queries:
+            sql = consulta["sql"].lower()
+            for tabla in ('"accounts_usuario"', '"financiadores_afiliado"', '"financiadores_saludpadron"'):
+                self.assertNotIn(tabla, sql)

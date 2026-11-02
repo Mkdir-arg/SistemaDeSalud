@@ -433,3 +433,102 @@ for (const movil of [false, true]) {
     expect(consultas).toBe(1); expect(guardados).toBe(1);
   });
 }
+
+for (const movil of [false, true]) {
+  test(`trazabilidad real consulta autor, fecha y motivo sin editar (${movil ? "móvil" : "desktop"})`, async ({ page, browser }) => {
+    if (movil) await page.setViewportSize({ width: 390, height: 844 });
+    await abrir(page); const codigo = `ficticio-traza-${Date.now()}`; await guardar(page, codigo);
+    const boton = page.getByRole("button", { name: "Ver trazabilidad", exact: true });
+    const respuesta = page.waitForResponse((r) => r.url().endsWith("/borradores-derechos/historial/"));
+    await boton.focus(); await page.keyboard.press("Enter");
+    const real = await respuesta; expect(real.status()).toBe(200);
+    const fila = (await real.json()).historial.find((f) => f.regla.codigo === codigo);
+    const dialogo = page.getByRole("dialog", { name: "Trazabilidad de reglas", exact: true });
+    const registro = dialogo.getByRole("heading", { name: `${codigo} · v1`, exact: true }).locator("..");
+    await expect(registro).toContainText(`Usuario #${fila.creado_por_id}`);
+    await expect(registro).toContainText("Verificación ficticia no operativa");
+    await expect(registro.locator("time")).toHaveAttribute("datetime", fila.creado);
+    await expect(dialogo.getByRole("button", { name: /Guardar|Activar|Aprobar/ })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.keyboard.press("Escape"); await expect(boton).toBeFocused();
+    const lectora = await browser.newPage({ viewport: page.viewportSize(), locale: "es-AR", timezoneId: "America/Argentina/Buenos_Aires" });
+    try {
+      await abrir(lectora, "auditor");
+      await lectora.getByRole("button", { name: "Ver trazabilidad", exact: true }).click();
+      const consulta = lectora.getByRole("dialog", { name: "Trazabilidad de reglas", exact: true });
+      await expect(consulta.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toBeVisible();
+    } finally { await lectora.close(); }
+  });
+}
+
+test("trazabilidad pendiente no muestra registros de otro financiador", async ({ page }) => {
+  await abrir(page); const codigo = `ficticio-traza-ambito-${Date.now()}`; await guardar(page, codigo);
+  let liberar, iniciar;
+  const pendiente = new Promise((r) => { liberar = r; });
+  const iniciada = new Promise((r) => { iniciar = r; });
+  await page.route(`**/financiadores/${datos.organizaciones[0]}/borradores-derechos/historial/`, async (route) => {
+    const real = await route.fetch(); expect(real.status()).toBe(200);
+    iniciar(); await pendiente; await route.fulfill({ response: real });
+  });
+  try {
+    const boton = page.getByRole("button", { name: "Ver trazabilidad", exact: true });
+    await boton.click(); await iniciada;
+    const dialogo = page.getByRole("dialog", { name: "Trazabilidad de reglas", exact: true });
+    await expect(dialogo.getByRole("button", { name: "Volver a consultar", exact: true })).toBeDisabled();
+    await page.keyboard.press("Escape"); await expect(boton).toBeFocused();
+    await page.getByLabel("Financiador", { exact: true }).selectOption(String(datos.organizaciones[1]));
+    await boton.click();
+    await expect(dialogo.getByRole("button", { name: "Volver a consultar", exact: true })).toBeEnabled();
+    const respuesta = page.waitForResponse((r) => r.url().includes(`/financiadores/${datos.organizaciones[0]}/borradores-derechos/historial/`));
+    liberar(); await respuesta;
+    await expect(dialogo.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toHaveCount(0);
+  } finally { liberar(); }
+});
+
+test("error al reconsultar trazabilidad oculta registros anteriores y permite reintentar", async ({ page }) => {
+  await abrir(page);
+  await page.getByRole("button", { name: "Ver trazabilidad", exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: "Trazabilidad de reglas", exact: true });
+  await expect(dialogo.getByRole("list", { name: "Registros de versiones", exact: true })).toBeVisible();
+  await page.route("**/borradores-derechos/historial/", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Consulta de traza denegada ficticia" }) }));
+  await dialogo.getByRole("button", { name: "Volver a consultar", exact: true }).click();
+  await expect(dialogo.getByRole("alert")).toContainText("Consulta de traza denegada ficticia");
+  await expect(dialogo.getByRole("list", { name: "Registros de versiones", exact: true })).toHaveCount(0);
+  await page.unroute("**/borradores-derechos/historial/");
+  await dialogo.getByRole("button", { name: "Volver a consultar", exact: true }).click();
+  await expect(dialogo.getByRole("list", { name: "Registros de versiones", exact: true })).toBeVisible();
+  await expect(dialogo.getByRole("alert")).toHaveCount(0);
+});
+
+for (const movil of [false, true]) {
+  test(`traza carga a demanda, conserva UTC y oculta datos ante error o vacío (${movil ? "móvil" : "desktop"})`, async ({ page }) => {
+    if (movil) await page.setViewportSize({ width: 390, height: 844 });
+    let consultas = 0, escrituras = 0;
+    page.on("request", (r) => {
+      if (!r.url().includes("/borradores-derechos/historial/")) return;
+      if (r.method() === "GET") consultas += 1; else escrituras += 1;
+    });
+    await abrir(page);
+    const boton = page.getByRole("button", { name: "Ver trazabilidad", exact: true });
+    await expect(boton).toBeVisible(); expect(consultas).toBe(0);
+    await boton.focus(); await page.keyboard.press("Enter");
+    const dialogo = page.getByRole("dialog", { name: "Trazabilidad de reglas", exact: true });
+    const lista = dialogo.getByRole("list", { name: "Registros de versiones", exact: true });
+    await expect(lista).toBeVisible(); expect(consultas).toBe(1);
+    const fecha = lista.locator("time").first(); const utc = await fecha.getAttribute("datetime");
+    expect(utc).toMatch(/Z$/);
+    expect(await fecha.textContent()).toBe(await page.evaluate((valor) => new Date(valor).toLocaleString("es-AR"), utc));
+    let modo = "error";
+    await page.route("**/borradores-derechos/historial/", (route) => route.fulfill({ status: modo === "error" ? 503 : 200,
+      contentType: "application/json", body: JSON.stringify(modo === "error" ? { detail: "Traza ficticia no disponible" } : { historial: [] }) }));
+    const recargar = dialogo.getByRole("button", { name: "Volver a consultar", exact: true });
+    await recargar.click(); await expect(dialogo.getByRole("alert")).toContainText("El servicio no está disponible en este momento.");
+    await expect(lista).toHaveCount(0);
+    modo = "vacio"; await recargar.click();
+    await expect(dialogo.getByText("Todavía no hay versiones registradas.", { exact: true })).toBeVisible();
+    await expect(dialogo.getByRole("alert")).toHaveCount(0); await expect(lista).toHaveCount(0);
+    await page.unroute("**/borradores-derechos/historial/"); await recargar.click();
+    await expect(lista).toBeVisible(); expect(escrituras).toBe(0);
+    await page.keyboard.press("Escape"); await expect(boton).toBeFocused();
+  });
+}
