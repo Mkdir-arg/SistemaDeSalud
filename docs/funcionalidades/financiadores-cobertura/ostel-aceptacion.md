@@ -1320,3 +1320,63 @@ Runners `test_borradores_api`, `test_borradores_derechos`,
 `test_derechos_padron_aislamiento` y spec real de borradores; resultados en L33.
 Rollback: retirar acción/serializers/servicio de historial y diálogo/botón nuevos,
 conservando lectores previos y metadatos persistidos. No hay datos que revertir.
+
+### Contraste técnico de autorizaciones médicas — T6a / #147 (02/11/2026)
+
+**La base existente es reutilizable; no demuestra conformidad con el circuito
+médico de OSTEL.** El contraste contra el árbol local `f4dcf01` completa una parte
+del análisis, no las definiciones de negocio ni la aceptación de [#147](https://github.com/Mkdir-arg/SistemaDeSalud/issues/147).
+El issue referencia SISTEMAS OS Y PREPAGAS MODULOS.pdf (p.1 módulo2 y p.2) y
+Resumen Mod Padron.pdf (p.1). Son fuentes documentadas previamente; no se volvió
+a acceder a los originales ni se corroboró normativa en este corte.
+
+#### Matriz requisito → base → frontera pendiente
+
+| Requisito recibido en #147 | Base observada | Falta antes de implementar para OSTEL |
+| --- | --- | --- |
+| Derecho, plan, prestación, PMO y topes en línea | `ReglaCobertura` en `models.py:120–136` configura plan/prestación o categoría, porcentaje, cupo, período mes/año y exigencia de autorización. `cobertura.py:32–37,82–92` cuenta usos externos/reservados/realizados y elige regla específica/general. | Catálogo/versión PMO y correspondencia con prestaciones, prescripción aplicable y excepciones. Regla técnica de cobertura no equivale a PMO homologado ni a la política de gracia/mora pendiente. |
+| Solicitud y revisión de Auditoría Médica | `api_autorizaciones.py:56–75` recibe afiliado, institución, prestación común, cantidad, justificación, urgencia y clave; resolver acepta observar/aprobar/rechazar, motivo, texto de evidencia, número externo, cantidad y vigencias. `autorizaciones.py:251–290` reutiliza permiso de resolver, lock, revalidación, revisión, idempotencia y evento. | Actores aprobados, evidencia mínima de prescripción, visibilidad/corrección/retención, motivos, urgencias, plazos, vigencia y renovación. El texto libre existente no es un documento de prescripción validado. |
+| Autorización, prestación realizada y liquidación | `ReservaCobertura` (`models.py:388–412`) relaciona caso/prestación, estado, hecho y uso de autorización. `test_uso_autorizaciones.py:30–66` especifica pasos distintos: aprobación, reserva, hecho realizado y captura financiera. | Contrato para usos parciales/repetidos, prestación ya realizada, cambios de plan/convenio y conciliación con liquidaciones. Autorización no acredita prestación realizada, factura, liquidación ni pago. |
+
+Rutas de código bajo `backend/apps/financiadores/`. Pruebas existentes localizadas,
+no ejecutadas nuevamente en este corte: `test_cobertura.py`,
+`test_autorizaciones_manuales.py` (ManualApiTests/ManualCircuitoTests),
+`test_autorizaciones.py` y `test_uso_autorizaciones.py`.
+No se atribuye al árbol actual una prueba histórica de otro commit.
+
+#### Decisión de acceso clínico, todavía no aprobada
+
+La bandeja declara no serializar historia clínica del caso. Sin embargo,
+`SolicitudAutorizacionSerializer` (`api_autorizaciones.py:90–112`) ya devuelve
+texto libre de `evidencia` dentro del circuito administrativo. Esto no prueba
+que exista una filtración ni que ese texto contenga datos clínicos reales;
+tampoco demuestra que ampliar ese campo a prescripciones sea seguro.
+No se accedió a solicitudes o personas reales para este análisis.
+
+Propuesta para decisión humana: **una futura prescripción clínica sólo será
+visible para usuarios expresamente designados de Auditoría Médica; operación
+y auditoría administrativa verán únicamente su estado administrativo**.
+Ventaja: no concede acceso clínico por pertenecer al financiador. Costo: exige
+un circuito diferenciado para revisión médica. Riesgo residual: aún deben
+acordarse evidencia mínima, correspondencia de capacidades y trazabilidad de
+accesos antes de implementar. La propuesta no modifica permisos ni el campo
+actual, y no se considera aceptada por la autorización general de continuidad.
+
+#### Cortes mínimos condicionados al contrato
+
+1. Validar el catálogo/versionado y correspondencias PMO recibidos; sin equivalencias
+   inferidas ni constantes regulatorias inventadas.
+2. Tras decidir el acceso y la evidencia mínima, especificar la prescripción y
+   sus controles de lectura/corrección usando las capacidades existentes que correspondan.
+3. Acordar usos/vigencias y vínculo con la prestación realizada antes de diseñar
+   su relación con liquidaciones. No convertir una autorización en prueba financiera.
+
+Estos son siguientes cortes propuestos, no tareas de negocio aprobadas para
+codificar. La información ya solicitada a OSTEL sigue pendiente; no se vuelve
+a pedir que el usuario la solicite. T2/#143 y T3/#183 conservan sus límites.
+
+Validación de este corte: lectura integral de #147, mapa CodeGraph y un spot check
+de serializers/servicio; readback y enlaces/rutas existentes. No cambia código,
+DB, UI, migraciones ni dependencias: RED/GREEN y pruebas funcionales nuevas no
+aplican. Sin CI, despliegue, aceptación médica o conformidad normativa.
+Rollback: retirar esta sección y el registro T6a del seguimiento, sin efectos en datos.
