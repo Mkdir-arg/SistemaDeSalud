@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { errorFinanciador, opcionesFinanciador, rutaFinanciador } from "@/api/financiadores";
@@ -17,15 +17,24 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
   const planes = useQuery({ ...opciones, queryKey: [...scope, "opciones-planes"], queryFn: () => opcionesFinanciador(organizacion.id, "planes") });
   const [simulacion, setSimulacion] = useState(null);
   const [formulario, setFormulario] = useState(VACIO);
+  const [vista, setVista] = useState(null);
+  const [errorVista, setErrorVista] = useState(null);
+  const [previsualizando, setPrevisualizando] = useState(false);
+  const activo = useRef(true);
+  useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
   const [guardando, setGuardando] = useState(false);
   const [requiereConsulta, setRequiereConsulta] = useState(false);
   const [error, setError] = useState(null);
   const [mensaje, setMensaje] = useState("");
   const enviando = useRef(false);
   const historial = consulta.data?.borradores || [];
-  const ocupado = guardando || consulta.isFetching || planes.isFetching || requiereConsulta || !consulta.isSuccess || !planes.isSuccess;
-  const cambiar = (campo) => (e) => setFormulario((actual) => ({ ...actual, [campo]: e.target.value }));
+  const ocupado = guardando || previsualizando || consulta.isFetching || planes.isFetching || requiereConsulta || !consulta.isSuccess || !planes.isSuccess;
+  const cambiar = (campo) => (e) => {
+    setVista(null); setErrorVista(null);
+    setFormulario((actual) => ({ ...actual, [campo]: e.target.value }));
+  };
   async function recargar() {
+    setVista(null); setErrorVista(null);
     setRequiereConsulta(true);
     const resultado = await consulta.refetch();
     if (!resultado.error) { setRequiereConsulta(false); setError(null); }
@@ -34,18 +43,26 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
   async function guardar(e) {
     e.preventDefault();
     if (ocupado || enviando.current) return;
+    const soloVista = e.nativeEvent.submitter?.value === "previsualizar";
     enviando.current = true;
-    setGuardando(true); setError(null); setMensaje("");
+    setGuardando(!soloVista); setPrevisualizando(soloVista);
+    setVista(null); setErrorVista(null); setError(null); setMensaje("");
     const { motivo, fecha, ...campos } = formulario;
     const nueva = { ...campos, version: Number(campos.version), plan_id: campos.plan_id ? Number(campos.plan_id) : null, hasta: campos.hasta || null, plazo_dias_corridos: campos.plazo_dias_corridos === "" ? null : Number(campos.plazo_dias_corridos) };
     try {
-      const resultado = await api.post(ruta, { propuesta: [...historial, nueva], motivo, fecha, regimen: nueva.regimen, plan_id: nueva.plan_id });
+      const destino = soloVista ? rutaFinanciador(organizacion.id, "borradores-derechos/previsualizar") : ruta;
+      const resultado = await api.post(destino, { propuesta: [...historial, nueva], motivo, fecha, regimen: nueva.regimen, plan_id: nueva.plan_id });
+      if (soloVista) {
+        if (activo.current) setVista(resultado);
+        return;
+      }
       setMensaje(resultado.nuevas.length ? "Borrador guardado. Los derechos no cambiaron." : "No se agregaron versiones nuevas.");
       setFormulario(VACIO);
       await recargar();
     } catch (fallo) {
-      setError(fallo); setRequiereConsulta(true);
-    } finally { enviando.current = false; setGuardando(false); }
+      if (soloVista) { if (activo.current) setErrorVista(fallo); }
+      else { setError(fallo); setRequiereConsulta(true); }
+    } finally { enviando.current = false; setGuardando(false); setPrevisualizando(false); }
   }
   const falloConsulta = consulta.error || planes.error;
   return <section className="space-y-5" aria-label="Reglas de derechos">
@@ -61,7 +78,7 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
     </div>}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-semibold">Versiones guardadas</h2>
-      <Button variant="secondary" disabled={guardando || consulta.isFetching || planes.isFetching} onClick={() => Promise.all([planes.refetch(), recargar()])}>Volver a consultar</Button>
+      <Button variant="secondary" disabled={guardando || previsualizando || consulta.isFetching || planes.isFetching} onClick={() => Promise.all([planes.refetch(), recargar()])}>Volver a consultar</Button>
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-2">
       <Card className="min-w-0 p-4">
@@ -89,10 +106,27 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
             <Field label="Plazo en días corridos (opcional)"><Input type="number" min="0" step="1" value={formulario.plazo_dias_corridos} onChange={cambiar("plazo_dias_corridos")} /></Field>
             <Field label="Fecha de consulta técnica"><Input required type="date" value={formulario.fecha} onChange={cambiar("fecha")} /></Field>
             <div className="sm:col-span-2"><Field label="Motivo del registro"><Input required maxLength={255} value={formulario.motivo} onChange={cambiar("motivo")} /></Field></div>
-            <div className="sm:col-span-2"><Button type="submit" disabled={ocupado}>{guardando ? "Guardando…" : "Guardar borrador"}</Button></div>
+            <div className="flex flex-wrap gap-3 sm:col-span-2">
+              <Button type="submit" disabled={ocupado}>{guardando ? "Guardando…" : "Guardar borrador"}</Button>
+              <Button type="submit" value="previsualizar" variant="secondary" disabled={ocupado}>{previsualizando ? "Previsualizando…" : "Previsualizar propuesta"}</Button>
+            </div>
           </fieldset>
           {requiereConsulta && <p className="mt-3 text-sm">Es necesario volver a consultar antes de guardar otra versión.</p>}
         </form>
+        {errorVista && <p role="alert" className="text-sm text-badge-error-fg">No se pudo previsualizar. {errorFinanciador(errorVista)}</p>}
+        {vista && <section aria-label="Vista previa de la propuesta" className="space-y-3 rounded-md border border-borde p-3 text-sm">
+          <h3 className="font-semibold">Vista previa técnica</h3>
+          <p>No se guardaron versiones ni se modificaron derechos.</p>
+          <p>Versiones que se agregarían: {vista.nuevas.length}.</p>
+          <ul className="space-y-1 break-words">{vista.nuevas.map((fila) => <li key={`${fila.regimen}:${fila.plan_id}:${fila.codigo}:${fila.version}`}>
+            {fila.codigo} · v{fila.version} · {fila.plazo_dias_corridos == null ? "Sin plazo configurado" : `${fila.plazo_dias_corridos} días corridos`}
+          </li>)}</ul>
+          {[ ["Antes", vista.antes], ["Después", vista.despues] ].map(([nombre, estado]) => <div key={nombre}>
+            <p>{nombre}: {estado.coincidencias.length} coincidencias técnicas. {estado.conflicto ? "Conflicto: no hay una regla única." : "Sin conflicto técnico."}</p>
+            <p className="break-words">{estado.coincidencias.map((fila) => `${fila.codigo} · v${fila.version}`).join(", ") || "Sin coincidencias."}</p>
+          </div>)}
+          <p>No es una aprobación ni una reserva; al guardar se valida nuevamente la historia actual. No calcula personas afectadas ni decide prestaciones.</p>
+        </section>}
       </Card> : <Card className="p-4"><p className="text-sm">Acceso de consulta. La administración del financiador puede registrar versiones.</p></Card>}
     </div>
     {simulacion && <SimularPlazoDerechos key={`${simulacion.regimen}:${simulacion.plan_id}:${simulacion.codigo}:${simulacion.version}`} organizacion={organizacion} regla={simulacion} onClose={() => setSimulacion(null)} />}

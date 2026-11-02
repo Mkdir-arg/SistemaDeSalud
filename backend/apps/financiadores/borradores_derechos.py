@@ -29,13 +29,8 @@ def consultar_borradores(*, usuario, financiador_id):
     return _descriptores(financiador_id)
 
 
-@transaction.atomic
-def guardar_borradores(*, usuario, financiador_id, propuesta, motivo, regimen, plan_id, fecha):
-    """Apéndice atómico con historia real; sólo admin, sin aprobar o activar."""
-    _validar_id(financiador_id)
-    requerir_financiador(usuario, financiador_id, admin=True)
-    financiador = Financiador.objects.select_for_update().get(pk=financiador_id, activo=True)
-    requerir_financiador(usuario, financiador_id, admin=True)
+def _comparar_propuesta(*, financiador_id, propuesta, motivo, regimen, plan_id, fecha, bloquear_planes):
+    """Validación compartida; el guardado conserva sus locks, la vista no reserva."""
     if not isinstance(motivo, str) or not motivo.strip() or len(motivo.strip()) > 255:
         raise ValidationError("Indicá un motivo de hasta 255 caracteres.")
     motivo = motivo.strip()
@@ -48,10 +43,31 @@ def guardar_borradores(*, usuario, financiador_id, propuesta, motivo, regimen, p
     planes = {b.plan_id for b in propuesta if b.plan_id is not None}
     if plan_id is not None:
         planes.add(plan_id)
-    propios = set(Plan.objects.select_for_update().filter(
+    consulta_planes = Plan.objects.select_for_update() if bloquear_planes else Plan.objects.all()
+    propios = set(consulta_planes.filter(
         pk__in=planes, financiador_id=financiador_id).order_by("pk").values_list("pk", flat=True))
     if propios != planes:
         raise ValidationError("Los planes deben existir y pertenecer al financiador.")
+    return comparacion, motivo
+
+
+def previsualizar_propuesta(*, usuario, financiador_id, propuesta, motivo, regimen, plan_id, fecha):
+    """Consulta administrativa sin guardar, auditar ni activar derechos."""
+    _validar_id(financiador_id)
+    requerir_financiador(usuario, financiador_id, admin=True)
+    comparacion, _ = _comparar_propuesta(financiador_id=financiador_id, propuesta=propuesta,
+        motivo=motivo, regimen=regimen, plan_id=plan_id, fecha=fecha, bloquear_planes=False)
+    return comparacion
+
+@transaction.atomic
+def guardar_borradores(*, usuario, financiador_id, propuesta, motivo, regimen, plan_id, fecha):
+    """Apéndice atómico con historia real; sólo admin, sin aprobar o activar."""
+    _validar_id(financiador_id)
+    requerir_financiador(usuario, financiador_id, admin=True)
+    financiador = Financiador.objects.select_for_update().get(pk=financiador_id, activo=True)
+    requerir_financiador(usuario, financiador_id, admin=True)
+    comparacion, motivo = _comparar_propuesta(financiador_id=financiador_id, propuesta=propuesta,
+        motivo=motivo, regimen=regimen, plan_id=plan_id, fecha=fecha, bloquear_planes=True)
     for borrador in comparacion.nuevas:
         obj = BorradorReglaDerechos(**{c: getattr(borrador, c) for c in CAMPOS},
                                    creado_por=usuario, motivo=motivo)

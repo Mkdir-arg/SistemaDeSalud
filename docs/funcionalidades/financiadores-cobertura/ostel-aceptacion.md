@@ -1223,3 +1223,35 @@ con fixture ficticia dedicada. Resultados observados y estado de revisión: [L30
 Rollback: retirar esta capacidad de UI/API/DTO y revertir0019 sólo tras conservar
 los nuevos parámetros; una reversión de esquema los pierde. No revertir datos
 históricos ni reactivar derechos como parte de ese procedimiento.
+
+### Vista previa de propuesta sin guardar — T2j (02/11/2026)
+
+**Previsualizar propuesta**, en Nueva versión, consulta qué versiones se agregarían
+y las coincidencias antes/después para el régimen, plan y fecha indicados.
+Muestra los conflictos sin seleccionar un ganador. Esta acción no guarda,
+audita ni activa versiones, y no calcula personas o prestaciones afectadas.
+Editar un campo o volver a consultar borra la vista; una respuesta pendiente
+de otro financiador no se incorpora al formulario actual. El guardado continúa
+como acción separada, incluida la vía anterior sin previsualización.
+
+POST `/api/financiadores/{id}/borradores-derechos/previsualizar/` requiere
+administración y reutiliza el mismo cuerpo estricto/resultado del POST de guardado:
+`propuesta`, `motivo`, `regimen`, `plan_id`, `fecha` → `nuevas`, `antes`, `despues`.
+Se compara con la historia real y se validan propiedad/existencia de todos los
+planes, motivo y versiones inmutables. Lectores no administradores:403;
+organización no visible:404; sin sesión:401. No admite campos arbitrarios.
+
+La consulta no bloquea ni reserva datos: puede quedar obsoleta si otro
+administrador agrega una versión. Guardar recalcula y valida bajo los locks
+existentes (financiador, revalidación de permiso, planes ordenados) y puede rechazar
+una propuesta vieja. No sustituye aprobación de activación ni validación OSTEL.
+El helper compartido evita divergencia de motivos/planes/comparación;
+no se llama al guardado en modo dry-run ni se revierten escrituras para previsualizar.
+
+Verificación: API pública (sin mutaciones, permisos, planes ajenos, conflictos,
+preview→guardar y rechazo de historia obsoleta), regresiones de guardado/concurrencia
+y recorridos reales desktop/móvil/teclado, edición/recarga y respuesta tardía.
+Runners: `test_borradores_api`, `test_borradores_derechos`, `test_borradores_integridad`
+y el spec real de borradores. Resultados y límites en L31 del documento de tareas.
+Rollback: retirar endpoint/acción/vista y sus pruebas; restaurar validación inline
+del guardado si se retira el helper. Sin migración ni datos que revertir.

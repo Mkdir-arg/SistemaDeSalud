@@ -345,3 +345,91 @@ test("cierre pendiente y cambio de origen no conservan resultado anterior", asyn
     await expect(dialogo.getByLabel("Días corridos", { exact: true })).toHaveValue("7");
   } finally { liberar(); }
 });
+
+for (const movil of [false, true]) {
+  test(`previsualiza sin guardar, limpia al editar y guarda por separado (${movil ? "móvil" : "desktop"})`, async ({ page }) => {
+    if (movil) await page.setViewportSize({ width: 390, height: 844 });
+    await abrir(page);
+    const codigo = `ficticio-vista-${Date.now()}`;
+    await completar(page, codigo);
+    await page.getByLabel("Plazo en días corridos (opcional)", { exact: true }).fill("7");
+    const ver = page.getByRole("button", { name: "Previsualizar propuesta", exact: true });
+    await ver.focus(); await page.keyboard.press("Enter");
+    const vista = page.getByRole("region", { name: "Vista previa de la propuesta", exact: true });
+    await expect(vista).toBeVisible();
+    await expect(vista).toContainText(`${codigo} · v1`);
+    await expect(vista).toContainText("7 días corridos");
+    await expect(vista).toContainText("No se guardaron versiones ni se modificaron derechos.");
+    await expect(page.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toHaveCount(0);
+    await page.getByLabel("Plazo en días corridos (opcional)", { exact: true }).fill("0");
+    await expect(vista).toHaveCount(0);
+    await ver.click(); await expect(vista).toContainText("0 días corridos");
+    await page.getByRole("button", { name: "Volver a consultar", exact: true }).click();
+    await expect(vista).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Guardar borrador", exact: true })).toBeEnabled();
+    await ver.click(); await expect(vista).toBeVisible();
+    await page.getByRole("button", { name: "Guardar borrador", exact: true }).click();
+    await expect(vista).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test("previsualización pendiente no contamina otro financiador ni duplica solicitudes", async ({ page }) => {
+  await abrir(page); await completar(page, `ficticio-vista-ambito-${Date.now()}`);
+  let liberar, iniciar, solicitudes = 0;
+  const pendiente = new Promise((r) => { liberar = r; });
+  const iniciada = new Promise((r) => { iniciar = r; });
+  await page.route("**/borradores-derechos/previsualizar/", async (route) => {
+    solicitudes += 1;
+    const real = await route.fetch(); expect(real.status()).toBe(200);
+    iniciar(); await pendiente; await route.fulfill({ response: real });
+  });
+  try {
+    await page.getByRole("button", { name: "Previsualizar propuesta", exact: true }).evaluate((b) => { b.click(); b.click(); });
+    await iniciada;
+    expect(solicitudes).toBe(1);
+    await expect(page.getByLabel("Código de regla", { exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Guardar borrador", exact: true })).toBeDisabled();
+    await page.getByLabel("Financiador", { exact: true }).selectOption(String(datos.organizaciones[1]));
+    const anterior = page.waitForResponse((r) => r.url().includes("/previsualizar/"));
+    liberar(); await anterior;
+    await expect(page.getByLabel("Código de regla", { exact: true })).toHaveValue("");
+    await expect(page.getByRole("region", { name: "Vista previa de la propuesta", exact: true })).toHaveCount(0);
+  } finally { liberar(); }
+});
+
+test("error de previsualización limpia resultado sin bloquear guardado como escritura desconocida", async ({ page }) => {
+  await abrir(page); await completar(page, `ficticio-vista-error-${Date.now()}`);
+  const ver = page.getByRole("button", { name: "Previsualizar propuesta", exact: true });
+  await ver.click();
+  const vista = page.getByRole("region", { name: "Vista previa de la propuesta", exact: true });
+  await expect(vista).toBeVisible();
+  await page.route("**/borradores-derechos/previsualizar/", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Consulta denegada ficticia" }) }));
+  await ver.click();
+  await expect(page.getByRole("alert")).toContainText("Consulta denegada ficticia");
+  await expect(vista).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Guardar borrador", exact: true })).toBeEnabled();
+});
+
+for (const movil of [false, true]) {
+  test(`Enter en campo conserva guardado, Enter en preview sólo consulta (${movil ? "móvil" : "desktop"})`, async ({ page }) => {
+    if (movil) await page.setViewportSize({ width: 390, height: 844 });
+    await abrir(page); const codigo = `ficticio-enter-${Date.now()}`; await completar(page, codigo);
+    let consultas = 0, guardados = 0;
+    page.on("request", (r) => {
+      if (r.method() !== "POST") return;
+      if (r.url().endsWith("/previsualizar/")) consultas += 1;
+      else if (r.url().endsWith("/borradores-derechos/")) guardados += 1;
+    });
+    await page.getByRole("button", { name: "Previsualizar propuesta", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    const vista = page.getByRole("region", { name: "Vista previa de la propuesta", exact: true });
+    await expect(vista).toContainText(`${codigo} · v1`);
+    expect(consultas).toBe(1); expect(guardados).toBe(0);
+    await page.getByLabel("Motivo del registro", { exact: true }).focus(); await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toBeVisible();
+    await expect(vista).toHaveCount(0);
+    expect(consultas).toBe(1); expect(guardados).toBe(1);
+  });
+}

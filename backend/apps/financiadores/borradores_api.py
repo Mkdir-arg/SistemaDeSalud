@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from .models import Afiliado
 from .derechos_borrador import BorradorDerechos, MAX_DIAS_CORRIDOS
-from .borradores_derechos import consultar_borradores, guardar_borradores
+from .borradores_derechos import consultar_borradores, guardar_borradores, previsualizar_propuesta
 
 
 class EntradaControlada(serializers.Serializer):
@@ -58,6 +58,18 @@ class ResultadoBorradoresSerializer(serializers.Serializer):
     despues = VistaBorradoresSerializer()
 
 
+def _leer_propuesta(request, financiador_id):
+    entrada = PropuestaBorradoresSerializer(data=request.data)
+    entrada.is_valid(raise_exception=True)
+    datos = dict(entrada.validated_data)
+    try:
+        propuesta = tuple(BorradorDerechos(financiador_id=financiador_id, **fila)
+                          for fila in datos.pop("propuesta"))
+    except ValueError as exc:
+        raise serializers.ValidationError(str(exc)) from exc
+    return {"propuesta": propuesta, **datos}
+
+
 class BorradoresDerechosMixin:
     @extend_schema(methods=["GET"], responses=ListaBorradoresSerializer)
     @extend_schema(methods=["POST"], request=PropuestaBorradoresSerializer, responses=ResultadoBorradoresSerializer)
@@ -67,14 +79,14 @@ class BorradoresDerechosMixin:
         if request.method == "GET":
             versiones = consultar_borradores(usuario=request.user, financiador_id=org.pk)
             return Response(ListaBorradoresSerializer({"borradores": versiones}).data)
-        entrada = PropuestaBorradoresSerializer(data=request.data)
-        entrada.is_valid(raise_exception=True)
-        datos = dict(entrada.validated_data)
-        try:
-            propuesta = tuple(BorradorDerechos(financiador_id=org.pk, **fila)
-                              for fila in datos.pop("propuesta"))
-        except ValueError as exc:
-            raise serializers.ValidationError(str(exc)) from exc
         resultado = guardar_borradores(usuario=request.user, financiador_id=org.pk,
-                                       propuesta=propuesta, **datos)
+                                       **_leer_propuesta(request, org.pk))
+        return Response(ResultadoBorradoresSerializer(resultado).data)
+
+    @extend_schema(request=PropuestaBorradoresSerializer, responses=ResultadoBorradoresSerializer)
+    @action(detail=True, methods=["post"], url_path="borradores-derechos/previsualizar")
+    def previsualizar_borradores(self, request, pk=None):
+        org = self.organizacion(admin=True)
+        resultado = previsualizar_propuesta(usuario=request.user, financiador_id=org.pk,
+                                           **_leer_propuesta(request, org.pk))
         return Response(ResultadoBorradoresSerializer(resultado).data)

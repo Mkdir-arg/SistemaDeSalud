@@ -6,11 +6,12 @@ from unittest import skipUnless
 from unittest.mock import patch
 import hashlib
 from django.test import TransactionTestCase
+from rest_framework.test import APIClient
 from django.db import connection, transaction, IntegrityError, close_old_connections
 from django.db.migrations.executor import MigrationExecutor
 from django.core.exceptions import PermissionDenied, ValidationError
 from apps.accounts.models import Usuario
-from apps.financiadores.models import Financiador, MembresiaFinanciador, BorradorReglaDerechos, EventoCobertura
+from apps.financiadores.models import Financiador, MembresiaFinanciador, BorradorReglaDerechos, EventoCobertura, Plan, Afiliado
 from apps.financiadores.derechos_borrador import BorradorDerechos
 from apps.financiadores.borradores_derechos import guardar_borradores, consultar_borradores
 from apps.financiadores.permisos import requerir_financiador
@@ -81,3 +82,55 @@ class IntegridadBorradoresTests(TransactionTestCase):
             self.assertEqual(consultar_borradores(usuario=self.user,financiador_id=self.org.pk),())
         finally:
             MigrationExecutor(connection).migrate(finales)
+
+    def preparar_preview(self):
+        plan = Plan.objects.create(financiador=self.org, codigo="FICTICIO", nombre="Plan ficticio")
+        client = APIClient()
+        client.force_authenticate(self.user)
+        url = f"/api/financiadores/{self.org.pk}/borradores-derechos/"
+        regla = dict(codigo="literal", version=1, fuente="Fuente ficticia", regimen="dependencia",
+                     plan_id=plan.pk, desde="2030-01-01", hasta=None, plazo_dias_corridos=7)
+        cuerpo = dict(propuesta=[regla], motivo="Ficticio", regimen="dependencia", plan_id=plan.pk,
+                      fecha="2030-01-08")
+        self.assertEqual(client.post(url, cuerpo, format="json").status_code, 200)
+        return plan, client, url, regla, cuerpo
+
+    def huella_preview(self):
+        modelos = (Financiador, MembresiaFinanciador, Plan, Afiliado, BorradorReglaDerechos, EventoCobertura)
+        return hashlib.sha256(repr([list(m.objects.order_by("pk").values()) for m in modelos]).encode()).hexdigest()
+
+    def test_preview_no_espera_locks_de_guardado_ni_cambia_datos(self):
+        plan, _, url, regla, cuerpo = self.preparar_preview()
+        propuesta = cuerpo | {"propuesta": [regla, regla | {"version": 2, "plazo_dias_corridos": 0}]}
+        antes = self.huella_preview()
+        def consultar():
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(self.user)
+                r = client.post(url + "previsualizar/", propuesta, format="json")
+                return r.status_code, r.json()
+            finally:
+                close_old_connections()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                Financiador.objects.select_for_update().get(pk=self.org.pk)
+                Plan.objects.select_for_update().get(pk=plan.pk)
+                estado, datos = pool.submit(consultar).result(timeout=5)
+        self.assertEqual(estado, 200)
+        self.assertEqual(set(datos), {"nuevas", "antes", "despues"})
+        self.assertEqual(datos["despues"], {"coincidencias": propuesta["propuesta"], "conflicto": True})
+        self.assertEqual(self.huella_preview(), antes)
+
+    def test_preview_obsoleto_y_guardado_rechazados_conservan_huella(self):
+        _, client, url, regla, cuerpo = self.preparar_preview()
+        propuesta = cuerpo | {"propuesta": [regla, regla | {"version": 2}]}
+        antes = self.huella_preview()
+        self.assertEqual(client.post(url + "previsualizar/", propuesta, format="json").status_code, 200)
+        self.assertEqual(self.huella_preview(), antes)
+        actual = cuerpo | {"propuesta": [regla, regla | {"version": 3}]}
+        self.assertEqual(client.post(url, actual, format="json").status_code, 200)
+        antes = self.huella_preview()
+        for sufijo in ("previsualizar/", ""):
+            self.assertEqual(client.post(url + sufijo, propuesta, format="json").status_code, 400)
+            self.assertEqual(self.huella_preview(), antes)

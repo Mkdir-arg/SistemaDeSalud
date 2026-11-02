@@ -125,3 +125,66 @@ class BorradoresAPITests(APITestCase):
         nueva = entrada["propuesta"][0] | {"version": 2, "plazo_dias_corridos": 0}
         self.assertEqual(self.post(entrada | {"propuesta": [*entrada["propuesta"], nueva]}).status_code, 200)
         self.assertEqual([v["plazo_dias_corridos"] for v in self.client.get(self.url).json()["borradores"]], [7, 0])
+
+    def test_previsualizar_compara_sin_guardar_y_guardado_recalcula(self):
+        url = self.url + "previsualizar/"
+        antes = self.client.get(self.url).json()
+        eventos = list(EventoCobertura.objects.values())
+        vista = self.client.post(url, self.entrada, format="json")
+        self.assertEqual(vista.status_code, 200)
+        self.assertEqual(vista.json(), {"nuevas": [self.regla],
+            "antes": {"coincidencias": [], "conflicto": False},
+            "despues": {"coincidencias": [self.regla], "conflicto": False}})
+        self.assertEqual(self.client.get(self.url).json(), antes)
+        self.assertEqual(list(EventoCobertura.objects.values()), eventos)
+        self.assertEqual(self.post().json(), vista.json())
+        nueva = self.regla | {"version": 2, "plazo_dias_corridos": 7}
+        propuesta = self.entrada | {"propuesta": [self.regla, nueva]}
+        self.assertEqual(self.client.post(url, propuesta, format="json").status_code, 200)
+        intermedia = self.regla | {"version": 3}
+        self.assertEqual(self.post(self.entrada | {"propuesta": [self.regla, intermedia]}).status_code, 200)
+        self.assertEqual(self.post(propuesta).status_code, 400)
+        self.assertEqual(self.client.get(self.url).json(), {"borradores": [self.regla, intermedia]})
+
+    def test_previsualizar_rechaza_ambitos_roles_y_propuestas_invalidas_sin_cambios(self):
+        url = self.url + "previsualizar/"
+        otro = Financiador.objects.create(nombre="Otro ficticio", tipo="otro")
+        ajeno = Plan.objects.create(financiador=otro, codigo="AJENO", nombre="Ajeno")
+        def huella():
+            modelos = (Financiador, MembresiaFinanciador, Plan, Afiliado, BorradorReglaDerechos, EventoCobertura)
+            return sha256(repr([list(m.objects.order_by("pk").values()) for m in modelos]).encode()).hexdigest()
+        antes = huella()
+        for cambio in ({"plan_id": ajeno.pk}, {"motivo": " "}, {"activar": True},
+                       {"propuesta": [self.regla | {"plan_id": ajeno.pk}]},
+                       {"propuesta": [self.regla | {"expresion": "activar()"}]},
+                       {"propuesta": [self.regla | {"plazo_dias_corridos": True}]}):
+            self.assertEqual(self.client.post(url, self.entrada | cambio, format="json").status_code, 400)
+            self.assertEqual(huella(), antes)
+        for rol in ("operador", "auditor"):
+            self.member.rol = rol
+            self.member.save()
+            antes = huella()
+            self.assertEqual(self.client.post(url, self.entrada, format="json").status_code, 403)
+            self.assertEqual(huella(), antes)
+        self.member.rol = "admin"
+        self.member.save()
+        self.assertEqual(self.client.post(url.replace(f"/{self.org.pk}/", f"/{otro.pk}/"), self.entrada, format="json").status_code, 404)
+        self.member.activo = False
+        self.member.save()
+        self.assertEqual(self.client.post(url, self.entrada, format="json").status_code, 404)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.post(url, self.entrada, format="json").status_code, 401)
+
+    def test_previsualizar_expone_conflicto_sin_elegir_ni_reescribir(self):
+        self.assertEqual(self.post().status_code, 200)
+        nueva = self.regla | {"version": 2, "plazo_dias_corridos": 0}
+        entrada = self.entrada | {"propuesta": [self.regla, nueva]}
+        antes = self.client.get(self.url).json()
+        eventos = list(EventoCobertura.objects.values())
+        r = self.client.post(self.url + "previsualizar/", entrada, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["antes"], {"coincidencias": [self.regla], "conflicto": False})
+        self.assertEqual(r.json()["despues"], {"coincidencias": [self.regla, nueva], "conflicto": True})
+        self.assertEqual(r.json()["nuevas"], [nueva])
+        self.assertEqual(self.client.get(self.url).json(), antes)
+        self.assertEqual(list(EventoCobertura.objects.values()), eventos)
