@@ -1100,3 +1100,52 @@ trazabilidad de versión/fuente, aprobación explícita y verificación integrad
 Un cambio de nombre o pruebas verdes de esta base no sustituyen esos requisitos.
 El material normativo ya fue solicitado; este cambio no inventa valores ni activa
 bajas, gracia o mora. La aceptación de negocio sigue separada de la validación técnica.
+
+
+### Primer mecanismo ejecutable: umbral temporal — T2g (02/11/2026)
+
+`backend/apps/financiadores/simulacion_plazo.py` ofrece `simular_plazo`: calcula
+una fecha de referencia explícita más un número configurable de **días corridos**.
+Devuelve la posición de la evaluación **antes / en / después** del límite. No
+elige inclusividad prestacional ni traduce esa posición en habilitación o baja.
+No usa reloj del sistema ni infiere referencias desde FECVTO, ausencia o inicio.
+
+Reutiliza `previsualizar_borradores` para ámbito/vigencia técnica del descriptor.
+Si no coincide, devuelve `sin_coincidencia`; si falta fecha de referencia o
+identificador de evidencia, `requiere_evidencia`, ambos sin límite calculado.
+Datos de tipo/rango inválidos se rechazan con ValueError, incluso con referencia
+ausente. No hay expresiones, callbacks ni ejecución de reglas arbitrarias.
+
+La salida inmutable contiene todos los insumos (descriptor/fuente/versión,
+financiador/régimen/plan de consulta, plazo, fechas, referencia de evidencia) y
+el resultado calculado, sin guardarlos en DB. La evidencia es una referencia
+informada: no certifica que un documento sea válido o que un evento haya ocurrido.
+Una referencia futura se compara literalmente, no acredita derechos anticipados.
+
+Ejemplo **completamente ficticio**, ejecutable desde la raíz sin Django/DB:
+
+```python
+from datetime import date
+from backend.apps.financiadores.derechos_borrador import BorradorDerechos
+from backend.apps.financiadores.simulacion_plazo import simular_plazo
+regla = BorradorDerechos("ficticia", 3, "Fuente ficticia", 10,
+                         "dependencia", None, date(2029, 1, 1))
+r = simular_plazo(regla, dias_corridos=7, financiador_id=10,
+    regimen="dependencia", plan_id=None, fecha=date(2030, 1, 8),
+    referencia=date(2030, 1, 1), evidencia="REF-FICTICIA")
+# r.estado == "calculado", r.limite == date(2030, 1, 8), r.relacion == "en"
+```
+
+El plazo es explícito por simulación: aún no se persiste/versiona como parámetro
+de una regla activa. Cero es admisible para comprobar coincidencia de fechas,
+no un valor de negocio aprobado. No se convierte una mención normativa de meses
+a una cantidad fija de días; otros calendarios requieren implementación expresa.
+No se modifica el padrón, se activa una regla ni se emite una decisión de derechos.
+La pantalla actual aún no llama a este mecanismo; no se presenta como recorrido
+integrado ni como motor completo. Tampoco sustituye autenticación/aislamiento
+operativo: el contexto de la función es suministrado por su llamador.
+
+Runner: `python -B -m unittest backend.apps.financiadores.tests_simulacion_plazo -v`.
+Regresiones puras: `tests_derechos_borrador`, `tests_propuesta_derechos` y
+`tests_ostel_scenarios`. Rollback: retirar módulo/prueba y esta sección, sin
+alterar servicios anteriores ni sus datos.
