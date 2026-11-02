@@ -61,6 +61,7 @@ test("móvil y teclado guardan una versión ficticia sin desbordar", async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   await abrir(page);
   const campo = page.getByLabel("Código de regla", { exact: true });
+  await expect(campo).toBeEnabled();
   await campo.focus(); await page.keyboard.press("Tab");
   await expect(page.getByLabel("Versión", { exact: true })).toBeFocused();
   await guardar(page, `ficticio-movil-${Date.now()}`);
@@ -154,4 +155,98 @@ test("403 y recarga fallida bloquean guardar hasta una consulta exitosa", async 
   await page.getByRole("button", { name: "Volver a consultar", exact: true }).click();
   await expect(page.getByRole("button", { name: "Guardar borrador", exact: true })).toBeEnabled();
   expect(escrituras).toBe(1);
+});
+
+
+test("simula plazo real de versión guardada sin cambiar derechos", async ({ page }) => {
+  await abrir(page);
+  const codigo = `ficticio-simulacion-${Date.now()}`;
+  await guardar(page, codigo);
+  const fila = page.getByRole("heading", { name: `${codigo} · v1`, exact: true }).locator("..");
+  const boton = fila.getByRole("button", { name: "Simular plazo", exact: true });
+  await boton.click();
+  const dialogo = page.getByRole("dialog", { name: "Simular plazo", exact: true });
+  await expect(dialogo).toBeVisible();
+  await dialogo.getByLabel("Días corridos", { exact: true }).fill("7");
+  await dialogo.getByLabel("Fecha de evaluación", { exact: true }).fill("2030-01-08");
+  await dialogo.getByLabel("Fecha de referencia (opcional)", { exact: true }).fill("2030-01-01");
+  await dialogo.getByLabel("Referencia de evidencia (opcional)", { exact: true }).fill("REF-FICTICIA");
+  const respuesta = page.waitForResponse((r) => r.url().includes("/simular-plazo/") && r.request().method() === "POST");
+  await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+  expect((await respuesta).status()).toBe(200);
+  await expect(dialogo.getByText("Límite calculado: 2030-01-08", { exact: true })).toBeVisible();
+  await expect(dialogo.getByText("Evaluación: en el límite.", { exact: true })).toBeVisible();
+  await dialogo.getByLabel("Días corridos", { exact: true }).fill("9");
+  await expect(dialogo.getByText("Límite calculado: 2030-01-08", { exact: true })).toHaveCount(0);
+  await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+  await expect(dialogo.getByText("Límite calculado: 2030-01-10", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(boton).toBeFocused();
+});
+
+
+test("auditor simula evidencia faltante en móvil sin escribir versiones", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await abrir(page, "auditor");
+  const boton = page.getByRole("button", { name: "Simular plazo", exact: true }).first();
+  await boton.focus(); await page.keyboard.press("Enter");
+  const dialogo = page.getByRole("dialog", { name: "Simular plazo", exact: true });
+  await dialogo.getByLabel("Días corridos", { exact: true }).fill("0");
+  await dialogo.getByLabel("Fecha de evaluación", { exact: true }).fill("2030-01-08");
+  await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+  await expect(dialogo.getByText("Falta fecha de referencia o evidencia; no se calculó un límite.", { exact: true })).toBeVisible();
+  await expect(dialogo.getByRole("button", { name: /Guardar|Activar|Aprobar/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(boton).toBeFocused();
+});
+
+async function abrirSimulacionLector(page) {
+  await abrir(page, "auditor");
+  await page.getByRole("button", { name: "Simular plazo", exact: true }).first().click();
+  const dialogo = page.getByRole("dialog", { name: "Simular plazo", exact: true });
+  await dialogo.getByLabel("Días corridos", { exact: true }).fill("7");
+  await dialogo.getByLabel("Fecha de evaluación", { exact: true }).fill("2030-01-08");
+  await dialogo.getByLabel("Fecha de referencia (opcional)", { exact: true }).fill("2030-01-01");
+  await dialogo.getByLabel("Referencia de evidencia (opcional)", { exact: true }).fill("REF-FICTICIA");
+  return dialogo;
+}
+
+test("cálculo pendiente no sobrevive cerrar y reabrir el diálogo", async ({ page }) => {
+  const dialogo = await abrirSimulacionLector(page);
+  let liberar, inicio, solicitudes = 0;
+  const espera = new Promise((r) => { liberar = r; });
+  const iniciada = new Promise((r) => { inicio = r; });
+  await page.route("**/simular-plazo/", async (route) => {
+    solicitudes += 1;
+    const real = await route.fetch(); expect(real.status()).toBe(200);
+    inicio(); await espera; await route.fulfill({ response: real });
+  });
+  try {
+    await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).evaluate((b) => { b.click(); b.click(); });
+    await iniciada;
+    await expect(dialogo.getByRole("button", { name: "Calculando…", exact: true })).toBeDisabled();
+    expect(solicitudes).toBe(1);
+    await page.keyboard.press("Escape");
+    const boton = page.getByRole("button", { name: "Simular plazo", exact: true }).first();
+    await expect(boton).toBeFocused(); await boton.click();
+    const respuesta = page.waitForResponse((r) => r.url().includes("/simular-plazo/"));
+    liberar(); await respuesta;
+    await expect(dialogo.getByLabel("Días corridos", { exact: true })).toHaveValue("");
+    await expect(dialogo.getByRole("status")).toHaveCount(0);
+  } finally { liberar(); }
+});
+
+test("403 de simulación no conserva un cálculo positivo anterior", async ({ page }) => {
+  const dialogo = await abrirSimulacionLector(page);
+  await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+  await expect(dialogo.getByText("Límite calculado: 2030-01-08", { exact: true })).toBeVisible();
+  await dialogo.getByLabel("Días corridos", { exact: true }).fill("9");
+  await expect(dialogo.getByRole("status")).toHaveCount(0);
+  await page.route("**/simular-plazo/", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Consulta denegada ficticia" }) }));
+  await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+  await expect(dialogo.getByRole("alert")).toContainText("Consulta denegada ficticia");
+  await expect(dialogo.getByRole("status")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Simular plazo", exact: true }).first()).toBeFocused();
 });

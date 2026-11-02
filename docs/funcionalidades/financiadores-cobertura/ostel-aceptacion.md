@@ -1149,3 +1149,36 @@ Runner: `python -B -m unittest backend.apps.financiadores.tests_simulacion_plazo
 Regresiones puras: `tests_derechos_borrador`, `tests_propuesta_derechos` y
 `tests_ostel_scenarios`. Rollback: retirar módulo/prueba y esta sección, sin
 alterar servicios anteriores ni sus datos.
+
+
+### Simulación desde una versión guardada — T2h (02/11/2026)
+
+En **Reglas de derechos**, cada versión ofrece **Simular plazo**. El diálogo
+recibe días corridos explícitos, fecha de evaluación y referencia/evidencia
+opcionales. El servidor calcula con la fuente/metadatos de la versión guardada;
+el cliente sólo selecciona su identidad. La respuesta muestra límite y posición
+antes/en/después, o evidencia pendiente/sin coincidencia. Cambiar insumos borra
+el resultado anterior; cerrar no guarda nada y devuelve el foco al disparador.
+
+POST `/api/financiadores/{id}/borradores-derechos/simular-plazo/` es una consulta
+con cuerpo JSON, **no una escritura**. Requiere membresía de lectura existente:
+operador/auditor pueden simular, sin adquirir permiso para crear versiones.
+Campos: `regla={codigo,version,regimen,plan_id}`, `dias_corridos`, `fecha`, y
+`referencia`/`evidencia` opcionales/null. Datos de fuente, autor, financiador o
+activación embebidos y demás campos desconocidos se rechazan. Regla inexistente
+en ese financiador: 400; organización no visible: 404; sin sesión: 401.
+
+La respuesta contiene todos los insumos y descriptor recuperado, estado,
+`limite` y `relacion`. No modifica versiones, auditoría, afiliados ni derechos.
+Ejemplo ficticio: referencia 2030-01-01 + 7 días → 2030-01-08; fecha evaluada
+2030-01-08 queda **en** el límite. Cambiar a 9 días → 2030-01-10. No se decide
+si ese día conserva/corta prestaciones. El plazo sigue siendo un insumo de
+simulación, no un parámetro normativo activado o persistido en la versión.
+La evidencia informada no certifica documentación ni ocurrencia del evento.
+
+Pruebas reales: `test_simulacion_plazo_api` en PostgreSQL ficticio dedicado y
+spec de borradores con administrador/auditor, móvil/teclado, cambio de insumos
+sin resultado viejo y foco al cerrar; más regresiones anteriores. Sin nueva
+migración, dependencias ni siembra general. OpenAPI documenta el POST de consulta.
+Rollback: retirar mixin/import de simulación, módulo API, diálogo y acción UI,
+pruebas nuevas/esta sección, conservando el mecanismo puro T2g y registros previos.

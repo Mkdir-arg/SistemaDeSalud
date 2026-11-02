@@ -1,4 +1,5 @@
 """Fixture ficticia exclusiva de borradores en PostgreSQL local descartable."""
+from datetime import date
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,8 @@ django.setup()
 from django.db import connection
 from apps.accounts.models import Usuario
 from apps.financiadores.models import Financiador, MembresiaFinanciador, Plan
+from apps.financiadores.derechos_borrador import BorradorDerechos
+from apps.financiadores.borradores_derechos import guardar_borradores
 
 if connection.settings_dict["NAME"] != "salud_financiadores_test":
     raise RuntimeError("Sólo base ficticia dedicada.")
@@ -35,6 +38,10 @@ for letra in ("A", "B"):
     for rol, usuario in usuarios.items():
         MembresiaFinanciador.objects.create(financiador=org, usuario=usuario, rol=rol)
     organizaciones.append(org.pk)
+guardar_borradores(usuario=usuarios["admin"], financiador_id=organizaciones[0],
+    propuesta=(BorradorDerechos("simulacion-ficticia", 1, "Fuente ficticia de simulación",
+        organizaciones[0], "dependencia", None, date(2029, 1, 1)),),
+    motivo="Fixture ficticia de consulta", regimen="dependencia", plan_id=None, fecha=date(2030, 1, 8))
 (destino / "manifiesto.json").write_text(json.dumps({"escenario": "borradores-derechos-v1", "organizaciones": organizaciones,
     "usuarios": {rol: user.email for rol, user in usuarios.items()}, "password": password}), encoding="utf-8")
 print("Fixture ficticia preparada; credenciales no mostradas.")
