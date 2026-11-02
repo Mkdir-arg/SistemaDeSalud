@@ -57,6 +57,9 @@ Condiciones y certificados informados al financiador para administrar la afiliac
 Declaración del financiador sobre el estado de pago y la modalidad de cobranza de una afiliación, con fecha y fuente. No constituye una conciliación ni un cálculo de deuda y no modifica por sí sola el derecho a prestaciones.
 _Evitar_: Cuenta corriente calculada, conciliación bancaria.
 
+**Auditoría Médica designada**:
+Usuarios expresamente designados por un financiador para consultar futuras prescripciones clínicas dentro de su alcance. La designación no se infiere de administración, operación, auditoría administrativa ni otros accesos clínicos; no concede historia clínica general.
+
 **Historia clínica del financiador**:
 Evoluciones firmadas de los casos que ingresaron con la cobertura del financiador en hospitales dentro de su alcance, consultadas con un motivo registrado. No incluye alergias, antecedentes, estudios, recetas ni casos de otra cobertura.
 _Evitar_: Historia clínica completa, historia del afiliado.

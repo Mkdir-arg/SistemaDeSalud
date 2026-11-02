@@ -40,6 +40,7 @@ class MembresiaFinanciador(models.Model):
     activo = models.BooleanField(default=True)
     creo_cuenta = models.BooleanField(default=False, editable=False)
     resuelve_autorizaciones = models.BooleanField(default=False)
+    auditoria_medica = models.BooleanField(default=False, db_default=False)
     acceso_padron_salud = models.BooleanField(default=False, db_default=False)
     acceso_padron_cobranza = models.BooleanField(default=False, db_default=False)
 

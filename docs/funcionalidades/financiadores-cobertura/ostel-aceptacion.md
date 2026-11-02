@@ -1344,7 +1344,7 @@ no ejecutadas nuevamente en este corte: `test_cobertura.py`,
 `test_autorizaciones.py` y `test_uso_autorizaciones.py`.
 No se atribuye al árbol actual una prueba histórica de otro commit.
 
-#### Decisión de acceso clínico, todavía no aprobada
+#### Decisión de acceso clínico confirmada, implementación pendiente
 
 La bandeja declara no serializar historia clínica del caso. Sin embargo,
 `SolicitudAutorizacionSerializer` (`api_autorizaciones.py:90–112`) ya devuelve
@@ -1353,26 +1353,26 @@ que exista una filtración ni que ese texto contenga datos clínicos reales;
 tampoco demuestra que ampliar ese campo a prescripciones sea seguro.
 No se accedió a solicitudes o personas reales para este análisis.
 
-Propuesta para decisión humana: **una futura prescripción clínica sólo será
+Decisión confirmada por el usuario («confirmo»): **una futura prescripción clínica sólo será
 visible para usuarios expresamente designados de Auditoría Médica; operación
 y auditoría administrativa verán únicamente su estado administrativo**.
 Ventaja: no concede acceso clínico por pertenecer al financiador. Costo: exige
 un circuito diferenciado para revisión médica. Riesgo residual: aún deben
 acordarse evidencia mínima, correspondencia de capacidades y trazabilidad de
 accesos antes de implementar. La propuesta no modifica permisos ni el campo
-actual, y no se considera aceptada por la autorización general de continuidad.
+actual. La aceptación proviene de esa confirmación específica, no de la autorización general de continuidad.
 
 #### Cortes mínimos condicionados al contrato
 
 1. Validar el catálogo/versionado y correspondencias PMO recibidos; sin equivalencias
    inferidas ni constantes regulatorias inventadas.
-2. Tras decidir el acceso y la evidencia mínima, especificar la prescripción y
+2. Con el acceso confirmado y tras acordar la evidencia mínima, especificar la prescripción y
    sus controles de lectura/corrección usando las capacidades existentes que correspondan.
 3. Acordar usos/vigencias y vínculo con la prestación realizada antes de diseñar
    su relación con liquidaciones. No convertir una autorización en prueba financiera.
 
-Estos son siguientes cortes propuestos, no tareas de negocio aprobadas para
-codificar. La información ya solicitada a OSTEL sigue pendiente; no se vuelve
+El acceso S17 está confirmado. Los restantes contratos son propuestas pendientes,
+no una aprobación de reglas de prescripción o PMO para codificar. La información ya solicitada a OSTEL sigue pendiente; no se vuelve
 a pedir que el usuario la solicite. T2/#143 y T3/#183 conservan sus límites.
 
 Validación de este corte: lectura integral de #147, mapa CodeGraph y un spot check
@@ -1380,3 +1380,72 @@ de serializers/servicio; readback y enlaces/rutas existentes. No cambia código,
 DB, UI, migraciones ni dependencias: RED/GREEN y pruebas funcionales nuevas no
 aplican. Sin CI, despliegue, aceptación médica o conformidad normativa.
 Rollback: retirar esta sección y el registro T6a del seguimiento, sin efectos en datos.
+
+### Designación explícita de Auditoría Médica — T6b (02/11/2026)
+
+La decisión S17 se implementa primero como **configuración de acceso por
+financiador**, sin asignar personas reales ni inventar un registro de prescripción.
+Existe una bandera separada `auditoria_medica`: denegada por defecto, también en
+la base de datos. Ningún rol ni permiso previo se convierte automáticamente en
+esta designación. La migración `0020_membresia_auditoria_medica` conserva los demás datos y asigna `False` al
+campo nuevo; un escritor anterior que lo omite también queda sin designación.
+
+#### Gestión y consulta de capacidad
+
+- POST `/api/financiadores/{id}/usuarios/` acepta `auditoria_medica` opcional,
+  siguiendo las convenciones booleanas existentes. Sólo un administrador activo
+  propio del financiador, sin gobierno de plataforma en la identidad real,
+  puede asignarla o revocarla. Se reutilizan lock de financiador, revalidación
+  sensible y `auditar` en la misma transacción; no se crea otra API de concesiones.
+- Omitir el campo conserva el valor guardado. `false` revoca explícitamente.
+  GET `usuarios` y la respuesta POST agregan la bandera; las peticiones anteriores
+  mantienen sus efectos y el texto anterior de auditoría. Una petición que
+  incluye la bandera agrega su valor al motivo del evento de membresía.
+- El alta del administrador inicial no acepta designaciones adicionales,
+  incluso enviadas en `false`, ni toma una membresía previamente designada.
+  No se admite otorgar Auditoría Médica a una cuenta de plataforma.
+- La API de financiadores agrega `consulta_prescripciones` para el usuario
+  actual: sólo `true` con usuario, financiador y membresía activos y la bandera
+  explícita de ese financiador. Otro ámbito no hereda la designación.
+  Plataforma —también como autor real de una identidad simulada— no obtiene
+  la capacidad. Los identificadores ambiguos se deniegan en el helper.
+- La designación es adicional al rol administrativo de la membresía. Un usuario
+  con rol base `auditor` sólo es Auditoría Médica si fue designado expresamente;
+  ese rol por sí solo no basta. La designación no habilita resolver solicitudes,
+  salud/cobranza del padrón ni historia clínica general.
+
+La administración de este corte está disponible **por API, no por una nueva UI**.
+El helper `requerir_consultar_prescripciones` queda preparado para exigir esta
+capacidad en el futuro lector clínico. **No existe todavía ese endpoint ni
+almacenamiento de contenido:** estas pruebas no demuestran visibilidad de una
+prescripción real, validez médica o PMO. La designación no acredita matrícula ni
+idoneidad; el responsable del financiador debe designar a las personas que correspondan.
+No se alteran el campo `evidencia` ni los permisos de historia clínica existentes.
+
+Pruebas focales: `test_auditoria_medica` sobre PostgreSQL dedicado (6 pruebas,
+1.349 s); incluye migración `0019` → `0020`, conservación de campos, defaultDB para
+escritor anterior, asignación/omisión/revocación/auditoría, no herencia,
+roles/aislamiento/inactividad, bootstrap y plataforma. Regresión con
+`test_padron130` y `test_permisos_plataforma`: 73 pruebas OK en 10.561 s. Resultados
+independientes y límites posteriores en L35 del seguimiento.
+
+Sin cambios de frontend: browser/build no corresponden a este corte backend.
+No se asignan usuarios reales, ni se activan derechos o flujos normativos.
+Rollback: preservar designaciones antes de revertir `0020` (se pierde la columna);
+retirar la capacidad/API/guard de este corte, sin restituir acceso clínico
+implícito ni cambiar los permisos previos de otros propósitos.
+
+Verificación adicional T6b:225 pruebas independientes OK en 57.438 s, chequeo de
+migraciones limpio y 44 observaciones anteriores equivalentes salvo los dos
+campos nuevos declarados. Probes de rollback por fallo de auditoría,
+revocación del administrador durante espera de lock, JWT real de simulación
+plataforma y usuario cacheado desactivado en DB fueron incorporados a regresión.
+Repetición focal: 10 pruebas OK en 3.613 s; suite padre: 77 pruebas OK en 14.565 s.
+
+También pasó un escenario **HTTP real en loopback 8232**, exclusivamente con
+un financiador y dos cuentas totalmente ficticios nuevos: denegado por defecto,
+designación explícita, capacidades anteriores sin cambios, autodesignación
+rechazada y revocación comprobada. La bandera de la cuenta ficticia quedó `False`.
+Se aplicó `0020` sólo a la base local descartable autorizada; sin usuarios reales.
+Fixture externa retenida `ostel-auditoria-http-u_1qlquo`, sin tokens en documentación.
+No es un recorrido UI ni una prueba de lectura de contenido clínico.

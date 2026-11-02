@@ -59,6 +59,25 @@ def puede_resolver_autorizaciones(usuario, financiador_id):
     ).exists())
 
 
+def puede_consultar_prescripciones(usuario, financiador_id):
+    """Designación clínica propia; ningún rol administrativo la sustituye."""
+    if (type(financiador_id) is not int or financiador_id <= 0
+            or not usuario.is_authenticated or not usuario.is_active):
+        return False
+    real = autor_real(usuario)
+    if plataforma(usuario) or (real != usuario and plataforma(real)):
+        return False
+    return MembresiaFinanciador.objects.filter(
+        usuario=usuario, usuario__is_active=True, financiador_id=financiador_id,
+        financiador__activo=True, activo=True, auditoria_medica=True,
+    ).exists()
+
+
+def requerir_consultar_prescripciones(usuario, financiador_id):
+    if not puede_consultar_prescripciones(usuario, financiador_id):
+        raise PermissionDenied("Se requiere designación de Auditoría Médica de este financiador.")
+
+
 def puede_padron_protegido(usuario, financiador_id, bloque, escritura=False):
     """Designación propia; plataforma y autorizaciones no conceden este acceso."""
     if bloque not in ("salud", "cobranza") or not usuario.is_authenticated or not usuario.is_active:
