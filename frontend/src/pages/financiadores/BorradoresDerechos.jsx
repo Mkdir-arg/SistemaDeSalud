@@ -45,10 +45,10 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
     } finally { enviando.current = false; setGuardando(false); }
   }
   const falloConsulta = consulta.error || planes.error;
-  return <section className="space-y-5" aria-label="Borradores de derechos">
+  return <section className="space-y-5" aria-label="Reglas de derechos">
     <header className="space-y-2">
-      <h1 className="text-cifra font-bold">Borradores de derechos</h1>
-      <p className="text-sm text-texto-suave">Versiones administrativas para validación posterior. Se conservan las anteriores sin sobrescribirlas.</p>
+      <h1 className="text-cifra font-bold">Reglas de derechos</h1>
+      <p className="text-sm text-texto-suave">Versiones de configuración en estado Borrador. La evaluación y activación de reglas aún no están disponibles.</p>
       <p className="rounded-md border border-borde bg-badge-amber-bg p-3 text-sm text-badge-amber-fg">Guardar una versión no aprueba ni activa derechos.</p>
     </header>
     {mensaje && <p role="status" className="text-sm text-badge-green-fg">{mensaje}</p>}
@@ -64,7 +64,7 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
       <Card className="min-w-0 p-4">
         {consulta.isFetching ? <Spinner label="Consultando versiones…" /> : consulta.isError ? <p>No se pudo consultar el historial.</p> : historial.length ? <ol aria-label="Versiones guardadas" className="divide-y divide-division">
           {historial.map((fila) => <li className="space-y-2 py-4 first:pt-0" key={`${fila.regimen}:${fila.plan_id}:${fila.codigo}:${fila.version}`}>
-            <div className="flex flex-wrap items-center gap-2"><h3 className="break-all font-semibold">{fila.codigo} · v{fila.version}</h3><Badge>No operativo</Badge></div>
+            <div className="flex flex-wrap items-center gap-2"><h3 className="break-all font-semibold">{fila.codigo} · v{fila.version}</h3><Badge>Borrador</Badge></div>
             <p className="text-sm">{REGIMENES[fila.regimen] || fila.regimen} · {fila.plan_id == null ? "Todos los planes" : planes.data?.find((p) => p.id === fila.plan_id)?.nombre || `Plan ${fila.plan_id}`}</p>
             <dl className="space-y-1 break-words text-sm text-texto-suave"><div><dt className="inline font-medium">Intervalo técnico: </dt><dd className="inline">{fila.desde} → {fila.hasta || "Sin fin informado"} {fila.hasta ? "(fin exclusivo)" : ""}</dd></div><div><dt className="inline font-medium">Fuente informada: </dt><dd className="inline">{fila.fuente}</dd></div></dl>
           </li>)}

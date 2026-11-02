@@ -4,7 +4,7 @@ export const ROLES = { admin: "Administración", operador: "Operación", auditor
 export const SECCIONES = [
   { key: "inicio", label: "Inicio", icon: "home" },
   { key: "planes", label: "Planes", icon: "layers" },
-  { key: "borradores", label: "Borradores de derechos", icon: "fileText" },
+  { key: "borradores", label: "Reglas de derechos", icon: "fileText" },
   { key: "reglas", label: "Reglas de cobertura", icon: "clipboard" },
   { key: "aranceles", label: "Aranceles", icon: "list" },
   { key: "padron", label: "Padrón de afiliados", icon: "idCard" },

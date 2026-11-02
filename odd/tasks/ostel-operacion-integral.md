@@ -21,6 +21,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 - S14 — Parametrización aprobada: «ya fue solicitado esa informacion a ostel. apruebo tu propuesta para parametrizacion. avanza con lo que puedas sin la respuesta de ostel». Autoriza base controlada/versionada y previsualización no operativa, no valores normativos ni activación de derechos.
 
+- S15 — Nombre y funcionalidad: «me gusta tu propuesta. debe demostrar seguridad al desarrollo, debe estar hecho para funcionar». Aprueba «Reglas de derechos» como módulo y «Borrador» como estado; conservar límites entre base implementada y motor operativo pendiente, sin inventar normativa ni activar derechos.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
@@ -33,6 +35,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T2c | S5,S8,S14 | Persistir propuestas de borradores con autoría y auditoría, sin activación | Inline; verificador independiente por ítems 1/2/4 | Verificado local/independiente en `85214f4`; nativa high pendiente por preflight no ejecutable, sin START (L24) |
 | T2d | S5,S14 | API administrativa de consulta/guardado de borradores, sin activar | Inline; verificador independiente por ítem 2 | Verificado local/independiente en `ecd5f90`; revisión nativa pendiente por continuación incompleta (L25) |
 | T2e | S5,S12,S14 | UI administrativa de versiones no operativas | Inline tras mapa; verificador independiente por ítem 4 | Verificado local/independiente en `ff3b803`; navegador visible ficticio; nativa pendiente por continuación incompleta (L26) |
+| T2f | S5,S14,S15 | Nombre del módulo y estado Borrador sin prometer un motor terminado | Inline, Risk: none (texto solicitado, sin lógica compartida modificada) | Verificado local; baseline `1a3ec31`; RED→GREEN, ocho recorridos reales y build OK; commit/evaluación pendientes |
 | T3 | S2,S4,S5 | #183: novedades bajo contrato de T2 | Inline | Dependiente de T2 |
 | T4 | S2,S4,S5 | #185: verificar cada incremento e integración | Inline; suites largas delegadas cuando corresponda | 22 pruebas puras base aprobadas; integración y aceptación pendientes |
 | T5 | S2,S4,S5 | #184: QA de entrega existente con familias/novedades | Inline | PR196 incorporado; In QA; no reconstruir |
@@ -356,3 +359,13 @@ autorizo
 
 - T2e commit `ff3b803ef942972af6acf40a0b0d807ed06a18ef`: 353 adiciones + 1 eliminación, ocho archivos; corte cohesivo bajo 400 líneas, cadena elegida conservada. Evaluación aislada base `845d06d`: high por ítem 4 explícito, review_due=true. Preflight exacto con lentes pertinentes rechazó por selección de no versionados; repetición exacta sin lentes devuelve collect de `.atl/` con submission que vuelve a perder selectores base-ref/committed-only, sin captura ejecutable disponible. Target `sha256:dce32c5c055e25ab2befc0a05de62ae925ea2e38801b61081cc78b3fa3c274ea`; no START/linaje/consent v3 ni revisión aprobada.
 - No trasladar omisión T2d a esta UI ni fabricar captura/decline/recuperación; no nuevo reporte ni toggle global. T2e funcionalmente verificado y demostrado local, revisión nativa pendiente: requiere decisión explícita de dejar este corte sin revisar o recuperación publicada/documentada. Sin publicación, CI, despliegue ni aceptación humana. Archivo completo local, espejo actualizado aún pendiente por capacidad del proveedor; observación #669 conserva reanudación.
+
+### L27 — Nombre aprobado y objetivo funcional (02/11/2026)
+
+me gusta tu propuesta. debe demostrar seguridad al desarrollo, debe estar hecho para funcionar
+
+- Previa autorización «autorizo» deja sólo T2e sin revisión nativa; registrada en #669, no aprobación ni cambio global. Usuario preguntó por el nombre; código verificado: los registros actuales son descriptores versionados, no motor de gracia/mora/bajas. La nueva aprobación permite ajustar nombre/estado visibles, no activar políticas desconocidas.
+- T2f inline: menú/título «Reglas de derechos», estado explícito «Borrador» por versión y explicación de que aún no decide derechos. Conservar rutas/API/modelos por compatibilidad, servicios y controles sin cambios. Pruebas HTTP/browser previas se conservan; RED→GREEN del nombre/estado, repetir recorrido real desktop/móvil/teclado. Sin nueva dependencia ni entorno. Risk: none; no lógica compartida nueva, únicamente denominaciones solicitadas.
+- Criterio de avance del módulo existente: configuración controlada completa (hoy sólo metadatos), evaluación determinista con ejemplos/límites acordados, aprobación/activación autorizadas, auditoría e historia, verificación integrada de efectos y rechazos. Son garantías ya aprobadas en S14, no se declara el motor terminado por estos cambios visuales. La política ya fue solicitada a OSTEL; no pedirla otra vez ni inventar valores.
+
+- RED real: encabezado «Reglas de derechos» ausente. GREEN: nombre en menú/título y estado Borrador verificados en los ocho recorridos reales (10.7 s), incluidos guardar/historia, desktop/móvil/teclado y pruebas de solicitudes previas sin cambiar lógica. Build OK (4.98 s) en temporal externo `ostel-nombre-build-a_lsliun`, sin eliminar contenido previo ni dependencias. diff --check OK. Ruta/contrato/guards/estado asíncrono no modificados; no verificador adicional porque no se toca ningún ítem de alto riesgo.

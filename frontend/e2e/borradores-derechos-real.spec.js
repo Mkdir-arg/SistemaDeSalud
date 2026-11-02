@@ -13,7 +13,7 @@ async function abrir(page, rol = "admin") {
 
 test("administración consulta borradores sin activar derechos", async ({ page }) => {
   await abrir(page);
-  await expect(page.getByRole("heading", { name: "Borradores de derechos", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reglas de derechos", exact: true })).toBeVisible();
   await expect(page.getByText("Guardar una versión no aprueba ni activa derechos.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Guardar borrador", exact: true })).toBeVisible();
 });
@@ -35,13 +35,14 @@ async function guardar(page, codigo) {
   await page.getByRole("button", { name: "Guardar borrador", exact: true }).click();
   expect((await respuesta).status()).toBe(200);
   await expect(page.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `${codigo} · v1`, exact: true }).locator("..").getByText("Borrador", { exact: true })).toBeVisible();
   await expect(page.getByText("Borrador guardado. Los derechos no cambiaron.", { exact: true })).toBeVisible();
 }
 
 test("guarda versión real, conserva historial y navega desde el menú", async ({ page }) => {
   await abrir(page);
   await page.getByRole("link", { name: "Planes", exact: true }).click();
-  await page.getByRole("link", { name: "Borradores de derechos", exact: true }).click();
+  await page.getByRole("link", { name: "Reglas de derechos", exact: true }).click();
   const codigo = `ficticio-desktop-${Date.now()}`;
   await guardar(page, codigo);
   await page.reload();

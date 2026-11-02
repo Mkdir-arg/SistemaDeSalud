@@ -1076,3 +1076,27 @@ Rollback: retirar sección/import/rama del portal, componente y spec/config/fixt
 nuevos; conservar API T2d y versiones/auditoría existentes. T2d quedó sin revisión
 nativa por autorización específica; no extiende la decisión a esta UI. Navegador
 visible demuestra una fixture, no aceptación de negocio ni despliegue.
+
+
+### Nombre del módulo y objetivo operativo — T2f (02/11/2026)
+
+El nombre visible aprobado es **Reglas de derechos**; **Borrador** es el estado
+de las versiones actuales, no del derecho de una persona. Se conservan la ruta
+`/financiadores/borradores`, el endpoint `borradores-derechos` y los nombres
+técnicos para no romper contratos; este cambio sólo modifica la presentación.
+Todos los registros del modelo BorradorReglaDerechos son borradores por diseño;
+no se agrega un selector que permita declararlos aprobados/vigentes desde la UI.
+
+La base funciona para registrar/consultar versiones con ámbito, fechas, fuente,
+autor y auditoría. **No es todavía el motor de decisión de derechos.** Faltan la
+configuración de condiciones/acciones controladas, su evaluación determinista,
+la aprobación/activación autorizadas y los casos de negocio validados por OSTEL.
+Las garantías ya acordadas de aislamiento, historia y auditoría no se desactivan
+como parámetros. No se declara el módulo terminado por guardar metadatos.
+
+Para declarar una regla operativa, deberá haber ejemplos acordados antes/en/
+después de sus límites, prueba de efectos autorizados y de rechazo sin efectos,
+trazabilidad de versión/fuente, aprobación explícita y verificación integrada.
+Un cambio de nombre o pruebas verdes de esta base no sustituyen esos requisitos.
+El material normativo ya fue solicitado; este cambio no inventa valores ni activa
+bajas, gracia o mora. La aceptación de negocio sigue separada de la validación técnica.
