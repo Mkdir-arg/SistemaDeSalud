@@ -937,3 +937,33 @@ python -B -m unittest backend.apps.financiadores.tests_derechos_borrador backend
 Rollback de T2a: retirar el módulo nuevo, su prueba y esta sección; los motores
 y datos anteriores no dependen de ellos. Pruebas locales no acreditan CI,
 despliegue ni aceptación de las reglas por OSTEL.
+
+
+### Comparación de propuestas conservando historia — T2b (02/11/2026)
+
+`comparar_borradores` en `propuesta_derechos.py` recibe el historial y la
+propuesta completa en memoria, junto al contexto de consulta de T2a. Devuelve
+las versiones nuevas y las coincidencias antes/después, sin aprobar ni escribir.
+
+- Cada clave `(financiador, régimen, plan, código, versión)` debe ser única.
+- La propuesta debe conservar todas las versiones previas con datos idénticos.
+  Cambiar fuente, fechas o ámbito exige una nueva versión, nunca sobrescribir.
+- Una versión nueva debe superar el máximo anterior de su ámbito/código;
+  no se exige consecutividad. Este contador no afirma vigencia normativa.
+- Todas las entradas deben corresponder al financiador explícito. Se valida
+  consistencia de entradas, no sesión, permisos ni pertenencia real del plan.
+- Superposiciones siguen visibles como conflicto; no se recorta una versión
+  abierta ni se elige una ganadora. La misma propuesta es determinista sin
+  importar el orden de sus entradas. Una propuesta idéntica no añade versiones.
+
+La comprobación protege sólo las dos instantáneas suministradas: el llamador
+podría omitir historia en ambas y la función no tiene cómo detectarlo. No
+sustituye historial persistido, auditoría, bloqueo de concurrencia, firma de
+aprobación ni vista de impacto sobre personas. No hay parámetros de plazos,
+causales o acciones médicas, ni cambios de derechos. Una futura activación
+requiere el contrato pendiente y controles operativos, no sólo esta validación.
+
+Runner puro adicional: `python -B -m unittest backend.apps.financiadores.tests_propuesta_derechos -v`.
+Regresión: ejecutar también `tests_derechos_borrador` y `tests_ostel_scenarios`.
+Rollback: retirar `propuesta_derechos.py`, `tests_propuesta_derechos.py` y esta
+sección; T2a y los motores anteriores permanecen intactos.
