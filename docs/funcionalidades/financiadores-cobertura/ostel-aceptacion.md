@@ -1414,7 +1414,8 @@ campo nuevo; un escritor anterior que lo omite también queda sin designación.
   ese rol por sí solo no basta. La designación no habilita resolver solicitudes,
   salud/cobranza del padrón ni historia clínica general.
 
-La administración de este corte está disponible **por API, no por una nueva UI**.
+La administración T6b se entregó primero por API; T6c incorpora la gestión visual
+descrita a continuación, sin cambiar el contrato de acceso.
 El helper `requerir_consultar_prescripciones` queda preparado para exigir esta
 capacidad en el futuro lector clínico. **No existe todavía ese endpoint ni
 almacenamiento de contenido:** estas pruebas no demuestran visibilidad de una
@@ -1449,3 +1450,41 @@ rechazada y revocación comprobada. La bandera de la cuenta ficticia quedó `Fal
 Se aplicó `0020` sólo a la base local descartable autorizada; sin usuarios reales.
 Fixture externa retenida `ostel-auditoria-http-u_1qlquo`, sin tokens en documentación.
 No es un recorrido UI ni una prueba de lectura de contenido clínico.
+
+### Gestión visual de la designación — T6c (02/11/2026)
+
+En **Usuarios**, la administración real del financiador puede marcar o quitar
+**Designar para Auditoría Médica de este financiador** al invitar una persona
+o cambiar su acceso. La lista muestra la designación persistida. El rol base,
+resolver autorizaciones y los bloques de padrón siguen siendo independientes.
+El texto de ayuda distingue configurar acceso de consultar prescripciones:
+este corte no almacena ni muestra contenido clínico.
+
+Se reutilizan el formulario, POSTusuarios, errores, bloqueo de envío y consultas
+por usuario/financiador existentes. Sin capacidad sensible explícita, el control
+no se construye y el cuerpo no envía auditoria_medica; el alta inicial de
+administrador permanece sin designaciones sensibles. El backend continúa siendo
+la autoridad de permisos. Cancelar o cambiar organización no guarda el borrador.
+
+Verificación: frontera real navegador→API→persistencia con fixture exclusiva
+@example.invalid en PostgreSQL descartable y loopback. RED observado por control
+ausente; GREEN escritorio/móvil: alta false, concesión por teclado, recarga,
+cambio de rol sin perder designación, revocación y recarga. Auditoría administrativa
+no accede a Usuarios; cancelación/cambio de organización no trasladan valores.
+Un primer negativo esperaba incorrectamente Usuarios para auditor; la navegación
+existente lo redirige a Inicio y se corrigió sólo esa expectativa del test.
+Runner: SALUD_BORRADORES_MANIFEST=<fixture ficticia externa> node
+node_modules/@playwright/test/cli.js test --config playwright.auditoria-medica-real.config.js
+(desde frontend). No prueba contenido clínico, CI, despliegue ni aceptación humana.
+Verificación independiente Sol/medium: cuatro recorridos reales OK, build del
+candidato en scratch OK y dos probes negativos de UI OK. Diferencial contra
+8e87731: ocho escenarios de alta/edición con capacidad falsa/verdadera conservaron
+payloads, controles anteriores y errores, excepto el campo aditivo declarado.
+Capacidad falsa/403 son inyecciones de UI, no pruebas reales de plataforma o bootstrap.
+Probes incorporados a regresión: seis recorridos finales OK (12.5 s).
+Capturas desktop/móvil inspeccionadas; demostración visible en Usuarios local
+con cuentas ficticias, sin guardar una nueva designación. No equivale a aceptación.
+Scratch externo ostel_t6c_verify_lbqlnvjc retenido. Puerto5192 ocupado preservado;
+baseline propio5198 detenido con0listeners. API8232/frontend5189 conservados.
+Rollback: retirar control, indicador y pruebas T6c; conservar API y designaciones T6b.
+Risk: item2 (gestión de una designación sensible).
