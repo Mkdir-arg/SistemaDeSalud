@@ -967,3 +967,39 @@ Runner puro adicional: `python -B -m unittest backend.apps.financiadores.tests_p
 Regresión: ejecutar también `tests_derechos_borrador` y `tests_ostel_scenarios`.
 Rollback: retirar `propuesta_derechos.py`, `tests_propuesta_derechos.py` y esta
 sección; T2a y los motores anteriores permanecen intactos.
+
+
+### Persistencia de borradores, sin activación — T2c (02/11/2026)
+
+`borradores_derechos.guardar_borradores` conserva una propuesta completa mediante
+`BorradorReglaDerechos` (migración aditiva 0018), con autor, fecha y motivo por
+versión. Reutiliza el comparador puro, el guard de financiador y `auditar`.
+`consultar_borradores` devuelve los descriptores persistidos del financiador.
+No existe endpoint, pantalla, registro admin ni conexión con el motor de derechos.
+
+La escritura requiere admin del financiador bajo el guard de configuración
+existente; operador/auditor sólo consultan con membresía habilitada. No se crea
+una concesión ni se modifica el helper de permisos. Se revalida el guard después
+de tomar el lock del financiador. Planes existentes y del mismo financiador se
+bloquean por PK; el régimen reutiliza el catálogo de Afiliado. Un plan inactivo
+puede ser referenciado como borrador: no se habilita ninguna prestación por eso.
+
+La transacción recarga historia real, rechaza omisiones/reescrituras, valida la
+propuesta e inserta sólo versiones nuevas, cada una con evento de auditoría.
+Fallo de auditoría revierte todas las inserciones de esa propuesta. Reintento
+idéntico no duplica filas/eventos; propuestas concurrentes contradictorias no
+pueden reemplazar la versión ganadora. El lock por financiador simplifica el
+orden a cambio de serializar propuestas distintas del mismo financiador.
+
+El servicio no ofrece edición ni borrado. Las constraints cubren identidad de
+versión (incluso plan nulo), contador positivo e intervalo válido; no constituyen
+un almacenamiento inmutable contra SQL u ORM privilegiados. No hay backfill ni
+cambio de estado de afiliados. El motivo no debe contener identificadores
+personales, secretos ni datos clínicos. Fuente informada no acredita norma vigente.
+
+Pruebas seriales sólo en PostgreSQL descartable autorizado y con settings
+`config.settings_financiadores_postgres_test`: `apps.financiadores.test_borradores_derechos`,
+con regresiones `test_cobertura` y `test_habilitacion_cobertura`. Sin datos reales.
+No se acredita aceptación normativa, CI, despliegue ni activación mediante tests.
+Antes de activar faltan reglas/ejemplos aprobados, impacto real y aprobación
+explícita; este almacenamiento no sustituye esos pasos ni los vuelve opcionales.

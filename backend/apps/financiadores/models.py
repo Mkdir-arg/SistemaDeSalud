@@ -588,3 +588,30 @@ class UsoAutorizacion(models.Model):
 
     class Meta:
         constraints = [models.CheckConstraint(condition=Q(cantidad__gt=0), name="fin_uso_autorizacion_positivo")]
+
+
+class BorradorReglaDerechos(models.Model):
+    """Versión administrativa no operativa; sólo se agrega mediante su servicio."""
+    financiador = models.ForeignKey(Financiador, on_delete=models.PROTECT)
+    plan = models.ForeignKey(Plan, null=True, blank=True, on_delete=models.PROTECT)
+    regimen = models.CharField(max_length=12, choices=Afiliado._meta.get_field("regimen").choices)
+    codigo = models.CharField(max_length=60)
+    version = models.PositiveIntegerField()
+    fuente = models.CharField(max_length=255)
+    desde = models.DateField()
+    hasta = models.DateField(null=True, blank=True)
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
+    motivo = models.CharField(max_length=255)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["regimen", "plan_id", "codigo", "version"]
+        constraints = [
+            models.UniqueConstraint(fields=["financiador", "regimen", "plan", "codigo", "version"],
+                                    condition=Q(plan__isnull=False), name="fin_borrador_plan_version"),
+            models.UniqueConstraint(fields=["financiador", "regimen", "codigo", "version"],
+                                    condition=Q(plan__isnull=True), name="fin_borrador_general_version"),
+            models.CheckConstraint(condition=Q(version__gt=0), name="fin_borrador_version_positiva"),
+            models.CheckConstraint(condition=Q(hasta__isnull=True) | Q(hasta__gt=models.F("desde")),
+                                   name="fin_borrador_intervalo"),
+        ]
