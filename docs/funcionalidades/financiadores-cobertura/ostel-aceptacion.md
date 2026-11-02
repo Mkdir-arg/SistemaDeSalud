@@ -1003,3 +1003,39 @@ con regresiones `test_cobertura` y `test_habilitacion_cobertura`. Sin datos real
 No se acredita aceptación normativa, CI, despliegue ni activación mediante tests.
 Antes de activar faltan reglas/ejemplos aprobados, impacto real y aprobación
 explícita; este almacenamiento no sustituye esos pasos ni los vuelve opcionales.
+
+
+### API administrativa de borradores — T2d (02/11/2026)
+
+`/api/financiadores/{id}/borradores-derechos/` expone sólo GET y POST:
+GET consulta descriptores completos del financiador; POST guarda una propuesta
+completa mediante el servicio T2c, sin aprobar ni activar derechos. La URL fija
+el financiador; no se acepta un financiador embebido ni campos arbitrarios.
+Admin configura borradores; operador/auditor consultan según guard existente.
+Sin sesión: 401; sin membresía visible: 404; escritura no autorizada: 403.
+
+POST requiere `propuesta`, `motivo`, `regimen`, `plan_id` (entero o null), `fecha`.
+Cada descriptor contiene `codigo`, `version`, `fuente`, `regimen`, `plan_id`,
+`desde`, `hasta` (opcional/null). Fechas ISO `YYYY-MM-DD`; fuente explícita,
+versión positiva y catálogo de régimen actual. No se admiten `activar`,
+`aprobado`, expresiones, parámetros libres ni campos desconocidos, incluso
+anidados. Un plan debe existir y pertenecer al financiador de la URL.
+
+Respuesta 200: `nuevas`, `antes` y `despues`; cada vista tiene `coincidencias`
+y `conflicto`. GET devuelve `{"borradores": [...]}` sin paginar porque el
+comparador requiere la historia completa, no una página parcial. Un reintento
+idéntico devuelve `nuevas=[]` sin duplicar auditoría. Historia incompleta,
+reescritura o entradas inválidas: 400 sin cambios; consultar nuevamente antes
+de reconstruir/reintentar la propuesta. No hay actualización/borrado por ID.
+
+Antes/después es una consulta técnica de borradores **tras guardar**, no una
+aprobación, previsualización de impacto en personas ni activación. No se persiste
+una política médica nueva por introducir un descriptor. La auditoría de cada
+versión sigue en EventoCobertura; esta ruta no expone un nuevo visor de eventos.
+APIClient ejerce rutas HTTP reales con PostgreSQL ficticio, no navegador ni UI.
+OpenAPI identifica los serializers de entrada/salida y ambos métodos.
+
+Runner: `apps.financiadores.test_borradores_api` con settings PostgreSQL de L24;
+regresiones de servicios/integridad/cobertura. Rollback: retirar `borradores_api`,
+su mixin/import de FinanciadorViewSet, tests y esta sección, conservando T2c.
+T2c quedó sin revisión nativa por «autorizo»; esa decisión no alcanza a T2d.

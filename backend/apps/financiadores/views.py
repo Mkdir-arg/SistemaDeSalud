@@ -39,6 +39,7 @@ from .acceso import auditar_actividad
 from .autorizaciones import solicitudes_visibles_financiador
 from .facturas import almacenamiento_privado, validar_adjunto
 from .padron_api import PadronMixin
+from .borradores_api import BorradoresDerechosMixin
 from .padron_consulta import consultar_padron
 from .padron_exportacion import exportar_padron, parametros_padron
 
@@ -116,7 +117,7 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
     plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
-class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
+class FinanciadorViewSet(BorradoresDerechosMixin, PadronMixin, CoberturaBaseViewSet):
     serializer_class = s.FinanciadorSerializer
 
     @extend_schema(methods=["GET"], responses=s.CatalogoSerializer(many=True))
