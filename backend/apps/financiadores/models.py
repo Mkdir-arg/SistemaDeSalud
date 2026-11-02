@@ -2,6 +2,8 @@
 import uuid
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator
+from .derechos_borrador import MAX_DIAS_CORRIDOS
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_delete
@@ -600,6 +602,7 @@ class BorradorReglaDerechos(models.Model):
     fuente = models.CharField(max_length=255)
     desde = models.DateField()
     hasta = models.DateField(null=True, blank=True)
+    plazo_dias_corridos = models.PositiveIntegerField(null=True, blank=True, validators=[MaxValueValidator(MAX_DIAS_CORRIDOS)])
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
     motivo = models.CharField(max_length=255)
     creado = models.DateTimeField(auto_now_add=True)
@@ -607,6 +610,8 @@ class BorradorReglaDerechos(models.Model):
     class Meta:
         ordering = ["regimen", "plan_id", "codigo", "version"]
         constraints = [
+            models.CheckConstraint(condition=Q(plazo_dias_corridos__isnull=True) | Q(plazo_dias_corridos__gte=0, plazo_dias_corridos__lte=MAX_DIAS_CORRIDOS),
+                                   name="fin_borrador_plazo_rango"),
             models.UniqueConstraint(fields=["financiador", "regimen", "plan", "codigo", "version"],
                                     condition=Q(plan__isnull=False), name="fin_borrador_plan_version"),
             models.UniqueConstraint(fields=["financiador", "regimen", "codigo", "version"],

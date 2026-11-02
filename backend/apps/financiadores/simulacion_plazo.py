@@ -1,7 +1,7 @@
 """Simulación temporal explicable; nunca decide ni modifica derechos."""
 from dataclasses import dataclass
 from datetime import date, timedelta
-from .derechos_borrador import BorradorDerechos, previsualizar_borradores
+from .derechos_borrador import BorradorDerechos, previsualizar_borradores, MAX_DIAS_CORRIDOS
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class SimulacionPlazo:
 def simular_plazo(regla, *, dias_corridos, financiador_id, regimen, plan_id, fecha,
                   referencia=None, evidencia=None):
     """Calcula referencia + días, sin elegir qué ocurre antes/en/después."""
-    if type(dias_corridos) is not int or not 0 <= dias_corridos <= (date.max - date.min).days:
+    if type(dias_corridos) is not int or not 0 <= dias_corridos <= MAX_DIAS_CORRIDOS:
         raise ValueError("El plazo requiere días corridos enteros no negativos dentro del rango de fechas.")
     if referencia is not None and type(referencia) is not date:
         raise ValueError("La referencia requiere una fecha sin hora o None.")

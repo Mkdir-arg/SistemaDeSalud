@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import date
 
 
+MAX_DIAS_CORRIDOS = (date.max - date.min).days
+
 def _entero_positivo(valor):
     return type(valor) is int and valor > 0
 
@@ -21,8 +23,11 @@ class BorradorDerechos:
     plan_id: int | None
     desde: date
     hasta: date | None = None
+    plazo_dias_corridos: int | None = None
 
     def __post_init__(self):
+        if self.plazo_dias_corridos is not None and (type(self.plazo_dias_corridos) is not int or not 0 <= self.plazo_dias_corridos <= MAX_DIAS_CORRIDOS):
+            raise ValueError("El plazo opcional requiere días corridos enteros no negativos dentro del rango de fechas.")
         if not all(_texto(v) for v in (self.codigo, self.fuente, self.regimen)):
             raise ValueError("Código, fuente y régimen requieren texto no vacío sin espacios externos.")
         if not _entero_positivo(self.version) or not _entero_positivo(self.financiador_id):

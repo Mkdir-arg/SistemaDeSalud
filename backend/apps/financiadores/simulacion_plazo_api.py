@@ -1,5 +1,5 @@
 """Simulación de consulta: recupera la versión persistida, sin escribir."""
-from datetime import date
+from .derechos_borrador import MAX_DIAS_CORRIDOS
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -19,7 +19,7 @@ class IdentidadReglaSerializer(EntradaControlada):
 
 class EntradaSimulacionPlazoSerializer(EntradaControlada):
     regla = IdentidadReglaSerializer()
-    dias_corridos = serializers.IntegerField(min_value=0, max_value=(date.max - date.min).days)
+    dias_corridos = serializers.IntegerField(min_value=0, max_value=MAX_DIAS_CORRIDOS, required=False)
     fecha = serializers.DateField()
     referencia = serializers.DateField(allow_null=True, required=False, default=None)
     evidencia = serializers.CharField(max_length=255, allow_null=True, required=False, default=None, trim_whitespace=False)
@@ -37,6 +37,7 @@ class SalidaSimulacionPlazoSerializer(serializers.Serializer):
     estado = serializers.ChoiceField(choices=["calculado", "requiere_evidencia", "sin_coincidencia"])
     limite = serializers.DateField(allow_null=True)
     relacion = serializers.ChoiceField(choices=["antes", "en", "despues"], allow_null=True)
+    origen_plazo = serializers.ChoiceField(choices=["configurado", "simulado"], read_only=True)
 
 
 class SimulacionPlazoMixin:
@@ -53,9 +54,16 @@ class SimulacionPlazoMixin:
         if len(versiones) != 1:
             raise serializers.ValidationError("La versión no está disponible en este financiador. Consultá nuevamente.")
         regla = versiones[0]
+        usa_configurado = "dias_corridos" not in datos
+        if usa_configurado:
+            if regla.plazo_dias_corridos is None:
+                raise serializers.ValidationError("La versión no tiene plazo configurado. Indicá días corridos para una simulación alternativa.")
+            datos["dias_corridos"] = regla.plazo_dias_corridos
         try:
             resultado = simular_plazo(regla, financiador_id=org.pk, regimen=regla.regimen,
                                        plan_id=regla.plan_id, **datos)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
-        return Response(SalidaSimulacionPlazoSerializer(resultado).data)
+        salida = SalidaSimulacionPlazoSerializer(resultado).data
+        salida["origen_plazo"] = "configurado" if usa_configurado else "simulado"
+        return Response(salida)

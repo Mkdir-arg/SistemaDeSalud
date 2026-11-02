@@ -9,7 +9,7 @@ from .permisos import requerir_financiador
 from .services import auditar
 
 
-CAMPOS = ("codigo", "version", "fuente", "financiador_id", "regimen", "plan_id", "desde", "hasta")
+CAMPOS = ("codigo", "version", "fuente", "financiador_id", "regimen", "plan_id", "desde", "hasta", "plazo_dias_corridos")
 
 
 def _descriptores(financiador_id):

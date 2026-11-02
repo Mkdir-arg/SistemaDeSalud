@@ -84,6 +84,15 @@ class PropuestaTests(unittest.TestCase):
         self.assertEqual(vacia.antes.coincidencias, ())
         self.assertFalse(vacia.despues.conflicto)
 
+    def test_plazo_es_parte_de_la_version_inmutable(self):
+        anterior = self.borrador()
+        with self.assertRaises(ValueError):
+            self.comparar((anterior,), (replace(anterior, plazo_dias_corridos=7),))
+        nueva = self.borrador(2, plazo_dias_corridos=7)
+        self.assertEqual(self.comparar((anterior,), (anterior, nueva)).nuevas, (nueva,))
+        with self.assertRaises(ValueError):
+            self.comparar((nueva,), (replace(nueva, plazo_dias_corridos=9),))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -250,3 +250,98 @@ test("403 de simulación no conserva un cálculo positivo anterior", async ({ pa
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Simular plazo", exact: true }).first()).toBeFocused();
 });
+
+
+for (const dias of [7, 0]) {
+  test(`plazo configurado se guarda en versión y alternativa no lo sobrescribe (${dias})`, async ({ page }) => {
+    if (dias === 0) await page.setViewportSize({ width: 390, height: 844 });
+    await abrir(page);
+    const codigo = `ficticio-configurado-${Date.now()}`;
+    await completar(page, codigo);
+    await page.getByLabel("Plazo en días corridos (opcional)", { exact: true }).fill(String(dias));
+    await page.getByRole("button", { name: "Guardar borrador", exact: true }).click();
+    const fila = page.getByRole("heading", { name: `${codigo} · v1`, exact: true }).locator("..");
+    await expect(fila).toBeVisible();
+    await page.reload();
+    await fila.getByRole("button", { name: "Simular plazo", exact: true }).click();
+    const dialogo = page.getByRole("dialog", { name: "Simular plazo", exact: true });
+    const usarConfigurado = dialogo.getByRole("checkbox", { name: /Usar plazo configurado/ });
+    await expect(usarConfigurado).toBeChecked();
+    await expect(dialogo.getByLabel("Días corridos", { exact: true })).toBeDisabled();
+    await dialogo.getByLabel("Fecha de evaluación", { exact: true }).fill("2030-01-08");
+    await dialogo.getByLabel("Fecha de referencia (opcional)", { exact: true }).fill("2030-01-01");
+    await dialogo.getByLabel("Referencia de evidencia (opcional)", { exact: true }).fill("REF-FICTICIA");
+    await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+    await expect(dialogo.getByText(`Límite calculado: ${dias === 0 ? "2030-01-01" : "2030-01-08"}`, { exact: true })).toBeVisible();
+    await expect(dialogo.getByText("Origen del plazo: configuración guardada.", { exact: true })).toBeVisible();
+    await usarConfigurado.focus(); await page.keyboard.press("Space");
+    await expect(usarConfigurado).not.toBeChecked();
+    await expect(dialogo.getByRole("status")).toHaveCount(0);
+    await dialogo.getByLabel("Días corridos", { exact: true }).fill("9");
+    await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+    await expect(dialogo.getByText("Límite calculado: 2030-01-10", { exact: true })).toBeVisible();
+    await expect(dialogo.getByText("Origen del plazo: alternativa simulada; la versión no cambia.", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.reload(); await fila.getByRole("button", { name: "Simular plazo", exact: true }).click();
+    await expect(usarConfigurado).toBeChecked();
+    await expect(dialogo.getByLabel("Días corridos", { exact: true })).toHaveValue(String(dias));
+  });
+}
+
+test("cierre pendiente y cambio de origen no conservan resultado anterior", async ({ page }) => {
+  await abrir(page);
+  const codigo = `ficticio-origen-${Date.now()}`;
+  await completar(page, codigo);
+  await page.getByLabel("Plazo en días corridos (opcional)", { exact: true }).fill("7");
+  await page.getByRole("button", { name: "Guardar borrador", exact: true }).click();
+  const fila = page.getByRole("heading", { name: `${codigo} · v1`, exact: true }).locator("..");
+  const abrirModal = fila.getByRole("button", { name: "Simular plazo", exact: true });
+  await abrirModal.click();
+  const dialogo = page.getByRole("dialog", { name: "Simular plazo", exact: true });
+  const configurado = dialogo.getByRole("checkbox", { name: /Usar plazo configurado/ });
+  const completarFechas = async () => {
+    await dialogo.getByLabel("Fecha de evaluación", { exact: true }).fill("2030-01-08");
+    await dialogo.getByLabel("Fecha de referencia (opcional)", { exact: true }).fill("2030-01-01");
+    await dialogo.getByLabel("Referencia de evidencia (opcional)", { exact: true }).fill("REF-FICTICIA");
+  };
+  await completarFechas();
+  let liberar, iniciar, solicitudes = 0;
+  const pendiente = new Promise((r) => { liberar = r; });
+  const iniciada = new Promise((r) => { iniciar = r; });
+  await page.route("**/simular-plazo/", async (route) => {
+    solicitudes += 1;
+    if (solicitudes !== 1) return route.continue();
+    expect(Object.hasOwn(route.request().postDataJSON(), "dias_corridos")).toBe(false);
+    const real = await route.fetch(); expect(real.status()).toBe(200);
+    iniciar(); await pendiente; await route.fulfill({ response: real });
+  });
+  try {
+    await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+    await iniciada; await expect(configurado).toBeDisabled();
+    await page.keyboard.press("Escape"); await expect(abrirModal).toBeFocused(); await abrirModal.click();
+    await expect(configurado).toBeChecked();
+    await configurado.focus(); await page.keyboard.press("Space");
+    await expect(configurado).not.toBeChecked();
+    await dialogo.getByLabel("Días corridos", { exact: true }).fill("0"); await completarFechas();
+    const anterior = page.waitForResponse((r) => r.url().includes("/simular-plazo/"));
+    liberar(); await anterior;
+    await expect(dialogo.getByRole("status")).toHaveCount(0);
+    await expect(configurado).not.toBeChecked();
+    await expect(dialogo.getByLabel("Días corridos", { exact: true })).toHaveValue("0");
+    const siguiente = page.waitForRequest((r) => r.url().includes("/simular-plazo/") && r.method() === "POST");
+    await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+    expect((await siguiente).postDataJSON().dias_corridos).toBe(0);
+    await expect(dialogo.getByText("Límite calculado: 2030-01-01", { exact: true })).toBeVisible();
+    await expect(dialogo.getByText("Origen del plazo: alternativa simulada; la versión no cambia.", { exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await configurado.focus(); await page.keyboard.press("Space");
+    await expect(dialogo.getByRole("status")).toHaveCount(0);
+    await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+    await expect(dialogo.getByText("Límite calculado: 2030-01-08", { exact: true })).toBeVisible();
+    await expect(dialogo.getByText("Origen del plazo: configuración guardada.", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape"); await page.reload(); await abrirModal.click();
+    await expect(configurado).toBeChecked();
+    await expect(dialogo.getByLabel("Días corridos", { exact: true })).toHaveValue("7");
+  } finally { liberar(); }
+});

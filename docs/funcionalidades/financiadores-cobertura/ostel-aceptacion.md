@@ -1182,3 +1182,44 @@ sin resultado viejo y foco al cerrar; más regresiones anteriores. Sin nueva
 migración, dependencias ni siembra general. OpenAPI documenta el POST de consulta.
 Rollback: retirar mixin/import de simulación, módulo API, diálogo y acción UI,
 pruebas nuevas/esta sección, conservando el mecanismo puro T2g y registros previos.
+
+### Plazo guardado por versión — T2i (02/11/2026)
+
+La administración puede guardar **Plazo en días corridos (opcional)** junto con
+una nueva versión. Vacío significa sin configurar; cero es un valor explícito.
+Cambiar el plazo exige otra versión: ni la simulación ni un reenvío pueden
+sobrescribir la historia. Se reutilizan autorización, locks y auditoría existentes.
+
+1. Abrir **Reglas de derechos** y registrar una versión con fuente, motivo y plazo
+   ficticios. Guardar no aprueba ni activa derechos.
+2. Recargar y abrir **Simular plazo**: **Usar plazo configurado** viene marcado
+   únicamente si la versión tiene ese dato. El servidor recupera el valor guardado.
+3. Desmarcarlo y probar otro número: el resultado identifica **alternativa simulada**.
+   Al volver a consultar la versión, conserva su plazo original.
+
+Contrato aditivo: `plazo_dias_corridos` es nullable y opcional en la propuesta.
+Los descriptores sin plazo siguen omitiendo el campo en sus respuestas anteriores.
+En el POST de simulación, omitir `dias_corridos` usa exclusivamente la configuración
+guardada; si no existe, devuelve 400 sin asumir un valor. Enviarlo explícitamente
+(incluso cero) calcula una alternativa; `null` explícito sigue siendo inválido.
+La respuesta agrega `origen_plazo` (`configurado` o `simulado`) y conserva los
+insumos, descriptor, estado y límite. No acepta expresiones ni acciones arbitrarias.
+
+La migración aditiva `0019_borrador_plazo_dias` no asigna defaults ni rellena
+versiones históricas: quedan NULL. Valida rango entero no negativo hasta el máximo
+técnico representable por `date`; la suma también debe caber en ese rango. No es
+un máximo de negocio ni se convierte una unidad normativa en días.
+No se configura cuándo dar una baja, gracia o mora, no se valida evidencia y no
+se escriben derechos. Es un parámetro funcional para simulación versionada,
+no un motor operativo completo ni una política aprobada por OSTEL.
+
+Verificación: pruebas puras, API real con PostgreSQL dedicado y migración desde0018;
+registros anteriores idénticos salvo el nuevo NULL, rechazo sin escritura/auditoría,
+versiones inmutables, cero explícito/configurado y recorrido real desktop/móvil/teclado.
+Runner: los módulos `tests_derechos_borrador`, `tests_propuesta_derechos`,
+`test_borradores_api`, `test_simulacion_plazo_api` y `test_borradores_plazo_migracion`;
+frontend: `node node_modules/@playwright/test/cli.js test --config playwright.borradores-real.config.js`
+con fixture ficticia dedicada. Resultados observados y estado de revisión: [L30](../../../odd/tasks/ostel-operacion-integral.md).
+Rollback: retirar esta capacidad de UI/API/DTO y revertir0019 sólo tras conservar
+los nuevos parámetros; una reversión de esquema los pierde. No revertir datos
+históricos ni reactivar derechos como parte de ese procedimiento.

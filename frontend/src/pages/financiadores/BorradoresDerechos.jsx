@@ -7,7 +7,7 @@ import { Badge, Button, Card, Field, Input, Select, Spinner } from "@/components
 
 import SimularPlazoDerechos from "./SimularPlazoDerechos";
 
-const VACIO = { codigo: "", version: "1", fuente: "", regimen: "", plan_id: "", desde: "", hasta: "", fecha: "", motivo: "" };
+const VACIO = { codigo: "", version: "1", fuente: "", regimen: "", plan_id: "", desde: "", hasta: "", fecha: "", motivo: "", plazo_dias_corridos: "" };
 
 export default function BorradoresDerechos({ organizacion, usuarioId }) {
   const ruta = rutaFinanciador(organizacion.id, "borradores-derechos");
@@ -37,7 +37,7 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
     enviando.current = true;
     setGuardando(true); setError(null); setMensaje("");
     const { motivo, fecha, ...campos } = formulario;
-    const nueva = { ...campos, version: Number(campos.version), plan_id: campos.plan_id ? Number(campos.plan_id) : null, hasta: campos.hasta || null };
+    const nueva = { ...campos, version: Number(campos.version), plan_id: campos.plan_id ? Number(campos.plan_id) : null, hasta: campos.hasta || null, plazo_dias_corridos: campos.plazo_dias_corridos === "" ? null : Number(campos.plazo_dias_corridos) };
     try {
       const resultado = await api.post(ruta, { propuesta: [...historial, nueva], motivo, fecha, regimen: nueva.regimen, plan_id: nueva.plan_id });
       setMensaje(resultado.nuevas.length ? "Borrador guardado. Los derechos no cambiaron." : "No se agregaron versiones nuevas.");
@@ -69,6 +69,7 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
           {historial.map((fila) => <li className="space-y-2 py-4 first:pt-0" key={`${fila.regimen}:${fila.plan_id}:${fila.codigo}:${fila.version}`}>
             <div className="flex flex-wrap items-center gap-2"><h3 className="break-all font-semibold">{fila.codigo} · v{fila.version}</h3><Badge>Borrador</Badge><Button size="sm" variant="secondary" onClick={() => setSimulacion(fila)}>Simular plazo</Button></div>
             <p className="text-sm">{REGIMENES[fila.regimen] || fila.regimen} · {fila.plan_id == null ? "Todos los planes" : planes.data?.find((p) => p.id === fila.plan_id)?.nombre || `Plan ${fila.plan_id}`}</p>
+            <p className="text-sm text-texto-suave">{fila.plazo_dias_corridos == null ? "Sin plazo configurado" : `Plazo configurado: ${fila.plazo_dias_corridos} días corridos`}</p>
             <dl className="space-y-1 break-words text-sm text-texto-suave"><div><dt className="inline font-medium">Intervalo técnico: </dt><dd className="inline">{fila.desde} → {fila.hasta || "Sin fin informado"} {fila.hasta ? "(fin exclusivo)" : ""}</dd></div><div><dt className="inline font-medium">Fuente informada: </dt><dd className="inline">{fila.fuente}</dd></div></dl>
           </li>)}
         </ol> : <p className="text-sm text-texto-suave">Todavía no hay versiones guardadas.</p>}
@@ -85,14 +86,15 @@ export default function BorradoresDerechos({ organizacion, usuarioId }) {
             <Field label="Inicio técnico"><Input required type="date" value={formulario.desde} onChange={cambiar("desde")} /></Field>
             <Field label="Fin técnico exclusivo (opcional)"><Input type="date" value={formulario.hasta} onChange={cambiar("hasta")} /></Field>
             <div className="sm:col-span-2"><Field label="Fuente informada"><Input required maxLength={255} value={formulario.fuente} onChange={cambiar("fuente")} /></Field></div>
+            <Field label="Plazo en días corridos (opcional)"><Input type="number" min="0" step="1" value={formulario.plazo_dias_corridos} onChange={cambiar("plazo_dias_corridos")} /></Field>
             <Field label="Fecha de consulta técnica"><Input required type="date" value={formulario.fecha} onChange={cambiar("fecha")} /></Field>
-            <Field label="Motivo del registro"><Input required maxLength={255} value={formulario.motivo} onChange={cambiar("motivo")} /></Field>
+            <div className="sm:col-span-2"><Field label="Motivo del registro"><Input required maxLength={255} value={formulario.motivo} onChange={cambiar("motivo")} /></Field></div>
             <div className="sm:col-span-2"><Button type="submit" disabled={ocupado}>{guardando ? "Guardando…" : "Guardar borrador"}</Button></div>
           </fieldset>
           {requiereConsulta && <p className="mt-3 text-sm">Es necesario volver a consultar antes de guardar otra versión.</p>}
         </form>
       </Card> : <Card className="p-4"><p className="text-sm">Acceso de consulta. La administración del financiador puede registrar versiones.</p></Card>}
     </div>
-    {simulacion && <SimularPlazoDerechos organizacion={organizacion} regla={simulacion} onClose={() => setSimulacion(null)} />}
+    {simulacion && <SimularPlazoDerechos key={`${simulacion.regimen}:${simulacion.plan_id}:${simulacion.codigo}:${simulacion.version}`} organizacion={organizacion} regla={simulacion} onClose={() => setSimulacion(null)} />}
   </section>;
 }

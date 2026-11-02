@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from .models import Afiliado
-from .derechos_borrador import BorradorDerechos
+from .derechos_borrador import BorradorDerechos, MAX_DIAS_CORRIDOS
 from .borradores_derechos import consultar_borradores, guardar_borradores
 
 
@@ -26,6 +26,13 @@ class DescriptorBorradorSerializer(EntradaControlada):
     plan_id = serializers.IntegerField(min_value=1, allow_null=True)
     desde = serializers.DateField()
     hasta = serializers.DateField(allow_null=True, required=False, default=None)
+    plazo_dias_corridos = serializers.IntegerField(min_value=0, max_value=MAX_DIAS_CORRIDOS, allow_null=True, required=False, default=None)
+
+    def to_representation(self, instance):
+        datos = super().to_representation(instance)
+        if datos.get("plazo_dias_corridos") is None:
+            datos.pop("plazo_dias_corridos", None)
+        return datos
 
 
 class PropuestaBorradoresSerializer(EntradaControlada):

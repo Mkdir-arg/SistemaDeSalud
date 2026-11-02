@@ -74,6 +74,16 @@ class BorradoresTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.borrador(activar=True)
 
+    def test_plazo_opcional_de_version_sin_default_ni_tipos_ambiguos(self):
+        anterior = self.borrador()
+        configurada = replace(anterior, plazo_dias_corridos=7)
+        self.assertIsNone(anterior.plazo_dias_corridos)
+        self.assertEqual(configurada.plazo_dias_corridos, 7)
+        self.assertEqual(replace(configurada, plazo_dias_corridos=0).plazo_dias_corridos, 0)
+        for valor in (True, -1, 1.5, "7", 10**20):
+            with self.subTest(valor=valor), self.assertRaises(ValueError):
+                replace(anterior, plazo_dias_corridos=valor)
+
 
 if __name__ == "__main__":
     unittest.main()

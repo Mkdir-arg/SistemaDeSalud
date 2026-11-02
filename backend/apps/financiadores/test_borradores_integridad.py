@@ -61,6 +61,7 @@ class IntegridadBorradoresTests(TransactionTestCase):
         self.assertFalse(EventoCobertura.objects.exists())
     def test_additive_migration_preserves_existing_rows(self):
         executor=MigrationExecutor(connection)
+        finales=executor.loader.graph.leaf_nodes("financiadores")
         executor.migrate([("financiadores","0017_saludpadron_codpar_ostel")])
         try:
             tables=["financiadores_financiador","financiadores_membresiafinanciador"]
@@ -76,6 +77,7 @@ class IntegridadBorradoresTests(TransactionTestCase):
                     cursor.execute("SELECT * FROM "+table+" ORDER BY id")
                     after.append(cursor.fetchall())
             self.assertEqual(after,before)
+            MigrationExecutor(connection).migrate(finales)
             self.assertEqual(consultar_borradores(usuario=self.user,financiador_id=self.org.pk),())
         finally:
-            MigrationExecutor(connection).migrate([("financiadores","0018_borradorregladerechos")])
+            MigrationExecutor(connection).migrate(finales)

@@ -1,8 +1,9 @@
 """API de borradores no operativos con fixtures ficticias."""
 from copy import deepcopy
+from hashlib import sha256
 from rest_framework.test import APITestCase
 from apps.accounts.models import Usuario
-from .models import Financiador, MembresiaFinanciador, Plan, EventoCobertura
+from .models import Financiador, MembresiaFinanciador, Plan, EventoCobertura, Afiliado, BorradorReglaDerechos
 
 
 class BorradoresAPITests(APITestCase):
@@ -81,3 +82,46 @@ class BorradoresAPITests(APITestCase):
         self.assertEqual(respuesta.json()["nuevas"], [nueva])
         self.assertEqual(respuesta.json()["despues"]["coincidencias"], [nueva])
         self.assertEqual(EventoCobertura.objects.filter(accion="crear_borrador_derechos").count(), 2)
+
+    def test_plazo_guardado_requiere_nueva_version_y_se_conserva_en_consulta(self):
+        entrada = deepcopy(self.entrada)
+        entrada["propuesta"][0]["plazo_dias_corridos"] = 7
+        r = self.post(entrada)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.client.get(self.url).json()["borradores"][0]["plazo_dias_corridos"], 7)
+        cambiada = deepcopy(entrada)
+        cambiada["propuesta"][0]["plazo_dias_corridos"] = 9
+        self.assertEqual(self.post(cambiada).status_code, 400)
+        self.assertEqual(self.client.get(self.url).json()["borradores"][0]["plazo_dias_corridos"], 7)
+        nueva = entrada["propuesta"][0] | {"version": 2, "plazo_dias_corridos": 9}
+        self.assertEqual(self.post(entrada | {"propuesta": [*entrada["propuesta"], nueva]}).status_code, 200)
+        self.assertEqual([v["plazo_dias_corridos"] for v in self.client.get(self.url).json()["borradores"]], [7, 9])
+
+    def test_plazo_invalido_no_guarda_ni_audita_y_cero_es_explicito(self):
+        for valor in (True, -1, 1.5, 3652059):
+            entrada = deepcopy(self.entrada)
+            entrada["propuesta"][0]["plazo_dias_corridos"] = valor
+            with self.subTest(valor=valor):
+                self.assertEqual(self.post(entrada).status_code, 400)
+                self.assertEqual(self.client.get(self.url).json(), {"borradores": []})
+                self.assertFalse(EventoCobertura.objects.exists())
+        entrada["propuesta"][0]["plazo_dias_corridos"] = 0
+        self.assertEqual(self.post(entrada).status_code, 200)
+        self.assertEqual(self.client.get(self.url).json()["borradores"][0]["plazo_dias_corridos"], 0)
+
+    def test_redefiniciones_de_plazo_rechazadas_conservan_huella_completa(self):
+        entrada = deepcopy(self.entrada)
+        entrada["propuesta"][0]["plazo_dias_corridos"] = 7
+        self.assertEqual(self.post(entrada).status_code, 200)
+        def huella():
+            modelos = (Financiador, MembresiaFinanciador, Plan, Afiliado, BorradorReglaDerechos, EventoCobertura)
+            return sha256(repr([list(m.objects.order_by("pk").values()) for m in modelos]).encode()).hexdigest()
+        antes = huella()
+        for valor in (None, 0, 9, -1, True, 3652059):
+            cambiada = deepcopy(entrada)
+            cambiada["propuesta"][0]["plazo_dias_corridos"] = valor
+            self.assertEqual(self.post(cambiada).status_code, 400)
+            self.assertEqual(huella(), antes)
+        nueva = entrada["propuesta"][0] | {"version": 2, "plazo_dias_corridos": 0}
+        self.assertEqual(self.post(entrada | {"propuesta": [*entrada["propuesta"], nueva]}).status_code, 200)
+        self.assertEqual([v["plazo_dias_corridos"] for v in self.client.get(self.url).json()["borradores"]], [7, 0])

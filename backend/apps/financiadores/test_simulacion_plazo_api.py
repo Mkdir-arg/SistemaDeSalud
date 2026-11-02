@@ -105,3 +105,68 @@ class SimulacionPlazoAPITests(APITestCase):
         url = self.url.replace(f"/{self.org.pk}/", f"/{otro.pk}/")
         self.assertEqual(self.client.post(url, self.body, format="json").status_code, 400)
         self.assertEqual(self.huella(), antes)
+
+    def test_usa_plazo_configurado_solo_cuando_no_hay_alternativa_explicita(self):
+        BorradorReglaDerechos.objects.create(financiador=self.org, codigo="ficticia", version=4,
+            fuente="Fuente configurada ficticia", regimen="dependencia", desde=date(2029, 1, 1),
+            creado_por=self.user, motivo="Fixture ficticia", plazo_dias_corridos=7)
+        entrada = deepcopy(self.body)
+        entrada["regla"]["version"] = 4
+        entrada.pop("dias_corridos")
+        r = self.client.post(self.url, entrada, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json()["dias_corridos"], r.json()["limite"], r.json()["origen_plazo"]),
+                         (7, "2030-01-08", "configurado"))
+        r = self.client.post(self.url, entrada | dict(dias_corridos=9), format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json()["dias_corridos"], r.json()["limite"], r.json()["origen_plazo"]),
+                         (9, "2030-01-10", "simulado"))
+        self.assertEqual(BorradorReglaDerechos.objects.get(version=4).plazo_dias_corridos, 7)
+        self.assertFalse(EventoCobertura.objects.exists())
+
+    def test_legacy_sin_plazo_no_asigna_default_y_null_no_es_omision(self):
+        entrada = deepcopy(self.body)
+        entrada.pop("dias_corridos")
+        self.assertEqual(self.client.post(self.url, entrada, format="json").status_code, 400)
+        self.assertEqual(self.client.post(self.url, self.body | dict(dias_corridos=None), format="json").status_code, 400)
+        r = self.client.post(self.url, self.body, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json()["limite"], r.json()["origen_plazo"]), ("2030-01-08", "simulado"))
+
+    def test_plazo_configurado_cero_y_alternativa_cero_no_son_ausencia(self):
+        BorradorReglaDerechos.objects.create(financiador=self.org, codigo="ficticia", version=4,
+            fuente="Fuente cero ficticia", regimen="dependencia", desde=date(2029, 1, 1),
+            creado_por=self.user, motivo="Fixture ficticia", plazo_dias_corridos=0)
+        entrada = deepcopy(self.body)
+        entrada["regla"]["version"] = 4
+        entrada.pop("dias_corridos")
+        antes = self.huella()
+        for alternativa, origen in (({}, "configurado"), ({"dias_corridos": 0}, "simulado")):
+            r = self.client.post(self.url, entrada | alternativa, format="json")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual((r.json()["dias_corridos"], r.json()["limite"], r.json()["origen_plazo"]),
+                             (0, "2030-01-01", origen))
+            self.assertEqual(self.huella(), antes)
+
+    def test_plazo_configurado_y_alternativas_conservan_huella_para_todos_los_roles(self):
+        BorradorReglaDerechos.objects.create(financiador=self.org, codigo="ficticia", version=4,
+            fuente="Fuente guardada ficticia", regimen="dependencia", desde=date(2029, 1, 1),
+            creado_por=self.user, motivo="Fixture ficticia", plazo_dias_corridos=7)
+        entrada = deepcopy(self.body)
+        entrada["regla"]["version"] = 4
+        entrada.pop("dias_corridos")
+        for rol in ("admin", "operador", "auditor"):
+            self.member.rol = rol
+            self.member.save()
+            antes = self.huella()
+            for alternativa, estado, dias, origen in (
+                ({}, 200, 7, "configurado"),
+                ({"dias_corridos": 0}, 200, 0, "simulado"),
+                ({"dias_corridos": 9}, 200, 9, "simulado"),
+                ({"dias_corridos": None}, 400, None, None),
+            ):
+                r = self.client.post(self.url, entrada | alternativa, format="json")
+                self.assertEqual(r.status_code, estado)
+                if estado == 200:
+                    self.assertEqual((r.json()["dias_corridos"], r.json()["origen_plazo"]), (dias, origen))
+                self.assertEqual(self.huella(), antes)
