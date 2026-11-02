@@ -58,7 +58,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T10 | S2,S4,S5 | #153: tesorería/contabilidad ligada a eventos | Inline | Dependiente de contratos financieros |
 | T11 | S2,S4,S5 | #146: intercambio oficial SSSalud | Inline | Condicional a necesidad operativa y layout oficial |
 
-| T6c | S5,S12,S16,S17 | Gestionar la designación de Auditoría Médica desde Usuarios, sin contenido clínico | Inline tras mapa; verificador ítem2 | Verificado local, commit pendiente; RED control ausente→GREEN6 recorridos; S17 contenido pendiente |
+| T6c | S5,S12,S16,S17 | Gestionar la designación de Auditoría Médica desde Usuarios, sin contenido clínico | Inline tras mapa; verificador ítem2 | Completo gestión visual `14b47c5`; RED→GREEN6 recorridos, independiente/build/diferencial OK; nativa omitidaS16, S17 contenido pendiente |
 
 ## Log
 
@@ -560,3 +560,6 @@ confirmo
 
 - Verificador independiente Sol/medium PASS T6c S5/S12/S16 yS17gestión solamente:4recorridos9.7s, buildscratch3.89s,2probes8.4s. Diferencial8escenarios alta/edición capacidadfalse/true: cuerpos, checkboxesprevios/error iguales a8e87731 salvocampo aditivo. Capacidadfalse/403 son inyecciones UI, no autorizaciónreal plataforma/bootstrap. Sin bloqueantes ni cambios productivos posteriores. Scratchostel_t6c_verify_lbqlnvjc retenido;5192ocupado preservado, baseline5198propio detenido0listeners, padres intactos.
 - Probes añadidos a regresión legible sin historiaGit/servidorbaseline en tests; repetición padre6recorridos12.5s OK. Captura móvil inspeccionada, sin desbordamiento/control superpuesto. Demo visible ficticia65882 en /financiadores/usuarios?financiador=3, modal de acceso abierto sin guardar; mantiene8232/5189 yventana50306 anterior. No aceptación humana ni contenido clínico probado. Mirror309 completo sigue pendiente por50k; documentación local preservada. Risk:item2.
+
+- T6c commit14b47c5:238adiciones+4eliminaciones,5archivos, sin deps/migraciones/cambioAPI ni publicación. Assesshigh explícitoítem2,review_due/high_risk; preflight exacto conlentes invalid_request/not_started, reentrada exacta sinlentes collectexterno schema-bound sin operación ejecutable y submission sinbase-ref/committed-only. Forecastpartial,paso1collect,intended_untracked_selection_required,descripciónselección de no versionados requerida. Targetsha256:afe25997b45b94428cd14d598f6bf0c058b07df8fea135d580441468e1720744. SinSTART/linaje/consentv3/decline/aprobación; S16/#852 dejaeste corte sinrevisión porimpedimentoconocido, no toggleglobal/reporte/reintento adivinado.
+- Configuración y UI terminadas localmente; no se marcaDone#147 ni derechos operativos. Límite humano siguiente: definir quién incorpora la prescripción y en qué punto del circuito. S17 aprobó lectores, no autores/ingreso ni permisos de escritura clínica. Recomendación pendiente de confirmar: institución prestadora la incorpora con la solicitud, Auditoría Médica consulta y registra evaluación. No se implementará esa rama clínica suponiendo el contrato.
