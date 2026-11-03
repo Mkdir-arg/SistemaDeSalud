@@ -35,6 +35,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 - S21 — Resultado de la evaluación médica: «aprobar/rechazar la solicitud», en respuesta a «¿La evaluación médica debe aprobar/rechazar la solicitud o registrar un dictamen separado?». La evaluación resuelve la solicitud existente; no se crea un dictamen paralelo. Reutilizar la resolución y sus permisos explícitos, sin conceder resolución por lectura médica ni inventar criterios normativos.
 
+- S22 — Espera de definiciones de aportes y cuentas corrientes: «no, deja documentado que esperamos respuesta de ostel». No implementar el registro manual alternativo propuesto en L43; mantener T7 en espera de la respuesta ya solicitada a OSTEL, sin reiterar el pedido ni inventar contratos.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
@@ -60,7 +62,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T6 | S2,S4,S5 | #147: contraste de autorizaciones con reglas OSTEL | Inline tras mapa de decisión | Contraste técnico documentado T6a; contrato clínico/PMO y aceptación pendientes, sin implementar política |
 | T6a | S2,S5,S16 | Matriz técnica #147 y decisión de acceso clínico | Inline después de mapa delegado saved_threshold_map por flujo desconocido | Contraste técnico local `932fed8`; evaluación pasiva; decisión de acceso clínico pendiente |
 | T6b | S5,S8,S16,S17 | Designación explícita de Auditoría Médica por financiador y capacidad fail-closed | Inline tras mapa; verificador ítems1/2/4 | Completo configuración `577b1bd`; nativa omitida porS16 ante bloqueo conocido; S17 contenido pendiente |
-| T7 | S2,S4,S5,S16 | #144 → #145: aportes, conciliación y cuenta corriente | Inline tras mapa delegado por dominio desconocido | Contraste documentado L43; decisión de producto pendiente, sin cobros reales |
+| T7 | S2,S4,S5,S16,S22 | #144 → #145: aportes, conciliación y cuenta corriente | Inline tras mapa delegado por dominio desconocido | En espera de respuesta de OSTEL por decisión explícita (L44); sin registro manual alternativo ni cobros reales |
 | T8 | S2,S4,S5 | #149: liquidación a prestadores | Inline | Pendiente de contrato |
 | T9 | S2,S4,S5 | #148: reintegros médicos, no devolución financiera | Inline | Pendiente de contrato |
 | T10 | S2,S4,S5 | #153: tesorería/contabilidad ligada a eventos | Inline | Dependiente de contratos financieros |
@@ -680,3 +682,11 @@ esta iniciado
 - CobranzaPadron conserva información declarada, no saldo ni verificación bancaria. Su edición protegida con revisión/historia no representa aportes esperados/informados/recibidos/imputados. ObligacionFinanciera y cuentas_cobertura corresponden a atención/gastos hospitalarios: reutilizarlas como recaudación de la obra social mezclaría hechos distintos. No hay una cuenta corriente de aportes que sólo requiera conectar una pantalla.
 - Los layouts ARCA/ANSES, reglas de imputación/distribución/reversas y cálculo de cuotas/diferencias continúan sin contrato aprobado. El material3%/6% es supuesto, no tasa vigente validada. La información ya fue solicitada a OSTEL: no volver a pedir al usuario que la solicite ni inventar formatos, tasas, vencimientos o dinero confirmado.
 - Necesita decisión de producto para avanzar sin esos contratos: si el siguiente corte será un registro manual interno de aportes informados por afiliado/período/importe/referencia, sin acreditar cobros, generar saldo/deuda, imputar a obligaciones ni afectar cobertura. Es una propuesta pendiente, no un nuevo alcance aprobado ni un modelo ya implementado. Los permisos y la procedencia se reutilizarán donde correspondan sólo después de esa decisión; no ampliar accesos bancarios ni datos de tarjetas.
+
+### L44 — Esperar respuesta de OSTEL (03/11/2026)
+
+no, deja documentado que esperamos respuesta de ostel
+
+- El usuario no acepta avanzar con el registro manual alternativo de L43. T7/#144→#145 queda en espera de la respuesta ya solicitada a OSTEL sobre los contratos pendientes; no hay una nueva autorización de implementación ni otra pregunta de producto abierta sobre esa alternativa.
+- No reiterar la solicitud de información ni crear modelos, pantallas o movimientos provisionales para suplirla. Conservar el contraste existente y los avances verificados de T6h. Cambio exclusivamente documental, sin pruebas nuevas necesarias ni modificación de servicios, datos, permisos o configuración.
+- Archivo local actualizado; el espejo completo309 continúa pendiente de capacidad y se conserva íntegro, sin truncarlo. La decisión queda también en la memoria temática de recaudación/cuentas corrientes.
