@@ -1,7 +1,7 @@
 # Operación integral OSTEL
 
 Orden rector: [#141, Plan de ejecución OSTEL — 30/10/2026](https://github.com/Mkdir-arg/SistemaDeSalud/issues/141). Rama: `juanikitro/ostel-operacion-integral-20261030`; base: `cae9e16a80559a1c936dc9e2f8727aa3bf3ad3d7`.
-Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin push, PR nuevo, merge ni deploy. Runner inicial sin DB: `python -B -m unittest backend.apps.financiadores.tests_ostel_scenarios -v`.
+Entrega vigente S24: PR único borrador de integración con excepción de tamaño autorizada; publicación S23 permitida, sin merge/deploy. Historia: `ask-on-risk`/`feature-branch-chain` local antes de S23–S24. Runner inicial sin DB: `python -B -m unittest backend.apps.financiadores.tests_ostel_scenarios -v`.
 
 ## Specs
 
@@ -38,6 +38,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 - S22 — Espera de definiciones de aportes y cuentas corrientes: «no, deja documentado que esperamos respuesta de ostel». No implementar el registro manual alternativo propuesto en L43; mantener T7 en espera de la respuesta ya solicitada a OSTEL, sin reiterar el pedido ni inventar contratos.
 
 - S23 — Publicación y traspaso: «okey. commitea y crea pr de todo lo hecho en esta sesion, prepara un handoff y despliega un worktree con un agente dedicado que tenga el contexto necesario para seguir con esto.» Antes de publicar: «pero no sin antes, por otro lado, documentar todos los faltantes que me listaste en sus respectivos lugares, y levantar un worktree donde por un lado despliegues un agente con el objetivo de sellar esas deudas tecnicas y de seguimiento y por el otro analizar, estudiar y planificar el avance de todo lo que se pueda hacer sin la respuesta de ostel pero que pueda servirnos tipo generico para otras obras sociales». Autoriza documentación de pendientes, commits, publicación de esta entrega en GitHub y nuevos worktrees/agentes locales; no autoriza merge, deploy ni inventar contratos o levantar la espera S22. Conservar estrategia de entrega S10 y aislar saneamiento técnico de la continuidad/planificación.
+
+- S24 — Excepción de entrega aprobada: «autorizo», en respuesta a «¿autorizás reemplazar la cadena por un único PR borrador de integración con excepción de tamaño, sin merge?». Reemplaza la estrategia S10 por `single-pr`/`size:exception` para esta entrega acumulada, conservando unidades de commit e índice de revisión. No concede aprobación técnica, revisión nativa, merge ni deploy.
 
 ## Tasks
 
@@ -83,7 +85,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T6h | S5,S8,S12,S16–S21 | Comprobar evaluación médica como resolución existente, con lectura y resolución explícitas | Inline tras mapa delegado por flujo de permisos; sin cambios productivos | Completo local `b1ce375`: API y navegador real aprobación/rechazo (L42); evaluación nativa medium/under_budget, sin ampliar permisos |
 
 | T12 | S23 | Consolidar faltantes en documentación temática e issues correspondientes | Inline; sólo documentación | Completo local y14issues actualizados/releídos; sin cerrar issues por pruebas locales |
-| T13 | S10,S23 | Publicar la entrega mediante estrategia de cadena elegida | Inline tras mapa de límites | Necesita decisión de excepción de tamaño/estrategia antes de publicar; sin merge/deploy |
+| T13 | S10,S23,S24 | Publicar entrega acumulada en PR borrador con excepción autorizada | Inline tras mapa de límites | Excepción aprobada; publicación en curso, sin merge/deploy |
 | T14 | S16,S22,S23 | Handoff y worktree de continuidad/planificación genérica | Orca, traspaso completo sin supervisión | Pendiente de documentación/publicación |
 | T15 | S23 | Handoff y worktree de saneamiento técnico/seguimiento | Orca, separado de continuidad | Pendiente; sin reparar proveedores, ampliar permisos ni inventar normativa |
 
@@ -735,3 +737,10 @@ pero no sin antes, por otro lado, documentar todos los faltantes que me listaste
 
 - Los siete excesos se conservan por coherencia de comportamiento/pruebas/documentación; no hay aprobación de size:exception todavía. Antes de publicar necesita esa decisión del mantenedor. No se fuerza una segunda pasada ni se quitan pruebas. Para evitar tracker vacío sin integrar/mergear, su rama inicial puede apuntar al primer commit documental38fe688 y el primer hijo a f6ad97b; el resto conserva los límites anteriores. Esto no cambia la historia ni autoriza integración.
 - Una alternativa más simple de operación es un único PR borrador de integración con índice de unidades/commits y prohibición de merge; aumenta la carga de revisión del diff acumulado y requiere autorización explícita del mantenedor tanto para el tamaño como para reemplazar la cadena elegida. No se infiere esa excepción del pedido S23. Handoffs externos preparados; lanzamiento de agentes tras resolver publicación para darles referencias definitivas y evitar dos responsables de la misma entrega.
+
+### L46 — Excepción y PR único autorizados (03/11/2026)
+
+autorizo
+
+- Confirma exactamente la pregunta de reemplazo de cadena por único PR borrador de integración con excepción de tamaño y sin merge. S24 levanta ese bloqueo de publicación, no la espera de OSTEL S22 ni los contratos pendientes. Mantener índice de unidades/commits, evidencia histórica y deudas explícitas; no declarar aprobación por publicar.
+- Snapshot previo83d1e88 y main remoto cae9e16, sin PR previo de la rama y sólo.atl preexistente. Publicar únicamente archivos trackeados de esta entrega; handoffs y diagnósticos temporales fuera de Git. No instalar herramientas ni alterar políticas para proceder.
