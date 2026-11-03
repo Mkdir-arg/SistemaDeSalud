@@ -85,9 +85,9 @@ Entrega vigente S24: PR único borrador de integración con excepción de tamañ
 | T6h | S5,S8,S12,S16–S21 | Comprobar evaluación médica como resolución existente, con lectura y resolución explícitas | Inline tras mapa delegado por flujo de permisos; sin cambios productivos | Completo local `b1ce375`: API y navegador real aprobación/rechazo (L42); evaluación nativa medium/under_budget, sin ampliar permisos |
 
 | T12 | S23 | Consolidar faltantes en documentación temática e issues correspondientes | Inline; sólo documentación | Completo local y14issues actualizados/releídos; sin cerrar issues por pruebas locales |
-| T13 | S10,S23,S24 | Publicar entrega acumulada en PR borrador con excepción autorizada | Inline tras mapa de límites | Excepción aprobada; publicación en curso, sin merge/deploy |
-| T14 | S16,S22,S23 | Handoff y worktree de continuidad/planificación genérica | Orca, traspaso completo sin supervisión | Pendiente de documentación/publicación |
-| T15 | S23 | Handoff y worktree de saneamiento técnico/seguimiento | Orca, separado de continuidad | Pendiente; sin reparar proveedores, ampliar permisos ni inventar normativa |
+| T13 | S10,S23,S24 | Publicar entrega acumulada en PR borrador con excepción autorizada | Inline tras mapa de límites | PR208 OPEN/DRAFT a main, excepción aprobada; CI pendiente, sin merge/deploy |
+| T14 | S16,S22,S23 | Handoff y worktree de continuidad/planificación genérica | Orca, traspaso completo sin supervisión | Traspaso realizado: salud-continuidad-generica-20261103, gpt-6.1-sol, prompt journaled; planificación a cargo del nuevo agente |
+| T15 | S23 | Handoff y worktree de saneamiento técnico/seguimiento | Orca, separado de continuidad | Traspaso realizado: salud-saneamiento-tecnico-20261103, gpt-6.1-sol, prompt journaled; deudas a cargo del nuevo agente, no declaradas cerradas |
 
 ## Log
 
@@ -744,3 +744,6 @@ autorizo
 
 - Confirma exactamente la pregunta de reemplazo de cadena por único PR borrador de integración con excepción de tamaño y sin merge. S24 levanta ese bloqueo de publicación, no la espera de OSTEL S22 ni los contratos pendientes. Mantener índice de unidades/commits, evidencia histórica y deudas explícitas; no declarar aprobación por publicar.
 - Snapshot previo83d1e88 y main remoto cae9e16, sin PR previo de la rama y sólo.atl preexistente. Publicar únicamente archivos trackeados de esta entrega; handoffs y diagnósticos temporales fuera de Git. No instalar herramientas ni alterar políticas para proceder.
+- Publicado y releído [PR208](https://github.com/Mkdir-arg/SistemaDeSalud/pull/208), OPEN/DRAFT a main, sourceee390819949edcfe0da3dc594d85699b72ac0769; diff observado7255adiciones/43eliminaciones en68archivos antes de este cierre documental. Índice de revisión, excepción humana y pendientes explícitos en el cuerpo. No etiqueta size:exception creada; autorización registrada S24. Revisión de nombres/firmas de secretos del diff sin hallazgos; no prueba general de seguridad. CI al crear:6checks en curso/en cola, no PASS.
+- Dos worktrees relacionados creados desde ee39081, setup skip, índice CodeGraph propio requerido. Agentes Codex gpt-6.1-sol lanzados en chats estructurados; ambos recibos confirman prompt.outcome=journaled. Continuidad/estudio genérico y saneamiento están separados; no escritores en el checkout original ni supervisión del iniciador. Handoffs y recibos exactos externos al repositorio, sin secretos ni datos reales.
+- Traspaso completo: el iniciador sólo registra este cierre documental y deja la ejecución a los nuevos responsables; no espera su finalización ni CI para atribuir resultados todavía inexistentes. Sin merge/deploy, aprobación técnica nueva, aceptación humana ni cierre de contratos pendientes. S22/#144/#145 sigue esperando OSTEL.
