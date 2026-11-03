@@ -103,6 +103,71 @@ test("cancelar retira el archivo y conserva el contrato JSON anterior sin adjunt
 
 const rutaDescarga = /\/autorizaciones-cobertura\/\d+\/prescripcion\/\?/;
 
+for (const [indice, decision, estado, viewport] of [
+  [5, "aprobar", "Aprobada", { width: 1365, height: 900 }],
+  [6, "rechazar", "Rechazada", { width: 390, height: 844 }],
+]) {
+  test(`evaluación médica: ${decision} resuelve la misma solicitud con designaciones independientes`, async ({ page, browser }, testInfo) => {
+    const escenario = datos.escenarios[indice];
+    await page.setViewportSize(viewport);
+    await formulario(page, escenario);
+    await adjuntar(page);
+    const ingreso = page.waitForResponse((r) => r.url().includes("/con-prescripcion/") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Enviar solicitud", exact: true }).click();
+    const presentada = await ingreso;
+    expect(presentada.status()).toBe(201);
+    const creada = await presentada.json();
+    const lector = await browser.newPage({ viewport });
+    const operador = await browser.newPage({ viewport });
+    const evaluador = await browser.newPage({ viewport });
+    try {
+      await detalle(lector, escenario, "medico");
+      await expect(lector.getByRole("button", { name: "Descargar prescripción", exact: true })).toBeVisible();
+      await expect(lector.getByRole("button", { name: "Resolver solicitud", exact: true })).toHaveCount(0);
+      await detalle(operador, escenario, "operador");
+      await expect(operador.getByRole("button", { name: "Descargar prescripción", exact: true })).toHaveCount(0);
+      await expect(operador.getByRole("button", { name: "Resolver solicitud", exact: true })).toBeVisible();
+      await detalle(evaluador, escenario, "evaluador");
+      const descarga = evaluador.waitForEvent("download");
+      await evaluador.getByRole("button", { name: "Descargar prescripción", exact: true }).focus();
+      await evaluador.keyboard.press("Enter");
+      expect(readFileSync(await (await descarga).path())).toEqual(PDF);
+      await evaluador.getByRole("button", { name: "Resolver solicitud", exact: true }).click();
+      await evaluador.getByRole("combobox", { name: "Decisión", exact: true }).selectOption(decision);
+      await evaluador.getByLabel("Motivo de la decisión", { exact: true }).fill("Referencia administrativa de evaluación ficticia");
+      if (decision === "aprobar") {
+        const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" });
+        await evaluador.getByLabel("Evidencia de la decisión", { exact: true }).fill("Constancia de revisión ficticia. Sin contenido clínico.");
+        await evaluador.getByLabel("Cantidad autorizada", { exact: true }).fill("1");
+        await evaluador.getByLabel("Válida desde", { exact: true }).fill(hoy);
+        await evaluador.getByLabel("Válida hasta", { exact: true }).fill(hoy);
+      }
+      expect(await evaluador.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const resolucion = evaluador.waitForResponse((r) => r.url().includes(`/${creada.id}/resolver/`) && r.request().method() === "POST");
+      await evaluador.getByRole("button", { name: "Registrar decisión", exact: true }).focus();
+      await evaluador.keyboard.press("Enter");
+      const respuesta = await resolucion;
+      expect(respuesta.status()).toBe(200);
+      const resuelta = await respuesta.json();
+      expect(resuelta.id).toBe(creada.id);
+      expect(resuelta.estado).toBe(estado.toLowerCase());
+      expect(resuelta.revision).toBe(creada.revision + 1);
+      expect(resuelta.puede_resolver).toBe(false);
+      expect(resuelta.historial.map((h) => h.accion)).toEqual(["solicitar", decision]);
+      expect(resuelta.cantidades).toEqual({ comprometida: 0, consumida: 0, disponible: decision === "aprobar" ? 1 : 0 });
+      await expect(evaluador.getByRole("dialog")).toHaveCount(0);
+      await page.reload();
+      await expect(page.getByRole("button", { name: /^Ver solicitud \d+$/, exact: false })).toHaveCount(1);
+      await page.getByRole("button", { name: `Ver solicitud ${creada.id}`, exact: true }).click();
+      const modal = page.getByRole("dialog");
+      await expect(modal.getByText(estado, { exact: true }).first()).toBeVisible();
+      await expect(modal.getByRole("heading", { name: "Prescripción presentada", exact: true })).toBeVisible();
+      await expect(modal.getByRole("button", { name: "Descargar prescripción", exact: true })).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`evaluacion-${decision}.png`) });
+    } finally { await lector.close(); await operador.close(); await evaluador.close(); }
+  });
+}
+
 test("rechazo inyectado: error visible y ninguna descarga", async ({ page }) => {
   await detalle(page, datos.escenarios[3], "medico");
   let descargas = 0;

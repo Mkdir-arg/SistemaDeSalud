@@ -18,6 +18,7 @@ from .test_autorizaciones import AutorizacionSetup
 from apps.accounts.models import Usuario
 from apps.auditoria.models import AccesoClinico
 from apps.casos.models import Caso, EventoCaso
+from apps.finanzas.models import HechoAtencionCosteable, ObligacionFinanciera
 
 
 PDF = b"%PDF-1.4\nDocumento totalmente ficticio\n%%EOF"
@@ -40,6 +41,59 @@ class PrescripcionAutorizacionTests(AutorizacionSetup, APITestCase):
     def presentar(self, **datos):
         self.client.force_authenticate(self.usuario)
         return self.client.post(self.url + "con-prescripcion/", self.datos(**datos), format="multipart")
+
+    def evaluar(self, decision):
+        creada = self.presentar()
+        self.assertEqual(creada.status_code, 201)
+        id_solicitud = creada.data["id"]
+        detalle = f"{self.url}{id_solicitud}/?financiador={self.financiador.pk}"
+        resolver = f"{self.url}{id_solicitud}/resolver/?financiador={self.financiador.pk}"
+        self.membresia.auditoria_medica = True
+        self.membresia.resuelve_autorizaciones = False
+        self.membresia.save(update_fields=["auditoria_medica", "resuelve_autorizaciones"])
+        self.client.force_authenticate(self.operador)
+        archivo = self.client.get(f"{self.url}{id_solicitud}/prescripcion/?financiador={self.financiador.pk}")
+        self.assertEqual(archivo.status_code, 200)
+        self.assertEqual(b"".join(archivo.streaming_content), PDF)
+        self.assertFalse(self.client.get(detalle).data["puede_resolver"])
+        datos = self.aprobacion() if decision == "aprobar" else {
+            "revision": 1, "decision": "rechazar", "motivo": "Referencia de revisión ficticia",
+            "clave": str(uuid4())}
+        antes = self.huella()
+        self.assertEqual(self.client.post(resolver, datos, format="json").status_code, 403)
+        self.assertEqual(self.huella(), antes)
+        self.membresia.resuelve_autorizaciones = True
+        self.membresia.save(update_fields=["resuelve_autorizaciones"])
+        self.assertTrue(self.client.get(detalle).data["puede_resolver"])
+        respuesta = self.client.post(resolver, datos, format="json")
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        estado = "aprobada" if decision == "aprobar" else "rechazada"
+        self.assertEqual(respuesta.data["id"], id_solicitud)
+        self.assertEqual(respuesta.data["estado"], estado)
+        self.assertEqual(respuesta.data["revision"], 2)
+        self.assertFalse(respuesta.data["puede_resolver"])
+        self.assertEqual([h["accion"] for h in respuesta.data["historial"]], ["solicitar", decision])
+        self.assertEqual(respuesta.data["cantidades"], {
+            "comprometida": 0, "consumida": 0, "disponible": 3 if decision == "aprobar" else 0})
+        self.assertEqual(self.client.post(resolver, datos, format="json").data, respuesta.data)
+        self.assertEqual(m.SolicitudAutorizacion.objects.count(), 1)
+        self.assertEqual(m.PrescripcionAutorizacion.objects.count(), 1)
+        self.caso.refresh_from_db()
+        self.assertEqual(self.caso.estado, "recibido")
+        self.assertEqual(self.caso.nodo_actual_id, self.nodo.pk)
+        self.assertFalse(HechoAtencionCosteable.objects.exists())
+        self.assertFalse(ObligacionFinanciera.objects.exists())
+        self.assertFalse(m.ReservaCobertura.objects.exists())
+        self.client.force_authenticate(self.usuario)
+        institucional = self.client.get(f"{self.url}{id_solicitud}/?institucion={self.institucion.pk}")
+        self.assertEqual(institucional.data["estado"], estado)
+        self.assertEqual(institucional.data["prescripcion_estado"], "presentada")
+
+    def test_evaluacion_medica_aprueba_la_solicitud_existente_sin_registrar_atencion(self):
+        self.evaluar("aprobar")
+
+    def test_evaluacion_medica_rechaza_la_solicitud_existente_sin_registrar_atencion(self):
+        self.evaluar("rechazar")
 
     def test_presentacion_privada_con_solicitud_y_descarga_medica_auditada(self):
         respuesta = self.presentar()

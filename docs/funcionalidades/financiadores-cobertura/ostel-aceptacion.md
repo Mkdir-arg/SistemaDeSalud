@@ -1717,8 +1717,22 @@ Este corte no impone aprobación médica exclusiva ni criterios PMO automáticos
 No copiar contenido clínico reservado en motivo/evidencia compartidos: usar
 referencias administrativas de la revisión, conservando el original privado.
 
-La comprobación API/navegador del recorrido combinado está pendiente: al retomar
-no estaban disponibles los servidores locales ni el motor Docker dedicado.
-No se ejecutaron nuevas pruebas ni se sustituyó PostgreSQL por otra base o mocks.
-Véase T6h/L41 en el registro de ejecución; no confundir soporte observado en el
-código con prueba funcional actual, despliegue o aceptación humana.
+La comprobación inicialmente bloqueada por Docker quedó completada (T6h/L42).
+API: ambas designaciones y revocación independiente, lector sin resolución403
+sin cambios persistidos, aprobación/rechazo de la misma solicitud, reintentos sin
+duplicación, historial/revisión y ausencia de atención/cargos/reservas nuevas.
+Tres regresiones1.361s y suite65pruebas23.462s OK; refuerzo focal2pruebas1.885s.
+No cambia el código productivo: son caracterizaciones del contrato existente,
+sin RED artificial ni nuevo motor, rol o autorización implícita.
+
+Navegador real: escritorio/aprobación y móvil/rechazo24.3s, PDF descargado por
+teclado con bytes exactos, consulta institucional posterior con estado terminal,
+lector médico sin resolución y resolutor administrativo sin contenido clínico.
+Siete pruebas anteriores19.6s OK. El nuevo recorrido no intercepta respuestas
+positivas: usa API/PostgreSQL/almacenamiento privado ficticios. Los negativos
+de transporte de la suite anterior mantienen sus inyecciones explícitas.
+Capturas de ambas resoluciones inspeccionadas; demo visible con solicitud
+ficticia aprobada y descarga médica disponible. No aceptación humana ni despliegue.
+Se conserva el permiso administrativo anterior; no se exige revisión médica
+exclusiva como una nueva regla de negocio. Sin cambios productivos, build o
+diferencial de contratos compartidos no aplican. Risk: none.

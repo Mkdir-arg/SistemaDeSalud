@@ -62,7 +62,7 @@ fixture_lectura = None
 with transaction.atomic(), patch.object(usuarios, "create_user", side_effect=crear_persona(original_usuario)), \
         patch.object(usuarios, "create_superuser", side_effect=crear_persona(original_admin)), \
         patch.object(comunes, "create", side_effect=crear_comun):
-    for numero in range(5):
+    for numero in range(7):
         fixture = Escenario()
         # Sólo setUp ORM: no runner/TestCase._pre_setup, flush ni transacciones de tests.
         fixture.setUp()
@@ -75,10 +75,16 @@ with transaction.atomic(), patch.object(usuarios, "create_user", side_effect=cre
         medico = usuarios.create_user("medico@example.invalid")
         m.MembresiaFinanciador.objects.create(financiador=fixture.financiador, usuario=medico,
             rol="auditor", auditoria_medica=True, resuelve_autorizaciones=False)
+        actores = {"institucion": fixture.usuario.email, "medico": medico.email,
+                   "operador": fixture.operador.email}
+        if numero >= 5:
+            evaluador = usuarios.create_user("evaluador@example.invalid")
+            m.MembresiaFinanciador.objects.create(financiador=fixture.financiador, usuario=evaluador,
+                rol="operador", auditoria_medica=True, resuelve_autorizaciones=True)
+            actores["evaluador"] = evaluador.email
         escenarios.append({"caso": fixture.caso.pk, "institucion": fixture.institucion.pk,
             "institucion_nombre": fixture.institucion.nombre, "financiador": fixture.financiador.pk,
-            "prestacion": fixture.prestacion.pk, "usuarios": {"institucion": fixture.usuario.email,
-                "medico": medico.email, "operador": fixture.operador.email}})
+            "prestacion": fixture.prestacion.pk, "usuarios": actores})
 
 semilla = presentar(caso=fixture_lectura.caso, prestacion=fixture_lectura.prestacion, usuario=fixture_lectura.usuario,
     intento=a.intento_actual(fixture_lectura.caso), cantidad=1, justificacion="Constancia totalmente ficticia",

@@ -31,6 +31,30 @@ class AuditoriaMedicaFixture:
 
 
 class AuditoriaMedicaTests(AuditoriaMedicaFixture, APITestCase):
+    def test_lectura_y_resolucion_se_designan_y_revocan_independientemente(self):
+        url = self.base + "usuarios/"
+        ambas = self.client.post(url, self.datos | {
+            "auditoria_medica": True, "resuelve_autorizaciones": True}, format="json")
+        self.assertEqual(ambas.status_code, 201)
+        self.assertTrue(ambas.data["auditoria_medica"])
+        self.assertTrue(ambas.data["resuelve_autorizaciones"])
+        for campo, conservado in (("resuelve_autorizaciones", "auditoria_medica"),
+                                  ("auditoria_medica", "resuelve_autorizaciones")):
+            with self.subTest(revocado=campo):
+                self.client.force_authenticate(self.admin)
+                self.client.post(url, self.datos | {
+                    "auditoria_medica": True, "resuelve_autorizaciones": True}, format="json")
+                revocada = self.client.post(url, self.datos | {campo: False}, format="json")
+                self.assertEqual(revocada.status_code, 201)
+                self.assertFalse(revocada.data[campo])
+                self.assertTrue(revocada.data[conservado])
+                self.client.force_authenticate(self.lector)
+                org = self.client.get(self.base).data
+                capacidad = {"auditoria_medica": "consulta_prescripciones",
+                             "resuelve_autorizaciones": "resuelve_autorizaciones"}
+                self.assertFalse(org[capacidad[campo]])
+                self.assertTrue(org[capacidad[conservado]])
+
     def test_designacion_explicita_auditada_omision_y_revocacion_sin_otras_concesiones(self):
         self.client.force_authenticate(self.lector)
         self.assertFalse(self.client.get(self.base).data.get("consulta_prescripciones", True))
