@@ -1789,3 +1789,18 @@ Esta autorización de planificación no habilita nuevos modelos de negocio, tasa
 layouts, cobros, pagos ni efectos asistenciales. No reabrir la alternativa manual
 de aportes rechazada. La espera específica #144/#145 sigue vigente; el saneamiento
 técnico no depende de que OSTEL responda.
+
+### Saneamiento DT1 — barrera de media DEBUG (03/11/2026)
+
+Reproducido con PDF ficticio: la ruta literal clínica devolvía404, pero rutas
+normalizadas devolvían200 y los mismos bytes. El bloqueo ahora compara el destino
+resuelto con MEDIA_ROOT/uploads antes de delegar a Django. Cubre alias de separadores,
+mayúsculas y nombres Windows, sin sustituir el guard de la descarga autenticada.
+No migra archivos ni endurece buckets, proxies o servidores externos.
+
+Regresión persistente:13variantes anónimas404; archivo/metadatos/auditoría sin cambios;
+media pública normalizada y condicional304 preservada; descarga clínica autorizada
+con bytes exactos y auditoría. Suite propia de archivos/prescripciones24OK; verificador
+independiente en snapshots aislados confirma diferencial sin cambios no solicitados.
+Rollback acotado: wrapper/ruta DEBUG y su nueva regresión; revertirlo REINTRODUCE
+la exposición anónima observada. Risk: items2/3. No publicar sin autorización.
