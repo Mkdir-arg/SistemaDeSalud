@@ -62,7 +62,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 | T6c | S5,S12,S16,S17 | Gestionar la designación de Auditoría Médica desde Usuarios, sin contenido clínico | Inline tras mapa; verificador ítem2 | Completo gestión visual `14b47c5`; RED→GREEN6 recorridos, independiente/build/diferencial OK; nativa omitidaS16, S17 contenido pendiente |
 
-| T6d | S5,S16–S18 | Precisar ingreso institucional y barrera clínica de la prescripción | Inline documental tras mapa delegado por flujo desconocido | Actores confirmados; representación requiere decisión humana antes de código |
+| T6d | S5,S16–S18 | Precisar ingreso institucional y barrera clínica de la prescripción | Inline documental tras mapa delegado por flujo desconocido | Actores/contraste documentados en `8318e7b`; representación requiere decisión humana antes de código |
 
 ## Log
 
@@ -577,3 +577,5 @@ si
 - Evidencia del mapa: api_autorizaciones.py:47–54 recibeJSON sin prescripción; autorizaciones.py:118–169 posee lock/idempotencia/validación y eventos que se deben conservar. Upload common.py:363–527 y ArchivoClinico/registros.adjuntos sirven archivos institucionales asociados a Caso/Estudio, no a SolicitudAutorizacion. Descarga común requiere historia clínica y no satisface el alcance S17 del financiador. Receta clínica existente models.py:324–347 pertenece a historia del paciente; no se asume equivalente al documento presentado a autorización. Justificación/evidencia actuales tampoco se reinterpretan como prescripción.
 - T6d sólo registra decisión y contraste; no existe todavía corte funcional completo sin elegir representación. Recomendación pendiente: adjunto privado PDF/imagen, que conserva el documento presentado; alternativa material es vincular Receta clínica ya existente o capturar datos/texto específicos. Esa elección cambia autoría, validación, persistencia y el lector protegido. Preguntar una sola decisión de formato antes de diseñar almacenamiento o endpoint; no construir scaffolding ni reutilizar descarga amplia por conveniencia.
 - RED/GREEN/build/browser no aplican a este corte documental pasivo, sin código/pruebas/servidores/DB modificados. Verificación proporcional: readback de aprobación exacta y límites, rutas del mapa, diffcheck. Sin verificador semántico adicional. Risk:none; rollbackretirarS18/T6d/L37 y aclaración de glosario sin efectos en datos. No se declara #147 completo ni aceptado, ni se repite pedido de información ya hecho a OSTEL. S16 sigue vigente para lo seguro; sólo ingreso clínico queda pendiente de la decisión material.
+
+- T6d documental8318e7b:43adiciones+1eliminación,3archivos. Assesspassive/non_executable_only,review_due=false; sin START ni nuevo consentimiento. Readback/diffcheck OK; fuente yprivilegios sin cambios. Queda una decisión humana de representación, no un bloqueo de revisión nativa ni un pedido genérico de continuar.
