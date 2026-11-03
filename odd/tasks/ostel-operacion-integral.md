@@ -68,7 +68,7 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 | T6d | S5,S16–S18 | Precisar ingreso institucional y barrera clínica de la prescripción | Inline documental tras mapa delegado por flujo desconocido | Actores/contraste documentados en `8318e7b`; representación requiere decisión humana antes de código |
 
-| T6e | S5,S8,S16–S19 | Presentación institucional de adjunto privado con solicitud y descarga sólo por Auditoría Médica | Inline; verificador ítems1/2/4 | Completo backend con T6f `8862886`; nativa omitidaS16; UI/evaluación médica pendientes |
+| T6e | S5,S8,S16–S19 | Presentación institucional de adjunto privado con solicitud y descarga sólo por Auditoría Médica | Inline; verificador ítems1/2/4 | Completo backend con T6f `8862886`; nativa omitidaS16; UI entregada en T6g, evaluación médica pendiente |
 
 | T6f | S5,S8,S16–S20 | Alias privado de prescripciones reutilizando almacenamiento existente | Inline, cambio entendido; verificador ítems2/5 y cierre de T6e | Completo `8862886`, RED→GREEN/independiente; mismo proveedor, sin cambios remotos |
 
