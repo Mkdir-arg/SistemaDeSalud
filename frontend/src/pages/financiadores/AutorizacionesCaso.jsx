@@ -60,6 +60,8 @@ function SolicitarAutorizacion({ caso, contexto, ocupadoClinica, actualizar }) {
   const [prestacion, setPrestacion] = useState("");
   const [cantidad, setCantidad] = useState("1");
   const [justificacion, setJustificacion] = useState("");
+  const [prescripcion, setPrescripcion] = useState(null);
+  const formulario = useRef(null);
   const [error, setError] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(crypto.randomUUID());
@@ -71,20 +73,28 @@ function SolicitarAutorizacion({ caso, contexto, ocupadoClinica, actualizar }) {
     if (!valido || ocupadoClinica || enVuelo.current) return;
     enVuelo.current = true; setOcupado(true); setError(null);
     try {
-      await api.post("/autorizaciones-cobertura/", { caso: caso.id, prestacion: Number(prestacion), intento: contexto.intento, cantidad: Number(cantidad), justificacion: justificacion.trim(), clave: clave.current });
-      setAbierto(false); setPrestacion(""); setJustificacion(""); clave.current = crypto.randomUUID();
+      const datos = { caso: caso.id, prestacion: Number(prestacion), intento: contexto.intento, cantidad: Number(cantidad), justificacion: justificacion.trim(), clave: clave.current };
+      if (prescripcion) {
+        const body = new FormData();
+        Object.entries(datos).forEach(([campo, valor]) => body.append(campo, String(valor)));
+        body.append("prescripcion", prescripcion);
+        await api.multipart("/autorizaciones-cobertura/con-prescripcion/", body);
+      } else await api.post("/autorizaciones-cobertura/", datos);
+      if (prescripcion && !formulario.current?.isConnected) return;
+      setAbierto(false); setPrestacion(""); setJustificacion(""); setPrescripcion(null); clave.current = crypto.randomUUID();
       await actualizar("Solicitud enviada al financiador. La prestación todavía no se registró como realizada.");
     } catch (e) { setError(e); }
     finally { enVuelo.current = false; setOcupado(false); }
   }
-  return !abierto ? <Button variant="secondary" disabled={ocupadoClinica || !(contexto.prestaciones || []).length} onClick={() => setAbierto(true)}>Solicitar autorización</Button> : <form onSubmit={solicitar} className="space-y-3 rounded-md border border-division p-4">
+  return !abierto ? <Button variant="secondary" disabled={ocupadoClinica || !(contexto.prestaciones || []).length} onClick={() => setAbierto(true)}>Solicitar autorización</Button> : <form ref={formulario} onSubmit={solicitar} className="space-y-3 rounded-md border border-division p-4">
     {error && <ErrorAutorizacion error={error} />}
     <fieldset disabled={ocupado || ocupadoClinica} className="space-y-3">
       <Field label="Prestación a autorizar"><Select required value={prestacion} onChange={cambiar(setPrestacion)}><option value="">Seleccioná una prestación</option>{(contexto.prestaciones || []).map((p) => <option key={p.id} value={p.id}>{p.codigo ? `${p.codigo} · ` : ""}{p.nombre}</option>)}</Select></Field>
       <Field label="Cantidad solicitada"><Input type="number" min="1" max="100000" step="1" required value={cantidad} onChange={cambiar(setCantidad)} /></Field>
       <Field label="Justificación para el financiador" ayuda="Describí el motivo administrativo y clínico mínimo. Evitá copiar la historia clínica completa."><Textarea required maxLength={1000} value={justificacion} onChange={cambiar(setJustificacion)} /></Field>
+      <Field label="Prescripción (opcional)" ayuda="PDF o imagen JPEG, PNG o WebP. Documento privado para Auditoría Médica designada; adjuntarlo no aprueba la solicitud. El servidor comprueba formato y tamaño."><Input type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={(event) => { setPrescripcion(event.target.files?.[0] || null); clave.current = crypto.randomUUID(); }} /></Field>
     </fieldset>
-    <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!valido || ocupado || ocupadoClinica}>{ocupado ? "Enviando…" : "Enviar solicitud"}</Button><Button type="button" variant="ghost" disabled={ocupado} onClick={() => setAbierto(false)}>Cancelar</Button></div>
+    <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!valido || ocupado || ocupadoClinica}>{ocupado ? "Enviando…" : "Enviar solicitud"}</Button><Button type="button" variant="ghost" disabled={ocupado} onClick={() => { setAbierto(false); if (prescripcion) { setPrescripcion(null); clave.current = crypto.randomUUID(); } }}>Cancelar</Button></div>
   </form>;
 }
 

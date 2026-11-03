@@ -36,7 +36,7 @@ export function PaginasAutorizacion({ consulta, pagina, cambiar }) {
   </div>;
 }
 
-export default function DetalleAutorizacion({ id, ambito, scope, onClose, onGuardado, onVerSolicitud, ocupadoClinica = false }) {
+export default function DetalleAutorizacion({ id, ambito, scope, onClose, onGuardado, onVerSolicitud, ocupadoClinica = false, consultaPrescripciones = false }) {
   const parametros = new URLSearchParams(ambito).toString();
   const consulta = useQuery({
     queryKey: [...scope, "detalle-autorizacion", id, parametros],
@@ -52,6 +52,11 @@ export default function DetalleAutorizacion({ id, ambito, scope, onClose, onGuar
       </dl>
       {d.anterior && <div className="flex flex-wrap items-center gap-2 rounded-md bg-superficie-2 p-3 text-sm"><span>Solicitud anterior: #{d.anterior}</span>{onVerSolicitud && <Button type="button" size="sm" variant="secondary" onClick={() => onVerSolicitud(d.anterior)}>Ver antecedente {d.anterior}</Button>}</div>}
       <section><h3 className="font-semibold">Justificación para el financiador</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm">{d.justificacion}</p></section>
+      {String(d.id) === String(id) && d.prescripcion_estado === "presentada" && <section className="space-y-2 rounded-md bg-superficie-2 p-3 text-sm">
+        <h3 className="font-semibold">Prescripción presentada</h3>
+        <p>Contenido reservado a Auditoría Médica expresamente designada del financiador.</p>
+        {consultaPrescripciones && ambito.financiador && <DescargaPrescripcion key={`${d.id}:${parametros}`} id={d.id} parametros={parametros} />}
+      </section>}
       {Number(d.cantidad_aprobada) > 0 && <section className="rounded-md bg-superficie-2 p-3 text-sm">
         <h3 className="font-semibold">Alcance de la aprobación</h3>
         <p className="mt-1">{d.cantidad_aprobada} unidades · Del {fecha(d.vigencia_desde)} al {fecha(d.vigencia_hasta)}</p>
@@ -65,6 +70,25 @@ export default function DetalleAutorizacion({ id, ambito, scope, onClose, onGuar
       </section>
     </div>}
   </Modal>;
+}
+
+function DescargaPrescripcion({ id, parametros }) {
+  const contenedor = useRef(null);
+  const enVuelo = useRef(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState(null);
+  const vigente = () => Boolean(contenedor.current?.isConnected);
+  async function descargar() {
+    if (enVuelo.current) return;
+    enVuelo.current = true; setOcupado(true); setError(null);
+    try { await api.download(`/autorizaciones-cobertura/${id}/prescripcion/?${parametros}`, "prescripcion", vigente); }
+    catch (e) { if (vigente()) setError(e); }
+    finally { enVuelo.current = false; if (vigente()) setOcupado(false); }
+  }
+  return <div ref={contenedor} className="space-y-2">
+    {error && <ErrorAutorizacion error={error} />}
+    <Button type="button" size="sm" variant="secondary" disabled={ocupado} onClick={descargar}>{ocupado ? "Descargando…" : "Descargar prescripción"}</Button>
+  </div>;
 }
 
 function AccionesAutorizacion({ solicitud: d, ambito, refrescar, onGuardado, bloqueado }) {

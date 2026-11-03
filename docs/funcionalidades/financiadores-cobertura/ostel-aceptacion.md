@@ -1633,3 +1633,70 @@ El chequeo global de clasificación ya conocido sigue pendiente sólo por la FK
 BorradorReglaDerechos.creado_por preexistente; no se declara que pasó.
 No browser/build aplicables a este corte backend; UI institucional/médica pendiente.
 Risk: items2/5 (aislamiento y configuración); integra T6e1/2/4 sin ampliar permisos.
+
+### Solicitud y descarga desde las pantallas existentes — T6g (03/11/2026)
+
+La institución puede adjuntar **Prescripción (opcional)** al solicitar autorización
+desde el caso. Se conserva el JSON anterior cuando no hay archivo; con archivo
+se usa la acción multipart privada. Cancelar retira el archivo; un error no lo
+borra ni dispara reintento automático. La misma presentación conserva su clave,
+y cambiar archivo genera otra. No se agrega una obligatoriedad médica al circuito.
+
+El detalle institucional/administrativo muestra **Prescripción presentada**,
+sin enlace de contenido. Sólo el financiador con `consulta_prescripciones` explícita
+ve **Descargar prescripción**, con nombre genérico. Ese indicador no sustituye el
+permiso del servidor. No cambia resolver ni permite registrar un dictamen nuevo.
+Ingreso/descarga reutilizan `api.multipart`/`api.download` existentes, sin tocar
+el cliente compartido. Una referencia al contenedor DOM vigente y la identidad
+solicitud/ámbito impiden entregar una descarga cuando su detalle ya fue desmontado.
+
+Fixture persistente separada del runner Django: sólo PostgreSQL ficticio local,
+settings exactos, salida temporal y usuarios únicos@example.invalid. Reutiliza
+AutorizacionSetup sólo como construcción ORM (sin _pre_setup, flush o seedgeneral),
+con códigos de catálogo únicos, clínico del área y lector médico sin membresía
+institucional. Resolver de operación permanece distinto de la designación médica.
+Un expediente se precarga para negativos de lectura; los positivos crean desde UI.
+Los manifiestos y archivos privados quedan fuera de Git, sin imprimir credenciales.
+
+RED real observado por ausencia del campo. GREEN propio:6recorridos15.2s,
+escritorio/móvil, carga con respuesta201 y descarga200 de bytes idénticos,
+contenido ausente para institución/operación, teclado, cancelación→JSON anterior,
+rechazo403 inyectado sin descarga, respuesta real demorada descartada tras cerrar,
+y respuesta perdida después del commit con reintento explícito de misma clave/
+archivo/solicitud. Los negativos de transporte son inyecciones, no reemplazan
+los positivos HTTP/PG/FS reales. El PDF positivo ahora se genera con jsPDF ya
+instalado (sin nueva dependencia); repetición escritorio4.5s OK con PDF válido.
+Independiente Sol/medium PASS: build3.62s,6recorridos reales16.2s y23checks
+mock/diferencial/negativo20.9s; baseline5cee72c22checks19.4s. JSON/resolver/reenviar/
+anular conservan cuerpo, ruta, ámbito y texto anterior, excluyendo sólo UUID
+aleatorio y campo opcional declarado. Mock no equivale a persistencia/E2E.
+Negativo adicional: doble clic produce1GET y cambiar al antecedente descarta la
+respuesta anterior. Incorporado al test existente junto con regresión de anular,
+sin duplicar su fixture ni leer Git desde tests;20regresiones mock padre19.2s OK.
+Tres componentes productivos idénticos al snapshot del verificador; sin correcciones.
+Capturas escritorio/móvil inspeccionadas por padre; diálogo desplazable, botón
+legible y sin desborde horizontal. Demo visible local62061, financiador ficticio13,
+lector médico sin permiso de resolver y PDF válido listo para descargar. No aceptación.
+Los procesos mock propios del verificador en5198 se detuvieron con0listeners;
+un arranque de baseline encontró su candidato todavía vivo y se corrigió sólo
+la identificación/terminación de ese proceso. Padres5189/8232 preservados.
+Scratch externo ostel_t6g_verify__s2hd0ro retenido; ninguna configuración remota.
+
+Ejecución: preparar un escenario nuevo con `preparar_prescripciones_autorizacion.py`
+bajo settings PostgreSQL dedicados; pasar su manifiesto como
+`SALUD_PRESCRIPCIONES_MANIFEST` a
+`node node_modules/@playwright/test/cli.js test --config playwright.prescripciones-real.config.js`.
+Cada ejecución positiva usa un manifiesto nuevo; no elimina expedientes previos.
+No equivale a despliegue, aceptación humana ni validación médica del documento.
+Risk: items2/4 (visibilidad sensible y respuestas asíncronas).
+
+Límite de privacidad: este almacenamiento protege las prescripciones nuevas;
+no migra ni endurece los demás adjuntos de `default`/MEDIA_ROOT. La ruta estática
+de desarrollo preexistente y su normalización necesitan tratamiento separado;
+no se afirma privacidad global de otros archivos ni se inspeccionaron archivos reales.
+
+El runner de prescripciones es explícitamente manual: no hereda el arranque del
+escenario de importación aunque exista SALUD_IMPORTACION_E2E_AISLADO=1.
+RED de configuración observado, guardia y regresión importada137ms OK; lectura
+negativa UI1.6s y spotcheck de respuesta demorada1.8s OK. No se ejecuta el importador
+ni se modifican sus configuraciones. Los servidores/fixture se preparan por separado.
