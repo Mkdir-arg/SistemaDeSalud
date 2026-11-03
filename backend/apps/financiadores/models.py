@@ -563,6 +563,18 @@ class SolicitudAutorizacion(models.Model):
         indexes = [models.Index(fields=["estado", "plazo_respuesta"]), models.Index(fields=["estado", "vigencia_hasta"]), models.Index(fields=["convenio", "afiliado", "comun", "estado"])]
 
 
+class PrescripcionAutorizacion(models.Model):
+    """Documento presentado, separado de los datos administrativos del expediente."""
+    solicitud = models.OneToOneField(SolicitudAutorizacion, on_delete=models.PROTECT, related_name="prescripcion")
+    ruta = models.CharField(max_length=255, unique=True)
+    content_type = models.CharField(max_length=60)
+    extension = models.CharField(max_length=8)
+    tamano = models.PositiveIntegerField()
+    sha256 = models.CharField(max_length=64)
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    creado = models.DateTimeField(auto_now_add=True)
+
+
 class EventoAutorizacion(models.Model):
     """Historia administrativa y claves de reintento, sin edición desde la API."""
     solicitud = models.ForeignKey(SolicitudAutorizacion, on_delete=models.PROTECT, related_name="historial")

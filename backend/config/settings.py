@@ -545,11 +545,17 @@ SALUD_FACTURAS_ADJUNTOS_DIR = (_facturas_dir if _facturas_dir.is_absolute() else
 if SALUD_FACTURAS_ADJUNTOS_DIR == MEDIA_ROOT.resolve() or MEDIA_ROOT.resolve() in SALUD_FACTURAS_ADJUNTOS_DIR.parents:
     raise ValueError("SALUD_FACTURAS_ADJUNTOS_DIR debe estar fuera de MEDIA_ROOT.")
 
+_prescripciones_dir = Path(env("SALUD_PRESCRIPCIONES_ADJUNTOS_DIR", BASE_DIR / "privado" / "prescripciones"))
+SALUD_PRESCRIPCIONES_ADJUNTOS_DIR = (_prescripciones_dir if _prescripciones_dir.is_absolute() else BASE_DIR / _prescripciones_dir).resolve()
+if SALUD_PRESCRIPCIONES_ADJUNTOS_DIR.is_relative_to(MEDIA_ROOT.resolve()):
+    raise ValueError("SALUD_PRESCRIPCIONES_ADJUNTOS_DIR debe estar fuera de MEDIA_ROOT.")
+
 # Disco local, o un bucket S3 privado si están BUCKET, ACCESS_KEY_ID,
 # SECRET_ACCESS_KEY y ENDPOINT (#171, ver config/almacenamiento.py).
 from config import almacenamiento as _almacenamiento  # noqa: E402
 
-_archivos, ALMACENAMIENTO_EN_BUCKET = _almacenamiento.storages(os.environ, SALUD_FACTURAS_ADJUNTOS_DIR)
+_archivos, ALMACENAMIENTO_EN_BUCKET = _almacenamiento.storages(os.environ, SALUD_FACTURAS_ADJUNTOS_DIR,
+    carpeta_prescripciones=SALUD_PRESCRIPCIONES_ADJUNTOS_DIR)
 STORAGES = {
     **_archivos,
     # WhiteNoise: sirve los estáticos (incluido el admin) con gunicorn sin nginx.

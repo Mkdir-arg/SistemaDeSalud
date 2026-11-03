@@ -1516,3 +1516,120 @@ Contraste read-only con CodeGraph sincronizado y un spotcheck del upload común.
 No se ejecutaron pruebas ni se modificaron código, DB, archivos clínicos o servicios.
 No hay nueva prueba de visibilidad de contenido ni aceptación de #147.
 La documentación y glosario registran S18; código pendiente de esta decisión.
+
+### Adjunto privado con solicitud institucional — T6e (03/11/2026)
+
+**Estado actual:** S20 autoriza la configuración privada simple de T6f descrita
+abajo. La carga continúa fallando cerrada si se configura dentro de MEDIA_ROOT
+o falta el alias dedicado. Configuración y API fueron verificadas localmente con archivos ficticios;
+no se habilitaron documentos reales ni se declara el ingreso visual disponible.
+
+Formato confirmado por el usuario: **PDF/imagen privado**, no texto de
+justificación ni enlace implícito a la historia clínica. El documento se recibe
+junto a una nueva solicitud institucional y queda ligado a ella; no hay acción
+de reemplazo/borrado ni obligatoriedad prestacional nueva. No cambia resolver.
+
+| Interfaz | Contrato |
+| --- | --- |
+| `POST /api/autorizaciones-cobertura/con-prescripcion/` | Multipart: `caso`, `prestacion`, `intento`, `cantidad`, `justificacion`, `clave` y exactamente un archivo `prescripcion`. Sólo personal autorizado para operar el caso de la institución; plataforma y simulación de plataforma no sustituyen al presentante. |
+| `GET /api/autorizaciones-cobertura/<id>/prescripcion/?financiador=<id>` | Solicitud visible de ese financiador, usuario/membresía/financiador activos y designación explícita de Auditoría Médica. Descarga autenticada, auditada estrictamente antes de transmitir, attachment/nosniff/private-no-store. |
+| Bandeja/detalle administrativo | Sólo agrega `prescripcion_estado: presentada` si hay documento; no nombre, ruta, hash, contenido ni URL. Sin documento conserva exactamente los campos previos. |
+| JSON institucional, manual, observar/aprobar/rechazar | Interfaces existentes conservadas; no se consideran registros de opinión médica por esta entrega. |
+
+Se reutilizan `solicitar`, el lock de Caso, controles de afiliación/convenio/paso,
+claves e historia. Misma clave y bytes devuelve el resultado previo; cambiar el
+archivo o agregarlo retroactivamente con la clave de una solicitud JSON se rechaza.
+Registro uno-a-uno separado (`0021`), sin migrar datos anteriores. La validación
+común comprueba tamaño (máximo existente, por defecto10MiB), MIME, extensión y firma;
+sólo PDF/JPEG/PNG/WebP, no texto ni SVG. No implica análisis antivirus ni validez médica.
+
+Storage privado existente, sin proveedor/configuración nuevo ni URLs públicas.
+Las claves opacas bajo `uploads/prescripciones/` son rechazadas por la descarga
+clínica genérica, pero **ese prefijo no basta para garantizar privacidad**.
+La revisión demostró que, con el storage local anterior dentro de MEDIA_ROOT,
+`/media/x/../uploads/prescripciones/<uuid>.pdf` y la variante `%2e%2e` entregaban
+el PDF ficticio anónimamente: el guard literal se ejecutaba antes de normalizar.
+La carga ahora rechaza FileSystemStorage dentro de MEDIA_ROOT con503 antes de
+cualquier escritura. Se necesita storage dedicado fuera de toda media pública. No se crea un
+ArchivoClinico que habilite acceso más amplio. Se conserva el original binario,
+no su nombre potencialmente sensible. La institución no recibe por este corte
+un permiso nuevo de lectura del contenido en el servidor; conserva su fuente y
+consulta el estado. No se amplía historia clínica ni designan personas reales.
+
+Fallo en persistencia/auditoría revierte expediente/eventos/metadatos y compensa
+únicamente el nuevo objeto almacenado. Si falla esa limpieza, se conserva el error
+de la operación y no existe metadato que lo haga descargable por la API; requiere
+atención técnica, sin borrar otros objetos. No hay política de retención inventada.
+
+RED observado: nueva acción inexistente405; luego plataforma201 en lugar de403,
+corregido con identidad real antes del ingreso. GREEN9casos nuevos y regresión
+institucional/manual/designación:58pruebas OK16.705s, dry-migrations limpio.
+Primer comando de regresión nombró erróneamente test_autorizaciones_manual
+(singular, módulo inexistente); corregido sólo el comando a *_manuales y repetido.
+Un negativo de financiador ajeno omitió rol en su fixture, causó403 en vez de404;
+corregido sólo el rol explícito ficticio. Verificador independiente:58tests/dry-check y18observacionesHTTP previas
+JSON/manual/bandeja/detalle/resolver equivalentes al baseline. Detectó además
+campo desconocido ignorado y nueva FK de autoría sin clasificar: se corrigieron
+sólo el serializer multipart y el registro de autoría nuevo. La clasificación
+global sigue fallando únicamente por BorradorReglaDerechos.creado_por, idéntico
+al baseline; no se presenta ese chequeo como verde ni se amplía el arreglo.
+Recheck único focal: desconocidos400 sin mutación, FS público503 sin escritura,
+FS privado fuera de MEDIA_ROOT201 y descarga médica200 con bytes exactos;
+rutas anónimas directa/../%2e%2e404. Este override es sólo de prueba: no cambia
+la configuración real. Probes incorporados a regresión,12tests padre3.296s OK.
+Scratch externo ostel_t6e_verify_rkjmuv8k retenido. Al cierre de T6e aún no se había autorizado la configuración privada real;
+S20/T6f resuelve esa autorización y su configuración se verifica por separado.
+No nueva ronda del candidato anterior.
+No es todavía una prueba HTTP/UI; no se declara completo el flujo visual.
+
+Runner backend: PYTHON_DOTENV_DISABLED=1, ENTORNO=desarrollo,
+DJANGO_SETTINGS_MODULE=config.settings_financiadores_postgres_test y
+SALUD_TEST_POSTGRES_URL del PostgreSQL dedicado loopback, `manage.py test`
+con test_prescripciones_autorizacion/test_autorizaciones/test_autorizaciones_manuales/
+test_auditoria_medica, serial, `--keepdb --noinput`.
+Rollback: retirar endpoints/servicio/estado nuevo y revertir0021 sólo tras preservar
+metadatos y objetos; no perder documentos almacenados ni revertir autorizaciones.
+Risk: items1 (persistencia),2 (documento clínico),4 (ingreso/idempotencia bajo lock).
+
+### Almacenamiento privado simple — T6f (03/11/2026)
+
+El usuario autorizó «entonces autorizo, manteniendolo simple». Se extiende la
+fábrica existente: **no hay servicio, proveedor, bucket ni credenciales nuevos**.
+
+| Entorno | Configuración de prescripciones |
+| --- | --- |
+| Disco local | Alias Django `prescripciones`, predeterminado `backend/privado/prescripciones`, fuera de `MEDIA_ROOT` y ya excluido de Git. Puede ubicarse en otro volumen mediante `SALUD_PRESCRIPCIONES_ADJUNTOS_DIR`; rutas relativas se resuelven desde backend. Si cae dentro de MEDIA_ROOT, configuración rechazada. |
+| Bucket privado ya configurado | Mismo backend/opciones del bucket existente, prefijo `prescripciones/`. No se accede al proveedor en estas pruebas ni se cambian variables remotas. |
+| Archivo | Sólo clave relativa opaca `<uuid>.<ext>` en la base; descarga por API con permiso y auditoría. No se publica URL de storage. |
+| Infraestructura | Incluir la carpeta/prefijo en respaldo y restauración junto a los metadatos DB; en disco de un despliegue, requiere persistencia del volumen. Esta entrega local no certifica backup ni durabilidad de producción. |
+
+Ingreso, compensación y descarga usan el mismo alias, nunca `default` como
+fallback. Si falta, o es FileSystemStorage dentro de MEDIA_ROOT, devuelve503.
+Los alias anteriores `default` y `facturas` y las llamadas de fábrica con dos
+argumentos conservan sus resultados. Sin migraciones de documentos existentes,
+limpieza masiva, cambios de `.env`, dependencias o configuración remota.
+
+RED: argumento de configuración nuevo ausente en ambos modos de fábrica.
+GREEN:8tests de configuración y13API,70regresión institucional/manual/designación
+OK16.993s; dry-migrations limpio. Las opcionesS3 se validan sólo con valores
+sintéticos y construcción del backend, sin conexión ni lectura de credenciales.
+El primer ajuste de fixture apuntó desde backend a un path con prefijo backend
+repetido: no editó archivos y causó pruebas con alias faltante503; se corrigió
+únicamente el path del script y se actualizaron los overrides al alias dedicado.
+Verificación independiente T6f PASS:70pruebas17.269s/dry-check limpio, dos
+probes de configuración fría1.481s y seis modos de fábrica con stdout/stderr/exit
+idénticos a9453288. Configuración predeterminada, absoluta y relativa válidas;
+carpeta pública rechaza inicio. Sin override positivo de STORAGES: el alias nace
+de settings reales en proceso nuevo, escribe un PDF ficticio fuera de media,
+403 sin designación y200 con designación/auditoría/bytes exactos. Alias ausente
+o público503 en lectura/escritura, sin archivo ni huella cambiada. Rutas anónimas
+canónicas/normalizables404; escapes externos400 de safe_join, todos sin bytes.
+Spotcheck padre de los dos probes1.476s OK. Regresiones incorporadas sin historia
+Git ni paths fijos:22tests3.554s OK; configuración fría sin conexiones al proveedor.
+Scratch externo ostel_t6f_verify__e1nbodc retenido. Dos ajustes del harness:
+APITransactionTestCase evita cierre de conexión de FileResponse en APITestCase;
+expectativa de escape externo corregida a400. Ningún cambio productivo posterior.
+El chequeo global de clasificación ya conocido sigue pendiente sólo por la FK
+BorradorReglaDerechos.creado_por preexistente; no se declara que pasó.
+No browser/build aplicables a este corte backend; UI institucional/médica pendiente.
+Risk: items2/5 (aislamiento y configuración); integra T6e1/2/4 sin ampliar permisos.
