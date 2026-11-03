@@ -33,6 +33,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 - S20 — Almacenamiento privado simple: «entonces autorizo, manteniendolo simple», después de autorizar la propuesta de almacenamiento dedicado local fuera de MEDIA_ROOT, sin cambios remotos ni proveedores nuevos. Reutilizar la infraestructura existente: carpeta privada local y prefijo separado en el mismo bucket privado donde ya esté configurado. No autoriza despliegue, credenciales nuevas ni cambios remotos.
 
+- S21 — Resultado de la evaluación médica: «aprobar/rechazar la solicitud», en respuesta a «¿La evaluación médica debe aprobar/rechazar la solicitud o registrar un dictamen separado?». La evaluación resuelve la solicitud existente; no se crea un dictamen paralelo. Reutilizar la resolución y sus permisos explícitos, sin conceder resolución por lectura médica ni inventar criterios normativos.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
@@ -73,6 +75,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T6f | S5,S8,S16–S20 | Alias privado de prescripciones reutilizando almacenamiento existente | Inline, cambio entendido; verificador ítems2/5 y cierre de T6e | Completo `8862886`, RED→GREEN/independiente; mismo proveedor, sin cambios remotos |
 
 | T6g | S5,S8,S12,S16–S20 | Adjuntar desde solicitud institucional y descargar sólo con designación médica | Inline tras mapa de fixture/journey; verificador ítems2/4 | Completo UI `ffef614`, independiente/real/móvil/teclado; nativa omitidaS16, evaluación médica pendiente |
+
+| T6h | S5,S8,S12,S16–S21 | Comprobar evaluación médica como resolución existente, con lectura y resolución explícitas | Inline tras mapa delegado por flujo de permisos; sin cambios productivos previstos | Pendiente de prueba API/navegador: Docker local no disponible (L41); sin ampliar permisos ni declarar flujo verificado |
 
 ## Log
 
@@ -647,3 +651,13 @@ entonces autorizo, manteniendolo simple
 
 - T6g commitffef614:431adiciones+8eliminaciones,9archivos. Unidad UI con fixture/regresiones/docs junta, leve exceso de orientación400 por pruebas necesarias, cadena local elegida sin publicación. Assesshigh ítem2 explícito,review_due/high_risk. Exactpreflight lentesinvalid_request/not_started; exactreentrada sinlentes collectexterno schema-bound no callable ysubmission sinbase-ref/committed-only. Targetsha256:39e03450da81312e78f3ece4f853b235784e975497e5a0062d0672e6f36c493b; forecastpartial,paso1collect,intended_untracked_selection_required trasladado. S16 dejaestecandidato sinrevisión nativa, sin START/linaje/v3consent/decline/aprobación ni toggleglobal/reporte/reintento reconstruido.
 - Configuración/simplealmacenamiento y flujo visual completos localmente; no CI/deploy/aceptación humana ni homologaciónOSTEL. #147 noDone: evaluación clínica/PMO/mínimoevidencia siguen pendientes. Decisión humana siguiente: si la evaluación médica debe ser la acción que aprueba/rechaza la solicitud existente (cambia estado/vigencia/cantidad autorizada), o un dictamen clínico separado. S18 aprobó quién registra evaluación, no esta equivalencia; no inferir nuevos permisos de resolución por tener lectura médica ni duplicar paso por defecto. Operación conserva permiso administrativo anterior si lo tenía, nunca lectura dePDF; no imponer precedencia médica normativa sin validación.
+
+### L41 — Evaluación como resolución confirmada (03/11/2026)
+
+aprobar/rechazar la solicitud
+
+- Resuelve la pregunta final de L40: evaluación médica y resolución de la solicitud no son dos estados ni dos circuitos separados. S21/T6h registrados antes de cualquier cambio de fuente; HEAD4642256, sólo .atl previo. Espejo309 íntegro anterior reconciliado con la documentación local; sincronización completa sigue pendiente por capacidad50k, sin truncarlo.
+- Mapa de sólo lectura delegado por presupuesto de evidencia, con spotcheck del padre: permisos.py54–78, autorizaciones.py250–293 y views.py681–728. El circuito ya admite un miembro operador con auditoria_medica=True y resuelve_autorizaciones=True, gestionados independientemente por el administrador real. Reutilizar resolver, revisión, idempotencia, bloqueo, historial y auditoría; no modificar roles ni otorgar resolución automáticamente al lector médico.
+- Corte mínimo: comprobar por API y navegador que ese usuario descarga la prescripción y aprueba/rechaza la misma solicitud, conservando lector médico sin resolución y operador resolutor sin lectura. No hace falta otro motor ni cambios productivos de permisos. La evidencia compartida sólo debe contener referencias administrativas, no transcripciones de contenido clínico reservado. Criterios clínicos, PMO y aprobación médica exclusiva no se presumen aprobados.
+- Bloqueante de prueba observado: no hay listeners5189/8232/64440; docker ps del contenedor dedicado falla al conectar con dockerDesktopLinuxEngine, tubería inexistente. No se pudo comprobar siquiera el estado del contenedor, por lo que no se infiere pérdida de datos ni se reinicia/recrea nada. No se usa otra base, SQLite ni mocks para suplir la prueba real requerida. No se inicia Docker Desktop globalmente ni se cambian servicios/configuración.
+- T6h queda pendiente de disponibilidad del motor Docker local para revalidar el contenedor dedicado y su puerto, preparar sólo fixtures ficticias y ejecutar la prueba pública. No hay nueva fuente, RED/GREEN ni recorrido real de evaluación observados; el mapa no equivale a validación funcional. Los resultados anteriores de T6e–T6g siguen siendo históricos, no prueba de disponibilidad actual. El impedimento nativo anterior es independiente y no se vuelve a tramitar.

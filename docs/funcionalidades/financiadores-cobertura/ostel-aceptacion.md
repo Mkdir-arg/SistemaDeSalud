@@ -1700,3 +1700,25 @@ escenario de importación aunque exista SALUD_IMPORTACION_E2E_AISLADO=1.
 RED de configuración observado, guardia y regresión importada137ms OK; lectura
 negativa UI1.6s y spotcheck de respuesta demorada1.8s OK. No se ejecuta el importador
 ni se modifican sus configuraciones. Los servidores/fixture se preparan por separado.
+
+### Evaluación médica y resolución de la solicitud
+
+Decisión del usuario (03/11/2026): «aprobar/rechazar la solicitud». No se agrega
+un dictamen paralelo: la evaluación utiliza la resolución existente, con su
+revisión, motivo, evidencia, cantidad/vigencia cuando corresponde e historial.
+La aprobación no registra una prestación realizada ni crea un cargo.
+
+La configuración existente permite asignar por separado a un miembro operador
+la designación de Auditoría Médica y el permiso de resolver autorizaciones.
+Ambos deben asignarse explícitamente; consultar la prescripción no concede
+resolución. El rol genérico auditor sigue siendo de lectura. Los resolutores
+administrativos existentes conservan su permiso, pero no acceden al documento.
+Este corte no impone aprobación médica exclusiva ni criterios PMO automáticos.
+No copiar contenido clínico reservado en motivo/evidencia compartidos: usar
+referencias administrativas de la revisión, conservando el original privado.
+
+La comprobación API/navegador del recorrido combinado está pendiente: al retomar
+no estaban disponibles los servidores locales ni el motor Docker dedicado.
+No se ejecutaron nuevas pruebas ni se sustituyó PostgreSQL por otra base o mocks.
+Véase T6h/L41 en el registro de ejecución; no confundir soporte observado en el
+código con prueba funcional actual, despliegue o aceptación humana.
