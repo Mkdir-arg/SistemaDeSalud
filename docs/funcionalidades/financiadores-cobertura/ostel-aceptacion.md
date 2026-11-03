@@ -1736,3 +1736,56 @@ ficticia aprobada y descarga médica disponible. No aceptación humana ni despli
 Se conserva el permiso administrativo anterior; no se exige revisión médica
 exclusiva como una nueva regla de negocio. Sin cambios productivos, build o
 diferencial de contratos compartidos no aplican. Risk: none.
+
+## Pendientes consolidados para continuidad — 03/11/2026
+
+Este estado consolida los avances posteriores a las secciones históricas. T6b–T6h
+completan localmente designación, ingreso privado, descarga y resolución de la
+misma solicitud; no sigue pendiente decidir su representación ni crear otro
+dictamen. Esto no completa el contrato clínico/PMO de #147 ni acredita aceptación.
+
+| Tema | Ubicación de seguimiento | Pendiente real / condición de cierre |
+| --- | --- | --- |
+| Identidad/familias | #181, #142 | Homologación de equivalencias no confirmadas y aceptación operativa del contrato implementado; sin autofusión ni inferir familia por NROAFI. |
+| Derechos | #143 | Fuente validada, causales, fechas, gracia, mora, bajas y excepciones; implementar aplicación operativa sólo con reglas aprobadas. Configurar/simular ya funciona sin cambiar derechos. |
+| Novedades | #183 | Completar circuito bajo contrato de derechos, con evidencia, historia y aislamiento; ausencia de registros no produce baja. |
+| Autorizaciones médicas | #147 | Validar criterios clínicos/PMO, evidencia mínima, vigencias, conservación/reemplazo y aceptación OSTEL; no inferir aprobación médica exclusiva ni criterios automáticos. |
+| Aportes/recaudación | #144 | Esperar respuesta OSTEL: layouts/versiones y reglas de identificación, conciliación, imputación y reversas. No confundir declarado con dinero recibido. |
+| Cuenta corriente/cuotas | #145 | Esperar respuesta OSTEL: cálculo de cuota/diferencia, saldo, vencimiento, canales, rendiciones y emisión fiscal. Registro manual alternativo rechazado por el usuario. |
+| Liquidaciones | #149 | Acordar contrato de liquidación a prestadores y casos verificables; no sustituirlo por cuentas hospitalarias existentes. |
+| Reintegros médicos | #148 | Acordar circuito/evidencia y contrato; distinguir reintegro médico de devolución financiera. |
+| Tesorería/contabilidad | #153 | Definir contratos y trazabilidad ligados a eventos financieros; dependiente de los frentes anteriores, sin pagos reales. |
+| Intercambio SSSalud | #146 | Sólo si se confirma necesidad operativa y layout oficial; no inventar un formato. |
+| QA funcional | #184, #185 | PR196 incorporado, no aceptación integral; completar integración de módulos y aceptación humana sin equiparar pruebas locales con homologación. |
+| Coordinación/entrega | #141 | Revisar/publicar por unidades, CI observado, cierre de pendientes y autorización separada de merge/deploy; no cerrar issues por tests verdes. |
+
+### Deudas técnicas y de seguimiento — #185
+
+- **DT1 — Media anterior:** reproducir sólo con archivos ficticios el acceso anónimo
+  por normalización de rutas en desarrollo; endurecer sin romper descargas
+  autorizadas. Los documentos nuevos usan almacenamiento privado separado;
+  no se inspeccionaron adjuntos reales ni se afirma protección global.
+- **DT2 — Clasificación de autoría:** corregir la clasificación pendiente de
+  BorradorReglaDerechos.creado_por y comprobar la prueba global correspondiente.
+  Es un fallo preexistente conocido, no queda oculto por las suites focales verdes.
+- **DT3 — Estado documental:** resúmenes T6a–T6g reconciliados con S17–S21/T6h;
+  conservar el Log histórico y verificar que futuras transiciones actualicen el resumen.
+- **DT4 — Recuperación de seguimiento:** archivo local íntegro; espejo completo de
+  memoria pendiente por límite de capacidad. Resolver sin truncar ni perder la
+  versión anterior; no declarar sincronización si no se verificó el contenido completo.
+- **DT5 — Revisión nativa:** varios cortes carecen de revisión completada por el
+  impedimento registrado. No fabricar aprobación, repetir reportes/declines,
+  reusar linajes consumidos ni modificar el modo global. Cerrar sólo mediante
+  una recuperación soportada; si no está disponible, declarar el límite.
+- **DT6 — Integración y entrega:** reunir prueba integral proporcional y CI del
+  corte publicado; mantener separados commit/PR, CI, despliegue y aceptación.
+  Deploy e infraestructura remota requieren autorización específica.
+
+### Continuidad genérica sin información nueva de OSTEL
+
+Analizar, estudiar y planificar capacidades reutilizables por otras obras sociales,
+partiendo de lo existente y explicitando dependencias, reglas pendientes y pruebas.
+Esta autorización de planificación no habilita nuevos modelos de negocio, tasas,
+layouts, cobros, pagos ni efectos asistenciales. No reabrir la alternativa manual
+de aportes rechazada. La espera específica #144/#145 sigue vigente; el saneamiento
+técnico no depende de que OSTEL responda.

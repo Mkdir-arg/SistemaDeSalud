@@ -37,6 +37,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 - S22 — Espera de definiciones de aportes y cuentas corrientes: «no, deja documentado que esperamos respuesta de ostel». No implementar el registro manual alternativo propuesto en L43; mantener T7 en espera de la respuesta ya solicitada a OSTEL, sin reiterar el pedido ni inventar contratos.
 
+- S23 — Publicación y traspaso: «okey. commitea y crea pr de todo lo hecho en esta sesion, prepara un handoff y despliega un worktree con un agente dedicado que tenga el contexto necesario para seguir con esto.» Antes de publicar: «pero no sin antes, por otro lado, documentar todos los faltantes que me listaste en sus respectivos lugares, y levantar un worktree donde por un lado despliegues un agente con el objetivo de sellar esas deudas tecnicas y de seguimiento y por el otro analizar, estudiar y planificar el avance de todo lo que se pueda hacer sin la respuesta de ostel pero que pueda servirnos tipo generico para otras obras sociales». Autoriza documentación de pendientes, commits, publicación de esta entrega en GitHub y nuevos worktrees/agentes locales; no autoriza merge, deploy ni inventar contratos o levantar la espera S22. Conservar estrategia de entrega S10 y aislar saneamiento técnico de la continuidad/planificación.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
@@ -60,25 +62,30 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T4a | S3,S5,S8,S14,S15 | Comprobar no interferencia entre reglas y padrón familiar importado | Inline; regresión nueva sin cambiar código productivo, Risk: none | Completo local `e322240`; evaluación medium/under_budget; baseline `85cd2ac`; #185 integral pendiente |
 | T5 | S2,S4,S5 | #184: QA de entrega existente con familias/novedades | Inline | PR196 incorporado; In QA; no reconstruir |
 | T6 | S2,S4,S5 | #147: contraste de autorizaciones con reglas OSTEL | Inline tras mapa de decisión | Contraste técnico documentado T6a; contrato clínico/PMO y aceptación pendientes, sin implementar política |
-| T6a | S2,S5,S16 | Matriz técnica #147 y decisión de acceso clínico | Inline después de mapa delegado saved_threshold_map por flujo desconocido | Contraste técnico local `932fed8`; evaluación pasiva; decisión de acceso clínico pendiente |
-| T6b | S5,S8,S16,S17 | Designación explícita de Auditoría Médica por financiador y capacidad fail-closed | Inline tras mapa; verificador ítems1/2/4 | Completo configuración `577b1bd`; nativa omitida porS16 ante bloqueo conocido; S17 contenido pendiente |
+| T6a | S2,S5,S16 | Matriz técnica #147 y decisión de acceso clínico | Inline después de mapa delegado saved_threshold_map por flujo desconocido | Contraste local `932fed8`; acceso y representación resueltos después en S17–S21/T6b–T6h; contrato clínico/PMO pendiente |
+| T6b | S5,S8,S16,S17 | Designación explícita de Auditoría Médica por financiador y capacidad fail-closed | Inline tras mapa; verificador ítems1/2/4 | Completo configuración `577b1bd`; nativa omitidaS16; contenido completado posteriormente por T6e–T6g |
 | T7 | S2,S4,S5,S16,S22 | #144 → #145: aportes, conciliación y cuenta corriente | Inline tras mapa delegado por dominio desconocido | En espera de respuesta de OSTEL por decisión explícita (L44); sin registro manual alternativo ni cobros reales |
 | T8 | S2,S4,S5 | #149: liquidación a prestadores | Inline | Pendiente de contrato |
 | T9 | S2,S4,S5 | #148: reintegros médicos, no devolución financiera | Inline | Pendiente de contrato |
 | T10 | S2,S4,S5 | #153: tesorería/contabilidad ligada a eventos | Inline | Dependiente de contratos financieros |
 | T11 | S2,S4,S5 | #146: intercambio oficial SSSalud | Inline | Condicional a necesidad operativa y layout oficial |
 
-| T6c | S5,S12,S16,S17 | Gestionar la designación de Auditoría Médica desde Usuarios, sin contenido clínico | Inline tras mapa; verificador ítem2 | Completo gestión visual `14b47c5`; RED→GREEN6 recorridos, independiente/build/diferencial OK; nativa omitidaS16, S17 contenido pendiente |
+| T6c | S5,S12,S16,S17 | Gestionar la designación de Auditoría Médica desde Usuarios, sin contenido clínico | Inline tras mapa; verificador ítem2 | Completo gestión visual `14b47c5`; RED→GREEN/independiente/build/diferencial; contenido completado en T6e–T6g; nativa omitidaS16 |
 
-| T6d | S5,S16–S18 | Precisar ingreso institucional y barrera clínica de la prescripción | Inline documental tras mapa delegado por flujo desconocido | Actores/contraste documentados en `8318e7b`; representación requiere decisión humana antes de código |
+| T6d | S5,S16–S18 | Precisar ingreso institucional y barrera clínica de la prescripción | Inline documental tras mapa delegado por flujo desconocido | Actores/contraste `8318e7b`; representación resuelta en S19 y aplicada por T6e–T6g |
 
-| T6e | S5,S8,S16–S19 | Presentación institucional de adjunto privado con solicitud y descarga sólo por Auditoría Médica | Inline; verificador ítems1/2/4 | Completo backend con T6f `8862886`; nativa omitidaS16; UI entregada en T6g, evaluación médica pendiente |
+| T6e | S5,S8,S16–S19 | Presentación institucional de adjunto privado con solicitud y descarga sólo por Auditoría Médica | Inline; verificador ítems1/2/4 | Completo backend con T6f `8862886`; UI T6g y resolución T6h completas localmente; nativa omitidaS16 |
 
 | T6f | S5,S8,S16–S20 | Alias privado de prescripciones reutilizando almacenamiento existente | Inline, cambio entendido; verificador ítems2/5 y cierre de T6e | Completo `8862886`, RED→GREEN/independiente; mismo proveedor, sin cambios remotos |
 
-| T6g | S5,S8,S12,S16–S20 | Adjuntar desde solicitud institucional y descargar sólo con designación médica | Inline tras mapa de fixture/journey; verificador ítems2/4 | Completo UI `ffef614`, independiente/real/móvil/teclado; nativa omitidaS16, evaluación médica pendiente |
+| T6g | S5,S8,S12,S16–S20 | Adjuntar desde solicitud institucional y descargar sólo con designación médica | Inline tras mapa de fixture/journey; verificador ítems2/4 | Completo UI `ffef614`, independiente/real/móvil/teclado; resolución verificada después en T6h; nativa omitidaS16 |
 
 | T6h | S5,S8,S12,S16–S21 | Comprobar evaluación médica como resolución existente, con lectura y resolución explícitas | Inline tras mapa delegado por flujo de permisos; sin cambios productivos | Completo local `b1ce375`: API y navegador real aprobación/rechazo (L42); evaluación nativa medium/under_budget, sin ampliar permisos |
+
+| T12 | S23 | Consolidar faltantes en documentación temática e issues correspondientes | Inline; sólo documentación | Completo local y14issues actualizados/releídos; sin cerrar issues por pruebas locales |
+| T13 | S10,S23 | Publicar la entrega mediante estrategia de cadena elegida | Inline tras mapa de límites | Necesita decisión de excepción de tamaño/estrategia antes de publicar; sin merge/deploy |
+| T14 | S16,S22,S23 | Handoff y worktree de continuidad/planificación genérica | Orca, traspaso completo sin supervisión | Pendiente de documentación/publicación |
+| T15 | S23 | Handoff y worktree de saneamiento técnico/seguimiento | Orca, separado de continuidad | Pendiente; sin reparar proveedores, ampliar permisos ni inventar normativa |
 
 ## Log
 
@@ -690,3 +697,41 @@ no, deja documentado que esperamos respuesta de ostel
 - El usuario no acepta avanzar con el registro manual alternativo de L43. T7/#144→#145 queda en espera de la respuesta ya solicitada a OSTEL sobre los contratos pendientes; no hay una nueva autorización de implementación ni otra pregunta de producto abierta sobre esa alternativa.
 - No reiterar la solicitud de información ni crear modelos, pantallas o movimientos provisionales para suplirla. Conservar el contraste existente y los avances verificados de T6h. Cambio exclusivamente documental, sin pruebas nuevas necesarias ni modificación de servicios, datos, permisos o configuración.
 - Archivo local actualizado; el espejo completo309 continúa pendiente de capacidad y se conserva íntegro, sin truncarlo. La decisión queda también en la memoria temática de recaudación/cuentas corrientes.
+
+### L45 — Documentación, publicación y nuevos responsables (03/11/2026)
+
+okey. commitea y crea pr de todo lo hecho en esta sesion, prepara un handoff y despliega un worktree con un agente dedicado que tenga el contexto necesario para seguir con esto.
+pero no sin antes, por otro lado, documentar todos los faltantes que me listaste en sus respectivos lugares, y levantar un worktree donde por un lado despliegues un agente con el objetivo de sellar esas deudas tecnicas y de seguimiento y por el otro analizar, estudiar y planificar el avance de todo lo que se pueda hacer sin la respuesta de ostel pero que pueda servirnos tipo generico para otras obras sociales
+
+- Baselinea89244d, rama original preservada/sólo.atl previo; GitHub main continúa cae9e16 y no hay PR de esta rama. Autorización nueva de publicación, documentación de pendientes y worktrees locales; no merge/deploy ni operaciones remotas de infraestructura. El registro manual de aportes sigue rechazado, no reabrirlo por esta continuidad.
+- Corregir resúmenes históricos T6a–T6g que quedaron superados por S17–S21/T6h, sin borrar evidencia del Log. Documentar contratos pendientes en sus issues y deuda técnica/QA en #185, coordinados desde #141. No duplicar planes ni declarar entrega integral terminada.
+- Dos responsabilidades separadas: continuidad y estudio/planificación de capacidades genéricas viables sin OSTEL; saneamiento técnico y de seguimiento sobre la entrega existente. Worktrees relacionados con el corte publicado, código/planificaciones separados; no agentes escritores en este checkout. Handoffs en temporal externo, sin secretos/datos reales ni copia de la sesión iniciadora como identidad de memoria.
+- Estrategia previa feature-branch-chain vigente. Evaluar una sola pasada de cortes coherentes sobre los commits existentes; no reset/rebase/stash/cherry-pick ni cambios cosméticos para límites. El PR tracker será draft/no-merge; las unidades deben mantener código, pruebas y documentación juntos. Una excepción de tamaño no se infiere de pedir publicar.
+- Faltantes consolidados en documentación de aceptación y #141/#181/#142/#143/#183/#147/#144/#145/#149/#148/#153/#146/#184/#185, preservando íntegros los cuerpos anteriores. Readback completo de14issues confirma actualización; sólo en141 fue necesario corregir CR duplicados del script Windows, tras identificar igualdad de contenido ignorando CR, sin pérdida de texto ni reintentos de resultado desconocido.
+- Skill específico branch-pr no disponible en registro ni raíces conocidas; se usan work-unit-commits/chained-pr y GitHub CLI, sin plantilla propia en el repositorio. Mapa de publicación delegado por54commits y alcance superior al presupuesto inline; spotcheck confirma unidad familiar con pruebas/UI/docs inseparables. No se modifica código para tamaño.
+
+#### Límites de la cadena propuesta — una pasada
+
+| Corte | Inicio exclusivo → fin inclusivo | Líneas cambiadas | Resultado |
+| --- | --- | ---: | --- |
+| 1 | cae9e16 → f6ad97b | 341 | CODPAR protegido, incluyendo coordinación inicial |
+| 2 | f6ad97b → 212bc73 | 382 | Copia protegida y contrato familiar |
+| 3 | 212bc73 → f72c89b | 1101 | Propuestas familiares API/UI y recorridos reales; requiere excepción |
+| 4 | f72c89b → 5d3b30a | 257 | Borradores/comparación no operativa |
+| 5 | 5d3b30a → fe2b2db | 590 | Persistencia auditada de versiones; requiere excepción |
+| 6 | fe2b2db → 1a3ec31 | 643 | API/UI de reglas y pruebas; requiere excepción |
+| 7 | 1a3ec31 → a1c0a57 | 263 | Terminología y simulación pura |
+| 8 | a1c0a57 → 818febc | 391 | Simulación integrada consultable |
+| 9 | 818febc → b1c0429 | 422 | Plazo persistido y migración; requiere excepción |
+| 10 | b1c0429 → 85cd2ac | 381 | Vista previa sin guardar |
+| 11 | 85cd2ac → 0542e40 | 135 | Regresión de aislamiento familiar |
+| 12 | 0542e40 → f4dcf01 | 322 | Procedencia inmutable consultable |
+| 13 | f4dcf01 → 8e87731 | 481 | Designación médica backend; requiere excepción |
+| 14 | 8e87731 → 3509153 | 245 | Gestión visual de designación |
+| 15 | 3509153 → 5cee72c | 723 | Adjunto privado y configuración; requiere excepción |
+| 16 | 5cee72c → 1f3d268 | 442 | Portal de prescripciones y recorridos reales; requiere excepción |
+| 17 | 1f3d268 → 7bb9457 | 219 | Prueba de evaluación como resolución |
+| 18 | 7bb9457 → documentación final | Recalcular al publicar | Espera OSTEL y faltantes consolidados |
+
+- Los siete excesos se conservan por coherencia de comportamiento/pruebas/documentación; no hay aprobación de size:exception todavía. Antes de publicar necesita esa decisión del mantenedor. No se fuerza una segunda pasada ni se quitan pruebas. Para evitar tracker vacío sin integrar/mergear, su rama inicial puede apuntar al primer commit documental38fe688 y el primer hijo a f6ad97b; el resto conserva los límites anteriores. Esto no cambia la historia ni autoriza integración.
+- Una alternativa más simple de operación es un único PR borrador de integración con índice de unidades/commits y prohibición de merge; aumenta la carga de revisión del diff acumulado y requiere autorización explícita del mantenedor tanto para el tamaño como para reemplazar la cadena elegida. No se infiere esa excepción del pedido S23. Handoffs externos preparados; lanzamiento de agentes tras resolver publicación para darles referencias definitivas y evitar dos responsables de la misma entrega.
