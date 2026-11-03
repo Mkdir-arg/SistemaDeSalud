@@ -6,9 +6,11 @@ from tempfile import mkdtemp
 from importlib import reload
 from pathlib import Path
 
+from django.conf import settings
 from django.core.files.storage import storages
+from django.core.files.storage.handler import InvalidStorageError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from django.urls import clear_url_caches
 from rest_framework.test import APITestCase
 
@@ -24,8 +26,33 @@ from apps.finanzas.models import HechoAtencionCosteable, ObligacionFinanciera
 PDF = b"%PDF-1.4\nDocumento totalmente ficticio\n%%EOF"
 
 
-@override_settings(STORAGES={alias: {"BACKEND": "django.core.files.storage.InMemoryStorage"}
-    for alias in ("default", "prescripciones")})
+ESTATICOS = {"staticfiles": settings.STORAGES["staticfiles"]}
+ALMACENAMIENTOS_CLINICOS = {**ESTATICOS, **{alias: {
+    "BACKEND": "django.core.files.storage.InMemoryStorage"}
+    for alias in ("default", "prescripciones")}}
+
+
+@override_settings(STORAGES=ALMACENAMIENTOS_CLINICOS)
+class EstaticosPrescripcionTests(SimpleTestCase):
+    def test_estaticos_versionados_con_el_almacenamiento_de_prescripciones(self):
+        raiz = Path(mkdtemp(prefix="ostel-prescripcion-estaticos-"))
+        css = b"body { color: black; }"
+        for nombre in ("ficticio.css", "ficticio.0123456789ab.css"):
+            (raiz / nombre).write_bytes(css)
+        for faltante in (None, "default", "prescripciones"):
+            aliases = {nombre: opciones for nombre, opciones in ALMACENAMIENTOS_CLINICOS.items()
+                       if nombre != faltante}
+            with self.subTest(faltante=faltante), override_settings(STORAGES=aliases,
+                    STATIC_ROOT=raiz, WHITENOISE_AUTOREFRESH=False, WHITENOISE_USE_FINDERS=False):
+                respuesta = self.client_class().get("/static/ficticio.0123456789ab.css")
+                self.assertEqual(respuesta.status_code, 200)
+                self.assertEqual(b"".join(respuesta.streaming_content), css)
+                if faltante:
+                    with self.assertRaises(InvalidStorageError):
+                        storages[faltante]
+
+
+@override_settings(STORAGES=ALMACENAMIENTOS_CLINICOS)
 class PrescripcionAutorizacionTests(AutorizacionSetup, APITestCase):
     def huella(self):
         modelos = (m.SolicitudAutorizacion, m.EventoAutorizacion, m.PrescripcionAutorizacion,
@@ -136,7 +163,7 @@ class PrescripcionAutorizacionTests(AutorizacionSetup, APITestCase):
     def test_storage_en_media_publica_falla_cerrado_sin_escribir(self):
         carpeta = mkdtemp(prefix="ostel-prescripcion-storage-inseguro-")
         antes = self.huella()
-        with override_settings(MEDIA_ROOT=carpeta, STORAGES={"prescripciones": {
+        with override_settings(MEDIA_ROOT=carpeta, STORAGES={**ESTATICOS, "prescripciones": {
                 "BACKEND": "django.core.files.storage.FileSystemStorage", "OPTIONS": {"location": carpeta}}}):
             respuesta = self.presentar()
         self.assertEqual(respuesta.status_code, 503)
@@ -153,7 +180,7 @@ class PrescripcionAutorizacionTests(AutorizacionSetup, APITestCase):
         for aliases in ({"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}},
                 {"prescripciones": {"BACKEND": "django.core.files.storage.FileSystemStorage",
                     "OPTIONS": {"location": str(publica)}}}):
-            with override_settings(STORAGES=aliases, MEDIA_ROOT=publica):
+            with override_settings(STORAGES={**ESTATICOS, **aliases}, MEDIA_ROOT=publica):
                 self.assertEqual(self.presentar().status_code, 503)
                 self.client.force_authenticate(self.operador)
                 respuesta = self.client.get(f"{self.url}{creada.data['id']}/prescripcion/?financiador={self.financiador.pk}")
@@ -167,7 +194,7 @@ class PrescripcionAutorizacionTests(AutorizacionSetup, APITestCase):
         patrones_anteriores = urls.urlpatterns
         raiz = Path(mkdtemp(prefix="ostel-prescripcion-privacidad-"))
         try:
-            with override_settings(DEBUG=True, MEDIA_ROOT=raiz / "publico", STORAGES={"default": {
+            with override_settings(DEBUG=True, MEDIA_ROOT=raiz / "publico", STORAGES={**ESTATICOS, "default": {
                     "BACKEND": "django.core.files.storage.FileSystemStorage"}, "prescripciones": {
                     "BACKEND": "django.core.files.storage.FileSystemStorage",
                     "OPTIONS": {"location": str(raiz / "privado")}}}):

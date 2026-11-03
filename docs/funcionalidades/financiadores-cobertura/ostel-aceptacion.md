@@ -1878,3 +1878,28 @@ Suite final12OK sin skips y spotcheck padre aprobado. CI remoto de estos cambios
 requiere publicación autorizada; revisión nativa DT5 no se da por aprobada.
 Rollback: retirar orquestación/manifiesto familiar del runner/workflow y sus
 regresiones reintroduce el fallo de descubrimiento de familias. Risk:items2/5.
+
+### DT6b — staticfiles en pruebas de prescripciones (03/11/2026)
+
+Con S27 se conserva el alias staticfiles configurado al reemplazar STORAGES
+en las pruebas, incluidos sus overrides negativos. No se cambia almacenamiento,
+middleware ni configuración productiva. Los aliases clínicos que cada negativo
+omite siguen ausentes: no se mezclan todos los storages originales.
+
+Causa reproducida: con archivos de nombre versionado presentes en STATIC_ROOT,
+WhiteNoise consulta staticfiles_storage al inicializar su caché. CI los genera
+con collectstatic, pero local no tenía esa carpeta; por eso las suites anteriores
+no mostraron el error. La nueva regresión comparte fixture con la clase clínica,
+realiza GET real de CSS ficticio versionado y comprueba bytes idénticos200
+con ambos aliases clínicos y faltando cada uno. La ausencia intencional produce
+InvalidStorageError para ese alias; no se suprimen middleware ni validaciones.
+
+RED observado: mismo InvalidStorageError de staticfiles que CI, sin crear ni abrir
+DB. GREEN: regresión estática sin DB, tres variantes de fixture. No se ejecutó
+la suite clínica completa: PostgreSQL dedicado en53474 agota connect_timeout3;
+Docker CLI devolvióHTTP500. La prueba inicial que esperaba DB fue interrumpida.
+No se reinicia Docker ni se alteran contenedores, puertos, datos o dependencias.
+Estado parcial hasta recuperar ese entorno y repetir la suite; CI remoto no
+acreditado, cambios sin publicar. La fixture de turnos permanece fuera de S27.
+Rollback: revertir sólo fixture y nueva regresión reintroduce el error de estáticos
+en pruebas; no cambia comportamiento productivo. Risk:none (sólo pruebas).

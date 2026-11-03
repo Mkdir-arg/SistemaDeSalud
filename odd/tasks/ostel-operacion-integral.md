@@ -45,10 +45,13 @@ Entrega vigente S24: PR único borrador de integración con excepción de tamañ
 
 - S26 — Runner de familias CI: «autorizo», como respuesta a «¿Autorizás corregir localmente la preparación del runner de familias de CI, sin publicar?». Preparar la fixture existente, conservar ambas suites y los guards de entorno/base/directorio, sin publicar, omitir pruebas ni borrar contenedores o datos existentes.
 
+- S27 — Alias de estáticos en pruebas: «autorizo», en respuesta a «¿Autorizás corregir ahora el alias staticfiles en las pruebas de prescripciones, sólo localmente?». Corregir únicamente overrides de pruebas conservando los negativos de almacenamiento privado; no producción, fixture de turnos, publicación ni ampliación de entorno.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
+| DT6b | S25,S27 | Conservar staticfiles en overrides de pruebas de prescripciones | Inline, cambio de fixture contenido; Risk:none | Parcial desde dab2902: RED→GREEN HTTP estático sin DB; suite clínica bloqueada por PGtimeout/Docker500; sin cambios productivos/publicación |
 | DT6a | S25,S26 | Preparar manifiesto de familias en runner CI combinado y proteger limpieza | Inline tras mapa ci_family_map; verificador ítems2/5 | Corregido/verificado localdbffea3 desdebc97a84;12GREEN/diferencial/rechequeo symlink; CI real/nativa pendientes, no publicado |
 | DT1 | S16,S23,S25 | Reproducir media DEBUG y bloquear normalización anónima preservando descarga autorizada | Inline tras mapa dt_map; verificación independiente ítems2/3 | Corregido/verificado local d0e3582; RED→GREEN/diferencial; nativa sin aprobación (L49), no publicado |
 | DT2 | S16,S23,S25 | Clasificar autoría y probar simulación/aislamiento | Inline tras mapa dt_map; verificación independiente ítems2/3 | Corregido/verificado local467c935; clasificación global/autoría/aislamiento GREEN; nativa bloqueada (L49), no publicado |
@@ -810,3 +813,17 @@ continua
 - PR208 releído en9f2d76e: backend y finanzas ahora FAILURE; Frontend/OpenAPI/portal/UIinterceptada SUCCESS. Los fixes de esta rama continúan sin publicar; CI de ellos no existe. Conservar separación entre corrección local, job remoto, revisión nativa y aceptación. No se vuelve a pedir permiso genérico de continuidad.
 - Unidad DT6a `dbffea304b189fbeeb688a6b7ec0155799f58093`,178adiciones/6eliminaciones. Assesshigh/ítem5,184líneas,review_due=true; STATUS exacto con lentes pertinentes retorna invalid_request/not_started por selección untracked, sin START/receipt. No repetir recuperación conocida ni fabricar consentimiento. Cierre de revisión nativa pendiente; no modifica switch/proveedor/global.
 - Backend CI anterior registra InvalidStorageError por aliasstaticfiles ausente en STORAGES de pruebas de prescripciones, conflicto de turnos simultáneos en fixturedemo y clasificación BorradorReglaDerechos.creado_por. Este último ya corregido localDT2; no se afirma resueltos los otros22errores/1fallo ni se amplía S26 a módulos ajenos. Próxima unidad requiere alcance explícito y reproducción. El acumulado local ronda400líneas; S24 sólo autorizaba excepción del PR208 anterior, no publicación ni excepción futura.
+
+### L53 — Alias staticfiles autorizado (03/11/2026)
+
+autorizo
+
+- Autoriza exactamente S27. Base dab2902 y sólo.atl preexistente, propia sesión nueva registrada por runtime; no reutilizar identidad anterior. Superficies antes de fuente: `backend/apps/financiadores/test_prescripciones_autorizacion.py`, este registro y `docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md`. No modificar config/settings.py, workflow ni test_ostel de demo.
+- Hipótesis verificable: los overrides de STORAGES reemplazan el diccionario completo y omiten staticfiles. CI hace collectstatic antes de tests, mientras local no tenía STATIC_ROOT; WhiteNoise sólo alcanza el alias con archivos estáticos presentes. Reproducir esa costura con CSS ficticio en temporal externo, no esconder middleware ni desactivar negativos. Ruta inline, sin verificador separado por ser fixture de pruebas y no tocar ítems de alto riesgo. Riesgo de CI global no se infiere como resuelto de la suite focal.
+
+### L54 — Reproducción estática y bloqueo de regresión clínica (03/11/2026)
+
+- Docker CLI respondió500 en inventario del contenedor autorizado; socketPG53474 aceptaTCP pero SQL con connect_timeout3 expiró en dos comprobaciones. Test inicial con DB fue interrumpido, no tomado como RED de código. No reiniciar Docker/global, cambiar puertos, crear/resetear DB ni contenedores. Ese entorno es el bloqueo concreto de la suite clínica.
+- Mapa read-only staticfiles_nodb_map gpt-6-luna/high por incertidumbre de runner sin DB: DiscoverRunner estándar; separar SimpleTestCase permite omitir configuración de DB. Nueva regresión comparte ALMACENAMIENTOS_CLINICOS con APITestCase. Archivo ficticio con hash en el nombre reproduce el camino immutable_file_test→staticfiles_storage.url que un CSS plano no alcanza. RED observado InvalidStorageError staticfiles, con «Skipping setup of unused database(s): default».
+- Corrección mínima: conservar únicamente staticfiles del settings vigente al sobreescribir los aliases clínicos; hacerlo también en negativos de alias ausente, carpeta pública y almacenamiento privado fuera deMEDIA. No reponer el alias clínico que el test omite ni cambiar guards. Regresión HTTP real sin DB GREEN0.008s: CSS200/bytes exactos, tres variantes, default/prescripciones ausentes siguen fallando al acceder al storage correspondiente. No se declara autorización ni descarga clínica verificadas de nuevo.
+- Comando focal: `python -B manage.py test apps.financiadores.test_prescripciones_autorizacion.EstaticosPrescripcionTests --settings=config.settings_financiadores_postgres_test --noinput --verbosity 2`, con entorno hijo saneado previo y PGdedicado configurado pero no abierto. Logs externos `salud-staticfiles-01a1a30a`; estáticos ficticios en temporales ostel-prescripcion-estaticos-*. Diffcheck limpio. No browser porque no cambia UI; suite clínica completa pendiente por entorno. Risk:none; avance parcial, no Done integral ni CI verde.
