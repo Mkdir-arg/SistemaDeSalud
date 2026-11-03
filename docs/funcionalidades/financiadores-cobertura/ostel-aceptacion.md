@@ -1488,3 +1488,31 @@ Scratch externo ostel_t6c_verify_lbqlnvjc retenido. Puerto5192 ocupado preservad
 baseline propio5198 detenido con0listeners. API8232/frontend5189 conservados.
 Rollback: retirar control, indicador y pruebas T6c; conservar API y designaciones T6b.
 Risk: item2 (gestión de una designación sensible).
+
+### Ingreso institucional confirmado — T6d (03/11/2026)
+
+El usuario confirmó que **la institución prestadora incorpora la prescripción
+al solicitar autorización; Auditoría Médica la consulta y registra su evaluación**.
+Se mantiene la visibilidad S17: operación y auditoría administrativa sólo estado,
+sin conceder historia clínica general. La decisión confirma actores y momento,
+no una representación ni un contrato de evaluación todavía inexistentes.
+
+| Existente | Límite para este circuito |
+| --- | --- |
+| Solicitud institucional JSON (`api_autorizaciones.py:47–54`) | No admite prescripción; conservar lock, idempotencia, caso/afiliación/convenio y eventos de `autorizaciones.py:118–169`. |
+| Archivo clínico privado y asociación Caso/Estudio (`common.py:363–576`, `registros/adjuntos.py:63–128`) | Permiso de historia clínica institucional; ni el upload ni su descarga son automáticamente un lector de Auditoría Médica por solicitud/financiador. El ID genérico del objeto no prueba pertenencia. |
+| Receta de historia clínica (`registros/models.py:324–347`) | Registro de tratamiento distinto; no es por defecto el documento presentado a autorización. |
+| Resolución observar/aprobar/rechazar y evidencia (`api_autorizaciones.py:337–340`) | No se redefine como opinión médica por cambiar el nombre de un campo. |
+
+**Decisión material pendiente:** qué presenta la institución: adjunto privado
+PDF/imagen (recomendado para conservar el documento recibido), vínculo a una
+Receta clínica existente o captura específica de datos/texto. La elección define
+qué se guarda y valida; no se tratará la justificación o evidencia libre actual
+como prescripción. Tampoco se inventan campos normativos, plazos de retención
+ni permisos de reemplazo. Una futura lectura exigirá aislamiento de solicitud y
+financiador más el guard específico ya implementado; no acceso genérico a historia.
+
+Contraste read-only con CodeGraph sincronizado y un spotcheck del upload común.
+No se ejecutaron pruebas ni se modificaron código, DB, archivos clínicos o servicios.
+No hay nueva prueba de visibilidad de contenido ni aceptación de #147.
+La documentación y glosario registran S18; código pendiente de esta decisión.

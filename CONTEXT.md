@@ -58,7 +58,7 @@ Declaración del financiador sobre el estado de pago y la modalidad de cobranza 
 _Evitar_: Cuenta corriente calculada, conciliación bancaria.
 
 **Auditoría Médica designada**:
-Usuarios expresamente designados por un financiador para consultar futuras prescripciones clínicas dentro de su alcance. La designación no se infiere de administración, operación, auditoría administrativa ni otros accesos clínicos; no concede historia clínica general.
+Usuarios expresamente designados por un financiador para consultar futuras prescripciones clínicas dentro de su alcance y registrar su evaluación. La institución prestadora incorpora la prescripción al solicitar autorización. La designación no se infiere de administración, operación, auditoría administrativa ni otros accesos clínicos; no concede historia clínica general. La evaluación médica no es, por definición, una prueba de prestación realizada, factura ni pago.
 
 **Historia clínica del financiador**:
 Evoluciones firmadas de los casos que ingresaron con la cobertura del financiador en hospitales dentro de su alcance, consultadas con un motivo registrado. No incluye alergias, antecedentes, estudios, recetas ni casos de otra cobertura.

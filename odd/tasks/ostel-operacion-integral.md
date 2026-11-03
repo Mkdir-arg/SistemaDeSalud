@@ -27,6 +27,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 
 - S17 — Acceso a futuras prescripciones: «confirmo», en respuesta a la pregunta del agente «¿Confirmás que las futuras prescripciones sólo sean visibles para usuarios expresamente designados de Auditoría Médica, mientras operación y auditoría administrativa vean únicamente su estado?». Decisión de visibilidad confirmada; no asigna usuarios reales, define contenido clínico ni valida PMO/prescripción normativa.
 
+- S18 — Origen y circuito de la prescripción: «si», en respuesta a «¿Confirmás que la institución prestadora incorpore la prescripción al solicitar autorización, y Auditoría Médica la consulte y registre su evaluación?». Confirma esos actores y momento del ingreso; no define representación, contenido mínimo, reemplazos/retención ni equivalencia entre evaluación médica y resolución administrativa.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
@@ -59,6 +61,8 @@ Entrega: `ask-on-risk`, cadena elegida `feature-branch-chain`, sólo local; sin 
 | T11 | S2,S4,S5 | #146: intercambio oficial SSSalud | Inline | Condicional a necesidad operativa y layout oficial |
 
 | T6c | S5,S12,S16,S17 | Gestionar la designación de Auditoría Médica desde Usuarios, sin contenido clínico | Inline tras mapa; verificador ítem2 | Completo gestión visual `14b47c5`; RED→GREEN6 recorridos, independiente/build/diferencial OK; nativa omitidaS16, S17 contenido pendiente |
+
+| T6d | S5,S16–S18 | Precisar ingreso institucional y barrera clínica de la prescripción | Inline documental tras mapa delegado por flujo desconocido | Actores confirmados; representación requiere decisión humana antes de código |
 
 ## Log
 
@@ -563,3 +567,13 @@ confirmo
 
 - T6c commit14b47c5:238adiciones+4eliminaciones,5archivos, sin deps/migraciones/cambioAPI ni publicación. Assesshigh explícitoítem2,review_due/high_risk; preflight exacto conlentes invalid_request/not_started, reentrada exacta sinlentes collectexterno schema-bound sin operación ejecutable y submission sinbase-ref/committed-only. Forecastpartial,paso1collect,intended_untracked_selection_required,descripciónselección de no versionados requerida. Targetsha256:afe25997b45b94428cd14d598f6bf0c058b07df8fea135d580441468e1720744. SinSTART/linaje/consentv3/decline/aprobación; S16/#852 dejaeste corte sinrevisión porimpedimentoconocido, no toggleglobal/reporte/reintento adivinado.
 - Configuración y UI terminadas localmente; no se marcaDone#147 ni derechos operativos. Límite humano siguiente: definir quién incorpora la prescripción y en qué punto del circuito. S17 aprobó lectores, no autores/ingreso ni permisos de escritura clínica. Recomendación pendiente de confirmar: institución prestadora la incorpora con la solicitud, Auditoría Médica consulta y registra evaluación. No se implementará esa rama clínica suponiendo el contrato.
+
+### L37 — Ingreso institucional confirmado (03/11/2026)
+
+si
+
+- Respuesta a «¿Confirmás que la institución prestadora incorpore la prescripción al solicitar autorización, y Auditoría Médica la consulte y registre su evaluación?». S18 fija origen/momento/actores, manteniendo S17: operación y auditoría administrativa sólo estado. No equivale a aprobar formato ni campos mínimos, PMO, retención/reemplazo, asignar usuarios reales o interpretar evaluación como aprobación prestacional.
+- Baseline35091535b38fd48631e7acd005f34890dc00b4c3, sólo.atl preexistente. Reconciliados875/864 y archivo real L35–L36; espejo309 anterior íntegro sigue pendiente por50k, sin truncar. #141/#147 leídos completos por ghread autorizado, sin mutaciones remotas ni nueva lectura de PDF originales. Mapa read-only saved_threshold_map por superar presupuesto de flujo desconocido; CodeGraph sincronizado. Spotcheckcommon.py:471–493 confirma upload protegido por historia_clinica institucional, no permiso médico específico de la solicitud.
+- Evidencia del mapa: api_autorizaciones.py:47–54 recibeJSON sin prescripción; autorizaciones.py:118–169 posee lock/idempotencia/validación y eventos que se deben conservar. Upload common.py:363–527 y ArchivoClinico/registros.adjuntos sirven archivos institucionales asociados a Caso/Estudio, no a SolicitudAutorizacion. Descarga común requiere historia clínica y no satisface el alcance S17 del financiador. Receta clínica existente models.py:324–347 pertenece a historia del paciente; no se asume equivalente al documento presentado a autorización. Justificación/evidencia actuales tampoco se reinterpretan como prescripción.
+- T6d sólo registra decisión y contraste; no existe todavía corte funcional completo sin elegir representación. Recomendación pendiente: adjunto privado PDF/imagen, que conserva el documento presentado; alternativa material es vincular Receta clínica ya existente o capturar datos/texto específicos. Esa elección cambia autoría, validación, persistencia y el lector protegido. Preguntar una sola decisión de formato antes de diseñar almacenamiento o endpoint; no construir scaffolding ni reutilizar descarga amplia por conveniencia.
+- RED/GREEN/build/browser no aplican a este corte documental pasivo, sin código/pruebas/servidores/DB modificados. Verificación proporcional: readback de aprobación exacta y límites, rutas del mapa, diffcheck. Sin verificador semántico adicional. Risk:none; rollbackretirarS18/T6d/L37 y aclaración de glosario sin efectos en datos. No se declara #147 completo ni aceptado, ni se repite pedido de información ya hecho a OSTEL. S16 sigue vigente para lo seguro; sólo ingreso clínico queda pendiente de la decisión material.
