@@ -1847,3 +1847,34 @@ acotada de tooling; no se cambia ni se excluye silenciosamente un test en este c
 Estos fixes locales no están en ese PR; no acreditan CI propio, merge, deploy ni
 aceptación humana. Revisión histórica DT5 sigue pendiente de binding/recuperación
 soportados, sin repetir reporte/decline ni tocar proveedor/global.
+
+### DT6a — preparación combinada de CI autorizada (03/11/2026)
+
+Con S26, `python tests/importacion_real.py preparar` prepara ahora importación
+y familias mediante las dos fixtures existentes, en la misma base efímera del job.
+Familias usa una carpeta temporal propia derivada del directorio de importación:
+`ostel-familia-ui-<nombre-del-directorio-importación>/manifiesto.json`.
+El workflow exporta SALUD_FAMILIA_MANIFEST con ese destino antes de ejecutar
+Playwright; ambas suites siguen seleccionadas, sin skip ni testMatch reducido.
+
+La preparación rechaza directorios existentes y la base existente antes de sembrar.
+La limpieza valida los dos manifiestos antes de borrar cualquiera; elimina sólo
+sus credenciales ficticias y conserva XLSX, directorios y PostgreSQL. No cambia
+la CLI preparar/servidor/limpiar ni los guards locales y de entorno anteriores.
+
+RED público: faltaba el tercer subprocess de preparación y la limpieza ignoraba
+un manifiesto familiar ajeno. GREEN:11regresiones del runner, incluidas preparación
+de ambas fixtures/entorno aislado, directorio familiar ocupado y limpieza acotada
+idempotente. Son pruebas con fronteras subprocess/PG simuladas, NO un job CI real.
+El servicio local autorizado ya contiene la base dedicada: no se resetea para
+forzar el arranque de CI; frontend/node_modules ausente, sin instalar dependencias.
+Verificación independiente/diferencial completada sobre la orquestación y sus
+guards, con fronteras externas simuladas. Se corrigió un defecto hallado por
+el verificador: un directorio familiar enlazado podía redirigir la limpieza si
+no se proporcionaba SALUD_FAMILIA_MANIFEST. Ahora se rechaza el destino resuelto
+distinto antes de borrar cualquiera de los archivos. Regresión RED→GREEN y
+rechequeo real de enlaces Windows: ambos hashes conservados, cero conexiones DB.
+Suite final12OK sin skips y spotcheck padre aprobado. CI remoto de estos cambios
+requiere publicación autorizada; revisión nativa DT5 no se da por aprobada.
+Rollback: retirar orquestación/manifiesto familiar del runner/workflow y sus
+regresiones reintroduce el fallo de descubrimiento de familias. Risk:items2/5.

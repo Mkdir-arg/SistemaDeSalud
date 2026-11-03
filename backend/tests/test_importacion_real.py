@@ -11,6 +11,100 @@ from . import importacion_real as runner
 
 
 class RunnerImportacionTests(TestCase):
+    def test_enlace_familiar_no_borra_manifiestos_propios_ni_ajenos(self):
+        with TemporaryDirectory(prefix="salud-importacion182-test-") as temporal, \
+                TemporaryDirectory(prefix="ostel-ci-ajeno-") as destino:
+            importacion = Path(temporal)
+            familia = importacion.with_name("ostel-familia-ui-" + importacion.name)
+            propio = importacion / "manifiesto.json"
+            ajeno = Path(destino) / "manifiesto.json"
+            propio.write_bytes(b"importacion ficticia")
+            ajeno.write_bytes(b"archivo ajeno ficticio")
+            try:
+                familia.symlink_to(destino, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"Enlaces simbólicos no disponibles: {error}")
+            try:
+                with patch.dict(os.environ, self.variables(SALUD_IMPORTACION_DIRECTORIO=temporal), clear=True), \
+                        patch.object(runner.psycopg, "connect") as conectar:
+                    with self.assertRaises(RuntimeError):
+                        runner.limpiar()
+                    conectar.assert_not_called()
+                self.assertEqual(propio.read_bytes(), b"importacion ficticia")
+                self.assertEqual(ajeno.read_bytes(), b"archivo ajeno ficticio")
+            finally:
+                self.assertTrue(familia.is_symlink())
+                if os.name == "nt":
+                    familia.rmdir()
+                else:
+                    familia.unlink()
+
+    def test_preparar_incluye_ambas_fixtures_y_manifiestos(self):
+        with TemporaryDirectory(prefix="salud-importacion182-test-") as temporal:
+            directorio = Path(temporal + "-nuevo")
+            familia = directorio.with_name("ostel-familia-ui-" + directorio.name)
+            variables = self.variables(SALUD_IMPORTACION_DIRECTORIO=str(directorio))
+            with patch.dict(os.environ, variables, clear=True), patch.object(runner.psycopg, "connect") as conectar, \
+                    patch.object(runner.subprocess, "run") as ejecutar:
+                conectar.return_value.__enter__.return_value.execute.return_value.fetchone.return_value = None
+                runner.preparar()
+            comandos = [c.args[0] for c in ejecutar.call_args_list]
+            self.assertEqual(len(comandos), 3)
+            self.assertEqual(comandos[1][-2:], ["../frontend/e2e/fixtures/preparar_importacion_real.py", str(directorio)])
+            self.assertEqual(comandos[2][-2:], ["../frontend/e2e/fixtures/preparar_familia_ostel.py", str(familia)])
+            for llamada in ejecutar.call_args_list:
+                env = llamada.kwargs["env"]
+                self.assertEqual(env["SALUD_IMPORTACION_MANIFEST"], str(directorio / "manifiesto.json"))
+                self.assertEqual(env["SALUD_FAMILIA_MANIFEST"], str(familia / "manifiesto.json"))
+                self.assertEqual(env["PYTHON_DOTENV_DISABLED"], "1")
+                self.assertEqual(env["DJANGO_SETTINGS_MODULE"], "config.settings_financiadores_postgres_test")
+
+    def test_manifiesto_familiar_ajeno_no_abre_db_ni_borra_el_de_importacion(self):
+        with TemporaryDirectory(prefix="salud-importacion182-test-") as temporal:
+            propio = Path(temporal) / "manifiesto.json"
+            ajeno = Path(temporal) / "ajeno.json"
+            propio.write_text("{}", encoding="utf-8")
+            ajeno.write_text("{}", encoding="utf-8")
+            with patch.dict(os.environ, self.variables(SALUD_IMPORTACION_DIRECTORIO=temporal,
+                    SALUD_FAMILIA_MANIFEST=str(ajeno)), clear=True), patch.object(runner.psycopg, "connect") as conectar:
+                for accion in (runner.preparar, runner.limpiar):
+                    with self.subTest(accion=accion.__name__), self.assertRaises(RuntimeError):
+                        accion()
+                conectar.assert_not_called()
+            self.assertEqual(propio.read_text(encoding="utf-8"), "{}")
+            self.assertEqual(ajeno.read_text(encoding="utf-8"), "{}")
+
+    def test_limpieza_retira_ambos_manifiestos_y_conserva_los_xlsx(self):
+        with TemporaryDirectory(prefix="ostel-familia-ui-salud-importacion182-test-") as temporal_familia:
+            familia = Path(temporal_familia)
+            importacion = familia.with_name(familia.name.removeprefix("ostel-familia-ui-"))
+            importacion.mkdir()
+            try:
+                for directorio in (importacion, familia):
+                    (directorio / "manifiesto.json").write_text("{}", encoding="utf-8")
+                    (directorio / "ficticio.xlsx").write_bytes(b"fixture ficticia")
+                with patch.dict(os.environ, self.variables(SALUD_IMPORTACION_DIRECTORIO=str(importacion)), clear=True), \
+                        patch.object(runner.psycopg, "connect") as conectar:
+                    runner.limpiar()
+                    runner.limpiar()
+                    conectar.assert_not_called()
+                for directorio in (importacion, familia):
+                    self.assertFalse((directorio / "manifiesto.json").exists())
+                    self.assertEqual((directorio / "ficticio.xlsx").read_bytes(), b"fixture ficticia")
+            finally:
+                for nombre in ("manifiesto.json", "ficticio.xlsx"):
+                    (importacion / nombre).unlink(missing_ok=True)
+                importacion.rmdir()
+
+    def test_directorio_familiar_existente_no_se_sobrescribe_ni_abre_db(self):
+        with TemporaryDirectory(prefix="ostel-familia-ui-salud-importacion182-test-") as temporal:
+            importacion = Path(temporal).with_name(Path(temporal).name.removeprefix("ostel-familia-ui-"))
+            with patch.dict(os.environ, self.variables(SALUD_IMPORTACION_DIRECTORIO=str(importacion)), clear=True), \
+                    patch.object(runner.psycopg, "connect") as conectar:
+                with self.assertRaises(RuntimeError):
+                    runner.preparar()
+                conectar.assert_not_called()
+
     def variables(self, **cambios):
         return {
             "SALUD_IMPORTACION_E2E_AISLADO": "1", "ENTORNO": "desarrollo",

@@ -43,10 +43,13 @@ Entrega vigente S24: PR único borrador de integración con excepción de tamañ
 
 - S25 — Saneamiento dedicado: «después reproducí y resolvé DT1/DT2 y seguí DT3-DT6 según alcance y evidencia, sin esperar respuesta de OSTEL para fixes independientes». Trabajo local en `juanikitro/salud-saneamiento-tecnico-20261103` desde `ee390819949edcfe0da3dc594d85699b72ac0769`; «No escribas en otros checkouts ni publiques cambios futuros/mergees/deployes sin autorización específica». Pruebas ficticias seriales, sin datos reales, `.env`, nuevas dependencias, eliminación de contenedores ni siembra general. No duplicar planificación genérica ni alterar proveedor/global.
 
+- S26 — Runner de familias CI: «autorizo», como respuesta a «¿Autorizás corregir localmente la preparación del runner de familias de CI, sin publicar?». Preparar la fixture existente, conservar ambas suites y los guards de entorno/base/directorio, sin publicar, omitir pruebas ni borrar contenedores o datos existentes.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
+| DT6a | S25,S26 | Preparar manifiesto de familias en runner CI combinado y proteger limpieza | Inline tras mapa ci_family_map; verificador ítems2/5 | Corregido/verificado local desdebc97a84;12GREEN/diferencial/rechequeo symlink; CI real/nativa pendientes, no publicado |
 | DT1 | S16,S23,S25 | Reproducir media DEBUG y bloquear normalización anónima preservando descarga autorizada | Inline tras mapa dt_map; verificación independiente ítems2/3 | Corregido/verificado local d0e3582; RED→GREEN/diferencial; nativa sin aprobación (L49), no publicado |
 | DT2 | S16,S23,S25 | Clasificar autoría y probar simulación/aislamiento | Inline tras mapa dt_map; verificación independiente ítems2/3 | Corregido/verificado local467c935; clasificación global/autoría/aislamiento GREEN; nativa bloqueada (L49), no publicado |
 | DT3 | S23,S25 | Reconciliar sólo inconsistencias documentales vigentes | Inline; lectura estructural | Verificado:83d1e88 conservado; T13/T15 y contexto histórico T6d/T6e corregidos; historia intacta |
@@ -783,3 +786,25 @@ FULL OWNERSHIP HANDOFF. Sos el agente dedicado gpt-6.1-sol de saneamiento técni
 - DT4 se resolvió sin modificar proveedor: seis envelopes JSON bajo límite50k y manifiesto con orden/hash; cada fragmento se recupera y compara exactamente antes de afirmar persistencia.309 anterior conserva sus27revisiones. El manifiesto `odd/ostel-operacion-integral/saneamiento-20261103/mirror` identifica la versión íntegra más reciente de ESTE worktree, no la planificación genérica ni la rama original. Se conserva la copia inicial S25/L47 como snapshot histórico.
 - DT6 causa observable confirmada en código: playwright.importacion-real.config.js incluye familia-ostel-real.spec.js; issue43.yml prepara únicamente SALUD_IMPORTACION_MANIFEST; la prueba de familias lee SALUD_FAMILIA_MANIFEST al importar. CI no llega a ese recorrido; también registra timeout de metadatos Git que no se atribuye como causa del TypeError. No cambiar workflow/config ni silenciar el test fuera de las superficies autorizadas. Pendiente unidad local explícita para preparar fixture de familias o separar su runner, y luego CI tras publicación autorizada.
 - Resultado parcial global, no Done integral: DT1/DT2 corregidos y verificados, DT3 coherente, DT4 recuperable íntegro; DT5 necesita continuación soportada y DT6 conserva falloCI/pendingbackend y aceptación pendiente. Rollback por conducta descrito en aceptación; revertir DT1 reintroduce exposición, revertir DT2 reintroduce autoría incorrecta. Sin datos reales, cambios de dependencias/configuración global, borrado de contenedores, nuevos roles, merge ni deploy. Risk: items2/3.
+
+### L50 — Preparación de familias CI autorizada (03/11/2026)
+
+autorizo
+
+- Responde a la pregunta exacta de S26. No autoriza publicación, ejecución remota de CI, proveedores/globales, nuevas dependencias ni reset/eliminación del PostgreSQL existente. Se reutilizan preparar_familia_ostel.py, importacion_real.py y su validación; config Playwright mantiene ambas suites.
+- Superficies acotadas antes de fuente: `backend/tests/importacion_real.py`, `backend/tests/test_importacion_real.py`, `.github/workflows/issue43.yml`, este registro y `docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md`. Pruebas públicas de preparar/entorno/servidor/limpiar, sin nueva CLI ni reimplementar la fixture. Ruta inline tras mapa ci_family_map por presupuesto; estimación150líneas, Risk:item5 por runner/CI y protección de limpieza. Verificador independiente al terminar.
+- Basebc97a84, sólo.atl preexistente. Node/npm disponibles, frontend/node_modules ausente; no se instala nada por inferencia. Runner completo rechaza base existente por diseño: no debilitar ese guard para simular CI local. Verificación serial sobre mocks de fronteras externas y destino ficticio; declarar límites de CI/browser si no se dispone del entorno.
+
+### L51 — Continuidad y corrección DT6a (03/11/2026)
+
+continua
+
+- Mantiene S26, sin ampliar publicación/entorno. RED en `python -B -m unittest tests.test_importacion_real -v`: preparar sólo tenía2subprocess en lugar de3; limpiar no rechazaba manifiesto familiar ajeno y retiraba el propio de importación. GREEN11tests0.048s: nueva orquestación reutiliza las fixtures, valida ambos destinos antes de limpieza y conserva XLSX/directorios/DB.
+- `rutas` anterior y servidor se conservan; nuevo destino familiar derivado del directorio importador, mismo temporal directo/prefijo exigido por fixture familiar. Export en GITHUB_ENV coincide con el entorno pasado a ambos subprocess. Config de Playwright intacto, ambas suites habilitadas. Diffcheck limpio. No ejecución real del job, instalación, contenedores nuevos/borrados ni reset; no se transforma el stub de PostgreSQL en prueba de integración real. Verificación independiente ítem5 pendiente.
+
+### L52 — Verificación DT6a y corrección acotada (03/11/2026)
+
+- ci_family_verifySol/medium: baseline7/candidato11tests OK;31probes públicos por snapshot comparan resultados/errores/stdout/stderr, llamadas PG/subprocess y hashes. Guards, rechazo de base existente, servidor/exit y limpieza previa se mantienen; nuevos efectos limitados a fixture/entorno familiar. Workflow y destino derivado coinciden, configPlaywright idéntico con ambas suites. Sin DB real, nuevas dependencias ni job CI. Scratch externo retenido `ostel-ci-verify-ohrjxxxb`, probes y enlaces ficticios adicionales identificados por verificador; no se eliminan.
+- Un bloqueante nuevo reproducido: destino familiar derivado sin resolver podía seguir symlink y borrar manifiesto ajeno cuando SALUD_FAMILIA_MANIFEST no se pasaba. Una corrección acotada rechaza resolve()!=destino antes de cualquier unlink; RED nuevo test observado, GREEN suite12tests0.045s, ninguno omitido. Rechequeo independiente limitado al mismo defecto con enlaces Windows/variable ausente y explícita: RuntimeError, hashes propio/ajeno intactos, DBcalls0. Spotcheck padre del test informado:OK0.005s. Bloqueante resuelto; no nueva búsqueda ni ampliación de alcance. Risk:items2/5.
+- Primer discovery manual omitió `-t .` y falló por import relativo; forma correcta `python -B -m unittest discover -s tests -t . -p test_importacion_real.py -v` pasó11antes de la regresión symlink. No se cambió fuente para acomodar un comando incorrecto. Prueba completa vigente: `python -B -m unittest tests.test_importacion_real -v`,12OK. UI/browser/fulljob no ejecutados por entorno descrito; esas ausencias no se llaman PASS.
+- PR208 releído en9f2d76e: backend y finanzas ahora FAILURE; Frontend/OpenAPI/portal/UIinterceptada SUCCESS. Los fixes de esta rama continúan sin publicar; CI de ellos no existe. Conservar separación entre corrección local, job remoto, revisión nativa y aceptación. No se vuelve a pedir permiso genérico de continuidad.
