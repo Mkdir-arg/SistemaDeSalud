@@ -1847,3 +1847,98 @@ acotada de tooling; no se cambia ni se excluye silenciosamente un test en este c
 Estos fixes locales no están en ese PR; no acreditan CI propio, merge, deploy ni
 aceptación humana. Revisión histórica DT5 sigue pendiente de binding/recuperación
 soportados, sin repetir reporte/decline ni tocar proveedor/global.
+
+### DT6a — preparación combinada de CI autorizada (03/11/2026)
+
+Con S26, `python tests/importacion_real.py preparar` prepara ahora importación
+y familias mediante las dos fixtures existentes, en la misma base efímera del job.
+Familias usa una carpeta temporal propia derivada del directorio de importación:
+`ostel-familia-ui-<nombre-del-directorio-importación>/manifiesto.json`.
+El workflow exporta SALUD_FAMILIA_MANIFEST con ese destino antes de ejecutar
+Playwright; ambas suites siguen seleccionadas, sin skip ni testMatch reducido.
+
+La preparación rechaza directorios existentes y la base existente antes de sembrar.
+La limpieza valida los dos manifiestos antes de borrar cualquiera; elimina sólo
+sus credenciales ficticias y conserva XLSX, directorios y PostgreSQL. No cambia
+la CLI preparar/servidor/limpiar ni los guards locales y de entorno anteriores.
+
+RED público: faltaba el tercer subprocess de preparación y la limpieza ignoraba
+un manifiesto familiar ajeno. GREEN:11regresiones del runner, incluidas preparación
+de ambas fixtures/entorno aislado, directorio familiar ocupado y limpieza acotada
+idempotente. Son pruebas con fronteras subprocess/PG simuladas, NO un job CI real.
+El servicio local autorizado ya contiene la base dedicada: no se resetea para
+forzar el arranque de CI; frontend/node_modules ausente, sin instalar dependencias.
+Verificación independiente/diferencial completada sobre la orquestación y sus
+guards, con fronteras externas simuladas. Se corrigió un defecto hallado por
+el verificador: un directorio familiar enlazado podía redirigir la limpieza si
+no se proporcionaba SALUD_FAMILIA_MANIFEST. Ahora se rechaza el destino resuelto
+distinto antes de borrar cualquiera de los archivos. Regresión RED→GREEN y
+rechequeo real de enlaces Windows: ambos hashes conservados, cero conexiones DB.
+Suite final12OK sin skips y spotcheck padre aprobado. CI remoto de estos cambios
+requiere publicación autorizada; revisión nativa DT5 no se da por aprobada.
+Rollback: retirar orquestación/manifiesto familiar del runner/workflow y sus
+regresiones reintroduce el fallo de descubrimiento de familias. Risk:items2/5.
+
+### DT6b — staticfiles en pruebas de prescripciones (03/11/2026)
+
+**Estado vigente04/11:** regresión clínica local completada con PostgreSQL y
+STATIC_ROOT poblado:25pruebas OK. El bloqueo de entorno descrito abajo es histórico;
+no equivale a CI remoto, despliegue ni aceptación integral.
+
+Con S27 se conserva el alias staticfiles configurado al reemplazar STORAGES
+en las pruebas, incluidos sus overrides negativos. No se cambia almacenamiento,
+middleware ni configuración productiva. Los aliases clínicos que cada negativo
+omite siguen ausentes: no se mezclan todos los storages originales.
+
+Causa reproducida: con archivos de nombre versionado presentes en STATIC_ROOT,
+WhiteNoise consulta staticfiles_storage al inicializar su caché. CI los genera
+con collectstatic, pero local no tenía esa carpeta; por eso las suites anteriores
+no mostraron el error. La nueva regresión comparte fixture con la clase clínica,
+realiza GET real de CSS ficticio versionado y comprueba bytes idénticos200
+con ambos aliases clínicos y faltando cada uno. La ausencia intencional produce
+InvalidStorageError para ese alias; no se suprimen middleware ni validaciones.
+
+RED observado: mismo InvalidStorageError de staticfiles que CI, sin crear ni abrir
+DB. GREEN: regresión estática sin DB, tres variantes de fixture. No se ejecutó
+la suite clínica completa en el corte03/11: PostgreSQL dedicado en53474 agotaba connect_timeout3;
+Docker CLI devolvióHTTP500. La prueba inicial que esperaba DB fue interrumpida.
+No se reinicia Docker ni se alteran contenedores, puertos, datos o dependencias.
+Estado parcial hasta recuperar ese entorno y repetir la suite; CI remoto no
+acreditado, cambios sin publicar. La fixture de turnos permanece fuera de S27.
+Rollback: revertir sólo fixture y nueva regresión reintroduce el error de estáticos
+en pruebas; no cambia comportamiento productivo. Risk:none (sólo pruebas).
+
+Reintento04/11: Docker ya respondía, pero el contenedor dedicado estaba detenido.
+Se inició sólo ese contenedor tras verificar imagen y binding loopback, sin
+reiniciar Docker/global ni crear/resetear bases o contenedores. Puerto activo64010;
+suite de prescripciones y regresiones de descarga/media25OK4.745s con estáticos
+ficticios versionados en temporal externo. Esto verifica también los negativos
+clínicos antes bloqueados; no altera la fixture de turnos ni publica estos fixes.
+
+### DT6c — inicios de turnos ficticios sin colisión de calendario (04/11/2026)
+
+Con S28 se corrige sólo la generación de nuevas citas en seed_ostel_demo.
+Los desfases por prestador/práctica no bastaban: al saltar fines de semana,
+el mismo paciente podía obtener el mismo inicio en dos agendas. El fallo depende
+del reloj: se reprodujo con miércoles07local, no con martes07 ni horario normal.
+
+La fixture conserva los desfases y utiliza proximos_libres/reservar existentes;
+recuerda los inicios ya elegidos por documento ficticio y escoge el primer candidato
+compatible. Solicitar un candidato más que los inicios ya usados permite elegir
+sin un número arbitrario de reintentos. No se cambian guardas, bloqueos, motor,
+JSON/CLI, derechos o criterios clínicos. Repetir un escenario existente no migra
+ni reprograma sus citas; los datos anteriores se preservan.
+
+Prueba pública determinista RED→GREEN:12reservas futuras y repetición inmutable.
+Suite demo16OK; diferencial contra f14b747: a14local se conservan las reservas,
+cantidades y estructura JSON; a07local sólo una cita cambia, manteniendo las12
+y eliminando el inicio duplicado. Son pruebas PostgreSQL ficticias bajo TestCase,
+no una siembra manual sobre una demo o base operativa.
+
+Integración de ocho módulos saneados124OK35.891s, sin skips, con estáticos externos
+y PGdedicado. No sustituye ejecución de CI remoto, navegador o aceptación humana.
+El PR208 anterior continúa con backend/finanzas rojos y no contiene estos fixes;
+publicar/mergear/desplegar requiere autorización separada. Revisión nativa histórica
+DT5 sin cierre, sin alterar proveedor/global. Rollback: retirar el filtro local
+y la regresión de reloj reintroduce las colisiones de la fixture, no cambia el motor
+de reservas. Risk:none (datos ficticios nuevos, contratos y guardas intactos).
