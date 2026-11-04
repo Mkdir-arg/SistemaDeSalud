@@ -15,12 +15,16 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 import logging
+import posixpath
+from pathlib import Path
 
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import Http404, JsonResponse
 from django.urls import include, path
+from django.utils._os import safe_join
+from django.views.static import serve
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import IsAuthenticated
@@ -47,6 +51,15 @@ from apps.geografia.api import LugaresView, EstadoCatalogoView
 def media_clinica_no_publica(_request, ruta):
     """Los uploads clinicos se sirven solo por /api/archivos/descargar/."""
     raise Http404
+
+
+def media_desarrollo(request, path, document_root=None, **kwargs):
+    """Aplicar la barrera clínica al destino que serviría Django, no al URL crudo."""
+    raiz = Path(document_root).resolve()
+    destino = Path(safe_join(raiz, posixpath.normpath(path).lstrip("/"))).resolve()
+    if destino.is_relative_to((raiz / "uploads").resolve()):
+        raise Http404
+    return serve(request, path, document_root=document_root, **kwargs)
 
 
 def health(_request):
@@ -172,4 +185,4 @@ urlpatterns = [
 
 # Servir archivos subidos en desarrollo.
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, view=media_desarrollo, document_root=settings.MEDIA_ROOT)
