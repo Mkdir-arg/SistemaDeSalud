@@ -49,10 +49,13 @@ Entrega vigente S24: PR único borrador de integración con excepción de tamañ
 
 - S28 — Continuidad de pendientes técnicos: «continua con los pendientes». Autoriza saneamiento local del fallo de simultaneidad en la fixture de turnos y verificaciones proporcionales; conservar espera de OSTEL, permisos y contratos. No publicar/mergear/desplegar, reparar proveedor/global ni ejecutar siembra general fuera del test PostgreSQL ficticio.
 
+- S29 — Publicación de saneamiento: «autorizo», en respuesta a «Para validar CI con cortes revisables, propongo tres PRs borrador encadenados sobre el PR208. ¿Autorizás prepararlos y publicarlos, sin integrar a main ni desplegar?». Estrategia feature-branch-chain de tres cortes sobre PR208; sólo ramas nuevas y PRs borrador, sin actualizar la rama fuente208, main, merge de PRs o deploy. Usar sesión GitHub existente por HTTPS, no SSH ni configuración global.
+
 ## Tasks
 
 | ID | Specs | Unidad y condición | Ruta | Estado / evidencia |
 | --- | --- | --- | --- | --- |
+| T16 | S29 | Preparar/publicar tres PRs de saneamiento y comprobar CI | Inline tras mapa publication_base_map; Git/HTTPS/GitHub CLI | En preparación; fuente687b72c preservada, tracker208 en9f2d76e; sin merge/deploy |
 | DT6c | S25,S28 | Evitar simultaneidad de turnos en nueva fixture OSTEL ficticia | Inline tras mapa demo_turnos_map; Risk:none, sólo nuevas citas ficticias | Corregido/verificado localc0c0ee0: RED→GREEN con reloj fijo, suite16OK/diferencial e integración124OK (L57); sin migrar escenarios existentes |
 | DT6b | S25,S27 | Conservar staticfiles en overrides de pruebas de prescripciones | Inline, cambio de fixture contenido; Risk:none | Verificado local3a7bf96: RED→GREEN y25tests PostgreSQL/estáticos presentes OK04/11 (L55); sin cambios productivos/publicación ni aceptación integral |
 | DT6a | S25,S26 | Preparar manifiesto de familias en runner CI combinado y proteger limpieza | Inline tras mapa ci_family_map; verificador ítems2/5 | Corregido/verificado localdbffea3 desdebc97a84;12GREEN/diferencial/rechequeo symlink; CI real/nativa pendientes, no publicado |
@@ -103,7 +106,7 @@ Entrega vigente S24: PR único borrador de integración con excepción de tamañ
 
 | T12 | S23 | Consolidar faltantes en documentación temática e issues correspondientes | Inline; sólo documentación | Completo local y14issues actualizados/releídos; sin cerrar issues por pruebas locales |
 | T13 | S10,S23,S24 | Publicar entrega acumulada en PR borrador con excepción autorizada | Inline tras mapa de límites | PR208 confirmado OPEN/DRAFT; HEAD remoto documental9f2d76e, sin incorporar a este worktree; sin merge/deploy |
-| T14 | S16,S22,S23 | Handoff y worktree de continuidad/planificación genérica | Orca, traspaso completo sin supervisión | Pendiente de documentación/publicación |
+| T14 | S16,S22,S23 | Handoff y worktree de continuidad/planificación genérica | Orca, traspaso completo sin supervisión | Traspaso realizado: salud-continuidad-generica-20261103, gpt-6.1-sol, prompt journaled; planificación a cargo del nuevo agente |
 | T15 | S23,S25 | Handoff y worktree de saneamiento técnico/seguimiento | Orca, separado de continuidad | Recibido en worktree dedicado; DT1–DT6 en curso; sin reparar proveedores, ampliar permisos ni inventar normativa |
 
 ## Log
@@ -761,6 +764,9 @@ autorizo
 
 - Confirma exactamente la pregunta de reemplazo de cadena por único PR borrador de integración con excepción de tamaño y sin merge. S24 levanta ese bloqueo de publicación, no la espera de OSTEL S22 ni los contratos pendientes. Mantener índice de unidades/commits, evidencia histórica y deudas explícitas; no declarar aprobación por publicar.
 - Snapshot previo83d1e88 y main remoto cae9e16, sin PR previo de la rama y sólo.atl preexistente. Publicar únicamente archivos trackeados de esta entrega; handoffs y diagnósticos temporales fuera de Git. No instalar herramientas ni alterar políticas para proceder.
+- Publicado y releído [PR208](https://github.com/Mkdir-arg/SistemaDeSalud/pull/208), OPEN/DRAFT a main, sourceee390819949edcfe0da3dc594d85699b72ac0769; diff observado7255adiciones/43eliminaciones en68archivos antes de este cierre documental. Índice de revisión, excepción humana y pendientes explícitos en el cuerpo. No etiqueta size:exception creada; autorización registrada S24. Revisión de nombres/firmas de secretos del diff sin hallazgos; no prueba general de seguridad. CI al crear:6checks en curso/en cola, no PASS.
+- Dos worktrees relacionados creados desde ee39081, setup skip, índice CodeGraph propio requerido. Agentes Codex gpt-6.1-sol lanzados en chats estructurados; ambos recibos confirman prompt.outcome=journaled. Continuidad/estudio genérico y saneamiento están separados; no escritores en el checkout original ni supervisión del iniciador. Handoffs y recibos exactos externos al repositorio, sin secretos ni datos reales.
+- Traspaso completo: el iniciador sólo registra este cierre documental y deja la ejecución a los nuevos responsables; no espera su finalización ni CI para atribuir resultados todavía inexistentes. Sin merge/deploy, aprobación técnica nueva, aceptación humana ni cierre de contratos pendientes. S22/#144/#145 sigue esperando OSTEL.
 
 ### L47 — Traspaso de saneamiento dedicado (03/11/2026)
 
@@ -857,3 +863,11 @@ continua con los pendientes
 - Ejecutor acotado sanitation_integration(Sol/medium) por suite integrada del feature, no revisor semántico/escritor: ocho módulos de demo/prescripciones/descarga/simulación/borradores/runner, serial,124OK35.891s, exit0 sin skips. STATIC_ROOT externo poblado y mismo PGtest64010; sin archivos nuevos en checkout, otro contenedor, dependencia, seedmanual ni retry. Evidencia `salud-integracion-dt6c-6d7dfe15a445403b9fe9640ef2edf8f8`; no equivale a CI remoto ni prueba de navegador/aceptación. Risk:none por selección de nuevas citas ficticias, sin interfaces/datos anteriores modificados.
 - Estado remoto read-only: PR208 OPEN/DRAFT9f2d76e; backend/finanzasFAILURE, Frontend/OpenAPI/portal/UIinterceptadaSUCCESS. Nuestros fixes aún no están publicados. Gentle-ai4.3.1/modeon sin cambios; DT5 histórico no tiene continuación ejecutable en este checkout y no se repara el proveedor/global ni se repite reporte/decline. Tras checks locales, faltan autorización específica/estrategia para publicar cortes revisables y CI de esos commits; S24 no concede excepción futura por inferencia.
 - Unidad DT6c `c0c0ee0b0e4b3fc87a01ae6f7ad398b3cb111799`,82adiciones/4eliminaciones; assessmedium/under_budget,review_due=false, sin START ni aprobación nueva inferida. Corrección documental:07:00/14:00 describen horas de reloj, no cantidades de reservas; siempre se verificaron12. Sin cambios de código después de los checks. Una pasada de cortes sobre commits existentes permite separar media, autoría y estabilización de CI/fixtures sin reescribir historia; publicación de esos PRs borrador sobre la rama de integración208 necesita autorización específica, sin merge/deploy.
+
+### L58 — Publicación de tres cortes autorizada (04/11/2026)
+
+autorizo
+
+- Confirma S29, no nueva excepción de tamaño ni publicación a main. Mapa publication_base_map read-only:208 avanzó sólo con cierre documental9f2d76e sobre ee390819; conflicto exclusivamente en taskdoc al alinear el primer corte. Preservar sus tres recibos de lanzamiento y T14 verificado, además de la historia propia. Se permite alineación local para preparar la cadena sin escribir otro checkout ni reescribir commits fuente.
+- Superficies: este registro y cuerpos de PRs en temporal externo; ramas nuevas de publicación construidas con merges explícitos y un índice Git externo, sin checkout/reset/rebase/stash/cherry-pick. Ningún byte productivo distinto de los cortes probados. PR208 se reutiliza como tracker borrador/no-merge; ramas/base del PR208 y main no se modifican. Cortes previstos: d0e3582(media),bc97a84(autoría),687b72c más este permiso documental(CI/fixtures), recalcular diff alineado antes de push.
+- Skill branch-pr ausente en registro/rutas comunes; fallback soportado work-unit-commits/chained-pr/GitHub CLI. Publicación HTTPS con helper de credenciales gh sólo por proceso; origin SSH no se usa, no se inspeccionan agentes/credenciales ni se cambia config global. .atl y temporales fuera de publicación. Native DT5 pendiente, no aprobación fabricada.
