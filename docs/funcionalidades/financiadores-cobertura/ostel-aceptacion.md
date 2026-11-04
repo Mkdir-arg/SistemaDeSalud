@@ -1491,6 +1491,10 @@ Risk: item2 (gestión de una designación sensible).
 
 ### Ingreso institucional confirmado — T6d (03/11/2026)
 
+**Corte histórico:** la representación propuesta abajo quedó resuelta por S19
+y la evaluación por S21; T6e–T6h documentan su implementación y prueba local.
+La expresión «pendiente» de este contraste no describe el estado vigente.
+
 El usuario confirmó que **la institución prestadora incorpora la prescripción
 al solicitar autorización; Auditoría Médica la consulta y registra su evaluación**.
 Se mantiene la visibilidad S17: operación y auditoría administrativa sólo estado,
@@ -1522,7 +1526,8 @@ La documentación y glosario registran S18; código pendiente de esta decisión.
 **Estado actual:** S20 autoriza la configuración privada simple de T6f descrita
 abajo. La carga continúa fallando cerrada si se configura dentro de MEDIA_ROOT
 o falta el alias dedicado. Configuración y API fueron verificadas localmente con archivos ficticios;
-no se habilitaron documentos reales ni se declara el ingreso visual disponible.
+no se habilitaron documentos reales. El ingreso visual, aún ausente en ese corte,
+quedó completado localmente en T6g y la resolución se verificó en T6h.
 
 Formato confirmado por el usuario: **PDF/imagen privado**, no texto de
 justificación ni enlace implícito a la historia clínica. El documento se recibe
@@ -1765,14 +1770,22 @@ dictamen. Esto no completa el contrato clínico/PMO de #147 ni acredita aceptaci
   por normalización de rutas en desarrollo; endurecer sin romper descargas
   autorizadas. Los documentos nuevos usan almacenamiento privado separado;
   no se inspeccionaron adjuntos reales ni se afirma protección global.
+  Saneamiento local: reproducido y corregido; detalle y límites abajo. Pendiente
+  revisión nativa del cambio; verificación independiente/diferencial completada.
 - **DT2 — Clasificación de autoría:** corregir la clasificación pendiente de
   BorradorReglaDerechos.creado_por y comprobar la prueba global correspondiente.
   Es un fallo preexistente conocido, no queda oculto por las suites focales verdes.
+  Saneamiento local: clasificación global y regresión pública ahora pasan;
+  verificación independiente/diferencial completada y revisión nativa pendiente,
+  sin backfill de autoría.
 - **DT3 — Estado documental:** resúmenes T6a–T6g reconciliados con S17–S21/T6h;
   conservar el Log histórico y verificar que futuras transiciones actualicen el resumen.
 - **DT4 — Recuperación de seguimiento:** archivo local íntegro; espejo completo de
   memoria pendiente por límite de capacidad. Resolver sin truncar ni perder la
   versión anterior; no declarar sincronización si no se verificó el contenido completo.
+  Recuperación soportada local: fragmentos JSON verificables y manifiesto de
+  concatenación/SHA256 bajo el tema de memoria
+  `odd/ostel-operacion-integral/saneamiento-20261103/mirror`;309 se conserva histórico.
 - **DT5 — Revisión nativa:** varios cortes carecen de revisión completada por el
   impedimento registrado. No fabricar aprobación, repetir reportes/declines,
   reusar linajes consumidos ni modificar el modo global. Cerrar sólo mediante
@@ -1804,3 +1817,33 @@ con bytes exactos y auditoría. Suite propia de archivos/prescripciones24OK; ver
 independiente en snapshots aislados confirma diferencial sin cambios no solicitados.
 Rollback acotado: wrapper/ruta DEBUG y su nueva regresión; revertirlo REINTRODUCE
 la exposición anónima observada. Risk: items2/3. No publicar sin autorización.
+
+### Saneamiento DT2 — autoría de borradores (03/11/2026)
+
+Clasificación global y POST simulado reprodujeron el mismo defecto: el campo
+BorradorReglaDerechos.creado_por no pertenecía a CAMPOS_AUTORIA y guardaba la
+cuenta de referencia, no a quien actuó. Una entrada reutiliza el pre_save existente;
+sin migración, backfill, cambios de membresías ni activación de derechos.
+
+Regresión por API: historial/autoría real, evento y operación simulada, aislamiento,
+reintento sin nuevas versiones y contexto limpio; fuera de simulación conserva autor.
+Suite propia de simulación/borradores71OK. Integración independiente95OK y repetición
+padre95OK tras incorporar variantes/invariantes a las regresiones. Diferencial contra
+ee390819: sólo cambian el acceso anónimo indebido y el autor simulado incorrecto.
+No hubo UI nueva ni recorrido browser en este corte backend; no repetir pruebas de UI
+históricas como si fueran actuales. Advertencia no bloqueante:staticfiles local ausente.
+Rollback: entrada de clasificación y nueva regresión; vuelve el defecto de atribución
+y el fallo global. Risk: items2/3; revisión nativa todavía no aprobada.
+
+### DT6 — evidencia de entrega, no publicación del saneamiento
+
+PR208 OPEN/DRAFT en HEAD documental9f2d76e. Frontend/OpenAPI/portal real/UI interceptada
+SUCCESS; finanzas FAILURE al cargar familia-ostel-real.spec.js sin SALUD_FAMILIA_MANIFEST;
+backend todavía IN_PROGRESS en la última consulta. El fallo de finanzas ocurre antes
+del recorrido de familias: no prueba un defecto financiero, pero CI NO está verde.
+El config de importación incluye esa prueba y el workflow sólo prepara el manifiesto
+de importación. Corregir su preparación/separación de runners requiere otra unidad
+acotada de tooling; no se cambia ni se excluye silenciosamente un test en este corte.
+Estos fixes locales no están en ese PR; no acreditan CI propio, merge, deploy ni
+aceptación humana. Revisión histórica DT5 sigue pendiente de binding/recuperación
+soportados, sin repetir reporte/decline ni tocar proveedor/global.
