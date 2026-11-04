@@ -1914,3 +1914,31 @@ reiniciar Docker/global ni crear/resetear bases o contenedores. Puerto activo640
 suite de prescripciones y regresiones de descarga/media25OK4.745s con estáticos
 ficticios versionados en temporal externo. Esto verifica también los negativos
 clínicos antes bloqueados; no altera la fixture de turnos ni publica estos fixes.
+
+### DT6c — inicios de turnos ficticios sin colisión de calendario (04/11/2026)
+
+Con S28 se corrige sólo la generación de nuevas citas en seed_ostel_demo.
+Los desfases por prestador/práctica no bastaban: al saltar fines de semana,
+el mismo paciente podía obtener el mismo inicio en dos agendas. El fallo depende
+del reloj: se reprodujo con miércoles07local, no con martes07 ni horario normal.
+
+La fixture conserva los desfases y utiliza proximos_libres/reservar existentes;
+recuerda los inicios ya elegidos por documento ficticio y escoge el primer candidato
+compatible. Solicitar un candidato más que los inicios ya usados permite elegir
+sin un número arbitrario de reintentos. No se cambian guardas, bloqueos, motor,
+JSON/CLI, derechos o criterios clínicos. Repetir un escenario existente no migra
+ni reprograma sus citas; los datos anteriores se preservan.
+
+Prueba pública determinista RED→GREEN:12reservas futuras y repetición inmutable.
+Suite demo16OK; diferencial contra f14b747: a14local se conservan las reservas,
+cantidades y estructura JSON; a07local sólo una cita cambia, manteniendo las12
+y eliminando el inicio duplicado. Son pruebas PostgreSQL ficticias bajo TestCase,
+no una siembra manual sobre una demo o base operativa.
+
+Integración de ocho módulos saneados124OK35.891s, sin skips, con estáticos externos
+y PGdedicado. No sustituye ejecución de CI remoto, navegador o aceptación humana.
+El PR208 anterior continúa con backend/finanzas rojos y no contiene estos fixes;
+publicar/mergear/desplegar requiere autorización separada. Revisión nativa histórica
+DT5 sin cierre, sin alterar proveedor/global. Rollback: retirar el filtro local
+y la regresión de reloj reintroduce las colisiones de la fixture, no cambia el motor
+de reservas. Risk:none (datos ficticios nuevos, contratos y guardas intactos).
