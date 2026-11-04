@@ -1789,3 +1789,185 @@ Esta autorización de planificación no habilita nuevos modelos de negocio, tasa
 layouts, cobros, pagos ni efectos asistenciales. No reabrir la alternativa manual
 de aportes rechazada. La espera específica #144/#145 sigue vigente; el saneamiento
 técnico no depende de que OSTEL responda.
+
+#### Resultado del estudio y recomendación
+
+**Reutilizar las capacidades existentes y comprobarlas con un segundo financiador
+ficticio antes de extraer nuevas abstracciones.** No crear otro motor de derechos,
+un importador universal ni una cuenta corriente provisional. Este apartado es el
+plan autorizado, no una autorización de implementación ni una homologación.
+
+Corte estudiado: `ee390819`, en el worktree `salud-continuidad-generica-20261103`.
+La revisión de código y pruebas identifica costuras reutilizables; no demuestra
+por sí sola un recorrido integral con otra obra social. Los resultados históricos
+de las secciones anteriores conservan sus límites y no se vuelven a ejecutar aquí.
+
+| Clasificación | Capacidad y reutilización concreta | Límite pendiente |
+| --- | --- | --- |
+| Resuelta técnicamente como base genérica | Borradores por financiador/régimen/plan, versiones, fuente, vigencia técnica, trazabilidad, propuesta y simulación. Reutilizar `derechos_borrador.py`, `borradores_derechos.py` y `borradores_api.py`, no duplicar persistencia ni controles. | No es un motor de altas/bajas/gracia/mora ni garantiza aprobación normativa. Dos coincidencias siguen siendo conflicto; no elegir automáticamente la última versión. |
+| Reutilización mediante configuración | El ámbito del borrador ya recibe financiador, régimen y plan; las capacidades de acceso pertenecen a cada membresía. Preparar una ficha de configuración y ejemplos sintéticos para otra organización. | No copiar plazos, catálogos externos ni designaciones reales de OSTEL. Validar pertenencia del plan y permisos en servidor, no sólo en la función pura. |
+| Base genérica con adaptación por fuente | La relación afiliado/titular admite clasificación pendiente. Reutilizar `padron.py` y sus revisiones/historial. `familia_ostel.py` propone desde evidencia aplicada del lote y confirma expresamente: es el adaptador OSTEL, no una equivalencia universal. | Otra fuente necesita claves y equivalencias confirmadas. NROAFI compartido no prueba familia; CODPAR no decide parentesco ni derechos. No generalizar un algoritmo desde una sola fuente. |
+| Circuito existente reutilizable, política pendiente | Solicitud, prescripción privada, consulta médica designada y resolución de la misma solicitud: `prescripciones_autorizacion.py`, `api_autorizaciones.py` y `autorizaciones.py`. Conservar guardas, idempotencia e historial existentes. | Leer el documento no concede resolver. Resolver no acredita atención realizada ni cargo. Mínimo clínico, PMO, vigencia, retención/reemplazo y eventual exclusividad requieren contrato propio. |
+| Mejora técnica candidata, no implementada aquí | Caracterización cruzada con dos financiadores ficticios y matriz de permisos/no interferencia, extendiendo pruebas y fixtures existentes. | No sustituye DT1–DT6 ni su cierre por el responsable de saneamiento. Una campaña integral nueva no fue ejecutada en este estudio. |
+| Decisión de producto y dependencia externa | Derechos operativos, novedades, liquidaciones, reintegros médicos y tesorería necesitan reglas, actores y ejemplos aprobados por el financiador correspondiente. | No convertir un borrador, una autorización ni una obligación hospitalaria en el evento financiero que falta. SSSalud sigue condicionado a necesidad y layout oficial. |
+| Espera explícita de OSTEL | #144/#145 conservan el contraste entre cobranza declarada, dinero recibido y cuenta corriente calculada. | No registro manual alternativo ni movimientos provisionales; no reiterar la información ya solicitada. Otro financiador podría aportar su propio contrato, pero aquí no se seleccionó ni aprobó ninguno. |
+
+#### Secuencia acotada para un próximo incremento
+
+Las prioridades siguientes ordenan la recomendación; **no cambian el tablero ni
+reabren T7**. G1 queda documentado aquí; G2–G5 son propuestas futuras, no tareas
+de implementación comenzadas ni requisitos nuevos agregados a S23.
+
+| Prioridad / unidad | Resultado observable | Reutilización y dependencia | Riesgo y prueba de salida propuesta |
+| --- | --- | --- | --- |
+| P1 / G1 — Ficha de adopción | Para una organización se puede distinguir configuración técnica, reglas aprobadas y datos todavía desconocidos. Plantilla mínima debajo. | Usar los ámbitos, planes, membresías y versiones existentes; no crear otro catálogo de regímenes. El estudio de la ficha no depende de OSTEL. | Riesgo de presentar un ejemplo como política. Marcar origen, responsable de validación y estado de cada dato; ningún valor sintético puede habilitar derechos. |
+| P2 / G2 — Caracterizar reutilización | Dos financiadores ficticios con planes, miembros y versiones propios completan el circuito técnico existente sin efectos cruzados. | Extender fixtures/pruebas actuales de borradores, familias y prescripciones; ejecutar sólo tras autorizar el incremento de verificación y revalidar entorno aislado. No requiere reglas normativas de OSTEL. | Aislamiento, privacidad y respuestas tardías. API: rechazos sin mutaciones, consulta/preview/simulación sin cambios de padrón, historial previo intacto. UI real: escritorio/móvil/teclado, cambio de organización y separación lector/resolutor; no darlo por probado con mocks. |
+| P3 / G3 — Contrastar una segunda fuente familiar | Con una muestra sintética representativa de un formato confirmado se identifica qué puede configurar el importador actual y qué adaptación mínima falta. | Reutilizar importación/procedencia, edición familiar e historial. Necesita seleccionar una fuente real y su contrato, no que OSTEL responda si pertenece a otra organización. | Identidad y vínculos incorrectos. Proponer antes de confirmar; revisar ambiguos, duplicados, titular ausente, orden de filas, ciclos, revisiones e idempotencia. Sin equivalencias inventadas ni motor universal preventivo. |
+| P4 / G4 — Elegir una regla operativa o un cambio clínico concreto | Una única conducta tiene actor, fuente aprobada, ejemplos antes/en/después, efecto esperado y reversión definidos. | Derechos: preservar borradores/simulador y consumidores de cobertura. Clínica: mantener resolución actual y acceso privado. Sólo después del contrato y autorización de implementación se diseña el corte. | Efectos asistenciales y datos sensibles. Pruebas de rechazo/no efecto y de consumidores previos, más verificación independiente cuando corresponda. Ningún plazo técnico fija una fecha prestacional por inferencia. |
+| Dependiente / G5 — Contratos financieros e intercambio | Separar aportes, recepción, imputación/reversa, cuota/saldo, liquidación, reintegro y evento de tesorería; documentar responsables y ejemplos antes de diseñar persistencia. | #144/#145 esperan OSTEL. #149/#148/#153 y el condicional #146 conservan sus contratos pendientes; obligaciones hospitalarias no reemplazan recaudación de afiliados. | Dinero y efectos difíciles de revertir. Futuras pruebas deberán distinguir informado/recibido/imputado y conservar historia ante rechazo/reversa. No habilitar cobros, pagos ni integración externa por este plan. |
+
+**Ficha de adopción G1 — completar sólo con evidencia confirmada:**
+
+1. Identificar financiador, regímenes existentes, planes y procedencia/versiones de
+   la fuente; separar identificador de persona, afiliación y familia. Registrar
+   explícitamente lo desconocido, sin completar valores por semejanza con OSTEL.
+2. Distinguir administración, operación, consulta médica y resolución. Cada
+   designación es explícita por financiador; documentar quién valida el contrato
+   sin asignar usuarios reales ni asumir que una capacidad concede otra.
+3. Separar configuración no operativa de política: fuente aprobada, ámbito,
+   fechas, ejemplos y estado de validación. Simular no activa, guardar no aprueba
+   y aprobar una solicitud no acredita prestación, liquidación ni pago.
+4. Para proponer ejecución futura, enumerar interfaces, pruebas existentes,
+   datos sintéticos y criterios de no interferencia. La aceptación humana,
+   la homologación, CI y despliegue deben tener evidencia separada.
+
+#### Costuras de verificación y límites de esta entrega
+
+- Derechos: `tests_derechos_borrador.py`, `test_borradores_derechos.py`,
+  `test_borradores_integridad.py`, `test_borradores_api_seguridad.py` y
+  `test_derechos_padron_aislamiento.py`; conservar también `test_cobertura.py`
+  y `test_habilitacion_cobertura.py` antes de conectar cualquier efecto nuevo.
+- Familias: `test_familia_pendiente.py`, `test_familia_ostel.py` y
+  `test_concurrencia_familia_ostel.py`. La API genérica con clasificación vacía
+  tiene caracterización en `test_familia_pendiente.py:45–60`; no exige un
+  nuevo servicio para representar el vínculo ya soportado.
+- Prescripciones: `test_prescripciones_autorizacion.py` y el recorrido real
+  `frontend/e2e/prescripciones-autorizacion-real.spec.js`. Para derechos,
+  reutilizar `frontend/e2e/borradores-derechos-real.spec.js`; no levantar sus
+  fixtures ni servidores implícitamente desde una prueba de otro circuito.
+- Evidencia puntual del estudio: `derechos_borrador.py:16–76` fija ámbito,
+  inmutabilidad y conflicto; `borradores_api.py:73–104` construye el ámbito
+  desde la organización de la URL y usa servicios existentes para guardar o
+  previsualizar. Ejecutar la función pura no equivale a verificar permisos.
+- La recomendación prefiere menos código y menor superficie de riesgo a costa
+  de no ofrecer todavía un importador o motor universal. Sólo una segunda
+  necesidad concreta justificará extraer una abstracción nueva.
+- Verificación de esta entrega documental: lectura de fuentes, mapa CodeGraph
+  propio y revisión estructural del diff. No hubo pruebas funcionales nuevas,
+  DB, build, navegador, activación, cambios de permisos ni aceptación humana.
+  El cierre de DT1–DT6 y la recuperación del espejo corresponden a saneamiento;
+  su estado en ese otro checkout no se deduce de esta planificación local.
+
+#### G2 detallado: primera unidad de caracterización, sin negocio nuevo
+
+**Empezar por derechos no operativos en dos organizaciones, no por integrar todos
+los módulos a la vez.** La unidad propuesta G2a extiende caracterizaciones
+existentes: no agrega endpoints, permisos, modelos, parámetros ni activación.
+Familias y prescripciones conservan sus propios escenarios y se contrastarán
+después; reunirlos ahora aumentaría el diagnóstico sin probar mejor este límite.
+El protocolo no amplía autorización de negocio. Su ejecución posterior bajo S26
+y su evidencia local se registran al final de esta sección.
+
+**Datos mínimos propuestos, exclusivamente ficticios y sin materialización aquí:**
+
+- A y B representan dos financiadores de prueba independientes; cada uno tiene
+  plan y membresías propios. Los IDs los asignará la fixture, no este documento.
+  Usar el régimen existente `dependencia`, sin introducir uno nuevo.
+- Ambos pueden usar el código de borrador `ejemplo` y versión 1 para comprobar
+  que el ámbito, no un nombre global distinto, separa sus datos. Fuente y motivo
+  se identifican como ficticios A/B. Vigencia técnica `[2030-01-01,2030-02-01)`;
+  plazo sintético A=7 y B=0 días corridos. Son entradas técnicas, NO gracia,
+  cobertura, cuota, criterio clínico ni propuesta de valores para OSTEL.
+- Actores sintéticos: administrador exclusivo de A, administrador exclusivo de B,
+  operador/auditor de A para negativos, y lector con membresía en A y B sólo para
+  el cambio de ámbito visual. Ninguna concesión a usuarios reales o de plataforma.
+- Cada caso debe declarar su estado inicial. No depender del orden de ejecución
+  ni usar fixtures de navegador dentro de la transacción de un test Django.
+
+| Caso | Entrada / acción por interfaz pública existente | Salida esperada y estado que debe conservarse |
+| --- | --- | --- |
+| G2a-1 — Ámbito y nombres repetidos | Guardar versión 1 propia en A y B; consultar cada URL con su administrador. | HTTP 200; cada listado devuelve sólo su fuente/plan/versión. Un código/versión coincidente en otra organización no aparece como conflicto local. No se evalúan ni modifican derechos del padrón para decidir esto. |
+| G2a-2 — Vista previa frente a guardado | En A vacía, previsualizar la propuesta completa; después guardar sin cambios intermedios y repetir exactamente el guardado. | Preview 200 sin escritura. Primer guardado 200 con la misma comparación y una versión/evento `crear_borrador_derechos` de A; B y eventos previos intactos. Reintento 200 con `nuevas=[]`, sin nueva versión/evento. Guardar no activa derechos. |
+| G2a-3 — Fecha técnica y conflicto explícito | Consultar el descriptor en 2030-01-01, 2030-01-31 y 2030-02-01. En un caso independiente, previsualizar coincidencia de un descriptor general y otro del plan de A. | Inicio incluido, último día de enero incluido y fin excluido. En solapamiento, ambas coincidencias y `conflicto=true`, sin ganador ni decisión prestacional. No cambiar la vigencia anterior para evitar el conflicto. |
+| G2a-4 — Plazo propio y alternativa | Con versiones previamente guardadas, simular cada organización con referencia 2030-01-01, evaluación 2030-01-08 y evidencia ficticia explícita. En A, repetir con alternativa explícita de 0 días. | HTTP 200; límite A=2030-01-08 y B=2030-01-01; igualdad y posterioridad se distinguen sin conceder derechos. Alternativa de A produce 2030-01-01 pero no cambia su versión configurada de 7. Huella de ambas organizaciones intacta. |
+| G2a-5 — Identidad, plan y permiso no embebibles | Administrador exclusivo de A solicita la URL de B; en URL de A envía plan de B o `financiador_id` embebido. Operador/auditor intenta guardar o previsualizar; cliente sin autenticación intenta consultar. | Organización ajena 404; plan ajeno/campo no admitido 400; guardado/preview por rol de lectura 403; sin autenticación 401. Sin versiones/eventos nuevos ni metadatos de B en respuesta. Son contratos caracterizados en `test_borradores_api.py` y `test_borradores_api_seguridad.py`, no códigos nuevos propuestos. |
+| G2a-6 — Historia no reescribible | Tras guardar A, proponer borrado de la historia o cambio de fuente/plazo de su misma versión. | HTTP 400, descriptor previo y huella de A/B intactos. Un cambio legítimo requerirá una versión nueva; este caso no implementa edición o borrado. |
+| G2a-7 — Respuesta tardía sin traslado de organización | Lector con acceso a A/B cambia a B mientras la consulta de A está en vuelo; repetir tras error y al cerrar diálogo. | La respuesta tardía de A no se muestra como dato de B ni reaparece después de cerrar. Identificar la latencia/error inducidos como pruebas de transporte, separados de positivos HTTP reales. No emitir POST por cambiar de organización. |
+
+**Huella y evidencias de salida:** comparar en orden estable las filas de
+afiliados, salud, historial familiar, importaciones, planes, membresías, versiones
+y eventos del dominio en ambas organizaciones. Reutilizar el patrón de
+`huella_padron` de `test_derechos_padron_aislamiento.py`, ampliándolo sólo si el
+caso lo necesita. Preview/simulación/rechazos deben preservar esa huella; en un
+guardado válido excluir únicamente las altas de versión/evento esperadas de A
+y comprobarlas explícitamente. No ocultar cambios de revisión o de B mediante
+una normalización amplia de la comparación.
+
+**Costura y orden de ejecución futuros:** extender primero
+`test_borradores_api.py` y `test_derechos_padron_aislamiento.py` reutilizando sus
+constructores; mantener las regresiones puras y de seguridad existentes.
+Después extender `frontend/e2e/borradores-derechos-real.spec.js` y su fixture,
+sin copiar el runner de prescripciones ni crear un banco de pruebas universal.
+`playwright.borradores-real.config.js` hereda la configuración de importación:
+antes de lanzarlo se deberá comprobar su arranque/opt-in y el destino de datos;
+no asumir que es un runner manual aislado como el de prescripciones.
+
+La futura ejecución necesita revalidar el entorno ficticio dedicado, settings,
+puerto y almacenamiento explícitos, sin `.env`, bases remotas, seed general ni
+reiniciar procesos ajenos. Correr serialmente la suite focal correspondiente y
+las regresiones compartidas; para UI, positivos reales escritorio/móvil/teclado,
+capturas y demo visible cuando esté disponible. Como no se propone conducta
+productiva nueva, la caracterización puede ser GREEN desde el principio: no
+fabricar RED. Si aparece un fallo, separar evidencia e hipótesis y diagnosticar
+antes de proponer un fix; esta planificación no autoriza arreglarlo ni ampliar
+el alcance a seguridad, clínica o finanzas.
+
+**Condición de cierre de G2a:** resultado por cada caso y huella, distinción entre
+HTTP real y transporte inyectado, controles previos preservados y limitaciones
+registradas. Hasta ejecutarlo no hay prueba de adopción integral por una segunda
+obra social; aun con éxito no habría homologación, política aprobada ni deploy.
+
+#### Resultado local de G2a — 04/11/2026
+
+El usuario autorizó expresamente las pruebas con PostgreSQL descartable y
+navegador local. G2a queda **verificado localmente**, no homologado ni desplegado.
+Se conservaron el producto, las guardas, endpoints, fixtures existentes y
+dependencias declaradas; sólo se extendieron dos archivos de pruebas y estos docs.
+
+- G2a-1–6: seis caracterizaciones API nuevas de A/B en `test_borradores_api.py`,
+  con instantáneas de estado y altas permitidas explícitas. Guardar A crea sólo
+  su versión/evento; consultar, previsualizar, simular, reintentar o rechazar
+  preserva los demás datos y las versiones de B. Límites 7/0 exclusivamente ficticios.
+- G2a-7: regresiones reales existentes de listado/preview/trazabilidad tardíos,
+  sin duplicar harness. Dos recorridos nuevos comprueban mismo código/versión,
+  fuente/plazo propios en A/B, resultados distintos y sólo dos guardados;
+  escritorio, móvil, teclado y retorno de foco. No se simulan respuestas positivas.
+- Evidencia: suite API y regresiones112tests23.495s OK; navegador completo
+  29recorridos43.7s OK. Capturas escritorio/móvil inspeccionadas, sin desborde
+  horizontal. La latencia/error de las regresiones se identifica como inyección,
+  no como prueba de revocación real o de persistencia.
+- Entorno propio: PostgreSQL loopback49727, API8294, Vite5294; demo ficticia visible
+  en `http://127.0.0.1:5294/financiadores/borradores`. Recursos temporales retenidos,
+  sin tocar saneamiento ni datos reales. Detalle de comandos/ubicaciones en L49.
+- No se ejecutó build porque no cambió código productivo. La comprobación nativa
+  excluyó `.atl/` con inventario confirmado: medium/under_budget, sin revisión
+  debida ni aprobación nativa. La evidencia no acredita CI, aceptación humana,
+  reglas operativas, cobertura clínica/familiar integral o ejecución financiera.
+  G3–G5 y la espera #144/#145 conservan sus límites. Risk: none.
+
+**Disponibilidad para G3 (04/11/2026):** el usuario informa «no tengo datos de otra
+obra social». No hay una segunda fuente confirmada disponible para este frente;
+G3 queda pendiente de ese insumo, sin solicitar datos personales ni inventar
+formatos o equivalencias. G2a conserva su evidencia sintética: demuestra aislamiento
+técnico, no compatibilidad con el padrón de otra obra social real. No se inicia
+un adaptador universal ni se reabre la espera de aportes/cuentas de OSTEL.

@@ -5,11 +5,147 @@ import json
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
+from rest_framework.test import APIClient
 from apps.accounts.models import Usuario
+from . import models as m
 from .models import Financiador, MembresiaFinanciador, Plan, EventoCobertura, Afiliado, BorradorReglaDerechos
 
 
 class BorradoresAPITests(APITestCase):
+    def preparar_g2a(self):
+        """Dos ámbitos con nombres repetidos y valores exclusivamente sintéticos."""
+        self.regla.update(fuente="Fuente ficticia A", plazo_dias_corridos=7)
+        otra = Financiador.objects.create(nombre="G2a B ficticia", tipo="otro")
+        usuario = Usuario.objects.create_user("g2a-b@example.invalid")
+        MembresiaFinanciador.objects.create(financiador=otra, usuario=usuario, rol="admin")
+        plan = Plan.objects.create(financiador=otra, codigo="FICTICIO", nombre="Plan ficticio B")
+        for org in (self.org, otra):
+            Afiliado.objects.create(financiador=org, numero="G2A", documento="G2A-FICTICIO",
+                nombre="Persona completamente ficticia", desde="2030-01-01", cobertura_habilitada=False)
+        entrada = deepcopy(self.entrada)
+        entrada["propuesta"][0].update(plan_id=plan.pk, fuente="Fuente ficticia B", plazo_dias_corridos=0)
+        entrada["plan_id"] = plan.pk
+        cliente = APIClient()
+        cliente.force_authenticate(usuario)
+        return cliente, f"/api/financiadores/{otra.pk}/borradores-derechos/", entrada
+
+    def instantanea_g2a(self):
+        tablas = (m.Financiador, m.Plan, m.MembresiaFinanciador, m.Afiliado,
+                  m.SaludPadron, m.HistorialAfiliacion, m.Importacion,
+                  m.BorradorReglaDerechos, m.EventoCobertura)
+        return {tabla.__name__: list(tabla.objects.order_by("pk").values()) for tabla in tablas}
+
+    def test_g2a_mismo_codigo_version_y_plan_no_mezclan_financiadores(self):
+        cliente_b, url_b, entrada_b = self.preparar_g2a()
+        self.assertEqual(self.post().status_code, 200)
+        self.assertEqual(cliente_b.post(url_b, entrada_b, format="json").status_code, 200)
+        antes = self.instantanea_g2a()
+        self.assertEqual(self.client.get(self.url).json(), {"borradores": [self.regla]})
+        self.assertEqual(cliente_b.get(url_b).json(), {"borradores": entrada_b["propuesta"]})
+        for cliente, url, entrada in ((self.client, self.url, self.entrada), (cliente_b, url_b, entrada_b)):
+            vista = cliente.post(url + "previsualizar/", entrada, format="json")
+            self.assertEqual(vista.status_code, 200, vista.data)
+            self.assertEqual(vista.json()["despues"], {"coincidencias": entrada["propuesta"], "conflicto": False})
+        self.assertEqual(self.instantanea_g2a(), antes)
+
+    def test_g2a_preview_guardado_y_reintento_preservan_b_y_filas_previas(self):
+        cliente_b, url_b, entrada_b = self.preparar_g2a()
+        self.assertEqual(cliente_b.post(url_b, entrada_b, format="json").status_code, 200)
+        antes = self.instantanea_g2a()
+        vista = self.client.post(self.url + "previsualizar/", self.entrada, format="json")
+        self.assertEqual(vista.status_code, 200)
+        self.assertEqual(self.instantanea_g2a(), antes)
+        guardado = self.post()
+        self.assertEqual(guardado.status_code, 200)
+        self.assertEqual(guardado.json(), vista.json())
+        despues = self.instantanea_g2a()
+        for tabla, filas in antes.items():
+            if tabla not in ("BorradorReglaDerechos", "EventoCobertura"):
+                self.assertEqual(despues[tabla], filas, tabla)
+                continue
+            ids = {fila["id"] for fila in filas}
+            self.assertEqual([fila for fila in despues[tabla] if fila["id"] in ids], filas)
+            nuevas = [fila for fila in despues[tabla] if fila["id"] not in ids]
+            self.assertEqual(len(nuevas), 1, tabla)
+            self.assertEqual(nuevas[0]["financiador_id"], self.org.pk)
+            if tabla == "EventoCobertura":
+                self.assertEqual(nuevas[0]["accion"], "crear_borrador_derechos")
+        repetido = self.post()
+        self.assertEqual(repetido.status_code, 200)
+        self.assertEqual(repetido.json()["nuevas"], [])
+        self.assertEqual(self.instantanea_g2a(), despues)
+        self.assertEqual(cliente_b.get(url_b).json(), {"borradores": entrada_b["propuesta"]})
+
+    def test_g2a_fecha_tecnica_y_conflicto_no_eligen_ganador(self):
+        cliente_b, url_b, entrada_b = self.preparar_g2a()
+        antes = self.instantanea_g2a()
+        for cliente, url, entrada in ((self.client, self.url, self.entrada), (cliente_b, url_b, entrada_b)):
+            for fecha, coincide in (("2030-01-01", True), ("2030-01-31", True), ("2030-02-01", False)):
+                vista = cliente.post(url + "previsualizar/", entrada | {"fecha": fecha}, format="json")
+                self.assertEqual(vista.status_code, 200)
+                self.assertEqual(vista.json()["despues"], {
+                    "coincidencias": entrada["propuesta"] if coincide else [], "conflicto": False})
+            general = entrada["propuesta"][0] | {"plan_id": None}
+            solapada = entrada | {"propuesta": [general, entrada["propuesta"][0]]}
+            vista = cliente.post(url + "previsualizar/", solapada, format="json")
+            self.assertEqual(vista.status_code, 200)
+            self.assertTrue(vista.json()["despues"]["conflicto"])
+            self.assertCountEqual(vista.json()["despues"]["coincidencias"], solapada["propuesta"])
+        self.assertEqual(self.instantanea_g2a(), antes)
+
+    def test_g2a_simulacion_configurada_y_alternativa_no_mutan_ambitos(self):
+        cliente_b, url_b, entrada_b = self.preparar_g2a()
+        for cliente, url, entrada in ((self.client, self.url, self.entrada), (cliente_b, url_b, entrada_b)):
+            self.assertEqual(cliente.post(url, entrada, format="json").status_code, 200)
+        antes = self.instantanea_g2a()
+        for cliente, url, entrada, limite, relacion in (
+            (self.client, self.url, self.entrada, "2030-01-08", "en"),
+            (cliente_b, url_b, entrada_b, "2030-01-01", "despues"),
+        ):
+            descriptor = entrada["propuesta"][0]
+            cuerpo = dict(regla={k: descriptor[k] for k in ("codigo", "version", "regimen", "plan_id")},
+                fecha="2030-01-08", referencia="2030-01-01", evidencia="REF-G2A-FICTICIA")
+            respuesta = cliente.post(url + "simular-plazo/", cuerpo, format="json")
+            self.assertEqual(respuesta.status_code, 200, respuesta.data)
+            self.assertEqual((respuesta.json()["limite"], respuesta.json()["relacion"]), (limite, relacion))
+            self.assertEqual(respuesta.json()["regla"]["fuente"], descriptor["fuente"])
+            alternativa = cliente.post(url + "simular-plazo/", cuerpo | {"dias_corridos": 0}, format="json")
+            self.assertEqual(alternativa.status_code, 200)
+            self.assertEqual(alternativa.json()["limite"], "2030-01-01")
+            self.assertEqual(self.instantanea_g2a(), antes)
+
+    def test_g2a_rechazos_de_ambito_identidad_y_roles_preservan_huella(self):
+        cliente_b, url_b, entrada_b = self.preparar_g2a()
+        self.assertEqual(cliente_b.post(url_b, entrada_b, format="json").status_code, 200)
+        antes = self.instantanea_g2a()
+        self.assertEqual(self.client.get(url_b).status_code, 404)
+        self.assertEqual(self.client.post(url_b, self.entrada, format="json").status_code, 404)
+        for cambio in ({"plan_id": entrada_b["plan_id"]}, {"financiador_id": 999}):
+            entrada = deepcopy(self.entrada)
+            entrada["propuesta"][0].update(cambio)
+            self.assertEqual(self.post(entrada).status_code, 400)
+            self.assertEqual(self.instantanea_g2a(), antes)
+        for rol in ("operador", "auditor"):
+            self.member.rol = rol
+            self.member.save()
+            antes = self.instantanea_g2a()
+            for sufijo in ("", "previsualizar/"):
+                self.assertEqual(self.client.post(self.url + sufijo, self.entrada, format="json").status_code, 403)
+                self.assertEqual(self.instantanea_g2a(), antes)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+        self.assertEqual(self.instantanea_g2a(), antes)
+
+    def test_g2a_historia_rechazada_preserva_ambas_organizaciones(self):
+        cliente_b, url_b, entrada_b = self.preparar_g2a()
+        self.assertEqual(self.post().status_code, 200)
+        self.assertEqual(cliente_b.post(url_b, entrada_b, format="json").status_code, 200)
+        antes = self.instantanea_g2a()
+        for cambio in ({"propuesta": []}, {"propuesta": [self.regla | {"fuente": "Reescrita"}]},
+                       {"propuesta": [self.regla | {"plazo_dias_corridos": 0}]}):
+            self.assertEqual(self.post(self.entrada | cambio).status_code, 400)
+            self.assertEqual(self.instantanea_g2a(), antes)
+
     def setUp(self):
         self.org = Financiador.objects.create(nombre="API ficticia", tipo="obra_social")
         self.user = Usuario.objects.create_user("api-borradores@example.invalid")

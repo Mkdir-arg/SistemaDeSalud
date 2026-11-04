@@ -18,6 +18,54 @@ test("administración consulta borradores sin activar derechos", async ({ page }
   await expect(page.getByRole("button", { name: "Guardar borrador", exact: true })).toBeVisible();
 });
 
+for (const movil of [false, true]) {
+  test(`G2a: mismo código y plazos propios en dos financiadores (${movil ? "móvil" : "escritorio"})`, async ({ page }, testInfo) => {
+    if (movil) await page.setViewportSize({ width: 390, height: 844 });
+    await abrir(page);
+    const codigo = `g2a-ambos-${Date.now()}`;
+    let guardados = 0;
+    page.on("request", (peticion) => {
+      if (peticion.method() === "POST" && /\/borradores-derechos\/$/.test(peticion.url())) guardados += 1;
+    });
+    for (const [indice, dias, limite] of [[0, 7, "2030-01-08"], [1, 0, "2030-01-01"]]) {
+      await page.getByLabel("Financiador", { exact: true }).selectOption(String(datos.organizaciones[indice]));
+      await expect(page.getByRole("heading", { name: "Nueva versión", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: `${codigo} · v1`, exact: true })).toHaveCount(0);
+      await completar(page, codigo);
+      await page.getByLabel("Fuente informada", { exact: true }).fill(`Fuente ficticia G2a ${indice}`);
+      await page.getByLabel("Plazo en días corridos (opcional)", { exact: true }).fill(String(dias));
+      const respuesta = page.waitForResponse((r) => r.url().includes(`/financiadores/${datos.organizaciones[indice]}/borradores-derechos/`) && r.request().method() === "POST");
+      await page.getByRole("button", { name: "Guardar borrador", exact: true }).click();
+      expect((await respuesta).status()).toBe(200);
+      const fila = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: `${codigo} · v1`, exact: true }) });
+      await expect(fila.getByText("Borrador", { exact: true })).toBeVisible();
+      await expect(fila).toContainText(`Fuente ficticia G2a ${indice}`);
+      const boton = fila.getByRole("button", { name: "Simular plazo", exact: true });
+      await boton.focus(); await page.keyboard.press("Enter");
+      const dialogo = page.getByRole("dialog", { name: "Simular plazo", exact: true });
+      await dialogo.getByLabel("Fecha de evaluación", { exact: true }).fill("2030-01-08");
+      await dialogo.getByLabel("Fecha de referencia (opcional)", { exact: true }).fill("2030-01-01");
+      await dialogo.getByLabel("Referencia de evidencia (opcional)", { exact: true }).fill("REF-G2A-FICTICIA");
+      const simulada = page.waitForResponse((r) => r.url().includes("/simular-plazo/") && r.request().method() === "POST");
+      await dialogo.getByRole("button", { name: "Calcular simulación", exact: true }).click();
+      const real = await simulada;
+      expect(real.status()).toBe(200);
+      expect((await real.json()).regla.fuente).toBe(`Fuente ficticia G2a ${indice}`);
+      await expect(dialogo.getByText(`Límite calculado: ${limite}`, { exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`g2a-${indice}.png`), fullPage: true });
+      await page.keyboard.press("Escape");
+      await expect(boton).toBeFocused();
+    }
+    await page.getByLabel("Financiador", { exact: true }).selectOption(String(datos.organizaciones[0]));
+    const original = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: `${codigo} · v1`, exact: true }) });
+    await expect(original).toContainText("Fuente ficticia G2a 0");
+    await expect(original).not.toContainText("Fuente ficticia G2a 1");
+    expect(guardados).toBe(2);
+    await expect(page.getByRole("button", { name: /Activar|Aprobar/ })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+}
+
 
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "wait" }); });
 async function completar(page, codigo) {
