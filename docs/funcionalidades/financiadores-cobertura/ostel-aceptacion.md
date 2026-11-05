@@ -886,9 +886,9 @@ respuestas tardías al cambiar de organización. No es suficiente escribir esta
 sección o probar sólo el simulador. Homologación OSTEL, aceptación humana,
 publicación, CI, merge y despliegue mantienen evidencia separada.
 
-Estado actual de este nuevo alcance: implementación genérica local presente y
-verificación en curso; todavía no es cierre final, publicación ni homologación.
-Seguimiento: `odd/tasks/novedades-cierre.md`, L7–L10.
+Estado técnico local de este nuevo alcance: circuito genérico implementado,
+verificado y revisado. No equivale a publicación, aceptación humana ni homologación
+OSTEL. Seguimiento: `odd/tasks/novedades-cierre.md`, L7–L12.
 
 ### Uso del circuito genérico
 
@@ -957,3 +957,26 @@ No hay migración, dependencia nueva, integración externa, cobro/pago ni ejecut
 de derechos. La deuda OSTEL de la tabla anterior sigue explícitamente excluida.
 La entrega será un solo eslabón con excepción de tamaño elegida por el usuario;
 no se autorizaron push, PR, merge ni deploy.
+
+### Cierre técnico local verificado
+
+El circuito genérico queda completo localmente: registro y consulta por
+organización, originales preservados, comparación y conflictos explícitos,
+conciliación sin aplicación o descarte motivados, rectificación por nueva evidencia
+enlazada e historia persistida. Permisos, idempotencia, revisiones y concurrencia
+fueron comprobados; no se conectó ningún ejecutor de derechos.
+
+La revisión nativa concedida por el usuario terminó sin hallazgos en sus cuatro
+miradas y se cerró mediante el acuse oficial. El commit de implementación
+`bee25130b31cbe727e457e3855572350e0ee76d5` conserva exactamente el árbol revisado.
+Este añadido posterior es únicamente registro documental del resultado.
+
+Una auditoría adicional verificó paginación real con once propuestas ficticias,
+filtros de estado/persona/organización, padrón intacto y recorrido de teclado sin
+salir del diálogo. La demo visible es temporal y sólo contiene datos ficticios.
+No constituye aceptación humana, homologación ni prueba de producción.
+
+La tabla de deuda OSTEL anterior sigue vigente: no se interpretan reglas aún no
+validadas ni se automatizan efectos prestacionales o financieros. Ese pendiente
+no reabre el circuito técnico genérico ni se oculta como funcionalidad terminada.
+No se publicaron cambios ni se ejecutaron CI, merge o despliegue en este cierre.
