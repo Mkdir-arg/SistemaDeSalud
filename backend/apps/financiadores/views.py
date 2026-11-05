@@ -39,6 +39,8 @@ from .acceso import auditar_actividad
 from .autorizaciones import solicitudes_visibles_financiador
 from .facturas import almacenamiento_privado, validar_adjunto
 from .padron_api import PadronMixin
+from .borradores_api import BorradoresDerechosMixin
+from .simulacion_plazo_api import SimulacionPlazoMixin
 from .padron_consulta import consultar_padron
 from .padron_exportacion import exportar_padron, parametros_padron
 
@@ -116,7 +118,7 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
     plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
-class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
+class FinanciadorViewSet(SimulacionPlazoMixin, BorradoresDerechosMixin, PadronMixin, CoberturaBaseViewSet):
     serializer_class = s.FinanciadorSerializer
 
     @extend_schema(methods=["GET"], responses=s.CatalogoSerializer(many=True))
@@ -676,8 +678,8 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             inicial = True
         referencias = Q(usuario__email__iendswith=f"@{DOMINIO}") | Q(usuario__cuenta_referencia__isnull=False)
         if request.method == "GET":
-            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones, "acceso_padron_salud": x.acceso_padron_salud, "acceso_padron_cobranza": x.acceso_padron_cobranza} for x in m.MembresiaFinanciador.objects.filter(financiador=org).exclude(referencias).select_related("usuario")])
-        d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True), "resuelve_autorizaciones": serializers.BooleanField(required=False), "acceso_padron_salud": serializers.BooleanField(required=False), "acceso_padron_cobranza": serializers.BooleanField(required=False)})
+            return Response([{"id": x.pk, "rol": x.rol, "activo": x.activo, "email": x.usuario.email, "nombre": x.usuario.nombre, "resuelve_autorizaciones": x.resuelve_autorizaciones, "auditoria_medica": x.auditoria_medica, "acceso_padron_salud": x.acceso_padron_salud, "acceso_padron_cobranza": x.acceso_padron_cobranza} for x in m.MembresiaFinanciador.objects.filter(financiador=org).exclude(referencias).select_related("usuario")])
+        d = datos(request, {"email": serializers.EmailField(), "nombre": serializers.CharField(max_length=120), "rol": serializers.ChoiceField(choices=["admin", "operador", "auditor"]), "activo": serializers.BooleanField(default=True), "resuelve_autorizaciones": serializers.BooleanField(required=False), "auditoria_medica": serializers.BooleanField(required=False), "acceso_padron_salud": serializers.BooleanField(required=False), "acceso_padron_cobranza": serializers.BooleanField(required=False)})
         if d["rol"] == "auditor" and d.get("resuelve_autorizaciones"):
             raise ValidationError("El rol auditor conserva lectura. Para resolver, designá un operador o administrador explícitamente.")
         existente = Usuario.objects.filter(email__iexact=d["email"]).first()
@@ -691,18 +693,20 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
                 # El bloqueo también serializa dos intentos de alta inicial.
                 if not puede_designar_admin_inicial(request.user, org.pk):
                     raise PermissionDenied("La organización ya tiene un administrador activo.")
-                designaciones = ("resuelve_autorizaciones", "acceso_padron_salud", "acceso_padron_cobranza")
+                designaciones = ("auditoria_medica", "resuelve_autorizaciones", "acceso_padron_salud", "acceso_padron_cobranza")
                 if d["rol"] != "admin" or not d["activo"] or any(campo in d for campo in designaciones):
                     raise PermissionDenied("Plataforma sólo puede designar el administrador inicial sin designaciones adicionales.")
                 if existente and (not existente.is_active or plataforma(existente)):
                     raise PermissionDenied("El administrador inicial debe ser una cuenta activa propia del financiador.")
                 if existente and m.MembresiaFinanciador.objects.filter(
                     financiador=org, usuario=existente,
-                ).filter(Q(resuelve_autorizaciones=True) | Q(acceso_padron_salud=True) | Q(acceso_padron_cobranza=True)).exists():
+                ).filter(Q(auditoria_medica=True) | Q(resuelve_autorizaciones=True) | Q(acceso_padron_salud=True) | Q(acceso_padron_cobranza=True)).exists():
                     raise PermissionDenied("La designación inicial no modifica membresías con permisos especiales.")
-            if any(campo in d for campo in ("acceso_padron_salud", "acceso_padron_cobranza")):
+            if any(campo in d for campo in ("auditoria_medica", "acceso_padron_salud", "acceso_padron_cobranza")):
                 from .permisos import requerir_admin_real
                 requerir_admin_real(request.user, org.pk)
+            if d.get("auditoria_medica") and existente and (existente.is_superuser or plataforma(existente)):
+                raise ValidationError("Las cuentas de plataforma no reciben designación de Auditoría Médica.")
             user, nuevo = Usuario.objects.get_or_create(email=d["email"], defaults={"nombre": d["nombre"]})
             if nuevo:
                 user.set_unusable_password()
@@ -713,13 +717,15 @@ class FinanciadorViewSet(PadronMixin, CoberturaBaseViewSet):
             membresia, _ = m.MembresiaFinanciador.objects.get_or_create(financiador=org, usuario=user, defaults={"rol": d["rol"], "activo": d["activo"], "creo_cuenta": nuevo})
             membresia.rol, membresia.activo = d["rol"], d["activo"]
             membresia.resuelve_autorizaciones = d.get("resuelve_autorizaciones", membresia.resuelve_autorizaciones) if d["rol"] != "auditor" else False
-            for campo in ("acceso_padron_salud", "acceso_padron_cobranza"):
+            for campo in ("auditoria_medica", "acceso_padron_salud", "acceso_padron_cobranza"):
                 if campo in d:
                     setattr(membresia, campo, d[campo])
-            membresia.save(update_fields=["rol", "activo", "resuelve_autorizaciones", "acceso_padron_salud", "acceso_padron_cobranza"])
-            auditar(request.user, "membresia_financiador", membresia.pk, financiador=org,
-                motivo=f"rol={membresia.rol}; activo={membresia.activo}; resuelve_autorizaciones={membresia.resuelve_autorizaciones}; acceso_padron_salud={membresia.acceso_padron_salud}; acceso_padron_cobranza={membresia.acceso_padron_cobranza}")
-        respuesta = {"id": membresia.pk, "email": user.email, "nombre": user.nombre, "rol": membresia.rol, "resuelve_autorizaciones": membresia.resuelve_autorizaciones, "acceso_padron_salud": membresia.acceso_padron_salud, "acceso_padron_cobranza": membresia.acceso_padron_cobranza}
+            membresia.save(update_fields=["rol", "activo", "resuelve_autorizaciones", "auditoria_medica", "acceso_padron_salud", "acceso_padron_cobranza"])
+            motivo_membresia = f"rol={membresia.rol}; activo={membresia.activo}; resuelve_autorizaciones={membresia.resuelve_autorizaciones}; acceso_padron_salud={membresia.acceso_padron_salud}; acceso_padron_cobranza={membresia.acceso_padron_cobranza}"
+            if "auditoria_medica" in d:
+                motivo_membresia += f"; auditoria_medica={membresia.auditoria_medica}"
+            auditar(request.user, "membresia_financiador", membresia.pk, financiador=org, motivo=motivo_membresia)
+        respuesta = {"id": membresia.pk, "email": user.email, "nombre": user.nombre, "rol": membresia.rol, "resuelve_autorizaciones": membresia.resuelve_autorizaciones, "auditoria_medica": membresia.auditoria_medica, "acceso_padron_salud": membresia.acceso_padron_salud, "acceso_padron_cobranza": membresia.acceso_padron_cobranza}
         if membresia.creo_cuenta and membresia.activo and not user.has_usable_password():
             uid = urlsafe_base64_encode(str(user.pk).encode())
             respuesta["activacion"] = f"/financiadores/activar?uid={uid}&token={default_token_generator.make_token(user)}"

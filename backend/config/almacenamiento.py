@@ -1,9 +1,11 @@
 """Dónde se guardan los archivos subidos: disco local o un bucket S3 (#171).
 
 Sin las variables del bucket todo sigue en disco: `default` en `MEDIA_ROOT` y
-las facturas en `SALUD_FACTURAS_ADJUNTOS_DIR`. Con las variables, los dos usan
+las facturas en `SALUD_FACTURAS_ADJUNTOS_DIR` y las prescripciones en su carpeta
+privada separada. Con las variables, los alias usan
 el mismo bucket privado: los adjuntos clínicos con sus claves de siempre
-(`uploads/<institución>/<uuid>.<ext>`) y las facturas bajo `facturas/`.
+(`uploads/<institución>/<uuid>.<ext>`), las facturas bajo `facturas/`
+y las prescripciones bajo `prescripciones/`. No requiere otro bucket/proveedor.
 
 Los nombres son los que Railway Storage Buckets expone en el bucket
 (https://docs.railway.com/storage-buckets): `BUCKET`, `ACCESS_KEY_ID`,
@@ -18,6 +20,7 @@ transmite el objeto (`FileResponse`), igual que con el disco. Por eso no hay
 
 VARIABLES_OBLIGATORIAS = ("BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY", "ENDPOINT")
 PREFIJO_FACTURAS = "facturas"
+PREFIJO_PRESCRIPCIONES = "prescripciones"
 
 
 def opciones_bucket(entorno):
@@ -55,19 +58,27 @@ def opciones_bucket(entorno):
     }
 
 
-def storages(entorno, carpeta_facturas):
-    """`STORAGES["default"]`, `STORAGES["facturas"]` y si se usa el bucket."""
+def storages(entorno, carpeta_facturas, *, carpeta_prescripciones=None):
+    """Alias existentes y, si se solicita, prescripciones; mismo proveedor privado."""
     bucket = opciones_bucket(entorno)
     if bucket is None:
-        return {
+        archivos = {
             "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
             "facturas": {
                 "BACKEND": "django.core.files.storage.FileSystemStorage",
                 "OPTIONS": {"location": str(carpeta_facturas)},
             },
-        }, False
+        }
+        if carpeta_prescripciones is not None:
+            archivos["prescripciones"] = {"BACKEND": "django.core.files.storage.FileSystemStorage",
+                "OPTIONS": {"location": str(carpeta_prescripciones)}}
+        return archivos, False
     s3 = "storages.backends.s3.S3Storage"
-    return {
+    archivos = {
         "default": {"BACKEND": s3, "OPTIONS": dict(bucket)},
         "facturas": {"BACKEND": s3, "OPTIONS": {**bucket, "location": PREFIJO_FACTURAS}},
-    }, True
+    }
+    if carpeta_prescripciones is not None:
+        archivos["prescripciones"] = {"BACKEND": s3,
+            "OPTIONS": {**bucket, "location": PREFIJO_PRESCRIPCIONES}}
+    return archivos, True

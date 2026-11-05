@@ -63,6 +63,7 @@ class FinanciadorSerializer(serializers.ModelSerializer):
     resuelve_autorizaciones = serializers.SerializerMethodField()
     carga_solicitudes_manuales = serializers.SerializerMethodField()
     consulta_historia_clinica = serializers.SerializerMethodField()
+    consulta_prescripciones = serializers.SerializerMethodField()
     acceso_padron_salud = serializers.SerializerMethodField()
     acceso_padron_cobranza = serializers.SerializerMethodField()
     gestiona_permisos_padron = serializers.SerializerMethodField()
@@ -71,7 +72,7 @@ class FinanciadorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol", "puede_designar_admin_inicial", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "puede_designar_admin_inicial", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "consulta_prescripciones", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
 
     def get_puede_designar_admin_inicial(self, obj) -> bool:
         from .permisos import puede_designar_admin_inicial
@@ -88,6 +89,10 @@ class FinanciadorSerializer(serializers.ModelSerializer):
     def get_acceso_padron_cobranza(self, obj) -> bool:
         from .permisos import puede_padron_protegido
         return puede_padron_protegido(self.context["request"].user, obj.pk, "cobranza")
+
+    def get_consulta_prescripciones(self, obj) -> bool:
+        from .permisos import puede_consultar_prescripciones
+        return puede_consultar_prescripciones(self.context["request"].user, obj.pk)
 
     def get_consulta_historia_clinica(self, obj) -> bool:
         from .permisos import puede_consultar_historia_clinica

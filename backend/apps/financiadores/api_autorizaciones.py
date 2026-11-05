@@ -3,10 +3,12 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Sum
 from django.shortcuts import get_object_or_404
+from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiTypes
 
 from apps.auditoria.mixins import registrar_accesos
@@ -61,6 +63,16 @@ class SolicitarManualSerializer(serializers.Serializer):
     justificacion = serializers.CharField(max_length=1000)
     urgente = serializers.BooleanField(required=False, default=False)
     clave = serializers.UUIDField()
+
+
+class SolicitarConPrescripcionSerializer(SolicitarAutorizacionSerializer):
+    prescripcion = serializers.FileField()
+
+    def to_internal_value(self, data):
+        desconocidos = set(data) - set(self.fields)
+        if desconocidos:
+            raise serializers.ValidationError({campo: "Campo no admitido." for campo in sorted(desconocidos)})
+        return super().to_internal_value(data)
 
 
 class ResolverAutorizacionSerializer(serializers.Serializer):
@@ -144,6 +156,7 @@ def consulta_solicitudes():
     return m.SolicitudAutorizacion.objects.select_related(
         "financiador", "institucion", "prestacion", "comun", "afiliado", "ciudadano", "caso", "convenio", "creado_por",
     ).annotate(
+        tiene_prescripcion=Exists(m.PrescripcionAutorizacion.objects.filter(solicitud_id=OuterRef("pk"))),
         convenio_vigente=Exists(convenios_vigentes().filter(pk=OuterRef("convenio_id"))),
         cantidad_comprometida=Sum("usos__cantidad", filter=Q(usos__estado="comprometido"), default=0),
         cantidad_consumida=Sum("usos__cantidad", filter=Q(usos__estado="consumido"), default=0),
@@ -209,6 +222,8 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
                 "estado": e.estado, "revision": e.revision, "motivo": e.motivo,
                 "usuario_nombre": e.usuario.nombre_completo if e.usuario_id else "Sistema",
                 "creado": e.creado} for e in obj.historial.select_related("usuario").all()]
+        if obj.tiene_prescripcion:
+            datos["prescripcion_estado"] = "presentada"
         return datos
 
     def auditar_lectura(self, objetos, financiador=None):
@@ -244,6 +259,48 @@ class AutorizacionCoberturaViewSet(CoberturaBaseViewSet):
         prestacion = get_object_or_404(Prestacion, pk=valores.pop("prestacion"), institucion_id=caso.institucion_id)
         obj = a.solicitar(caso=caso, prestacion=prestacion, usuario=request.user, **valores)
         return Response(self.serializar(consulta_solicitudes().get(pk=obj.pk), detalle=True), status=201)
+
+    @extend_schema(request=SolicitarConPrescripcionSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="con-prescripcion", parser_classes=[MultiPartParser])
+    def con_prescripcion(self, request):
+        from .prescripciones_autorizacion import presentar
+        if len(request.FILES.getlist("prescripcion")) != 1 or set(request.FILES) != {"prescripcion"}:
+            raise serializers.ValidationError("Adjuntá exactamente una prescripción.")
+        entrada = SolicitarConPrescripcionSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = dict(entrada.validated_data)
+        caso = get_object_or_404(a.casos_permitidos(request.user), pk=datos.pop("caso"))
+        prestacion = get_object_or_404(Prestacion, pk=datos.pop("prestacion"), institucion_id=caso.institucion_id)
+        obj = presentar(caso=caso, prestacion=prestacion, usuario=request.user, **datos)
+        return Response(self.serializar(consulta_solicitudes().get(pk=obj.pk), detalle=True), status=201)
+
+    @extend_schema(responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"])
+    def prescripcion(self, request, pk=None):
+        from .permisos import requerir_consultar_prescripciones
+        from .prescripciones_autorizacion import almacenamiento
+        financiador = self.ambito().get("financiador")
+        if not financiador:
+            raise PermissionDenied("La consulta de prescripciones corresponde a Auditoría Médica del financiador.")
+        requerir_consultar_prescripciones(request.user, financiador)
+        obj = self.get_object()
+        documento = get_object_or_404(m.PrescripcionAutorizacion, solicitud=obj)
+        try:
+            archivo = almacenamiento().open(documento.ruta, "rb")
+        except FileNotFoundError as error:
+            raise Http404 from error
+        try:
+            registrar_accesos(request, AccesoClinico.Tipo.FINANCIADOR, "prescripcionautorizacion", [{
+                "ciudadano": obj.ciudadano, "institucion_id": obj.institucion_id,
+                "objeto_id": documento.pk, "detalle": "Descarga iniciada de prescripción",
+            }], estricto=True)
+            respuesta = FileResponse(archivo, as_attachment=True, filename=f"prescripcion{documento.extension}",
+                content_type=documento.content_type)
+            respuesta["X-Content-Type-Options"] = "nosniff"
+            return respuesta
+        except Exception:
+            archivo.close()
+            raise
 
     @action(detail=False, methods=["post"])
     def manual(self, request):

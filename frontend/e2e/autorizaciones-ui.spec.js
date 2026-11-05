@@ -56,9 +56,9 @@ async function escenario(page, opciones = {}) {
       return route.fulfill({ json: { id: 100, ...body } });
     }
     lecturas.push({ path, params: Object.fromEntries(url.searchParams) });
-    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, is_superuser: !!opciones.editor, email: "personal@example.test", nombre_completo: "Personal de prueba", capacidades_por_institucion: opciones.hospital ? { 2: ["casos_operar", "historia_clinica", "padron_admision"] } : {}, roles_por_institucion: opciones.hospital ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin", carga_solicitudes_manuales: !!opciones.manual })) } });
+    if (path === "/usuarios/me/") return route.fulfill({ json: { id: 9, is_superuser: !!opciones.editor, email: "personal@example.test", nombre_completo: "Personal de prueba", capacidades_por_institucion: opciones.hospital ? { 2: ["casos_operar", "historia_clinica", "padron_admision"] } : {}, roles_por_institucion: opciones.hospital ? { 2: ["medico"] } : {}, financiadores: organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin", carga_solicitudes_manuales: !!opciones.manual, ...(opciones.prescripciones ? { consulta_prescripciones: true } : {}) })) } });
     if (path === "/instituciones/") return route.fulfill({ json: lista(opciones.hospital ? [{ id: 2, nombre: "Hospital Ficticio" }] : []) });
-    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin", carga_solicitudes_manuales: !!opciones.manual }))) });
+    if (path === "/financiadores/") return route.fulfill({ json: lista(organizaciones.map((o) => ({ ...o, rol: opciones.rol || "admin", carga_solicitudes_manuales: !!opciones.manual, ...(opciones.prescripciones ? { consulta_prescripciones: true } : {}) }))) });
     if (path === "/financiadores/21/usuarios/") return route.fulfill({ json: lista([estado.usuario]) });
     if (path === "/financiadores/21/convenios/") return route.fulfill({ json: lista([estado.convenio]) });
     if (/\/financiadores\/\d+\/planes\//.test(path)) return route.fulfill({ json: lista([{ id: 31, nombre: "Plan Río", codigo: "BAS", activo: true }]) });
@@ -356,4 +356,48 @@ test("solicitud manual abre sin error y elige al afiliado desde un único buscad
   const alta = escrituras.find((e) => e.path === "/autorizaciones-cobertura/manual/");
   expect(alta.body).toMatchObject({ afiliado: 61, institucion: 2, comun: 3, cantidad: 1, justificacion: "Orden médica para resonancia", urgente: false });
   expect(lecturas.filter((r) => r.path === "/autorizaciones-cobertura/opciones-manual/").every((r) => r.params.search !== "")).toBe(true);
+});
+
+
+test("negativo inyectado: doble clic y cambio de solicitud no entregan archivo anterior", async ({ page }) => {
+  await escenario(page, { prescripciones: true, solicitud: { prescripcion_estado: "presentada", anterior: 90, puede_resolver: false } });
+  await page.goto("/financiadores/autorizaciones?financiador=21");
+  await revisar(page).click();
+  let liberar, llegada;
+  const espera = new Promise((resolve) => { liberar = resolve; });
+  const recibida = new Promise((resolve) => { llegada = resolve; });
+  let peticiones = 0, descargas = 0;
+  page.on("download", () => { descargas += 1; });
+  await page.route("**/autorizaciones-cobertura/91/prescripcion/**", async (route) => {
+    peticiones += 1; llegada(); await espera;
+    await route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4 ficticio",
+      headers: { "Content-Disposition": 'attachment; filename="prescripcion.pdf"' } });
+  });
+  try {
+    const boton = page.getByRole("button", { name: "Descargar prescripción", exact: true });
+    await boton.evaluate((elemento) => { elemento.click(); elemento.click(); });
+    await recibida;
+    expect(peticiones).toBe(1);
+    await page.getByRole("button", { name: "Ver antecedente 90", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Solicitud de autorización 90", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Descargar prescripción", exact: true })).toBeEnabled();
+    const respuesta = page.waitForResponse((r) => r.url().includes("/91/prescripcion/"));
+    liberar();
+    await (await respuesta).finished();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    expect(descargas).toBe(0);
+    expect(peticiones).toBe(1);
+  } finally { liberar(); await page.unrouteAll({ behavior: "wait" }); }
+});
+
+test("anulación conserva el contrato institucional anterior sin datos de prescripción", async ({ page }) => {
+  const { escrituras } = await escenario(page, { hospital: true, solicitud: { puede_resolver: false, puede_anular: true } });
+  await page.goto("/casos/41");
+  await page.getByRole("button", { name: "Ver solicitud 91", exact: true }).click();
+  await page.getByRole("button", { name: "Anular solicitud", exact: true }).click();
+  await page.getByLabel("Motivo de anulación", { exact: true }).fill("Anulación ficticia anterior");
+  await page.getByRole("button", { name: "Confirmar anulación", exact: true }).click();
+  await expect(page.getByText(/Solicitud actualizada/)).toBeVisible();
+  expect(escrituras).toEqual([{ path: "/autorizaciones-cobertura/91/anular/", params: { institucion: "2" },
+    body: { revision: 1, motivo: "Anulación ficticia anterior", clave: expect.any(String) } }]);
 });
