@@ -18,7 +18,7 @@ Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos 
 | --- | --- | --- | --- | --- |
 | T1 | S1–S4 | Precisar los efectos de aprobación y recuperar la matriz documental previa sin perder historia | Inline; pasivo | Completo local: matriz recuperada y precisión financiera; commit `e7aeb75` |
 | T2 | S1,S4 | Caracterizar por API presentación privada → observación → reenvío → resolución; conservar original/ID/plazo, revisión, reintento y permisos | Inline; pruebas de contrato existente, Risk: none; sin cambio de producto | Completo local: dos caracterizaciones API aprobadas; commit `e7aeb75` |
-| T3 | S1,S4,S6 | Ejecutar focal y suite pertinente en entorno aislado, registrar alcance y límites | Focal inline; suite delegada por duración de preparación/migraciones | Completo local: PostgreSQL 82 tests OK sin omisiones y navegador final 11 OK; evidencia L6 |
+| T3 | S1,S4,S6 | Ejecutar focal y suite pertinente en entorno aislado, registrar alcance y límites | Focal inline; suite delegada por duración de preparación/migraciones | Completo local: PostgreSQL 82 tests OK sin omisiones y navegador final 11 OK; commit `561ea6b`, evidencia L6 |
 | T4 | S1,S2,S5 | Traducir contrato clínico aprobado a casos y configuración existente, implementar únicamente brechas | No ejecutar sin fuente y decisiones aprobadas; ruta/riesgo por determinar | Bloqueado por contrato |
 | T5 | S1,S2,S4,S5,S6 | Integración representativa, escritorio/móvil/teclado y aceptación funcional/clínica; entrega separada | No sustituir por caracterización local; sin deploy ni aceptación implícita | Parcial: recorrido técnico real completo; aceptación clínica/humana dependiente de T4 |
 
@@ -72,3 +72,9 @@ autorizo
 - Demo local visible abierta con sesión ficticia en puerto63953. Primer wrapper usó un nombre de botón inexistente, corregido sólo externamente a «Resueltas». Browser/servidores/contenedor propios retenidos para inspección humana; no son aceptación ni despliegue. Temporales externos previos retenidos por limpieza bloqueada, sin bypass ni reintento de borrado.
 - T3 completo local; T5 sólo parte técnica. T4 permanece sin fuente/decisiones clínicas aprobadas: PMO, evidencia mínima, vigencias/renovación y conservación/reemplazo. No pedir de nuevo lo ya solicitado a OSTEL ni inventar reglas para declarar cierre integral. Sin autorización de push/PR/merge/deploy.
 - Risk: none. Sólo pruebas/fixture ficticia/documentación; sin modificación productiva, permisos, locks, migraciones ni dependencias del proyecto.
+
+### L7 — Entrega técnica local y bloqueo contractual
+
+- Commit `561ea6b` contiene fixture/recorridos y documentación verificados. Tramo acumulado desde `8a3a1d8`: evaluación medium/executable_change, 328 líneas, review_due=false/under_budget. No START, revisión aprobada ni cambio del modo global. El chequeo previo mal formado con base-ref y árbol sucio no se usó como aprobación; se evaluó correctamente el candidato y luego el rango comprometido.
+- #147 reconsultado: OPEN, mantiene criterios clínicos/PMO, evidencia mínima, vigencias/conservación/reemplazo y aceptación pendientes. La nueva autorización de entorno no aporta ese contrato. Bloqueo restante es contractual/aceptación, no Docker ni pruebas pendientes del corte técnico.
+- Recursos propios retenidos para inspección: contenedor loopback61211; API sesión68653/puerto63952; Vite sesión62143/puerto63953; demo visible sesión28698 en financiador ficticio35. Scratch externo `salud-autorizaciones-pg-c171m8_b`; no imprimir manifiestos/credenciales ficticias. Sin push/PR/merge/deploy, sin saneamiento, sin acceso a datos reales.
