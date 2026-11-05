@@ -1,5 +1,6 @@
 """Contratos del escenario OSTEL: aislamiento, repetición y cobertura entre prestadores."""
 import json
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from threading import Barrier
@@ -172,6 +173,28 @@ class OstelCargaTests(TestCase):
         self.assertEqual(len({e["institucion"]["id"] for e in respuesta.data["resultados"]}), 2)
         respuesta = cliente.get("/api/financiadores/")
         self.assertEqual(respuesta.status_code, 401)
+
+
+@skipUnless(connection.vendor == "postgresql", "Requiere PostgreSQL aislado.")
+@override_settings(ENTORNO="demo")
+class OstelTurnosTempranosTests(TestCase):
+    def test_miercoles_antes_de_abrir_no_duplica_inicio_por_el_fin_de_semana(self):
+        ahora = timezone.make_aware(datetime(2026, 11, 4, 7, 0))
+        with patch("django.utils.timezone.now", return_value=ahora), \
+                patch.dict("os.environ", {"DEMO_PASSWORD": "clave-solo-prueba-aislada"}):
+            salida = StringIO()
+            call_command("seed_ostel_demo", stdout=salida)
+            self.assertFalse(json.loads(salida.getvalue())["existente"])
+            self.assertEqual(Turno.objects.count(), 12)
+            simultaneos = Turno.objects.values("ciudadano__documento", "inicio").annotate(
+                total=Count("pk")).filter(total__gt=1)
+            self.assertFalse(simultaneos.exists(), "El fin de semana no debe duplicar un inicio para la misma persona.")
+            self.assertFalse(Turno.objects.filter(inicio__lte=ahora).exists())
+            antes = list(Turno.objects.order_by("pk").values())
+            repetida = StringIO()
+            call_command("seed_ostel_demo", stdout=repetida)
+            self.assertTrue(json.loads(repetida.getvalue())["existente"])
+            self.assertEqual(list(Turno.objects.order_by("pk").values()), antes)
 
 
 @skipUnless(connection.vendor == "postgresql", "Requiere PostgreSQL aislado.")

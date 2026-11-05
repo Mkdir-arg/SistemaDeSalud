@@ -1,7 +1,8 @@
 """Preparación y servidor del E2E OSTEL usando el PostgreSQL aislado de CI.
 
 No carga .env, no reutiliza bases existentes y no elimina bases. El servicio
-PostgreSQL pertenece al job; limpiar retira sólo el manifiesto con credenciales.
+PostgreSQL pertenece al job; prepara importación y familias y limpiar retira
+sólo sus dos manifiestos con credenciales ficticias.
 """
 import os
 from pathlib import Path
@@ -39,6 +40,7 @@ def rutas(variables):
 def entorno(variables=None):
     env = dict(os.environ if variables is None else variables)
     _, manifiesto = rutas(env)
+    _, manifiesto_familia = rutas_familia(env)
     url = env.get("SALUD_TEST_POSTGRES_URL", "")
     validar_destino_postgres(url, entorno="desarrollo", proyecto_docker="")
     env.update(
@@ -49,14 +51,29 @@ def entorno(variables=None):
         DJANGO_ALLOWED_HOSTS="127.0.0.1,localhost,testserver", DJANGO_HSTS_SECONDS="0",
         RENAPER_MODO="simulado", SEED_DEMO="0", SEED_GUARDIA="0",
         SALUD_IMPORTACION_MANIFEST=str(manifiesto),
+        SALUD_FAMILIA_MANIFEST=str(manifiesto_familia),
     )
     return env
+
+
+def rutas_familia(variables):
+    """Directorio propio de familias, separado del escenario de importación."""
+    importacion, _ = rutas(variables)
+    directorio = importacion.with_name("ostel-familia-ui-" + importacion.name)
+    if directorio.resolve() != directorio:
+        raise RuntimeError("El directorio familiar no admite redirecciones por enlaces.")
+    manifiesto = directorio / "manifiesto.json"
+    recibido = variables.get("SALUD_FAMILIA_MANIFEST")
+    if recibido and Path(recibido).resolve() != manifiesto:
+        raise RuntimeError("El manifiesto familiar no corresponde al directorio E2E.")
+    return directorio, manifiesto
 
 
 def preparar():
     env = entorno()
     directorio, _ = rutas(env)
-    if directorio.exists():
+    familia, _ = rutas_familia(env)
+    if directorio.exists() or familia.exists():
         raise RuntimeError("El directorio E2E ya existe; no se sobrescriben fixtures ni credenciales.")
     # El nombre es constante y el destino ya pasó el guard local de PostgreSQL.
     # La conexión administrativa sólo crea esta base nueva en el servicio del job.
@@ -66,6 +83,8 @@ def preparar():
         conexion.execute("CREATE DATABASE salud_financiadores_test")
     subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], cwd=ROOT, env=env, check=True)
     subprocess.run([sys.executable, "../frontend/e2e/fixtures/preparar_importacion_real.py", str(directorio)],
+                   cwd=ROOT, env=env, check=True)
+    subprocess.run([sys.executable, "../frontend/e2e/fixtures/preparar_familia_ostel.py", str(familia)],
                    cwd=ROOT, env=env, check=True)
 
 
@@ -80,9 +99,11 @@ def servidor():
 
 def limpiar():
     # No abre conexiones ni recorre directorios. La infraestructura del job
-    # elimina PostgreSQL; aquí sólo se retira el archivo con secretos ficticios.
+    # elimina PostgreSQL; aquí sólo se retiran los dos manifiestos ficticios.
     _, manifiesto = rutas(os.environ)
+    _, manifiesto_familia = rutas_familia(os.environ)
     manifiesto.unlink(missing_ok=True)
+    manifiesto_familia.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
