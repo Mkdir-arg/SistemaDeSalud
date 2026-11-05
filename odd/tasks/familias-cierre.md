@@ -15,6 +15,9 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 - S8 — «acepto», en respuesta a «¿Aceptás el circuito mostrado en la demo?». Aceptación técnica local del circuito mostrado, sin inferir homologación, casos no detallados ni autorización de publicación/merge/deploy.
 - S9 — «retira el entorno local y publica la entrega». Autoriza retirar sólo recursos propios y publicar esta rama/PR mediante la sesión GitHub ya autorizada; sin merge, deploy ni cierre de issues.
 
+- S10 — «monitorea y arregla, cuando el ci este verde mergea. si el error no es de este pr, intenta pullear el arreglo de otras ramas». Publicar correcciones necesarias y merge sólo con checks verdes en el HEAD exacto; destino continuidad, no main/deploy.
+- S11 — «autorizo», para PR previo de CI y posterior #214, ambos merges condicionados a CI verde. No excepción de tamaño ni omisión de checks.
+
 ## Tasks
 
 | ID | Specs | Resultado | Ruta / motivo | Estado / evidencia / commit |
@@ -24,6 +27,8 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 | T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación técnica local S8; commit `8d54b5f` |
 | T4 | S6 | Equivalencias homologadas y diferencias necesarias | Condicionada a fuente aprobada | Pendiente de información externa ya identificada; no inventar catálogo |
 | T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local S8 y PR borrador #214 publicado S9; sin merge/deploy; no cerrar issues |
+
+| T6 | S3,S4,S10,S11 | Alinear aceptación masiva con privacidad, conservando fuente | Inline; sólo test y seguimiento | RED local reproducido y GREEN focal; suite completa de volumen en copia aislada en curso; sin cambiar producto |
 
 ## Log
 
@@ -85,3 +90,11 @@ retira el entorno local y publica la entrega
 - PR borrador confirmado: https://github.com/Mkdir-arg/SistemaDeSalud/pull/214, OPEN/DRAFT, base juanikitro/salud-continuidad-generica-20261103. Punta remota616447f comprobada contra local; ocho archivos/352líneas al crear, sin diff acumulado ajeno.
 - Verificado después del retiro: cero listeners en8347/5351/58366 y ningún contenedor con la etiqueta propia. Los procesos hijos que sobrevivieron a las sesiones fueron verificados por línea/parentesco y detenidos; no procesos ajenos. El borrado de temporales sigue rechazado por el entorno.
 - CI observado en PR214: seis checks en curso. No se declara aprobado ni se repiten trabajos de saneamiento; resultado final se conserva en GitHub y memoria de sesión. Este recibo es seguimiento pasivo, sin nueva verificación funcional necesaria.
+
+### L8 — Ajuste de la expectativa de bajas masivas
+
+- Backend de #214, run42080692061, confirmó que test_7486_bajas_son_evidencia_y_no_ordenes_de_aplicacion todavía esperaba40campos en la respuesta. Aquí sí corresponde ajustar el test al contrato de privacidad de este PR, no llamarlo fallo heredado ni quitar el filtro.
+- El PR previo #221 contiene sólo runner y arreglos heredados de storage/autoría. Este ajuste permanece separado en #214: comprobar39campos administrativos sin CODPAR y40campos originales persistidos con CODPAR, sin modificar la prohibición de aplicar bajas.
+- Se recuperó una rama local nueva desde el HEAD publicado5292cda tras desaparecer el worktree de ejecución; fuentes publicadas intactas y checkout original preservado. Publicar junto con la sincronización del prerrequisito, después de su CI/merge verde; evitar una corrida integral redundante antes de integrar la dependencia.
+
+- T6: foco local RED→GREEN observado; regresión de tres casos de volumen delegada en snapshot inmutable fuera del workspace. No publicar ni declarar suite completa hasta su resultado; Risk: none (sólo test y seguimiento).
