@@ -96,8 +96,11 @@ Inspección de capturas propias a 1366×900 y 390×844, y demostración visible 
 identidades ficticias. La advertencia de staticfiles ausente permaneció; no se
 corrigió configuración ajena ni se presenta esta ejecución como CI integral.
 
-Seguimiento y comandos en `odd/tasks/familias-cierre.md`. Homologación,
-aceptación humana, publicación, merge y deploy siguen separados y pendientes.
+Seguimiento y comandos en `odd/tasks/familias-cierre.md`. El usuario respondió
+«acepto» a «¿Aceptás el circuito mostrado en la demo?»: aceptación técnica local
+del circuito mostrado, sin atribuirle casos o dispositivos no detallados.
+Homologación OSTEL, publicación, merge y deploy siguen separados y pendientes;
+esta aceptación no aprueba equivalencias, normativa ni derechos.
 La verificación independiente no sustituye la revisión nativa ni su consentimiento.
 El usuario eligió «Omitir esta vez» para el candidato local de este corte: el
 proveedor confirmó `declined_this_candidate`. No hay revisión nativa aprobada

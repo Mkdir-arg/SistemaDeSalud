@@ -12,6 +12,7 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 - S5 — Del plan aprobado: reutilizar regresiones familiares/CODPAR y recorrido real sobre el mismo candidato; negativos sin mutación, aislamiento, revisiones, fuentes y derechos intactos; escritorio, móvil y teclado. No repetir G2a.
 - S6 — Del plan aprobado: homologación sólo con equivalencias aprobadas; aceptación humana separada. La falta de esos insumos no se reemplaza por ejemplos sintéticos ni cierra #181/#142.
 - S7 — «autorizo», en respuesta a usar `gpt-6-luna` con esfuerzo alto para el explorador, sustituyendo el modelo no disponible. No cambia la asignación de otros actores.
+- S8 — «acepto», en respuesta a «¿Aceptás el circuito mostrado en la demo?». Aceptación técnica local del circuito mostrado, sin inferir homologación, casos no detallados ni autorización de publicación/merge/deploy.
 
 ## Tasks
 
@@ -19,9 +20,9 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 | --- | --- | --- | --- | --- |
 | T1 | S1,S2 | Candidato aislado correcto y reconciliación documental | Inline; cambio documental conocido | Completo local: base exacta y reconciliación trasladada; documento previo preservado; commit `8d54b5f` |
 | T2 | S3,S4 | Suprimir exposición administrativa de CODPAR sin modificar el original | Inline tras mapa delegado de superficies desconocidas; Risk: items 2/3 | Completo local: RED por CODPAR expuesto; GREEN focal; sin mutar fuente/huella; commit `8d54b5f` |
-| T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación pendiente; commit `8d54b5f` |
+| T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación técnica local S8; commit `8d54b5f` |
 | T4 | S6 | Equivalencias homologadas y diferencias necesarias | Condicionada a fuente aprobada | Pendiente de información externa ya identificada; no inventar catálogo |
-| T5 | S1,S2,S6 | Aceptación humana y entrega | Humana; publicación aparte | Pendiente; no cerrar issues ni atribuir aceptación |
+| T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local confirmada S8; entrega remota no autorizada; no cerrar issues |
 
 ## Log
 
@@ -59,3 +60,12 @@ usa como objetivo el plan que me compartiste para cerrar el modulo de familias. 
 - T4 continúa pendiente de equivalencias aprobadas; T5 de aceptación humana. No se repite la solicitud ya realizada a OSTEL. La prueba ficticia de vínculo conocido no acredita una equivalencia normativa ni derechos. Familias no cierra legajo/credenciales y restantes criterios de #142.
 - Sin código de negocio adicional justificado por los insumos disponibles. La limpieza del scratch del verificador fue rechazada por política del entorno; no se intentó otro mecanismo de borrado. Recursos de demo propios retenidos para inspección humana, no confundirlos con saneamiento.
 - Esta actualización es sólo seguimiento pasivo: lectura estructural y diff --check; no nueva ejecución de tests/DB/build ni nuevo candidato funcional. Risk: none.
+
+### L5 — Aceptación técnica local, 05/11/2026
+
+acepto
+
+- Responde a «¿Aceptás el circuito mostrado en la demo?». Se registra la aceptación humana del circuito técnico local mostrado, sin atribuirle casos, dispositivos o verificaciones adicionales que no detalló.
+- La aceptación elimina ese pendiente local de T3/T5, no aporta equivalencias de parentesco/identidad/catálogos ni homologa OSTEL. T4 continúa pendiente de la fuente aprobada ya solicitada; no inferir normativa ni pedir nuevamente el mismo insumo.
+- Publicación, integración/merge y despliegue no autorizados. Revisión nativa omitida sólo para el candidato anterior, no aprobada. No cerrar #181/#142 ni afirmar que todo el módulo está homologado.
+- Actualización documental pasiva del registro y aceptación temática; lectura estructural y diff --check. Sin cambios de producto, pruebas nuevas o conexiones a DB. Risk: none.
