@@ -1,5 +1,12 @@
 # OSTEL: catálogo sintético, validación local y homologación pendiente
 
+## Lectura por corte: Novedades — 04/11/2026
+
+La [matriz de Novedades](#matriz-de-evidencia-de-novedades--04112026) al final
+contrasta #183 contra `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`. Las secciones
+históricas conservan su fecha: no describen por sí solas ese snapshot ni prueban
+que sus cambios estén incorporados en este checkout.
+
 ## Actualización 26/10/2026: entrega con CUILTIT
 
 OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos.
@@ -687,3 +694,124 @@ actual encontró el acoplamiento prestacional descrito arriba; no se recomienda
 incorporar una importación administrativa usando directamente el escritor actual.
 No se reejecutaron tests en esta revisión: los cambios de este turno son textos y
 documentación. No hay validación visual, PostgreSQL, migración, CI ni deploy.
+
+## Matriz de evidencia de Novedades — 04/11/2026
+
+**#183 está parcialmente construido. Esta matriz cierra el inventario documental,
+no el circuito operativo ni la aceptación del issue.** No corresponde reconstruir
+la importación, el historial ni la gestión manual de vigencia ya existentes.
+
+### Fuente y alcance
+
+- Solicitud: «implementa el proximo corte recomendado». Se materializa la matriz
+  recomendada de los seis criterios de #183; no se cambia negocio.
+- Snapshot: `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`, leído con `git show`.
+  HEAD al iniciar: `cae9e16`. Su diferencia no es un faltante del producto estudiado.
+- Requisitos: [#183](https://github.com/Mkdir-arg/SistemaDeSalud/issues/183),
+  dependiente de [#143](https://github.com/Mkdir-arg/SistemaDeSalud/issues/143).
+  Ambos estaban abiertos en la consulta del análisis previo; no se cambia su estado.
+- Los enlaces de código fijan el snapshot. Las pruebas citadas fueron **leídas,
+  no ejecutadas en este corte**. «Resuelto» sólo califica la garantía indicada;
+  «parcial» no permite cerrar el criterio completo.
+
+### Contraste de criterios
+
+| Criterio de #183 | Capacidad y evidencia del snapshot | Estado y límite |
+| --- | --- | --- |
+| 1. Conservar fechas/códigos originales; no equiparar FECVTO con corte | [Importador:306–332](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/ostel_importacion.py#L306-L332) conserva las 40 columnas en `original`. `test_ostel_importacion.py:124–135` comprueba que subsanar no reemplaza el CUIL original. | Resuelto como conservación de evidencia; no implica interpretación normativa ni que esa prueba puntual cubra todas las columnas. |
+| 2. Persona coincidente frente a evento duplicado; episodios históricos | [Validación:220–240](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/ostel_importacion.py#L220-L240) rechaza identidades contradictorias y reingresos implícitos. `test_ostel_importacion.py:366–376` comprueba que repetir una carga no duplica personas. | Parcial: identidad de persona no es identidad de acontecimiento. Falta conciliar eventos repetidos, reingresos distintos y rectificaciones de episodios. |
+| 3. Previsualizar conflictos antes de finalizar/reactivar | La validación anterior exige comparar diferencias y revisar cambios del padrón. `test_ostel_importacion.py:397–406` impide aplicar diferencias entre fuentes sin revisión. [Servicios manuales:120–152](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/vigencias.py#L120-L152) finalizan ahora y reactivan desde hoy. | Parcial: comparación administrativa y confirmación manual no son conciliación temporal. Falta previsualizar conflictos del acontecimiento/episodio bajo T2. |
+| 4. Autor, motivo e historia; correcciones sin borrar antecedentes | [Subsanación:350–402](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/ostel_importacion.py#L350-L402) registra correcciones; [historial común:120–126](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/padron.py#L120-L126) conserva delta, autor, motivo, origen y lote. | Resuelto para corrección administrativa existente; parcial para rectificar acontecimientos todavía no implementados. Reutilizar historial, no crear otro paralelo. |
+| 5. Baja administrativa separada de derechos; sin gracia/mora automática | [Padrón:80–107](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/padron.py#L80-L107) valida fechas y calcula estado administrativo. `test_padron130.py:247–255` mantiene vigente una afiliación con baja administrativa programada. | Resuelta esa separación; pendiente traducir novedades a derechos bajo contrato aprobado. Finalizar manualmente sí cambia vigencia: no confundirlo con informar una fecha o simular. |
+| 6. Repetidos, orden inverso, reingreso, rectificación y fechas inconsistentes | Hay validación cronológica administrativa, revisión optimista y reintentos sin duplicar personas. `test_ostel_importacion.py:359–364` bloquea bajas aun tras intentar subsanar. | Parcial: esas piezas no resuelven secuencias de acontecimientos ni prueban precedencias temporales y episodios efectivos. El faltante no se deduce sólo de tests ausentes. |
+
+Las referencias abreviadas a pruebas corresponden a `backend/apps/financiadores/`
+en el mismo snapshot, no necesariamente a los archivos del HEAD de este worktree.
+
+### Invariantes y precisión de la evidencia
+
+- **Ausencia en lote no produce baja.** [Aplicación OSTEL:407–449](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/ostel_importacion.py#L407-L449)
+  procesa filas presentes válidas; no finaliza ausentes. `test_importaciones.py:209–219`
+  comprueba conservación de la persona omitida y cantidad de afiliados en el
+  importador genérico; no afirma igualdad completa de vigencia, revisión e
+  historial ni prueba por sí sola el adaptador OSTEL.
+- **Evidencia de baja no es una orden ejecutable.** Fuente de bajas, ESTADO B o
+  FECBAJ informada bloquean la fila; subsanar no permite forzar su aplicación.
+- **Gestión manual no es conciliación histórica.** Finalizar/reactivar conserva
+  identidad y registra historia, pero usa ahora/hoy; no recibe fecha efectiva
+  externa ni selecciona un episodio para rectificar.
+
+### Cierre posible y siguiente dependencia
+
+Quedan documentadas las capacidades entregadas y sus límites. No se cierra #183,
+no se activan derechos y no se reitera el pedido de información ya pendiente.
+El circuito funcional depende de T2/#143: contrato validado de causales, fechas
+efectivas, precedencia/rectificación, efectos, evidencia y autoridad de aplicación.
+No se inventan identificadores de eventos, episodios ni políticas.
+
+Si se autoriza caracterización ejecutable posterior, revisar las pruebas existentes
+y añadir sólo el faltante concreto: por ejemplo, comprobar por API OSTEL que la
+omisión preserva también vigencia, revisión e historial, con aislamiento entre dos
+financiadores ficticios. Reutilizar `test_ostel_importacion.py`, sus constructores
+y endpoints; sin cambios productivos ni repetición de G2a. Es evidencia propuesta,
+no ejecutada ni una tarea operativa iniciada. Si falla, diagnosticar antes de ampliar alcance.
+
+### Verificación y límites de este corte documental
+
+Lectura de fuentes y aserciones del snapshot, referencias ancladas a su SHA y
+revisión estructural del diff. RED/GREEN, tests funcionales, build y navegador no
+aplican a esta modificación pasiva; no se ejecutan DB, fixtures ni servidores.
+Sin cambios productivos, permisos, esquema, dependencias ni archivos de saneamiento.
+Commit, push, PR, CI, merge, deploy y aceptación humana no se acreditan con esta
+matriz. Risk: none.
+
+## Novedades: caracterización administrativa — 05/11/2026
+
+El usuario aprobó avanzar por el plan hasta un bloqueo o intervención humana.
+Se ejecuta el primer corte de pruebas propuesto arriba, sin cambiar código
+productivo, reglas, permisos, modelos ni proveedores. Seguimiento y reproducción:
+`odd/tasks/novedades-cierre.md`, T1–T5.
+
+### Garantías caracterizadas por API
+
+Se extiende `ImportacionAdministrativaTests` en `test_ostel_importacion.py`,
+reutilizando `preview`, `corregir`, `aplicar`, `_persona` y `generar_xlsx`.
+Dos financiadores ficticios tienen afiliados con los mismos identificadores y
+lotes/historia no vacíos. Las instantáneas comparan filas completas, sin excluir
+fechas, revisión ni campos de vigencia.
+
+| Caso | Efecto observado que debe preservar la prueba |
+| --- | --- |
+| Omisión y corrección explícita | Se corrige y aplica el nombre de una persona presente; la omitida y las personas/historia/lotes de B permanecen idénticos durante preview, subsanación y aplicación. Repetir la aplicación conserva todos los afiliados e historia. |
+| Bajas y posible reingreso | Fuente `bajas`, ESTADO B y FECBAJ informada no generan filas válidas; subsanación devuelve400. Una afiliación finalizada expresamente no se reactiva por volver a aparecer: subsanación puede devolver200, pero conserva la fila en revisión con error explícito. Aplicar produce cero filas aplicadas. Padrón/historia de A/B y lotes de B intactos. |
+| Revisión desactualizada | Tras revisar un lote, una edición válida por API cambia el padrón; aplicar la propuesta anterior mantiene la fila pendiente, aplica cero filas y preserva el estado posterior a esa edición, sin historia de una aplicación inexistente. |
+
+**HTTP200 no significa que una novedad esté aplicada.** El caso de reingreso
+confirma un resultado administrativo pendiente, no un defecto ni permiso para
+reactivar. La corrección del lote puede tener trazabilidad propia legítima;
+la huella no exige que el lote de A permanezca intacto cuando se revisa.
+
+### Alcance y entorno
+
+- Evidencia nueva del checkout real `cae9e16` más estas pruebas. Importador y
+  servicios manuales coinciden con `8a3a1d8`; modelos/padrón difieren. No se acredita
+  integración del snapshot completo ni del trabajo de saneamiento.
+- SQLite en memoria, migraciones reales y datos ficticios. Launcher temporal
+  externo con entorno limpio, carga `.env` anulada antes de importar settings y
+  conexiones de red bloqueadas. No Docker, bases existentes, credenciales ni
+  cambios de dependencias. SQLite no prueba locks/concurrencia de PostgreSQL.
+- Caracterización de conducta existente: no se fabrica RED. Los fallos iniciales
+  fueron del test nuevo: `_persona` devuelve tupla, y subsanar un reingreso no
+  exige HTTP400 si mantiene el bloqueo. Se corrigieron las expectativas, no el producto.
+- Resultados finales y estado de revisión/commit: Log del seguimiento. No hay
+  cambio visual: navegador/build no aplican; no CI, publicación, merge ni deploy.
+
+### Bloqueo del siguiente corte
+
+T2 continúa esperando el contrato aprobado de #143/#183: identidad de evento y
+episodio, duplicado frente a rectificación, precedencia de fuentes, fecha efectiva,
+efecto autorizado y autoridad de aplicación/corrección. La lectura de ambos issues
+y sus comentarios el05/11 no aporta esa validación; #183 ratifica expresamente
+que planificación/pruebas sintéticas no habilitan inferir bajas o reingresos.
+No se reitera el pedido ya pendiente, no se construye un modelo provisional ni se
+inician T3–T5. El módulo permanece abierto. Risk: none (sólo pruebas y documentación).
