@@ -17,7 +17,7 @@ Entrega: `ask-on-risk`, sin publicación autorizada. Fuente de estudio: `8a3a1d8
 
 | ID | Specs | Unidad | Ruta y motivo | Estado / evidencia / commit |
 | --- | --- | --- | --- | --- |
-| T1 | S1,S2,S7 | Verificar base y runner seguro; caracterizar garantías administrativas | Inline: una unidad de pruebas conocida, sin escritor paralelo | Completo local; tres nuevas caracterizaciones por API y regresión de seis módulos OK; cuatro casos PostgreSQL omitidos. Commit pendiente de registrar |
+| T1 | S1,S2,S7 | Verificar base y runner seguro; caracterizar garantías administrativas | Inline: una unidad de pruebas conocida, sin escritor paralelo | Completo local en `795c1dc`; tres nuevas caracterizaciones por API y regresión de seis módulos OK; cuatro casos PostgreSQL omitidos |
 | T2 | S1,S3 | Reconciliar contrato externo y decisión mínima | Inline: contraste de requisitos | Bloqueado por contrato validado ausente; cuerpo/comentarios #143/#183 revalidados05/11; no reiterar pedido OSTEL |
 | T3 | S4,S7 | Diseñar/implementar conciliación no operativa | Inline salvo trigger concreto posterior | No iniciada; depende T2 |
 | T4 | S5,S7 | Aplicar transiciones aprobadas | Inline + verificación independiente por ítems 1/2/4 | No iniciada; depende T2/T3 |
@@ -82,3 +82,9 @@ call_command('test', *(sys.argv[2:] or ['apps.financiadores.test_ostel_importaci
 - Consulta GitHub05/11: #143 sin comentarios; #183 tiene un comentario que exige decisiones verificadas de fechas, motivos y precedencia antes de aplicar bajas/reingresos, y permite sólo planificación/pruebas independientes mientras faltan. No aparece contrato validado nuevo.
 - Falta para T2 una definición aprobada de evento/episodio y sus efectos: fuente/identificador, duplicado frente a rectificación, precedencia, fecha efectiva, acción permitida y autoridad/corrección. No se inventa normativa ni se reitera la solicitud OSTEL. T3–T5 no pueden comenzar con ese vacío.
 - Primer turno del objetivo con este bloqueo: objetivo activo, no completo ni marcado bloqueado aún. Sin publicación/PR/CI/merge/deploy ni aceptación humana. No hay fallo productivo pendiente de corregir del corte T1. Risk: none.
+
+### L6 — Evidencia de entrega local
+
+- T1 en `795c1dc00c1fc3e1beff7b39877948f94bcf3476`: sólo pruebas y documentación,321líneas autoradas. Incluye la matriz documental previa del mismo frente; `.atl/` excluida por inventario confirmado y preservada.
+- Assess del candidato antes de commit y del rango comprometido desde `cae9e16`: medium/executable_change, review_due=false/under_budget. Sin START, consentimiento ni aprobación nativa; frontera revisada no avanza por esta evaluación. La comprobación estructural del diff fue limpia.
+- Launcher temporal propio eliminado después de verificar ruta absoluta y contenido; DB SQLite descartada al terminar las pruebas. No quedan procesos ni servidores iniciados por este corte. Receta reproducible conservada en L4.
