@@ -21,6 +21,7 @@ import { parametrosFicha } from "@/lib/padronNavigation";
 import ActividadFinanciador from "./ActividadFinanciador";
 import AutorizacionesFinanciador from "./AutorizacionesFinanciador";
 import FacturasFinanciador from "./FacturasFinanciador";
+import NovedadesFinanciador from "./NovedadesFinanciador";
 import { POR_PAGINA } from "@/api/queries";
 import { NOMBRE_SISTEMA } from "@/lib/marca";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -137,7 +138,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
   const planes = useQuery({ queryKey: [...scope, "opciones-planes"], queryFn: () => opcionesFinanciador(organizacion.id, "planes"), gcTime: 0 });
   const catalogo = useQuery({ queryKey: [...scope, "catalogo"], queryFn: () => opcionesFinanciador(organizacion.id, "catalogo"), gcTime: 0 });
   const resumen = useQuery({ queryKey: [...scope, "resumen"], queryFn: () => api.get(rutaFinanciador(organizacion.id, "resumen")), enabled: tab !== "inicio", gcTime: 0 });
-  const puedeCrear = tab === "catalogo" ? plataforma : !["inicio", "actividad", "aranceles", "autorizaciones"].includes(tab) && (["padron", "consumos"].includes(tab) ? operador : admin);
+  const puedeCrear = tab === "catalogo" ? plataforma : !["inicio", "actividad", "aranceles", "autorizaciones", "novedades"].includes(tab) && (["padron", "consumos"].includes(tab) ? operador : admin);
   const titulos = { planes: "Nuevo plan", reglas: "Nueva regla de cobertura", padron: "Registrar afiliación", consumos: "Registrar consumo externo", convenios: "Proponer convenio", usuarios: "Invitar usuario", catalogo: "Nueva prestación común" };
   async function actualizado(texto, resultado) {
     await Promise.all([qc.invalidateQueries({ queryKey: scope }), qc.invalidateQueries({ queryKey: ["financiador", usuarioId, organizacion.id] })]);
@@ -157,7 +158,7 @@ function EspacioFinanciador({ organizacion, usuarioId, plataforma, tab }) {
     <section aria-label={titulo}>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><h1 className="text-cifra font-bold">{tituloVisual}</h1><Ayuda etiqueta={`Ayuda sobre ${titulo}`}>{DESCRIPCIONES[tab]}</Ayuda></div><p className="mt-1 text-sm text-texto-suave">{RESUMENES_SECCION[tab]}</p></div>{puedeCrear && <div className="flex flex-wrap gap-2">{["padron", "consumos"].includes(tab) && <Button variant="secondary" onClick={() => setModal("importar")}>Importar Excel</Button>}{tab === "padron" ? <Button onClick={() => navigate(`/financiadores/padron/nuevo?${parametrosFicha(parametros, organizacion.id, Number(parametros.get("page") || 1))}`)}>{titulos[tab]}</Button> : <Button onClick={() => setModal("crear")}>{titulos[tab]}</Button>}</div>}</div>
       {errorOpciones && <ErrorPortal error={errorOpciones} reintentar={() => { planes.refetch(); catalogo.refetch(); }} />}
-      {tab === "autorizaciones" ? <AutorizacionesFinanciador organizacion={organizacion} scope={scope} /> : tab === "actividad" ? <ActividadFinanciador organizacion={organizacion} scope={scope} /> : <ListaPortal key={tab} recurso={tab} organizacion={organizacion} scope={scope} admin={admin} operador={operador} plataforma={plataforma} planes={planes.data || []} catalogo={catalogo.data || []} actualizado={actualizado} />}
+      {tab === "novedades" ? <NovedadesFinanciador key={scope.join(":")} organizacion={organizacion} scope={scope} operador={operador} /> : tab === "autorizaciones" ? <AutorizacionesFinanciador organizacion={organizacion} scope={scope} /> : tab === "actividad" ? <ActividadFinanciador organizacion={organizacion} scope={scope} /> : <ListaPortal key={tab} recurso={tab} organizacion={organizacion} scope={scope} admin={admin} operador={operador} plataforma={plataforma} planes={planes.data || []} catalogo={catalogo.data || []} actualizado={actualizado} />}
     </section>
     {modal === "crear" && <CrearRegistro recurso={tab} organizacion={organizacion} scope={scope} planes={planes} catalogo={catalogo} titulo={titulos[tab]} onClose={() => setModal(null)} onGuardado={async (resultado) => { if (resultado?.activacion) setActivacion(resultado.activacion); await actualizado("Registro guardado."); }} />}
     {modal === "importar" && <ImportacionFinanciador usuarioId={usuarioId} organizacion={organizacion} tipo={tab} scope={scope} onClose={() => setModal(null)} onAplicado={() => Promise.all([qc.invalidateQueries({ queryKey: scope }), qc.invalidateQueries({ queryKey: ["financiador", usuarioId, organizacion.id] })])} />}
@@ -213,6 +214,7 @@ function InicioFinanciador({ organizacion, scope, plataforma }) {
 }
 
 const DESCRIPCIONES = {
+  novedades: "Registro y revisión de evidencia administrativa con fuente, comparación e historial. Conciliar no modifica padrón ni derechos; los efectos dependientes de reglas OSTEL permanecen deshabilitados.",
   autorizaciones: "Solicitudes enviadas por los hospitales. Resolver requiere un permiso explícito; aprobar habilita una prestación sin registrarla como realizada ni aceptar un copago.",
   planes: "Administrá los planes que asignás a tus afiliados. Cada plan conserva su código para las cargas masivas. Desactivar un plan impide nuevas asignaciones y conserva las existentes.",
   reglas: "Indicá el porcentaje cubierto y, cuando corresponda, el cupo mensual o anual. Las nuevas vigencias conservan el historial anterior.",
@@ -226,6 +228,7 @@ const DESCRIPCIONES = {
 };
 
 const RESUMENES_SECCION = {
+  novedades: "Propuestas, conflictos y decisiones administrativas, sin efectos prestacionales automáticos.",
   planes: "Planes de cobertura disponibles para los afiliados de esta organización.",
   reglas: "Prestaciones cubiertas por cada plan, porcentajes y cupos vigentes.",
   aranceles: "Precios de las prestaciones en hospitales con convenio vigente. El arancel acordado reemplaza al general.",

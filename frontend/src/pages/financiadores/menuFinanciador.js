@@ -7,6 +7,7 @@ export const SECCIONES = [
   { key: "reglas", label: "Reglas de cobertura", icon: "clipboard" },
   { key: "aranceles", label: "Aranceles", icon: "list" },
   { key: "padron", label: "Padrón de afiliados", icon: "idCard" },
+  { key: "novedades", label: "Novedades", icon: "fileText" },
   { key: "consumos", label: "Consumos externos", icon: "fileText" },
   { key: "autorizaciones", label: "Autorizaciones", icon: "clipboard" },
   { key: "facturas", label: "Facturas", icon: "wallet" },

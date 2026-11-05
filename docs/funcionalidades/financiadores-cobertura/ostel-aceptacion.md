@@ -7,6 +7,10 @@ contrasta #183 contra `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`. Las secciones
 históricas conservan su fecha: no describen por sí solas ese snapshot ni prueban
 que sus cambios estén incorporados en este checkout.
 
+Frontera vigente de Novedades: [cierre genérico y deuda OSTEL](#novedades-frontera-de-cierre-genérico-aprobada--05112026).
+El circuito genérico tiene implementación y pruebas locales; no implica habilitar
+efectos OSTEL, homologación, aceptación humana ni despliegue.
+
 ## Actualización 26/10/2026: entrega con CUILTIT
 
 OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos.
@@ -815,3 +819,141 @@ y sus comentarios el05/11 no aporta esa validación; #183 ratifica expresamente
 que planificación/pruebas sintéticas no habilitan inferir bajas o reingresos.
 No se reitera el pedido ya pendiente, no se construye un modelo provisional ni se
 inician T3–T5. El módulo permanece abierto. Risk: none (sólo pruebas y documentación).
+
+## Novedades: frontera de cierre genérico aprobada — 05/11/2026
+
+Esta sección reemplaza el bloqueo general del apartado anterior, no su evidencia.
+El usuario confirmó cerrar el circuito técnico genérico y documentar lo que no se
+hará hasta resolver la deuda OSTEL. La falta de reglas del financiador no debe
+impedir registrar, comparar y resolver administrativamente evidencia sin efectos
+prestacionales. **La aprobación de este alcance no prueba que esté implementado.**
+
+### Resultado técnico que se construirá
+
+Un recorrido dentro del portal del financiador: registrar una propuesta para una
+persona de su padrón, conservar datos originales y fuente/referencia, comparar con
+el estado actual, señalar coincidencias/conflictos y conciliar o descartar con
+motivo e historia consultable. Una rectificación será una propuesta nueva enlazada
+al antecedente, no una sobrescritura. No se crea un importador universal ni otro
+motor de derechos.
+
+En este circuito, **«conciliada sin aplicación» significa evidencia revisada, no
+cambio del padrón, reactivación, cobertura ni aprobación normativa**. La interfaz
+y las respuestas deberán mantener esa distinción. Los servicios manuales de
+vigencia existentes quedan separados e intactos.
+
+### Deuda OSTEL: lo que no se implementa ni habilita en este cierre
+
+| Deuda pendiente | Conducta expresamente excluida hasta validación | Condición para retomarla |
+| --- | --- | --- |
+| Semántica de FECING/FECBAJ/FECVTO y fecha efectiva | Transformar esas fechas informadas en inicio/corte prestacional o ejecutar novedades por calendario. | Fuente y ejemplos de límites de fecha aprobados para cada efecto. |
+| Causales, duplicado normativo, precedencia entre fuentes | Homologar MOTIVO/ESTADO por semejanza, elegir automáticamente la última fuente o interpretar coincidencia de persona como un mismo acontecimiento. | Catálogo y precedencias validados; identificación del acontecimiento confirmada. |
+| Episodios y rectificaciones históricas efectivas | Reconstruir vigencias por inferencia, reactivar por reaparición o borrar/reemplazar antecedentes aplicados. | Contrato de episodios, alcance de rectificación y mecanismo aprobado de corrección/reversión. |
+| Gracia, mora, subsidio, excepciones y autoridad | Calcular/activar restricciones, suspensiones o extensiones de derechos; cambiar planes o conceder permisos reales por inferencia. | Reglas aprobadas de #143 y autoridad explícita; ejemplos antes/en/después y excepciones. |
+| Efectos sobre familia, atención, autorizaciones o dinero | Propagar una conciliación administrativa a familiares, prestaciones, reservas, autorizaciones, cargos, aportes o pagos. | Contrato específico del efecto y aceptación de sus consumidores, separado de la conciliación documental. |
+| Otras fuentes o integraciones no contratadas | Crear formatos/equivalencias universales o integrar organismos externos para suplir la información ausente. | Fuente seleccionada y contrato real; autorización independiente de integración. |
+
+La documentación de esta deuda no equivale a resolverla ni a cerrar los efectos
+pendientes de #143/#183. No se vuelve a solicitar la misma información a OSTEL.
+
+### Diseño técnico y reutilización
+
+- Usar el contenedor existente `Importacion` con tipo reservado `novedades`,
+  serializer/rutas propios y un contrato JSON validado. No requiere nueva tabla
+  ni un modelo provisional de episodios. Guardar propuesta no escribe afiliados.
+- La historia de decisiones pertenece a la propuesta y a `auditar` existente;
+  `HistorialAfiliacion` sólo registra cambios reales del padrón. No crear historia
+  ficticia de afiliación para una decisión sin efectos.
+- Aislar la nueva variante: el listado/serializer/confirmación de importaciones
+  previas no reconocen automáticamente ese tipo. Antes de admitir propuestas,
+  impedir que una ruta legacy las interprete como consumos o padrón. Conservar
+  resultados de formatos existentes mediante regresiones diferenciales.
+- Reutilizar membresías, permisos, paginación, componentes del portal y guardas
+  de organización. Reintentos exactos no duplican propuesta/decisión; reutilizar
+  una clave con contenido distinto debe fallar. Una referencia coincidente es
+  advertencia/conflicto explícito, no una decisión normativa automática.
+- Validar concurrencia/revisión antes de resolver; preview y decisiones no deben
+  alterar vigencia, afiliados, historial de afiliación, reservas ni consumos. La
+  persistencia en JSON simplifica el esquema a costa de exigir validación estricta
+  en el servicio; PostgreSQL debe comprobar los locks reales.
+
+### Criterio de cierre y entrega
+
+El cierre técnico exige API y recorrido visible completos de registro, listado,
+comparación, conciliación/descarte e historia, permisos/aislamiento y pruebas de
+rechazo, idempotencia y concurrencia. Debe verificarse escritorio, móvil, teclado y
+respuestas tardías al cambiar de organización. No es suficiente escribir esta
+sección o probar sólo el simulador. Homologación OSTEL, aceptación humana,
+publicación, CI, merge y despliegue mantienen evidencia separada.
+
+Estado actual de este nuevo alcance: implementación genérica local presente y
+verificación en curso; todavía no es cierre final, publicación ni homologación.
+Seguimiento: `odd/tasks/novedades-cierre.md`, L7–L10.
+
+### Uso del circuito genérico
+
+1. En el portal del financiador, abrir **Novedades**. Operación/administración
+   puede registrar una propuesta seleccionando una persona existente; auditoría
+   puede consultar, pero no registrar ni resolver.
+2. Informar fuente, referencia/código opcionales, fecha informada opcional,
+   descripción administrativa y motivo. No incluir contenido clínico. La fecha
+   se representa en ISO; los textos de evidencia conservan su literalidad.
+3. Consultar evidencia original, persona al registrar, padrón actual e historia.
+   Si hay referencia repetida o cambió la revisión del padrón, comparar antes de
+   confirmar. Una coincidencia no fusiona personas ni establece precedencia legal.
+4. Registrar motivo y conciliar **sin aplicar efectos**, o descartar. La decisión
+   es terminal y conserva el registro. Una revisión desactualizada se rechaza;
+   actualizar la comparación antes de intentarlo nuevamente.
+5. Para rectificar, crear una propuesta enlazada al antecedente. No se borra ni
+   se cambia la decisión anterior automáticamente. Consultar luego la historia
+   persistida y filtrar por estado en el listado paginado.
+
+### Contrato de API y garantías
+
+Todas las rutas se ubican bajo `/api/financiadores/{id}/`, con autenticación y
+pertenencia al financiador verificadas en servidor:
+
+| Ruta | Operación y resultado |
+| --- | --- |
+| `GET novedades/` | Listado paginado; filtros `estado` y `afiliado`. Sólo su organización. |
+| `POST novedades/` | `clave` UUID, `afiliado`, `fuente`, `descripcion`, `motivo`; opcionales `referencia`, `codigo`, `fecha_informada`, `rectifica`.201 al crear,200 en reintento exacto; clave con contenido diferente400. Campos ajenos al contrato400. |
+| `GET novedades/{novedad}/` | Original, persona inicial/actual, revisión, coincidencias, conflictos, estado e historia. Sin modificar padrón. |
+| `POST novedades/{novedad}/resolver/` | `accion` conciliar/descartar, `revision`, `revision_padron`, `motivo` y `confirmar_conflictos` cuando corresponda.200 tras decidir; reintento exacto no duplica historia/auditoría. Otra decisión sobre una propuesta terminal o revisión obsoleta400. |
+
+Las respuestas incluyen `efectos_aplicados=false`. La misma referencia externa
+en otra organización no aparece como coincidencia. IDs de personas, propuestas o
+antecedentes ajenos se rechazan sin revelar sus datos. Sin sesión401; auditor
+que intenta escribir403. Las rutas de importación anteriores no listan ni aplican
+contenedores Novedades; sus formatos previos mantienen sus propios contratos.
+
+La concurrencia se serializa dentro del financiador y se revalida la revisión de
+la persona antes de decidir; no se toma un snapshot obsoleto como permiso. Se
+registran actor, fecha, motivo y comparación al decidir en la historia de la
+propuesta; no se crea una actualización ficticia de `HistorialAfiliacion`.
+
+### Evidencia local y límites vigentes
+
+Las pruebas públicas incluyen datos hospitalarios existentes, reservas y consumos
+no vacíos para comprobar no interferencia. Se comprobaron registro/reintento,
+literalidad, rectificación, decisiones, revisiones, aislamiento, permisos y
+concurrencia real en PostgreSQL; los recorridos reales incluyen escritorio,
+móvil, teclado y respuestas demoradas al cambiar de organización. Resultados y
+comandos completos, más pendientes de verificación independiente/revisión, en L10
+del seguimiento. Capturas inspeccionadas; ninguna prueba sustituye aceptación humana.
+
+Verificación final propia:213pruebas en PostgreSQL sin omisiones, incluidos los
+casos concurrentes;8recorridos reales y build aislado satisfactorios. Verificación
+independiente en copia temporal:10casos del módulo y5probes públicos, sin bloqueo
+reproducido; paridad de respuestas legacy comprobada contra baseline. Los probes
+de rechazo/ámbito/auditoría se incorporaron como regresiones y el módulo final
+pasó14casos. Verificación independiente no equivale a revisión nativa aprobada.
+
+Demo ficticia visible preparada en `http://127.0.0.1:5299/financiadores/novedades`,
+con API y PostgreSQL propios de pruebas. Su disponibilidad es temporal; no es
+producción ni aceptación humana. Estado al preparar la revisión: revisión nativa
+pendiente; todavía sin nuevo commit de entrega ni publicación.
+
+No hay migración, dependencia nueva, integración externa, cobro/pago ni ejecutor
+de derechos. La deuda OSTEL de la tabla anterior sigue explícitamente excluida.
+La entrega será un solo eslabón con excepción de tamaño elegida por el usuario;
+no se autorizaron push, PR, merge ni deploy.
