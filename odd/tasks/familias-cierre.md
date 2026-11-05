@@ -28,7 +28,7 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 | T4 | S6 | Equivalencias homologadas y diferencias necesarias | Condicionada a fuente aprobada | Pendiente de información externa ya identificada; no inventar catálogo |
 | T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local S8 y PR borrador #214 publicado S9; sin merge/deploy; no cerrar issues |
 
-| T6 | S3,S4,S10,S11 | Alinear aceptación masiva con privacidad, conservando fuente | Inline; sólo test y seguimiento | RED local reproducido y GREEN focal; suite completa de volumen en copia aislada en curso; sin cambiar producto |
+| T6 | S3,S4,S10,S11 | Alinear aceptación masiva con privacidad, conservando fuente | Inline; sólo test y seguimiento | Completo local: RED→GREEN focal y tres casos de volumen aprobados en copia aislada; sin cambiar producto |
 
 ## Log
 
@@ -98,3 +98,5 @@ retira el entorno local y publica la entrega
 - Se recuperó una rama local nueva desde el HEAD publicado5292cda tras desaparecer el worktree de ejecución; fuentes publicadas intactas y checkout original preservado. Publicar junto con la sincronización del prerrequisito, después de su CI/merge verde; evitar una corrida integral redundante antes de integrar la dependencia.
 
 - T6: foco local RED→GREEN observado; regresión de tres casos de volumen delegada en snapshot inmutable fuera del workspace. No publicar ni declarar suite completa hasta su resultado; Risk: none (sólo test y seguimiento).
+
+- Resultado T6: suite completa test_issue182_aceptacion aprobada (tres casos, 1291.099s, sin omisiones ni reintentos), sobre snapshot5292cda más sólo test/registro de esta unidad. CI remoto todavía no acredita esta corrección; publicar después del prerrequisito verde.
