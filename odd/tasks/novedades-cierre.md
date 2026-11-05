@@ -1,7 +1,7 @@
 # Cierre del módulo de Novedades
 
 Objetivo: cerrar el circuito técnico genérico de Novedades, documentando la deuda OSTEL y sin habilitar efectos automáticos de derechos dependientes de reglas no validadas. Rama: `juanikitro/salud-analisis-novedades-20261104`.
-Entrega: `single-pr` / `exception-ok`, un solo eslabón autorizado, sin publicación autorizada. Fuente de estudio: `8a3a1d8`; checkout inicial: `cae9e16`. Runner de caracterización: Django con settings de pruebas aislados, sin `.env`, datos reales ni bases existentes.
+Entrega: `single-pr` / `exception-ok`, un solo eslabón autorizado; publicación, PR, merge y despliegue autorizados el 05/11/2026. Fuente de estudio: `8a3a1d8`; checkout inicial: `cae9e16`. Runner de caracterización: Django con settings de pruebas aislados, sin `.env`, datos reales ni bases existentes.
 
 ## Specs
 
@@ -14,6 +14,8 @@ Entrega: `single-pr` / `exception-ok`, un solo eslabón autorizado, sin publicac
 - S7 — Preservar cambios documentales previos y `.atl/`; no tocar saneamiento, secretos, datos reales, dependencias ni servicios ajenos. No asumir que HEAD contiene el snapshot estudiado.
 - S8 — Entrega elegida: «no, quiero hacerlo todo en un solo eslabon». Autoriza una única entrega con excepción de tamaño; no dividir en cadena ni repetir esa decisión. Sin push/PR/merge/deploy por esta elección.
 
+- S9 — «aceptado, commitea, pushea, crea pr, mergea y desplega. crea la respectiva tarea con lo faltante de ostel y move la original documentando lo faltante». Aceptación del circuito genérico; no homologación normativa OSTEL.
+
 ## Tasks
 
 | ID | Specs | Unidad | Ruta y motivo | Estado / evidencia / commit |
@@ -23,6 +25,8 @@ Entrega: `single-pr` / `exception-ok`, un solo eslabón autorizado, sin publicac
 | T3 | S4,S7 | Implementar conciliación/previsualización genérica en circuito existente | Inline: unidad dependiente conocida, sin escritor paralelo | Completo técnico local en `bee2513`; verificado funcional/independiente y revisión nativa cerrada, L12 |
 | T4 | S5,S7 | Completar resolución administrativa con trazabilidad | Inline + verificador independiente por ítems2/3/4 | Completo técnico local en `bee2513`;14casos PG, incluidos3concurrentes; revisión nativa cerrada |
 | T5 | S6,S7 | Integración técnica, demostración y deuda documentada | Inline + verificador independiente al final, sin escritores paralelos | Completo técnico local en `bee2513`:213PG, UI8recorridos, build, demo y revisión nativa; aceptación humana/publicación no acreditadas |
+
+| T6 | S6,S7,S8,S9 | Publicación única, integración actual, demo Railway y separación de deuda OSTEL | Inline: reconciliación acotada; verificación delegada de integración por ítems2/3/4/5 | En curso: mapa realizado, main72b2533, aceptación humana registrada |
 
 ## Log
 
@@ -149,3 +153,19 @@ no, quiero hacerlo todo en un solo eslabon
 - Demo anterior terminó normalmente por su lease; se reabrió sólo después de verificar salida0. Sesión visible actual65469, lease30min. API60683/Vite5185 y contenedor propio conservados para esa demo ficticia; confirmar vida real antes de reutilizar o limpiar. No se han tocado procesos ni datos de saneamiento.
 - Cierre alcanzado: circuito técnico genérico de recepción, comparación, coincidencias/conflictos, conciliación/descarte, rectificación e historia con aislamiento, reintentos y concurrencia verificados. Deuda OSTEL expresamente excluida y deshabilitada: interpretación normativa de fechas/causales/precedencia, episodios efectivos y efectos automáticos de derechos/familia/atención/dinero.
 - Aceptación humana, homologación OSTEL, publicación/PR/CI/merge/deploy no realizadas ni reclamadas. No se cierran issues remotos. La entrega sigue siendo un único eslabón local con excepción de tamaño, no una cadena. Risk: ítems2/3/4 (permisos, contratos compartidos, concurrencia), verificados; no garantías normativas inventadas.
+
+### L13 — Aceptación y publicación autorizadas — 05/11/2026
+
+aceptado, commitea, pushea, crea pr, mergea y desplega. crea la respectiva tarea con lo faltante de ostel y move la original documentando lo faltante
+
+autorizo
+
+- La última autorización permite usar gpt-6.1-sol para el explorador, dado que gpt-6.1-luna prescrito no está disponible. Mapa de integración recibido, sin mutaciones del explorador.
+- Main actualizado a72b2533; se incorpora a la rama propia conservando los cuatro commits de Novedades y el trabajo de main. Se resuelven sólo tres conflictos: composición de mixins, imports de portal y concatenación de evidencias documentales. Sin cambios de negocio de saneamiento ni deuda normativa.
+- Una sola entrega con excepción de tamaño ya aprobada. La revisión histórica de Novedades está consumida: no reusar su autoridad; comprobar el candidato de integración por separado conforme a política.
+- Destino documental: demo Railway faithful-commitment/production, cauce-api y cauce-web; sin seeds, variables, DB ni servicios reloj/respaldos. Aún sin prueba de despliegue de esta entrega.
+
+- Deuda externa creada como#219, añadida a Tareas I-Core/Salud, estado Blocked. Tipo Task. #183 será llevado a In QA con deuda enlazada después de verificar entrega, sin cerrar contrato pendiente.
+- Verificador independiente sobre árbol stagedf98092b:270pruebas PG/15módulos63.207s, cero omitidas; incluye borradores/seguridad/integridad/simulación de main. Paridad legacy cuatro variantes HTTP200/JSON, baseline72b2533 y candidato. Spotcheck padre del probe:OK. Build integrado5.23sOK. Advertencia staticfiles preexistente; sin bloqueante funcional.
+
+- Primer intento de navegador integrado falló al leer /usuarios/me/: la DB ficticia retenida todavía no tenía la columna auditoria_medica incorporada por migraciones ya existentes de main. No defecto de Novedades: se actualizó exclusivamente esa DB desechable mediante el launcher seguro (sin nuevas migraciones ni conexiones remotas). Reejecución posterior8recorridos escritorio/móvil correcta.

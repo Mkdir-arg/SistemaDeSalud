@@ -1,5 +1,11 @@
 """Elección del almacenamiento de archivos por variables de entorno (#171)."""
 from django.test import SimpleTestCase
+from django.conf import settings
+from pathlib import Path
+import os
+import subprocess
+import sys
+from tempfile import mkdtemp
 
 from config import almacenamiento
 
@@ -13,6 +19,46 @@ BUCKET = {
 
 
 class EleccionDeAlmacenamientoTests(SimpleTestCase):
+    def test_settings_frios_resuelven_ruta_privada_y_rechazan_media(self):
+        raiz = Path(__file__).resolve().parent.parent
+        privada = Path(mkdtemp(prefix="ostel-prescripciones-config-")) / "documentos"
+        entorno = {**os.environ, "PYTHON_DOTENV_DISABLED": "1", "ENTORNO": "desarrollo",
+            "DJANGO_SETTINGS_MODULE": "config.settings_financiadores_test",
+            **{nombre: "" for nombre in BUCKET}}
+        codigo = ("from django.conf import settings; from pathlib import Path; "
+            "assert Path(settings.STORAGES['prescripciones']['OPTIONS']['location']).resolve() "
+            "== settings.SALUD_PRESCRIPCIONES_ADJUNTOS_DIR; print('CONFIGURADO')")
+        for valor, esperado in ((str(privada), 0), ("privado/prescripciones-ficticias", 0), (str(raiz / "media" / "prescripciones"), 1)):
+            with self.subTest(publica=bool(esperado)):
+                resultado = subprocess.run([sys.executable, "-B", "-c", codigo], cwd=raiz,
+                    env={**entorno, "SALUD_PRESCRIPCIONES_ADJUNTOS_DIR": valor}, capture_output=True, text=True)
+                self.assertEqual(resultado.returncode, esperado, resultado.stderr)
+                if esperado:
+                    self.assertIn("SALUD_PRESCRIPCIONES_ADJUNTOS_DIR debe estar fuera de MEDIA_ROOT", resultado.stderr)
+                else:
+                    self.assertEqual(resultado.stdout.strip(), "CONFIGURADO")
+
+    def test_configuracion_local_prescripciones_esta_fuera_de_media(self):
+        alias = settings.STORAGES["prescripciones"]
+        if alias["BACKEND"] == "django.core.files.storage.FileSystemStorage":
+            self.assertFalse(Path(alias["OPTIONS"]["location"]).resolve().is_relative_to(Path(settings.MEDIA_ROOT).resolve()))
+
+    def test_prescripciones_reutilizan_storage_sin_cambiar_alias_previos(self):
+        for entorno in ({}, BUCKET):
+            with self.subTest(en_bucket=bool(entorno)):
+                previo, bandera = almacenamiento.storages(entorno, "/privado/facturas")
+                actual, nueva_bandera = almacenamiento.storages(entorno, "/privado/facturas",
+                    carpeta_prescripciones="/privado/prescripciones")
+                self.assertEqual(nueva_bandera, bandera)
+                self.assertEqual({alias: actual[alias] for alias in previo}, previo)
+                nuevo = actual["prescripciones"]
+                if bandera:
+                    self.assertEqual(nuevo["BACKEND"], previo["default"]["BACKEND"])
+                    self.assertEqual(nuevo["OPTIONS"], {**previo["default"]["OPTIONS"], "location": "prescripciones"})
+                else:
+                    self.assertEqual(nuevo, {"BACKEND": "django.core.files.storage.FileSystemStorage",
+                        "OPTIONS": {"location": "/privado/prescripciones"}})
+
     def test_sin_variables_sigue_en_disco_local(self):
         storages, en_bucket = almacenamiento.storages({}, "/privado/facturas")
         self.assertFalse(en_bucket)
@@ -63,3 +109,7 @@ class EleccionDeAlmacenamientoTests(SimpleTestCase):
             storage = S3Storage(**storages[alias]["OPTIONS"])
             self.assertEqual(storage.bucket_name, "bucket-sintetico")
         self.assertEqual(S3Storage(**storages["facturas"]["OPTIONS"]).location, "facturas")
+        con_prescripciones, _ = almacenamiento.storages(BUCKET, "/f", carpeta_prescripciones="/p")
+        prescripciones = S3Storage(**con_prescripciones["prescripciones"]["OPTIONS"])
+        self.assertEqual(prescripciones.bucket_name, "bucket-sintetico")
+        self.assertEqual(prescripciones.location, "prescripciones")

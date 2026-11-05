@@ -6,7 +6,7 @@ import { join } from "node:path";
 // del escenario explícitamente aislado, sin reutilizar procesos de otra sesión.
 const aislado = process.env.SALUD_IMPORTACION_E2E_AISLADO === "1";
 export default defineConfig({
-  testDir: "./e2e", testMatch: "importacion-real.spec.js", workers: 1,
+  testDir: "./e2e", testMatch: ["importacion-real.spec.js", "familia-ostel-real.spec.js"], workers: 1,
   fullyParallel: false, retries: 0, timeout: 120000,
   expect: { timeout: 15000 }, reporter: "list",
   outputDir: join(tmpdir(), "salud-importacion182-resultados"),

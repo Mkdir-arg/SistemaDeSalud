@@ -6,6 +6,7 @@ import { Ayuda, Button } from "@/components/ui";
 import { plural } from "@/lib/format";
 import { BotonArchivoAnotado, PasoPreparar, PasoRevisar, PestanasFilas, TablaFilas, pestanaInicial } from "./ImportacionPasos";
 import RevisionFilaOstel, { fichaInicial } from "./RevisionFilaOstel";
+import FamiliaFilaOstel from "./FamiliaFilaOstel";
 
 const ESTADOS = { valida: "Lista para importar", revision: "Requiere revisión", aplicada: "Aplicada", omitida: "Excluida" };
 const PESTANAS = [
@@ -23,12 +24,13 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const [error, setError] = useState(null);
   const [sincronizacionPendiente, setSincronizacionPendiente] = useState(false);
   const [edicion, setEdicion] = useState(null);
+  const [familia, setFamilia] = useState(null);
   const [filtro, setFiltro] = useState(() => pestanaInicial(PESTANAS, lote?.filas || []));
   const clave = useRef(crypto.randomUUID());
   useEffect(() => { clave.current = crypto.randomUUID(); }, [coberturaHabilitada]);
   const activo = useRef(true);
   useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
-  useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion, cierre: ocupado || !!edicion }); }, [ocupado, edicion, onBloqueosChange]);
+  useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion || !!familia, cierre: ocupado || !!edicion || !!familia }); }, [ocupado, edicion, familia, onBloqueosChange]);
   useEffect(() => { setEdicion(null); setError(null); setSincronizacionPendiente(false); setFiltro(pestanaInicial(PESTANAS, lote?.filas || [])); }, [lote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const ruta = (recurso) => rutaFinanciador(organizacion.id, recurso);
 
@@ -110,12 +112,18 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
         {!soloDetalle && archivo && (lote.resumen.revision > 0 || lote.resumen.advertencias > 0) && <BotonArchivoAnotado organizacion={organizacion} archivo={archivo} importacion={lote.id} deshabilitado={ocupado || !!edicion} onError={(e) => setError(e && errorFinanciador(e))} />}
         <Ayuda>Las pendientes no bloquean las válidas. Cada fila se revalida al importar; las ya aplicadas no se repiten.</Ayuda></div>
       <PestanasFilas pestanas={PESTANAS} filas={lote.filas} valor={filtro} onChange={setFiltro} />
-      <TablaFilas key={`${lote.id}:${filtro}`} filas={filas}
+      <div className="overflow-x-auto"><TablaFilas key={`${lote.id}:${filtro}`} filas={filas}
         persona={(f) => <>{f.datos.nombre || "Sin nombre"}<br /><span className="text-texto-debil">CUIL {f.datos.cuil || "sin informar"} · interno {f.datos.numero_interno || "sin informar"}</span></>}
         detalle={(f) => <div className="flex items-center gap-1.5">{ESTADOS[f.estado]}{f.errores.length + (f.advertencias?.length || 0) > 0 && <Ayuda align="right" etiqueta={`Detalle de la fila ${f.fila_excel}`}>{f.errores.map((e) => <span key={e} className="block">{e}</span>)}{f.advertencias?.map((a) => <span key={a} className="block">Advertencia: {a}</span>)}</Ayuda>}</div>}
-        accion={(f) => <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>} />
+        accion={(f) => <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion || !!familia} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>
+          {/* Conservar el disparador enfocable para que Modal pueda devolverle el foco. */}
+          {f.estado === "aplicada" && f.afiliado && <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion || (!!familia && familia.fila !== f.fila)} onClick={() => { if (!familia) setFamilia(f); }}>Vincular familia</Button>}
+        </div>} /></div>
       {edicion && <RevisionFilaOstel edicion={edicion} setEdicion={setEdicion} ocupado={ocupado} error={error}
         onGuardar={guardar} onCerrar={() => { setEdicion(null); setError(null); }} />}
+      {familia && <FamiliaFilaOstel key={`${lote.id}:${familia.fila}`} organizacion={organizacion} lote={lote} fila={familia}
+        onCerrar={() => setFamilia(null)} onAplicado={onAplicado} />}
     </section>}
   </div>;
 }

@@ -11,6 +11,400 @@ Frontera vigente de Novedades: [cierre genérico y deuda OSTEL](#novedades-front
 El circuito genérico tiene implementación y pruebas locales; no implica habilitar
 efectos OSTEL, homologación, aceptación humana ni despliegue.
 
+## Derechos: cierre documental de la base no operativa — 04/11/2026
+
+**La base de borradores, versiones, previsualización y simulación está implementada;
+el resultado operativo de #143 sigue pendiente.** Este corte vincula capacidades,
+evidencia y límites: no aprueba política, activa derechos ni cierra el issue.
+
+### Alcance y referencia reproducible
+
+El objeto de este cierre es el snapshot publicado
+`8a3a1d8b87a25380c85e15519fc0683f09ef6c49`, no el HEAD de este worktree.
+Los enlaces siguientes fijan ese commit para evitar que otra rama o cambios
+posteriores alteren la evidencia. El plan se consulta en ese snapshot. Estaba ausente en la base inicial de
+análisis; ahora se conserva el integrado por PR208, sin copiar ni recrear
+`odd/tasks/ostel-operacion-integral.md`.
+Esta actualización prevalece sobre las descripciones históricas de Derechos
+del resto del documento sólo para el snapshot indicado; no acredita que sus
+capacidades estén incorporadas a main ni actualiza otros frentes.
+
+### Capacidad → evidencia → límite
+
+| Capacidad técnicamente completa | Fuente del snapshot | Evidencia y límite |
+| --- | --- | --- |
+| Descriptor inmutable, ámbito y vigencia técnica | [derechos_borrador.py:16–76](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/derechos_borrador.py#L16-L76) | Coincidencias en `[desde,hasta)` y conflicto explícito. No selecciona una regla ganadora ni fija inicio/corte prestacional. |
+| Comparación de propuesta e historia no reescribible | [propuesta_derechos.py:19–40](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/propuesta_derechos.py#L19-L40) | Una modificación requiere versión nueva; no se borra ni redefine la historia. Versionar no aprueba la regla. |
+| Guardado, auditoría y trazabilidad | [borradores_derechos.py:39–92](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/borradores_derechos.py#L39-L92) | Guarda nuevas versiones con autor, fecha, motivo y evento; revalida permisos. No activa derechos. |
+| API administrativa y preview sin persistencia | [borradores_api.py:73–111](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/borradores_api.py#L73-L111) | Ámbito desde organización autorizada; preview comparte la validación del servicio de guardado, sin guardar ni auditar. No hay aprobación/activación. |
+| Simulación temporal configurada o alternativa | [simulacion_plazo_api.py:43–68](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/simulacion_plazo_api.py#L43-L68) | Recupera la versión persistida e identifica el origen del plazo. Un límite calculado no determina una consecuencia asistencial. |
+| Interfaz administrativa no operativa | [BorradoresDerechos.jsx:56–74](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/frontend/src/pages/financiadores/BorradoresDerechos.jsx#L56-L74) | Presenta acciones y límites de guardar/simular sin prometer aprobación ni activación. |
+
+### Evidencia disponible y alcance del cierre
+
+- **Pruebas existentes, inspeccionadas sin ejecución en este corte:**
+  [test_derechos_padron_aislamiento.py:27–85](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/test_derechos_padron_aislamiento.py#L27-L85)
+  compara huellas del padrón, preserva familia/revisión/lote y exige rechazar
+  `activar=True` sin cambios. No se afirma un resultado nuevo de su ejecución.
+- **Resultado histórico registrado de G2a:** el
+  [registro local de aceptación:1940–1966](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md#L1940-L1966)
+  documenta aislamiento con dos financiadores ficticios, suite API/regresiones
+  y recorridos reales de escritorio, móvil y teclado. No se repitieron aquí.
+- **Cierre documental:** T2a–T2k y G2a se reconocen como base técnica no operativa
+  y caracterización sintética, conforme al
+  [plan del snapshot:54–65](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/odd/tasks/ostel-operacion-integral.md#L54-L65).
+  Esto no subsana las revisiones nativas históricas pendientes u omitidas
+  registradas allí ni las convierte en aprobaciones.
+- **Estados separados:** existe commit y publicación del snapshot de referencia;
+  este corte documental queda local, sin commit ni publicación. No aporta prueba
+  de CI, merge, despliegue, homologación ni aceptación humana. No modifica PR208,
+  issues ni el trabajo de saneamiento.
+
+### Qué permanece abierto y condición del siguiente corte operativo
+
+La [matriz pendiente:300–315](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/odd/tasks/ostel-operacion-integral.md#L300-L315)
+requiere fuente validada, causal, ámbito, fechas/calendario, evidencia, excepciones,
+autoridad de confirmación/reversión y tratamiento de decisiones concurrentes.
+Incluye alta/trámite, cese/gracia, desempleo, edad/certificado/CUD, mora de superador,
+mora privada y otras causales. Los tres meses citados en el material recibido no
+son una constante autorizada; FECVTO, CODPAR o ausencia en lote no habilitan cortes.
+
+No se reitera el pedido ya enviado a OSTEL. Cuando exista validación de una fila
+y sus ejemplos antes/en/después del límite, podrá delimitarse una implementación
+operativa autorizada: conservar `afiliados_vigentes`, `seleccionar_afiliacion`,
+guards e historial; probar efectos permitidos, rechazo sin cambios, reversión
+y consumidores previos. No se define ahora un motor, nuevos permisos ni pruebas
+de una política inventada. #143, su integración con #183/#185 y la aceptación
+operativa permanecen abiertos.
+
+**Verificación de este corte:** lectura de fuentes inmutables, revisión de enlaces
+y rangos, preservación del documento previo y comprobación estructural del diff.
+Al ser documentación pasiva, no hay un RED funcional significativo: no se
+ejecutan tests, build, navegador, DB ni servidores. Risk: none.
+
+### Actualización 05/11/2026: cierre técnico sin bloquearlo por deuda OSTEL
+
+El usuario precisó el objetivo: «tu objetivo es cerrar el modulo esquivando las
+deudas de OSTEL, dejando documentada tal deuda pero continuando con el cierre
+profesional del modulo». La política pendiente deja de bloquear el cierre del
+**configurador de reglas, historial, comparación, preview y simulación**.
+No se presenta ese cierre técnico como cumplimiento operativo de todo #143.
+La aplicación prestacional, aprobación normativa y activación permanecen como
+deuda separada: no se inventan valores, estados, permisos ni un motor universal.
+
+| Frente | Evidencia actual y acción de cierre |
+| --- | --- |
+| Funciones existentes | Auditoría estática del snapshot: transacciones, guardado idempotente, historia inmutable, preview sin escritura, aislamiento y tratamiento de respuestas tardías/escritura incierta ya tienen implementación y regresiones. No se agrega código ni se duplican pruebas sólo para aparentar avance. |
+| Núcleo puro | Ejecución nueva de los tres módulos `tests_derechos_borrador`, `tests_propuesta_derechos` y `tests_simulacion_plazo`: 20 pruebas correctas con Python 3.12, sin Django, DB ni servidores. Se copiaron ocho archivos exactos del snapshot a un directorio temporal externo, se verificaron sus bytes y se retiró ese directorio al terminar. |
+| Autoría en simulación de perfiles (DT2) | En el snapshot falta clasificar `BorradorReglaDerechos.creado_por`; no se arregla en paralelo. [PR210](https://github.com/Mkdir-arg/SistemaDeSalud/pull/210) ya fue integrado en su cadena. El [candidato observado de PR208](https://github.com/Mkdir-arg/SistemaDeSalud/blob/c28fc7e15738b9d743546c91cf52af4c0b8c010b/backend/apps/simulacion/contexto.py#L37) contiene la entrada específica. Se verificó el código publicado, no su ejecución global; no equivale a integración en main. |
+| Vigencia de la evidencia pura | Se compararon por contenido los tres módulos productivos puros y sus tres módulos de prueba entre `8a3a1d8` y `c28fc7e15738b9d743546c91cf52af4c0b8c010b`: idénticos. Ese resultado no extiende las pruebas puras a API, persistencia o UI del candidato nuevo. |
+| API, persistencia y consumidores | Pendiente ejecutar las regresiones existentes del candidato final: borradores, integridad, seguridad, simulación, aislamiento del padrón, cobertura/habilitación y clasificación global de autoría. El resultado histórico G2a no se presenta como ejecución nueva. |
+| Interfaz y uso real | Pendiente confirmar el recorrido real del candidato final en escritorio, móvil y teclado, recuperación tras error/cambio de organización y demostración visible. Reutilizar el spec existente; no crear otro harness ni usar respuestas interceptadas como positivos reales. |
+| Entrega | PR208 seguía abierto/borrador con comprobaciones en curso al consultarlo. No se afirma CI verde, merge a main, despliegue, revisión nativa aprobada ni aceptación humana. Este documento continúa local y no publicado. |
+
+**Criterio de cierre técnico:** las funciones existentes deben superar sus
+comprobaciones aplicables sobre un candidato identificado que incluya la
+corrección de autoría; la documentación debe indicar alcance, operación segura,
+evidencia y limitaciones. Entrega, revisión y aceptación se registran por separado.
+La deuda normativa no obliga a agregar funcionalidades antes de ese cierre, pero
+tampoco permite omitir fallos técnicos o declarar comprobaciones no ejecutadas.
+
+**Continuación necesaria:** preparar un entorno local aislado para las pruebas
+de persistencia y navegador, con PostgreSQL descartable y exclusivamente datos
+ficticios, sin `.env`, bases existentes, procesos ajenos ni acceso a saneamiento.
+El alcance inicial excluía DB/servidores; se requiere autorización específica
+para esta comprobación antes de iniciarlos. No se atribuye este límite a OSTEL.
+Esta actualización sólo modifica documentación y ejecuta pruebas puras existentes;
+no cambia código productivo ni concede aprobación/activación de derechos.
+
+### Resultado del cierre técnico local — 05/11/2026
+
+**Cierre técnico local verificado del configurador, versiones, comparación,
+preview, trazabilidad y simulación**, sobre PR208
+`c28fc7e15738b9d743546c91cf52af4c0b8c010b`. El usuario autorizó expresamente
+PostgreSQL descartable, datos ficticios, servidores loopback y navegador real.
+Esta evidencia resuelve los pendientes de comprobación local de la tabla
+anterior; no convierte la deuda normativa ni la aceptación humana en completas.
+
+| Comprobación | Resultado observado |
+| --- | --- |
+| API/PostgreSQL y consumidores | 121 pruebas existentes correctas en 33,821 s: borradores API/seguridad/servicios/integridad/aislamiento, simulación API y pura, propuestas, cobertura/habilitación y clasificación de autoría. No se duplicaron pruebas ni se cambió producto. |
+| Build frontend | Correcto en 5,19 s con dependencias del lockfile y configuración externa sin archivos de entorno. |
+| Navegador real | 27 recorridos existentes correctos en 48,1 s: escritorio, móvil, teclado, guardado persistido, preview, simulación, trazabilidad y recuperación ante errores. El candidato de PR208 tiene 27 casos; no se le atribuyen los 29 de G2a en otra rama. |
+| Positivos y negativos | Los positivos usan API/PostgreSQL reales ficticios. Los casos 403/503 y respuestas tardías inyectadas prueban manejo de transporte/interfaz, no revocación real de permisos. La seguridad de API se comprueba en su suite propia. |
+| Comprobación del padre | Clasificación global de campos de autoría ejecutada nuevamente: correcta. Capturas de pantalla completa y modal inspeccionadas en escritorio y móvil: sin recorte horizontal; modal móvil con desplazamiento vertical. |
+| Demostración | Chromium con ventana visible y datos ficticios, en `http://127.0.0.1:63832/financiadores/borradores?financiador=1`. Simulación HTTP 200 con referencia 2030-01-01, evaluación 2030-01-08 y siete días: límite 2030-01-08, «en el límite», sin guardar nuevas filas. Pantalla restablecida a escritorio para probarla. |
+| Integridad y aislamiento | Los 922 archivos de fuente del candidato conservan sus huellas. Copia y venv externas; dotenv deshabilitado en el launcher y Vite sin archivos de entorno. Sólo contenedor propio, PostgreSQL en loopback/tmpfs, fixture dedicada y credenciales ficticias gestionadas internamente sin mostrarlas. |
+
+**Reproducibilidad y límites del entorno.** Se usó Python 3.12 y se instaló
+únicamente el `requirements.txt` existente en el venv externo; su restricción
+abierta `Django>=5.0` resolvió Django 6.1.3. Por tanto, no se afirma paridad exacta
+de dependencias Python con producción/CI. Frontend: `npm ci --ignore-scripts
+--no-audit --no-fund`, sin modificar manifiestos ni lockfile.
+
+El primer build falló antes de compilar por una ruta interna inexistente del
+plugin React en la configuración externa del verificador. Una corrección acotada
+para resolver exports publicados y codificar el favicon resolvió ese fallo;
+se conserva el log original, sin atribuirlo a producto. No hubo corrección de
+fuentes. La inspección directa de ventanas por CUA no estuvo disponible
+(`Module not found: @oai/cua/tinyskyAlt`); se inspeccionaron capturas y se confirmó
+la ventana nativa abierta. La demo visible no sustituye aceptación humana.
+
+**Localización de evidencia y recursos propios.** Directorio temporal externo
+`salud-derechos-cierre-4nnht4kp` bajo el temporal del usuario: logs `regression.log`,
+`parent-spotcheck.log`, `build-setup-failed.log`, `build.log` y `browser.log`;
+capturas `demo-desktop-top.png`, `demo-desktop-modal.png` y
+`demo-mobile-modal.png`. Comandos y conservación de recursos en
+`odd/tasks/derechos-cierre-tecnico.md`. Se retienen sólo recursos propios para
+la demo; son temporales, no almacenamiento duradero de evidencia cruda.
+
+**Entrega separada:** documentación todavía local, sin commit ni publicación.
+PR208 sigue abierto/borrador sobre el mismo candidato; CI backend estaba en curso
+en la última consulta, aunque las otras comprobaciones visibles habían terminado
+correctamente. No se afirma revisión nativa aprobada, merge, deploy ni aceptación.
+El cierre local no resuelve todo #143: activación/aplicación prestacional y
+contratos OSTEL permanecen documentados como deuda externa. No se tocaron
+saneamiento, bases existentes ni datos reales. Risk: none (cambio documental).
+
+### Aceptación y transferencia de deuda — 05/11/2026
+
+El usuario aceptó el cierre técnico y autorizó commits, push y merge; confirmó
+«todo completo» al aclarar que PR208 también incluye los demás frentes OSTEL.
+[PR208](https://github.com/Mkdir-arg/SistemaDeSalud/pull/208) fue integrado en main
+con los seis checks correctos, sin bypass, mediante el commit
+`c4816271f66a1fe68beba89f1591fc6c86c70c5e`. La aceptación no valida normativa.
+
+- [#143](https://github.com/Mkdir-arg/SistemaDeSalud/issues/143) permanece abierto
+  y pasa a **In QA** en Tareas I-Core para el configurador, versiones, preview,
+  trazabilidad y simulación. El cuerpo conserva el alcance histórico y documenta
+  expresamente lo que falta; no marca como cumplidos sus criterios normativos.
+- [#216](https://github.com/Mkdir-arg/SistemaDeSalud/issues/216) es la continuación
+  prestacional **Blocked** por respuesta/validación externa, con los criterios
+  para retomar reglas, activación, aplicación/reversión e integración #183/#185.
+  La información ya fue solicitada; no reiterar el pedido ni inventar valores.
+- El acta y su registro se entregan como cambio documental separado, sin alterar
+  el candidato funcional verificado. La autorización de merge no autoriza un
+  despliegue manual ni acredita el resultado de automatizaciones posteriores.
+
+**Recibo de entrega:** [PR217](https://github.com/Mkdir-arg/SistemaDeSalud/pull/217)
+integrado en main como `b823fac22e39adc99e778c22722c3ea8d44961d7`, con sus checks
+Frontend y OpenAPI correctos. Commits del acta: `2e58bcf` y reconciliación
+`44ec765`. Tras la aceptación se apagaron los servicios/Chromium de prueba
+propios y se eliminó su contenedor descartable; la demo temporal anterior ya no
+está disponible. Las capturas y logs externos se retienen como evidencia temporal.
+No se ordenó un despliegue manual; no se acredita ningún resultado automático
+de despliegue sin observación independiente.
+
+
+## Reconciliación 30/10/2026: identidad y familia (#181/#142)
+
+El orden vigente está en [#141](https://github.com/Mkdir-arg/SistemaDeSalud/issues/141).
+PR186, PR200 y PR196 están incorporados; #184 permanece In QA, sin aceptación
+integral inferida. Registro local: `odd/tasks/ostel-operacion-integral.md`.
+
+- **Confirmado en las fuentes documentadas:** NUMERO individual, CUIL de la
+  persona, NROAFI compartible; CUILTIT referencia al titular, que se referencia
+  a sí mismo. El formato requiere 40 columnas. No falta CUILTIT.
+- **Decisión aprobada el 30/10:** conservar CODPAR separado, sin perder relaciones
+  que no caben en `Afiliado.parentesco` (`conyuge`, `hijo`, `hija`, `conviviente`,
+  `otro`). El diccionario de consulta no es una equivalencia aprobada. Los 56
+  valores de fixtures son muestras de rangos, no todo el catálogo.
+- **Primer incremento local T1a:** `SaludPadron.codpar_ostel` conserva hasta 40
+  caracteres literales (incluidos ceros y espacios), separado del parentesco
+  genérico. Hay códigos que revelan discapacidad: sólo se consulta/edita mediante
+  el endpoint protegido `padron/{id}/salud/`, con designación de salud y el rol
+  existente. No se agrega al padrón/exportación general.
+- El PATCH requiere revisión y motivo; omitir el campo conserva su valor y
+  enviar `""` lo vacía explícitamente con historial protegido. Se rechazan valores
+  no textuales y de más de 40 caracteres, sin cambiar datos ni revisión. El
+  catálogo no se homologa: registrar un código no prueba que sea válido para
+  prestaciones ni modifica `parentesco_sensible`, familia o cobertura.
+- Migración aditiva `0017_saludpadron_codpar_ostel`: vacío por defecto, sin
+  reconstrucción desde lotes anteriores. Una reversión elimina estos nuevos
+  valores; no es una recuperación segura después de usarlos. En un incidente,
+  conservar datos y reparar hacia adelante antes de considerar una reversión.
+- **Límites T1a:** no hay formulario nuevo ni copia automática desde importación.
+  El importador general y el bloque de salud tienen permisos distintos; no se
+  agregó un bypass. El acceso preexistente a filas originales de importación
+  requiere tratamiento propio antes de ampliar ese flujo. No se construyen
+  familias ni se deriva elegibilidad.
+- T1a: RED observado (400 por campo desconocido), luego GREEN en PostgreSQL
+  descartable autorizado; chequeo de migraciones sin cambios faltantes.
+  Verificador independiente: 79 tests y tres probes aprobados, comparación
+  baseline/candidato de seis respuestas API equivalentes (excepto el campo nuevo
+  intencional y valores volátiles). Incorporados los probes de preservación y
+  rechazo de tipos: suite final de 81 tests OK (14.411 s), incluidos padrón,
+  importación y concurrencia. No constituye entrega publicada ni aceptación.
+- Revisión nativa consentida del commit `e0aec12`: riesgo y confiabilidad sin
+  hallazgos; cierre confirmado el 30/10/2026. Fue inspección de parches inmutables,
+  no otra ejecución de pruebas. La decisión D2 posterior separa la importación
+  administrativa del paso protegido descrito a continuación.
+
+### T1d: propuesta y confirmación de vínculo familiar
+
+La importación administrativa no ensambla familias. Después de aplicar las filas
+necesarias, un editor del padrón puede confirmar cada vínculo explícitamente:
+
+1. `GET /api/financiadores/{financiador}/padron/{afiliado}/familia-ostel/?importacion=123&fila=1`
+   consulta una propuesta sin escribir. Devuelve `titular`, `revision` del
+   integrante y `revision_titular`; no devuelve identificadores personales.
+2. `POST` al mismo recurso con `importacion`, `fila` y los tres valores recibidos
+   confirma el vínculo. La respuesta 200 es la ficha administrativa habitual.
+   La consulta usa permiso de lectura; la confirmación requiere escritura.
+
+`fila` es el ordinal estable del lote. Sólo se resuelve CUILTIT contra un CUIL
+original único del mismo lote/financiador, con ambas filas aplicadas y sus
+identidades actuales coincidentes. La fila titular debe autorreferenciarse y
+seguir siendo raíz; no se usa NROAFI ni se busca un titular fuera de ese lote.
+El orden no importa, pero un titular aún pendiente en otra tanda de 100 filas
+requiere terminar su aplicación antes de proponer el vínculo.
+
+- Fuentes incompletas, ambiguas, con baja, discordancias o ciclos requieren
+  revisión: 400; recursos inexistentes o ajenos: 404; permisos insuficientes: 403.
+  Una revisión obsoleta de cualquiera de las dos fichas devuelve 409. Ante
+  conflicto se consulta otra propuesta, sin actualizar revisiones a ciegas.
+- No se reemplaza otro titular ni se convierte una raíz con integrantes en
+  dependiente. El parentesco queda pendiente si estaba vacío; una clasificación
+  existente se conserva. Repetir un vínculo coincidente con revisiones actuales
+  no genera otra modificación. Los rechazos no cambian datos ni historial.
+- La confirmación revalida bajo locks del lote, financiador y ambas fichas por
+  PK; reutiliza `editar_ficha` y registra lote/filas en el historial. No modifica
+  fuente original, CODPAR, salud, plan ni derechos de cobertura.
+
+El corte T1d es API local, no aceptación operativa. No hay backfill
+ni migración. Retirar la acción impide nuevos vínculos, pero no revierte los ya
+confirmados: conservar su historial y corregirlos explícitamente si corresponde.
+Verificación independiente: 99 regresiones, cinco probes de rechazo/concurrencia
+y ocho observaciones previas equivalentes al baseline. Probes incorporados;
+repetición local final: 104 tests OK, con PostgreSQL descartable autorizado.
+Incluye `test_familia_ostel` y `test_concurrencia_familia_ostel`; runner completo y
+estado de revisión nativa en el registro de trabajo. No acredita UI, CI ni deploy.
+
+### T1e: confirmación desde la pantalla de importación
+
+En **Aplicadas**, la acción **Vincular familia** abre una propuesta para esa fila.
+El diálogo muestra integrante, titular propuesto y procedencia del lote, sin
+agregar CUIL ni valores CODPAR. **Cancelar** no escribe; **Confirmar vínculo**
+envía las revisiones recibidas. El detalle anterior de la fila sigue disponible.
+La propuesta puede rechazarse si esa fila es titular, falta evidencia o existe
+otro vínculo: la pantalla no intenta corregirlo ni elegir otra persona.
+
+Después de un conflicto se descarta la propuesta. Una respuesta perdida muestra
+incertidumbre, no una afirmación de rollback: **Consultar propuesta** obtiene
+revisiones actuales y la persona decide si confirma nuevamente. No hay reintento
+automático del POST. Confirmar no modifica clasificación ni cobertura.
+
+Se reutilizan el modal accesible y los tokens visuales existentes. Escape cierra
+sólo el diálogo superior y devuelve el foco; durante la petición no puede cerrarse
+ni cambiarse el lote. El tablero de filas mantiene scroll horizontal local.
+Runner real focal: `npx --no-install playwright test --config playwright.importacion-real.config.js familia-ostel-real.spec.js`.
+Requiere `SALUD_FAMILIA_MANIFEST` generado por `e2e/fixtures/preparar_familia_ostel.py`
+en un temporal propio, settings PostgreSQL descartables y ambos servidores locales.
+El manifiesto contiene credenciales ficticias efímeras: no imprimir ni publicar.
+No ejecutar la suite general con su siembra de volumen para esta comprobación.
+La demostración local no constituye publicación ni aceptación humana.
+
+Verificación T1e: seis recorridos Playwright locales aprobados, incluidos móvil,
+teclado, 409 real y pérdida de respuesta después del commit. Un 403 inyectado
+verifica sólo la reacción visual, no una nueva prueba de revocación de permisos.
+El verificador independiente compiló la UI y ejecutó cuatro regresiones de
+importación tanto en baseline como en candidato, todas aprobadas. No hubo CI.
+
+### T1b: copia explícita de una fila aplicada al bloque de salud
+
+El operador conserva el circuito administrativo existente. Importar un lote no
+rellena `codpar_ostel`. Un usuario con designación activa de salud y rol editor
+puede ejecutar `POST /api/financiadores/{financiador}/padron/{afiliado}/salud/codpar-ostel/`
+con `{"importacion": 123, "fila": 1, "revision": 1}` (identificadores ilustrativos).
+La revisión es la del bloque de salud, no la del lote ni la ficha administrativa.
+La respuesta 200 tiene el mismo formato que la consulta protegida de salud.
+
+- El lote debe ser OSTEL versión 3, tipo padrón, del mismo financiador; `fila` es
+  el ordinal estable almacenado, no la posición de la lista ni el número Excel.
+- Sólo se admite una fila aplicada cuyo afiliado persistido coincida con el
+  solicitado. Nunca se vuelve a resolver identidad por números o documentos.
+- Se copia exclusivamente `original.CODPAR`, como texto literal no vacío de hasta
+  40 caracteres. Los códigos numéricos de Excel no se convierten automáticamente:
+  requieren corrección explícita de la fuente o el circuito manual protegido.
+- La procedencia (lote, hoja, fila Excel) queda en el motivo del historial de
+  salud. No se escribe código, motivo ni contenido sensible en eventos generales.
+- Repetir con la revisión actual y el mismo valor no crea otro cambio. Una
+  revisión obsoleta devuelve 409; origen/entrada inválidos, 400; sin designación o
+  rol editor, 403; recurso ajeno/inaccesible, 404. Los rechazos no cambian datos.
+- No se alteran el lote original, familia, parentesco genérico, derechos ni otros
+  campos de salud. La transacción bloquea el lote y reutiliza los locks de
+  membresía/afiliado, revisión e historial de `editar_protegido`.
+
+Verificación local: RED 404 del nuevo recurso, luego GREEN del circuito API real
+con importación sintética sin designación y copia designada.
+La validación de campos inesperados inicialmente generaba un error interno por
+una estructura incorrecta de errores del serializer; corregida y cubierta con
+rechazos 400 sin mutaciones. Verificador independiente: 87 regresiones y tres
+probes aprobados; nueve respuestas de interfaces anteriores equivalentes al
+baseline. Probes incorporados: revocación durante espera del lote, dos copias
+concurrentes y destino de otro financiador. Repetición del padre: 90 tests OK
+(31.171 s). Carrera copia/aplicación administrativa inspeccionada, no ejecutada.
+Commit local `4212293`; revisión nativa omitida por decisión del usuario el
+30/10/2026 sólo para este candidato. La verificación independiente se conserva;
+no se presenta como aprobación nativa ni publicación.
+
+Sin nueva pantalla: no se ejecutó navegador ni se acredita aceptación operativa.
+Permanece la exposición preexistente de filas originales en la consulta general
+de importaciones; este paso protegido no la corrige ni amplía sus permisos.
+Rollback T1b: retirar acción, serializer y servicio de copia; conservar el campo
+protegido T1a y sus datos/historial. No hay migración en este corte.
+
+Comando de regresión (sólo base de pruebas autorizada):
+`python -B manage.py test apps.financiadores.test_codpar_importacion apps.financiadores.test_codpar_ostel apps.financiadores.test_padron130 apps.financiadores.test_ostel_importacion apps.financiadores.test_concurrencia_padron130 --settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
+- **Límite:** todavía no se construyen familias automáticamente; no inferir
+  parentesco por NROAFI, sexo por código, ni derechos por relación familiar.
+- **Verificado en `cae9e16`:** `python -B -m unittest
+  backend.apps.financiadores.tests_ostel_scenarios -v`, 22 pruebas OK, sin DB.
+  Prueba generador y lector, no persistencia familiar, concurrencia ni aceptación.
+- **PR197:** abierto/draft en `a7cc182`, cinco checks exitosos consultados el
+  30/10. No se integró; sus resultados históricos no prueban la rama actual.
+
+### T1c: vínculo conocido, clasificación pendiente (D3 aprobada)
+
+`titular` identifica el vínculo; `parentesco` lo clasifica. Desde la decisión del
+30/10/2026 se admite `titular` presente con `parentesco=""`: clasificación pendiente,
+no ausencia de vínculo ni equivalencia a `otro`. Se conserva CODPAR por separado
+en salud, sin derivar clasificación genérica, sexo, derechos ni elegibilidad.
+
+- PATCH de ficha puede registrar el titular sin clasificación, clasificarlo
+  después o vaciar explícitamente la clasificación sin eliminar el vínculo.
+- `parentesco` no vacío sin titular sigue rechazado. Mensaje actualizado:
+  «Se requiere un titular para informar parentesco.» Para desvincular un integrante
+  clasificado se deben vaciar explícitamente ambos campos en la misma edición.
+- Se conservan revisión optimista, historial, permisos, mismo financiador,
+  estructura de un nivel y rechazo de ciclos. No se modifican locks ni esquema.
+- La importación genérica XLSX v2 acepta el vínculo con clasificación pendiente;
+  una celda vacía sigue significando omisión, no borrado de una clasificación
+  existente. Su resolución por orden de filas no cambia en este corte.
+- Consulta familiar, listado y exportación conservan titular conocido y
+  clasificación vacía. La pantalla existente identifica la raíz por ID y presenta
+  «Parentesco sin informar» para el integrante; no se modificó frontend.
+
+Este corte habilita la representación, **no ensambla familias OSTEL por CUILTIT**.
+Ese siguiente incremento debe resolver el lote completo independientemente de su
+orden y detener referencias ambiguas sin modificar familias existentes por
+inferencia. Tampoco actualiza masivamente datos ni aplica derechos.
+
+Verificación: RED observado al intentar registrar titular sin parentesco; después
+GREEN del mismo caso con revisión e historial. Pruebas API, servicio de importación
+y exportación XLSX sobre datos ficticios. Verificación independiente: 115 tests,
+dos probes de concurrencia con clasificación pendiente y 14 observaciones previas
+equivalentes al baseline; sin bloqueantes. Probes incorporados a las regresiones:
+repetición del padre de 117 tests OK (26.547 s). Revisión nativa consentida y cerrada
+para `0e2eb40`: riesgo y confiabilidad sin hallazgos, sólo inspección de parches
+inmutables. La revisión no autoriza publicación ni sustituye aceptación.
+Recorrido navegador no disponible: este worktree no tiene dependencias frontend
+instaladas; no se instaló ni inició ese entorno. No hay aceptación humana ni deploy.
+Una reversión del nuevo guard volvería a rechazar ediciones de vínculos pendientes
+ya creados: conservar esos datos y planificar reparación, nunca borrarlos para
+restaurar la regla anterior.
+
+
 ## Actualización 26/10/2026: entrega con CUILTIT
 
 OSTEL agregó CUILTIT como columna 40 y entregó un diccionario de códigos.
@@ -980,3 +1374,1056 @@ La tabla de deuda OSTEL anterior sigue vigente: no se interpretan reglas aún no
 validadas ni se automatizan efectos prestacionales o financieros. Ese pendiente
 no reabre el circuito técnico genérico ni se oculta como funcionalidad terminada.
 No se publicaron cambios ni se ejecutaron CI, merge o despliegue en este cierre.
+
+
+### Base de parametrización no operativa — T2a (02/11/2026)
+
+`backend/apps/financiadores/derechos_borrador.py` permite construir descriptores
+inmutables con código, versión positiva, fuente explícita, financiador, régimen,
+plan opcional e intervalo técnico `[desde, hasta)`. `hasta=None` no tiene fin.
+No se modifica `ReglaCobertura`, el padrón ni los selectores de afiliación.
+
+`previsualizar_borradores` recibe descriptores y contexto explícito de consulta;
+devuelve coincidencias ordenadas y `conflicto` si hay más de una, incluso si
+una es general y otra específica del plan. No elige precedencia ni la versión
+más alta. Plan vacío en la regla abarca todos los planes; plan vacío en la
+consulta sólo coincide con reglas generales. Duplicados también son conflicto.
+El resultado conserva cada descriptor completo (versión/fuente/ámbito/vigencia).
+El mismo descriptor puede consultarse en fechas anteriores sin alterarlo.
+
+Esta consulta **no es una evaluación de derechos ni una vista de impacto sobre
+personas**. El régimen es una clave literal, no un catálogo alternativo; no se
+comprueba existencia del financiador, régimen o plan ni pertenencia del plan en
+DB. Los identificadores deben ser resueltos por una futura integración protegida.
+El filtro de ámbito no sustituye permisos. La fuente es referencia informativa,
+no prueba de vigencia normativa. No hay persistencia ni garantía de unicidad de
+versiones entre ejecuciones. No hay API, pantalla, activación ni reglas ejecutables.
+No se admiten parámetros arbitrarios (por ejemplo `activar`, scripts o expresiones).
+
+Pendiente: plazos/causales/acciones controlados con ejemplos aprobados, persistencia
+versionada, auditoría, autorización, historial de decisiones, previsualización de
+impacto real y aprobación antes de activar. Esas garantías no serán parámetros
+desactivables. No conectar el borrador al motor actual mientras falte ese contrato.
+Los límites del intervalo son técnicos para consultar borradores, no fechas de
+corte asistencial ni interpretación de FECVTO. OSTEL ya recibió la consulta normativa.
+
+Verificación pura (sin Django, DB, servidores ni datos reales):
+
+```powershell
+python -B -m unittest backend.apps.financiadores.tests_derechos_borrador backend.apps.financiadores.tests_ostel_scenarios -v
+```
+
+Rollback de T2a: retirar el módulo nuevo, su prueba y esta sección; los motores
+y datos anteriores no dependen de ellos. Pruebas locales no acreditan CI,
+despliegue ni aceptación de las reglas por OSTEL.
+
+
+### Comparación de propuestas conservando historia — T2b (02/11/2026)
+
+`comparar_borradores` en `propuesta_derechos.py` recibe el historial y la
+propuesta completa en memoria, junto al contexto de consulta de T2a. Devuelve
+las versiones nuevas y las coincidencias antes/después, sin aprobar ni escribir.
+
+- Cada clave `(financiador, régimen, plan, código, versión)` debe ser única.
+- La propuesta debe conservar todas las versiones previas con datos idénticos.
+  Cambiar fuente, fechas o ámbito exige una nueva versión, nunca sobrescribir.
+- Una versión nueva debe superar el máximo anterior de su ámbito/código;
+  no se exige consecutividad. Este contador no afirma vigencia normativa.
+- Todas las entradas deben corresponder al financiador explícito. Se valida
+  consistencia de entradas, no sesión, permisos ni pertenencia real del plan.
+- Superposiciones siguen visibles como conflicto; no se recorta una versión
+  abierta ni se elige una ganadora. La misma propuesta es determinista sin
+  importar el orden de sus entradas. Una propuesta idéntica no añade versiones.
+
+La comprobación protege sólo las dos instantáneas suministradas: el llamador
+podría omitir historia en ambas y la función no tiene cómo detectarlo. No
+sustituye historial persistido, auditoría, bloqueo de concurrencia, firma de
+aprobación ni vista de impacto sobre personas. No hay parámetros de plazos,
+causales o acciones médicas, ni cambios de derechos. Una futura activación
+requiere el contrato pendiente y controles operativos, no sólo esta validación.
+
+Runner puro adicional: `python -B -m unittest backend.apps.financiadores.tests_propuesta_derechos -v`.
+Regresión: ejecutar también `tests_derechos_borrador` y `tests_ostel_scenarios`.
+Rollback: retirar `propuesta_derechos.py`, `tests_propuesta_derechos.py` y esta
+sección; T2a y los motores anteriores permanecen intactos.
+
+
+### Persistencia de borradores, sin activación — T2c (02/11/2026)
+
+`borradores_derechos.guardar_borradores` conserva una propuesta completa mediante
+`BorradorReglaDerechos` (migración aditiva 0018), con autor, fecha y motivo por
+versión. Reutiliza el comparador puro, el guard de financiador y `auditar`.
+`consultar_borradores` devuelve los descriptores persistidos del financiador.
+No existe endpoint, pantalla, registro admin ni conexión con el motor de derechos.
+
+La escritura requiere admin del financiador bajo el guard de configuración
+existente; operador/auditor sólo consultan con membresía habilitada. No se crea
+una concesión ni se modifica el helper de permisos. Se revalida el guard después
+de tomar el lock del financiador. Planes existentes y del mismo financiador se
+bloquean por PK; el régimen reutiliza el catálogo de Afiliado. Un plan inactivo
+puede ser referenciado como borrador: no se habilita ninguna prestación por eso.
+
+La transacción recarga historia real, rechaza omisiones/reescrituras, valida la
+propuesta e inserta sólo versiones nuevas, cada una con evento de auditoría.
+Fallo de auditoría revierte todas las inserciones de esa propuesta. Reintento
+idéntico no duplica filas/eventos; propuestas concurrentes contradictorias no
+pueden reemplazar la versión ganadora. El lock por financiador simplifica el
+orden a cambio de serializar propuestas distintas del mismo financiador.
+
+El servicio no ofrece edición ni borrado. Las constraints cubren identidad de
+versión (incluso plan nulo), contador positivo e intervalo válido; no constituyen
+un almacenamiento inmutable contra SQL u ORM privilegiados. No hay backfill ni
+cambio de estado de afiliados. El motivo no debe contener identificadores
+personales, secretos ni datos clínicos. Fuente informada no acredita norma vigente.
+
+Pruebas seriales sólo en PostgreSQL descartable autorizado y con settings
+`config.settings_financiadores_postgres_test`: `apps.financiadores.test_borradores_derechos`,
+con regresiones `test_cobertura` y `test_habilitacion_cobertura`. Sin datos reales.
+No se acredita aceptación normativa, CI, despliegue ni activación mediante tests.
+Antes de activar faltan reglas/ejemplos aprobados, impacto real y aprobación
+explícita; este almacenamiento no sustituye esos pasos ni los vuelve opcionales.
+
+
+### API administrativa de borradores — T2d (02/11/2026)
+
+`/api/financiadores/{id}/borradores-derechos/` expone sólo GET y POST:
+GET consulta descriptores completos del financiador; POST guarda una propuesta
+completa mediante el servicio T2c, sin aprobar ni activar derechos. La URL fija
+el financiador; no se acepta un financiador embebido ni campos arbitrarios.
+Admin configura borradores; operador/auditor consultan según guard existente.
+Sin sesión: 401; sin membresía visible: 404; escritura no autorizada: 403.
+
+POST requiere `propuesta`, `motivo`, `regimen`, `plan_id` (entero o null), `fecha`.
+Cada descriptor contiene `codigo`, `version`, `fuente`, `regimen`, `plan_id`,
+`desde`, `hasta` (opcional/null). Fechas ISO `YYYY-MM-DD`; fuente explícita,
+versión positiva y catálogo de régimen actual. No se admiten `activar`,
+`aprobado`, expresiones, parámetros libres ni campos desconocidos, incluso
+anidados. Un plan debe existir y pertenecer al financiador de la URL.
+
+Respuesta 200: `nuevas`, `antes` y `despues`; cada vista tiene `coincidencias`
+y `conflicto`. GET devuelve `{"borradores": [...]}` sin paginar porque el
+comparador requiere la historia completa, no una página parcial. Un reintento
+idéntico devuelve `nuevas=[]` sin duplicar auditoría. Historia incompleta,
+reescritura o entradas inválidas: 400 sin cambios; consultar nuevamente antes
+de reconstruir/reintentar la propuesta. No hay actualización/borrado por ID.
+
+Antes/después es una consulta técnica de borradores **tras guardar**, no una
+aprobación, previsualización de impacto en personas ni activación. No se persiste
+una política médica nueva por introducir un descriptor. La auditoría de cada
+versión sigue en EventoCobertura; esta ruta no expone un nuevo visor de eventos.
+APIClient ejerce rutas HTTP reales con PostgreSQL ficticio, no navegador ni UI.
+OpenAPI identifica los serializers de entrada/salida y ambos métodos.
+
+Runner: `apps.financiadores.test_borradores_api` con settings PostgreSQL de L24;
+regresiones de servicios/integridad/cobertura. Rollback: retirar `borradores_api`,
+su mixin/import de FinanciadorViewSet, tests y esta sección, conservando T2c.
+T2c quedó sin revisión nativa por «autorizo»; esa decisión no alcanza a T2d.
+
+
+### Pantalla administrativa de borradores — T2e (02/11/2026)
+
+Menú del financiador → **Borradores de derechos**, separado de reglas vigentes.
+Administración consulta el historial completo y registra una nueva versión con
+código/versión/fuente/régimen/plan/intervalo técnico/motivo y fecha de consulta.
+Operador/auditor sólo consultan. No hay edición, borrado, aprobación ni activación.
+Cada versión muestra «No operativo»; guardar no cambia derechos ni valida norma.
+La pantalla no expone autoría que el DTO de consulta todavía no ofrece.
+
+Reutiliza tokens, componentes, catálogo REGIMENES, API y opciones de planes del
+portal. Lista/formulario en escritorio, una columna móvil; controles etiquetados,
+foco de teclado y fechas ISO sin transformación de zona horaria. Los intervalos
+son técnicos: no representan fecha de corte prestacional. No introducir datos
+clínicos, identificadores personales ni secretos en fuente/motivo.
+
+Las consultas tienen clave usuario/financiador y el componente se reinicia al
+cambiar de organización. No hay refetch de foco que sustituya silenciosamente
+la historia mientras se prepara una versión. El guardado envía esa historia
+completa y un descriptor nuevo al servicio existente, que decide la validez.
+Botón y ref bloquean envíos simultáneos. Tras error/conflicto o respuesta perdida,
+se exige «Volver a consultar» antes de otro intento; no se reintenta POST solo.
+Una respuesta perdida puede haber confirmado la escritura: revisar la lista.
+
+Pruebas reales: `frontend/playwright.borradores-real.config.js`, fixture propia
+`e2e/fixtures/preparar_borradores_derechos.py`, `SALUD_BORRADORES_MANIFEST` sólo
+ficticio en temporal externo. Requiere entorno loopback/API/PostgreSQL autorizado
+ya iniciado; no ejecuta siembra general ni usa .env. Comando desde frontend:
+`node node_modules/@playwright/test/cli.js test --config playwright.borradores-real.config.js`.
+El caso de pérdida aborta la respuesta sólo después de un POST real confirmado;
+es prueba de recuperación UI, no simulación de rollback del servidor.
+
+Rollback: retirar sección/import/rama del portal, componente y spec/config/fixture
+nuevos; conservar API T2d y versiones/auditoría existentes. T2d quedó sin revisión
+nativa por autorización específica; no extiende la decisión a esta UI. Navegador
+visible demuestra una fixture, no aceptación de negocio ni despliegue.
+
+
+### Nombre del módulo y objetivo operativo — T2f (02/11/2026)
+
+El nombre visible aprobado es **Reglas de derechos**; **Borrador** es el estado
+de las versiones actuales, no del derecho de una persona. Se conservan la ruta
+`/financiadores/borradores`, el endpoint `borradores-derechos` y los nombres
+técnicos para no romper contratos; este cambio sólo modifica la presentación.
+Todos los registros del modelo BorradorReglaDerechos son borradores por diseño;
+no se agrega un selector que permita declararlos aprobados/vigentes desde la UI.
+
+La base funciona para registrar/consultar versiones con ámbito, fechas, fuente,
+autor y auditoría. **No es todavía el motor de decisión de derechos.** Faltan la
+configuración de condiciones/acciones controladas, su evaluación determinista,
+la aprobación/activación autorizadas y los casos de negocio validados por OSTEL.
+Las garantías ya acordadas de aislamiento, historia y auditoría no se desactivan
+como parámetros. No se declara el módulo terminado por guardar metadatos.
+
+Para declarar una regla operativa, deberá haber ejemplos acordados antes/en/
+después de sus límites, prueba de efectos autorizados y de rechazo sin efectos,
+trazabilidad de versión/fuente, aprobación explícita y verificación integrada.
+Un cambio de nombre o pruebas verdes de esta base no sustituyen esos requisitos.
+El material normativo ya fue solicitado; este cambio no inventa valores ni activa
+bajas, gracia o mora. La aceptación de negocio sigue separada de la validación técnica.
+
+
+### Primer mecanismo ejecutable: umbral temporal — T2g (02/11/2026)
+
+`backend/apps/financiadores/simulacion_plazo.py` ofrece `simular_plazo`: calcula
+una fecha de referencia explícita más un número configurable de **días corridos**.
+Devuelve la posición de la evaluación **antes / en / después** del límite. No
+elige inclusividad prestacional ni traduce esa posición en habilitación o baja.
+No usa reloj del sistema ni infiere referencias desde FECVTO, ausencia o inicio.
+
+Reutiliza `previsualizar_borradores` para ámbito/vigencia técnica del descriptor.
+Si no coincide, devuelve `sin_coincidencia`; si falta fecha de referencia o
+identificador de evidencia, `requiere_evidencia`, ambos sin límite calculado.
+Datos de tipo/rango inválidos se rechazan con ValueError, incluso con referencia
+ausente. No hay expresiones, callbacks ni ejecución de reglas arbitrarias.
+
+La salida inmutable contiene todos los insumos (descriptor/fuente/versión,
+financiador/régimen/plan de consulta, plazo, fechas, referencia de evidencia) y
+el resultado calculado, sin guardarlos en DB. La evidencia es una referencia
+informada: no certifica que un documento sea válido o que un evento haya ocurrido.
+Una referencia futura se compara literalmente, no acredita derechos anticipados.
+
+Ejemplo **completamente ficticio**, ejecutable desde la raíz sin Django/DB:
+
+```python
+from datetime import date
+from backend.apps.financiadores.derechos_borrador import BorradorDerechos
+from backend.apps.financiadores.simulacion_plazo import simular_plazo
+regla = BorradorDerechos("ficticia", 3, "Fuente ficticia", 10,
+                         "dependencia", None, date(2029, 1, 1))
+r = simular_plazo(regla, dias_corridos=7, financiador_id=10,
+    regimen="dependencia", plan_id=None, fecha=date(2030, 1, 8),
+    referencia=date(2030, 1, 1), evidencia="REF-FICTICIA")
+# r.estado == "calculado", r.limite == date(2030, 1, 8), r.relacion == "en"
+```
+
+El plazo es explícito por simulación: aún no se persiste/versiona como parámetro
+de una regla activa. Cero es admisible para comprobar coincidencia de fechas,
+no un valor de negocio aprobado. No se convierte una mención normativa de meses
+a una cantidad fija de días; otros calendarios requieren implementación expresa.
+No se modifica el padrón, se activa una regla ni se emite una decisión de derechos.
+La pantalla actual aún no llama a este mecanismo; no se presenta como recorrido
+integrado ni como motor completo. Tampoco sustituye autenticación/aislamiento
+operativo: el contexto de la función es suministrado por su llamador.
+
+Runner: `python -B -m unittest backend.apps.financiadores.tests_simulacion_plazo -v`.
+Regresiones puras: `tests_derechos_borrador`, `tests_propuesta_derechos` y
+`tests_ostel_scenarios`. Rollback: retirar módulo/prueba y esta sección, sin
+alterar servicios anteriores ni sus datos.
+
+
+### Simulación desde una versión guardada — T2h (02/11/2026)
+
+En **Reglas de derechos**, cada versión ofrece **Simular plazo**. El diálogo
+recibe días corridos explícitos, fecha de evaluación y referencia/evidencia
+opcionales. El servidor calcula con la fuente/metadatos de la versión guardada;
+el cliente sólo selecciona su identidad. La respuesta muestra límite y posición
+antes/en/después, o evidencia pendiente/sin coincidencia. Cambiar insumos borra
+el resultado anterior; cerrar no guarda nada y devuelve el foco al disparador.
+
+POST `/api/financiadores/{id}/borradores-derechos/simular-plazo/` es una consulta
+con cuerpo JSON, **no una escritura**. Requiere membresía de lectura existente:
+operador/auditor pueden simular, sin adquirir permiso para crear versiones.
+Campos: `regla={codigo,version,regimen,plan_id}`, `dias_corridos`, `fecha`, y
+`referencia`/`evidencia` opcionales/null. Datos de fuente, autor, financiador o
+activación embebidos y demás campos desconocidos se rechazan. Regla inexistente
+en ese financiador: 400; organización no visible: 404; sin sesión: 401.
+
+La respuesta contiene todos los insumos y descriptor recuperado, estado,
+`limite` y `relacion`. No modifica versiones, auditoría, afiliados ni derechos.
+Ejemplo ficticio: referencia 2030-01-01 + 7 días → 2030-01-08; fecha evaluada
+2030-01-08 queda **en** el límite. Cambiar a 9 días → 2030-01-10. No se decide
+si ese día conserva/corta prestaciones. El plazo sigue siendo un insumo de
+simulación, no un parámetro normativo activado o persistido en la versión.
+La evidencia informada no certifica documentación ni ocurrencia del evento.
+
+Pruebas reales: `test_simulacion_plazo_api` en PostgreSQL ficticio dedicado y
+spec de borradores con administrador/auditor, móvil/teclado, cambio de insumos
+sin resultado viejo y foco al cerrar; más regresiones anteriores. Sin nueva
+migración, dependencias ni siembra general. OpenAPI documenta el POST de consulta.
+Rollback: retirar mixin/import de simulación, módulo API, diálogo y acción UI,
+pruebas nuevas/esta sección, conservando el mecanismo puro T2g y registros previos.
+
+### Plazo guardado por versión — T2i (02/11/2026)
+
+La administración puede guardar **Plazo en días corridos (opcional)** junto con
+una nueva versión. Vacío significa sin configurar; cero es un valor explícito.
+Cambiar el plazo exige otra versión: ni la simulación ni un reenvío pueden
+sobrescribir la historia. Se reutilizan autorización, locks y auditoría existentes.
+
+1. Abrir **Reglas de derechos** y registrar una versión con fuente, motivo y plazo
+   ficticios. Guardar no aprueba ni activa derechos.
+2. Recargar y abrir **Simular plazo**: **Usar plazo configurado** viene marcado
+   únicamente si la versión tiene ese dato. El servidor recupera el valor guardado.
+3. Desmarcarlo y probar otro número: el resultado identifica **alternativa simulada**.
+   Al volver a consultar la versión, conserva su plazo original.
+
+Contrato aditivo: `plazo_dias_corridos` es nullable y opcional en la propuesta.
+Los descriptores sin plazo siguen omitiendo el campo en sus respuestas anteriores.
+En el POST de simulación, omitir `dias_corridos` usa exclusivamente la configuración
+guardada; si no existe, devuelve 400 sin asumir un valor. Enviarlo explícitamente
+(incluso cero) calcula una alternativa; `null` explícito sigue siendo inválido.
+La respuesta agrega `origen_plazo` (`configurado` o `simulado`) y conserva los
+insumos, descriptor, estado y límite. No acepta expresiones ni acciones arbitrarias.
+
+La migración aditiva `0019_borrador_plazo_dias` no asigna defaults ni rellena
+versiones históricas: quedan NULL. Valida rango entero no negativo hasta el máximo
+técnico representable por `date`; la suma también debe caber en ese rango. No es
+un máximo de negocio ni se convierte una unidad normativa en días.
+No se configura cuándo dar una baja, gracia o mora, no se valida evidencia y no
+se escriben derechos. Es un parámetro funcional para simulación versionada,
+no un motor operativo completo ni una política aprobada por OSTEL.
+
+Verificación: pruebas puras, API real con PostgreSQL dedicado y migración desde0018;
+registros anteriores idénticos salvo el nuevo NULL, rechazo sin escritura/auditoría,
+versiones inmutables, cero explícito/configurado y recorrido real desktop/móvil/teclado.
+Runner: los módulos `tests_derechos_borrador`, `tests_propuesta_derechos`,
+`test_borradores_api`, `test_simulacion_plazo_api` y `test_borradores_plazo_migracion`;
+frontend: `node node_modules/@playwright/test/cli.js test --config playwright.borradores-real.config.js`
+con fixture ficticia dedicada. Resultados observados y estado de revisión: [L30](../../../odd/tasks/ostel-operacion-integral.md).
+Rollback: retirar esta capacidad de UI/API/DTO y revertir0019 sólo tras conservar
+los nuevos parámetros; una reversión de esquema los pierde. No revertir datos
+históricos ni reactivar derechos como parte de ese procedimiento.
+
+### Vista previa de propuesta sin guardar — T2j (02/11/2026)
+
+**Previsualizar propuesta**, en Nueva versión, consulta qué versiones se agregarían
+y las coincidencias antes/después para el régimen, plan y fecha indicados.
+Muestra los conflictos sin seleccionar un ganador. Esta acción no guarda,
+audita ni activa versiones, y no calcula personas o prestaciones afectadas.
+Editar un campo o volver a consultar borra la vista; una respuesta pendiente
+de otro financiador no se incorpora al formulario actual. El guardado continúa
+como acción separada, incluida la vía anterior sin previsualización.
+
+POST `/api/financiadores/{id}/borradores-derechos/previsualizar/` requiere
+administración y reutiliza el mismo cuerpo estricto/resultado del POST de guardado:
+`propuesta`, `motivo`, `regimen`, `plan_id`, `fecha` → `nuevas`, `antes`, `despues`.
+Se compara con la historia real y se validan propiedad/existencia de todos los
+planes, motivo y versiones inmutables. Lectores no administradores:403;
+organización no visible:404; sin sesión:401. No admite campos arbitrarios.
+
+La consulta no bloquea ni reserva datos: puede quedar obsoleta si otro
+administrador agrega una versión. Guardar recalcula y valida bajo los locks
+existentes (financiador, revalidación de permiso, planes ordenados) y puede rechazar
+una propuesta vieja. No sustituye aprobación de activación ni validación OSTEL.
+El helper compartido evita divergencia de motivos/planes/comparación;
+no se llama al guardado en modo dry-run ni se revierten escrituras para previsualizar.
+
+Verificación: API pública (sin mutaciones, permisos, planes ajenos, conflictos,
+preview→guardar y rechazo de historia obsoleta), regresiones de guardado/concurrencia
+y recorridos reales desktop/móvil/teclado, edición/recarga y respuesta tardía.
+Runners: `test_borradores_api`, `test_borradores_derechos`, `test_borradores_integridad`
+y el spec real de borradores. Resultados y límites en L31 del documento de tareas.
+Rollback: retirar endpoint/acción/vista y sus pruebas; restaurar validación inline
+del guardado si se retira el helper. Sin migración ni datos que revertir.
+
+### Convivencia con el padrón familiar — T4a (02/11/2026)
+
+La configuración no operativa de derechos se verificó junto con una familia
+ficticia incorporada por importación y confirmada desde su evidencia aplicada.
+Se reutiliza `FamiliaOstelFixture`, sin construir otro importador ni otro circuito
+para confirmar vínculos.
+
+- **Previsualizar:** devuelve la propuesta y conserva la huella completa,
+  incluidas versiones y auditoría; no incorpora ni habilita afiliados.
+- **Guardar versión:** conserva afiliados, titular, revisiones, habilitación,
+  historial y lote; agrega sólo la versión y su evento `crear_borrador_derechos`,
+  sin reescribir eventos anteriores.
+- **Simular:** administrador, operador y auditor consultan plazo guardado7 o
+  alternativa0 sin mutaciones; el vínculo familiar y su revisión siguen iguales.
+- **Rechazar:** campos de activación y escrituras de lectores no administradores
+  conservan íntegros padrón, configuración y auditoría.
+
+Nuevo runner focal: `python -B manage.py test apps.financiadores.test_derechos_padron_aislamiento
+--settings=config.settings_financiadores_postgres_test --noinput --keepdb --verbosity 0`.
+Dos pruebas OK1.321s en PostgreSQL ficticio dedicado. Regresión de coexistencia con
+API de reglas/simulación, cobertura/habilitación y catálogo sintético:104pruebas
+OK18.593s. No hay cambio productivo que requiera un RED previo; se agrega evidencia
+sobre comportamiento existente. No se vuelve a ejecutar todo el recorrido UI T1.
+
+**Límite de esta evidencia:** familia mínima de dos personas, SaludPadron vacío
+preservado, sin medición de volumen, CI, datos reales, nueva aceptación visual
+ni aceptación humana. No acredita el circuito completo de #185 ni reglas
+operativas de #143/#183. La información normativa ya solicitada a OSTEL sigue
+pendiente; no se reemplaza con datos de prueba ni fechas administrativas.
+Rollback de este corte: retirar únicamente el nuevo módulo de pruebas y esta
+sección, sin tocar datos, migraciones ni funcionalidad existente.
+
+### Trazabilidad consultable de versiones — T2k (02/11/2026)
+
+**Ver trazabilidad** abre la consulta de quién registró cada versión, cuándo y
+con qué motivo. Administrador, operador y auditor conservan su permiso existente
+de lectura. El servicio de configuración no consulta perfiles, personas ni datos clínicos:
+el autor se identifica por su ID interno, sin nombre/email. La fuente informada
+sigue siendo una declaración; el registro no acredita normativa ni aprobación.
+
+GET `/api/financiadores/{id}/borradores-derechos/historial/` devuelve
+`{historial: [{regla, creado_por_id, creado, motivo}]}`. `regla` es el mismo
+DTO de configuración de las consultas anteriores; `creado` se transporta como
+fecha/hora ISO UTC y la UI muestra hora local conservando el atributo `datetime`.
+Los metadatos proceden del registro original, no del usuario que consulta.
+Se preservan por separado cuando otra persona registra una versión nueva.
+
+El endpoint no acepta escrituras (405), no agrega eventos de auditoría ni cambia
+versiones/derechos. Usa el guard de lectura y el ámbito de la URL: organización
+no visible o membresía revocada404, sin sesión401. GET/POST anteriores mantienen
+sus cuerpos, permisos y respuestas; no se modifica ninguna migración.
+
+La consulta carga al abrir, con clave React Query por usuario/financiador y sin
+retención deliberada de caché inactiva (gcTime0). Escape devuelve el foco. Se puede volver a consultar;
+una carga o un error oculta datos anteriores, y la respuesta pendiente de otro
+ámbito no se incorpora al diálogo actual. No hay acciones de aprobar o activar.
+
+Pruebas: autoría/motivo/hora persistidos entre escritores, roles/aislamiento,
+rechazo de métodos de escritura y ausencia de mutaciones, contratos anteriores;
+navegador real desktop/móvil/teclado, respuesta tardía y fallo/reintento de lectura.
+Runners `test_borradores_api`, `test_borradores_derechos`,
+`test_derechos_padron_aislamiento` y spec real de borradores; resultados en L33.
+Rollback: retirar acción/serializers/servicio de historial y diálogo/botón nuevos,
+conservando lectores previos y metadatos persistidos. No hay datos que revertir.
+
+### Contraste técnico de autorizaciones médicas — T6a / #147 (02/11/2026)
+
+**La base existente es reutilizable; no demuestra conformidad con el circuito
+médico de OSTEL.** El contraste contra el árbol local `f4dcf01` completa una parte
+del análisis, no las definiciones de negocio ni la aceptación de [#147](https://github.com/Mkdir-arg/SistemaDeSalud/issues/147).
+El issue referencia SISTEMAS OS Y PREPAGAS MODULOS.pdf (p.1 módulo2 y p.2) y
+Resumen Mod Padron.pdf (p.1). Son fuentes documentadas previamente; no se volvió
+a acceder a los originales ni se corroboró normativa en este corte.
+
+#### Matriz requisito → base → frontera pendiente
+
+| Requisito recibido en #147 | Base observada | Falta antes de implementar para OSTEL |
+| --- | --- | --- |
+| Derecho, plan, prestación, PMO y topes en línea | `ReglaCobertura` en `models.py:120–136` configura plan/prestación o categoría, porcentaje, cupo, período mes/año y exigencia de autorización. `cobertura.py:32–37,82–92` cuenta usos externos/reservados/realizados y elige regla específica/general. | Catálogo/versión PMO y correspondencia con prestaciones, prescripción aplicable y excepciones. Regla técnica de cobertura no equivale a PMO homologado ni a la política de gracia/mora pendiente. |
+| Solicitud y revisión de Auditoría Médica | `api_autorizaciones.py:56–75` recibe afiliado, institución, prestación común, cantidad, justificación, urgencia y clave; resolver acepta observar/aprobar/rechazar, motivo, texto de evidencia, número externo, cantidad y vigencias. `autorizaciones.py:251–290` reutiliza permiso de resolver, lock, revalidación, revisión, idempotencia y evento. | Actores aprobados, evidencia mínima de prescripción, visibilidad/corrección/retención, motivos, urgencias, plazos, vigencia y renovación. El texto libre existente no es un documento de prescripción validado. |
+| Autorización, prestación realizada y liquidación | `ReservaCobertura` (`models.py:388–412`) relaciona caso/prestación, estado, hecho y uso de autorización. `test_uso_autorizaciones.py:30–66` especifica pasos distintos: aprobación, reserva, hecho realizado y captura financiera. | Contrato para usos parciales/repetidos, prestación ya realizada, cambios de plan/convenio y conciliación con liquidaciones. Autorización no acredita prestación realizada, factura, liquidación ni pago. |
+
+Rutas de código bajo `backend/apps/financiadores/`. Pruebas existentes localizadas,
+no ejecutadas nuevamente en este corte: `test_cobertura.py`,
+`test_autorizaciones_manuales.py` (ManualApiTests/ManualCircuitoTests),
+`test_autorizaciones.py` y `test_uso_autorizaciones.py`.
+No se atribuye al árbol actual una prueba histórica de otro commit.
+
+#### Decisión de acceso clínico confirmada, implementación pendiente
+
+La bandeja declara no serializar historia clínica del caso. Sin embargo,
+`SolicitudAutorizacionSerializer` (`api_autorizaciones.py:90–112`) ya devuelve
+texto libre de `evidencia` dentro del circuito administrativo. Esto no prueba
+que exista una filtración ni que ese texto contenga datos clínicos reales;
+tampoco demuestra que ampliar ese campo a prescripciones sea seguro.
+No se accedió a solicitudes o personas reales para este análisis.
+
+Decisión confirmada por el usuario («confirmo»): **una futura prescripción clínica sólo será
+visible para usuarios expresamente designados de Auditoría Médica; operación
+y auditoría administrativa verán únicamente su estado administrativo**.
+Ventaja: no concede acceso clínico por pertenecer al financiador. Costo: exige
+un circuito diferenciado para revisión médica. Riesgo residual: aún deben
+acordarse evidencia mínima, correspondencia de capacidades y trazabilidad de
+accesos antes de implementar. La propuesta no modifica permisos ni el campo
+actual. La aceptación proviene de esa confirmación específica, no de la autorización general de continuidad.
+
+#### Cortes mínimos condicionados al contrato
+
+1. Validar el catálogo/versionado y correspondencias PMO recibidos; sin equivalencias
+   inferidas ni constantes regulatorias inventadas.
+2. Con el acceso confirmado y tras acordar la evidencia mínima, especificar la prescripción y
+   sus controles de lectura/corrección usando las capacidades existentes que correspondan.
+3. Acordar usos/vigencias y vínculo con la prestación realizada antes de diseñar
+   su relación con liquidaciones. No convertir una autorización en prueba financiera.
+
+El acceso S17 está confirmado. Los restantes contratos son propuestas pendientes,
+no una aprobación de reglas de prescripción o PMO para codificar. La información ya solicitada a OSTEL sigue pendiente; no se vuelve
+a pedir que el usuario la solicite. T2/#143 y T3/#183 conservan sus límites.
+
+Validación de este corte: lectura integral de #147, mapa CodeGraph y un spot check
+de serializers/servicio; readback y enlaces/rutas existentes. No cambia código,
+DB, UI, migraciones ni dependencias: RED/GREEN y pruebas funcionales nuevas no
+aplican. Sin CI, despliegue, aceptación médica o conformidad normativa.
+Rollback: retirar esta sección y el registro T6a del seguimiento, sin efectos en datos.
+
+### Designación explícita de Auditoría Médica — T6b (02/11/2026)
+
+La decisión S17 se implementa primero como **configuración de acceso por
+financiador**, sin asignar personas reales ni inventar un registro de prescripción.
+Existe una bandera separada `auditoria_medica`: denegada por defecto, también en
+la base de datos. Ningún rol ni permiso previo se convierte automáticamente en
+esta designación. La migración `0020_membresia_auditoria_medica` conserva los demás datos y asigna `False` al
+campo nuevo; un escritor anterior que lo omite también queda sin designación.
+
+#### Gestión y consulta de capacidad
+
+- POST `/api/financiadores/{id}/usuarios/` acepta `auditoria_medica` opcional,
+  siguiendo las convenciones booleanas existentes. Sólo un administrador activo
+  propio del financiador, sin gobierno de plataforma en la identidad real,
+  puede asignarla o revocarla. Se reutilizan lock de financiador, revalidación
+  sensible y `auditar` en la misma transacción; no se crea otra API de concesiones.
+- Omitir el campo conserva el valor guardado. `false` revoca explícitamente.
+  GET `usuarios` y la respuesta POST agregan la bandera; las peticiones anteriores
+  mantienen sus efectos y el texto anterior de auditoría. Una petición que
+  incluye la bandera agrega su valor al motivo del evento de membresía.
+- El alta del administrador inicial no acepta designaciones adicionales,
+  incluso enviadas en `false`, ni toma una membresía previamente designada.
+  No se admite otorgar Auditoría Médica a una cuenta de plataforma.
+- La API de financiadores agrega `consulta_prescripciones` para el usuario
+  actual: sólo `true` con usuario, financiador y membresía activos y la bandera
+  explícita de ese financiador. Otro ámbito no hereda la designación.
+  Plataforma —también como autor real de una identidad simulada— no obtiene
+  la capacidad. Los identificadores ambiguos se deniegan en el helper.
+- La designación es adicional al rol administrativo de la membresía. Un usuario
+  con rol base `auditor` sólo es Auditoría Médica si fue designado expresamente;
+  ese rol por sí solo no basta. La designación no habilita resolver solicitudes,
+  salud/cobranza del padrón ni historia clínica general.
+
+La administración T6b se entregó primero por API; T6c incorpora la gestión visual
+descrita a continuación, sin cambiar el contrato de acceso.
+El helper `requerir_consultar_prescripciones` queda preparado para exigir esta
+capacidad en el futuro lector clínico. **No existe todavía ese endpoint ni
+almacenamiento de contenido:** estas pruebas no demuestran visibilidad de una
+prescripción real, validez médica o PMO. La designación no acredita matrícula ni
+idoneidad; el responsable del financiador debe designar a las personas que correspondan.
+No se alteran el campo `evidencia` ni los permisos de historia clínica existentes.
+
+Pruebas focales: `test_auditoria_medica` sobre PostgreSQL dedicado (6 pruebas,
+1.349 s); incluye migración `0019` → `0020`, conservación de campos, defaultDB para
+escritor anterior, asignación/omisión/revocación/auditoría, no herencia,
+roles/aislamiento/inactividad, bootstrap y plataforma. Regresión con
+`test_padron130` y `test_permisos_plataforma`: 73 pruebas OK en 10.561 s. Resultados
+independientes y límites posteriores en L35 del seguimiento.
+
+Sin cambios de frontend: browser/build no corresponden a este corte backend.
+No se asignan usuarios reales, ni se activan derechos o flujos normativos.
+Rollback: preservar designaciones antes de revertir `0020` (se pierde la columna);
+retirar la capacidad/API/guard de este corte, sin restituir acceso clínico
+implícito ni cambiar los permisos previos de otros propósitos.
+
+Verificación adicional T6b:225 pruebas independientes OK en 57.438 s, chequeo de
+migraciones limpio y 44 observaciones anteriores equivalentes salvo los dos
+campos nuevos declarados. Probes de rollback por fallo de auditoría,
+revocación del administrador durante espera de lock, JWT real de simulación
+plataforma y usuario cacheado desactivado en DB fueron incorporados a regresión.
+Repetición focal: 10 pruebas OK en 3.613 s; suite padre: 77 pruebas OK en 14.565 s.
+
+También pasó un escenario **HTTP real en loopback 8232**, exclusivamente con
+un financiador y dos cuentas totalmente ficticios nuevos: denegado por defecto,
+designación explícita, capacidades anteriores sin cambios, autodesignación
+rechazada y revocación comprobada. La bandera de la cuenta ficticia quedó `False`.
+Se aplicó `0020` sólo a la base local descartable autorizada; sin usuarios reales.
+Fixture externa retenida `ostel-auditoria-http-u_1qlquo`, sin tokens en documentación.
+No es un recorrido UI ni una prueba de lectura de contenido clínico.
+
+### Gestión visual de la designación — T6c (02/11/2026)
+
+En **Usuarios**, la administración real del financiador puede marcar o quitar
+**Designar para Auditoría Médica de este financiador** al invitar una persona
+o cambiar su acceso. La lista muestra la designación persistida. El rol base,
+resolver autorizaciones y los bloques de padrón siguen siendo independientes.
+El texto de ayuda distingue configurar acceso de consultar prescripciones:
+este corte no almacena ni muestra contenido clínico.
+
+Se reutilizan el formulario, POSTusuarios, errores, bloqueo de envío y consultas
+por usuario/financiador existentes. Sin capacidad sensible explícita, el control
+no se construye y el cuerpo no envía auditoria_medica; el alta inicial de
+administrador permanece sin designaciones sensibles. El backend continúa siendo
+la autoridad de permisos. Cancelar o cambiar organización no guarda el borrador.
+
+Verificación: frontera real navegador→API→persistencia con fixture exclusiva
+@example.invalid en PostgreSQL descartable y loopback. RED observado por control
+ausente; GREEN escritorio/móvil: alta false, concesión por teclado, recarga,
+cambio de rol sin perder designación, revocación y recarga. Auditoría administrativa
+no accede a Usuarios; cancelación/cambio de organización no trasladan valores.
+Un primer negativo esperaba incorrectamente Usuarios para auditor; la navegación
+existente lo redirige a Inicio y se corrigió sólo esa expectativa del test.
+Runner: SALUD_BORRADORES_MANIFEST=<fixture ficticia externa> node
+node_modules/@playwright/test/cli.js test --config playwright.auditoria-medica-real.config.js
+(desde frontend). No prueba contenido clínico, CI, despliegue ni aceptación humana.
+Verificación independiente Sol/medium: cuatro recorridos reales OK, build del
+candidato en scratch OK y dos probes negativos de UI OK. Diferencial contra
+8e87731: ocho escenarios de alta/edición con capacidad falsa/verdadera conservaron
+payloads, controles anteriores y errores, excepto el campo aditivo declarado.
+Capacidad falsa/403 son inyecciones de UI, no pruebas reales de plataforma o bootstrap.
+Probes incorporados a regresión: seis recorridos finales OK (12.5 s).
+Capturas desktop/móvil inspeccionadas; demostración visible en Usuarios local
+con cuentas ficticias, sin guardar una nueva designación. No equivale a aceptación.
+Scratch externo ostel_t6c_verify_lbqlnvjc retenido. Puerto5192 ocupado preservado;
+baseline propio5198 detenido con0listeners. API8232/frontend5189 conservados.
+Rollback: retirar control, indicador y pruebas T6c; conservar API y designaciones T6b.
+Risk: item2 (gestión de una designación sensible).
+
+### Ingreso institucional confirmado — T6d (03/11/2026)
+
+**Corte histórico:** la representación propuesta abajo quedó resuelta por S19
+y la evaluación por S21; T6e–T6h documentan su implementación y prueba local.
+La expresión «pendiente» de este contraste no describe el estado vigente.
+
+El usuario confirmó que **la institución prestadora incorpora la prescripción
+al solicitar autorización; Auditoría Médica la consulta y registra su evaluación**.
+Se mantiene la visibilidad S17: operación y auditoría administrativa sólo estado,
+sin conceder historia clínica general. La decisión confirma actores y momento,
+no una representación ni un contrato de evaluación todavía inexistentes.
+
+| Existente | Límite para este circuito |
+| --- | --- |
+| Solicitud institucional JSON (`api_autorizaciones.py:47–54`) | No admite prescripción; conservar lock, idempotencia, caso/afiliación/convenio y eventos de `autorizaciones.py:118–169`. |
+| Archivo clínico privado y asociación Caso/Estudio (`common.py:363–576`, `registros/adjuntos.py:63–128`) | Permiso de historia clínica institucional; ni el upload ni su descarga son automáticamente un lector de Auditoría Médica por solicitud/financiador. El ID genérico del objeto no prueba pertenencia. |
+| Receta de historia clínica (`registros/models.py:324–347`) | Registro de tratamiento distinto; no es por defecto el documento presentado a autorización. |
+| Resolución observar/aprobar/rechazar y evidencia (`api_autorizaciones.py:337–340`) | No se redefine como opinión médica por cambiar el nombre de un campo. |
+
+**Decisión material pendiente:** qué presenta la institución: adjunto privado
+PDF/imagen (recomendado para conservar el documento recibido), vínculo a una
+Receta clínica existente o captura específica de datos/texto. La elección define
+qué se guarda y valida; no se tratará la justificación o evidencia libre actual
+como prescripción. Tampoco se inventan campos normativos, plazos de retención
+ni permisos de reemplazo. Una futura lectura exigirá aislamiento de solicitud y
+financiador más el guard específico ya implementado; no acceso genérico a historia.
+
+Contraste read-only con CodeGraph sincronizado y un spotcheck del upload común.
+No se ejecutaron pruebas ni se modificaron código, DB, archivos clínicos o servicios.
+No hay nueva prueba de visibilidad de contenido ni aceptación de #147.
+La documentación y glosario registran S18; código pendiente de esta decisión.
+
+### Adjunto privado con solicitud institucional — T6e (03/11/2026)
+
+**Estado actual:** S20 autoriza la configuración privada simple de T6f descrita
+abajo. La carga continúa fallando cerrada si se configura dentro de MEDIA_ROOT
+o falta el alias dedicado. Configuración y API fueron verificadas localmente con archivos ficticios;
+no se habilitaron documentos reales. El ingreso visual, aún ausente en ese corte,
+quedó completado localmente en T6g y la resolución se verificó en T6h.
+
+Formato confirmado por el usuario: **PDF/imagen privado**, no texto de
+justificación ni enlace implícito a la historia clínica. El documento se recibe
+junto a una nueva solicitud institucional y queda ligado a ella; no hay acción
+de reemplazo/borrado ni obligatoriedad prestacional nueva. No cambia resolver.
+
+| Interfaz | Contrato |
+| --- | --- |
+| `POST /api/autorizaciones-cobertura/con-prescripcion/` | Multipart: `caso`, `prestacion`, `intento`, `cantidad`, `justificacion`, `clave` y exactamente un archivo `prescripcion`. Sólo personal autorizado para operar el caso de la institución; plataforma y simulación de plataforma no sustituyen al presentante. |
+| `GET /api/autorizaciones-cobertura/<id>/prescripcion/?financiador=<id>` | Solicitud visible de ese financiador, usuario/membresía/financiador activos y designación explícita de Auditoría Médica. Descarga autenticada, auditada estrictamente antes de transmitir, attachment/nosniff/private-no-store. |
+| Bandeja/detalle administrativo | Sólo agrega `prescripcion_estado: presentada` si hay documento; no nombre, ruta, hash, contenido ni URL. Sin documento conserva exactamente los campos previos. |
+| JSON institucional, manual, observar/aprobar/rechazar | Interfaces existentes conservadas; no se consideran registros de opinión médica por esta entrega. |
+
+Se reutilizan `solicitar`, el lock de Caso, controles de afiliación/convenio/paso,
+claves e historia. Misma clave y bytes devuelve el resultado previo; cambiar el
+archivo o agregarlo retroactivamente con la clave de una solicitud JSON se rechaza.
+Registro uno-a-uno separado (`0021`), sin migrar datos anteriores. La validación
+común comprueba tamaño (máximo existente, por defecto10MiB), MIME, extensión y firma;
+sólo PDF/JPEG/PNG/WebP, no texto ni SVG. No implica análisis antivirus ni validez médica.
+
+Storage privado existente, sin proveedor/configuración nuevo ni URLs públicas.
+Las claves opacas bajo `uploads/prescripciones/` son rechazadas por la descarga
+clínica genérica, pero **ese prefijo no basta para garantizar privacidad**.
+La revisión demostró que, con el storage local anterior dentro de MEDIA_ROOT,
+`/media/x/../uploads/prescripciones/<uuid>.pdf` y la variante `%2e%2e` entregaban
+el PDF ficticio anónimamente: el guard literal se ejecutaba antes de normalizar.
+La carga ahora rechaza FileSystemStorage dentro de MEDIA_ROOT con503 antes de
+cualquier escritura. Se necesita storage dedicado fuera de toda media pública. No se crea un
+ArchivoClinico que habilite acceso más amplio. Se conserva el original binario,
+no su nombre potencialmente sensible. La institución no recibe por este corte
+un permiso nuevo de lectura del contenido en el servidor; conserva su fuente y
+consulta el estado. No se amplía historia clínica ni designan personas reales.
+
+Fallo en persistencia/auditoría revierte expediente/eventos/metadatos y compensa
+únicamente el nuevo objeto almacenado. Si falla esa limpieza, se conserva el error
+de la operación y no existe metadato que lo haga descargable por la API; requiere
+atención técnica, sin borrar otros objetos. No hay política de retención inventada.
+
+RED observado: nueva acción inexistente405; luego plataforma201 en lugar de403,
+corregido con identidad real antes del ingreso. GREEN9casos nuevos y regresión
+institucional/manual/designación:58pruebas OK16.705s, dry-migrations limpio.
+Primer comando de regresión nombró erróneamente test_autorizaciones_manual
+(singular, módulo inexistente); corregido sólo el comando a *_manuales y repetido.
+Un negativo de financiador ajeno omitió rol en su fixture, causó403 en vez de404;
+corregido sólo el rol explícito ficticio. Verificador independiente:58tests/dry-check y18observacionesHTTP previas
+JSON/manual/bandeja/detalle/resolver equivalentes al baseline. Detectó además
+campo desconocido ignorado y nueva FK de autoría sin clasificar: se corrigieron
+sólo el serializer multipart y el registro de autoría nuevo. La clasificación
+global sigue fallando únicamente por BorradorReglaDerechos.creado_por, idéntico
+al baseline; no se presenta ese chequeo como verde ni se amplía el arreglo.
+Recheck único focal: desconocidos400 sin mutación, FS público503 sin escritura,
+FS privado fuera de MEDIA_ROOT201 y descarga médica200 con bytes exactos;
+rutas anónimas directa/../%2e%2e404. Este override es sólo de prueba: no cambia
+la configuración real. Probes incorporados a regresión,12tests padre3.296s OK.
+Scratch externo ostel_t6e_verify_rkjmuv8k retenido. Al cierre de T6e aún no se había autorizado la configuración privada real;
+S20/T6f resuelve esa autorización y su configuración se verifica por separado.
+No nueva ronda del candidato anterior.
+No es todavía una prueba HTTP/UI; no se declara completo el flujo visual.
+
+Runner backend: PYTHON_DOTENV_DISABLED=1, ENTORNO=desarrollo,
+DJANGO_SETTINGS_MODULE=config.settings_financiadores_postgres_test y
+SALUD_TEST_POSTGRES_URL del PostgreSQL dedicado loopback, `manage.py test`
+con test_prescripciones_autorizacion/test_autorizaciones/test_autorizaciones_manuales/
+test_auditoria_medica, serial, `--keepdb --noinput`.
+Rollback: retirar endpoints/servicio/estado nuevo y revertir0021 sólo tras preservar
+metadatos y objetos; no perder documentos almacenados ni revertir autorizaciones.
+Risk: items1 (persistencia),2 (documento clínico),4 (ingreso/idempotencia bajo lock).
+
+### Almacenamiento privado simple — T6f (03/11/2026)
+
+El usuario autorizó «entonces autorizo, manteniendolo simple». Se extiende la
+fábrica existente: **no hay servicio, proveedor, bucket ni credenciales nuevos**.
+
+| Entorno | Configuración de prescripciones |
+| --- | --- |
+| Disco local | Alias Django `prescripciones`, predeterminado `backend/privado/prescripciones`, fuera de `MEDIA_ROOT` y ya excluido de Git. Puede ubicarse en otro volumen mediante `SALUD_PRESCRIPCIONES_ADJUNTOS_DIR`; rutas relativas se resuelven desde backend. Si cae dentro de MEDIA_ROOT, configuración rechazada. |
+| Bucket privado ya configurado | Mismo backend/opciones del bucket existente, prefijo `prescripciones/`. No se accede al proveedor en estas pruebas ni se cambian variables remotas. |
+| Archivo | Sólo clave relativa opaca `<uuid>.<ext>` en la base; descarga por API con permiso y auditoría. No se publica URL de storage. |
+| Infraestructura | Incluir la carpeta/prefijo en respaldo y restauración junto a los metadatos DB; en disco de un despliegue, requiere persistencia del volumen. Esta entrega local no certifica backup ni durabilidad de producción. |
+
+Ingreso, compensación y descarga usan el mismo alias, nunca `default` como
+fallback. Si falta, o es FileSystemStorage dentro de MEDIA_ROOT, devuelve503.
+Los alias anteriores `default` y `facturas` y las llamadas de fábrica con dos
+argumentos conservan sus resultados. Sin migraciones de documentos existentes,
+limpieza masiva, cambios de `.env`, dependencias o configuración remota.
+
+RED: argumento de configuración nuevo ausente en ambos modos de fábrica.
+GREEN:8tests de configuración y13API,70regresión institucional/manual/designación
+OK16.993s; dry-migrations limpio. Las opcionesS3 se validan sólo con valores
+sintéticos y construcción del backend, sin conexión ni lectura de credenciales.
+El primer ajuste de fixture apuntó desde backend a un path con prefijo backend
+repetido: no editó archivos y causó pruebas con alias faltante503; se corrigió
+únicamente el path del script y se actualizaron los overrides al alias dedicado.
+Verificación independiente T6f PASS:70pruebas17.269s/dry-check limpio, dos
+probes de configuración fría1.481s y seis modos de fábrica con stdout/stderr/exit
+idénticos a9453288. Configuración predeterminada, absoluta y relativa válidas;
+carpeta pública rechaza inicio. Sin override positivo de STORAGES: el alias nace
+de settings reales en proceso nuevo, escribe un PDF ficticio fuera de media,
+403 sin designación y200 con designación/auditoría/bytes exactos. Alias ausente
+o público503 en lectura/escritura, sin archivo ni huella cambiada. Rutas anónimas
+canónicas/normalizables404; escapes externos400 de safe_join, todos sin bytes.
+Spotcheck padre de los dos probes1.476s OK. Regresiones incorporadas sin historia
+Git ni paths fijos:22tests3.554s OK; configuración fría sin conexiones al proveedor.
+Scratch externo ostel_t6f_verify__e1nbodc retenido. Dos ajustes del harness:
+APITransactionTestCase evita cierre de conexión de FileResponse en APITestCase;
+expectativa de escape externo corregida a400. Ningún cambio productivo posterior.
+El chequeo global de clasificación ya conocido sigue pendiente sólo por la FK
+BorradorReglaDerechos.creado_por preexistente; no se declara que pasó.
+No browser/build aplicables a este corte backend; UI institucional/médica pendiente.
+Risk: items2/5 (aislamiento y configuración); integra T6e1/2/4 sin ampliar permisos.
+
+### Solicitud y descarga desde las pantallas existentes — T6g (03/11/2026)
+
+La institución puede adjuntar **Prescripción (opcional)** al solicitar autorización
+desde el caso. Se conserva el JSON anterior cuando no hay archivo; con archivo
+se usa la acción multipart privada. Cancelar retira el archivo; un error no lo
+borra ni dispara reintento automático. La misma presentación conserva su clave,
+y cambiar archivo genera otra. No se agrega una obligatoriedad médica al circuito.
+
+El detalle institucional/administrativo muestra **Prescripción presentada**,
+sin enlace de contenido. Sólo el financiador con `consulta_prescripciones` explícita
+ve **Descargar prescripción**, con nombre genérico. Ese indicador no sustituye el
+permiso del servidor. No cambia resolver ni permite registrar un dictamen nuevo.
+Ingreso/descarga reutilizan `api.multipart`/`api.download` existentes, sin tocar
+el cliente compartido. Una referencia al contenedor DOM vigente y la identidad
+solicitud/ámbito impiden entregar una descarga cuando su detalle ya fue desmontado.
+
+Fixture persistente separada del runner Django: sólo PostgreSQL ficticio local,
+settings exactos, salida temporal y usuarios únicos@example.invalid. Reutiliza
+AutorizacionSetup sólo como construcción ORM (sin _pre_setup, flush o seedgeneral),
+con códigos de catálogo únicos, clínico del área y lector médico sin membresía
+institucional. Resolver de operación permanece distinto de la designación médica.
+Un expediente se precarga para negativos de lectura; los positivos crean desde UI.
+Los manifiestos y archivos privados quedan fuera de Git, sin imprimir credenciales.
+
+RED real observado por ausencia del campo. GREEN propio:6recorridos15.2s,
+escritorio/móvil, carga con respuesta201 y descarga200 de bytes idénticos,
+contenido ausente para institución/operación, teclado, cancelación→JSON anterior,
+rechazo403 inyectado sin descarga, respuesta real demorada descartada tras cerrar,
+y respuesta perdida después del commit con reintento explícito de misma clave/
+archivo/solicitud. Los negativos de transporte son inyecciones, no reemplazan
+los positivos HTTP/PG/FS reales. El PDF positivo ahora se genera con jsPDF ya
+instalado (sin nueva dependencia); repetición escritorio4.5s OK con PDF válido.
+Independiente Sol/medium PASS: build3.62s,6recorridos reales16.2s y23checks
+mock/diferencial/negativo20.9s; baseline5cee72c22checks19.4s. JSON/resolver/reenviar/
+anular conservan cuerpo, ruta, ámbito y texto anterior, excluyendo sólo UUID
+aleatorio y campo opcional declarado. Mock no equivale a persistencia/E2E.
+Negativo adicional: doble clic produce1GET y cambiar al antecedente descarta la
+respuesta anterior. Incorporado al test existente junto con regresión de anular,
+sin duplicar su fixture ni leer Git desde tests;20regresiones mock padre19.2s OK.
+Tres componentes productivos idénticos al snapshot del verificador; sin correcciones.
+Capturas escritorio/móvil inspeccionadas por padre; diálogo desplazable, botón
+legible y sin desborde horizontal. Demo visible local62061, financiador ficticio13,
+lector médico sin permiso de resolver y PDF válido listo para descargar. No aceptación.
+Los procesos mock propios del verificador en5198 se detuvieron con0listeners;
+un arranque de baseline encontró su candidato todavía vivo y se corrigió sólo
+la identificación/terminación de ese proceso. Padres5189/8232 preservados.
+Scratch externo ostel_t6g_verify__s2hd0ro retenido; ninguna configuración remota.
+
+Ejecución: preparar un escenario nuevo con `preparar_prescripciones_autorizacion.py`
+bajo settings PostgreSQL dedicados; pasar su manifiesto como
+`SALUD_PRESCRIPCIONES_MANIFEST` a
+`node node_modules/@playwright/test/cli.js test --config playwright.prescripciones-real.config.js`.
+Cada ejecución positiva usa un manifiesto nuevo; no elimina expedientes previos.
+No equivale a despliegue, aceptación humana ni validación médica del documento.
+Risk: items2/4 (visibilidad sensible y respuestas asíncronas).
+
+Límite de privacidad: este almacenamiento protege las prescripciones nuevas;
+no migra ni endurece los demás adjuntos de `default`/MEDIA_ROOT. La ruta estática
+de desarrollo preexistente y su normalización necesitan tratamiento separado;
+no se afirma privacidad global de otros archivos ni se inspeccionaron archivos reales.
+
+El runner de prescripciones es explícitamente manual: no hereda el arranque del
+escenario de importación aunque exista SALUD_IMPORTACION_E2E_AISLADO=1.
+RED de configuración observado, guardia y regresión importada137ms OK; lectura
+negativa UI1.6s y spotcheck de respuesta demorada1.8s OK. No se ejecuta el importador
+ni se modifican sus configuraciones. Los servidores/fixture se preparan por separado.
+
+### Evaluación médica y resolución de la solicitud
+
+Decisión del usuario (03/11/2026): «aprobar/rechazar la solicitud». No se agrega
+un dictamen paralelo: la evaluación utiliza la resolución existente, con su
+revisión, motivo, evidencia, cantidad/vigencia cuando corresponde e historial.
+La aprobación no registra una prestación realizada ni crea un cargo.
+
+La configuración existente permite asignar por separado a un miembro operador
+la designación de Auditoría Médica y el permiso de resolver autorizaciones.
+Ambos deben asignarse explícitamente; consultar la prescripción no concede
+resolución. El rol genérico auditor sigue siendo de lectura. Los resolutores
+administrativos existentes conservan su permiso, pero no acceden al documento.
+Este corte no impone aprobación médica exclusiva ni criterios PMO automáticos.
+No copiar contenido clínico reservado en motivo/evidencia compartidos: usar
+referencias administrativas de la revisión, conservando el original privado.
+
+La comprobación inicialmente bloqueada por Docker quedó completada (T6h/L42).
+API: ambas designaciones y revocación independiente, lector sin resolución403
+sin cambios persistidos, aprobación/rechazo de la misma solicitud, reintentos sin
+duplicación, historial/revisión y ausencia de atención/cargos/reservas nuevas.
+Tres regresiones1.361s y suite65pruebas23.462s OK; refuerzo focal2pruebas1.885s.
+No cambia el código productivo: son caracterizaciones del contrato existente,
+sin RED artificial ni nuevo motor, rol o autorización implícita.
+
+Navegador real: escritorio/aprobación y móvil/rechazo24.3s, PDF descargado por
+teclado con bytes exactos, consulta institucional posterior con estado terminal,
+lector médico sin resolución y resolutor administrativo sin contenido clínico.
+Siete pruebas anteriores19.6s OK. El nuevo recorrido no intercepta respuestas
+positivas: usa API/PostgreSQL/almacenamiento privado ficticios. Los negativos
+de transporte de la suite anterior mantienen sus inyecciones explícitas.
+Capturas de ambas resoluciones inspeccionadas; demo visible con solicitud
+ficticia aprobada y descarga médica disponible. No aceptación humana ni despliegue.
+Se conserva el permiso administrativo anterior; no se exige revisión médica
+exclusiva como una nueva regla de negocio. Sin cambios productivos, build o
+diferencial de contratos compartidos no aplican. Risk: none.
+
+## Pendientes consolidados para continuidad — 03/11/2026
+
+Este estado consolida los avances posteriores a las secciones históricas. T6b–T6h
+completan localmente designación, ingreso privado, descarga y resolución de la
+misma solicitud; no sigue pendiente decidir su representación ni crear otro
+dictamen. Esto no completa el contrato clínico/PMO de #147 ni acredita aceptación.
+
+| Tema | Ubicación de seguimiento | Pendiente real / condición de cierre |
+| --- | --- | --- |
+| Identidad/familias | #181, #142 | Homologación de equivalencias no confirmadas y aceptación operativa del contrato implementado; sin autofusión ni inferir familia por NROAFI. |
+| Derechos | #143 | Fuente validada, causales, fechas, gracia, mora, bajas y excepciones; implementar aplicación operativa sólo con reglas aprobadas. Configurar/simular ya funciona sin cambiar derechos. |
+| Novedades | #183 | Completar circuito bajo contrato de derechos, con evidencia, historia y aislamiento; ausencia de registros no produce baja. |
+| Autorizaciones médicas | #147 | Validar criterios clínicos/PMO, evidencia mínima, vigencias, conservación/reemplazo y aceptación OSTEL; no inferir aprobación médica exclusiva ni criterios automáticos. |
+| Aportes/recaudación | #144 | Esperar respuesta OSTEL: layouts/versiones y reglas de identificación, conciliación, imputación y reversas. No confundir declarado con dinero recibido. |
+| Cuenta corriente/cuotas | #145 | Esperar respuesta OSTEL: cálculo de cuota/diferencia, saldo, vencimiento, canales, rendiciones y emisión fiscal. Registro manual alternativo rechazado por el usuario. |
+| Liquidaciones | #149 | Acordar contrato de liquidación a prestadores y casos verificables; no sustituirlo por cuentas hospitalarias existentes. |
+| Reintegros médicos | #148 | Acordar circuito/evidencia y contrato; distinguir reintegro médico de devolución financiera. |
+| Tesorería/contabilidad | #153 | Definir contratos y trazabilidad ligados a eventos financieros; dependiente de los frentes anteriores, sin pagos reales. |
+| Intercambio SSSalud | #146 | Sólo si se confirma necesidad operativa y layout oficial; no inventar un formato. |
+| QA funcional | #184, #185 | PR196 incorporado, no aceptación integral; completar integración de módulos y aceptación humana sin equiparar pruebas locales con homologación. |
+| Coordinación/entrega | #141 | Revisar/publicar por unidades, CI observado, cierre de pendientes y autorización separada de merge/deploy; no cerrar issues por tests verdes. |
+
+### Deudas técnicas y de seguimiento — #185
+
+- **DT1 — Media anterior:** reproducir sólo con archivos ficticios el acceso anónimo
+  por normalización de rutas en desarrollo; endurecer sin romper descargas
+  autorizadas. Los documentos nuevos usan almacenamiento privado separado;
+  no se inspeccionaron adjuntos reales ni se afirma protección global.
+  Saneamiento local: reproducido y corregido; detalle y límites abajo. Pendiente
+  revisión nativa del cambio; verificación independiente/diferencial completada.
+- **DT2 — Clasificación de autoría:** corregir la clasificación pendiente de
+  BorradorReglaDerechos.creado_por y comprobar la prueba global correspondiente.
+  Es un fallo preexistente conocido, no queda oculto por las suites focales verdes.
+  Saneamiento local: clasificación global y regresión pública ahora pasan;
+  verificación independiente/diferencial completada y revisión nativa pendiente,
+  sin backfill de autoría.
+- **DT3 — Estado documental:** resúmenes T6a–T6g reconciliados con S17–S21/T6h;
+  conservar el Log histórico y verificar que futuras transiciones actualicen el resumen.
+- **DT4 — Recuperación de seguimiento:** archivo local íntegro; espejo completo de
+  memoria pendiente por límite de capacidad. Resolver sin truncar ni perder la
+  versión anterior; no declarar sincronización si no se verificó el contenido completo.
+  Recuperación soportada local: fragmentos JSON verificables y manifiesto de
+  concatenación/SHA256 bajo el tema de memoria
+  `odd/ostel-operacion-integral/saneamiento-20261103/mirror`;309 se conserva histórico.
+- **DT5 — Revisión nativa:** varios cortes carecen de revisión completada por el
+  impedimento registrado. No fabricar aprobación, repetir reportes/declines,
+  reusar linajes consumidos ni modificar el modo global. Cerrar sólo mediante
+  una recuperación soportada; si no está disponible, declarar el límite.
+- **DT6 — Integración y entrega:** reunir prueba integral proporcional y CI del
+  corte publicado; mantener separados commit/PR, CI, despliegue y aceptación.
+  Deploy e infraestructura remota requieren autorización específica.
+
+### Continuidad genérica sin información nueva de OSTEL
+
+Analizar, estudiar y planificar capacidades reutilizables por otras obras sociales,
+partiendo de lo existente y explicitando dependencias, reglas pendientes y pruebas.
+Esta autorización de planificación no habilita nuevos modelos de negocio, tasas,
+layouts, cobros, pagos ni efectos asistenciales. No reabrir la alternativa manual
+de aportes rechazada. La espera específica #144/#145 sigue vigente; el saneamiento
+técnico no depende de que OSTEL responda.
+
+### Saneamiento DT1 — barrera de media DEBUG (03/11/2026)
+
+Reproducido con PDF ficticio: la ruta literal clínica devolvía404, pero rutas
+normalizadas devolvían200 y los mismos bytes. El bloqueo ahora compara el destino
+resuelto con MEDIA_ROOT/uploads antes de delegar a Django. Cubre alias de separadores,
+mayúsculas y nombres Windows, sin sustituir el guard de la descarga autenticada.
+No migra archivos ni endurece buckets, proxies o servidores externos.
+
+Regresión persistente:13variantes anónimas404; archivo/metadatos/auditoría sin cambios;
+media pública normalizada y condicional304 preservada; descarga clínica autorizada
+con bytes exactos y auditoría. Suite propia de archivos/prescripciones24OK; verificador
+independiente en snapshots aislados confirma diferencial sin cambios no solicitados.
+Rollback acotado: wrapper/ruta DEBUG y su nueva regresión; revertirlo REINTRODUCE
+la exposición anónima observada. Risk: items2/3. No publicar sin autorización.
+
+### Saneamiento DT2 — autoría de borradores (03/11/2026)
+
+Clasificación global y POST simulado reprodujeron el mismo defecto: el campo
+BorradorReglaDerechos.creado_por no pertenecía a CAMPOS_AUTORIA y guardaba la
+cuenta de referencia, no a quien actuó. Una entrada reutiliza el pre_save existente;
+sin migración, backfill, cambios de membresías ni activación de derechos.
+
+Regresión por API: historial/autoría real, evento y operación simulada, aislamiento,
+reintento sin nuevas versiones y contexto limpio; fuera de simulación conserva autor.
+Suite propia de simulación/borradores71OK. Integración independiente95OK y repetición
+padre95OK tras incorporar variantes/invariantes a las regresiones. Diferencial contra
+ee390819: sólo cambian el acceso anónimo indebido y el autor simulado incorrecto.
+No hubo UI nueva ni recorrido browser en este corte backend; no repetir pruebas de UI
+históricas como si fueran actuales. Advertencia no bloqueante:staticfiles local ausente.
+Rollback: entrada de clasificación y nueva regresión; vuelve el defecto de atribución
+y el fallo global. Risk: items2/3; revisión nativa todavía no aprobada.
+
+### DT6 — evidencia de entrega, no publicación del saneamiento
+
+PR208 OPEN/DRAFT en HEAD documental9f2d76e. Frontend/OpenAPI/portal real/UI interceptada
+SUCCESS; finanzas FAILURE al cargar familia-ostel-real.spec.js sin SALUD_FAMILIA_MANIFEST;
+backend todavía IN_PROGRESS en la última consulta. El fallo de finanzas ocurre antes
+del recorrido de familias: no prueba un defecto financiero, pero CI NO está verde.
+El config de importación incluye esa prueba y el workflow sólo prepara el manifiesto
+de importación. Corregir su preparación/separación de runners requiere otra unidad
+acotada de tooling; no se cambia ni se excluye silenciosamente un test en este corte.
+Estos fixes locales no están en ese PR; no acreditan CI propio, merge, deploy ni
+aceptación humana. Revisión histórica DT5 sigue pendiente de binding/recuperación
+soportados, sin repetir reporte/decline ni tocar proveedor/global.
+
+### DT6a — preparación combinada de CI autorizada (03/11/2026)
+
+Con S26, `python tests/importacion_real.py preparar` prepara ahora importación
+y familias mediante las dos fixtures existentes, en la misma base efímera del job.
+Familias usa una carpeta temporal propia derivada del directorio de importación:
+`ostel-familia-ui-<nombre-del-directorio-importación>/manifiesto.json`.
+El workflow exporta SALUD_FAMILIA_MANIFEST con ese destino antes de ejecutar
+Playwright; ambas suites siguen seleccionadas, sin skip ni testMatch reducido.
+
+La preparación rechaza directorios existentes y la base existente antes de sembrar.
+La limpieza valida los dos manifiestos antes de borrar cualquiera; elimina sólo
+sus credenciales ficticias y conserva XLSX, directorios y PostgreSQL. No cambia
+la CLI preparar/servidor/limpiar ni los guards locales y de entorno anteriores.
+
+RED público: faltaba el tercer subprocess de preparación y la limpieza ignoraba
+un manifiesto familiar ajeno. GREEN:11regresiones del runner, incluidas preparación
+de ambas fixtures/entorno aislado, directorio familiar ocupado y limpieza acotada
+idempotente. Son pruebas con fronteras subprocess/PG simuladas, NO un job CI real.
+El servicio local autorizado ya contiene la base dedicada: no se resetea para
+forzar el arranque de CI; frontend/node_modules ausente, sin instalar dependencias.
+Verificación independiente/diferencial completada sobre la orquestación y sus
+guards, con fronteras externas simuladas. Se corrigió un defecto hallado por
+el verificador: un directorio familiar enlazado podía redirigir la limpieza si
+no se proporcionaba SALUD_FAMILIA_MANIFEST. Ahora se rechaza el destino resuelto
+distinto antes de borrar cualquiera de los archivos. Regresión RED→GREEN y
+rechequeo real de enlaces Windows: ambos hashes conservados, cero conexiones DB.
+Suite final12OK sin skips y spotcheck padre aprobado. CI remoto de estos cambios
+requiere publicación autorizada; revisión nativa DT5 no se da por aprobada.
+Rollback: retirar orquestación/manifiesto familiar del runner/workflow y sus
+regresiones reintroduce el fallo de descubrimiento de familias. Risk:items2/5.
+
+### DT6b — staticfiles en pruebas de prescripciones (03/11/2026)
+
+**Estado vigente04/11:** regresión clínica local completada con PostgreSQL y
+STATIC_ROOT poblado:25pruebas OK. El bloqueo de entorno descrito abajo es histórico;
+no equivale a CI remoto, despliegue ni aceptación integral.
+
+Con S27 se conserva el alias staticfiles configurado al reemplazar STORAGES
+en las pruebas, incluidos sus overrides negativos. No se cambia almacenamiento,
+middleware ni configuración productiva. Los aliases clínicos que cada negativo
+omite siguen ausentes: no se mezclan todos los storages originales.
+
+Causa reproducida: con archivos de nombre versionado presentes en STATIC_ROOT,
+WhiteNoise consulta staticfiles_storage al inicializar su caché. CI los genera
+con collectstatic, pero local no tenía esa carpeta; por eso las suites anteriores
+no mostraron el error. La nueva regresión comparte fixture con la clase clínica,
+realiza GET real de CSS ficticio versionado y comprueba bytes idénticos200
+con ambos aliases clínicos y faltando cada uno. La ausencia intencional produce
+InvalidStorageError para ese alias; no se suprimen middleware ni validaciones.
+
+RED observado: mismo InvalidStorageError de staticfiles que CI, sin crear ni abrir
+DB. GREEN: regresión estática sin DB, tres variantes de fixture. No se ejecutó
+la suite clínica completa en el corte03/11: PostgreSQL dedicado en53474 agotaba connect_timeout3;
+Docker CLI devolvióHTTP500. La prueba inicial que esperaba DB fue interrumpida.
+No se reinicia Docker ni se alteran contenedores, puertos, datos o dependencias.
+Estado parcial hasta recuperar ese entorno y repetir la suite; CI remoto no
+acreditado, cambios sin publicar. La fixture de turnos permanece fuera de S27.
+Rollback: revertir sólo fixture y nueva regresión reintroduce el error de estáticos
+en pruebas; no cambia comportamiento productivo. Risk:none (sólo pruebas).
+
+Reintento04/11: Docker ya respondía, pero el contenedor dedicado estaba detenido.
+Se inició sólo ese contenedor tras verificar imagen y binding loopback, sin
+reiniciar Docker/global ni crear/resetear bases o contenedores. Puerto activo64010;
+suite de prescripciones y regresiones de descarga/media25OK4.745s con estáticos
+ficticios versionados en temporal externo. Esto verifica también los negativos
+clínicos antes bloqueados; no altera la fixture de turnos ni publica estos fixes.
+
+### DT6c — inicios de turnos ficticios sin colisión de calendario (04/11/2026)
+
+Con S28 se corrige sólo la generación de nuevas citas en seed_ostel_demo.
+Los desfases por prestador/práctica no bastaban: al saltar fines de semana,
+el mismo paciente podía obtener el mismo inicio en dos agendas. El fallo depende
+del reloj: se reprodujo con miércoles07local, no con martes07 ni horario normal.
+
+La fixture conserva los desfases y utiliza proximos_libres/reservar existentes;
+recuerda los inicios ya elegidos por documento ficticio y escoge el primer candidato
+compatible. Solicitar un candidato más que los inicios ya usados permite elegir
+sin un número arbitrario de reintentos. No se cambian guardas, bloqueos, motor,
+JSON/CLI, derechos o criterios clínicos. Repetir un escenario existente no migra
+ni reprograma sus citas; los datos anteriores se preservan.
+
+Prueba pública determinista RED→GREEN:12reservas futuras y repetición inmutable.
+Suite demo16OK; diferencial contra f14b747: a14local se conservan las reservas,
+cantidades y estructura JSON; a07local sólo una cita cambia, manteniendo las12
+y eliminando el inicio duplicado. Son pruebas PostgreSQL ficticias bajo TestCase,
+no una siembra manual sobre una demo o base operativa.
+
+Integración de ocho módulos saneados124OK35.891s, sin skips, con estáticos externos
+y PGdedicado. No sustituye ejecución de CI remoto, navegador o aceptación humana.
+El PR208 anterior continúa con backend/finanzas rojos y no contiene estos fixes;
+publicar/mergear/desplegar requiere autorización separada. Revisión nativa histórica
+DT5 sin cierre, sin alterar proveedor/global. Rollback: retirar el filtro local
+y la regresión de reloj reintroduce las colisiones de la fixture, no cambia el motor
+de reservas. Risk:none (datos ficticios nuevos, contratos y guardas intactos).
+
+## Aceptación y publicación de Novedades — 05/11/2026
+
+El usuario aceptó el circuito técnico genérico y autorizó commit, push, PR, merge y despliegue sobre la demo existente. La deuda normativa pendiente se sigue por [#219](https://github.com/Mkdir-arg/SistemaDeSalud/issues/219), dependiente de #143. #183 conserva la trazabilidad del cierre genérico; su movimiento a QA no homologará efectos OSTEL.
+
+La integración sobre main72b2533 conserva borradores de derechos y simulación de plazos, además de Novedades. Verificación independiente sobre árbol staged inmutable:270pruebas PostgreSQL/15módulos, cero omitidas; paridad del listado legacy en cuatro filtros; spotcheck del padre correcto. Build aislado correcto. Sin cambios de esquema ni seeds remotos. Publicación/CI/merge/despliegue se registrarán separadamente cuando se observen.

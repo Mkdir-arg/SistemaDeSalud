@@ -78,7 +78,7 @@ export default function AutorizacionesFinanciador({ organizacion, scope }) {
       </tr>)}</tbody></table></div>}
       <PaginasAutorizacion consulta={consulta} pagina={pagina} cambiar={(page) => aplicar(filtros, page)} />
     </>}</Card>
-    {detalle && <DetalleAutorizacion id={detalle} ambito={{ financiador: organizacion.id }} scope={scope} onClose={() => setDetalle(null)} onVerSolicitud={setDetalle} onGuardado={guardado} />}
+    {detalle && <DetalleAutorizacion id={detalle} ambito={{ financiador: organizacion.id }} scope={scope} consultaPrescripciones={organizacion.consulta_prescripciones === true} onClose={() => setDetalle(null)} onVerSolicitud={setDetalle} onGuardado={guardado} />}
     {nuevaManual && <NuevaSolicitudManual organizacion={organizacion} scope={scope} onClose={() => setNuevaManual(false)} onGuardado={async (id) => { setNuevaManual(false); await qc.invalidateQueries({ queryKey: scope }); setDetalle(id); }} />}
   </div>;
 }

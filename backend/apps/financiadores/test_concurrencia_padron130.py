@@ -34,13 +34,19 @@ class ConcurrenciaPadron130Tests(TransactionTestCase):
         self.b = Afiliado.objects.create(financiador=self.org, numero="B", documento="10000002", nombre="B", desde=timezone.localdate())
 
     def test_vinculos_inversos_simultaneos_no_crean_ciclo(self):
+        self.comprobar_vinculos_inversos("hijo")
+
+    def test_vinculos_pendientes_inversos_simultaneos_no_crean_ciclo(self):
+        self.comprobar_vinculos_inversos("")
+
+    def comprobar_vinculos_inversos(self, parentesco):
         barrera = Barrier(2)
         def vincular(afiliado, titular):
             close_old_connections()
             try:
                 barrera.wait(timeout=10)
                 try:
-                    editar_ficha(afiliado=afiliado, usuario=self.usuario, entrada={"revision": 1, "motivo": "Familia", "titular": titular.pk, "parentesco": "hijo"})
+                    editar_ficha(afiliado=afiliado, usuario=self.usuario, entrada={"revision": 1, "motivo": "Familia", "titular": titular.pk, "parentesco": parentesco})
                     return "aceptado"
                 except (ValidationError, ConflictoPadron):
                     return "rechazado"
@@ -152,6 +158,12 @@ class ConcurrenciaPadron130Tests(TransactionTestCase):
         self.assertEqual(afiliado.historial.get().motivo, "Alta exclusiva")
 
     def test_contacto_y_familia_no_bloquean_el_commit_de_auditoria(self):
+        self.comprobar_contacto_y_familia("hijo")
+
+    def test_contacto_y_familia_pendiente_no_bloquean_el_commit_de_auditoria(self):
+        self.comprobar_contacto_y_familia("")
+
+    def comprobar_contacto_y_familia(self, parentesco):
         registrado, continuar = Event(), Event()
         original = padron.registrar_historial
 
@@ -183,7 +195,7 @@ class ConcurrenciaPadron130Tests(TransactionTestCase):
                 self.assertTrue(registrado.wait(timeout=10))
                 with connection.execute_wrapper(liberar):
                     editar_ficha(afiliado=self.b, usuario=self.usuario, entrada={
-                        "revision": 1, "motivo": "Familia concurrente", "titular": self.a.pk, "parentesco": "hijo",
+                        "revision": 1, "motivo": "Familia concurrente", "titular": self.a.pk, "parentesco": parentesco,
                     })
                 futuro.result(timeout=15)
             finally:
