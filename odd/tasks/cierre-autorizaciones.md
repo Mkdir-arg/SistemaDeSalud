@@ -15,9 +15,9 @@ Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos 
 
 | ID | Specs | Corte | Ruta / riesgo | Estado / evidencia |
 | --- | --- | --- | --- | --- |
-| T1 | S1–S4 | Precisar los efectos de aprobación y recuperar la matriz documental previa sin perder historia | Inline; pasivo | Completo local: matriz recuperada y precisión financiera; commit pendiente |
-| T2 | S1,S4 | Caracterizar por API presentación privada → observación → reenvío → resolución; conservar original/ID/plazo, revisión, reintento y permisos | Inline; pruebas de contrato existente, Risk: none; sin cambio de producto | Completo local: dos caracterizaciones API aprobadas; commit pendiente |
-| T3 | S1,S4 | Ejecutar focal y suite pertinente en entorno aislado, registrar alcance y límites | Focal inline; suite delegada por duración de preparación/migraciones | Parcial: suite 82 tests OK, 10 omisiones PostgreSQL; falta ese entorno y navegador |
+| T1 | S1–S4 | Precisar los efectos de aprobación y recuperar la matriz documental previa sin perder historia | Inline; pasivo | Completo local: matriz recuperada y precisión financiera; commit `e7aeb75` |
+| T2 | S1,S4 | Caracterizar por API presentación privada → observación → reenvío → resolución; conservar original/ID/plazo, revisión, reintento y permisos | Inline; pruebas de contrato existente, Risk: none; sin cambio de producto | Completo local: dos caracterizaciones API aprobadas; commit `e7aeb75` |
+| T3 | S1,S4 | Ejecutar focal y suite pertinente en entorno aislado, registrar alcance y límites | Focal inline; suite delegada por duración de preparación/migraciones | Parcial: suite 82 tests OK, 10 omisiones PostgreSQL; commit `e7aeb75`; falta ese entorno y navegador |
 | T4 | S1,S2,S5 | Traducir contrato clínico aprobado a casos y configuración existente, implementar únicamente brechas | No ejecutar sin fuente y decisiones aprobadas; ruta/riesgo por determinar | Bloqueado por contrato |
 | T5 | S1,S2,S4,S5 | Integración representativa, escritorio/móvil/teclado y aceptación funcional/clínica; entrega separada | No sustituir por caracterización local; sin deploy ni aceptación implícita | Dependiente de T4 y entorno autorizado |
 
@@ -45,3 +45,10 @@ usa como objetivo el plan que me compartiste para cerrar autorizaciones. avanza 
 - Runner temporal externo sanea entorno y deshabilita dotenv; usa SQLite en memoria, sin `.env` ni servidor. Dependencias existentes, sin instalación/configuración global. Base efímera destruida. Advertencia de staticfiles ausente conservada; no intervenir en saneamiento.
 - Próximo bloqueo técnico: PostgreSQL descartable y recorrido real escritorio/móvil/teclado del candidato requieren autorización acotada de Docker/servicios localhost; no se inicia ese entorno por inferencia. Contratos clínicos continúan pendientes sin reiterar pedido OSTEL. Objetivo completo NO logrado; no cierre #147 ni homologación/aceptación/CI/merge/deploy.
 - Risk: none. Sólo pruebas y documentación; no cambia código productivo, permisos, locks, esquema ni dependencias.
+
+### L4 — Unidad local y revisión proporcional
+
+- Commit `e7aeb75`: pruebas, matriz de aceptación y seguimiento juntos (235 líneas autoras). Previsión bajo orientación de 400; no se abre cadena ni PR. El worktree analítico de origen conserva sus cambios anteriores sin modificación.
+- Comprobación estructural: AST válido, enlaces/rangos inmutables existentes, contenido íntegro del documento base preservado y diff sin errores. No cambios productivos ni de normalizadores posteriores a las pruebas.
+- Evaluación nativa: el inventario canónico identificó sólo el nuevo documento de tareas; selección explícita resuelta. Candidato y commit: medium/executable_change, review_due=false/under_budget. Sin START, consentimiento, revisión aprobada ni cambios del switch global.
+- T1/T2 completos; T3 parcial por omisiones PostgreSQL; T4/T5 abiertos. Siguiente intervención solicitada: autorizar PostgreSQL descartable local y servidores loopback con datos ficticios para concurrencia y navegador, sin bases existentes/remotas ni saneamiento. Los contratos normativos siguen pendientes independientemente.
