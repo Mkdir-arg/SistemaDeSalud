@@ -23,7 +23,7 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 | T2 | S3,S4 | Suprimir exposición administrativa de CODPAR sin modificar el original | Inline tras mapa delegado de superficies desconocidas; Risk: items 2/3 | Completo local: RED por CODPAR expuesto; GREEN focal; sin mutar fuente/huella; commit `8d54b5f` |
 | T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación técnica local S8; commit `8d54b5f` |
 | T4 | S6 | Equivalencias homologadas y diferencias necesarias | Condicionada a fuente aprobada | Pendiente de información externa ya identificada; no inventar catálogo |
-| T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local confirmada S8; publicación autorizada S9, en curso; no cerrar issues |
+| T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local S8 y PR borrador #214 publicado S9; sin merge/deploy; no cerrar issues |
 
 ## Log
 
@@ -79,3 +79,9 @@ retira el entorno local y publica la entrega
 - Tres carpetas externas propias verificadas como hijas directas del temporal, sin enlaces de redirección. El entorno rechazó el borrado nativo aun con autorización nueva; no se usó otra herramienta para eludirlo. Temporales retenidos: salud-familias-cierre-eui91_sa, ostel-familia-ui-01a1a7cc-cierre y familias-independent-b7zpmd1e. El worktree y sus dependencias locales se conservan.
 - Publicación prevista: un PR borrador contra juanikitro/salud-continuidad-generica-20261103, cuya punta remota coincide con base8a3a1d8, para mostrar sólo este corte; no integrar la entrega acumulada ni saneamiento. Usar GitHub autorizado por HTTPS, sin SSH ni extracción de credenciales. Refs #181/#142, no cierre automático. Sin merge/deploy.
 - La aceptación técnica local sigue vigente; homologación permanece pendiente. Revisión nativa del candidato funcional omitida por elección2 y seguimientos pasivos; no se reclama aprobación. Registrar URL/CI observado después de confirmar creación; no inferir éxito de una operación ambigua.
+
+### L7 — Recibo de publicación y retiro
+
+- PR borrador confirmado: https://github.com/Mkdir-arg/SistemaDeSalud/pull/214, OPEN/DRAFT, base juanikitro/salud-continuidad-generica-20261103. Punta remota616447f comprobada contra local; ocho archivos/352líneas al crear, sin diff acumulado ajeno.
+- Verificado después del retiro: cero listeners en8347/5351/58366 y ningún contenedor con la etiqueta propia. Los procesos hijos que sobrevivieron a las sesiones fueron verificados por línea/parentesco y detenidos; no procesos ajenos. El borrado de temporales sigue rechazado por el entorno.
+- CI observado en PR214: seis checks en curso. No se declara aprobado ni se repiten trabajos de saneamiento; resultado final se conserva en GitHub y memoria de sesión. Este recibo es seguimiento pasivo, sin nueva verificación funcional necesaria.

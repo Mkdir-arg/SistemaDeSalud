@@ -99,16 +99,19 @@ corrigió configuración ajena ni se presenta esta ejecución como CI integral.
 Seguimiento y comandos en `odd/tasks/familias-cierre.md`. El usuario respondió
 «acepto» a «¿Aceptás el circuito mostrado en la demo?»: aceptación técnica local
 del circuito mostrado, sin atribuirle casos o dispositivos no detallados.
-Homologación OSTEL, publicación, merge y deploy siguen separados y pendientes;
+Homologación OSTEL, integración/merge y deploy siguen separados y pendientes;
 esta aceptación no aprueba equivalencias, normativa ni derechos.
 La verificación independiente no sustituye la revisión nativa ni su consentimiento.
 El usuario eligió «Omitir esta vez» para el candidato local de este corte: el
 proveedor confirmó `declined_this_candidate`. No hay revisión nativa aprobada
-ni se desactivaron revisiones futuras; la entrega sigue sin publicarse.
+ni se desactivaron revisiones futuras; esa elección no autoriza por sí sola publicar.
 El usuario autorizó después retirar el entorno y publicar la entrega: los
 procesos de demo y el PostgreSQL propio fueron retirados. Las carpetas temporales
 no se borraron porque el entorno rechazó la operación. La publicación autorizada
-no implica merge, deploy ni homologación; su recibo queda en el seguimiento.
+no implica merge, deploy ni homologación. Entrega publicada en el
+[PR borrador #214](https://github.com/Mkdir-arg/SistemaDeSalud/pull/214),
+contra la rama del snapshot de estudio, no main; CI observado en curso.
+Recibo y alcance en el seguimiento.
 Ante una corrección futura, conservar originales e historial y reparar hacia
 adelante; retirar la protección reintroduciría la exposición conocida.
 
