@@ -2427,3 +2427,5 @@ de reservas. Risk:none (datos ficticios nuevos, contratos y guardas intactos).
 El usuario aceptó el circuito técnico genérico y autorizó commit, push, PR, merge y despliegue sobre la demo existente. La deuda normativa pendiente se sigue por [#219](https://github.com/Mkdir-arg/SistemaDeSalud/issues/219), dependiente de #143. #183 conserva la trazabilidad del cierre genérico; su movimiento a QA no homologará efectos OSTEL.
 
 La integración sobre main72b2533 conserva borradores de derechos y simulación de plazos, además de Novedades. Verificación independiente sobre árbol staged inmutable:270pruebas PostgreSQL/15módulos, cero omitidas; paridad del listado legacy en cuatro filtros; spotcheck del padre correcto. Build aislado correcto. Sin cambios de esquema ni seeds remotos. Publicación/CI/merge/despliegue se registrarán separadamente cuando se observen.
+
+La primera CI de PR#220 detectó una colisión de identificadores OpenAPI entre listado y detalle. Se documenta el listado con identificador explícito y regresión; no cambia las rutas ni los efectos administrativos. La prueba local reprodujo el fallo antes de corregirlo.

@@ -169,3 +169,8 @@ autorizo
 - Verificador independiente sobre árbol stagedf98092b:270pruebas PG/15módulos63.207s, cero omitidas; incluye borradores/seguridad/integridad/simulación de main. Paridad legacy cuatro variantes HTTP200/JSON, baseline72b2533 y candidato. Spotcheck padre del probe:OK. Build integrado5.23sOK. Advertencia staticfiles preexistente; sin bloqueante funcional.
 
 - Primer intento de navegador integrado falló al leer /usuarios/me/: la DB ficticia retenida todavía no tenía la columna auditoria_medica incorporada por migraciones ya existentes de main. No defecto de Novedades: se actualizó exclusivamente esa DB desechable mediante el launcher seguro (sin nuevas migraciones ni conexiones remotas). Reejecución posterior8recorridos escritorio/móvil correcta.
+
+- PR#220 publicado sobre main, head de integración e34c0ac. Evaluación nativa del rango comprometido:medium/under_budget, review_due=false; no nuevo START ni reutilización de autoridad histórica. .atl/ excluido con inventario nativo explícito.
+- CI detectó colisión de operationId entre listado y detalle de Novedades. Causa: respuesta OBJECT en acción detail=True induce nombre retrieve también para listado. Reproducción local con regresión de esquema:RED. Corrección limitada al operation_id explícito del GET listado (API nueva, sin cambio de URL/permisos/comportamiento); se agrega regresión, sin silenciar warnings ni alterar workflow.
+
+- Corrección OpenAPI:GREEN local15casos de Novedades7.386s y `spectacular --fail-on-warn` correcto con entorno aislado sin .env. Cambio exclusivamente de metadato de listado nuevo; no modificación de semántica/contratos previos. Risk:none para esta corrección; riesgos de integración2/3/4/5 ya verificados independientemente y pendientes deCI/deploy.

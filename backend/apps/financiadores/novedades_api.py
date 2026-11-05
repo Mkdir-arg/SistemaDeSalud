@@ -44,7 +44,7 @@ class DecisionNovedad(EntradaEstricta):
 
 
 class NovedadesMixin:
-    @extend_schema(methods=["GET"], responses=OpenApiTypes.OBJECT)
+    @extend_schema(methods=["GET"], operation_id="api_financiadores_novedades_list", responses=OpenApiTypes.OBJECT)
     @extend_schema(methods=["POST"], request=PropuestaNovedad, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["get", "post"])
     def novedades(self, request, pk=None):

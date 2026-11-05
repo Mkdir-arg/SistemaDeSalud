@@ -5,7 +5,7 @@ from threading import Barrier
 from unittest import skipUnless
 
 from django.db import close_old_connections, connection
-from django.test import TestCase, TransactionTestCase
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
 from . import models as m
@@ -304,3 +304,14 @@ class NovedadesConcurrenciaTests(NovedadesSetup, TransactionTestCase):
         self.assertEqual(len(m.Importacion.objects.get(pk=propuesta["id"]).filas[0]["historia"]), 2)
         self.assertEqual(m.EventoCobertura.objects.filter(accion="resolver_novedad").count(), 1)
         self.assertEqual(self.huella(), anterior)
+
+
+class EsquemaNovedadesTests(SimpleTestCase):
+    def test_listado_y_detalle_tienen_identificadores_openapi_distintos(self):
+        from drf_spectacular.generators import SchemaGenerator
+
+        rutas = SchemaGenerator().get_schema(public=True)["paths"]
+        listado = rutas["/api/financiadores/{id}/novedades/"]["get"]["operationId"]
+        detalle = rutas["/api/financiadores/{id}/novedades/{novedad_id}/"]["get"]["operationId"]
+        self.assertEqual(listado, "api_financiadores_novedades_list")
+        self.assertNotEqual(listado, detalle)
