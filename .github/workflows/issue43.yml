@@ -45,6 +45,7 @@ jobs:
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "SALUD_IMPORTACION_DIRECTORIO=$RUNNER_TEMP/salud-importacion182-fixtures" >> "$GITHUB_ENV"
           echo "SALUD_IMPORTACION_MANIFEST=$RUNNER_TEMP/salud-importacion182-fixtures/manifiesto.json" >> "$GITHUB_ENV"
+          echo "SALUD_FAMILIA_MANIFEST=$RUNNER_TEMP/ostel-familia-ui-salud-importacion182-fixtures/manifiesto.json" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -72,13 +73,13 @@ jobs:
       - name: Recorrido de navegador sin interceptar API
         run: npx playwright test -c playwright.issue43-real.config.js
         working-directory: frontend
-      - name: Preparar importación OSTEL ficticia en base exclusiva
+      - name: Preparar importación y familias OSTEL ficticias en base exclusiva
         run: python tests/importacion_real.py preparar
         working-directory: backend
-      - name: Importación OSTEL con navegador, API y PostgreSQL reales
+      - name: Importación y familias OSTEL con navegador, API y PostgreSQL reales
         run: npx playwright test -c playwright.importacion-real.config.js
         working-directory: frontend
-      - name: Retirar credenciales ficticias de importación
+      - name: Retirar credenciales ficticias de importación y familias
         if: always()
         run: python tests/importacion_real.py limpiar
         working-directory: backend
