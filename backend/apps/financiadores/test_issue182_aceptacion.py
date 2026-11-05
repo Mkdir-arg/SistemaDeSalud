@@ -126,4 +126,8 @@ class Aceptacion182Tests(DatosRespuesta, TransactionTestCase):
         self.assertEqual(Afiliado.objects.count(), 1)
         self.assertFalse(HistorialAfiliacion.objects.exists())
         self.assertEqual(Afiliado.objects.filter(pk=ausente.pk).values().get(), valores)
-        self.assertTrue(all(f["bloqueo_fuente"] and len(f["original"]) == 40 for f in respuesta["filas"]))
+        self.assertTrue(all(f["bloqueo_fuente"] and len(f["original"]) == 39
+                            and "CODPAR" not in f["original"] for f in respuesta["filas"]))
+        original = Importacion.objects.get(pk=actual["id"])
+        self.assertTrue(all(f["bloqueo_fuente"] and len(f["original"]) == 40
+                            and "CODPAR" in f["original"] for f in original.filas))
