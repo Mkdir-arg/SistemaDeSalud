@@ -11,6 +11,7 @@ Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos 
 - S4 — Preservar S17–S21 ya aprobados: adjunto privado PDF/imagen, presentación institucional, consulta designada y resolución de la misma solicitud con capacidades independientes; no dictamen paralelo ni exclusividad médica inferida. Fuente: `odd/tasks/ostel-operacion-integral.md`, S17–S21.
 - S5 — Contratos aún no aprobados: criterios PMO, suficiencia/obligatoriedad clínica, vigencias/renovación/excepciones, conservación/reemplazo y aceptación OSTEL. La continuidad autoriza avanzar técnicamente, no decidir estas reglas ni activar cobros/pagos o publicar/desplegar.
 - S6 — Entorno autorizado: «autorizo», en respuesta a PostgreSQL descartable en Docker, dependencias desde el lockfile existente y servidores sólo en localhost, con datos ficticios, para completar concurrencia y navegador. No bases existentes/remotas, dependencias nuevas, saneamiento ni publicación.
+- S7 — Publicación e integración: «autorizo publicacion e integracion». Publicar el corte propio; no implica desplegar ni aprobar reglas clínicas. La integración debe preservar sus dependencias y no arrastrar entregas ajenas sin definir el destino.
 
 ## Tasks
 
@@ -78,3 +79,11 @@ autorizo
 - Commit `561ea6b` contiene fixture/recorridos y documentación verificados. Tramo acumulado desde `8a3a1d8`: evaluación medium/executable_change, 328 líneas, review_due=false/under_budget. No START, revisión aprobada ni cambio del modo global. El chequeo previo mal formado con base-ref y árbol sucio no se usó como aprobación; se evaluó correctamente el candidato y luego el rango comprometido.
 - #147 reconsultado: OPEN, mantiene criterios clínicos/PMO, evidencia mínima, vigencias/conservación/reemplazo y aceptación pendientes. La nueva autorización de entorno no aporta ese contrato. Bloqueo restante es contractual/aceptación, no Docker ni pruebas pendientes del corte técnico.
 - Recursos propios retenidos para inspección: contenedor loopback61211; API sesión68653/puerto63952; Vite sesión62143/puerto63953; demo visible sesión28698 en financiador ficticio35. Scratch externo `salud-autorizaciones-pg-c171m8_b`; no imprimir manifiestos/credenciales ficticias. Sin push/PR/merge/deploy, sin saneamiento, sin acceso a datos reales.
+
+### L8 — Publicación autorizada y base de integración
+
+autorizo publicacion e integracion
+
+- Estado remoto revalidado: `main` es ancestro de la rama local, pero faltan 61 commits acumulados. La rama de continuidad `juanikitro/salud-continuidad-generica-20261103` coincide con la base `8a3a1d8`; el delta propio contiene sólo los cuatro commits del corte y cinco archivos. Se prepara PR acotado contra esa rama, sin publicar todos los cambios acumulados como si fueran propios.
+- PR208 permanece OPEN/DRAFT sobre main; su cabeza `c28fc7e` tiene seis checks exitosos. Eso no acredita el candidato de este corte ni autoriza integrar los demás frentes. Se mantiene separada la decisión de llevar toda la dependencia a main.
+- Skills `work-unit-commits` y `chained-pr` cargados. `branch-pr` no está instalado en las rutas habituales; se usa el CLI GitHub existente, sin instalar herramientas. No se cambian dependencias, estado clínico ni saneamiento.
