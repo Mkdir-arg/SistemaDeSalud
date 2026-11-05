@@ -103,11 +103,13 @@ test("cancelar retira el archivo y conserva el contrato JSON anterior sin adjunt
 
 const rutaDescarga = /\/autorizaciones-cobertura\/\d+\/prescripcion\/\?/;
 
-for (const [indice, decision, estado, viewport] of [
+for (const [indice, decision, estado, viewport, conObservacion] of [
   [5, "aprobar", "Aprobada", { width: 1365, height: 900 }],
   [6, "rechazar", "Rechazada", { width: 390, height: 844 }],
+  [7, "aprobar", "Aprobada", { width: 1365, height: 900 }, true],
+  [8, "rechazar", "Rechazada", { width: 390, height: 844 }, true],
 ]) {
-  test(`evaluación médica: ${decision} resuelve la misma solicitud con designaciones independientes`, async ({ page, browser }, testInfo) => {
+  test(`${conObservacion ? "observación y reenvío" : "evaluación médica"}: ${decision} resuelve la misma solicitud con designaciones independientes`, async ({ page, browser }, testInfo) => {
     const escenario = datos.escenarios[indice];
     await page.setViewportSize(viewport);
     await formulario(page, escenario);
@@ -128,6 +130,33 @@ for (const [indice, decision, estado, viewport] of [
       await expect(operador.getByRole("button", { name: "Descargar prescripción", exact: true })).toHaveCount(0);
       await expect(operador.getByRole("button", { name: "Resolver solicitud", exact: true })).toBeVisible();
       await detalle(evaluador, escenario, "evaluador");
+      if (conObservacion) {
+        expect(creada.plazo_respuesta).toBeTruthy();
+        await evaluador.getByRole("button", { name: "Resolver solicitud", exact: true }).click();
+        await evaluador.getByRole("combobox", { name: "Decisión", exact: true }).selectOption("observar");
+        await evaluador.getByLabel("Motivo de la decisión", { exact: true }).fill("Aclarar referencia administrativa ficticia");
+        const observacion = evaluador.waitForResponse((r) => r.url().includes(`/${creada.id}/resolver/`) && r.request().method() === "POST");
+        await evaluador.getByRole("button", { name: "Registrar decisión", exact: true }).click();
+        const observada = await observacion;
+        expect(observada.status()).toBe(200);
+        expect(await observada.json()).toMatchObject({ id: creada.id, estado: "observada", revision: 2, plazo_respuesta: creada.plazo_respuesta });
+        await expect(evaluador.getByRole("dialog")).toHaveCount(0);
+        await page.reload();
+        await page.getByRole("button", { name: `Ver solicitud ${creada.id}`, exact: true }).click();
+        await expect(page.getByRole("button", { name: "Descargar prescripción", exact: true })).toHaveCount(0);
+        await page.getByRole("button", { name: "Responder observación", exact: true }).click();
+        await page.getByLabel("Justificación actualizada", { exact: true }).fill("Referencia aclarada sin transcribir contenido clínico");
+        const reenvio = page.waitForResponse((r) => r.url().includes(`/${creada.id}/reenviar/`) && r.request().method() === "POST");
+        await page.getByRole("button", { name: "Reenviar solicitud", exact: true }).focus();
+        await page.keyboard.press("Enter");
+        const reenviada = await reenvio;
+        expect(reenviada.status()).toBe(200);
+        expect(await reenviada.json()).toMatchObject({ id: creada.id, estado: "pendiente", revision: 3, prescripcion_estado: "presentada", plazo_respuesta: creada.plazo_respuesta });
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await evaluador.reload();
+        await evaluador.getByRole("row").filter({ has: evaluador.getByRole("button", { name: /^(Ver|Revisar)$/ }) })
+          .getByRole("button", { name: /^(Ver|Revisar)$/ }).click();
+      }
       const descarga = evaluador.waitForEvent("download");
       await evaluador.getByRole("button", { name: "Descargar prescripción", exact: true }).focus();
       await evaluador.keyboard.press("Enter");
@@ -151,9 +180,10 @@ for (const [indice, decision, estado, viewport] of [
       const resuelta = await respuesta.json();
       expect(resuelta.id).toBe(creada.id);
       expect(resuelta.estado).toBe(estado.toLowerCase());
-      expect(resuelta.revision).toBe(creada.revision + 1);
+      expect(resuelta.revision).toBe(creada.revision + (conObservacion ? 3 : 1));
+      expect(resuelta.plazo_respuesta).toBe(creada.plazo_respuesta);
       expect(resuelta.puede_resolver).toBe(false);
-      expect(resuelta.historial.map((h) => h.accion)).toEqual(["solicitar", decision]);
+      expect(resuelta.historial.map((h) => h.accion)).toEqual(conObservacion ? ["solicitar", "observar", "reenviar", decision] : ["solicitar", decision]);
       expect(resuelta.cantidades).toEqual({ comprometida: 0, consumida: 0, disponible: decision === "aprobar" ? 1 : 0 });
       await expect(evaluador.getByRole("dialog")).toHaveCount(0);
       await page.reload();

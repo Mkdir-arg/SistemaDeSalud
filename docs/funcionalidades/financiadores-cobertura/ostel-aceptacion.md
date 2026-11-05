@@ -59,10 +59,32 @@ base efímera destruida al terminar. Se reutilizaron dependencias instaladas,
 sin cambios globales ni instalaciones. Advertencia: `backend/staticfiles`
 ausente; no se investigó ni modificó saneamiento.
 
-Estos resultados no prueban concurrencia PostgreSQL ni recorrido de navegador
-del candidato nuevo. No se iniciaron Docker/servidores ni se accedió a bases
-existentes o remotas. Ese entorno y su comprobación requieren autorización
-acotada; la aceptación clínica conserva además los contratos pendientes.
+Ese límite de entorno fue levantado por autorización explícita posterior.
+Se creó PostgreSQL 16 Alpine propio, con datos efímeros y puerto sólo loopback;
+se migró exclusivamente su base ficticia. La misma suite ejecutó 82 tests en
+37,381 s sin fallos ni omisiones, incluidas concurrencia y revocación. Se
+reutilizaron dependencias Python instaladas y `npm ci` desde el lockfile, sin
+modificar manifiestos/versiones ni instalar globalmente.
+
+El runner de prescripciones existente se amplió con dos escenarios nuevos, sin
+cambiar los siete anteriores: observación → reenvío → aprobación/rechazo en
+escritorio/móvil. Exigen conservar ID, original descargado con bytes exactos,
+plazo no vacío, revisiones e historial, y mantienen separación de capacidades.
+Las 48 h de respuesta son ficticias y no se homologan como política OSTEL.
+Focal visible: 2 recorridos en 23,3 s. Suite final: 11 recorridos en 45,7 s sin
+fallos ni omisiones. Positivos reales contra API/PostgreSQL/almacenamiento
+ficticios; los negativos inyectados conservan su alcance de transporte.
+Capturas escritorio/móvil inspeccionadas, reenvío/resolución y descarga por
+teclado. No hay cambios de UI/producto.
+
+El Chrome del sistema no pudo arrancar para automatización; se usó el Chromium
+1234 ya instalado, correspondiente al Playwright del lockfile. Los ajustes de
+lanzadores quedaron fuera del repositorio: entorno saneado, dotenv deshabilitado,
+Vite sin envFile y cwd externo, cache/resultados propios. No acceso a `.env`,
+secretos, bases existentes/remotas ni recursos de saneamiento. Se conserva la
+advertencia preexistente de staticfiles; no se investigó como parte de este corte.
+La validación técnica local no cierra los contratos clínicos ni la aceptación
+humana, y no acredita CI, merge ni despliegue.
 
 La evidencia anterior no acredita CI, merge, despliegue, disponibilidad actual,
 revisión nativa pendiente ni aceptación humana. Publicación del snapshot y

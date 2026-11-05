@@ -1,7 +1,7 @@
 # Cierre de Autorizaciones
 
 Objetivo: completar el plan de cierre sin inventar contratos clínicos ni duplicar saneamiento. Rama: `juanikitro/salud-cierre-autorizaciones-20261105`; base: `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`.
-Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos de 400 líneas autoras en el primer corte. Runner: API Django con `config.settings_financiadores_test`, SQLite efímero; no acredita concurrencia PostgreSQL.
+Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos de 400 líneas autoras en el primer corte. Runners: API Django aislada SQLite/PostgreSQL y Playwright real de prescripciones, con entorno propio autorizado S6.
 
 ## Specs
 
@@ -10,6 +10,7 @@ Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos 
 - S3 — Restricción vigente: «no toque saneamiento, eso lo hace otro agente». Sin inspeccionar ni modificar su checkout, repetir sus arreglos ni asumir sus resultados.
 - S4 — Preservar S17–S21 ya aprobados: adjunto privado PDF/imagen, presentación institucional, consulta designada y resolución de la misma solicitud con capacidades independientes; no dictamen paralelo ni exclusividad médica inferida. Fuente: `odd/tasks/ostel-operacion-integral.md`, S17–S21.
 - S5 — Contratos aún no aprobados: criterios PMO, suficiencia/obligatoriedad clínica, vigencias/renovación/excepciones, conservación/reemplazo y aceptación OSTEL. La continuidad autoriza avanzar técnicamente, no decidir estas reglas ni activar cobros/pagos o publicar/desplegar.
+- S6 — Entorno autorizado: «autorizo», en respuesta a PostgreSQL descartable en Docker, dependencias desde el lockfile existente y servidores sólo en localhost, con datos ficticios, para completar concurrencia y navegador. No bases existentes/remotas, dependencias nuevas, saneamiento ni publicación.
 
 ## Tasks
 
@@ -17,9 +18,9 @@ Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos 
 | --- | --- | --- | --- | --- |
 | T1 | S1–S4 | Precisar los efectos de aprobación y recuperar la matriz documental previa sin perder historia | Inline; pasivo | Completo local: matriz recuperada y precisión financiera; commit `e7aeb75` |
 | T2 | S1,S4 | Caracterizar por API presentación privada → observación → reenvío → resolución; conservar original/ID/plazo, revisión, reintento y permisos | Inline; pruebas de contrato existente, Risk: none; sin cambio de producto | Completo local: dos caracterizaciones API aprobadas; commit `e7aeb75` |
-| T3 | S1,S4 | Ejecutar focal y suite pertinente en entorno aislado, registrar alcance y límites | Focal inline; suite delegada por duración de preparación/migraciones | Parcial: suite 82 tests OK, 10 omisiones PostgreSQL; commit `e7aeb75`; falta ese entorno y navegador |
+| T3 | S1,S4,S6 | Ejecutar focal y suite pertinente en entorno aislado, registrar alcance y límites | Focal inline; suite delegada por duración de preparación/migraciones | Completo local: PostgreSQL 82 tests OK sin omisiones y navegador final 11 OK; evidencia L6 |
 | T4 | S1,S2,S5 | Traducir contrato clínico aprobado a casos y configuración existente, implementar únicamente brechas | No ejecutar sin fuente y decisiones aprobadas; ruta/riesgo por determinar | Bloqueado por contrato |
-| T5 | S1,S2,S4,S5 | Integración representativa, escritorio/móvil/teclado y aceptación funcional/clínica; entrega separada | No sustituir por caracterización local; sin deploy ni aceptación implícita | Dependiente de T4 y entorno autorizado |
+| T5 | S1,S2,S4,S5,S6 | Integración representativa, escritorio/móvil/teclado y aceptación funcional/clínica; entrega separada | No sustituir por caracterización local; sin deploy ni aceptación implícita | Parcial: recorrido técnico real completo; aceptación clínica/humana dependiente de T4 |
 
 ## Log
 
@@ -52,3 +53,22 @@ usa como objetivo el plan que me compartiste para cerrar autorizaciones. avanza 
 - Comprobación estructural: AST válido, enlaces/rangos inmutables existentes, contenido íntegro del documento base preservado y diff sin errores. No cambios productivos ni de normalizadores posteriores a las pruebas.
 - Evaluación nativa: el inventario canónico identificó sólo el nuevo documento de tareas; selección explícita resuelta. Candidato y commit: medium/executable_change, review_due=false/under_budget. Sin START, consentimiento, revisión aprobada ni cambios del switch global.
 - T1/T2 completos; T3 parcial por omisiones PostgreSQL; T4/T5 abiertos. Siguiente intervención solicitada: autorizar PostgreSQL descartable local y servidores loopback con datos ficticios para concurrencia y navegador, sin bases existentes/remotas ni saneamiento. Los contratos normativos siguen pendientes independientemente.
+
+### L5 — Autorización del entorno
+
+autorizo
+
+- S6 levanta únicamente el bloqueo de entorno de L4. Se preparan contenedor, puertos, archivos y escenarios propios, sin reutilizar recursos de otro frente. No levanta la deuda clínica S5 ni concede aceptación humana.
+- Relectura actual: rama de cierre en `d662314`, limpia; Docker disponible e imagen PostgreSQL 16 Alpine ya local. El runner real existente no arranca la familia de importación. Se amplía sólo la caracterización combinada de observación/reenvío y se conservan los recorridos anteriores.
+
+### L6 — PostgreSQL y navegador del candidato
+
+- Contenedor propio `salud-autorizaciones-01a1a7cc-20261105`, imagen local PostgreSQL 16 Alpine, tmpfs y puerto 127.0.0.1:61211. No inspeccionar ni reutilizar contenedores/bases ajenos. Migraciones aplicadas sólo a base ficticia dedicada.
+- Suite PostgreSQL delegada una vez: 82 tests OK en 37,381 s, sin omisiones. Es el mismo alcance de cinco módulos de L3; antes había 10 omisiones SQLite. Focal API previo y source productiva preservados.
+- `npm ci --ignore-scripts --no-audit --no-fund` delegado, exitoso; package/lock sin cambios. Servidores propios: API loopback63952 y Vite loopback63953. Env de proceso saneado/dotenvdisabled, Vite con cwd externo/envFilefalse/cache propia. Sin instalaciones globales ni secretos reales.
+- Fixture ampliada de siete a nueve escenarios, conservando los anteriores. Dos casos nuevos reutilizan el recorrido real existente con observación/reenvío antes de aprobar/rechazar. El plazo inicial vacío se detectó al inspeccionar captura y se reforzó con 48 h ficticias sólo en escenarios nuevos y una aserción no nula. No se afirma conservación de plazo por igualdad de dos valores vacíos.
+- Chrome del sistema falló antes de abrir la aplicación; se usó Chromium1234 ya instalado correspondiente al lockfile. Focal final padre 2 OK en 23,3 s, visible; suite final delegada 11 OK en 45,7 s, sin omisiones. Una suite previa de 11 OK no acreditaba plazo no nulo; la final sí. No se cambia producto para acomodar el test.
+- Capturas de aprobación escritorio/rechazo móvil con plazo visible inspeccionadas. Teclado en descarga, reenvío y resolución; PDF original byte-exacto; revisiones/historia/ID y permisos separados. Negativos con transporte inyectado se distinguen de positivos reales.
+- Demo local visible abierta con sesión ficticia en puerto63953. Primer wrapper usó un nombre de botón inexistente, corregido sólo externamente a «Resueltas». Browser/servidores/contenedor propios retenidos para inspección humana; no son aceptación ni despliegue. Temporales externos previos retenidos por limpieza bloqueada, sin bypass ni reintento de borrado.
+- T3 completo local; T5 sólo parte técnica. T4 permanece sin fuente/decisiones clínicas aprobadas: PMO, evidencia mínima, vigencias/renovación y conservación/reemplazo. No pedir de nuevo lo ya solicitado a OSTEL ni inventar reglas para declarar cierre integral. Sin autorización de push/PR/merge/deploy.
+- Risk: none. Sólo pruebas/fixture ficticia/documentación; sin modificación productiva, permisos, locks, migraciones ni dependencias del proyecto.

@@ -62,10 +62,14 @@ fixture_lectura = None
 with transaction.atomic(), patch.object(usuarios, "create_user", side_effect=crear_persona(original_usuario)), \
         patch.object(usuarios, "create_superuser", side_effect=crear_persona(original_admin)), \
         patch.object(comunes, "create", side_effect=crear_comun):
-    for numero in range(7):
+    for numero in range(9):
         fixture = Escenario()
         # Sólo setUp ORM: no runner/TestCase._pre_setup, flush ni transacciones de tests.
         fixture.setUp()
+        if numero >= 7:
+            # Plazo ficticio para caracterizar conservación, no una regla clínica.
+            fixture.convenio.plazo_autorizacion_horas = 48
+            fixture.convenio.save(update_fields=["plazo_autorizacion_horas"])
         if numero == 3:
             fixture_lectura = fixture
         fixture.institucion.nombre = f"Hospital FICTICIO {marca}-{numero}"
