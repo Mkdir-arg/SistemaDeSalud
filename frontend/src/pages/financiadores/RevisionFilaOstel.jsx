@@ -82,10 +82,10 @@ export default function RevisionFilaOstel({ edicion, setEdicion, ocupado, error,
 
       <details className="rounded-md border border-division p-3">
         <summary className="cursor-pointer font-semibold">Valores originales del archivo</summary>
-        <p className="mt-2 text-xs text-texto-debil">Las 40 columnas tal como llegaron. Las que no se usan se conservan como evidencia.</p>
+        <p className="mt-2 text-xs text-texto-debil">Columnas administrativas del archivo. CODPAR no se muestra en este circuito; el original completo se conserva como evidencia.</p>
         <div className="mt-2 max-h-80 overflow-auto"><table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-superficie"><tr className="border-b border-division"><th scope="col" className="p-2">Columna</th><th scope="col" className="p-2">Valor</th><th scope="col" className="p-2">Se usa como</th></tr></thead>
-          <tbody>{COLUMNAS_OSTEL.map(([columna, uso]) => {
+          <tbody>{COLUMNAS_OSTEL.filter(([columna]) => columna !== "CODPAR").map(([columna, uso]) => {
             const valor = texto(edicion.original?.[columna]);
             return <tr key={columna} className="border-b border-division last:border-0"><td className="p-2 font-mono text-xs">{columna}</td><td className={valor ? "p-2" : "p-2 text-texto-tenue"}>{valor ?? "—"}</td><td className="p-2 text-texto-debil">{uso || "Evidencia"}</td></tr>;
           })}</tbody>
