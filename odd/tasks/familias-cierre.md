@@ -17,9 +17,9 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 
 | ID | Specs | Resultado | Ruta / motivo | Estado / evidencia / commit |
 | --- | --- | --- | --- | --- |
-| T1 | S1,S2 | Candidato aislado correcto y reconciliación documental | Inline; cambio documental conocido | Completo local: base exacta y reconciliación trasladada; documento previo preservado; commit pendiente |
-| T2 | S3,S4 | Suprimir exposición administrativa de CODPAR sin modificar el original | Inline tras mapa delegado de superficies desconocidas; Risk: items 2/3 | Completo local: RED por CODPAR expuesto; GREEN focal; sin mutar fuente/huella; commit pendiente |
-| T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación pendiente; commit pendiente |
+| T1 | S1,S2 | Candidato aislado correcto y reconciliación documental | Inline; cambio documental conocido | Completo local: base exacta y reconciliación trasladada; documento previo preservado; commit `8d54b5f` |
+| T2 | S3,S4 | Suprimir exposición administrativa de CODPAR sin modificar el original | Inline tras mapa delegado de superficies desconocidas; Risk: items 2/3 | Completo local: RED por CODPAR expuesto; GREEN focal; sin mutar fuente/huella; commit `8d54b5f` |
+| T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación pendiente; commit `8d54b5f` |
 | T4 | S6 | Equivalencias homologadas y diferencias necesarias | Condicionada a fuente aprobada | Pendiente de información externa ya identificada; no inventar catálogo |
 | T5 | S1,S2,S6 | Aceptación humana y entrega | Humana; publicación aparte | Pendiente; no cerrar issues ni atribuir aceptación |
 
@@ -49,3 +49,13 @@ usa como objetivo el plan que me compartiste para cerrar el modulo de familias. 
 - Scratch padre `salud-familias-cierre-eui91_sa` y fixture `ostel-familia-ui-01a1a7cc-cierre`, bajo temporal del sistema. PostgreSQL propio `salud-familias-01a1a7cc`, loopback58366/tmpfs; API8347 y Vite5351 para demo. Launcher limpia entorno y bloquea dotenv antes de settings; no lectura de secretos ni conexiones reales. No publicar manifiesto ficticio.
 - Revisión nativa: switch global on; evaluación preliminar ítem2 quedó no evaluable por archivos nuevos. No se infiere riesgo bajo ni aprobación. Tras normalización, candidato final aún debe evaluarse y seguir continuación nativa exacta. Sin reabrir linajes históricos.
 - T4/T5 pendientes de equivalencias aprobadas y aceptación humana, respectivamente; no pedir nuevamente la información ya solicitada a OSTEL. No cerrar #181/#142 ni atribuir integración main, CI o deploy. Publicación fuera de autorización.
+
+### L4 — Revisión omitida por elección humana
+
+2
+
+- Selección única de «Omitir esta vez» del consentimiento v3 del candidato de ocho archivos/312líneas. Ejecutada una vez la invocación exacta entregada por el proveedor; resultado `action=declined`, `consent=declined_this_candidate`, target `sha256:06d0ab8a07ea6420dbb72e5949cdaca2f9a79d33259cb5ef76aa811aa2a92017` coincidente.
+- T1–T3 se conservan en el commit local `8d54b5fd3a2c3af22ad7cc23d8596b7710620495`. No revisión aprobada, receipt, publicación ni autorización para integrar main. Modo global sin cambios; no reabrir este candidato por la omisión.
+- T4 continúa pendiente de equivalencias aprobadas; T5 de aceptación humana. No se repite la solicitud ya realizada a OSTEL. La prueba ficticia de vínculo conocido no acredita una equivalencia normativa ni derechos. Familias no cierra legajo/credenciales y restantes criterios de #142.
+- Sin código de negocio adicional justificado por los insumos disponibles. La limpieza del scratch del verificador fue rechazada por política del entorno; no se intentó otro mecanismo de borrado. Recursos de demo propios retenidos para inspección humana, no confundirlos con saneamiento.
+- Esta actualización es sólo seguimiento pasivo: lectura estructural y diff --check; no nueva ejecución de tests/DB/build ni nuevo candidato funcional. Risk: none.

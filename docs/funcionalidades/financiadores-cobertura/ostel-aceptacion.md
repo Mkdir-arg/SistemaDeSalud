@@ -99,6 +99,9 @@ corrigió configuración ajena ni se presenta esta ejecución como CI integral.
 Seguimiento y comandos en `odd/tasks/familias-cierre.md`. Homologación,
 aceptación humana, publicación, merge y deploy siguen separados y pendientes.
 La verificación independiente no sustituye la revisión nativa ni su consentimiento.
+El usuario eligió «Omitir esta vez» para el candidato local de este corte: el
+proveedor confirmó `declined_this_candidate`. No hay revisión nativa aprobada
+ni se desactivaron revisiones futuras; la entrega sigue sin publicarse.
 Ante una corrección futura, conservar originales e historial y reparar hacia
 adelante; retirar la protección reintroduciría la exposición conocida.
 
