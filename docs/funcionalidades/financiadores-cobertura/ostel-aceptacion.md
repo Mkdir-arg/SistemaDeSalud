@@ -1,5 +1,181 @@
 # OSTEL: catálogo sintético, validación local y homologación pendiente
 
+## Derechos: cierre documental de la base no operativa — 04/11/2026
+
+**La base de borradores, versiones, previsualización y simulación está implementada;
+el resultado operativo de #143 sigue pendiente.** Este corte vincula capacidades,
+evidencia y límites: no aprueba política, activa derechos ni cierra el issue.
+
+### Alcance y referencia reproducible
+
+El objeto de este cierre es el snapshot publicado
+`8a3a1d8b87a25380c85e15519fc0683f09ef6c49`, no el HEAD de este worktree.
+Los enlaces siguientes fijan ese commit para evitar que otra rama o cambios
+posteriores alteren la evidencia. El plan se consulta en ese snapshot. Estaba ausente en la base inicial de
+análisis; ahora se conserva el integrado por PR208, sin copiar ni recrear
+`odd/tasks/ostel-operacion-integral.md`.
+Esta actualización prevalece sobre las descripciones históricas de Derechos
+del resto del documento sólo para el snapshot indicado; no acredita que sus
+capacidades estén incorporadas a main ni actualiza otros frentes.
+
+### Capacidad → evidencia → límite
+
+| Capacidad técnicamente completa | Fuente del snapshot | Evidencia y límite |
+| --- | --- | --- |
+| Descriptor inmutable, ámbito y vigencia técnica | [derechos_borrador.py:16–76](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/derechos_borrador.py#L16-L76) | Coincidencias en `[desde,hasta)` y conflicto explícito. No selecciona una regla ganadora ni fija inicio/corte prestacional. |
+| Comparación de propuesta e historia no reescribible | [propuesta_derechos.py:19–40](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/propuesta_derechos.py#L19-L40) | Una modificación requiere versión nueva; no se borra ni redefine la historia. Versionar no aprueba la regla. |
+| Guardado, auditoría y trazabilidad | [borradores_derechos.py:39–92](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/borradores_derechos.py#L39-L92) | Guarda nuevas versiones con autor, fecha, motivo y evento; revalida permisos. No activa derechos. |
+| API administrativa y preview sin persistencia | [borradores_api.py:73–111](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/borradores_api.py#L73-L111) | Ámbito desde organización autorizada; preview comparte la validación del servicio de guardado, sin guardar ni auditar. No hay aprobación/activación. |
+| Simulación temporal configurada o alternativa | [simulacion_plazo_api.py:43–68](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/simulacion_plazo_api.py#L43-L68) | Recupera la versión persistida e identifica el origen del plazo. Un límite calculado no determina una consecuencia asistencial. |
+| Interfaz administrativa no operativa | [BorradoresDerechos.jsx:56–74](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/frontend/src/pages/financiadores/BorradoresDerechos.jsx#L56-L74) | Presenta acciones y límites de guardar/simular sin prometer aprobación ni activación. |
+
+### Evidencia disponible y alcance del cierre
+
+- **Pruebas existentes, inspeccionadas sin ejecución en este corte:**
+  [test_derechos_padron_aislamiento.py:27–85](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/test_derechos_padron_aislamiento.py#L27-L85)
+  compara huellas del padrón, preserva familia/revisión/lote y exige rechazar
+  `activar=True` sin cambios. No se afirma un resultado nuevo de su ejecución.
+- **Resultado histórico registrado de G2a:** el
+  [registro local de aceptación:1940–1966](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md#L1940-L1966)
+  documenta aislamiento con dos financiadores ficticios, suite API/regresiones
+  y recorridos reales de escritorio, móvil y teclado. No se repitieron aquí.
+- **Cierre documental:** T2a–T2k y G2a se reconocen como base técnica no operativa
+  y caracterización sintética, conforme al
+  [plan del snapshot:54–65](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/odd/tasks/ostel-operacion-integral.md#L54-L65).
+  Esto no subsana las revisiones nativas históricas pendientes u omitidas
+  registradas allí ni las convierte en aprobaciones.
+- **Estados separados:** existe commit y publicación del snapshot de referencia;
+  este corte documental queda local, sin commit ni publicación. No aporta prueba
+  de CI, merge, despliegue, homologación ni aceptación humana. No modifica PR208,
+  issues ni el trabajo de saneamiento.
+
+### Qué permanece abierto y condición del siguiente corte operativo
+
+La [matriz pendiente:300–315](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/odd/tasks/ostel-operacion-integral.md#L300-L315)
+requiere fuente validada, causal, ámbito, fechas/calendario, evidencia, excepciones,
+autoridad de confirmación/reversión y tratamiento de decisiones concurrentes.
+Incluye alta/trámite, cese/gracia, desempleo, edad/certificado/CUD, mora de superador,
+mora privada y otras causales. Los tres meses citados en el material recibido no
+son una constante autorizada; FECVTO, CODPAR o ausencia en lote no habilitan cortes.
+
+No se reitera el pedido ya enviado a OSTEL. Cuando exista validación de una fila
+y sus ejemplos antes/en/después del límite, podrá delimitarse una implementación
+operativa autorizada: conservar `afiliados_vigentes`, `seleccionar_afiliacion`,
+guards e historial; probar efectos permitidos, rechazo sin cambios, reversión
+y consumidores previos. No se define ahora un motor, nuevos permisos ni pruebas
+de una política inventada. #143, su integración con #183/#185 y la aceptación
+operativa permanecen abiertos.
+
+**Verificación de este corte:** lectura de fuentes inmutables, revisión de enlaces
+y rangos, preservación del documento previo y comprobación estructural del diff.
+Al ser documentación pasiva, no hay un RED funcional significativo: no se
+ejecutan tests, build, navegador, DB ni servidores. Risk: none.
+
+### Actualización 05/11/2026: cierre técnico sin bloquearlo por deuda OSTEL
+
+El usuario precisó el objetivo: «tu objetivo es cerrar el modulo esquivando las
+deudas de OSTEL, dejando documentada tal deuda pero continuando con el cierre
+profesional del modulo». La política pendiente deja de bloquear el cierre del
+**configurador de reglas, historial, comparación, preview y simulación**.
+No se presenta ese cierre técnico como cumplimiento operativo de todo #143.
+La aplicación prestacional, aprobación normativa y activación permanecen como
+deuda separada: no se inventan valores, estados, permisos ni un motor universal.
+
+| Frente | Evidencia actual y acción de cierre |
+| --- | --- |
+| Funciones existentes | Auditoría estática del snapshot: transacciones, guardado idempotente, historia inmutable, preview sin escritura, aislamiento y tratamiento de respuestas tardías/escritura incierta ya tienen implementación y regresiones. No se agrega código ni se duplican pruebas sólo para aparentar avance. |
+| Núcleo puro | Ejecución nueva de los tres módulos `tests_derechos_borrador`, `tests_propuesta_derechos` y `tests_simulacion_plazo`: 20 pruebas correctas con Python 3.12, sin Django, DB ni servidores. Se copiaron ocho archivos exactos del snapshot a un directorio temporal externo, se verificaron sus bytes y se retiró ese directorio al terminar. |
+| Autoría en simulación de perfiles (DT2) | En el snapshot falta clasificar `BorradorReglaDerechos.creado_por`; no se arregla en paralelo. [PR210](https://github.com/Mkdir-arg/SistemaDeSalud/pull/210) ya fue integrado en su cadena. El [candidato observado de PR208](https://github.com/Mkdir-arg/SistemaDeSalud/blob/c28fc7e15738b9d743546c91cf52af4c0b8c010b/backend/apps/simulacion/contexto.py#L37) contiene la entrada específica. Se verificó el código publicado, no su ejecución global; no equivale a integración en main. |
+| Vigencia de la evidencia pura | Se compararon por contenido los tres módulos productivos puros y sus tres módulos de prueba entre `8a3a1d8` y `c28fc7e15738b9d743546c91cf52af4c0b8c010b`: idénticos. Ese resultado no extiende las pruebas puras a API, persistencia o UI del candidato nuevo. |
+| API, persistencia y consumidores | Pendiente ejecutar las regresiones existentes del candidato final: borradores, integridad, seguridad, simulación, aislamiento del padrón, cobertura/habilitación y clasificación global de autoría. El resultado histórico G2a no se presenta como ejecución nueva. |
+| Interfaz y uso real | Pendiente confirmar el recorrido real del candidato final en escritorio, móvil y teclado, recuperación tras error/cambio de organización y demostración visible. Reutilizar el spec existente; no crear otro harness ni usar respuestas interceptadas como positivos reales. |
+| Entrega | PR208 seguía abierto/borrador con comprobaciones en curso al consultarlo. No se afirma CI verde, merge a main, despliegue, revisión nativa aprobada ni aceptación humana. Este documento continúa local y no publicado. |
+
+**Criterio de cierre técnico:** las funciones existentes deben superar sus
+comprobaciones aplicables sobre un candidato identificado que incluya la
+corrección de autoría; la documentación debe indicar alcance, operación segura,
+evidencia y limitaciones. Entrega, revisión y aceptación se registran por separado.
+La deuda normativa no obliga a agregar funcionalidades antes de ese cierre, pero
+tampoco permite omitir fallos técnicos o declarar comprobaciones no ejecutadas.
+
+**Continuación necesaria:** preparar un entorno local aislado para las pruebas
+de persistencia y navegador, con PostgreSQL descartable y exclusivamente datos
+ficticios, sin `.env`, bases existentes, procesos ajenos ni acceso a saneamiento.
+El alcance inicial excluía DB/servidores; se requiere autorización específica
+para esta comprobación antes de iniciarlos. No se atribuye este límite a OSTEL.
+Esta actualización sólo modifica documentación y ejecuta pruebas puras existentes;
+no cambia código productivo ni concede aprobación/activación de derechos.
+
+### Resultado del cierre técnico local — 05/11/2026
+
+**Cierre técnico local verificado del configurador, versiones, comparación,
+preview, trazabilidad y simulación**, sobre PR208
+`c28fc7e15738b9d743546c91cf52af4c0b8c010b`. El usuario autorizó expresamente
+PostgreSQL descartable, datos ficticios, servidores loopback y navegador real.
+Esta evidencia resuelve los pendientes de comprobación local de la tabla
+anterior; no convierte la deuda normativa ni la aceptación humana en completas.
+
+| Comprobación | Resultado observado |
+| --- | --- |
+| API/PostgreSQL y consumidores | 121 pruebas existentes correctas en 33,821 s: borradores API/seguridad/servicios/integridad/aislamiento, simulación API y pura, propuestas, cobertura/habilitación y clasificación de autoría. No se duplicaron pruebas ni se cambió producto. |
+| Build frontend | Correcto en 5,19 s con dependencias del lockfile y configuración externa sin archivos de entorno. |
+| Navegador real | 27 recorridos existentes correctos en 48,1 s: escritorio, móvil, teclado, guardado persistido, preview, simulación, trazabilidad y recuperación ante errores. El candidato de PR208 tiene 27 casos; no se le atribuyen los 29 de G2a en otra rama. |
+| Positivos y negativos | Los positivos usan API/PostgreSQL reales ficticios. Los casos 403/503 y respuestas tardías inyectadas prueban manejo de transporte/interfaz, no revocación real de permisos. La seguridad de API se comprueba en su suite propia. |
+| Comprobación del padre | Clasificación global de campos de autoría ejecutada nuevamente: correcta. Capturas de pantalla completa y modal inspeccionadas en escritorio y móvil: sin recorte horizontal; modal móvil con desplazamiento vertical. |
+| Demostración | Chromium con ventana visible y datos ficticios, en `http://127.0.0.1:63832/financiadores/borradores?financiador=1`. Simulación HTTP 200 con referencia 2030-01-01, evaluación 2030-01-08 y siete días: límite 2030-01-08, «en el límite», sin guardar nuevas filas. Pantalla restablecida a escritorio para probarla. |
+| Integridad y aislamiento | Los 922 archivos de fuente del candidato conservan sus huellas. Copia y venv externas; dotenv deshabilitado en el launcher y Vite sin archivos de entorno. Sólo contenedor propio, PostgreSQL en loopback/tmpfs, fixture dedicada y credenciales ficticias gestionadas internamente sin mostrarlas. |
+
+**Reproducibilidad y límites del entorno.** Se usó Python 3.12 y se instaló
+únicamente el `requirements.txt` existente en el venv externo; su restricción
+abierta `Django>=5.0` resolvió Django 6.1.3. Por tanto, no se afirma paridad exacta
+de dependencias Python con producción/CI. Frontend: `npm ci --ignore-scripts
+--no-audit --no-fund`, sin modificar manifiestos ni lockfile.
+
+El primer build falló antes de compilar por una ruta interna inexistente del
+plugin React en la configuración externa del verificador. Una corrección acotada
+para resolver exports publicados y codificar el favicon resolvió ese fallo;
+se conserva el log original, sin atribuirlo a producto. No hubo corrección de
+fuentes. La inspección directa de ventanas por CUA no estuvo disponible
+(`Module not found: @oai/cua/tinyskyAlt`); se inspeccionaron capturas y se confirmó
+la ventana nativa abierta. La demo visible no sustituye aceptación humana.
+
+**Localización de evidencia y recursos propios.** Directorio temporal externo
+`salud-derechos-cierre-4nnht4kp` bajo el temporal del usuario: logs `regression.log`,
+`parent-spotcheck.log`, `build-setup-failed.log`, `build.log` y `browser.log`;
+capturas `demo-desktop-top.png`, `demo-desktop-modal.png` y
+`demo-mobile-modal.png`. Comandos y conservación de recursos en
+`odd/tasks/derechos-cierre-tecnico.md`. Se retienen sólo recursos propios para
+la demo; son temporales, no almacenamiento duradero de evidencia cruda.
+
+**Entrega separada:** documentación todavía local, sin commit ni publicación.
+PR208 sigue abierto/borrador sobre el mismo candidato; CI backend estaba en curso
+en la última consulta, aunque las otras comprobaciones visibles habían terminado
+correctamente. No se afirma revisión nativa aprobada, merge, deploy ni aceptación.
+El cierre local no resuelve todo #143: activación/aplicación prestacional y
+contratos OSTEL permanecen documentados como deuda externa. No se tocaron
+saneamiento, bases existentes ni datos reales. Risk: none (cambio documental).
+
+### Aceptación y transferencia de deuda — 05/11/2026
+
+El usuario aceptó el cierre técnico y autorizó commits, push y merge; confirmó
+«todo completo» al aclarar que PR208 también incluye los demás frentes OSTEL.
+[PR208](https://github.com/Mkdir-arg/SistemaDeSalud/pull/208) fue integrado en main
+con los seis checks correctos, sin bypass, mediante el commit
+`c4816271f66a1fe68beba89f1591fc6c86c70c5e`. La aceptación no valida normativa.
+
+- [#143](https://github.com/Mkdir-arg/SistemaDeSalud/issues/143) permanece abierto
+  y pasa a **In QA** en Tareas I-Core para el configurador, versiones, preview,
+  trazabilidad y simulación. El cuerpo conserva el alcance histórico y documenta
+  expresamente lo que falta; no marca como cumplidos sus criterios normativos.
+- [#216](https://github.com/Mkdir-arg/SistemaDeSalud/issues/216) es la continuación
+  prestacional **Blocked** por respuesta/validación externa, con los criterios
+  para retomar reglas, activación, aplicación/reversión e integración #183/#185.
+  La información ya fue solicitada; no reiterar el pedido ni inventar valores.
+- El acta y su registro se entregan como cambio documental separado, sin alterar
+  el candidato funcional verificado. La autorización de merge no autoriza un
+  despliegue manual ni acredita el resultado de automatizaciones posteriores.
+
+
 ## Reconciliación 30/10/2026: identidad y familia (#181/#142)
 
 El orden vigente está en [#141](https://github.com/Mkdir-arg/SistemaDeSalud/issues/141).
