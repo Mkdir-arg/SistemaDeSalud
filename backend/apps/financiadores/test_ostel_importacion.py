@@ -152,7 +152,9 @@ class ImportacionAdministrativaTests(TestCase):
 
         lote = enviar()
         originales = [fila["original"] for fila in lote["filas"]]
-        self.assertEqual([original["CODPAR"] for original in originales], list(codigos))
+        self.assertTrue(all("CODPAR" not in original for original in originales))
+        guardados = [f["original"] for f in Importacion.objects.get(pk=lote["id"]).filas]
+        self.assertEqual([original["CODPAR"] for original in guardados], list(codigos))
         self.assertEqual(lote["resumen"]["valida"], 4)
         datos = {**lote["filas"][0]["datos"], "nombre": "PERSONA FICTICIA CORREGIDA"}
         corregida = self.corregir(lote, datos=datos)
@@ -165,7 +167,7 @@ class ImportacionAdministrativaTests(TestCase):
             self.assertEqual(resultado["id"], lote["id"])
             self.assertEqual([fila["original"] for fila in resultado["filas"]], originales)
         persistida = Importacion.objects.get(pk=lote["id"])
-        self.assertEqual([fila["original"] for fila in persistida.filas], originales)
+        self.assertEqual([fila["original"] for fila in persistida.filas], guardados)
         self.assertEqual(len(persistida.filas[0]["correcciones"]), 1)
         self.assertEqual(Importacion.objects.count(), 1)
         self.assertEqual(Afiliado.objects.count(), 4)
@@ -213,16 +215,20 @@ class ImportacionAdministrativaTests(TestCase):
         originales = [fila["original"] for fila in r.data["filas"]]
         from .ostel_prevalidacion import COLUMNAS
         self.assertEqual(ORIGINAL, COLUMNAS)
-        self.assertEqual(list(originales[0]), list(COLUMNAS))
+        self.assertEqual(list(originales[0]), [c for c in COLUMNAS if c != "CODPAR"])
         self.assertEqual(originales[0]["EMAIL1"], "ostel-1@example.invalid")
         self.assertEqual(originales[0]["A_CALLE"], "CALLE FICTICIA")
         self.assertEqual([o["CUILTIT"] for o in originales], [cuiltit, cuiltit])
-        self.assertEqual([o["CODPAR"] for o in originales], ["AAA", "H01"])
+        self.assertTrue(all("CODPAR" not in o for o in originales))
         self.assertEqual((originales[0]["CODPROV"], originales[0]["CODLOCA"], originales[0]["CODZON"]),
                          ("B", "000123", "B04"))
         aplicada = self.aplicar(r.data)
         self.assertEqual(aplicada.data["resumen"]["aplicada"], 2)
-        self.assertEqual([f["original"] for f in Importacion.objects.get(pk=r.data["id"]).filas], originales)
+        guardados = [f["original"] for f in Importacion.objects.get(pk=r.data["id"]).filas]
+        self.assertEqual(set(guardados[0]), set(COLUMNAS))
+        self.assertEqual([o["CODPAR"] for o in guardados], ["AAA", "H01"])
+        for publico, guardado in zip(originales, guardados):
+            self.assertEqual(publico, {k: v for k, v in guardado.items() if k != "CODPAR"})
         for afiliado in Afiliado.objects.all():
             self.assertIsNone(afiliado.titular_id)
             self.assertEqual(afiliado.parentesco, "")

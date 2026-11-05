@@ -1,5 +1,120 @@
 # OSTEL: catálogo sintético, validación local y homologación pendiente
 
+## Reconciliación de Familias — 04/11/2026
+
+**El vínculo explícito, el parentesco pendiente y CODPAR protegido ya están
+implementados en el snapshot de estudio; la homologación y la aceptación siguen
+pendientes.** No reconstruir T1a–T1e ni cerrar #181/#142 por este corte documental.
+
+### Referencia y alcance
+
+Esta reconciliación describe exclusivamente el snapshot
+`8a3a1d8b87a25380c85e15519fc0683f09ef6c49`, leído mediante `git show`, no el HEAD
+del checkout donde se redacta. Las rutas y líneas siguientes pertenecen a ese
+snapshot; acreditan su presencia en la base de esta rama, no su incorporación a main.
+El registro rector allí es `odd/tasks/ostel-operacion-integral.md`, T1 y decisiones
+S7/S9/S11/S13. El seguimiento del cierre actual está en `odd/tasks/familias-cierre.md`, sin reemplazar aquel registro histórico.
+
+### Capacidad entregada frente a pendientes
+
+| Tema | Evidencia del snapshot | Estado y límite |
+| --- | --- | --- |
+| Vínculo explícito OSTEL | `backend/apps/financiadores/familia_ostel.py:18–88` | Propuesta por CUILTIT/CUIL del mismo lote y confirmación auditada con revisiones de ambas fichas. No usa NROAFI, no reemplaza otro titular ni busca fuera del lote. Ambas filas deben estar aplicadas; el orden del archivo no decide la relación. |
+| Parentesco pendiente | `backend/apps/financiadores/test_familia_pendiente.py:45–95` | El vínculo confirmado puede conservar clasificación vacía. No equivale a `otro`, no elimina el vínculo ni concede derechos. La prueba escrita caracteriza historial, idempotencia, rechazos e invariantes; no se ejecutó en este corte. |
+| CODPAR protegido | `backend/apps/financiadores/codpar_ostel.py:12–36`; aceptación del snapshot, T1a/T1b | Conservación literal y copia explícita desde una fila aplicada mediante el permiso protegido de salud. No hay traducción automática a parentesco, sexo o cobertura. El diccionario disponible no es una equivalencia homologada. |
+| Confirmación visual | `frontend/e2e/familia-ostel-real.spec.js:32–182`; aceptación del snapshot, T1e | Existe recorrido de propuesta, cancelación, confirmación, conflicto y respuesta perdida. La evidencia local previa está documentada; no se repitió ni constituye aceptación operativa. |
+| Equivalencias e identidad | #181/#142, pendientes consolidados del 03/11 | Siguen abiertas las equivalencias no aprobadas y los casos ambiguos. No inferir homologación de TIPODOC/CODPAR/NROREF ni formato familiar desde la conservación del original. |
+| Integración y aceptación | #181/#142 y #185 | Pendientes como evidencia separada. La implementación y sus comprobaciones locales no cierran los issues ni homologan OSTEL. Su saneamiento técnico tiene responsable separado. |
+
+### Lectura del seguimiento histórico
+
+En la aceptación del snapshot, T1c (líneas 192–195) presenta la resolución por lote
+como incremento futuro y la actualización del 26/10 (línea 223) dice que las
+familias todavía no se arman. Son antecedentes: T1d/T1e ya entregan propuesta y
+confirmación explícitas. **La importación administrativa no arma familias
+automáticamente**, pero eso no significa que falte el circuito explícito.
+
+Los cuerpos de #181/#142 se consultaron el 04/11/2026 y ambos seguían abiertos.
+En #181, el bloqueo histórico por falta de CUILTIT no debe interpretarse como
+ausencia actual de ese dato o del vínculo confirmado: su añadido del 03/11 ya
+reconoce la implementación. Se conserva el pendiente de homologación/aceptación;
+no se marcaron casillas, cambiaron estados ni publicaron correcciones en GitHub.
+Esta sección deja la reconciliación local preparada para ese seguimiento.
+
+### Cierre de este corte y dependencias restantes
+
+Se cierra sólo la distinción documental entre capacidad entregada y contrato o
+evidencia pendiente. Homologar exige equivalencias aprobadas; aceptar exige una
+comprobación humana explícita del circuito. Sin segunda fuente real disponible,
+G3 no justifica formatos inventados ni un importador universal. Ninguno de estos
+pendientes autoriza derivar derechos, renumerar, fusionar o reactivar afiliaciones.
+
+Verificación de esta edición: lectura del snapshot y de los issues, revisión del
+diff, referencias y preservación del documento anterior salvo la aclaración
+histórica inferior. No corresponde RED/GREEN para esta documentación pasiva.
+No se ejecutaron pruebas, builds, DB, fixtures, servidores ni navegador; no se
+repitió G2a ni se intervino en saneamiento. No acredita commit/push, PR, CI, merge,
+deploy o aceptación humana. Una futura aceptación autorizada debe reutilizar los
+recorridos y pruebas existentes, conservando como expectativas la no mutación
+ante rechazo, el aislamiento y la separación de vínculo, clasificación y derechos.
+
+## Cierre técnico acotado de privacidad — 05/11/2026
+
+En esta rama se corrige la exposición administrativa de CODPAR documentada en
+T1b. Causa: el serializer publicaba el JSON de filas sin separar el original
+persistido de su presentación; el diálogo mostraba todas sus columnas.
+
+- Preview, subsanación, listado y confirmación completa/incremental de OSTEL v3
+  omiten exclusivamente `original.CODPAR`. La respuesta administrativa lo omite
+  también para usuarios designados de salud: la lectura/copia sigue en el circuito
+  protegido existente. No se agrega otra ruta de acceso ni una concesión nueva.
+- El archivo sigue exigiendo 40 columnas y `columnas` conserva ese descriptor.
+  La representación administrativa del original tiene 39 campos. Es un cambio
+  deliberado del contrato de salida: consumidores no deben exigir CODPAR allí.
+  Versiones genéricas v1/v2 conservan su representación anterior.
+- El original persistido mantiene CODPAR literal/tipado, procedencia y 40 campos.
+  La huella de sincronización, copia designada, revisiones e historial no cambian.
+  No hay migración, backfill, clasificación, familia ni derecho nuevos.
+- El XLSX de rechazos OSTEL ya excluía CODPAR y permanece intacto. El archivo
+  anotado parte del XLSX que aporta quien lo solicita, comprueba su huella y añade
+  comentarios: no reconstruye ni entrega originales almacenados en el servidor.
+  No se certifica que todos los demás campos importados sean inocuos o públicos.
+
+**Evidencia del candidato local:** RED del nuevo caso API por CODPAR presente;
+GREEN después del filtrado, con conservación de fuente y copia protegida.
+Las expectativas anteriores que exigían publicar CODPAR se adaptaron manteniendo
+comprobaciones explícitas del original almacenado. Una aserción nueva de orden de
+claves JSONB falló y se corrigió para comparar campos; recheck focal aprobado.
+Verificación independiente en archivo base más overlay: 152 regresiones de once
+módulos aprobadas. Diferencial de serializers: v1/v2 idénticos; v3 sólo omite
+CODPAR, sin mutar payload ni huella. Sus probes se incorporaron como regresión
+sin DB; módulo focal final de dos pruebas aprobado por el padre.
+
+Frontend: build aprobado con lockfile intacto y seis recorridos reales de Familias
+aprobados, incluyendo móvil 390×844, teclado, foco, conflicto y respuesta perdida.
+Inspección de capturas propias a 1366×900 y 390×844, y demostración visible con
+identidades ficticias. La advertencia de staticfiles ausente permaneció; no se
+corrigió configuración ajena ni se presenta esta ejecución como CI integral.
+
+Seguimiento y comandos en `odd/tasks/familias-cierre.md`. El usuario respondió
+«acepto» a «¿Aceptás el circuito mostrado en la demo?»: aceptación técnica local
+del circuito mostrado, sin atribuirle casos o dispositivos no detallados.
+Homologación OSTEL, integración/merge y deploy siguen separados y pendientes;
+esta aceptación no aprueba equivalencias, normativa ni derechos.
+La verificación independiente no sustituye la revisión nativa ni su consentimiento.
+El usuario eligió «Omitir esta vez» para el candidato local de este corte: el
+proveedor confirmó `declined_this_candidate`. No hay revisión nativa aprobada
+ni se desactivaron revisiones futuras; esa elección no autoriza por sí sola publicar.
+El usuario autorizó después retirar el entorno y publicar la entrega: los
+procesos de demo y el PostgreSQL propio fueron retirados. Las carpetas temporales
+no se borraron porque el entorno rechazó la operación. La publicación autorizada
+no implica merge, deploy ni homologación. Entrega publicada en el
+[PR borrador #214](https://github.com/Mkdir-arg/SistemaDeSalud/pull/214),
+contra la rama del snapshot de estudio, no main; CI observado en curso.
+Recibo y alcance en el seguimiento.
+Ante una corrección futura, conservar originales e historial y reparar hacia
+adelante; retirar la protección reintroduciría la exposición conocida.
+
 ## Reconciliación 30/10/2026: identidad y familia (#181/#142)
 
 El orden vigente está en [#141](https://github.com/Mkdir-arg/SistemaDeSalud/issues/141).
@@ -153,8 +268,9 @@ Commit local `4212293`; revisión nativa omitida por decisión del usuario el
 no se presenta como aprobación nativa ni publicación.
 
 Sin nueva pantalla: no se ejecutó navegador ni se acredita aceptación operativa.
-Permanece la exposición preexistente de filas originales en la consulta general
-de importaciones; este paso protegido no la corrige ni amplía sus permisos.
+Límite histórico de T1b: persistía la exposición de originales en importaciones.
+La corrección acotada de CODPAR del 05/11 se documenta arriba; no homologa ni
+certifica privacidad de los demás campos del archivo.
 Rollback T1b: retirar acción, serializer y servicio de copia; conservar el campo
 protegido T1a y sus datos/historial. No hay migración en este corte.
 
@@ -189,10 +305,10 @@ en salud, sin derivar clasificación genérica, sexo, derechos ni elegibilidad.
   clasificación vacía. La pantalla existente identifica la raíz por ID y presenta
   «Parentesco sin informar» para el integrante; no se modificó frontend.
 
-Este corte habilita la representación, **no ensambla familias OSTEL por CUILTIT**.
-Ese siguiente incremento debe resolver el lote completo independientemente de su
-orden y detener referencias ambiguas sin modificar familias existentes por
-inferencia. Tampoco actualiza masivamente datos ni aplica derechos.
+Estado histórico de T1c: habilitó la representación, no la propuesta por CUILTIT.
+T1d/T1e, descritos arriba, completaron después la propuesta y confirmación
+explícitas por lote, sin depender del orden de filas ni inferir asociaciones.
+No hay armado automático, actualización masiva de familias ni aplicación de derechos.
 
 Verificación: RED observado al intentar registrar titular sin parentesco; después
 GREEN del mismo caso con revisión e historial. Pruebas API, servicio de importación
@@ -220,7 +336,9 @@ Decisiones del usuario:
 - CODPROV se traduce como ISO 3166-2:AR. Es un supuesto pendiente de confirmación.
 - El diccionario se carga en `CodigoFinanciador` con `cargar_diccionario_ostel`.
 
-Las familias no se arman todavía: #181 las construirá a partir de CUILTIT y CODPAR.
+Estado histórico al 26/10: aún no existía el circuito explícito. T1d/T1e
+lo completaron posteriormente por CUILTIT/CUIL, con CODPAR separado y sin
+homologación automática; ver la reconciliación de Familias del 04/11.
 Donde las secciones siguientes digan que falta CUILTIT, rige esta actualización.
 
 Detalle, supuestos y pendientes: `docs/plans/2026-10-26-issue186-avance.md`.

@@ -35,6 +35,10 @@ test("propuesta explícita, cancelación sin escritura y confirmación real", as
   const fila = await cargar(page, "normal");
   await fila.getByRole("button", { name: "Ver detalle", exact: true }).click();
   await expect(page.getByRole("dialog", { name: /^Detalle de/ })).toBeVisible();
+  await page.getByText("Valores originales del archivo", { exact: true }).click();
+  const detalle = page.getByRole("dialog", { name: /^Detalle de/ });
+  await expect(detalle.getByRole("cell", { name: "CODPAR", exact: true })).toHaveCount(0);
+  await expect(detalle.getByRole("cell", { name: "CUILTIT", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   const abrir = fila.getByRole("button", { name: "Vincular familia", exact: true });
   await expect(abrir).toBeVisible();
