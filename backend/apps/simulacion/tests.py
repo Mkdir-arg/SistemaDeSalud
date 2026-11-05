@@ -482,6 +482,53 @@ class AlcancePorPerfilTests(EscenarioSimulacion, APITestCase):
 
 
 class AutoriaYRegistroTests(EscenarioSimulacion, APITestCase):
+    def test_borrador_del_perfil_financiador_conserva_autor_real_y_aislamiento(self):
+        from hashlib import sha256
+        from apps.financiadores.models import Afiliado, BorradorReglaDerechos, MembresiaFinanciador
+
+        encabezados = self.simular("admin", ambito="financiador")
+        url = f"/api/financiadores/{self.f.pk}/borradores-derechos/"
+        entrada = {
+            "propuesta": [{"codigo": "ficticio", "version": 1, "fuente": "Fuente ficticia",
+                           "regimen": "dependencia", "plan_id": None, "desde": "2030-01-01",
+                           "hasta": None}],
+            "motivo": "Prueba de autoría", "regimen": "dependencia", "plan_id": None,
+            "fecha": "2030-01-01",
+        }
+        derechos = list(ReglaCobertura.objects.values()), list(Afiliado.objects.values())
+        respuesta = self.client.post(url, entrada, format="json", **encabezados)
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        historial = self.client.get(url + "historial/", **encabezados)
+        self.assertEqual(historial.status_code, 200)
+        fila = historial.data["historial"][0]
+        self.assertEqual(fila["creado_por_id"], self.root.pk)
+        self.assertEqual(fila["motivo"], entrada["motivo"])
+        self.assertEqual(fila["regla"], entrada["propuesta"][0])
+        self.assertEqual(EventoCobertura.objects.get(accion="crear_borrador_derechos").usuario, self.root)
+        self.assertTrue(OperacionSimulada.objects.filter(sesion=self.sesion, ruta=url, estado=200).exists())
+        self.assertIsNone(contexto.actual())
+
+        def huella():
+            return sha256(repr([list(m.objects.order_by("pk").values()) for m in
+                               (BorradorReglaDerechos, EventoCobertura)]).encode()).hexdigest()
+
+        antes = huella()
+        self.assertEqual(self.client.post(url, entrada, format="json", **encabezados).data["nuevas"], [])
+        ajeno = f"/api/financiadores/{self.g.pk}/borradores-derechos/"
+        self.assertEqual(self.client.post(ajeno, entrada, format="json", **encabezados).status_code, 404)
+        self.assertEqual(self.client.get(ajeno + "historial/", **encabezados).status_code, 404)
+        self.assertEqual(huella(), antes)
+        self.assertEqual(self.client.get(url + "historial/", **encabezados).data, historial.data)
+        self.assertEqual((list(ReglaCobertura.objects.values()), list(Afiliado.objects.values())), derechos)
+
+        normal = Usuario.objects.create_user("autor-normal@example.invalid")
+        MembresiaFinanciador.objects.create(usuario=normal, financiador=self.g, rol="admin")
+        self.client.force_authenticate(normal)
+        self.assertEqual(self.client.post(ajeno, entrada, format="json").status_code, 200)
+        historial_normal = self.client.get(ajeno + "historial/").data["historial"]
+        self.assertEqual(historial_normal[0]["creado_por_id"], normal.pk)
+        self.assertIsNone(contexto.actual())
+
     def test_el_evento_del_motor_conserva_la_autoria_real(self):
         flujo = Flujo.objects.create(institucion=self.a, area=self.guardia_a, titulo="Avance")
         version = VersionFlujo.objects.create(flujo=flujo, numero=1)
