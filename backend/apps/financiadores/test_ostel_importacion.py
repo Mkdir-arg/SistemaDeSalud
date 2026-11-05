@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from openpyxl import load_workbook
 
 from apps.accounts.models import Usuario
-from .models import Afiliado, Financiador, MembresiaFinanciador, Importacion
+from .models import Afiliado, Financiador, MembresiaFinanciador, Importacion, HistorialAfiliacion
 from .ostel_synthetic import Lote, generar_xlsx, _persona
 
 
@@ -41,6 +41,113 @@ class ImportacionAdministrativaTests(TestCase):
             "importacion": lote["id"], "fila": fila["fila"], "revision": fila["revision"],
             "datos": fila["datos"], "motivo": "Comprobación de documento ficticio", **extra,
         }, format="json")
+
+    def preparar_novedades_aisladas(self):
+        otra = Financiador.objects.create(nombre="Novedades ficticias B", tipo="obra_social")
+        MembresiaFinanciador.objects.create(financiador=otra, usuario=self.user, rol="operador")
+        base = self.base
+        try:
+            for org in (self.org, otra):
+                self.base = f"/api/financiadores/{org.pk}/"
+                lote = self.preview([_persona(1, NUMERO="000001"), _persona(2, NUMERO="000002")])
+                self.assertEqual(lote.status_code, 200, lote.data)
+                aplicada = self.aplicar(lote.data)
+                self.assertEqual(aplicada.status_code, 200, aplicada.data)
+                self.assertEqual(aplicada.data["resumen"]["aplicada"], 2)
+                self.assertTrue(HistorialAfiliacion.objects.filter(afiliado__financiador=org).exists())
+        finally:
+            self.base = base
+        self.otra_novedades = otra
+
+    def huella_novedades(self, ids=None):
+        afiliados = Afiliado.objects.all()
+        historia = HistorialAfiliacion.objects.all()
+        if ids is not None:
+            afiliados = afiliados.filter(pk__in=ids)
+            historia = historia.filter(afiliado_id__in=ids)
+        return (
+            list(afiliados.order_by("pk").values()),
+            list(historia.order_by("pk").values()),
+            list(Importacion.objects.filter(financiador=self.otra_novedades).order_by("pk").values()),
+        )
+
+    def test_omision_ostel_preserva_vigencia_revision_historia_y_otro_financiador(self):
+        self.preparar_novedades_aisladas()
+        presente = Afiliado.objects.get(financiador=self.org, numero_interno="000001")
+        protegidos = list(Afiliado.objects.exclude(pk=presente.pk).values_list("pk", flat=True))
+        anterior = self.huella_novedades(protegidos)
+        lote = self.preview([_persona(1, NUMERO="000001", APENOM="PERSONA FICTICIA RECTIFICADA")])
+        self.assertEqual(lote.status_code, 200, lote.data)
+        self.assertEqual(lote.data["resumen"]["revision"], 1)
+        self.assertEqual(self.huella_novedades(protegidos), anterior)
+        corregida = self.corregir(lote.data)
+        self.assertEqual(corregida.status_code, 200, corregida.data)
+        self.assertEqual(self.huella_novedades(protegidos), anterior)
+        aplicada = self.aplicar(corregida.data)
+        self.assertEqual(aplicada.status_code, 200, aplicada.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 1)
+        presente.refresh_from_db()
+        self.assertEqual(presente.nombre, "PERSONA FICTICIA RECTIFICADA")
+        self.assertEqual(self.huella_novedades(protegidos), anterior)
+        tras_aplicar = self.huella_novedades()
+        repetida = self.aplicar(aplicada.data)
+        self.assertEqual(repetida.status_code, 200, repetida.data)
+        self.assertEqual(self.huella_novedades(), tras_aplicar)
+
+    def test_baja_y_reingreso_ostel_bloqueados_sin_mutar_padron_ni_historia(self):
+        from datetime import date
+
+        self.preparar_novedades_aisladas()
+        afiliado = Afiliado.objects.get(financiador=self.org, numero_interno="000002")
+        finalizada = self.client.post(self.base + "finalizar-afiliacion/", {
+            "afiliado": afiliado.pk, "motivo": "Cierre explícito ficticio de caracterización",
+        }, format="json")
+        self.assertEqual(finalizada.status_code, 200, finalizada.data)
+        afiliado.refresh_from_db()
+        self.assertIsNotNone(afiliado.finalizado_en)
+        for fuente, persona, estado_correccion in (
+            ("bajas", _persona(1, NUMERO="000001"), 400),
+            ("base", _persona(1, NUMERO="000001", ESTADO="B"), 400),
+            ("base", _persona(1, NUMERO="000001", FECBAJ=date(2026, 1, 1)), 400),
+            ("base", _persona(2, NUMERO="000002"), 200),
+        ):
+            with self.subTest(fuente=fuente, fila=persona):
+                anterior = self.huella_novedades()
+                lote = self.preview([persona], fuente=fuente)
+                self.assertEqual(lote.status_code, 200, lote.data)
+                self.assertEqual(lote.data["resumen"]["valida"], 0)
+                self.assertEqual(self.huella_novedades(), anterior)
+                revisada = self.corregir(lote.data)
+                self.assertEqual(revisada.status_code, estado_correccion, revisada.data)
+                if estado_correccion == 200:
+                    self.assertEqual(revisada.data["resumen"]["valida"], 0)
+                    self.assertEqual(revisada.data["resumen"]["revision"], 1)
+                    self.assertIn("Afiliación finalizada: un posible reingreso requiere gestión expresa.",
+                                  revisada.data["filas"][0]["errores"])
+                self.assertEqual(self.huella_novedades(), anterior)
+                aplicada = self.aplicar(lote.data)
+                self.assertEqual(aplicada.status_code, 200, aplicada.data)
+                self.assertEqual(aplicada.data["resumen"]["aplicada"], 0)
+                self.assertEqual(self.huella_novedades(), anterior)
+
+    def test_revision_ostel_desactualizada_no_deja_escrituras_parciales(self):
+        self.preparar_novedades_aisladas()
+        lote = self.preview([_persona(1, NUMERO="000001", APENOM="PROPUESTA FICTICIA ANTERIOR")])
+        self.assertEqual(lote.status_code, 200, lote.data)
+        corregida = self.corregir(lote.data)
+        self.assertEqual(corregida.status_code, 200, corregida.data)
+        afiliado = Afiliado.objects.get(financiador=self.org, numero_interno="000001")
+        editada = self.client.patch(self.base + f"padron/{afiliado.pk}/", {
+            "revision": afiliado.revision, "motivo": "Corrección ficticia posterior a revisar el lote",
+            "nombre": "PERSONA FICTICIA ACTUALIZADA POR API",
+        }, format="json")
+        self.assertEqual(editada.status_code, 200, editada.data)
+        anterior = self.huella_novedades()
+        aplicada = self.aplicar(corregida.data)
+        self.assertEqual(aplicada.status_code, 200, aplicada.data)
+        self.assertEqual(aplicada.data["resumen"]["aplicada"], 0)
+        self.assertEqual(aplicada.data["resumen"]["revision"], 1)
+        self.assertEqual(self.huella_novedades(), anterior)
 
     def test_parcial_reintento_y_cobertura_no_habilitada(self):
         r = self.preview([_persona(1, NUMERO="000001"), _persona(2, NUMERO="000002", CUIL="123")])

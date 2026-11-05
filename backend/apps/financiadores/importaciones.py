@@ -529,6 +529,7 @@ def subsanar_importacion(*, importacion, usuario, fila, revision, motivo, valore
     sus ceros sigue rechazado). Las validaciones entre filas corren de nuevo
     para todas las que pasaron la lectura.
     """
+    _rechazar_novedades(importacion, usuario)
     requerir_financiador(usuario, importacion.financiador_id, escritura=True)
     lote = Importacion.objects.select_for_update().select_related("financiador").get(pk=importacion.pk)
     if lote.version not in (1, 2):
@@ -578,7 +579,14 @@ def subsanar_importacion(*, importacion, usuario, fila, revision, motivo, valore
     return lote
 
 
+def _rechazar_novedades(importacion, usuario):
+    if importacion.tipo == "novedades":
+        requerir_financiador(usuario, importacion.financiador_id, escritura=True)
+        raise ValidationError("Las novedades se resuelven desde su circuito administrativo, sin aplicar efectos.")
+
+
 def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None, revisiones_cobertura=None):
+    _rechazar_novedades(importacion, usuario)
     if importacion.version == 3:
         from .ostel_importacion import aplicar
         return aplicar(importacion=importacion, usuario=usuario)
@@ -671,6 +679,8 @@ def aplicar_importacion(*, importacion, usuario, revisiones_duplicados=None, rev
 def descargar_rechazadas(*, importacion, usuario):
     """El caller registra la descarga en la auditoría de la API; no hay archivo público."""
     requerir_financiador(usuario, importacion.financiador_id)
+    if importacion.tipo == "novedades":
+        raise ValidationError("Las novedades no son archivos de importación rechazados.")
     libro = Workbook()
     hoja = libro.active
     hoja.title = "Filas para corregir"

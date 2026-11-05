@@ -43,6 +43,7 @@ from .borradores_api import BorradoresDerechosMixin
 from .simulacion_plazo_api import SimulacionPlazoMixin
 from .padron_consulta import consultar_padron
 from .padron_exportacion import exportar_padron, parametros_padron
+from .novedades_api import NovedadesMixin
 
 
 def datos(request, campos):
@@ -118,7 +119,7 @@ class CoberturaBaseViewSet(viewsets.GenericViewSet):
     resumen=extend_schema(responses=OpenApiTypes.OBJECT),
     plazo_autorizacion=extend_schema(request=OpenApiTypes.OBJECT, responses=s.ConvenioSerializer),
 )
-class FinanciadorViewSet(SimulacionPlazoMixin, BorradoresDerechosMixin, PadronMixin, CoberturaBaseViewSet):
+class FinanciadorViewSet(NovedadesMixin, SimulacionPlazoMixin, BorradoresDerechosMixin, PadronMixin, CoberturaBaseViewSet):
     serializer_class = s.FinanciadorSerializer
 
     @extend_schema(methods=["GET"], responses=s.CatalogoSerializer(many=True))
@@ -753,7 +754,7 @@ class FinanciadorViewSet(SimulacionPlazoMixin, BorradoresDerechosMixin, PadronMi
     def importaciones(self, request, pk=None):
         org = self.organizacion(escritura=request.method == "POST")
         if request.method == "GET":
-            qs = m.Importacion.objects.filter(financiador=org).order_by("-pk")
+            qs = m.Importacion.objects.filter(financiador=org).exclude(tipo="novedades").order_by("-pk")
             if request.query_params.get("tipo"):
                 qs = qs.filter(tipo=request.query_params["tipo"])
             pagina = self.paginate_queryset(qs)
