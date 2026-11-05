@@ -13,6 +13,7 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 - S6 — Del plan aprobado: homologación sólo con equivalencias aprobadas; aceptación humana separada. La falta de esos insumos no se reemplaza por ejemplos sintéticos ni cierra #181/#142.
 - S7 — «autorizo», en respuesta a usar `gpt-6-luna` con esfuerzo alto para el explorador, sustituyendo el modelo no disponible. No cambia la asignación de otros actores.
 - S8 — «acepto», en respuesta a «¿Aceptás el circuito mostrado en la demo?». Aceptación técnica local del circuito mostrado, sin inferir homologación, casos no detallados ni autorización de publicación/merge/deploy.
+- S9 — «retira el entorno local y publica la entrega». Autoriza retirar sólo recursos propios y publicar esta rama/PR mediante la sesión GitHub ya autorizada; sin merge, deploy ni cierre de issues.
 
 ## Tasks
 
@@ -22,7 +23,7 @@ Rama: `juanikitro/salud-familias-cierre-20261105`; base: `8a3a1d8b87a25380c85e15
 | T2 | S3,S4 | Suprimir exposición administrativa de CODPAR sin modificar el original | Inline tras mapa delegado de superficies desconocidas; Risk: items 2/3 | Completo local: RED por CODPAR expuesto; GREEN focal; sin mutar fuente/huella; commit `8d54b5f` |
 | T3 | S3–S5 | Verificación integrada y demostración técnica | Pruebas focales inline; suite larga y verificador ítems 2/3 delegados | Completo técnico local: independiente152tests, diferencialv1/v2/v3, build y6recorridos reales; aceptación técnica local S8; commit `8d54b5f` |
 | T4 | S6 | Equivalencias homologadas y diferencias necesarias | Condicionada a fuente aprobada | Pendiente de información externa ya identificada; no inventar catálogo |
-| T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local confirmada S8; entrega remota no autorizada; no cerrar issues |
+| T5 | S1,S2,S6,S8 | Aceptación humana y entrega | Humana; publicación aparte | Aceptación técnica local confirmada S8; publicación autorizada S9, en curso; no cerrar issues |
 
 ## Log
 
@@ -69,3 +70,12 @@ acepto
 - La aceptación elimina ese pendiente local de T3/T5, no aporta equivalencias de parentesco/identidad/catálogos ni homologa OSTEL. T4 continúa pendiente de la fuente aprobada ya solicitada; no inferir normativa ni pedir nuevamente el mismo insumo.
 - Publicación, integración/merge y despliegue no autorizados. Revisión nativa omitida sólo para el candidato anterior, no aprobada. No cerrar #181/#142 ni afirmar que todo el módulo está homologado.
 - Actualización documental pasiva del registro y aceptación temática; lectura estructural y diff --check. Sin cambios de producto, pruebas nuevas o conexiones a DB. Risk: none.
+
+### L6 — Retiro de entorno y publicación autorizados, 05/11/2026
+
+retira el entorno local y publica la entrega
+
+- Identidad del contenedor comprobada por ID completo y etiqueta de propiedad; PostgreSQL propio detenido y retirado. Sesiones de demo terminadas y procesos descendientes propios verificados y detenidos; comprobar listeners antes de cierre.
+- Tres carpetas externas propias verificadas como hijas directas del temporal, sin enlaces de redirección. El entorno rechazó el borrado nativo aun con autorización nueva; no se usó otra herramienta para eludirlo. Temporales retenidos: salud-familias-cierre-eui91_sa, ostel-familia-ui-01a1a7cc-cierre y familias-independent-b7zpmd1e. El worktree y sus dependencias locales se conservan.
+- Publicación prevista: un PR borrador contra juanikitro/salud-continuidad-generica-20261103, cuya punta remota coincide con base8a3a1d8, para mostrar sólo este corte; no integrar la entrega acumulada ni saneamiento. Usar GitHub autorizado por HTTPS, sin SSH ni extracción de credenciales. Refs #181/#142, no cierre automático. Sin merge/deploy.
+- La aceptación técnica local sigue vigente; homologación permanece pendiente. Revisión nativa del candidato funcional omitida por elección2 y seguimientos pasivos; no se reclama aprobación. Registrar URL/CI observado después de confirmar creación; no inferir éxito de una operación ambigua.

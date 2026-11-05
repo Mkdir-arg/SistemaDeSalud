@@ -105,6 +105,10 @@ La verificación independiente no sustituye la revisión nativa ni su consentimi
 El usuario eligió «Omitir esta vez» para el candidato local de este corte: el
 proveedor confirmó `declined_this_candidate`. No hay revisión nativa aprobada
 ni se desactivaron revisiones futuras; la entrega sigue sin publicarse.
+El usuario autorizó después retirar el entorno y publicar la entrega: los
+procesos de demo y el PostgreSQL propio fueron retirados. Las carpetas temporales
+no se borraron porque el entorno rechazó la operación. La publicación autorizada
+no implica merge, deploy ni homologación; su recibo queda en el seguimiento.
 Ante una corrección futura, conservar originales e historial y reparar hacia
 adelante; retirar la protección reintroduciría la exposición conocida.
 
