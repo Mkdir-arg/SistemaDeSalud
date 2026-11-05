@@ -175,6 +175,15 @@ con los seis checks correctos, sin bypass, mediante el commit
   el candidato funcional verificado. La autorización de merge no autoriza un
   despliegue manual ni acredita el resultado de automatizaciones posteriores.
 
+**Recibo de entrega:** [PR217](https://github.com/Mkdir-arg/SistemaDeSalud/pull/217)
+integrado en main como `b823fac22e39adc99e778c22722c3ea8d44961d7`, con sus checks
+Frontend y OpenAPI correctos. Commits del acta: `2e58bcf` y reconciliación
+`44ec765`. Tras la aceptación se apagaron los servicios/Chromium de prueba
+propios y se eliminó su contenedor descartable; la demo temporal anterior ya no
+está disponible. Las capturas y logs externos se retienen como evidencia temporal.
+No se ordenó un despliegue manual; no se acredita ningún resultado automático
+de despliegue sin observación independiente.
+
 
 ## Reconciliación 30/10/2026: identidad y familia (#181/#142)
 
