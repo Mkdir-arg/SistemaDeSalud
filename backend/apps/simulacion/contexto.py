@@ -34,6 +34,7 @@ CAMPOS_AUTORIA = {
     "financiadores.AfiliacionCaso": ("registrado_por",),
     "financiadores.Afiliado": ("finalizado_por",),
     "financiadores.ArancelConvenio": ("creado_por",),
+    "financiadores.BorradorReglaDerechos": ("creado_por",),
     "financiadores.ConsumoExterno": ("registrado_por",),
     "financiadores.Convenio": ("creado_por", "aceptado_por", "cerrado_por"),
     "financiadores.EventoAutorizacion": ("usuario",),

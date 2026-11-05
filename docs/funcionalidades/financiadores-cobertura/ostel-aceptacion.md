@@ -1491,6 +1491,10 @@ Risk: item2 (gestión de una designación sensible).
 
 ### Ingreso institucional confirmado — T6d (03/11/2026)
 
+**Corte histórico:** la representación propuesta abajo quedó resuelta por S19
+y la evaluación por S21; T6e–T6h documentan su implementación y prueba local.
+La expresión «pendiente» de este contraste no describe el estado vigente.
+
 El usuario confirmó que **la institución prestadora incorpora la prescripción
 al solicitar autorización; Auditoría Médica la consulta y registra su evaluación**.
 Se mantiene la visibilidad S17: operación y auditoría administrativa sólo estado,
@@ -1522,7 +1526,8 @@ La documentación y glosario registran S18; código pendiente de esta decisión.
 **Estado actual:** S20 autoriza la configuración privada simple de T6f descrita
 abajo. La carga continúa fallando cerrada si se configura dentro de MEDIA_ROOT
 o falta el alias dedicado. Configuración y API fueron verificadas localmente con archivos ficticios;
-no se habilitaron documentos reales ni se declara el ingreso visual disponible.
+no se habilitaron documentos reales. El ingreso visual, aún ausente en ese corte,
+quedó completado localmente en T6g y la resolución se verificó en T6h.
 
 Formato confirmado por el usuario: **PDF/imagen privado**, no texto de
 justificación ni enlace implícito a la historia clínica. El documento se recibe
@@ -1765,14 +1770,22 @@ dictamen. Esto no completa el contrato clínico/PMO de #147 ni acredita aceptaci
   por normalización de rutas en desarrollo; endurecer sin romper descargas
   autorizadas. Los documentos nuevos usan almacenamiento privado separado;
   no se inspeccionaron adjuntos reales ni se afirma protección global.
+  Saneamiento local: reproducido y corregido; detalle y límites abajo. Pendiente
+  revisión nativa del cambio; verificación independiente/diferencial completada.
 - **DT2 — Clasificación de autoría:** corregir la clasificación pendiente de
   BorradorReglaDerechos.creado_por y comprobar la prueba global correspondiente.
   Es un fallo preexistente conocido, no queda oculto por las suites focales verdes.
+  Saneamiento local: clasificación global y regresión pública ahora pasan;
+  verificación independiente/diferencial completada y revisión nativa pendiente,
+  sin backfill de autoría.
 - **DT3 — Estado documental:** resúmenes T6a–T6g reconciliados con S17–S21/T6h;
   conservar el Log histórico y verificar que futuras transiciones actualicen el resumen.
 - **DT4 — Recuperación de seguimiento:** archivo local íntegro; espejo completo de
   memoria pendiente por límite de capacidad. Resolver sin truncar ni perder la
   versión anterior; no declarar sincronización si no se verificó el contenido completo.
+  Recuperación soportada local: fragmentos JSON verificables y manifiesto de
+  concatenación/SHA256 bajo el tema de memoria
+  `odd/ostel-operacion-integral/saneamiento-20261103/mirror`;309 se conserva histórico.
 - **DT5 — Revisión nativa:** varios cortes carecen de revisión completada por el
   impedimento registrado. No fabricar aprobación, repetir reportes/declines,
   reusar linajes consumidos ni modificar el modo global. Cerrar sólo mediante
@@ -1804,3 +1817,128 @@ con bytes exactos y auditoría. Suite propia de archivos/prescripciones24OK; ver
 independiente en snapshots aislados confirma diferencial sin cambios no solicitados.
 Rollback acotado: wrapper/ruta DEBUG y su nueva regresión; revertirlo REINTRODUCE
 la exposición anónima observada. Risk: items2/3. No publicar sin autorización.
+
+### Saneamiento DT2 — autoría de borradores (03/11/2026)
+
+Clasificación global y POST simulado reprodujeron el mismo defecto: el campo
+BorradorReglaDerechos.creado_por no pertenecía a CAMPOS_AUTORIA y guardaba la
+cuenta de referencia, no a quien actuó. Una entrada reutiliza el pre_save existente;
+sin migración, backfill, cambios de membresías ni activación de derechos.
+
+Regresión por API: historial/autoría real, evento y operación simulada, aislamiento,
+reintento sin nuevas versiones y contexto limpio; fuera de simulación conserva autor.
+Suite propia de simulación/borradores71OK. Integración independiente95OK y repetición
+padre95OK tras incorporar variantes/invariantes a las regresiones. Diferencial contra
+ee390819: sólo cambian el acceso anónimo indebido y el autor simulado incorrecto.
+No hubo UI nueva ni recorrido browser en este corte backend; no repetir pruebas de UI
+históricas como si fueran actuales. Advertencia no bloqueante:staticfiles local ausente.
+Rollback: entrada de clasificación y nueva regresión; vuelve el defecto de atribución
+y el fallo global. Risk: items2/3; revisión nativa todavía no aprobada.
+
+### DT6 — evidencia de entrega, no publicación del saneamiento
+
+PR208 OPEN/DRAFT en HEAD documental9f2d76e. Frontend/OpenAPI/portal real/UI interceptada
+SUCCESS; finanzas FAILURE al cargar familia-ostel-real.spec.js sin SALUD_FAMILIA_MANIFEST;
+backend todavía IN_PROGRESS en la última consulta. El fallo de finanzas ocurre antes
+del recorrido de familias: no prueba un defecto financiero, pero CI NO está verde.
+El config de importación incluye esa prueba y el workflow sólo prepara el manifiesto
+de importación. Corregir su preparación/separación de runners requiere otra unidad
+acotada de tooling; no se cambia ni se excluye silenciosamente un test en este corte.
+Estos fixes locales no están en ese PR; no acreditan CI propio, merge, deploy ni
+aceptación humana. Revisión histórica DT5 sigue pendiente de binding/recuperación
+soportados, sin repetir reporte/decline ni tocar proveedor/global.
+
+### DT6a — preparación combinada de CI autorizada (03/11/2026)
+
+Con S26, `python tests/importacion_real.py preparar` prepara ahora importación
+y familias mediante las dos fixtures existentes, en la misma base efímera del job.
+Familias usa una carpeta temporal propia derivada del directorio de importación:
+`ostel-familia-ui-<nombre-del-directorio-importación>/manifiesto.json`.
+El workflow exporta SALUD_FAMILIA_MANIFEST con ese destino antes de ejecutar
+Playwright; ambas suites siguen seleccionadas, sin skip ni testMatch reducido.
+
+La preparación rechaza directorios existentes y la base existente antes de sembrar.
+La limpieza valida los dos manifiestos antes de borrar cualquiera; elimina sólo
+sus credenciales ficticias y conserva XLSX, directorios y PostgreSQL. No cambia
+la CLI preparar/servidor/limpiar ni los guards locales y de entorno anteriores.
+
+RED público: faltaba el tercer subprocess de preparación y la limpieza ignoraba
+un manifiesto familiar ajeno. GREEN:11regresiones del runner, incluidas preparación
+de ambas fixtures/entorno aislado, directorio familiar ocupado y limpieza acotada
+idempotente. Son pruebas con fronteras subprocess/PG simuladas, NO un job CI real.
+El servicio local autorizado ya contiene la base dedicada: no se resetea para
+forzar el arranque de CI; frontend/node_modules ausente, sin instalar dependencias.
+Verificación independiente/diferencial completada sobre la orquestación y sus
+guards, con fronteras externas simuladas. Se corrigió un defecto hallado por
+el verificador: un directorio familiar enlazado podía redirigir la limpieza si
+no se proporcionaba SALUD_FAMILIA_MANIFEST. Ahora se rechaza el destino resuelto
+distinto antes de borrar cualquiera de los archivos. Regresión RED→GREEN y
+rechequeo real de enlaces Windows: ambos hashes conservados, cero conexiones DB.
+Suite final12OK sin skips y spotcheck padre aprobado. CI remoto de estos cambios
+requiere publicación autorizada; revisión nativa DT5 no se da por aprobada.
+Rollback: retirar orquestación/manifiesto familiar del runner/workflow y sus
+regresiones reintroduce el fallo de descubrimiento de familias. Risk:items2/5.
+
+### DT6b — staticfiles en pruebas de prescripciones (03/11/2026)
+
+**Estado vigente04/11:** regresión clínica local completada con PostgreSQL y
+STATIC_ROOT poblado:25pruebas OK. El bloqueo de entorno descrito abajo es histórico;
+no equivale a CI remoto, despliegue ni aceptación integral.
+
+Con S27 se conserva el alias staticfiles configurado al reemplazar STORAGES
+en las pruebas, incluidos sus overrides negativos. No se cambia almacenamiento,
+middleware ni configuración productiva. Los aliases clínicos que cada negativo
+omite siguen ausentes: no se mezclan todos los storages originales.
+
+Causa reproducida: con archivos de nombre versionado presentes en STATIC_ROOT,
+WhiteNoise consulta staticfiles_storage al inicializar su caché. CI los genera
+con collectstatic, pero local no tenía esa carpeta; por eso las suites anteriores
+no mostraron el error. La nueva regresión comparte fixture con la clase clínica,
+realiza GET real de CSS ficticio versionado y comprueba bytes idénticos200
+con ambos aliases clínicos y faltando cada uno. La ausencia intencional produce
+InvalidStorageError para ese alias; no se suprimen middleware ni validaciones.
+
+RED observado: mismo InvalidStorageError de staticfiles que CI, sin crear ni abrir
+DB. GREEN: regresión estática sin DB, tres variantes de fixture. No se ejecutó
+la suite clínica completa en el corte03/11: PostgreSQL dedicado en53474 agotaba connect_timeout3;
+Docker CLI devolvióHTTP500. La prueba inicial que esperaba DB fue interrumpida.
+No se reinicia Docker ni se alteran contenedores, puertos, datos o dependencias.
+Estado parcial hasta recuperar ese entorno y repetir la suite; CI remoto no
+acreditado, cambios sin publicar. La fixture de turnos permanece fuera de S27.
+Rollback: revertir sólo fixture y nueva regresión reintroduce el error de estáticos
+en pruebas; no cambia comportamiento productivo. Risk:none (sólo pruebas).
+
+Reintento04/11: Docker ya respondía, pero el contenedor dedicado estaba detenido.
+Se inició sólo ese contenedor tras verificar imagen y binding loopback, sin
+reiniciar Docker/global ni crear/resetear bases o contenedores. Puerto activo64010;
+suite de prescripciones y regresiones de descarga/media25OK4.745s con estáticos
+ficticios versionados en temporal externo. Esto verifica también los negativos
+clínicos antes bloqueados; no altera la fixture de turnos ni publica estos fixes.
+
+### DT6c — inicios de turnos ficticios sin colisión de calendario (04/11/2026)
+
+Con S28 se corrige sólo la generación de nuevas citas en seed_ostel_demo.
+Los desfases por prestador/práctica no bastaban: al saltar fines de semana,
+el mismo paciente podía obtener el mismo inicio en dos agendas. El fallo depende
+del reloj: se reprodujo con miércoles07local, no con martes07 ni horario normal.
+
+La fixture conserva los desfases y utiliza proximos_libres/reservar existentes;
+recuerda los inicios ya elegidos por documento ficticio y escoge el primer candidato
+compatible. Solicitar un candidato más que los inicios ya usados permite elegir
+sin un número arbitrario de reintentos. No se cambian guardas, bloqueos, motor,
+JSON/CLI, derechos o criterios clínicos. Repetir un escenario existente no migra
+ni reprograma sus citas; los datos anteriores se preservan.
+
+Prueba pública determinista RED→GREEN:12reservas futuras y repetición inmutable.
+Suite demo16OK; diferencial contra f14b747: a14local se conservan las reservas,
+cantidades y estructura JSON; a07local sólo una cita cambia, manteniendo las12
+y eliminando el inicio duplicado. Son pruebas PostgreSQL ficticias bajo TestCase,
+no una siembra manual sobre una demo o base operativa.
+
+Integración de ocho módulos saneados124OK35.891s, sin skips, con estáticos externos
+y PGdedicado. No sustituye ejecución de CI remoto, navegador o aceptación humana.
+El PR208 anterior continúa con backend/finanzas rojos y no contiene estos fixes;
+publicar/mergear/desplegar requiere autorización separada. Revisión nativa histórica
+DT5 sin cierre, sin alterar proveedor/global. Rollback: retirar el filtro local
+y la regresión de reloj reintroduce las colisiones de la fixture, no cambia el motor
+de reservas. Risk:none (datos ficticios nuevos, contratos y guardas intactos).
