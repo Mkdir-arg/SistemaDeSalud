@@ -12,6 +12,10 @@ proveedor.
 Para levantar el sistema en tu máquina no es este el documento:
 [`docs/entornos/`](entornos/README.md).
 
+Para el catálogo geográfico de la demo Railway, ver la
+[tarea programada de geografía](entornos/geografia-railway.md): comprueba a diario,
+actualiza cuando corresponde y termina; no usa el worker permanente de Compose.
+
 ---
 
 ## 1. Qué se despliega
