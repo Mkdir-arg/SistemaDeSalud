@@ -2541,3 +2541,21 @@ se rebasó solo sobre `main`: no depende de `8a3a1d8` (usa únicamente `Cobertur
 por lo que las pruebas G2a de esa base y su sección documental siguen fuera de `main`
 y de este PR. La mención a `test_borradores_api` en la regresión del 04/11 refiere a
 esa base histórica.
+
+Verificación del 06/11/2026 sobre `main` más el corte:
+- Local (SQLite): `test_limites_financieros`, `test_prescripciones_autorizacion`,
+  `test_cobertura`, `test_facturas` y `finanzas.test_dinero`: 108 pruebas OK y 5 skips
+  de concurrencia propios de SQLite.
+- CI remoto del PR #212: pasaron `test` (suite completa de backend), Finanzas con
+  navegador, Django y PostgreSQL 16, Frontend, Esquema OpenAPI y App del paciente.
+- Operativa de CI: después del force-push y del cambio de base a `main`, GitHub no
+  creó corridas para el commit nuevo. El push llegó con la base anterior todavía
+  configurada, y el cambio de base (evento `edited`) no dispara los workflows. Se
+  dispararon cerrando y reabriendo el PR (evento `reopened`).
+
+Pendiente fuera de este PR: el commit `8a3a1d8` de la rama de continuidad
+`juanikitro/salud-continuidad-generica-20261103` no está integrado en `main` y no
+tiene PR propio. Contiene las pruebas G2a de `test_borradores_api.py`,
+`frontend/e2e/borradores-derechos-real.spec.js`, su sección de este documento y el
+avance en `odd/tasks/ostel-operacion-integral.md`. Ni #212 ni #213 lo necesitan.
+Integrarlo o descartarlo es una decisión del usuario y queda abierta.
