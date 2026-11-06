@@ -9,6 +9,7 @@ import LegajoPadron from "./LegajoPadron";
 import HistorialPadron from "./HistorialPadron";
 import RecursoProtegidoPadron from "./RecursoProtegidoPadron";
 import TarjetaFicha, { DatosFicha } from "./TarjetaFicha";
+import { derechoAfiliacionPadron } from "./padronTablaEstado";
 import { ADMINISTRATIVOS, BLOQUES_PADRON, TIPOS_PLAN } from "./padronCampos";
 import { GeografiaTexto } from "@/components/issue136_Geografia";
 
@@ -38,12 +39,13 @@ export default function FichaPadronAdministrativa({ afiliado, organizacion, usua
   const persona = ficha.data;
   const permisos = persona.permisos || {};
   const camposPlan = [{ name: "plan", label: "Plan", numeric: true, options: (planes.data || []).filter((plan) => plan.activo !== false || plan.id === persona.plan).map((plan) => ({ id: plan.id, nombre: `${plan.nombre}${plan.activo === false ? " (inactivo actual)" : ""}` })) }];
-  const derechos = persona.cobertura_habilitada === false ? "Sin habilitar · sólo registro administrativo" : persona.finalizado_en ? "Finalizados" : persona.vigente ? "Habilitados · sujetos a reglas de cobertura" : "Aún no vigentes";
+  const derecho = derechoAfiliacionPadron(persona);
+  const derechos = { administrativas: "Sin habilitar · sólo registro administrativo", finalizadas: "Finalizados", vigentes: "Habilitados · sujetos a reglas de cobertura", futuras: "Aún no vigentes" }[derecho] || "Sin informar";
   return <section className={integrado ? "space-y-6" : "space-y-4"} aria-label="Ficha administrativa del padrón">
     {ver("datos") && <div hidden={Boolean(activo)} className="space-y-4">
       <TarjetaFicha titulo="Estado administrativo" icono="shieldCheck" descripcion="La situación administrativa y la cuenta informada son independientes de la cobertura efectiva. Las fechas informadas no ejecutan cortes automáticos." accion={<div className="flex shrink-0 flex-wrap items-center gap-2"><Badge tone={persona.estado_administrativo === "activo" ? "green" : "amber"}>{ADMINISTRATIVOS[persona.estado_administrativo] || "Sin informar"}</Badge>{puedeEditar && <Button size="sm" variant="secondary" disabled={Boolean(persona.finalizado_en)} title={persona.finalizado_en ? "Reactivá la afiliación antes de cambiar el plan." : undefined} onClick={() => setEdicion({ titulo: "Plan de cobertura", descripcion: "El plan se aplica a evaluaciones nuevas. Cambiarlo conserva las fechas de derechos y los eventos ya registrados." })}>Cambiar plan</Button>}</div>}>
         <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3"><div><dt className="text-xs font-medium uppercase tracking-wide text-texto-debil">Derechos actuales</dt><dd className="mt-1 font-medium">{derechos}</dd></div><div><dt className="text-xs font-medium uppercase tracking-wide text-texto-debil">Tipo de plan</dt><dd className={persona.plan_tipo ? "mt-1 font-medium" : "mt-1 text-texto-tenue"}>{TIPOS_PLAN[persona.plan_tipo] || "Sin informar"}</dd></div></dl>
-        {persona.fin_prestacional_informado && persona.vigente && <p role="status" className="mt-4 rounded-md bg-badge-amber-bg p-3 text-sm text-badge-amber-fg">Hay un fin prestacional informado ({persona.fin_prestacional_informado}) y los derechos siguen vigentes. La finalización prestacional requiere la acción explícita de cobertura.</p>}
+        {persona.fin_prestacional_informado && derecho === "vigentes" && <p role="status" className="mt-4 rounded-md bg-badge-amber-bg p-3 text-sm text-badge-amber-fg">Hay un fin prestacional informado ({persona.fin_prestacional_informado}) y los derechos siguen vigentes. La finalización prestacional requiere la acción explícita de cobertura.</p>}
       </TarjetaFicha>
       <div className={integrado ? "space-y-4" : "grid items-start gap-4 xl:grid-cols-2"}>{BLOQUES_PADRON.map((bloque) => <section key={bloque.titulo} aria-label={bloque.titulo} className={!integrado && bloque.titulo === "Identidad" ? "xl:col-span-2" : undefined}>
         <TarjetaFicha titulo={bloque.titulo} icono={ICONOS[bloque.titulo]} descripcion={bloque.titulo === "Régimen y trabajo" ? "Empleador y actividad según el régimen; subsidio aplicable a desempleo. Campos sin informar se conservan para el legado. No hay validación automática ante ARCA o ANSES." : bloque.descripcion} accion={puedeEditar && <Button size="sm" variant="secondary" onClick={() => setEdicion(bloque)}>Editar {bloque.titulo.toLocaleLowerCase("es-AR")}</Button>}>

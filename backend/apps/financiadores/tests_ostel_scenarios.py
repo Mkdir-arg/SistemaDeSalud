@@ -52,6 +52,10 @@ class EscenariosOSTELTests(unittest.TestCase):
             "identidad_individual", "cuil_distinto_mismo_numero",
             "numero_distinto_mismo_cuil", "categorias_sin_cobertura",
             "parentescos_confirmados", "cambio_empresa", "cambio_categoria",
+            "nroref_numero_coherente",
+            "nroref_numero_ausente",
+            "nroref_numero_ambiguo",
+            "nroref_cuiltit_discordantes",
         })
         self.assertEqual(len(generar_escenarios()), len(self.catalogo))
         for escenario in self.catalogo.values():
@@ -136,6 +140,39 @@ class EscenariosOSTELTests(unittest.TestCase):
         presente = self.filas("referencia_presente")
         self.assertEqual(presente[1]["CUILTIT"], presente[0]["CUIL"])
         self.assertNotIn(ausentes[0]["CUILTIT"], {f["CUIL"] for f in ausentes})
+
+    def test_nroref_numero_coherente_conserva_ceros_y_distingue_nroafi(self):
+        titular, familiar = self.filas("nroref_numero_coherente")
+        self.assertEqual((titular["NUMERO"], titular["NROREF"]), ("000001", "000001"))
+        self.assertEqual((familiar["NUMERO"], familiar["NROREF"]), ("000002", "000001"))
+        self.assertNotEqual(titular["NROAFI"], familiar["NROREF"])
+        self.assertNotEqual(titular["CUIL"], familiar["CUIL"])
+        self.assertEqual(titular["CUILTIT"], titular["CUIL"])
+        self.assertEqual(familiar["CUILTIT"], titular["CUIL"])
+
+    def test_nroref_numero_ausente_no_inventa_titular(self):
+        familiar, = self.filas("nroref_numero_ausente")
+        self.assertEqual((familiar["NUMERO"], familiar["NROREF"]), ("000002", "000001"))
+        self.assertNotEqual(familiar["CUILTIT"], familiar["CUIL"])
+        self.assertNotIn(familiar["NROREF"], {f["NUMERO"] for f in self.filas("nroref_numero_ausente")})
+
+    def test_nroref_numero_ambiguo_conserva_ambas_identidades(self):
+        a, b, familiar = self.filas("nroref_numero_ambiguo")
+        self.assertEqual((a["NUMERO"], b["NUMERO"], familiar["NROREF"]),
+                         ("000001", "000001", "000001"))
+        self.assertEqual(familiar["NUMERO"], "000003")
+        self.assertEqual(len({f["CUIL"] for f in (a, b, familiar)}), 3)
+        self.assertEqual(len({f["NROAFI"] for f in (a, b, familiar)}), 3)
+
+    def test_nroref_y_cuiltit_discordantes_no_se_reescriben(self):
+        a, b, familiar = self.filas("nroref_cuiltit_discordantes")
+        self.assertEqual((a["NUMERO"], b["NUMERO"], familiar["NUMERO"]),
+                         ("000001", "000002", "000003"))
+        self.assertEqual(familiar["NROREF"], "000001")
+        self.assertEqual(familiar["CUILTIT"], b["CUIL"])
+        self.assertNotEqual(familiar["CUILTIT"], a["CUIL"])
+        self.assertEqual(a["CUILTIT"], a["CUIL"])
+        self.assertEqual(b["CUILTIT"], b["CUIL"])
 
     def test_checksum_y_discrepancia_son_estimulos_distintos(self):
         base = self.filas("base")[0]

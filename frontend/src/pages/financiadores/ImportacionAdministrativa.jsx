@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
+import { confirmarTanda } from "@/lib/importacionRespuesta.mjs";
 import { errorFinanciador, rutaFinanciador } from "@/api/financiadores";
 import { Ayuda, Button } from "@/components/ui";
 import { plural } from "@/lib/format";
 import { BotonArchivoAnotado, PasoPreparar, PasoRevisar, PestanasFilas, TablaFilas, pestanaInicial } from "./ImportacionPasos";
 import RevisionFilaOstel, { fichaInicial } from "./RevisionFilaOstel";
+import FamiliaFilaOstel from "./FamiliaFilaOstel";
 
 const ESTADOS = { valida: "Lista para importar", revision: "Requiere revisión", aplicada: "Aplicada", omitida: "Excluida" };
 const PESTANAS = [
@@ -20,14 +22,16 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   const [archivo, setArchivo] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
+  const [sincronizacionPendiente, setSincronizacionPendiente] = useState(false);
   const [edicion, setEdicion] = useState(null);
+  const [familia, setFamilia] = useState(null);
   const [filtro, setFiltro] = useState(() => pestanaInicial(PESTANAS, lote?.filas || []));
   const clave = useRef(crypto.randomUUID());
   useEffect(() => { clave.current = crypto.randomUUID(); }, [coberturaHabilitada]);
   const activo = useRef(true);
   useEffect(() => { activo.current = true; return () => { activo.current = false; }; }, []);
-  useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion, cierre: ocupado || !!edicion }); }, [ocupado, edicion, onBloqueosChange]);
-  useEffect(() => { setEdicion(null); setError(null); setFiltro(pestanaInicial(PESTANAS, lote?.filas || [])); }, [lote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onBloqueosChange({ selector: ocupado || !!edicion || !!familia, cierre: ocupado || !!edicion || !!familia }); }, [ocupado, edicion, familia, onBloqueosChange]);
+  useEffect(() => { setEdicion(null); setError(null); setSincronizacionPendiente(false); setFiltro(pestanaInicial(PESTANAS, lote?.filas || [])); }, [lote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const ruta = (recurso) => rutaFinanciador(organizacion.id, recurso);
 
   async function ejecutar(accion) {
@@ -49,12 +53,23 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
   async function confirmar() {
     await ejecutar(async () => {
       let actual = lote;
-      while (activo.current && actual.resumen.valida > 0) {
-        const nuevo = await api.post(ruta("confirmar-importacion"), { importacion: actual.id });
-        if (!activo.current) return;
-        setLote(nuevo);
-        if (nuevo.resumen.valida >= actual.resumen.valida) break;
-        actual = nuevo;
+      try {
+        while (activo.current && actual.resumen.valida > 0) {
+          const nuevo = await confirmarTanda(actual, (datos) => api.post(ruta("confirmar-importacion"), datos));
+          if (!activo.current) return;
+          setLote(nuevo);
+          setSincronizacionPendiente(false);
+          if (nuevo.resumen.valida >= actual.resumen.valida) break;
+          actual = nuevo;
+        }
+      } catch (e) {
+        if (activo.current) {
+          // Un error de transporte no demuestra rollback. El próximo intento
+          // omite la huella y recibe el lote completo ya confirmado en servidor.
+          setLote((previo) => previo?.id === actual.id ? { ...previo, huella_lote: null } : previo);
+          setSincronizacionPendiente(true);
+        }
+        throw e;
       }
       lotes.refetch(); await onAplicado();
     });
@@ -86,6 +101,7 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
         ayuda="Hasta 5 MiB. Conservá identificadores y ceros tal como fueron informados."
         onArchivo={(nuevo) => { setArchivo(nuevo); setLote(null); setError(null); clave.current = crypto.randomUUID(); }} />
     </>}
+    {sincronizacionPendiente && <p role="status">No se pudo verificar el último resultado. La tanda puede haberse guardado. Reintentá la confirmación para recuperar el estado actual.</p>}
     {error && !edicion && <p role="alert" className="rounded-md bg-badge-error-bg p-3 text-badge-error-fg">{error}</p>}
     {/* Archivo rechazado entero: la copia marca las celdas que lo impidieron. */}
     {!soloDetalle && archivo && !lote && error && <BotonArchivoAnotado organizacion={organizacion} archivo={archivo} deshabilitado={ocupado} onError={(e) => e && setError(errorFinanciador(e))} />}
@@ -96,12 +112,18 @@ export default function ImportacionAdministrativa({ organizacion, formato, lote,
         {!soloDetalle && archivo && (lote.resumen.revision > 0 || lote.resumen.advertencias > 0) && <BotonArchivoAnotado organizacion={organizacion} archivo={archivo} importacion={lote.id} deshabilitado={ocupado || !!edicion} onError={(e) => setError(e && errorFinanciador(e))} />}
         <Ayuda>Las pendientes no bloquean las válidas. Cada fila se revalida al importar; las ya aplicadas no se repiten.</Ayuda></div>
       <PestanasFilas pestanas={PESTANAS} filas={lote.filas} valor={filtro} onChange={setFiltro} />
-      <TablaFilas key={`${lote.id}:${filtro}`} filas={filas}
+      <div className="overflow-x-auto"><TablaFilas key={`${lote.id}:${filtro}`} filas={filas}
         persona={(f) => <>{f.datos.nombre || "Sin nombre"}<br /><span className="text-texto-debil">CUIL {f.datos.cuil || "sin informar"} · interno {f.datos.numero_interno || "sin informar"}</span></>}
         detalle={(f) => <div className="flex items-center gap-1.5">{ESTADOS[f.estado]}{f.errores.length + (f.advertencias?.length || 0) > 0 && <Ayuda align="right" etiqueta={`Detalle de la fila ${f.fila_excel}`}>{f.errores.map((e) => <span key={e} className="block">{e}</span>)}{f.advertencias?.map((a) => <span key={a} className="block">Advertencia: {a}</span>)}</Ayuda>}</div>}
-        accion={(f) => <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>} />
+        accion={(f) => <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion || !!familia} onClick={() => { setError(null); setEdicion({ ...f, datos: { ...f.datos }, ficha: fichaInicial(f), motivo: "", lectura: ["aplicada", "omitida"].includes(f.estado) }); }}>{["aplicada", "omitida"].includes(f.estado) ? "Ver detalle" : "Revisar fila"}</Button>
+          {/* Conservar el disparador enfocable para que Modal pueda devolverle el foco. */}
+          {f.estado === "aplicada" && f.afiliado && <Button variant="secondary" size="sm" className="whitespace-nowrap" disabled={ocupado || !!edicion || (!!familia && familia.fila !== f.fila)} onClick={() => { if (!familia) setFamilia(f); }}>Vincular familia</Button>}
+        </div>} /></div>
       {edicion && <RevisionFilaOstel edicion={edicion} setEdicion={setEdicion} ocupado={ocupado} error={error}
         onGuardar={guardar} onCerrar={() => { setEdicion(null); setError(null); }} />}
+      {familia && <FamiliaFilaOstel key={`${lote.id}:${familia.fila}`} organizacion={organizacion} lote={lote} fila={familia}
+        onCerrar={() => setFamilia(null)} onAplicado={onAplicado} />}
     </section>}
   </div>;
 }

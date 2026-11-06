@@ -58,11 +58,16 @@ def validar_columnas_padron(valor=None):
 def _campo(clave):
     if clave == "cobertura_habilitada":
         return "_padron_habilitada"
-    return {"plan": "plan__nombre", "plan_tipo": "plan__tipo", "derecho": "_padron_derecho", "estado_administrativo": "_padron_administrativo", "titular": "titular_id"}.get(clave, clave)
+    return {"plan": "plan__nombre", "plan_tipo": "plan__tipo", "derecho": "_padron_derecho", "estado_administrativo": "_padron_administrativo", "titular": "titular_id", "titular_nombre": "_padron_titular_nombre"}.get(clave, clave)
 
 
 def _anotar(qs, claves):
     hoy = timezone.localdate()
+    if "titular_nombre" in claves:
+        qs = qs.annotate(_padron_titular_nombre=Case(
+            When(titular__financiador_id=F("financiador_id"), then=F("titular__nombre")),
+            default=Value(None), output_field=CharField(),
+        ))
     if "cobertura_habilitada" in claves:
         qs = qs.annotate(_padron_habilitada=Case(
             When(cobertura_habilitada=True, then=Value("true")),
@@ -125,7 +130,7 @@ def _consultar_padron(*, financiador, parametros):
     clave_orden = orden.removeprefix("-")
     if orden and clave_orden not in COLUMNAS_PADRON:
         _invalida()
-    qs = m.Afiliado.objects.filter(financiador=financiador).select_related("plan", "geografia__provincia", "geografia__partido", "geografia__localidad", "geografia_laboral__provincia", "geografia_laboral__partido", "geografia_laboral__localidad")
+    qs = m.Afiliado.objects.filter(financiador=financiador).select_related("plan", "titular", "geografia__provincia", "geografia__partido", "geografia__localidad", "geografia_laboral__provincia", "geografia_laboral__partido", "geografia_laboral__localidad")
     if parametros.get("plan"):
         qs = qs.filter(plan_id=serializers.IntegerField(min_value=1).run_validation(parametros["plan"]))
     derecho = parametros.get("derecho") or parametros.get("estado")
@@ -140,7 +145,7 @@ def _consultar_padron(*, financiador, parametros):
         # Cada palabra debe coincidir en algún campo; nombre y apellido pueden
         # estar separados o en distinto orden. El filtrado sigue siendo SQL.
         for palabra in texto.split():
-            condicion = Q(numero__icontains=palabra) | Q(cuil__icontains=palabra)
+            condicion = Q(numero_interno__icontains=palabra) | Q(numero__icontains=palabra) | Q(cuil__icontains=palabra)
             patron = _patron_nombre(palabra)
             if patron:
                 condicion |= Q(nombre__iregex=patron) | Q(nombres__iregex=patron) | Q(apellidos__iregex=patron)
@@ -173,7 +178,7 @@ def _consultar_padron(*, financiador, parametros):
         elif col["type"] == "choice":
             qs = qs.filter(**{campo: serializers.ChoiceField(choices=col["options"]).run_validation(valor)})
         else:
-            maximo = m.Afiliado._meta.get_field(clave).max_length
+            maximo = m.Afiliado._meta.get_field("nombre" if clave == "titular_nombre" else clave).max_length
             valor = serializers.CharField(max_length=maximo).run_validation(valor)
             qs = qs.filter(**{f"{campo}__icontains": valor})
     for rango in rangos.values():
@@ -183,6 +188,14 @@ def _consultar_padron(*, financiador, parametros):
         return qs.order_by("pk")
     expresion = F(_campo(clave_orden))
     return qs.order_by(expresion.desc(nulls_last=True) if orden.startswith("-") else expresion.asc(nulls_last=True), "pk")
+
+
+def nombre_titular_padron(afiliado):
+    """Sólo nombres de vínculos registrados dentro del mismo financiador."""
+    if not afiliado.titular_id:
+        return None
+    titular = afiliado.titular
+    return titular.nombre if titular.financiador_id == afiliado.financiador_id else None
 
 
 def valor_columna_padron(afiliado, clave):
@@ -204,6 +217,8 @@ def valor_columna_padron(afiliado, clave):
         valor = "finalizadas" if afiliado.finalizado_en else "administrativas" if not afiliado.cobertura_habilitada else "futuras" if afiliado.desde > timezone.localdate() else "vigentes"
     elif clave == "estado_administrativo":
         valor = estado_administrativo(afiliado)
+    elif clave == "titular_nombre":
+        return nombre_titular_padron(afiliado)
     elif clave == "titular":
         return afiliado.titular_id
     elif clave == "cobertura_habilitada":

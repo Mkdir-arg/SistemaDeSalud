@@ -7,6 +7,13 @@
     "default": true
   },
   {
+    "key": "numero_interno",
+    "label": "N.º individual",
+    "type": "text",
+    "nullable": true,
+    "default": true
+  },
+  {
     "key": "numero",
     "label": "N.º de afiliado",
     "type": "text",
@@ -16,26 +23,27 @@
   {
     "key": "documento",
     "label": "Documento",
-    "type": "text"
+    "type": "text",
+    "default": true
   },
   {
     "key": "plan",
-    "label": "Plan",
+    "label": "Plan registrado",
     "type": "relation",
     "nullable": true,
     "default": true
   },
   {
     "key": "derecho",
-    "label": "Estado",
+    "label": "Estado de cobertura",
     "type": "choice",
-    "default": true,
     "options": {
       "vigentes": "Vigente",
       "administrativas": "Sólo administrativa",
       "futuras": "Aún no vigente",
       "finalizadas": "Finalizada"
-    }
+    },
+    "default": true
   },
   {
     "key": "cobertura_habilitada",
@@ -48,15 +56,15 @@
   },
   {
     "key": "estado_administrativo",
-    "label": "Administrativo",
+    "label": "Estado administrativo",
     "type": "choice",
-    "default": true,
     "options": {
       "activo": "Activo administrativamente",
       "en_tramite": "En trámite",
       "baja_programada": "Baja programada",
       "baja_administrativa": "Baja administrativa"
-    }
+    },
+    "default": true
   },
   {
     "key": "desde",
@@ -278,7 +286,8 @@
     "key": "alta_administrativa",
     "label": "Alta administrativa",
     "type": "date",
-    "nullable": true
+    "nullable": true,
+    "default": true
   },
   {
     "key": "delegacion",
@@ -336,7 +345,8 @@
     "key": "baja_efectiva",
     "label": "Baja administrativa efectiva",
     "type": "date",
-    "nullable": true
+    "nullable": true,
+    "default": true
   },
   {
     "key": "fin_prestacional_informado",
@@ -348,7 +358,15 @@
     "key": "motivo_baja",
     "label": "Motivo de baja administrativa",
     "type": "text",
-    "nullable": true
+    "nullable": true,
+    "default": true
+  },
+  {
+    "key": "titular_nombre",
+    "label": "Titular registrado",
+    "type": "text",
+    "nullable": true,
+    "default": true
   },
   {
     "key": "titular",

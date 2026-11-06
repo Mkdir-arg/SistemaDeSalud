@@ -63,6 +63,7 @@ class FinanciadorSerializer(serializers.ModelSerializer):
     resuelve_autorizaciones = serializers.SerializerMethodField()
     carga_solicitudes_manuales = serializers.SerializerMethodField()
     consulta_historia_clinica = serializers.SerializerMethodField()
+    consulta_prescripciones = serializers.SerializerMethodField()
     acceso_padron_salud = serializers.SerializerMethodField()
     acceso_padron_cobranza = serializers.SerializerMethodField()
     gestiona_permisos_padron = serializers.SerializerMethodField()
@@ -71,7 +72,7 @@ class FinanciadorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Financiador
-        fields = ["id", "nombre", "tipo", "activo", "rol", "puede_designar_admin_inicial", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
+        fields = ["id", "nombre", "tipo", "activo", "rol", "puede_designar_admin_inicial", "resuelve_autorizaciones", "carga_solicitudes_manuales", "consulta_historia_clinica", "consulta_prescripciones", "planes_activos", "convenios_vigentes", "acceso_padron_salud", "acceso_padron_cobranza", "gestiona_permisos_padron"]
 
     def get_puede_designar_admin_inicial(self, obj) -> bool:
         from .permisos import puede_designar_admin_inicial
@@ -88,6 +89,10 @@ class FinanciadorSerializer(serializers.ModelSerializer):
     def get_acceso_padron_cobranza(self, obj) -> bool:
         from .permisos import puede_padron_protegido
         return puede_padron_protegido(self.context["request"].user, obj.pk, "cobranza")
+
+    def get_consulta_prescripciones(self, obj) -> bool:
+        from .permisos import puede_consultar_prescripciones
+        return puede_consultar_prescripciones(self.context["request"].user, obj.pk)
 
     def get_consulta_historia_clinica(self, obj) -> bool:
         from .permisos import puede_consultar_historia_clinica
@@ -136,6 +141,7 @@ class ReglaSerializer(serializers.ModelSerializer):
 
 
 class AfiliadoSerializer(serializers.ModelSerializer):
+    titular_nombre = serializers.SerializerMethodField()
     geografia = serializers.SerializerMethodField()
     geografia_laboral = serializers.SerializerMethodField()
 
@@ -150,6 +156,10 @@ class AfiliadoSerializer(serializers.ModelSerializer):
     estado_administrativo = serializers.SerializerMethodField()
     plan_tipo = serializers.CharField(source="plan.tipo", read_only=True, default="")
 
+    def get_titular_nombre(self, obj) -> str | None:
+        from .padron_consulta import nombre_titular_padron
+        return nombre_titular_padron(obj)
+
     def get_estado_administrativo(self, obj) -> str:
         from .padron import estado_administrativo
         return estado_administrativo(obj)
@@ -161,7 +171,7 @@ class AfiliadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Afiliado
         from .padron import CAMPOS_GENERALES
-        fields = ["id", "numero", "numero_interno", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES, "geografia", "geografia_laboral"]
+        fields = ["id", "numero", "numero_interno", "titular_nombre", "documento", "nombre", "plan", "desde", "vigente", "finalizado_en", "motivo_finalizacion", "revision", "estado_administrativo", "plan_tipo", *CAMPOS_GENERALES, "geografia", "geografia_laboral"]
         read_only_fields = ["numero_interno"]
 
 
@@ -187,6 +197,20 @@ class ImportacionSerializer(serializers.ModelSerializer):
     # Encabezados del archivo, en orden: la revisión de una fila los usa como campos.
     columnas = serializers.SerializerMethodField()
 
+    def to_representation(self, instance):
+        respuesta = super().to_representation(instance)
+        if instance.version == 3:
+            # Sólo la presentación administrativa: no mutar el JSON persistido,
+            # la huella de sincronización ni la evidencia que usa salud.
+            for campo in ("filas", "filas_cambiadas"):
+                if campo in respuesta:
+                    respuesta[campo] = [
+                        {**fila, "original": {
+                            k: v for k, v in fila["original"].items() if k != "CODPAR"
+                        }} for fila in respuesta[campo]
+                    ]
+        return respuesta
+
     class Meta:
         model = models.Importacion
         fields = ["id", "tipo", "version", "estado", "resumen", "filas", "creado", "columnas"]
@@ -198,6 +222,36 @@ class ImportacionSerializer(serializers.ModelSerializer):
             return list(COLUMNAS)
         from .importaciones import encabezados
         return list(encabezados(obj.tipo, obj.version))
+
+
+class ConfirmarImportacionSerializer(serializers.Serializer):
+    importacion = serializers.IntegerField(min_value=1)
+    revisiones_duplicados = serializers.DictField(child=serializers.CharField(max_length=255), required=False)
+    revisiones_cobertura = serializers.DictField(child=serializers.CharField(max_length=255), required=False)
+    modo_respuesta = serializers.ChoiceField(choices=["completa", "cambios"], default="completa")
+    huella_lote = serializers.RegexField(regex=r"^[0-9a-f]{64}$", required=False)
+
+
+class ImportacionRespuestaCompletaSerializer(ImportacionSerializer):
+    filas = serializers.JSONField(read_only=True)
+    # La respuesta tradicional no incluye estos campos. No declararlos read_only:
+    # drf-spectacular marcaría como obligatorios aun con required=False.
+    modo_respuesta = serializers.ChoiceField(choices=["completa"], required=False)
+    huella_lote = serializers.CharField(required=False)
+
+    class Meta(ImportacionSerializer.Meta):
+        fields = [*ImportacionSerializer.Meta.fields, "modo_respuesta", "huella_lote"]
+
+
+class ImportacionCambiosSerializer(ImportacionSerializer):
+    modo_respuesta = serializers.ChoiceField(choices=["cambios"], read_only=True)
+    huella_lote = serializers.CharField(read_only=True)
+    base_huella = serializers.CharField(read_only=True)
+    filas_cambiadas = serializers.JSONField(read_only=True)
+
+    class Meta(ImportacionSerializer.Meta):
+        fields = ["id", "tipo", "version", "estado", "resumen", "creado", "columnas",
+                  "modo_respuesta", "huella_lote", "base_huella", "filas_cambiadas"]
 
 
 class ReservaSerializer(serializers.ModelSerializer):

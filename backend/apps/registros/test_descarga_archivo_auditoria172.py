@@ -1,6 +1,8 @@
 """AUD-003: evidencia de inicio de descarga, sin inventar un paciente dueño."""
 from datetime import timedelta
 import hashlib
+from importlib import reload
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -8,6 +10,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.test import override_settings
 from django.utils import timezone
+from django.urls import clear_url_caches
 from rest_framework.test import APIClient, APITestCase
 
 from apps.accounts.models import Membresia, Usuario
@@ -63,6 +66,50 @@ class DescargaArchivoAuditoria172Tests(APITestCase):
         respuesta = self.client.get(f"/api/archivos/descargar/{ruta}")
         self.comprobar_bytes(respuesta)
         self.assertEqual(respuesta.get("Cache-Control"), "private, no-store")
+
+    def test_media_debug_normalizada_no_expone_uploads_y_conserva_descarga(self):
+        import config.urls as urls
+
+        patrones = urls.urlpatterns
+        try:
+            with override_settings(DEBUG=True):
+                reload(urls)
+                clear_url_caches()
+                ruta, meta = self.archivo()
+                antes = ArchivoClinico.objects.values().get(pk=meta.pk)
+                archivo = Path(default_storage.path(ruta))
+                huella = hashlib.sha256(archivo.read_bytes()).hexdigest()
+                publico = Path(default_storage.location) / "publico.txt"
+                publico.write_bytes(b"Contenido publico ficticio")
+                self.client.force_authenticate(None)
+                for variante in (ruta, f"otro/../{ruta}", f"otro/%2e%2e/{ruta}",
+                                 f"./{ruta}", f"otro/..\\{ruta}", f"/{ruta}",
+                                 ruta.replace("/", "//"), ruta.replace("/", "\\"),
+                                 ruta.replace("uploads", "UPLOADS"), ruta.replace("/", "%2f"),
+                                 f"{ruta}?download=1", ruta.replace("uploads", "uploads."),
+                                 ruta.replace("uploads", "uploads%20")):
+                    with self.subTest(variante=variante):
+                        respuesta = self.client.get(f"/media/{variante}")
+                        if getattr(respuesta, "streaming", False):
+                            self.assertEqual(b"".join(respuesta.streaming_content), self.contenido)
+                        self.assertEqual(respuesta.status_code, 404)
+                        self.assertFalse(getattr(respuesta, "streaming", False))
+                self.assertFalse(AccesoClinico.objects.exists())
+                self.assertEqual(ArchivoClinico.objects.values().get(pk=meta.pk), antes)
+                self.assertEqual(hashlib.sha256(archivo.read_bytes()).hexdigest(), huella)
+                for url in ("/media/publico.txt", "/media/publico.txt?download=1",
+                            "/media/otro/../publico.txt"):
+                    respuesta = self.client.get(url)
+                    self.assertEqual(respuesta.status_code, 200)
+                    self.assertEqual(b"".join(respuesta.streaming_content), b"Contenido publico ficticio")
+                self.assertEqual(self.client.get("/media/publico.txt", HTTP_IF_MODIFIED_SINCE=
+                    respuesta["Last-Modified"]).status_code, 304)
+                self.client.force_authenticate(self.usuario)
+                self.comprobar_bytes(self.client.get(f"/api/archivos/descargar/{ruta}"))
+                self.assertEqual(AccesoClinico.objects.get().usuario_id, self.usuario.pk)
+        finally:
+            urls.urlpatterns = patrones
+            clear_url_caches()
 
     def test_descarga_directa_registra_archivo_institucion_y_actor(self):
         ruta, meta = self.archivo()

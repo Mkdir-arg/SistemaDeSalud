@@ -19,7 +19,10 @@ import { parametrosListado } from "@/lib/padronNavigation";
 import { NOMBRE_SISTEMA } from "@/lib/marca";
 import FichaPadronAdministrativa from "@/components/financiadores/FichaPadronAdministrativa";
 import TarjetaFicha from "@/components/financiadores/TarjetaFicha";
+import { COLUMNAS_PADRON, derechoAfiliacionPadron, valorColumnaPadron } from "@/components/financiadores/padronTablaEstado";
 import { ROLES, itemsFinanciador } from "./menuFinanciador";
+
+const COLUMNA_DERECHO = COLUMNAS_PADRON.find((columna) => columna.key === "derecho");
 
 const fecha = (valor) => valor ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
 const fechaFin = (exclusivo) => fecha(new Date(Date.parse(`${exclusivo}T00:00:00Z`) - 86400000).toISOString());
@@ -163,6 +166,7 @@ function FichaAfiliadoContenido() {
   const autorizaciones = useQuery({ queryKey: [...scope, "ficha-autorizaciones", afiliado, paginaAutorizaciones], queryFn: () => api.get(`${rutaFinanciador(id, "ficha-afiliado-autorizaciones")}?${new URLSearchParams({ afiliado, page: paginaAutorizaciones, page_size: POR_PAGINA })}`), enabled: Boolean(id), gcTime: 0, retry: false });
   const pendientes = useQuery({ queryKey: [...scope, "ficha-autorizaciones-pendientes", afiliado], queryFn: () => api.get(`${rutaFinanciador(id, "ficha-afiliado-autorizaciones")}?${new URLSearchParams({ afiliado, pendientes: true, page: 1, page_size: POR_PAGINA })}`), enabled: Boolean(id), gcTime: 0, retry: false });
   const persona = ficha.data?.afiliado;
+  const derecho = persona ? derechoAfiliacionPadron(persona) : null;
   const filas = ficha.data?.results || [];
   const filasAutorizaciones = autorizaciones.data?.results || [];
   const volver = `/financiadores/padron?${parametrosListado(parametros, id || seleccion || "")}`;
@@ -219,8 +223,7 @@ function FichaAfiliadoContenido() {
           {persona ? <p className="text-cifra font-bold leading-tight">{persona.nombre}</p> : ficha.error ? null : <Spinner label="Consultando ficha…" />}
         </div>
         {persona && <div className="flex flex-wrap items-center gap-2">
-          {persona.cobertura_habilitada === false && <Badge tone="amber">Sólo registro administrativo</Badge>}
-          <Badge tone={{ vigente: "green", finalizada: "gray", futura: "info" }[persona.estado] || "neutral"}>{{ vigente: "Vigente", finalizada: "Finalizada", futura: "Aún no vigente" }[persona.estado] || persona.estado}</Badge>
+          <Badge tone={{ vigentes: "green", administrativas: "amber", finalizadas: "gray", futuras: "info" }[derecho] || "neutral"}>{valorColumnaPadron(persona, COLUMNA_DERECHO)}</Badge>
           {pendientes.data?.count > 0 && <Badge tone="amber">{plural(pendientes.data.count, "autorización pendiente", "autorizaciones pendientes")}</Badge>}
         </div>}
       </div>
