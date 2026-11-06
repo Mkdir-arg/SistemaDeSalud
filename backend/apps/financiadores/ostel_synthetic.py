@@ -159,6 +159,21 @@ def generar_escenarios():
             Lote("01_fuente_a", (baja,)),
             Lote("02_fuente_b", (_persona(1, COD_PLAN="OTRO-PLAN-FICTICIO"),)),
         )),
+        # Aclaración OSTEL del 06/11: NROREF referencia NUMERO, no NROAFI.
+        # Sólo evidencia sintética; no cambia el resolver ni confirma vínculos.
+        caso("nroref_numero_coherente",
+             _persona(1, NUMERO="000001", NROREF="000001"),
+             _persona(2, NUMERO="000002", NROREF="000001", CUILTIT=titular)),
+        caso("nroref_numero_ausente",
+             _persona(2, NUMERO="000002", NROREF="000001", CUILTIT=titular)),
+        caso("nroref_numero_ambiguo",
+             _persona(1, NUMERO="000001", NROREF="000001"),
+             _persona(2, NUMERO="000001", NROREF="000001"),
+             _persona(3, NUMERO="000003", NROREF="000001", CUILTIT=titular)),
+        caso("nroref_cuiltit_discordantes",
+             _persona(1, NUMERO="000001", NROREF="000001"),
+             _persona(2, NUMERO="000002", NROREF="000002"),
+             _persona(3, NUMERO="000003", NROREF="000001", CUILTIT=_cuil("99018502"))),
     )
 
 
