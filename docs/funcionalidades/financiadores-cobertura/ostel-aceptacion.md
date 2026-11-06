@@ -2429,3 +2429,10 @@ El usuario aceptó el circuito técnico genérico y autorizó commit, push, PR, 
 La integración sobre main72b2533 conserva borradores de derechos y simulación de plazos, además de Novedades. Verificación independiente sobre árbol staged inmutable:270pruebas PostgreSQL/15módulos, cero omitidas; paridad del listado legacy en cuatro filtros; spotcheck del padre correcto. Build aislado correcto. Sin cambios de esquema ni seeds remotos. Publicación/CI/merge/despliegue se registrarán separadamente cuando se observen.
 
 La primera CI de PR#220 detectó una colisión de identificadores OpenAPI entre listado y detalle. Se documenta el listado con identificador explícito y regresión; no cambia las rutas ni los efectos administrativos. La prueba local reprodujo el fallo antes de corregirlo.
+
+## Familias: integración selectiva y homologación pendiente — 05/11/2026
+
+- El corte de privacidad oculta CODPAR en las respuestas administrativas v3, incluidas las incrementales y la tabla de revisión. La fuente persistida conserva sus40columnas y la copia de salud protegida; v1/v2 y la huella no cambian.
+- Procedencia: #214 y #221, con CI verde antes de integrar a continuidad. Se trasladan sólo los hunks de Familias sobre main, preservando las pruebas y fuentes de Novedades. El candidato de main requiere su propio CI antes de merge/deploy.
+- Aceptación técnica local registrada, sin equivaler a homologación OSTEL. Siguen pendientes identificador estable/visible, equivalencias TIPODOC/CODPAR/NROREF y aceptación operativa con las fuentes aprobadas ya solicitadas en #142/#181. No inferir vínculos de NROAFI ni activar derechos.
+- Seguimiento de integración/deploy y separación de tareas: `odd/tasks/familias-cierre.md`. La nueva tarea de continuidad conservará los criterios normativos pendientes; la original pasa a QA sólo por el corte técnico explícito.

@@ -197,6 +197,20 @@ class ImportacionSerializer(serializers.ModelSerializer):
     # Encabezados del archivo, en orden: la revisión de una fila los usa como campos.
     columnas = serializers.SerializerMethodField()
 
+    def to_representation(self, instance):
+        respuesta = super().to_representation(instance)
+        if instance.version == 3:
+            # Sólo la presentación administrativa: no mutar el JSON persistido,
+            # la huella de sincronización ni la evidencia que usa salud.
+            for campo in ("filas", "filas_cambiadas"):
+                if campo in respuesta:
+                    respuesta[campo] = [
+                        {**fila, "original": {
+                            k: v for k, v in fila["original"].items() if k != "CODPAR"
+                        }} for fila in respuesta[campo]
+                    ]
+        return respuesta
+
     class Meta:
         model = models.Importacion
         fields = ["id", "tipo", "version", "estado", "resumen", "filas", "creado", "columnas"]

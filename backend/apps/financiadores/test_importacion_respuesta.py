@@ -86,7 +86,10 @@ class RespuestaImportacionTests(DatosRespuesta, TestCase):
         self.assertNotIn("filas", segunda.data)
         self.assertEqual(segunda.data["base_huella"], primera.data["huella_lote"])
         self.assertEqual([f["fila"] for f in segunda.data["filas_cambiadas"]], [101, 102])
-        self.assertEqual(segunda.data["filas_cambiadas"][-1]["original"], original)
+        self.assertEqual(segunda.data["filas_cambiadas"][-1]["original"],
+                         {k: v for k, v in original.items() if k != "CODPAR"})
+        lote.refresh_from_db()
+        self.assertEqual(lote.filas[-1]["original"], original)
         self.assertEqual(segunda["Cache-Control"], "private, no-store")
         self.assertEqual(Afiliado.objects.count(), 102)
 
@@ -122,7 +125,8 @@ class RespuestaImportacionTests(DatosRespuesta, TestCase):
         self.assertIn("email", advertida["advertidos"])
         self.assertTrue(advertida["advertencias"])
         self.assertEqual(advertida["original"]["EMAIL1"], "correo-invalido")
-        self.assertEqual(len(advertida["original"]), 40)
+        self.assertEqual(len(advertida["original"]), 39)
+        self.assertNotIn("CODPAR", advertida["original"])
         self.assertEqual(primera["filas"][100]["estado"], "omitida")
         self.assertIn("CUIL", primera["filas"][102]["columnas_error"])
         self.assertIn("FECBAJ", primera["filas"][103]["columnas_bloqueo"])
