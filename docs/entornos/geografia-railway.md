@@ -157,7 +157,15 @@ la base completa para revertir únicamente este servicio.
 La evidencia fechada de activación y primera carga está en el
 [informe de #136](../plans/2026-10-22-issue136-avance.md). Una ejecución inicial
 correcta no acredita por adelantado el próximo disparo automático ni estabilidad
-de Georef; comprobar el turno siguiente y el consumo en Railway.
+de Georef; comprobar el turno siguiente y el consumo en Railway. El seguimiento
+del 06/11/2026 observó los disparos diarios del 28/10 al 06/11 terminados; la
+publicación semanal del 04/11 sigue sin confirmar por logs o estado del catálogo.
+
+La lista de ejecuciones del cron se puede leer sin `ssh` ni variables:
+
+```powershell
+railway api 'query { deploymentInstanceExecutions(input:{serviceId:"f14c805f-ba47-441c-ae3f-4880bb16692f", environmentId:"c0acf9b3-a608-441c-876c-cbcd5fed4860"}, first: 20) { edges { node { id status createdAt updatedAt } } } }' --compact
+```
 
 Referencias oficiales: [Cron jobs](https://docs.railway.com/cron-jobs) y
 [planes y consumo](https://docs.railway.com/pricing/plans).
