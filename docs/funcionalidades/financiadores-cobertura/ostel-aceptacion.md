@@ -1,5 +1,117 @@
 # OSTEL: catálogo sintético, validación local y homologación pendiente
 
+## Autorizaciones médicas: trazabilidad del corte estudiado — 05/11/2026
+
+**S17–S21 tienen circuito técnico implementado y evidencia local histórica;
+el contrato clínico y la aceptación integral de #147 siguen pendientes.**
+Esta sección cierra la reconciliación documental, no el issue ni la homologación.
+
+### Fuente y alcance
+
+El corte estudiado es `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`.
+Esta rama de cierre parte del snapshot exacto. La matriz se recuperó del
+worktree analítico basado en `cae9e16`, preservando aquí el documento completo
+del snapshot. Las referencias fijan la evidencia estudiada, no acreditan una
+instalación en funcionamiento. No se modificó saneamiento.
+
+Las decisiones se consultan en las
+[Specs S17–S21 del corte](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/odd/tasks/ostel-operacion-integral.md#L28-L36).
+La siguiente matriz las identifica sin reemplazar sus textos originales.
+
+### Requisito → capacidad → evidencia → límite
+
+| Decisión | Capacidad y guarda existentes en el corte | Evidencia existente | Estado y límite |
+| --- | --- | --- | --- |
+| S17: visibilidad reservada | Designación `auditoria_medica` por financiador; un rol administrativo o plataforma no sustituye la capacidad. El DTO administrativo informa estado, no el documento. | [Guarda de lectura](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/permisos.py#L62-L78); `test_metadatos_no_aparecen_en_bandeja_historial_ni_descarga_generica` y `test_permisos_revocados_y_ambitos_ajenos_sin_bytes` en [pruebas de prescripción](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/test_prescripciones_autorizacion.py). | Implementado; no concede historia clínica general ni asigna usuarios reales. |
+| S18: ingreso institucional y consulta médica | La institución presenta con la solicitud; Auditoría Médica designada descarga; la resolución exige su permiso independiente. | `test_presentacion_privada_con_solicitud_y_descarga_medica_auditada` y `test_plataforma_no_sustituye_al_presentante_institucional` en las pruebas anteriores; [recorrido real](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/frontend/e2e/prescripciones-autorizacion-real.spec.js#L106-L167). | Implementado; no impone aprobación médica exclusiva ni precedencia normativa nueva. |
+| S19: adjunto privado PDF/imagen | Documento separado de la justificación administrativa; validación técnica de formato, firma y tamaño; reintento idéntico sin duplicación ni reemplazo. | `test_formato_firma_tamano_y_unico_archivo_antes_de_escribir` y `test_reintento_mismos_bytes_y_clave_no_duplica_y_no_reemplaza` en las pruebas de prescripción. | Representación implementada; validación técnica no acredita suficiencia clínica. No convertir el adjunto opcional en obligatorio por inferencia. |
+| S20: almacenamiento privado simple | Alias dedicado; sin fallback general; almacenamiento local fuera de `MEDIA_ROOT`, o prefijo separado en el bucket privado ya configurado. | [Servicio y rechazo de media pública](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/prescripciones_autorizacion.py#L32-L83); `test_alias_ausente_no_recurre_al_almacenamiento_general` y `test_storage_fuera_de_media_no_expone_documento_por_rutas_normalizadas`. | Implementado; no demuestra configuración remota, backup ni política de conservación aprobada. |
+| S21: aprobar/rechazar la misma solicitud | Reutiliza el resolver existente; lectura y resolución se designan y revocan por separado. Conserva ID, revisión, historial e idempotencia, sin crear dictamen paralelo. | `test_evaluacion_medica_aprueba_la_solicitud_existente_sin_registrar_atencion`, su caso de rechazo y `test_lectura_y_resolucion_se_designan_y_revocan_independientemente` en [pruebas de designación](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/backend/apps/financiadores/test_auditoria_medica.py); recorrido real anterior. | Implementado y caracterizado en T6h; aprobar no crea una atención nueva ni demuestra pago. Si ya hay una atención realizada pendiente de autorización, la resolución puede completar su distribución financiera; conservar ese circuito existente. |
+
+### Evidencia disponible y aceptación pendiente
+
+[T6h/L42](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/odd/tasks/ostel-operacion-integral.md#L681-L691)
+registra ejecución local histórica de API y navegador real sobre datos ficticios:
+aprobación en escritorio, rechazo en móvil y descarga por teclado con bytes
+exactos. La comprobación inicialmente bloqueada por Docker quedó completada;
+no corresponde mantener ese impedimento histórico como faltante de T6h.
+Los negativos con transporte inyectado conservan su límite explícito: no son
+prueba positiva del backend.
+
+La matriz inicial se comprobó estructuralmente. En la continuación del 05/11
+se añadieron dos caracterizaciones API de presentación privada → observación →
+reenvío → aprobación/rechazo en `test_prescripciones_autorizacion.py`. Verifican
+mismo ID, original y plazo, revisión obsoleta sin cambios, reintento exacto y
+revocación independiente de lectura/resolución. Los 48 h de la fixture son un
+valor técnico ficticio, no una vigencia ni política clínica aprobadas.
+
+La primera ejecución detectó una expectativa demasiado amplia del test: cada
+respuesta del ámbito financiador audita `consultar_autorizaciones` en
+`EventoCobertura`, incluso en un reintento. Se mantuvo el dominio intacto y se
+exigió exactamente una consulta nueva, sin tocar la auditoría productiva ni
+relajar los rechazos. No hubo cambio de producto ni RED artificial.
+
+Focal: dos caracterizaciones aprobadas (0,795 s). Suite de prescripciones,
+designaciones, autorizaciones, manuales y usos: 82 tests en 8,269 s, sin fallos,
+10 omitidos por necesitar PostgreSQL/bloqueos reales. Runner externo con entorno
+saneado, dotenv deshabilitado, SQLite en memoria y almacenamiento ficticio;
+base efímera destruida al terminar. Se reutilizaron dependencias instaladas,
+sin cambios globales ni instalaciones. Advertencia: `backend/staticfiles`
+ausente; no se investigó ni modificó saneamiento.
+
+Ese límite de entorno fue levantado por autorización explícita posterior.
+Se creó PostgreSQL 16 Alpine propio, con datos efímeros y puerto sólo loopback;
+se migró exclusivamente su base ficticia. La misma suite ejecutó 82 tests en
+37,381 s sin fallos ni omisiones, incluidas concurrencia y revocación. Se
+reutilizaron dependencias Python instaladas y `npm ci` desde el lockfile, sin
+modificar manifiestos/versiones ni instalar globalmente.
+
+El runner de prescripciones existente se amplió con dos escenarios nuevos, sin
+cambiar los siete anteriores: observación → reenvío → aprobación/rechazo en
+escritorio/móvil. Exigen conservar ID, original descargado con bytes exactos,
+plazo no vacío, revisiones e historial, y mantienen separación de capacidades.
+Las 48 h de respuesta son ficticias y no se homologan como política OSTEL.
+Focal visible: 2 recorridos en 23,3 s. Suite final: 11 recorridos en 45,7 s sin
+fallos ni omisiones. Positivos reales contra API/PostgreSQL/almacenamiento
+ficticios; los negativos inyectados conservan su alcance de transporte.
+Capturas escritorio/móvil inspeccionadas, reenvío/resolución y descarga por
+teclado. No hay cambios de UI/producto.
+
+El Chrome del sistema no pudo arrancar para automatización; se usó el Chromium
+1234 ya instalado, correspondiente al Playwright del lockfile. Los ajustes de
+lanzadores quedaron fuera del repositorio: entorno saneado, dotenv deshabilitado,
+Vite sin envFile y cwd externo, cache/resultados propios. No acceso a `.env`,
+secretos, bases existentes/remotas ni recursos de saneamiento. Se conserva la
+advertencia preexistente de staticfiles; no se investigó como parte de este corte.
+La validación técnica local no cierra los contratos clínicos ni la aceptación
+humana, y no acredita CI, merge ni despliegue.
+
+La evidencia anterior no acredita CI, merge, despliegue, disponibilidad actual,
+revisión nativa pendiente ni aceptación humana. Publicación del snapshot y
+existencia de otro PR acumulado tampoco acreditan esos estados.
+
+### Contratos que impiden el cierre integral
+
+| Pendiente | Condición mínima de cierre |
+| --- | --- |
+| Criterios clínicos/PMO | Catálogo/versionado, correspondencias con prestaciones y criterios/excepciones aprobados. Las reglas técnicas de cobertura existentes no son PMO homologado. |
+| Evidencia mínima y obligatoriedad | Definir cuándo se exige prescripción, qué debe acreditar y cómo se determina suficiencia; no inventar contenido clínico. |
+| Vigencias, renovación y circuito | Acordar condiciones aplicables, motivos y excepciones; no deducir plazos ni exclusividad médica de los permisos técnicos. |
+| Conservación y reemplazo | Acordar política y circuito autorizado de corrección/reemplazo. El reintento idempotente no es reemplazo; no agregar borrado ni plazos automáticos. |
+| Prestación y liquidación | Contrato para usos parciales/repetidos, cambios de plan y conciliación de prestación realizada; autorización no equivale a hecho asistencial ni deuda financiera. |
+| Aceptación funcional/clínica | Recorrido validado por OSTEL con reglas representativas aprobadas y evidencia de integración; no sustituirlo por pruebas sintéticas. |
+
+Se conserva el límite de uso: motivo/evidencia administrativa sólo contiene
+referencias de revisión, no transcripciones clínicas reservadas. La privacidad
+del archivo no constituye una garantía semántica sobre el texto libre ni prueba
+que haya ocurrido una filtración.
+
+Seguimiento: [#147](https://github.com/Mkdir-arg/SistemaDeSalud/issues/147) y
+[consolidación del corte](https://github.com/Mkdir-arg/SistemaDeSalud/blob/8a3a1d8b87a25380c85e15519fc0683f09ef6c49/docs/funcionalidades/financiadores-cobertura/ostel-aceptacion.md#L1740-L1752).
+No se reitera la información ya solicitada a OSTEL. Queda cerrado únicamente
+el mapa documental de S17–S21; no se cierran issues, se crean tareas paralelas
+ni se habilita código de negocio nuevo mientras falten sus contratos.
+
 ## Lectura por corte: Novedades — 04/11/2026
 
 La [matriz de Novedades](#matriz-de-evidencia-de-novedades--04112026) al final
