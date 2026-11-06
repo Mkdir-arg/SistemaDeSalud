@@ -711,9 +711,10 @@ no se afirma que el rango esté reservado ni se consulta un registro real.
 
 `SINTETICO`, `PLAN-FICTICIO`, `EMP-FICTICIA`, `BAJA-FICTICIA`, `00`, `01`,
 `AAA` y `ZZZ` son estímulos, no equivalencias de catálogos aprobadas.
-En los casos familiares, `NROREF` coincide deliberadamente con el `NROAFI`
-de otra fila; esto permite comprobar presencia textual. OSTEL debe confirmar
-la clave real, su alcance y el significado de los sufijos antes del mapeo.
+En los escenarios históricos `referencia_*`, `NROREF` coincide deliberadamente
+con el `NROAFI` de otra fila para comprobar presencia textual. Se conservan como
+estímulos opacos, no como la regla familiar confirmada; la aclaración del
+06/11/2026 y los nuevos casos `nroref_*` se documentan al final.
 La fila base es un control estructural, **no una afiliación aprobada para importar**.
 Un checksum correcto tampoco acredita CUIL asignado, identidad ni afiliación.
 
@@ -2436,3 +2437,38 @@ La primera CI de PR#220 detectó una colisión de identificadores OpenAPI entre 
 - Procedencia: #214 y #221, con CI verde antes de integrar a continuidad. Se trasladan sólo los hunks de Familias sobre main, preservando las pruebas y fuentes de Novedades. El candidato de main requiere su propio CI antes de merge/deploy.
 - Aceptación técnica local registrada, sin equivaler a homologación OSTEL. Siguen pendientes identificador estable/visible, equivalencias TIPODOC/CODPAR/NROREF y aceptación operativa con las fuentes aprobadas ya solicitadas en #142/#181. No inferir vínculos de NROAFI ni activar derechos.
 - Seguimiento de integración/deploy y separación de tareas: `odd/tasks/familias-cierre.md`. La nueva tarea de continuidad conservará los criterios normativos pendientes; la original pasa a QA sólo por el corte técnico explícito.
+
+## Escenarios NROREF tras la aclaración OSTEL — 06/11/2026
+
+Fuente: respuesta OSTEL documentada el 06/11 en #142 y #181. NUMERO identifica
+el registro interno y se conserva en reingresos/cambios de empresa; NROREF
+referencia el NUMERO del titular, con excepciones históricas. No confirma el
+número visible, los catálogos completos ni la precedencia ante discrepancias.
+
+Plan implementado: conservar los 27 escenarios anteriores sin cambiar valores
+ni orden y agregar cuatro casos independientes mediante los helpers existentes.
+El catálogo actual tiene 31 escenarios. Ninguno confirma vínculos ni derechos.
+
+| Escenario nuevo | Evidencia ficticia preservada | Límite |
+|---|---|---|
+| `nroref_numero_coherente` | Titular NUMERO/NROREF `000001`; familiar NUMERO `000002`, NROREF `000001` y CUILTIT coherente | Los ceros no se pierden; NROAFI sigue siendo otro campo |
+| `nroref_numero_ausente` | Una fila refiere al NUMERO y CUIL de un titular ausente del lote | No inventar titular ni inferir inexistencia global |
+| `nroref_numero_ambiguo` | Dos identidades distintas tienen NUMERO `000001`, referenciado por una tercera | Dato inconsistente de revisión, no permiso para elegir o fusionar |
+| `nroref_cuiltit_discordantes` | NROREF apunta al NUMERO de una fila; CUILTIT al CUIL de otra | No corregir el original ni decidir cuál prevalece |
+
+Verificación local: un RED por cada caso ausente y su GREEN posterior; suite
+completa `python -B -m unittest apps.financiadores.tests_ostel_scenarios -q`
+aprobada, incluyendo lector real, round-trip XLSX de ambas hojas y exportación
+con manifiesto. Contraste externo contra main af5cc9b: los 27 casos previos,
+su orden, columnas, hojas y errores de ancho permanecen iguales. No se agregan
+tests que dependan de git history ni archivos generados al repositorio.
+
+Sin cambios en lector/importador, resolver CUILTIT→CUIL, API/UI, permisos o
+persistencia. No se ejecutaron pruebas API/DB, suite global de backend, CI ni
+deploy en este corte; no requieren levantar un entorno local para comprobar el
+contrato del generador. No se afirma que producción ya envíe discrepancias a
+una auditoría nueva: estos casos sólo preparan evidencia para su futura revisión.
+
+#223 puede separar la semántica recibida de número visible, catálogos,
+excepciones, precedencia y aceptación operativa pendientes. No se actualizó el
+issue ni su estado mediante este corte local. Risk: none.
