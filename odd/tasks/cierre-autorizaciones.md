@@ -1,6 +1,6 @@
 # Cierre de Autorizaciones
 
-Objetivo: completar el plan de cierre sin inventar contratos clínicos ni duplicar saneamiento. Rama: `juanikitro/salud-cierre-autorizaciones-20261105`; base: `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`.
+Objetivo: completar el plan de cierre sin inventar contratos clínicos ni duplicar saneamiento. Rama: `juanikitro/salud-cierre-autorizaciones-20261105`; corte estudiado: `8a3a1d8b87a25380c85e15519fc0683f09ef6c49`; base de integración desde el 06/11/2026: `main` (`967a58c`).
 Entrega: `ask-on-risk`, local, sin publicación/merge/deploy. Previsión: menos de 400 líneas autoras en el primer corte. Runners: API Django aislada SQLite/PostgreSQL y Playwright real de prescripciones, con entorno propio autorizado S6.
 
 ## Specs
@@ -87,3 +87,6 @@ autorizo publicacion e integracion
 - Estado remoto revalidado: `main` es ancestro de la rama local, pero faltan 61 commits acumulados. La rama de continuidad `juanikitro/salud-continuidad-generica-20261103` coincide con la base `8a3a1d8`; el delta propio contiene sólo los cuatro commits del corte y cinco archivos. Se prepara PR acotado contra esa rama, sin publicar todos los cambios acumulados como si fueran propios.
 - PR208 permanece OPEN/DRAFT sobre main; su cabeza `c28fc7e` tiene seis checks exitosos. Eso no acredita el candidato de este corte ni autoriza integrar los demás frentes. Se mantiene separada la decisión de llevar toda la dependencia a main.
 - Skills `work-unit-commits` y `chained-pr` cargados. `branch-pr` no está instalado en las rutas habituales; se usa el CLI GitHub existente, sin instalar herramientas. No se cambian dependencias, estado clínico ni saneamiento.
+
+- 06/11/2026, rebase sobre `main`: la base `juanikitro/salud-continuidad-generica-20261103` no corre CI y quedó atrás de `main` tras mergear #208. Ambos fallos de CI eran heredados de esa base, no de este corte: `PrescripcionAutorizacionTests` daba `KeyError: 'staticfiles'` porque el `override_settings(STORAGES=...)` de `8a3a1d8` borraba el alias estático (corregido en `main` por `3a7bf96`), y la importación OSTEL con navegador no encontraba el escenario de familias porque el runner no lo preparaba (corregido en `main` por `dbffea3`). Se reprodujeron sólo los cinco commits propios sobre `origin/main`; el único conflicto fue posicional en `ostel-aceptacion.md` (ambas secciones conservadas, esta arriba). `8a3a1d8` (pruebas G2a de `test_borradores_api.py` y su spec) no está en `main` ni lo necesita este corte, así que queda fuera del PR. Los enlaces permanentes a `8a3a1d8` del documento se conservan como referencia al corte estudiado. PR re-apuntado a `main`.
+- Comprobación local del rebase: `test_prescripciones_autorizacion` y `test_auditoria_medica` en SQLite, 29 tests OK con 5 omisiones de concurrencia PostgreSQL; sintaxis del fixture Python y del spec Playwright válida. El recorrido PostgreSQL + navegador queda a cargo de CI.
