@@ -2472,3 +2472,90 @@ una auditoría nueva: estos casos sólo preparan evidencia para su futura revisi
 #223 puede separar la semántica recibida de número visible, catálogos,
 excepciones, precedencia y aceptación operativa pendientes. No se actualizó el
 issue ni su estado mediante este corte local. Risk: none.
+
+### Caracterización de límites financieros — 04/11/2026
+
+Solicitud: «implementa el proximo corte recomendado». Corte local basado en
+`8a3a1d8b87a25380c85e15519fc0683f09ef6c49`, limitado a pruebas y esta evidencia;
+sin cambios productivos, contratos nuevos ni cierre funcional de T7–T11.
+
+`backend/apps/financiadores/test_limites_financieros.py` reutiliza `CoberturaSetup`,
+los servicios actuales de reserva/atención y `registrar_movimiento`. Dos financiadores
+ficticios tienen planes, afiliados con identificadores repetidos entre ámbitos y
+borradores no operativos. La base de comparación contiene cobertura y documentos
+existentes, dos obligaciones hospitalarias de 20 y 80 y un movimiento de 5, todos
+ficticios: no son tasas, cuotas ni importes propuestos para OSTEL.
+
+| Interfaz observada | Resultado comprobado |
+| --- | --- |
+| PATCH de cobranza protegida | Cambia únicamente el bloque declarado, su revisión/historial y el evento de auditoría esperado. Declarar deuda no modifica derechos, cobertura ni dinero. |
+| POST/PATCH de factura documental | Crea/edita únicamente el documento y su evento. Conserva el documento del otro financiador y no genera obligaciones ni movimientos. |
+| POST de factura duplicada | HTTP 400; documentos, historial y dominio financiero/asistencial comparado intactos. |
+| Acceso/edición y vínculos cruzados | HTTP 404/400 según el contrato existente; sin efectos persistidos en ninguno de los financiadores. Incluye cobranza protegida y vínculos de convenio/afiliado. |
+
+Las instantáneas comparan valores completos y ordenados de todos los modelos de
+`finanzas` y `financiadores`, no sólo sus conteos. Los eventos anteriores permanecen
+idénticos y se comprueba el evento nuevo exacto en las operaciones exitosas. No se
+afirma cobertura de tablas clínicas externas a esas aplicaciones ni de concurrencia
+nueva. No hay RED artificial: es caracterización de comportamiento ya implementado.
+
+Verificación local sobre PostgreSQL 16 descartable propio, en loopback y tmpfs,
+mediante Python 3.14 ya disponible. Lanzador externo con entorno saneado y carga
+de dotenv deshabilitada antes de importar settings; sin leer `.env`, credenciales
+existentes ni bases operativas. No se agregaron dependencias ni se cambiaron settings.
+
+- Focal: `python -B manage.py test apps.financiadores.test_limites_financieros
+  --settings=config.settings_financiadores_postgres_test --noinput`: 4 pruebas OK.
+- Regresión conjunta: el módulo nuevo más `apps.financiadores.test_facturas`,
+  `apps.financiadores.test_padron130`, `apps.financiadores.test_cobertura`,
+  `apps.financiadores.test_uso_autorizaciones`, `apps.financiadores.test_borradores_api`
+  y `apps.finanzas.test_dinero`, con los mismos settings: 167 pruebas OK.
+- Advertencia preexistente: carpeta `backend/staticfiles/` ausente; sin fallo de
+  pruebas. Los rechazos HTTP y errores inyectados de las regresiones son esperados.
+- Evaluación nativa del corte: medium/under_budget, revisión no debida; sin START
+  ni aprobación nativa. `.atl/` preexistente excluido de la selección.
+- Limpieza: el intento automático del 04/11 fue bloqueado; las bases de test sí
+  fueron eliminadas por el runner. El 05/11, con autorización explícita de los tres
+  puntos de cierre, se verificó la identidad del contenedor propio y el contenido
+  exacto de la carpeta temporal. Se detuvo/eliminó `salud-finanzas-corte-01a1a7cc`
+  y se retiró únicamente `salud-finanzas-characterization-01a1a7cc/run.py` y su
+  carpeta vacía; sin tocar otros recursos ni saneamiento.
+- Sin build ni navegador: no cambia producto ni interfaz visual. Sin CI remoto,
+  publicación, merge, deploy ni aceptación humana. La evidencia no homologa aportes,
+  saldos, liquidaciones, reintegros médicos, tesorería ni intercambio oficial.
+
+Se conserva S22: #144/#145 esperan la respuesta OSTEL ya solicitada, sin registro
+manual alternativo. Los contratos de #149/#148/#153 y la condición de #146 siguen
+pendientes. Risk: none (sólo pruebas y documentación; interfaces productivas intactas).
+
+Reversión del corte: retirar exclusivamente `test_limites_financieros.py` y esta
+sección documental. No hay migraciones, datos operativos ni cambios productivos
+que revertir. La validación del 04/11 es evidencia local histórica, no CI remoto.
+
+Integración sobre `main` (06/11/2026): el PR #212 apuntaba a la rama de continuidad
+`juanikitro/salud-continuidad-generica-20261103`, cuyo corte `8a3a1d8` es anterior a
+los fixes de CI ya integrados en `main` (`3a7bf96`, alias `staticfiles` en
+`test_prescripciones_autorizacion`; `dbffea3`, fixture de familias del runner OSTEL).
+Esa base vieja explicaba los fallos remotos de los jobs `test` y Finanzas. Este corte
+se rebasó solo sobre `main`: no depende de `8a3a1d8` (usa únicamente `CoberturaSetup`),
+por lo que las pruebas G2a de esa base y su sección documental siguen fuera de `main`
+y de este PR. La mención a `test_borradores_api` en la regresión del 04/11 refiere a
+esa base histórica.
+
+Verificación del 06/11/2026 sobre `main` más el corte:
+- Local (SQLite): `test_limites_financieros`, `test_prescripciones_autorizacion`,
+  `test_cobertura`, `test_facturas` y `finanzas.test_dinero`: 108 pruebas OK y 5 skips
+  de concurrencia propios de SQLite.
+- CI remoto del PR #212: pasaron `test` (suite completa de backend), Finanzas con
+  navegador, Django y PostgreSQL 16, Frontend, Esquema OpenAPI y App del paciente.
+- Operativa de CI: después del force-push y del cambio de base a `main`, GitHub no
+  creó corridas para el commit nuevo. El push llegó con la base anterior todavía
+  configurada, y el cambio de base (evento `edited`) no dispara los workflows. Se
+  dispararon cerrando y reabriendo el PR (evento `reopened`).
+
+Pendiente fuera de este PR: el commit `8a3a1d8` de la rama de continuidad
+`juanikitro/salud-continuidad-generica-20261103` no está integrado en `main` y no
+tiene PR propio. Contiene las pruebas G2a de `test_borradores_api.py`,
+`frontend/e2e/borradores-derechos-real.spec.js`, su sección de este documento y el
+avance en `odd/tasks/ostel-operacion-integral.md`. Ni #212 ni #213 lo necesitan.
+Integrarlo o descartarlo es una decisión del usuario y queda abierta.
