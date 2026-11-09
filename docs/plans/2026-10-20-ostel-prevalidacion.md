@@ -426,3 +426,20 @@ todas las decisiones de identidad, familia, fechas, estados, corte y precedencia
 El objetivo de producto sigue siendo un único flujo de importar/revisar/confirmar
 con formatos extensibles, preferencia frontend e historial común; nunca botones
 o funciones por financiador.
+
+## Lectura de identidad y referencias rescatada de #197 (06/11/2026)
+
+`backend/apps/financiadores/test_ostel_lectura_referencias.py` incorpora a main
+los casos del PR #197 sin equivalente en `tests_ostel_scenarios.py` ni
+`test_ostel_prevalidacion.py`: ida y vuelta generador → lector en ambas hojas de
+los escenarios de identidad y referencia (incluidos los NROREF según NUMERO de
+#224), conservación literal de `NUMERO`, `NROAFI`, `NRODOC`, `CUIL`, `NROREF`,
+`CODPAR`, `TIPODOC` y `CUILTIT`, independencia del orden en referencias ambiguas,
+referencias recíprocas y autorreferencia, y NUMERO numérico de Excel sin
+recuperar ceros. Se retiró la aserción de #197 que exigía la ausencia de
+`CUILTIT`, superada por el formato de 40 columnas.
+
+Sólo prueba conservación de lectura; no resuelve familias ni interpreta
+códigos. El nombre `test_*.py` permite que `manage.py test` las descubra en CI;
+el resto de `issue181_tests.py` y el documento de avance de #197 quedan como
+historia del PR cerrado. Pendientes OSTEL: ver #223.
