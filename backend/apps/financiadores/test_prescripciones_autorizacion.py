@@ -122,6 +122,104 @@ class PrescripcionAutorizacionTests(AutorizacionSetup, APITestCase):
     def test_evaluacion_medica_rechaza_la_solicitud_existente_sin_registrar_atencion(self):
         self.evaluar("rechazar")
 
+    def observar_reenviar_y_resolver(self, decision):
+        # Plazo ficticio para comprobar conservación, no una política clínica.
+        self.convenio.plazo_autorizacion_horas = 48
+        self.convenio.save(update_fields=["plazo_autorizacion_horas"])
+        clave_presentacion = uuid4()
+        creada = self.presentar(clave=clave_presentacion)
+        self.assertEqual(creada.status_code, 201, creada.data)
+        solicitud_id = creada.data["id"]
+        plazo = creada.data["plazo_respuesta"]
+        self.assertIsNotNone(plazo)
+        original = m.PrescripcionAutorizacion.objects.values().get(solicitud_id=solicitud_id)
+        base = f"{self.url}{solicitud_id}/"
+        resolver = base + f"resolver/?financiador={self.financiador.pk}"
+        descarga = base + f"prescripcion/?financiador={self.financiador.pk}"
+        reenviar = base + f"reenviar/?institucion={self.institucion.pk}"
+        self.membresia.auditoria_medica = True
+        self.membresia.save(update_fields=["auditoria_medica"])
+        self.client.force_authenticate(self.operador)
+        observacion = {"revision": 1, "decision": "observar",
+            "motivo": "Aclarar referencia administrativa ficticia", "clave": str(uuid4())}
+        observada = self.client.post(resolver, observacion, format="json")
+        self.assertEqual(observada.status_code, 200, observada.data)
+        self.assertEqual((observada.data["id"], observada.data["estado"], observada.data["revision"]),
+            (solicitud_id, "observada", 2))
+        self.assertEqual(observada.data["plazo_respuesta"], plazo)
+
+        self.client.force_authenticate(self.usuario)
+        datos = {"revision": 2, "justificacion": "Referencia aclarada sin contenido clínico",
+            "clave": str(uuid4())}
+        antes = self.huella()
+        obsoleta = self.client.post(reenviar, {**datos, "revision": 1}, format="json")
+        self.assertEqual(obsoleta.status_code, 400)
+        self.assertEqual(self.huella(), antes)
+        self.assertEqual(self.client.get(descarga).status_code, 403)
+        cambio = self.presentar(clave=clave_presentacion, contenido=PDF + b"otro documento")
+        self.assertEqual(cambio.status_code, 400)
+        self.assertEqual(self.huella(), antes)
+
+        reenviada = self.client.post(reenviar, datos, format="json")
+        self.assertEqual(reenviada.status_code, 200, reenviada.data)
+        self.assertEqual((reenviada.data["id"], reenviada.data["estado"], reenviada.data["revision"]),
+            (solicitud_id, "pendiente", 3))
+        self.assertEqual(reenviada.data["plazo_respuesta"], plazo)
+        self.assertEqual(reenviada.data["prescripcion_estado"], "presentada")
+        antes = self.huella()
+        self.assertEqual(self.client.post(reenviar, datos, format="json").data, reenviada.data)
+        self.assertEqual(self.huella(), antes)
+
+        self.client.force_authenticate(self.operador)
+        archivo = self.client.get(descarga)
+        self.assertEqual(archivo.status_code, 200)
+        self.assertEqual(b"".join(archivo.streaming_content), PDF)
+        self.membresia.resuelve_autorizaciones = False
+        self.membresia.save(update_fields=["resuelve_autorizaciones"])
+        final = self.aprobacion(revision=3) if decision == "aprobar" else {
+            "revision": 3, "decision": "rechazar", "motivo": "Referencia administrativa ficticia",
+            "clave": str(uuid4())}
+        antes = self.huella()
+        self.assertEqual(self.client.post(resolver, final, format="json").status_code, 403)
+        self.assertEqual(self.huella(), antes)
+        self.membresia.resuelve_autorizaciones = True
+        self.membresia.auditoria_medica = False
+        self.membresia.save(update_fields=["resuelve_autorizaciones", "auditoria_medica"])
+        self.assertEqual(self.client.get(descarga).status_code, 403)
+        resuelta = self.client.post(resolver, final, format="json")
+        self.assertEqual(resuelta.status_code, 200, resuelta.data)
+        self.assertEqual((resuelta.data["id"], resuelta.data["estado"], resuelta.data["revision"]),
+            (solicitud_id, "aprobada" if decision == "aprobar" else "rechazada", 4))
+        self.assertEqual(resuelta.data["plazo_respuesta"], plazo)
+        self.assertEqual([fila["accion"] for fila in resuelta.data["historial"]],
+            ["solicitar", "observar", "reenviar", decision])
+        modelos = (m.SolicitudAutorizacion, m.EventoAutorizacion, m.PrescripcionAutorizacion,
+            m.ReservaCobertura, Caso, EventoCaso)
+        dominio = [list(modelo.objects.order_by("pk").values()) for modelo in modelos]
+        eventos = list(m.EventoCobertura.objects.order_by("pk").values())
+        self.assertEqual(self.client.post(resolver, final, format="json").data, resuelta.data)
+        self.assertEqual([list(modelo.objects.order_by("pk").values()) for modelo in modelos], dominio)
+        posteriores = list(m.EventoCobertura.objects.order_by("pk").values())
+        self.assertEqual(len(posteriores), len(eventos) + 1)
+        self.assertEqual(posteriores[:-1], eventos)
+        consulta = posteriores[-1]
+        self.assertEqual((consulta["accion"], consulta["objeto"], consulta["financiador_id"],
+            consulta["institucion_id"], consulta["usuario_id"], consulta["motivo"]),
+            ("consultar_autorizaciones", str(self.financiador.pk), self.financiador.pk,
+                None, self.operador.pk, ""))
+        self.assertEqual(m.PrescripcionAutorizacion.objects.values().get(solicitud_id=solicitud_id), original)
+        self.assertEqual(m.PrescripcionAutorizacion.objects.count(), 1)
+        self.assertEqual(m.SolicitudAutorizacion.objects.count(), 1)
+        self.assertFalse(HechoAtencionCosteable.objects.exists())
+        self.assertFalse(ObligacionFinanciera.objects.exists())
+        self.assertFalse(m.ReservaCobertura.objects.exists())
+
+    def test_observacion_reenvio_y_aprobacion_conservan_prescripcion_y_plazo(self):
+        self.observar_reenviar_y_resolver("aprobar")
+
+    def test_observacion_reenvio_y_rechazo_conservan_prescripcion_y_plazo(self):
+        self.observar_reenviar_y_resolver("rechazar")
+
     def test_presentacion_privada_con_solicitud_y_descarga_medica_auditada(self):
         respuesta = self.presentar()
         self.assertEqual(respuesta.status_code, 201, getattr(respuesta, "data", None))
