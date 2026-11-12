@@ -25,6 +25,8 @@ export default function NovedadesFinanciador({ organizacion, scope, operador }) 
   const [error, setError] = useState(null);
   const [motivo, setMotivo] = useState("");
   const [confirmar, setConfirmar] = useState(false);
+  const [valorCobertura, setValorCobertura] = useState("");
+  const [motivoCobertura, setMotivoCobertura] = useState("");
   const base = rutaFinanciador(organizacion.id, "novedades");
   const clave = [...scope, "novedades"];
   const listado = useQuery({ queryKey: [...clave, estado, pagina], gcTime: 0,
@@ -33,7 +35,7 @@ export default function NovedadesFinanciador({ organizacion, scope, operador }) 
     gcTime: 0, queryFn: () => api.get(`${base}${seleccion}/`) });
   const novedad = detalle.data;
 
-  function abrir(id) { setSeleccion(id); setMotivo(""); setConfirmar(false); setError(null); }
+  function abrir(id) { setSeleccion(id); setMotivo(""); setConfirmar(false); setValorCobertura(""); setMotivoCobertura(""); setError(null); }
   function nueva(antecedente = null) {
     setPersonaInicial(antecedente?.persona_actual || null);
     setFormulario(antecedente ? { ...antecedente.original, clave: crypto.randomUUID(),
@@ -59,6 +61,20 @@ export default function NovedadesFinanciador({ organizacion, scope, operador }) 
       });
       qc.setQueryData([...clave, "detalle", resultado.id], resultado);
       setMotivo(""); setConfirmar(false);
+      await qc.invalidateQueries({ queryKey: clave });
+    } catch (e) { setError(e); } finally { setOcupado(false); }
+  }
+  async function decidirHabilitacion() {
+    setOcupado(true); setError(null);
+    try {
+      const resultado = await api.post(`${base}${novedad.id}/habilitacion-cobertura/`, {
+        cobertura_habilitada: valorCobertura === "habilitar",
+        motivo: motivoCobertura,
+        revision: novedad.revision,
+        revision_padron: novedad.persona_actual.revision,
+      });
+      qc.setQueryData([...clave, "detalle", resultado.id], resultado);
+      setValorCobertura(""); setMotivoCobertura("");
       await qc.invalidateQueries({ queryKey: clave });
     } catch (e) { setError(e); } finally { setOcupado(false); }
   }
@@ -110,7 +126,7 @@ export default function NovedadesFinanciador({ organizacion, scope, operador }) 
           <p className="mt-3 whitespace-pre-wrap break-words text-sm">{novedad.original.descripcion}</p>
         </section>
         <div className="grid gap-3 sm:grid-cols-2">{[["Al registrar", novedad.persona_inicial], ["Padrón actual", novedad.persona_actual]].map(([titulo, persona]) => <section key={titulo} className="rounded-lg bg-superficie-2 p-3 text-sm">
-          <h2 className="font-semibold">{titulo}</h2><p>{persona.nombre}</p><p>Documento: {persona.documento}</p><p>Revisión: {persona.revision} · {persona.finalizada ? "Afiliación finalizada" : "Afiliación no finalizada"}</p>
+          <h2 className="font-semibold">{titulo}</h2><p>{persona.nombre}</p><p>Documento: {persona.documento}</p><p>Revisión: {persona.revision} · {persona.finalizada ? "Afiliación finalizada" : "Afiliación no finalizada"}</p><p>Cobertura: {persona.cobertura_habilitada === true ? "Habilitada" : persona.cobertura_habilitada === false ? "Deshabilitada · sólo registro administrativo" : "No registrado"}</p>
         </section>)}</div>
         {novedad.conflictos.length > 0 && <div role="status" className="rounded-lg bg-badge-amber-bg p-3 text-sm text-badge-amber-fg">
           <h2 className="font-semibold">Revisión de conflictos</h2><ul className="mt-2 list-inside list-disc">{novedad.conflictos.map((c) => <li key={c}>{CONFLICTOS[c] || c}</li>)}</ul>
@@ -123,12 +139,27 @@ export default function NovedadesFinanciador({ organizacion, scope, operador }) 
           </li>)}</ol>
         </section>
         {error && <p role="alert" className="text-badge-error-fg">{errorFinanciador(error)}</p>}
+        {novedad.habilitacion_cobertura && <section aria-label="Decisión de cobertura" className="rounded-lg border border-division p-4 text-sm">
+          <h2 className="font-semibold">Decisión explícita de cobertura</h2>
+          <p className="mt-1">{novedad.habilitacion_cobertura.resultado === "cambiada" ? "Cobertura actualizada" : "Sin cambios: ya tenía el valor elegido"} · {novedad.habilitacion_cobertura.cobertura_habilitada ? "Habilitada" : "Deshabilitada"}</p>
+          <p className="mt-1 text-texto-suave">{novedad.habilitacion_cobertura.motivo}</p>
+          {novedad.habilitacion_cobertura.historial_id && <p className="mt-1">Cambio enlazado al historial del padrón #{novedad.habilitacion_cobertura.historial_id}.</p>}
+        </section>}
         {operador && novedad.estado === "pendiente" && <section className="space-y-3 border-t border-division pt-4">
           <Field label="Motivo de la decisión"><Textarea value={motivo} maxLength={255} disabled={ocupado} onChange={(e) => setMotivo(e.target.value)} /></Field>
           {novedad.conflictos.length > 0 && <Checkbox label="Revisé expresamente los conflictos y coincidencias indicados" checked={confirmar} disabled={ocupado} onChange={(e) => setConfirmar(e.target.checked)} />}
           <div className="flex flex-wrap gap-2"><Button disabled={ocupado || !motivo.trim() || novedad.conflictos.length > 0 && !confirmar} onClick={() => decidir("conciliar")}>Conciliar sin aplicar efectos</Button>
             <Button variant="secondary" disabled={ocupado || !motivo.trim()} onClick={() => decidir("descartar")}>Descartar propuesta</Button>
             <Button variant="ghost" disabled={ocupado} onClick={actualizar}>Actualizar comparación</Button></div>
+        </section>}
+        {operador && novedad.estado === "conciliada" && !novedad.habilitacion_cobertura && <section aria-label="Decisión explícita de cobertura" className="space-y-3 border-t border-division pt-4">
+          <h2 className="font-semibold">Decisión de cobertura</h2>
+          <p className="text-sm text-texto-suave">Elegí el estado de forma explícita. No se infiere del código o la fecha de la novedad. Habilitar no reactiva una afiliación finalizada ni garantiza una prestación.</p>
+          <Field label="Estado de cobertura"><Select value={valorCobertura} disabled={ocupado} onChange={(e) => setValorCobertura(e.target.value)}>
+            <option value="">Elegir estado</option><option value="habilitar">Habilitar cobertura</option><option value="deshabilitar">Deshabilitar cobertura</option>
+          </Select></Field>
+          <Field label="Motivo de la decisión"><Textarea value={motivoCobertura} maxLength={255} disabled={ocupado} onChange={(e) => setMotivoCobertura(e.target.value)} /></Field>
+          <Button disabled={ocupado || !valorCobertura || !motivoCobertura.trim()} onClick={decidirHabilitacion}>Aplicar decisión de cobertura</Button>
         </section>}
         {operador && <Button variant="secondary" disabled={ocupado} onClick={() => nueva(novedad)}>Registrar rectificación</Button>}
       </div>}

@@ -2713,3 +2713,35 @@ No se agregan modelos ni migraciones. No se activan reglas de borrador.
 - Suite completa candidata/base: mismos 1 fallo y 3 errores; no está verde.
   Causas verificadas: manifest estático de admin, dos pruebas PostgreSQL ejecutadas
   contra SQLite y orden de reglas en historial de borradores. No se corrigen aquí.
+
+## Recorrido visible de Derechos — portal del financiador
+
+Desde el detalle de una novedad conciliada, el operador elige por separado
+habilitar o deshabilitar cobertura e informa el motivo. La pantalla muestra el
+resultado de la operación y permite acceder al historial enlazado con el antecedente.
+La conciliación sola sigue sin aplicar efectos prestacionales. El auditor conserva
+acceso de lectura y no obtiene permisos nuevos para cambiar cobertura.
+
+La presentación histórica distingue tres valores: habilitada, deshabilitada y
+`No registrado` cuando el snapshot anterior no contiene `cobertura_habilitada`.
+No transforma un dato ausente en falso ni lo rellena usando el padrón actual.
+
+### Verificación del recorrido
+
+- `npm run build`: aprobado nuevamente sobre la UI final después de la corrección,
+  sin advertencias en la salida de Vite.
+- `npm run e2e -- --config playwright.derechos-real.config.js`: 10 pruebas finales
+  aprobadas en Chromium escritorio y móvil, con teclado, historial, permisos y
+  snapshot histórico. Los intentos con manifiesto ausente o inválido no son prueba.
+- Recheck independiente del snapshot anterior: muestra `Cobertura: No registrado`.
+- Fixtures exclusivamente sintéticos en base local descartable; servidores propios
+  en 8231/API y 5179/Vite. No se utilizó el entorno compartido de la otra sesión.
+- La preparación de la demo visible fue bloqueada por la política del runtime.
+  Las pruebas automatizadas no equivalen a demostración visible ni aceptación humana.
+
+### Alcance y límites
+
+Este corte aporta una operación explícita y trazable, no una nueva política médica.
+Siguen fuera de alcance reglas temporales, familiares, clínicas, financieras y la
+activación automática de borradores. La aprobación de producto, las pruebas locales,
+la revisión nativa, la publicación y la homologación OSTEL son evidencias distintas.

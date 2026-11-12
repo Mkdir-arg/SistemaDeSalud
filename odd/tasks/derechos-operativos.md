@@ -1,5 +1,5 @@
 # Derechos operativos: plan de implementación
-Objetivo: dar a Derechos una función real dentro del circuito del financiador, sin duplicar operaciones existentes ni inventar política asistencial. Estado: implementación y correcciones verificadas localmente; estrategia de entrega y revisión nativa pendientes.
+Objetivo: dar a Derechos una función real dentro del circuito del financiador, sin duplicar operaciones existentes ni inventar política asistencial. Estado: implementación verificada; corte API revisado; cierre local del corte UI en curso.
 Rama integradora: `juanikitro/DERECHOS`; base local: `65ef9c8ad8b93b7b959033d1d722b63350444537`. Estrategia acordada: `feature-branch-chain`, sólo local; sin publicación autorizada. Runners: Django aislado, PostgreSQL dedicado para concurrencia y Playwright contra entorno ficticio propio.
 
 ## Specs
@@ -14,11 +14,11 @@ Rama integradora: `juanikitro/DERECHOS`; base local: `65ef9c8ad8b93b7b959033d1d7
 
 ## Tasks
 
-- T0 | S1 | inline, CLI/UI de Orca | COMPLETO con alcance actualizado: worktree creado; usuario acepta orquestar desde este chat sin trasladarlo | Sin commit; base indicada arriba; L11.
-- T1 | S2,S4-S6 | delegated, mapa acotado + una impugnación independiente de premisa de alto impacto | COMPLETO: revisión estática y este plan | Sin pruebas ejecutadas ni commit.
+- T0 | S1 | inline, CLI/UI de Orca | COMPLETO con alcance actualizado: worktree creado; usuario acepta orquestar desde este chat sin trasladarlo | Registro en `6ae71d2`; L11.
+- T1 | S2,S4-S6 | delegated, mapa acotado + una impugnación independiente de premisa de alto impacto | COMPLETO: revisión estática y este plan | Registro en `6ae71d2`.
 - T2 | S2-S7 | inline, decisión de producto | COMPLETO: primer corte confirmado en L12 | No autoriza política automática.
-- T3 | S3-S7 | delegated, un escritor para la unidad vertical; delegación solicitada expresamente | IMPLEMENTADO LOCALMENTE: B1-B3 corregidos y revalidados, L17 | Sin commit; pendiente estrategia de entrega.
-- T4 | S3-S7 | delegated, verificador independiente por datos/permisos/concurrencia | VERIFICACIÓN FUNCIONAL COMPLETA CON LIMITACIONES: B1-B3 cerrados; spot check del padre aprobado | Suite completa fallida también en base; demo visible bloqueada por política del runtime; revisión nativa y aceptación humana pendientes.
+- T3 | S3-S7 | delegated, un escritor para la unidad vertical; delegación solicitada expresamente | IMPLEMENTADO LOCALMENTE: B1-B3 corregidos y revalidados, L17 | API `4b3c52d`; corte UI pendiente de commit; cadena L18.
+- T4 | S3-S7 | delegated, verificador independiente por datos/permisos/concurrencia | VERIFICACIÓN FUNCIONAL COMPLETA CON LIMITACIONES: B1-B3 cerrados; spot check y build final aprobados; revisión nativa API reconocida L20 | Suite completa fallida también en base; demo visible bloqueada por política del runtime; revisión UI y aceptación humana pendientes.
 - T5 | S4-S6 | por resolver tras contrato de la primera regla | CONDICIONAL: política operativa acotada, fechas y consumidores; no habilitada por T3 | Sin implementación ni estimación cerrada.
 
 ## Log
@@ -229,3 +229,72 @@ Una pasada de partición propone tres cortes locales coherentes, cada uno con ba
 | 3 | `juanikitro/DERECHOS-03-ui` | Recorrido visible e historial enlazado; componentes, fixtures, E2E/config y documentación de UI | Playwright escritorio/móvil y build; limitación de demo visible L17 |
 
 Las ramas son referencias locales, no PR existentes. La integradora permanece en la base hasta autorización posterior. Cada corte operativo conserva sus pruebas y documentación; no se divide una conducta entre código y pruebas. Se consolidan las notas de aceptación para separar evidencia actual de los fallos iniciales ya corregidos, preservados en este Log. No se eliminan pruebas ni se comprime código para reducir líneas. Commits y assessment se registrarán tras observarlos.
+
+
+### L19 — Cortes locales y consentimiento de revisión pendiente, 12/11/2026
+
+- Corte 1: `6ae71d27271c31e7eeae83ca5aa3bf3e9ab0be18`, rama `juanikitro/DERECHOS-01-plan`, 231 líneas; assessment `passive`, `review_due=false`. Lectura estructural suficiente.
+- Corte 2: `4b3c52dd8d017192fa246dce34672197757e32ed`, rama actual `juanikitro/DERECHOS-02-api`, 381 líneas; servicio/API/tests/documentación juntos. Assessment `high` por item 4, `review_due=true`. START devolvió consentimiento v3; no revisores iniciados, no aprobación.
+- La integradora sigue en la base y el corte 3 de UI permanece sin commit en este worktree. No se alteró Issues-3, ni se publicó/fusionó nada. La configuración Playwright untracked queda excluida explícitamente del corte 2 porque pertenece al corte 3.
+- Base de revisión del corte 2: `6ae71d27271c31e7eeae83ca5aa3bf3e9ab0be18`; lineage `review-6209c8e0e2b3bedd`; target `sha256:59d7c5536fcebcc125991b3ef3e8f9074f8a2e193a1d3b45886e52d2a7ca83e4`. Ejecutar únicamente la invocación de la elección explícita del usuario, sin reconstruir sus tokens.
+
+Consentimiento conservado para continuidad (datos del proveedor, no nueva autorización):
+
+```json
+{
+  "schema": "gentle-ai.review-integration.consent/v3",
+  "contract": "gentle-ai.review-integration/v2",
+  "operation": "review.start",
+  "action": "consent_required",
+  "agent": "codex",
+  "blocking": true,
+  "target_identity": "sha256:59d7c5536fcebcc125991b3ef3e8f9074f8a2e193a1d3b45886e52d2a7ca83e4",
+  "projection": "workspace",
+  "risk_level": "high",
+  "changed_files": 4,
+  "changed_lines": 381,
+  "headline": "Gentle AI can review this change before you call it done.",
+  "reason": "Review can help detect regressions in these changes.",
+  "value": "Reviewing takes a little longer and makes the result safer.",
+  "risk_evidence": [
+    "the agent that made this change flagged it as high risk",
+    "an executable change in backend/apps/financiadores/novedades.py"
+  ],
+  "choices": [
+    {
+      "answer": "granted",
+      "label": "Review this change",
+      "effect": "Reviews only this change; later medium- or high-risk changes ask again, and delivery needs separate approval.",
+      "invocation": "gentle-ai review start --contract gentle-ai.review-integration/v2 --cwd 'C:\\Users\\Juanito\\orca\\workspaces\\SistemaDeSalud\\DERECHOS' --target sha256:59d7c5536fcebcc125991b3ef3e8f9074f8a2e193a1d3b45886e52d2a7ca83e4 --target-evidence v1:base-diff:workspace:86d9de960863b67e8f050d59b0ae9fe94bff0175:ea23036d10db430f682e358543dd03b3ff838700:sha256:fc561559e2b9448fe406b84be37976632eb180ecdf6929a27ae49532e8615cf7 --projection workspace --agent codex --lineage review-6209c8e0e2b3bedd --base-ref 6ae71d27271c31e7eeae83ca5aa3bf3e9ab0be18 --committed-only --untracked-scope=exclude --expected-untracked-inventory=sha256:dfbf97aa6318d1c7b2efd8cc0bff883b624945558ba617c0ce00cb5705e851ea --escalate-item 4 --escalate-reason 'Nueva composicion de locks e idempotencia entre novedades y padron' --lenses review-risk,review-resilience,review-readability,review-reliability --lenses-reason 'La accion persiste decisiones y audita permisos; compone locks y replay; agrega contrato API y cambia comportamiento observable' --consent granted"
+    },
+    {
+      "answer": "declined",
+      "label": "Skip this time",
+      "effect": "Skips only this change; no review record is created, and future reviews stay enabled.",
+      "invocation": "gentle-ai review start --contract gentle-ai.review-integration/v2 --cwd 'C:\\Users\\Juanito\\orca\\workspaces\\SistemaDeSalud\\DERECHOS' --target sha256:59d7c5536fcebcc125991b3ef3e8f9074f8a2e193a1d3b45886e52d2a7ca83e4 --target-evidence v1:base-diff:workspace:86d9de960863b67e8f050d59b0ae9fe94bff0175:ea23036d10db430f682e358543dd03b3ff838700:sha256:fc561559e2b9448fe406b84be37976632eb180ecdf6929a27ae49532e8615cf7 --projection workspace --agent codex --lineage review-6209c8e0e2b3bedd --base-ref 6ae71d27271c31e7eeae83ca5aa3bf3e9ab0be18 --committed-only --untracked-scope=exclude --expected-untracked-inventory=sha256:dfbf97aa6318d1c7b2efd8cc0bff883b624945558ba617c0ce00cb5705e851ea --escalate-item 4 --escalate-reason 'Nueva composicion de locks e idempotencia entre novedades y padron' --lenses review-risk,review-resilience,review-readability,review-reliability --lenses-reason 'La accion persiste decisiones y audita permisos; compone locks y replay; agrega contrato API y cambia comportamiento observable' --consent declined"
+    }
+  ],
+  "off_path": {
+    "note": "To turn reviews off for good, run 'gentle-ai review mode disable'.",
+    "command": "gentle-ai review mode disable"
+  }
+}
+```
+### L20 — Revisión API autorizada y reconocida, 12/11/2026
+
+> 1
+
+La respuesta seleccionó «Revisar este cambio» del consentimiento del corte API.
+Se ejecutó su invocación exacta y las cuatro capturas nativas en paralelo. Las
+perspectivas riesgo, resiliencia, legibilidad y fiabilidad no presentaron hallazgos.
+Su inspección fue de patches inmutables; no reemplaza la verificación funcional.
+El cierre final ofreció acknowledge-approved y esa invocación exacta devolvió
+`gentle-ai.review-acknowledged/v1`, `action=acknowledged`, `authority=burned` para
+el target de L19. No se lanzó otra revisión ni un STATUS posterior sobre ese corte.
+
+El límite revisado avanza a `4b3c52dd8d017192fa246dce34672197757e32ed`.
+No se usó presupuesto de corrección nativa. La UI sigue fuera de ese alcance y
+conserva su verificación independiente anterior. Se repitió `npm run build` sobre
+los bytes finales de UI: exit 0, sin advertencias. Log fuera del repositorio:
+`derechos-final-build-956e1310fceb46d4b584f16b0fdb00c7.log` en TEMP.
+La autorización de revisión no autoriza push, PR, merge ni deploy.

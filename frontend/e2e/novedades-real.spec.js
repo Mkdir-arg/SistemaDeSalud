@@ -30,9 +30,24 @@ async function proponer(page, datos, org) {
   return respuesta.json();
 }
 
+test("snapshot histórico sin cobertura declara el valor como no registrado", async ({ page, baseURL }, testInfo) => {
+  const datos = await iniciar(page, baseURL);
+  const org = datos.organizaciones[testInfo.project.name === "mobile-chromium" ? 1 : 0];
+  await page.goto(`/financiadores/novedades?financiador=${org.id}`);
+  await page.getByRole("button", { name: `Ver novedad ${org.legacy_novedad}`, exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: `Novedad #${org.legacy_novedad}`, exact: true });
+  const snapshot = page.locator("section").filter({ has: page.getByRole("heading", { name: "Al registrar", exact: true }) });
+  await expect(dialogo).toBeVisible();
+  await expect(snapshot.getByText("Cobertura: No registrado", { exact: true })).toBeVisible();
+  await expect(snapshot.getByText(/Deshabilitada/)).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialogo).toHaveCount(0);
+});
+
 test("recorrido real de registro y conciliación sin efectos", async ({ page, baseURL }, testInfo) => {
   const datos = await iniciar(page, baseURL);
-  const org = datos.organizaciones[0];
+  const org = datos.organizaciones[testInfo.project.name === "mobile-chromium" ? 1 : 0];
   await page.goto(`/financiadores/novedades?financiador=${org.id}`);
   await expect(page.getByRole("button", { name: "Registrar novedad", exact: true })).toBeVisible();
   const antes = await page.request.get(`/api/financiadores/${org.id}/padron/`, { headers: datos.headers });
@@ -41,7 +56,7 @@ test("recorrido real de registro y conciliación sin efectos", async ({ page, ba
   await page.getByRole("button", { name: "Registrar novedad", exact: true }).click();
   const dialogo = page.getByRole("dialog");
   await dialogo.getByLabel("Buscar persona por documento o nombre").fill(org.documento);
-  await expect(dialogo.getByRole("option", { name: /PERSONA FICTICIA A/ })).toBeAttached();
+  await expect(dialogo.getByRole("option", { name: /PERSONA FICTICIA [AB]/ })).toBeAttached();
   await dialogo.getByRole("combobox", { name: "Persona del padrón", exact: true }).selectOption(String(org.afiliado));
   await dialogo.getByLabel("Fuente", { exact: true }).fill("Fuente de navegador ficticia");
   await dialogo.getByLabel("Referencia externa").fill(`FICTICIA-${testInfo.project.name}-${Date.now()}`);
@@ -63,16 +78,47 @@ test("recorrido real de registro y conciliación sin efectos", async ({ page, ba
   expect((await resuelta.json()).efectos_aplicados).toBe(false);
   await expect(dialogo.getByText("Conciliada sin aplicación", { exact: true })).toBeVisible();
   await expect(dialogo.getByRole("region", { name: "Historial de la propuesta" }).getByRole("listitem")).toHaveCount(2);
+  const despuesConciliar = await page.request.get(`/api/financiadores/${org.id}/padron/`, { headers: datos.headers });
+  expect(await despuesConciliar.json()).toEqual(huella);
+  const elegirEstado = dialogo.getByLabel("Estado de cobertura");
+  await expect(elegirEstado).toBeEnabled();
+  await elegirEstado.focus();
+  await elegirEstado.press("ArrowDown");
+  await elegirEstado.press("Enter");
+  await expect(elegirEstado).toHaveValue("habilitar");
+  await dialogo.getByLabel("Motivo de la decisión").fill("Habilitación explícita desde evidencia revisada.");
+  const aplicacionPromise = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith(`/novedades/${propuesta.id}/habilitacion-cobertura/`));
+  await dialogo.getByRole("button", { name: "Aplicar decisión de cobertura", exact: true }).click();
+  const aplicacion = await aplicacionPromise;
+  expect(aplicacion.status()).toBe(200);
+  const resultado = await aplicacion.json();
+  expect(resultado.efectos_aplicados).toBe(false);
+  expect(resultado.habilitacion_cobertura.resultado).toBe("cambiada");
+  expect(resultado.habilitacion_cobertura.cobertura_habilitada).toBe(true);
+  await expect(dialogo.getByText(/Cambio enlazado al historial del padrón/)).toBeVisible();
+  const historial = await page.request.get(`/api/financiadores/${org.id}/padron/${org.afiliado}/historial/`, { headers: datos.headers });
+  expect(historial.ok()).toBeTruthy();
+  const filasHistorial = (await historial.json()).results;
+  const evento = filasHistorial.find((fila) => fila.id === resultado.habilitacion_cobertura.historial_id);
+  expect(evento).toMatchObject({ origen: "novedad", lote: propuesta.id,
+    cambios: { cobertura_habilitada: { anterior: false, nuevo: true } } });
+  const padronDespues = await page.request.get(`/api/financiadores/${org.id}/padron/${org.afiliado}/`, { headers: datos.headers });
+  expect((await padronDespues.json()).cobertura_habilitada).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("novedades.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(dialogo.getByRole("button", { name: "Cerrar", exact: true }).last()).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(dialogo).toHaveCount(0);
-  const despues = await page.request.get(`/api/financiadores/${org.id}/padron/`, { headers: datos.headers });
-  expect(await despues.json()).toEqual(huella);
   await page.reload();
   await page.getByRole("button", { name: `Ver novedad ${propuesta.id}`, exact: true }).click();
-  await expect(page.getByRole("dialog").getByText("Conciliada sin aplicación", { exact: true })).toBeVisible();
+  const reabierta = page.getByRole("dialog");
+  await expect(reabierta.getByText("Conciliada sin aplicación", { exact: true })).toBeVisible();
+  await expect(reabierta.getByText(/Cambio enlazado al historial del padrón/)).toBeVisible();
+  await page.goto(`/financiadores/padron/${org.afiliado}?financiador=${org.id}&tab=historial`);
+  const panelHistorial = page.getByRole("tabpanel", { name: "Historial" });
+  await expect(panelHistorial.getByText(`Novedad #${propuesta.id}`, { exact: false })).toBeVisible();
+  await expect(panelHistorial.getByText("Novedad del financiador", { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("rectificación y descarte dejan historia sin sobrescribir evidencia", async ({ page, baseURL }) => {

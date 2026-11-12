@@ -10,6 +10,9 @@ from uuid import uuid4
 if os.environ.get("DJANGO_SETTINGS_MODULE") != "config.settings_financiadores_postgres_test":
     raise RuntimeError("Esta fixture requiere settings PostgreSQL de pruebas explícitos.")
 
+backend = Path(__file__).resolve().parents[3] / "backend"
+sys.path.insert(0, str(backend))
+
 import django
 django.setup()
 
@@ -17,6 +20,7 @@ from django.db import connection, transaction
 from django.utils import timezone
 from apps.accounts.models import Usuario
 from apps.financiadores.models import Financiador, MembresiaFinanciador
+from apps.financiadores.novedades import registrar
 from apps.financiadores.services import registrar_afiliado
 
 config = connection.settings_dict
@@ -41,7 +45,15 @@ with transaction.atomic():
         afiliado = registrar_afiliado(financiador=org, usuario=operador, numero="NOV-FICTICIO-1",
             documento="99018501", nombre=f"PERSONA FICTICIA {letra}", plan=None,
             desde=timezone.localdate(), cobertura_habilitada=False)
+        novedad_legacy, _ = registrar(financiador=org, usuario=operador, clave=uuid4(),
+            afiliado=afiliado.pk, fuente="Fixture histórica ficticia",
+            referencia=f"LEGACY-{letra}-{marca}", codigo="LEGACY",
+            fecha_informada=None, descripcion="Snapshot histórico sintético sin campo de cobertura",
+            motivo="Preparación aislada del estado histórico", rectifica=None)
+        novedad_legacy.filas[0]["persona_inicial"].pop("cobertura_habilitada", None)
+        novedad_legacy.save(update_fields=["filas"])
         organizaciones.append({"id": org.pk, "nombre": org.nombre,
-                                "afiliado": afiliado.pk, "documento": afiliado.documento})
+                                "afiliado": afiliado.pk, "documento": afiliado.documento,
+                                "legacy_novedad": novedad_legacy.pk})
     destino.write_text(json.dumps({"purpose": "salud-novedades-e2e", "password": password,
         "operador": operador.email, "auditor": auditor.email, "organizaciones": organizaciones}), encoding="utf-8")
