@@ -43,6 +43,13 @@ class DecisionNovedad(EntradaEstricta):
     confirmar_conflictos = serializers.BooleanField(required=False, default=False)
 
 
+class DecisionHabilitacionCobertura(EntradaEstricta):
+    revision = serializers.IntegerField(min_value=1)
+    revision_padron = serializers.IntegerField(min_value=1)
+    cobertura_habilitada = serializers.BooleanField()
+    motivo = serializers.CharField(max_length=255)
+
+
 class NovedadesMixin:
     @extend_schema(methods=["GET"], operation_id="api_financiadores_novedades_list", responses=OpenApiTypes.OBJECT)
     @extend_schema(methods=["POST"], request=PropuestaNovedad, responses=OpenApiTypes.OBJECT)
@@ -78,5 +85,15 @@ class NovedadesMixin:
         datos = DecisionNovedad(data=request.data)
         datos.is_valid(raise_exception=True)
         obj = servicio.resolver(financiador=org, usuario=request.user,
+            novedad_id=novedad_id, **datos.validated_data)
+        return Response(servicio.presentar(obj))
+
+    @extend_schema(request=DecisionHabilitacionCobertura, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], url_path=r"novedades/(?P<novedad_id>\d+)/habilitacion-cobertura")
+    def novedad_habilitacion_cobertura(self, request, pk=None, novedad_id=None):
+        org = self.organizacion(escritura=True)
+        datos = DecisionHabilitacionCobertura(data=request.data)
+        datos.is_valid(raise_exception=True)
+        obj = servicio.habilitar_cobertura(financiador=org, usuario=request.user,
             novedad_id=novedad_id, **datos.validated_data)
         return Response(servicio.presentar(obj))

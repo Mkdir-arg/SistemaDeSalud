@@ -2671,3 +2671,45 @@ tiene PR propio. Contiene las pruebas G2a de `test_borradores_api.py`,
 `frontend/e2e/borradores-derechos-real.spec.js`, su sección de este documento y el
 avance en `odd/tasks/ostel-operacion-integral.md`. Ni #212 ni #213 lo necesitan.
 Integrarlo o descartarlo es una decisión del usuario y queda abierta.
+
+## Decisión explícita de cobertura desde una novedad — API Derechos
+
+Conciliar conserva su contrato: registra una decisión administrativa y
+`efectos_aplicados` permanece en `false`. La acción separada
+`POST /api/financiadores/{id}/novedades/{novedad_id}/habilitacion-cobertura/`
+recibe `revision`, `revision_padron`, `cobertura_habilitada` y `motivo`.
+El booleano se elige explícitamente; ningún código o fecha informada lo decide.
+Habilitar no reactiva una afiliación finalizada ni garantiza una prestación.
+
+La acción exige novedad conciliada, organización y afiliado coincidentes, permiso
+actual de escritura y ambas revisiones vigentes. Antes de una aplicación nueva,
+rechaza si el padrón cambió desde el snapshot original, la fuente/referencia se
+repite o el antecedente ya fue rectificado. Un rechazo no deja escrituras parciales.
+Reconoce primero el reintento idéntico aplicado: ni una rectificación posterior
+ni una nueva edición del padrón provocan que ese reintento vuelva a aplicar efectos.
+Una solicitud diferente sobre la misma decisión se rechaza.
+
+Reutiliza `editar_ficha` para validación, permisos y auditoría. Cuando cambia el
+booleano, `HistorialAfiliacion.lote` enlaza el evento a la novedad y conserva autor,
+motivo y valores anterior/nuevo. Un no-op devuelve `sin_cambios` sin inventar una
+transición. Rectificar crea otra novedad; no reescribe la evidencia de la original.
+El lock del financiador usa `NO KEY UPDATE`, compatible con el `KEY SHARE` de la
+FK de auditoría durante una edición concurrente del padrón.
+
+Las evaluaciones futuras consumen el booleano existente. No cambian reglas de
+cobertura, fechas, planes, familias, autorizaciones, reservas ni hechos históricos.
+No se agregan modelos ni migraciones. No se activan reglas de borrador.
+
+### Verificación de la API
+
+- Focal final: `test_novedades` y `test_habilitacion_cobertura`, 33 pruebas,
+  resultado OK con 5 skips de concurrencia SQLite; repetido por el orquestador.
+- PostgreSQL 16 dedicado: 15 pruebas iniciales de novedades/padrón; tras corrección,
+  5 de novedades, incluida la concurrencia con PATCH. Recheck independiente del
+  caso: PATCH 200, acción 400, sin deadlock.
+- Probes públicos independientes: conflictos/rectificación rechazados con 400 y
+  hash persistido intacto; replay 200 sin escrituras tras edición y rectificación.
+- Diferencial de APIs previas aprobado, salvo campos opcionales nuevos y timestamps.
+- Suite completa candidata/base: mismos 1 fallo y 3 errores; no está verde.
+  Causas verificadas: manifest estático de admin, dos pruebas PostgreSQL ejecutadas
+  contra SQLite y orden de reglas en historial de borradores. No se corrigen aquí.

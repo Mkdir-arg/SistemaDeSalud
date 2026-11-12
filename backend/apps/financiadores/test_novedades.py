@@ -1,10 +1,10 @@
 """Novedades administrativas por API: nunca alteran el padrón ni sus efectos."""
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier, Event
 from unittest import skipUnless
 
-from django.db import close_old_connections, connection
+from django.db import close_old_connections, connection, transaction
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
@@ -52,8 +52,171 @@ class NovedadesSetup(CoberturaSetup):
                 "accion": "conciliar", "motivo": "Evidencia administrativa revisada",
                 "confirmar_conflictos": False, **extra}
 
+    def conciliar(self, propuesta):
+        respuesta = self.client.post(
+            self.base + f"novedades/{propuesta['id']}/resolver/",
+            self.decision(propuesta), format="json",
+        )
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertFalse(respuesta.data["efectos_aplicados"])
+        return respuesta.data
+
+    def habilitacion(self, propuesta, *, habilitada, motivo="Decisión administrativa sintética", **extra):
+        return self.client.post(
+            self.base + f"novedades/{propuesta['id']}/habilitacion-cobertura/",
+            {"revision": propuesta["revision"],
+             "revision_padron": propuesta["persona_actual"]["revision"],
+             "cobertura_habilitada": habilitada, "motivo": motivo, **extra},
+            format="json",
+        )
+
 
 class NovedadesTests(NovedadesSetup, TestCase):
+    def test_habilitacion_rechaza_antecedente_rectificado_sin_escrituras(self):
+        antecedente = self.conciliar(self.crear(referencia="REF-RECTIFICADA"))
+        self.crear(referencia="REF-RECTIFICACION", rectifica=antecedente["id"])
+        actual = self.client.get(self.base + f"novedades/{antecedente['id']}/")
+        self.assertEqual(actual.status_code, 200, actual.data)
+        huella = self.huella_propuestas_y_auditoria()
+
+        respuesta = self.habilitacion(actual.data, habilitada=True)
+
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)
+        self.assertEqual(self.huella_propuestas_y_auditoria(), huella)
+
+    def test_habilitacion_rechaza_referencia_duplicada_sin_escrituras(self):
+        antecedente = self.conciliar(self.crear(referencia="REF-DUPLICADA"))
+        self.crear(referencia="REF-DUPLICADA")
+        actual = self.client.get(self.base + f"novedades/{antecedente['id']}/")
+        self.assertEqual(actual.status_code, 200, actual.data)
+        huella = self.huella_propuestas_y_auditoria()
+
+        respuesta = self.habilitacion(actual.data, habilitada=True)
+
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)
+        self.assertEqual(self.huella_propuestas_y_auditoria(), huella)
+
+    def test_habilitacion_rechaza_padron_modificado_aunque_revision_sea_actual(self):
+        antecedente = self.conciliar(self.crear(referencia="REF-PADRON-MODIFICADO"))
+        editada = self.client.patch(self.base + f"padron/{self.afiliado.pk}/",
+            {"revision": antecedente["persona_actual"]["revision"],
+             "motivo": "Cambio sintético posterior a conciliación", "documento": "DOC-EDITADO"},
+            format="json")
+        self.assertEqual(editada.status_code, 200, editada.data)
+        actual = self.client.get(self.base + f"novedades/{antecedente['id']}/")
+        self.assertEqual(actual.status_code, 200, actual.data)
+        huella = self.huella_propuestas_y_auditoria()
+
+        respuesta = self.habilitacion(actual.data, habilitada=True)
+
+        self.assertEqual(respuesta.status_code, 400, respuesta.data)
+        self.assertEqual(self.huella_propuestas_y_auditoria(), huella)
+
+    def test_habilitacion_explicita_reutiliza_edicion_y_enlaza_historial(self):
+        self.afiliado.cobertura_habilitada = False
+        self.afiliado.save(update_fields=["cobertura_habilitada"])
+        propuesta = self.crear(codigo="CAMBIO-ADMIN-SINTETICO")
+        conciliada = self.conciliar(propuesta)
+        self.assertFalse(self.afiliado.cobertura_habilitada)
+        self.assertFalse(conciliada["efectos_aplicados"])
+
+        previa = self.client.get(self.base + f"padron/{self.afiliado.pk}/historial/")
+        self.assertEqual(previa.status_code, 200, previa.data)
+        historial_previo = previa.data["results"]
+
+        respuesta = self.habilitacion(conciliada, habilitada=True)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["habilitacion_cobertura"]["resultado"], "cambiada")
+        self.assertTrue(respuesta.data["habilitacion_cobertura"]["cobertura_habilitada"])
+        self.assertEqual(len(m.HistorialAfiliacion.objects.filter(afiliado=self.afiliado)), 3)
+        cambio = m.HistorialAfiliacion.objects.get(lote_id=propuesta["id"])
+        self.assertEqual(cambio.origen, "novedad")
+        self.assertEqual(cambio.cambios["cobertura_habilitada"], {"anterior": False, "nuevo": True})
+        self.assertEqual(cambio.registrado_por_id, self.operador.pk)
+        self.afiliado.refresh_from_db()
+        self.assertTrue(self.afiliado.cobertura_habilitada)
+        self.assertEqual(self.evaluar()["cubiertas"], 1)
+        posterior = self.client.get(self.base + f"padron/{self.afiliado.pk}/historial/")
+        self.assertEqual(posterior.status_code, 200, posterior.data)
+        visible = [evento for evento in posterior.data["results"] if evento["id"] == cambio.pk]
+        self.assertEqual(len(visible), 1)
+        self.assertEqual(visible[0]["lote"], propuesta["id"])
+        self.assertEqual(historial_previo[0]["id"], posterior.data["results"][1]["id"])
+
+    def test_habilitacion_rechaza_no_conciliada_stale_identidad_y_actor_sin_escritura(self):
+        propuesta = self.crear()
+        huella = self.huella_propuestas_y_auditoria()
+        pendiente = self.habilitacion(propuesta, habilitada=False)
+        self.assertEqual(pendiente.status_code, 400, pendiente.data)
+        self.assertEqual(self.huella_propuestas_y_auditoria(), huella)
+
+        conciliada = self.conciliar(propuesta)
+        stale = self.habilitacion(conciliada, habilitada=False, revision_padron=conciliada["persona_actual"]["revision"] - 1)
+        self.assertEqual(stale.status_code, 400, stale.data)
+        self.assertEqual(self.huella(), huella[0])
+
+        otra = m.Afiliado.objects.create(financiador=self.financiador, numero="00002",
+            documento="DOC-SINTETICO-2", nombre="Otra persona ficticia", desde=self.hoy)
+        antes = self.huella_propuestas_y_auditoria()
+        identidad = self.habilitacion(conciliada, habilitada=False, afiliado=otra.pk)
+        self.assertEqual(identidad.status_code, 400, identidad.data)
+        self.assertEqual(self.huella_propuestas_y_auditoria(), antes)
+
+        self.membresia.rol = "auditor"
+        self.membresia.save(update_fields=["rol"])
+        auditoria = self.habilitacion(conciliada, habilitada=False)
+        self.assertEqual(auditoria.status_code, 403, auditoria.data)
+        self.assertEqual(self.huella_propuestas_y_auditoria(), antes)
+
+    def test_habilitacion_idempotente_conflicto_noop_y_rectificacion_preservan_evidencia(self):
+        original = self.crear()
+        conciliada = self.conciliar(original)
+        deshabilitar = self.habilitacion(conciliada, habilitada=False)
+        self.assertEqual(deshabilitar.status_code, 200, deshabilitar.data)
+        self.assertEqual(deshabilitar.data["habilitacion_cobertura"]["resultado"], "cambiada")
+        cantidad = m.HistorialAfiliacion.objects.filter(lote_id=original["id"]).count()
+
+        repetida = self.habilitacion(conciliada, habilitada=False)
+        self.assertEqual(repetida.status_code, 200, repetida.data)
+        self.assertEqual(repetida.data["habilitacion_cobertura"], deshabilitar.data["habilitacion_cobertura"])
+        self.assertEqual(m.HistorialAfiliacion.objects.filter(lote_id=original["id"]).count(), cantidad)
+
+        incompatible = self.habilitacion(conciliada, habilitada=True)
+        self.assertEqual(incompatible.status_code, 400, incompatible.data)
+        self.assertEqual(m.HistorialAfiliacion.objects.filter(lote_id=original["id"]).count(), cantidad)
+
+        self.afiliado.refresh_from_db()
+        editada = self.client.patch(self.base + f"padron/{self.afiliado.pk}/", {
+            "revision": self.afiliado.revision, "motivo": "Edición posterior sintética",
+            "nombre": "Persona con edición posterior",
+        }, format="json")
+        self.assertEqual(editada.status_code, 200, editada.data)
+        reintento_tardio = self.habilitacion(conciliada, habilitada=False)
+        self.assertEqual(reintento_tardio.status_code, 200, reintento_tardio.data)
+        self.afiliado.refresh_from_db()
+        self.assertFalse(self.afiliado.cobertura_habilitada)
+        self.assertEqual(m.HistorialAfiliacion.objects.filter(lote_id=original["id"]).count(), cantidad)
+
+        rectificada = self.crear(rectifica=original["id"], codigo="RECTIFICADO")
+        anterior = m.Importacion.objects.get(pk=original["id"])
+        guardada = anterior.filas[0]["habilitacion_cobertura"]
+        self.assertEqual({k: v for k, v in guardada.items() if k != "decision_huella"},
+                         deshabilitar.data["habilitacion_cobertura"])
+        self.assertEqual(rectificada["original"]["rectifica"], original["id"])
+        self.assertEqual(anterior.filas[0]["original"], original["original"])
+
+    def test_habilitacion_noop_es_explicita_sin_historial_ficticio(self):
+        propuesta = self.conciliar(self.crear())
+        cantidad = m.HistorialAfiliacion.objects.count()
+        respuesta = self.habilitacion(propuesta, habilitada=True)
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data["habilitacion_cobertura"]["resultado"], "sin_cambios")
+        self.assertIsNone(respuesta.data["habilitacion_cobertura"]["historial_id"])
+        self.assertEqual(m.HistorialAfiliacion.objects.count(), cantidad)
+        self.assertTrue(respuesta.data["efectos_aplicados"] is False)
+
+
     def test_evidencia_textual_conserva_codigos_y_espacios_originales(self):
         entrada = {"fuente": " Fuente ficticia ", "referencia": " REF-0007 ",
                    "codigo": " 0007 ", "descripcion": "  Nota original\ncon contexto.  "}
@@ -304,6 +467,75 @@ class NovedadesConcurrenciaTests(NovedadesSetup, TransactionTestCase):
         self.assertEqual(len(m.Importacion.objects.get(pk=propuesta["id"]).filas[0]["historia"]), 2)
         self.assertEqual(m.EventoCobertura.objects.filter(accion="resolver_novedad").count(), 1)
         self.assertEqual(self.huella(), anterior)
+
+    def test_habilitacion_simultanea_identica_aplica_un_solo_cambio(self):
+        propuesta = self.conciliar(self.crear())
+        entrada = {"revision": propuesta["revision"],
+                   "revision_padron": propuesta["persona_actual"]["revision"],
+                   "cobertura_habilitada": False,
+                   "motivo": "Decisión concurrente ficticia"}
+        url = self.base + f"novedades/{propuesta['id']}/habilitacion-cobertura/"
+        respuestas = self.paralelo(url, [entrada, entrada])
+        self.assertEqual([estado for estado, _ in respuestas], [200, 200], respuestas)
+        self.assertEqual(len({datos["habilitacion_cobertura"]["historial_id"]
+                              for _, datos in respuestas}), 1)
+        self.assertEqual(m.HistorialAfiliacion.objects.filter(lote_id=propuesta["id"]).count(), 1)
+        self.assertEqual(m.EventoCobertura.objects.filter(
+            accion="habilitar_cobertura_desde_novedad").count(), 1)
+        self.afiliado.refresh_from_db()
+        self.assertFalse(self.afiliado.cobertura_habilitada)
+
+    def test_habilitacion_no_deadlock_con_edicion_de_padron(self):
+        propuesta = self.conciliar(self.crear(referencia="REF-LOCK-CROSS-FLOW"))
+        edicion_en_curso = Event()
+        financiador_bloqueado = Event()
+
+        def editar_padron():
+            close_old_connections()
+            try:
+                cliente = APIClient()
+                cliente.force_authenticate(self.operador)
+                with transaction.atomic():
+                    respuesta = cliente.patch(self.base + f"padron/{self.afiliado.pk}/",
+                        {"revision": propuesta["persona_actual"]["revision"],
+                         "motivo": "Edición concurrente sintética", "nombre": "Nombre actualizado"},
+                        format="json")
+                    edicion_en_curso.set()
+                    self.assertTrue(financiador_bloqueado.wait(10))
+                return respuesta.status_code
+            finally:
+                close_old_connections()
+
+        def habilitar():
+            close_old_connections()
+            self.assertTrue(edicion_en_curso.wait(10))
+
+            def observar(ejecutar, sql, parametros, muchos, contexto):
+                resultado = ejecutar(sql, parametros, muchos, contexto)
+                if "financiadores_financiador" in sql and "FOR NO KEY UPDATE" in sql:
+                    financiador_bloqueado.set()
+                return resultado
+
+            try:
+                cliente = APIClient()
+                cliente.force_authenticate(self.operador)
+                with connection.execute_wrapper(observar):
+                    respuesta = cliente.post(self.base + f"novedades/{propuesta['id']}/habilitacion-cobertura/",
+                        {"revision": propuesta["revision"],
+                         "revision_padron": propuesta["persona_actual"]["revision"],
+                         "cobertura_habilitada": False,
+                         "motivo": "Decisión concurrente sintética"}, format="json")
+                return respuesta.status_code
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            editar = executor.submit(editar_padron)
+            habilitar_cobertura = executor.submit(habilitar)
+            resultados = (editar.result(timeout=30), habilitar_cobertura.result(timeout=30))
+
+        self.assertEqual(resultados, (200, 400))
+        self.assertTrue(financiador_bloqueado.is_set())
 
 
 class EsquemaNovedadesTests(SimpleTestCase):

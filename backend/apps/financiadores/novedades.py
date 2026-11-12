@@ -7,7 +7,8 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models import Afiliado, Financiador, Importacion
+from apps.simulacion.contexto import autor_real
+from .models import Afiliado, Financiador, HistorialAfiliacion, Importacion
 from .permisos import requerir_financiador
 from .services import auditar
 
@@ -24,7 +25,8 @@ def _huella(datos):
 def _persona(afiliado):
     return {"id": afiliado.pk, "documento": afiliado.documento,
             "numero": afiliado.numero, "nombre": afiliado.nombre,
-            "revision": afiliado.revision, "finalizada": afiliado.finalizado_en is not None}
+            "revision": afiliado.revision, "finalizada": afiliado.finalizado_en is not None,
+            "cobertura_habilitada": afiliado.cobertura_habilitada}
 
 
 def consultar(*, financiador, novedad_id):
@@ -52,10 +54,14 @@ def comparar(obj):
 
 def presentar(obj):
     fila = obj.filas[0]
+    operacion = fila.get("habilitacion_cobertura")
     return {"id": obj.pk, "clave": str(obj.clave), "estado": obj.estado,
             "revision": fila["revision"], "original": fila["original"],
             "persona_inicial": fila["persona_inicial"], "historia": fila["historia"],
-            "creado": obj.creado, "efectos_aplicados": False, **comparar(obj)}
+            "creado": obj.creado, "efectos_aplicados": False,
+            "habilitacion_cobertura": ({k: v for k, v in operacion.items()
+                                        if k != "decision_huella"} if operacion else None),
+            **comparar(obj)}
 
 
 def resumir(obj):
@@ -118,4 +124,78 @@ def resolver(*, financiador, usuario, novedad_id, **decision):
         "comparacion": comparacion, "efectos_aplicados": False})
     obj.save(update_fields=["estado", "filas"])
     auditar(usuario, "resolver_novedad", obj.pk, financiador=financiador)
+    return obj
+
+
+@transaction.atomic
+def habilitar_cobertura(*, financiador, usuario, novedad_id, **decision):
+    """Aplica una decisión explícita y única sobre cobertura, desde una novedad conciliada."""
+    Financiador.objects.select_for_update(no_key=True).get(pk=financiador.pk)
+    requerir_financiador(usuario, financiador.pk, escritura=True)
+    obj = get_object_or_404(Importacion.objects.select_for_update(), pk=novedad_id,
+                            financiador=financiador, tipo=TIPO, version=VERSION)
+    fila = obj.filas[0]
+    firma = _huella(decision)
+    operacion_previa = fila.get("habilitacion_cobertura")
+    if operacion_previa:
+        if operacion_previa["decision_huella"] == firma:
+            return obj
+        raise ValidationError("La novedad ya tiene una decisión de cobertura diferente; no se aplicó otro cambio.")
+    if obj.estado != "conciliada":
+        raise ValidationError("Sólo una novedad conciliada admite una decisión explícita de cobertura.")
+    if decision["revision"] != fila["revision"]:
+        raise ValidationError("La novedad cambió. Consultala nuevamente antes de decidir la cobertura.")
+
+    original = fila["original"]
+    persona = get_object_or_404(Afiliado.objects.select_for_update(),
+        pk=original["afiliado"], financiador=financiador)
+    if obj.resumen.get("afiliado") != persona.pk:
+        raise ValidationError("La identidad de la novedad no coincide con la persona del financiador.")
+    if decision["revision_padron"] != persona.revision:
+        raise ValidationError("El padrón cambió. Compará nuevamente antes de decidir la cobertura.")
+
+    comparacion = comparar(obj)
+    if comparacion["conflictos"]:
+        raise ValidationError("La novedad tiene conflictos pendientes de revisión; no se aplicó la decisión.")
+    rectificada = any(
+        fila_novedad[0]["original"].get("rectifica") == obj.pk
+        for fila_novedad in Importacion.objects.filter(
+            financiador=financiador, tipo=TIPO, version=VERSION,
+        ).exclude(pk=obj.pk).values_list("filas", flat=True)
+    )
+    if rectificada:
+        raise ValidationError("La novedad fue rectificada; no se aplicó la decisión.")
+
+    valor_anterior = persona.cobertura_habilitada
+    valor_nuevo = decision["cobertura_habilitada"]
+    resultado = "sin_cambios"
+    historial_id = None
+    if valor_anterior != valor_nuevo:
+        from .padron import editar_ficha
+
+        persona = editar_ficha(afiliado=persona, usuario=usuario,
+            entrada={"revision": decision["revision_padron"],
+                     "motivo": decision["motivo"],
+                     "cobertura_habilitada": valor_nuevo},
+            origen="novedad", lote=obj)
+        historial_id = HistorialAfiliacion.objects.filter(
+            afiliado_id=persona.pk, lote=obj,
+        ).order_by("-pk").values_list("pk", flat=True).first()
+        resultado = "cambiada"
+
+    fila["revision"] += 1
+    fila["habilitacion_cobertura"] = {
+        "decision_huella": firma,
+        "cobertura_habilitada": valor_nuevo,
+        "resultado": resultado,
+        "historial_id": historial_id,
+        "registrado_por": autor_real(usuario).pk,
+        "registrado": timezone.now().isoformat(),
+        "motivo": decision["motivo"],
+        "revision_padron": decision["revision_padron"],
+    }
+    obj.filas = [fila, *obj.filas[1:]]
+    obj.save(update_fields=["filas"])
+    auditar(usuario, "habilitar_cobertura_desde_novedad", obj.pk,
+            financiador=financiador, motivo=resultado)
     return obj
