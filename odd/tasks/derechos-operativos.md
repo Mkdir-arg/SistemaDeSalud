@@ -1,5 +1,5 @@
 # Derechos operativos: plan de implementación
-Objetivo: dar a Derechos una función real dentro del circuito del financiador, sin duplicar operaciones existentes ni inventar política asistencial. Estado: implementación verificada; corte API revisado; cierre local del corte UI en curso.
+Objetivo: dar a Derechos una función real dentro del circuito del financiador, sin duplicar operaciones existentes ni inventar política asistencial. Estado: primer corte implementado y revisado localmente; aceptación humana y publicación no realizadas.
 Rama integradora: `juanikitro/DERECHOS`; base local: `65ef9c8ad8b93b7b959033d1d722b63350444537`. Estrategia acordada: `feature-branch-chain`, sólo local; sin publicación autorizada. Runners: Django aislado, PostgreSQL dedicado para concurrencia y Playwright contra entorno ficticio propio.
 
 ## Specs
@@ -17,9 +17,9 @@ Rama integradora: `juanikitro/DERECHOS`; base local: `65ef9c8ad8b93b7b959033d1d7
 - T0 | S1 | inline, CLI/UI de Orca | COMPLETO con alcance actualizado: worktree creado; usuario acepta orquestar desde este chat sin trasladarlo | Registro en `6ae71d2`; L11.
 - T1 | S2,S4-S6 | delegated, mapa acotado + una impugnación independiente de premisa de alto impacto | COMPLETO: revisión estática y este plan | Registro en `6ae71d2`.
 - T2 | S2-S7 | inline, decisión de producto | COMPLETO: primer corte confirmado en L12 | No autoriza política automática.
-- T3 | S3-S7 | delegated, un escritor para la unidad vertical; delegación solicitada expresamente | IMPLEMENTADO LOCALMENTE: B1-B3 corregidos y revalidados, L17 | API `4b3c52d`; corte UI pendiente de commit; cadena L18.
-- T4 | S3-S7 | delegated, verificador independiente por datos/permisos/concurrencia | VERIFICACIÓN FUNCIONAL COMPLETA CON LIMITACIONES: B1-B3 cerrados; spot check y build final aprobados; revisión nativa API reconocida L20 | Suite completa fallida también en base; demo visible bloqueada por política del runtime; revisión UI y aceptación humana pendientes.
-- T5 | S4-S6 | por resolver tras contrato de la primera regla | CONDICIONAL: política operativa acotada, fechas y consumidores; no habilitada por T3 | Sin implementación ni estimación cerrada.
+- T3 | S3-S7 | delegated, un escritor para la unidad vertical; delegación solicitada expresamente | IMPLEMENTADO LOCALMENTE: B1-B3 corregidos y revalidados, L17 | API `4b3c52d`; UI `5996eb5`; cadena L18. Sin publicación.
+- T4 | S3-S7 | delegated, verificador independiente por datos/permisos/concurrencia | COMPLETO LOCALMENTE CON LIMITACIONES: B1-B3 cerrados; spot check/build aprobados; revisiones nativas API y UI reconocidas L20/L22 | Suite completa fallida también en base; demo visible no disponible; aceptación humana pendiente, no inferida.
+- T5 | S4-S6 | por resolver tras contrato de la primera regla | FUERA DEL CORTE AUTORIZADO: política operativa acotada, fechas y consumidores; no habilitada por T3 | Sin implementación ni estimación cerrada; no es una continuación automática.
 
 ## Log
 
@@ -298,3 +298,79 @@ conserva su verificación independiente anterior. Se repitió `npm run build` so
 los bytes finales de UI: exit 0, sin advertencias. Log fuera del repositorio:
 `derechos-final-build-956e1310fceb46d4b584f16b0fdb00c7.log` en TEMP.
 La autorización de revisión no autoriza push, PR, merge ni deploy.
+
+
+### L21 — Corte UI guardado y consentimiento pendiente, 12/11/2026
+
+Corte 3: `5996eb54fc1f7cff4580fbbdcaebb1720147a4a9`, rama actual `juanikitro/DERECHOS-03-ui`, 270 líneas. Contiene UI, fixture sintética, E2E/config y documentación; depende del corte API ya reconocido. La integradora `juanikitro/DERECHOS` no cambió. Assessment `high` por item 3 (historial compartido/contrato visible). No se añadieron verificadores de requisitos: la verificación independiente del conjunto y el recheck B1-B3 siguen vigentes.
+
+La revisión UI es otro candidato y requiere consentimiento separado. START sólo devolvió el siguiente sobre v3; no inició revisores ni acredita aprobación. Mantener base `4b3c52dd8d017192fa246dce34672197757e32ed`, target y lineage exactos. Ejecutar sólo la invocación que seleccione el usuario.
+
+```json
+{
+  "schema": "gentle-ai.review-integration.consent/v3",
+  "contract": "gentle-ai.review-integration/v2",
+  "operation": "review.start",
+  "action": "consent_required",
+  "agent": "codex",
+  "blocking": true,
+  "target_identity": "sha256:fff31e59e89452ea0770dcedd87b8e55d96f45f1b9ea28f4a481be9b13f25945",
+  "projection": "workspace",
+  "risk_level": "high",
+  "changed_files": 7,
+  "changed_lines": 270,
+  "headline": "Gentle AI can review this change before you call it done.",
+  "reason": "Review can help detect regressions in these changes.",
+  "value": "Reviewing takes a little longer and makes the result safer.",
+  "risk_evidence": [
+    "the agent that made this change flagged it as high risk",
+    "an executable change in frontend/e2e/fixtures/preparar_novedades_real.py"
+  ],
+  "choices": [
+    {
+      "answer": "granted",
+      "label": "Review this change",
+      "effect": "Reviews only this change; later medium- or high-risk changes ask again, and delivery needs separate approval.",
+      "invocation": "gentle-ai review start --contract gentle-ai.review-integration/v2 --cwd 'C:\\Users\\Juanito\\orca\\workspaces\\SistemaDeSalud\\DERECHOS' --target sha256:fff31e59e89452ea0770dcedd87b8e55d96f45f1b9ea28f4a481be9b13f25945 --target-evidence v1:base-diff:workspace:ea23036d10db430f682e358543dd03b3ff838700:4b105a1f7868b6e358fa250a85364252c9ddc004:sha256:acff71d3003cdbe5b14c15882cde33b4f627f9bfb5ad8fc37bda6e56d86eefea --projection workspace --agent codex --lineage review-3c2407ffcbbc9949 --base-ref 4b3c52dd8d017192fa246dce34672197757e32ed --committed-only --escalate-item 3 --escalate-reason 'Contrato visible y componente compartido de historial, incluida compatibilidad con snapshots anteriores' --lenses review-resilience,review-readability,review-reliability --lenses-reason 'La interfaz agrega una accion asincrona y presenta resultados, errores e historial compartido; las pruebas y documentos explican su comportamiento' --consent granted"
+    },
+    {
+      "answer": "declined",
+      "label": "Skip this time",
+      "effect": "Skips only this change; no review record is created, and future reviews stay enabled.",
+      "invocation": "gentle-ai review start --contract gentle-ai.review-integration/v2 --cwd 'C:\\Users\\Juanito\\orca\\workspaces\\SistemaDeSalud\\DERECHOS' --target sha256:fff31e59e89452ea0770dcedd87b8e55d96f45f1b9ea28f4a481be9b13f25945 --target-evidence v1:base-diff:workspace:ea23036d10db430f682e358543dd03b3ff838700:4b105a1f7868b6e358fa250a85364252c9ddc004:sha256:acff71d3003cdbe5b14c15882cde33b4f627f9bfb5ad8fc37bda6e56d86eefea --projection workspace --agent codex --lineage review-3c2407ffcbbc9949 --base-ref 4b3c52dd8d017192fa246dce34672197757e32ed --committed-only --escalate-item 3 --escalate-reason 'Contrato visible y componente compartido de historial, incluida compatibilidad con snapshots anteriores' --lenses review-resilience,review-readability,review-reliability --lenses-reason 'La interfaz agrega una accion asincrona y presenta resultados, errores e historial compartido; las pruebas y documentos explican su comportamiento' --consent declined"
+    }
+  ],
+  "off_path": {
+    "note": "To turn reviews off for good, run 'gentle-ai review mode disable'.",
+    "command": "gentle-ai review mode disable"
+  }
+}
+```
+### L22 — Cierre de revisión UI y estado local, 12/11/2026
+
+> 1
+
+La respuesta seleccionó «Revisar este cambio» del consentimiento UI. Se ejecutó
+su invocación exacta y las tres capturas nativas en paralelo. Resiliencia,
+legibilidad y fiabilidad no presentaron hallazgos. El cierre aprobó el target de
+L21; su acknowledge-approved exacto devolvió `action=acknowledged` y
+`authority=burned`, lineage `review-3c2407ffcbbc9949`. No se usó corrección nativa
+ni se hizo un STATUS posterior. La revisión inspeccionó patches inmutables: no
+sustituye las pruebas ejecutadas ni la aceptación humana.
+
+Límite funcional revisado: `5996eb54fc1f7cff4580fbbdcaebb1720147a4a9`.
+Los cortes locales son plan (231 líneas), API (381) e interfaz (270), más este
+cierre documental pasivo. Todos conservan su dependencia inmediata; la rama
+integradora permanece en la base. No hay push, PR, merge, deploy ni cambios en
+Issues-3. El resultado implementado es la acción explícita desde Novedades,
+no la activación de borradores ni una política automática de derechos.
+
+Limitaciones vigentes: cuatro fallos de suite completa reproducidos también en
+baseline; demo visible bloqueada antes de ejecutar por política del runtime;
+aceptación humana no realizada. El intento final de limpiar los temporales y el
+contenedor propio también fue rechazado antes de ejecutar. No se reintentó con
+otro mecanismo. Por tanto siguen retenidos el contenedor `derechos-novedades-pg`
+(loopback 54697) y las rutas TEMP enumeradas en L15-L17/L20; no hay servidores
+API/Vite de esta tarea en 8231/5179. Conservar o retirar esos recursos requiere
+una operación de limpieza permitida fuera del bloqueo actual. Los directorios
+fueron verificados dentro de TEMP y sin reparse points antes del intento.
