@@ -1,6 +1,6 @@
 # Derechos operativos: plan de implementación
-Objetivo: dar a Derechos una función real dentro del circuito del financiador, sin duplicar operaciones existentes ni inventar política asistencial. Estado: primer corte implementado y revisado localmente; aceptación humana y publicación no realizadas.
-Rama integradora: `juanikitro/DERECHOS`; base local: `65ef9c8ad8b93b7b959033d1d722b63350444537`. Estrategia acordada: `feature-branch-chain`, sólo local; sin publicación autorizada. Runners: Django aislado, PostgreSQL dedicado para concurrencia y Playwright contra entorno ficticio propio.
+Objetivo: dar a Derechos una función real dentro del circuito del financiador, sin duplicar operaciones existentes ni inventar política asistencial. Estado: primer corte cerrado técnicamente y publicado en ramas; sin merge, deploy ni aceptación humana.
+Rama integradora: `juanikitro/DERECHOS`; base: `65ef9c8ad8b93b7b959033d1d722b63350444537`. Estrategia: `feature-branch-chain`; push autorizado y verificado en L23. Runners: Django aislado, PostgreSQL dedicado para concurrencia y Playwright contra entorno ficticio propio.
 
 ## Specs
 
@@ -11,15 +11,17 @@ Rama integradora: `juanikitro/DERECHOS`; base local: `65ef9c8ad8b93b7b959033d1d7
 - S5 — «Para eso necesito que lo contraste con el resto del portal de financiador. Teniendo en cuenta su naturaleza, analiza si es mejor vincularlo mas a las reglas de cobertura.» Reutilizar padrón, novedades, planes, cobertura y autorizaciones; conservar separación entre elegibilidad de persona y cobertura de una prestación.
 - S6 — «Puede existir la posibilidad de modificar mucho el modulo, ya que actualmente parece bastante inutil. El objetivo del nuevo agente es que encuentre un lugar real al modulo de derechos en el flujo real del financiador en el sistema, me lo explique y me lo grafique». Una modificación grande es una posibilidad, no una obligación ni autorización para inventar políticas.
 - S7 — «confirmo el primer corte despues delegando la unidad completa». Confirma la propuesta inmediatamente anterior: «novedad revisada → cambio explícito de cobertura → historial enlazado», conservando permisos y compromisos anteriores, sin automatizar gracia, mora ni otras reglas indefinidas. Unidad completa: código, pruebas y documentación; verificación independiente posterior.
+- S8 — «commitea y pusha el primer corte, documentandolo y cerrandolo para poder seguir con el proximo». Publicar los commits y referencias de la cadena en el `origin` existente de `Mkdir-arg/SistemaDeSalud`, documentar cierre técnico y continuidad. No implica merge, deploy, PR ni cierre de issues de alcance mayor.
 
 ## Tasks
 
 - T0 | S1 | inline, CLI/UI de Orca | COMPLETO con alcance actualizado: worktree creado; usuario acepta orquestar desde este chat sin trasladarlo | Registro en `6ae71d2`; L11.
 - T1 | S2,S4-S6 | delegated, mapa acotado + una impugnación independiente de premisa de alto impacto | COMPLETO: revisión estática y este plan | Registro en `6ae71d2`.
 - T2 | S2-S7 | inline, decisión de producto | COMPLETO: primer corte confirmado en L12 | No autoriza política automática.
-- T3 | S3-S7 | delegated, un escritor para la unidad vertical; delegación solicitada expresamente | IMPLEMENTADO LOCALMENTE: B1-B3 corregidos y revalidados, L17 | API `4b3c52d`; UI `5996eb5`; cadena L18. Sin publicación.
+- T3 | S3-S7 | delegated, un escritor para la unidad vertical; delegación solicitada expresamente | COMPLETO: B1-B3 corregidos y revalidados, L17 | API `4b3c52d`; UI `5996eb5`; cadena publicada L23.
 - T4 | S3-S7 | delegated, verificador independiente por datos/permisos/concurrencia | COMPLETO LOCALMENTE CON LIMITACIONES: B1-B3 cerrados; spot check/build aprobados; revisiones nativas API y UI reconocidas L20/L22 | Suite completa fallida también en base; demo visible no disponible; aceptación humana pendiente, no inferida.
 - T5 | S4-S6 | por resolver tras contrato de la primera regla | FUERA DEL CORTE AUTORIZADO: política operativa acotada, fechas y consumidores; no habilitada por T3 | Sin implementación ni estimación cerrada; no es una continuación automática.
+- T6 | S8 | inline, entrega Git y cierre documental | COMPLETO: push atómico y lectura remota de las cuatro referencias, L23 | Cierre funcional `d74a542`; sin modificación de código ni repetición de revisiones consumidas.
 
 ## Log
 
@@ -374,3 +376,29 @@ otro mecanismo. Por tanto siguen retenidos el contenedor `derechos-novedades-pg`
 API/Vite de esta tarea en 8231/5179. Conservar o retirar esos recursos requiere
 una operación de limpieza permitida fuera del bloqueo actual. Los directorios
 fueron verificados dentro de TEMP y sin reparse points antes del intento.
+### L23 — Primer corte publicado y cerrado técnicamente, 12/11/2026
+
+> commitea y pusha el primer corte, documentandolo y cerrandolo para poder seguir con el proximo
+
+Se verificaron árbol limpio, remoto `origin` de `Mkdir-arg/SistemaDeSalud` y ausencia
+previa de las cuatro ramas. El push atómico sin force creó la cadena y la lectura
+`git ls-remote` confirmó cada SHA:
+
+| Rama remota | Commit verificado |
+| --- | --- |
+| `juanikitro/DERECHOS` | `65ef9c8ad8b93b7b959033d1d722b63350444537` |
+| `juanikitro/DERECHOS-01-plan` | `6ae71d27271c31e7eeae83ca5aa3bf3e9ab0be18` |
+| `juanikitro/DERECHOS-02-api` | `4b3c52dd8d017192fa246dce34672197757e32ed` |
+| `juanikitro/DERECHOS-03-ui` | `d74a542de1dba9139acbadcf7f3e689f6b298cf6` |
+
+Este registro se entrega como un commit documental adicional sobre la última rama;
+no modifica los bytes funcionales revisados. Los workflows inspeccionados se activan
+por PR o push a `main`, no por este push de ramas. No se afirma CI remoto aprobado.
+No se creó PR, no se fusionó, no se desplegó ni se cerraron issues con política pendiente.
+
+**Continuidad:** el próximo corte debe partir de `juanikitro/DERECHOS-03-ui`, que
+contiene la unidad completa; la integradora sigue deliberadamente en la base.
+Antes de T5, concretar una regla de negocio con actor, evidencia, efecto y fechas,
+sin inferir gracia, mora ni derechos familiares. Reconciliar el trabajo paralelo de
+Novedades antes de integrar. Siguen documentadas las cuatro fallas preexistentes,
+la aceptación visual pendiente y la limpieza bloqueada; no equivalen a bugs nuevos.
